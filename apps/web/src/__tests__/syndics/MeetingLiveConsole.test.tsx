@@ -3,7 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { App } from 'antd';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MeetingLiveConsole } from '../../components/syndics/MeetingLiveConsole';
-import type { LiveMeetingAdminView, MeetingParticipantView } from '../../types/syndic-live-types';
+import type {
+  LiveMeetingAdminView,
+  MeetingParticipantView,
+  MeetingVisioAdminView
+} from '../../types/syndic-live-types';
 import type { MeetingStatus } from '../../types/syndic-types';
 
 const api = {
@@ -15,7 +19,11 @@ const api = {
   closeResolutionVote: vi.fn(),
   issueParticipantLink: vi.fn(),
   revokeParticipantLinks: vi.fn(),
-  updateMeeting: vi.fn()
+  updateMeeting: vi.fn(),
+  getMeetingVisio: vi.fn(),
+  issueMeetingVisioToken: vi.fn(),
+  setVisioParticipantSpeaking: vi.fn(),
+  removeVisioParticipant: vi.fn()
 };
 
 vi.mock('../../services/syndic-service', async () => {
@@ -30,8 +38,23 @@ vi.mock('../../services/syndic-service', async () => {
     closeResolutionVote: (...a: unknown[]) => api.closeResolutionVote(...a),
     issueParticipantLink: (...a: unknown[]) => api.issueParticipantLink(...a),
     revokeParticipantLinks: (...a: unknown[]) => api.revokeParticipantLinks(...a),
-    updateMeeting: (...a: unknown[]) => api.updateMeeting(...a)
+    updateMeeting: (...a: unknown[]) => api.updateMeeting(...a),
+    getMeetingVisio: (...a: unknown[]) => api.getMeetingVisio(...a),
+    issueMeetingVisioToken: (...a: unknown[]) => api.issueMeetingVisioToken(...a),
+    setVisioParticipantSpeaking: (...a: unknown[]) => api.setVisioParticipantSpeaking(...a),
+    removeVisioParticipant: (...a: unknown[]) => api.removeVisioParticipant(...a)
   };
+});
+
+// La salle (LiveKit) est chargée à la demande : on la remplace par un témoin qui demande son jeton.
+vi.mock('../../components/syndics/visio/MeetingVisioRoom', () => {
+  const VisioRoomStub = ({ role, getToken }: { role: string; getToken: () => Promise<unknown> }) => {
+    React.useEffect(() => {
+      void getToken().catch(() => undefined);
+    }, [getToken]);
+    return <div data-testid="visio-room" data-role={role} />;
+  };
+  return { default: VisioRoomStub };
 });
 
 const tally = {
@@ -187,6 +210,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   api.getLiveMeeting.mockResolvedValue(live());
   api.listMeetingParticipants.mockResolvedValue(participants);
+  // Visio non configurée par défaut : l'API répond 409 et la console reste inchangée.
+  api.getMeetingVisio.mockRejectedValue({ response: { status: 409 } });
 });
 
 describe('MeetingLiveConsole', () => {
@@ -465,5 +490,121 @@ describe('MeetingLiveConsole', () => {
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Copier le lien de Awa Traoré' }));
     expect(await screen.findByText('Lien copié')).toBeTruthy();
+  });
+});
+
+const visioView = (overrides: Partial<MeetingVisioAdminView> = {}): MeetingVisioAdminView => ({
+  enabled: true,
+  roomName: 't1__ag_m1',
+  roomActive: true,
+  participants: [
+    {
+      identity: 'gestionnaire-u1',
+      kind: 'MANAGER',
+      participantId: null,
+      contactId: null,
+      name: 'Syndic Dupont',
+      handRaisedAt: null,
+      canSpeak: true,
+      joinedAt: '2026-10-20T09:50:00.000Z'
+    },
+    {
+      identity: 'p-c2',
+      kind: 'COOWNER',
+      participantId: 'p2',
+      contactId: 'c2',
+      name: 'Ibrahim Koné',
+      handRaisedAt: null,
+      canSpeak: false,
+      joinedAt: '2026-10-20T10:00:00.000Z'
+    },
+    {
+      identity: 'p-c1',
+      kind: 'COOWNER',
+      participantId: 'p1',
+      contactId: 'c1',
+      name: 'Awa Traoré',
+      handRaisedAt: '2026-10-20T10:05:00.000Z',
+      canSpeak: false,
+      joinedAt: '2026-10-20T10:01:00.000Z'
+    }
+  ],
+  ...overrides
+});
+
+describe('MeetingLiveConsole : visio intégrée', () => {
+  it('ne montre aucune carte de visio quand elle n est pas configurée', async () => {
+    mount();
+    await screen.findByRole('combobox', { name: 'Émargement du lot B2' });
+    expect(api.getMeetingVisio).toHaveBeenCalledWith('t1', 's1', 'm1');
+    expect(screen.queryByText('Visio intégrée')).toBeNull();
+    expect(screen.queryByText('En visio')).toBeNull();
+  });
+
+  it('affiche la carte, les mains levées en tête et la marque En visio', async () => {
+    api.getMeetingVisio.mockResolvedValue(visioView());
+    mount();
+    expect(await screen.findByText('Visio intégrée')).toBeTruthy();
+    const card = screen.getByText('Visio intégrée').closest('.ant-card') as HTMLElement;
+    const rows = Array.from(card.querySelectorAll('tbody tr.ant-table-row')).map(row => row.textContent ?? '');
+    expect(rows[0]).toContain('Awa Traoré');
+    expect(rows[0]).toContain('Main levée');
+    expect(rows[1]).toContain('Ibrahim Koné');
+    // Une marque par copropriétaire présent dans la salle, dans la liste des participants.
+    await waitFor(() => expect(screen.getAllByText('En visio').length).toBe(2));
+  });
+
+  it('ouvre la salle en modérateur', async () => {
+    api.getMeetingVisio.mockResolvedValue(visioView());
+    api.issueMeetingVisioToken.mockResolvedValue({
+      serverUrl: 'wss://lk.example.com',
+      token: 'jwt',
+      identity: 'gestionnaire-u1',
+      roomName: 't1__ag_m1',
+      expiresAt: '2026-10-20T10:10:00.000Z'
+    });
+    mount('PLANNED');
+    fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir la visio' }));
+    const room = await screen.findByTestId('visio-room');
+    expect(room.getAttribute('data-role')).toBe('moderator');
+    await waitFor(() => expect(api.issueMeetingVisioToken).toHaveBeenCalledWith('t1', 's1', 'm1'));
+  });
+
+  it('donne la parole à un copropriétaire', async () => {
+    api.getMeetingVisio.mockResolvedValue(visioView());
+    api.setVisioParticipantSpeaking.mockResolvedValue(visioView());
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Donner la parole à Awa Traoré' }));
+    await waitFor(() => expect(api.setVisioParticipantSpeaking).toHaveBeenCalledWith('t1', 's1', 'm1', 'p1', true));
+  });
+
+  it('retire la parole à un copropriétaire qui l a', async () => {
+    const speaking = visioView();
+    speaking.participants[1] = { ...speaking.participants[1], canSpeak: true };
+    api.getMeetingVisio.mockResolvedValue(speaking);
+    api.setVisioParticipantSpeaking.mockResolvedValue(visioView());
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Retirer la parole à Ibrahim Koné' }));
+    await waitFor(() => expect(api.setVisioParticipantSpeaking).toHaveBeenCalledWith('t1', 's1', 'm1', 'p2', false));
+  });
+
+  it('exclut après confirmation avec révocation des liens et annonce le nombre de liens révoqués', async () => {
+    api.getMeetingVisio.mockResolvedValue(visioView());
+    api.removeVisioParticipant.mockResolvedValue({ ...visioView(), revokedLinks: 2 });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Exclure Ibrahim Koné' }));
+    fireEvent.click(await screen.findByLabelText('Révoquer aussi ses liens personnels'));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Exclure' }));
+    await waitFor(() => expect(api.removeVisioParticipant).toHaveBeenCalledWith('t1', 's1', 'm1', 'p2', true));
+    expect(await screen.findByText('Ibrahim Koné a été exclu — 2 lien(s) révoqué(s)')).toBeTruthy();
+  });
+
+  it('exclut sans révoquer les liens par défaut', async () => {
+    api.getMeetingVisio.mockResolvedValue(visioView());
+    api.removeVisioParticipant.mockResolvedValue({ ...visioView(), revokedLinks: 0 });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Exclure Awa Traoré' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Exclure' }));
+    await waitFor(() => expect(api.removeVisioParticipant).toHaveBeenCalledWith('t1', 's1', 'm1', 'p1', false));
   });
 });

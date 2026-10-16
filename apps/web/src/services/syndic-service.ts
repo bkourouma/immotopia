@@ -3,9 +3,11 @@ import { filenameFromDisposition } from '../utils/save-blob';
 import type {
   LiveMeetingAdminView,
   MeetingParticipantView,
+  MeetingVisioAdminView,
   ParticipantLink,
   SetBulkAttendanceRequest,
-  SetLotAttendanceRequest
+  SetLotAttendanceRequest,
+  VisioJoinInfo
 } from '../types/syndic-live-types';
 import {
   CreateAgendaItemRequest,
@@ -1386,5 +1388,61 @@ export async function revokeParticipantLinks(
   const response = await apiClient.delete<{ success: boolean; data: { revoked: number } }>(
     `${liveBase(tenantId, syndicId, meetingId)}/participants/${contactId}/liens`
   );
+  return response.data.data;
+}
+
+/* ---------------------------------------------------------------- visio de l'AG (spec 045) */
+
+/** Participants en visio (mains levées, droit de parole) ; `enabled: false` si la visio n'est pas configurée. */
+export async function getMeetingVisio(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingVisioAdminView> {
+  const response = await apiClient.get<{ success: boolean; data: MeetingVisioAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio`
+  );
+  return response.data.data;
+}
+
+/** Jeton de connexion du gestionnaire (modérateur) à la salle. */
+export async function issueMeetingVisioToken(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<VisioJoinInfo> {
+  const response = await apiClient.post<{ success: boolean; data: VisioJoinInfo }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/jeton`
+  );
+  return response.data.data;
+}
+
+/** Donne ou retire la parole (micro et caméra) à un copropriétaire présent en visio. */
+export async function setVisioParticipantSpeaking(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  participantId: string,
+  allowed: boolean
+): Promise<MeetingVisioAdminView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingVisioAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/parole`,
+    { allowed }
+  );
+  return response.data.data;
+}
+
+/** Exclut un participant de la salle, avec option de révoquer ses liens personnels. */
+export async function removeVisioParticipant(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  participantId: string,
+  revokeLinks: boolean
+): Promise<MeetingVisioAdminView & { revokedLinks: number }> {
+  const response = await apiClient.post<{
+    success: boolean;
+    data: MeetingVisioAdminView & { revokedLinks: number };
+  }>(`${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/exclure`, { revokeLinks });
   return response.data.data;
 }

@@ -1,5 +1,5 @@
 import apiClient from '../utils/api-client';
-import type { LiveMeetingPublicView } from '../types/syndic-live-types';
+import type { LiveMeetingPublicView, VisioJoinInfo } from '../types/syndic-live-types';
 import type { VoteChoice } from '../types/syndic-types';
 
 type ApiResponse<T> = { success: boolean; data: T };
@@ -72,4 +72,39 @@ export function isSafeVideoUrl(value: unknown): value is string {
   } catch {
     return false;
   }
+}
+
+/* ------------------------------------------------------------------- visio */
+
+/** Résultat d'un appel de visio : mêmes échecs que l'AG, plus la raison d'un 409. */
+export type PublicVisioResult<T> =
+  { status: 'ok'; data: T } | { status: PublicMeetingFailure } | { status: 'conflict'; message?: string };
+
+async function postVisio<T>(path: string, body: Record<string, unknown>): Promise<PublicVisioResult<T>> {
+  try {
+    const response = await apiClient.post<ApiResponse<T>>(`${BASE}${path}`, body, PUBLIC_CONFIG);
+    if (response.status === 200 && response.data?.success && response.data.data) {
+      return { status: 'ok', data: response.data.data };
+    }
+    if (response.status === 409) {
+      const message = (response.data as { message?: unknown } | undefined)?.message;
+      return typeof message === 'string' && message.trim() ? { status: 'conflict', message } : { status: 'conflict' };
+    }
+    return { status: failureFor(response.status) };
+  } catch {
+    return { status: 'unavailable' };
+  }
+}
+
+/** Jeton de connexion à la salle de visio (AG en cours, participant ayant rejoint). */
+export async function fetchPublicVisioToken(token: string): Promise<PublicVisioResult<VisioJoinInfo>> {
+  return postVisio<VisioJoinInfo>('/visio', { token });
+}
+
+/** Lève ou baisse la main dans la salle. */
+export async function setPublicHandRaised(
+  token: string,
+  raised: boolean
+): Promise<PublicVisioResult<{ raised: boolean }>> {
+  return postVisio<{ raised: boolean }>('/visio/main', { token, raised });
 }

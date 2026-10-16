@@ -179,7 +179,40 @@ export interface LiveMeetingPublicView {
     };
   }>;
   canVote: boolean;
+  /** Visio intégrée (spec 045). Une réponse sans ce champ vaut `enabled: false`. */
+  visio?: { enabled: boolean };
   serverTime: string;
 }
 
 export type PublicLiveResolution = LiveMeetingPublicView['resolutions'][number];
+
+/* ------------------------------------------------------------------- visio */
+
+/** Connexion à la salle de visio (spec 045) : jeton LiveKit à durée courte. */
+export interface VisioJoinInfo {
+  serverUrl: string;
+  token: string;
+  identity: string;
+  roomName: string;
+  expiresAt: string;
+}
+
+export interface MeetingVisioParticipant {
+  identity: string;
+  kind: 'COOWNER' | 'MANAGER';
+  /** GMParticipant (copropriétaire). */
+  participantId: string | null;
+  contactId: string | null;
+  name: string;
+  handRaisedAt: string | null;
+  /** Droit de publier micro et caméra. */
+  canSpeak: boolean;
+  joinedAt: string | null;
+}
+
+export interface MeetingVisioAdminView {
+  enabled: boolean;
+  roomName: string | null;
+  roomActive: boolean;
+  participants: MeetingVisioParticipant[];
+}

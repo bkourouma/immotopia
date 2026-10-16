@@ -3,21 +3,32 @@ import { App, Alert, Button, Card, Col, Input, Modal, Progress, Row, Space, Stat
 import {
   closeResolutionVote,
   getLiveMeeting,
+  getMeetingVisio,
+  issueMeetingVisioToken,
   issueParticipantLink,
   listMeetingParticipants,
   openResolutionVote,
+  removeVisioParticipant,
   revokeParticipantLinks,
   setBulkAttendance,
   setLotAttendance,
+  setVisioParticipantSpeaking,
   updateMeeting
 } from '../../services/syndic-service';
 import { isSafeVideoUrl } from '../../services/public-meeting-live-service';
-import type { LiveMeetingAdminView, MeetingParticipantView } from '../../types/syndic-live-types';
+import type {
+  LiveMeetingAdminView,
+  MeetingParticipantView,
+  MeetingVisioAdminView,
+  MeetingVisioParticipant,
+  VisioJoinInfo
+} from '../../types/syndic-live-types';
 import type { MeetingStatus } from '../../types/syndic-types';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { LiveLotsTable, type ContactOption, type LotAttendanceChange } from './live/LiveLotsTable';
 import { LiveParticipantsTable } from './live/LiveParticipantsTable';
 import { LiveResolutionsPanel } from './live/LiveResolutionsPanel';
+import { MeetingVisioCard } from './visio/MeetingVisioCard';
 import { clampPercent } from './live/live-labels';
 import { t } from '../../i18n/t';
 
@@ -156,6 +167,9 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   const [shownLink, setShownLink] = useState<{ name: string; url: string } | null>(null);
   const [videoDraft, setVideoDraft] = useState<string | null>(null);
   const [savingVideo, setSavingVideo] = useState(false);
+  const [visio, setVisio] = useState<MeetingVisioAdminView | null>(null);
+  const [visioRoomOpen, setVisioRoomOpen] = useState(false);
+  const [busyVisioId, setBusyVisioId] = useState<string | null>(null);
 
   const frozen = meetingStatus === 'COMPLETED' || meetingStatus === 'CANCELLED';
   const inProgress = meetingStatus === 'IN_PROGRESS';
@@ -186,6 +200,80 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   }, [tenantId, syndicId, meetingId, frozen]);
 
   const { refresh } = useVisiblePolling(load, { resetKey: `${meetingStatus}|${refreshKey ?? ''}` });
+
+  // Visio intégrée (spec 045) : 409 = non configurée, on n'interroge plus et rien ne s'affiche.
+  const loadVisio = useCallback(async (): Promise<number | false | void> => {
+    try {
+      setVisio(await getMeetingVisio(tenantId, syndicId, meetingId));
+    } catch (err) {
+      if ((err as { response?: { status?: number } })?.response?.status === 409) {
+        setVisio(null);
+        return false;
+      }
+      // Échec passager : on garde les dernières données et on réessaie.
+    }
+    return inProgress ? undefined : false;
+  }, [tenantId, syndicId, meetingId, inProgress]);
+
+  const { refresh: refreshVisio } = useVisiblePolling(loadVisio, { resetKey: meetingStatus });
+
+  const visioEnabled = visio?.enabled === true;
+  const inVisioContactIds = useMemo(
+    () =>
+      new Set(
+        (visio?.participants ?? []).flatMap(participant => (participant.contactId ? [participant.contactId] : []))
+      ),
+    [visio]
+  );
+
+  const getVisioToken = useCallback(async (): Promise<VisioJoinInfo> => {
+    try {
+      return await issueMeetingVisioToken(tenantId, syndicId, meetingId);
+    } catch (err) {
+      throw new Error(errorText(err, t("Impossible d'ouvrir la visio, réessayez.")));
+    }
+  }, [tenantId, syndicId, meetingId]);
+
+  const handleVisioSpeak = async (participant: MeetingVisioParticipant, allowed: boolean) => {
+    if (!participant.participantId) return;
+    setBusyVisioId(participant.participantId);
+    try {
+      setVisio(await setVisioParticipantSpeaking(tenantId, syndicId, meetingId, participant.participantId, allowed));
+      message.success(
+        allowed
+          ? t('Parole donnée à {{name}}', { name: participant.name })
+          : t('Parole retirée à {{name}}', { name: participant.name })
+      );
+    } catch (err) {
+      message.error(errorText(err, t('Action impossible, réessayez.')));
+      refreshVisio();
+    } finally {
+      setBusyVisioId(null);
+    }
+  };
+
+  const handleVisioRemove = async (participant: MeetingVisioParticipant, revokeLinks: boolean) => {
+    if (!participant.participantId) return;
+    try {
+      const { revokedLinks, ...view } = await removeVisioParticipant(
+        tenantId,
+        syndicId,
+        meetingId,
+        participant.participantId,
+        revokeLinks
+      );
+      setVisio(view);
+      message.success(
+        revokeLinks
+          ? t('{{name}} a été exclu — {{count}} lien(s) révoqué(s)', { name: participant.name, count: revokedLinks })
+          : t('{{name}} a été exclu', { name: participant.name })
+      );
+      if (revokeLinks) refresh();
+    } catch (err) {
+      message.error(errorText(err, t('Exclusion impossible, réessayez.')));
+      refreshVisio();
+    }
+  };
 
   const contacts = useMemo(() => uniqueContacts(live, participants), [live, participants]);
 
@@ -337,6 +425,19 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
 
       {live ? <QuorumPanel live={live} /> : null}
 
+      {visioEnabled && visio ? (
+        <MeetingVisioCard
+          visio={visio}
+          frozen={frozen}
+          roomOpen={visioRoomOpen && !frozen}
+          onToggleRoom={() => setVisioRoomOpen(open => !open)}
+          getToken={getVisioToken}
+          busyParticipantId={busyVisioId}
+          onSpeak={(participant, allowed) => void handleVisioSpeak(participant, allowed)}
+          onRemove={handleVisioRemove}
+        />
+      ) : null}
+
       <Card size="small" title={t('Visioconférence')}>
         <Space.Compact style={{ width: '100%' }}>
           <Input
@@ -387,6 +488,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
       <Card size="small" title={t('Participants et liens personnels')}>
         <LiveParticipantsTable
           participants={participants}
+          inVisioContactIds={visioEnabled ? inVisioContactIds : undefined}
           readOnly={frozen}
           busyContactId={busyContactId}
           onCopyLink={participant => void handleCopyLink(participant)}
