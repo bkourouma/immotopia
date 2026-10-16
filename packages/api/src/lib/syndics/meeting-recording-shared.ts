@@ -119,6 +119,18 @@ export function resolveRecordingPath(
   return absolute;
 }
 
+/**
+ * Chemin canonique du MP4 d'un enregistrement, derive de ses seuls identifiants (jamais de `fileUrl`) :
+ * dossier attendu de l'AG et nom `<id>.mp4`. `null` si un identifiant sort de ce dossier.
+ */
+export function recordingFilePath(syndicateId: string, meetingId: string, recordingId: string): string | null {
+  const root = path.resolve(getUploadsRoot(env.UPLOADS_DIR));
+  const folder = path.resolve(root, ...recordingFolder(syndicateId, meetingId));
+  const absolute = path.resolve(folder, `${recordingId}.mp4`);
+  if (path.dirname(absolute) !== folder || path.basename(absolute) !== `${recordingId}.mp4`) return null;
+  return absolute;
+}
+
 /** Efface un fichier ; seul « deja absent » est toléré (toute autre erreur laisse la ligne inchangée). */
 export async function unlinkIfPresent(absolutePath: string): Promise<void> {
   try {
@@ -134,6 +146,17 @@ export async function unlinkIfPresent(absolutePath: string): Promise<void> {
  */
 export async function lockRecordingTx(tx: PrismaTransactionClient, meetingId: string): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`ag-rec:${meetingId}`}))`;
+}
+
+/**
+ * Meme verrou que `lockRecordingTx`, mais NON bloquant : `false` si une autre transaction le tient
+ * (ex. un demarrage d'enregistrement en cours). Pour les suppressions, qui ont un delai de transaction court.
+ */
+export async function tryLockRecordingTx(tx: PrismaTransactionClient, meetingId: string): Promise<boolean> {
+  const rows = await tx.$queryRaw<
+    Array<{ locked: boolean }>
+  >`SELECT pg_try_advisory_xact_lock(hashtext(${`ag-rec:${meetingId}`})) AS locked`;
+  return rows[0]?.locked === true;
 }
 
 async function loadNames(userIds: Array<string | null>): Promise<Map<string, string>> {

@@ -519,7 +519,13 @@ export async function deleteEmptySyndicateByTenant(
   // puisque la copropriete est vide, mais on garde la meme mecanique que les
   // autres operations de `syncLotActivationsTx` par coherence).
   const { row: deleted, recordings } = await prisma.$transaction(async tx => {
-    const recordings = await collectRecordingsForCascade(tx, tenantId, { kind: 'SYNDICATE', syndicateId });
+    const recordings = await collectRecordingsForCascade(
+      tx,
+      tenantId,
+      { kind: 'SYNDICATE', syndicateId },
+      'SYNDICATE_DELETED',
+      actorUserId
+    );
     const scope = await resolveLotScope(tx, tenantId, { syndicateIds: [syndicateId] });
     const row = await tx.syndicate.delete({
       where: { id: syndicateId, tenantId }
@@ -529,7 +535,7 @@ export async function deleteEmptySyndicateByTenant(
   });
 
   // MP4 et objets S3 des AG : effaces apres le commit, au mieux (ne leve jamais).
-  await purgeCascadedRecordings(recordings, actorUserId, 'SYNDICATE_DELETED');
+  await purgeCascadedRecordings(recordings);
 
   // Logo prive de la copropriete : supprime apres coup, jamais bloquant pour
   // la suppression elle-meme (deleteBrandingImage journalise et n'echoue

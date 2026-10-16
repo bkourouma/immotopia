@@ -1140,10 +1140,11 @@ sous la racine attendue, auditée (`SYNDIC_MEETING_RECORDING_ACCESSED`) ; les r�
 ni clé S3, ni identifiant d'egress, ni chemin disque. La suppression (`SYNDIC_EDIT`) efface le
 fichier et l'objet S3 restant ; la ligne reste en `DELETED`. Une suppression en cascade
 (copropriété aujourd'hui ; toute future suppression d'AG ou purge d'agence doit passer par
-`lib/syndics/meeting-recording-cleanup.ts`) relève les enregistrements dans la transaction, refuse
-(409) tant que l'un est en cours ou en traitement, puis efface fichier et objet S3 après validation
-et audite `SYNDIC_MEETING_RECORDING_DELETED` (avec la cause) ; un échec d'effacement est journalisé
-sans chemin ni clé.
+`lib/syndics/meeting-recording-cleanup.ts`) prend dans la transaction un verrou non bloquant par AG
+et refuse (409) si un démarrage ou un enregistrement est en cours ou en traitement, y écrit l'audit
+critique `SYNDIC_MEETING_RECORDING_DELETED` (avec la cause), puis, après validation, efface le
+fichier (chemin dérivé des identifiants, jamais de `fileUrl`) et l'objet S3 (clé vérifiée contre
+l'enregistrement) ; un échec d'effacement est journalisé sans chemin ni clé.
 
 **Configuration.** `LIVEKIT_*` : les trois ou aucune, secret de 32 caractères au moins, `wss://`
 hors développement ; `LIVEKIT_RECORDING_S3_*` : tous ou aucun, `https://` hors développement,
@@ -1153,8 +1154,8 @@ taille maximale rapatriée bornée. Projet LiveKit **dédié** à ImmoTopia.
 la connexion vit. Enregistrer une AG relève d'une base juridique et d'une information préalable
 non encore décidées (spec 045, R10) ; aucune purge automatique des enregistrements. Changer de
 langue pendant la visio remonte l'application et déconnecte de la salle. Une suppression qui
-contourne ce code (agence effacée à la main en SQL, `prisma/seed.ts` de développement) laisse les
-MP4 et objets S3 de ses enregistrements.
+contourne ce code (agence effacée à la main en SQL, `prisma/seed.ts` et `prisma/seeds/syndic-demo-seed.ts` de
+développement, dont son `syndicate.deleteMany`) laisse les MP4 et objets S3 de ses enregistrements.
 
 ## 13. Points ouverts
 

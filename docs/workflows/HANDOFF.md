@@ -55,8 +55,9 @@ Pièges et décisions :
 
 Fait :
 
-- `lib/syndics/meeting-recording-cleanup.ts` : `collectRecordingsForCascade` (dans la transaction : AG du périmètre filtrées par agence, verrou `ag-rec:` par AG, 409 si `RECORDING`/`PROCESSING`) et `purgeCascadedRecordings` (après commit : fichier privé, objet S3, audit `SYNDIC_MEETING_RECORDING_DELETED` avec `cause` ; ne lève jamais, journaux sans chemin ni clé).
-- Branché dans `deleteEmptySyndicateByTenant` (acteur transmis par le contrôleur). `resolveRecordingPath`, `unlinkIfPresent`, `lockRecordingTx` déplacés dans `meeting-recording-shared.ts`.
+- `lib/syndics/meeting-recording-cleanup.ts` : `collectRecordingsForCascade` (dans la transaction : AG du périmètre filtrées par agence, verrou `ag-rec:` TENTÉ par AG — jamais attendu —, 409 si verrou tenu ou enregistrement `RECORDING`/`PROCESSING`, audit critique `SYNDIC_MEETING_RECORDING_DELETED` avec `cause` écrit par `recordAuditEvent(tx)`) et `purgeCascadedRecordings` (après commit : MP4 au chemin dérivé des identifiants + `.part`, objet S3 si la clé correspond à l'enregistrement ; ne lève jamais, journaux sans chemin ni clé).
+- Relecture `security-auditor` : 0 critique/haute ; ses 4 constats (audit hors transaction, `fileUrl` lue trop tôt, attente du verrou, clé S3 non vérifiée) sont corrigés.
+- Branché dans `deleteEmptySyndicateByTenant` (acteur transmis par le contrôleur). `resolveRecordingPath`, `unlinkIfPresent`, `lockRecordingTx` déplacés dans `meeting-recording-shared.ts` ; `tryLockRecordingTx` et `recordingFilePath` ajoutés.
 - Spec 045 R12, `SECURITY.md` § 12 quater (limite « MP4 d'une AG supprimée » retirée), traductions en/ar à la main.
 
 Reste à faire :
@@ -67,7 +68,9 @@ Reste à faire :
 Pièges et décisions :
 
 - Il n'existe aujourd'hui ni route de suppression d'AG ni purge d'agence ; la suppression de copropriété refuse déjà dès qu'une AG existe : le branchement est défensif (comptage hors transaction).
-- `prisma/seed.ts` et une suppression SQL manuelle d'agence contournent ce code et laissent les MP4.
+- `prisma/seed.ts`, `prisma/seeds/syndic-demo-seed.ts` et une suppression SQL manuelle d'agence contournent ce code et laissent les MP4.
+- `deleteRecording` (PR 144) écrit encore son audit critique par la file asynchrone (`logAuditEvent`) : préexistant, non corrigé ici.
+- Le hook Prettier a réaligné les tableaux de la spec 045 au premier commit (espaces seulement, et deux blocs de code passés en guillemets doubles).
 
 ## Branche `feat/syndic-ag-visio` — 2026-10-16
 

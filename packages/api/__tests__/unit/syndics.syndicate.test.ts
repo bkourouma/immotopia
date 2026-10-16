@@ -550,15 +550,14 @@ describe('Suppression d une copropriete vide uniquement (ecart recette #8)', () 
 
     await deleteEmptySyndicateByTenant('tenant-a', 'syn-1', 'user-1');
 
-    expect(mockRecordingCleanup.collectRecordingsForCascade).toHaveBeenCalledWith(expect.anything(), 'tenant-a', {
-      kind: 'SYNDICATE',
-      syndicateId: 'syn-1'
-    });
-    expect(mockRecordingCleanup.purgeCascadedRecordings).toHaveBeenCalledWith(
-      recordings,
-      'user-1',
-      'SYNDICATE_DELETED'
+    expect(mockRecordingCleanup.collectRecordingsForCascade).toHaveBeenCalledWith(
+      expect.anything(),
+      'tenant-a',
+      { kind: 'SYNDICATE', syndicateId: 'syn-1' },
+      'SYNDICATE_DELETED',
+      'user-1'
     );
+    expect(mockRecordingCleanup.purgeCascadedRecordings).toHaveBeenCalledWith(recordings);
     const order = (mock: jest.Mock) => mock.mock.invocationCallOrder[0];
     expect(order(mockRecordingCleanup.collectRecordingsForCascade)).toBeLessThan(order(mockPrisma.syndicate.delete));
     expect(order(mockPrisma.syndicate.delete)).toBeLessThan(order(mockRecordingCleanup.purgeCascadedRecordings));
