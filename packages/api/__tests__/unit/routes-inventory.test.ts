@@ -55,7 +55,16 @@ function withPrefix(prefixPath: string) {
  * Routes publiques volontaires — chacune commentee avec sa raison d'etre.
  * Toute route absente d'ici doit porter une garde d'agence ou de plateforme.
  */
+const PUBLIC_MEETING_LIVE_REASON =
+  "AG en direct par lien personnel (spec 043, lib/secure-links) : public par nature, le copropriétaire n'a pas de " +
+  'session. Le jeton (256 bits, SHA-256 seul en base, expirant, revocable) est dans le corps (4 Ko max) ; il ne donne ' +
+  "acces qu'aux lots du participant (votants a la date de l'AG + pouvoirs), jamais au vote des autres. Limiteurs par IP " +
+  'et par empreinte de jeton, refus uniforme 404, en-tetes no-store/noindex/no-referrer.';
+
 const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
+  { method: 'POST', test: exact('/api/public/assemblees/etat'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/rejoindre'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/voter'), reason: PUBLIC_MEETING_LIVE_REASON },
   {
     method: '*',
     test: withPrefix('/api/auth'),

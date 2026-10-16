@@ -106,6 +106,8 @@ function useLocalTable<T>(items: T[], pageSize: number) {
 
   return {
     pageItems,
+    // Toutes les lignes, triées comme à l'écran : c'est ce que l'export emporte.
+    allItems: sorted,
     total,
     page,
     pageSize,
@@ -570,6 +572,7 @@ export const SyndicFinances: React.FC = () => {
               columns={fundColumns}
               rowKey={row => row.id}
               aria-label={t('Détail des fonds')}
+              export={{ filename: t('Détail des fonds'), fetchAll: async () => fundsTable.allItems }}
               renderCard={row => (
                 <DataCard
                   title={row.name}
@@ -621,6 +624,7 @@ export const SyndicFinances: React.FC = () => {
               columns={chargeColumns}
               rowKey={row => row.id}
               aria-label={t('Détail des appels de fonds')}
+              export={{ filename: t('Détail des appels de fonds'), fetchAll: async () => chargesTable.allItems }}
               scrollX={1100}
               renderCard={row => (
                 <DataCard
@@ -659,6 +663,7 @@ export const SyndicFinances: React.FC = () => {
               columns={paymentColumns}
               rowKey={row => row.id}
               aria-label={t('Détail des paiements reçus')}
+              export={{ filename: t('Détail des paiements reçus'), fetchAll: async () => paymentsTable.allItems }}
               scrollX={1000}
               renderCard={row => (
                 <DataCard
@@ -690,6 +695,7 @@ export const SyndicFinances: React.FC = () => {
               columns={overdueColumns}
               rowKey={row => row.chargeCallId}
               aria-label={t('Détail des impayés et retards')}
+              export={{ filename: t('Détail des impayés et retards'), fetchAll: async () => overdueTable.allItems }}
               renderCard={row => (
                 <DataCard
                   title={`${row.lotLabel} — ${row.ownerLabel}`}

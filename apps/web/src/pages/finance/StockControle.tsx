@@ -57,6 +57,7 @@ import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { safeFormatDate } from '../../utils/date-utils';
 import { formatNumber } from '../../i18n/format';
+import { EXPORT_MAX_ROWS } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
 
 const { Text, Paragraph } = Typography;
@@ -476,20 +477,44 @@ const OngletAlertes: React.FC<OngletAlertesProps> = ({ tenantId, champ, alerteId
 
   const columns: ColumnsType<StockAlertView> = [
     { key: 'gravite', title: t('Gravité'), render: (_, alerte) => gravite(alerte) },
-    { key: 'alerte', title: t('Alerte'), render: (_, alerte) => titreAlerte(alerte) },
+    {
+      key: 'alerte',
+      title: t('Alerte'),
+      render: (_, alerte) => titreAlerte(alerte),
+      exportValue: alerte => `${alerte.title} — ${alerte.message}`
+    },
     ...(valeursVisibles
       ? [
           {
             key: 'montant',
             title: t('Montant · seuil'),
-            render: (_: unknown, alerte: StockAlertView) => montant(alerte)
+            render: (_: unknown, alerte: StockAlertView) => montant(alerte),
+            exportValue: (alerte: StockAlertView) => {
+              if (alerte.amount === null) return null;
+              const montantTexte = formatMoney(alerte.amount, { currency: alerte.currency });
+              return alerte.threshold === null
+                ? montantTexte
+                : `${montantTexte} — ${t('seuil {{threshold}}', { threshold: formatMoney(alerte.threshold, { currency: alerte.currency }) })}`;
+            }
           }
         ]
       : []),
     { key: 'ou', title: t('Où'), render: (_, alerte) => ouEst(alerte) },
     { key: 'objet', title: t('Objet'), render: (_, alerte) => objet(alerte) },
     { key: 'levee', title: t('Levée le'), render: (_, alerte) => safeFormatDate(alerte.raisedAt) },
-    { key: 'statut', title: t('Statut'), render: (_, alerte) => statut(alerte) },
+    {
+      key: 'statut',
+      title: t('Statut'),
+      render: (_, alerte) => statut(alerte),
+      exportValue: alerte => {
+        if (alerte.status === 'OPEN') return t('À traiter');
+        const traitee = t('Traitée le {{date}} par {{nom}}', {
+          date: safeFormatDate(alerte.acknowledgedAt, 'DD/MM/YYYY'),
+          nom: alerte.acknowledgedByLabel ?? ''
+        });
+        return alerte.acknowledgeNote ? `${traitee} — ${alerte.acknowledgeNote}` : traitee;
+      }
+    },
     {
       key: 'action',
       title: t('Action'),
@@ -646,6 +671,27 @@ const OngletAlertes: React.FC<OngletAlertesProps> = ({ tenantId, champ, alerteId
       ) : (
         <DataView<StockAlertView>
           aria-label={t('Alertes du stock')}
+          // Liste par curseur : l'export reparcourt toutes les pages, avec les
+          // mêmes filtres que la liste affichée.
+          export={{
+            filename: t('Alertes du stock'),
+            fetchAll: async () => {
+              const toutes: StockAlertView[] = [];
+              let curseur: string | undefined;
+              let tronque = false;
+              do {
+                const page = await listStockAlerts(tenantId, { ...requete, cursor: curseur, limit: 100 });
+                toutes.push(...page.data);
+                curseur = page.meta?.nextCursor ?? undefined;
+                if (curseur && toutes.length >= EXPORT_MAX_ROWS) {
+                  tronque = true;
+                  toutes.length = EXPORT_MAX_ROWS;
+                  break;
+                }
+              } while (curseur);
+              return { items: toutes, truncated: tronque };
+            }
+          }}
           items={alertes}
           total={alertes.length}
           page={1}
@@ -716,6 +762,10 @@ function colonnesIndicateurs(): ColumnsType<StockIndicatorRow> {
     {
       key: 'ecart',
       title: t('Taux d’écart'),
+      exportValue: ligne =>
+        ligne.setAsideVarianceValue
+          ? `${pourcent(ligne.varianceRate)} — ${t('dont lignes écartées : {{montant}}', { montant: formatMoney(ligne.setAsideVarianceValue) })}`
+          : pourcent(ligne.varianceRate),
       render: (_, ligne) => (
         <span>
           {pourcent(ligne.varianceRate)}
@@ -750,6 +800,7 @@ function colonnesIndicateurs(): ColumnsType<StockIndicatorRow> {
     {
       key: 'rebuts',
       title: t('Rebuts'),
+      exportValue: ligne => `${formatMoney(ligne.scrapValue)} — ${pourcent(ligne.scrapShare)}`,
       render: (_, ligne) => (
         <span>
           <MoneyValue value={ligne.scrapValue} />
@@ -908,6 +959,7 @@ const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }
           <Card title={t('Par mois')} size="small">
             <DataView<StockIndicatorRow>
               aria-label={t('Indicateurs par mois')}
+              export={{ filename: t('Indicateurs par mois') }}
               items={totaux}
               total={totaux.length}
               page={1}
@@ -938,6 +990,7 @@ const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }
           >
             <DataView<StockIndicatorRow>
               aria-label={t('Indicateurs par lieu et par mois')}
+              export={{ filename: t('Indicateurs par lieu et par mois') }}
               items={lignes}
               total={lignes.length}
               page={1}

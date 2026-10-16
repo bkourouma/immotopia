@@ -170,6 +170,7 @@ export const Associations: React.FC = () => {
         columns={colonnes}
         rowKey={a => a.id}
         aria-label={t('Associations')}
+        export={{ filename: t('Associations') }}
         renderCard={a => (
           <DataCard
             title={a.label}

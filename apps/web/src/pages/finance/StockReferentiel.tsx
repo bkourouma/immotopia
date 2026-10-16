@@ -657,7 +657,15 @@ export const StockReferentiel: React.FC = () => {
       key: 'chantier',
       render: (_, l) => l.siteLabel ?? <Text type="secondary">—</Text>
     },
-    { title: t('Statut'), key: 'statut', render: (_, l) => <StatutDuLieu lieu={l} /> },
+    {
+      title: t('Statut'),
+      key: 'statut',
+      render: (_, l) => <StatutDuLieu lieu={l} />,
+      exportValue: l => {
+        const actif = l.isActive ? t('Actif') : t('Inactif');
+        return l.countInProgress ? `${actif} — ${STOCK_COUNT_STATUS_DISPLAY[l.countInProgress.status].label}` : actif;
+      }
+    },
     {
       title: t('Actions'),
       key: 'actions',
@@ -725,6 +733,7 @@ export const StockReferentiel: React.FC = () => {
       </Space>
 
       <DataView<StockItem>
+        export={{ filename: t('Articles du stock') }}
         // Le contrat de `listStockItems` ne pagine pas.
         paginated={false}
         scrollX={1200}
@@ -832,6 +841,7 @@ export const StockReferentiel: React.FC = () => {
       </Space>
 
       <DataView<StockLocationView>
+        export={{ filename: t('Lieux de stockage') }}
         paginated={false}
         scrollX={900}
         items={listeLieux}

@@ -385,18 +385,21 @@ export const BudgetChantier: React.FC = () => {
       title: t('Quantité'),
       key: 'quantite',
       align: 'end',
+      exportValue: l => l.quantity ?? null,
       render: (_, l) => (l.quantity == null ? '' : l.quantity.toLocaleString(activeLocale()))
     },
     {
       title: t('Prix unitaire'),
       key: 'prix-unitaire',
       align: 'end',
+      exportValue: l => l.unitPrice ?? null,
       render: (_, l) => (l.unitPrice == null ? '' : <MoneyValue value={l.unitPrice} />)
     },
     {
       title: t('Montant prévu'),
       key: 'montant',
       align: 'end',
+      exportValue: l => l.amountForecast,
       render: (_, l) => <MoneyValue value={l.amountForecast} />
     }
   ];
@@ -405,7 +408,13 @@ export const BudgetChantier: React.FC = () => {
     { title: t('Date'), key: 'date', width: 120, render: (_, a) => dateCourte(a.amendmentDate) },
     { title: t('Motif'), key: 'motif', render: (_, a) => a.reason },
     { title: t('Saisi par'), key: 'saisi', render: (_, a) => a.createdByLabel },
-    { title: t('Écart'), key: 'ecart', align: 'end', render: (_, a) => <MoneyValue value={a.totalDelta} signed /> },
+    {
+      title: t('Écart'),
+      key: 'ecart',
+      align: 'end',
+      exportValue: a => a.totalDelta,
+      render: (_, a) => <MoneyValue value={a.totalDelta} signed />
+    },
     {
       title: t('Statut'),
       key: 'statut',
@@ -604,6 +613,7 @@ export const BudgetChantier: React.FC = () => {
             columns={colonnesLignes}
             rowKey={l => l.id}
             aria-label={t('Lignes du budget')}
+            export={{ filename: t('Lignes du budget') }}
             renderCard={l => (
               <DataCard
                 title={l.label}
@@ -645,6 +655,7 @@ export const BudgetChantier: React.FC = () => {
             columns={colonnesAvenants}
             rowKey={a => a.id}
             aria-label={t('Avenants du budget')}
+            export={{ filename: t('Avenants') }}
             renderCard={a => (
               <DataCard
                 title={dateCourte(a.amendmentDate)}

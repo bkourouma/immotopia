@@ -5,7 +5,6 @@ import {
   Typography,
   Button,
   Space,
-  Table,
   Tag,
   Select,
   Spin,
@@ -37,6 +36,7 @@ import {
   type PortalAttachment
 } from '../../components/maintenance/AttachmentList';
 import { tenantPortalService } from '../../services/tenantPortalService';
+import { Table } from '../../components/primitives';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
@@ -362,6 +362,7 @@ export default function TenantMaintenance() {
           <Alert message={t('Erreur')} description={error} type="error" showIcon />
         ) : data && data.tickets.length > 0 ? (
           <Table
+            exportFilename={t('Liste des tickets')}
             scroll={{ x: 'max-content' }}
             columns={columns}
             dataSource={data.tickets}

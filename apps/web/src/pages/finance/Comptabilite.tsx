@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { App, Alert, Button, Card, DatePicker, Input, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
+import { App, Alert, Button, Card, DatePicker, Input, Select, Space, Tabs, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
@@ -26,7 +26,7 @@ import type {
   TrialBalanceLine
 } from '../../services/accounting-exports-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { PageHeader, StateBlock, MoneyValue } from '../../components/primitives';
+import { PageHeader, StateBlock, MoneyValue, Table } from '../../components/primitives';
 import { ContexteMontants, deviseParDefaut } from '../../components/primitives/MoneyValue';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
@@ -271,8 +271,20 @@ export const Comptabilite: React.FC = () => {
     { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
     { title: t('Tiers'), key: 'tiers', render: (_, l) => l.thirdParty ?? '—' },
     { title: t('Nature'), key: 'nature', render: (_, l) => l.nature ?? '—' },
-    { title: t('Débit'), key: 'debit', align: 'end', render: (_, l) => <MoneyValue value={l.debit} /> },
-    { title: t('Crédit'), key: 'credit', align: 'end', render: (_, l) => <MoneyValue value={l.credit} /> }
+    {
+      title: t('Débit'),
+      key: 'debit',
+      align: 'end',
+      exportValue: l => l.debit,
+      render: (_, l) => <MoneyValue value={l.debit} />
+    },
+    {
+      title: t('Crédit'),
+      key: 'credit',
+      align: 'end',
+      exportValue: l => l.credit,
+      render: (_, l) => <MoneyValue value={l.credit} />
+    }
   ];
 
   const colonnesEcritures: ColumnsType<JournalEntry> = [
@@ -282,6 +294,7 @@ export const Comptabilite: React.FC = () => {
     {
       title: t('Libellé'),
       key: 'libelle',
+      exportValue: e => (e.reversed ? `${e.description} — ${t('Contre-passée')}` : e.description),
       render: (_, e) => (
         <>
           {e.description}
@@ -346,6 +359,7 @@ export const Comptabilite: React.FC = () => {
           loading={journalQuery.isFetching && !journalQuery.isPending}
           scroll={{ x: 'max-content' }}
           aria-label={t('Journal')}
+          exportFilename={t('Journal')}
           expandable={{
             defaultExpandAllRows: true,
             expandedRowRender: e => (
@@ -355,6 +369,8 @@ export const Comptabilite: React.FC = () => {
                 rowKey={(l, index) => `${e.id}-${index}`}
                 pagination={false}
                 size="small"
+                // Sous-tableau d'une ligne dépliée : il ne s'exporte pas seul.
+                exportable={false}
                 aria-label={t('Lignes de l’écriture {{reference}}', { reference: e.reference })}
               />
             )
@@ -383,9 +399,27 @@ export const Comptabilite: React.FC = () => {
     { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
     { title: t('Tiers'), key: 'tiers', render: (_, l) => l.thirdParty ?? '—' },
     { title: t('Nature'), key: 'nature', render: (_, l) => l.nature ?? '—' },
-    { title: t('Débit'), key: 'debit', align: 'end', render: (_, l) => <MoneyValue value={l.debit} /> },
-    { title: t('Crédit'), key: 'credit', align: 'end', render: (_, l) => <MoneyValue value={l.credit} /> },
-    { title: t('Solde'), key: 'solde', align: 'end', render: (_, l) => <MoneyValue value={l.balance} signed /> }
+    {
+      title: t('Débit'),
+      key: 'debit',
+      align: 'end',
+      exportValue: l => l.debit,
+      render: (_, l) => <MoneyValue value={l.debit} />
+    },
+    {
+      title: t('Crédit'),
+      key: 'credit',
+      align: 'end',
+      exportValue: l => l.credit,
+      render: (_, l) => <MoneyValue value={l.credit} />
+    },
+    {
+      title: t('Solde'),
+      key: 'solde',
+      align: 'end',
+      exportValue: l => l.balance,
+      render: (_, l) => <MoneyValue value={l.balance} signed />
+    }
   ];
 
   const blocCompte = (compte: GeneralLedgerAccount) => (
@@ -412,6 +446,7 @@ export const Comptabilite: React.FC = () => {
         size="small"
         scroll={{ x: 'max-content' }}
         aria-label={t('Mouvements du compte {{compte}}', { compte: compte.accountNumber })}
+        exportFilename={t('Mouvements du compte {{compte}}', { compte: compte.accountNumber })}
         summary={() => (
           <Table.Summary.Row>
             <Table.Summary.Cell index={0} colSpan={4}>
@@ -493,12 +528,14 @@ export const Comptabilite: React.FC = () => {
           title: t('Débit'),
           key: 'ouverture-debit',
           align: 'end',
+          exportValue: l => l.openingDebit,
           render: (_, l) => <MoneyValue value={l.openingDebit} />
         },
         {
           title: t('Crédit'),
           key: 'ouverture-credit',
           align: 'end',
+          exportValue: l => l.openingCredit,
           render: (_, l) => <MoneyValue value={l.openingCredit} />
         }
       ]
@@ -510,12 +547,14 @@ export const Comptabilite: React.FC = () => {
           title: t('Débit'),
           key: 'periode-debit',
           align: 'end',
+          exportValue: l => l.periodDebit,
           render: (_, l) => <MoneyValue value={l.periodDebit} />
         },
         {
           title: t('Crédit'),
           key: 'periode-credit',
           align: 'end',
+          exportValue: l => l.periodCredit,
           render: (_, l) => <MoneyValue value={l.periodCredit} />
         }
       ]
@@ -527,12 +566,14 @@ export const Comptabilite: React.FC = () => {
           title: t('Débit'),
           key: 'cloture-debit',
           align: 'end',
+          exportValue: l => l.closingDebit,
           render: (_, l) => <MoneyValue value={l.closingDebit} />
         },
         {
           title: t('Crédit'),
           key: 'cloture-credit',
           align: 'end',
+          exportValue: l => l.closingCredit,
           render: (_, l) => <MoneyValue value={l.closingCredit} />
         }
       ]
@@ -574,6 +615,7 @@ export const Comptabilite: React.FC = () => {
           loading={balanceQuery.isFetching && !balanceQuery.isPending}
           scroll={{ x: 'max-content' }}
           aria-label={t('Balance générale')}
+          exportFilename={t('Balance générale')}
           summary={() =>
             balanceData ? (
               <Table.Summary.Row>
@@ -624,9 +666,27 @@ export const Comptabilite: React.FC = () => {
     { title: t('Journal'), key: 'journal', width: 100, render: (_, l) => l.journalCode },
     { title: t('Référence'), key: 'reference', render: (_, l) => l.reference },
     { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
-    { title: t('Débit'), key: 'debit', align: 'end', render: (_, l) => <MoneyValue value={l.debit} /> },
-    { title: t('Crédit'), key: 'credit', align: 'end', render: (_, l) => <MoneyValue value={l.credit} /> },
-    { title: t('Solde'), key: 'solde', align: 'end', render: (_, l) => <MoneyValue value={l.balance} signed /> }
+    {
+      title: t('Débit'),
+      key: 'debit',
+      align: 'end',
+      exportValue: l => l.debit,
+      render: (_, l) => <MoneyValue value={l.debit} />
+    },
+    {
+      title: t('Crédit'),
+      key: 'credit',
+      align: 'end',
+      exportValue: l => l.credit,
+      render: (_, l) => <MoneyValue value={l.credit} />
+    },
+    {
+      title: t('Solde'),
+      key: 'solde',
+      align: 'end',
+      exportValue: l => l.balance,
+      render: (_, l) => <MoneyValue value={l.balance} signed />
+    }
   ];
 
   const blocNatureMandant = (nature: MandantSubledgerNatureGroup) => (
@@ -648,6 +708,7 @@ export const Comptabilite: React.FC = () => {
         size="small"
         scroll={{ x: 'max-content' }}
         aria-label={t('Mouvements — {{nature}}', { nature: nature.natureLabel })}
+        exportFilename={t('Mouvements — {{nature}}', { nature: nature.natureLabel })}
       />
     </div>
   );
@@ -676,21 +737,30 @@ export const Comptabilite: React.FC = () => {
       title: t('Compte courant'),
       key: 'compte-courant',
       align: 'end',
+      exportValue: r => r.current,
       render: (_, r) => <MoneyValue value={r.current} signed />
     },
     {
       title: t('Dépôt de garantie'),
       key: 'depot-garantie',
       align: 'end',
+      exportValue: r => r.deposit,
       render: (_, r) => <MoneyValue value={r.deposit} signed />
     },
     {
       title: t('À affecter'),
       key: 'a-affecter',
       align: 'end',
+      exportValue: r => r.unallocated,
       render: (_, r) => <MoneyValue value={r.unallocated} signed />
     },
-    { title: t('Total'), key: 'total', align: 'end', render: (_, r) => <MoneyValue value={r.total} signed /> }
+    {
+      title: t('Total'),
+      key: 'total',
+      align: 'end',
+      exportValue: r => r.total,
+      render: (_, r) => <MoneyValue value={r.total} signed />
+    }
   ];
 
   const mandantTrialBalanceData = mandantTrialBalanceQuery.data;
@@ -807,6 +877,7 @@ export const Comptabilite: React.FC = () => {
             loading={mandantTrialBalanceQuery.isFetching && !mandantTrialBalanceQuery.isPending}
             scroll={{ x: 'max-content' }}
             aria-label={t('Balance auxiliaire des mandants')}
+            exportFilename={t('Balance auxiliaire des mandants')}
             summary={() =>
               mandantTrialBalanceData ? (
                 <Table.Summary.Row>

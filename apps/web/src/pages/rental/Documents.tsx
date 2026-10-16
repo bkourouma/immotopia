@@ -14,6 +14,7 @@ import {
   RentalDocumentStatus,
   GenerateDocumentRequest
 } from '../../services/rental-service';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { DocumentForm } from '../../components/rental/DocumentForm';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useListParams } from '../../hooks/useListParams';
@@ -215,6 +216,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
     {
       title: t('Document'),
       key: 'document',
+      exportValue: doc => (doc.title ? `${doc.document_number} — ${doc.title}` : doc.document_number),
       render: (_, doc) => (
         <>
           <div style={{ fontWeight: 600 }}>{doc.document_number}</div>
@@ -311,6 +313,21 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
       </FilterSheet>
 
       <DataView<RentalDocument>
+        // Export de TOUS les documents, avec les mêmes filtres que la liste affichée.
+        export={{
+          filename: t('Documents de location'),
+          fetchAll: () =>
+            collectAllPages<RentalDocument>(async (page, limit) => {
+              const reponse = await listDocuments(tenantId, {
+                leaseId,
+                type: (list.filters.type as RentalDocumentType) || undefined,
+                status: (list.filters.status as RentalDocumentStatus) || undefined,
+                page,
+                limit
+              });
+              return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
+            })
+        }}
         items={documents}
         total={total}
         page={list.page}

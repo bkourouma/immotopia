@@ -12,13 +12,12 @@ import {
   Select,
   Space,
   Spin,
-  Table,
   Tag,
   Typography
 } from 'antd';
 import { EditOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { MoneyValue } from '../../components/primitives';
+import { MoneyValue, Table } from '../../components/primitives';
 import { listContacts } from '../../services/crm-service';
 import { listProperties } from '../../services/property-service';
 import {
@@ -515,6 +514,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                 />
               ) : null}
               <Table
+                exportFilename={t('Profils propriétaires')}
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={ownerProfiles}
@@ -554,6 +554,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                   {
                     title: t('Accès portail'),
                     key: 'portal-actions',
+                    exportable: false,
                     render: (_, row) => (
                       <Space wrap>
                         <Button
@@ -583,6 +584,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
 
             <Card title={t('Profils locataires')}>
               <Table
+                exportFilename={t('Profils locataires')}
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={tenantProfiles}
@@ -623,6 +625,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
 
             <Card title={t('Incidents et imputations')}>
               <Table
+                exportFilename={t('Incidents et imputations')}
                 scroll={{ x: 1000 }}
                 rowKey="id"
                 dataSource={incidents}
@@ -631,6 +634,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
                   expandedRowRender: incident => (
                     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                       <Table
+                        // Sous-tableau d'une ligne dépliée : pas d'export propre.
+                        exportable={false}
                         scroll={{ x: 'max-content' }}
                         rowKey="id"
                         dataSource={incident.imputations || []}
@@ -738,6 +743,9 @@ export const SyndicProfilesIncidents: React.FC = () => {
                     title: t('Prestataire'),
                     key: 'providerId',
                     width: 200,
+                    // Le rendu est un sélecteur : on exporte le nom du prestataire assigné.
+                    exportValue: (row: SyndicateIncident) =>
+                      providers.find(provider => provider.id === row.providerId)?.name ?? '',
                     render: (_, row) => (
                       <Select
                         allowClear

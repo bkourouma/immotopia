@@ -178,11 +178,27 @@ export const createMeetingSchema = z.object({
 
 export const meetingStatusSchema = z.enum(['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']);
 
+/** URL de visioconference : https uniquement, 2 000 caracteres au plus (spec 043, D10). */
+export const videoConferenceUrlSchema = z
+  .string()
+  .trim()
+  .max(2000, "L'URL de visioconférence est trop longue (2 000 caractères au plus)")
+  .refine(value => {
+    try {
+      const url = new URL(value);
+      return url.protocol === 'https:' && url.hostname.length > 0;
+    } catch {
+      return false;
+    }
+  }, "L'URL de visioconférence doit commencer par https://");
+
 export const updateMeetingSchema = z
   .object({
     startTime: z.coerce.date().nullable().optional(),
     endTime: z.coerce.date().nullable().optional(),
     location: z.string().nullable().optional(),
+    // `null` ou chaine vide efface l'URL.
+    videoConferenceUrl: z.union([videoConferenceUrlSchema, z.literal('').transform(() => null), z.null()]).optional(),
     // Transition de statut (ouverture, cloture, annulation) : la coherence de la
     // transition est controlee par le service, qui repond 409 sinon.
     status: meetingStatusSchema.optional()

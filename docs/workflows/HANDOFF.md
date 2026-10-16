@@ -36,6 +36,142 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/prelevement-bancaire` — 2026-10-15
+
+**État :** prêt à relire — PR #128 (base `main`), recette navigateur P1 jouée et rejouée le 2026-10-15, à fusionner par l'utilisateur
+**Dernier commit :** fusion de `main` (PR #137 lint, #138 PWA) du 15/10, après `382a5f81` (+ ce commit de passation). Classeur : 939 lignes.
+**Worktree :** `.claude/worktrees/prelevement`, avec un `node_modules` PROPRE (`npm ci`, pas de jonction) parce que `schema.prisma` diverge du checkout principal.
+
+Fait :
+
+- P0 : spec, modèle de données (contrat d'API), plan P0–P6 et ADR-007 dans `specs/042-prelevement-bancaire/` ; décisions D1–D8 du fondateur (15/10/2026).
+- P1 API : `packages/api/src/lib/direct-debit/**`, 15 routes `/tenants/:tenantId/rental/direct-debit`, migrations `20261015090000_*` et `20261015090100_*` (jamais appliquées), 10 actions d'audit, permissions VIEW/MANAGE, routes sensibles pour la passerelle IA.
+- P1 web : carte Paramètres financiers, onglet « Prélèvements » du bail, page Encaisser › Prélèvements.
+- Clé RIB UEMOA corrigée (22 caractères convertis × 100 mod 97 ; les poids 89/15/3 ne valent que pour un compte de 11 caractères).
+- Audit de sécurité : 0 critique, 0 élevée ; la moyenne (MANAGE réservé à TENANT_ADMIN/TENANT_MANAGER) et 4 faibles corrigées.
+- Wiki des fonctionnalités : 12 lignes ajoutées, `wiki:export` lancé.
+
+Reste à faire :
+
+- Lire la CI de la PR #128 après le push de `0e3cddb7` et corriger si besoin (7/7 vertes avant ; auto-fix activé). `ai.write-plan.test.ts` n'échoue qu'en local (fins de ligne du worktree).
+- Corrigés après la recette (`811d9dba`) et revérifiés dans le navigateur sur la démo à `e4a9834a` : champ « Date de signature » de « Activer le mandat » (saisie `14/10/2026` et `15/10/2026` acceptée, `POST activate` avec `signedAt` en `aaaa-mm-jj`, réponse 200) et tableau des créanciers à 1 024 px en arabe (la page ne défile pas, le tableau défile dans sa carte, colonnes « Actif » et « Modifier » atteignables ; mesures, sans capture). Reste non vu : date future, rendu visuel réel, autres largeurs.
+- À trancher : « Nouveau mandat » est désactivé dès qu'un mandat ouvert existe sur le bail, alors que PB2-R7 n'interdit qu'un mandat ouvert par couple (bail, créancier) ; le serveur reste plus permissif que l'écran.
+- Non joué à la recette : modification d'un mandat, plafond, jour de collecte propre au mandat, rôle sans MANAGE, isolation entre agences (`test:isolation`), bouton « Télécharger l'autorisation » visible seulement en Brouillon (la spec PB3-R1 ne l'impose pas).
+- Recette navigateur (spec §6.4) FAITE le 2026-10-15 sur la démo (révisions `0da9c860` puis `0e3cddb7`) : créancier BANK, mandat avec l'IBAN publié, PDF, scan, activer/suspendre/réactiver/révoquer, IBAN complet absent de toutes les réponses /api, page Encaisser › Prélèvements, arabe en RTL. Migrations `20261015090000_*` et `20261015090100_*` appliquées sur `immotopia_demo` (pas ailleurs). Correctifs d'affichage dans `0e3cddb7` (fil d'Ariane, vocabulaire arabe « تفويض », IBAN en LTR, bouton désactivé).
+- Fusion de `main` (PR #130, AG en direct) du 15/10 : 5 conflits résolus par union (catalogues `packages/api/src/i18n/locales/{ar,en}.json`, `audit-catalog.test.ts`, classeur des fonctionnalités et miroir : 935 = 923 de `main` + 12 du prélèvement ; `wiki:check` vert). Tests relancés sur l'arbre fusionné : 9 suites API, 7 fichiers web (98 tests), typecheck. Le classeur `.xlsx` est binaire : à chaque nouvelle fusion de `main`, refaire cette vérification.
+- Décision de l'utilisateur (15/10) : ne pas refusionner `main` à chaque PR fusionnée, mais juste avant sa fusion. FAIT le 15/10 (`76de15f6`) : 5 conflits résolus (locales web `ar/rental.json` et `en/rental.json` par union, classeur = version de `main` + 12 lignes du prélèvement = 938 lignes avec `openpyxl` puis `wiki:export`, `wiki:check` vert, HANDOFF avec les deux sections). `npm ci` nécessaire dans ce worktree pour `jspdf`/`jspdf-autotable` (PR #131). Typecheck, 5 fichiers de test web (77 tests) et 7 suites API (116 tests) verts. Si `main` bouge encore avant la fusion, refaire la même procédure. Le pilote ne fusionne pas.
+- Données laissées dans la base de démo : agence « Bamako Immobilier », compte jetable `recette.p1@immotopia.test` (TENANT_ADMIN, mot de passe aléatoire dans le scratchpad de la session, pas dans le dépôt), un bien, un locataire, le bail BAIL-2026-0001, un créancier et deux mandats révoqués. Sans danger, à supprimer à la main si la base de démo est réutilisée telle quelle.
+- Instance de démo : partagée avec d'autres sessions (`feat/syndic-ag-en-direct` à `349f9e5d`, export à `88d4b57c`, puis `7fcbe145` trouvée à la dernière reprise). Reprise pour la recette 042 avec l'accord de l'utilisateur ; elle est laissée à `e4a9834a` (branche `feat/prelevement-bancaire`), propre, dépendances installées, serveurs arrêtés. Pour la rendre à une autre session : `npm run demo:sync -- <révision> --install`. ATTENTION : `packages/api/.env.demo` a disparu du checkout principal (aucun `.env` n'y reste) et `demo:sync` refuse de tourner sans lui ; il faut le recréer (base de démo DÉDIÉE, `immotopia_demo`) avant tout nouveau `demo:sync`. Le worktree de démo garde son propre `packages/api/.env`.
+- Points ouverts de l'audit : clé de chiffrement dédiée et versionnée pour les IBAN (aujourd'hui `PAYMENT_SECRETS_KEY` partagée, préfixe `pg1`) ; borne basse de `signedAt`/`revokedAt`.
+- P2 (remises) selon `plan.md`, après les pièces de la banque pilote (spec §2).
+
+Pièges et décisions :
+
+- Le hook `validate-bash.sh` bloque toute commande qui contient à la fois « push » et « main » : pousser et lancer `gh pr create --base main` dans deux commandes séparées.
+- `npm run i18n:extract` (web et API) touche des catalogues hors périmètre : n'ajouter que ses clés ; les fichiers de locale qui n'ont qu'un changement de fin de ligne se restaurent sans risque.
+- `npm run ai:catalog` crée un dossier `uploads/` vide à la racine du worktree (ignoré par git) ; à relancer après toute modification de route.
+- Les tâches en arrière-plan meurent avec la session : lancer les tests longs au premier plan.
+- Le filtre d'audit masque toute clé contenant « iban » (`ibanLast4` devenait `[masqué]`) : la charge utile utilise `last4Digits`.
+- Sous Windows, arrêter un serveur de démo depuis le panneau d'aperçu (`preview_stop`) laisse parfois orphelins `ts-node-dev` ou `vite` et `esbuild.exe` : ils verrouillent `.claude/worktrees/demo/node_modules` et font échouer `npm ci` (EPERM). Avant tout `demo:sync --install`, lister les `node.exe`/`esbuild.exe` dont la ligne de commande contient `worktrees\demo` et arrêter ceux-là.
+- L'API de démo met environ 80 s à répondre après son démarrage (premier chargement) : attendre `http://localhost:8800/health` avant de se connecter, sinon « Network Error ».
+- `npm run i18n:extract` réécrit les fins de ligne de presque tous les catalogues (`git status` les montre modifiés sans diff réel) : n'ajouter au commit que les fichiers réellement changés.
+
+## Branche `feat/pwa-mobile` — 2026-10-15
+
+**État :** prêt à relire (PR ouverte sur `main`)
+**Dernier commit :** voir `git log` de la branche
+
+Fait :
+
+- PWA installable (modèle : Repetiteur_Maison) : `apps/web/public/manifest.webmanifest`, icônes `public/icons/` (script `scripts/make-pwa-icons.ps1`), `sw.js`, `hors-ligne.html` ; `src/pwa/{register,install}.ts`, bouton `components/pwa/InstallAppButton` (page de connexion + menu utilisateur) ; blocs nginx `/sw.js`, `/hors-ligne.html`, manifeste et `/icons/` dans `infra/nginx/spa.conf`.
+- Le service worker ne met JAMAIS en cache `/api`, `/uploads` ni les pages de navigation : seulement `/assets`, `/fonts`, `/icons`.
+- Vérifié dans Chrome sur le build de production : service worker activé, bouton d'installation affiché, API non mise en cache. Tests : `src/pwa/__tests__/pwa.test.ts`.
+
+Reste à faire :
+
+- Non vérifié : installation réelle sur Android/iOS, pas de déploiement (staging puis prod via `deploy.sh`, l'image web doit être reconstruite) ; le mode hors ligne réel (coupure réseau) n'a été testé que par test unitaire.
+- Pas de notifications push ni de données hors ligne (choix volontaire : données d'agence jamais stockées sur l'appareil).
+
+Pièges et décisions :
+
+- Le checkout principal avait un `node_modules` incomplet ; le worktree `.claude/worktrees/pwa` a ses propres dépendances (`npm ci --ignore-scripts`).
+- `npm run i18n:extract` sur `main` réécrit ~14 catalogues (dérive d'autres PR) : seules mes 2 clés ont été gardées.
+- Le navigateur intégré de l'app Claude refuse les service workers : tester dans Chrome.
+
+## Branche `feat/export-tableaux` — 2026-10-15
+
+**État :** PR #131 (base `main`), worktree `.claude/worktrees/export-tableaux` (jonctions `node_modules`)
+**Dernier commit :** voir `git log` (correctifs d'export, puis cette passation)
+
+Fait :
+
+- Socle `apps/web/src/utils/table-export/`, `primitives/ExportMenu.tsx`, `primitives/Table.tsx`, prop `export` de `DataView` (actif par défaut), champs de colonne `exportable`/`exportTitle`/`exportValue`, `collectAllPages`. Déployé sur 156 fichiers ; classeur des fonctionnalités ; traductions en/ar.
+- Les 8 fichiers de test en échec dans la suite complète passent SEULS (`finance/stock` : 51 tests mais 449 s, lenteur préexistante).
+- Build OK ; entrée 226 050 o gzip, budget 227 328 o (marge 1 278 o) ; `exceljs` et `jspdf` hors entrée.
+- Relecture des lots (agent sonnet, lecture seule) : filtres des `fetchAll`, `exportValue` et `exportable={false}` conformes. Corrigé : export complet de la recherche de contacts (`AdvancedContactSearch`), soldes Débiteur/Créditeur exportés en nombre signé (+ débiteur, − créditeur) avec titre de colonne dédié.
+- `NewsletterListsPage` : `exportFetchAll` branché (tous les abonnés de la liste).
+- Recette navigateur (instance de démo, web servi depuis le worktree) : Biens en grille, EN, CSV/Excel/PDF — CSV conforme, xlsx valide (nombres typés, en-tête figé, filtre automatique, pas d'actions), PDF 1 page. Collaborateurs en arabe : CSV avec BOM et en-têtes arabes ; PDF → repli impression (toast « Enregistrer en PDF »), aucun fichier.
+
+Reste à faire :
+
+- Non vérifié en réel : export multi-pages (Baux paginé : la base de démo n'a aucun bail ni de liste de plus d'une page ; seuls les tests unitaires de `collectAllPages` le couvrent), page de portail, xlsx/PDF en arabe.
+- Les filtres de colonne côté client d'Ant Design ne restreignent pas l'export.
+- Passer la PR en prête quand la CI est verte ; ne pas fusionner.
+
+Pièges :
+
+- Le dépôt partage l'instance de démo (`.claude/worktrees/demo`) : une autre session l'a re-synchronisée sur un autre commit et re-semée (autre identifiant d'agence) pendant la recette. Servir le web depuis son propre worktree (API de démo inchangée côté API) et lire l'identifiant d'agence dans les liens du tableau de bord.
+- Ports 3300/8800 pris : j'ai utilisé 3310 (web) et 8810 (API, `FRONTEND_URL=http://localhost:3310`).
+- En dev, la première importation de `jspdf` fait recharger la page (optimisation Vite) : relancer l'export.
+- Ne pas déclencher l'impression en panneau masqué : la boîte native bloque le panneau.
+- `apps/web/.env` du worktree (ignoré par git) a servi au lancement ; le laisser ou le supprimer.
+
+## Branche `feat/syndic-ag-en-direct` — 2026-10-15
+
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/130, fusion par l'utilisateur
+**Dernier commit :** voir `git log` (décisions D1, D3, D7, D13 validées le 2026-10-15)
+**Worktree :** `.claude/worktrees/ag-direct`, avec son PROPRE `node_modules` (npm ci, schéma modifié) : pas de jonction à retirer avant `git worktree remove`.
+
+Fait :
+
+- Spec `specs/043-syndic-ag-en-direct/spec.md` (décisions D1–D12 du Pilote, à valider par le fondateur).
+- API, web, migration `20261015100000_syndic_ag_en_direct`, wiki des fonctionnalités, revue de sécurité (0 critique/haute ; 1 moyenne + 3 basses corrigées).
+- Recette navigateur (`docs/recette/SCENARIO_SYNDIC_AG_EN_DIRECT.md`) jouée sur la démo : 6 anomalies d'écran (BUG-2026-10-15-001 à 006) corrigées dans `7fcbe145` et retestées « passé ». Migration appliquée avec succès sur la base de démo.
+- Démo : worktree `.claude/worktrees/demo` sur `7fcbe145`, dépendances propres (réinstallées le 2026-10-15 : la première installation était incomplète, `zod` amputé). Agence de recette « Horizon Syndic Gestion » créée par l'interface dans la base de démo (identifiants de test : `docs/recette/SCENARIO_SYNDIC_MODULES_V2.md` 1.1), copropriété « Résidence Les Flamboyants », 4 lots, 2 AG de recette.
+
+Reste à faire :
+
+- Décisions validées par le fondateur le 2026-10-15 : lien seul suffit (D1), quorum indicatif (D3), décision provisoire masquée au gestionnaire pendant un vote ouvert (D7, fait), téléphone gardé dans la liste des participants (D13).
+- Non joué : portail copropriétaire (aucun compte portail dans la démo), boutons de vote en 375 px pendant un vote ouvert, compte rendu Word avec feuille de présence (téléchargement non fait), envoi réel des convocations (démo sans SMTP : « 4 échoué(s) »), `measure:entry`, `test:isolation`, charge du polling sur une grande copropriété.
+
+Pièges et décisions :
+
+- `npm run i18n:extract` supprime des traductions existantes sur ce dépôt (API : 35 clés) et en ajoute des vides : ne pas l'utiliser, éditer les catalogues à la main et relire leur diff.
+- Après tout ajout de route API : `npm run ai:catalog` dans `packages/api` (sinon `ai.catalog.test.ts` échoue en CI).
+- Ne pas lancer `prisma format` (réaligne ~200 lignes du schéma).
+- Recette dans un panneau masqué : l'interrogation se met en pause (`document.hidden`) ; l'agent de recette force la visibilité par JavaScript.
+- La base de démo n'avait aucune agence Syndic : le seed des packs a été refusé par l'outil de sécurité ; l'agence a été créée par l'interface avec l'accord de l'utilisateur.
+
+## Branche `fix/docker-modeles-standard` — 2026-10-15
+
+**État :** prêt à relire (PR 135)
+**Dernier commit :** voir `git log` de la branche
+
+Fait :
+
+- Modèles Word standard (PR 129) et téléchargements Word syndic (PR 133, avis d'appel `charges/:id/avis.docx`, quittance `quittances/:id/fichier.docx`, convocation `assemblees/:id/lots/:lotId/convocation.docx`) fusionnés dans `main` le 2026-10-15. Le `Dockerfile` ne livrait aucun `assets/` : cette PR ajoute la copie de `assets/modeles_standard`.
+
+Reste à faire :
+
+- Livrer aussi `assets/modeles_documents/*.docx` (baux, reçu, relevé) : fait par la PR 134 (signature électronique, autre session) ; conflit trivial sur le `Dockerfile` attendu entre 134 et 135, garder les deux blocs.
+- Déployer le staging (par l'utilisateur) une fois 134 et 135 fusionnées, puis `npm run db:seed:document-templates` pour que le défaut locatif devienne le modèle standard ; ouvrir un document dans Word (jamais fait).
+- Limites connues : quittance Word sans tantièmes ni e-mail (le snapshot ne les porte pas) ; convocation sans description par point d'ordre du jour ; pied « Page » du DOCX et libellés PDF arabes en français.
+
+Pièges et décisions :
+
+- `ai.catalog` : toute nouvelle route impose `npm run ai:catalog` (catalog.generated.json).
+- Le test `syndics.word-documents` ne compile pas en worktree à cause du client Prisma partagé (erreurs `CapacityKey`) ; il passe en CI.
+
 ## État courant (pilote) — 2026-10-13
 
 Toutes les branches qui avaient une section ici sont fusionnées dans `main` ;

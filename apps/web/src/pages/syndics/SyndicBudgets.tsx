@@ -1,23 +1,8 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import {
-  App,
-  Alert,
-  Button,
-  Card,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Spin,
-  Table,
-  Tag,
-  Typography
-} from 'antd';
+import { App, Alert, Button, Card, Form, Input, InputNumber, Modal, Select, Space, Spin, Tag, Typography } from 'antd';
 import { CheckOutlined, LockOutlined, PlusOutlined, ReloadOutlined, UndoOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { formatMoney, MoneyValue } from '../../components/primitives';
+import { formatMoney, MoneyValue, Table } from '../../components/primitives';
 import {
   assignBudgetLineFund,
   createBudget,
@@ -382,6 +367,7 @@ export const SyndicBudgets: React.FC = () => {
           <>
             <Card title={t('Budgets')}>
               <Table
+                exportFilename={t('Budgets')}
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={budgets}
@@ -405,6 +391,7 @@ export const SyndicBudgets: React.FC = () => {
                   },
                   {
                     title: t('Actions'),
+                    exportable: false,
                     render: (_, budget) => {
                       const isClosed = budget.status === 'CLOSED';
                       return (
@@ -490,6 +477,7 @@ export const SyndicBudgets: React.FC = () => {
               }
             >
               <Table
+                exportFilename={t('Répartition des lots')}
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={allocationRows}
@@ -519,6 +507,7 @@ export const SyndicBudgets: React.FC = () => {
 
             <Card title={t("Campagnes d'appels")}>
               <Table
+                exportFilename={t("Campagnes d'appels")}
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={batches}
@@ -651,6 +640,7 @@ export const SyndicBudgets: React.FC = () => {
           />
         ) : null}
         <Table
+          exportFilename={t('Postes et fonds')}
           scroll={{ x: 'max-content' }}
           rowKey="id"
           dataSource={linesBudget?.lines || []}
@@ -697,6 +687,7 @@ export const SyndicBudgets: React.FC = () => {
             {
               title: t('Écart'),
               align: 'end',
+              exportValue: (line: BudgetLineItem) => Number(line.amountForecast || 0) - Number(line.amountActual || 0),
               render: (_, line: BudgetLineItem) => {
                 const gap = Number(line.amountForecast || 0) - Number(line.amountActual || 0);
                 return (
@@ -708,6 +699,8 @@ export const SyndicBudgets: React.FC = () => {
             },
             {
               title: t('Fonds alimenté'),
+              // Sélecteur de fonds par ligne : rien à exporter.
+              exportable: false,
               render: (_, line: BudgetLineItem) => (
                 <Select
                   allowClear

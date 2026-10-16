@@ -1,10 +1,15 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireCoOwnerPortalAccess } from '../middleware/coowner-portal-access';
-import { coOwnerChargeNoticeRateLimiter, coOwnerPortalPdfRateLimiter } from '../middleware/rate-limit-middleware';
+import {
+  coOwnerChargeNoticeRateLimiter,
+  coOwnerMeetingAccessRateLimiter,
+  coOwnerPortalPdfRateLimiter
+} from '../middleware/rate-limit-middleware';
 import {
   downloadCoOwnerDocumentHandler,
   getCoOwnerLotAccountHandler,
+  issueCoOwnerMeetingAccessHandler,
   listCoOwnerChargeCallsHandler,
   listCoOwnerDocumentsHandler,
   listCoOwnerLotsHandler,
@@ -40,6 +45,8 @@ router.get('/appels/:chargeId/avis', coOwnerChargeNoticeRateLimiter, downloadCoO
 router.get('/documents', listCoOwnerDocumentsHandler);
 router.get('/documents/:documentId/fichier', downloadCoOwnerDocumentHandler);
 router.get('/assemblees', listCoOwnerMeetingsHandler);
+// Spec 043 : lien personnel pour rejoindre l'AG en direct (page publique /ag-direct).
+router.post('/assemblees/:meetingId/acces', coOwnerMeetingAccessRateLimiter, issueCoOwnerMeetingAccessHandler);
 
 // Lot S5 (besoin 2) : paiements, reçus et quittances, relevé PDF, suivi
 // mensuel, fiche de la copropriété. Toujours limité aux lots du

@@ -37,7 +37,11 @@ describe('normalizeMajorityRule', () => {
 
 describe('Article 24 - majorite simple des tantiemes exprimes', () => {
   it('diverge de la majorite en lots : 2 lots pour contre 1, mais 300 tantiemes contre 300 -> rejetee', () => {
-    const tally = computeResolutionTally('ARTICLE_24', LOTS, votes({ A1: 'FOR', A2: 'FOR', A3: 'AGAINST', A4: 'ABSTAIN' }));
+    const tally = computeResolutionTally(
+      'ARTICLE_24',
+      LOTS,
+      votes({ A1: 'FOR', A2: 'FOR', A3: 'AGAINST', A4: 'ABSTAIN' })
+    );
 
     // Ancienne regle (nombre de lots) : 2 > 1, la resolution aurait ete approuvee.
     expect(tally.votesFor).toBeGreaterThan(tally.votesAgainst);
@@ -96,7 +100,11 @@ describe('Article 25 - majorite absolue des tantiemes de tous les lots', () => {
 
 describe('Article 26 - double majorite', () => {
   it('rejette si les 2/3 des tantiemes sont atteints mais pas la moitie des coproprietaires', () => {
-    const tally = computeResolutionTally('ARTICLE_26', LOTS, votes({ A3: 'FOR', A4: 'FOR', A1: 'AGAINST', A2: 'AGAINST' }));
+    const tally = computeResolutionTally(
+      'ARTICLE_26',
+      LOTS,
+      votes({ A3: 'FOR', A4: 'FOR', A1: 'AGAINST', A2: 'AGAINST' })
+    );
     expect(tally.sharesFor).toBe(700);
     expect(tally.ownersFor).toBe(2);
     expect(tally.totalOwners).toBe(4);
@@ -120,7 +128,11 @@ describe('Article 26 - double majorite', () => {
   it('compte les coproprietaires distincts, pas les lots', () => {
     // c1 possede A1 et A2 : 3 coproprietaires pour 4 lots.
     const lots = LOTS.map(lot => (lot.id === 'A2' ? { ...lot, coownerId: 'c1', ownerContactId: 'c1' } : lot));
-    const tally = computeResolutionTally('ARTICLE_26', lots, votes({ A3: 'FOR', A4: 'FOR', A1: 'AGAINST', A2: 'AGAINST' }));
+    const tally = computeResolutionTally(
+      'ARTICLE_26',
+      lots,
+      votes({ A3: 'FOR', A4: 'FOR', A1: 'AGAINST', A2: 'AGAINST' })
+    );
     expect(tally.totalOwners).toBe(3);
     expect(tally.ownersFor).toBe(2);
     expect(tally.result).toBe('APPROVED');
@@ -157,7 +169,13 @@ describe('computeMeetingAttendance', () => {
       representedShares: 600,
       totalLots: 4,
       totalShares: 1000,
-      quorumPercent: 60
+      quorumPercent: 60,
+      // Sans emargement, un lot qui a vote compte comme present (spec 043, D3).
+      presentLots: 3,
+      presentShares: 600,
+      representedOnlyLots: 0,
+      representedOnlyShares: 0,
+      onlineLots: 0
     });
   });
 });

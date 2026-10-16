@@ -219,12 +219,25 @@ export const CompteProprietaire: React.FC = () => {
     },
     { title: t('Libellé'), key: 'libelle', render: (_, m) => m.label },
     { title: t('Bien ou bail'), key: 'bien-bail', render: (_, m) => bienOuBail(m) },
-    { title: t('Débit'), key: 'debit', align: 'end', render: (_, m) => <MoneyValue value={m.debit} /> },
-    { title: t('Crédit'), key: 'credit', align: 'end', render: (_, m) => <MoneyValue value={m.credit} /> },
+    {
+      title: t('Débit'),
+      key: 'debit',
+      align: 'end',
+      exportValue: m => m.debit,
+      render: (_, m) => <MoneyValue value={m.debit} />
+    },
+    {
+      title: t('Crédit'),
+      key: 'credit',
+      align: 'end',
+      exportValue: m => m.credit,
+      render: (_, m) => <MoneyValue value={m.credit} />
+    },
     {
       title: t('Solde dû après'),
       key: 'solde',
       align: 'end',
+      exportValue: m => m.balanceAfter,
       render: (_, m) => (
         <strong>
           <MoneyValue value={m.balanceAfter} />
@@ -242,6 +255,7 @@ export const CompteProprietaire: React.FC = () => {
       title: t('Montant'),
       key: 'montant',
       align: 'end',
+      exportValue: p => p.amount,
       render: (_, p) => (
         <span
           style={{
@@ -256,6 +270,8 @@ export const CompteProprietaire: React.FC = () => {
     {
       title: t('Statut'),
       key: 'statut',
+      exportValue: p =>
+        p.status === 'VOIDED' ? (p.voidReason ? `${t('Annulé')} — ${p.voidReason}` : t('Annulé')) : t('Validé'),
       render: (_, p) =>
         p.status === 'VOIDED' ? (
           <span>
@@ -345,6 +361,7 @@ export const CompteProprietaire: React.FC = () => {
         columns={colonnesMouvements}
         rowKey={m => m.id}
         aria-label={t('Mouvements du compte')}
+        export={{ filename: t('Mouvements du compte') }}
         renderCard={m => (
           <DataCard
             title={MOVEMENT_LABELS[m.type]}
@@ -375,6 +392,7 @@ export const CompteProprietaire: React.FC = () => {
         columns={colonnesReversements}
         rowKey={p => p.id}
         aria-label={t('Reversements')}
+        export={{ filename: t('Reversements') }}
         renderCard={p => (
           <DataCard
             title={p.number}

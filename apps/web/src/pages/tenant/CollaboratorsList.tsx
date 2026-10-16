@@ -1,21 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  App,
-  Table,
-  Card,
-  Input,
-  Select,
-  Button,
-  Tag,
-  Space,
-  Avatar,
-  Popconfirm,
-  Alert,
-  Empty,
-  Spin,
-  Typography
-} from 'antd';
+import { App, Card, Input, Select, Button, Tag, Space, Avatar, Popconfirm, Alert, Empty, Spin, Typography } from 'antd';
 import {
   UserOutlined,
   PlusOutlined,
@@ -26,6 +11,8 @@ import {
 } from '@ant-design/icons';
 import { listMembers, Member, MembershipFilters, disableMember, enableMember } from '../../services/membership-service';
 import type { ColumnsType } from 'antd/es/table';
+import { Table } from '../../components/primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -50,6 +37,8 @@ export const CollaboratorsList: React.FC = () => {
     totalPages: 0
   });
   const [searchTerm, setSearchTerm] = useState('');
+  // Requête de la liste affichée, réutilisée telle quelle par l'export.
+  const lastQueryRef = useRef<MembershipFilters>({});
 
   useEffect(() => {
     if (tenantId) {
@@ -62,10 +51,9 @@ export const CollaboratorsList: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await listMembers(tenantId, {
-        ...filters,
-        search: searchTerm || undefined
-      });
+      const query: MembershipFilters = { ...filters, search: searchTerm || undefined };
+      lastQueryRef.current = query;
+      const response = await listMembers(tenantId, query);
       if (response.success && response.data) {
         setMembers(response.data.members || []);
         setPagination(
@@ -125,6 +113,8 @@ export const CollaboratorsList: React.FC = () => {
       title: t('Utilisateur'),
       key: 'user',
       width: 250,
+      exportValue: record =>
+        record.user.fullName ? `${record.user.fullName} — ${record.user.email}` : record.user.email,
       render: (_, record) => (
         <Space>
           <Avatar icon={<UserOutlined />} />
@@ -141,6 +131,7 @@ export const CollaboratorsList: React.FC = () => {
       title: t('Rôles'),
       key: 'roles',
       width: 200,
+      exportValue: record => record.roles.map(role => role.name).join(', '),
       render: (_, record) => (
         <Space size="small" wrap>
           {record.roles.map(role => (
@@ -264,6 +255,14 @@ export const CollaboratorsList: React.FC = () => {
         <Card>
           <div style={{ overflowX: 'auto' }}>
             <Table
+              exportFilename={t('Collaborateurs')}
+              exportFetchAll={() => {
+                const { page: _page, limit: _limit, ...query } = lastQueryRef.current;
+                return collectAllPages<Member>(async (page, limit) => {
+                  const response = await listMembers(tenantId as string, { ...query, page, limit });
+                  return { items: response.data?.members ?? [], total: response.data?.pagination?.total ?? 0 };
+                });
+              }}
               columns={columns}
               dataSource={members}
               rowKey="id"

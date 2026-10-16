@@ -135,9 +135,30 @@ export const WhatsappRegistrationsTab: React.FC<WhatsappRegistrationsTabProps> =
   const columns: ColumnsType<RegistrationView> = [
     { title: t('Chef'), key: 'chef', render: (_v, r) => r.userLabel },
     { title: t('Téléphone'), key: 'phone', render: (_v, r) => <span dir="ltr">{r.phoneMasked}</span> },
-    { title: t('Chantiers'), key: 'sites', render: (_v, r) => <SiteTags sites={r.sites} /> },
-    { title: t('État'), key: 'status', render: (_v, r) => <StatusCell registration={r} /> },
-    { title: t('Accès'), key: 'access', render: (_v, r) => <AccessCell registration={r} /> },
+    {
+      title: t('Chantiers'),
+      key: 'sites',
+      render: (_v, r) => <SiteTags sites={r.sites} />,
+      exportValue: r => r.sites.map(site => site.name).join(', ')
+    },
+    {
+      title: t('État'),
+      key: 'status',
+      render: (_v, r) => <StatusCell registration={r} />,
+      exportValue: r => {
+        const libelle = registrationStatusDisplay(r.status).label;
+        return r.status === 'PENDING_ACTIVATION' && r.activationExpiresAt
+          ? `${libelle} — ${t('jusqu’au {{date}}', { date: formatDateTime(r.activationExpiresAt) })}`
+          : libelle;
+      }
+    },
+    {
+      title: t('Accès'),
+      key: 'access',
+      render: (_v, r) => <AccessCell registration={r} />,
+      exportValue: r =>
+        r.status === 'REVOKED' || r.access?.ok !== false ? '' : registrationAccessReasonLabel(r.access.reason ?? null)
+    },
     { title: t('Dernier message'), key: 'last', render: (_v, r) => formatDateTime(r.lastInboundAt) },
     {
       title: t('Actions'),
@@ -161,6 +182,7 @@ export const WhatsappRegistrationsTab: React.FC<WhatsappRegistrationsTabProps> =
 
       <DataView<RegistrationView>
         aria-label={t('Chefs de chantier inscrits')}
+        export={{ filename: t('Chefs de chantier inscrits') }}
         items={registrations}
         total={registrations.length}
         page={1}

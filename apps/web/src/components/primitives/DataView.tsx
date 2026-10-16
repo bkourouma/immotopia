@@ -7,6 +7,7 @@ import { StateBlock } from './StateBlock';
 import { SkeletonList, SkeletonTable } from './Skeleton';
 import { ContexteMontants, deviseParDefaut } from './MoneyValue';
 import type { Sort } from '../../hooks/useListParams';
+import { ExportMenu, type ExportFetchAllResult } from './ExportMenu';
 import { t } from '../../i18n/t';
 
 /**
@@ -35,7 +36,30 @@ import { t } from '../../i18n/t';
  * `items.length`. C'est exactement le défaut du §8.4 : `Properties.tsx`
  * filtrait la page reçue tout en affichant le compteur du serveur, si bien que
  * la liste et son compteur se contredisaient.
+ *
+ * **L'export est de série.** Un bouton « Exporter » (Excel, CSV, PDF) se pose
+ * au-dessus de la liste, à l'extrémité de fin, dans les deux dispositions —
+ * dès qu'il y a au moins une ligne. Sans rien déclarer, il exporte la page
+ * affichée, nommée d'après `aria-label`. Une liste paginée par le serveur
+ * passe `export={{ filename, fetchAll }}` pour exporter TOUTES les lignes
+ * (voir `collectAllPages`) ; `export={false}` le retire. En disposition `grid`
+ * il n'y a pas de colonnes : il faut alors `export.columns`. Détail :
+ * `utils/table-export/` et `ExportMenu`.
  */
+
+/** Réglage de l'export d'un `<DataView>`. */
+export interface DataViewExport<T> {
+  /** Base du nom de fichier. Défaut : `aria-label`. */
+  filename?: string;
+  /** Titre du document. Défaut : `aria-label`. */
+  title?: string;
+  /** Récupère TOUTES les lignes ; sans lui, seule la page affichée est exportée. */
+  fetchAll?: () => Promise<ExportFetchAllResult<T>>;
+  /** `true` impose le PDF, `false` le retire (défaut : jusqu'à 12 colonnes). */
+  pdf?: boolean;
+  /** Colonnes exportées, si elles diffèrent de `columns` — obligatoires en `grid`. */
+  columns?: ColumnsType<T>;
+}
 
 interface DataViewBase<T> {
   /** La page courante, telle que l'API l'a rendue. Jamais filtrée ici. */
@@ -97,6 +121,12 @@ interface DataViewBase<T> {
    */
   scrollX?: number;
 
+  /**
+   * Export Excel / CSV / PDF. Actif par défaut ; `false` le retire.
+   * @see DataViewExport
+   */
+  export?: false | DataViewExport<T>;
+
   /** Nom accessible de la liste. */
   'aria-label': string;
 }
@@ -136,6 +166,7 @@ export function DataView<T>(props: DataViewProps<T>) {
     sort = null,
     onSortChange,
     scrollX,
+    export: exportOption,
     'aria-label': ariaLabel
   } = props;
   const layout = props.layout ?? 'table';
@@ -281,8 +312,27 @@ export function DataView<T>(props: DataViewProps<T>) {
       cardList
     );
 
+  // Le bouton paraît dès qu'il y a une ligne, dans les deux dispositions. En
+  // `grid` il n'existe pas de colonnes : sans `export.columns`, rien à exporter.
+  const exportColumns = exportOption ? (exportOption.columns ?? columns) : columns;
+  const showExport = exportOption !== false && exportColumns.length > 0;
+
   return (
     <div>
+      {showExport && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-3)' }}>
+          <ExportMenu<T>
+            columns={exportColumns}
+            rows={items}
+            fetchAll={exportOption ? exportOption.fetchAll : undefined}
+            filename={(exportOption && exportOption.filename) || ariaLabel}
+            title={(exportOption && exportOption.title) || ariaLabel}
+            pdf={exportOption ? exportOption.pdf : undefined}
+            total={paginated ? total : undefined}
+          />
+        </div>
+      )}
+
       {/* Rechargement : le contenu reste lisible, l'indicateur dit qu'il
           bouge. `aria-busy` le signale aux lecteurs d'écran sans vider la
           région. */}

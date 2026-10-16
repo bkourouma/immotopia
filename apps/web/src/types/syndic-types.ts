@@ -3,6 +3,10 @@ export type ChargeCallStatus = 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE';
 export type MeetingStatus = 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 export type MeetingType = 'ORDINARY' | 'EXTRAORDINARY';
 export type VoteChoice = 'FOR' | 'AGAINST' | 'ABSTAIN';
+/** État du vote d'une résolution en AG en direct (spec 043). */
+export type ResolutionVoteStatus = 'PENDING' | 'OPEN' | 'CLOSED';
+/** Origine d'un vote : gestionnaire, copropriétaire connecté ou mandataire. */
+export type VoteSource = 'MANAGER' | 'CO_OWNER' | 'PROXY_HOLDER';
 
 export type LotType = 'APARTMENT' | 'PARKING' | 'CELLAR' | 'OFFICE' | 'COMMERCIAL' | 'OTHER';
 
@@ -296,8 +300,20 @@ export interface MeetingResolution {
   result: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DEFERRED' | null;
   createdAt: string;
   updatedAt: string;
-  votes?: Array<{ id: string; lotId: string; vote: VoteChoice }>;
+  votes?: Array<{
+    id: string;
+    lotId: string;
+    vote: VoteChoice;
+    /** Origine du vote (spec 043) ; absente sur une API plus ancienne. */
+    source?: VoteSource;
+    castByContactId?: string | null;
+    updatedAt?: string;
+  }>;
   tally?: ResolutionTally;
+  /** État du vote en direct (spec 043) ; absent sur une API plus ancienne. */
+  voteStatus?: ResolutionVoteStatus;
+  voteOpenedAt?: string | null;
+  voteClosedAt?: string | null;
 }
 
 /** Contact CRM tel que l'API l'expose dans une assemblee. */
@@ -354,6 +370,12 @@ export interface MeetingAttendance {
   totalLots: number;
   totalShares: number;
   quorumPercent: number;
+  /** Détail présents / représentés / en ligne (spec 043) ; absent sur une API plus ancienne. */
+  presentLots?: number;
+  presentShares?: number;
+  representedOnlyLots?: number;
+  representedOnlyShares?: number;
+  onlineLots?: number;
 }
 
 export interface MeetingAgendaItem {
@@ -388,6 +410,8 @@ export interface GeneralMeeting {
   startTime?: string | null;
   endTime?: string | null;
   location?: string | null;
+  /** Lien de visioconférence externe (https), facultatif. */
+  videoConferenceUrl?: string | null;
   status: MeetingStatus;
   quorum: number;
   createdAt: string;
@@ -412,6 +436,8 @@ export interface UpdateMeetingRequest {
   startTime?: string | null;
   endTime?: string | null;
   location?: string | null;
+  /** `null` efface le lien ; https uniquement, 2 000 caractères au plus. */
+  videoConferenceUrl?: string | null;
   status?: MeetingStatus;
 }
 

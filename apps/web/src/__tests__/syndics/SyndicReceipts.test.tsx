@@ -24,6 +24,7 @@ const listSyndicateReceipts = vi.fn();
 const resendReceiptEmail = vi.fn();
 const backfillMissingReceipts = vi.fn();
 const downloadReceiptFile = vi.fn();
+const downloadReceiptWordFile = vi.fn();
 const printReceipts = vi.fn();
 
 vi.mock('../../services/syndic-receipt-service', () => ({
@@ -31,6 +32,7 @@ vi.mock('../../services/syndic-receipt-service', () => ({
   resendReceiptEmail: (...args: unknown[]) => resendReceiptEmail(...args),
   backfillMissingReceipts: (...args: unknown[]) => backfillMissingReceipts(...args),
   downloadReceiptFile: (...args: unknown[]) => downloadReceiptFile(...args),
+  downloadReceiptWordFile: (...args: unknown[]) => downloadReceiptWordFile(...args),
   printReceipts: (...args: unknown[]) => printReceipts(...args)
 }));
 
@@ -137,6 +139,29 @@ describe('SyndicReceipts (lot S3, besoin 1)', () => {
     expect(await screen.findByText('Q-2026-000001')).toBeTruthy();
     expect(screen.getByText('Awa Diop')).toBeTruthy();
     expect(screen.getByText('Non envoyé')).toBeTruthy();
+  });
+
+  it('télécharge la quittance en Word depuis le bouton « Télécharger (Word) »', async () => {
+    listSyndicateReceipts.mockResolvedValue({
+      items: [RECEIPT],
+      pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
+    });
+    downloadReceiptWordFile.mockResolvedValue({ blob: new Blob(['PK']), filename: 'quittance-Q-2026-000001.docx' });
+    const user = userEvent.setup();
+
+    renderWithRoute();
+    await screen.findByText('Q-2026-000001');
+    await user.click(screen.getByRole('button', { name: /Télécharger \(Word\)/ }));
+
+    await waitFor(() =>
+      expect(downloadReceiptWordFile).toHaveBeenCalledWith(
+        'tenant-1',
+        'syndic-1',
+        RECEIPT.id,
+        expect.stringMatching(/\.docx$/)
+      )
+    );
+    expect(downloadReceiptFile).not.toHaveBeenCalled();
   });
 
   it('affiche l’erreur 422 quand le copropriétaire n’a pas d’e-mail', async () => {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Modal, Popconfirm, Select, Space, Spin, Table, Typography } from 'antd';
+import { Button, Card, Modal, Popconfirm, Select, Space, Spin, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { PropertyOwnershipType } from '../../types/property-types';
 import type { PropertyMandate } from '../../types/property-types';
@@ -8,6 +8,7 @@ import { listContacts } from '../../services/crm-service';
 import { contactDisplayName } from '../../utils/contact-display';
 import { PropertyMandateForm } from './PropertyMandateForm';
 import { MandateSignatures } from '../signature/MandateSignatures';
+import { Table } from '../primitives';
 import { apiErrorMessage } from '../patrimoine/patrimoine-labels';
 import { feedback } from '../../lib/feedback';
 import { activeLocale } from '../../i18n/format';
@@ -184,6 +185,7 @@ const MandatsDuBien: React.FC<Pick<Props, 'tenantId' | 'propertyId' | 'ownerName
         }
       >
         <Table
+          exportFilename={t('Mandat de gestion')}
           scroll={{ x: 'max-content' }}
           rowKey="id"
           dataSource={mandates}

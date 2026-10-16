@@ -369,6 +369,45 @@ export const StockChantier: React.FC = () => {
     }
   ];
 
+  // Export : chaque flux se déploie en deux colonnes numériques (quantité,
+  // valeur) plus une colonne d'unité, au lieu de la cellule empilée de l'écran.
+  // Une quantité ou une valeur masquée (comptage en cours) reste vide.
+  const fluxExportes = [
+    { cle: 'recu', titre: t('Entré depuis une facture'), quantite: 'receivedQuantity', valeur: 'receivedValue' },
+    {
+      cle: 'transfere',
+      titre: t("Venu d'un autre lieu"),
+      quantite: 'transferredInQuantity',
+      valeur: 'transferredInValue'
+    },
+    { cle: 'consomme', titre: t('Consommé'), quantite: 'issuedQuantity', valeur: 'issuedValue' },
+    {
+      cle: 'retourne',
+      titre: t('Retourné au fournisseur'),
+      quantite: 'returnedToSupplierQuantity',
+      valeur: 'returnedToSupplierValue'
+    },
+    { cle: 'rebut', titre: t('Mis au rebut'), quantite: 'scrappedQuantity', valeur: 'scrappedValue' },
+    { cle: 'restant', titre: t('Restant'), quantite: 'remainingQuantity', valeur: 'remainingValue' }
+  ] as const;
+  const colonnesExport: ColumnsType<SiteStockReconciliationLine> = [
+    { title: t('Référence'), key: 'reference', exportValue: ligne => ligne.itemReference },
+    { title: t('Désignation'), key: 'designation', exportValue: ligne => ligne.itemLabel },
+    { title: t('Unité'), key: 'unite', exportValue: ligne => ligne.itemUnit },
+    ...fluxExportes.flatMap(flux => [
+      {
+        title: `${flux.titre} — ${t('Quantité')}`,
+        key: `${flux.cle}-quantite`,
+        exportValue: (ligne: SiteStockReconciliationLine) => ligne[flux.quantite]
+      },
+      {
+        title: `${flux.titre} — ${t('Valeur')}`,
+        key: `${flux.cle}-valeur`,
+        exportValue: (ligne: SiteStockReconciliationLine) => ligne[flux.valeur]
+      }
+    ])
+  ];
+
   return (
     <>
       <PageHeader
@@ -648,6 +687,7 @@ export const StockChantier: React.FC = () => {
       </Paragraph>
 
       <DataView<SiteStockReconciliationLine>
+        export={{ filename: t('Articles du chantier'), columns: colonnesExport }}
         // Le contrat de `getSiteStockReconciliation` ne pagine pas : il rend le
         // rapprochement entier d'un chantier.
         paginated={false}

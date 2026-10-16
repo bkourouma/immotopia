@@ -14,13 +14,12 @@ import {
   Select,
   Space,
   Spin,
-  Table,
   Tag,
   Typography
 } from 'antd';
 import { ClockCircleOutlined, ExclamationCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { formatMoney, MoneyValue, StatCard } from '../../components/primitives';
+import { formatMoney, MoneyValue, StatCard, Table } from '../../components/primitives';
 import {
   createLatePaymentPenalty,
   createManualReminder,
@@ -335,6 +334,7 @@ export const SyndicRecovery: React.FC = () => {
 
             <Card title={t('Tableau des retards')}>
               <Table
+                exportFilename={t('Tableau des retards')}
                 scroll={{ x: 'max-content' }}
                 rowKey="chargeCallId"
                 dataSource={dashboard.items}
@@ -378,6 +378,7 @@ export const SyndicRecovery: React.FC = () => {
 
             <Card title={t('Historique relances')}>
               <Table
+                exportFilename={t('Historique relances')}
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={reminders}
@@ -403,6 +404,7 @@ export const SyndicRecovery: React.FC = () => {
 
             <Card title={t('Pénalités de retard')}>
               <Table
+                exportFilename={t('Pénalités de retard')}
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={penalties}
@@ -424,6 +426,7 @@ export const SyndicRecovery: React.FC = () => {
                   },
                   {
                     title: t('Action'),
+                    exportable: false,
                     render: (_, item) =>
                       item.waived ? (
                         <Text type="secondary">-</Text>
@@ -445,6 +448,7 @@ export const SyndicRecovery: React.FC = () => {
 
             <Card title={t('Échéanciers')}>
               <Table
+                exportFilename={t('Échéanciers')}
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={schedules}

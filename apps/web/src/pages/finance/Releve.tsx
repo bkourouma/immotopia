@@ -161,13 +161,15 @@ export const Releve: React.FC = () => {
       title: t('Facturé'),
       key: 'facture',
       align: 'end',
-      render: (_, m) => <MoneyValue value={m.amountBilled} />
+      render: (_, m) => <MoneyValue value={m.amountBilled} />,
+      exportValue: m => m.amountBilled
     },
     {
       title: t('Réglé'),
       key: 'regle',
       align: 'end',
-      render: (_, m) => <MoneyValue value={m.amountSettled} />
+      render: (_, m) => <MoneyValue value={m.amountSettled} />,
+      exportValue: m => m.amountSettled
     },
     {
       title: t('Solde après'),
@@ -177,7 +179,8 @@ export const Releve: React.FC = () => {
         <strong>
           <MoneyValue value={m.balanceAfter} />
         </strong>
-      )
+      ),
+      exportValue: m => m.balanceAfter
     }
   ];
 
@@ -225,6 +228,7 @@ export const Releve: React.FC = () => {
       </FilterSheet>
 
       <DataView<ThirdPartyMovementLine>
+        export={{ filename: data?.label ?? t('Relevé de compte') }}
         // Une chronologie se lit d'un bloc : pas de pagination, le serveur
         // rend déjà le relevé borné par les dates choisies.
         paginated={false}

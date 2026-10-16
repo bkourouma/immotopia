@@ -12,7 +12,6 @@ import {
   Modal,
   Radio,
   Space,
-  Table,
   Tabs,
   Typography
 } from 'antd';
@@ -34,7 +33,7 @@ import type {
   SaleOfferDto
 } from '../../services/sales-service';
 import { detailKey, STALE_TIME } from '../../lib/query-keys';
-import { MoneyValue, PageHeader, StateBlock, StatusTag } from '../../components/primitives';
+import { MoneyValue, PageHeader, StateBlock, StatusTag, Table } from '../../components/primitives';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { BuyerContactSelect, DealSelect } from './selectors';
 import {
@@ -259,11 +258,18 @@ export const SaleMandateDetail: React.FC = () => {
   const colonnesOffres: ColumnsType<SaleOfferDto> = [
     { title: t('Numéro'), key: 'numero', render: (_, o) => o.number },
     { title: t('Acquéreur'), key: 'acquereur', render: (_, o) => o.buyerName },
-    { title: t('Montant'), key: 'montant', align: 'end', render: (_, o) => <MoneyValue value={o.amount} /> },
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      exportValue: o => o.amount,
+      render: (_, o) => <MoneyValue value={o.amount} />
+    },
     {
       title: t('Contre-offre'),
       key: 'contre-offre',
       align: 'end',
+      exportValue: o => o.counterAmount,
       render: (_, o) => (o.counterAmount != null ? <MoneyValue value={o.counterAmount} /> : '—')
     },
     { title: t('Financement'), key: 'financement', render: (_, o) => FINANCING_LABELS[o.financing] },
@@ -326,6 +332,7 @@ export const SaleMandateDetail: React.FC = () => {
             </Button>
           </div>
           <Table<SaleOfferDto>
+            exportFilename={t('Offres')}
             dataSource={mandate.offers}
             columns={colonnesOffres}
             rowKey={o => o.id}
@@ -453,6 +460,7 @@ export const SaleMandateDetail: React.FC = () => {
               {t('Co-vendeurs (indivision)')}
             </Title>
             <Table
+              exportFilename={t('Co-vendeurs (indivision)')}
               size="small"
               pagination={false}
               dataSource={mandate.coSellers}

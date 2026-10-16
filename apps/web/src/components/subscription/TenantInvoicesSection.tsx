@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Alert, App, Button, Card, Space, Table, Typography } from 'antd';
+import { Alert, App, Button, Card, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { CreditCardOutlined, FilePdfOutlined } from '@ant-design/icons';
 import {
@@ -13,8 +13,15 @@ import {
   type PlatformCheckout,
   type PlatformInvoice
 } from '../../services/platform-billing-service';
-import { formatMoney, StatusTag } from '../primitives';
-import { INVOICE_NATURE_LABEL, INVOICE_STATUS_LABEL, PAYABLE_STATUSES, formatDay, formatPeriod } from './platform-invoice-labels';
+import { formatMoney, StatusTag, Table } from '../primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
+import {
+  INVOICE_NATURE_LABEL,
+  INVOICE_STATUS_LABEL,
+  PAYABLE_STATUSES,
+  formatDay,
+  formatPeriod
+} from './platform-invoice-labels';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -150,7 +157,7 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
       title: t('Nature'),
       dataIndex: 'nature',
       key: 'nature',
-      render: (v: string | null) => (v ? INVOICE_NATURE_LABEL[v] ?? v : '—')
+      render: (v: string | null) => (v ? (INVOICE_NATURE_LABEL[v] ?? v) : '—')
     },
     { title: t('Période'), key: 'period', render: (_, r) => formatPeriod(r.periodStart, r.periodEnd) },
     { title: t('Échéance'), dataIndex: 'dueDate', key: 'due', render: formatDay },
@@ -199,20 +206,33 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
     <Card title={t('Factures')}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {returned && returned.status === 'SUCCESS' && (
-          <Alert type="success" showIcon closable onClose={dismissReturn} message={t('Paiement reçu : la facture est réglée.')} />
-        )}
-        {returned && (returned.status === 'FAILED' || returned.status === 'CANCELED' || returned.status === 'EXPIRED') && (
           <Alert
-            type="error"
+            type="success"
             showIcon
             closable
             onClose={dismissReturn}
-            message={t("Le paiement n'a pas abouti.")}
-            description={returned.failureMessage ?? undefined}
+            message={t('Paiement reçu : la facture est réglée.')}
           />
         )}
+        {returned &&
+          (returned.status === 'FAILED' || returned.status === 'CANCELED' || returned.status === 'EXPIRED') && (
+            <Alert
+              type="error"
+              showIcon
+              closable
+              onClose={dismissReturn}
+              message={t("Le paiement n'a pas abouti.")}
+              description={returned.failureMessage ?? undefined}
+            />
+          )}
         {returned && returned.status === 'REVIEW' && (
-          <Alert type="warning" showIcon closable onClose={dismissReturn} message={t('Paiement en cours de vérification par ImmoTopia.')} />
+          <Alert
+            type="warning"
+            showIcon
+            closable
+            onClose={dismissReturn}
+            message={t('Paiement en cours de vérification par ImmoTopia.')}
+          />
         )}
         {codePaiement && (stillPending || (returned?.status === 'PENDING' && !stillPending)) && (
           <Alert
@@ -227,6 +247,13 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
           <Text type="secondary">{t('Mode démonstration : aucun paiement réel.')}</Text>
         )}
         <Table<PlatformInvoice>
+          exportFilename={t('Factures')}
+          exportFetchAll={() =>
+            collectAllPages<PlatformInvoice>(async (page, limit) => {
+              const result = await listOwnPlatformInvoices(tenantId, { page, limit });
+              return { items: result.invoices, total: result.pagination.total };
+            })
+          }
           rowKey="id"
           size="small"
           columns={columns}

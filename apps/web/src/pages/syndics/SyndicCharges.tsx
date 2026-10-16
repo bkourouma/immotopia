@@ -29,7 +29,9 @@ import {
   listSyndicateFunds,
   listSyndicateLots
 } from '../../services/syndic-service';
-import { downloadChargeCallNotice } from '../../services/syndic-charge-schedule-service';
+import { downloadChargeCallNotice, downloadChargeCallNoticeWord } from '../../services/syndic-charge-schedule-service';
+import { describeDownloadError } from '../../utils/download-error';
+import { saveBlob } from '../../utils/save-blob';
 import {
   ChargeCall,
   ChargeCallStatus,
@@ -272,6 +274,21 @@ export const SyndicCharges: React.FC = () => {
     }
   };
 
+  const handleDownloadNoticeWord = async (charge: ChargeCall) => {
+    if (!effectiveTenantId || !syndicId) return;
+    try {
+      const { blob, filename } = await downloadChargeCallNoticeWord(
+        effectiveTenantId,
+        syndicId,
+        charge.id,
+        `avis-appel-${charge.id}.docx`
+      );
+      saveBlob(blob, filename);
+    } catch (err) {
+      message.error(await describeDownloadError(err));
+    }
+  };
+
   const handleOpenPaymentForCharge = (charge: ChargeCall) => {
     setPaymentContext({ lotId: charge.lotId, chargeCallId: charge.id });
     setPaymentOpen(true);
@@ -374,6 +391,7 @@ export const SyndicCharges: React.FC = () => {
                 items={charges}
                 onRecordPayment={handleOpenPaymentForCharge}
                 onDownloadNotice={charge => void handleDownloadNotice(charge)}
+                onDownloadNoticeWord={charge => void handleDownloadNoticeWord(charge)}
                 funds={funds}
                 onAssignFund={funds.length > 0 ? handleOpenAssignFund : undefined}
               />

@@ -10,7 +10,8 @@ import {
   CreditCardOutlined,
   SafetyOutlined,
   HistoryOutlined,
-  FileSearchOutlined
+  FileSearchOutlined,
+  BankOutlined
 } from '@ant-design/icons';
 import { getLease, RentalLease, RentalLeaseStatus, updateLeaseStatus } from '../../services/rental-service';
 import { getContact } from '../../services/crm-service';
@@ -25,6 +26,7 @@ import { LeaseLifecyclePanel } from '../../components/rental/LeaseLifecyclePanel
 import { LeaseInspectionsPanel } from '../../components/rental/inspections/LeaseInspectionsPanel';
 import { SignaturesPanel } from '../../components/signature/SignaturesPanel';
 import type { SignerInput } from '../../types/signature-types';
+import { LeaseDirectDebitPanel } from '../../components/rental/direct-debit/LeaseDirectDebitPanel';
 import { t as translate } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -580,6 +582,16 @@ export const LeaseDetailPage: React.FC = () => {
                     fileLabel={`bail-${lease.lease_number}`}
                   />
                 ) : null
+              },
+              {
+                key: 'direct-debit',
+                label: (
+                  <span>
+                    <BankOutlined />
+                    {translate('Prélèvements')}
+                  </span>
+                ),
+                children: tenantId && leaseId ? <LeaseDirectDebitPanel tenantId={tenantId} leaseId={leaseId} /> : null
               },
               {
                 key: 'documents',

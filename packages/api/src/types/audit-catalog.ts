@@ -136,6 +136,13 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SYNDIC_PROVIDER_INVOICE_FILE_REMOVED]: tenant('DATA'),
   [AuditActionKey.SYNDIC_COOWNER_PORTAL_INVITED]: tenant('ADMIN'),
   [AuditActionKey.SYNDIC_COOWNER_PORTAL_REVOKED]: tenant('SECURITY', { critical: true }),
+  [AuditActionKey.SYNDIC_MEETING_JOINED]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_VOTE_CAST]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_ATTENDANCE_SET]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_VOTE_OPENED]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_VOTE_CLOSED]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_LINK_ISSUED]: tenant('SECURITY'),
+  [AuditActionKey.SYNDIC_MEETING_LINKS_REVOKED]: tenant('SECURITY'),
   [AuditActionKey.SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT]: tenant('DATA'),
 
   // Patrimoine : rapport propriétaire, sinistres, régularisation foncière.
@@ -223,6 +230,18 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.RENTAL_PENALTY_UPDATED]: tenant('DATA'),
   [AuditActionKey.RENTAL_PENALTY_DELETED]: tenant('DATA', { critical: true }),
   [AuditActionKey.RENTAL_PENALTY_JUSTIFICATION_UPLOADED]: tenant('DATA'),
+
+  // Prélèvement bancaire (spec 042, data-model §5) : visible de l'agence ; les transitions sont critiques.
+  [AuditActionKey.DIRECT_DEBIT_CREDITOR_CREATED]: tenant('BILLING'),
+  [AuditActionKey.DIRECT_DEBIT_CREDITOR_UPDATED]: tenant('BILLING'),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_CREATED]: tenant('BILLING'),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_UPDATED]: tenant('BILLING'),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_ACTIVATED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_SUSPENDED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_REACTIVATED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_REVOKED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_SCAN_UPLOADED]: tenant('BILLING'),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED]: tenant('BILLING', { critical: true }),
 
   // Contrôle du stock de chantier (spec 040, B6-R1) : visibles de l'agence.
   [AuditActionKey.STOCK_RECEIPT_RECORDED]: tenant('DATA', { critical: true }),

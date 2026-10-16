@@ -18,8 +18,9 @@ const DESTRUCTIVE_SUFFIX = /\/(delete|remove|destroy|purge)(?:[-_][A-Za-z0-9]+)*
  * segment : « cash-sessions » (caisse, donnée métier) n'est PAS une session de
  * connexion, seul le segment `session(s)` seul l'est.
  */
+// `direct-debit` (spec 042) : mandats de prélèvement ; l'autorisation PDF porte l'IBAN complet.
 const SENSITIVE_SEGMENT =
-  /(secret|token|credential|password|passwd|api-?key|webhook|jwt|invitation|payment-gateway|payment-link|secure-link|private-key|otp)/i;
+  /(secret|token|credential|password|passwd|api-?key|webhook|jwt|invitation|payment-gateway|payment-link|secure-link|private-key|otp|direct-debit)/i;
 const SENSITIVE_EXACT_SEGMENTS = new Set(['session', 'sessions', 'login', 'sso', 'oauth']);
 
 /**

@@ -7,7 +7,6 @@ import {
   Typography,
   Spin,
   Alert,
-  Table,
   Tag,
   Button,
   Space,
@@ -37,7 +36,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { getMyStatement } from '../../services/finance-service';
 import type { ThirdPartyMovementLine } from '../../types/finance-types';
 import { natureLabel } from '../finance/Releve';
-import { MoneyValue, StateBlock, SkeletonTable } from '../../components/primitives';
+import { MoneyValue, StateBlock, SkeletonTable, Table } from '../../components/primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
 import {
   OnlineCheckout,
   OnlineCheckoutConflict,
@@ -160,6 +160,7 @@ function MonReleve() {
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <Table
+            exportFilename={t('Mon relevé')}
             rowKey="id"
             dataSource={mouvements}
             pagination={false}
@@ -181,18 +182,21 @@ function MonReleve() {
                 title: t('Facturé'),
                 key: 'facture',
                 align: 'end' as const,
+                exportValue: (m: ThirdPartyMovementLine) => m.amountBilled,
                 render: (_: unknown, m: ThirdPartyMovementLine) => <MoneyValue value={m.amountBilled} />
               },
               {
                 title: t('Réglé'),
                 key: 'regle',
                 align: 'end' as const,
+                exportValue: (m: ThirdPartyMovementLine) => m.amountSettled,
                 render: (_: unknown, m: ThirdPartyMovementLine) => <MoneyValue value={m.amountSettled} />
               },
               {
                 title: t('Solde après'),
                 key: 'solde',
                 align: 'end' as const,
+                exportValue: (m: ThirdPartyMovementLine) => m.balanceAfter,
                 render: (_: unknown, m: ThirdPartyMovementLine) => <MoneyValue value={m.balanceAfter} />
               }
             ]}
@@ -865,6 +869,21 @@ export default function TenantPayments() {
                 {data && data.installments.length > 0 ? (
                   <div style={{ overflowX: 'auto' }}>
                     <Table
+                      exportFilename={t('Liste des échéances')}
+                      // Export de TOUTES les échéances, avec les mêmes filtres que la liste affichée.
+                      exportFetchAll={() =>
+                        collectAllPages<InstallmentItem>(async (page, limit) => {
+                          const params: any = { page, limit };
+                          if (statusFilter) params.status = statusFilter;
+                          if (dateRange && dateRange[0] && dateRange[1]) {
+                            params.startDate = dateRange[0].format('YYYY-MM-DD');
+                            params.endDate = dateRange[1].format('YYYY-MM-DD');
+                          }
+                          const reponse = await tenantPortalService.getInstallments(params);
+                          const donnees = reponse.data?.data;
+                          return { items: donnees?.installments ?? [], total: donnees?.pagination?.total ?? 0 };
+                        })
+                      }
                       columns={columns}
                       dataSource={data.installments}
                       rowKey="id"
@@ -971,6 +990,19 @@ export default function TenantPayments() {
                   ) : paymentHistoryData && paymentHistoryData.payments.length > 0 ? (
                     <div style={{ overflowX: 'auto' }}>
                       <Table
+                        exportFilename={t('Historique des paiements')}
+                        // Export de TOUT l'historique, avec les mêmes filtres que la liste affichée.
+                        exportFetchAll={() =>
+                          collectAllPages<any>(async (page, limit) => {
+                            const params: any = { page, limit };
+                            if (paymentHistoryFilters.startDate) params.startDate = paymentHistoryFilters.startDate;
+                            if (paymentHistoryFilters.endDate) params.endDate = paymentHistoryFilters.endDate;
+                            if (paymentHistoryFilters.method) params.method = paymentHistoryFilters.method;
+                            const reponse = await tenantPortalService.getPaymentHistory(params);
+                            const donnees = reponse.data?.data;
+                            return { items: donnees?.payments ?? [], total: donnees?.pagination?.total ?? 0 };
+                          })
+                        }
                         scroll={{ x: 1000 }}
                         columns={[
                           {
@@ -1082,6 +1114,8 @@ export default function TenantPayments() {
                             }
                             return (
                               <Table
+                                // Sous-tableau d'une ligne dépliée : il n'a pas son propre export.
+                                exportable={false}
                                 columns={[
                                   {
                                     title: t('Échéance'),

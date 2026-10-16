@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Alert, Button, Checkbox, Input, Radio, Space, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Checkbox, Input, Radio, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { DescripteurNature, LigneEvaluee } from '../../../lib/importation/types';
 import { valeurInterpretee } from './import-logic';
 import type { CompteursApercu, PolitiqueDoublons } from './import-logic';
 import { AlerteEncodage } from './EtapeColonnes';
 import type { EstimationQuota } from './quota';
+import { Table } from '../../../components/primitives';
 import { t } from '../../../i18n/t';
 
 const { Text } = Typography;
@@ -107,6 +108,16 @@ function CelluleEtat(props: { ligne: LigneEvaluee; horsQuota: boolean; doublonIg
   return <Tag color="success">{t('Prête')}</Tag>;
 }
 
+/** Texte de l'état d'une ligne pour l'export : mêmes cas, dans le même ordre, que `CelluleEtat`. */
+function texteEtat(ligne: LigneEvaluee, horsQuota: boolean, doublonIgnore: boolean): string {
+  if (ligne.erreurs.length > 0 && ligne.selectionnee) return `${t('En erreur')} — ${ligne.erreurs.join(' ; ')}`;
+  if (doublonIgnore) return [t('Doublon ignoré'), ligne.doublon].filter(Boolean).join(' — ');
+  if (!ligne.selectionnee && !horsQuota) return t('Décochée');
+  if (horsQuota) return t('Hors quota (estimation)');
+  if (ligne.doublon) return `${t('Doublon probable')} — ${ligne.doublon}`;
+  return t('Prête');
+}
+
 interface SuiviEdition {
   /** La ligne dont une cellule a le focus : elle reste visible même devenue valide. */
   enEdition: number | null;
@@ -128,6 +139,7 @@ function construireColonnes(props: EtapeApercuProps, suivi: SuiviEdition): Colum
         />
       ),
       key: 'selection',
+      exportable: false,
       width: 56,
       render: (_valeur, ligne) => (
         <Checkbox
@@ -141,12 +153,15 @@ function construireColonnes(props: EtapeApercuProps, suivi: SuiviEdition): Colum
       title: t('Ligne'),
       key: 'numero',
       width: 72,
+      exportValue: ligne => ligne.numero,
       render: (_valeur, ligne) => <Text type="secondary">{ligne.numero}</Text>
     },
     ...descripteur.champs.map(champ => ({
       title: champ.obligatoire ? `${t(champ.libelle)} *` : t(champ.libelle),
       key: champ.cle,
       width: 220,
+      // Le rendu est un champ de saisie : sa valeur n'est pas du texte monté.
+      exportValue: (ligne: LigneEvaluee) => ligne.cellules[champ.cle]?.texte ?? '',
       render: (_valeur: unknown, ligne: LigneEvaluee) => {
         const cellule = ligne.cellules[champ.cle];
         const interpretee = valeurInterpretee(champ.type, cellule);
@@ -179,6 +194,8 @@ function construireColonnes(props: EtapeApercuProps, suivi: SuiviEdition): Colum
       title: t('État'),
       key: 'etat',
       width: 280,
+      exportValue: ligne =>
+        texteEtat(ligne, props.horsQuota.has(ligne.numero), props.doublonsIgnores.has(ligne.numero)),
       render: (_valeur, ligne) => (
         <CelluleEtat
           ligne={ligne}
@@ -265,6 +282,7 @@ export const EtapeApercu: React.FC<EtapeApercuProps> = props => {
       </Checkbox>
 
       <Table
+        exportFilename={t('L’aperçu')}
         size="small"
         rowKey={ligne => String(ligne.numero)}
         dataSource={visibles}

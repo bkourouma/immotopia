@@ -348,6 +348,8 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
           defile plus horizontalement : sous ce palier, ce sont des cartes. */}
       <DataView
         aria-label={t("Appartements de l'immeuble")}
+        // La liste entière est déjà chargée : l'export couvre tous les appartements, pas la seule page affichée.
+        export={{ filename: t('Appartements'), fetchAll: async () => apartments }}
         items={pageCourante}
         total={apartments.length}
         page={page}

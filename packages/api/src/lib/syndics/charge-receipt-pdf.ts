@@ -1,14 +1,15 @@
 import { PDFDocument, PDFFont, PDFImage, PDFPage, rgb, type RGB } from 'pdf-lib';
 import {
+  drawDocumentHeader,
   embedImage,
   fitInBox,
   fontsOf,
-  issuerIdentityLines,
   truncate,
   type DocumentBranding,
   type DocumentImage
 } from '../documents/document-branding';
-import { sanitizeForPdf } from '../documents/pdf-text';
+import { t } from '../../i18n';
+import { pdfLanguage, sanitizeForPdf } from '../documents/pdf-text';
 import { amountToFrenchWords } from './number-to-french-words';
 import { frenchDay, paymentMethodLabel, periodText, type ChargeReceiptSnapshot } from './charge-receipt-snapshot';
 
@@ -150,67 +151,34 @@ export function scaleForBox(box: Pick<Box, 'width' | 'height'>): number {
   return Math.max(0.2, Math.min(1, box.width / REFERENCE.width, box.height / REFERENCE.height));
 }
 
+/**
+ * En-tête et titre : l'en-tête standard des documents (`drawDocumentHeader`),
+ * à l'échelle de la case. L'identité vient du branding du snapshot ; la
+ * copropriété a sa propre ligne dans le corps du reçu.
+ */
 async function drawHeader(
   pdfDoc: PDFDocument,
   page: PDFPage,
   box: Box,
   branding: DocumentBranding,
+  snapshot: ChargeReceiptSnapshot,
   flow: Flow,
-  s: number,
-  fonts: Fonts
+  s: number
 ) {
-  const logoBox = { width: Math.max(28, 90 * s), height: Math.max(20, 60 * s) };
-  const top = flow.y;
-  let bandBottom = top;
-  let textX = box.x;
-  let textRight = box.x + box.width;
-
-  const issuerLogo = await embedOnce(pdfDoc, branding.issuerLogo);
-  if (issuerLogo) {
-    const size = fitInBox(issuerLogo.width, issuerLogo.height, logoBox.width, logoBox.height);
-    page.drawImage(issuerLogo, { x: box.x, y: top - size.height, ...size });
-    textX = box.x + logoBox.width + 8 * Math.max(s, 0.5);
-    bandBottom = Math.min(bandBottom, top - size.height);
-  }
-  const syndicateLogo = await embedOnce(pdfDoc, branding.syndicate?.logo ?? null);
-  if (syndicateLogo) {
-    const size = fitInBox(syndicateLogo.width, syndicateLogo.height, logoBox.width, logoBox.height);
-    page.drawImage(syndicateLogo, { x: box.x + box.width - size.width, y: top - size.height, ...size });
-    textRight = box.x + box.width - logoBox.width - 8 * Math.max(s, 0.5);
-    bandBottom = Math.min(bandBottom, top - size.height);
-  }
-
-  const identity = new Flow(page, textX, Math.max(textRight - textX, 40), top, box.y);
-  identity.line(branding.issuer.name, fonts.bold, Math.max(7, 12 * s));
-  // Petite case : seules les deux premières lignes d'identité (adresse, contact).
-  const lines = issuerIdentityLines(branding.issuer).slice(0, s < 0.45 ? 2 : 4);
-  for (const line of lines) identity.line(line, fonts.regular, Math.max(5, 8 * s), { color: GREY });
-  bandBottom = Math.min(bandBottom, identity.y);
-
-  flow.y = bandBottom - Math.max(3, 8 * s);
-  page.drawLine({
-    start: { x: box.x, y: flow.y },
-    end: { x: box.x + box.width, y: flow.y },
-    thickness: 0.5,
-    color: LIGHT
+  flow.y = await drawDocumentHeader(pdfDoc, page, branding, {
+    title: titleOf(snapshot),
+    titleRight: `N° ${snapshot.number}`,
+    subtitle: `Émis le ${frenchDay(snapshot.issuedAt)}`,
+    subtitleGrey: true,
+    frame: { x: box.x, top: flow.y, width: box.width },
+    scale: s,
+    // Petite case : seules les deux premières lignes d'identité (adresse, contact).
+    maxIdentityLines: s < 0.45 ? 2 : 4,
+    // Très petite case (2×4, 3×4) : l'en-tête standard est resserré pour laisser
+    // la place au montant, au reste dû et à la signature.
+    compact: s < 0.3,
+    showSyndicate: false
   });
-  flow.gap(Math.max(4, 12 * s));
-}
-
-function drawTitle(page: PDFPage, snapshot: ChargeReceiptSnapshot, flow: Flow, s: number, fonts: Fonts) {
-  const titleSize = Math.max(8, 16 * s);
-  const numberSize = Math.max(6.5, 10 * s);
-  const numberText = sanitizeForPdf(`N° ${snapshot.number}`);
-  const numberWidth = fonts.bold.widthOfTextAtSize(numberText, numberSize);
-  page.drawText(numberText, {
-    x: flow.x + flow.width - numberWidth,
-    y: flow.y - titleSize,
-    size: numberSize,
-    font: fonts.bold
-  });
-  flow.line(titleOf(snapshot), fonts.bold, titleSize, { width: flow.width - numberWidth - 6 });
-  flow.line(`Émis le ${frenchDay(snapshot.issuedAt)}`, fonts.regular, Math.max(5.5, 8 * s), { color: GREY });
-  flow.gap(Math.max(2, 8 * s));
 }
 
 function drawInfoRows(snapshot: ChargeReceiptSnapshot, flow: Flow, s: number, fonts: Fonts) {
@@ -227,8 +195,10 @@ function drawInfoRows(snapshot: ChargeReceiptSnapshot, flow: Flow, s: number, fo
   const syndicate = snapshot.syndicate;
   row('Copropriété', [syndicate.name, syndicate.address].filter(Boolean).join(' - '));
   const refs = [
-    syndicate.registrationNo ? `Immatriculation ${syndicate.registrationNo}` : null,
-    syndicate.cadastralReference ? `Réf. cadastrale ${syndicate.cadastralReference}` : null
+    syndicate.registrationNo ? `${t('Immatriculation', undefined, pdfLanguage())} ${syndicate.registrationNo}` : null,
+    syndicate.cadastralReference
+      ? `${t('Réf. cadastrale', undefined, pdfLanguage())} ${syndicate.cadastralReference}`
+      : null
   ]
     .filter(Boolean)
     .join(' - ');
@@ -465,8 +435,7 @@ export async function drawChargeReceipt(
   const bottom = box.y + signatureHeight + mentionHeight;
 
   const flow = new Flow(page, box.x, box.width, box.y + box.height, bottom);
-  await drawHeader(pdfDoc, page, box, branding, flow, s, fonts);
-  drawTitle(page, data, flow, s, fonts);
+  await drawHeader(pdfDoc, page, box, branding, data, flow, s);
   drawInfoRows(data, flow, s, fonts);
   drawAmount(page, data, flow, s, fonts);
   drawPaymentDetails(page, data, flow, s, fonts);

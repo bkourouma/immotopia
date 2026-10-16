@@ -120,6 +120,11 @@ COPY --from=prod-deps /repo/packages/api/package.json ./package.json
 # s'ecrivent, eux, sous UPLOADS_DIR (volume), jamais dans la couche d'image.
 COPY assets/modeles_documents/*.docx ./assets/modeles_documents/
 
+# Modeles DOCX standard (en-tete, logo, balises) : lus sous <cwd>/assets/modeles_standard
+# (cwd = /app) par lib/documents/docx-standard-templates.ts, en LECTURE SEULE. Sans eux,
+# le compte rendu d'AG retombe sur le texte brut et les routes Word syndic echouent.
+COPY assets/modeles_standard/*.docx ./assets/modeles_standard/
+
 # Garde-fou : aucune dependance de production declaree ne doit manquer.
 # On teste la presence du dossier plutot que require.resolve, car plusieurs
 # entrees de `dependencies` sont des paquets @types sans point d'entree.

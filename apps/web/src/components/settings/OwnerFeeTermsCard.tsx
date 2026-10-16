@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { App, Alert, Button, Card, Form, Modal, Select, Space, Table, Tag, Typography } from 'antd';
+import { App, Alert, Button, Card, Form, Modal, Select, Space, Tag, Typography } from 'antd';
 import { EditOutlined, UndoOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -11,7 +11,7 @@ import {
   listOwnerFeeTerms,
   updateOwnerFeeTerms
 } from '../../services/agency-finance-settings-service';
-import { ConfirmAction, formatMoney } from '../../components/primitives';
+import { ConfirmAction, Table, formatMoney } from '../../components/primitives';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { FeeTermsFields } from './FeeTermsFields';
 import { ModuleNotIncluded } from '../primitives/ModuleNotIncluded';
@@ -217,7 +217,14 @@ export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }
         )}
       </Text>
       {error ? <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} /> : null}
-      <Table rowKey="ownerClientId" columns={columns} dataSource={owners} loading={loading} pagination={false} />
+      <Table
+        exportFilename={t('Conditions par propriétaire')}
+        rowKey="ownerClientId"
+        columns={columns}
+        dataSource={owners}
+        loading={loading}
+        pagination={false}
+      />
 
       <Modal
         title={editing ? t('Conditions de {{name}}', { name: editing.ownerName }) : ''}

@@ -1,9 +1,10 @@
 import React from 'react';
-import { Alert, Button, Descriptions, Progress, Space, Table, Typography } from 'antd';
+import { Alert, Button, Descriptions, Progress, Space, Typography } from 'antd';
 import type { CompteRenduImport } from '../../../lib/importation/execution';
 import { libelleStatut } from '../../../lib/importation/rapport';
 import type { LigneRapport } from '../../../lib/importation/rapport';
 import { t } from '../../../i18n/t';
+import { Table } from '../../../components/primitives';
 
 const { Text } = Typography;
 
@@ -113,6 +114,7 @@ export const EtapeRapport: React.FC<EtapeRapportProps> = props => {
 
       {aExpliquer.length > 0 ? (
         <Table
+          exportFilename={t('Rapport')}
           size="small"
           rowKey={ligne => String(ligne.numero)}
           dataSource={aExpliquer}
@@ -123,6 +125,10 @@ export const EtapeRapport: React.FC<EtapeRapportProps> = props => {
             {
               title: t('Motif'),
               key: 'motif',
+              exportValue: (l: LigneRapport) =>
+                incertaines.has(l.numero)
+                  ? `${l.motif} — ${t('Réponse du serveur non reçue : l’élément a peut-être été créé. Vérifiez la liste avant de le recréer.')}`
+                  : l.motif,
               render: (_v, l: LigneRapport) => (
                 <div>
                   <Text>{l.motif}</Text>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { App, Table, Button, Tag, Space, Typography, Empty, Alert, Select, Modal, Input, Image } from 'antd';
+import { App, Button, Tag, Space, Typography, Empty, Alert, Select, Modal, Input, Image } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, FileImageOutlined } from '@ant-design/icons';
 import {
@@ -13,6 +13,8 @@ import {
   fetchPaymentDeclarationProof
 } from '../../services/rental-service';
 import { saveBlob } from '../../utils/save-blob';
+import { collectAllPages } from '../../utils/table-export/collect';
+import { Table } from '../primitives';
 import { nomDuBien, nomDeLaPersonne, ABSENT } from '../../lib/rental-labels';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
@@ -225,6 +227,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
       title: t('Bail'),
       key: 'lease',
       width: 250,
+      exportValue: record => `${record.lease?.lease_number || ABSENT} — ${nomDuBien(record.lease?.property)}`,
       render: (_, record) => (
         <>
           <div style={{ fontWeight: 600 }}>{record.lease?.lease_number || ABSENT}</div>
@@ -256,6 +259,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     {
       title: t('Montant'),
       key: 'amount',
+      exportValue: record => Number(record.amount),
       render: (_, record) => formatCurrency(Number(record.amount)),
       sorter: (a, b) => Number(a.amount) - Number(b.amount)
     },
@@ -343,6 +347,19 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
           <Empty description={t('Aucune déclaration trouvée')} />
         ) : (
           <Table
+            exportFilename={t('Déclarations de paiement')}
+            // Export de TOUTES les déclarations, avec le même filtre de statut que la liste.
+            exportFetchAll={() =>
+              collectAllPages<RentalPaymentDeclaration>(async (page, limit) => {
+                const reponse = await listPaymentDeclarations(tenantId, {
+                  ...filters,
+                  leaseId: leaseId || filters.leaseId,
+                  page,
+                  limit
+                });
+                return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
+              })
+            }
             dataSource={declarations}
             loading={loading}
             rowKey="id"
