@@ -120,6 +120,48 @@ const paymentSecretsKeySchema = z
   );
 
 /**
+ * Clé DÉDIÉE aux IBAN des mandats de prélèvement (spec 042) : même forme que
+ * `PAYMENT_SECRETS_KEY` (32 octets en base64), mais une valeur vide vaut
+ * absente. Distincte de `PAYMENT_SECRETS_KEY` (contrôle dans `superRefine`).
+ */
+const directDebitIbanKeySchema = emptyAsUndefined(paymentSecretsKeySchema);
+
+function isBase64Key32(value: string): boolean {
+  try {
+    return Buffer.from(value, 'base64').length === 32;
+  } catch {
+    return false;
+  }
+}
+
+/** Découpe une liste de clés séparées par des virgules (espaces tolérés, entrées vides ignorées). */
+export function parseKeyList(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map(entry => entry.trim())
+    .filter(entry => entry !== '');
+}
+
+/**
+ * Anciennes clés IBAN (rotation) : ne servent qu'à déchiffrer. Le message
+ * n'indique que le rang de l'entrée fautive, jamais sa valeur.
+ */
+const directDebitIbanPreviousKeysSchema = z
+  .string()
+  .optional()
+  .superRefine((value, ctx) => {
+    parseKeyList(value).forEach((entry, index) => {
+      if (!isBase64Key32(entry)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `l'entrée n°${index + 1} doit être 32 octets encodés en base64 (\`openssl rand -base64 32\`)`
+        });
+      }
+    });
+  });
+
+/**
  * Types de document signables (miroir de l'enum Prisma `SignatureDocumentKind`, gardé
  * aligné par `__tests__/unit/env-signature-kinds.test.ts`). Liste littérale : la
  * configuration ne dépend pas du client Prisma, que de nombreux tests simulent.
@@ -161,6 +203,9 @@ const envSchema = z
 
     // Paiement en ligne des loyers (lot 7) — agrégateur PaySecureHub.
     PAYMENT_SECRETS_KEY: paymentSecretsKeySchema,
+    // IBAN des mandats de prélèvement (spec 042) : clé dédiée, versionnée.
+    DIRECT_DEBIT_IBAN_KEY: directDebitIbanKeySchema,
+    DIRECT_DEBIT_IBAN_PREVIOUS_KEYS: directDebitIbanPreviousKeysSchema,
     PAYSECUREHUB_BASE_URL: z.string().url().default('https://rest-airtime.paysecurehub.com/api'),
     PAYSECUREHUB_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
     // '1' autorise le simulateur en production (démonstration). Hors
@@ -431,6 +476,19 @@ const envSchema = z
   // process.env directly (WhatsApp, SMTP, Twilio).
   .passthrough()
   .superRefine((value, ctx) => {
+    if (
+      value.DIRECT_DEBIT_IBAN_KEY &&
+      value.PAYMENT_SECRETS_KEY &&
+      isBase64Key32(value.DIRECT_DEBIT_IBAN_KEY) &&
+      isBase64Key32(value.PAYMENT_SECRETS_KEY) &&
+      Buffer.from(value.DIRECT_DEBIT_IBAN_KEY, 'base64').equals(Buffer.from(value.PAYMENT_SECRETS_KEY, 'base64'))
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['DIRECT_DEBIT_IBAN_KEY'],
+        message: 'doit être dédiée aux IBAN : elle ne peut pas être identique à PAYMENT_SECRETS_KEY'
+      });
+    }
     if (value.AI_PROVIDER === 'anthropic' && !value.ANTHROPIC_API_KEY) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
