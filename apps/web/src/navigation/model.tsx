@@ -337,7 +337,12 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
           href: '/tenant/:tenantId/rental/installments',
           children: [
             { key: 'rental-installments', label: t('Échéances'), href: '/tenant/:tenantId/rental/installments' },
-            { key: 'rental-payments', label: t('Paiements'), href: '/tenant/:tenantId/rental/payments' }
+            { key: 'rental-payments', label: t('Paiements'), href: '/tenant/:tenantId/rental/payments' },
+            {
+              key: 'rental-direct-debit',
+              label: t('Prélèvements'),
+              href: '/tenant/:tenantId/rental/direct-debit'
+            }
           ]
         },
 

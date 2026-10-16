@@ -78,6 +78,7 @@ import managementFeeRoutes from './routes/management-fee-routes';
 import ownerAccountRoutes, { ownerAccountPortalRouter } from './routes/owner-account-routes';
 import leaseLifecycleRoutes from './routes/lease-lifecycle-routes';
 import leaseInspectionRoutes from './routes/lease-inspection-routes';
+import directDebitRoutes from './routes/direct-debit-routes';
 import accountingExportsRoutes from './routes/accounting-exports-routes';
 import propertyOwnershipRoutes from './routes/property-ownership-routes';
 import cashSessionRoutes from './routes/cash-session-routes';
@@ -340,6 +341,7 @@ app.use('/api', managementFeeRoutes); // Honoraires de gestion : conditions, ges
 app.use('/api', ownerAccountRoutes); // Comptes proprietaires et reversements (agence et portail)
 app.use('/api', leaseLifecycleRoutes); // Vie du bail : revision, renouvellement, avenant, resiliation
 app.use('/api', leaseInspectionRoutes); // Etats des lieux d'entree et de sortie
+app.use('/api', directDebitRoutes); // Prelevement bancaire : creanciers et mandats (spec 042)
 app.use('/api', accountingExportsRoutes); // Exports comptables : journal, grand livre, balance
 app.use('/api', propertyOwnershipRoutes); // Indivision : quotes-parts des proprietaires d'un bien
 app.use('/api', cashSessionRoutes); // Caisse d'agence : sessions, comptage, validation

@@ -2245,6 +2245,61 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/creditors",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/creditors",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / creditors",
+      "permissions": ["RENTAL_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/mandates",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates",
+      "permissions": ["RENTAL_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId}",
+      "permissions": ["RENTAL_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/authorization-pdf",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/authorization-pdf",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / authorization-pdf",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/signed-scan",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/signed-scan",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / signed-scan",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "GET /api/tenants/:tenantId/rental/documents",
       "method": "GET",
       "path": "/api/tenants/:tenantId/rental/documents",
@@ -3871,6 +3926,28 @@
       "permissions": ["PROPERTIES_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "PATCH /api/tenants/:tenantId/rental/direct-debit/creditors/:creditorId",
+      "method": "PATCH",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/creditors/:creditorId",
+      "pathParams": ["creditorId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / creditors / {creditorId}",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "PATCH /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId",
+      "method": "PATCH",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId}",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
     },
     {
       "id": "PATCH /api/tenants/:tenantId/rental/documents/:documentId",
@@ -5875,6 +5952,94 @@
       "permissions": ["RENTAL_DEPOSITS_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/creditors",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/creditors",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / creditors",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/iban-check",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/iban-check",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / iban-check",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/mandates",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/activate",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/activate",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / activate",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/reactivate",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/reactivate",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / reactivate",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/revoke",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/revoke",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / revoke",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/signed-scan",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/signed-scan",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / signed-scan",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/suspend",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/suspend",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / suspend",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
     },
     {
       "id": "POST /api/tenants/:tenantId/rental/documents",

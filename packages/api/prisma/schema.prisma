@@ -759,6 +759,8 @@ model Tenant {
   ownerPayouts             OwnerPayout[]
   leaseEvents              LeaseEvent[]
   leaseInspections         LeaseInspection[]
+  directDebitCreditors     DirectDebitCreditor[]
+  directDebitMandates      DirectDebitMandate[]
   leaseInspectionPhotos    LeaseInspectionPhoto[]
   propertyOwnershipShares  PropertyOwnershipShare[]
   // PATRIMOINE — Lot P4
@@ -839,6 +841,7 @@ model TenantClient {
   primaryLeases       RentalLease[]              @relation("RentalLeasePrimaryRenter")
   ownerLeases         RentalLease[]              @relation("RentalLeaseOwner")
   coRenterLeases      RentalLeaseCoRenter[]
+  directDebitMandates DirectDebitMandate[]
   rentalPayments      RentalPayment[]
   paymentDeclarations RentalPaymentDeclaration[] @relation("RentalPaymentDeclarationDeclarer")
 
@@ -2737,6 +2740,7 @@ model RentalLease {
   managementTerms     LeaseManagementTerms?
   events              LeaseEvent[]
   inspections         LeaseInspection[]
+  directDebitMandates DirectDebitMandate[]
 
   @@unique([tenant_id, lease_number])
   @@index([tenant_id])
@@ -8750,6 +8754,7 @@ model TreasuryAccount {
 
   tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   chartOfAccount ChartOfAccount @relation(fields: [chartOfAccountId], references: [id], onDelete: Restrict)
+  directDebitCreditors DirectDebitCreditor[]
 
   @@unique([tenantId, accountNumber])
   @@index([tenantId, kind])
@@ -10095,4 +10100,99 @@ model WhatsappCloudEvent {
   @@index([senderHash, unknownReplySentAt])
   @@index([receivedAt])
   @@map("whatsapp_cloud_events")
+}
+
+enum DirectDebitFileFormat {
+  GENERIC_CSV
+}
+
+enum DirectDebitMandateScope {
+  RENTAL_LEASE
+  // P4 : SYNDIC_LOT
+}
+
+enum DirectDebitMandateStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+/// Compte bancaire qui reçoit les prélèvements d'une agence (spec 042 PB1).
+model DirectDebitCreditor {
+  id                         String                @id @default(uuid()) @db.Uuid
+  tenantId                   String                @map("tenant_id")
+  treasuryAccountId          String                @map("treasury_account_id") @db.Uuid
+  label                      String
+  /// Numéro d'émetteur attribué par la banque. Nul tant que la convention n'est pas signée.
+  creditorIdentifier         String?               @map("creditor_identifier")
+  fileFormat                 DirectDebitFileFormat @default(GENERIC_CSV) @map("file_format")
+  collectionDay              Int                   @default(5) @map("collection_day")
+  prenotificationBusinessDays Int                  @default(5) @map("prenotification_business_days")
+  rejectFeeAmount            Decimal               @default(0) @map("reject_fee_amount") @db.Decimal(12, 2)
+  maxConsecutiveRejects      Int                   @default(2) @map("max_consecutive_rejects")
+  isActive                   Boolean               @default(true) @map("is_active")
+  createdByUserId            String?               @map("created_by_user_id")
+  createdAt                  DateTime              @default(now()) @map("created_at")
+  updatedAt                  DateTime              @updatedAt @map("updated_at")
+
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  treasuryAccount TreasuryAccount      @relation(fields: [treasuryAccountId], references: [id], onDelete: Restrict)
+  mandates        DirectDebitMandate[]
+
+  /// PB1-R3 : un créancier par compte de trésorerie.
+  @@unique([tenantId, treasuryAccountId])
+  @@index([tenantId])
+  @@map("direct_debit_creditors")
+}
+
+/// Autorisation de prélèvement signée par un débiteur (spec 042 PB2).
+model DirectDebitMandate {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  tenantId             String                   @map("tenant_id")
+  /// Référence MDT-<year>-<sequence sur 4 chiffres>.
+  year                 Int
+  sequence             Int
+  scope                DirectDebitMandateScope  @default(RENTAL_LEASE)
+  creditorId           String                   @map("creditor_id") @db.Uuid
+  debtorClientId       String                   @map("debtor_client_id")
+  leaseId              String?                  @map("lease_id") @db.Uuid
+  status               DirectDebitMandateStatus @default(DRAFT)
+  /// IBAN chiffré (lib/payment-gateway/crypto.ts, format pg1:…). Jamais renvoyé.
+  ibanEncrypted        String                   @map("iban_encrypted")
+  ibanBankCode         String                   @map("iban_bank_code")
+  ibanLast4            String                   @map("iban_last4")
+  holderName           String                   @map("holder_name")
+  maxAmount            Decimal?                 @map("max_amount") @db.Decimal(12, 2)
+  collectionDay        Int?                     @map("collection_day")
+  signedAt             DateTime?                @map("signed_at")
+  /// Identifiant /uploads/… du scan signé. Jamais renvoyé au client.
+  signedScanUrl        String?                  @map("signed_scan_url")
+  signedScanUploadedAt DateTime?                @map("signed_scan_uploaded_at")
+  activatedAt          DateTime?                @map("activated_at")
+  suspendedAt          DateTime?                @map("suspended_at")
+  suspensionReason     String?                  @map("suspension_reason")
+  revokedAt            DateTime?                @map("revoked_at")
+  revocationReason     String?                  @map("revocation_reason")
+  consecutiveRejects   Int                      @default(0) @map("consecutive_rejects")
+  /// PB2-R7 : "<leaseId>:<creditorId>" tant que le mandat n'est pas révoqué,
+  /// nul une fois révoqué. L'unicité en base interdit deux mandats ouverts.
+  openSlotKey          String?                  @map("open_slot_key")
+  notes                String?                  @db.Text
+  createdByUserId      String?                  @map("created_by_user_id")
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creditor DirectDebitCreditor @relation(fields: [creditorId], references: [id], onDelete: Restrict)
+  debtor   TenantClient        @relation(fields: [debtorClientId], references: [id], onDelete: Restrict)
+  lease    RentalLease?        @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, year, sequence])
+  @@unique([tenantId, openSlotKey])
+  @@index([tenantId, status])
+  @@index([leaseId])
+  @@index([debtorClientId])
+  @@index([creditorId])
+  @@map("direct_debit_mandates")
 }
