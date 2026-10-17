@@ -81,7 +81,7 @@ Pièges et décisions :
 
 ## Branche `fix/i18n-extracteurs-cles-dynamiques` — 2026-10-17
 
-**État :** prêt à relire (PR vers `main`, lien ajouté par le commit de passation suivant) ; worktree `.claude/worktrees/distracted-greider-b4a494` (jonctions `node_modules` à retirer avec `rmdir`/`Directory.Delete($p, $false)`, jamais `rm -rf`).
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/154 (base `main`), CI en cours à l'ouverture ; worktree `.claude/worktrees/distracted-greider-b4a494` (jonctions `node_modules` à retirer avec `rmdir`/`Directory.Delete($p, $false)`, jamais `rm -rf`).
 **Dernier commit :** voir `git log` (poussé sur origin).
 
 Fait :
