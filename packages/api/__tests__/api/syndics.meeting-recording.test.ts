@@ -838,7 +838,9 @@ describe('vues', () => {
       roomName: null,
       roomActive: false,
       participants: [],
-      recording: { enabled: false, active: null }
+      recording: { enabled: false, active: null },
+      degraded: false,
+      unrecognized: 0
     });
   });
 

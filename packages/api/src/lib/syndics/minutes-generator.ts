@@ -3,7 +3,7 @@ import * as path from 'path';
 import PizZip from 'pizzip';
 import { logger } from '../../utils/logger';
 import { majorityRuleLabel, normalizeMajorityRule } from './meeting-majority';
-import { t } from '../../i18n';
+import { currentLanguage, t } from '../../i18n';
 import { getShippedTemplatesDir, getTemplatesWriteDir } from '../../utils/assets-paths';
 import type { DocumentBranding } from '../documents/document-branding';
 import { buildCommonDocumentContext, buildIssuerContext } from '../documents/docx-branding';
@@ -34,6 +34,20 @@ interface ResolutionInput {
     sharesAbstain: number;
     referenceShares: number;
   } | null;
+}
+
+const NBSP = ' ';
+
+/**
+ * Pourcentage selon la langue du document : « 16,2 % » (espace insécable) en
+ * français, « 16.2% » en anglais et en arabe (chiffres latins).
+ */
+export function formatPercent(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  if (currentLanguage() === 'fr') {
+    return `${rounded.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}${NBSP}%`;
+  }
+  return `${rounded.toLocaleString('en-US', { maximumFractionDigits: 2 })}%`;
 }
 
 /** Libelle de la regle ; une saisie libre historique vaut l'article 24. */
@@ -170,6 +184,10 @@ export interface AttendanceSheet {
   summary: string;
 }
 
+function formatDecimal(value: number): string {
+  return value.toLocaleString(currentLanguage() === 'fr' ? 'fr-FR' : 'en-US', { maximumFractionDigits: 2 });
+}
+
 function attendanceStatusLabel(status: string): string {
   switch (status) {
     case 'PRESENT':
@@ -235,8 +253,8 @@ export function buildAttendanceSheet(meeting: MeetingInput): AttendanceSheet {
   const percent = totalShares > 0 ? Math.round((countedShares / totalShares) * 10000) / 100 : 0;
   const summary = t(
     'Lots présents ou représentés : {{lots}} sur {{totalLots}} ({{shares}} tantièmes sur {{totalShares}}, soit {{percent}} %).',
-    { lots: countedLots, totalLots: lots.length, shares: countedShares, totalShares, percent }
-  );
+    { lots: countedLots, totalLots: lots.length, shares: countedShares, totalShares, percent: formatDecimal(percent) }
+  ).replace(/ %/g, `${NBSP}%`);
   return { rows, summary };
 }
 
@@ -280,12 +298,27 @@ function formatTime(value?: Date | string | null): string {
 }
 
 function formatQuorum(value: unknown): string {
-  if (typeof value === 'number' && Number.isFinite(value)) return `${value}%`;
-  if (typeof value === 'string' && value.trim().length > 0) return `${value}%`;
-  if (value && typeof value === 'object' && 'toString' in value) {
-    return `${String(value)}%`;
-  }
-  return '0%';
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : value !== null && value !== undefined && String(value).trim().length > 0
+        ? Number(String(value).replace(',', '.'))
+        : 0;
+  return formatPercent(Number.isFinite(parsed) ? parsed : 0);
+}
+
+/**
+ * Points d'ordre du jour : ceux saisis ; à défaut, les titres des résolutions
+ * (un compte rendu ne dit jamais « aucun point » quand des résolutions existent).
+ */
+function agendaOrFallback(meeting: MeetingInput): AgendaItemInput[] {
+  const agendaItems = [...(meeting.agendaItems || [])].sort((a, b) => a.orderIndex - b.orderIndex);
+  if (agendaItems.length > 0) return agendaItems;
+  return (meeting.resolutions || []).map((resolution, index) => ({
+    orderIndex: index + 1,
+    title: resolution.title,
+    discussions: []
+  }));
 }
 
 function escapeXml(text: string): string {
@@ -330,7 +363,7 @@ function fallbackMinutes(meeting: MeetingInput, branding?: DocumentBranding | nu
   lines.push(...attendanceLines(buildAttendanceSheet(meeting)));
   lines.push(t('ORDRE DU JOUR ET DISCUSSIONS'));
 
-  const agendaItems = [...(meeting.agendaItems || [])].sort((a, b) => a.orderIndex - b.orderIndex);
+  const agendaItems = agendaOrFallback(meeting);
   if (agendaItems.length === 0) {
     lines.push(t('- Aucun point d’ordre du jour renseigné.'));
   } else {
@@ -377,7 +410,7 @@ function fallbackMinutes(meeting: MeetingInput, branding?: DocumentBranding | nu
 }
 
 function buildTemplateContext(meeting: MeetingInput, branding?: DocumentBranding | null): Record<string, unknown> {
-  const agendaItems = [...(meeting.agendaItems || [])].sort((a, b) => a.orderIndex - b.orderIndex);
+  const agendaItems = agendaOrFallback(meeting);
   const resolutions = meeting.resolutions || [];
   const attendanceSheet = buildAttendanceSheet(meeting);
   const agendaLines: string[] = [];
@@ -581,6 +614,44 @@ function buildDocxBuffer(content: string): Buffer {
   return zip.generate({ type: 'nodebuffer' }) as Buffer;
 }
 
+function plainText(xml: string): string {
+  return xml
+    .replace(/<\/w:p>/g, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+/**
+ * Un modèle d'agence ancien ne porte pas les balises de présence : la feuille
+ * est alors ajoutée en fin de corps (avant la mise en page finale), pour
+ * qu'aucun chemin de génération ne la perde.
+ */
+function ensureAttendanceSheet(docx: Buffer, sheet: AttendanceSheet): Buffer {
+  const zip = new PizZip(docx);
+  const file = zip.file('word/document.xml');
+  if (!file) return docx;
+  const xml = file.asText();
+  if (plainText(xml).includes(sheet.summary)) return docx;
+
+  const [title, ...rest] = attendanceLines(sheet);
+  const paragraphs = [
+    `<w:p><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="80"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${escapeXml(title)}</w:t></w:r></w:p>`,
+    ...rest.map(line =>
+      line.trim().length === 0 ? '<w:p/>' : `<w:p><w:r><w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r></w:p>`
+    )
+  ].join('');
+  const sectIndex = xml.lastIndexOf('<w:sectPr');
+  const bodyEnd = xml.lastIndexOf('</w:body>');
+  const at = sectIndex >= 0 ? sectIndex : bodyEnd;
+  if (at < 0) return docx;
+  zip.file('word/document.xml', xml.slice(0, at) + paragraphs + xml.slice(at));
+  return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' }) as Buffer;
+}
+
 /** Modèle personnalisé de l'agence, sinon modèle standard avec en-tête et logos. */
 async function renderMinutesFromTemplates(
   meeting: MeetingInput,
@@ -593,7 +664,7 @@ async function renderMinutesFromTemplates(
     try {
       const rendered = renderMinutesTemplate(await fs.readFile(templatePath), context);
       logger.info('Syndic minutes generated from tenant DOCX template', { meetingId: meeting.id });
-      return rendered;
+      return ensureAttendanceSheet(rendered, buildAttendanceSheet(meeting));
     } catch (error) {
       logger.error('Syndic minutes tenant template failed, trying the standard template', {
         error,
