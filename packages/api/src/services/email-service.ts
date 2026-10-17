@@ -637,6 +637,71 @@ Le prélèvement de ${vars.amount} prévu le ${vars.collectionDate} par ${vars.a
   }
 
   /**
+   * Prénotification d'un prélèvement d'appels de charges (spec 042, P4). Ne contient jamais l'IBAN complet : `ibanMasked` seulement.
+   * Placeholders: debtorName, agencyName, syndicateName, lotNumber, amount, collectionDate, ibanMasked, mandateReference, creditorIdentifier.
+   */
+  async sendSyndicDirectDebitPrenotification(
+    to: string,
+    vars: {
+      debtorName: string;
+      agencyName: string;
+      syndicateName: string;
+      lotNumber: string;
+      amount: string;
+      collectionDate: string;
+      ibanMasked: string;
+      mandateReference: string;
+      creditorIdentifier: string;
+    },
+    options?: { tenantId?: string; templateOverrides?: TemplateOverrides }
+  ): Promise<void> {
+    const { emailWrapper } = await import('../utils/payment-email-templates');
+    const { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } = await import('../constants/email-notification-default-templates');
+    const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES.SYNDIC_DIRECT_DEBIT_PRENOTIFICATION;
+    const subject = applyTemplate(options?.templateOverrides?.subject || defaults.subject, vars);
+    const html = emailWrapper(applyTemplate(options?.templateOverrides?.bodyHtml || defaults.bodyHtml, vars, true));
+    const text = `Bonjour ${vars.debtorName},
+
+${vars.agencyName} prélèvera ${vars.amount} sur votre compte ${vars.ibanMasked} le ${vars.collectionDate} (charges du lot ${vars.lotNumber}, copropriété ${vars.syndicateName}, mandat ${vars.mandateReference}).`;
+    // Adresse d'un débiteur : masquée dans les journaux.
+    await this.sendEmail({ to, subject, text, html, tenantId: options?.tenantId, redactRecipient: true });
+  }
+
+  /**
+   * Rejet d'un prélèvement d'appels de charges (spec 042, P4). Ne contient jamais l'IBAN complet : `ibanMasked` seulement.
+   * Placeholders: debtorName, agencyName, syndicateName, lotNumber, mandateReference, ibanMasked, amount, collectionDate, reason,
+   * rejectFee (texte vide : aucun frais en copropriété), suspensionNotice (texte vide si le mandat n'est pas suspendu).
+   */
+  async sendSyndicDirectDebitRejected(
+    to: string,
+    vars: {
+      debtorName: string;
+      agencyName: string;
+      syndicateName: string;
+      lotNumber: string;
+      mandateReference: string;
+      ibanMasked: string;
+      amount: string;
+      collectionDate: string;
+      reason: string;
+      rejectFee: string;
+      suspensionNotice: string;
+    },
+    options?: { tenantId?: string; templateOverrides?: TemplateOverrides }
+  ): Promise<void> {
+    const { emailWrapper } = await import('../utils/payment-email-templates');
+    const { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } = await import('../constants/email-notification-default-templates');
+    const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES.SYNDIC_DIRECT_DEBIT_REJECTED;
+    const subject = applyTemplate(options?.templateOverrides?.subject || defaults.subject, vars);
+    const html = emailWrapper(applyTemplate(options?.templateOverrides?.bodyHtml || defaults.bodyHtml, vars, true));
+    const text = `Bonjour ${vars.debtorName},
+
+Le prélèvement de ${vars.amount} prévu le ${vars.collectionDate} par ${vars.agencyName} sur votre compte ${vars.ibanMasked} (charges du lot ${vars.lotNumber}, mandat ${vars.mandateReference}) a été rejeté. Motif : ${vars.reason}. ${vars.rejectFee} ${vars.suspensionNotice}`.trim();
+    // Adresse d'un débiteur : masquée dans les journaux.
+    await this.sendEmail({ to, subject, text, html, tenantId: options?.tenantId, redactRecipient: true });
+  }
+
+  /**
    * Notify agency admins when a tenant creates a maintenance ticket (en dur).
    * Placeholders for overrides: agencyUserName, ticketTitle, ticketId, propertyReference, validationUrl, agencyName, renterName, ticketCreatedAt.
    */

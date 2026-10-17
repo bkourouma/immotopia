@@ -107,7 +107,8 @@ const METHOD_LABELS: Record<string, string> = {
   VIREMENT: 'Virement',
   CHEQUE: 'Chèque',
   MOBILE_MONEY: 'Mobile money',
-  CARTE: 'Carte bancaire'
+  CARTE: 'Carte bancaire',
+  DIRECT_DEBIT: 'Prélèvement bancaire'
 };
 
 export function paymentMethodLabel(method: string | null | undefined): string | null {

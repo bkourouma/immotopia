@@ -12,6 +12,9 @@ import { assertFileDigestAvailable, computeRemittanceFileDigest } from './file-d
 import { getFileAdapter, type DirectDebitFileFormatKey } from './file-formats';
 import { decryptMandateIban } from './mandates';
 import { startRemittancePrenotifications } from './prenotification';
+import { auditScope, RENTAL_CTX, scopeWhere, type DirectDebitScopeCtx } from './syndic/scope';
+import { startSyndicRemittancePrenotifications } from './syndic/prenotification';
+import { evaluateSyndicCandidates, sameCallSet, type Candidate } from './syndic/selection';
 import {
   REMITTANCE_SUMMARY_SELECT,
   lineReferenceOf,
@@ -113,17 +116,6 @@ const CREDITOR_INFO_SELECT = {
 // Sélection des échéances (lecture + règles pures de remittance-selection.ts)
 // ---------------------------------------------------------------------------
 
-interface Candidate {
-  mandateId: string;
-  mandateReference: string;
-  leaseId: string | null;
-  leaseNumber: string | null;
-  debtorClientId: string | null;
-  debtorName: string | null;
-  installmentId: string | null;
-  result: SelectionResult;
-}
-
 /**
  * Évalue tous les mandats ACTIVE du créancier pour la période de la date de
  * collecte. ownRemittanceId : les lignes de CETTE remise ne comptent pas comme
@@ -134,8 +126,12 @@ async function evaluateCandidates(
   tenantId: string,
   creditor: CreditorInfo,
   collectionDate: Date,
-  ownRemittanceId: string | null
+  ownRemittanceId: string | null,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<Candidate[]> {
+  if (ctx.scope === 'SYNDIC_LOT') {
+    return evaluateSyndicCandidates(db, tenantId, ctx.syndicateId, creditor, collectionDate, ownRemittanceId);
+  }
   const mandates = await db.directDebitMandate.findMany({
     // DRAFT et SUSPENDED ne donnent jamais de ligne : ils ne servent qu'à les signaler (MANDATE_NOT_ACTIVE).
     where: {
@@ -240,24 +236,23 @@ async function evaluateCandidates(
       debtorClientId: mandate.debtorClientId,
       debtorName: mandate.debtor ? (names.get(mandate.debtor.id) ?? null) : null,
       installmentId: installment?.id ?? null,
+      lotId: null,
+      lotNumber: null,
+      debtorContactId: null,
+      chargeCallIds: [],
       result
     };
   });
 }
 
-/** Le fichier des remises de copropriété est réalisé en P4 (spec 042 §9.3). */
-const failOutsideRental = (): never => {
-  throw new Error('Ligne hors périmètre locatif : fichier de copropriété à réaliser (spec 042 §9.3)');
-};
-
 type SelectedCandidate = Candidate & {
-  leaseId: string;
-  installmentId: string;
   result: Extract<SelectionResult, { kind: 'SELECTED' }>;
 };
 
+/** Une ligne se rattache à une échéance de bail (locatif) ou à un lot (copropriété). */
 const isSelected = (candidate: Candidate): candidate is SelectedCandidate =>
-  candidate.result.kind === 'SELECTED' && candidate.leaseId !== null && candidate.installmentId !== null;
+  candidate.result.kind === 'SELECTED' &&
+  ((candidate.leaseId !== null && candidate.installmentId !== null) || candidate.lotId !== null);
 
 function toSkipped(candidates: Candidate[]): SkippedMandateDto[] {
   return candidates.flatMap(candidate =>
@@ -267,6 +262,7 @@ function toSkipped(candidates: Candidate[]): SkippedMandateDto[] {
             mandateId: candidate.mandateId,
             mandateReference: candidate.mandateReference,
             leaseNumber: candidate.leaseNumber,
+            ...(candidate.lotNumber !== null ? { lotNumber: candidate.lotNumber } : {}),
             debtorName: candidate.debtorName,
             reason: candidate.result.reason
           }
@@ -290,15 +286,25 @@ async function createLines(
       remittanceId,
       lineNumber: firstLineNumber + index,
       mandateId: candidate.mandateId,
-      leaseId: candidate.leaseId,
-      installmentId: candidate.installmentId,
-      debtorClientId: candidate.debtorClientId,
       status: 'PENDING' as const,
       amount: candidate.result.amount,
       remainingDueAtSelection: candidate.result.remainingDue,
       capped: candidate.result.capped,
-      // ADR-007 article 6 : la clé d unicité d une ligne vivante est son échéance.
-      activeKey: candidate.installmentId
+      ...(candidate.lotId !== null
+        ? {
+            // Copropriété : une seule ligne vivante par lot, qui fige les appels couverts.
+            lotId: candidate.lotId,
+            debtorContactId: candidate.debtorContactId,
+            chargeCallIds: candidate.chargeCallIds,
+            activeKey: `lot:${candidate.lotId}`
+          }
+        : {
+            leaseId: candidate.leaseId,
+            installmentId: candidate.installmentId,
+            debtorClientId: candidate.debtorClientId,
+            // ADR-007 article 6 : la clé d unicité d une ligne vivante est son échéance.
+            activeKey: candidate.installmentId
+          })
     }))
   });
 }
@@ -336,10 +342,11 @@ async function lockRemittance(
   tx: Tx,
   tenantId: string,
   remittanceId: string,
-  allowed: RemittanceStatus[]
+  allowed: RemittanceStatus[],
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<LockedRemittance> {
   const row = await tx.directDebitRemittance.findFirst({
-    where: { id: remittanceId, tenantId },
+    where: { id: remittanceId, tenantId, ...scopeWhere(ctx) },
     select: {
       id: true,
       year: true,
@@ -354,21 +361,25 @@ async function lockRemittance(
   if (!row) throw notFoundRemittance();
   if (!allowed.includes(row.status)) throw transitionImpossible(row.status);
   const locked = await tx.directDebitRemittance.updateMany({
-    where: { id: remittanceId, tenantId, status: row.status },
+    where: { id: remittanceId, tenantId, ...scopeWhere(ctx), status: row.status },
     data: { updatedAt: new Date() }
   });
   if (locked.count === 0) throw reloadConflict();
   return { ...row, totalAmount: Number(row.totalAmount) };
 }
 
-function auditPayload(remittance: {
-  year: number;
-  sequence: number;
-  collectionDate: Date;
-  lineCount: number;
-  totalAmount: number;
-}) {
+function auditPayload(
+  remittance: {
+    year: number;
+    sequence: number;
+    collectionDate: Date;
+    lineCount: number;
+    totalAmount: number;
+  },
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
+) {
   return {
+    ...auditScope(ctx),
     reference: remittanceReferenceOf(remittance.year, remittance.sequence),
     lineCount: remittance.lineCount,
     totalAmount: remittance.totalAmount,
@@ -377,9 +388,9 @@ function auditPayload(remittance: {
 }
 
 /** Relit les totaux après écriture, pour l audit. */
-async function currentTotals(tx: Tx, tenantId: string, remittanceId: string) {
+async function currentTotals(tx: Tx, tenantId: string, remittanceId: string, ctx: DirectDebitScopeCtx = RENTAL_CTX) {
   const row = await tx.directDebitRemittance.findFirst({
-    where: { id: remittanceId, tenantId },
+    where: { id: remittanceId, tenantId, ...scopeWhere(ctx) },
     select: { year: true, sequence: true, collectionDate: true, lineCount: true, totalAmount: true }
   });
   if (!row) throw notFoundRemittance();
@@ -392,9 +403,10 @@ async function currentTotals(tx: Tx, tenantId: string, remittanceId: string) {
 
 export async function listRemittances(
   tenantId: string,
-  query: ListRemittancesQuery
+  query: ListRemittancesQuery,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<{ items: RemittanceSummaryDto[]; total: number; page: number; pageSize: number }> {
-  const where: Prisma.DirectDebitRemittanceWhereInput = { tenantId };
+  const where: Prisma.DirectDebitRemittanceWhereInput = { tenantId, ...scopeWhere(ctx) };
   if (query.creditorId) where.creditorId = query.creditorId;
   if (query.status) where.status = query.status;
   const [total, rows] = await Promise.all([
@@ -410,13 +422,17 @@ export async function listRemittances(
   return { items: rows.map(toRemittanceSummaryDto), total, page: query.page, pageSize: query.pageSize };
 }
 
-export async function getRemittance(tenantId: string, remittanceId: string): Promise<RemittanceDto> {
-  const dto = await loadRemittanceDto(prisma, tenantId, remittanceId);
+export async function getRemittance(
+  tenantId: string,
+  remittanceId: string,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
+): Promise<RemittanceDto> {
+  const dto = await loadRemittanceDto(prisma, tenantId, remittanceId, ctx);
   if (!dto) throw notFoundRemittance();
   if (dto.status !== 'DRAFT') return dto;
   // Brouillon : les mandats non retenus sont recalculés (lecture seule, rien n'est écrit).
   const remittance = await prisma.directDebitRemittance.findFirst({
-    where: { id: remittanceId, tenantId },
+    where: { id: remittanceId, tenantId, ...scopeWhere(ctx) },
     select: { collectionDate: true, creditor: { select: CREDITOR_INFO_SELECT } }
   });
   if (!remittance) throw notFoundRemittance();
@@ -425,7 +441,8 @@ export async function getRemittance(tenantId: string, remittanceId: string): Pro
     tenantId,
     remittance.creditor,
     remittance.collectionDate,
-    remittanceId
+    remittanceId,
+    ctx
   );
   const withLine = new Set(dto.lines.map(line => line.mandate.id));
   return { ...dto, skipped: toSkipped(candidates.filter(candidate => !withLine.has(candidate.mandateId))) };
@@ -435,17 +452,22 @@ export async function getRemittance(tenantId: string, remittanceId: string): Pro
 // Création (brouillon)
 // ---------------------------------------------------------------------------
 
-const noInstallmentToCollect = () =>
-  new BadRequestError(t('Aucune échéance à prélever pour ce créancier à cette date.'));
+const noInstallmentToCollect = (ctx: DirectDebitScopeCtx) =>
+  new BadRequestError(
+    ctx.scope === 'SYNDIC_LOT'
+      ? t('Aucun appel de charges à prélever pour ce syndicat à cette date.')
+      : t('Aucune échéance à prélever pour ce créancier à cette date.')
+  );
 
 export async function createRemittance(
   tenantId: string,
   input: CreateRemittanceInput,
   actorUserId?: string | null,
-  now: Date = new Date()
+  now: Date = new Date(),
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<{ remittance: RemittanceDto; skipped: SkippedMandateDto[] }> {
   const creditor = await prisma.directDebitCreditor.findFirst({
-    where: { id: input.creditorId, tenantId },
+    where: { id: input.creditorId, tenantId, ...scopeWhere(ctx) },
     select: CREDITOR_INFO_SELECT
   });
   if (!creditor) throw new NotFoundError(t('Créancier introuvable.'));
@@ -467,10 +489,10 @@ export async function createRemittance(
   for (let attempt = 1; attempt <= MAX_SEQUENCE_ATTEMPTS && !result; attempt += 1) {
     try {
       result = await prisma.$transaction(async tx => {
-        const candidates = await evaluateCandidates(tx, tenantId, creditor, collectionDate, null);
+        const candidates = await evaluateCandidates(tx, tenantId, creditor, collectionDate, null, ctx);
         const selected = candidates.filter(isSelected);
         // Rien n est écrit si aucune ligne ne se présente.
-        if (selected.length === 0) throw noInstallmentToCollect();
+        if (selected.length === 0) throw noInstallmentToCollect(ctx);
 
         const sequence = await nextSequenceTx(tx.directDebitRemittance, tenantId, year);
         const created = await tx.directDebitRemittance.create({
@@ -478,7 +500,7 @@ export async function createRemittance(
             tenantId,
             year,
             sequence,
-            scope: 'RENTAL_LEASE',
+            ...scopeWhere(ctx),
             creditorId: creditor.id,
             status: 'DRAFT',
             collectionDate,
@@ -498,7 +520,7 @@ export async function createRemittance(
           actionKey: AuditActionKey.DIRECT_DEBIT_REMITTANCE_CREATED,
           entityType: 'DirectDebitRemittance',
           entityId: created.id,
-          payload: auditPayload(await currentTotals(tx, tenantId, created.id))
+          payload: auditPayload(await currentTotals(tx, tenantId, created.id, ctx), ctx)
         });
         return { id: created.id, skipped: toSkipped(candidates) };
       }, WRITE_TRANSACTION_OPTIONS);
@@ -512,7 +534,7 @@ export async function createRemittance(
   }
 
   const created = result as { id: string; skipped: SkippedMandateDto[] };
-  return { remittance: await getRemittance(tenantId, created.id), skipped: created.skipped };
+  return { remittance: await getRemittance(tenantId, created.id, ctx), skipped: created.skipped };
 }
 
 // ---------------------------------------------------------------------------
@@ -535,15 +557,16 @@ function autoCancelReason(reason: SkipReason | 'MANDATE_INELIGIBLE'): string {
 export async function refreshRemittance(
   tenantId: string,
   remittanceId: string,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<{ remittance: RemittanceDto; skipped: SkippedMandateDto[] }> {
   let skipped: SkippedMandateDto[];
   try {
     skipped = await prisma.$transaction(async tx => {
-      const remittance = await lockRemittance(tx, tenantId, remittanceId, ['DRAFT']);
+      const remittance = await lockRemittance(tx, tenantId, remittanceId, ['DRAFT'], ctx);
       // Le délai de prénotification du créancier a pu changer depuis la création.
       await tx.directDebitRemittance.updateMany({
-        where: { id: remittanceId, tenantId, status: 'DRAFT' },
+        where: { id: remittanceId, tenantId, ...scopeWhere(ctx), status: 'DRAFT' },
         data: {
           prenotificationDeadline: prenotificationDeadline(
             remittance.collectionDate,
@@ -556,7 +579,8 @@ export async function refreshRemittance(
         tenantId,
         remittance.creditor,
         remittance.collectionDate,
-        remittanceId
+        remittanceId,
+        ctx
       );
       const byMandate = new Map(candidates.map(candidate => [candidate.mandateId, candidate]));
       const lines = await tx.directDebitRemittanceLine.findMany({
@@ -568,7 +592,8 @@ export async function refreshRemittance(
           mandateId: true,
           amount: true,
           remainingDueAtSelection: true,
-          capped: true
+          capped: true,
+          chargeCallIds: true
         }
       });
 
@@ -592,14 +617,16 @@ export async function refreshRemittance(
         } else if (
           !sameMoney(Number(line.amount), candidate.result.amount) ||
           !sameMoney(Number(line.remainingDueAtSelection), candidate.result.remainingDue) ||
-          line.capped !== candidate.result.capped
+          line.capped !== candidate.result.capped ||
+          (candidate.lotId !== null && !sameCallSet(line.chargeCallIds ?? [], candidate.chargeCallIds))
         ) {
           await tx.directDebitRemittanceLine.updateMany({
             where: { id: line.id, tenantId, remittanceId, status: 'PENDING' },
             data: {
               amount: candidate.result.amount,
               remainingDueAtSelection: candidate.result.remainingDue,
-              capped: candidate.result.capped
+              capped: candidate.result.capped,
+              ...(candidate.lotId !== null ? { chargeCallIds: candidate.chargeCallIds } : {})
             }
           });
           updated += 1;
@@ -620,7 +647,7 @@ export async function refreshRemittance(
         entityType: 'DirectDebitRemittance',
         entityId: remittanceId,
         payload: {
-          ...auditPayload(await currentTotals(tx, tenantId, remittanceId)),
+          ...auditPayload(await currentTotals(tx, tenantId, remittanceId, ctx), ctx),
           added: toAdd.length,
           updated,
           canceled
@@ -632,7 +659,7 @@ export async function refreshRemittance(
     if (isActiveKeyViolation(uniqueViolationTarget(error))) throw installmentTaken();
     throw error;
   }
-  return { remittance: await getRemittance(tenantId, remittanceId), skipped };
+  return { remittance: await getRemittance(tenantId, remittanceId, ctx), skipped };
 }
 
 // ---------------------------------------------------------------------------
@@ -644,10 +671,11 @@ export async function cancelRemittanceLine(
   remittanceId: string,
   lineId: string,
   reason: string | null | undefined,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<RemittanceDto> {
   await prisma.$transaction(async tx => {
-    const remittance = await lockRemittance(tx, tenantId, remittanceId, ['DRAFT', 'VALIDATED']);
+    const remittance = await lockRemittance(tx, tenantId, remittanceId, ['DRAFT', 'VALIDATED'], ctx);
     const line = await tx.directDebitRemittanceLine.findFirst({
       where: { id: lineId, remittanceId, tenantId },
       select: {
@@ -681,14 +709,14 @@ export async function cancelRemittanceLine(
       entityType: 'DirectDebitRemittance',
       entityId: remittanceId,
       payload: {
-        ...auditPayload(await currentTotals(tx, tenantId, remittanceId)),
+        ...auditPayload(await currentTotals(tx, tenantId, remittanceId, ctx), ctx),
         lineReference: lineReferenceOf(remittance.year, remittance.sequence, line.lineNumber),
         mandateReference: mandateReferenceOf(line.mandate.year, line.mandate.sequence),
         lineAmount: Number(line.amount)
       }
     });
   });
-  return getRemittance(tenantId, remittanceId);
+  return getRemittance(tenantId, remittanceId, ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -699,10 +727,11 @@ export async function validateRemittance(
   tenantId: string,
   remittanceId: string,
   actorUserId?: string | null,
-  now: Date = new Date()
+  now: Date = new Date(),
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<{ remittance: RemittanceDto; prenotifications: PrenotificationSummaryDto }> {
   await prisma.$transaction(async tx => {
-    const remittance = await lockRemittance(tx, tenantId, remittanceId, ['DRAFT']);
+    const remittance = await lockRemittance(tx, tenantId, remittanceId, ['DRAFT'], ctx);
     const creditor = remittance.creditor;
 
     const lines = await tx.directDebitRemittanceLine.findMany({
@@ -711,6 +740,8 @@ export async function validateRemittance(
         id: true,
         mandateId: true,
         installmentId: true,
+        lotId: true,
+        chargeCallIds: true,
         amount: true,
         remainingDueAtSelection: true,
         capped: true,
@@ -741,7 +772,7 @@ export async function validateRemittance(
     }
 
     // Chaque ligne recalculée doit être identique à ce qui a été préparé.
-    const candidates = await evaluateCandidates(tx, tenantId, creditor, remittance.collectionDate, remittanceId);
+    const candidates = await evaluateCandidates(tx, tenantId, creditor, remittance.collectionDate, remittanceId, ctx);
     const byMandate = new Map(candidates.map(candidate => [candidate.mandateId, candidate]));
     for (const line of lines) {
       const candidate = byMandate.get(line.mandateId);
@@ -753,8 +784,13 @@ export async function validateRemittance(
           })
         );
       }
+      // Locatif : même échéance ; copropriété : même lot et même ensemble d'appels couverts.
+      const sameTarget =
+        candidate.lotId !== null
+          ? candidate.lotId === line.lotId && sameCallSet(line.chargeCallIds ?? [], candidate.chargeCallIds)
+          : candidate.installmentId === line.installmentId;
       const same =
-        candidate.installmentId === line.installmentId &&
+        sameTarget &&
         sameMoney(candidate.result.amount, Number(line.amount)) &&
         sameMoney(candidate.result.remainingDue, Number(line.remainingDueAtSelection)) &&
         candidate.result.capped === line.capped;
@@ -765,7 +801,7 @@ export async function validateRemittance(
 
     // Mise à jour conditionnelle sur le statut : deux validations simultanées, une seule passe.
     const result = await tx.directDebitRemittance.updateMany({
-      where: { id: remittanceId, tenantId, status: 'DRAFT' },
+      where: { id: remittanceId, tenantId, ...scopeWhere(ctx), status: 'DRAFT' },
       data: {
         status: 'VALIDATED',
         validatedAt: now,
@@ -785,15 +821,30 @@ export async function validateRemittance(
       actionKey: AuditActionKey.DIRECT_DEBIT_REMITTANCE_VALIDATED,
       entityType: 'DirectDebitRemittance',
       entityId: remittanceId,
-      payload: { ...auditPayload(await currentTotals(tx, tenantId, remittanceId)), from: 'DRAFT', to: 'VALIDATED' }
+      payload: {
+        ...auditPayload(await currentTotals(tx, tenantId, remittanceId, ctx), ctx),
+        from: 'DRAFT',
+        to: 'VALIDATED'
+      }
     });
   }, WRITE_TRANSACTION_OPTIONS);
 
   // Après le commit, en arrière-plan : un échec d'envoi ne défait pas la validation
   // et la réponse n'attend pas les e-mails (prénotifications encore PENDING dans le résumé).
-  startRemittancePrenotifications(tenantId, remittanceId, actorUserId);
-  const remittance = await getRemittance(tenantId, remittanceId);
+  startPrenotifications(ctx, tenantId, remittanceId, actorUserId);
+  const remittance = await getRemittance(tenantId, remittanceId, ctx);
   return { remittance, prenotifications: remittance.prenotificationSummary };
+}
+
+/** Avis de prélèvement en arrière-plan : au débiteur du bail (locatif) ou au contact du lot (copropriété). */
+function startPrenotifications(
+  ctx: DirectDebitScopeCtx,
+  tenantId: string,
+  remittanceId: string,
+  actorUserId?: string | null
+): void {
+  if (ctx.scope === 'SYNDIC_LOT') startSyndicRemittancePrenotifications(tenantId, remittanceId, actorUserId);
+  else startRemittancePrenotifications(tenantId, remittanceId, actorUserId);
 }
 
 /** Renvoie les prénotifications non envoyées d une remise validée ou exportée, avant la date de collecte. */
@@ -801,10 +852,11 @@ export async function resendPrenotifications(
   tenantId: string,
   remittanceId: string,
   actorUserId?: string | null,
-  now: Date = new Date()
+  now: Date = new Date(),
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<{ remittance: RemittanceDto; prenotifications: PrenotificationSummaryDto }> {
   const row = await prisma.directDebitRemittance.findFirst({
-    where: { id: remittanceId, tenantId },
+    where: { id: remittanceId, tenantId, ...scopeWhere(ctx) },
     select: { status: true, collectionDate: true }
   });
   if (!row) throw notFoundRemittance();
@@ -815,8 +867,8 @@ export async function resendPrenotifications(
     );
   }
   // En arrière-plan, sous verrou par remise : pas de doublon si un envoi est déjà en cours.
-  startRemittancePrenotifications(tenantId, remittanceId, actorUserId);
-  const remittance = await getRemittance(tenantId, remittanceId);
+  startPrenotifications(ctx, tenantId, remittanceId, actorUserId);
+  const remittance = await getRemittance(tenantId, remittanceId, ctx);
   return { remittance, prenotifications: remittance.prenotificationSummary };
 }
 
@@ -828,6 +880,32 @@ export interface RemittanceFile {
   buffer: Buffer;
   fileName: string;
   contentType: string;
+}
+
+/** Cible d'une ligne dans le fichier : bail et période (locatif), lot et mois de collecte (copropriété). */
+function fileTargetOf(
+  line: {
+    lease: { lease_number: string } | null;
+    installment: { period_year: number; period_month: number } | null;
+    lot: { lotNumber: string } | null;
+  },
+  remittance: { periodYear: number; periodMonth: number }
+) {
+  if (line.lot) {
+    return {
+      leaseNumber: null,
+      lotNumber: line.lot.lotNumber,
+      periodYear: remittance.periodYear,
+      periodMonth: remittance.periodMonth
+    };
+  }
+  if (!line.lease || !line.installment) throw new Error('Ligne de remise sans bail ni lot : fichier impossible');
+  return {
+    leaseNumber: line.lease.lease_number,
+    lotNumber: null,
+    periodYear: line.installment.period_year,
+    periodMonth: line.installment.period_month
+  };
 }
 
 const EXPORT_SELECT = {
@@ -842,6 +920,8 @@ const EXPORT_SELECT = {
   firstExportedAt: true,
   updatedAt: true,
   fileFormat: true,
+  periodYear: true,
+  periodMonth: true,
   creditorLabelSnapshot: true,
   creditorIdentifierSnapshot: true,
   lines: {
@@ -855,7 +935,8 @@ const EXPORT_SELECT = {
         select: { year: true, sequence: true, status: true, ibanEncrypted: true, holderName: true, signedAt: true }
       },
       lease: { select: { lease_number: true } },
-      installment: { select: { period_year: true, period_month: true } }
+      installment: { select: { period_year: true, period_month: true } },
+      lot: { select: { lotNumber: true } }
     }
   }
 } satisfies Prisma.DirectDebitRemittanceSelect;
@@ -871,10 +952,11 @@ export async function exportRemittance(
   tenantId: string,
   remittanceId: string,
   actorUserId?: string | null,
-  now: Date = new Date()
+  now: Date = new Date(),
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<RemittanceFile> {
   const remittance = await prisma.directDebitRemittance.findFirst({
-    where: { id: remittanceId, tenantId },
+    where: { id: remittanceId, tenantId, ...scopeWhere(ctx) },
     select: EXPORT_SELECT
   });
   if (!remittance) throw notFoundRemittance();
@@ -923,9 +1005,7 @@ export async function exportRemittance(
       holderName: line.mandate.holderName,
       iban: decryptMandateIban(line.mandate.ibanEncrypted),
       amount: Number(line.amount),
-      leaseNumber: line.lease?.lease_number ?? failOutsideRental(),
-      periodYear: line.installment?.period_year ?? failOutsideRental(),
-      periodMonth: line.installment?.period_month ?? failOutsideRental()
+      ...fileTargetOf(line, remittance)
     }))
   });
   // HMAC, pas un SHA-256 vérifiable de l extérieur : le fichier porte les IBAN complets.
@@ -940,6 +1020,7 @@ export async function exportRemittance(
       where: {
         id: remittanceId,
         tenantId,
+        ...scopeWhere(ctx),
         status: remittance.status,
         ...(isFirstExport ? { updatedAt: remittance.updatedAt } : {})
       },
@@ -960,6 +1041,7 @@ export async function exportRemittance(
       entityType: 'DirectDebitRemittance',
       entityId: remittanceId,
       payload: {
+        ...auditScope(ctx),
         reference,
         lineCount: remittance.lines.length,
         totalAmount: Number(remittance.totalAmount),
@@ -983,12 +1065,13 @@ export async function submitRemittance(
   tenantId: string,
   remittanceId: string,
   actorUserId?: string | null,
-  now: Date = new Date()
+  now: Date = new Date(),
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<RemittanceDto> {
   await prisma.$transaction(async tx => {
-    await lockRemittance(tx, tenantId, remittanceId, ['EXPORTED']);
+    await lockRemittance(tx, tenantId, remittanceId, ['EXPORTED'], ctx);
     const result = await tx.directDebitRemittance.updateMany({
-      where: { id: remittanceId, tenantId, status: 'EXPORTED' },
+      where: { id: remittanceId, tenantId, ...scopeWhere(ctx), status: 'EXPORTED' },
       data: { status: 'SUBMITTED', submittedAt: now, submittedByUserId: actorUserId ?? null }
     });
     if (result.count === 0) throw reloadConflict();
@@ -998,10 +1081,14 @@ export async function submitRemittance(
       actionKey: AuditActionKey.DIRECT_DEBIT_REMITTANCE_SUBMITTED,
       entityType: 'DirectDebitRemittance',
       entityId: remittanceId,
-      payload: { ...auditPayload(await currentTotals(tx, tenantId, remittanceId)), from: 'EXPORTED', to: 'SUBMITTED' }
+      payload: {
+        ...auditPayload(await currentTotals(tx, tenantId, remittanceId, ctx), ctx),
+        from: 'EXPORTED',
+        to: 'SUBMITTED'
+      }
     });
   });
-  return getRemittance(tenantId, remittanceId);
+  return getRemittance(tenantId, remittanceId, ctx);
 }
 
 /** DRAFT, VALIDATED ou EXPORTED -> CANCELED : les lignes PENDING sont annulées et leurs échéances libérées. */
@@ -1010,17 +1097,18 @@ export async function cancelRemittance(
   remittanceId: string,
   reason: string,
   actorUserId?: string | null,
-  now: Date = new Date()
+  now: Date = new Date(),
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<RemittanceDto> {
   await prisma.$transaction(async tx => {
-    const before = await lockRemittance(tx, tenantId, remittanceId, ['DRAFT', 'VALIDATED', 'EXPORTED']);
-    const payload = { ...auditPayload(before), from: before.status, to: 'CANCELED', reason };
+    const before = await lockRemittance(tx, tenantId, remittanceId, ['DRAFT', 'VALIDATED', 'EXPORTED'], ctx);
+    const payload = { ...auditPayload(before, ctx), from: before.status, to: 'CANCELED', reason };
     await tx.directDebitRemittanceLine.updateMany({
       where: { tenantId, remittanceId, status: 'PENDING' },
       data: { status: 'CANCELED', activeKey: null, canceledAt: now, cancellationReason: t('Remise annulée.') }
     });
     const result = await tx.directDebitRemittance.updateMany({
-      where: { id: remittanceId, tenantId, status: before.status },
+      where: { id: remittanceId, tenantId, ...scopeWhere(ctx), status: before.status },
       data: { status: 'CANCELED', canceledAt: now, cancellationReason: reason, lineCount: 0, totalAmount: 0 }
     });
     if (result.count === 0) throw reloadConflict();
@@ -1033,5 +1121,5 @@ export async function cancelRemittance(
       payload
     });
   });
-  return getRemittance(tenantId, remittanceId);
+  return getRemittance(tenantId, remittanceId, ctx);
 }

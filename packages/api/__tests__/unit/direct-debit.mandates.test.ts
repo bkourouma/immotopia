@@ -158,7 +158,9 @@ const baseInput = (over: Row = {}) => ({
 });
 
 function resetState() {
-  mockState.creditors = [{ id: CREDITOR, tenantId: TENANT, label: 'Compte loyers', isActive: true, collectionDay: 5 }];
+  mockState.creditors = [
+    { id: CREDITOR, tenantId: TENANT, scope: 'RENTAL_LEASE', label: 'Compte loyers', isActive: true, collectionDay: 5 }
+  ];
   mockState.leases = [
     {
       id: LEASE,

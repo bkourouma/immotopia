@@ -3,6 +3,8 @@ import { toIsoDate } from './business-days';
 import { contactDisplayName, resolveDebtorNames, type DbClient, type MandateStatus } from './dto';
 import { maskIban } from './iban';
 import { maskEmail, resolveDebtorRecipients, type DebtorRecipient, type RecipientSource } from './recipient';
+import { resolveContactRecipients } from './syndic/recipients';
+import { RENTAL_CTX, scopeWhere, type DirectDebitScopeCtx } from './syndic/scope';
 
 /**
  * Objets renvoyés par l'API des remises (data-model §7.7).
@@ -139,6 +141,8 @@ export interface SkippedMandateDto {
   mandateId: string;
   mandateReference: string;
   leaseNumber: string | null;
+  /** Numéro du lot (SYNDIC_LOT) ; absent en RENTAL_LEASE. */
+  lotNumber?: string | null;
   debtorName: string | null;
   reason: SkipReasonDto;
 }
@@ -354,7 +358,8 @@ function recipientOf(
     return { masked: line.prenotificationRecipientMasked, source: line.prenotificationRecipientSource };
   }
   if (line.status !== 'PENDING') return null;
-  const recipient = line.debtor ? (planned.get(line.debtor.id) ?? null) : null;
+  const debtorKey = line.debtor?.id ?? line.debtorContact?.id;
+  const recipient = debtorKey ? (planned.get(debtorKey) ?? null) : null;
   return recipient ? { masked: maskEmail(recipient.email), source: recipient.source } : null;
 }
 
@@ -457,10 +462,11 @@ async function loadChargeCalls(
 export async function loadRemittanceDto(
   db: DbClient,
   tenantId: string,
-  remittanceId: string
+  remittanceId: string,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<RemittanceDto | null> {
   const row = await db.directDebitRemittance.findFirst({
-    where: { id: remittanceId, tenantId },
+    where: { id: remittanceId, tenantId, ...scopeWhere(ctx) },
     select: REMITTANCE_SELECT
   });
   if (!row) return null;
@@ -470,9 +476,15 @@ export async function loadRemittanceDto(
     row.lines.map(line => line.debtor)
   );
   // Adresse prévue des lignes PENDING dont l'avis n'est pas encore parti (rien n'est stocké avant l'envoi).
-  const toPlan = row.lines
-    .filter(line => line.status === 'PENDING' && !line.prenotificationRecipientMasked)
-    .flatMap(line => (line.debtor ? [line.debtor.id] : []));
+  const unsent = row.lines.filter(line => line.status === 'PENDING' && !line.prenotificationRecipientMasked);
+  const toPlan = unsent.flatMap(line => (line.debtor ? [line.debtor.id] : []));
   const planned = await resolveDebtorRecipients(db, tenantId, toPlan);
+  // Copropriété : l'adresse prévue est celle du contact débiteur.
+  const contactsToPlan = unsent.flatMap(line => (line.debtorContact ? [line.debtorContact.id] : []));
+  if (contactsToPlan.length > 0) {
+    for (const [id, recipient] of await resolveContactRecipients(db, tenantId, contactsToPlan)) {
+      planned.set(id, recipient);
+    }
+  }
   return toRemittanceDto(row, names, planned, await loadChargeCalls(db, tenantId, row.lines));
 }
