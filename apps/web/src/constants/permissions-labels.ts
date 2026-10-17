@@ -242,6 +242,16 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
     label: t('Gérer les prélèvements bancaires'),
     description: t('Créer et modifier les créanciers et les mandats de prélèvement, déposer les scans signés.')
   },
+  SYNDIC_DIRECT_DEBIT_VIEW: {
+    label: t('Prélèvements de copropriété : consulter'),
+    description: t('Consulter le compte de prélèvement du syndicat, les mandats et les remises (IBAN masqué).')
+  },
+  SYNDIC_DIRECT_DEBIT_MANAGE: {
+    label: t('Prélèvements de copropriété : gérer, IBAN complet'),
+    description: t(
+      'Créer et modifier le compte, les mandats et les remises de copropriété, déposer les scans signés et produire le fichier à IBAN complet.'
+    )
+  },
   RENTAL_PENALTIES_VIEW: {
     label: t('Voir les pénalités'),
     description: t('Consulter les pénalités de retard.')
