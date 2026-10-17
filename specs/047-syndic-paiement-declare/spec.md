@@ -163,8 +163,8 @@ phoneNumber)`.
 - **R3** — Un numéro qui porte des déclarations ne se supprime pas : il se désactive. Les déclarations
   existantes restent lisibles et validables.
 - **R4** — Réglages de la copropriété, sur `SyndicPaymentGatewayConfig` ou dans un modèle voisin
-  `SyndicDeclaredPaymentSettings` (choix technique laissé au plan) : `declaredPaymentsEnabled`,
-  `reviewAlertDays` (défaut 3 jours ouvrés), `proofRequired` (défaut faux), `payerInstructions` (texte, 500
+  `SyndicDeclaredPaymentSettings` (choix technique laissé au plan) : `enabled`,
+  `reviewAlertBusinessDays` (défaut 3, D12), `proofRequired` (défaut faux), `payerInstructions` (texte, 500
   caractères), `aiPrefillEnabled` (défaut faux, D9).
 - **R5** — Lecture : `SYNDIC_VIEW`. Écriture : `SYNDIC_EDIT`. Pas de secret, donc pas de
   `TENANT_SETTINGS_EDIT` (différence assumée avec la clé API de la spec 042).
@@ -189,7 +189,7 @@ phoneNumber)`.
   caractères alphanumériques (tirets et points tolérés), normalisée en majuscules sans espaces.
 - **R9** — Corps Zod `.strict()`, multipart limité à la capture : JPEG, PNG, WebP ou PDF, 5 Mo au plus, type
   vérifié sur le contenu et pas seulement sur l'extension, EXIF retiré, stockée sous
-  `uploads/syndic/payment-proofs/<agence>/<copropriété>/` et jamais servie en statique.
+  `uploads/syndics/payment-proofs/<agence>/<copropriété>/` (préfixe déjà refusé en statique) et jamais servie en statique.
 - **R10** — **Doublon** : une référence déjà présente sur une déclaration `PENDING` ou `APPROVED` du même
   numéro de réception est **refusée** au déclarant (409 « Cette référence de transaction a déjà été
   déclarée. »). Les doublons probables (même numéro de réception, même montant, même numéro payeur, à moins de
@@ -290,7 +290,7 @@ phoneNumber)`.
 
 ### 5.8 Routes, écrans, audit
 
-- **R33** — Portail (`/api/coowner-portal`) : `GET /paiements-declares/disponibilite?syndicId=` (numéros
+- **R33** — Portail (`/api/portal/copropriete`) : `GET /paiements-declares/disponibilite?syndicId=` (numéros
   actifs, consigne, réglages publics) ; `POST /paiements-declares/lecture` (capture → proposition) ;
   `POST /paiements-declares` ; `GET /paiements-declares` ; `POST /paiements-declares/:id/annulation` ;
   champ additif `pendingDeclaration` par appel dans `GET /appels`.
@@ -298,7 +298,8 @@ phoneNumber)`.
   `/numeros-reception` ; `GET/PUT /paiements-declares/reglages` ; `GET /paiements-declares` (filtres,
   pagination) ; `GET /paiements-declares/:id` ; `GET /paiements-declares/:id/preuve` (fichier privé) ;
   `POST /paiements-declares/:id/validation` ; `POST /paiements-declares/:id/rejet` ; `POST
-/lots/:lotId/paiements-declares` (P4). Contrats détaillés à écrire dans `contracts.md` au moment du plan.
+/paiements-declares` (P4, déclaration saisie par le gestionnaire, ouverte depuis la fiche du lot). Détail :
+  [contracts.md](./contracts.md).
 - **R35** — Enveloppe `{ success, data }`, erreurs typées, contrôleurs en `asyncHandler`, routes inscrites
   dans `routes-inventory.test.ts`, nouveaux modèles dans `schema-tenant-coverage.test.ts` (tous portent
   `tenantId`).
