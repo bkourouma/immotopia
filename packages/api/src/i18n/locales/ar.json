@@ -2096,5 +2096,14 @@
   "Le gestionnaire a suspendu votre droit d'écrire": "علّق المدير حقك في الكتابة",
   "Message introuvable ou inaccessible": "الرسالة غير موجودة أو لا يمكن الوصول إليها",
   "L'assemblée est close ou annulée : la discussion ne peut plus être modifiée": "الجمعية مغلقة أو ملغاة: لم يعد بالإمكان تعديل النقاش",
-  "La séance pourra être enregistrée (image et son) ; un avis s'affichera à l'écran pendant l'enregistrement.": "قد يتم تسجيل الجلسة (صورة وصوت)؛ وسيظهر إشعار على الشاشة أثناء التسجيل."
+  "La séance pourra être enregistrée (image et son) ; un avis s'affichera à l'écran pendant l'enregistrement.": "قد يتم تسجيل الجلسة (صورة وصوت)؛ وسيظهر إشعار على الشاشة أثناء التسجيل.",
+  "Le fichier de retour est trop volumineux ({{max}} Mo au maximum).": "ملف الإرجاع كبير جداً (الحد الأقصى {{max}} ميغابايت).",
+  "Le fichier de retour n'est pas un fichier texte UTF-8 lisible.": "ملف الإرجاع ليس ملفاً نصياً مقروءاً بترميز UTF-8.",
+  "Le fichier de retour compte trop de lignes ({{max}} au maximum).": "ملف الإرجاع يحتوي على عدد كبير جداً من الأسطر (الحد الأقصى {{max}}).",
+  "En-tête manquant ou incomplet : colonnes attendues reference_operation, statut, date et montant.": "سطر العناوين مفقود أو غير مكتمل: الأعمدة المطلوبة هي reference_operation وstatut وdate وmontant.",
+  "Ligne illisible : guillemet non refermé.": "سطر غير مقروء: علامة اقتباس غير مغلقة.",
+  "Référence d'opération invalide (forme attendue PRL-AAAA-NNNN-RRR).": "مرجع العملية غير صالح (الصيغة المتوقعة PRL-AAAA-NNNN-RRR).",
+  "Statut non reconnu.": "حالة غير معروفة.",
+  "Date invalide (AAAA-MM-JJ ou JJ/MM/AAAA attendu).": "تاريخ غير صالح (المتوقع AAAA-MM-JJ أو JJ/MM/AAAA).",
+  "Montant invalide (nombre positif à deux décimales au plus attendu).": "مبلغ غير صالح (المتوقع رقم موجب بخانتين عشريتين على الأكثر)."
 }
