@@ -7,10 +7,11 @@ Une fiche recto-verso A4 par pack, à remettre ou envoyer à un prospect.
 - **Verso** : l'inventaire complet du pack, fonction par fonction, le tarif et
   l'appel à la démonstration.
 
-| Pack   | Source HTML                  | PDF à imprimer             |
-| ------ | ---------------------------- | -------------------------- |
-| Syndic | [syndic.html](./syndic.html) | [syndic.pdf](./syndic.pdf) |
-| Agence | [agence.html](./agence.html) | [agence.pdf](./agence.pdf) |
+| Pack      | Source HTML                        | PDF à imprimer                   |
+| --------- | ---------------------------------- | -------------------------------- |
+| Syndic    | [syndic.html](./syndic.html)       | [syndic.pdf](./syndic.pdf)       |
+| Agence    | [agence.html](./agence.html)       | [agence.pdf](./agence.pdf)       |
+| Promoteur | [promoteur.html](./promoteur.html) | [promoteur.pdf](./promoteur.pdf) |
 
 ## Règles de contenu
 
@@ -21,7 +22,7 @@ Une fiche recto-verso A4 par pack, à remettre ou envoyer à un prospect.
 - Les tarifs viennent du catalogue d'abonnement
   (`packages/api/src/lib/subscription/catalog.ts`). Les reprendre à chaque
   changement de prix.
-- Les visuels chiffrés (grille lot × mois, quorum, relevé propriétaire) sont des illustrations
+- Les visuels chiffrés (grille lot × mois, quorum, relevé propriétaire, budget de chantier) sont des illustrations
   marquées comme telles, jamais des données de client.
 - Le bloc « Votre conseiller » est laissé vierge pour être complété à la main
   ou au tampon.
@@ -39,6 +40,12 @@ site vitrine de l'agence avec diffusion sur les portails d'annonces (seul le
 portail public d'ImmoTopia existe) et l'export complet des données. Les
 signatures électroniques sont dites « incluses » sans chiffre : le quota par
 pack du catalogue est provisoire.
+
+Pour le Pack Promoteur, les éléments marqués **Bientôt** au 17/10/2026 viennent
+du niveau 3 de la spec 040-controle-stock (§3.2, hors périmètre du lot livré) :
+comptages surprise planifiés, QR codes et codes-barres, transferts en transit
+avec accusé de réception, contrôle avancé des achats (doublon de facture,
+dérive de prix) ; plus l'export complet des données.
 
 ## Régénérer le PDF
 
