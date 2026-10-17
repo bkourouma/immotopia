@@ -102,3 +102,37 @@ Trois contraintes du dépôt pèsent sur la décision :
 - `packages/api/src/services/rental-payment-service.ts`
   (`createPayment`, `allocatePaymentTx`, `updatePaymentStatusTx`).
 - ADR-006 (audit à deux niveaux) pour la traçabilité des mandats.
+
+## Ajout du 2026-10-17 : retour banque et copropriété
+
+Complète la décision 5 (règlement confirmé au relevé) pour les lots P3 et P4.
+Contrat : `specs/042-prelevement-bancaire/data-model.md` §8 et §9.
+
+1. **Constat du retour : manuel ou par fichier.** Une ligne de remise déposée
+   reçoit un constat de règlement ou de rejet, saisi à la main (ligne par ligne
+   ou toute la remise) ou importé d'un fichier de retour. L'import se fait en
+   deux temps (aperçu, puis application du même fichier) ; ses écarts sont
+   écartés avec une raison, jamais appliqués. Le fichier n'est pas stocké :
+   seuls son empreinte HMAC et ses compteurs le sont.
+2. **Règlement par encaisseur, selon le périmètre.** Un encaisseur par
+   périmètre porte l'écriture comptable du constat, dans la transaction de la
+   ligne : en locatif, un paiement `DIRECT_DEBIT` ventilé sur l'échéance avec sa
+   quittance ; en copropriété, un paiement de charges avec reçus et quittances.
+   Ajouter un périmètre revient à ajouter un encaisseur, sans toucher au
+   constat.
+3. **Rejet tardif : contre-passé en locatif, refusé en copropriété.** En
+   locatif, l'annulation existante du paiement contre-passe l'encaissement et
+   annule la quittance. En copropriété, aucune contre-passation d'un paiement
+   de charges n'existe : le rejet d'une ligne déjà réglée est refusé, et la
+   régularisation se fait en comptabilité de la copropriété. Ce refus est une
+   limite assumée, à lever si la comptabilité apprend à contre-passer.
+4. **Frais de rejet refacturés en locatif seulement** (décision D4). Ils
+   s'ajoutent à l'échéance, mais ne reviennent pas au propriétaire : ils
+   rémunèrent le créancier qui a supporté les frais bancaires. En copropriété
+   ils ne sont pas refacturés.
+5. **Créancier de la copropriété = le compte du syndicat.** Il n'est pas un
+   compte de trésorerie de l'agence ; l'argent va directement sur le compte du
+   syndicat, et ImmoTopia ne le touche pas plus qu'en locatif.
+6. **Signature électronique du mandat : option.** Le circuit papier (P1) reste
+   la référence ; la signature électronique (contrat : `data-model.md` §10 de
+   la spec 042, et spec 044) s'y ajoute sans le remplacer.
