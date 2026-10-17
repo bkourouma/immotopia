@@ -105,7 +105,10 @@ export type FinanceSourceType =
   // rebut n'en ecrit aucun aujourd'hui, mais il porte la meme nature de piece
   // (`accounting.ts`) : le nommer ici evite le prochain transtypage.
   | 'STOCK_SUPPLIER_RETURN'
-  | 'STOCK_SCRAP';
+  | 'STOCK_SCRAP'
+  // Spec 042 (prelevement bancaire), P3 : frais de rejet refactures au locataire.
+  // Mouvement `ADJUSTMENT` rattache a la ligne de remise rejetee.
+  | 'DIRECT_DEBIT_REJECT_FEE';
 
 // ---------------------------------------------------------------------------
 // Grand livre des comptes de tiers
