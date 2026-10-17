@@ -28,6 +28,17 @@ Modèle de section :
 
 **Pièges :** le service `ssh` du serveur s'est arrêté le 2026-10-16 (port 2222 refusé, `ssh.service` désactivé et lancé par `ssh.socket`) : à surveiller. `ssh-keyscan` de Windows ne rend que la bannière : lire la clé d'hôte sur le serveur. Le checkout du serveur doit être à jour (`git merge --ff-only origin/main`) sinon `ci-deploy.sh` est introuvable (code 127).
 
+## Branche `docs/spec-syndic-paiement-declare` — 2026-10-17
+
+**État :** PR 165 en brouillon, spec seule, en attente des décisions de Baba (§11 de la spec, Q1 à Q14).
+**Dernier commit :** `32e4a4a5` (spec 047), puis cette passation.
+
+**Fait :** `specs/047-syndic-paiement-declare/spec.md` : paiement mobile money hors d'ImmoTopia, déclaré par le copropriétaire (référence obligatoire, capture facultative pré-lue par IA), validé par le gestionnaire. Rien n'est crédité avant validation ; la validation réutilise `recordLotPaymentTx` + `issueReceiptsForPaymentTx`.
+
+**Reste :** décisions du §11 ; puis `plan.md`, `contracts.md` et `tasks.md` ; validation comptable des sous-comptes 552x (Q9).
+
+**Pièges :** le hook `validate-bash.sh` refuse une commande qui contient `--base main` (il y voit une poussée sur main) : lancer `gh pr create` sans `--base`, dans une commande séparée du `git push`. `TreasuryAccount` est au niveau de l'agence, pas de la copropriété. Le côté loyers a déjà `RentalPaymentDeclaration`.
+
 ## Branche `feat/finance-fournisseurs-tresorerie` — 2026-10-16
 
 **État :** prêt à relire (PR 142), CI à relire après la fusion de main.
