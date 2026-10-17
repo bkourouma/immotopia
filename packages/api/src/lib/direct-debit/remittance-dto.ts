@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
-import { prenotificationDeadline, toIsoDate } from './business-days';
-import { resolveDebtorNames, type DbClient } from './dto';
+import { toIsoDate } from './business-days';
+import { resolveDebtorNames, type DbClient, type MandateStatus } from './dto';
 import { maskIban } from './iban';
 
 /**
@@ -51,7 +51,14 @@ export interface RemittanceLineDto {
   lineNumber: number;
   reference: string;
   status: RemittanceLineStatus;
-  mandate: { id: string; reference: string; ibanMasked: string; holderName: string; maxAmount: number | null };
+  mandate: {
+    id: string;
+    reference: string;
+    status: MandateStatus;
+    ibanMasked: string;
+    holderName: string;
+    maxAmount: number | null;
+  };
   debtor: { id: string; displayName: string | null };
   lease: { id: string; leaseNumber: string };
   installment: { id: string; periodYear: number; periodMonth: number; dueDate: string };
@@ -100,6 +107,7 @@ export const REMITTANCE_SUMMARY_SELECT = {
   collectionDate: true,
   periodYear: true,
   periodMonth: true,
+  prenotificationDeadline: true,
   lineCount: true,
   totalAmount: true,
   fileFormat: true,
@@ -115,7 +123,7 @@ export const REMITTANCE_SUMMARY_SELECT = {
   createdAt: true,
   updatedAt: true,
   creditor: {
-    select: { id: true, label: true, creditorIdentifier: true, fileFormat: true, prenotificationBusinessDays: true }
+    select: { id: true, label: true, creditorIdentifier: true, fileFormat: true }
   }
 } satisfies Prisma.DirectDebitRemittanceSelect;
 
@@ -136,7 +144,17 @@ export const REMITTANCE_SELECT = {
       prenotificationStatus: true,
       prenotifiedAt: true,
       // Jamais ibanEncrypted : seuls les 4 derniers caractères servent au masque.
-      mandate: { select: { id: true, year: true, sequence: true, ibanLast4: true, holderName: true, maxAmount: true } },
+      mandate: {
+        select: {
+          id: true,
+          year: true,
+          sequence: true,
+          status: true,
+          ibanLast4: true,
+          holderName: true,
+          maxAmount: true
+        }
+      },
       debtor: { select: { id: true, details: true, user: { select: { fullName: true } } } },
       lease: { select: { id: true, lease_number: true } },
       installment: { select: { id: true, period_year: true, period_month: true, due_date: true } }
@@ -162,9 +180,8 @@ export function toRemittanceSummaryDto(row: SummaryRow): RemittanceSummaryDto {
     collectionDate: toIsoDate(row.collectionDate),
     periodYear: row.periodYear,
     periodMonth: row.periodMonth,
-    prenotificationDeadline: toIsoDate(
-      prenotificationDeadline(row.collectionDate, row.creditor.prenotificationBusinessDays)
-    ),
+    // Date limite figée en base (recalculée à l'actualisation et à la validation).
+    prenotificationDeadline: toIsoDate(row.prenotificationDeadline),
     fileFormat: row.fileFormat ?? row.creditor.fileFormat,
     lineCount: row.lineCount,
     totalAmount: Number(row.totalAmount),
@@ -216,6 +233,7 @@ export function toRemittanceDto(row: FullRow, debtorNames: Map<string, string | 
     mandate: {
       id: line.mandate.id,
       reference: mandateReferenceOf(line.mandate.year, line.mandate.sequence),
+      status: line.mandate.status,
       ibanMasked: maskIban(line.mandate.ibanLast4),
       holderName: line.mandate.holderName,
       maxAmount: num(line.mandate.maxAmount)

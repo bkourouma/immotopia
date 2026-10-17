@@ -20,6 +20,8 @@ interface PrepareRemittanceModalProps {
   onCreated: (result: RemittanceWithSkipped) => void;
 }
 
+const MAX_NOTES_LENGTH = 2000;
+
 /** Date proposée : premier jour de collecte du créancier encore possible. */
 function defaultDateFor(creditor: CreditorDto | undefined, today: Date): Dayjs | null {
   if (!creditor) return null;
@@ -29,7 +31,7 @@ function defaultDateFor(creditor: CreditorDto | undefined, today: Date): Dayjs |
 
 /**
  * « Préparer une remise » (spec 042, P2, §7.10) : créancier actif, date de
- * prélèvement, notes. Les dates trop proches pour la prénotification sont
+ * prélèvement, notes. Les dates trop proches pour l'avis de prélèvement sont
  * désactivées ; l'API reste juge.
  */
 export const PrepareRemittanceModal: React.FC<PrepareRemittanceModalProps> = ({
@@ -121,9 +123,13 @@ export const PrepareRemittanceModal: React.FC<PrepareRemittanceModalProps> = ({
           required
           extra={
             creditor
-              ? t('Prénotification : {{n}} jours ouvrés avant la date de prélèvement.', {
-                  n: creditor.prenotificationBusinessDays
-                })
+              ? creditor.prenotificationBusinessDays <= 1
+                ? t('Avis de prélèvement : {{n}} jour ouvré avant la date de prélèvement.', {
+                    n: creditor.prenotificationBusinessDays
+                  })
+                : t('Avis de prélèvement : {{n}} jours ouvrés avant la date de prélèvement.', {
+                    n: creditor.prenotificationBusinessDays
+                  })
               : undefined
           }
         >
@@ -139,7 +145,13 @@ export const PrepareRemittanceModal: React.FC<PrepareRemittanceModalProps> = ({
           />
         </Form.Item>
         <Form.Item label={t('Notes')}>
-          <Input.TextArea rows={2} value={notes} onChange={event => setNotes(event.target.value)} />
+          <Input.TextArea
+            rows={2}
+            maxLength={MAX_NOTES_LENGTH}
+            showCount
+            value={notes}
+            onChange={event => setNotes(event.target.value)}
+          />
         </Form.Item>
       </Form>
       {error && <Alert type="error" showIcon message={error} />}

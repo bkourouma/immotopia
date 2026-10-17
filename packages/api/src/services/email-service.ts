@@ -21,6 +21,20 @@ interface EmailOptions {
   asPlatform?: boolean;
   /** Pieces jointes (facture PDF). */
   attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
+  /**
+   * Masque l'adresse du destinataire dans les journaux (`j***@domaine`), n'y
+   * met pas l'objet et ne journalise d'une erreur de transport que son nom et
+   * son code. Les autres e-mails gardent leur journalisation actuelle.
+   */
+  redactRecipient?: boolean;
+}
+
+/** `jean@exemple.ci` devient `j***@exemple.ci` ; une valeur sans arobase devient `***`. */
+export function redactEmailAddress(address: string): string {
+  const trimmed = String(address).trim();
+  const at = trimmed.lastIndexOf('@');
+  if (at <= 0 || at === trimmed.length - 1) return '***';
+  return `${trimmed.slice(0, 1)}***${trimmed.slice(at)}`;
 }
 
 /** Nom d'expediteur + Reply-To resolus pour une agence. */
@@ -143,7 +157,11 @@ export class EmailService {
     // Skip during Jest/automated tests unless ENABLE_EMAILS=1 (for manual testing)
     const forceSend = ['1', 'true'].includes(String(process.env.ENABLE_EMAILS || '').toLowerCase());
     if (process.env.NODE_ENV === 'test' && !forceSend) {
-      console.log('[EmailService] Skipped (NODE_ENV=test):', options.subject, '→', options.to);
+      if (options.redactRecipient) {
+        console.log('[EmailService] Skipped (NODE_ENV=test):', redactEmailAddress(options.to));
+      } else {
+        console.log('[EmailService] Skipped (NODE_ENV=test):', options.subject, '→', options.to);
+      }
       return;
     }
 
@@ -170,13 +188,27 @@ export class EmailService {
         ...(options.attachments?.length ? { attachments: options.attachments } : {}),
         ...(identity?.contactEmail ? { replyTo: identity.contactEmail } : {})
       });
-      console.log('Email sent successfully:', {
-        messageId: info.messageId,
-        to: options.to,
-        subject: options.subject
-      });
+      if (options.redactRecipient) {
+        console.log('Email sent successfully:', { messageId: info.messageId, to: redactEmailAddress(options.to) });
+      } else {
+        console.log('Email sent successfully:', {
+          messageId: info.messageId,
+          to: options.to,
+          subject: options.subject
+        });
+      }
     } catch (error) {
-      console.error('Error sending email:', error);
+      if (options.redactRecipient) {
+        // Ni l'adresse ni le texte brut du transport (qui peut la reprendre).
+        const failure = error as { name?: unknown; code?: unknown } | null;
+        console.error('Error sending email:', {
+          errorName: typeof failure?.name === 'string' ? failure.name : 'UnknownError',
+          code: typeof failure?.code === 'string' ? failure.code : undefined,
+          to: redactEmailAddress(options.to)
+        });
+      } else {
+        console.error('Error sending email:', error);
+      }
       // Re-throw error so calling code can handle it appropriately
       throw error;
     }
@@ -568,7 +600,8 @@ export class EmailService {
     const text = `Bonjour ${vars.debtorName},
 
 ${vars.agencyName} prélèvera ${vars.amount} sur votre compte ${vars.ibanMasked} le ${vars.collectionDate} (loyer ${vars.period}, bail ${vars.leaseNumber}, mandat ${vars.mandateReference}).`;
-    await this.sendEmail({ to, subject, text, html, tenantId: options?.tenantId });
+    // Adresse d'un débiteur : masquée dans les journaux.
+    await this.sendEmail({ to, subject, text, html, tenantId: options?.tenantId, redactRecipient: true });
   }
 
   /**

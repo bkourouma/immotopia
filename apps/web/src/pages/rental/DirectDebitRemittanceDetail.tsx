@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { Alert, App, Button, Descriptions, Popconfirm, Skeleton, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -8,10 +8,10 @@ import {
   cancelRemittanceLine,
   exportRemittance,
   getRemittance,
-  PrenotificationSummaryDto,
   refreshRemittance,
   RemittanceDto,
   RemittanceLineDto,
+  RemittanceStatus,
   resendPrenotifications,
   SkippedMandateDto,
   submitRemittance,
@@ -29,6 +29,7 @@ import {
   formatDate,
   formatDay,
   formatPeriod,
+  inactiveMandateWarning,
   PrenotificationTag,
   RemittanceLineStatusTag,
   RemittanceStatusTag
@@ -39,19 +40,23 @@ import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
+/** Relecture automatique des avis en cours d'envoi : toutes les 3 s, pendant 2 minutes au plus. */
+const POLL_INTERVAL_MS = 3000;
+const POLL_MAX_MS = 2 * 60 * 1000;
+
 type Action = 'refresh' | 'validate' | 'resend' | 'export' | 'submit' | 'cancel' | 'line';
 
 /** Bouton dont le geste est confirmé par une infobulle de confirmation. */
 const ConfirmButton: React.FC<{
   label: string;
-  confirm: string;
+  confirm: React.ReactNode;
   onConfirm: () => void;
   loading?: boolean;
   disabled?: boolean;
   type?: 'primary' | 'default';
 }> = ({ label, confirm, onConfirm, loading, disabled, type = 'default' }) => (
   <Popconfirm
-    title={confirm}
+    title={<div style={{ maxWidth: 380 }}>{confirm}</div>}
     okText={t('Confirmer')}
     cancelText={t('Fermer')}
     onConfirm={onConfirm}
@@ -62,6 +67,28 @@ const ConfirmButton: React.FC<{
     </Button>
   </Popconfirm>
 );
+
+/** Ce que l'annulation entraîne, selon l'avancement de la remise. */
+function cancelDescription(status: RemittanceStatus, exportCount: number): string {
+  if (status === 'VALIDATED') {
+    return t(
+      "Les locataires ont déjà reçu un avis de prélèvement : prévenez-les que le prélèvement n'aura pas lieu. Toutes les lignes de la remise seront annulées. Cette action est définitive."
+    );
+  }
+  if (status === 'EXPORTED') {
+    return exportCount === 1
+      ? t(
+          "Le fichier a déjà été produit (1 fois). S'il a été chargé sur la banque en ligne, annulez aussi la remise chez la banque : sinon les comptes seront débités, et une nouvelle remise prélèverait une deuxième fois. Toutes les lignes seront annulées. Cette action est définitive."
+        )
+      : t(
+          "Le fichier a déjà été produit ({{n}} fois). S'il a été chargé sur la banque en ligne, annulez aussi la remise chez la banque : sinon les comptes seront débités, et une nouvelle remise prélèverait une deuxième fois. Toutes les lignes seront annulées. Cette action est définitive.",
+          { n: exportCount }
+        );
+  }
+  return t(
+    "Rien n'est encore parti : les échéances redeviendront disponibles pour une autre remise. Toutes les lignes seront annulées. Cette action est définitive."
+  );
+}
 
 /**
  * Détail d'une remise de prélèvements (spec 042, P2, §7.3 et §7.10) : en-tête,
@@ -78,11 +105,12 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
   const [skipped, setSkipped] = useState<SkippedMandateDto[]>(
     () => (location.state as { skipped?: SkippedMandateDto[] } | null)?.skipped ?? []
   );
-  const [prenotifications, setPrenotifications] = useState<PrenotificationSummaryDto | null>(null);
   const [busy, setBusy] = useState<Action | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [lineToWithdraw, setLineToWithdraw] = useState<RemittanceLineDto | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
+
+  const pollStartedAt = useRef<number | null>(null);
 
   const key = detailKey('direct-debit-remittances', tenantId, remittanceId as string);
   const {
@@ -93,11 +121,30 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
     queryKey: key,
     queryFn: () => getRemittance(tenantId as string, remittanceId as string),
     enabled: Boolean(tenantId && remittanceId),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    // Les avis partent en arrière-plan : on relit la remise tant que des lignes sont « en attente ».
+    refetchInterval: query => {
+      const current = query.state.data;
+      const sending =
+        current !== undefined &&
+        ['VALIDATED', 'EXPORTED', 'SUBMITTED'].includes(current.status) &&
+        current.prenotificationSummary.pending > 0;
+      if (!sending) {
+        pollStartedAt.current = null;
+        return false;
+      }
+      pollStartedAt.current ??= Date.now();
+      return Date.now() - pollStartedAt.current < POLL_MAX_MS ? POLL_INTERVAL_MS : false;
+    }
   });
 
   const apply = (next: RemittanceDto) => {
     queryClient.setQueryData(key, next);
+    void queryClient.invalidateQueries({ queryKey: entityKeyPrefix('direct-debit-remittances', tenantId) });
+  };
+
+  /** Après une erreur (un 409 veut dire que l'état a changé), l'écran relit la remise. */
+  const reload = () => {
     void queryClient.invalidateQueries({ queryKey: entityKeyPrefix('direct-debit-remittances', tenantId) });
   };
 
@@ -108,6 +155,7 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
       message.success(success);
     } catch (err) {
       message.error(apiErrorMessage(err, fallback));
+      reload();
     } finally {
       setBusy(null);
     }
@@ -138,6 +186,14 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
   const pendingLines = remittance.lines.filter(line => line.status === 'PENDING');
   const canWithdraw = status === 'DRAFT' || status === 'VALIDATED';
   const canCancel = status === 'DRAFT' || status === 'VALIDATED' || status === 'EXPORTED';
+  const activeLines = remittance.lines.filter(line => line.status === 'PENDING');
+  const summary = remittance.prenotificationSummary;
+  const anyBusy = busy !== null;
+  const showNoticesSummary = status === 'VALIDATED' || status === 'EXPORTED' || status === 'SUBMITTED';
+  // Locataires qui n'ont pas (encore) reçu leur avis de prélèvement.
+  const notNotified = Math.max(0, remittance.lineCount - summary.sent);
+  // Lignes actives dont le mandat n'est plus actif : le fichier les contient encore.
+  const inactiveMandateLines = activeLines.filter(line => line.mandate.status !== 'ACTIVE').length;
   const fallbackFileName = `${remittance.reference}.csv`;
 
   const handleRefresh = () =>
@@ -157,7 +213,7 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
       'validate',
       async () => {
         const result = await validateRemittance(tenantId as string, id);
-        setPrenotifications(result.prenotifications);
+        pollStartedAt.current = null;
         setSkipped([]);
         apply(result.remittance);
       },
@@ -170,11 +226,11 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
       'resend',
       async () => {
         const result = await resendPrenotifications(tenantId as string, id);
-        setPrenotifications(result.prenotifications);
+        pollStartedAt.current = null;
         apply(result.remittance);
       },
-      t('Prénotifications renvoyées'),
-      t('Erreur lors du renvoi des prénotifications')
+      t('Avis de prélèvement renvoyés'),
+      t('Erreur lors du renvoi des avis de prélèvement')
     );
 
   const handleExport = (first: boolean) =>
@@ -205,10 +261,10 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
     try {
       apply(await cancelRemittance(tenantId as string, id, reason));
       setCancelOpen(false);
-      setPrenotifications(null);
       message.success(t('Remise annulée'));
     } catch (err) {
       setDialogError(apiErrorMessage(err, t("Erreur lors de l'annulation de la remise")));
+      reload();
     } finally {
       setBusy(null);
     }
@@ -224,6 +280,7 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
       message.success(t('Ligne retirée'));
     } catch (err) {
       setDialogError(apiErrorMessage(err, t('Erreur lors du retrait de la ligne')));
+      reload();
     } finally {
       setBusy(null);
     }
@@ -252,6 +309,11 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
           <Text type="secondary">
             <bdi dir="ltr">{line.mandate.ibanMasked}</bdi>
           </Text>
+          {line.status === 'PENDING' && inactiveMandateWarning(line.mandate.status) && (
+            <div>
+              <Tag color="warning">{inactiveMandateWarning(line.mandate.status)}</Tag>
+            </div>
+          )}
         </div>
       )
     },
@@ -288,7 +350,7 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
       )
     },
     {
-      title: t('Prénotification'),
+      title: t('Avis de prélèvement'),
       key: 'prenotification',
       render: (_value, line) => (
         <Space size={4} wrap>
@@ -324,7 +386,7 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
           <Button
             size="small"
             danger
-            disabled={isLast}
+            disabled={isLast || anyBusy}
             onClick={() => {
               setDialogError(null);
               setLineToWithdraw(line);
@@ -385,14 +447,15 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
                 confirm={t("Recalculer les lignes à partir des échéances et des mandats d'aujourd'hui ?")}
                 onConfirm={() => void handleRefresh()}
                 loading={busy === 'refresh'}
+                disabled={anyBusy}
               />
               <ConfirmButton
                 type="primary"
                 label={t('Valider la remise')}
-                confirm={t('Valider cette remise ? Les débiteurs recevront une prénotification par e-mail.')}
+                confirm={t('Valider cette remise ? Les débiteurs recevront un avis de prélèvement par e-mail.')}
                 onConfirm={() => void handleValidate()}
                 loading={busy === 'validate'}
-                disabled={pendingLines.length === 0}
+                disabled={anyBusy || pendingLines.length === 0}
               />
             </>
           )}
@@ -400,17 +463,57 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
             <ConfirmButton
               type="primary"
               label={t('Produire le fichier')}
-              confirm={t('Produire le fichier de remise ? Il contient les IBAN complets : conservez-le avec soin.')}
+              confirm={
+                <>
+                  <div>
+                    {t('Produire le fichier de remise ? Il contient les IBAN complets : conservez-le avec soin.')}
+                  </div>
+                  <div>
+                    {t(
+                      "Une fois le fichier produit, une ligne ne peut plus être retirée : seule l'annulation de la remise reste possible."
+                    )}
+                  </div>
+                  {notNotified > 0 && (
+                    <div>
+                      <strong>
+                        {notNotified === 1
+                          ? t("1 locataire n'a pas reçu l'avis de prélèvement.")
+                          : t("{{n}} locataires n'ont pas reçu l'avis de prélèvement.", { n: notNotified })}
+                      </strong>
+                    </div>
+                  )}
+                </>
+              }
               onConfirm={() => void handleExport(true)}
               loading={busy === 'export'}
+              disabled={anyBusy}
             />
           )}
           {(status === 'EXPORTED' || status === 'SUBMITTED') && (
             <ConfirmButton
               label={t('Télécharger à nouveau le fichier')}
-              confirm={t('Télécharger à nouveau le fichier de remise ? Il contient les IBAN complets.')}
+              confirm={
+                <>
+                  <div>{t('Télécharger à nouveau le fichier de remise ? Il contient les IBAN complets.')}</div>
+                  {inactiveMandateLines > 0 && (
+                    <div>
+                      <strong>
+                        {inactiveMandateLines === 1
+                          ? t(
+                              "Attention : 1 ligne a un mandat qui n'est plus actif ; le fichier contient encore ce prélèvement."
+                            )
+                          : t(
+                              "Attention : {{n}} lignes ont un mandat qui n'est plus actif ; le fichier contient encore ces prélèvements.",
+                              { n: inactiveMandateLines }
+                            )}
+                      </strong>
+                    </div>
+                  )}
+                </>
+              }
               onConfirm={() => void handleExport(false)}
               loading={busy === 'export'}
+              disabled={anyBusy}
             />
           )}
           {status === 'EXPORTED' && (
@@ -420,19 +523,22 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
               confirm={t('Confirmer que le fichier a été chargé sur votre banque en ligne ?')}
               onConfirm={() => void handleSubmit()}
               loading={busy === 'submit'}
+              disabled={anyBusy}
             />
           )}
           {(status === 'VALIDATED' || status === 'EXPORTED') && (
             <ConfirmButton
-              label={t('Renvoyer les prénotifications')}
-              confirm={t('Renvoyer les prénotifications aux débiteurs qui ne les ont pas reçues ?')}
+              label={t('Renvoyer les avis de prélèvement')}
+              confirm={t('Renvoyer les avis de prélèvement aux débiteurs qui ne les ont pas reçus ?')}
               onConfirm={() => void handleResend()}
               loading={busy === 'resend'}
+              disabled={anyBusy}
             />
           )}
           {canCancel && (
             <Button
               danger
+              disabled={anyBusy}
               onClick={() => {
                 setDialogError(null);
                 setCancelOpen(true);
@@ -443,9 +549,7 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
           )}
         </Space>
 
-        {prenotifications && (
-          <PrenotificationSummaryAlert summary={prenotifications} onClose={() => setPrenotifications(null)} />
-        )}
+        {showNoticesSummary && <PrenotificationSummaryAlert summary={summary} lineCount={remittance.lineCount} />}
         <SkippedMandatesAlert skipped={skipped} onClose={() => setSkipped([])} />
 
         <Descriptions bordered size="small" column={{ xs: 1, md: 2, xl: 3 }}>
@@ -470,7 +574,7 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
           <Descriptions.Item label={t('Période')}>
             {formatPeriod(remittance.periodYear, remittance.periodMonth)}
           </Descriptions.Item>
-          <Descriptions.Item label={t('Prénotification au plus tard le')}>
+          <Descriptions.Item label={t('Avis de prélèvement au plus tard le')}>
             {formatDay(remittance.prenotificationDeadline)}
           </Descriptions.Item>
           <Descriptions.Item label={t('Lignes')}>{remittance.lineCount}</Descriptions.Item>
@@ -520,7 +624,12 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
       <ReasonModal
         open={cancelOpen}
         title={t('Annuler la remise')}
-        description={t('Toutes les lignes de la remise seront annulées. Cette action est définitive.')}
+        description={cancelDescription(status, remittance.exportCount)}
+        acknowledgement={
+          status === 'EXPORTED'
+            ? t("J'ai vérifié que ce fichier n'a pas été chargé sur la banque, ou je l'ai annulé chez elle")
+            : undefined
+        }
         okText={t('Annuler la remise')}
         required
         loading={busy === 'cancel'}
@@ -531,6 +640,11 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
       <ReasonModal
         open={lineToWithdraw !== null}
         title={t('Retirer la ligne {{reference}}', { reference: lineToWithdraw?.reference ?? '' })}
+        description={
+          status === 'VALIDATED'
+            ? t("Le locataire a déjà reçu l'avis de prélèvement : prévenez-le que ce prélèvement n'aura pas lieu.")
+            : undefined
+        }
         okText={t('Retirer')}
         required={false}
         loading={busy === 'line'}

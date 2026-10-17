@@ -16,8 +16,9 @@ import {
 
 /**
  * Spec 042, P2 — détail d'une remise (§7.3, §7.10) : actions selon le statut,
- * confirmations, résumé des prénotifications, retrait de ligne, annulation avec
- * motif, mandats non retenus, IBAN masqué seulement.
+ * confirmations, résumé des avis de prélèvement (persistant, relu pendant l'envoi),
+ * retrait de ligne, annulation selon le statut, mandats non retenus et non actifs,
+ * IBAN masqué seulement.
  */
 
 const getRemittance = vi.fn();
@@ -122,25 +123,32 @@ describe('DirectDebitRemittanceDetail', () => {
     expect(screen.queryByText(WARNING_TEXT)).not.toBeInTheDocument();
   });
 
-  it('valide après confirmation (avis de prénotification par e-mail) puis résume les prénotifications', async () => {
+  it('valide après confirmation (avis de prélèvement par e-mail) puis relit la remise et résume les avis', async () => {
     const user = userEvent.setup();
-    const validated = makeRemittance({ status: 'VALIDATED', validatedAt: '2026-10-16T10:00:00.000Z' });
+    const validated = makeRemittance({
+      status: 'VALIDATED',
+      validatedAt: '2026-10-16T10:00:00.000Z',
+      prenotificationSummary: { pending: 0, sent: 1, noEmail: 1, disabled: 0, failed: 0 }
+    });
     validateRemittance.mockResolvedValue({
       remittance: validated,
-      prenotifications: { pending: 0, sent: 3, noEmail: 1, disabled: 0, failed: 2 }
+      prenotifications: { pending: 2, sent: 0, noEmail: 0, disabled: 0, failed: 0 }
     });
     getRemittance.mockResolvedValueOnce(makeRemittance()).mockResolvedValue(validated);
     mount();
     await screen.findByRole('heading', { name: 'PRL-2026-0001' });
 
     await user.click(screen.getByRole('button', { name: 'Valider la remise' }));
-    expect(await screen.findByText(/recevront une prénotification par e-mail/)).toBeInTheDocument();
+    expect(await screen.findByText(/recevront un avis de prélèvement par e-mail/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Confirmer' }));
 
     await waitFor(() => expect(validateRemittance).toHaveBeenCalledWith(TENANT_ID, REMITTANCE_ID));
-    expect(
-      await screen.findByText(/Envoyées : 3 · Sans e-mail : 1 · Désactivées : 0 · En échec : 2/)
-    ).toBeInTheDocument();
+    // Le résumé vient de la remise relue, pas de la réponse de la validation.
+    const summary = await screen.findByText(
+      'Envoyés : 1 · En cours : 0 · Sans e-mail : 1 · Désactivés : 0 · En échec : 0'
+    );
+    expect(summary.closest('.ant-alert')).toHaveClass('ant-alert-warning');
+    expect(getRemittance.mock.calls.length).toBeGreaterThanOrEqual(2);
     // L'écran suit le nouveau statut.
     // (requêtes par texte : getByRole est très lent sur le DOM d'Ant Design)
     expect(await screen.findByText('Produire le fichier')).toBeInTheDocument();
@@ -161,7 +169,7 @@ describe('DirectDebitRemittanceDetail', () => {
     getRemittance.mockResolvedValueOnce(validated).mockResolvedValue(exported);
     mount();
     await screen.findByRole('heading', { name: 'PRL-2026-0001' });
-    expect(button('Renvoyer les prénotifications')).toBeInTheDocument();
+    expect(button('Renvoyer les avis de prélèvement')).toBeInTheDocument();
 
     await clickAndConfirm(user, 'Produire le fichier');
 
@@ -185,7 +193,7 @@ describe('DirectDebitRemittanceDetail', () => {
 
     expect(await screen.findByText(WARNING_TEXT)).toBeInTheDocument();
     expect(button('Télécharger à nouveau le fichier')).toBeInTheDocument();
-    expect(button('Renvoyer les prénotifications')).toBeInTheDocument();
+    expect(button('Renvoyer les avis de prélèvement')).toBeInTheDocument();
     expect(button('Annuler la remise')).toBeInTheDocument();
     expect(button('Retirer')).not.toBeInTheDocument();
 
@@ -195,6 +203,315 @@ describe('DirectDebitRemittanceDetail', () => {
     expect(screen.queryByText(WARNING_TEXT)).not.toBeInTheDocument();
     expect(button('Télécharger à nouveau le fichier')).toBeInTheDocument();
     expect(button('Annuler la remise')).not.toBeInTheDocument();
+  });
+
+  it('VALIDÉE : la confirmation de production prévient du retrait impossible et des avis non reçus', async () => {
+    const user = userEvent.setup();
+    getRemittance.mockResolvedValue(
+      makeRemittance({
+        status: 'VALIDATED',
+        prenotificationSummary: { ...emptyPrenotifications, sent: 1, failed: 1 }
+      })
+    );
+    mount();
+    await screen.findByRole('heading', { name: 'PRL-2026-0001' });
+
+    await user.click(screen.getByRole('button', { name: 'Produire le fichier' }));
+
+    expect(
+      await screen.findByText(
+        "Une fois le fichier produit, une ligne ne peut plus être retirée : seule l'annulation de la remise reste possible."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("1 locataire n'a pas reçu l'avis de prélèvement.")).toBeInTheDocument();
+  });
+
+  it("VALIDÉE : la confirmation de production n'évoque pas d'avis manquant quand tous sont envoyés", async () => {
+    const user = userEvent.setup();
+    getRemittance.mockResolvedValue(
+      makeRemittance({
+        status: 'VALIDATED',
+        prenotificationSummary: { ...emptyPrenotifications, sent: 2 }
+      })
+    );
+    mount();
+    await screen.findByRole('heading', { name: 'PRL-2026-0001' });
+
+    await user.click(screen.getByRole('button', { name: 'Produire le fichier' }));
+
+    expect(await screen.findByText(/une ligne ne peut plus être retirée/)).toBeInTheDocument();
+    expect(screen.queryByText(/n'a pas reçu l'avis|n'ont pas reçu l'avis/)).not.toBeInTheDocument();
+  });
+
+  it('résumé des avis : vert quand tous sont envoyés, orange sinon, sur les remises validées, produites et déposées', async () => {
+    getRemittance.mockResolvedValue(
+      makeRemittance({ status: 'VALIDATED', prenotificationSummary: { ...emptyPrenotifications, sent: 2 } })
+    );
+    const first = mount();
+    const ok = await screen.findByText(/Envoyés : 2 · En cours : 0 · Sans e-mail : 0/);
+    expect(ok.closest('.ant-alert')).toHaveClass('ant-alert-success');
+    first.unmount();
+
+    getRemittance.mockResolvedValue(
+      makeRemittance({
+        status: 'SUBMITTED',
+        submittedAt: '2026-10-17T08:00:00.000Z',
+        prenotificationSummary: { ...emptyPrenotifications, sent: 1, disabled: 1 }
+      })
+    );
+    mount();
+    const warn = await screen.findByText(/Envoyés : 1 · En cours : 0 · Sans e-mail : 0 · Désactivés : 1/);
+    expect(warn.closest('.ant-alert')).toHaveClass('ant-alert-warning');
+  });
+
+  it("n'affiche aucun résumé des avis sur un brouillon", async () => {
+    mount();
+    await screen.findByRole('heading', { name: 'PRL-2026-0001' });
+
+    expect(screen.queryByText(/Envoyés :/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Envoi des avis en cours…')).not.toBeInTheDocument();
+  });
+
+  it("envoi en cours : le message s'affiche et la remise est relue toutes les 3 s jusqu'à la fin de l'envoi", async () => {
+    getRemittance
+      .mockResolvedValueOnce(
+        makeRemittance({ status: 'VALIDATED', prenotificationSummary: { ...emptyPrenotifications, pending: 2 } })
+      )
+      .mockResolvedValue(
+        makeRemittance({ status: 'VALIDATED', prenotificationSummary: { ...emptyPrenotifications, sent: 2 } })
+      );
+    mount();
+
+    expect(await screen.findByText('Envoi des avis en cours…')).toBeInTheDocument();
+    expect(getRemittance).toHaveBeenCalledTimes(1);
+
+    // Relecture automatique, sans action de l'utilisateur.
+    const done = await screen.findByText(/Envoyés : 2 · En cours : 0/);
+    expect(done.closest('.ant-alert')).toHaveClass('ant-alert-success');
+    expect(screen.queryByText('Envoi des avis en cours…')).not.toBeInTheDocument();
+    expect(getRemittance).toHaveBeenCalledTimes(2);
+  });
+
+  it('marque la ligne dont le mandat est suspendu ou révoqué', async () => {
+    const mandate = (status: string) => ({
+      id: 'm-1',
+      reference: 'MDT-2026-0001',
+      ibanMasked: 'CI•• •••• •••• •••• •••• 5678',
+      holderName: 'Awa Traoré',
+      maxAmount: null,
+      status
+    });
+    getRemittance.mockResolvedValue(
+      makeRemittance({
+        status: 'VALIDATED',
+        prenotificationSummary: { ...emptyPrenotifications, sent: 2 },
+        lines: [
+          makeLine({ mandate: mandate('SUSPENDED') }),
+          makeLine({ id: 'l-2', lineNumber: 2, reference: 'PRL-2026-0001-002', mandate: mandate('REVOKED') }),
+          makeLine({
+            id: 'l-3',
+            lineNumber: 3,
+            reference: 'PRL-2026-0001-003',
+            status: 'CANCELED',
+            mandate: mandate('REVOKED')
+          })
+        ]
+      })
+    );
+    mount();
+    await screen.findByRole('heading', { name: 'PRL-2026-0001' });
+
+    expect(screen.getAllByText('Mandat suspendu')).toHaveLength(1);
+    // La ligne retirée n'est plus concernée : seule la ligne active révoquée porte l'étiquette.
+    expect(screen.getAllByText('Mandat révoqué')).toHaveLength(1);
+  });
+
+  it("EXPORTÉE : le nouveau téléchargement signale un mandat qui n'est plus actif", async () => {
+    const user = userEvent.setup();
+    getRemittance.mockResolvedValue(
+      makeRemittance({
+        status: 'EXPORTED',
+        exportCount: 1,
+        prenotificationSummary: { ...emptyPrenotifications, sent: 2 },
+        lines: [
+          makeLine({
+            mandate: {
+              id: 'm-1',
+              reference: 'MDT-2026-0001',
+              ibanMasked: 'CI•• •••• •••• •••• •••• 5678',
+              holderName: 'Awa Traoré',
+              maxAmount: null,
+              status: 'SUSPENDED'
+            }
+          }),
+          makeLine({ id: 'l-2', lineNumber: 2, reference: 'PRL-2026-0001-002' })
+        ]
+      })
+    );
+    mount();
+    await screen.findByText(WARNING_TEXT);
+
+    await user.click(screen.getByRole('button', { name: 'Télécharger à nouveau le fichier' }));
+
+    expect(
+      await screen.findByText(
+        "Attention : 1 ligne a un mandat qui n'est plus actif ; le fichier contient encore ce prélèvement."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('EXPORTÉE : le nouveau téléchargement ne signale rien quand tous les mandats sont actifs', async () => {
+    const user = userEvent.setup();
+    getRemittance.mockResolvedValue(
+      makeRemittance({
+        status: 'EXPORTED',
+        exportCount: 1,
+        prenotificationSummary: { ...emptyPrenotifications, sent: 2 }
+      })
+    );
+    mount();
+    await screen.findByText(WARNING_TEXT);
+
+    await user.click(screen.getByRole('button', { name: 'Télécharger à nouveau le fichier' }));
+
+    expect(await screen.findByText(/Il contient les IBAN complets/)).toBeInTheDocument();
+    expect(screen.queryByText(/n'est plus actif/)).not.toBeInTheDocument();
+  });
+
+  it("BROUILLON : l'annulation dit que rien n'est parti, sans case à cocher", async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByRole('heading', { name: 'PRL-2026-0001' });
+
+    await user.click(screen.getByRole('button', { name: 'Annuler la remise' }));
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).getByText(/Rien n'est encore parti/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/les échéances redeviendront disponibles/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it("VALIDÉE : l'annulation demande de prévenir les locataires qui ont reçu l'avis", async () => {
+    const user = userEvent.setup();
+    getRemittance.mockResolvedValue(
+      makeRemittance({ status: 'VALIDATED', prenotificationSummary: { ...emptyPrenotifications, sent: 2 } })
+    );
+    mount();
+    await screen.findByRole('heading', { name: 'PRL-2026-0001' });
+
+    await user.click(screen.getByRole('button', { name: 'Annuler la remise' }));
+    const dialog = await screen.findByRole('dialog');
+
+    expect(
+      within(dialog).getByText(
+        /Les locataires ont déjà reçu un avis de prélèvement : prévenez-les que le prélèvement n'aura pas lieu/
+      )
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it("EXPORTÉE : l'annulation exige la case de vérification auprès de la banque avant d'activer le bouton", async () => {
+    const user = userEvent.setup();
+    const canceled = makeRemittance({
+      status: 'CANCELED',
+      canceledAt: '2026-10-17T08:00:00.000Z',
+      cancellationReason: 'Fichier erroné'
+    });
+    cancelRemittance.mockResolvedValue(canceled);
+    getRemittance.mockReset();
+    getRemittance
+      .mockResolvedValueOnce(
+        makeRemittance({
+          status: 'EXPORTED',
+          exportCount: 3,
+          prenotificationSummary: { ...emptyPrenotifications, sent: 2 }
+        })
+      )
+      .mockResolvedValue(canceled);
+    mount();
+    await screen.findByText(WARNING_TEXT);
+
+    await user.click(screen.getByRole('button', { name: 'Annuler la remise' }));
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).getByText(/Le fichier a déjà été produit \(3 fois\)/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/annulez aussi la remise chez la banque/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/une nouvelle remise prélèverait une deuxième fois/)).toBeInTheDocument();
+
+    const confirm = within(dialog).getByRole('button', { name: 'Annuler la remise' });
+    const checkbox = within(dialog).getByRole('checkbox', {
+      name: "J'ai vérifié que ce fichier n'a pas été chargé sur la banque, ou je l'ai annulé chez elle"
+    });
+    // Motif saisi mais case non cochée : le bouton reste inactif.
+    await user.type(within(dialog).getByRole('textbox'), 'Fichier erroné');
+    expect(confirm).toBeDisabled();
+
+    await user.click(checkbox);
+    expect(confirm).toBeEnabled();
+    await user.click(confirm);
+
+    await waitFor(() => expect(cancelRemittance).toHaveBeenCalledWith(TENANT_ID, REMITTANCE_ID, 'Fichier erroné'));
+  });
+
+  it("VALIDÉE : le retrait d'une ligne rappelle que le locataire a déjà reçu l'avis", async () => {
+    const user = userEvent.setup();
+    getRemittance.mockResolvedValue(
+      makeRemittance({ status: 'VALIDATED', prenotificationSummary: { ...emptyPrenotifications, sent: 2 } })
+    );
+    mount();
+    await screen.findByRole('heading', { name: 'PRL-2026-0001' });
+
+    await user.click(screen.getAllByRole('button', { name: 'Retirer' })[0]);
+    const dialog = await screen.findByRole('dialog');
+
+    expect(
+      within(dialog).getByText(
+        "Le locataire a déjà reçu l'avis de prélèvement : prévenez-le que ce prélèvement n'aura pas lieu."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("BROUILLON : le retrait d'une ligne n'ajoute pas de rappel sur l'avis", async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByRole('heading', { name: 'PRL-2026-0001' });
+
+    await user.click(screen.getAllByRole('button', { name: 'Retirer' })[0]);
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).queryByText(/déjà reçu l'avis/)).not.toBeInTheDocument();
+  });
+
+  it("pendant une action, tous les boutons d'action sont inactifs", async () => {
+    const user = userEvent.setup();
+    let finish: (value: unknown) => void = () => undefined;
+    validateRemittance.mockReturnValue(new Promise(resolve => (finish = resolve)));
+    mount();
+    await screen.findByRole('heading', { name: 'PRL-2026-0001' });
+
+    await clickAndConfirm(user, 'Valider la remise');
+
+    await waitFor(() => expect(validateRemittance).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: 'Actualiser' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Annuler la remise' })).toBeDisabled();
+    for (const retirer of screen.getAllByRole('button', { name: 'Retirer' })) expect(retirer).toBeDisabled();
+
+    finish({ remittance: makeRemittance({ status: 'VALIDATED' }), prenotifications: emptyPrenotifications });
+  });
+
+  it("après une erreur d'action (409), la remise est relue", async () => {
+    const user = userEvent.setup();
+    validateRemittance.mockRejectedValue({
+      response: { status: 409, data: { message: "La remise n'est plus en brouillon." } }
+    });
+    mount();
+    await screen.findByRole('heading', { name: 'PRL-2026-0001' });
+    expect(getRemittance).toHaveBeenCalledTimes(1);
+
+    await clickAndConfirm(user, 'Valider la remise');
+
+    expect(await screen.findByText(/La remise n'est plus en brouillon/)).toBeInTheDocument();
+    await waitFor(() => expect(getRemittance.mock.calls.length).toBeGreaterThanOrEqual(2));
   });
 
   it('ANNULÉE : affiche le motif et aucune action', async () => {
@@ -212,20 +529,27 @@ describe('DirectDebitRemittanceDetail', () => {
     expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 
-  it('renvoie les prénotifications après confirmation et résume le résultat', async () => {
+  it('renvoie les avis de prélèvement après confirmation puis relit le résumé', async () => {
     const user = userEvent.setup();
     getRemittance.mockResolvedValue(makeRemittance({ status: 'VALIDATED' }));
     resendPrenotifications.mockResolvedValue({
       remittance: makeRemittance({ status: 'VALIDATED' }),
-      prenotifications: { ...emptyPrenotifications, sent: 2 }
+      prenotifications: { ...emptyPrenotifications, pending: 2 }
     });
     mount();
     await screen.findByRole('heading', { name: 'PRL-2026-0001' });
 
-    await clickAndConfirm(user, 'Renvoyer les prénotifications');
+    await clickAndConfirm(user, 'Renvoyer les avis de prélèvement');
 
     await waitFor(() => expect(resendPrenotifications).toHaveBeenCalledWith(TENANT_ID, REMITTANCE_ID));
-    expect(await screen.findByText(/Envoyées : 2 · Sans e-mail : 0/)).toBeInTheDocument();
+    getRemittance.mockResolvedValue(
+      makeRemittance({
+        status: 'VALIDATED',
+        prenotificationSummary: { ...emptyPrenotifications, sent: 2 }
+      })
+    );
+    await waitFor(() => expect(getRemittance.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(await screen.findByText(/Envoyés : 2 · En cours : 0/)).toBeInTheDocument();
   });
 
   it('retire une ligne avec un motif facultatif', async () => {

@@ -87,7 +87,7 @@ export const DirectDebitRemittances: React.FC = () => {
       render: (_value, remittance) => formatMoney(remittance.totalAmount)
     },
     {
-      title: t('Prénotification au plus tard le'),
+      title: t('Avis de prélèvement au plus tard le'),
       key: 'deadline',
       render: (_value, remittance) => formatDay(remittance.prenotificationDeadline)
     }

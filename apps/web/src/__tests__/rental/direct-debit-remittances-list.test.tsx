@@ -132,6 +132,11 @@ describe('DirectDebitRemittances', () => {
     expect(within(dialog).getByText('Compte loyers')).toBeInTheDocument();
     expect(within(dialog).queryByText('Ancien compte')).not.toBeInTheDocument();
     expect(within(dialog).getByDisplayValue('05/11/2026')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('Avis de prélèvement : 5 jours ouvrés avant la date de prélèvement.')
+    ).toBeInTheDocument();
+    // Les notes sont bornées comme côté API.
+    expect(dialog.querySelector('textarea')).toHaveAttribute('maxlength', '2000');
 
     await user.click(within(dialog).getByRole('button', { name: 'Préparer' }));
 
@@ -141,6 +146,20 @@ describe('DirectDebitRemittances', () => {
     const probe = await screen.findByTestId('location');
     expect(probe.textContent).toContain(`/tenant/${TENANT_ID}/rental/direct-debit/remittances/r-1`);
     expect(probe.textContent).toContain('MDT-2026-0009');
+  });
+
+  it('accorde « 1 jour ouvré » au singulier dans la modale', async () => {
+    const user = userEvent.setup();
+    listCreditors.mockResolvedValue([{ ...creditor, prenotificationBusinessDays: 1 }]);
+    mount();
+    await screen.findByRole('link', { name: 'PRL-2026-0001' });
+
+    await user.click(screen.getByRole('button', { name: /Préparer une remise/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    expect(
+      await within(dialog).findByText('Avis de prélèvement : 1 jour ouvré avant la date de prélèvement.')
+    ).toBeInTheDocument();
   });
 
   it("affiche le message de l'API dans la modale quand la date est refusée", async () => {

@@ -4,23 +4,26 @@ import type { PrenotificationSummaryDto, SkippedMandateDto } from '../../../serv
 import { skipReasonLabel } from './direct-debit-shared';
 import { t } from '../../../i18n/t';
 
-/** Résumé des prénotifications envoyées après une validation ou un renvoi. */
-export const PrenotificationSummaryAlert: React.FC<{ summary: PrenotificationSummaryDto; onClose?: () => void }> = ({
+/**
+ * État des avis de prélèvement d'une remise validée : toujours relu depuis la
+ * remise. Vert seulement si toutes les lignes ont reçu leur avis ; tant que
+ * l'envoi se poursuit en arrière-plan, le message le dit.
+ */
+export const PrenotificationSummaryAlert: React.FC<{ summary: PrenotificationSummaryDto; lineCount: number }> = ({
   summary,
-  onClose
+  lineCount
 }) => {
-  const needsAttention = summary.failed > 0 || summary.noEmail > 0;
+  const allSent = summary.sent >= lineCount;
   return (
     <Alert
-      type={needsAttention ? 'warning' : 'success'}
+      type={allSent ? 'success' : 'warning'}
       showIcon
-      closable={Boolean(onClose)}
-      onClose={onClose}
-      message={t('Prénotifications')}
+      message={summary.pending > 0 ? t('Envoi des avis en cours…') : t('Avis de prélèvement')}
       description={t(
-        'Envoyées : {{sent}} · Sans e-mail : {{noEmail}} · Désactivées : {{disabled}} · En échec : {{failed}}',
+        'Envoyés : {{sent}} · En cours : {{pending}} · Sans e-mail : {{noEmail}} · Désactivés : {{disabled}} · En échec : {{failed}}',
         {
           sent: summary.sent,
+          pending: summary.pending,
           noEmail: summary.noEmail,
           disabled: summary.disabled,
           failed: summary.failed

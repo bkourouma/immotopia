@@ -312,6 +312,8 @@ export interface RemittanceLineDto {
     ibanMasked: string;
     holderName: string;
     maxAmount: number | null;
+    /** Statut actuel du mandat : un mandat non actif garde sa ligne tant que la remise n'est pas annulée. */
+    status: MandateStatus;
   };
   debtor: { id: string; displayName: string | null };
   lease: { id: string; leaseNumber: string };
@@ -337,7 +339,7 @@ export interface RemittanceDto extends RemittanceSummaryDto {
   notes: string | null;
   /** Toutes les lignes, annulées comprises, par `lineNumber`. */
   lines: RemittanceLineDto[];
-  /** Lignes PENDING seulement. */
+  /** Lignes PENDING seulement ; les envois se font en arrière-plan (lignes `PENDING` le temps de l'envoi). */
   prenotificationSummary: PrenotificationSummaryDto;
 }
 

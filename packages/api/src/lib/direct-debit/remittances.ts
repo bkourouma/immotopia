@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { t } from '../../i18n';
 import { BadRequestError, ConflictError, NotFoundError } from '../../middleware/error-middleware';
@@ -9,9 +8,10 @@ import type { PrismaTransactionClient } from '../../utils/database';
 import { nextSequenceTx } from '../sales/numbering';
 import { checkCollectionDate, formatFrenchDate, prenotificationDeadline, todayUtc, toIsoDate } from './business-days';
 import { resolveDebtorNames, type DbClient } from './dto';
+import { assertFileDigestAvailable, computeRemittanceFileDigest } from './file-digest';
 import { getFileAdapter, type DirectDebitFileFormatKey } from './file-formats';
 import { decryptMandateIban } from './mandates';
-import { sendRemittancePrenotifications } from './prenotification';
+import { startRemittancePrenotifications } from './prenotification';
 import {
   REMITTANCE_SUMMARY_SELECT,
   lineReferenceOf,
@@ -48,20 +48,26 @@ type Tx = PrismaTransactionClient;
 
 const MAX_SEQUENCE_ATTEMPTS = 3;
 
+/** Écritures longues (création, actualisation, validation d'une remise de centaines de lignes). */
+const WRITE_TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 30_000 };
+
 const notFoundRemittance = () => new NotFoundError(t('Remise introuvable.'));
 const notFoundLine = () => new NotFoundError(t('Ligne de remise introuvable.'));
 const reloadConflict = () => new ConflictError(t("La remise vient d'être modifiée : rechargez la page."));
 const installmentTaken = () =>
-  new ConflictError(t('Une échéance de cette remise figure déjà dans une autre remise de prélèvement.'));
+  new ConflictError(t('Une échéance figure déjà dans une autre remise : actualisez puis réessayez.'));
+const collectionDatePassed = () =>
+  new ConflictError(t('La date de prélèvement est passée : annulez cette remise et préparez-en une nouvelle.'));
 
+/** Vocabulaire de l'écran : brouillon, validée, fichier produit, déposée à la banque, annulée. */
 function statusLabel(status: RemittanceStatus): string {
   switch (status) {
     case 'DRAFT':
-      return t('en brouillon');
+      return t('brouillon');
     case 'VALIDATED':
       return t('validée');
     case 'EXPORTED':
-      return t('exportée');
+      return t('fichier produit');
     case 'SUBMITTED':
       return t('déposée à la banque');
     default:
@@ -70,7 +76,9 @@ function statusLabel(status: RemittanceStatus): string {
 }
 
 const transitionImpossible = (status: RemittanceStatus) =>
-  new ConflictError(t('Transition impossible : la remise est {{status}}.', { status: statusLabel(status) }));
+  new ConflictError(
+    t('Transition impossible : la remise est au statut « {{status}} ».', { status: statusLabel(status) })
+  );
 
 function uniqueViolationTarget(error: unknown): string | null {
   if (typeof error !== 'object' || error === null || (error as { code?: string }).code !== 'P2002') return null;
@@ -256,28 +264,25 @@ async function createLines(
   firstLineNumber: number,
   selected: SelectedCandidate[]
 ): Promise<void> {
-  let lineNumber = firstLineNumber;
-  for (const candidate of selected) {
-    await tx.directDebitRemittanceLine.create({
-      data: {
-        tenantId,
-        remittanceId,
-        lineNumber,
-        mandateId: candidate.mandateId,
-        leaseId: candidate.leaseId,
-        installmentId: candidate.installmentId,
-        debtorClientId: candidate.debtorClientId,
-        status: 'PENDING',
-        amount: candidate.result.amount,
-        remainingDueAtSelection: candidate.result.remainingDue,
-        capped: candidate.result.capped,
-        // ADR-007 article 6 : la clé d unicité d une ligne vivante est son échéance.
-        activeKey: candidate.installmentId
-      },
-      select: { id: true }
-    });
-    lineNumber += 1;
-  }
+  if (selected.length === 0) return;
+  // Un seul aller-retour : une violation d'unicité sur activeKey annule tout le lot.
+  await tx.directDebitRemittanceLine.createMany({
+    data: selected.map((candidate, index) => ({
+      tenantId,
+      remittanceId,
+      lineNumber: firstLineNumber + index,
+      mandateId: candidate.mandateId,
+      leaseId: candidate.leaseId,
+      installmentId: candidate.installmentId,
+      debtorClientId: candidate.debtorClientId,
+      status: 'PENDING' as const,
+      amount: candidate.result.amount,
+      remainingDueAtSelection: candidate.result.remainingDue,
+      capped: candidate.result.capped,
+      // ADR-007 article 6 : la clé d unicité d une ligne vivante est son échéance.
+      activeKey: candidate.installmentId
+    }))
+  });
 }
 
 /** Totaux des lignes PENDING, recalculés dans la transaction de toute écriture de lignes. */
@@ -444,6 +449,7 @@ export async function createRemittance(
             creditorId: creditor.id,
             status: 'DRAFT',
             collectionDate,
+            prenotificationDeadline: prenotificationDeadline(collectionDate, creditor.prenotificationBusinessDays),
             periodYear: collectionDate.getUTCFullYear(),
             periodMonth: collectionDate.getUTCMonth() + 1,
             notes: input.notes ?? null,
@@ -462,7 +468,7 @@ export async function createRemittance(
           payload: auditPayload(await currentTotals(tx, tenantId, created.id))
         });
         return { id: created.id, skipped: toSkipped(candidates) };
-      });
+      }, WRITE_TRANSACTION_OPTIONS);
     } catch (error) {
       const target = uniqueViolationTarget(error);
       if (target === null) throw error;
@@ -502,6 +508,16 @@ export async function refreshRemittance(
   try {
     skipped = await prisma.$transaction(async tx => {
       const remittance = await lockRemittance(tx, tenantId, remittanceId, ['DRAFT']);
+      // Le délai de prénotification du créancier a pu changer depuis la création.
+      await tx.directDebitRemittance.updateMany({
+        where: { id: remittanceId, tenantId, status: 'DRAFT' },
+        data: {
+          prenotificationDeadline: prenotificationDeadline(
+            remittance.collectionDate,
+            remittance.creditor.prenotificationBusinessDays
+          )
+        }
+      });
       const candidates = await evaluateCandidates(
         tx,
         tenantId,
@@ -578,7 +594,7 @@ export async function refreshRemittance(
         }
       });
       return toSkipped(fresh);
-    });
+    }, WRITE_TRANSACTION_OPTIONS);
   } catch (error) {
     if (isActiveKeyViolation(uniqueViolationTarget(error))) throw installmentTaken();
     throw error;
@@ -664,19 +680,25 @@ export async function validateRemittance(
         installmentId: true,
         amount: true,
         remainingDueAtSelection: true,
-        capped: true
+        capped: true,
+        mandate: { select: { year: true, sequence: true } }
       }
     });
     if (lines.length === 0) throw new BadRequestError(t('Cette remise ne contient aucune ligne à prélever.'));
 
     const identifier = creditor.creditorIdentifier?.trim();
-    if (!creditor.isActive) throw new BadRequestError(t('Ce créancier est désactivé : choisissez-en un autre.'));
+    if (!creditor.isActive) {
+      throw new BadRequestError(t('Ce créancier est désactivé : réactivez-le ou annulez la remise.'));
+    }
     if (!identifier) {
       throw new BadRequestError(t("Renseignez le numéro d'émetteur du créancier avant de valider la remise."));
     }
 
+    // Aujourd'hui doit précéder strictement la date de prélèvement, puis respecter la date limite.
+    const today = todayUtc(now);
+    if (today.getTime() >= remittance.collectionDate.getTime()) throw collectionDatePassed();
     const deadline = prenotificationDeadline(remittance.collectionDate, creditor.prenotificationBusinessDays);
-    if (todayUtc(now).getTime() > deadline.getTime()) {
+    if (today.getTime() > deadline.getTime()) {
       throw new ConflictError(
         t(
           'La date limite de prénotification ({{date}}) est dépassée : annulez cette remise et préparez-en une nouvelle.',
@@ -690,9 +712,15 @@ export async function validateRemittance(
     const byMandate = new Map(candidates.map(candidate => [candidate.mandateId, candidate]));
     for (const line of lines) {
       const candidate = byMandate.get(line.mandateId);
+      // Mandat suspendu, révoqué, bail clos, échéance disparue : il n'est plus prélevable.
+      if (candidate === undefined || !isSelected(candidate)) {
+        throw new ConflictError(
+          t("Le mandat {{reference}} n'est plus prélevable : actualisez la remise.", {
+            reference: mandateReferenceOf(line.mandate.year, line.mandate.sequence)
+          })
+        );
+      }
       const same =
-        candidate !== undefined &&
-        isSelected(candidate) &&
         candidate.installmentId === line.installmentId &&
         sameMoney(candidate.result.amount, Number(line.amount)) &&
         sameMoney(candidate.result.remainingDue, Number(line.remainingDueAtSelection)) &&
@@ -711,7 +739,9 @@ export async function validateRemittance(
         validatedByUserId: actorUserId ?? null,
         fileFormat: creditor.fileFormat,
         creditorLabelSnapshot: creditor.label,
-        creditorIdentifierSnapshot: identifier
+        creditorIdentifierSnapshot: identifier,
+        // Figée dès la validation, avec le délai courant du créancier.
+        prenotificationDeadline: deadline
       }
     });
     if (result.count === 0) throw reloadConflict();
@@ -724,10 +754,11 @@ export async function validateRemittance(
       entityId: remittanceId,
       payload: { ...auditPayload(await currentTotals(tx, tenantId, remittanceId)), from: 'DRAFT', to: 'VALIDATED' }
     });
-  });
+  }, WRITE_TRANSACTION_OPTIONS);
 
-  // Hors transaction : un échec d envoi ne défait pas la validation.
-  await sendRemittancePrenotifications(tenantId, remittanceId, actorUserId);
+  // Après le commit, en arrière-plan : un échec d'envoi ne défait pas la validation
+  // et la réponse n'attend pas les e-mails (prénotifications encore PENDING dans le résumé).
+  startRemittancePrenotifications(tenantId, remittanceId, actorUserId);
   const remittance = await getRemittance(tenantId, remittanceId);
   return { remittance, prenotifications: remittance.prenotificationSummary };
 }
@@ -750,7 +781,8 @@ export async function resendPrenotifications(
       t('La date de prélèvement est atteinte : les prénotifications ne peuvent plus être envoyées.')
     );
   }
-  await sendRemittancePrenotifications(tenantId, remittanceId, actorUserId);
+  // En arrière-plan, sous verrou par remise : pas de doublon si un envoi est déjà en cours.
+  startRemittancePrenotifications(tenantId, remittanceId, actorUserId);
   const remittance = await getRemittance(tenantId, remittanceId);
   return { remittance, prenotifications: remittance.prenotificationSummary };
 }
@@ -798,7 +830,8 @@ const EXPORT_SELECT = {
  * Produit le fichier de remise. C est le SEUL endroit où l IBAN complet est
  * déchiffré pour une remise. L audit critique est écrit et validé AVANT que le
  * fichier soit rendu : son échec bloque l envoi. Le fichier n est ni stocké ni
- * journalisé ; seule son empreinte SHA-256 est gardée.
+ * journalisé ; seule son empreinte HMAC-SHA-256 (clé dérivée de la clé IBAN,
+ * `file-digest.ts`) est gardée : sans clé courante, l export est refusé.
  */
 export async function exportRemittance(
   tenantId: string,
@@ -817,6 +850,13 @@ export async function exportRemittance(
   if (remittance.lines.length === 0) {
     throw new BadRequestError(t('Cette remise ne contient aucune ligne à prélever.'));
   }
+  // Avant tout déchiffrement d IBAN : pas de clé courante, pas de fichier.
+  assertFileDigestAvailable();
+
+  // Le premier fichier ne peut plus partir le jour du prélèvement ni après ; les
+  // téléchargements suivants (lignes figées) restent possibles.
+  const isFirstExport = remittance.status === 'VALIDATED';
+  if (isFirstExport && todayUtc(now).getTime() >= remittance.collectionDate.getTime()) throw collectionDatePassed();
 
   // Au premier export, chaque mandat doit être encore actif.
   if (remittance.firstExportedAt === null) {
@@ -854,19 +894,27 @@ export async function exportRemittance(
       periodMonth: line.installment.period_month
     }))
   });
-  const fileSha256 = createHash('sha256').update(buffer).digest('hex');
+  // HMAC, pas un SHA-256 vérifiable de l extérieur : le fichier porte les IBAN complets.
+  const fileDigest = computeRemittanceFileDigest(buffer);
 
   await prisma.$transaction(async tx => {
-    // Conditionnelle sur le statut ET sur updatedAt : une ligne retirée ou un statut
-    // changé depuis la lecture invalide le fichier construit.
+    // Conditionnelle sur le statut. Au PREMIER export (VALIDATED), aussi sur updatedAt :
+    // une ligne retirée ou un statut changé depuis la lecture invalide le fichier construit.
+    // Les téléchargements suivants (EXPORTED, SUBMITTED : lignes figées) ne se
+    // disputent pas entre eux, seul le compteur est incrémenté.
     const result = await tx.directDebitRemittance.updateMany({
-      where: { id: remittanceId, tenantId, status: remittance.status, updatedAt: remittance.updatedAt },
+      where: {
+        id: remittanceId,
+        tenantId,
+        status: remittance.status,
+        ...(isFirstExport ? { updatedAt: remittance.updatedAt } : {})
+      },
       data: {
-        status: remittance.status === 'VALIDATED' ? 'EXPORTED' : remittance.status,
+        status: isFirstExport ? 'EXPORTED' : remittance.status,
         exportCount: { increment: 1 },
         lastExportedAt: now,
         firstExportedAt: remittance.firstExportedAt ?? now,
-        lastFileSha256: fileSha256
+        lastFileDigest: fileDigest
       }
     });
     if (result.count === 0) throw reloadConflict();
@@ -882,7 +930,7 @@ export async function exportRemittance(
         lineCount: remittance.lines.length,
         totalAmount: Number(remittance.totalAmount),
         collectionDate: toIsoDate(remittance.collectionDate),
-        fileSha256,
+        fileDigest,
         fileFormat: adapter.format,
         exportNumber: remittance.exportCount + 1
       }

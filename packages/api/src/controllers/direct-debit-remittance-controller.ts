@@ -82,7 +82,8 @@ export const resendPrenotificationsHandler = asyncHandler(async (req: Request, r
 export const exportRemittanceHandler = asyncHandler(async (req: Request, res: Response) => {
   const file = await exportRemittance(tenantOf(req), remittanceOf(req), actorOf(req));
   res.setHeader('Content-Type', file.contentType);
-  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`);
+  // Nom fabriqué par le serveur (PRL-AAAA-NNNN.csv) : ASCII, mais assaini par principe.
+  res.setHeader('Content-Disposition', `attachment; filename="${file.fileName.replace(/[^A-Za-z0-9._-]/g, '_')}"`);
   res.setHeader('Content-Length', file.buffer.length.toString());
   // Le fichier porte les IBAN complets : ni cache navigateur ni cache intermédiaire.
   res.setHeader('Cache-Control', 'no-store');

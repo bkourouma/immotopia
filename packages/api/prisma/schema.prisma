@@ -10582,6 +10582,8 @@ model DirectDebitRemittance {
   creditorId            String                      @map("creditor_id") @db.Uuid
   status                DirectDebitRemittanceStatus @default(DRAFT)
   collectionDate        DateTime                    @map("collection_date") @db.Date
+  /// Dernier jour de prénotification : recalculé à l'actualisation et à la validation, figé ensuite.
+  prenotificationDeadline DateTime                  @map("prenotification_deadline") @db.Date
   periodYear            Int                         @map("period_year")
   periodMonth           Int                         @map("period_month")
   /// Totaux des lignes PENDING, tenus à jour dans la même transaction que les lignes.
@@ -10596,8 +10598,8 @@ model DirectDebitRemittance {
   firstExportedAt       DateTime?                   @map("first_exported_at")
   lastExportedAt        DateTime?                   @map("last_exported_at")
   exportCount           Int                         @default(0) @map("export_count")
-  /// SHA-256 du dernier fichier produit (traçabilité ; le fichier n'est jamais stocké).
-  lastFileSha256        String?                     @map("last_file_sha256")
+  /// HMAC-SHA-256 (clé dérivée de DIRECT_DEBIT_IBAN_KEY) du dernier fichier produit : traçabilité, pas un SHA-256 vérifiable de l'extérieur ; le fichier n'est jamais stocké.
+  lastFileDigest        String?                     @map("last_file_digest")
   submittedAt           DateTime?                   @map("submitted_at")
   submittedByUserId     String?                     @map("submitted_by_user_id")
   canceledAt            DateTime?                   @map("canceled_at")

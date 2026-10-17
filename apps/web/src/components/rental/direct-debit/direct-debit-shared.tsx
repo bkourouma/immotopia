@@ -27,6 +27,20 @@ export function mandateStatusLabel(status: MandateStatus): string {
   }
 }
 
+/** Avertissement d'une ligne dont le mandat n'est plus actif (null si le mandat est actif). */
+export function inactiveMandateWarning(status: MandateStatus): string | null {
+  switch (status) {
+    case 'SUSPENDED':
+      return t('Mandat suspendu');
+    case 'REVOKED':
+      return t('Mandat révoqué');
+    case 'DRAFT':
+      return t('Mandat non activé');
+    default:
+      return null;
+  }
+}
+
 const STATUS_COLOR: Record<MandateStatus, string> = {
   DRAFT: 'default',
   ACTIVE: 'success',

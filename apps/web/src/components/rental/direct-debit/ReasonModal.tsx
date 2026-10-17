@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Input, Modal } from 'antd';
+import { Alert, Checkbox, Input, Modal } from 'antd';
 import { t } from '../../../i18n/t';
 
 interface ReasonModalProps {
@@ -11,6 +11,8 @@ interface ReasonModalProps {
   /** Motif obligatoire (annulation d'une remise) ou facultatif (retrait d'une ligne). */
   required: boolean;
   loading?: boolean;
+  /** Case à cocher obligatoire avant de pouvoir confirmer (gestes à risque). */
+  acknowledgement?: string;
   /** Message d'erreur de l'API, affiché dans la fenêtre. */
   error?: string | null;
   onCancel: () => void;
@@ -27,14 +29,19 @@ export const ReasonModal: React.FC<ReasonModalProps> = ({
   okText,
   required,
   loading,
+  acknowledgement,
   error,
   onCancel,
   onSubmit
 }) => {
   const [reason, setReason] = useState('');
+  const [acknowledged, setAcknowledged] = useState(false);
 
   useEffect(() => {
-    if (open) setReason('');
+    if (open) {
+      setReason('');
+      setAcknowledged(false);
+    }
   }, [open]);
 
   const trimmed = reason.trim();
@@ -45,7 +52,11 @@ export const ReasonModal: React.FC<ReasonModalProps> = ({
       title={title}
       okText={okText}
       cancelText={t('Fermer')}
-      okButtonProps={{ danger: true, disabled: required && !trimmed, loading }}
+      okButtonProps={{
+        danger: true,
+        disabled: (required && !trimmed) || (Boolean(acknowledgement) && !acknowledged),
+        loading
+      }}
       onOk={() => onSubmit(trimmed)}
       onCancel={onCancel}
       destroyOnHidden
@@ -62,6 +73,15 @@ export const ReasonModal: React.FC<ReasonModalProps> = ({
         value={reason}
         onChange={event => setReason(event.target.value)}
       />
+      {acknowledgement && (
+        <Checkbox
+          style={{ marginTop: 12 }}
+          checked={acknowledged}
+          onChange={event => setAcknowledged(event.target.checked)}
+        >
+          {acknowledgement}
+        </Checkbox>
+      )}
       {error && <Alert style={{ marginTop: 12 }} type="error" showIcon message={error} />}
     </Modal>
   );

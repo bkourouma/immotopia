@@ -5,7 +5,8 @@ import { GENERIC_CSV_ADAPTER } from './generic-csv';
  *
  * Un adaptateur par banque : le format de la banque pilote viendra dans un
  * autre adaptateur, enregistré ici. Le fichier n'est jamais écrit sur disque ni
- * journalisé ; seul son SHA-256 est conservé par la remise.
+ * journalisé ; seule son empreinte HMAC-SHA-256 (`file-digest.ts`) est conservée
+ * par la remise.
  */
 
 export type DirectDebitFileFormatKey = 'GENERIC_CSV';

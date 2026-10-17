@@ -14,7 +14,8 @@ export function makeLine(overrides: Record<string, unknown> = {}) {
       reference: 'MDT-2026-0001',
       ibanMasked: 'CI•• •••• •••• •••• •••• 5678',
       holderName: 'Awa Traoré',
-      maxAmount: null
+      maxAmount: null,
+      status: 'ACTIVE'
     },
     debtor: { id: 'client-1', displayName: 'Awa Traoré' },
     lease: { id: 'bail-1', leaseNumber: 'BAIL-001' },
@@ -42,7 +43,8 @@ export function makeRemittance(overrides: Record<string, unknown> = {}) {
         reference: 'MDT-2026-0002',
         ibanMasked: 'CI•• •••• •••• •••• •••• 1234',
         holderName: 'Moussa Diallo',
-        maxAmount: 100000
+        maxAmount: 100000,
+        status: 'ACTIVE'
       },
       debtor: { id: 'client-2', displayName: 'Moussa Diallo' },
       lease: { id: 'bail-2', leaseNumber: 'BAIL-002' },

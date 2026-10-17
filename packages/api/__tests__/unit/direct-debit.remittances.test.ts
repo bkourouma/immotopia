@@ -176,7 +176,7 @@ const mockDb: Row = {
         validatedAt: null,
         firstExportedAt: null,
         lastExportedAt: null,
-        lastFileSha256: null,
+        lastFileDigest: null,
         submittedAt: null,
         canceledAt: null,
         cancellationReason: null,
@@ -201,28 +201,33 @@ const mockDb: Row = {
       return found ? lineView(found) : null;
     }),
     findMany: jest.fn(async ({ where }: Row) => state.lines.filter(row => matches(row, where)).map(lineView)),
-    create: jest.fn(async ({ data }: Row) => {
+    // createMany : tout le lot ou rien (une violation d'unicité annule les lignes déjà posées).
+    createMany: jest.fn(async ({ data }: { data: Row[] }) => {
       if (state.failLineCreate) {
         const error = state.failLineCreate;
         state.failLineCreate = null;
         throw error;
       }
-      if (data.activeKey && state.lines.some(l => l.tenantId === data.tenantId && l.activeKey === data.activeKey)) {
-        throw uniqueError(['tenant_id', 'active_key']);
+      const added: Row[] = [];
+      for (const entry of data) {
+        const taken = [...state.lines, ...added].some(
+          l => l.tenantId === entry.tenantId && entry.activeKey && l.activeKey === entry.activeKey
+        );
+        if (taken) throw uniqueError(['tenant_id', 'active_key']);
+        counter += 1;
+        added.push({
+          id: `line-${counter}`,
+          status: 'PENDING',
+          capped: false,
+          canceledAt: null,
+          cancellationReason: null,
+          prenotificationStatus: 'PENDING',
+          prenotifiedAt: null,
+          ...entry
+        });
       }
-      counter += 1;
-      const row = {
-        id: `line-${counter}`,
-        status: 'PENDING',
-        capped: false,
-        canceledAt: null,
-        cancellationReason: null,
-        prenotificationStatus: 'PENDING',
-        prenotifiedAt: null,
-        ...data
-      };
-      state.lines.push(row);
-      return { id: row.id };
+      state.lines.push(...added);
+      return { count: added.length };
     }),
     updateMany: jest.fn(async ({ where, data }: Row) => {
       const rows = state.lines.filter(row => matches(row, where));
@@ -232,6 +237,24 @@ const mockDb: Row = {
   }
 };
 
+const mockEnv: Record<string, string | undefined> = {
+  DIRECT_DEBIT_IBAN_KEY: Buffer.alloc(32, 7).toString('base64')
+};
+jest.mock('../../src/config/env', () => ({ env: mockEnv, parseKeyList: () => [] }));
+// Verrou consultatif : une file par clé, comme le vrai (mutex local + verrou PostgreSQL).
+jest.mock('../../src/lib/ai/advisory-lock', () => {
+  const tails = new Map<string, Promise<unknown>>();
+  return {
+    withExclusiveSection: jest.fn(async (key: string, fn: () => Promise<unknown>) => {
+      const run = (tails.get(key) ?? Promise.resolve()).then(fn, fn);
+      tails.set(
+        key,
+        run.catch(() => undefined)
+      );
+      return run;
+    })
+  };
+});
 jest.mock('../../src/utils/database', () => ({ prisma: mockDb }));
 jest.mock('../../src/utils/logger', () => ({
   logger: { warn: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() }
@@ -252,8 +275,10 @@ jest.mock('../../src/lib/direct-debit/iban-crypto', () => ({
   decryptIban: (enc: string) => Buffer.from(enc.split(':')[4], 'base64').toString()
 }));
 
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, hkdfSync } from 'node:crypto';
 import { BadRequestError, ConflictError, NotFoundError } from '../../src/middleware/error-middleware';
+import { logger } from '../../src/utils/logger';
+import { waitForRemittancePrenotifications } from '../../src/lib/direct-debit/prenotification';
 import {
   cancelRemittance,
   cancelRemittanceLine,
@@ -266,6 +291,15 @@ import {
   submitRemittance,
   validateRemittance
 } from '../../src/lib/direct-debit/remittances';
+
+/** Calcul indépendant : HKDF-SHA-256 (info fixée) de la clé IBAN, puis HMAC-SHA-256 du fichier. */
+function expectedDigest(buffer: Buffer): string {
+  const master = Buffer.from(mockEnv.DIRECT_DEBIT_IBAN_KEY as string, 'base64');
+  const key = Buffer.from(
+    hkdfSync('sha256', master, Buffer.alloc(0), Buffer.from('immotopia:direct-debit:remittance-file-digest'), 32)
+  );
+  return createHmac('sha256', key).update(buffer).digest('hex');
+}
 
 const enc = (iban: string) => `ddk1:key:iv:tag:${Buffer.from(iban).toString('base64')}`;
 
@@ -357,6 +391,7 @@ const create = (over: Row = {}) =>
 const validated = async () => {
   const { remittance } = await create();
   await validateRemittance(TENANT, remittance.id, 'user-1', NOW);
+  await waitForRemittancePrenotifications();
   return remittance.id as string;
 };
 
@@ -484,7 +519,7 @@ describe('remises / création', () => {
   it('refuse l unicité réelle : une même échéance ne peut pas être dans deux lignes vivantes', async () => {
     await create();
     await expect(
-      mockDb.directDebitRemittanceLine.create({ data: { tenantId: TENANT, activeKey: 'inst-1' } })
+      mockDb.directDebitRemittanceLine.createMany({ data: [{ tenantId: TENANT, activeKey: 'inst-1' }] })
     ).rejects.toMatchObject({ code: 'P2002' });
   });
 });
@@ -599,9 +634,24 @@ describe('remises / retrait d une ligne', () => {
 });
 
 describe('remises / validation et prénotifications', () => {
-  it('valide, fige le créancier et envoie les prénotifications ligne par ligne', async () => {
+  it('valide, fige le créancier et envoie les prénotifications ligne par ligne, en arrière-plan', async () => {
     const { remittance } = await create();
-    const result = await validateRemittance(TENANT, remittance.id, 'user-1', NOW);
+    // La configuration d'e-mail reste en attente : rien ne part tant qu'on ne la libère pas.
+    let release: () => void = () => undefined;
+    mockMail.config.mockReturnValueOnce(
+      new Promise(resolve => {
+        release = () => resolve({ enabled: true, subjectOverride: null, bodyHtmlOverride: null });
+      })
+    );
+    const first = await validateRemittance(TENANT, remittance.id, 'user-1', NOW);
+    // La réponse n'attend pas les e-mails : les lignes sont encore à envoyer.
+    expect(first.remittance.status).toBe('VALIDATED');
+    expect(first.prenotifications).toEqual({ pending: 2, sent: 0, noEmail: 0, disabled: 0, failed: 0 });
+    expect(mockMail.send).not.toHaveBeenCalled();
+    release();
+    await waitForRemittancePrenotifications();
+    const result = { remittance: await getRemittance(TENANT, remittance.id), prenotifications: null as unknown };
+    result.prenotifications = result.remittance.prenotificationSummary;
 
     expect(result.remittance.status).toBe('VALIDATED');
     expect(result.remittance.validatedAt).toBe(NOW.toISOString());
@@ -648,24 +698,32 @@ describe('remises / validation et prénotifications', () => {
     state.mandates[4].collectionDay = 5;
     const { remittance } = await create();
     await validateRemittance(TENANT, remittance.id, 'user-1', NOW);
+    await waitForRemittancePrenotifications();
     expect(mockMail.send.mock.calls.map(call => call[0])).toContain('fatou@example.test');
   });
 
   it('marque DISABLED quand la notification est désactivée, FAILED quand l envoi échoue, sans défaire la validation', async () => {
     mockMail.config.mockResolvedValue({ enabled: false, subjectOverride: null, bodyHtmlOverride: null });
     const first = await create();
-    const disabled = await validateRemittance(TENANT, first.remittance.id, 'user-1', NOW);
-    expect(disabled.prenotifications).toEqual({ pending: 0, sent: 0, noEmail: 0, disabled: 2, failed: 0 });
+    await validateRemittance(TENANT, first.remittance.id, 'user-1', NOW);
+    await waitForRemittancePrenotifications();
+    const disabled = await getRemittance(TENANT, first.remittance.id);
+    expect(disabled.prenotificationSummary).toEqual({ pending: 0, sent: 0, noEmail: 0, disabled: 2, failed: 0 });
     expect(mockMail.send).not.toHaveBeenCalled();
 
     resetState();
     mockMail.config.mockResolvedValue({ enabled: true, subjectOverride: null, bodyHtmlOverride: null });
     mockMail.send.mockRejectedValue(new Error('SMTP awa@example.test refusé'));
     const second = await create();
-    const failed = await validateRemittance(TENANT, second.remittance.id, 'user-1', NOW);
-    expect(failed.remittance.status).toBe('VALIDATED');
-    expect(failed.prenotifications).toEqual({ pending: 0, sent: 0, noEmail: 1, disabled: 0, failed: 1 });
+    await validateRemittance(TENANT, second.remittance.id, 'user-1', NOW);
+    await waitForRemittancePrenotifications();
+    const failed = await getRemittance(TENANT, second.remittance.id);
+    expect(failed.status).toBe('VALIDATED');
+    expect(failed.prenotificationSummary).toEqual({ pending: 0, sent: 0, noEmail: 1, disabled: 0, failed: 1 });
     expectNoLeak(failed);
+    // Ni l'adresse ni le texte du transport ne sont journalisés.
+    expectNoLeak((logger.warn as jest.Mock).mock.calls);
+    expect(JSON.stringify((logger.warn as jest.Mock).mock.calls)).not.toContain('SMTP');
   });
 
   it('refuse sans numéro d émetteur, sans ligne, après la date limite et à un autre statut', async () => {
@@ -729,13 +787,96 @@ describe('remises / renvoi des prénotifications', () => {
 
     mockMail.send.mockClear();
     state.debtors[1].email = 'koffi@example.test';
-    const result = await resendPrenotifications(TENANT, id, 'user-1', NOW);
+    await resendPrenotifications(TENANT, id, 'user-1', NOW);
+    await waitForRemittancePrenotifications();
     expect(mockMail.send).toHaveBeenCalledTimes(2);
-    expect(result.prenotifications).toEqual({ pending: 0, sent: 2, noEmail: 0, disabled: 0, failed: 0 });
+    expect((await getRemittance(TENANT, id)).prenotificationSummary).toEqual({
+      pending: 0,
+      sent: 2,
+      noEmail: 0,
+      disabled: 0,
+      failed: 0
+    });
 
     mockMail.send.mockClear();
     await resendPrenotifications(TENANT, id, 'user-1', NOW);
+    await waitForRemittancePrenotifications();
     expect(mockMail.send).not.toHaveBeenCalled();
+  });
+
+  it('un deuxième déclenchement pendant un envoi en cours n envoie aucun doublon', async () => {
+    const id = await validated();
+    // Les lignes repassent à envoyer, l'envoi reste bloqué sur le premier e-mail.
+    state.lines.forEach(line => Object.assign(line, { prenotificationStatus: 'PENDING' }));
+    state.debtors[1].email = 'koffi@example.test';
+    mockMail.send.mockClear();
+    let release: () => void = () => undefined;
+    mockMail.send.mockImplementationOnce(
+      () =>
+        new Promise<void>(resolve => {
+          release = () => resolve();
+        })
+    );
+    await resendPrenotifications(TENANT, id, 'user-1', NOW);
+    // Le premier envoi est bloqué sur son premier e-mail ; le second déclenchement se met en file.
+    for (let tries = 0; tries < 200 && mockMail.send.mock.calls.length < 1; tries += 1) {
+      await new Promise(resolve => setTimeout(resolve, 1));
+    }
+    await resendPrenotifications(TENANT, id, 'user-1', NOW);
+    release();
+    await waitForRemittancePrenotifications();
+    // Une seule adresse par ligne, une seule fois chacune.
+    expect(mockMail.send.mock.calls.map(call => call[0]).sort()).toEqual(['awa@example.test', 'koffi@example.test']);
+    expect((await getRemittance(TENANT, id)).prenotificationSummary.sent).toBe(2);
+  });
+
+  it('limite à cinq les envois simultanés et écrit le statut ligne par ligne', async () => {
+    const { remittance } = await create();
+    // Douze lignes supplémentaires avec une adresse.
+    for (let n = 10; n < 22; n += 1) {
+      state.leases.push({ id: `lease-${n}`, tenant_id: TENANT, lease_number: `BAIL-0${n}`, status: 'ACTIVE' });
+      state.debtors.push({ id: `client-${n}`, fullName: `Locataire ${n}`, email: `l${n}@example.test` });
+      state.installments.push({ ...state.installments[0], id: `inst-${n}`, lease_id: `lease-${n}` });
+      state.mandates.push({
+        ...state.mandates[0],
+        id: `mandate-${n}`,
+        sequence: n,
+        leaseId: `lease-${n}`,
+        debtorClientId: `client-${n}`
+      });
+    }
+    await refreshRemittance(TENANT, remittance.id, 'user-1');
+    expect(state.lines.filter(line => line.status === 'PENDING')).toHaveLength(14);
+
+    let active = 0;
+    let peak = 0;
+    mockMail.send.mockImplementation(async () => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      active -= 1;
+    });
+    await validateRemittance(TENANT, remittance.id, 'user-1', NOW);
+    await waitForRemittancePrenotifications();
+    expect(mockMail.send).toHaveBeenCalledTimes(13);
+    expect(peak).toBeLessThanOrEqual(5);
+    expect(peak).toBeGreaterThan(1);
+    expect(mockAudit.log.mock.calls.at(-1)?.[0]).toMatchObject({
+      actionKey: 'DIRECT_DEBIT_REMITTANCE_PRENOTIFIED',
+      payload: { sent: 13, noEmail: 1, failed: 0 }
+    });
+  });
+
+  it('journalise sans adresse ni texte du transport quand l envoi en arrière-plan échoue', async () => {
+    const id = await validated();
+    state.lines.forEach(line => Object.assign(line, { prenotificationStatus: 'PENDING' }));
+    mockDb.directDebitRemittanceLine.findMany.mockRejectedValueOnce(new Error('connexion perdue awa@example.test'));
+    await resendPrenotifications(TENANT, id, 'user-1', NOW);
+    await waitForRemittancePrenotifications();
+    const logged = JSON.stringify((logger.warn as jest.Mock).mock.calls);
+    expect(logged).toContain('envoi en arrière-plan interrompu');
+    expect(logged).not.toContain('awa@example.test');
+    expect(logged).not.toContain('connexion perdue');
   });
 
   it('refuse à partir de la date de collecte et hors des statuts validée ou exportée', async () => {
@@ -773,7 +914,7 @@ describe('remises / fichier', () => {
       exportCount: 1,
       firstExportedAt: NOW,
       lastExportedAt: NOW,
-      lastFileSha256: createHash('sha256').update(file.buffer).digest('hex')
+      lastFileDigest: expectedDigest(file.buffer)
     });
     const auditCall = mockAudit.record.mock.calls.at(-1)?.[1];
     expect(auditCall).toMatchObject({
@@ -784,7 +925,7 @@ describe('remises / fichier', () => {
         lineCount: 2,
         totalAmount: 260000,
         collectionDate: '2026-10-26',
-        fileSha256: state.remittances[0].lastFileSha256,
+        fileDigest: state.remittances[0].lastFileDigest,
         exportNumber: 1
       }
     });
@@ -809,7 +950,7 @@ describe('remises / fichier', () => {
     mockAudit.record.mockRejectedValueOnce(new Error('audit indisponible'));
     await expect(exportRemittance(TENANT, id, 'user-1', NOW)).rejects.toThrow('audit indisponible');
     expect(state.remittances[0]).toMatchObject({ status: 'VALIDATED', exportCount: 0, firstExportedAt: null });
-    expect(state.remittances[0].lastFileSha256).toBeNull();
+    expect(state.remittances[0].lastFileDigest).toBeNull();
   });
 
   it('refuse le premier export si un mandat n est plus actif, en citant la référence', async () => {
@@ -920,5 +1061,204 @@ describe('remises / liste et fuites', () => {
     expectNoLeak(await listRemittances(TENANT, { page: 1, pageSize: 20 }));
     expectNoLeak(mockAudit.record.mock.calls);
     expectNoLeak(mockAudit.log.mock.calls);
+  });
+});
+
+describe('remises / date limite figée et contrôles de dates', () => {
+  it('fige la date limite à la création, la recalcule à l actualisation puis à la validation, et ne bouge plus', async () => {
+    const { remittance } = await create();
+    expect(remittance.prenotificationDeadline).toBe('2026-10-19');
+
+    // Le créancier change son délai : la remise garde sa date tant qu elle n est pas actualisée.
+    state.creditors[0].prenotificationBusinessDays = 3;
+    expect((await getRemittance(TENANT, remittance.id)).prenotificationDeadline).toBe('2026-10-19');
+    const refreshed = await refreshRemittance(TENANT, remittance.id, 'user-1');
+    expect(refreshed.remittance.prenotificationDeadline).toBe('2026-10-21');
+
+    state.creditors[0].prenotificationBusinessDays = 4;
+    const result = await validateRemittance(TENANT, remittance.id, 'user-1', NOW);
+    await waitForRemittancePrenotifications();
+    expect(result.remittance.prenotificationDeadline).toBe('2026-10-20');
+
+    // Figée après validation, quel que soit le délai courant du créancier.
+    state.creditors[0].prenotificationBusinessDays = 1;
+    expect((await getRemittance(TENANT, remittance.id)).prenotificationDeadline).toBe('2026-10-20');
+    expect(state.remittances[0].prenotificationDeadline.toISOString().slice(0, 10)).toBe('2026-10-20');
+  });
+
+  it('refuse la validation le jour du prélèvement ou après, même sans délai de prénotification', async () => {
+    const { remittance } = await create();
+    state.creditors[0].prenotificationBusinessDays = 0;
+    const error = await validateRemittance(TENANT, remittance.id, 'user-1', new Date('2026-10-26T08:00:00Z')).catch(
+      e => e
+    );
+    expect(error).toBeInstanceOf(ConflictError);
+    expect(error.message).toBe('La date de prélèvement est passée : annulez cette remise et préparez-en une nouvelle.');
+    expect(state.remittances[0].status).toBe('DRAFT');
+    // La veille, avec un délai nul, la validation passe.
+    const ok = await validateRemittance(TENANT, remittance.id, 'user-1', new Date('2026-10-25T08:00:00Z'));
+    expect(ok.remittance.status).toBe('VALIDATED');
+    await waitForRemittancePrenotifications();
+  });
+
+  it('refuse le PREMIER export le jour du prélèvement ou après, mais pas un nouveau téléchargement', async () => {
+    const id = await validated();
+    const error = await exportRemittance(TENANT, id, 'user-1', new Date('2026-10-26T06:00:00Z')).catch(e => e);
+    expect(error).toBeInstanceOf(ConflictError);
+    expect(error.message).toBe('La date de prélèvement est passée : annulez cette remise et préparez-en une nouvelle.');
+    expect(state.remittances[0]).toMatchObject({ status: 'VALIDATED', exportCount: 0 });
+    expect(mockAudit.record.mock.calls.map(call => call[1].actionKey)).not.toContain(
+      'DIRECT_DEBIT_REMITTANCE_EXPORTED'
+    );
+
+    await exportRemittance(TENANT, id, 'user-1', NOW);
+    const again = await exportRemittance(TENANT, id, 'user-1', new Date('2026-10-27T06:00:00Z'));
+    expect(again.fileName).toBe('PRL-2026-0001.csv');
+    expect(state.remittances[0].exportCount).toBe(2);
+  });
+
+  it('utilise le vocabulaire de l écran dans les messages de statut', async () => {
+    const { remittance } = await create();
+    const draft = await exportRemittance(TENANT, remittance.id, 'user-1', NOW).catch(e => e);
+    expect(draft.message).toBe('Transition impossible : la remise est au statut « brouillon ».');
+    await cancelRemittance(TENANT, remittance.id, 'libère les échéances', 'user-1');
+    const id = await validated();
+    await exportRemittance(TENANT, id, 'user-1', NOW);
+    const exported = await refreshRemittance(TENANT, id, 'user-1').catch(e => e);
+    expect(exported.message).toBe('Transition impossible : la remise est au statut « fichier produit ».');
+  });
+});
+
+describe('remises / messages de validation', () => {
+  it('dit que le créancier est désactivé et comment s en sortir', async () => {
+    const { remittance } = await create();
+    state.creditors[0].isActive = false;
+    const error = await validateRemittance(TENANT, remittance.id, 'user-1', NOW).catch(e => e);
+    expect(error).toBeInstanceOf(BadRequestError);
+    expect(error.message).toBe('Ce créancier est désactivé : réactivez-le ou annulez la remise.');
+  });
+
+  it('cite la référence du mandat qui n est plus prélevable', async () => {
+    const { remittance } = await create();
+    state.mandates[1].status = 'SUSPENDED';
+    const error = await validateRemittance(TENANT, remittance.id, 'user-1', NOW).catch(e => e);
+    expect(error).toBeInstanceOf(ConflictError);
+    expect(error.message).toBe("Le mandat MDT-2026-0002 n'est plus prélevable : actualisez la remise.");
+    state.mandates[1].status = 'ACTIVE';
+    state.leases[0].status = 'ENDED';
+    const ended = await validateRemittance(TENANT, remittance.id, 'user-1', NOW).catch(e => e);
+    expect(ended.message).toBe("Le mandat MDT-2026-0001 n'est plus prélevable : actualisez la remise.");
+  });
+
+  it('donne le même message juste à l actualisation quand l échéance est prise ailleurs', async () => {
+    const { remittance } = await create();
+    state.leases[2].status = 'ACTIVE';
+    state.failLineCreate = uniqueError(['tenant_id', 'active_key']);
+    const error = await refreshRemittance(TENANT, remittance.id, 'user-1').catch(e => e);
+    expect(error.message).toBe('Une échéance figure déjà dans une autre remise : actualisez puis réessayez.');
+  });
+});
+
+describe('remises / statut du mandat sur chaque ligne', () => {
+  it('renvoie le statut courant du mandat, y compris quand il n est plus actif', async () => {
+    const id = await validated();
+    await exportRemittance(TENANT, id, 'user-1', NOW);
+    expect((await getRemittance(TENANT, id)).lines.map(line => line.mandate.status)).toEqual(['ACTIVE', 'ACTIVE']);
+    state.mandates[1].status = 'SUSPENDED';
+    expect((await getRemittance(TENANT, id)).lines.map(line => line.mandate.status)).toEqual(['ACTIVE', 'SUSPENDED']);
+  });
+});
+
+describe('remises / garde updatedAt à l export', () => {
+  /** Modifie la remise juste APRÈS la lecture de l export, avant son écriture. */
+  function changeAfterRead(change: () => void) {
+    const original = mockDb.directDebitRemittance.findFirst.getMockImplementation() as (args: Row) => Promise<Row>;
+    mockDb.directDebitRemittance.findFirst.mockImplementationOnce(async (args: Row) => {
+      const row = await original(args);
+      change();
+      return row;
+    });
+  }
+
+  it('premier export : une ligne retirée ou un statut changé entre la lecture et l écriture donne 409 sans rien rendre', async () => {
+    const id = await validated();
+    changeAfterRead(() => {
+      state.lines[0].status = 'CANCELED';
+      state.lines[0].activeKey = null;
+      state.remittances[0].updatedAt = new Date('2026-10-16T10:00:00Z');
+    });
+    const error = await exportRemittance(TENANT, id, 'user-1', NOW).catch(e => e);
+    expect(error).toBeInstanceOf(ConflictError);
+    expect(error.message).toBe("La remise vient d'être modifiée : rechargez la page.");
+    expect(state.remittances[0]).toMatchObject({ status: 'VALIDATED', exportCount: 0, lastFileDigest: null });
+    expect(mockAudit.record.mock.calls.map(call => call[1].actionKey)).not.toContain(
+      'DIRECT_DEBIT_REMITTANCE_EXPORTED'
+    );
+
+    resetState();
+    const other = await validated();
+    changeAfterRead(() => {
+      state.remittances[0].status = 'CANCELED';
+    });
+    await expect(exportRemittance(TENANT, other, 'user-1', NOW)).rejects.toBeInstanceOf(ConflictError);
+    expect(state.remittances[0].exportCount).toBe(0);
+  });
+
+  it('un nouveau téléchargement ne tombe pas en 409 à cause d un téléchargement simultané', async () => {
+    const id = await validated();
+    await exportRemittance(TENANT, id, 'user-1', NOW);
+    changeAfterRead(() => {
+      // Un autre téléchargement a touché la remise entre-temps.
+      state.remittances[0].updatedAt = new Date('2026-10-16T11:00:00Z');
+    });
+    const file = await exportRemittance(TENANT, id, 'user-1', new Date('2026-10-17T09:00:00Z'));
+    expect(file.fileName).toBe('PRL-2026-0001.csv');
+    expect(state.remittances[0]).toMatchObject({ status: 'EXPORTED', exportCount: 2 });
+  });
+});
+
+describe('remises / empreinte du fichier', () => {
+  it('est un HMAC à clé dérivée, pas le SHA-256 du fichier', async () => {
+    const id = await validated();
+    const file = await exportRemittance(TENANT, id, 'user-1', NOW);
+    const digest = state.remittances[0].lastFileDigest;
+    expect(digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(digest).toBe(expectedDigest(file.buffer));
+    expect(digest).not.toBe(createHash('sha256').update(file.buffer).digest('hex'));
+    expect(JSON.stringify(mockAudit.record.mock.calls)).not.toContain('Sha256');
+  });
+
+  it('refuse l export sans clé de chiffrement courante, avant tout déchiffrement', async () => {
+    const id = await validated();
+    const key = mockEnv.DIRECT_DEBIT_IBAN_KEY;
+    mockEnv.DIRECT_DEBIT_IBAN_KEY = undefined;
+    try {
+      const error = await exportRemittance(TENANT, id, 'user-1', NOW).catch(e => e);
+      expect(error).toBeInstanceOf(BadRequestError);
+      expect(error.message).toBe("Le chiffrement des coordonnées bancaires n'est pas configuré sur ce serveur.");
+    } finally {
+      mockEnv.DIRECT_DEBIT_IBAN_KEY = key;
+    }
+    expect(state.remittances[0]).toMatchObject({ status: 'VALIDATED', exportCount: 0, lastFileDigest: null });
+  });
+});
+
+describe('remises / écritures en lot et transactions longues', () => {
+  const OPTIONS = { maxWait: 10_000, timeout: 30_000 };
+
+  it('crée toutes les lignes en un seul createMany, dans une transaction aux délais élargis', async () => {
+    const { remittance } = await create();
+    expect(mockDb.directDebitRemittanceLine.createMany).toHaveBeenCalledTimes(1);
+    expect(mockDb.directDebitRemittanceLine.createMany.mock.calls[0][0].data).toHaveLength(2);
+    expect(mockDb.$transaction).toHaveBeenCalledWith(expect.any(Function), OPTIONS);
+
+    mockDb.$transaction.mockClear();
+    await refreshRemittance(TENANT, remittance.id, 'user-1');
+    expect(mockDb.$transaction).toHaveBeenCalledWith(expect.any(Function), OPTIONS);
+
+    mockDb.$transaction.mockClear();
+    await validateRemittance(TENANT, remittance.id, 'user-1', NOW);
+    await waitForRemittancePrenotifications();
+    expect(mockDb.$transaction).toHaveBeenCalledWith(expect.any(Function), OPTIONS);
   });
 });

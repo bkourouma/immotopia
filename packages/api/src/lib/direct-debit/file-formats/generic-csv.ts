@@ -44,22 +44,36 @@ export function operationLabel(periodMonth: number, periodYear: number, leaseNum
   return toAsciiUpper(`LOYER ${String(periodMonth).padStart(2, '0')}/${periodYear} ${leaseNumber}`);
 }
 
+// eslint-disable-next-line no-control-regex -- c'est précisément l'objet : retirer les caractères de contrôle
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f\p{Zl}\p{Zp}]/gu; // Zl, Zp : séparateurs de ligne et de paragraphe Unicode (U+2028, U+2029)
+
+/**
+ * Texte libre saisi par un utilisateur (titulaire, créancier) : les caractères de
+ * contrôle (retour à la ligne, tabulation, séparateurs Unicode de ligne…) sont
+ * remplacés par une espace, puis les espaces multiples réduits. Évite qu'un nom
+ * casse la structure du fichier ou y cache une ligne.
+ */
+export function stripControlCharacters(text: string): string {
+  return text.replace(CONTROL_CHARACTERS, ' ').replace(/ {2,}/g, ' ').trim();
+}
+
 function build(input: FileInput): Buffer {
   const rows: string[][] = [[...GENERIC_CSV_HEADER]];
+  const creditorLabel = stripControlCharacters(input.creditorLabel);
   for (const line of input.lines) {
     rows.push([
       input.reference,
       input.creditorIdentifier,
-      input.creditorLabel,
+      creditorLabel,
       toIsoDate(input.collectionDate),
       line.reference,
       line.mandateReference,
       line.mandateSignedAt ? toIsoDate(line.mandateSignedAt) : '',
-      line.holderName,
+      stripControlCharacters(line.holderName),
       line.iban,
       formatCsvAmount(line.amount),
       'XOF',
-      operationLabel(line.periodMonth, line.periodYear, line.leaseNumber)
+      stripControlCharacters(operationLabel(line.periodMonth, line.periodYear, line.leaseNumber))
     ]);
   }
   return Buffer.from(toCsvString(rows, { separator: ';' }), 'utf8');
