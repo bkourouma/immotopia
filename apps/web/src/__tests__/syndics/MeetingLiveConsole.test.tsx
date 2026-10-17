@@ -26,6 +26,8 @@ const api = {
   getMeetingVisio: vi.fn(),
   issueMeetingVisioToken: vi.fn(),
   setVisioParticipantSpeaking: vi.fn(),
+  muteVisioParticipant: vi.fn(),
+  setVisioMediaLock: vi.fn(),
   removeVisioParticipant: vi.fn(),
   getMeetingRecordings: vi.fn(),
   startMeetingRecording: vi.fn(),
@@ -56,6 +58,8 @@ vi.mock('../../services/syndic-service', async () => {
     getMeetingVisio: (...a: unknown[]) => api.getMeetingVisio(...a),
     issueMeetingVisioToken: (...a: unknown[]) => api.issueMeetingVisioToken(...a),
     setVisioParticipantSpeaking: (...a: unknown[]) => api.setVisioParticipantSpeaking(...a),
+    muteVisioParticipant: (...a: unknown[]) => api.muteVisioParticipant(...a),
+    setVisioMediaLock: (...a: unknown[]) => api.setVisioMediaLock(...a),
     removeVisioParticipant: (...a: unknown[]) => api.removeVisioParticipant(...a),
     getMeetingRecordings: (...a: unknown[]) => api.getMeetingRecordings(...a),
     startMeetingRecording: (...a: unknown[]) => api.startMeetingRecording(...a),
@@ -605,22 +609,116 @@ describe('MeetingLiveConsole : visio intégrée', () => {
     await waitFor(() => expect(api.issueMeetingVisioToken).toHaveBeenCalledWith('t1', 's1', 'm1'));
   });
 
-  it('donne la parole à un copropriétaire', async () => {
+  it('autorise micro et caméra à un copropriétaire interdit', async () => {
     api.getMeetingVisio.mockResolvedValue(visioView());
     api.setVisioParticipantSpeaking.mockResolvedValue(visioView());
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Donner la parole à Awa Traoré' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Autoriser micro et caméra à Awa Traoré' }));
     await waitFor(() => expect(api.setVisioParticipantSpeaking).toHaveBeenCalledWith('t1', 's1', 'm1', 'p1', true));
+    expect(await screen.findByText('Micro et caméra autorisés pour Awa Traoré')).toBeTruthy();
   });
 
-  it('retire la parole à un copropriétaire qui l a', async () => {
+  it('interdit micro et caméra à un copropriétaire autorisé', async () => {
     const speaking = visioView();
-    speaking.participants[1] = { ...speaking.participants[1], canSpeak: true };
+    speaking.participants[1] = {
+      ...speaking.participants[1],
+      canSpeak: true,
+      mediaAllowed: true,
+      mediaPolicy: 'DEFAULT'
+    };
     api.getMeetingVisio.mockResolvedValue(speaking);
     api.setVisioParticipantSpeaking.mockResolvedValue(visioView());
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Retirer la parole à Ibrahim Koné' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Interdire micro et caméra à Ibrahim Koné' }));
     await waitFor(() => expect(api.setVisioParticipantSpeaking).toHaveBeenCalledWith('t1', 's1', 'm1', 'p2', false));
+    expect(await screen.findByText('Micro et caméra interdits à Ibrahim Koné')).toBeTruthy();
+  });
+
+  it('montre l état du micro et de la caméra : actif, coupé, interdit', async () => {
+    const view = visioView();
+    view.participants[1] = {
+      ...view.participants[1],
+      canSpeak: true,
+      mediaAllowed: true,
+      mic: { published: true, muted: false },
+      camera: { published: true, muted: true }
+    };
+    view.participants[2] = {
+      ...view.participants[2],
+      canSpeak: false,
+      mediaAllowed: false,
+      mediaPolicy: 'BLOCKED',
+      mic: { published: false, muted: false },
+      camera: { published: false, muted: false }
+    };
+    api.getMeetingVisio.mockResolvedValue(view);
+    mount();
+    expect(await screen.findByText('Micro actif')).toBeTruthy();
+    expect(screen.getByText('Caméra coupé')).toBeTruthy();
+    expect(screen.getByText('Micro interdit')).toBeTruthy();
+    expect(screen.getByText('Caméra interdit')).toBeTruthy();
+  });
+
+  it('coupe le micro puis la caméra d un participant qui diffuse, avec un retour', async () => {
+    const view = visioView();
+    view.participants[1] = {
+      ...view.participants[1],
+      canSpeak: true,
+      mediaAllowed: true,
+      mic: { published: true, muted: false },
+      camera: { published: true, muted: false }
+    };
+    api.getMeetingVisio.mockResolvedValue(view);
+    api.muteVisioParticipant.mockResolvedValue({ ...view, mutedTracks: 1 });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Couper le micro de Ibrahim Koné' }));
+    await waitFor(() => expect(api.muteVisioParticipant).toHaveBeenCalledWith('t1', 's1', 'm1', 'p2', ['MICROPHONE']));
+    expect(await screen.findByText('Micro de Ibrahim Koné coupé')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Couper la caméra de Ibrahim Koné' }));
+    await waitFor(() => expect(api.muteVisioParticipant).toHaveBeenCalledWith('t1', 's1', 'm1', 'p2', ['CAMERA']));
+  });
+
+  it('désactive « Couper » quand rien n est publié et signale l échec d une coupure', async () => {
+    const view = visioView();
+    view.participants[1] = {
+      ...view.participants[1],
+      mediaAllowed: true,
+      mic: { published: true, muted: false },
+      camera: { published: false, muted: false }
+    };
+    api.getMeetingVisio.mockResolvedValue(view);
+    api.muteVisioParticipant.mockRejectedValue({
+      response: { data: { error: 'Ce participant n’est pas dans la salle.' } }
+    });
+    mount();
+    const cam = (await screen.findByRole('button', { name: 'Couper la caméra de Ibrahim Koné' })) as HTMLButtonElement;
+    expect(cam.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Couper le micro de Ibrahim Koné' }));
+    expect(await screen.findByText('Ce participant n’est pas dans la salle.')).toBeTruthy();
+  });
+
+  it('interdit les micros à tous après confirmation puis les rend', async () => {
+    api.getMeetingVisio.mockResolvedValue(visioView());
+    api.setVisioMediaLock.mockImplementationOnce(async () => {
+      api.getMeetingVisio.mockResolvedValue(visioView({ mediaLocked: true }));
+      return visioView({ mediaLocked: true });
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('switch', { name: 'Interdire les micros à tous' }));
+    expect(api.setVisioMediaLock).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Interdire' }));
+    await waitFor(() => expect(api.setVisioMediaLock).toHaveBeenCalledWith('t1', 's1', 'm1', true));
+    expect(await screen.findByText('Micros et caméras interdits à tous')).toBeTruthy();
+    expect(await screen.findByText('Micros interdits à tous')).toBeTruthy();
+
+    api.setVisioMediaLock.mockImplementationOnce(async () => {
+      api.getMeetingVisio.mockResolvedValue(visioView({ mediaLocked: false }));
+      return visioView({ mediaLocked: false });
+    });
+    fireEvent.click(await screen.findByRole('switch', { name: 'Rendre les micros' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Rendre les micros' }));
+    await waitFor(() => expect(api.setVisioMediaLock).toHaveBeenLastCalledWith('t1', 's1', 'm1', false));
+    expect(await screen.findByText('Micros et caméras rendus à tous')).toBeTruthy();
   });
 
   it('exclut après confirmation avec révocation des liens et annonce le nombre de liens révoqués', async () => {

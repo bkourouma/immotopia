@@ -180,7 +180,13 @@ export interface LiveMeetingPublicView {
   }>;
   canVote: boolean;
   /** Visio intégrée (spec 045). Une réponse sans ce champ vaut `enabled: false`. */
-  visio?: { enabled: boolean; /** Une séance est enregistrée en ce moment (avis R2). */ recording?: boolean };
+  visio?: {
+    enabled: boolean;
+    /** Une séance est enregistrée en ce moment (avis R2). */
+    recording?: boolean;
+    /** Ce participant peut-il activer micro et caméra (V16) ? Absent d'une API plus ancienne : oui. */
+    mediaAllowed?: boolean;
+  };
   serverTime: string;
 }
 
@@ -195,6 +201,17 @@ export interface VisioJoinInfo {
   identity: string;
   roomName: string;
   expiresAt: string;
+  /** Droit d'activer micro et caméra décidé par le serveur à l'émission du jeton (V16). */
+  mediaAllowed?: boolean;
+}
+
+/** Droit de publier d'un participant (V16a) : `DEFAULT` suit l'interdiction globale. */
+export type MeetingMediaPolicy = 'DEFAULT' | 'ALLOWED' | 'BLOCKED';
+
+/** État d'une piste publiée : publiée ou non, coupée ou non. */
+export interface MeetingVisioTrackState {
+  published: boolean;
+  muted: boolean;
 }
 
 export interface MeetingVisioParticipant {
@@ -207,6 +224,11 @@ export interface MeetingVisioParticipant {
   handRaisedAt: string | null;
   /** Droit de publier micro et caméra. */
   canSpeak: boolean;
+  /** Droit d'activer micro et caméra décidé par le serveur (V16). Absent d'une API plus ancienne : `canSpeak`. */
+  mediaAllowed?: boolean;
+  mediaPolicy?: MeetingMediaPolicy;
+  mic?: MeetingVisioTrackState;
+  camera?: MeetingVisioTrackState;
   joinedAt: string | null;
   /** Écriture dans la discussion coupée (spec 046, M6). Absent d'une API plus ancienne : `false`. */
   chatMuted?: boolean;
@@ -231,6 +253,8 @@ export interface MeetingVisioAdminView {
   roomName: string | null;
   roomActive: boolean;
   participants: MeetingVisioParticipant[];
+  /** Micros et caméras interdits à tous les copropriétaires (V16d). Absent d'une API plus ancienne : `false`. */
+  mediaLocked?: boolean;
   /** Vrai quand l'API n'a pas pu relire la salle ou les enregistrements : la liste peut être incomplète. */
   degraded?: boolean;
   /** Absent d'une API plus ancienne : traité comme « enregistrement non configuré ». */

@@ -1444,7 +1444,7 @@ export async function issueMeetingVisioToken(
   return response.data.data;
 }
 
-/** Donne ou retire la parole (micro et caméra) à un copropriétaire présent en visio. */
+/** Autorise (`true`) ou interdit (`false`) micro et caméra à un copropriétaire, présent ou non (V16b). */
 export async function setVisioParticipantSpeaking(
   tenantId: string,
   syndicId: string,
@@ -1455,6 +1455,40 @@ export async function setVisioParticipantSpeaking(
   const response = await apiClient.post<{ success: boolean; data: MeetingVisioAdminView }>(
     `${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/parole`,
     { allowed }
+  );
+  return response.data.data;
+}
+
+export type VisioMuteSource = 'MICROPHONE' | 'CAMERA';
+
+/** Coupe les pistes micro et/ou caméra publiées d'un participant (il peut les rouvrir : V16c). */
+export async function muteVisioParticipant(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  participantId: string,
+  sources?: VisioMuteSource[]
+): Promise<MeetingVisioAdminView & { mutedTracks: number }> {
+  const response = await apiClient.post<{
+    success: boolean;
+    data: MeetingVisioAdminView & { mutedTracks: number };
+  }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/couper`,
+    sources ? { sources } : {}
+  );
+  return response.data.data;
+}
+
+/** Interdit (`locked: true`) ou rend (`false`) micro et caméra à tous les copropriétaires (V16d). */
+export async function setVisioMediaLock(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  locked: boolean
+): Promise<MeetingVisioAdminView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingVisioAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/media/verrou`,
+    { locked }
   );
   return response.data.data;
 }

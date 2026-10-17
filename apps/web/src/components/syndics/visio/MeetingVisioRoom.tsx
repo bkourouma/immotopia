@@ -57,6 +57,11 @@ export interface MeetingVisioRoomProps {
   title?: string;
   /** Discussion écrite (spec 046). Sans elle, la salle n'offre ni bouton ni panneau. */
   discussion?: VisioDiscussionAdapter;
+  /**
+   * Participant : le serveur lui laisse-t-il activer micro et caméra (V16) ? Valeur la plus récente
+   * connue (état de la page, relu régulièrement) ; à défaut, celle du jeton. Ignoré pour le modérateur.
+   */
+  mediaAllowed?: boolean;
 }
 
 type EndReason = 'removed' | 'ended' | 'left' | 'duplicate' | 'lost';
@@ -196,10 +201,12 @@ interface MediaToggleProps {
   /** Libellé de l'action quand la source est active. */
   disableLabel: string;
   icons: { on: React.ReactNode; off: React.ReactNode };
+  /** Bouton grisé (droit retiré par le gestionnaire). */
+  disabled?: boolean;
 }
 
 /** Bouton micro, caméra ou partage d'écran : nom accessible et infobulle traduits, aucun texte LiveKit. */
-const MediaToggle: React.FC<MediaToggleProps> = ({ source, enableLabel, disableLabel, icons }) => {
+const MediaToggle: React.FC<MediaToggleProps> = ({ source, enableLabel, disableLabel, icons, disabled = false }) => {
   const { toggle, enabled, pending } = useTrackToggle({ source });
   const label = enabled ? disableLabel : enableLabel;
   return (
@@ -210,48 +217,70 @@ const MediaToggle: React.FC<MediaToggleProps> = ({ source, enableLabel, disableL
       icon={enabled ? icons.on : icons.off}
       type={enabled ? 'primary' : 'default'}
       loading={pending}
+      disabled={disabled}
       onClick={() => void Promise.resolve(toggle()).catch(() => undefined)}
     />
   );
 };
 
 /**
- * Micro et caméra n'apparaissent que si le participant a le droit de publier ; le
- * partage d'écran est réservé au modérateur. Le bouton de reprise du son s'affiche
- * seulement quand le navigateur bloque la lecture audio.
+ * Micro et caméra : le modérateur les voit dès qu'il peut publier ; le participant les voit toujours
+ * (V16), grisés avec une explication quand le gestionnaire a retiré le droit. Le partage d'écran est
+ * réservé au modérateur. Le bouton de reprise du son s'affiche seulement quand le navigateur bloque
+ * la lecture audio.
  */
-const RoomMediaControls: React.FC<{ role: 'moderator' | 'participant'; canPublish: boolean }> = ({
-  role,
-  canPublish
-}) => (
-  <Space size={8} wrap>
-    <StartAudio label={t('Activer le son')} />
-    {canPublish ? (
-      <>
-        <MediaToggle
-          source={Track.Source.Microphone}
-          enableLabel={t('Activer le micro')}
-          disableLabel={t('Couper le micro')}
-          icons={{ on: <AudioOutlined />, off: <AudioMutedOutlined /> }}
-        />
-        <MediaToggle
-          source={Track.Source.Camera}
-          enableLabel={t('Activer la caméra')}
-          disableLabel={t('Couper la caméra')}
-          icons={{ on: <VideoCameraOutlined />, off: <VideoCameraAddOutlined /> }}
-        />
-        {role === 'moderator' ? (
+const RoomMediaControls: React.FC<{
+  role: 'moderator' | 'participant';
+  canPublish: boolean;
+  mediaAllowed: boolean;
+}> = ({ role, canPublish, mediaAllowed }) => {
+  const isModerator = role === 'moderator';
+  const showMedia = isModerator ? canPublish : true;
+  // Droit accordé par le serveur mais pas encore porté par la connexion (changement en cours).
+  const waiting = !isModerator && mediaAllowed && !canPublish;
+  const disabled = !isModerator && (!mediaAllowed || !canPublish);
+  return (
+    <Space size={8} wrap>
+      <StartAudio label={t('Activer le son')} />
+      {showMedia ? (
+        <>
           <MediaToggle
-            source={Track.Source.ScreenShare}
-            enableLabel={t("Partager l'écran")}
-            disableLabel={t('Arrêter le partage')}
-            icons={{ on: <DesktopOutlined />, off: <DesktopOutlined /> }}
+            source={Track.Source.Microphone}
+            enableLabel={t('Activer le micro')}
+            disableLabel={t('Couper le micro')}
+            icons={{ on: <AudioOutlined />, off: <AudioMutedOutlined /> }}
+            disabled={disabled}
           />
-        ) : null}
-      </>
-    ) : null}
-  </Space>
-);
+          <MediaToggle
+            source={Track.Source.Camera}
+            enableLabel={t('Activer la caméra')}
+            disableLabel={t('Couper la caméra')}
+            icons={{ on: <VideoCameraOutlined />, off: <VideoCameraAddOutlined /> }}
+            disabled={disabled}
+          />
+          {isModerator ? (
+            <MediaToggle
+              source={Track.Source.ScreenShare}
+              enableLabel={t("Partager l'écran")}
+              disableLabel={t('Arrêter le partage')}
+              icons={{ on: <DesktopOutlined />, off: <DesktopOutlined /> }}
+            />
+          ) : null}
+        </>
+      ) : null}
+      {!isModerator && !mediaAllowed ? (
+        <Text role="status" style={{ color: 'inherit' }}>
+          {t('Le gestionnaire a désactivé les micros')}
+        </Text>
+      ) : null}
+      {waiting ? (
+        <Text role="status" style={{ color: 'inherit' }}>
+          {t('Activation du micro et de la caméra en cours…')}
+        </Text>
+      ) : null}
+    </Space>
+  );
+};
 
 /* -------------------------------------------------------------------- salle */
 
@@ -350,6 +379,7 @@ interface RoomBodyProps {
   tracks: ReturnType<typeof useTracks>;
   role: 'moderator' | 'participant';
   canPublish: boolean;
+  mediaAllowed: boolean;
   onRaiseHand?: (raised: boolean) => Promise<void>;
   /** Adaptateur de discussion ; absent quand l'écran n'en fournit pas (ni bouton ni panneau). */
   adapter?: VisioDiscussionAdapter;
@@ -360,7 +390,7 @@ interface RoomBodyProps {
  * adaptateur qui apparaît ne remonte ni la grille vidéo ni l'état du panneau. La grille reste
  * montée quand le panneau la remplace ; l'état du panneau vit ici.
  */
-const RoomBody: React.FC<RoomBodyProps> = ({ tracks, role, canPublish, onRaiseHand, adapter }) => {
+const RoomBody: React.FC<RoomBodyProps> = ({ tracks, role, canPublish, mediaAllowed, onRaiseHand, adapter }) => {
   const [panelOpen, setPanelOpen] = useState(false);
   const discussion = useVisioDiscussion(adapter, panelOpen);
   const onTogglePanel = () => setPanelOpen(o => !o);
@@ -402,7 +432,7 @@ const RoomBody: React.FC<RoomBodyProps> = ({ tracks, role, canPublish, onRaiseHa
           {discussion ? (
             <DiscussionButton open={panelOpen} unread={discussion.unread} onToggle={onTogglePanel} />
           ) : null}
-          <RoomMediaControls role={role} canPublish={canPublish} />
+          <RoomMediaControls role={role} canPublish={canPublish} mediaAllowed={mediaAllowed} />
         </Space>
       </div>
     </>
@@ -417,6 +447,7 @@ interface RoomShellProps {
   onRaiseHand?: (raised: boolean) => Promise<void>;
   onRefreshSignal?: () => void;
   discussion?: VisioDiscussionAdapter;
+  mediaAllowed: boolean;
 }
 
 const RoomShell: React.FC<RoomShellProps> = ({
@@ -426,7 +457,8 @@ const RoomShell: React.FC<RoomShellProps> = ({
   onDismissDeviceError,
   onRaiseHand,
   onRefreshSignal,
-  discussion
+  discussion,
+  mediaAllowed
 }) => {
   const canPublish = Boolean(useLocalParticipantPermissions()?.canPublish);
   // État tenu par LiveKit : l'avis suit l'enregistrement réel, pour le modérateur comme pour le participant.
@@ -439,12 +471,21 @@ const RoomShell: React.FC<RoomShellProps> = ({
     { onlySubscribed: false }
   );
   useRefreshSignal(onRefreshSignal);
-  const bodyProps = { tracks, role, canPublish, onRaiseHand };
+  const bodyProps = { tracks, role, canPublish, mediaAllowed, onRaiseHand };
 
   return (
     <div style={{ ...CONTAINER_STYLE, borderRadius: 0 }}>
       <RoomHeader role={role} title={title} />
-      {recording ? <Alert type="warning" showIcon banner message={t('Cette assemblée est enregistrée.')} /> : null}
+      {recording ? (
+        <Alert
+          type="warning"
+          showIcon
+          banner
+          message={t(
+            "Cette assemblée est enregistrée, y compris la voix et l'image des participants qui activent leur micro ou leur caméra."
+          )}
+        />
+      ) : null}
       {deviceError ? (
         <Alert type="warning" showIcon closable onClose={onDismissDeviceError} message={deviceError} />
       ) : null}
@@ -560,7 +601,8 @@ export const MeetingVisioRoom: React.FC<MeetingVisioRoomProps> = ({
   onRefreshSignal,
   onLeave,
   title,
-  discussion
+  discussion,
+  mediaAllowed
 }) => {
   const session = useVisioSession(getToken, onLeave);
   const { phase, connect } = session;
@@ -630,6 +672,7 @@ export const MeetingVisioRoom: React.FC<MeetingVisioRoomProps> = ({
           onRaiseHand={onRaiseHand}
           onRefreshSignal={onRefreshSignal}
           discussion={discussion}
+          mediaAllowed={role === 'moderator' ? true : (mediaAllowed ?? info.mediaAllowed ?? true)}
         />
       </StableLiveKitRoom>
     </div>

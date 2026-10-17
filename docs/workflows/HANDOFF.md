@@ -57,6 +57,16 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/syndic-visio-micro-camera` — 2026-10-17
+
+**État :** prêt à relire (PR empilée sur `fix/syndic-ag-direct-recette`, PR 163), non déployé. Migration Prisma `20261017120000_syndic_ag_media_moderation` à appliquer (`demo:sync --migrate`).
+
+**Fait :** les copropriétaires activent micro et caméra dans la visio de l'AG ; le gestionnaire coupe un micro/une caméra, interdit/autorise un participant ou tous (`mediaPolicy`, `mediaLockedAt`, droits décidés côté serveur à chaque jeton, rattrapage à la connexion par le webhook LiveKit `participant_joined`). Audit, avis d'enregistrement (convocation et bandeau), spec 045 §V16 datée du 2026-10-17. Audit sécurité : 1 point important corrigé (jeton ancien), 2 mineurs corrigés.
+
+**Reste :** rien vérifié avec un vrai LiveKit (mute, interdiction, ordre d'arrivée de `participant_joined`) ; vérifier que `participant_joined` est envoyé à l'URL de webhook LiveKit ; rendu RTL non vu ; traductions en/ar non relues ; classeur de fonctionnalités à compléter (micro/caméra, couper, interdire, interdire à tous, rattrapage à la connexion) ; pas de « couper tous les micros » en un geste.
+
+**Pièges :** jeton copropriétaire valable 600 s, non révocable : seule la règle serveur à l'arrivée le rattrape. Mêmes pièges d'i18n et de jest que la branche de la PR 163.
+
 ## Branche `fix/crm-contact-commune` — 2026-10-17
 
 **État :** prêt à relire (PR vers `main`).
@@ -66,16 +76,6 @@ Pièges et décisions :
 **Reste :** redéployer le staging pour constater la correction ; classeur des fonctionnalités non modifié (aucune ligne ne décrit cette règle).
 
 **Pièges :** `tsc` web signale 7 erreurs préexistantes (livekit absent), sans lien.
-
-## Branche `fix/syndic-ag-direct-recette` — 2026-10-17
-
-**État :** prêt à relire (PR vers `main`), non déployé.
-
-**Fait :** correctifs de la recette staging du 2026-10-17 (AG en direct, visio, compte rendu). `GET /visio` ne tombe plus (identités non UUID comme l'enregistreur `EG_…`, échec LiveKit → réponse dégradée `degraded`/`unrecognized`) ; règle de reconnaissance des gestionnaires alignée sur l'émission du jeton (plus d'éviction d'un modérateur légitime) ; cartes Visio/Enregistrements conservées en séance, arrêt manuel de l'enregistrement toujours possible, bandeau d'enregistrement éteint à la clôture, reconnexion après coupure, retour visuel aux téléchargements MP4 et Word ; création d'AG : convocations en arrière-plan, `Idempotency-Key`, bouton protégé ; compte rendu Word : feuille de présence, quorum « 16,2 % », ordre du jour repris des résolutions ; navigation : « mandants » n'est plus pris pour une copropriété.
-
-**Reste :** causes des anomalies 1, 2 et 4 non prouvées sur un vrai LiveKit (Docker éteint) : à rejouer sur le staging ; le regroupement des convocations par copropriétaire existait déjà (un message par contact) ; micro/caméra des copropriétaires (PR séparée empilée, spec 045) ; statut d'envoi des convocations non consultable (journal seulement) ; renvoi de convocation toujours synchrone ; idempotence en mémoire du processus ; classeur de fonctionnalités non mis à jour (correctifs sans nouvel écran ni route).
-
-**Pièges :** `i18n:extract` réécrit tous les catalogues et crée des `*.orphans.json` : relire le diff des locales. `npx jest <fichier>` lance toute la suite : utiliser `--runTestsByPath`. `node_modules` du worktree est une jonction vers un autre worktree : `rmdir` avant tout retrait.
 
 ## Branche `feat/syndic-ag-visio` — 2026-10-17
 

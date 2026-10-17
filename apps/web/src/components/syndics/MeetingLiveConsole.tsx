@@ -387,6 +387,9 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
           getToken={visioState.getToken}
           busyParticipantId={visioState.busyVisioId}
           onSpeak={(participant, allowed) => void visioState.speak(participant, allowed)}
+          onMute={(participant, sources) => void visioState.mute(participant, sources)}
+          onLockMedia={locked => void visioState.lockMedia(locked)}
+          lockBusy={visioState.lockBusy}
           onRemove={visioState.remove}
           inProgress={visioState.inProgress}
           recordingBusy={recordingState.busy}

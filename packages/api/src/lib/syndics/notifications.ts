@@ -491,7 +491,9 @@ export function dropMeetingLinkParagraph(template: string, meetingLink: string):
 /** Avis d'enregistrement de la convocation (spec 045, decision du 2026-10-16) ; vide si non configure. */
 export function recordingNoticeText(): string {
   return isRecordingEnabled()
-    ? t("La séance pourra être enregistrée (image et son) ; un avis s'affichera à l'écran pendant l'enregistrement.")
+    ? t(
+        "La séance pourra être enregistrée (image et son), y compris la voix et l'image des participants qui activent leur micro ou leur caméra ; un avis s'affichera à l'écran pendant l'enregistrement."
+      )
     : '';
 }
 
