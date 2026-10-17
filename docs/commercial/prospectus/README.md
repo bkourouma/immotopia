@@ -10,6 +10,7 @@ Une fiche recto-verso A4 par pack, à remettre ou envoyer à un prospect.
 | Pack   | Source HTML                  | PDF à imprimer             |
 | ------ | ---------------------------- | -------------------------- |
 | Syndic | [syndic.html](./syndic.html) | [syndic.pdf](./syndic.pdf) |
+| Agence | [agence.html](./agence.html) | [agence.pdf](./agence.pdf) |
 
 ## Règles de contenu
 
@@ -20,7 +21,7 @@ Une fiche recto-verso A4 par pack, à remettre ou envoyer à un prospect.
 - Les tarifs viennent du catalogue d'abonnement
   (`packages/api/src/lib/subscription/catalog.ts`). Les reprendre à chaque
   changement de prix.
-- Les visuels chiffrés (grille lot × mois, quorum) sont des illustrations
+- Les visuels chiffrés (grille lot × mois, quorum, relevé propriétaire) sont des illustrations
   marquées comme telles, jamais des données de client.
 - Le bloc « Votre conseiller » est laissé vierge pour être complété à la main
   ou au tampon.
@@ -29,6 +30,15 @@ Pour le Pack Syndic, les éléments marqués **Bientôt** au 17/10/2026 sont : l
 clôture d'exercice (spec 027, brouillon), la place de marché des prestataires
 (besoin 10 du compte rendu du 25/09/2026, non spécifié) et l'export complet des
 données (lot S7 de la spec 021, non réalisé). Le paiement Mobile Money (spec 042) est fusionné dans `main` mais son mode réel n'est pas encore activé.
+
+Pour le Pack Agence, les éléments marqués **Bientôt** au 17/10/2026 sont : le
+prélèvement automatique des loyers (spec 042-prelevement-bancaire : seuls les
+créanciers et les mandats sont livrés), les relances automatiques des impayés
+par SMS et WhatsApp (aucune relance de loyer automatique dans le classeur), le
+site vitrine de l'agence avec diffusion sur les portails d'annonces (seul le
+portail public d'ImmoTopia existe) et l'export complet des données. Les
+signatures électroniques sont dites « incluses » sans chiffre : le quota par
+pack du catalogue est provisoire.
 
 ## Régénérer le PDF
 
