@@ -108,11 +108,16 @@ Débit Mobile Money récurrent ; intégration bancaire directe ; signature
   24 caractères (converti en IBAN `CI` en calculant les chiffres de
   contrôle). Refus → `BadRequestError` au message traduit. Clé RIB
   incohérente → avertissement renvoyé (`warnings`), pas de refus.
-- PB2-R4. L'IBAN est chiffré (`lib/payment-gateway/crypto.ts`). Sont stockés
+- PB2-R4. L'IBAN est chiffré (`lib/direct-debit/iban-crypto.ts`, AES-256-GCM,
+  clé dédiée `DIRECT_DEBIT_IBAN_KEY`, format `ddk1:<id de clé>:<iv>:<tag>:<chiffré>`
+  avec l'id de clé en données associées ; anciennes clés
+  `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` pour la rotation, script
+  `reencrypt-direct-debit-ibans`). Les valeurs `pg1` (ancien format,
+  `PAYMENT_SECRETS_KEY`) restent lisibles, jamais écrites. Sont stockés
   en clair : code banque (5 caractères), 4 derniers caractères, nom du
   titulaire. **Aucune réponse d'API ne contient l'IBAN complet** ; l'affichage
   est `CI•• •••• •••• •••• •••• 0589` (masque construit côté API). Sans
-  `PAYMENT_SECRETS_KEY` valide, la création échoue proprement
+  `DIRECT_DEBIT_IBAN_KEY` valide, la création échoue proprement
   (`BadRequestError` traduite), rien n'est écrit.
 - PB2-R5. Modifier l'IBAN d'un mandat est interdit : on révoque et on en crée
   un autre (une banque ne connaît que l'autorisation signée).

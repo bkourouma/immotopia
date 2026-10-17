@@ -62,7 +62,8 @@ model DirectDebitMandate {
   debtorClientId       String                   @map("debtor_client_id")
   leaseId              String?                  @map("lease_id") @db.Uuid
   status               DirectDebitMandateStatus @default(DRAFT)
-  /// IBAN chiffré (lib/payment-gateway/crypto.ts, format pg1:…). Jamais renvoyé.
+  /// IBAN chiffré (lib/direct-debit/iban-crypto.ts, format ddk1:<id de clé>:…, clé DIRECT_DEBIT_IBAN_KEY ;
+  /// anciennes valeurs pg1:… lisibles en repli, jamais écrites). Jamais renvoyé.
   ibanEncrypted        String                   @map("iban_encrypted")
   ibanBankCode         String                   @map("iban_bank_code")
   ibanLast4            String                   @map("iban_last4")
