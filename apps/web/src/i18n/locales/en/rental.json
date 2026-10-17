@@ -1,6 +1,7 @@
 {
   "- Échéance du": "- Instalment due",
   "(Par défaut)": "(Default)",
+  "Autorisation téléchargée : {{fichier}}": "Authorization downloaded: {{fichier}}",
   "{{count}} bail en gestion": "{{count}} lease under management",
   "{{count}} baux en gestion": "{{count}} leases under management",
   "{{date}} ({{n}} fichiers produits)": "{{date}} ({{n}} files produced)",

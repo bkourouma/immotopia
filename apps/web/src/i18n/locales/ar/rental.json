@@ -1,6 +1,7 @@
 {
   "- Échéance du": "- قسط مستحق في",
   "(Par défaut)": "(افتراضي)",
+  "Autorisation téléchargée : {{fichier}}": "تم تنزيل التفويض: {{fichier}}",
   "{{count}} bail en gestion": "{{count}} عقد إيجار قيد الإدارة",
   "{{count}} baux en gestion": "{{count}} عقود إيجار قيد الإدارة",
   "{{date}} ({{n}} fichiers produits)": "{{date}} ({{n}} ملفات منتجة)",
