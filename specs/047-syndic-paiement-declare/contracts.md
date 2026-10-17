@@ -454,6 +454,9 @@ Le portail **ne sert pas** la capture : le copropriétaire l'a déjà.
 
 ### 3.3 Comptabilité
 
+Hypothèse comptable **H1**, révisable (voir [plan.md](./plan.md), « Hypothèse comptable H1 ») : un
+sous-compte 5521x par numéro de réception, dans le plan de la copropriété.
+
 Écriture d'un encaissement validé : **débit 5521x** (compte du numéro de réception) / **crédit 450**, ligne
 rattachée au lot, journal banque, libellé « Encaissement appel de charges - lot X (mobile money <référence>) ».
 `ChargePayment` : `method = 'MOBILE_MONEY'`, `reference = transactionReference`, `idempotencyKey = 'DECL-' +
@@ -474,3 +477,188 @@ Canaux : ceux des quittances (`planChannels`). Classées `SYNDIC` dans `notifica
 
 Charges utiles sans capture, sans image, sans valeur lue par l'IA : identifiants, statut, montants, raison.
 `SYNDIC_PAYMENT_PROOF_READ` : `readId`, fournisseur, modèle, `outcome`, durée.
+
+---
+
+## 4. Modèle de données (ajouts à `schema.prisma`)
+
+Référence pour l'agent du lot L1. Noms de colonnes en `snake_case` par `@map`, tables par `@@map`, comme le
+reste du schéma. Montants en `Decimal(14, 2)` (entiers en pratique). Tous les modèles portent `tenantId`
+(isolation, `schema-tenant-coverage`).
+
+```prisma
+enum ChargePaymentOrigin {
+  MANUAL
+  ONLINE
+  DECLARED // spec 047 — migration séparée (ALTER TYPE … ADD VALUE)
+}
+
+enum SyndicDeclarationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELED
+}
+
+enum SyndicDeclarationRejectReason {
+  NOT_FOUND
+  AMOUNT_MISMATCH
+  REFERENCE_USED
+  WRONG_NUMBER
+  OTHER
+}
+
+/// Spec 047 : numéro mobile money sur lequel une copropriété reçoit les charges.
+model SyndicReceivingNumber {
+  id                    String              @id @default(uuid()) @db.Uuid
+  tenantId              String              @map("tenant_id")
+  syndicateId           String              @map("syndicate_id") @db.Uuid
+  operator              MobileMoneyOperator
+  phoneNumber           String              @map("phone_number") // E.164
+  holderName            String              @map("holder_name")
+  label                 String?
+  /// Sous-compte de trésorerie du plan de la copropriété (hypothèse H1 : 5521x).
+  treasuryAccountNumber String              @map("treasury_account_number")
+  isActive              Boolean             @default(true) @map("is_active")
+  sortOrder             Int                 @default(0) @map("sort_order")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  tenant       Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate    Syndicate                  @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  declarations SyndicPaymentDeclaration[]
+
+  @@unique([syndicateId, operator, phoneNumber])
+  @@index([tenantId, phoneNumber]) // numéro partagé entre copropriétés (D10)
+  @@map("syndic_receiving_numbers")
+}
+
+/// Spec 047 : réglages du paiement déclaré d'une copropriété. Sans ligne : valeurs par défaut.
+model SyndicDeclaredPaymentSettings {
+  id                      String   @id @default(uuid()) @db.Uuid
+  tenantId                String   @map("tenant_id")
+  syndicateId             String   @unique @map("syndicate_id") @db.Uuid
+  enabled                 Boolean  @default(false) // D11
+  reviewAlertBusinessDays Int      @default(3) @map("review_alert_business_days") // D12
+  proofRequired           Boolean  @default(false) @map("proof_required") // D14
+  payerInstructions       String?  @map("payer_instructions") @db.VarChar(500)
+  aiPrefillEnabled        Boolean  @default(false) @map("ai_prefill_enabled") // D9
+  updatedById             String?  @map("updated_by_id")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate Syndicate @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("syndic_declared_payment_settings")
+}
+
+/// Spec 047 : paiement mobile money fait hors d'ImmoTopia et déclaré. Rien n'est crédité avant APPROVED.
+model SyndicPaymentDeclaration {
+  id                   String                         @id @default(uuid()) @db.Uuid
+  tenantId             String                         @map("tenant_id")
+  syndicateId          String                         @map("syndicate_id") @db.Uuid
+  receivingNumberId    String                         @map("receiving_number_id") @db.Uuid
+  /// Instantané du numéro au moment de la déclaration (S10).
+  receivingOperator    MobileMoneyOperator            @map("receiving_operator")
+  receivingPhone       String                         @map("receiving_phone")
+  receivingHolderName  String                         @map("receiving_holder_name")
+  /// Déclarant : copropriétaire (CrmContact.id) ou gestionnaire (User.id, P4). Champs simples, sans FK.
+  declaredByContactId  String?                        @map("declared_by_contact_id")
+  declaredByUserId     String?                        @map("declared_by_user_id")
+  payerPhone           String                         @map("payer_phone")
+  amount               Decimal                        @db.Decimal(14, 2)
+  paidAt               DateTime                       @map("paid_at")
+  transactionReference String                         @map("transaction_reference") // normalisée
+  comment              String?                        @db.VarChar(500)
+  proofFileUrl         String?                        @map("proof_file_url")
+  proofSha256          String?                        @map("proof_sha256")
+  proofReadId          String?                        @unique @map("proof_read_id") @db.Uuid
+  aiPrefill            Json?                          @map("ai_prefill")
+  aiEditedFields       String[]                       @default([]) @map("ai_edited_fields")
+  status               SyndicDeclarationStatus        @default(PENDING)
+  acceptedAmount       Decimal?                       @map("accepted_amount") @db.Decimal(14, 2)
+  acceptedPaidAt       DateTime?                      @map("accepted_paid_at")
+  rejectReason         SyndicDeclarationRejectReason? @map("reject_reason")
+  reviewNote           String?                        @map("review_note") @db.VarChar(500)
+  reviewedByUserId     String?                        @map("reviewed_by_user_id")
+  reviewedAt           DateTime?                      @map("reviewed_at")
+  canceledAt           DateTime?                      @map("canceled_at")
+  createdAt            DateTime                       @default(now()) @map("created_at")
+  updatedAt            DateTime                       @updatedAt @map("updated_at")
+
+  tenant          Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate       Syndicate                      @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  receivingNumber SyndicReceivingNumber          @relation(fields: [receivingNumberId], references: [id], onDelete: Restrict)
+  proofRead       SyndicPaymentProofRead?        @relation(fields: [proofReadId], references: [id], onDelete: SetNull)
+  lines           SyndicPaymentDeclarationLine[]
+
+  @@index([tenantId, syndicateId, status, createdAt])
+  @@index([receivingNumberId, transactionReference])
+  @@map("syndic_payment_declarations")
+}
+
+/// Spec 047 : part d'une déclaration affectée à un lot (D15). Un encaissement par ligne à la validation.
+model SyndicPaymentDeclarationLine {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id")
+  declarationId   String   @map("declaration_id") @db.Uuid
+  lotId           String   @map("lot_id") @db.Uuid
+  amount          Decimal  @db.Decimal(14, 2)
+  acceptedAmount  Decimal? @map("accepted_amount") @db.Decimal(14, 2)
+  chargeCallIds   String[] @default([]) @map("charge_call_ids")
+  chargePaymentId String?  @unique @map("charge_payment_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  declaration   SyndicPaymentDeclaration @relation(fields: [declarationId], references: [id], onDelete: Cascade)
+  lot           SyndicateLot             @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  chargePayment ChargePayment?           @relation(fields: [chargePaymentId], references: [id], onDelete: SetNull)
+
+  @@unique([declarationId, lotId])
+  @@index([lotId])
+  @@index([tenantId])
+  @@map("syndic_payment_declaration_lines")
+}
+
+/// Spec 047 (alimenté en PR3) : lecture IA d'une capture ; sert aussi au quota mensuel par agence (D9).
+model SyndicPaymentProofRead {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id")
+  syndicateId String    @map("syndicate_id") @db.Uuid
+  contactId   String    @map("contact_id")
+  tempFileUrl String?   @map("temp_file_url")
+  sha256      String
+  provider    String
+  model       String
+  outcome     String // OK | UNREADABLE | NOT_A_PAYMENT | FAILED | DISABLED
+  result      Json?
+  latencyMs   Int       @map("latency_ms")
+  consumedAt  DateTime? @map("consumed_at")
+  expiresAt   DateTime  @map("expires_at") // création + 24 h
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  tenant      Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate   Syndicate                 @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  declaration SyndicPaymentDeclaration?
+
+  @@index([tenantId, createdAt])
+  @@index([contactId, createdAt])
+  @@index([expiresAt])
+  @@map("syndic_payment_proof_reads")
+}
+```
+
+Index unique partiel, écrit à la main dans la migration (Prisma ne l'exprime pas) :
+
+```sql
+CREATE UNIQUE INDEX "syndic_payment_declarations_ref_active_uq"
+  ON "syndic_payment_declarations" ("tenant_id", "receiving_phone", "transaction_reference")
+  WHERE "status" IN ('PENDING', 'APPROVED');
+```
+
+Relations inverses à ajouter : `Tenant` (cinq listes) ; `Syndicate` (`receivingNumbers`,
+`declaredPaymentSettings`, `paymentDeclarations`, `paymentProofReads`) ; `SyndicateLot`
+(`paymentDeclarationLines`) ; `ChargePayment` (`declarationLine SyndicPaymentDeclarationLine?`).
+`SyndicPaymentProofRead` est créé dès PR1 (schéma posé en une fois) mais n'est alimenté qu'en PR3.

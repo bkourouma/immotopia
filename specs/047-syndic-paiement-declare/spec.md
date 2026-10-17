@@ -241,7 +241,7 @@ phoneNumber)`.
 ### 5.5 Comptabilité
 
 - **R22** — Chaque numéro de réception est rattaché à un compte de trésorerie du **plan comptable de la
-  copropriété**. Proposition (à confirmer par le comptable, Q9) : sous-comptes de **552 « Monnaie
+  copropriété**. Hypothèse **H1**, retenue comme la plus prudente et révisable ([plan.md](./plan.md), Q9) : sous-comptes de **552 « Monnaie
   électronique — téléphone portable »** (SYSCOHADA révisé), un par numéro, créés à la demande (`55211`,
   `55212`…), libellé « Orange Money 07 xx xx xx 12 ». `5525` reste réservé à PaySecureHub (spec 042). Le
   type `CollectionTreasuryAccount` est élargi en conséquence, et le compte est toujours passé
@@ -401,6 +401,6 @@ phoneNumber)`.
 
 ## 11. Question ouverte
 
-| #   | Question                                                                              | Proposition par défaut             |
-| --- | ------------------------------------------------------------------------------------- | ---------------------------------- |
-| Q9  | Comptes 552x par numéro de réception : à faire valider par le comptable de référence. | Sous-comptes de 552, un par numéro |
+| #   | Question                                                                               | Proposition par défaut                                                                                                            |
+| --- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Q9  | Comptes 5521x par numéro de réception : à faire valider par le comptable de référence. | Hypothèse H1 retenue pour la réalisation (sous-comptes de 552, un par numéro, voir plan.md) ; révisable sans migration de données |

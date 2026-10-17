@@ -64,6 +64,28 @@ après le commit.
 | Wiki                           | sous-fonctionnalités ci-dessous au classeur + `npm run wiki:export`, dans chaque PR qui en livre.                                                                                                                                                                   |
 | Pas de `include: { user }`     | relecteur et déclarant chargés par `select` explicite.                                                                                                                                                                                                              |
 
+## Hypothèse comptable H1 (révisable)
+
+La question Q9 (plan de comptes des numéros de réception) n'est pas tranchée par un comptable. Le chantier
+retient l'hypothèse **la plus prudente**, c'est-à-dire la plus facile à défaire, et la documente comme
+révisable :
+
+- **un sous-compte par numéro de réception**, sous le compte 552 « Monnaie électronique — téléphone
+  portable » (SYSCOHADA révisé), numéroté `5521` suivi d'un rang (`55211`, `55212`…), libellé
+  « <Opérateur> <numéro masqué> » ;
+- créé **à la demande**, à l'enregistrement du numéro, **dans le plan SYNDICATE de la copropriété seulement**
+  (jamais dans celui du cabinet) ; un numéro partagé (D10) a un sous-compte dans chaque copropriété ;
+- **aucun compte existant n'est modifié, renommé ni supprimé** ; `5525` reste à PaySecureHub (spec 042) ;
+- le numéro du compte est **stocké sur le numéro de réception** (`treasuryAccountNumber`) et toute la
+  numérotation vit dans une seule fonction (`ensureSyndicReceivingAccountTx`).
+
+Pourquoi c'est la plus prudente : des sous-comptes fins se **regroupent** sans perte (ils se totalisent
+dans 552 sur la balance), alors qu'un compte unique ne se **redécoupe** pas après coup. Si le comptable
+retient un autre schéma (compte unique, autre racine), on change la fonction de numérotation et le
+`treasuryAccountNumber` des numéros ; les écritures déjà passées restent justes et se reclassent par une
+écriture de virement de compte à compte. Aucune migration de données n'est alors nécessaire. Tâche T069 :
+validation par le comptable avant la mise en production.
+
 ## Lots
 
 Un fichier = un seul agent. Chemins relatifs à `packages/api/` (API) ou `apps/web/` (web).
@@ -142,7 +164,7 @@ Dossier `src/lib/syndics/declared-payment/` (nouveau) sauf mention.
     interblocages), `recordLotPaymentTx` (`method: 'MOBILE_MONEY'`, `reference`, `idempotencyKey:
 'DECL-' + line.id`, `origin: 'DECLARED'`, `chargeCallIds`, `treasuryAccountNumber` du numéro,
     `actorUserId`) puis `issueReceiptsForPaymentTx` ; `chargePaymentId` posé sur la ligne ; renvoie les
-    documents émis ; **après** commit : `scheduleChargeDocumentDelivery` et notification (N5) ;
+    documents émis ; l'**appelant** déclenche après le commit `scheduleChargeDocumentDelivery` et la notification (voir « Lots par territoire ») ;
   - `rejectDeclaration(…, { reason, note })` (R20) : claim, rien d'autre.
 - `declaration-queries.ts` : `listDeclarations` (filtres, pagination, compteurs `pending`, `overdue`,
   `suspectedDuplicate`), `getDeclarationDetail` (avec alertes, reste dû actuel des appels visés),
@@ -232,26 +254,70 @@ Web (`apps/web`), deux territoires disjoints :
   vérifiez », suivi des champs retouchés) ; `DeclarationDrawer.tsx` (témoins IA) ; `DeclaredSettingsCard.tsx`
   (interrupteur IA, compteur du mois).
 
+## Lots par territoire de fichiers (découpage de réalisation)
+
+Les sections N1 à N7 ci-dessus décrivent le **contenu** ; la réalisation se distribue par **territoire** :
+chaque lot ci-dessous a ses fichiers, qu'aucun autre lot ne touche dans la même PR. Les numéros de tâches
+renvoient à [tasks.md](./tasks.md).
+
+| Lot    | Territoire                                     | Fichiers (chemins `API/` = `packages/api/`, `WEB/` = `apps/web/`)                                                                                                                                                                                                                                                                    | Contenu (plan)  | Tâches          | PR  | Dépend de                        |
+| ------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- | --------------- | --- | -------------------------------- |
+| **L1** | Schéma et migrations                           | `API/prisma/schema.prisma`, `API/prisma/migrations/…_syndic_paiement_declare*/`, `API/src/types/audit-types.ts`, `API/src/middleware/error-middleware.ts`, `API/__tests__/unit/schema-tenant-coverage.test.ts`, `docs/architecture/DATA_MODELS.md`                                                                                   | N1              | T001–T009       | 1   | contrats gelés                   |
+| **L2** | Moteur API et comptabilité                     | `API/src/lib/syndics/declared-payment/*` (hors `portal.ts`, `vision/`, `proof-read.ts` ; `notifications.ts` en version sans effet), `API/src/lib/syndics/charge-allocation.ts`, `charge-collection-accounting.ts`, `provider-invoice-accounting.ts`                                                                                  | N2              | T010–T024       | 1   | L1                               |
+| **L3** | API agence (routes gestionnaire)               | `API/src/routes/syndic-declared-payment-routes.ts`, `API/src/controllers/syndic-declared-payment-controller.ts`, `API/src/app.ts`, `API/__tests__/unit/routes-inventory.test.ts` (PR1)                                                                                                                                               | N3, N5 (routes) | T025–T031, T040 | 1–2 | L2 ; en PR2 les signatures de L5 |
+| **L4** | API portail copropriétaire et effets d'attente | `API/src/lib/syndics/declared-payment/portal.ts`, `API/src/controllers/coowner-declared-payment-controller.ts`, `API/src/routes/coowner-portal-routes.ts`, `API/src/lib/syndics/coowner-portal.ts`, `online-payment/checkout-start.ts`, `lib/syndics/queries.ts`, `rate-limit-middleware.ts` (PR2), `routes-inventory.test.ts` (PR2) | N4              | T032–T039       | 2   | L2 ; signatures de L5            |
+| **L5** | Notifications et quittances                    | `API/src/lib/syndics/declared-payment/notifications.ts`, constantes `API/src/constants/{email,whatsapp}-notification-*.ts` et `notification-key-features.ts`, `API/src/jobs/syndic-declared-payment-job.ts` et son inscription, gabarits                                                                                             | N5 (envois)     | T041–T044       | 2   | L2                               |
+| **L6** | Écran portail copropriétaire                   | `WEB/src/services/coowner-portal-service.ts`, `WEB/src/components/coowner-portal/declared-payment/*`, `WEB/src/pages/CoOwnerPortal/{ChargeCalls,ChargeCallsTable,Payments}.tsx`, tests `WEB/src/__tests__/coowner-portal/…`                                                                                                          | N6 (portail)    | T045–T050       | 2   | contrats §2 (API simulée)        |
+| **L7** | Écran agence                                   | `WEB/src/services/syndic-declared-payment-service.ts`, `WEB/src/components/syndics/declared-payment/*`, `WEB/src/pages/syndics/{SyndicOnlinePayments,SyndicCharges}.tsx`, `WEB/src/components/navigation/SyndicWorkspaceLayout.tsx`                                                                                                  | N6 (agence)     | T051–T057       | 2   | contrats §1 (API simulée)        |
+| **L8** | Pré-remplissage IA                             | `API/src/lib/ai/vision/*`, `API/src/lib/stock-whatsapp/vision/*` (réexports), `API/src/lib/syndics/declared-payment/{vision/*,proof-read.ts}`, `API/src/config/env.ts`, `API/env.example` ; puis retouches de fichiers de L2, L4, L6 et L7 listées en T063–T065                                                                      | N7              | T059–T066       | 3   | L2, L4, L6, L7 fusionnés         |
+
+**Quittances** : aucun nouveau générateur. La validation (L2, `approveDeclaration`) appelle
+`issueReceiptsForPaymentTx` dans la transaction et renvoie les documents ; l'appelant (contrôleur de L3)
+déclenche après le commit `scheduleChargeDocumentDelivery` puis `notifyDeclarationApproved` de L5. Ainsi L2
+ne dépend pas de L5, et L3 n'a besoin que des **signatures** de L5, fixées ici :
+
+```ts
+// API/src/lib/syndics/declared-payment/notifications.ts (L5)
+export function notifyDeclarationReceived(
+  tenantId: string,
+  declarationId: string,
+): void; // L4 après création
+export function notifyDeclarationApproved(
+  tenantId: string,
+  declarationId: string,
+  documents: IssuedChargeDocument[],
+): void; // L3
+export function notifyDeclarationRejected(
+  tenantId: string,
+  declarationId: string,
+): void; // L3
+// Ne lèvent jamais : un échec d'envoi est journalisé, la décision reste acquise.
+```
+
+L2 crée ce fichier en PR1 avec ces trois fonctions **sans effet** (journal seulement) ; L5 en écrit le
+corps en PR2 sans changer les signatures. C'est le seul point de rendez-vous entre L3, L4 et L5.
+
+**Fichiers partagés entre lots, jamais dans la même PR** : `rate-limit-middleware.ts` (L3 en PR1, L4 en
+PR2, L8 en PR3) ; `routes-inventory.test.ts` (L3 en PR1, L4 puis L3 en PR2 — **séquentiels** : L4 d'abord,
+L3 ensuite) ; `coowner-portal-routes.ts` (L4 en PR2, L8 en PR3).
+
 ## Ordre et parallélisme
 
 ```text
-N1 ──> N2 ──> N3 ──> [PR1]
-              │
-              ├─> N4 ─┐
-              ├─> N5 ─┼─> [PR2]      N6 (web) démarre dès que contracts.md est gelé
-              │       │
-              └───────┴─> N7 ──> [PR3]
+                      ┌──> L3 (routes 1.1–1.5) ──> [PR1]
+L1 ──> L2 ────────────┤
+                      ├──> L5 ──┐
+                      ├──> L4 ──┼──> L3 (routes 1.6–1.11) ──> [PR2] ──> L8 ──> [PR3]
+L6, L7 (web) ─────────┴─────────┘     (sur contrats gelés, API simulée)
 ```
 
-- **PR1** : N1, puis N2 (agents distincts pour `declaration-*` et pour les trois fichiers comptables
-  modifiés), puis N3.
-- **PR2** : N4 (fichiers `coowner-*`, `coowner-portal.ts`, `checkout-start.ts`, `queries.ts`) et N5
-  (`syndic-declared-payment-*`, `notifications.ts`, constantes, job) en parallèle ; N6 portail et N6
-  gestionnaire en parallèle (territoires `coowner-portal` et `syndics` disjoints).
-- **PR3** : N7 API puis N7 web.
-- Fichiers à agent unique : `charge-allocation.ts`, `charge-collection-accounting.ts`,
-  `provider-invoice-accounting.ts`, `routes/syndic-declared-payment-routes.ts` et son contrôleur,
-  `routes/coowner-portal-routes.ts`, `App.tsx`, `rate-limit-middleware.ts` (un seul agent par PR).
+- **PR1** : L1, puis L2 (deux agents : `declaration-*` d'un côté, les trois fichiers comptables de l'autre),
+  puis L3 (routes 1.1 à 1.5).
+- **PR2** : L4, L5, L6 et L7 en parallèle (territoires disjoints) ; L3 (routes 1.6 à 1.11) après L4 pour
+  `routes-inventory.test.ts`.
+- **PR3** : L8 seul.
+- Fichiers à agent unique : voir le tableau ; `App.tsx` n'est touché par aucun lot (même route
+  `/paiements-en-ligne`).
 
 ## PR empilées
 
@@ -319,7 +385,7 @@ Module Syndic :
 
 | Risque                                                                   | Parade                                                                                                        |
 | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| Comptes 5521x non validés par le comptable (Q9)                          | Numérotation isolée dans `ensureSyndicReceivingAccountTx` : un changement de schéma ne touche qu'une fonction |
+| Hypothèse H1 contredite par le comptable (Q9)                            | Numérotation isolée dans `ensureSyndicReceivingAccountTx` : un changement de schéma ne touche qu'une fonction |
 | Interblocage entre lignes d'une même déclaration (plusieurs `lockLotTx`) | Lignes traitées dans l'ordre croissant de `lotId` ; aucun autre chemin ne verrouille deux lots                |
 | Déplacement du transport de vision casse l'inventaire WhatsApp           | Réexports depuis l'ancien emplacement ; suite de tests 041 lancée telle quelle dans PR3                       |
 | Coût de l'IA                                                             | `disabled` par défaut, activation par agence, quota mensuel, limiteurs par contact                            |

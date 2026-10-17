@@ -6,7 +6,11 @@ Cocher une tâche seulement quand son code **et** son test sont écrits. `[P]` =
 d'autres tâches du même lot. Chemins : `API/` = `packages/api/`, `WEB/` = `apps/web/`. Un fichier = un seul
 agent à la fois.
 
-## N1 — Schéma, migrations, audit, erreurs (PR1)
+**Lots de réalisation** (territoires de fichiers, voir [plan.md](./plan.md), « Lots par territoire ») :
+L1 = T001–T009 · L2 = T010–T024b · L3 = T025–T031 puis T040 · L4 = T032–T039 · L5 = T041–T044 ·
+L6 = T045–T050 · L7 = T051–T057 · L8 = T059–T066. T058 et T067–T070 reviennent au coordinateur.
+
+## L1 — Schéma, migrations, audit, erreurs (PR1)
 
 - [ ] T001 `API/prisma/schema.prisma` : `ChargePaymentOrigin` + `DECLARED`
 - [ ] T002 `API/prisma/schema.prisma` : modèles `SyndicReceivingNumber`, `SyndicDeclaredPaymentSettings`,
@@ -14,22 +18,22 @@ agent à la fois.
       `SyndicDeclarationStatus`, `SyndicDeclarationRejectReason` ; relations vers `Tenant`, `Syndicate`,
       `SyndicateLot`, `ChargePayment` (plan N1)
 - [ ] T003 `API/prisma/migrations/…_syndic_paiement_declare_enum/migration.sql` : `ALTER TYPE … ADD VALUE
-    'DECLARED'` seul
+  'DECLARED'` seul
 - [ ] T004 `API/prisma/migrations/…_syndic_paiement_declare/migration.sql` : tables, index, contraintes **et**
       index unique partiel `(tenant_id, receiving_phone, transaction_reference) WHERE status IN
-    ('PENDING','APPROVED')` écrit à la main, commenté
+  ('PENDING','APPROVED')` écrit à la main, commenté
 - [ ] T005 [P] `API/src/types/audit-types.ts` : neuf clés du plan N1
 - [ ] T006 [P] `API/src/middleware/error-middleware.ts` : codes de contracts §0.2
 - [ ] T007 `API/__tests__/unit/schema-tenant-coverage.test.ts` : cinq modèles
 - [ ] T008 [P] `docs/architecture/DATA_MODELS.md` : cinq modèles, valeur `DECLARED`, index partiel
 - [ ] T009 `npm run db:generate` (coordinateur) puis `npm run typecheck`
 
-## N2 — Moteur (PR1)
+## L2 — Moteur API et comptabilité (PR1)
 
 Comptabilité et affectation (un agent par fichier) :
 
 - [ ] T010 `API/src/lib/syndics/provider-invoice-accounting.ts` : `ensureSyndicReceivingAccountTx(tx, tenantId,
-    syndicateId, { operator, phoneNumber })` : rang suivant libre sous 5521 dans le plan SYNDICATE de la
+  syndicateId, { operator, phoneNumber })` : rang suivant libre sous 5521 dans le plan SYNDICATE de la
       copropriété, libellé « <Opérateur> <numéro masqué> », classe 5, ASSET ; réutilise le compte si le même
       numéro existe déjà dans cette copropriété ; test `syndics.accounting.test.ts` (jamais dans le plan du
       cabinet ; numéro partagé = un compte par copropriété)
@@ -67,8 +71,10 @@ Briques du dossier `API/src/lib/syndics/declared-payment/` :
       rejet sans écriture, référence libérée après rejet
 - [ ] T024 `declaration-queries.ts` : liste (filtres, tri, compteurs), détail, vues portail,
       `pendingDeclarationsByCall` ; tests
+- [ ] T024b `notifications.ts` : `notifyDeclarationReceived`, `notifyDeclarationApproved`,
+      `notifyDeclarationRejected` **sans effet** (journal seulement), signatures du plan ; L5 en écrit le corps
 
-## N3 — API gestionnaire de configuration (PR1)
+## L3 — API agence, configuration (PR1)
 
 - [ ] T025 `API/src/controllers/syndic-declared-payment-controller.ts` : handlers 1.1 à 1.5 (`asyncHandler`, Zod
       strict)
@@ -81,7 +87,7 @@ Briques du dossier `API/src/lib/syndics/declared-payment/` :
 - [ ] T031 `npm run typecheck`, `npm run lint`, `npm run check:architecture`, `npm test` ciblé,
       `npm run test:isolation` ; classeur (sous-fonctionnalités 1 et 2) + `npm run wiki:export` ; PR1
 
-## N4 — API portail et effets d'attente (PR2)
+## L4 — API portail copropriétaire et effets d'attente (PR2)
 
 - [ ] T032 `API/src/lib/syndics/declared-payment/portal.ts` : disponibilité, création (périmètre de chaque lot,
       déclarant = contact de la session), liste, annulation ; droit SYNDIC explicite ; tests
@@ -98,11 +104,11 @@ Briques du dossier `API/src/lib/syndics/declared-payment/` :
       `pendingDeclaration` ; tests (avant, après N jours, rejetée, annulée)
 - [ ] T039 `API/__tests__/unit/routes-inventory.test.ts` : routes portail
 
-## N5 — API gestionnaire de validation et notifications (PR2)
+## L3 (suite) et L5 — Validation côté agence, notifications et quittances (PR2)
 
-- [ ] T040 `API/src/controllers/syndic-declared-payment-controller.ts` + routes : 1.6 à 1.11 ; tests
+- [ ] T040 **[L3, après L4]** `API/src/controllers/syndic-declared-payment-controller.ts` + routes : 1.6 à 1.11 (après validation : `scheduleChargeDocumentDelivery` puis `notifyDeclarationApproved`, après rejet `notifyDeclarationRejected`, hors transaction) ; tests
       d'intégration (filtres, tri, preuve privée, validation, rejet, P4, permissions)
-- [ ] T041 [P] Constantes de notification (`email-notification-keys.ts`, `email-notification-default-templates.ts`,
+- [ ] T041 [P] **[L5]** Constantes de notification (`email-notification-keys.ts`, `email-notification-default-templates.ts`,
       `whatsapp-notification-keys.ts`, `whatsapp-notification-default-templates.ts`,
       `notification-key-features.ts`) : quatre clés de contracts §3.4, gabarits fr
 - [ ] T042 `API/src/lib/syndics/declared-payment/notifications.ts` : envois copropriétaire (accusé, validation avec
@@ -112,9 +118,9 @@ Briques du dossier `API/src/lib/syndics/declared-payment/` :
       alerte quotidienne 8 h (Africa/Abidjan), purge des lectures expirées ; tests
 - [ ] T044 `npm run i18n:extract` (API)
 
-## N6 — Écrans (PR2)
+## L6 et L7 — Écrans portail et agence (PR2)
 
-Portail (un agent) :
+Portail — **L6** :
 
 - [ ] T045 `WEB/src/services/coowner-portal-service.ts` : types et fonctions de contracts §2
 - [ ] T046 `WEB/src/components/coowner-portal/declared-payment/ReceivingNumbersCard.tsx` : numéros, copie, consigne
@@ -128,7 +134,7 @@ Portail (un agent) :
 - [ ] T050 Tests Vitest `WEB/src/__tests__/coowner-portal/…` (formulaire, liste, annulation, appel en
       vérification)
 
-Gestionnaire (un autre agent) :
+Agence — **L7** :
 
 - [ ] T051 `WEB/src/services/syndic-declared-payment-service.ts` : types et fonctions de contracts §1
 - [ ] T052 `WEB/src/components/syndics/declared-payment/ReceivingNumbersCard.tsx` et `DeclaredSettingsCard.tsx`
@@ -145,7 +151,7 @@ Gestionnaire (un autre agent) :
 - [ ] T058 Vérifications de PR2 (typecheck, lint, architecture, tests, isolation) ; classeur (3 à 7, 9, 10) +
       `npm run wiki:export` ; recette navigateur sur l'instance de démo ; PR2
 
-## N7 — Pré-remplissage IA (PR3)
+## L8 — Pré-remplissage IA (PR3)
 
 - [ ] T059 `API/src/lib/ai/vision/` : déplacer `runVisionCall`, `imageToBase64`, `VisionCallError`,
       `buildGeminiRequest`, `extractGeminiText` et le transport OpenRouter, paramétrés par consigne et schéma ;
@@ -172,5 +178,5 @@ Gestionnaire (un autre agent) :
 
 - [ ] T067 Relecture `code-reviewer` + `security-auditor` de PR1, PR2 et PR3 (portail, fichiers, paiements)
 - [ ] T068 Recette navigateur complète (plan, « Tests ») et anomalies au bus `.agent-bus/`
-- [ ] T069 Validation des comptes 5521x par le comptable (Q9) avant mise en production
+- [ ] T069 Validation des comptes 5521x par le comptable (Q9, hypothèse H1) avant mise en production
 - [ ] T070 `docs/workflows/HANDOFF.md` à chaque PR
