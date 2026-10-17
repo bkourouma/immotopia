@@ -2,7 +2,7 @@
 
 **Branche** : `docs/spec-syndic-paiement-declare` (spécification seule ; réalisation dans une branche à venir)
 **Créée** : 2026-10-17
-**Statut** : spécification, avant réalisation — décisions produit ouvertes au §11
+**Statut** : spécification, avant réalisation — D7 à D10 tranchées le 2026-10-17, dix questions encore ouvertes au §11
 **Portée** : le copropriétaire paie ses charges **hors d'ImmoTopia**, par un transfert mobile money vers un
 numéro que le syndic lui communique (Orange Money, MTN MoMo, Moov Money, Wave). Il vient ensuite **déclarer**
 ce paiement sur le portail. Une capture du SMS de confirmation est facultative ; si elle est jointe, une IA
@@ -49,7 +49,9 @@ l'**agence**, pas de la copropriété) ; aucune déclaration côté Syndic ; auc
 copropriétaire (toutes ses routes sont en lecture, sauf le démarrage d'un paiement en ligne) ; aucune
 annulation d'un `ChargePayment` exposée (seule l'écriture d'extourne existe).
 
-## 2. Décisions retenues dans cette spec (à confirmer au §11)
+## 2. Décisions retenues dans cette spec
+
+D1 à D6 : choix de rédaction ; D7 à D10 : tranchées par Baba le 2026-10-17. Le reste est au §11.
 
 | #   | Décision                                                                                                                                                                                                                    |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -59,15 +61,19 @@ annulation d'un `ChargePayment` exposée (seule l'écriture d'extourne existe).
 | D4  | **Montant libre** (contrairement à la spec 042) : le copropriétaire déclare ce qu'il a réellement envoyé. Un montant inférieur se pose en paiement partiel, un montant supérieur devient une avance, par la règle P2.       |
 | D5  | **La validation passe par le même moteur que la saisie manuelle** (`recordLotPaymentTx` + reçus/quittances) : une seule logique d'affectation dans l'application.                                                           |
 | D6  | **L'IA ne fait que pré-remplir.** Le copropriétaire relit et valide chaque champ ; le gestionnaire voit si un champ vient de l'IA et s'il a été retouché. L'IA ne valide jamais, ne rejette jamais, ne crédite jamais rien. |
+| D7  | **Relances suspendues N jours au plus** (décision Baba du 2026-10-17, ex-Q3) : un appel visé par une déclaration `PENDING` n'est pas relancé automatiquement pendant N jours, puis la relance reprend (R14).                |
+| D8  | **`SYNDIC_EDIT` suffit pour valider ou rejeter** (décision du 2026-10-17, ex-Q5) ; une permission dédiée viendra si un client la demande.                                                                                   |
+| D9  | **Lecture IA incluse et plafonnée** (décision du 2026-10-17, ex-Q7) : coupée par défaut, activable par agence, environ 300 lectures par mois incluses dans le pack Syndic (R25, R29).                                       |
+| D10 | **Un même numéro peut servir à plusieurs copropriétés** de l'agence, avec avertissement (décision du 2026-10-17, ex-Q2) ; le rapprochement repose sur la référence (R2, R24).                                               |
 
 ## 3. Acteurs
 
-| Acteur                     | Accès                                                   | Ce qu'il fait                                                                                |
-| -------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| **Copropriétaire**         | Session portail `/copropriete`, périmètre = ses lots    | Voit les numéros, déclare, joint une capture, suit, annule tant que la déclaration attend    |
-| **Gestionnaire du syndic** | `SYNDIC_VIEW` / `SYNDIC_EDIT` (+ permission dédiée, Q5) | Configure les numéros, valide, ajuste le montant, rejette, déclare à la place d'un tiers     |
-| **Système**                | Tâche planifiée                                         | Alerte sur les déclarations en attente depuis plus de N jours, purge des captures orphelines |
-| **Fournisseur de vision**  | Appel serveur à serveur, sur décision de l'agence (Q7)  | Lit la capture et propose des valeurs                                                        |
+| Acteur                     | Accès                                                  | Ce qu'il fait                                                                                |
+| -------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| **Copropriétaire**         | Session portail `/copropriete`, périmètre = ses lots   | Voit les numéros, déclare, joint une capture, suit, annule tant que la déclaration attend    |
+| **Gestionnaire du syndic** | `SYNDIC_VIEW` / `SYNDIC_EDIT` (D8)                     | Configure les numéros, valide, ajuste le montant, rejette, déclare à la place d'un tiers     |
+| **Système**                | Tâche planifiée                                        | Alerte sur les déclarations en attente depuis plus de N jours, purge des captures orphelines |
+| **Fournisseur de vision**  | Appel serveur à serveur, sur décision de l'agence (D9) | Lit la capture et propose des valeurs                                                        |
 
 ## 4. Parcours
 
@@ -143,7 +149,7 @@ endroit.
 phoneNumber)`.
 - **R2** — Le même numéro peut servir à plusieurs copropriétés de la même agence (un cabinet qui encaisse
   sur un seul numéro). L'écran le signale : « Ce numéro reçoit aussi les paiements de N autres copropriétés :
-  le rapprochement se fera sur la référence. » (Q2).
+  le rapprochement se fera sur la référence. » (D10).
 - **R3** — Un numéro qui porte des déclarations ne se supprime pas : il se désactive. Les déclarations
   existantes restent lisibles et validables.
 - **R4** — Réglages de la copropriété, sur `SyndicPaymentGatewayConfig` ou dans un modèle voisin
@@ -188,7 +194,7 @@ phoneNumber)`.
   - sur le portail : « Paiement déclaré, en vérification » sur les appels visés ;
   - côté gestionnaire : une pastille sur l'appel et le lot ;
   - pour les **relances automatiques** : l'appel visé par une déclaration `PENDING` de moins de N jours
-    n'est pas relancé ; la relance reprend normalement au-delà (Q3). Les relances manuelles restent
+    n'est pas relancé ; la relance reprend normalement au-delà (D7). Les relances manuelles restent
     possibles et affichent l'existence de la déclaration.
 - **R15** — Une déclaration `PENDING` bloque le paiement en ligne des **mêmes appels** (spec 042) pour
   éviter un double paiement : case grisée, « Paiement déclaré en vérification ». Le copropriétaire peut
@@ -235,7 +241,7 @@ phoneNumber)`.
 ### 5.6 Pré-remplissage par IA de la capture
 
 - **R25** — Fonction facultative, activée par l'agence (`aiPrefillEnabled`) et disponible seulement si un
-  fournisseur de vision est configuré sur le serveur (Q7). Sinon, la capture est simplement jointe, sans
+  fournisseur de vision est configuré sur le serveur (D9). Sinon, la capture est simplement jointe, sans
   lecture.
 - **R26** — Déroulé : la capture est envoyée **avant** la déclaration (`POST
 /paiements-declares/lecture`), stockée en zone temporaire privée (24 h), puis lue par un lecteur dédié
@@ -252,7 +258,7 @@ phoneNumber)`.
   correspondre à l'un des numéros actifs de la copropriété (sinon alerte « La capture montre un autre numéro
   de réception ») ; la référence lue passe par le même contrôle de doublon (R10).
 - **R29** — Coût et abus : limiteur 5 lectures par minute et 30 par jour par compte copropriétaire ;
-  plafond mensuel de lectures par agence (Q7) ; le prompt ne contient aucune donnée personnelle autre que
+  plafond mensuel de lectures par agence (D9) ; le prompt ne contient aucune donnée personnelle autre que
   l'image ; aucune image n'est conservée par ImmoTopia au-delà de la déclaration ou de 24 h si elle est
   abandonnée ; le fournisseur est appelé sans conservation lorsque son API le permet.
 - **R30** — Panne ou délai dépassé du fournisseur : le formulaire reste utilisable à la main, message « La
@@ -379,19 +385,15 @@ phoneNumber)`.
 
 ## 11. Décisions produit ouvertes (pour Baba)
 
-| #   | Question                                                                                                                                      | Proposition par défaut                                                         |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Q1  | Le paiement déclaré est-il activé par défaut sur toute nouvelle copropriété, ou le syndic l'active-t-il lui-même ?                            | Coupé par défaut, mis en avant à la création de la copropriété                 |
-| Q2  | Autoriser un même numéro pour plusieurs copropriétés (cabinet qui encaisse tout sur un numéro) ?                                              | Oui, avec avertissement (R2) ; le rapprochement repose sur la référence        |
-| Q3  | Suspendre les relances automatiques d'un appel tant qu'une déclaration attend ?                                                               | Oui, pendant N jours au plus, puis reprise                                     |
-| Q4  | Délai N avant alerte « en retard » et fréquence des notifications au gestionnaire ?                                                           | 3 jours ouvrés ; notification regroupée par heure ; alerte quotidienne         |
-| Q5  | Qui peut valider ? `SYNDIC_EDIT` suffit-il, ou faut-il une permission dédiée (`SYNDIC_PAYMENTS_VALIDATE`) pour séparer saisie et validation ? | `SYNDIC_EDIT` au lancement ; permission dédiée si un client la demande         |
-| Q6  | Plafond de montant par déclaration ?                                                                                                          | 5 000 000 FCFA (au-delà, l'opérateur bloque de toute façon les transferts)     |
-| Q7  | Pré-remplissage IA : activé pour quelles agences, quel fournisseur, quel plafond de lectures, et compris dans quel pack (coût par lecture) ?  | Coupé par défaut ; activable par agence ; plafond 300 lectures par mois inclus |
-| Q8  | Ouvrir un chantier « annuler un paiement de charges » (validation par erreur) ?                                                               | Oui, chantier séparé ; utile aussi à la spec 042 (Q4 de 042)                   |
-| Q9  | Comptes 552x par numéro de réception : à faire valider par le comptable de référence.                                                         | Sous-comptes de 552, un par numéro                                             |
-| Q10 | Renommer l'onglet « Paiements en ligne » en « Paiements » puisqu'il portera les deux modes ?                                                  | Oui                                                                            |
-| Q11 | Un transfert qui couvre deux lots du même copropriétaire : une déclaration répartie par lot, ou deux déclarations avec la même référence ?    | Une déclaration avec répartition par lot (la référence reste unique)           |
-| Q12 | Programmer l'import de relevé opérateur (Wave Business, Orange Money) pour la validation en masse juste après ?                               | Oui, après trois mois d'usage réel                                             |
-| Q13 | Étendre la déclaration aux virements bancaires et aux dépôts d'espèces en agence ?                                                            | Non dans ce chantier                                                           |
-| Q14 | Faut-il exiger la capture (`proofRequired`) par défaut ? Elle aide le gestionnaire mais freine le copropriétaire.                             | Facultative par défaut, réglable par copropriété                               |
+| #   | Question                                                                                                                                   | Proposition par défaut                                                     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| Q1  | Le paiement déclaré est-il activé par défaut sur toute nouvelle copropriété, ou le syndic l'active-t-il lui-même ?                         | Coupé par défaut, mis en avant à la création de la copropriété             |
+| Q4  | Délai N avant alerte « en retard » et fréquence des notifications au gestionnaire ?                                                        | 3 jours ouvrés ; notification regroupée par heure ; alerte quotidienne     |
+| Q6  | Plafond de montant par déclaration ?                                                                                                       | 5 000 000 FCFA (au-delà, l'opérateur bloque de toute façon les transferts) |
+| Q8  | Ouvrir un chantier « annuler un paiement de charges » (validation par erreur) ?                                                            | Oui, chantier séparé ; utile aussi à la spec 042 (Q4 de 042)               |
+| Q9  | Comptes 552x par numéro de réception : à faire valider par le comptable de référence.                                                      | Sous-comptes de 552, un par numéro                                         |
+| Q10 | Renommer l'onglet « Paiements en ligne » en « Paiements » puisqu'il portera les deux modes ?                                               | Oui                                                                        |
+| Q11 | Un transfert qui couvre deux lots du même copropriétaire : une déclaration répartie par lot, ou deux déclarations avec la même référence ? | Une déclaration avec répartition par lot (la référence reste unique)       |
+| Q12 | Programmer l'import de relevé opérateur (Wave Business, Orange Money) pour la validation en masse juste après ?                            | Oui, après trois mois d'usage réel                                         |
+| Q13 | Étendre la déclaration aux virements bancaires et aux dépôts d'espèces en agence ?                                                         | Non dans ce chantier                                                       |
+| Q14 | Faut-il exiger la capture (`proofRequired`) par défaut ? Elle aide le gestionnaire mais freine le copropriétaire.                          | Facultative par défaut, réglable par copropriété                           |

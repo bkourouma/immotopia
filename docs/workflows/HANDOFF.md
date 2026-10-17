@@ -30,7 +30,7 @@ Modèle de section :
 
 ## Branche `docs/spec-syndic-paiement-declare` — 2026-10-17
 
-**État :** PR 165 en brouillon, spec seule, en attente des décisions de Baba (§11 de la spec, Q1 à Q14).
+**État :** PR 165 en brouillon, spec seule, D7 à D10 tranchées par Baba le 2026-10-17 (relances, validation, IA, numéro partagé) ; dix questions encore ouvertes au §11.
 **Dernier commit :** `32e4a4a5` (spec 047), puis cette passation.
 
 **Fait :** `specs/047-syndic-paiement-declare/spec.md` : paiement mobile money hors d'ImmoTopia, déclaré par le copropriétaire (référence obligatoire, capture facultative pré-lue par IA), validé par le gestionnaire. Rien n'est crédité avant validation ; la validation réutilise `recordLotPaymentTx` + `issueReceiptsForPaymentTx`.
