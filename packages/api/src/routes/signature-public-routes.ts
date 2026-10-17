@@ -4,16 +4,20 @@ import { invalidSecureLinkError } from '../lib/secure-links';
 import { AppError } from '../middleware/error-middleware';
 import {
   signatureActionRateLimiter,
+  signatureExternalLinkRateLimiter,
   signatureOtpRateLimiter,
+  signatureOtpVerifyRateLimiter,
   signaturePublicRateLimiter
 } from '../middleware/rate-limit-middleware';
 import { secureLinkNoStoreHeaders } from '../controllers/secure-link-public-controller';
 import {
   declinePublicHandler,
+  getPublicExternalLinkHandler,
   getPublicSignatureFileHandler,
   getPublicSignatureHandler,
   sendPublicOtpHandler,
-  signPublicHandler
+  signPublicHandler,
+  verifyPublicOtpHandler
 } from '../controllers/signature-public-controller';
 
 /**
@@ -51,6 +55,21 @@ router.post(
   secureLinkNoStoreHeaders,
   SMALL,
   sendPublicOtpHandler
+);
+// Spec 042 §10.5 : sources « code avant consultation » / passerelle externe. Pour les autres types,
+// le même 404 uniforme qu'un jeton invalide.
+router.post(
+  '/public/signatures/:token/otp/verify',
+  signatureOtpVerifyRateLimiter,
+  secureLinkNoStoreHeaders,
+  SMALL,
+  verifyPublicOtpHandler
+);
+router.get(
+  '/public/signatures/:token/external-link',
+  signatureExternalLinkRateLimiter,
+  secureLinkNoStoreHeaders,
+  getPublicExternalLinkHandler
 );
 router.post(
   '/public/signatures/:token/sign',

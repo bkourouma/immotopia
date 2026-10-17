@@ -36,6 +36,8 @@ import {
 } from '../lib/signature/notify';
 import { assertSignatureProviderEnabled, getSignatureProvider } from '../lib/signature/provider';
 import { getSignatureSource } from '../lib/signature/sources';
+import { sourceGateOf } from '../lib/signature/view-grant';
+import { auditSignatureFileServed } from '../lib/signature/file-audit';
 import type { DefaultSigner, LoadedSource } from '../lib/signature/sources';
 import { hasPermission } from './permission-service';
 import { releaseSignature, reserveSignature, resolveSignatureQuotaPolicy } from '../lib/signature/quota';
@@ -217,6 +219,27 @@ async function reserveQuota(tenantId: string, actorUserId: string): Promise<stri
   return reservation.month;
 }
 
+/**
+ * Option `allowedChannels` de la source : un canal hors liste est refusé (400 traduite). Sans
+ * l'option, tous les canaux sont admis (types existants). Sert aussi à l'ajout d'un signataire.
+ */
+export function assertChannelsAllowed(
+  source: { allowedChannels?: readonly string[] },
+  signers: ReadonlyArray<{ channel: string }>
+): void {
+  const allowed = source.allowedChannels;
+  if (!allowed) return;
+  for (const signer of signers) {
+    if (!allowed.includes(signer.channel)) {
+      throw new BadRequestError(
+        signer.channel === 'IN_PERSON'
+          ? t('La signature sur place n’est pas autorisée pour ce type de document : un code est obligatoire.')
+          : t('Ce canal d’envoi n’est pas autorisé pour ce type de document.')
+      );
+    }
+  }
+}
+
 // ---------------------------------------------------------------- création
 
 type Ctx = { tenantId: string; userId: string };
@@ -252,6 +275,8 @@ async function persistRequest(args: {
   providerId: string;
   providerRef?: string;
   providerSignerRefs?: string[];
+  /** Passerelle externe : le prestataire n'invite personne, l'invitation part d'ImmoTopia ensuite. */
+  gateway?: boolean;
   now: Date;
 }): Promise<void> {
   const { ctx, requestId } = args;
@@ -294,7 +319,11 @@ async function persistRequest(args: {
               ? new Date(Math.min(args.expiresAt.getTime(), args.now.getTime() + 24 * 60 * 60 * 1000))
               : args.expiresAt,
           inviteStatus:
-            signer.channel === 'IN_PERSON' ? 'NOT_APPLICABLE' : args.providerSignerRefs ? 'SENT' : 'WAITING',
+            signer.channel === 'IN_PERSON'
+              ? 'NOT_APPLICABLE'
+              : args.providerSignerRefs && !args.gateway
+                ? 'SENT'
+                : 'WAITING',
           inPersonIssuedBy: signer.channel === 'IN_PERSON' ? ctx.userId : null
         }))
       });
@@ -358,6 +387,8 @@ export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInp
     throw new BadRequestError(t('Ce document exige un prestataire de signature qualifié ; contactez le support.'));
   }
   await source.assertTarget(ctx, input.targetId);
+  // Canaux admis par le type (spec 042 §10, SIG-S2) : `IN_PERSON` (sans code) n'en fait pas partie pour un mandat.
+  assertChannelsAllowed(source, input.signers);
   const signers = normalizeSigners(input.signers);
   for (const signer of signers) await assertSignerContact(ctx.tenantId, signer);
   // Prestataire externe (S6) : il invite par e-mail ; ni WhatsApp, ni SMS, ni signature sur place.
@@ -386,6 +417,8 @@ export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInp
   const expiresAt = new Date(now.getTime() + (input.expiresInDays ?? env.SIGNATURE_TOKEN_TTL_DAYS) * 86_400_000);
   const tokens = signers.map(() => generateToken());
   let created: { providerRef?: string; signerRefs?: string[] } | null = null;
+  // Passerelle externe (SIG-S6) : la demande part chez le prestataire SANS envoi de sa part.
+  const gateway = Boolean(provider.external) && Boolean(source.externalGateway);
   try {
     const fetched = await source.loadSource(ctx, input.targetId);
     // Document généré à la volée : l'empreinte des données sert de repère (isSourceIntact).
@@ -412,7 +445,8 @@ export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInp
                 fullName: signer.fullName,
                 email: signer.contact,
                 role: signer.role
-              }))
+              })),
+              ...(gateway ? { deliveryMode: 'none' as const } : {})
             }
           }
         : {})
@@ -432,6 +466,7 @@ export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInp
       providerId: provider.id,
       providerRef: created.providerRef,
       providerSignerRefs: created.signerRefs,
+      gateway,
       now
     });
   } catch (error) {
@@ -446,7 +481,7 @@ export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInp
     throw error;
   }
 
-  return finalizeCreation({ ctx, requestId, signers, tokens, month, external: Boolean(provider.external) });
+  return finalizeCreation({ ctx, requestId, signers, tokens, month, external: Boolean(provider.external), gateway });
 }
 
 async function finalizeCreation(args: {
@@ -456,6 +491,8 @@ async function finalizeCreation(args: {
   tokens: string[];
   month: string;
   external?: boolean;
+  /** Passerelle externe : ImmoTopia envoie SES invitations (le prestataire n'envoie rien). */
+  gateway?: boolean;
 }) {
   const { ctx, requestId } = args;
   const rows = await prisma.signatureRequest.findFirst({
@@ -464,7 +501,7 @@ async function finalizeCreation(args: {
   });
   if (!rows) throw new NotFoundError(t('Demande de signature introuvable.'));
   // Prestataire externe : il invite lui-même les signataires, aucun lien interne n'est envoyé.
-  if (args.external) return toRequestDto(rows, { inPersonTokens: new Map<string, string>() });
+  if (args.external && !args.gateway) return toRequestDto(rows, { inPersonTokens: new Map<string, string>() });
   const agencyName = await agencyNameOf(ctx.tenantId);
   const inPersonTokens = new Map<string, string>();
   const ordered = [...rows.signers].sort((a, b) => a.position - b.position);
@@ -477,8 +514,9 @@ async function finalizeCreation(args: {
       inPerson += 1;
       continue;
     }
-    // Séquentiel : seul le premier signataire reçoit son lien maintenant.
-    if (rows.sequential && signer.position > 0) continue;
+    // Séquentiel : seul le premier signataire reçoit son lien maintenant. Passerelle externe : tous le
+    // reçoivent, l'ordre est imposé par le prestataire (aucun relais de webhook ne rouvre un tour ici).
+    if (rows.sequential && signer.position > 0 && !args.gateway) continue;
     const planned = args.signers[signer.position];
     const status = await inviteSigner({
       request: {
@@ -641,6 +679,9 @@ export async function getSignatureTargetContext(ctx: Ctx, kind: string, targetId
     // Le fournisseur actif est un prestataire externe : signataires par e-mail uniquement.
     externalProvider: Boolean(getSignatureProvider().external),
     smsAvailable: isSmsAvailable(),
+    // Canaux admis par le type (absent : tous) et code demandé avant consultation (spec 042 §10).
+    allowedChannels: source.allowedChannels ?? null,
+    codeBeforeView: Boolean(source.codeBeforeView),
     signers: await visibleSigners(ctx, source.defaultSigners ? await source.defaultSigners(ctx, targetId) : [])
   };
 }
@@ -668,6 +709,7 @@ export async function remindSignatureRequest(ctx: Ctx, id: string) {
     select: {
       id: true,
       tenantId: true,
+      kind: true,
       title: true,
       language: true,
       status: true,
@@ -692,8 +734,9 @@ export async function remindSignatureRequest(ctx: Ctx, id: string) {
   if (!(ACTIVE_REQUEST_STATUSES as readonly string[]).includes(request.status)) {
     throw new ConflictError(t('Cette demande de signature n’est plus en cours.'));
   }
-  // Demande confiée à un prestataire externe : lui seul peut relancer (jamais de lien interne).
-  if (!isInternalSignatureProvider(request.providerId)) {
+  // Demande confiée à un prestataire externe : lui seul peut relancer (jamais de lien interne),
+  // sauf passerelle externe (SIG-S6) où ImmoTopia envoie ses propres invitations.
+  if (!isInternalSignatureProvider(request.providerId) && !sourceGateOf(request.kind).externalGateway) {
     throw new ConflictError(
       t('Ce document est géré par le prestataire de signature : relancez-le depuis le prestataire.')
     );
@@ -747,6 +790,8 @@ export async function reissueInPersonToken(ctx: Ctx, id: string, signerId: strin
   }
   const signer = request.signers.find(s => s.id === signerId);
   if (!signer || signer.channel !== 'IN_PERSON') throw new NotFoundError(t('Signataire introuvable.'));
+  // Aucun jeton « sur place » (sans code) pour un type qui n'admet pas ce canal.
+  assertChannelsAllowed(getSignatureSource(request.kind), [signer]);
   const now = new Date();
   const prepared = prepareSignerToken(request.expiresAt, true, now);
   await prisma.$transaction(async tx => {
@@ -782,11 +827,13 @@ export async function sendSignatureFile(
   tenantId: string,
   id: string,
   variant: 'source' | 'signed' | 'evidence',
-  res: Response
+  res: Response,
+  /** Utilisateur de l'agence qui lit le fichier (audit des lectures, spec 042 §10.7). */
+  actorUserId?: string | null
 ) {
   const request = await prisma.signatureRequest.findFirst({
     where: { id, tenantId },
-    select: { id: true, title: true, sourceFileKey: true, signedFileKey: true }
+    select: { id: true, kind: true, targetId: true, title: true, sourceFileKey: true, signedFileKey: true }
   });
   if (!request) throw new NotFoundError(t('Demande de signature introuvable.'));
   // Dossier de preuve du prestataire : clé déduite (fichier privé de la demande), 404 s'il n'existe pas.
@@ -800,6 +847,16 @@ export async function sendSignatureFile(
         : request.sourceFileKey;
   if (!key) throw new NotFoundError(t("Le PDF scellé n'est pas encore disponible."));
   const file = await readSignatureFile(tenantId, id, key);
+  // Type à PDF sensible (codeBeforeView) : lecture tracée AVANT l'envoi, un échec d'audit bloque l'envoi.
+  await auditSignatureFileServed({
+    tenantId,
+    requestId: id,
+    kind: request.kind,
+    targetId: request.targetId,
+    channel: 'AGENCY',
+    variant,
+    actorUserId: actorUserId ?? null
+  });
   sendPrivateFile(res, {
     ...file,
     fileName: `${request.title.replace(/[^\p{L}\p{N} ._-]/gu, '')}${variant === 'signed' ? ' - signé' : variant === 'evidence' ? ' - preuve' : ''}.pdf`

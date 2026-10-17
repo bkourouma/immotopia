@@ -20,6 +20,9 @@ export interface ExternalSignerInput {
   role: string;
 }
 
+/** `email` : le prestataire invite lui-même ; `none` : aucun envoi de sa part (ImmoTopia invite avec son propre lien). */
+export type ExternalDeliveryMode = 'email' | 'none';
+
 export interface ExternalCreateInput {
   /** Identifiant ImmoTopia de la demande (référence de rapprochement, jamais un secret). */
   requestId: string;
@@ -30,6 +33,8 @@ export interface ExternalCreateInput {
   sequential: boolean;
   expiresAt: Date;
   signers: ExternalSignerInput[];
+  /** Défaut `email`. */
+  deliveryMode?: ExternalDeliveryMode;
 }
 
 export interface ExternalCreated {
@@ -64,6 +69,11 @@ export interface ExternalSignatureClient {
   create(input: ExternalCreateInput): Promise<ExternalCreated>;
   /** Annule la demande chez le prestataire. Idempotent : déjà annulée ou terminée = pas d'erreur. */
   cancel(providerRef: string): Promise<void>;
+  /**
+   * Lien de signature d'UN signataire, lu EN DIRECT chez le prestataire (jamais stocké, jamais
+   * journalisé). Disponible seulement pour une demande créée avec `deliveryMode: 'none'`.
+   */
+  getSignerLink(providerRef: string, signerRef: string): Promise<string>;
   /** Relit l'état courant de la demande et de ses signataires. */
   getSnapshot(providerRef: string): Promise<ExternalRequestSnapshot>;
   /** PDF signé final (demande terminée). */

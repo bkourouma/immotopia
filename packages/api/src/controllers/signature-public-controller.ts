@@ -5,11 +5,14 @@ import { asyncHandler } from '../middleware/error-middleware';
 import { invalidSecureLinkError } from '../lib/secure-links';
 import {
   declinePublic,
+  getPublicExternalLink,
   getPublicSignature,
   getPublicSourceFile,
   sendPublicOtp,
-  signPublic
+  signPublic,
+  verifyPublicOtp
 } from '../services/signature-public-service';
+import { VIEW_TOKEN_HEADER } from '../lib/signature/view-grant';
 
 /**
  * Points d'entrée PUBLICS de la signature électronique (spec 044, lot S1) :
@@ -27,7 +30,15 @@ const signBodySchema = z
   })
   .strict();
 
+const verifyBodySchema = z.object({ code: z.string().trim().max(20) }).strict();
+
 const declineBodySchema = z.object({ reason: z.string().max(1000).optional() }).strict();
+
+/** Jeton de consultation : en-tête seulement (jamais l'URL ni le corps) ; jamais journalisé. */
+function viewTokenOf(req: Request): string | undefined {
+  const value = req.get(VIEW_TOKEN_HEADER);
+  return value ? value : undefined;
+}
 
 function metaOf(req: Request) {
   return { ip: req.ip || undefined, userAgent: req.get('user-agent') || undefined };
@@ -45,7 +56,7 @@ export const getPublicSignatureHandler = asyncHandler(async (req: Request, res: 
 });
 
 export const getPublicSignatureFileHandler = asyncHandler(async (req: Request, res: Response) => {
-  const file = await getPublicSourceFile(tokenOf(req));
+  const file = await getPublicSourceFile(tokenOf(req), viewTokenOf(req));
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', 'inline; filename="document.pdf"');
   res.setHeader('Content-Length', file.buffer.length.toString());
@@ -68,7 +79,27 @@ export const signPublicHandler = asyncHandler(async (req: Request, res: Response
     // Champ manquant ou consentement absent : refus de validation lisible, sans révéler le jeton.
     throw parsed.error;
   }
-  const data = await signPublic(tokenOf(req), parsed.data as Parameters<typeof signPublic>[1], metaOf(req));
+  const data = await signPublic(
+    tokenOf(req),
+    parsed.data as Parameters<typeof signPublic>[1],
+    metaOf(req),
+    viewTokenOf(req)
+  );
+  res.json({ success: true, data });
+});
+
+export const verifyPublicOtpHandler = asyncHandler(async (req: Request, res: Response) => {
+  const parsed = verifyBodySchema.safeParse(req.body ?? {});
+  // Corps invalide : même réponse qu'un jeton inconnu, aucun indice.
+  if (!parsed.success) throw invalidSecureLinkError();
+  const data = await verifyPublicOtp(tokenOf(req), parsed.data.code);
+  res.json({ success: true, data });
+});
+
+export const getPublicExternalLinkHandler = asyncHandler(async (req: Request, res: Response) => {
+  const data = await getPublicExternalLink(tokenOf(req), viewTokenOf(req));
+  // L'URL du prestataire est un secret à courte vie : jamais en cache.
+  res.setHeader('Cache-Control', 'no-store');
   res.json({ success: true, data });
 });
 
