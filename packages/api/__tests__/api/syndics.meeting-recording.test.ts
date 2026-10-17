@@ -840,7 +840,8 @@ describe('vues', () => {
       participants: [],
       recording: { enabled: false, active: null },
       degraded: false,
-      unrecognized: 0
+      unrecognized: 0,
+      mediaLocked: false
     });
   });
 
@@ -850,16 +851,16 @@ describe('vues', () => {
       .send({});
     const token = String(link.body.data.url).split('#')[1];
     const etat = () => request(app).post('/api/public/assemblees/etat').send({ token });
-    expect((await etat()).body.data.visio).toEqual({ enabled: true, recording: false });
+    expect((await etat()).body.data.visio).toEqual({ enabled: true, recording: false, mediaAllowed: true });
     const running = seedRecording({ id: id(981) });
-    expect((await etat()).body.data.visio).toEqual({ enabled: true, recording: true });
+    expect((await etat()).body.data.visio).toEqual({ enabled: true, recording: true, mediaAllowed: true });
     rowOf(running.id).status = 'PROCESSING';
     invalidateActiveRecordingCache();
     expect((await etat()).body.data.visio.recording).toBe(false);
     rowOf(running.id).status = 'RECORDING';
     invalidateActiveRecordingCache();
     mockLk.enabled = false;
-    expect((await etat()).body.data.visio).toEqual({ enabled: false, recording: false });
+    expect((await etat()).body.data.visio).toEqual({ enabled: false, recording: false, mediaAllowed: true });
   });
 });
 
