@@ -40,7 +40,8 @@ interface RecordingControlsProps {
 
 /** Voyant « Enregistrement en cours » et bouton démarrer / arrêter. */
 const RecordingControls: React.FC<RecordingControlsProps> = ({ active, frozen, inProgress, busy, onStart, onStop }) => {
-  if (!active) {
+  // AG figée : un `active` périmé (relu avant la fin du traitement) ne fait plus afficher « en cours ».
+  if (!active || frozen) {
     return (
       <Space wrap align="center">
         <Button loading={busy} disabled={frozen || !inProgress} onClick={onStart}>
@@ -145,6 +146,8 @@ interface MeetingVisioCardProps {
   onStopRecording?: () => void;
   /** Dernier enregistrement en échec, aucun n'étant actif : la séance n'est pas enregistrée. */
   failedRecording?: MeetingRecordingView | null;
+  /** Enregistrement en cours d'après la liste, si `/visio` ne le signale pas (les deux lectures sont indépendantes). */
+  listActiveRecording?: MeetingRecordingView | null;
   /** Discussion écrite de la salle (spec 046) ; absente : la salle n'a pas de panneau. */
   discussion?: VisioDiscussionAdapter;
   /** Coupe ou rétablit l'écriture d'un copropriétaire dans la discussion. */
@@ -260,13 +263,14 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
   onStartRecording,
   onStopRecording,
   failedRecording = null,
+  listActiveRecording = null,
   discussion,
   onWriting,
   busyWritingParticipantId = null
 }) => {
   const [removing, setRemoving] = useState<MeetingVisioParticipant | null>(null);
   const recording = visio.recording;
-  const activeRecording = recording?.enabled ? recording.active : null;
+  const activeRecording = (recording?.enabled ? recording.active : null) ?? listActiveRecording;
 
   return (
     <Card
@@ -290,7 +294,7 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
           />
         ) : null}
 
-        {recording?.enabled ? (
+        {recording?.enabled || activeRecording ? (
           <RecordingControls
             active={activeRecording}
             frozen={frozen}

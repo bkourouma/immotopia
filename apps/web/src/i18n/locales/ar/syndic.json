@@ -1342,5 +1342,21 @@
   "{{value}} Go": "{{value}} غ.ب",
   "{{value}} Ko": "{{value}} ك.ب",
   "{{value}} Mo": "{{value}} م.ب",
-  "{{value}} o": "{{value}} بايت"
+  "{{value}} o": "{{value}} بايت",
+  "Compte rendu téléchargé : {{filename}}": "تم تنزيل المحضر: {{filename}}",
+  "Convocations en cours d'envoi.": "جارٍ إرسال الدعوات.",
+  "Encaissement de {{amount}} enregistré{{documents}}": "تم تسجيل تحصيل مبلغ {{amount}}{{documents}}",
+  "L'assemblée a peut-être été créée, vérifiez la liste avant de réessayer.": "ربما تم إنشاء الجمعية، تحقق من القائمة قبل إعادة المحاولة.",
+  "Paiement mobile money des appels de charges : compte marchand, suivi, décisions et reversements.": "الدفع عبر المحفظة الإلكترونية لمطالبات الأعباء: حساب التاجر والمتابعة والقرارات والتحويلات.",
+  "Paiement refusé. Le payeur n’a pas été remboursé.": "تم رفض الدفع. لم يتم رد المبلغ للدافع.",
+  "Paiements en ligne": "المدفوعات عبر الإنترنت",
+  "Suivi clos : l’encaissement était déjà enregistré": "تم إغلاق المتابعة: كان التحصيل مسجلاً بالفعل",
+  "Visio intégrée : état indisponible pour le moment": "التواصل المرئي المدمج: الحالة غير متاحة حاليًا",
+  "La salle et les participants n'ont pas pu être relus. L'arrêt de l'enregistrement reste possible plus bas.": "تعذّر تحديث القاعة والمشاركين. لا يزال بإمكانك إيقاف التسجيل أدناه.",
+  "Téléchargement de l'enregistrement en cours…": "جارٍ تنزيل التسجيل…",
+  "Enregistrement téléchargé : {{filename}}": "تم تنزيل التسجيل: {{filename}}",
+  "Arrêter l'enregistrement en cours": "إيقاف التسجيل الجاري",
+  "Votre connexion à la visio a été ouverte depuis un autre onglet ou appareil.": "تم فتح اتصالك بالمكالمة المرئية من علامة تبويب أو جهاز آخر.",
+  "La connexion à la visio a été interrompue.": "انقطع الاتصال بالمكالمة المرئية.",
+  "Se reconnecter": "إعادة الاتصال"
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { App } from 'antd';
 import {
   deleteMeetingRecording,
+  downloadMeetingRecordingFile,
   getMeetingRecordings,
   getMeetingVisio,
   issueMeetingVisioToken,
@@ -21,11 +22,15 @@ import type {
 import type { MeetingStatus } from '../../../types/syndic-types';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
 import { t } from '../../../i18n/t';
+import { saveBlob } from '../../../utils/save-blob';
+import { describeDownloadError } from '../../../utils/download-error';
 
 /** Délai entre deux lectures de la liste tant qu'un enregistrement est en cours ou en traitement. */
 export const RECORDING_POLL_INTERVAL_MS = 5000;
 /** Au-delà, un enregistrement encore `PROCESSING` n'est plus interrogé : on prévient le gestionnaire. */
 export const RECORDING_PROCESSING_MAX_MS = 10 * 60 * 1000;
+/** Délai de relecture de `/visio` tant que la visio n'est pas connue (409) pendant la séance. */
+export const VISIO_RETRY_INTERVAL_MS = 10000;
 
 /** Message d'erreur renvoyé par l'API (`error`), sinon le texte de repli. */
 export function apiErrorText(err: unknown, fallback: string): string {
@@ -68,6 +73,9 @@ export function useMeetingVisio({
   const writeSeqRef = useRef(0);
   const refreshRef = useRef<() => void>(() => undefined);
 
+  const visioRef = useRef<MeetingVisioAdminView | null>(null);
+  const [visioError, setVisioError] = useState(false);
+
   const loadVisio = useCallback(async (): Promise<number | false | void> => {
     const seq = writeSeqRef.current;
     try {
@@ -75,18 +83,32 @@ export function useMeetingVisio({
       if (seq !== writeSeqRef.current) {
         // Une action est passée entre-temps : cette lecture est relue plutôt qu'appliquée.
         refreshRef.current();
+      } else if (!view.enabled && visioRef.current?.enabled) {
+        // La configuration ne change pas en pleine séance : une réponse « désactivée » est un accident
+        // passager. On garde la vue connue (la salle ouverte ne doit pas être démontée) et on signale.
+        setVisioError(true);
       } else {
-        setVisio(view);
+        // Vue dégradée (l'API n'a pas pu relire la salle) : on garde les derniers participants et
+        // enregistrement connus plutôt que d'afficher une salle vide.
+        const previous = visioRef.current;
+        const next: MeetingVisioAdminView = view.degraded && previous?.enabled ? { ...previous, degraded: true } : view;
+        visioRef.current = next;
+        setVisio(next);
+        setVisioError(false);
         // Contrat : 200 `enabled: false` quand LiveKit n'est pas configuré, rien à surveiller.
         if (!view.enabled) return false;
       }
     } catch (err) {
-      // Compatibilité avec une API plus ancienne, qui répondait 409 « visio non activée ».
-      if ((err as { response?: { status?: number } })?.response?.status === 409) {
+      // 409 « visio non activée » (API plus ancienne) : rien à afficher tant qu'aucune vue n'a été reçue.
+      // Une fois la visio connue, c'est un incident passager comme un autre (jamais d'effacement de la vue).
+      if ((err as { response?: { status?: number } })?.response?.status === 409 && !visioRef.current?.enabled) {
+        visioRef.current = null;
         setVisio(null);
-        return false;
+        setVisioError(false);
+        return inProgress ? VISIO_RETRY_INTERVAL_MS : false;
       }
-      // Échec passager : on garde les dernières données et on réessaie.
+      // Échec passager : on garde les dernières données, on le signale et on réessaie.
+      setVisioError(inProgress);
     }
     return inProgress ? undefined : false;
   }, [tenantId, syndicId, meetingId, inProgress]);
@@ -123,6 +145,7 @@ export function useMeetingVisio({
         allowed
       );
       writeSeqRef.current += 1;
+      visioRef.current = updated;
       setVisio(updated);
       message.success(
         allowed
@@ -172,6 +195,7 @@ export function useMeetingVisio({
         revokeLinks
       );
       writeSeqRef.current += 1;
+      visioRef.current = view;
       setVisio(view);
       message.success(
         revokeLinks
@@ -188,6 +212,7 @@ export function useMeetingVisio({
 
   return {
     visio,
+    visioError,
     visioEnabled: visio?.enabled === true,
     recordingConfigured: visio?.enabled === true && visio.recording?.enabled === true,
     activeRecording: visio?.recording?.enabled ? (visio.recording.active ?? null) : null,
@@ -206,7 +231,7 @@ export function useMeetingVisio({
 /* ------------------------------------------------------------ enregistrements */
 
 interface UseMeetingRecordingsOptions extends MeetingScope {
-  /** L'enregistrement est configuré (carte « Visio intégrée » présente et `recording.enabled`). */
+  /** Interroge la liste. Indépendante de `/visio` : l'arrêt manuel doit rester possible si cette lecture échoue. */
   enabled: boolean;
   /** Identifiant de l'enregistrement actif lu dans `/visio` ; un changement relit la liste. */
   activeId: string | null;
@@ -233,7 +258,9 @@ export function useMeetingRecordings({
 
   const load = useCallback(async (): Promise<number | false | void> => {
     try {
-      const list = await getMeetingRecordings(tenantId, syndicId, meetingId);
+      const read = await getMeetingRecordings(tenantId, syndicId, meetingId);
+      // Garde-fou : une réponse inattendue (API plus ancienne) ne doit pas faire tomber la console.
+      const list = Array.isArray(read) ? read : [];
       setRecordings(list);
       const now = Date.now();
       let recording = false;
@@ -251,8 +278,10 @@ export function useMeetingRecordings({
       }
       setProcessingSlow(processingStale);
       return recording || processingFresh ? RECORDING_POLL_INTERVAL_MS : false;
-    } catch {
-      // Échec passager (ou droit manquant) : on garde la liste et on réessaie plus tard.
+    } catch (err) {
+      // Droit manquant ou route absente : inutile de réessayer. Sinon échec passager, on garde la liste.
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status !== undefined && status >= 400 && status < 500 && status !== 429) return false;
       return RECORDING_POLL_INTERVAL_MS * 2;
     }
   }, [tenantId, syndicId, meetingId]);
@@ -301,6 +330,29 @@ export function useMeetingRecordings({
     }
   };
 
+  /** Téléchargement par l'API (blob) : message de progression, puis nom du fichier ou erreur. */
+  const download = async (recording: MeetingRecordingView) => {
+    const key = `recording-download-${recording.id}`;
+    setBusyRecordingId(recording.id);
+    message.loading({ content: t("Téléchargement de l'enregistrement en cours…"), key, duration: 0 });
+    try {
+      const fallbackName = t('AG-{{value}}.mp4', { value: recording.startedAt.slice(0, 10) });
+      const { blob, filename } = await downloadMeetingRecordingFile(
+        tenantId,
+        syndicId,
+        meetingId,
+        recording.id,
+        fallbackName
+      );
+      saveBlob(blob, filename);
+      message.success({ content: t('Enregistrement téléchargé : {{filename}}', { filename }), key, duration: 5 });
+    } catch (err) {
+      message.error({ content: await describeDownloadError(err), key, duration: 6 });
+    } finally {
+      setBusyRecordingId(null);
+    }
+  };
+
   const remove = (recording: MeetingRecordingView) =>
     act(
       recording,
@@ -318,14 +370,18 @@ export function useMeetingRecordings({
     );
 
   // Le dernier enregistrement a échoué et aucun n'est actif : la séance n'est PAS enregistrée.
+  // Enregistrement réellement en cours d'après la liste (indépendante de `/visio`).
+  const listActive = recordings.find(item => item.status === 'RECORDING') ?? null;
   const latestFailed = activeId === null && recordings[0]?.status === 'FAILED' ? recordings[0] : null;
 
   return {
     recordings,
+    listActive,
     busy,
     busyRecordingId,
     processingSlow,
     latestFailed,
+    download,
     start: () => toggle(true),
     stop: () => toggle(false),
     remove,

@@ -1342,5 +1342,21 @@
   "{{value}} Go": "{{value}} GB",
   "{{value}} Ko": "{{value}} KB",
   "{{value}} Mo": "{{value}} MB",
-  "{{value}} o": "{{value}} B"
+  "{{value}} o": "{{value}} B",
+  "Compte rendu téléchargé : {{filename}}": "Minutes downloaded: {{filename}}",
+  "Convocations en cours d'envoi.": "Convocations are being sent.",
+  "Encaissement de {{amount}} enregistré{{documents}}": "Payment of {{amount}} recorded{{documents}}",
+  "L'assemblée a peut-être été créée, vérifiez la liste avant de réessayer.": "The meeting may have been created: check the list before trying again.",
+  "Paiement mobile money des appels de charges : compte marchand, suivi, décisions et reversements.": "Mobile money payment of service charge calls: merchant account, tracking, decisions and payouts.",
+  "Paiement refusé. Le payeur n’a pas été remboursé.": "Payment refused. The payer has not been refunded.",
+  "Paiements en ligne": "Online payments",
+  "Suivi clos : l’encaissement était déjà enregistré": "Tracking closed: the payment was already recorded",
+  "Visio intégrée : état indisponible pour le moment": "Integrated video call: status unavailable for now",
+  "La salle et les participants n'ont pas pu être relus. L'arrêt de l'enregistrement reste possible plus bas.": "The room and participants could not be refreshed. You can still stop the recording below.",
+  "Téléchargement de l'enregistrement en cours…": "Downloading the recording…",
+  "Enregistrement téléchargé : {{filename}}": "Recording downloaded: {{filename}}",
+  "Arrêter l'enregistrement en cours": "Stop the current recording",
+  "Votre connexion à la visio a été ouverte depuis un autre onglet ou appareil.": "Your video call connection was opened from another tab or device.",
+  "La connexion à la visio a été interrompue.": "The video call connection was interrupted.",
+  "Se reconnecter": "Reconnect"
 }
