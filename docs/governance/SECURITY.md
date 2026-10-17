@@ -278,6 +278,16 @@ un accès en écriture à la base, hors du modèle de menace actuel. Si ce risqu
 était retenu, un format `ddk2` (données associées incluant l'agence et le mandat)
 serait possible.
 
+Où l'IBAN complet sort en clair : le PDF d'autorisation d'un mandat (P1) et le
+fichier de remise (P2, `POST …/direct-debit/remittances/:id/export`), tous deux
+réservés à `RENTAL_DIRECT_DEBIT_MANAGE`, générés à la demande, jamais stockés,
+servis en `Cache-Control: no-store`, et audités dans la base avant l'envoi (un
+échec d'audit bloque l'envoi). Le fichier de remise ne garde qu'une empreinte
+HMAC-SHA-256 (clé dérivée de `DIRECT_DEBIT_IBAN_KEY`) : un SHA-256 nu d'un
+fichier à une seule ligne permettrait de retrouver l'IBAN par force brute. Les
+routes `direct-debit` sont marquées sensibles pour la passerelle de l'assistant
+IA, qui ne peut ni les lire ni les appeler.
+
 **Déployer la production.** `deploy.sh prod` prouve l'état git au lieu de le
 supposer : git utilisable, version identifiable, arbre propre, `origin/main`
 présent et `HEAD` dedans, sinon échec ; `HEAD` et l'arbre sont revérifiés juste

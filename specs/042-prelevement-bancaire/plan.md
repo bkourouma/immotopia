@@ -102,8 +102,8 @@ dédiée et versionnée des IBAN, décision du 16/10/2026).
   `prenotification.ts` (e-mail `DIRECT_DEBIT_PRENOTIFICATION`),
   `file-formats/` (adaptateur `GENERIC_CSV`, registre par format),
   `controllers/direct-debit-remittance-controller.ts`, 10 routes ;
-  migrations `20261016120000_prelevement_moyen_paiement` et
-  `20261016120100_prelevement_remises`.
+  migrations `20261017090000_prelevement_moyen_paiement` et
+  `20261017090100_prelevement_remises`.
 - **Écran** : onglets « Mandats » / « Remises » de Location › Prélèvements,
   `pages/rental/DirectDebitRemittances.tsx` (liste, préparation) et
   `DirectDebitRemittanceDetail.tsx` (actions par statut, lignes, mandats non

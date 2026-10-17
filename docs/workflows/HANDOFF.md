@@ -215,32 +215,56 @@ Pièges :
 - Un changement de `ci-deploy.sh` ne s'applique qu'au déploiement suivant.
 - Python lancé par heredoc depuis Git Bash lit le texte en cp1252 : pour une retouche de texte accentué, passer par l'outil d'édition.
 
-## Branche `fix/prelevement-cle-iban` — 2026-10-16
+## Branche `feat/prelevement-p2-remises` — 2026-10-17
 
-**État :** prêt à relire (PR vers `main`, ouverte par le pilote). P0 et P1 du prélèvement bancaire sont fusionnés dans `main` (PR #128). La branche `feat/prelevement-p2-remises` (lot P2) est empilée dessus, dans le worktree `.claude/worktrees/prelevement-p2`.
-**Dernier commit :** voir `git log` (clé dédiée aux IBAN).
+**État :** prêt à relire — PR vers `fix/prelevement-cle-iban` (empilée sur la PR 153), ouverte par le pilote. Recette navigateur NON faite (démo indisponible, voir pièges).
+**Dernier commit :** voir `git log` (fusion de `fix/prelevement-cle-iban` à jour de `main`, migrations renommées en `20261017090000_*` et `20261017090100_*`).
+**Worktree :** `.claude/worktrees/prelevement-p2`, `node_modules` PROPRE (`npm ci`), client Prisma propre.
+
+Fait (lot P2 de la spec 042, contrat `specs/042-prelevement-bancaire/data-model.md` §7) :
+
+- Remises `PRL-AAAA-NNNN` par créancier et date de prélèvement : sélection D6 (mandats actifs dont le jour de collecte est atteint, reste dû de l'échéance du mois hors pénalités, plafonné), une échéance dans une seule ligne non annulée (unicité `(tenantId, activeKey)`), actualisation, retrait de ligne, validation humaine (date limite de prénotification D7 en jours ouvrés, figée), avis de prélèvement par e-mail en arrière-plan sous verrou (`DIRECT_DEBIT_PRENOTIFICATION`, rattachée à RENTAL), fichier `GENERIC_CSV` (IBAN déchiffré à l'export seulement, audit avant l'envoi, empreinte HMAC), « déposée à la banque », annulation.
+- `DIRECT_DEBIT` ajouté à `RentalPaymentMethod` (libellés API et écrans, compte `BANK`, absent des saisies manuelles).
+- Écrans : onglets Mandats / Remises de Location › Prélèvements, liste, préparation, détail (actions par statut, avertissements d'annulation et de production, résumé des avis relu pendant l'envoi).
+- Relectures `code-reviewer` et `security-auditor` faites, constats corrigés (`fee1dbf0`). Classeur des fonctionnalités : 10 lignes (1022 lignes au total). `plan.md` : P1 et P2 « fait ».
+
+Reste à faire :
+
+- Recette navigateur sur la démo (spec P2) dès que `packages/api/.env.demo` existe : préparer, actualiser, retirer, valider, produire le fichier, déposer, annuler ; IBAN absent des réponses ; arabe.
+- Migrations jamais appliquées sur une vraie base (pas de base dédiée dans le worktree) ; `npm run test:isolation` non lancé.
+- Format réel de la banque pilote (nouvel adaptateur, après réception des pièces de la spec §2) ; avis par WhatsApp/SMS et avis d'annulation (P5) ; jours fériés ; P3 (retour banque).
+
+Pièges et décisions :
+
+- Une échéance ne figure que dans UNE ligne non annulée, quel que soit le mandat (ADR-007 §6), plus strict que « (mandat, échéance) » du plan.
+- `npm run i18n:extract` ramène des centaines de lignes d'autres branches et des `*.orphans.json` : n'ajouter que ses clés.
+- Après un agent qui passe prettier, des fichiers n'ont que des fins de ligne différentes : leur remettre les fins de ligne de `HEAD` plutôt que de les commiter.
+
+## Branche `fix/prelevement-cle-iban` — 2026-10-17
+
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/153 (base `main`), `main` fusionné le 2026-10-17. Fusion à faire par l'utilisateur.
+**Dernier commit :** `c89414ae` (fusion de `main`), après `4fb78828` (correctifs de l'audit de sécurité).
 **Worktree :** `.claude/worktrees/amazing-brattain-ff3069`, `node_modules` PROPRE (`npm ci`, pas de jonction).
 
 Fait :
 
-- IBAN des mandats chiffrés avec une clé DÉDIÉE `DIRECT_DEBIT_IBAN_KEY` (`lib/direct-debit/iban-crypto.ts`, format `ddk1:<id de clé>:…`, id de clé en données associées), trousseau `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` pour la rotation, lecture héritée des valeurs `pg1` (`PAYMENT_SECRETS_KEY`). L'API refuse de démarrer si la clé égale `PAYMENT_SECRETS_KEY`.
-- Script idempotent `dist/scripts/reencrypt-direct-debit-ibans.js [--dry-run]` (compteurs seulement, code 2 s'il reste des illisibles).
-- `make-env.sh` génère la clé ; `deploy.sh` refuse doublons, `REMPLACER`, égalité avec `PAYMENT_SECRETS_KEY`, et en prod toute clé du trousseau présente dans celui du staging ; avertit si la clé manque en prod.
-- DEPLOIEMENT.md (section « Clé dédiée aux IBAN », commandes staging pour l'utilisateur), SECURITY.md, ADR-007, spec PB2-R4 et data-model à jour. Tests : `direct-debit.iban-crypto`, `direct-debit.iban-reencryption`.
+- IBAN des mandats chiffrés avec une clé DÉDIÉE `DIRECT_DEBIT_IBAN_KEY` (`lib/direct-debit/iban-crypto.ts`, format `ddk1:<id de clé>:…`, id de clé en données associées, balise GCM de 16 octets imposée), trousseau `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` pour la rotation, lecture héritée des valeurs `pg1` (`PAYMENT_SECRETS_KEY`). Démarrage refusé si la clé est mal formée, faible ou égale à `PAYMENT_SECRETS_KEY`.
+- Script idempotent `dist/scripts/reencrypt-direct-debit-ibans.js [--dry-run]` (codes 0 / 2 illisibles / 3 à relancer / 1 erreur).
+- `make-env.sh` génère la clé ; `deploy.sh` contrôle forme, doublons, `REMPLACER`, égalité avec `PAYMENT_SECRETS_KEY`, trousseau prod face au staging, refuse `set -x`.
+- DEPLOIEMENT.md (section « Clé dédiée aux IBAN », encadré « Staging — commandes à lancer par l'utilisateur »), SECURITY.md, ADR-007, spec PB2-R4, `setup-dev-env.ps1`.
+- `security-auditor` : 0 critique, 0 élevée ; la moyenne et les faibles corrigées, sauf le lien chiffré ↔ mandat (`ddk2`), documenté comme hors modèle de menace.
 
 Reste à faire :
 
-- L'utilisateur, sur le serveur : ajouter `DIRECT_DEBIT_IBAN_KEY` à `/home/deployer/immotopia-saas.env` (commandes dans DEPLOIEMENT.md, encadré « Staging — commandes à lancer par l'utilisateur »), sauvegarder le fichier hors serveur, puis après déploiement lancer le script en `--dry-run` puis réel. Tant que la clé manque, la création de mandats est refusée sur le staging.
-- Points ouverts hérités de P1 : borne basse de `signedAt`/`revokedAt` ; « Nouveau mandat » désactivé dès qu'un mandat ouvert existe sur le bail (PB2-R7 n'interdit qu'un mandat ouvert par couple bail/créancier) ; non joués à la recette P1 : modification d'un mandat, plafond, jour de collecte propre, rôle sans MANAGE, `test:isolation`.
-- Données de recette P1 dans la base de démo : agence « Bamako Immobilier », compte `recette.p1@immotopia.test`, bail BAIL-2026-0001, un créancier, deux mandats révoqués.
+- L'utilisateur, sur le serveur : poser `DIRECT_DEBIT_IBAN_KEY` dans `/home/deployer/immotopia-saas.env` (commandes de DEPLOIEMENT.md, aucune n'affiche la clé), sauvegarder le fichier hors serveur, puis, après déploiement de la PR, lancer le script en `--dry-run` puis réel. Tant que la clé manque, la création de mandats est refusée sur le staging.
+- Points ouverts hérités de P1 : borne basse de `signedAt`/`revokedAt` ; « Nouveau mandat » désactivé dès qu'un mandat ouvert existe sur le bail ; non joués à la recette P1 : modification d'un mandat, plafond, jour de collecte propre, rôle sans MANAGE, `test:isolation`.
 
 Pièges et décisions :
 
 - `packages/api/.env.demo` a disparu du checkout principal : `npm run demo:sync` refuse de tourner sans lui (base DÉDIÉE `immotopia_demo`) ; à recréer par l'utilisateur avant toute recette sur la démo.
 - Le hook `validate-bash.sh` bloque toute commande qui contient à la fois « push » et « main » : pousser et lancer `gh pr create --base main` séparément.
-- `npm run i18n:extract` et `npm run ai:catalog` touchent des fichiers hors périmètre (fins de ligne, dossier `uploads/` vide) : n'ajouter que les vrais changements.
-- Le filtre d'audit masque toute clé contenant « iban » : la charge utile utilise `last4Digits`.
-- Contrôle d'empreintes entre deux variables différentes : hacher la VALEUR (`cut -d= -f2-`), pas la ligne entière, sinon les noms de variables rendent toujours les empreintes différentes.
+- Contrôle d'empreintes entre deux variables : hacher la VALEUR (`cut -d= -f2-`), pas la ligne, sinon les noms rendent toujours les empreintes différentes.
+- Un pilote qui change de worktree avec `EnterWorktree` coupe le shell des sous-agents encore actifs dans l'ancien : attendre leur fin avant de basculer.
 
 ## Branche `feat/pwa-mobile` — 2026-10-15
 
