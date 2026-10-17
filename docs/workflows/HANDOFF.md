@@ -47,6 +47,38 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/syndic-ag-visio` — 2026-10-16
+
+**État :** fusion dans `main` accordée par l'utilisateur le 2026-10-16 (PR https://github.com/bkourouma/immotopia/pull/144). La branche embarque les PR #145 (enregistrements orphelins) et #148 (discussion modérée), fusionnées dedans par le Pilote pour ne passer qu'une CI ; la fusion de la 144 dans `main` reste conditionnée à une CI verte.
+**Dernier commit :** fusion de `origin/main` (PR 146) après `9d6e12cb` (fusion de la PR 148, classeur à 1012 sous-fonctionnalités) et `cfd6d20c` (fusion de la PR 145).
+**Worktrees :** `.claude/worktrees/suspicious-cartwright-fc4a4c` et `zen-poincare-ac73f3` ont leur propre `node_modules` ; `sweet-kilby-b1ed43` a trois JONCTIONS vers ceux de `suspicious-cartwright-fc4a4c` : les retirer avec `rmdir` AVANT tout `git worktree remove`, et retirer ce worktree avant `suspicious-cartwright-fc4a4c`.
+
+Fait :
+
+- Spec `specs/045-syndic-ag-visio/spec.md` (044 = signature électronique) : visio LiveKit intégrée à l'AG en direct et enregistrement, décisions V1–V15 et R1–R12. Spec `specs/046-syndic-ag-discussion/spec.md` : discussion écrite modérée, règles M1–M15.
+- API : service LiveKit porté d'École Digitale ; routes publiques `/api/public/assemblees/visio`, `/visio/main`, `/discussion`, `/discussion/envoyer` ; routes gestionnaire `/visio`, `/visio/jeton`, parole, exclusion, écriture coupée, discussion (lecture, envoi, masquer, ouvrir/fermer), enregistrement (`GMRecording`, migration `20261016120000_syndic_ag_enregistrement`, Egress MP4 vers S3, webhook `/api/webhooks/livekit`, rapatriement, lecture et téléchargement audités, reprise, suppression) ; `GMChatMessage` (migration `20261016150000_syndic_ag_discussion`) ; purge des MP4 et objets S3 lors des suppressions en cascade (`lib/syndics/meeting-recording-cleanup.ts`, branchée dans `deleteEmptySyndicateByTenant`).
+- Web : salle `MeetingVisioRoom` (chargée à la demande) avec panneau « Discussion », page `/ag-direct` (côte à côte ou onglets), console (visio, enregistrements, discussion, couper l'écriture).
+- Relectures code et sécurité corrigées (0 critique, 0 haute) ; recettes navigateur sur la démo (voir les specs) ; classeur des fonctionnalités (13 + 7 lignes, 1 modifiée) ; `SECURITY.md` § 12 quater ; `deploy.sh` (`INTEGRATION_KEYS`) ; avis d'enregistrement dans la convocation (`{{recordingNotice}}`).
+
+Reste à faire :
+
+- Après la fusion : vérifier `main` (typecheck, `wiki:check`) et que les PR #145 et #148 apparaissent fusionnées ; supprimer cette section.
+- Mise en service par l'utilisateur : projet LiveKit Cloud dédié (compte et dépense), `LIVEKIT_*` et `LIVEKIT_RECORDING_S3_*` en staging puis production, webhook `<BACKEND_URL>/api/webhooks/livekit`, bucket S3 dédié, CSP `connect-src` vers le `wss://`.
+- Fondateur : base juridique de l'enregistrement ; V2–V4, V7–V9, V11–V13 (dont la visibilité des noms en salle) ; M1–M15 de la discussion.
+- Le jour où une suppression d'AG ou une purge d'agence est créée : appeler la purge avec `{ kind: 'MEETING' }` ou `{ kind: 'TENANT' }`.
+- Non vérifié : LiveKit Cloud, charge à 300 participants, plusieurs instances de l'API (plafond de discussion par AG propre au processus), effet serveur de `revokeTokenTs`, bascule de largeur à chaud dans un vrai navigateur, `test:isolation`.
+
+Pièges et décisions :
+
+- Pile de recette locale gratuite : conteneurs `immotopia-visio-net` (Redis, propriétaire de l'espace réseau et des ports 7880/7881/7882/8333), `immotopia-livekit-dev`, `immotopia-visio-s3` (SeaweedFS : les images MinIO ne sont plus publiées), `immotopia-visio-egress`, ARRÊTÉS : les redémarrer dans cet ordre avec `docker start`. Configuration de développement dans le scratchpad des sessions, jamais dans le dépôt ; mode d'emploi dans `docs/recette/SCENARIO_SYNDIC_AG_VISIO.md`.
+- LiveKit sous Docker Desktop : sans `node_ip` et avec `enable_loopback_candidate: true`, sinon le Chrome de l'Egress refuse le candidat de boucle locale.
+- `React.StrictMode` montait la salle deux fois : la connexion part un tick après le montage (`StableLiveKitRoom`).
+- Changer de langue pendant la visio remonte l'application (`key={language}`) et coupe la salle : limite documentée, non corrigée.
+- Instance de démo : worktree `.claude/worktrees/demo` détaché sur `95e9b0d9`, migrations appliquées sur `immotopia_demo` jusqu'à `20261016150000`, serveurs arrêtés ; `demo:sync` exige `packages/api/.env.demo` (absent). Données de recette : AG « recette visio » et « recette visio 2 » dans « Horizon Syndic Gestion ».
+- `deleteRecording` écrit encore son audit critique par la file asynchrone (`logAuditEvent`) ; `prisma/seed.ts`, le seed de démo Syndic et une suppression SQL manuelle d'agence laissent les MP4.
+- `npm run i18n:extract` salit tout l'arbre : traductions de ces lots ajoutées à la main. Tests instables surveillés : `MeetingLiveConsole.test.tsx` (« supprime après confirmation »), `property-ownership.test.tsx`.
+- Classeur des fonctionnalités en conflit à chaque fusion : reporter ligne à ligne les lignes de la branche sur la version de `main` (openpyxl, `difflib` sur les lignes de la table `SousFonctionnalites`), puis `wiki:export` et comparer le miroir.
+
 ## Branche `fix/yousign-sandbox-staging` — 2026-10-16
 
 **État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/146 (base `main`), mise à jour avec `main` le 2026-10-16 (a0b94a2e, PR 149, puis 80d1c6a0, PR 147) : seul `HANDOFF.md` était en conflit chaque fois, toutes les sections sont gardées (worktree `.claude/worktrees/loving-moser-776024`, jonctions `node_modules` retirées hors commit)

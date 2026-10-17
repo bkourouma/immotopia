@@ -360,6 +360,10 @@ export const FAKE_MODEL_NAMES = [
   'gMParticipant',
   'gMAttendance',
   'gMProxy',
+  // Spec 045 : enregistrements d'AG.
+  'gMRecording',
+  // Spec 046 : discussion ecrite de la visio.
+  'gMChatMessage',
   'secureLink',
   'user',
   'passwordResetToken',

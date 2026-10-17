@@ -247,7 +247,8 @@ check_port "$PG_PORT" "postgres"
 # Cles d'integration : le staging ne doit pas porter d'identifiants de production,
 # et la production ne doit pas partager les siens avec le staging.
 INTEGRATION_KEYS=(EMAIL_SERVICE_API_KEY EMAIL_SMTP_PASS TWILIO_AUTH_TOKEN WASENDER_API_KEY
-                  GOOGLE_CLIENT_SECRET ANTHROPIC_API_KEY OPENROUTER_API_KEY PLATFORM_PAYSECUREHUB_API_KEY)
+                  GOOGLE_CLIENT_SECRET ANTHROPIC_API_KEY OPENROUTER_API_KEY PLATFORM_PAYSECUREHUB_API_KEY
+                  LIVEKIT_API_SECRET LIVEKIT_RECORDING_S3_SECRET)
 
 if [[ "$ENV_NAME" == "staging" ]]; then
   filled=()

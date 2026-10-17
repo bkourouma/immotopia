@@ -25,6 +25,8 @@ import {
   type LiveContext
 } from './meeting-live-context';
 import { MEETING_LINK_OBJECT_TYPE } from './meeting-participants';
+import { isVisioEnabled } from '../../services/livekit-service';
+import { hasActiveRecording } from './meeting-recording';
 
 /**
  * AG en direct, cote copropriétaire, par lien personnel sans connexion
@@ -89,10 +91,12 @@ export interface LiveMeetingPublicView {
     };
   }>;
   canVote: boolean;
+  /** Visio integree (spec 045) : LiveKit est-il configure ? Rien d'autre n'est expose. */
+  visio: { enabled: boolean; recording: boolean };
   serverTime: string;
 }
 
-interface AccessedParticipant {
+export interface AccessedParticipant {
   id: string;
   contactId: string;
   meetingId: string;
@@ -100,7 +104,7 @@ interface AccessedParticipant {
   lastSeenAt: Date | null;
 }
 
-interface Access {
+export interface Access {
   link: VerifiedSecureLink;
   participant: AccessedParticipant;
 }
@@ -124,7 +128,7 @@ async function resolveAccess(token: string): Promise<Access> {
 }
 
 /** Toute erreur de domaine « objet introuvable » d'un lien devient la 404 uniforme. */
-async function withAccess<T>(token: string, run: (access: Access) => Promise<T>): Promise<T> {
+export async function withAccess<T>(token: string, run: (access: Access) => Promise<T>): Promise<T> {
   const access = await resolveAccess(token);
   return runWithTenantContext({ tenantId: access.link.tenantId }, async () => {
     try {
@@ -186,6 +190,8 @@ async function buildPublicView(
   const allVotes = ctx.resolutions.flatMap(resolution => resolution.votes);
   const attendance = computeMeetingAttendance(ctx.majorityLots, allVotes, ctx.attendances);
   const joined = Boolean(participant.joinedAt);
+  // Avis « cette assemblée est enregistrée » (spec 045, R2) : seulement si la visio est configurée.
+  const recordingActive = isVisioEnabled() && (await hasActiveRecording(tenantId, meeting.id));
 
   return {
     meeting: {
@@ -248,6 +254,7 @@ async function buildPublicView(
       };
     }),
     canVote: meeting.status === 'IN_PROGRESS' && myLots.length > 0 && joined,
+    visio: { enabled: isVisioEnabled(), recording: recordingActive },
     serverTime: now.toISOString()
   };
 }
