@@ -35,6 +35,7 @@ export function makeLine(overrides: Record<string, unknown> = {}) {
     rejectFeeAmount: null,
     returnSource: null,
     paymentId: null,
+    rejectionImpact: null,
     ...overrides
   };
 }

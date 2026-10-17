@@ -356,6 +356,11 @@ export interface RemittanceLineDto {
   returnSource: ReturnSource | null;
   /** RentalPayment (P3) ou ChargePayment (P4). */
   paymentId: string | null;
+  /**
+   * Conséquences d'un rejet constaté maintenant (ligne PENDING ou SETTLED d'une
+   * remise EXPORTED/SUBMITTED) ; null ailleurs.
+   */
+  rejectionImpact: { fee: number; willSuspend: boolean } | null;
 }
 
 export interface PrenotificationSummaryDto {
@@ -425,10 +430,14 @@ export interface ReturnPreviewDto {
   records: ReturnRecordDto[];
   errors: { row: number; message: string }[];
   summary: { settle: number; reject: number; skip: number; errors: number };
+  /** Non nul quand ce fichier a déjà été importé. */
+  alreadyImported: { importId: string; importedAt: string } | null;
 }
 
 export interface ReturnApplyDto extends ReturnPreviewDto {
   importId: string;
+  /** Compteurs réels de l'application (`summary` reste celui de l'aperçu). */
+  appliedSummary: { settled: number; rejected: number; failed: number };
   results: { row: number; lineId: string; ok: boolean; error: string | null }[];
 }
 

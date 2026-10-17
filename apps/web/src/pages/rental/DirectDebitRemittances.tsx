@@ -13,6 +13,7 @@ import {
 import { PageHeader, formatMoney } from '../../components/primitives';
 import { DirectDebitTabs } from '../../components/rental/direct-debit/DirectDebitTabs';
 import { PrepareRemittanceModal } from '../../components/rental/direct-debit/PrepareRemittanceModal';
+import { invalidateRentalCollections } from '../../components/rental/direct-debit/ReturnConstatModals';
 import { ReturnImportModal } from '../../components/rental/direct-debit/ReturnImportModal';
 import { RETURN_IMPORTS_ENTITY, ReturnImportsHistory } from '../../components/rental/direct-debit/ReturnImportsHistory';
 import {
@@ -165,7 +166,15 @@ export const DirectDebitRemittances: React.FC = () => {
           // Les constats changent les remises (statuts, retour) et l'historique.
           void queryClient.invalidateQueries({ queryKey: entityKeyPrefix('direct-debit-remittances', tenantId) });
           void queryClient.invalidateQueries({ queryKey: entityKeyPrefix(RETURN_IMPORTS_ENTITY, tenantId) });
-          message.success(t('Fichier {{name}} importé.', { name: result.fileName }));
+          invalidateRentalCollections(queryClient, tenantId);
+          const failed = result.appliedSummary.failed;
+          if (failed > 0) {
+            message.warning(
+              t('Fichier {{name}} importé, mais {{n}} constats ont échoué.', { name: result.fileName, n: failed })
+            );
+          } else {
+            message.success(t('Fichier {{name}} importé.', { name: result.fileName }));
+          }
         }}
       />
       <PrepareRemittanceModal

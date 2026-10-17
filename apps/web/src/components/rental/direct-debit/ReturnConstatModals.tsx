@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, DatePicker, Form, Input, Modal } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
+import type { QueryClient } from '@tanstack/react-query';
 import type { RemittanceLineDto, SettleAllResult } from '../../../services/direct-debit-service';
 import { dateFormat } from '../../../i18n/format';
 import { parseIsoDay, startOfDay, toIsoDay } from './business-days';
 import { formatDay } from './direct-debit-shared';
 import { t } from '../../../i18n/t';
+import { formatMoney } from '../../primitives';
 
 /**
  * Fenêtres de constat du retour banque (spec 042, P3, §8.3, §8.4 et §8.10) :
@@ -13,6 +15,16 @@ import { t } from '../../../i18n/t';
  * remise. La date est bornée entre la date de prélèvement et aujourd'hui ;
  * l'API reste juge.
  */
+
+/**
+ * Un constat (règlement ou rejet) crée ou annule des encaissements et des
+ * quittances : les listes de paiements, d'échéances et de baux se relisent.
+ */
+export function invalidateRentalCollections(queryClient: QueryClient, tenantId: string | null | undefined): void {
+  for (const entity of ['payments', 'installments', 'leases']) {
+    void queryClient.invalidateQueries({ queryKey: [entity, tenantId ?? null] });
+  }
+}
 
 const CODE_PATTERN = /^[A-Za-z0-9_-]{1,20}$/;
 const MAX_CODE_LENGTH = 20;
@@ -145,6 +157,7 @@ export const RejectLineModal: React.FC<
 
   const trimmedCode = code.trim();
   const trimmedReason = reason.trim();
+  const impact = line?.rejectionImpact ?? null;
   const codeInvalid = trimmedCode !== '' && !CODE_PATTERN.test(trimmedCode);
   const missing = trimmedCode === '' && trimmedReason === '';
 
@@ -184,11 +197,30 @@ export const RejectLineModal: React.FC<
           )}
         />
       )}
-      <p>
-        {t(
-          'Des frais de rejet peuvent être refacturés au locataire selon le réglage du créancier. Le mandat est suspendu automatiquement après un certain nombre de rejets consécutifs.'
-        )}
-      </p>
+      {impact ? (
+        <>
+          {impact.fee > 0 && (
+            <p>
+              {t('Des frais de rejet de {{montant}} seront refacturés au débiteur.', {
+                montant: formatMoney(impact.fee)
+              })}
+            </p>
+          )}
+          {impact.willSuspend && (
+            <p>
+              {t('Ce rejet suspendra le mandat {{reference}} (rejets consécutifs).', {
+                reference: line?.mandate.reference ?? ''
+              })}
+            </p>
+          )}
+        </>
+      ) : (
+        <p>
+          {t(
+            'Des frais de rejet peuvent être refacturés au locataire selon le réglage du créancier. Le mandat est suspendu automatiquement après un certain nombre de rejets consécutifs.'
+          )}
+        </p>
+      )}
       <Form layout="vertical">
         <ReturnDateField label={t('Date du rejet')} value={date} onChange={setDate} bounds={bounds} />
         <Form.Item
