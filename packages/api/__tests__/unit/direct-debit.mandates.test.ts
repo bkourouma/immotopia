@@ -119,11 +119,12 @@ jest.mock('../../src/services/audit-service', () => ({
   recordAuditEvent: (...args: unknown[]) => mockAudit.record(...args),
   logAuditEvent: (...args: unknown[]) => mockAudit.log(...args)
 }));
-jest.mock('../../src/lib/payment-gateway/crypto', () => ({
-  isEncryptionAvailable: () => mockCrypto.available,
+jest.mock('../../src/lib/direct-debit/iban-crypto', () => ({
+  isIbanEncryptionAvailable: () => mockCrypto.available,
   // Texte chiffré factice : ne contient jamais l'IBAN en clair.
-  encryptSecret: (plain: string) => `pg1:iv:tag:${Buffer.from(plain.split('').reverse().join('')).toString('base64')}`,
-  decryptSecret: (enc: string) => Buffer.from(enc.split(':')[3], 'base64').toString().split('').reverse().join('')
+  encryptIban: (plain: string) =>
+    `ddk1:key:iv:tag:${Buffer.from(plain.split('').reverse().join('')).toString('base64')}`,
+  decryptIban: (enc: string) => Buffer.from(enc.split(':')[4], 'base64').toString().split('').reverse().join('')
 }));
 jest.mock('../../src/lib/direct-debit/mandate-files', () => ({
   ...jest.requireActual('../../src/lib/direct-debit/mandate-files'),
@@ -187,7 +188,7 @@ function expectNoLeak(value: unknown) {
   expect(text).not.toContain(RIB);
   expect(text).not.toContain('0080111301134291200589');
   expect(text).not.toContain('ibanEncrypted');
-  expect(text).not.toContain('pg1:');
+  expect(text).not.toContain('ddk1:');
   expect(text).not.toContain('signedScanUrl');
   expect(text).not.toContain('/uploads/');
 }
@@ -221,7 +222,7 @@ describe('direct-debit / création', () => {
     expect(Array.isArray(warnings)).toBe(true);
 
     const stored = mockState.mandates[0];
-    expect(stored.ibanEncrypted).toMatch(/^pg1:/);
+    expect(stored.ibanEncrypted).toMatch(/^ddk1:/);
     expect(stored.ibanEncrypted).not.toContain(IBAN);
     expect(stored.ibanLast4).toBe('0589');
     expect(stored.openSlotKey).toBe(`${LEASE}:${CREDITOR}`);

@@ -120,6 +120,81 @@ const paymentSecretsKeySchema = z
   );
 
 /**
+ * Contrôle strict d'une clé IBAN : forme canonique d'une clé de 32 octets en
+ * base64 (43 caractères et un `=`), 32 octets décodés, au moins 16 octets
+ * distincts (refus d'une clé manifestement faible : zéros, motif répété…).
+ * Renvoie la raison du refus, jamais la valeur.
+ */
+export function ibanKeyProblem(value: string): string | null {
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(value)) {
+    return 'doit être une clé de 32 octets en base64 canonique, 44 caractères (`openssl rand -base64 32`)';
+  }
+  const bytes = Buffer.from(value, 'base64');
+  if (bytes.length !== 32) return 'doit faire 32 octets une fois décodée (`openssl rand -base64 32`)';
+  if (new Set(bytes).size < 16) {
+    return 'est trop faible (octets trop peu variés) : générez-la avec `openssl rand -base64 32`';
+  }
+  return null;
+}
+
+/** `true` quand la valeur est une clé IBAN acceptable (voir `ibanKeyProblem`). */
+export function isStrictIbanKey(value: string | undefined): value is string {
+  return typeof value === 'string' && ibanKeyProblem(value) === null;
+}
+
+/**
+ * Clé DÉDIÉE aux IBAN des mandats de prélèvement (spec 042) : 32 octets en
+ * base64 canonique et non triviale ; une valeur vide vaut absente. Distincte
+ * de `PAYMENT_SECRETS_KEY` (contrôle dans `superRefine`). Le message ne cite
+ * jamais la valeur.
+ */
+const directDebitIbanKeySchema = emptyAsUndefined(
+  z
+    .string()
+    .optional()
+    .superRefine((value, ctx) => {
+      const problem = value === undefined ? null : ibanKeyProblem(value);
+      if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+    })
+);
+
+function isBase64Key32(value: string): boolean {
+  try {
+    return Buffer.from(value, 'base64').length === 32;
+  } catch {
+    return false;
+  }
+}
+
+/** Découpe une liste de clés séparées par des virgules (espaces tolérés, entrées vides ignorées). */
+export function parseKeyList(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map(entry => entry.trim())
+    .filter(entry => entry !== '');
+}
+
+/**
+ * Anciennes clés IBAN (rotation) : ne servent qu'à déchiffrer. Le message
+ * n'indique que le rang de l'entrée fautive, jamais sa valeur.
+ */
+const directDebitIbanPreviousKeysSchema = z
+  .string()
+  .optional()
+  .superRefine((value, ctx) => {
+    parseKeyList(value).forEach((entry, index) => {
+      const problem = ibanKeyProblem(entry);
+      if (problem) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `l'entrée n°${index + 1} ${problem}`
+        });
+      }
+    });
+  });
+
+/**
  * Types de document signables (miroir de l'enum Prisma `SignatureDocumentKind`, gardé
  * aligné par `__tests__/unit/env-signature-kinds.test.ts`). Liste littérale : la
  * configuration ne dépend pas du client Prisma, que de nombreux tests simulent.
@@ -161,6 +236,9 @@ const envSchema = z
 
     // Paiement en ligne des loyers (lot 7) — agrégateur PaySecureHub.
     PAYMENT_SECRETS_KEY: paymentSecretsKeySchema,
+    // IBAN des mandats de prélèvement (spec 042) : clé dédiée, versionnée.
+    DIRECT_DEBIT_IBAN_KEY: directDebitIbanKeySchema,
+    DIRECT_DEBIT_IBAN_PREVIOUS_KEYS: directDebitIbanPreviousKeysSchema,
     PAYSECUREHUB_BASE_URL: z.string().url().default('https://rest-airtime.paysecurehub.com/api'),
     PAYSECUREHUB_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
     // '1' autorise le simulateur en production (démonstration). Hors
@@ -284,6 +362,50 @@ const envSchema = z
     META_WA_PHONE_NUMBER_ID: emptyAsUndefined(
       z.string().regex(/^\d+$/, 'chiffres seulement (phone_number_id de Meta)').optional()
     ),
+    // Visio integree a l'AG en direct (spec 045). Projet LiveKit DEDIE a
+    // ImmoTopia : les trois variables ou aucune (verifie dans le superRefine).
+    // `ws://` n'est accepte qu'en developpement et en test.
+    LIVEKIT_URL: emptyAsUndefined(
+      z
+        .string()
+        .regex(/^wss?:\/\/\S+$/, 'doit commencer par wss:// (ou ws:// en développement)')
+        .optional()
+    ),
+    LIVEKIT_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+    LIVEKIT_API_SECRET: optionalSecretSchema,
+    // Enregistrement des AG (spec 045, R3) : stockage S3 (ou compatible) vers lequel LiveKit
+    // Egress ecrit le MP4. Bucket et cles : tous ou aucun, et la visio doit etre configuree.
+    LIVEKIT_RECORDING_S3_BUCKET: emptyAsUndefined(z.string().min(3).max(255).optional()),
+    LIVEKIT_RECORDING_S3_REGION: emptyAsUndefined(z.string().min(1).default('us-east-1')),
+    LIVEKIT_RECORDING_S3_ENDPOINT: emptyAsUndefined(
+      z
+        .string()
+        .regex(/^https?:\/\/\S+$/, 'doit commencer par http:// ou https://')
+        .optional()
+    ),
+    // Cles d'acces S3 : pas de minimum de 32 caracteres (ce ne sont pas des secrets applicatifs).
+    LIVEKIT_RECORDING_S3_ACCESS_KEY: emptyAsUndefined(z.string().min(1).optional()),
+    LIVEKIT_RECORDING_S3_SECRET: emptyAsUndefined(z.string().min(1).optional()),
+    LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE: z.enum(['0', '1']).default('0'),
+    // Prefixe des objets : relatif (pas de / initial) et sans « .. ».
+    LIVEKIT_RECORDING_S3_PREFIX: emptyAsUndefined(
+      z
+        .string()
+        .min(1)
+        .max(200)
+        .refine(value => !value.startsWith('/') && !value.split('/').includes('..') && !value.includes('\\'), {
+          message: 'doit être relatif : pas de / initial, pas de « .. »'
+        })
+        .default('ag-enregistrements/')
+    ),
+    // Taille maximale (octets) d'un enregistrement rapatrie ; au-dela : echec `TOO_LARGE`, objet conserve.
+    LIVEKIT_RECORDING_MAX_BYTES: emptyAsUndefined(
+      z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(8 * 1024 ** 3)
+    ),
     META_WA_GRAPH_BASE_URL: z.string().url().default('https://graph.facebook.com'),
     // [A verifier au deploiement] : derniere version stable de l'API Graph.
     META_WA_GRAPH_VERSION: z
@@ -320,6 +442,11 @@ const envSchema = z
     // production. Cle et secret de webhook : aucun defaut, requis si SIGNATURE_PROVIDER=yousign.
     YOUSIGN_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
     YOUSIGN_API_BASE_URL: emptyAsUndefined(z.string().url().default('https://api-sandbox.yousign.app/v3')),
+    // '1' autorise la base SANDBOX de Yousign quand NODE_ENV=production : le staging
+    // tourne en production (make-env.sh) mais ne doit pas produire de vraies signatures
+    // facturees. Sans ce drapeau, une base « sandbox » en production est refusee au
+    // demarrage. deploy.sh prod refuse YOUSIGN_ALLOW_SANDBOX=1.
+    YOUSIGN_ALLOW_SANDBOX: emptyAsUndefined(z.enum(['0', '1']).default('0')),
     YOUSIGN_WEBHOOK_SECRET: emptyAsUndefined(z.string().min(16).optional()),
     // Niveau de signature demande a Yousign. Seuls `advanced` et `qualified` rendent le
     // fournisseur « qualifie » (SG-R1) ; le defaut (simple) ne leve donc pas l'exigence.
@@ -431,6 +558,19 @@ const envSchema = z
   // process.env directly (WhatsApp, SMTP, Twilio).
   .passthrough()
   .superRefine((value, ctx) => {
+    if (
+      value.DIRECT_DEBIT_IBAN_KEY &&
+      value.PAYMENT_SECRETS_KEY &&
+      isBase64Key32(value.DIRECT_DEBIT_IBAN_KEY) &&
+      isBase64Key32(value.PAYMENT_SECRETS_KEY) &&
+      Buffer.from(value.DIRECT_DEBIT_IBAN_KEY, 'base64').equals(Buffer.from(value.PAYMENT_SECRETS_KEY, 'base64'))
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['DIRECT_DEBIT_IBAN_KEY'],
+        message: 'doit être dédiée aux IBAN : elle ne peut pas être identique à PAYMENT_SECRETS_KEY'
+      });
+    }
     if (value.AI_PROVIDER === 'anthropic' && !value.ANTHROPIC_API_KEY) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -466,6 +606,66 @@ const envSchema = z
       });
     }
 
+    // Spec 045 : visio LiveKit, les trois variables ou aucune ; `wss://` hors développement et test.
+    const livekit = [
+      ['LIVEKIT_URL', value.LIVEKIT_URL],
+      ['LIVEKIT_API_KEY', value.LIVEKIT_API_KEY],
+      ['LIVEKIT_API_SECRET', value.LIVEKIT_API_SECRET]
+    ] as const;
+    if (livekit.some(([, present]) => present) && !livekit.every(([, present]) => present)) {
+      for (const [name, present] of livekit) {
+        if (!present) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: 'LIVEKIT_URL, LIVEKIT_API_KEY et LIVEKIT_API_SECRET vont ensemble : les trois ou aucune'
+          });
+        }
+      }
+    }
+    // Comme ws:// : un endpoint S3 en clair (http://) n'est accepte qu'en developpement et en test.
+    if (value.LIVEKIT_RECORDING_S3_ENDPOINT?.startsWith('http://') && !fakeProviderAllowed(process.env.NODE_ENV)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LIVEKIT_RECORDING_S3_ENDPOINT'],
+        message: "http:// n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test' : utilisez https://"
+      });
+    }
+    if (value.LIVEKIT_URL?.startsWith('ws://') && !fakeProviderAllowed(process.env.NODE_ENV)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LIVEKIT_URL'],
+        message: "ws:// n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test' : utilisez wss://"
+      });
+    }
+
+    // Spec 045 (R3) : enregistrement, bucket et cles ensemble, et seulement avec la visio.
+    const recording = [
+      ['LIVEKIT_RECORDING_S3_BUCKET', value.LIVEKIT_RECORDING_S3_BUCKET],
+      ['LIVEKIT_RECORDING_S3_ACCESS_KEY', value.LIVEKIT_RECORDING_S3_ACCESS_KEY],
+      ['LIVEKIT_RECORDING_S3_SECRET', value.LIVEKIT_RECORDING_S3_SECRET]
+    ] as const;
+    if (recording.some(([, present]) => present) && !recording.every(([, present]) => present)) {
+      for (const [name, present] of recording) {
+        if (!present) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: 'LIVEKIT_RECORDING_S3_BUCKET, _ACCESS_KEY et _SECRET vont ensemble : les trois ou aucune'
+          });
+        }
+      }
+    }
+    if (
+      value.LIVEKIT_RECORDING_S3_BUCKET &&
+      !(value.LIVEKIT_URL && value.LIVEKIT_API_KEY && value.LIVEKIT_API_SECRET)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LIVEKIT_RECORDING_S3_BUCKET'],
+        message: "l'enregistrement exige la visio configurée (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)"
+      });
+    }
     // Transport SMS (signature, lot S7).
     if (value.SMS_PROVIDER === 'orange') {
       const requisSms = [
@@ -502,12 +702,14 @@ const envSchema = z
     if (
       value.NODE_ENV === 'production' &&
       value.SIGNATURE_PROVIDER === 'yousign' &&
-      value.YOUSIGN_API_BASE_URL.includes('sandbox')
+      value.YOUSIGN_API_BASE_URL.includes('sandbox') &&
+      value.YOUSIGN_ALLOW_SANDBOX !== '1'
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['YOUSIGN_API_BASE_URL'],
-        message: 'la base SANDBOX Yousign est refusée en production (https://api.yousign.app/v3)'
+        message:
+          'la base SANDBOX Yousign est refusée en production (https://api.yousign.app/v3) ; seul le staging l’autorise, avec YOUSIGN_ALLOW_SANDBOX=1'
       });
     }
     if (!value.YOUSIGN_API_BASE_URL.startsWith('https://')) {
@@ -653,11 +855,11 @@ function loadEnv(): Env {
   if (
     env.NODE_ENV === 'production' &&
     env.SIGNATURE_PROVIDER === 'yousign' &&
-    env.YOUSIGN_API_BASE_URL.includes('api-sandbox.yousign.app')
+    env.YOUSIGN_API_BASE_URL.includes('sandbox')
   ) {
     // eslint-disable-next-line no-console
     console.warn(
-      '⚠️  SIGNATURE_PROVIDER=yousign en production avec la base SANDBOX : les signatures n’ont aucune valeur. Renseignez YOUSIGN_API_BASE_URL (production) après recette.'
+      '⚠️  SIGNATURE_PROVIDER=yousign en production avec la base SANDBOX (YOUSIGN_ALLOW_SANDBOX=1, staging seulement) : les signatures n’ont aucune valeur. Renseignez YOUSIGN_API_BASE_URL (production) après recette.'
     );
   }
 

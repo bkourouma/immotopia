@@ -2311,6 +2311,28 @@
       "sensitive": true
     },
     {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/remittances",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances",
+      "permissions": ["RENTAL_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId}",
+      "permissions": ["RENTAL_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "GET /api/tenants/:tenantId/rental/documents",
       "method": "GET",
       "path": "/api/tenants/:tenantId/rental/documents",
@@ -2872,6 +2894,28 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / enregistrements",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/fichier",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/fichier",
+      "pathParams": ["syndicId", "meetingId", "recordingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / enregistrements / {recordingId} / fichier",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": true
+    },
+    {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/lots/:lotId/convocation.docx",
       "method": "GET",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/lots/:lotId/convocation.docx",
@@ -2903,6 +2947,28 @@
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_VIEW"]],
       "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / discussion",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": true
     },
     {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/budgets",
@@ -6119,6 +6185,94 @@
       "sensitive": true
     },
     {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/cancel",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/cancel",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / cancel",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/export",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/export",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / export",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/lines/:lineId/cancel",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/lines/:lineId/cancel",
+      "pathParams": ["remittanceId", "lineId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / lines / {lineId} / cancel",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/prenotifications",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/prenotifications",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / prenotifications",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/refresh",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/refresh",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / refresh",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/submit",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/submit",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / submit",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/validate",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/validate",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / validate",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "POST /api/tenants/:tenantId/rental/documents",
       "method": "POST",
       "path": "/api/tenants/:tenantId/rental/documents",
@@ -6570,6 +6724,17 @@
       "sensitive": false
     },
     {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/reessayer",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/reessayer",
+      "pathParams": ["syndicId", "meetingId", "recordingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / enregistrements / {recordingId} / reessayer",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/ordre-du-jour",
       "method": "POST",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/ordre-du-jour",
@@ -6656,6 +6821,105 @@
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/etat",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/etat",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / discussion / etat",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/messages",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/messages",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / discussion / messages",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/messages/:messageId/masquer",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/messages/:messageId/masquer",
+      "pathParams": ["syndicId", "meetingId", "messageId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / discussion / messages / {messageId} / masquer",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/arreter",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/arreter",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / enregistrement / arreter",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/demarrer",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/demarrer",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / enregistrement / demarrer",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/jeton",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/jeton",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / jeton",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/ecriture",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/ecriture",
+      "pathParams": ["syndicId", "meetingId", "participantId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / participants / {participantId} / ecriture",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/exclure",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/exclure",
+      "pathParams": ["syndicId", "meetingId", "participantId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / participants / {participantId} / exclure",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/parole",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/parole",
+      "pathParams": ["syndicId", "meetingId", "participantId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / participants / {participantId} / parole",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
     },
     {
       "id": "POST /api/tenants/:tenantId/syndics/:syndicId/budgets",

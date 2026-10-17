@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { t } from '../i18n';
+import { closeMeetingRoom } from '../lib/syndics/meeting-visio';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import {
@@ -146,7 +147,7 @@ import { deliverReminderNotification } from '../lib/syndics/reminder-delivery';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { logger } from '../utils/logger';
 import { asyncHandler } from '../middleware/error-middleware';
-import { presentLotOwners } from '../lib/syndics/lot-owner';
+import { presentSyndicateLots } from '../lib/syndics/lot-owner';
 import { buildMeetingMinutesDocx } from '../lib/syndics/minutes-generator';
 import {
   addAgendaItemGuarded,
@@ -216,9 +217,11 @@ export const getSyndicHandler = asyncHandler(async (req: Request, res: Response)
     throw notFound(t('Copropriété introuvable ou inaccessible'));
   }
 
+  // Memes lots que `GET .../lots` : proprietaires actuels et etat d'acces au portail (« Résumé des lots »).
+  const response = toSyndicateResponse(syndic);
   res.json({
     success: true,
-    data: toSyndicateResponse(syndic)
+    data: syndic.lots ? { ...response, lots: presentSyndicateLots(syndic.lots) } : response
   });
 });
 
@@ -247,7 +250,7 @@ export const deleteSyndicHandler = asyncHandler(async (req: Request, res: Respon
     throw badRequest('TenantId manquant pour la suppression de copropriete');
   }
 
-  const syndic = await deleteEmptySyndicateByTenant(tenantId, syndicId);
+  const syndic = await deleteEmptySyndicateByTenant(tenantId, syndicId, req.user?.userId ?? null);
 
   res.json({
     success: true,
@@ -270,11 +273,9 @@ export const listSyndicLotsHandler = asyncHandler(async (req: Request, res: Resp
     throw notFound(t('Copropriété introuvable ou inaccessible'));
   }
 
-  // Chaque lot porte ses proprietaires actuels (`owners`, `ownersLabel`) : indivision incluse.
-  const lots = (syndic.lots || []).map(({ ownerProfiles, ...lot }) => ({
-    ...lot,
-    ...presentLotOwners(ownerProfiles ?? [])
-  }));
+  // Chaque lot porte ses proprietaires actuels (`owners`, `ownersLabel`, indivision incluse)
+  // et l'etat de leur acces au portail (`portalAccess`).
+  const lots = presentSyndicateLots(syndic.lots || []);
 
   res.json({
     success: true,
@@ -859,6 +860,11 @@ export const updateMeetingHandler = asyncHandler(async (req: Request, res: Respo
 
   const parsed = updateMeetingSchema.parse(req.body);
   const updatedMeeting = await updateMeetingByTenant(tenantId, syndicateId, meetingId, parsed);
+
+  // Spec 045 : la cloture ou l'annulation ferme la salle de visio (au mieux, ne bloque pas la reponse).
+  if (parsed.status === 'COMPLETED' || parsed.status === 'CANCELLED') {
+    void closeMeetingRoom(tenantId, meetingId);
+  }
 
   res.json({
     success: true,

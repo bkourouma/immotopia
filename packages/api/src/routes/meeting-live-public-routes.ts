@@ -3,13 +3,20 @@ import { invalidSecureLinkError } from '../lib/secure-links';
 import {
   meetingLiveActionRateLimiter,
   meetingLiveIpRateLimiter,
-  meetingLiveStateRateLimiter
+  meetingDiscussionReadRateLimiter,
+  meetingDiscussionSendRateLimiter,
+  meetingLiveStateRateLimiter,
+  meetingVisioRateLimiter
 } from '../middleware/rate-limit-middleware';
 import { secureLinkNoStoreHeaders } from '../controllers/secure-link-public-controller';
 import {
+  meetingDiscussionReadHandler,
+  meetingDiscussionSendHandler,
   meetingLiveJoinHandler,
   meetingLiveStateHandler,
-  meetingLiveVoteHandler
+  meetingLiveVoteHandler,
+  meetingVisioHandHandler,
+  meetingVisioTokenHandler
 } from '../controllers/meeting-live-public-controller';
 
 /**
@@ -61,6 +68,43 @@ router.post(
   express.json({ limit: MAX_BODY }),
   meetingLiveActionRateLimiter,
   meetingLiveVoteHandler
+);
+
+router.post(
+  '/public/assemblees/visio',
+  meetingLiveIpRateLimiter,
+  secureLinkNoStoreHeaders,
+  express.json({ limit: MAX_BODY }),
+  meetingVisioRateLimiter,
+  meetingVisioTokenHandler
+);
+
+router.post(
+  '/public/assemblees/visio/main',
+  meetingLiveIpRateLimiter,
+  secureLinkNoStoreHeaders,
+  express.json({ limit: MAX_BODY }),
+  meetingVisioRateLimiter,
+  meetingVisioHandHandler
+);
+
+// Spec 046 : discussion ecrite moderee de la visio (lecture 30/min, envoi 10/min par jeton).
+router.post(
+  '/public/assemblees/discussion',
+  meetingLiveIpRateLimiter,
+  secureLinkNoStoreHeaders,
+  express.json({ limit: MAX_BODY }),
+  meetingDiscussionReadRateLimiter,
+  meetingDiscussionReadHandler
+);
+
+router.post(
+  '/public/assemblees/discussion/envoyer',
+  meetingLiveIpRateLimiter,
+  secureLinkNoStoreHeaders,
+  express.json({ limit: MAX_BODY }),
+  meetingDiscussionSendRateLimiter,
+  meetingDiscussionSendHandler
 );
 
 router.use('/public/assemblees', (err: unknown, _req: Request, _res: Response, next: NextFunction) => {

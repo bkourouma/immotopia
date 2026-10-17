@@ -18,6 +18,7 @@ interface VisiblePollingOptions {
  *
  * La tâche rend le délai avant la prochaine lecture, `false` pour arrêter, ou
  * rien pour garder l'intervalle par défaut. Une exception ne casse pas la boucle.
+ * Un `refresh()` demandé pendant une lecture en vol la fait suivre d'une seconde, aussitôt.
  */
 export function useVisiblePolling(
   task: () => Promise<number | false | void>,
@@ -34,6 +35,8 @@ export function useVisiblePolling(
     }
     let cancelled = false;
     let running = false;
+    // Un `refresh()` demandé pendant une lecture : relancé dès qu'elle se termine, jamais perdu.
+    let rerun = false;
     let waitingVisible = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -58,7 +61,14 @@ export function useVisiblePolling(
         next = undefined;
       }
       running = false;
-      if (cancelled || next === false) return;
+      if (cancelled) return;
+      if (rerun) {
+        rerun = false;
+        clear();
+        void run();
+        return;
+      }
+      if (next === false) return;
       clear();
       timer = setTimeout(() => void run(), typeof next === 'number' ? next : intervalMs);
     };
@@ -70,7 +80,10 @@ export function useVisiblePolling(
     };
 
     refreshRef.current = () => {
-      if (running) return;
+      if (running) {
+        rerun = true;
+        return;
+      }
       clear();
       void run();
     };

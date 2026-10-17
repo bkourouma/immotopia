@@ -1,12 +1,16 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Progress, Result, Space, Spin, Tag, Typography } from 'antd';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Badge, Button, Card, Grid, Progress, Result, Space, Spin, Tabs, Tag, Typography } from 'antd';
 import {
+  fetchPublicDiscussion,
   fetchPublicMeetingState,
+  fetchPublicVisioToken,
   isSafeVideoUrl,
   joinPublicMeeting,
+  sendPublicDiscussionMessage,
+  setPublicHandRaised,
   votePublicMeeting
 } from '../../services/public-meeting-live-service';
-import type { LiveMeetingPublicView, PublicLiveResolution } from '../../types/syndic-live-types';
+import type { LiveMeetingPublicView, PublicLiveResolution, VisioJoinInfo } from '../../types/syndic-live-types';
 import type { VoteChoice } from '../../types/syndic-types';
 import { LIVE_POLL_INTERVAL_MS, LIVE_POLL_RETRY_INTERVAL_MS, useVisiblePolling } from '../../hooks/useVisiblePolling';
 import {
@@ -27,9 +31,13 @@ import {
   majorityRuleLabel,
   normalizeMajorityRule
 } from '../../components/syndics/meeting-governance';
+import type { VisioDiscussionAdapter } from '../../components/syndics/visio/use-visio-discussion';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Text, Title } = Typography;
+
+// `livekit-client` pèse lourd : la salle n'est chargée qu'au clic sur « Rejoindre la visio ».
+const MeetingVisioRoom = React.lazy(() => import('../../components/syndics/visio/MeetingVisioRoom'));
 
 /** Clé de `sessionStorage` : permet à un rechargement de reprendre l'AG sans le fragment. */
 export const MEETING_TOKEN_STORAGE_KEY = 'immotopia:meeting-live-token';
@@ -107,6 +115,38 @@ function newest(previous: ViewState, next: LiveMeetingPublicView): LiveMeetingPu
     return previous.view;
   }
   return next;
+}
+
+/** Un vote est ouvert et au moins un de mes lots n'y a pas encore voté (pastille de l'onglet « Votes »). */
+function hasPendingVote(view: LiveMeetingPublicView): boolean {
+  if (view.meeting.status !== 'IN_PROGRESS' || !view.canVote) return false;
+  return view.resolutions.some(
+    resolution =>
+      resolution.voteStatus === 'OPEN' &&
+      view.myLots.some(lot => !resolution.myVotes.some(vote => vote.lotId === lot.lotId))
+  );
+}
+
+function visioFailureMessage(result: { status: string; message?: string }): string {
+  if (result.status === 'conflict') {
+    return result.message || t("La visio n'est ouverte que pendant l'assemblée, une fois que vous l'avez rejointe.");
+  }
+  if (result.status === 'rate_limited') return t('Trop de tentatives, réessayez dans quelques instants.');
+  if (result.status === 'unavailable') return t('La visio est momentanément indisponible, réessayez.');
+  return t("Accès à la visio impossible. Votre lien n'est peut-être plus valide.");
+}
+
+/** Message affichable pour un échec de la discussion (spec 046) : le serveur donne la raison d'un 409 ou d'un 400. */
+function discussionFailureMessage(result: { status: string; message?: string }, sending: boolean): string {
+  if (result.status === 'rate_limited') return t('Vous écrivez trop vite, patientez un instant.');
+  if (result.status === 'conflict') return result.message || t("La discussion n'est pas disponible pour le moment.");
+  if (result.status === 'rejected') return result.message || t('Message refusé : il est vide ou trop long.');
+  if (result.status === 'unavailable') {
+    return sending
+      ? t('La visio est momentanément indisponible, réessayez.')
+      : t('Impossible de charger la discussion, réessayez.');
+  }
+  return t("Accès à la discussion impossible. Votre lien n'est peut-être plus valide.");
 }
 
 /* -------------------------------------------------------------------- blocs */
@@ -348,15 +388,14 @@ const ResolutionCard: React.FC<ResolutionCardProps> = ({ view, resolution, busy,
   );
 };
 
-/* --------------------------------------------------------------------- page */
+/* ------------------------------------------------------------ état de la séance */
 
 /**
- * Page publique « AG en direct » (spec 043). Le lien personnel porte le jeton
- * dans le fragment ; la page le retire de la barre d'adresse et l'envoie dans le
- * corps des requêtes. Interrogation toutes les 3 s, en pause quand l'onglet est
- * masqué, arrêtée quand l'assemblée est terminée ou le lien invalide.
+ * Lecture périodique de l'AG (toutes les 3 s, en pause onglet masqué, arrêtée quand
+ * l'assemblée est terminée ou le lien invalide) et actions du porteur du lien :
+ * rejoindre, voter.
  */
-export const MeetingLivePage: React.FC = () => {
+function usePublicMeeting() {
   const [state, setState] = useState<ViewState>({ kind: 'loading' });
   const [stale, setStale] = useState(false);
   const [joining, setJoining] = useState(false);
@@ -368,19 +407,6 @@ export const MeetingLivePage: React.FC = () => {
   stateRef.current = state;
   const joiningRef = useRef(false);
   const votingRef = useRef(false);
-
-  useEffect(() => {
-    const previousTitle = document.title;
-    document.title = t('Assemblée générale en direct');
-    const removeMeta = installMeta([
-      { name: 'robots', content: t('noindex, nofollow') },
-      { name: 'referrer', content: 'no-referrer' }
-    ]);
-    return () => {
-      document.title = previousTitle;
-      removeMeta();
-    };
-  }, []);
 
   const poll = useCallback(async (): Promise<number | false> => {
     // Le fragment n'est lu qu'une fois, dans l'effet : il survit ainsi au double montage de StrictMode.
@@ -476,12 +502,344 @@ export const MeetingLivePage: React.FC = () => {
     });
   }, [state]);
 
+  return {
+    state,
+    stale,
+    joining,
+    votingId,
+    actionError,
+    dismissActionError: () => setActionError(null),
+    notices,
+    tokenRef,
+    refresh,
+    onJoin,
+    onVote
+  };
+}
+
+/* ------------------------------------------------------------ blocs de la page */
+
+interface MeetingBlocksProps {
+  view: LiveMeetingPublicView;
+  stale: boolean;
+  actionError: string | null;
+  onDismissError: () => void;
+  joining: boolean;
+  onJoin: () => void;
+  votingId: string | null;
+  notices: Record<string, VoteNotice>;
+  onVote: (resolutionId: string, lotIds: string[], vote: VoteChoice) => void;
+  /** Avis d'enregistrement et carte « Visio de l'assemblée » (absents quand la salle est affichée). */
+  visioBlocks: React.ReactNode;
+}
+
+/** Tout ce que la page affiche de l'AG : en-tête, présence, quorum, lots, ordre du jour, résolutions. */
+const MeetingBlocks: React.FC<MeetingBlocksProps> = ({
+  view,
+  stale,
+  actionError,
+  onDismissError,
+  joining,
+  onJoin,
+  votingId,
+  notices,
+  onVote,
+  visioBlocks
+}) => {
+  const status = view.meeting.status;
+  const live = status === 'PLANNED' || status === 'IN_PROGRESS';
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      {stale ? (
+        <Alert
+          type="warning"
+          showIcon
+          message={t('Connexion instable : les informations affichées peuvent être en retard.')}
+        />
+      ) : null}
+      <MeetingHeader view={view} />
+
+      {status === 'CANCELLED' ? <Result status="info" title={t('Cette assemblée a été annulée.')} /> : null}
+
+      {status === 'PLANNED' ? (
+        <Alert
+          type="info"
+          showIcon
+          message={t("L'assemblée n'a pas encore commencé")}
+          description={t('Cette page se met à jour toute seule dès que la séance est ouverte. Ne la fermez pas.')}
+        />
+      ) : null}
+
+      {status === 'COMPLETED' ? (
+        <Alert
+          type="success"
+          showIcon
+          message={t('Assemblée terminée')}
+          description={t('Voici les résultats des résolutions.')}
+        />
+      ) : null}
+
+      {actionError ? <Alert type="error" showIcon closable onClose={onDismissError} message={actionError} /> : null}
+
+      {live && !view.me.joined ? (
+        <Card size="small">
+          <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            <Text>{t('Bonjour {{name}}.', { name: view.me.name })}</Text>
+            <Text type="secondary">
+              {t("Rejoignez l'assemblée pour que votre présence soit enregistrée et pouvoir voter.")}
+            </Text>
+            <Button type="primary" size="large" block loading={joining} onClick={onJoin}>
+              {t("Rejoindre l'assemblée")}
+            </Button>
+          </Space>
+        </Card>
+      ) : null}
+
+      {live && view.me.joined && !actionError ? (
+        <Alert
+          type="success"
+          showIcon
+          message={t("Vous avez rejoint l'assemblée, {{name}}.", { name: view.me.name })}
+        />
+      ) : null}
+
+      {visioBlocks}
+
+      {status !== 'CANCELLED' ? <QuorumCard view={view} /> : null}
+      {status !== 'CANCELLED' ? <MyLotsCard view={view} /> : null}
+
+      {status === 'PLANNED' && view.meeting.agenda.length > 0 ? (
+        <Card size="small" title={t('Ordre du jour')}>
+          <ol style={{ marginBlock: 0, paddingInlineStart: 20 }}>
+            {view.meeting.agenda
+              .slice()
+              .sort((a, b) => a.orderIndex - b.orderIndex)
+              .map(item => (
+                <li key={`${item.orderIndex}-${item.title}`}>{item.title}</li>
+              ))}
+          </ol>
+        </Card>
+      ) : null}
+
+      {live || status === 'COMPLETED' ? (
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Title level={4} style={{ margin: 0 }}>
+            {t('Résolutions')}
+          </Title>
+          {view.resolutions.length === 0 ? (
+            <Text type="secondary">{t("Aucune résolution n'a été soumise au vote.")}</Text>
+          ) : (
+            view.resolutions.map(resolution => (
+              <ResolutionCard
+                key={resolution.id}
+                view={view}
+                resolution={resolution}
+                busy={votingId === resolution.id}
+                notice={notices[resolution.id] ?? null}
+                onVote={onVote}
+              />
+            ))
+          )}
+        </Space>
+      ) : null}
+    </Space>
+  );
+};
+
+/* ------------------------------------------------------- vidéo et panneau de l'AG */
+
+interface VisioLayoutProps {
+  wide: boolean;
+  room: React.ReactNode;
+  panel: React.ReactNode;
+  pendingVote: boolean;
+}
+
+/**
+ * Salle de visio et panneau de l'AG. La salle est rendue UNE fois, au même endroit de
+ * l'arbre, quelle que soit la largeur : seule la mise en page change autour d'elle
+ * (deux colonnes, ou onglets en CSS). Franchir 992 px ne la démonte donc jamais, la
+ * connexion et la parole sont conservées.
+ */
+const VisioLayout: React.FC<VisioLayoutProps> = ({ wide, room, panel, pendingVote }) => {
+  const [tab, setTab] = useState<'visio' | 'votes'>('visio');
+  const showRoom = wide || tab === 'visio';
+  const showPanel = wide || tab === 'votes';
+  const roomStyle: React.CSSProperties = wide
+    ? { position: 'sticky', insetBlockStart: 16, height: 'calc(100vh - 32px)' }
+    : { height: 'calc(100vh - 120px)', minHeight: 320 };
+  return (
+    <div
+      style={
+        wide
+          ? { display: 'grid', gridTemplateColumns: 'minmax(0, 3fr) minmax(360px, 2fr)', gap: 16, alignItems: 'start' }
+          : undefined
+      }
+    >
+      {wide ? null : (
+        <Tabs
+          activeKey={tab}
+          onChange={key => setTab(key === 'votes' ? 'votes' : 'visio')}
+          items={[
+            { key: 'visio', label: t('Visio') },
+            {
+              key: 'votes',
+              label: (
+                <Badge dot={pendingVote} offset={[6, 0]}>
+                  {t('Votes')}
+                </Badge>
+              )
+            }
+          ]}
+        />
+      )}
+      <div key="room" style={{ ...roomStyle, display: showRoom ? undefined : 'none' }}>
+        {room}
+      </div>
+      <div key="panel" aria-live="polite" style={{ display: showPanel ? undefined : 'none' }}>
+        {panel}
+      </div>
+    </div>
+  );
+};
+
+/* --------------------------------------------------------------------- page */
+
+/**
+ * Page publique « AG en direct » (spec 043). Le lien personnel porte le jeton
+ * dans le fragment ; la page le retire de la barre d'adresse et l'envoie dans le
+ * corps des requêtes.
+ */
+export const MeetingLivePage: React.FC = () => {
+  const meeting = usePublicMeeting();
+  const { state, tokenRef, refresh } = meeting;
+  const [visioOn, setVisioOn] = useState(false);
+  const wide = Boolean(Grid.useBreakpoint().lg);
+
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = t('Assemblée générale en direct');
+    const removeMeta = installMeta([
+      { name: 'robots', content: t('noindex, nofollow') },
+      { name: 'referrer', content: 'no-referrer' }
+    ]);
+    return () => {
+      document.title = previousTitle;
+      removeMeta();
+    };
+  }, []);
+
+  const getVisioToken = useCallback(async (): Promise<VisioJoinInfo> => {
+    const token = tokenRef.current;
+    if (!token) throw new Error(visioFailureMessage({ status: 'invalid' }));
+    const result = await fetchPublicVisioToken(token);
+    if (result.status === 'ok') return result.data;
+    throw new Error(visioFailureMessage(result));
+  }, [tokenRef]);
+
+  const raiseHand = useCallback(
+    async (raised: boolean): Promise<void> => {
+      const token = tokenRef.current;
+      if (!token) throw new Error(visioFailureMessage({ status: 'invalid' }));
+      const result = await setPublicHandRaised(token, raised);
+      if (result.status !== 'ok') throw new Error(visioFailureMessage(result));
+    },
+    [tokenRef]
+  );
+
+  // Adaptateur de la discussion de la salle : le jeton du lien part dans le corps de chaque appel.
+  const discussionAdapter = useMemo<VisioDiscussionAdapter>(
+    () => ({
+      load: async () => {
+        const token = tokenRef.current;
+        if (!token) throw new Error(discussionFailureMessage({ status: 'invalid' }, false));
+        const result = await fetchPublicDiscussion(token);
+        if (result.status !== 'ok') throw new Error(discussionFailureMessage(result, false));
+        const { open, muted, maxLength, messages } = result.data;
+        return { open, muted, maxLength, messages };
+      },
+      send: async body => {
+        const token = tokenRef.current;
+        if (!token) throw new Error(discussionFailureMessage({ status: 'invalid' }, true));
+        const result = await sendPublicDiscussionMessage(token, body);
+        if (result.status !== 'ok') throw new Error(discussionFailureMessage(result, true));
+        return result.data;
+      }
+    }),
+    [tokenRef]
+  );
+
   const view = state.kind === 'ok' ? state.view : null;
   const status = view?.meeting.status;
+  const visioAvailable = Boolean(view?.visio?.enabled) && status === 'IN_PROGRESS' && Boolean(view?.me.joined);
+  // Fin de l'AG ou lien perdu : la salle est démontée (donc déconnectée).
+  const showRoom = visioOn && visioAvailable;
+
+  // Avis R2 avant l'entrée en visio ; une fois dans la salle, son bandeau suffit (pas de doublon).
+  const recordingNotice =
+    view?.visio?.recording && status === 'IN_PROGRESS' && !showRoom ? (
+      <Alert type="warning" showIcon message={t('Cette assemblée est enregistrée.')} />
+    ) : null;
+
+  const visioCard =
+    visioAvailable && !showRoom ? (
+      <Card size="small" title={t("Visio de l'assemblée")}>
+        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+          <Text type="secondary">
+            {t("Suivez l'assemblée en vidéo et levez la main pour demander la parole. Le vote reste sur cette page.")}
+          </Text>
+          <Button type="primary" size="large" block onClick={() => setVisioOn(true)}>
+            {t('Rejoindre la visio')}
+          </Button>
+        </Space>
+      </Card>
+    ) : null;
+
+  const blocks = view ? (
+    <MeetingBlocks
+      view={view}
+      stale={meeting.stale}
+      actionError={meeting.actionError}
+      onDismissError={meeting.dismissActionError}
+      joining={meeting.joining}
+      onJoin={() => void meeting.onJoin()}
+      votingId={meeting.votingId}
+      notices={meeting.notices}
+      onVote={(resolutionId, lotIds, vote) => void meeting.onVote(resolutionId, lotIds, vote)}
+      visioBlocks={
+        <>
+          {recordingNotice}
+          {visioCard}
+        </>
+      }
+    />
+  ) : null;
+
+  const room = (
+    <Suspense
+      fallback={
+        <div style={{ textAlign: 'center', padding: 32 }} role="status">
+          <Spin aria-label={t('Connexion à la visio…')} />
+        </div>
+      }
+    >
+      <MeetingVisioRoom
+        role="participant"
+        getToken={getVisioToken}
+        onRaiseHand={raiseHand}
+        onRefreshSignal={refresh}
+        discussion={discussionAdapter}
+        title={t("Visio de l'assemblée")}
+      />
+    </Suspense>
+  );
 
   return (
     <div style={{ minHeight: '100vh', padding: '16px', background: 'var(--color-bg-layout, #f5f5f5)' }}>
-      <div style={{ maxWidth: 640, marginInline: 'auto' }} aria-live="polite">
+      <div
+        style={{ maxWidth: showRoom && wide ? 1440 : 640, marginInline: 'auto' }}
+        aria-live={showRoom ? undefined : 'polite'}
+      >
         {state.kind === 'loading' ? (
           <div style={{ textAlign: 'center', padding: 64 }} role="status">
             <Spin size="large" aria-label={t("Ouverture de l'assemblée")} />
@@ -507,101 +865,9 @@ export const MeetingLivePage: React.FC = () => {
           />
         ) : null}
 
-        {view ? (
-          <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            {stale ? (
-              <Alert
-                type="warning"
-                showIcon
-                message={t('Connexion instable : les informations affichées peuvent être en retard.')}
-              />
-            ) : null}
-            <MeetingHeader view={view} />
-
-            {status === 'CANCELLED' ? <Result status="info" title={t('Cette assemblée a été annulée.')} /> : null}
-
-            {status === 'PLANNED' ? (
-              <Alert
-                type="info"
-                showIcon
-                message={t("L'assemblée n'a pas encore commencé")}
-                description={t('Cette page se met à jour toute seule dès que la séance est ouverte. Ne la fermez pas.')}
-              />
-            ) : null}
-
-            {status === 'COMPLETED' ? (
-              <Alert
-                type="success"
-                showIcon
-                message={t('Assemblée terminée')}
-                description={t('Voici les résultats des résolutions.')}
-              />
-            ) : null}
-
-            {actionError ? (
-              <Alert type="error" showIcon closable onClose={() => setActionError(null)} message={actionError} />
-            ) : null}
-
-            {(status === 'PLANNED' || status === 'IN_PROGRESS') && !view.me.joined ? (
-              <Card size="small">
-                <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                  <Text>{t('Bonjour {{name}}.', { name: view.me.name })}</Text>
-                  <Text type="secondary">
-                    {t("Rejoignez l'assemblée pour que votre présence soit enregistrée et pouvoir voter.")}
-                  </Text>
-                  <Button type="primary" size="large" block loading={joining} onClick={() => void onJoin()}>
-                    {t("Rejoindre l'assemblée")}
-                  </Button>
-                </Space>
-              </Card>
-            ) : null}
-
-            {(status === 'PLANNED' || status === 'IN_PROGRESS') && view.me.joined && !actionError ? (
-              <Alert
-                type="success"
-                showIcon
-                message={t("Vous avez rejoint l'assemblée, {{name}}.", { name: view.me.name })}
-              />
-            ) : null}
-
-            {status !== 'CANCELLED' ? <QuorumCard view={view} /> : null}
-            {status !== 'CANCELLED' ? <MyLotsCard view={view} /> : null}
-
-            {status === 'PLANNED' && view.meeting.agenda.length > 0 ? (
-              <Card size="small" title={t('Ordre du jour')}>
-                <ol style={{ marginBlock: 0, paddingInlineStart: 20 }}>
-                  {view.meeting.agenda
-                    .slice()
-                    .sort((a, b) => a.orderIndex - b.orderIndex)
-                    .map(item => (
-                      <li key={`${item.orderIndex}-${item.title}`}>{item.title}</li>
-                    ))}
-                </ol>
-              </Card>
-            ) : null}
-
-            {status === 'PLANNED' || status === 'IN_PROGRESS' || status === 'COMPLETED' ? (
-              <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                <Title level={4} style={{ margin: 0 }}>
-                  {t('Résolutions')}
-                </Title>
-                {view.resolutions.length === 0 ? (
-                  <Text type="secondary">{t("Aucune résolution n'a été soumise au vote.")}</Text>
-                ) : (
-                  view.resolutions.map(resolution => (
-                    <ResolutionCard
-                      key={resolution.id}
-                      view={view}
-                      resolution={resolution}
-                      busy={votingId === resolution.id}
-                      notice={notices[resolution.id] ?? null}
-                      onVote={(resolutionId, lotIds, vote) => void onVote(resolutionId, lotIds, vote)}
-                    />
-                  ))
-                )}
-              </Space>
-            ) : null}
-          </Space>
+        {view && !showRoom ? blocks : null}
+        {view && showRoom ? (
+          <VisioLayout wide={wide} room={room} panel={blocks} pendingVote={hasPendingVote(view)} />
         ) : null}
       </div>
     </div>

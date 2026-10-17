@@ -51,6 +51,8 @@ export const ErrorCode = {
   CONFLICT: 'CONFLICT',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   INTERNAL: 'INTERNAL',
+  // Trop de requêtes en peu de temps (429), ex. plafond de la discussion de l'AG (spec 046).
+  TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',
   // Abonnements par packs (docs/architecture/PLAN-ABONNEMENTS.md).
   MODULE_NOT_INCLUDED: 'MODULE_NOT_INCLUDED',
   MODULE_READ_ONLY: 'MODULE_READ_ONLY',
@@ -113,6 +115,8 @@ export const ErrorCode = {
   STOCK_WHATSAPP_SIMULATOR_FILE_TYPE: 'STOCK_WHATSAPP_SIMULATOR_FILE_TYPE',
   STOCK_WHATSAPP_FILE_TOO_LARGE: 'STOCK_WHATSAPP_FILE_TOO_LARGE',
   STOCK_WHATSAPP_CONVERSATION_FORBIDDEN: 'STOCK_WHATSAPP_CONVERSATION_FORBIDDEN',
+  // Visio integree a l'AG en direct (spec 045) : LiveKit injoignable ou en erreur.
+  VISIO_UNAVAILABLE: 'VISIO_UNAVAILABLE',
   // Paiement mobile des copropriétaires (spec 042, contracts §0.2).
   ONLINE_PAYMENT_UNAVAILABLE: 'ONLINE_PAYMENT_UNAVAILABLE',
   ONLINE_PAYMENT_NOTHING_DUE: 'ONLINE_PAYMENT_NOTHING_DUE',
@@ -202,6 +206,13 @@ export class NotFoundError extends AppError {
 export class ConflictError extends AppError {
   constructor(message = 'Cette ressource existe déjà.', errors?: Array<{ field: string; message: string }>) {
     super(message, 409, ErrorCode.CONFLICT, errors);
+  }
+}
+
+/** Trop de requetes en peu de temps (429). */
+export class TooManyRequestsError extends AppError {
+  constructor(message = 'Trop de requêtes, réessayez dans un instant.') {
+    super(message, 429, ErrorCode.TOO_MANY_REQUESTS);
   }
 }
 

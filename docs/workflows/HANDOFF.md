@@ -18,6 +18,16 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `docs/handoff-staging-deploiement` — 2026-10-16
+
+**État :** prêt à relire.
+
+**Fait :** staging déployé par la CI (workflow `Déploiement`, `workflow_dispatch`, commit `d4c9c83`, `deploy.sh staging` OK, `/health` et `/` en 200 sur app.immotopia.cloud). Premier essai réel du déploiement continu : il fonctionne. Secrets `DEPLOY_SSH_KEY` et `DEPLOY_SSH_KNOWN_HOSTS` posés dans l'environnement GitHub `staging` ; clé publique ajoutée dans `authorized_keys` de `deployer` (sauvegarde `authorized_keys.avant-ci-*`). PR 126, 132, 142 fusionnées dans `main`.
+
+**Reste :** repasser les 3 tests de refus de la clé du staging (code 2 attendu) puis supprimer la clé privée du poste ; environnement `production` et clé prod non créés ; `AUTO_DEPLOY_STAGING` non activé ; `main` non protégé par ruleset (prérequis de l'automatique) ; classeur de fonctionnalités à compléter (paiement mobile copropriétaires, règlements fournisseurs).
+
+**Pièges :** le service `ssh` du serveur s'est arrêté le 2026-10-16 (port 2222 refusé, `ssh.service` désactivé et lancé par `ssh.socket`) : à surveiller. `ssh-keyscan` de Windows ne rend que la bannière : lire la clé d'hôte sur le serveur. Le checkout du serveur doit être à jour (`git merge --ff-only origin/main`) sinon `ci-deploy.sh` est introuvable (code 127).
+
 ## Branche `feat/finance-fournisseurs-tresorerie` — 2026-10-16
 
 **État :** prêt à relire (PR 142), CI à relire après la fusion de main.
@@ -46,6 +56,98 @@ Pièges et décisions :
 
 - …
 ```
+
+## Branche `feat/syndic-ag-visio` — 2026-10-17
+
+**État :** FUSIONNÉE dans `main` le 2026-10-17 (PR https://github.com/bkourouma/immotopia/pull/144, commit de fusion `79aeb324`), avec les PR #145 (enregistrements orphelins) et #148 (discussion modérée), fusionnées dans la branche avant elle pour ne passer qu'une CI (7/7 verte sur `0011c4d1`). Section gardée pour la mise en service ; à supprimer une fois la visio en service.
+**Dernier commit :** `0011c4d1` (fusion de `origin/main`, PR 146) ; `main` = `79aeb324`, arbre identique à `0011c4d1`.
+**Worktrees :** `.claude/worktrees/suspicious-cartwright-fc4a4c` et `zen-poincare-ac73f3` ont leur propre `node_modules` ; `sweet-kilby-b1ed43` a trois JONCTIONS vers ceux de `suspicious-cartwright-fc4a4c` : les retirer avec `rmdir` AVANT tout `git worktree remove`, et retirer ce worktree avant `suspicious-cartwright-fc4a4c`.
+
+Fait :
+
+- Spec `specs/045-syndic-ag-visio/spec.md` (044 = signature électronique) : visio LiveKit intégrée à l'AG en direct et enregistrement, décisions V1–V15 et R1–R12. Spec `specs/046-syndic-ag-discussion/spec.md` : discussion écrite modérée, règles M1–M15.
+- API : service LiveKit porté d'École Digitale ; routes publiques `/api/public/assemblees/visio`, `/visio/main`, `/discussion`, `/discussion/envoyer` ; routes gestionnaire `/visio`, `/visio/jeton`, parole, exclusion, écriture coupée, discussion (lecture, envoi, masquer, ouvrir/fermer), enregistrement (`GMRecording`, migration `20261016120000_syndic_ag_enregistrement`, Egress MP4 vers S3, webhook `/api/webhooks/livekit`, rapatriement, lecture et téléchargement audités, reprise, suppression) ; `GMChatMessage` (migration `20261016150000_syndic_ag_discussion`) ; purge des MP4 et objets S3 lors des suppressions en cascade (`lib/syndics/meeting-recording-cleanup.ts`, branchée dans `deleteEmptySyndicateByTenant`).
+- Web : salle `MeetingVisioRoom` (chargée à la demande) avec panneau « Discussion », page `/ag-direct` (côte à côte ou onglets), console (visio, enregistrements, discussion, couper l'écriture).
+- Relectures code et sécurité corrigées (0 critique, 0 haute) ; recettes navigateur sur la démo (voir les specs) ; classeur des fonctionnalités (13 + 7 lignes, 1 modifiée) ; `SECURITY.md` § 12 quater ; `deploy.sh` (`INTEGRATION_KEYS`) ; avis d'enregistrement dans la convocation (`{{recordingNotice}}`).
+
+Reste à faire :
+
+- Staging : un déploiement de `79aeb324` a été lancé à la main (workflow_dispatch, compte `bkourouma`, pas par le Pilote) le 2026-10-17 à 05:21 UTC, juste après la fusion ; il applique les migrations `20261016120000_syndic_ag_enregistrement` et `20261016150000_syndic_ag_discussion`. Sans `LIVEKIT_*` sur le staging, la visio intégrée reste désactivée (le lien de visio externe reste affiché). Vérifier l'issue de ce déploiement.
+- Mise en service par l'utilisateur : projet LiveKit Cloud dédié (compte et dépense), `LIVEKIT_*` et `LIVEKIT_RECORDING_S3_*` en staging puis production, webhook `<BACKEND_URL>/api/webhooks/livekit`, bucket S3 dédié, CSP `connect-src` vers le `wss://`.
+- Fondateur : base juridique de l'enregistrement ; V2–V4, V7–V9, V11–V13 (dont la visibilité des noms en salle) ; M1–M15 de la discussion.
+- Le jour où une suppression d'AG ou une purge d'agence est créée : appeler la purge avec `{ kind: 'MEETING' }` ou `{ kind: 'TENANT' }`.
+- Non vérifié : LiveKit Cloud, charge à 300 participants, plusieurs instances de l'API (plafond de discussion par AG propre au processus), effet serveur de `revokeTokenTs`, bascule de largeur à chaud dans un vrai navigateur, `test:isolation`.
+
+Pièges et décisions :
+
+- Pile de recette locale gratuite : conteneurs `immotopia-visio-net` (Redis, propriétaire de l'espace réseau et des ports 7880/7881/7882/8333), `immotopia-livekit-dev`, `immotopia-visio-s3` (SeaweedFS : les images MinIO ne sont plus publiées), `immotopia-visio-egress`, ARRÊTÉS : les redémarrer dans cet ordre avec `docker start`. Configuration de développement dans le scratchpad des sessions, jamais dans le dépôt ; mode d'emploi dans `docs/recette/SCENARIO_SYNDIC_AG_VISIO.md`.
+- LiveKit sous Docker Desktop : sans `node_ip` et avec `enable_loopback_candidate: true`, sinon le Chrome de l'Egress refuse le candidat de boucle locale.
+- `React.StrictMode` montait la salle deux fois : la connexion part un tick après le montage (`StableLiveKitRoom`).
+- Changer de langue pendant la visio remonte l'application (`key={language}`) et coupe la salle : limite documentée, non corrigée.
+- Instance de démo : worktree `.claude/worktrees/demo` détaché sur `95e9b0d9`, migrations appliquées sur `immotopia_demo` jusqu'à `20261016150000`, serveurs arrêtés ; `demo:sync` exige `packages/api/.env.demo` (absent). Données de recette : AG « recette visio » et « recette visio 2 » dans « Horizon Syndic Gestion ».
+- `deleteRecording` écrit son audit critique dans la transaction depuis la branche `fix/syndic-ag-audit-critique-enregistrement` (section ci-dessous) ; `prisma/seed.ts`, le seed de démo Syndic et une suppression SQL manuelle d'agence laissent les MP4.
+- `npm run i18n:extract` salit tout l'arbre : traductions de ces lots ajoutées à la main. Tests instables surveillés : `MeetingLiveConsole.test.tsx` (« supprime après confirmation »), `property-ownership.test.tsx`.
+- Classeur des fonctionnalités en conflit à chaque fusion : reporter ligne à ligne les lignes de la branche sur la version de `main` (openpyxl, `difflib` sur les lignes de la table `SousFonctionnalites`), puis `wiki:export` et comparer le miroir.
+
+## Branche `fix/syndic-ag-audit-critique-enregistrement` — 2026-10-17
+
+**État :** prêt à relire (PR sur `main` ; les PR 144 et 145 y sont fusionnées). Worktree `.claude/worktrees/bold-wilson-73a664`, avec trois JONCTIONS `node_modules` vers ceux de `suspicious-cartwright-fc4a4c` (seul client Prisma qui connaît `GMRecording`) : les retirer avec `rmdir` AVANT tout `git worktree remove`.
+**Dernier commit :** `fd518c11` fix(syndic): écrire l'audit de suppression d'un enregistrement d'AG dans la transaction (suivi du commit de ce carnet).
+
+Fait :
+
+- `deleteRecording` (`lib/syndics/meeting-recording.ts`) : passage en `DELETED` et `recordAuditEvent(tx, SYNDIC_MEETING_RECORDING_DELETED)` dans un même `prisma.$transaction` ; fichier puis objet S3 toujours effacés d'abord ; 409 inchangé ; le statut lu est dans le `where` (double suppression = 200 + 409, une seule trace).
+- Tests : `syndics.meeting-recording` (client de transaction, suppressions simultanées, échec de l'audit = 500), `audit-critical-transactional` étendu aux deux fichiers d'enregistrement. 4 suites ciblées vertes (87 tests), `tsc --noEmit` de l'API à 0 erreur avant et après.
+
+Reste à faire :
+
+- Relecture et fusion de la PR par l'utilisateur, puis supprimer cette section.
+- Hors périmètre, relevé par un balayage des clés `critical` : `AI_ACTION_EXECUTED` (`lib/ai/actions/execute-capability.ts`, `execute-rental-document.ts`) et `AUDIT_INTEGRITY_FAILED` (`jobs/audit-maintenance-job.ts`) passent encore par `logAuditEvent`, sans transaction métier autour.
+
+Pièges et décisions :
+
+- Si l'audit échoue, la transaction est annulée mais le fichier et l'objet S3 sont déjà effacés : la ligne reste `AVAILABLE`/`FAILED` sans fichier (lecture en 404) et une nouvelle suppression réussit (ENOENT toléré). Choix assumé pour garder l'ordre « fichier d'abord ».
+- La base en mémoire des tests n'a pas de retour arrière : l'annulation sur échec d'audit n'est pas vérifiable en test API.
+
+## Branche `fix/yousign-sandbox-staging` — 2026-10-16
+
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/146 (base `main`), mise à jour avec `main` le 2026-10-16 (a0b94a2e, PR 149, puis 80d1c6a0, PR 147) : seul `HANDOFF.md` était en conflit chaque fois, toutes les sections sont gardées (worktree `.claude/worktrees/loving-moser-776024`, jonctions `node_modules` retirées hors commit)
+**Dernier commit :** voir `git log` (poussé sur origin) ; le code est dans `b7567aa4` fix(config): autoriser la sandbox Yousign sur le staging avec YOUSIGN_ALLOW_SANDBOX, les commits suivants ne touchent que `HANDOFF.md` et `DEPLOIEMENT.md`
+
+Fait : `YOUSIGN_ALLOW_SANDBOX` (`0`/`1`, défaut `0`) dans `config/env.ts` lève le seul refus « base SANDBOX Yousign en production » (le staging tourne en `NODE_ENV=production`) ; l'avertissement « aucune valeur » reste et suit toute base contenant « sandbox ». `deploy.sh prod` refuse `YOUSIGN_ALLOW_SANDBOX=1`. Tests dans `env-signature-yousign.test.ts` (5 suites env/SMS, 68 tests verts), docs `signature-prestataire.md`, `DEPLOIEMENT.md` (« Lot 044 »), `SECURITY.md`, `env.example`. Classeur des fonctionnalités non touché (configuration d'exploitation).
+
+Reste à faire (par l'utilisateur, sur le serveur, après fusion de la PR et déploiement du staging par la CI) :
+
+- Dans `/home/deployer/immotopia-saas.env` : remplacer `SIGNATURE_PROVIDER=internal` (valeur actuelle) par `SIGNATURE_PROVIDER=yousign`, puis `YOUSIGN_API_KEY` et `YOUSIGN_WEBHOOK_SECRET` de la **sandbox**, `YOUSIGN_API_BASE_URL=https://api-sandbox.yousign.app/v3`, `YOUSIGN_ALLOW_SANDBOX=1` ; puis `./infra/scripts/deploy.sh staging --no-build`.
+- Déclarer le webhook dans la sandbox Yousign : `https://app.immotopia.cloud/api/public/signature-provider/yousign`.
+- Vérifier au démarrage l'avertissement « les signatures n'ont aucune valeur » dans le journal de l'API.
+
+Pièges et décisions :
+
+- **Fichier de secrets du staging antérieur à `make-env.sh` (relevé de l'utilisateur sur le serveur, 2026-10-16, non revérifié depuis le dépôt) :** il ne portait que `NODE_ENV=production` et `BACKEND_URL=https://app.immotopia.cloud` parmi `SIGNATURE_PROVIDER`, `SMS_PROVIDER`, `PAYMENT_GATEWAY_SIMULATOR` et la configuration e-mail : un fichier ancien ne reçoit pas les réglages que `make-env.sh` écrit pour un fichier neuf, et le tableau « Vue d'ensemble » de `DEPLOIEMENT.md` décrit la cible, pas cet état. Corrigé le soir même à la main : `SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`, e-mail par `set-email-smtp.sh` (boîte dédiée staging, port 465, `verify()` nodemailer « SMTP OK »), `deploy.sh staging --no-build` passé. `SMS_PROVIDER` reste absent (`disabled`) ; Orange exige d'abord un nom d'expéditeur personnalisé approuvé (voir la section `fix/seed-fichiers-volume` ci-dessous) ; Yousign attend cette PR. Noté dans `DEPLOIEMENT.md` (section « Lot 044 » et « Points ouverts »). Non vérifié ici : `PLATFORM_PAYSECUREHUB_MODE=SIMULATOR` dans ce fichier.
+- `SIGNATURE_PROVIDER` est unique : avec `yousign`, SMS, WhatsApp et « sur place » sont refusés ; le SMS Orange CI se teste avec `SIGNATURE_PROVIDER=internal` et `SMS_PROVIDER=orange` (compte dédié au staging). `SMS_PROVIDER=log` est refusé sur le staging (`NODE_ENV=production`).
+- Non éprouvés : `deploy.sh prod` (seul le motif `grep` a été essayé), le démarrage réel du staging avec Yousign sandbox, l'envoi ou non de vraies invitations par la sandbox Yousign (n'y saisir que des adresses de test).
+- `YOUSIGN_API_KEY` n'est pas dans `INTEGRATION_KEYS` de `deploy.sh` (décision : une clé sandbox n'est pas un identifiant de production).
+- Les jonctions `node_modules` du worktree se retirent avec `rmdir` (jamais `rm -rf`) avant tout `git worktree remove`.
+
+## Branche `feat/syndic-acces-portail-visible` — 2026-10-16
+
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/147 (base `main`), CI en cours à l'ouverture ; fusion par l'utilisateur
+**Dernier commit :** `76d61ad7` feat(syndic): afficher l'accès au portail copropriétaire par lot (+ ce commit de passation)
+**Worktree :** `.claude/worktrees/serene-hawking-f4a5a3` (jonctions `node_modules` retirées en fin de session : les reposer pour retester)
+
+Fait : recette du 2026-10-16 (staging) — un testeur ne voyait pas quels copropriétaires ont un accès au portail. Aucune route ajoutée : `GET .../syndics/:id` et `GET .../lots` chargent `portalAccessEnabled` avec les profils propriétaires déjà lus et renvoient `portalAccess` { status NONE/INACTIVE/PARTIAL/ACTIVE, activeCount, ownerCount } par lot (`presentSyndicateLots`, `lib/syndics/lot-owner.ts`). La fiche renvoie maintenant `owners`/`ownersLabel` comme la page « Lots » (plus de profils bruts). Colonne « Portail » dans `LotTable` (fiche + page « Lots »), lien « Gérer l'accès » vers `/profils-incidents`, indicateur « Lots avec accès au portail ». Six clés en/ar, classeur (992 lignes) et miroir à jour. Tests : `SyndicLotPortalAccess.test.tsx`, `syndics.lots-portal-access.test.ts`, `syndics.lot-owner.test.ts`.
+
+Reste à faire :
+
+- Regarder le rendu sur le staging après déploiement (fiche et page « Lots », arabe/RTL) : aucune recette visuelle n'a été jouée (pas d'API ni de base dans la session).
+- Dette hors périmètre : `npm run i18n:extract` à lancer pour le paiement mobile (PR 132) — plusieurs centaines de clés sans traduction dans `syndic.json` et remaniements d'autres catalogues ; ne pas le lancer « pour ajouter une clé » dans une PR de fonctionnalité.
+
+Pièges :
+
+- Jonctions `node_modules` vers le checkout principal = client Prisma partagé, plus ancien que le schéma d'origin/main (scope `CHARGE_CALL_PAYMENT`) : les suites Jest d'API qui montent `syndic-routes` échouent en ts-jest sur `lib/secure-links/service.ts`. Vérification locale avec une config Jest `isolatedModules` (comme le projet `api-app`) ; la CI régénère le client.
+- Le motif `__tests__/unit/syndics` capte aussi `syndics.*-fixtures.ts` (fichiers sans test : « must contain at least one test »), faux échecs.
+- Retirer les jonctions sans jamais suivre leur cible (jamais `rm -rf`), avant de supprimer le worktree : sous PowerShell, `[System.IO.Directory]::Delete($chemin, $false)` après avoir vérifié `LinkType -eq 'Junction'`. `cmd /c rmdir` lancé depuis Git Bash est mal interprété (`/c` converti en chemin) et ne retire rien.
 
 ## Branche `fix/seed-fichiers-volume` — 2026-10-16
 
@@ -138,45 +240,56 @@ Pièges :
 - Un changement de `ci-deploy.sh` ne s'applique qu'au déploiement suivant.
 - Python lancé par heredoc depuis Git Bash lit le texte en cp1252 : pour une retouche de texte accentué, passer par l'outil d'édition.
 
-## Branche `feat/prelevement-bancaire` — 2026-10-15
+## Branche `feat/prelevement-p2-remises` — 2026-10-17
 
-**État :** prêt à relire — PR #128 (base `main`), recette navigateur P1 jouée et rejouée le 2026-10-15, à fusionner par l'utilisateur
-**Dernier commit :** fusion de `main` (PR #137 lint, #138 PWA) du 15/10, après `382a5f81` (+ ce commit de passation). Classeur : 939 lignes.
-**Worktree :** `.claude/worktrees/prelevement`, avec un `node_modules` PROPRE (`npm ci`, pas de jonction) parce que `schema.prisma` diverge du checkout principal.
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/155 (base `fix/prelevement-cle-iban`, empilée sur la PR 153). Recette navigateur NON faite (démo indisponible, voir pièges).
+**Dernier commit :** voir `git log` (fusion de `fix/prelevement-cle-iban` à jour de `main`, migrations renommées en `20261017090000_*` et `20261017090100_*`).
+**Worktree :** `.claude/worktrees/prelevement-p2`, `node_modules` PROPRE (`npm ci`), client Prisma propre.
 
-Fait :
+Fait (lot P2 de la spec 042, contrat `specs/042-prelevement-bancaire/data-model.md` §7) :
 
-- P0 : spec, modèle de données (contrat d'API), plan P0–P6 et ADR-007 dans `specs/042-prelevement-bancaire/` ; décisions D1–D8 du fondateur (15/10/2026).
-- P1 API : `packages/api/src/lib/direct-debit/**`, 15 routes `/tenants/:tenantId/rental/direct-debit`, migrations `20261015090000_*` et `20261015090100_*` (jamais appliquées), 10 actions d'audit, permissions VIEW/MANAGE, routes sensibles pour la passerelle IA.
-- P1 web : carte Paramètres financiers, onglet « Prélèvements » du bail, page Encaisser › Prélèvements.
-- Clé RIB UEMOA corrigée (22 caractères convertis × 100 mod 97 ; les poids 89/15/3 ne valent que pour un compte de 11 caractères).
-- Audit de sécurité : 0 critique, 0 élevée ; la moyenne (MANAGE réservé à TENANT_ADMIN/TENANT_MANAGER) et 4 faibles corrigées.
-- Wiki des fonctionnalités : 12 lignes ajoutées, `wiki:export` lancé.
+- Remises `PRL-AAAA-NNNN` par créancier et date de prélèvement : sélection D6 (mandats actifs dont le jour de collecte est atteint, reste dû de l'échéance du mois hors pénalités, plafonné), une échéance dans une seule ligne non annulée (unicité `(tenantId, activeKey)`), actualisation, retrait de ligne, validation humaine (date limite de prénotification D7 en jours ouvrés, figée), avis de prélèvement par e-mail en arrière-plan sous verrou (`DIRECT_DEBIT_PRENOTIFICATION`, rattachée à RENTAL), fichier `GENERIC_CSV` (IBAN déchiffré à l'export seulement, audit avant l'envoi, empreinte HMAC), « déposée à la banque », annulation.
+- `DIRECT_DEBIT` ajouté à `RentalPaymentMethod` (libellés API et écrans, compte `BANK`, absent des saisies manuelles).
+- Écrans : onglets Mandats / Remises de Location › Prélèvements, liste, préparation, détail (actions par statut, avertissements d'annulation et de production, résumé des avis relu pendant l'envoi).
+- Relectures `code-reviewer` et `security-auditor` faites, constats corrigés (`fee1dbf0`). Classeur des fonctionnalités : 10 lignes (1022 lignes au total). `plan.md` : P1 et P2 « fait ».
 
 Reste à faire :
 
-- Lire la CI de la PR #128 après le push de `0e3cddb7` et corriger si besoin (7/7 vertes avant ; auto-fix activé). `ai.write-plan.test.ts` n'échoue qu'en local (fins de ligne du worktree).
-- Corrigés après la recette (`811d9dba`) et revérifiés dans le navigateur sur la démo à `e4a9834a` : champ « Date de signature » de « Activer le mandat » (saisie `14/10/2026` et `15/10/2026` acceptée, `POST activate` avec `signedAt` en `aaaa-mm-jj`, réponse 200) et tableau des créanciers à 1 024 px en arabe (la page ne défile pas, le tableau défile dans sa carte, colonnes « Actif » et « Modifier » atteignables ; mesures, sans capture). Reste non vu : date future, rendu visuel réel, autres largeurs.
-- À trancher : « Nouveau mandat » est désactivé dès qu'un mandat ouvert existe sur le bail, alors que PB2-R7 n'interdit qu'un mandat ouvert par couple (bail, créancier) ; le serveur reste plus permissif que l'écran.
-- Non joué à la recette : modification d'un mandat, plafond, jour de collecte propre au mandat, rôle sans MANAGE, isolation entre agences (`test:isolation`), bouton « Télécharger l'autorisation » visible seulement en Brouillon (la spec PB3-R1 ne l'impose pas).
-- Recette navigateur (spec §6.4) FAITE le 2026-10-15 sur la démo (révisions `0da9c860` puis `0e3cddb7`) : créancier BANK, mandat avec l'IBAN publié, PDF, scan, activer/suspendre/réactiver/révoquer, IBAN complet absent de toutes les réponses /api, page Encaisser › Prélèvements, arabe en RTL. Migrations `20261015090000_*` et `20261015090100_*` appliquées sur `immotopia_demo` (pas ailleurs). Correctifs d'affichage dans `0e3cddb7` (fil d'Ariane, vocabulaire arabe « تفويض », IBAN en LTR, bouton désactivé).
-- Fusion de `main` (PR #130, AG en direct) du 15/10 : 5 conflits résolus par union (catalogues `packages/api/src/i18n/locales/{ar,en}.json`, `audit-catalog.test.ts`, classeur des fonctionnalités et miroir : 935 = 923 de `main` + 12 du prélèvement ; `wiki:check` vert). Tests relancés sur l'arbre fusionné : 9 suites API, 7 fichiers web (98 tests), typecheck. Le classeur `.xlsx` est binaire : à chaque nouvelle fusion de `main`, refaire cette vérification.
-- Décision de l'utilisateur (15/10) : ne pas refusionner `main` à chaque PR fusionnée, mais juste avant sa fusion. FAIT le 15/10 (`76de15f6`) : 5 conflits résolus (locales web `ar/rental.json` et `en/rental.json` par union, classeur = version de `main` + 12 lignes du prélèvement = 938 lignes avec `openpyxl` puis `wiki:export`, `wiki:check` vert, HANDOFF avec les deux sections). `npm ci` nécessaire dans ce worktree pour `jspdf`/`jspdf-autotable` (PR #131). Typecheck, 5 fichiers de test web (77 tests) et 7 suites API (116 tests) verts. Si `main` bouge encore avant la fusion, refaire la même procédure. Le pilote ne fusionne pas.
-- Données laissées dans la base de démo : agence « Bamako Immobilier », compte jetable `recette.p1@immotopia.test` (TENANT_ADMIN, mot de passe aléatoire dans le scratchpad de la session, pas dans le dépôt), un bien, un locataire, le bail BAIL-2026-0001, un créancier et deux mandats révoqués. Sans danger, à supprimer à la main si la base de démo est réutilisée telle quelle.
-- Instance de démo : partagée avec d'autres sessions (`feat/syndic-ag-en-direct` à `349f9e5d`, export à `88d4b57c`, puis `7fcbe145` trouvée à la dernière reprise). Reprise pour la recette 042 avec l'accord de l'utilisateur ; elle est laissée à `e4a9834a` (branche `feat/prelevement-bancaire`), propre, dépendances installées, serveurs arrêtés. Pour la rendre à une autre session : `npm run demo:sync -- <révision> --install`. ATTENTION : `packages/api/.env.demo` a disparu du checkout principal (aucun `.env` n'y reste) et `demo:sync` refuse de tourner sans lui ; il faut le recréer (base de démo DÉDIÉE, `immotopia_demo`) avant tout nouveau `demo:sync`. Le worktree de démo garde son propre `packages/api/.env`.
-- Points ouverts de l'audit : clé de chiffrement dédiée et versionnée pour les IBAN (aujourd'hui `PAYMENT_SECRETS_KEY` partagée, préfixe `pg1`) ; borne basse de `signedAt`/`revokedAt`.
-- P2 (remises) selon `plan.md`, après les pièces de la banque pilote (spec §2).
+- Recette navigateur sur la démo (spec P2) dès que `packages/api/.env.demo` existe : préparer, actualiser, retirer, valider, produire le fichier, déposer, annuler ; IBAN absent des réponses ; arabe.
+- Migrations jamais appliquées sur une vraie base (pas de base dédiée dans le worktree) ; `npm run test:isolation` non lancé.
+- Format réel de la banque pilote (nouvel adaptateur, après réception des pièces de la spec §2) ; avis par WhatsApp/SMS et avis d'annulation (P5) ; jours fériés ; P3 (retour banque).
 
 Pièges et décisions :
 
-- Le hook `validate-bash.sh` bloque toute commande qui contient à la fois « push » et « main » : pousser et lancer `gh pr create --base main` dans deux commandes séparées.
-- `npm run i18n:extract` (web et API) touche des catalogues hors périmètre : n'ajouter que ses clés ; les fichiers de locale qui n'ont qu'un changement de fin de ligne se restaurent sans risque.
-- `npm run ai:catalog` crée un dossier `uploads/` vide à la racine du worktree (ignoré par git) ; à relancer après toute modification de route.
-- Les tâches en arrière-plan meurent avec la session : lancer les tests longs au premier plan.
-- Le filtre d'audit masque toute clé contenant « iban » (`ibanLast4` devenait `[masqué]`) : la charge utile utilise `last4Digits`.
-- Sous Windows, arrêter un serveur de démo depuis le panneau d'aperçu (`preview_stop`) laisse parfois orphelins `ts-node-dev` ou `vite` et `esbuild.exe` : ils verrouillent `.claude/worktrees/demo/node_modules` et font échouer `npm ci` (EPERM). Avant tout `demo:sync --install`, lister les `node.exe`/`esbuild.exe` dont la ligne de commande contient `worktrees\demo` et arrêter ceux-là.
-- L'API de démo met environ 80 s à répondre après son démarrage (premier chargement) : attendre `http://localhost:8800/health` avant de se connecter, sinon « Network Error ».
-- `npm run i18n:extract` réécrit les fins de ligne de presque tous les catalogues (`git status` les montre modifiés sans diff réel) : n'ajouter au commit que les fichiers réellement changés.
+- Une échéance ne figure que dans UNE ligne non annulée, quel que soit le mandat (ADR-007 §6), plus strict que « (mandat, échéance) » du plan.
+- `npm run i18n:extract` ramène des centaines de lignes d'autres branches et des `*.orphans.json` : n'ajouter que ses clés.
+- Après un agent qui passe prettier, des fichiers n'ont que des fins de ligne différentes : leur remettre les fins de ligne de `HEAD` plutôt que de les commiter.
+
+## Branche `fix/prelevement-cle-iban` — 2026-10-17
+
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/153 (base `main`), `main` fusionné le 2026-10-17. Fusion à faire par l'utilisateur.
+**Dernier commit :** `c89414ae` (fusion de `main`), après `4fb78828` (correctifs de l'audit de sécurité).
+**Worktree :** `.claude/worktrees/amazing-brattain-ff3069`, `node_modules` PROPRE (`npm ci`, pas de jonction).
+
+Fait :
+
+- IBAN des mandats chiffrés avec une clé DÉDIÉE `DIRECT_DEBIT_IBAN_KEY` (`lib/direct-debit/iban-crypto.ts`, format `ddk1:<id de clé>:…`, id de clé en données associées, balise GCM de 16 octets imposée), trousseau `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` pour la rotation, lecture héritée des valeurs `pg1` (`PAYMENT_SECRETS_KEY`). Démarrage refusé si la clé est mal formée, faible ou égale à `PAYMENT_SECRETS_KEY`.
+- Script idempotent `dist/scripts/reencrypt-direct-debit-ibans.js [--dry-run]` (codes 0 / 2 illisibles / 3 à relancer / 1 erreur).
+- `make-env.sh` génère la clé ; `deploy.sh` contrôle forme, doublons, `REMPLACER`, égalité avec `PAYMENT_SECRETS_KEY`, trousseau prod face au staging, refuse `set -x`.
+- DEPLOIEMENT.md (section « Clé dédiée aux IBAN », encadré « Staging — commandes à lancer par l'utilisateur »), SECURITY.md, ADR-007, spec PB2-R4, `setup-dev-env.ps1`.
+- `security-auditor` : 0 critique, 0 élevée ; la moyenne et les faibles corrigées, sauf le lien chiffré ↔ mandat (`ddk2`), documenté comme hors modèle de menace.
+
+Reste à faire :
+
+- L'utilisateur, sur le serveur : poser `DIRECT_DEBIT_IBAN_KEY` dans `/home/deployer/immotopia-saas.env` (commandes de DEPLOIEMENT.md, aucune n'affiche la clé), sauvegarder le fichier hors serveur, puis, après déploiement de la PR, lancer le script en `--dry-run` puis réel. Tant que la clé manque, la création de mandats est refusée sur le staging.
+- Points ouverts hérités de P1 : borne basse de `signedAt`/`revokedAt` ; « Nouveau mandat » désactivé dès qu'un mandat ouvert existe sur le bail ; non joués à la recette P1 : modification d'un mandat, plafond, jour de collecte propre, rôle sans MANAGE, `test:isolation`.
+
+Pièges et décisions :
+
+- `packages/api/.env.demo` a disparu du checkout principal : `npm run demo:sync` refuse de tourner sans lui (base DÉDIÉE `immotopia_demo`) ; à recréer par l'utilisateur avant toute recette sur la démo.
+- Le hook `validate-bash.sh` bloque toute commande qui contient à la fois « push » et « main » : pousser et lancer `gh pr create --base main` séparément.
+- Contrôle d'empreintes entre deux variables : hacher la VALEUR (`cut -d= -f2-`), pas la ligne, sinon les noms rendent toujours les empreintes différentes.
+- Un pilote qui change de worktree avec `EnterWorktree` coupe le shell des sous-agents encore actifs dans l'ancien : attendre leur fin avant de basculer.
 
 ## Branche `feat/pwa-mobile` — 2026-10-15
 

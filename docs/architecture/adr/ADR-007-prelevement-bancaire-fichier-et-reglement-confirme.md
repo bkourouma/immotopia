@@ -44,6 +44,11 @@ Trois contraintes du dépôt pèsent sur la décision :
    clair, pour l'affichage masqué. L'IBAN complet n'est déchiffré que pour
    produire un fichier de remise ; il ne sort jamais dans une réponse d'API,
    un journal ou un export.
+   _Ajout du 2026-10-16_ : l'IBAN n'est plus chiffré avec `PAYMENT_SECRETS_KEY`
+   mais avec une clé **dédiée** et versionnée, `DIRECT_DEBIT_IBAN_KEY`
+   (`lib/direct-debit/iban-crypto.ts`, format `ddk1:<id de clé>:…`, trousseau
+   d'anciennes clés `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` pour la rotation, script
+   de rechiffrement idempotent). Les valeurs `pg1` déjà écrites restent lisibles.
 4. **Contrôle de l'IBAN** : longueur et structure ivoirienne (28 caractères,
    `CI` + 2 chiffres de contrôle + 24 caractères) et clé ISO 13616
    (modulo 97), bloquants. La clé RIB UEMOA n'est qu'un **avertissement**
@@ -71,8 +76,12 @@ Trois contraintes du dépôt pèsent sur la décision :
   de compensation et de saisie du retour).
 - Le geste de chargement du fichier reste manuel, avec un risque d'oubli :
   l'écran de remise doit le rendre visible (statut `EXPORTED` non soumis).
-- Perdre `PAYMENT_SECRETS_KEY` rend les IBAN illisibles : les mandats
+- Perdre la clé des IBAN rend les IBAN illisibles : les mandats
   devraient être ressaisis. La clé doit être sauvegardée hors de la base.
+  _Ajout du 2026-10-16_ : cette clé est désormais `DIRECT_DEBIT_IBAN_KEY` (et ses
+  anciennes clés `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` tant qu'un rechiffrement n'est
+  pas terminé) ; `PAYMENT_SECRETS_KEY` n'est plus nécessaire qu'à la lecture des
+  valeurs `pg1` non encore rechiffrées.
 - Chaque nouvelle banque demande un adaptateur et un fichier exemple.
 
 ## Alternatives écartées

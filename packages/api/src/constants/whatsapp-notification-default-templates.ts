@@ -53,7 +53,7 @@ export const WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES: Record<WhatsappNotificatio
   CHARGE_CALL_REMINDER:
     'Bonjour {{ownerName}}, rappel pour l’appel de charges de la période {{period}} concernant le lot {{lotLabel}}. Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.{{paymentBlock}}',
   GENERAL_MEETING_CONVOCATION:
-    'Bonjour {{ownerName}}, vous êtes convoqué(e) à l’assemblée générale de la copropriété {{syndicateName}} le {{meetingDate}} à {{meetingTime}}, lieu : {{meetingLocation}}. Suivez l’assemblée et votez en ligne : {{meetingLink}}',
+    'Bonjour {{ownerName}}, vous êtes convoqué(e) à l’assemblée générale de la copropriété {{syndicateName}} le {{meetingDate}} à {{meetingTime}}, lieu : {{meetingLocation}}. Suivez l’assemblée et votez en ligne : {{meetingLink}}\n{{recordingNotice}}',
   GENERAL_MEETING_MINUTES:
     'Bonjour {{ownerName}}, le procès-verbal de l’assemblée générale de la copropriété {{syndicateName}} est disponible ici : {{minutesUrl}}',
   CONTRACT_RENEWAL_ALERT:

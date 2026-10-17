@@ -31,6 +31,7 @@ export enum RentalPaymentMethod {
   BANK_TRANSFER = 'BANK_TRANSFER',
   CHECK = 'CHECK',
   MOBILE_MONEY = 'MOBILE_MONEY',
+  DIRECT_DEBIT = 'DIRECT_DEBIT',
   CARD = 'CARD',
   OTHER = 'OTHER'
 }
