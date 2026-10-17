@@ -60,6 +60,7 @@ const mockLk = {
   getRoomParticipant: jest.fn(),
   setHandRaised: jest.fn(),
   setCanSpeak: jest.fn(),
+  muteParticipantTracks: jest.fn(),
   removeParticipant: jest.fn(),
   deleteRoom: jest.fn(),
   sendRefreshSignal: jest.fn()
@@ -83,6 +84,7 @@ jest.mock('../../src/services/livekit-service', () => {
     getRoomParticipant: (...args: unknown[]) => mockLk.getRoomParticipant(...args),
     setHandRaised: (...args: unknown[]) => mockLk.setHandRaised(...args),
     setCanSpeak: (...args: unknown[]) => mockLk.setCanSpeak(...args),
+    muteParticipantTracks: (...args: unknown[]) => mockLk.muteParticipantTracks(...args),
     removeParticipant: (...args: unknown[]) => mockLk.removeParticipant(...args),
     deleteRoom: (...args: unknown[]) => mockLk.deleteRoom(...args),
     sendRefreshSignal: (...args: unknown[]) => mockLk.sendRefreshSignal(...args),
@@ -149,6 +151,7 @@ function resetWorld(meetingStatus = 'IN_PROGRESS') {
   mockLk.getRoomParticipant.mockResolvedValue(null);
   mockLk.setHandRaised.mockResolvedValue(undefined);
   mockLk.setCanSpeak.mockResolvedValue(undefined);
+  mockLk.muteParticipantTracks.mockResolvedValue(0);
   mockLk.removeParticipant.mockResolvedValue(undefined);
   mockLk.deleteRoom.mockResolvedValue(undefined);
   mockLk.sendRefreshSignal.mockResolvedValue(undefined);
@@ -250,6 +253,9 @@ async function joinedToken(contactId: string): Promise<{ token: string; particip
   return { token, participantId: participant!.id };
 }
 
+const awaRow = (participantId: string): any =>
+  mockPrisma.gMParticipant.rows.find((row: any) => row.id === participantId);
+
 const lkInfo = (identity: string, extra: Record<string, unknown> = {}) => ({
   identity,
   name: 'nom-livekit',
@@ -273,10 +279,10 @@ describe('vue publique : visio.enabled', () => {
   it('reflète la configuration LiveKit, rien d autre', async () => {
     const token = await issueToken(AWA);
     let res = await pub('/etat', { token });
-    expect(res.body.data.visio).toEqual({ enabled: true, recording: false });
+    expect(res.body.data.visio).toEqual({ enabled: true, recording: false, mediaAllowed: true });
     mockLk.enabled = false;
     res = await pub('/etat', { token });
-    expect(res.body.data.visio).toEqual({ enabled: false, recording: false });
+    expect(res.body.data.visio).toEqual({ enabled: false, recording: false, mediaAllowed: true });
   });
 });
 
@@ -328,11 +334,19 @@ describe('POST /public/assemblees/visio', () => {
     const res = await pub('/visio', { token });
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toBe('no-store');
-    expect(Object.keys(res.body.data).sort()).toEqual(['expiresAt', 'identity', 'roomName', 'serverUrl', 'token']);
+    expect(Object.keys(res.body.data).sort()).toEqual([
+      'expiresAt',
+      'identity',
+      'mediaAllowed',
+      'roomName',
+      'serverUrl',
+      'token'
+    ]);
     expect(res.body.data).toMatchObject({
       identity: participantId,
       roomName: ROOM,
-      serverUrl: 'wss://visio.example.test'
+      serverUrl: 'wss://visio.example.test',
+      mediaAllowed: true
     });
     expect(mockLk.ensureRoom).toHaveBeenCalledWith(ROOM);
 
@@ -340,7 +354,8 @@ describe('POST /public/assemblees/visio', () => {
     expect(livekit.mintParticipantToken).toHaveBeenCalledWith({
       roomName: ROOM,
       identity: participantId,
-      name: 'Awa Traore'
+      name: 'Awa Traore',
+      canPublish: true
     });
     const serialized = JSON.stringify(res.body) + JSON.stringify(livekit.mintParticipantToken.mock.calls);
     expect(serialized).not.toContain('awa@example.test');
@@ -425,6 +440,7 @@ describe('GET /visio (console)', () => {
       enabled: false,
       roomName: null,
       roomActive: false,
+      mediaLocked: false,
       participants: [],
       recording: { enabled: false, active: null },
       degraded: false,
@@ -456,7 +472,7 @@ describe('GET /visio (console)', () => {
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toBe('no-store');
     expect(mockLk.listRoomParticipants).toHaveBeenCalledWith(ROOM);
-    expect(res.body.data).toMatchObject({ enabled: true, roomName: ROOM, roomActive: true });
+    expect(res.body.data).toMatchObject({ enabled: true, roomName: ROOM, roomActive: true, mediaLocked: false });
     expect(res.body.data.participants).toEqual([
       {
         identity: awa.participantId,
@@ -466,6 +482,10 @@ describe('GET /visio (console)', () => {
         name: 'Awa Traore',
         handRaisedAt: '2026-10-10T09:05:00.000Z',
         canSpeak: false,
+        mediaAllowed: true,
+        mediaPolicy: 'DEFAULT',
+        mic: { published: false, muted: false },
+        camera: { published: false, muted: false },
         joinedAt: '2026-10-10T09:01:00.000Z',
         chatMuted: false
       },
@@ -478,6 +498,10 @@ describe('GET /visio (console)', () => {
         name: 'Marie Syndic',
         handRaisedAt: null,
         canSpeak: true,
+        mediaAllowed: true,
+        mediaPolicy: 'DEFAULT',
+        mic: { published: false, muted: false },
+        camera: { published: false, muted: false },
         joinedAt: '2026-10-10T09:01:00.000Z',
         chatMuted: false
       }
@@ -549,26 +573,32 @@ describe('POST /visio/participants/:participantId/parole', () => {
     expect(res.status).toBe(200);
     expect(mockLk.setCanSpeak).toHaveBeenCalledWith(ROOM, awa.participantId, true);
     expect(res.body.data.participants[0]).toMatchObject({ participantId: awa.participantId, canSpeak: true });
+    // Sans interdiction globale, « autorisé » est le comportement par défaut.
+    expect(awaRow(awa.participantId).mediaPolicy).toBe('DEFAULT');
     expect(mockAudit).toHaveBeenCalledWith(
       expect.objectContaining({ actionKey: 'SYNDIC_MEETING_VISIO_SPEAK_GRANTED', entityId: awa.participantId })
     );
 
+    // LiveKit retire les pistes : la salle ne les publie plus.
+    mockLk.listRoomParticipants.mockResolvedValue([lkInfo(awa.participantId)]);
     res = await request(app)
       .post(url(M1, `/visio/participants/${awa.participantId}/parole`))
       .send({ allowed: false });
     expect(res.status).toBe(200);
     expect(mockLk.setCanSpeak).toHaveBeenLastCalledWith(ROOM, awa.participantId, false);
+    expect(awaRow(awa.participantId).mediaPolicy).toBe('BLOCKED');
     expect(mockAudit).toHaveBeenCalledWith(
       expect.objectContaining({ actionKey: 'SYNDIC_MEETING_VISIO_SPEAK_REVOKED' })
     );
   });
 
-  it('participant absent de la salle = 409', async () => {
+  it('participant absent de la salle : la décision est posée en base, rien n est envoyé à LiveKit', async () => {
     const awa = await joinedToken(AWA);
     const res = await request(app)
       .post(url(M1, `/visio/participants/${awa.participantId}/parole`))
-      .send({ allowed: true });
-    expect(res.status).toBe(409);
+      .send({ allowed: false });
+    expect(res.status).toBe(200);
+    expect(awaRow(awa.participantId).mediaPolicy).toBe('BLOCKED');
     expect(mockLk.setCanSpeak).not.toHaveBeenCalled();
   });
 
@@ -782,16 +812,15 @@ describe('courses LiveKit : participant parti entre la lecture et l écriture', 
     expect(res.body.message).toBe("Vous n'êtes pas dans la visio");
   });
 
-  it('parole : 409 « Ce participant n est pas dans la visio » (pas 503)', async () => {
+  it('parole : parti entre la lecture et l écriture, la décision posée en base reste (200, pas 503)', async () => {
     const awa = await joinedToken(AWA);
     mockLk.getRoomParticipant.mockResolvedValue(lkInfo(awa.participantId));
     mockLk.setCanSpeak.mockResolvedValue(false);
     const res = await request(app)
       .post(url(M1, `/visio/participants/${awa.participantId}/parole`))
-      .send({ allowed: true });
-    expect(res.status).toBe(409);
-    expect(res.body.message).toBe("Ce participant n'est pas dans la visio");
-    expect(mockAudit.mock.calls.some(([entry]) => String(entry.actionKey).includes('SPEAK'))).toBe(false);
+      .send({ allowed: false });
+    expect(res.status).toBe(200);
+    expect(awaRow(awa.participantId).mediaPolicy).toBe('BLOCKED');
   });
 });
 
@@ -1028,5 +1057,397 @@ describe('GET /visio : un gestionnaire qui a pu obtenir un jeton n est pas expul
     expect(res.status).toBe(200);
     expect(res.body.data.degraded).toBe(true);
     expect(mockLk.removeParticipant).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spec 045, V16 (décision du 2026-10-17) : micro et caméra des copropriétaires,
+// coupure, interdiction individuelle ou globale, persistance à la reconnexion.
+// ---------------------------------------------------------------------------
+
+const livekitMock = () => jest.requireMock('../../src/services/livekit-service');
+const lastMintedParticipant = () => {
+  const calls = livekitMock().mintParticipantToken.mock.calls;
+  return calls[calls.length - 1][0];
+};
+const meetingRow = (meetingId = M1): any => mockPrisma.generalMeeting.rows.find((row: any) => row.id === meetingId);
+const auditKeys = () => mockAudit.mock.calls.map(([entry]) => entry.actionKey);
+const parole = (participantId: string, allowed: boolean, meetingId = M1) =>
+  request(app)
+    .post(url(meetingId, `/visio/participants/${participantId}/parole`))
+    .send({ allowed });
+const verrou = (locked: boolean, meetingId = M1) =>
+  request(app).post(url(meetingId, '/visio/media/verrou')).send({ locked });
+const couper = (participantId: string, body: unknown = {}, meetingId = M1) =>
+  request(app)
+    .post(url(meetingId, `/visio/participants/${participantId}/couper`))
+    .send(body as any);
+
+describe('V16 : jeton du copropriétaire, droit de publier décidé par le serveur', () => {
+  it('par défaut : micro et caméra autorisés dès l entrée', async () => {
+    const { token } = await joinedToken(AWA);
+    const res = await pub('/visio', { token });
+    expect(res.status).toBe(200);
+    expect(res.body.data.mediaAllowed).toBe(true);
+    expect(lastMintedParticipant().canPublish).toBe(true);
+    // Les droits fins (sources, pas de partage d écran, pas de canal de données) : test unitaire de `livekit-service`.
+  });
+
+  it('interdit à ce participant : le jeton ne permet pas de publier, et l interdiction survit à la reconnexion', async () => {
+    const awa = await joinedToken(AWA);
+    expect((await parole(awa.participantId, false)).status).toBe(200);
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const res = await pub('/visio', { token: awa.token });
+      expect(res.status).toBe(200);
+      expect(res.body.data.mediaAllowed).toBe(false);
+      expect(lastMintedParticipant()).toMatchObject({ identity: awa.participantId, canPublish: false });
+    }
+    // Le copropriétaire voit aussi l état dans la vue publique (interrogée toutes les 3 s).
+    const view = await pub('/etat', { token: awa.token });
+    expect(view.body.data.visio.mediaAllowed).toBe(false);
+
+    // Le droit rendu, le jeton suivant publie de nouveau.
+    expect((await parole(awa.participantId, true)).status).toBe(200);
+    const again = await pub('/visio', { token: awa.token });
+    expect(again.body.data.mediaAllowed).toBe(true);
+    expect(lastMintedParticipant().canPublish).toBe(true);
+  });
+
+  it('interdit à tous : plus personne ne publie à l entrée ; la parole donnée à un seul est une exception', async () => {
+    const awa = await joinedToken(AWA);
+    const bakary = await joinedToken(BAKARY);
+    expect((await verrou(true)).status).toBe(200);
+
+    for (const who of [awa, bakary]) {
+      const res = await pub('/visio', { token: who.token });
+      expect(res.body.data.mediaAllowed).toBe(false);
+      expect(lastMintedParticipant().canPublish).toBe(false);
+    }
+    // Donner la parole à Awa seulement.
+    expect((await parole(awa.participantId, true)).status).toBe(200);
+    expect(awaRow(awa.participantId).mediaPolicy).toBe('ALLOWED');
+    expect((await pub('/visio', { token: awa.token })).body.data.mediaAllowed).toBe(true);
+    expect((await pub('/visio', { token: bakary.token })).body.data.mediaAllowed).toBe(false);
+
+    // Une interdiction individuelle l emporte sur tout, même quand l interdiction globale est levée.
+    expect((await parole(bakary.participantId, false)).status).toBe(200);
+    expect((await verrou(false)).status).toBe(200);
+    expect((await pub('/visio', { token: bakary.token })).body.data.mediaAllowed).toBe(false);
+    expect((await pub('/visio', { token: awa.token })).body.data.mediaAllowed).toBe(true);
+  });
+});
+
+describe('V16 : POST /visio/participants/:participantId/parole (interdiction individuelle)', () => {
+  it('interdit un participant qui n est pas encore dans la salle : posé en base, audité, rien envoyé à LiveKit', async () => {
+    const awa = await joinedToken(AWA);
+    const res = await parole(awa.participantId, false);
+    expect(res.status).toBe(200);
+    expect(awaRow(awa.participantId).mediaPolicy).toBe('BLOCKED');
+    expect(mockLk.setCanSpeak).not.toHaveBeenCalled();
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionKey: 'SYNDIC_MEETING_VISIO_SPEAK_REVOKED',
+        tenantId: TENANT_A,
+        entityId: awa.participantId,
+        payload: expect.objectContaining({ meetingId: M1, mediaPolicy: 'BLOCKED' })
+      })
+    );
+  });
+
+  it('interdit un participant présent : ses pistes sont retirées par LiveKit', async () => {
+    const awa = await joinedToken(AWA);
+    mockLk.getRoomParticipant.mockResolvedValue(lkInfo(awa.participantId, { permission: { canPublish: true } }));
+    const res = await parole(awa.participantId, false);
+    expect(res.status).toBe(200);
+    expect(mockLk.setCanSpeak).toHaveBeenCalledWith(ROOM, awa.participantId, false);
+  });
+
+  it('participant d une autre AG ou agence = 404 sans rien écrire ; AG close = 409 ; visio désactivée = 409', async () => {
+    const awa = await joinedToken(AWA);
+    mockPrisma.gMParticipant.rows.push(
+      { id: id(701), tenantId: TENANT_A, meetingId: M_PLANNED, contactId: AWA },
+      { id: id(702), tenantId: TENANT_B, meetingId: MB, contactId: CONTACT_B }
+    );
+    expect((await parole(id(701), false)).status).toBe(404);
+    expect((await parole(id(702), false)).status).toBe(404);
+    expect(awaRow(id(701)).mediaPolicy).toBeUndefined();
+    expect(awaRow(id(702)).mediaPolicy).toBeUndefined();
+
+    mockPrisma.gMParticipant.rows.push({ id: id(703), tenantId: TENANT_A, meetingId: M_DONE, contactId: AWA });
+    expect((await parole(id(703), false, M_DONE)).status).toBe(409);
+    expect(awaRow(id(703)).mediaPolicy).toBeUndefined();
+
+    mockLk.enabled = false;
+    expect((await parole(awa.participantId, false)).status).toBe(409);
+    expect(awaRow(awa.participantId).mediaPolicy).toBeUndefined();
+  });
+});
+
+describe('V16 : POST /visio/participants/:participantId/couper', () => {
+  it('coupe le micro et la caméra par défaut, audite sans jeton, rend la vue et le nombre de pistes', async () => {
+    const awa = await joinedToken(AWA);
+    mockLk.muteParticipantTracks.mockResolvedValue(2);
+    mockLk.listRoomParticipants.mockResolvedValue([
+      lkInfo(awa.participantId, {
+        permission: { canPublish: true },
+        tracks: [
+          { sid: 'TR_a', source: 2, muted: true }, // MICROPHONE
+          { sid: 'TR_b', source: 1, muted: false } // CAMERA
+        ]
+      })
+    ]);
+    const res = await couper(awa.participantId);
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(mockLk.muteParticipantTracks).toHaveBeenCalledWith(ROOM, awa.participantId, [2, 1]);
+    expect(res.body.data.mutedTracks).toBe(2);
+    expect(res.body.data.participants[0]).toMatchObject({
+      participantId: awa.participantId,
+      mic: { published: true, muted: true },
+      camera: { published: true, muted: false }
+    });
+    const audit = mockAudit.mock.calls
+      .map(([entry]) => entry)
+      .find(entry => entry.actionKey === 'SYNDIC_MEETING_VISIO_PARTICIPANT_MUTED');
+    expect(audit).toMatchObject({
+      tenantId: TENANT_A,
+      actorUserId: 'user-manager',
+      entityId: awa.participantId,
+      payload: { meetingId: M1, sources: ['MICROPHONE', 'CAMERA'], mutedTracks: 2 }
+    });
+  });
+
+  it('seulement le micro quand c est demandé ; la politique du participant n est pas touchée (ce n est pas une interdiction)', async () => {
+    const awa = await joinedToken(AWA);
+    mockLk.muteParticipantTracks.mockResolvedValue(1);
+    const res = await couper(awa.participantId, { sources: ['MICROPHONE'] });
+    expect(res.status).toBe(200);
+    expect(mockLk.muteParticipantTracks).toHaveBeenCalledWith(ROOM, awa.participantId, [2]);
+    expect(awaRow(awa.participantId).mediaPolicy).toBeUndefined();
+    expect(mockLk.setCanSpeak).not.toHaveBeenCalled();
+  });
+
+  it('participant absent de la salle = 409, rien d audité', async () => {
+    const awa = await joinedToken(AWA);
+    mockLk.muteParticipantTracks.mockResolvedValue(null);
+    const res = await couper(awa.participantId);
+    expect(res.status).toBe(409);
+    expect(auditKeys()).not.toContain('SYNDIC_MEETING_VISIO_PARTICIPANT_MUTED');
+  });
+
+  it('isolation : participant d une autre AG, d une autre agence ou inconnu = 404 ; AG d une autre agence = 404', async () => {
+    mockPrisma.gMParticipant.rows.push(
+      { id: id(701), tenantId: TENANT_A, meetingId: M_PLANNED, contactId: AWA },
+      { id: id(702), tenantId: TENANT_B, meetingId: MB, contactId: CONTACT_B }
+    );
+    for (const participantId of [id(701), id(702), id(799)]) {
+      expect((await couper(participantId)).status).toBe(404);
+    }
+    expect(
+      (
+        await request(app)
+          .post(`/api/tenants/${TENANT_A}/syndics/${S1}/assemblees/${MB}/visio/participants/${id(702)}/couper`)
+          .send({})
+      ).status
+    ).toBe(404);
+    expect(mockLk.muteParticipantTracks).not.toHaveBeenCalled();
+  });
+
+  it('validation : id invalide, source inconnue, champ en trop, liste vide = 400 ; AG close et visio désactivée = 409', async () => {
+    const awa = await joinedToken(AWA);
+    expect((await couper('pas-un-uuid')).status).toBe(400);
+    expect((await couper(awa.participantId, { sources: ['SCREEN_SHARE'] })).status).toBe(400);
+    expect((await couper(awa.participantId, { sources: [] })).status).toBe(400);
+    expect((await couper(awa.participantId, { extra: 1 })).status).toBe(400);
+    expect(mockLk.muteParticipantTracks).not.toHaveBeenCalled();
+
+    mockPrisma.gMParticipant.rows.push({ id: id(703), tenantId: TENANT_A, meetingId: M_DONE, contactId: AWA });
+    expect((await couper(id(703), {}, M_DONE)).status).toBe(409);
+    mockLk.enabled = false;
+    expect((await couper(awa.participantId)).status).toBe(409);
+    expect(mockLk.muteParticipantTracks).not.toHaveBeenCalled();
+  });
+});
+
+describe('V16 : POST /visio/media/verrou (interdire ou rendre à tous)', () => {
+  const present = (participantId: string, canPublish: boolean) => lkInfo(participantId, { permission: { canPublish } });
+
+  it('interdit à tous : état posé en base, exceptions levées, copropriétaires présents ramenés à « ne publie pas »', async () => {
+    const awa = await joinedToken(AWA);
+    const bakary = await joinedToken(BAKARY);
+    awaRow(bakary.participantId).mediaPolicy = 'ALLOWED';
+    mockPrisma.gMParticipant.rows.push({ id: id(701), tenantId: TENANT_A, meetingId: M_PLANNED, contactId: AWA });
+    // La salle suit les appels de LiveKit : un droit retiré n apparaît plus à la lecture suivante.
+    const room: any[] = [
+      present(awa.participantId, true),
+      present(bakary.participantId, true),
+      present(id(701), true), // participant d une autre AG : jamais touché
+      lkInfo('gestionnaire-user-manager', { permission: { canPublish: true } }),
+      lkInfo('EG_enregistreur', { permission: { canPublish: true } })
+    ];
+    mockLk.listRoomParticipants.mockImplementation(async () => room);
+    mockLk.setCanSpeak.mockImplementation(async (_room: string, identity: string, allowed: boolean) => {
+      room.find(info => info.identity === identity).permission.canPublish = allowed;
+    });
+
+    const res = await verrou(true);
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(meetingRow().mediaLockedAt).toBeInstanceOf(Date);
+    expect(res.body.data.mediaLocked).toBe(true);
+    // « Tous » : l exception accordée à Bakary est levée.
+    expect(awaRow(bakary.participantId).mediaPolicy).toBe('DEFAULT');
+
+    const touched = mockLk.setCanSpeak.mock.calls.map(call => call.slice(0, 3));
+    expect(touched).toEqual(
+      expect.arrayContaining([
+        [ROOM, awa.participantId, false],
+        [ROOM, bakary.participantId, false]
+      ])
+    );
+    expect(touched).toHaveLength(2);
+    // Les mains levées ne sont pas baissées.
+    for (const call of mockLk.setCanSpeak.mock.calls) expect(call[3]).toEqual({ lowerHand: false });
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionKey: 'SYNDIC_MEETING_VISIO_MEDIA_LOCKED',
+        tenantId: TENANT_A,
+        actorUserId: 'user-manager',
+        entityId: M1
+      })
+    );
+    // Les jetons suivants ne publient plus.
+    expect((await pub('/visio', { token: awa.token })).body.data.mediaAllowed).toBe(false);
+  });
+
+  it('déjà interdit à tous : une exception ALLOWED remise à DEFAULT est tout de même auditée', async () => {
+    const bakary = await joinedToken(BAKARY);
+    meetingRow().mediaLockedAt = new Date('2026-10-10T09:00:00Z');
+    awaRow(bakary.participantId).mediaPolicy = 'ALLOWED';
+    mockLk.listRoomParticipants.mockResolvedValue([]);
+    mockAudit.mockClear();
+
+    expect((await verrou(true)).status).toBe(200);
+    expect(awaRow(bakary.participantId).mediaPolicy).toBe('DEFAULT');
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionKey: 'SYNDIC_MEETING_VISIO_MEDIA_LOCKED',
+        entityId: M1,
+        payload: expect.objectContaining({ clearedExceptions: 1 })
+      })
+    );
+    // Répétition sans rien à changer : pas de second audit.
+    mockAudit.mockClear();
+    expect((await verrou(true)).status).toBe(200);
+    expect(mockAudit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ actionKey: 'SYNDIC_MEETING_VISIO_MEDIA_LOCKED' })
+    );
+  });
+
+  it('rend à tous : seuls les présents non interdits individuellement retrouvent le droit', async () => {
+    const awa = await joinedToken(AWA);
+    const bakary = await joinedToken(BAKARY);
+    meetingRow().mediaLockedAt = new Date('2026-10-10T09:00:00Z');
+    awaRow(bakary.participantId).mediaPolicy = 'BLOCKED';
+    mockLk.listRoomParticipants.mockResolvedValue([
+      present(awa.participantId, false),
+      present(bakary.participantId, false)
+    ]);
+
+    const res = await verrou(false);
+    expect(res.status).toBe(200);
+    expect(meetingRow().mediaLockedAt).toBeNull();
+    expect(res.body.data.mediaLocked).toBe(false);
+    expect(mockLk.setCanSpeak.mock.calls.map(call => call.slice(0, 3))).toEqual([[ROOM, awa.participantId, true]]);
+    expect(awaRow(bakary.participantId).mediaPolicy).toBe('BLOCKED');
+    expect(auditKeys()).toContain('SYNDIC_MEETING_VISIO_MEDIA_UNLOCKED');
+  });
+
+  it('idempotent : répéter resynchronise la salle sans changer l état ni auditer une seconde fois', async () => {
+    const awa = await joinedToken(AWA);
+    mockLk.listRoomParticipants.mockResolvedValue([present(awa.participantId, true)]);
+    expect((await verrou(true)).status).toBe(200);
+    const lockedAt = meetingRow().mediaLockedAt;
+    mockAudit.mockClear();
+    expect((await verrou(true)).status).toBe(200);
+    expect(meetingRow().mediaLockedAt).toBe(lockedAt);
+    expect(auditKeys()).not.toContain('SYNDIC_MEETING_VISIO_MEDIA_LOCKED');
+  });
+
+  it('LiveKit en panne : 503 mais la décision reste posée (les jetons la respectent déjà)', async () => {
+    const awa = await joinedToken(AWA);
+    mockLk.listRoomParticipants.mockRejectedValue(new VisioUnavailableError());
+    expect((await verrou(true)).status).toBe(503);
+    expect(meetingRow().mediaLockedAt).toBeInstanceOf(Date);
+    mockLk.listRoomParticipants.mockResolvedValue([]);
+    expect((await pub('/visio', { token: awa.token })).body.data.mediaAllowed).toBe(false);
+  });
+
+  it('GET /visio expose mediaLocked et, par participant, politique, droit décidé et pistes', async () => {
+    const awa = await joinedToken(AWA);
+    meetingRow().mediaLockedAt = new Date();
+    awaRow(awa.participantId).mediaPolicy = 'ALLOWED';
+    mockLk.listRoomParticipants.mockResolvedValue([present(awa.participantId, true)]);
+    const res = await request(app).get(url(M1, '/visio'));
+    expect(res.body.data.mediaLocked).toBe(true);
+    expect(res.body.data.participants[0]).toMatchObject({
+      participantId: awa.participantId,
+      mediaPolicy: 'ALLOWED',
+      mediaAllowed: true,
+      canSpeak: true
+    });
+  });
+
+  it('isolation et validation : AG d une autre agence = 404 sans toucher LiveKit ; corps invalide = 400 ; AG close et visio désactivée = 409', async () => {
+    expect(
+      (
+        await request(app)
+          .post(`/api/tenants/${TENANT_A}/syndics/${S1}/assemblees/${MB}/visio/media/verrou`)
+          .send({ locked: true })
+      ).status
+    ).toBe(404);
+    expect(mockLk.listRoomParticipants).not.toHaveBeenCalled();
+    expect(meetingRow(MB).mediaLockedAt).toBeUndefined();
+
+    expect((await request(app).post(url(M1, '/visio/media/verrou')).send({ locked: 'oui' })).status).toBe(400);
+    expect((await request(app).post(url(M1, '/visio/media/verrou')).send({})).status).toBe(400);
+    expect((await request(app).post(url(M1, '/visio/media/verrou')).send({ locked: true, extra: 1 })).status).toBe(400);
+    expect((await verrou(true, M_DONE)).status).toBe(409);
+    expect(meetingRow(M_DONE).mediaLockedAt).toBeUndefined();
+    mockLk.enabled = false;
+    expect((await verrou(true)).status).toBe(409);
+    expect(meetingRow().mediaLockedAt).toBeUndefined();
+  });
+
+  it('autorisable avant le début de la séance (AG planifiée) : le gestionnaire prépare la salle', async () => {
+    expect((await verrou(true, M_PLANNED)).status).toBe(200);
+    expect(meetingRow(M_PLANNED).mediaLockedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe('V16 : l interdiction décidée en base est rappliquée à la salle', () => {
+  it('un copropriétaire qui publie malgré l interdiction (jeton ancien rejoué) est ramené au droit décidé', async () => {
+    const awa = await joinedToken(AWA);
+    awaRow(awa.participantId).mediaPolicy = 'BLOCKED';
+    mockLk.listRoomParticipants.mockResolvedValue([lkInfo(awa.participantId, { permission: { canPublish: true } })]);
+    const res = await request(app).get(url(M1, '/visio'));
+    expect(res.status).toBe(200);
+    expect(mockLk.setCanSpeak).toHaveBeenCalledWith(ROOM, awa.participantId, false, { lowerHand: false });
+    expect(res.body.data.participants[0]).toMatchObject({ mediaAllowed: false, canSpeak: false });
+  });
+
+  it('jamais dans l autre sens, et un échec de LiveKit ne casse pas la lecture', async () => {
+    const awa = await joinedToken(AWA);
+    mockLk.listRoomParticipants.mockResolvedValue([lkInfo(awa.participantId, { permission: { canPublish: false } })]);
+    expect((await request(app).get(url(M1, '/visio'))).status).toBe(200);
+    expect(mockLk.setCanSpeak).not.toHaveBeenCalled();
+
+    awaRow(awa.participantId).mediaPolicy = 'BLOCKED';
+    mockLk.listRoomParticipants.mockResolvedValue([lkInfo(awa.participantId, { permission: { canPublish: true } })]);
+    mockLk.setCanSpeak.mockRejectedValue(new VisioUnavailableError());
+    const res = await request(app).get(url(M1, '/visio'));
+    expect(res.status).toBe(200);
+    expect(res.body.data.participants[0].canSpeak).toBe(true);
   });
 });

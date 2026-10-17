@@ -8,7 +8,13 @@ import {
   removeVisioParticipant,
   setParticipantSpeaking
 } from '../lib/syndics/meeting-visio';
-import { visioRemoveSchema, visioSpeakSchema } from '../lib/syndics/meeting-live-schemas';
+import { muteVisioParticipant, setMeetingMediaLock } from '../lib/syndics/meeting-visio-media';
+import {
+  visioMediaLockSchema,
+  visioMuteSchema,
+  visioRemoveSchema,
+  visioSpeakSchema
+} from '../lib/syndics/meeting-live-schemas';
 
 /**
  * Visio integree a l'AG en direct, cote gestionnaire (spec 045). Prefixe
@@ -71,6 +77,32 @@ export const removeVisioParticipantHandler = asyncHandler(async (req: Request, r
     body.revokeLinks ?? false,
     actorUserId
   );
+  noStore(res);
+  res.json({ success: true, data });
+});
+
+/** Spec 045, V16 : coupe le micro et/ou la camera deja publies d'un participant. */
+export const muteVisioParticipantHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { tenantId, syndicateId, meetingId, actorUserId } = scopeOf(req);
+  const participantId = participantParamSchema.parse(req.params.participantId);
+  const body = visioMuteSchema.parse(req.body ?? {});
+  const data = await muteVisioParticipant(
+    tenantId,
+    syndicateId,
+    meetingId,
+    participantId,
+    body.sources ?? ['MICROPHONE', 'CAMERA'],
+    actorUserId
+  );
+  noStore(res);
+  res.json({ success: true, data });
+});
+
+/** Spec 045, V16 : interdit ou rend a tous les copropriétaires l'activation du micro et de la camera. */
+export const setVisioMediaLockHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { tenantId, syndicateId, meetingId, actorUserId } = scopeOf(req);
+  const body = visioMediaLockSchema.parse(req.body ?? {});
+  const data = await setMeetingMediaLock(tenantId, syndicateId, meetingId, body.locked, actorUserId);
   noStore(res);
   res.json({ success: true, data });
 });

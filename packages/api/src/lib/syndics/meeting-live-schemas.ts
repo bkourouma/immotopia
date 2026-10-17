@@ -107,3 +107,17 @@ export const discussionWriteSchema = z.object({ allowed: z.boolean() }).strict()
 /** Corps des routes de visio du gestionnaire (spec 045). */
 export const visioSpeakSchema = z.object({ allowed: z.boolean() }).strict();
 export const visioRemoveSchema = z.object({ revokeLinks: z.boolean().optional() }).strict();
+
+/** POST /visio/participants/:participantId/couper (spec 045, V16) : micro et/ou camera ; les deux par defaut. */
+export const visioMuteSchema = z
+  .object({
+    sources: z
+      .array(z.enum(['MICROPHONE', 'CAMERA']))
+      .min(1)
+      .max(2)
+      .optional()
+  })
+  .strict();
+
+/** POST /visio/media/verrou (spec 045, V16) : interdire (`true`) ou rendre (`false`) micro et camera a tous. */
+export const visioMediaLockSchema = z.object({ locked: z.boolean() }).strict();
