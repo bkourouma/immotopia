@@ -210,6 +210,9 @@ describe('compte rendu standard : balises du generateur', () => {
       'MEETING_END_TIME',
       'MEETING_LOCATION',
       'MEETING_QUORUM',
+      'ATTENDANCE_SUMMARY',
+      'ATTENDANCE_LOT',
+      'ATTENDANCE_PERSON',
       'AGENDA_INDEX',
       'AGENDA_TITLE',
       'AGENDA_DISCUSSION',
@@ -221,6 +224,6 @@ describe('compte rendu standard : balises du generateur', () => {
     ]) {
       expect(tags.has(tag)).toBe(true);
     }
-    expect([...sections].sort()).toEqual(['AGENDA_ITEMS', 'PROXIES', 'RESOLUTIONS']);
+    expect([...sections].sort()).toEqual(['AGENDA_ITEMS', 'ATTENDANCE', 'PROXIES', 'RESOLUTIONS']);
   });
 });
