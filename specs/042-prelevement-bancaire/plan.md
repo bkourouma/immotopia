@@ -12,8 +12,8 @@
 | Lot | Contenu                                                                                                                                                                                                                                                                                                                               | Dépend de                              | État         |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ------------ |
 | P0  | Cadrage : spec, modèle de données, ADR-007, ce plan. Liste des pièces à obtenir de la banque pilote (spec §2).                                                                                                                                                                                                                        | D1–D8                                  | fait         |
-| P1  | Créanciers et mandats (spec §5, contrat data-model.md).                                                                                                                                                                                                                                                                               | P0                                     | en cours     |
-| P2  | Remises de loyers : sélection des échéances dues (reste dû de l'échéance du mois, plafonné, D6), brouillon `PRL-AAAA-NNNN`, validation humaine, fichier par adaptateur (`GENERIC_CSV`), prénotification à J − 5 ouvrés (D7). Ajout de `DIRECT_DEBIT` à `RentalPaymentMethod`. Unicité (mandat, échéance) sur les lignes non annulées. | P1                                     | à faire      |
+| P1  | Créanciers et mandats (spec §5, contrat data-model.md).                                                                                                                                                                                                                                                                               | P0                                     | fait         |
+| P2  | Remises de loyers : sélection des échéances dues (reste dû de l'échéance du mois, plafonné, D6), brouillon `PRL-AAAA-NNNN`, validation humaine, fichier par adaptateur (`GENERIC_CSV`), prénotification à J − 5 ouvrés (D7). Ajout de `DIRECT_DEBIT` à `RentalPaymentMethod`. Unicité (mandat, échéance) sur les lignes non annulées. | P1                                     | fait         |
 | P3  | Retour banque : constat manuel par ligne ou par remise, import du relevé ou du fichier de rejets ; règlement → `RentalPayment` `DIRECT_DEBIT` `SUCCESS` + ventilation + quittance (D3) ; rejet → `updatePaymentStatusTx`, frais de rejet (D4), compteur et suspension (D5), notifications.                                            | P2                                     | à faire      |
 | P4  | Copropriété : `scope = SYNDIC_LOT`, créancier = compte du syndicat, encaissement par `ChargePayment` (plus ancien d'abord, avance, quittances S3), garde `SYNDIC`.                                                                                                                                                                    | P3                                     | à faire      |
 | P5  | Portails locataire et copropriétaire (mandat masqué, prochain prélèvement, demande de révocation) ; tâche quotidienne (brouillons, prénotifications) ; tableau de bord des rejets.                                                                                                                                                    | P3 (P4 pour la copropriété)            | à faire      |
@@ -89,3 +89,32 @@ HANDOFF, commits, PR.
 - Les clés d'audit contenant `iban` sont déjà masquées par
   `services/audit-entry-builder.ts`, mais ne jamais compter dessus : ne pas
   mettre l'IBAN dans la charge utile.
+
+## 5. P2 — réalisé (16/10/2026)
+
+Contrat : [data-model.md](data-model.md) §7. Branche
+`feat/prelevement-p2-remises`, empilée sur `fix/prelevement-cle-iban` (clé
+dédiée et versionnée des IBAN, décision du 16/10/2026).
+
+- **API** : `lib/direct-debit/remittances.ts` (service),
+  `remittance-selection.ts` (règles D6, fonctions pures),
+  `business-days.ts` (date limite de prénotification D7),
+  `prenotification.ts` (e-mail `DIRECT_DEBIT_PRENOTIFICATION`),
+  `file-formats/` (adaptateur `GENERIC_CSV`, registre par format),
+  `controllers/direct-debit-remittance-controller.ts`, 10 routes ;
+  migrations `20261017090000_prelevement_moyen_paiement` et
+  `20261017090100_prelevement_remises`.
+- **Écran** : onglets « Mandats » / « Remises » de Location › Prélèvements,
+  `pages/rental/DirectDebitRemittances.tsx` (liste, préparation) et
+  `DirectDebitRemittanceDetail.tsx` (actions par statut, lignes, mandats non
+  retenus).
+- **Choix faits pendant la réalisation** : une échéance ne figure que dans
+  une seule ligne non annulée, quel que soit le mandat ou le créancier (ADR-007
+  §6, plus strict que « (mandat, échéance) ») ; à l'actualisation, un mandat
+  dont une ligne a été retirée de la remise n'y revient pas ; le renvoi des
+  prénotifications est refusé dès le jour du prélèvement ; jours fériés non
+  gérés (lundi à vendredi).
+- **Reste ouvert** : format réel de la banque pilote (nouvel adaptateur, après
+  réception des pièces de la spec §2) ; prénotification par WhatsApp ou SMS et
+  avis d'annulation au débiteur (P5) ; règlements et rejets (P3) ; jours
+  fériés ivoiriens.

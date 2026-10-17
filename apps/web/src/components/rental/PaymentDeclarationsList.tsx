@@ -190,6 +190,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
       BANK_TRANSFER: t('Virement bancaire'),
       CHECK: t('Chèque'),
       MOBILE_MONEY: t('Mobile Money'),
+      DIRECT_DEBIT: t('Prélèvement bancaire'),
       CARD: t('Carte bancaire'),
       OTHER: 'Autre'
     };

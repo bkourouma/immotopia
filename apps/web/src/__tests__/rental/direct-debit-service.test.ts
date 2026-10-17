@@ -14,6 +14,16 @@ vi.mock('../../utils/api-client', () => ({
 
 import {
   activateMandate,
+  cancelRemittance,
+  cancelRemittanceLine,
+  createRemittance,
+  exportRemittance,
+  getRemittance,
+  listRemittances,
+  refreshRemittance,
+  resendPrenotifications,
+  submitRemittance,
+  validateRemittance,
   checkIban,
   createMandate,
   downloadAuthorizationPdf,
@@ -77,5 +87,70 @@ describe('direct-debit-service', () => {
     expect(get).toHaveBeenCalledWith(`${BASE}/mandates/m-1/authorization-pdf`, { responseType: 'blob' });
     expect(result.filename).toBe('MDT-2026-0001.pdf');
     expect(result.blob).toBe(blob);
+  });
+
+  describe('remises (P2)', () => {
+    it('liste les remises en retirant les filtres vides', async () => {
+      await listRemittances('agence-1', { creditorId: 'c-1', status: undefined, page: 2, pageSize: 20 });
+      expect(get).toHaveBeenCalledWith(`${BASE}/remittances`, { params: { creditorId: 'c-1', page: 2, pageSize: 20 } });
+    });
+
+    it('crée, lit et actualise une remise aux routes du contrat', async () => {
+      await createRemittance('agence-1', { creditorId: 'c-1', collectionDate: '2026-11-05', notes: 'N' });
+      expect(post).toHaveBeenCalledWith(`${BASE}/remittances`, {
+        creditorId: 'c-1',
+        collectionDate: '2026-11-05',
+        notes: 'N'
+      });
+
+      await getRemittance('agence-1', 'r-1');
+      expect(get).toHaveBeenCalledWith(`${BASE}/remittances/r-1`);
+
+      await refreshRemittance('agence-1', 'r-1');
+      expect(post).toHaveBeenCalledWith(`${BASE}/remittances/r-1/refresh`);
+    });
+
+    it('valide, renvoie les prénotifications, marque déposée et annule', async () => {
+      await validateRemittance('agence-1', 'r-1');
+      expect(post).toHaveBeenCalledWith(`${BASE}/remittances/r-1/validate`);
+
+      await resendPrenotifications('agence-1', 'r-1');
+      expect(post).toHaveBeenCalledWith(`${BASE}/remittances/r-1/prenotifications`);
+
+      await submitRemittance('agence-1', 'r-1');
+      expect(post).toHaveBeenCalledWith(`${BASE}/remittances/r-1/submit`);
+
+      await cancelRemittance('agence-1', 'r-1', 'Doublon');
+      expect(post).toHaveBeenCalledWith(`${BASE}/remittances/r-1/cancel`, { reason: 'Doublon' });
+    });
+
+    it('retire une ligne avec ou sans motif', async () => {
+      await cancelRemittanceLine('agence-1', 'r-1', 'l-1', 'Parti');
+      expect(post).toHaveBeenLastCalledWith(`${BASE}/remittances/r-1/lines/l-1/cancel`, { reason: 'Parti' });
+
+      await cancelRemittanceLine('agence-1', 'r-1', 'l-1');
+      expect(post).toHaveBeenLastCalledWith(`${BASE}/remittances/r-1/lines/l-1/cancel`, {});
+    });
+
+    it('produit le fichier par POST en blob avec le nom du Content-Disposition', async () => {
+      const blob = new Blob(['csv']);
+      post.mockResolvedValue({
+        data: blob,
+        headers: { 'content-disposition': 'attachment; filename="PRL-2026-0001.csv"' }
+      });
+      const result = await exportRemittance('agence-1', 'r-1', 'fallback.csv');
+      expect(post).toHaveBeenCalledWith(`${BASE}/remittances/r-1/export`, undefined, { responseType: 'blob' });
+      expect(result.filename).toBe('PRL-2026-0001.csv');
+      expect(result.blob).toBe(blob);
+    });
+
+    it("relit le message JSON d'une erreur reçue en blob", async () => {
+      const error = {
+        response: { status: 409, data: new Blob([JSON.stringify({ message: 'Mandat révoqué : MDT-2026-0001' })]) }
+      };
+      post.mockRejectedValue(error);
+      await expect(exportRemittance('agence-1', 'r-1', 'f.csv')).rejects.toBe(error);
+      expect(error.response.data).toEqual({ message: 'Mandat révoqué : MDT-2026-0001' });
+    });
   });
 });

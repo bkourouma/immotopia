@@ -55,7 +55,8 @@ const PAYMENT_TYPE_LABELS: Record<string, string> = {
   BANK_TRANSFER: 'Virement bancaire',
   CASH: 'Espèces',
   CHECK: 'Chèque',
-  CARD: 'Carte bancaire'
+  CARD: 'Carte bancaire',
+  DIRECT_DEBIT: 'Prélèvement bancaire'
 };
 
 interface Fonts {

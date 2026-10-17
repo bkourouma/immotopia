@@ -38,6 +38,7 @@ const getStatusTag = (status: string) => {
 const getMethodLabel = (method: string) => {
   const methodLabels: Record<string, string> = {
     MOBILE_MONEY: t('Mobile Money'),
+    DIRECT_DEBIT: t('Prélèvement bancaire'),
     BANK_TRANSFER: t('Virement bancaire'),
     CASH: t('Espèces'),
     CHECK: t('Chèque'),

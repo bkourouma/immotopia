@@ -12,6 +12,7 @@ import {
   mandateStatusLabel,
   MandateStatusTag
 } from '../../components/rental/direct-debit/direct-debit-shared';
+import { DirectDebitTabs } from '../../components/rental/direct-debit/DirectDebitTabs';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { t } from '../../i18n/t';
 
@@ -89,6 +90,7 @@ export const DirectDebitMandates: React.FC = () => {
   return (
     <>
       <PageHeader title={t('Prélèvements')} subtitle={data ? `${data.total}` : undefined} />
+      <DirectDebitTabs />
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <Space wrap size={[12, 12]}>
           <Input.Search
