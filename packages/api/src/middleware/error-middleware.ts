@@ -270,6 +270,8 @@ export class SubscriptionReadOnlyError extends AppError {
 export type ThirdPartyAction =
   'MANDATE' | 'THIRD_PARTY_OWNER' | 'OWNER_STATEMENT' | 'OWNER_ACCOUNT' | 'OWNER_FEE_TERMS' | 'AGENT_COMMISSION';
 
+// Cles dynamiques : ces messages sont traduits ailleurs par `t(variable)` (docs/architecture/i18n.md).
+// @i18n-keys
 const OWN_ASSETS_ONLY_MESSAGES: Record<ThirdPartyAction, string> = {
   MANDATE: 'Le pack Patrimoine couvre les biens détenus en propre : la création d’un mandat exige le pack Agence.',
   THIRD_PARTY_OWNER:
