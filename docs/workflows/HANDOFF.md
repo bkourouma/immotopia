@@ -79,6 +79,33 @@ Pièges et décisions :
 - `npm run i18n:extract` salit tout l'arbre : traductions de ces lots ajoutées à la main. Tests instables surveillés : `MeetingLiveConsole.test.tsx` (« supprime après confirmation »), `property-ownership.test.tsx`.
 - Classeur des fonctionnalités en conflit à chaque fusion : reporter ligne à ligne les lignes de la branche sur la version de `main` (openpyxl, `difflib` sur les lignes de la table `SousFonctionnalites`), puis `wiki:export` et comparer le miroir.
 
+## Branche `fix/i18n-extracteurs-cles-dynamiques` — 2026-10-17
+
+**État :** prêt à relire (PR vers `main`, lien ajouté par le commit de passation suivant) ; worktree `.claude/worktrees/distracted-greider-b4a494` (jonctions `node_modules` à retirer avec `rmdir`/`Directory.Delete($p, $false)`, jamais `rm -rf`).
+**Dernier commit :** voir `git log` (poussé sur origin).
+
+Fait :
+
+- `npm run i18n:extract` (web `apps/web/scripts/i18n-migrate.mjs`, API `packages/api/scripts/i18n-extract.mjs`) ne supprime PLUS jamais une traduction non vide : une clé non recensée mais traduite reste dans le catalogue (le bilan la compte, `--unreferenced` la liste). Plus aucun `*.orphans.json` sans `--prune` ; `--prune` fusionne par union avec le fichier existant, qui n'est jamais supprimé. Reproduit sur `main` avant correction : 172 entrées par langue perdues côté web (dont 161 = celles de la PR 151), 69 côté API.
+- Clés dynamiques recensées : résolution automatique des constantes de niveau module du même fichier (`t(CAPACITY_LABELS[k] ?? …)`, `throw notFound(MESSAGE)`) et marqueur `// @i18n-keys [noms…]` sur sa propre ligne. Documenté dans `docs/architecture/i18n.md` (section « Clés dynamiques »). Marqueur posé sur `OWN_ASSETS_ONLY_MESSAGES` (`middleware/error-middleware.ts`).
+- Nouvelles options communes : `--check` (sans écriture, exit 1 s'il y a à écrire), `--dry`, `--prune`, `--unreferenced`, `--root=<dossier>` ; option inconnue = exit 2. Scripts `i18n:check` dans les deux paquets. Bibliothèque partagée `scripts/i18n/catalog.mjs`. Les catalogues existants gardent leurs fins de ligne et ne sont plus réécrits quand le contenu est identique.
+- Le web ne réécrit plus `pages/CoOwnerPortal/ChargeCalls.tsx` (`MTN Money` ajouté aux noms propres).
+- Les clés dynamiques jusque-là jamais recensées (donc jamais traduites : 14 côté web, 37 côté API) sont traduites en/ar.
+- Test : `packages/api/__tests__/unit/i18n-extractors.test.ts` lance les deux scripts pour de vrai sur des paquets jetables (perte, clés dynamiques, point fixe, `--check`, `--prune`, CRLF).
+
+Reste à faire :
+
+- Fusionner la PR 151 (restaure et traduit les clés de la PR 132) : c'est elle qui rend `main` point fixe. Vérifié sur l'arbre de la branche de la PR 151 + ces traductions : `--check` → « Catalogues à jour. » dans les deux paquets, aucun orphelin, 0 source réécrite. Sur `main` seul, le premier passage ajoute encore 176 clés web et 41 clés API (paiement mobile, traduites dans la PR 151) et remet en ordre une quinzaine de catalogues (ordre trié non respecté par des ajouts manuels) ; une fois la PR 151 fusionnée, plus rien.
+- `--check` n'est PAS branché dans la CI (les catalogues dérivent d'une PR à l'autre) : à décider, une fois `main` propre.
+- Les traductions « non référencées » conservées (web 171 dont 44 doublons d'une clé référencée dans un autre module ; API 49) sont des restes (textes retouchés, anciennes versions sans accents, clés d'audit disparues) : à examiner avec `--unreferenced`, puis `--prune` si on veut les sortir. Une partie côté API a un littéral présent dans le code sous une forme non reconnue (messages Zod `.min(1, '…')`, `super('…')`, `{ message: '…' }`) : y poser `// @i18n-keys` si on veut qu'elles soient recensées.
+
+Pièges :
+
+- Les mentions « ne pas lancer `i18n:extract` » des sections voisines de ce fichier datent d'avant ce correctif ; elles restent vraies pour le bruit d'ordre et les 176/41 clés ajoutées vides tant que la PR 151 n'est pas fusionnée.
+- Un `// @i18n-keys` suivi d'un mot sur la même ligne lit ce mot comme un nom de propriété ; un commentaire collé en fin de ligne de code n'est pas vu.
+- Le `trim()` de `record()` côté API reste (une clé avec espaces en tête, comme `'  - Discussion : non renseignée.'`, est recensée sans ses espaces alors que `t()` la cherche avec) : écart préexistant, non traité.
+- Ne pas copier `apps/web/src` « sous la main » pour essayer : utiliser `--root=<copie>`.
+
 ## Branche `fix/yousign-sandbox-staging` — 2026-10-16
 
 **État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/146 (base `main`), mise à jour avec `main` le 2026-10-16 (a0b94a2e, PR 149, puis 80d1c6a0, PR 147) : seul `HANDOFF.md` était en conflit chaque fois, toutes les sections sont gardées (worktree `.claude/worktrees/loving-moser-776024`, jonctions `node_modules` retirées hors commit)
