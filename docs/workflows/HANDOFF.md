@@ -47,6 +47,27 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `docs/prospectus-syndic` — 2026-10-17
+
+**État :** prêt à relire (PR ouverte vers `main`).
+**Worktree :** `.claude/worktrees/prospectus-syndic`, jonction `node_modules` vers le checkout principal.
+
+Fait :
+
+- Prospectus recto-verso A4 du Pack Syndic : `docs/commercial/prospectus/syndic.html` (source, publiée en artefact claude.ai) et `syndic.pdf` (rendu Chrome sans en-tête, exactement 2 pages, vérifié en image).
+- `docs/commercial/prospectus/README.md` : règles de contenu (classeur et specs comme sources, badge « Bientôt », tarifs du catalogue) et commande de régénération du PDF.
+
+Reste à faire :
+
+- Fiches des autres packs (Agence, Promoteur, Opérateur intégré, Patrimoine) sur le même gabarit, à la demande de l'utilisateur.
+- À faire valider par l'utilisateur : affichage des prix sur le prospectus, coordonnées commerciales (bloc « Votre conseiller » laissé vierge), mise en avant du Mobile Money alors que le mode réel PaySecureHub n'est pas activé.
+
+Pièges et décisions :
+
+- Le classeur local du checkout principal (branche `feat/signature-s5-s7`) est en retard : lire `origin/main:docs/fonctionnalites/sous-fonctionnalites.md` (163 lignes Syndic au 17/10).
+- Marqués « Bientôt » : clôture d'exercice (spec 027 brouillon), place de marché des prestataires (besoin 10, non spécifié), export complet (S7, non réalisé).
+- Le PDF déborde vite : après toute retouche du texte, régénérer et vérifier le bas de chaque face.
+
 ## Branche `feat/syndic-ag-visio` — 2026-10-16
 
 **État :** fusion dans `main` accordée par l'utilisateur le 2026-10-16 (PR https://github.com/bkourouma/immotopia/pull/144). La branche embarque les PR #145 (enregistrements orphelins) et #148 (discussion modérée), fusionnées dedans par le Pilote pour ne passer qu'une CI ; la fusion de la 144 dans `main` reste conditionnée à une CI verte.
