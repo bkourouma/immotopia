@@ -81,6 +81,8 @@ function buildRouteLabels(): Record<string, string> {
     quittances: t('Quittances'),
     // Lot S4 : onglet des appels automatiques.
     programmation: t('Programmation'),
+    // Lot P4 : prélèvement bancaire des charges de copropriété.
+    prelevements: t('Prélèvements'),
 
     // Gestion locative, lots 2 et 3 : sans ces entrées, le fil d'Ariane
     // affichait « Owner accounts » et « Account », tels que dans l'adresse.
