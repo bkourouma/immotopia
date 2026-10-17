@@ -67,6 +67,14 @@ interface MeetingRecordingsCardProps {
   fileUrl: (recordingId: string, download: boolean) => string;
   busyRecordingId: string | null;
   onDelete: (recording: MeetingRecordingView) => void;
+  /** Télécharge le MP4 par l'API authentifiée et annonce le fichier obtenu ou l'erreur. */
+  onDownload: (recording: MeetingRecordingView) => void;
+  /** Enregistrement en cours d'après la liste ; avec `onStop`, l'arrêt manuel reste possible ici. */
+  activeRecording?: MeetingRecordingView | null;
+  /** AG terminée ou annulée : le bandeau « en cours » n'a plus lieu d'être. */
+  frozen?: boolean;
+  stopBusy?: boolean;
+  onStop?: () => void;
   /** Relance le rapatriement d'un enregistrement en échec. */
   onRetry: (recording: MeetingRecordingView) => void;
   /** Un traitement dure plus de 10 minutes : l'interrogation automatique est arrêtée. */
@@ -79,6 +87,11 @@ export const MeetingRecordingsCard: React.FC<MeetingRecordingsCardProps> = ({
   busyRecordingId,
   onDelete,
   onRetry,
+  onDownload,
+  activeRecording = null,
+  frozen = false,
+  stopBusy = false,
+  onStop,
   processingSlow = false
 }) => {
   const [playing, setPlaying] = useState<MeetingRecordingView | null>(null);
@@ -123,8 +136,9 @@ export const MeetingRecordingsCard: React.FC<MeetingRecordingsCardProps> = ({
                 </Button>
                 <Button
                   size="small"
-                  href={fileUrl(recording.id, true)}
-                  download
+                  loading={busy}
+                  disabled={busyRecordingId !== null}
+                  onClick={() => onDownload(recording)}
                   aria-label={t("Télécharger l'enregistrement du {{date}}", {
                     date: formatDateTime(recording.startedAt)
                   })}
@@ -182,6 +196,22 @@ export const MeetingRecordingsCard: React.FC<MeetingRecordingsCardProps> = ({
 
   return (
     <Card size="small" title={t('Enregistrements')}>
+      {activeRecording && !frozen ? (
+        <Space wrap align="center" style={{ marginBlockEnd: 12 }}>
+          <Tag color="red" icon={<span aria-hidden="true">● </span>}>
+            {t('Enregistrement en cours')}
+          </Tag>
+          <Button
+            danger
+            loading={stopBusy}
+            disabled={Boolean(activeRecording.stoppedAt)}
+            onClick={onStop}
+            aria-label={t("Arrêter l'enregistrement en cours")}
+          >
+            {activeRecording.stoppedAt ? t('Arrêt en cours…') : t("Arrêter l'enregistrement")}
+          </Button>
+        </Space>
+      ) : null}
       {processingSlow ? (
         <Alert
           type="warning"

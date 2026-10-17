@@ -59,7 +59,7 @@ export interface MeetingVisioRoomProps {
   discussion?: VisioDiscussionAdapter;
 }
 
-type EndReason = 'removed' | 'ended' | 'left';
+type EndReason = 'removed' | 'ended' | 'left' | 'duplicate' | 'lost';
 
 type Phase =
   | { kind: 'loading' }
@@ -70,12 +70,18 @@ type Phase =
 function endReasonFor(reason: DisconnectReason | undefined): EndReason {
   if (reason === DisconnectReason.PARTICIPANT_REMOVED) return 'removed';
   if (reason === DisconnectReason.ROOM_DELETED || reason === DisconnectReason.ROOM_CLOSED) return 'ended';
-  return 'left';
+  // Départ voulu (bouton « Quitter la visio ») : le seul cas où l'on dit « vous avez quitté ».
+  if (reason === DisconnectReason.CLIENT_INITIATED) return 'left';
+  if (reason !== undefined && reason === DisconnectReason.DUPLICATE_IDENTITY) return 'duplicate';
+  // Toute autre coupure (réseau, serveur, jeton) n'est pas un départ : on propose de se reconnecter.
+  return 'lost';
 }
 
 function endMessage(reason: EndReason): string {
   if (reason === 'removed') return t('Vous avez été retiré de la visio par le gestionnaire.');
   if (reason === 'ended') return t('La visio est terminée.');
+  if (reason === 'duplicate') return t('Votre connexion à la visio a été ouverte depuis un autre onglet ou appareil.');
+  if (reason === 'lost') return t('La connexion à la visio a été interrompue.');
   return t('Vous avez quitté la visio.');
 }
 
@@ -588,12 +594,12 @@ export const MeetingVisioRoom: React.FC<MeetingVisioRoomProps> = ({
   if (phase.kind === 'ended') {
     return (
       <Alert
-        type={phase.reason === 'removed' ? 'warning' : 'info'}
+        type={phase.reason === 'removed' || phase.reason === 'lost' ? 'warning' : 'info'}
         showIcon
         message={endMessage(phase.reason)}
         action={
           <Button size="small" type="primary" onClick={() => void connect()}>
-            {t('Revenir dans la visio')}
+            {phase.reason === 'lost' || phase.reason === 'duplicate' ? t('Se reconnecter') : t('Revenir dans la visio')}
           </Button>
         }
       />
