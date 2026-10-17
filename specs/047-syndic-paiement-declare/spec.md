@@ -155,7 +155,7 @@ phoneNumber)`.
 - **R4** — Réglages de la copropriété, sur `SyndicPaymentGatewayConfig` ou dans un modèle voisin
   `SyndicDeclaredPaymentSettings` (choix technique laissé au plan) : `declaredPaymentsEnabled`,
   `reviewAlertDays` (défaut 3 jours ouvrés), `proofRequired` (défaut faux), `payerInstructions` (texte, 500
-  caractères), `aiPrefillEnabled` (défaut faux, Q7).
+  caractères), `aiPrefillEnabled` (défaut faux, D9).
 - **R5** — Lecture : `SYNDIC_VIEW`. Écriture : `SYNDIC_EDIT`. Pas de secret, donc pas de
   `TENANT_SETTINGS_EDIT` (différence assumée avec la clé API de la spec 042).
 
