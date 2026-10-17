@@ -9,10 +9,14 @@ import {
   exportRemittance,
   getRemittance,
   refreshRemittance,
+  rejectRemittanceLine,
   RemittanceDto,
   RemittanceLineDto,
   RemittanceStatus,
   resendPrenotifications,
+  settleAllRemittanceLines,
+  SettleAllResult,
+  settleRemittanceLine,
   SkippedMandateDto,
   submitRemittance,
   validateRemittance
@@ -21,9 +25,17 @@ import { PageHeader, formatMoney } from '../../components/primitives';
 import { DirectDebitTabs } from '../../components/rental/direct-debit/DirectDebitTabs';
 import { ReasonModal } from '../../components/rental/direct-debit/ReasonModal';
 import {
+  DraftSkippedMandatesSection,
   PrenotificationSummaryAlert,
+  ReturnSummaryAlert,
   SkippedMandatesAlert
 } from '../../components/rental/direct-debit/RemittanceNotices';
+import {
+  invalidateRentalCollections,
+  RejectLineModal,
+  SettleAllModal,
+  SettleLineModal
+} from '../../components/rental/direct-debit/ReturnConstatModals';
 import {
   apiErrorMessage,
   formatDate,
@@ -31,6 +43,7 @@ import {
   formatPeriod,
   inactiveMandateWarning,
   PrenotificationTag,
+  recipientSourceLabel,
   RemittanceLineStatusTag,
   RemittanceStatusTag
 } from '../../components/rental/direct-debit/direct-debit-shared';
@@ -44,7 +57,8 @@ const { Text } = Typography;
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_MS = 2 * 60 * 1000;
 
-type Action = 'refresh' | 'validate' | 'resend' | 'export' | 'submit' | 'cancel' | 'line';
+type Action =
+  'refresh' | 'validate' | 'resend' | 'export' | 'submit' | 'cancel' | 'line' | 'settle' | 'reject' | 'settleAll';
 
 /** Bouton dont le geste est confirmé par une infobulle de confirmation. */
 const ConfirmButton: React.FC<{
@@ -109,6 +123,10 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [lineToWithdraw, setLineToWithdraw] = useState<RemittanceLineDto | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const [lineToSettle, setLineToSettle] = useState<RemittanceLineDto | null>(null);
+  const [lineToReject, setLineToReject] = useState<RemittanceLineDto | null>(null);
+  const [settleAllOpen, setSettleAllOpen] = useState(false);
+  const [settleAllResult, setSettleAllResult] = useState<SettleAllResult | null>(null);
 
   const pollStartedAt = useRef<number | null>(null);
 
@@ -148,11 +166,11 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
     void queryClient.invalidateQueries({ queryKey: entityKeyPrefix('direct-debit-remittances', tenantId) });
   };
 
-  const run = async (action: Action, work: () => Promise<void>, success: string, fallback: string) => {
+  const run = async (action: Action, work: () => Promise<void>, success: string | (() => string), fallback: string) => {
     setBusy(action);
     try {
       await work();
-      message.success(success);
+      message.success(typeof success === 'function' ? success() : success);
     } catch (err) {
       message.error(apiErrorMessage(err, fallback));
       reload();
@@ -186,6 +204,12 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
   const pendingLines = remittance.lines.filter(line => line.status === 'PENDING');
   const canWithdraw = status === 'DRAFT' || status === 'VALIDATED';
   const canCancel = status === 'DRAFT' || status === 'VALIDATED' || status === 'EXPORTED';
+  // Constats du retour banque : seulement une fois le fichier produit (spec 042 §8.3 et §8.4).
+  const canRecordReturn = status === 'EXPORTED' || status === 'SUBMITTED';
+  const showReturnSummary =
+    canRecordReturn ||
+    remittance.returnState !== 'NOT_APPLICABLE' ||
+    remittance.lines.some(line => line.status === 'SETTLED' || line.status === 'REJECTED');
   const activeLines = remittance.lines.filter(line => line.status === 'PENDING');
   const summary = remittance.prenotificationSummary;
   const anyBusy = busy !== null;
@@ -233,16 +257,76 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
       t('Erreur lors du renvoi des avis de prélèvement')
     );
 
-  const handleExport = (first: boolean) =>
-    run(
+  const handleExport = (first: boolean) => {
+    let savedAs = fallbackFileName;
+    return run(
       'export',
       async () => {
         const { blob, filename } = await exportRemittance(tenantId as string, id, fallbackFileName);
         saveBlob(blob, filename);
+        savedAs = filename;
         void queryClient.invalidateQueries({ queryKey: entityKeyPrefix('direct-debit-remittances', tenantId) });
       },
-      first ? t('Fichier produit') : t('Fichier téléchargé'),
-      t('Erreur lors de la production du fichier')
+      // Le message nomme le fichier : sans lui, le téléchargement passe inaperçu.
+      () => t('Fichier {{name}} téléchargé.', { name: savedAs }),
+      first ? t('Erreur lors de la production du fichier') : t('Erreur lors du téléchargement du fichier')
+    );
+  };
+
+  /** Constat sur une ligne ou sur la remise : même gabarit que le retrait (erreur dans la fenêtre, remise relue). */
+  const runConstat = async (action: Action, work: () => Promise<void>, fallback: string) => {
+    setDialogError(null);
+    setBusy(action);
+    try {
+      await work();
+    } catch (err) {
+      setDialogError(apiErrorMessage(err, fallback));
+      reload();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleSettle = (settledAt: string) => {
+    const line = lineToSettle;
+    if (!line) return;
+    return runConstat(
+      'settle',
+      async () => {
+        apply(await settleRemittanceLine(tenantId as string, id, line.id, { settledAt }));
+        invalidateRentalCollections(queryClient, tenantId);
+        setLineToSettle(null);
+        message.success(t('Règlement constaté'));
+      },
+      t('Erreur lors du constat du règlement')
+    );
+  };
+
+  const handleReject = (input: { rejectedAt: string; code?: string; reason?: string }) => {
+    const line = lineToReject;
+    if (!line) return;
+    return runConstat(
+      'reject',
+      async () => {
+        apply(await rejectRemittanceLine(tenantId as string, id, line.id, input));
+        invalidateRentalCollections(queryClient, tenantId);
+        setLineToReject(null);
+        message.success(t('Rejet constaté'));
+      },
+      t('Erreur lors du constat du rejet')
+    );
+  };
+
+  const handleSettleAll = (settledAt: string) =>
+    runConstat(
+      'settleAll',
+      async () => {
+        const result = await settleAllRemittanceLines(tenantId as string, id, { settledAt });
+        apply(result.remittance);
+        invalidateRentalCollections(queryClient, tenantId);
+        setSettleAllResult(result);
+      },
+      t('Erreur lors du constat des règlements')
     );
 
   const handleSubmit = () =>
@@ -358,6 +442,20 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
         <Space size={4} wrap>
           <PrenotificationTag status={line.prenotificationStatus} />
           {line.prenotifiedAt && <Text type="secondary">{formatDate(line.prenotifiedAt)}</Text>}
+          {line.status !== 'CANCELED' && (
+            <div>
+              {line.prenotificationRecipient ? (
+                <Text type="secondary">
+                  <bdi dir="ltr">{line.prenotificationRecipient.masked}</bdi>
+                  {' ('}
+                  {recipientSourceLabel(line.prenotificationRecipient.source)}
+                  {')'}
+                </Text>
+              ) : (
+                <Text type="secondary">{t('aucune adresse')}</Text>
+              )}
+            </div>
+          )}
         </Space>
       )
     },
@@ -372,16 +470,106 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
               <Text type="secondary">{line.cancellationReason}</Text>
             </div>
           )}
+          {line.status === 'REJECTED' && (line.rejectionCode || line.rejectionReason) && (
+            <div>
+              {line.rejectionCode && (
+                <Text type="secondary">
+                  <bdi dir="ltr">{line.rejectionCode}</bdi>
+                </Text>
+              )}
+              {line.rejectionCode && line.rejectionReason ? ' — ' : ''}
+              {line.rejectionReason && <Text type="secondary">{line.rejectionReason}</Text>}
+            </div>
+          )}
         </div>
       )
     }
   ];
 
-  if (canWithdraw) {
+  if (showReturnSummary) {
+    columns.push(
+      {
+        title: t('Date de valeur ou de rejet'),
+        key: 'returnDate',
+        render: (_value, line) => {
+          if (line.status === 'SETTLED') return formatDay(line.settledAt);
+          if (line.status === 'REJECTED') return formatDay(line.rejectedAt);
+          return '—';
+        }
+      },
+      {
+        title: t('Frais refacturés'),
+        key: 'rejectFee',
+        align: 'end',
+        render: (_value, line) =>
+          line.status === 'REJECTED' && line.rejectFeeAmount && line.rejectFeeAmount > 0
+            ? formatMoney(line.rejectFeeAmount)
+            : '—'
+      },
+      {
+        title: t('Paiement'),
+        key: 'payment',
+        render: (_value, line) =>
+          line.status === 'SETTLED' && line.paymentId ? (
+            <Link to={`/tenant/${tenantId}/rental/payments/${line.paymentId}`}>{t('Voir le paiement')}</Link>
+          ) : (
+            '—'
+          )
+      }
+    );
+  }
+
+  if (canWithdraw || canRecordReturn) {
     columns.push({
       title: t('Actions'),
       key: 'actions',
       render: (_value, line) => {
+        if (canRecordReturn) {
+          if (line.status === 'PENDING') {
+            return (
+              <Space size={4} wrap>
+                <Button
+                  size="small"
+                  type="primary"
+                  disabled={anyBusy}
+                  onClick={() => {
+                    setDialogError(null);
+                    setLineToSettle(line);
+                  }}
+                >
+                  {t('Constater le règlement')}
+                </Button>
+                <Button
+                  size="small"
+                  danger
+                  disabled={anyBusy}
+                  onClick={() => {
+                    setDialogError(null);
+                    setLineToReject(line);
+                  }}
+                >
+                  {t('Constater le rejet')}
+                </Button>
+              </Space>
+            );
+          }
+          if (line.status === 'SETTLED') {
+            return (
+              <Button
+                size="small"
+                danger
+                disabled={anyBusy}
+                onClick={() => {
+                  setDialogError(null);
+                  setLineToReject(line);
+                }}
+              >
+                {t('Constater un rejet tardif')}
+              </Button>
+            );
+          }
+          return null;
+        }
         if (line.status !== 'PENDING') return null;
         const isLast = status === 'VALIDATED' && pendingLines.length <= 1;
         const button = (
@@ -537,6 +725,18 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
               disabled={anyBusy}
             />
           )}
+          {canRecordReturn && (
+            <Button
+              disabled={anyBusy || pendingLines.length === 0}
+              onClick={() => {
+                setDialogError(null);
+                setSettleAllResult(null);
+                setSettleAllOpen(true);
+              }}
+            >
+              {t('Tout constater réglé')}
+            </Button>
+          )}
           {canCancel && (
             <Button
               danger
@@ -552,7 +752,9 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
         </Space>
 
         {showNoticesSummary && <PrenotificationSummaryAlert summary={summary} lineCount={remittance.lineCount} />}
+        {showReturnSummary && <ReturnSummaryAlert summary={remittance.returnSummary} state={remittance.returnState} />}
         <SkippedMandatesAlert skipped={skipped} onClose={() => setSkipped([])} />
+        {status === 'DRAFT' && <DraftSkippedMandatesSection skipped={remittance.skipped} />}
 
         <Descriptions bordered size="small" column={{ xs: 1, md: 2, xl: 3 }}>
           <Descriptions.Item label={t('Référence')}>
@@ -638,6 +840,38 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
         error={dialogError}
         onCancel={() => setCancelOpen(false)}
         onSubmit={reason => void handleCancel(reason)}
+      />
+      <SettleLineModal
+        open={lineToSettle !== null}
+        line={lineToSettle}
+        collectionDate={remittance.collectionDate}
+        loading={busy === 'settle'}
+        error={dialogError}
+        onCancel={() => setLineToSettle(null)}
+        onSubmit={settledAt => void handleSettle(settledAt)}
+      />
+      <RejectLineModal
+        open={lineToReject !== null}
+        line={lineToReject}
+        late={lineToReject?.status === 'SETTLED'}
+        collectionDate={remittance.collectionDate}
+        loading={busy === 'reject'}
+        error={dialogError}
+        onCancel={() => setLineToReject(null)}
+        onSubmit={input => void handleReject(input)}
+      />
+      <SettleAllModal
+        open={settleAllOpen}
+        pendingCount={pendingLines.length}
+        result={settleAllResult}
+        collectionDate={remittance.collectionDate}
+        loading={busy === 'settleAll'}
+        error={dialogError}
+        onCancel={() => {
+          setSettleAllOpen(false);
+          setSettleAllResult(null);
+        }}
+        onSubmit={settledAt => void handleSettleAll(settledAt)}
       />
       <ReasonModal
         open={lineToWithdraw !== null}

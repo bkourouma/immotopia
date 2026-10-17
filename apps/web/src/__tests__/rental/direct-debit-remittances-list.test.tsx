@@ -16,11 +16,13 @@ import { creditor, inactiveCreditor, makeRemittance, TENANT_ID } from './direct-
 const listRemittances = vi.fn();
 const listCreditors = vi.fn();
 const createRemittance = vi.fn();
+const listReturnImports = vi.fn();
 
 vi.mock('../../services/direct-debit-service', () => ({
   listRemittances: (...a: unknown[]) => listRemittances(...a),
   listCreditors: (...a: unknown[]) => listCreditors(...a),
-  createRemittance: (...a: unknown[]) => createRemittance(...a)
+  createRemittance: (...a: unknown[]) => createRemittance(...a),
+  listReturnImports: (...a: unknown[]) => listReturnImports(...a)
 }));
 
 const LocationProbe: React.FC = () => {
@@ -54,6 +56,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 16, 9, 0, 0) });
   listRemittances.mockResolvedValue({ items: [makeRemittance()], total: 1, page: 1, pageSize: 20 });
   listCreditors.mockResolvedValue([creditor, inactiveCreditor]);
+  listReturnImports.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10 });
 });
 
 afterEach(() => {
