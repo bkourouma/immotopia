@@ -57,6 +57,16 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `fix/crm-contact-commune` — 2026-10-17
+
+**État :** prêt à relire (PR vers `main`).
+
+**Fait :** `ContactForm` n'exige plus la commune qu'à la création ; une fiche existante sans commune (recette staging, contact « Awa Gogoua ») s'enregistre. La bascule vers l'onglet du premier champ fautif existait déjà dans `main` (`FIELD_TABS`, `handleFinishFailed`) : le staging n'avait vraisemblablement pas encore cette version. Test `contact-form-commune.test.tsx`. Aucune validation API de la commune (rien à changer côté serveur).
+
+**Reste :** redéployer le staging pour constater la correction ; classeur des fonctionnalités non modifié (aucune ligne ne décrit cette règle).
+
+**Pièges :** `tsc` web signale 7 erreurs préexistantes (livekit absent), sans lien.
+
 ## Branche `fix/syndic-ag-direct-recette` — 2026-10-17
 
 **État :** prêt à relire (PR vers `main`), non déployé.
