@@ -535,7 +535,9 @@ Il contrôle, dans l'ordre :
    - `JWT_SECRET`, `POSTGRES_PASSWORD`, `PAYMENT_SECRETS_KEY` **et
      `DIRECT_DEBIT_IBAN_KEY`** différents de ceux du staging, et aucune clé du
      trousseau IBAN de la production (courante ou ancienne) présente dans celui du
-     staging (comparaison d'empreintes, rien n'est affiché).
+     staging (comparaison d'empreintes, rien n'est affiché) ;
+   - `YOUSIGN_ALLOW_SANDBOX` valant `1` (base sandbox de Yousign, signatures sans
+     valeur : réservée au staging), même écriture tolérante.
 
    Il **avertit**, sans bloquer, si une clé d'intégration (e-mail, SMTP, Twilio,
    WaSender, Google, Anthropic, OpenRouter, PaySecureHub) est identique à celle du
@@ -1455,7 +1457,10 @@ jamais en `pg1`.
 - **Sans clé**, l'API démarre mais refuse de créer un mandat ; les mandats
   existants au format `pg1` restent lisibles. L'API **refuse de démarrer** si la
   clé est identique à `PAYMENT_SECRETS_KEY` ou si une entrée de
-  `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` n'est pas une clé de 32 octets en base64.
+  `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` n'est pas une clé de 32 octets en base64
+  canonique (44 caractères, terminée par `=`) ou est manifestement faible
+  (moins de 16 octets distincts). `deploy.sh` applique la même forme et refuse
+  avant de remplacer le conteneur.
 - **Contrôles de `deploy.sh`** : doublons de ligne, valeur `REMPLACER`, égalité
   avec `PAYMENT_SECRETS_KEY` (échec) ; en production, unicité face au staging,
   trousseau compris (échec) ; clé absente en production (avertissement). Rien
@@ -1475,13 +1480,28 @@ jamais en `pg1`.
 4. Rechiffrer : `docker exec <conteneur-api> node dist/scripts/reencrypt-direct-debit-ibans.js --dry-run`,
    puis la même commande sans `--dry-run`. Le script n'affiche que des compteurs,
    l'identifiant de la clé courante et les identifiants des mandats illisibles
-   (code de sortie 0 : tout est lisible ; 2 : il reste des illisibles ; 1 :
-   erreur d'usage ou de configuration). Il est idempotent : relancé, il annonce
-   0 mandat rechiffré. « Modifiés entre-temps » demande de le relancer.
+   (code de sortie 0 : **toutes** les valeurs ont été déchiffrées, y compris
+   celles déjà sur la clé courante, et aucune n'a changé entre-temps ; 2 : il
+   reste des illisibles, code prioritaire ; 3 : des mandats ont changé entre la
+   lecture et l'écriture, relancer ; 1 : erreur d'usage ou de configuration). Il
+   est idempotent : relancé, il annonce 0 mandat rechiffré, et préserve la date
+   de dernière modification des mandats.
 5. N'**ôter l'ancienne clé** de `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` (et recréer
    l'API) qu'après un passage à 0 à rechiffrer, 0 illisible, **et** une
    sauvegarde de la base vérifiée faite après le rechiffrement : une sauvegarde
    antérieure contient encore des valeurs chiffrées avec l'ancienne clé.
+
+Points d'attention de la rotation :
+
+- **Pas de retour arrière après rechiffrement.** Une version de l'API
+  antérieure à ce changement ne sait pas lire le format `ddk1` : une fois des
+  valeurs rechiffrées, revenir à cette version rend les IBAN illisibles. Le
+  retour arrière passe par un correctif en avant, pas par l'ancienne image.
+- **Conserver l'ancienne clé** dans le gestionnaire de mots de passe jusqu'à
+  l'expiration des sauvegardes (14 jours), avec l'identifiant de clé affiché par
+  le script : c'est la seule façon de relire une sauvegarde antérieure.
+- **Rotation après une fuite** : purger aussi du serveur les copies du fichier
+  de secrets (`*.env.bak-*`), qui contiennent l'ancienne clé en clair.
 
 > **Staging — commandes à lancer par l'utilisateur** (aucun agent ne touche au
 > fichier de secrets). Ordre : la clé peut être ajoutée **avant** la fusion de la
@@ -1491,9 +1511,34 @@ jamais en `pg1`.
 > ```bash
 > F=/home/deployer/immotopia-saas.env
 >
-> # 1. Ajout idempotent de la clé, sans l'afficher (rien si elle existe déjà).
-> grep -q '^DIRECT_DEBIT_IBAN_KEY=' "$F" || printf '\nDIRECT_DEBIT_IBAN_KEY=%s\n' "$(openssl rand -base64 32)" >> "$F"
-> grep -q '^DIRECT_DEBIT_IBAN_PREVIOUS_KEYS=' "$F" || printf 'DIRECT_DEBIT_IBAN_PREVIOUS_KEYS=\n' >> "$F"
+> # 1. Ajout idempotent de la clé, sans jamais l'afficher. Le bloc est dans un
+> #    sous-shell ( … ) : aucun `exit`, la session SSH reste ouverte, et le
+> #    `umask 077` ne la déborde pas. Une valeur de 44 caractères déjà présente
+> #    est laissée telle quelle ; une ligne vide, « REMPLACER » ou entre
+> #    guillemets est à corriger À LA MAIN (jamais de doublon : Compose retient
+> #    la dernière occurrence).
+> (
+>   umask 077
+>   F=/home/deployer/immotopia-saas.env
+>   if [ ! -f "$F" ]; then
+>     echo "fichier absent"
+>   else
+>     if grep -Eq '^DIRECT_DEBIT_IBAN_KEY=.{44}$' "$F"; then
+>       echo "DIRECT_DEBIT_IBAN_KEY déjà renseignée : inchangée"
+>     elif grep -q '^DIRECT_DEBIT_IBAN_KEY=' "$F"; then
+>       echo "ligne DIRECT_DEBIT_IBAN_KEY présente mais vide ou non conforme : à corriger à la main"
+>     else
+>       K="$(openssl rand -base64 32)"
+>       if [ "${#K}" -eq 44 ]; then
+>         printf '\nDIRECT_DEBIT_IBAN_KEY=%s\n' "$K" >> "$F"
+>       else
+>         echo "génération de la clé échouée : rien n'est écrit"
+>       fi
+>       unset K
+>     fi
+>     grep -q '^DIRECT_DEBIT_IBAN_PREVIOUS_KEYS=' "$F" || printf '\nDIRECT_DEBIT_IBAN_PREVIOUS_KEYS=\n' >> "$F"
+>   fi
+> )
 >
 > # 2. Mode 600 attendu (affiche « 600 »).
 > stat -c '%a' "$F"
@@ -1634,6 +1679,79 @@ chantier, leurs inscriptions et le bloc d'option du Promoteur.
 journal ; celui d'un expéditeur inconnu n'est gardé qu'en empreinte HMAC. Les
 photos sont des fichiers privés (`uploads/stock-whatsapp/<agence>/…`), jamais
 servis en statique, et partent avec l'export d'agence.
+
+### Lot 044 — Signature électronique : Yousign sandbox sur le staging
+
+Spec `specs/044-signature-electronique/`, détail de l'adaptateur dans
+[signature-prestataire.md](../integrations/signature-prestataire.md). Le staging
+tourne en `NODE_ENV=production` comme la production : sans réglage, `env.ts` refuse
+au démarrage `SIGNATURE_PROVIDER=yousign` avec une base « sandbox » (le refus est
+voulu pour la production), et la base de production Yousign y produirait de vraies
+signatures facturées. Le drapeau `YOUSIGN_ALLOW_SANDBOX=1` lève ce seul refus, sur le
+staging seulement.
+
+| Variable                 | Staging                                           | Production                                                              |
+| ------------------------ | ------------------------------------------------- | ----------------------------------------------------------------------- |
+| `SIGNATURE_PROVIDER`     | `yousign` pour essayer Yousign ; sinon `internal` | `yousign` (ou `internal`) selon le choix produit; `disabled` par défaut |
+| `YOUSIGN_API_BASE_URL`   | `https://api-sandbox.yousign.app/v3` (défaut)     | `https://api.yousign.app/v3`                                            |
+| `YOUSIGN_ALLOW_SANDBOX`  | `1`                                               | absent (`0`) : `deploy.sh prod` refuse `1`                              |
+| `YOUSIGN_API_KEY`        | clé de la **sandbox** Yousign                     | clé de production, distincte                                            |
+| `YOUSIGN_WEBHOOK_SECRET` | secret du webhook sandbox (32 caractères)         | secret du webhook de production, distinct                               |
+
+**État du staging réel (relevé du 2026-10-16, soir).** Relevé par l'utilisateur sur le
+serveur, non revérifié depuis le dépôt. Le fichier `/home/deployer/immotopia-saas.env`
+est antérieur à `make-env.sh` : il ne portait ni `SIGNATURE_PROVIDER`, ni
+`PAYMENT_GATEWAY_SIMULATOR`, ni configuration e-mail, alors que le tableau « Vue
+d'ensemble » les donne pour acquis (il décrit la cible que `make-env.sh staging`
+écrit, pas l'état d'un fichier plus ancien). Corrigé le jour même, à la main :
+
+- `SIGNATURE_PROVIDER=internal` : la signature interne est active, **Yousign ne l'est
+  pas encore** (ce lot : passer à `yousign` avec les lignes ci-dessous) ;
+- `PAYMENT_GATEWAY_SIMULATOR=1` : le simulateur de paiement est disponible ;
+- e-mail : boîte dédiée au staging, configurée par `set-email-smtp.sh` (port 465) ;
+  `deploy.sh staging --no-build` passé, test `verify()` de nodemailer : « SMTP OK » ;
+- `SMS_PROVIDER` reste **absent** (donc `disabled`) : pas de canal SMS sur le staging.
+
+Piège à retenir : un fichier de secrets plus ancien que `make-env.sh` ne reçoit
+jamais les réglages que le script écrit aujourd'hui pour un fichier neuf. Pour un
+fichier existant, comparer ses clés à celles du gabarit (`grep -E '^(...)='`, voir
+« Différences de configuration, staging et production »), sans afficher les secrets.
+
+**Brancher la sandbox**, dans `/home/deployer/immotopia-saas.env` (édité à la main
+sur le serveur, en **modifiant les lignes existantes**, sans les doubler) :
+
+```bash
+SIGNATURE_PROVIDER=yousign
+YOUSIGN_API_KEY=…            # clé API de la sandbox, jamais celle de la production
+YOUSIGN_WEBHOOK_SECRET=…     # 32 caractères, le même que celui déclaré chez Yousign
+YOUSIGN_API_BASE_URL=https://api-sandbox.yousign.app/v3
+YOUSIGN_ALLOW_SANDBOX=1
+```
+
+Puis [modifier une variable](#modifier-une-variable-denvironnement) :
+`./infra/scripts/deploy.sh staging --no-build`. Le journal de l'API doit porter
+l'avertissement « les signatures n'ont aucune valeur ». Webhook à déclarer chez
+Yousign, dans la sandbox : `https://app.immotopia.cloud/api/public/signature-provider/yousign`
+(événements et secret : [signature-prestataire.md](../integrations/signature-prestataire.md#créer-le-webhook-chez-yousign)).
+
+**`SIGNATURE_PROVIDER` est unique.** Un seul fournisseur sert tout le serveur :
+
+- avec `yousign`, **le canal SMS est refusé** (ainsi que WhatsApp et « sur place ») :
+  Yousign n'invite que par e-mail ;
+- tester le SMS (Orange CI) exige `SIGNATURE_PROVIDER=internal` (ou `log`) et
+  `SMS_PROVIDER=orange` avec un compte Orange CI **dédié au staging** ;
+- **`SMS_PROVIDER=log` est refusé sur le staging** : `NODE_ENV=production` et le
+  transport `log` n'est accepté que si `NODE_ENV` vaut `development` ou `test`. Le
+  staging n'a donc pas de SMS « à blanc » : `orange` ou `disabled`.
+
+Passer d'un essai à l'autre revient à modifier le fichier de secrets et à
+redéployer avec `--no-build`.
+
+**Refus de `deploy.sh prod`.** Le script refuse la production si le fichier de
+secrets porte `YOUSIGN_ALLOW_SANDBOX=1`, quelle que soit l'écriture (`export`,
+guillemets, espaces), comme `PAYMENT_GATEWAY_SIMULATOR`. Sans le drapeau, `env.ts`
+refuse de toute façon une base « sandbox » en production : deux barrières
+indépendantes. Ne pas copier le fichier de secrets du staging vers la production.
 
 ## Sauvegarde et restauration
 
@@ -1825,6 +1943,7 @@ neuf, puis reprendre les étapes 2 à 8 ci-dessus.
 | `PAYMENT_GATEWAY_SIMULATOR`                                                         | `1`                                                           | absent, `deploy.sh prod` refuse `1`                                 |
 | `PLATFORM_PAYSECUREHUB_MODE`                                                        | `SIMULATOR`                                                   | `SIMULATOR` à la création, puis `LIVE` (avertissement tant que non) |
 | E-mail, WhatsApp, Google OAuth                                                      | vides ou bac à sable, client OAuth propre                     | identifiants réels dédiés, client OAuth propre                      |
+| Signature (`SIGNATURE_PROVIDER`, `YOUSIGN_ALLOW_SANDBOX`)                           | Yousign sandbox : `YOUSIGN_ALLOW_SANDBOX=1`                   | base de production, `deploy.sh prod` refuse le drapeau              |
 | Clés d'intégration (contrôle de `deploy.sh`)                                        | avertissement si l'une est renseignée                         | avertissement si l'une est identique à celle du staging             |
 | Assistant IA (`AI_PROVIDER`)                                                        | `disabled`, ou clé propre au staging                          | selon le choix produit ; `fake` refusé sur les deux                 |
 | `TENANT_GUARD_MODE`, `SUBSCRIPTION_ENFORCEMENT`                                     | `warn` à la création ; on bascule ici d'abord                 | `warn` à la création ; `enforce` seulement après le staging         |
@@ -1839,7 +1958,7 @@ Comment vérifier, en lecture seule, depuis le serveur :
 
 ```bash
 # Réglages non secrets des deux fichiers (aucun secret dans cette liste).
-grep -E '^(NODE_ENV|FRONTEND_URL|BACKEND_URL|CLIENT_URL|PUBLIC_ORIGIN|PAYMENT_GATEWAY_SIMULATOR|PLATFORM_PAYSECUREHUB_MODE|AI_PROVIDER|TENANT_GUARD_MODE|SUBSCRIPTION_ENFORCEMENT)=' \
+grep -E '^(NODE_ENV|FRONTEND_URL|BACKEND_URL|CLIENT_URL|PUBLIC_ORIGIN|PAYMENT_GATEWAY_SIMULATOR|PLATFORM_PAYSECUREHUB_MODE|AI_PROVIDER|SIGNATURE_PROVIDER|YOUSIGN_API_BASE_URL|YOUSIGN_ALLOW_SANDBOX|SMS_PROVIDER|TENANT_GUARD_MODE|SUBSCRIPTION_ENFORCEMENT)=' \
   /home/deployer/immotopia-saas.env /home/deployer/immotopia-prod.env
 
 # PAYMENT_SECRETS_KEY et DIRECT_DEBIT_IBAN_KEY distinctes : empreintes différentes (pas les clés).
@@ -2062,6 +2181,12 @@ conservation et l'accès (rotation courte, lecture réservée à root).
 
 Non résolus à la date de rédaction :
 
+- **Staging : Yousign sandbox et SMS pas encore branchés (relevé du 2026-10-16).** Le
+  fichier de secrets du staging, antérieur à `make-env.sh`, a été mis à niveau à la
+  main le jour même (`SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`,
+  e-mail). Restent : Yousign sandbox (cette PR, puis
+  [Lot 044](#lot-044--signature-électronique--yousign-sandbox-sur-le-staging)) et
+  `SMS_PROVIDER`, absent donc `disabled`.
 - **Déploiement continu non éprouvé.** Aucun essai réel du workflow
   `deploy.yml` ni de `ci-deploy.sh` (clés, `known_hosts`, environnements GitHub,
   détachement de la session, filtre de sortie, étiquettes d'images). Le premier

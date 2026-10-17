@@ -1,11 +1,17 @@
 import apiClient from '../utils/api-client';
 import { filenameFromDisposition } from '../utils/save-blob';
+import { API_URL } from '../config/api';
 import type {
   LiveMeetingAdminView,
+  ManagerDiscussionMessageView,
+  ManagerDiscussionView,
   MeetingParticipantView,
+  MeetingRecordingView,
+  MeetingVisioAdminView,
   ParticipantLink,
   SetBulkAttendanceRequest,
-  SetLotAttendanceRequest
+  SetLotAttendanceRequest,
+  VisioJoinInfo
 } from '../types/syndic-live-types';
 import {
   CreateAgendaItemRequest,
@@ -1387,4 +1393,211 @@ export async function revokeParticipantLinks(
     `${liveBase(tenantId, syndicId, meetingId)}/participants/${contactId}/liens`
   );
   return response.data.data;
+}
+
+/* ---------------------------------------------------------------- visio de l'AG (spec 045) */
+
+/** Participants en visio (mains levées, droit de parole) ; `enabled: false` si la visio n'est pas configurée. */
+export async function getMeetingVisio(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingVisioAdminView> {
+  const response = await apiClient.get<{ success: boolean; data: MeetingVisioAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio`
+  );
+  return response.data.data;
+}
+
+/** Jeton de connexion du gestionnaire (modérateur) à la salle. */
+export async function issueMeetingVisioToken(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<VisioJoinInfo> {
+  const response = await apiClient.post<{ success: boolean; data: VisioJoinInfo }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/jeton`
+  );
+  return response.data.data;
+}
+
+/** Donne ou retire la parole (micro et caméra) à un copropriétaire présent en visio. */
+export async function setVisioParticipantSpeaking(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  participantId: string,
+  allowed: boolean
+): Promise<MeetingVisioAdminView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingVisioAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/parole`,
+    { allowed }
+  );
+  return response.data.data;
+}
+
+/** Exclut un participant de la salle, avec option de révoquer ses liens personnels. */
+export async function removeVisioParticipant(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  participantId: string,
+  revokeLinks: boolean
+): Promise<MeetingVisioAdminView & { revokedLinks: number }> {
+  const response = await apiClient.post<{
+    success: boolean;
+    data: MeetingVisioAdminView & { revokedLinks: number };
+  }>(`${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/exclure`, { revokeLinks });
+  return response.data.data;
+}
+
+/* ---------------------------------------------------------------- discussion de la visio (spec 046) */
+
+/** Toute la discussion (masqués compris), lisible à tout moment pour une AG de l'agence. */
+export async function getMeetingDiscussion(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<ManagerDiscussionView> {
+  const response = await apiClient.get<{ success: boolean; data: ManagerDiscussionView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion`
+  );
+  return response.data.data;
+}
+
+/** Message du gestionnaire (annonce, réponse) : diffusé à la salle par le serveur. */
+export async function postMeetingDiscussionMessage(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  body: string
+): Promise<ManagerDiscussionMessageView> {
+  const response = await apiClient.post<{ success: boolean; data: ManagerDiscussionMessageView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion/messages`,
+    { body }
+  );
+  return response.data.data;
+}
+
+/** Masque ou rétablit un message (idempotent). */
+export async function setMeetingDiscussionMessageHidden(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  messageId: string,
+  hidden: boolean
+): Promise<ManagerDiscussionMessageView> {
+  const response = await apiClient.post<{ success: boolean; data: ManagerDiscussionMessageView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion/messages/${messageId}/masquer`,
+    { hidden }
+  );
+  return response.data.data;
+}
+
+/** Ferme ou rouvre la discussion pour les copropriétaires (idempotent). */
+export async function setMeetingDiscussionOpen(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  open: boolean
+): Promise<{ open: boolean }> {
+  const response = await apiClient.post<{ success: boolean; data: { open: boolean } }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion/etat`,
+    { open }
+  );
+  return response.data.data;
+}
+
+/** Coupe ou rétablit l'écriture d'un participant dans la discussion (idempotent). */
+export async function setVisioParticipantWriting(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  participantId: string,
+  allowed: boolean
+): Promise<{ participantId: string; muted: boolean }> {
+  const response = await apiClient.post<{ success: boolean; data: { participantId: string; muted: boolean } }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/ecriture`,
+    { allowed }
+  );
+  return response.data.data;
+}
+
+/* ---------------------------------------------------------------- enregistrement (spec 045, R1-R10) */
+
+/** Démarre l'enregistrement de la séance (un seul actif par AG). */
+export async function startMeetingRecording(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingRecordingView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingRecordingView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/enregistrement/demarrer`
+  );
+  return response.data.data;
+}
+
+/** Arrête l'enregistrement en cours ; le fichier est ensuite traité côté serveur. */
+export async function stopMeetingRecording(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingRecordingView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingRecordingView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/enregistrement/arreter`
+  );
+  return response.data.data;
+}
+
+/** Enregistrements de l'AG, le plus récent d'abord. */
+export async function getMeetingRecordings(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingRecordingView[]> {
+  const response = await apiClient.get<{ success: boolean; data: MeetingRecordingView[] }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements`
+  );
+  return response.data.data;
+}
+
+/** Efface le fichier ; la ligne reste en `DELETED` (trace). */
+export async function deleteMeetingRecording(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  recordingId: string
+): Promise<MeetingRecordingView> {
+  const response = await apiClient.delete<{ success: boolean; data: MeetingRecordingView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements/${recordingId}`
+  );
+  return response.data.data;
+}
+
+/** Relance le rapatriement d'un enregistrement en échec (409 si ce n'est pas possible). */
+export async function retryMeetingRecording(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  recordingId: string
+): Promise<MeetingRecordingView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingRecordingView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements/${recordingId}/reessayer`
+  );
+  return response.data.data;
+}
+
+/**
+ * URL du flux vidéo (lecteur) ou du téléchargement. La route est authentifiée par
+ * le cookie de session : jamais de jeton dans l'adresse, jamais de chemin disque.
+ */
+export function meetingRecordingFileUrl(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  recordingId: string,
+  download = false
+): string {
+  const base = `${API_URL}${liveBase(tenantId, syndicId, meetingId)}/enregistrements/${recordingId}/fichier`;
+  return download ? `${base}?telecharger=1` : base;
 }

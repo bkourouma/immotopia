@@ -1,8 +1,9 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
-import { env, parseKeyList } from '../../config/env';
+import { env, isStrictIbanKey, parseKeyList } from '../../config/env';
 import { t } from '../../i18n';
 import { BadRequestError } from '../../middleware/error-middleware';
-import { decryptSecret } from '../payment-gateway/crypto';
+import { logger } from '../../utils/logger';
+import { decryptSecret, isEncryptionAvailable as isPaymentKeyAvailable } from '../payment-gateway/crypto';
 
 /**
  * Chiffrement des IBAN des mandats de prélèvement (spec 042, PB2-R4).
@@ -29,6 +30,7 @@ const ALGORITHM = 'aes-256-gcm';
 const FORMAT_PREFIX = 'ddk1';
 const LEGACY_PREFIX = 'pg1';
 const IV_LENGTH = 12;
+const TAG_LENGTH = 16;
 const KEY_ID_SEED = 'immotopia:direct-debit-iban:key-id:';
 
 export type IbanCiphertextKind = 'CURRENT' | 'PREVIOUS_KEY' | 'LEGACY_PAYMENT_KEY' | 'UNKNOWN_KEY' | 'INVALID';
@@ -44,10 +46,9 @@ function keyIdOf(key: Buffer): string {
     .slice(0, 16);
 }
 
+/** Une clé non conforme (forme, taille, faiblesse) vaut absente : voir `isStrictIbanKey`. */
 function parseKey(value: string | undefined): Buffer | null {
-  if (!value) return null;
-  const key = Buffer.from(value.trim(), 'base64');
-  return key.length === 32 ? key : null;
+  return isStrictIbanKey(value) ? Buffer.from(value, 'base64') : null;
 }
 
 function currentKey(): { key: Buffer; keyId: string } | null {
@@ -82,7 +83,7 @@ export function encryptIban(plain: string): string {
   const current = currentKey();
   if (!current) throw encryptionUnavailable();
   const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv(ALGORITHM, current.key, iv);
+  const cipher = createCipheriv(ALGORITHM, current.key, iv, { authTagLength: TAG_LENGTH });
   cipher.setAAD(Buffer.from(`${FORMAT_PREFIX}:${current.keyId}`, 'utf8'));
   const ciphertext = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
   return [
@@ -94,25 +95,47 @@ export function encryptIban(plain: string): string {
   ].join(':');
 }
 
+/** Cause d'un échec de déchiffrement : un code fixe, jamais une valeur. */
+type IbanDecryptCause = 'FORMAT' | 'KEY_UNKNOWN' | 'LEGACY_KEY_MISSING' | 'AUTH_FAILED';
+
+class IbanDecryptFailure extends Error {
+  constructor(readonly cause: IbanDecryptCause) {
+    super(cause);
+  }
+}
+
 /**
  * Déchiffre un IBAN (clé courante, ancienne clé, ou ancien format `pg1`).
  * Toute défaillance — clé inconnue, altération, format inconnu, clé héritée
- * absente — lève la même erreur, sans détail technique.
+ * absente — lève la même erreur, sans détail technique. Seul un code de cause
+ * (FORMAT, KEY_UNKNOWN, LEGACY_KEY_MISSING, AUTH_FAILED) est journalisé.
  */
 export function decryptIban(encrypted: string): string {
+  let cause: IbanDecryptCause = 'AUTH_FAILED';
   try {
-    const parts = encrypted.split(':');
-    if (parts[0] === LEGACY_PREFIX) return decryptSecret(encrypted);
-    if (parts.length !== 5 || parts[0] !== FORMAT_PREFIX) throw new Error('format');
+    const parts = typeof encrypted === 'string' ? encrypted.split(':') : [];
+    if (parts[0] === LEGACY_PREFIX) {
+      cause = 'LEGACY_KEY_MISSING';
+      if (!isPaymentKeyAvailable()) throw new IbanDecryptFailure(cause);
+      cause = 'AUTH_FAILED';
+      return decryptSecret(encrypted);
+    }
+    if (parts.length !== 5 || parts[0] !== FORMAT_PREFIX) throw new IbanDecryptFailure('FORMAT');
     const [, keyId, ivB64, tagB64, ctB64] = parts;
     const key = keyring().get(keyId);
-    if (!key) throw new Error('key');
-    const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(ivB64, 'base64'));
+    if (!key) throw new IbanDecryptFailure('KEY_UNKNOWN');
+    const iv = Buffer.from(ivB64, 'base64');
+    const tag = Buffer.from(tagB64, 'base64');
+    if (iv.length !== IV_LENGTH || tag.length !== TAG_LENGTH) throw new IbanDecryptFailure('FORMAT');
+    const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: TAG_LENGTH });
     decipher.setAAD(Buffer.from(`${FORMAT_PREFIX}:${keyId}`, 'utf8'));
-    decipher.setAuthTag(Buffer.from(tagB64, 'base64'));
+    decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(Buffer.from(ctB64, 'base64')), decipher.final()]).toString('utf8');
-  } catch {
-    // Les messages de `crypto` ne doivent jamais atteindre un client.
+  } catch (error) {
+    // Les messages de `crypto` ne doivent jamais atteindre un client, ni le
+    // journal : seul le code de cause y figure.
+    const code = error instanceof IbanDecryptFailure ? error.cause : cause;
+    logger.warn('Déchiffrement d’un IBAN de mandat impossible', { cause: code });
     throw unreadable();
   }
 }

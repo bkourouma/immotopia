@@ -241,7 +241,8 @@ sauvegarder hors serveur, sa perte les rend illisibles) et `DIRECT_DEBIT_IBAN_KE
 `deploy.sh prod` refuse un `JWT_SECRET`, un mot de passe Postgres, une
 `PAYMENT_SECRETS_KEY` ou une `DIRECT_DEBIT_IBAN_KEY` identique à celui du staging (comparaison d'empreintes, rien n'est affiché), et refuse de
 déployer si le fichier du staging est illisible (l'unicité ne serait pas
-prouvée). Il refuse aussi `PAYMENT_GATEWAY_SIMULATOR=1`, **quelle que soit son
+prouvée). Il refuse aussi `PAYMENT_GATEWAY_SIMULATOR=1` et `YOUSIGN_ALLOW_SANDBOX=1`
+(base sandbox de Yousign, réservée au staging), **quelle que soit leur
 écriture** (`export … = "1"` compris), un fichier où une clé critique est
 définie plusieurs fois (Compose applique la dernière occurrence : les contrôles
 lisent la même, et un doublon ajouté en fin de fichier ne les contourne pas), un
@@ -270,6 +271,12 @@ données associées. Rotation : l'ancienne clé passe dans
 n'est retirée qu'après un passage à 0 et une sauvegarde vérifiée. Les valeurs
 de l'ancien format `pg1` restent lisibles (repli sur `PAYMENT_SECRETS_KEY`).
 Aucun message, journal ou sortie du script ne contient IBAN, chiffré ou clé.
+
+Limite connue : les données associées ne lient le chiffré qu'à l'identifiant de
+clé, pas au mandat. Copier la valeur chiffrée d'une ligne vers une autre suppose
+un accès en écriture à la base, hors du modèle de menace actuel. Si ce risque
+était retenu, un format `ddk2` (données associées incluant l'agence et le mandat)
+serait possible.
 
 **Déployer la production.** `deploy.sh prod` prouve l'état git au lieu de le
 supposer : git utilisable, version identifiable, arbre propre, `origin/main`
@@ -1116,6 +1123,78 @@ réconciliation existante, le surplus restant en avance sur le compte du locatai
 d'un lien `build-away` non utilisé inconnue (point 7 de
 [paysecurehub.md](../integrations/paysecurehub.md)). **Mode `LIVE` non validé** et envoi réel non
 vérifié.
+
+## 12 quater. Visio et enregistrement des AG (LiveKit, spec 045)
+
+**Surface.** Salle LiveKit par AG (`t_<tenantId>__ag_<meetingId>`), jetons délivrés par
+ImmoTopia (`services/livekit-service.ts`) : par lien personnel (`POST /api/public/assemblees/visio`,
+même résolution de jeton et même 404 uniforme que la spec 043, limiteur de 20/min par empreinte
+de jeton) et par la console (`SYNDIC_EDIT`). Enregistrement Egress vers un stockage S3 dédié,
+webhook public signé `POST /api/webhooks/livekit`, fichier MP4 rapatrié dans le stockage privé.
+
+**Droits dans la salle.** Le copropriétaire n'a ni `canPublish`, ni `canPublishData`, ni
+`canUpdateOwnMetadata` : il ne peut ni parler, ni envoyer de données, ni changer de nom ; la
+main levée et la parole passent par l'API (attribut et permission posés côté serveur). Le
+gestionnaire publie micro, caméra et écran mais **n'a pas `roomAdmin`** : toute modération
+(parole, exclusion) passe par une route vérifiée, filtrée par agence et par AG, et auditée. Aucun
+vote ne passe par la vidéo ; le seul message de données est le signal `ag-refresh` envoyé par le
+serveur, que le client n'accepte que sans émetteur participant. Le jeton porte l'identité (id du
+`GMParticipant` ou `gestionnaire-<userId>`) et le nom, jamais une coordonnée ; les noms des
+présents sont visibles des autres participants de la salle, comme en séance.
+
+**Exclusion.** Retire de la salle ; avec « Révoquer aussi ses liens », les liens sont révoqués
+d'abord et le retrait invalide les jetons déjà émis (`revokeTokenTs`). Un identifiant
+`gestionnaire-` dont l'utilisateur n'est plus membre actif de l'agence est retiré à la lecture
+de la console.
+
+**Webhook.** Corps brut (préfixe exclu des parseurs globaux et du plancher de débit global),
+signature LiveKit vérifiée (`WebhookReceiver` : JWT et `sha256` du corps) avant tout traitement,
+401 sans détail sinon ; seul `egress_ended` agit ; idempotent par `event.id` (colonne unique) et
+par la mise à jour conditionnelle sur le statut ; la clé S3 vient de la base, jamais du corps.
+Un webhook manquant est rattrapé par la réconciliation auprès de LiveKit à la lecture de la
+liste des enregistrements.
+
+**Fichiers.** Le MP4 n'est jamais servi par `/uploads` (refusé par `uploadsAccessGuard`) ; la
+lecture (`Range`) et le téléchargement passent par une route `SYNDIC_VIEW` qui résout le chemin
+sous la racine attendue, auditée (`SYNDIC_MEETING_RECORDING_ACCESSED`) ; les réponses ne portent
+ni clé S3, ni identifiant d'egress, ni chemin disque. La suppression (`SYNDIC_EDIT`) efface le
+fichier et l'objet S3 restant ; la ligne reste en `DELETED`. Une suppression en cascade
+(copropriété aujourd'hui ; toute future suppression d'AG ou purge d'agence doit passer par
+`lib/syndics/meeting-recording-cleanup.ts`) prend dans la transaction un verrou non bloquant par AG
+et refuse (409) si un démarrage ou un enregistrement est en cours ou en traitement, y écrit l'audit
+critique `SYNDIC_MEETING_RECORDING_DELETED` (avec la cause), puis, après validation, efface le
+fichier (chemin dérivé des identifiants, jamais de `fileUrl`) et l'objet S3 (clé vérifiée contre
+l'enregistrement) ; un échec d'effacement est journalisé sans chemin ni clé.
+
+**Configuration.** `LIVEKIT_*` : les trois ou aucune, secret de 32 caractères au moins, `wss://`
+hors développement ; `LIVEKIT_RECORDING_S3_*` : tous ou aucun, `https://` hors développement,
+taille maximale rapatriée bornée. Projet LiveKit **dédié** à ImmoTopia.
+
+**Limites connues.** Les jetons LiveKit durent 10 minutes et sont renouvelés par LiveKit tant que
+la connexion vit. Enregistrer une AG relève d'une base juridique et d'une information préalable
+non encore décidées (spec 045, R10) ; aucune purge automatique des enregistrements. Changer de
+langue pendant la visio remonte l'application et déconnecte de la salle. Une suppression qui
+contourne ce code (agence effacée à la main en SQL, `prisma/seed.ts` et `prisma/seeds/syndic-demo-seed.ts` de
+développement, dont son `syndicate.deleteMany`) laisse les MP4 et objets S3 de ses enregistrements.
+
+**Discussion écrite (spec 046).** Personne n'obtient `canPublishData`, ni copropriétaire ni
+gestionnaire : un message part à l'API d'ImmoTopia (`POST /api/public/assemblees/discussion/envoyer`
+par lien personnel, même 404 uniforme, limiteur de 10 envois/min par empreinte de jeton et plafond
+de 120 envois/min par AG ; console en `SYNDIC_EDIT`), est validé (zod, texte brut normalisé, 500
+caractères au plus, contrôles bidirectionnels, invisibles et caractères « tag » retirés, texte sans
+caractère visible refusé), stocké avec
+`tenantId` (`GMChatMessage`), puis diffusé par le serveur (`sendData`, sujet `ag-discussion`). Le
+client ignore tout message de ce sujet qui porte un émetteur participant. L'écriture exige l'AG en
+cours, le participant ayant rejoint et **présent dans la salle**, la discussion ouverte et son
+écriture non coupée. Le texte est **contenu saisi par un tiers** : il n'est jamais rendu en HTML
+ni en Markdown (texte React isolé par `<bdi dir="auto">`, pas de `dangerouslySetInnerHTML`), les
+adresses web ne sont pas cliquables, la fermeture et la coupure sont relues dans la transaction de
+l'écriture, et la route `visio/discussion` est exclue du catalogue de l'assistant IA (injection
+d'instructions, et l'IA n'écrit jamais dans une salle en direct). Un message masqué n'est plus
+servi aux copropriétaires mais reste en base pour le gestionnaire ; masquer, rétablir, couper
+l'écriture, ouvrir ou fermer la discussion sont audités sans le texte. `messageId` ou
+`participantId` d'une autre AG ou d'une autre agence : même 404 qu'un objet inexistant. Les
+messages sont conservés avec l'AG, sans purge automatique (même régime que R10).
 
 ## 13. Points ouverts
 
