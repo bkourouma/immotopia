@@ -5,7 +5,7 @@ import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
 import { logger } from '../../utils/logger';
-import { logAuditEvent } from '../../services/audit-service';
+import { logAuditEvent, recordAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import {
   buildMeetingRoomName,
@@ -327,9 +327,8 @@ export async function deleteRecording(
   actorUserId: string | null
 ): Promise<MeetingRecordingView> {
   const { row, syndicateId: ownSyndicateId } = await loadScopedRecording(tenantId, syndicateId, meetingId, recordingId);
-  if (row.status !== 'AVAILABLE' && row.status !== 'FAILED') {
-    throw new ConflictError(t('Cet enregistrement ne peut pas être supprimé dans son état actuel'));
-  }
+  const notDeletable = () => new ConflictError(t('Cet enregistrement ne peut pas être supprimé dans son état actuel'));
+  if (row.status !== 'AVAILABLE' && row.status !== 'FAILED') throw notDeletable();
 
   const absolutePath = resolveRecordingPath(row, ownSyndicateId);
   if (absolutePath) await unlinkIfPresent(absolutePath);
@@ -340,17 +339,22 @@ export async function deleteRecording(
     });
   }
 
-  await prisma.gMRecording.updateMany({
-    where: { id: row.id, tenantId },
-    data: { status: 'DELETED', deletedAt: new Date(), deletedByUserId: actorUserId, fileUrl: null }
-  });
-  logAuditEvent({
-    actorUserId,
-    tenantId,
-    actionKey: AuditActionKey.SYNDIC_MEETING_RECORDING_DELETED,
-    entityType: 'GMRecording',
-    entityId: row.id,
-    payload: { meetingId: row.meetingId, recordingId: row.id, previousStatus: row.status }
+  // Action critique : la trace s'ecrit DANS la transaction, avec la mutation. Le statut lu fait
+  // partie du `where` : une seule transition, donc un seul audit, meme en cas de double suppression.
+  await prisma.$transaction(async tx => {
+    const updated = await tx.gMRecording.updateMany({
+      where: { id: row.id, tenantId, status: row.status },
+      data: { status: 'DELETED', deletedAt: new Date(), deletedByUserId: actorUserId, fileUrl: null }
+    });
+    if (updated.count === 0) throw notDeletable();
+    await recordAuditEvent(tx, {
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.SYNDIC_MEETING_RECORDING_DELETED,
+      entityType: 'GMRecording',
+      entityId: row.id,
+      payload: { meetingId: row.meetingId, recordingId: row.id, previousStatus: row.status }
+    });
   });
   return viewOf({ ...row, status: 'DELETED', fileUrl: null });
 }
