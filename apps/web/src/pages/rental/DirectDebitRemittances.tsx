@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Alert, App, Select, Space, Table } from 'antd';
+import { Alert, App, Button, Select, Space, Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listCreditors,
@@ -13,6 +13,8 @@ import {
 import { PageHeader, formatMoney } from '../../components/primitives';
 import { DirectDebitTabs } from '../../components/rental/direct-debit/DirectDebitTabs';
 import { PrepareRemittanceModal } from '../../components/rental/direct-debit/PrepareRemittanceModal';
+import { ReturnImportModal } from '../../components/rental/direct-debit/ReturnImportModal';
+import { RETURN_IMPORTS_ENTITY, ReturnImportsHistory } from '../../components/rental/direct-debit/ReturnImportsHistory';
 import {
   apiErrorMessage,
   formatDay,
@@ -39,6 +41,7 @@ export const DirectDebitRemittances: React.FC = () => {
   const [creditorId, setCreditorId] = useState<string | undefined>();
   const [page, setPage] = useState(1);
   const [preparing, setPreparing] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const { data: creditors = [] } = useQuery({
     queryKey: queryKey('direct-debit-creditors', tenantId),
@@ -129,6 +132,9 @@ export const DirectDebitRemittances: React.FC = () => {
             }}
             options={REMITTANCE_STATUSES.map(value => ({ value, label: remittanceStatusLabel(value) }))}
           />
+          <Button icon={<UploadOutlined />} onClick={() => setImporting(true)}>
+            {t('Importer un retour de la banque')}
+          </Button>
         </Space>
         {error && (
           <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement des remises'))} />
@@ -149,7 +155,19 @@ export const DirectDebitRemittances: React.FC = () => {
           }}
           locale={{ emptyText: t('Aucune remise de prélèvement') }}
         />
+        <ReturnImportsHistory tenantId={tenantId as string} />
       </Space>
+      <ReturnImportModal
+        tenantId={tenantId as string}
+        open={importing}
+        onClose={() => setImporting(false)}
+        onApplied={result => {
+          // Les constats changent les remises (statuts, retour) et l'historique.
+          void queryClient.invalidateQueries({ queryKey: entityKeyPrefix('direct-debit-remittances', tenantId) });
+          void queryClient.invalidateQueries({ queryKey: entityKeyPrefix(RETURN_IMPORTS_ENTITY, tenantId) });
+          message.success(t('Fichier {{name}} importé.', { name: result.fileName }));
+        }}
+      />
       <PrepareRemittanceModal
         tenantId={tenantId as string}
         open={preparing}
