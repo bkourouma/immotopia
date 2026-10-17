@@ -5,6 +5,8 @@ import type {
   PrenotificationStatus,
   RemittanceLineStatus,
   RemittanceStatus,
+  ReturnSkipReason,
+  ReturnState,
   SkipReason
 } from '../../../services/direct-debit-service';
 import { t } from '../../../i18n/t';
@@ -113,14 +115,68 @@ export function lineStatusLabel(status: RemittanceLineStatus): string {
       return t('À prélever');
     case 'CANCELED':
       return t('Annulée');
+    case 'SETTLED':
+      return t('Réglée');
+    case 'REJECTED':
+      return t('Rejetée');
     default:
       return status;
   }
 }
 
+const LINE_STATUS_COLOR: Record<RemittanceLineStatus, string> = {
+  PENDING: 'processing',
+  CANCELED: 'error',
+  SETTLED: 'success',
+  REJECTED: 'error'
+};
+
 export const RemittanceLineStatusTag: React.FC<{ status: RemittanceLineStatus }> = ({ status }) => (
-  <Tag color={status === 'CANCELED' ? 'error' : 'processing'}>{lineStatusLabel(status)}</Tag>
+  <Tag color={LINE_STATUS_COLOR[status] ?? 'default'}>{lineStatusLabel(status)}</Tag>
 );
+
+/** Avancement du retour banque d'une remise (spec 042, P3, §8.7). */
+export function returnStateLabel(state: ReturnState): string {
+  switch (state) {
+    case 'AWAITING':
+      return t('Retour de la banque attendu');
+    case 'PARTIAL':
+      return t('Retour partiel');
+    case 'COMPLETE':
+      return t('Retour complet');
+    case 'NOT_APPLICABLE':
+      return t('Sans objet');
+    default:
+      return state;
+  }
+}
+
+/** Raison pour laquelle une ligne d'un fichier de retour n'est pas appliquée (§8.5). */
+export function returnSkipReasonLabel(reason: ReturnSkipReason): string {
+  switch (reason) {
+    case 'UNKNOWN_REFERENCE':
+      return t("Référence inconnue : aucune ligne de remise de l'agence ne porte cette référence");
+    case 'AMOUNT_MISMATCH':
+      return t('Montant différent de celui de la ligne');
+    case 'ALREADY_PROCESSED':
+      return t('Ligne déjà dans cet état');
+    case 'CONFLICT':
+      return t('Ligne déjà rejetée : un règlement ne peut pas la remplacer');
+    case 'LINE_CANCELED':
+      return t('Ligne annulée');
+    case 'REMITTANCE_NOT_SUBMITTED':
+      return t('Remise sans fichier produit');
+    case 'INVALID_DATE':
+      return t('Date hors de la période autorisée');
+    default:
+      return reason;
+  }
+}
+
+/** Provenance de l'adresse de l'avis de prélèvement (spec 042 §8.12). */
+export function recipientSourceLabel(source: 'ACCOUNT' | 'CONTACT'): string {
+  return source === 'ACCOUNT' ? t('compte portail') : t('fiche contact');
+}
 
 export function prenotificationStatusLabel(status: PrenotificationStatus): string {
   switch (status) {

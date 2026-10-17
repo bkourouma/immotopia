@@ -180,12 +180,24 @@ describe('DirectDebitRemittanceDetail', () => {
 
   it('EXPORTÉE : bandeau, nouveau téléchargement, marquage déposée, pas de Retirer', async () => {
     const user = userEvent.setup();
+    // Avis tous envoyés : pas de relecture automatique (le test ne porte pas sur elle, et l'écran
+    // rendu avec ses colonnes de retour est lent à interroger).
+    const sentNotices = {
+      ...emptyPrenotifications,
+      sent: 2,
+      recipients: { account: 2, contact: 0, none: 0 }
+    };
     const exported = makeRemittance({
       status: 'EXPORTED',
       exportCount: 1,
-      firstExportedAt: '2026-10-16T11:00:00.000Z'
+      firstExportedAt: '2026-10-16T11:00:00.000Z',
+      prenotificationSummary: sentNotices
     });
-    const submitted = makeRemittance({ status: 'SUBMITTED', submittedAt: '2026-10-17T08:00:00.000Z' });
+    const submitted = makeRemittance({
+      status: 'SUBMITTED',
+      submittedAt: '2026-10-17T08:00:00.000Z',
+      prenotificationSummary: sentNotices
+    });
     submitRemittance.mockResolvedValue(submitted);
     getRemittance.mockReset();
     getRemittance.mockResolvedValueOnce(exported).mockResolvedValue(submitted);
