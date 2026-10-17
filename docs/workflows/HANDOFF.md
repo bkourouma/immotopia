@@ -75,9 +75,29 @@ Pièges et décisions :
 - `React.StrictMode` montait la salle deux fois : la connexion part un tick après le montage (`StableLiveKitRoom`).
 - Changer de langue pendant la visio remonte l'application (`key={language}`) et coupe la salle : limite documentée, non corrigée.
 - Instance de démo : worktree `.claude/worktrees/demo` détaché sur `95e9b0d9`, migrations appliquées sur `immotopia_demo` jusqu'à `20261016150000`, serveurs arrêtés ; `demo:sync` exige `packages/api/.env.demo` (absent). Données de recette : AG « recette visio » et « recette visio 2 » dans « Horizon Syndic Gestion ».
-- `deleteRecording` écrit encore son audit critique par la file asynchrone (`logAuditEvent`) ; `prisma/seed.ts`, le seed de démo Syndic et une suppression SQL manuelle d'agence laissent les MP4.
+- `deleteRecording` écrit son audit critique dans la transaction depuis la branche `fix/syndic-ag-audit-critique-enregistrement` (section ci-dessous) ; `prisma/seed.ts`, le seed de démo Syndic et une suppression SQL manuelle d'agence laissent les MP4.
 - `npm run i18n:extract` salit tout l'arbre : traductions de ces lots ajoutées à la main. Tests instables surveillés : `MeetingLiveConsole.test.tsx` (« supprime après confirmation »), `property-ownership.test.tsx`.
 - Classeur des fonctionnalités en conflit à chaque fusion : reporter ligne à ligne les lignes de la branche sur la version de `main` (openpyxl, `difflib` sur les lignes de la table `SousFonctionnalites`), puis `wiki:export` et comparer le miroir.
+
+## Branche `fix/syndic-ag-audit-critique-enregistrement` — 2026-10-17
+
+**État :** prêt à relire (PR sur `main` ; les PR 144 et 145 y sont fusionnées). Worktree `.claude/worktrees/bold-wilson-73a664`, avec trois JONCTIONS `node_modules` vers ceux de `suspicious-cartwright-fc4a4c` (seul client Prisma qui connaît `GMRecording`) : les retirer avec `rmdir` AVANT tout `git worktree remove`.
+**Dernier commit :** `fd518c11` fix(syndic): écrire l'audit de suppression d'un enregistrement d'AG dans la transaction (suivi du commit de ce carnet).
+
+Fait :
+
+- `deleteRecording` (`lib/syndics/meeting-recording.ts`) : passage en `DELETED` et `recordAuditEvent(tx, SYNDIC_MEETING_RECORDING_DELETED)` dans un même `prisma.$transaction` ; fichier puis objet S3 toujours effacés d'abord ; 409 inchangé ; le statut lu est dans le `where` (double suppression = 200 + 409, une seule trace).
+- Tests : `syndics.meeting-recording` (client de transaction, suppressions simultanées, échec de l'audit = 500), `audit-critical-transactional` étendu aux deux fichiers d'enregistrement. 4 suites ciblées vertes (87 tests), `tsc --noEmit` de l'API à 0 erreur avant et après.
+
+Reste à faire :
+
+- Relecture et fusion de la PR par l'utilisateur, puis supprimer cette section.
+- Hors périmètre, relevé par un balayage des clés `critical` : `AI_ACTION_EXECUTED` (`lib/ai/actions/execute-capability.ts`, `execute-rental-document.ts`) et `AUDIT_INTEGRITY_FAILED` (`jobs/audit-maintenance-job.ts`) passent encore par `logAuditEvent`, sans transaction métier autour.
+
+Pièges et décisions :
+
+- Si l'audit échoue, la transaction est annulée mais le fichier et l'objet S3 sont déjà effacés : la ligne reste `AVAILABLE`/`FAILED` sans fichier (lecture en 404) et une nouvelle suppression réussit (ENOENT toléré). Choix assumé pour garder l'ordre « fichier d'abord ».
+- La base en mémoire des tests n'a pas de retour arrière : l'annulation sur échec d'audit n'est pas vérifiable en test API.
 
 ## Branche `fix/yousign-sandbox-staging` — 2026-10-16
 

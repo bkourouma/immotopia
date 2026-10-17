@@ -46,10 +46,13 @@ jest.mock('../../src/middleware/property-rbac-middleware', () => ({
   requirePropertyPermission: () => (_req: any, _res: any, next: any) => next()
 }));
 
+// `mockAudit` : file asynchrone (actions non critiques) ; `mockRecordAudit` : trace écrite dans la
+// transaction métier (actions critiques, p. ex. la suppression d'un enregistrement).
 const mockAudit = jest.fn();
+const mockRecordAudit = jest.fn(async (..._args: unknown[]) => undefined);
 jest.mock('../../src/services/audit-service', () => ({
   logAuditEvent: (...args: unknown[]) => mockAudit(...args),
-  recordAuditEvent: jest.fn(),
+  recordAuditEvent: (...args: unknown[]) => mockRecordAudit(...args),
   flushAuditQueue: jest.fn()
 }));
 
@@ -148,6 +151,8 @@ const flush = async () => {
 function resetWorld(meetingStatus = 'IN_PROGRESS') {
   mockPrisma.reset();
   mockAudit.mockClear();
+  mockRecordAudit.mockReset();
+  mockRecordAudit.mockImplementation(async () => undefined);
   for (const fn of [...Object.values(mockLk), ...Object.values(mockStorage)]) {
     if (typeof fn === 'function') (fn as jest.Mock).mockReset();
   }
@@ -299,6 +304,9 @@ const webhook = (body: unknown, auth: string | null = 'valid') => {
   return req.send(JSON.stringify(body));
 };
 const auditKeys = () => mockAudit.mock.calls.map(([entry]) => entry.actionKey);
+// Traces critiques de suppression écrites dans une transaction : appels `recordAuditEvent(tx, entrée)`.
+const recordedDeletions = () =>
+  mockRecordAudit.mock.calls.filter((call: any[]) => call[1]?.actionKey === 'SYNDIC_MEETING_RECORDING_DELETED');
 const rowOf = (recordingId: string): any => mockPrisma.gMRecording.rows.find((row: any) => row.id === recordingId);
 
 beforeEach(() => {
@@ -718,10 +726,13 @@ describe('GET /enregistrements/:recordingId/fichier', () => {
 });
 
 describe('DELETE /enregistrements/:recordingId', () => {
-  it('supprime le fichier du disque, garde la ligne en DELETED, audit critique', async () => {
+  it('supprime le fichier du disque, garde la ligne en DELETED, audit critique dans la transaction', async () => {
     const rec = seedAvailable({ id: id(970) });
     const path = nodePath.join(UPLOADS_ROOT, rec.fileUrl.replace('/uploads/', ''));
     expect(nodeFs.existsSync(path)).toBe(true);
+    // Client de transaction distinct, délégué par prototype à la même base en mémoire.
+    const txClient = Object.create(mockPrisma);
+    mockPrisma.$transaction.mockImplementationOnce(async (fn: any) => fn(txClient));
     const res = await request(app).delete(url(M1, `/enregistrements/${rec.id}`));
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('DELETED');
@@ -729,11 +740,23 @@ describe('DELETE /enregistrements/:recordingId', () => {
     expect(rowOf(rec.id)).toMatchObject({ status: 'DELETED', fileUrl: null, deletedByUserId: 'user-manager' });
     expect(rowOf(rec.id).deletedAt).toBeInstanceOf(Date);
     expect(mockStorage.remove).toHaveBeenCalledWith(rec.storageKey);
-    expect(mockAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ actionKey: 'SYNDIC_MEETING_RECORDING_DELETED', entityId: rec.id })
+    // Action critique : écrite par `recordAuditEvent(tx, …)`, jamais par la file asynchrone.
+    expect(recordedDeletions()).toHaveLength(1);
+    expect(mockRecordAudit.mock.calls[0][0]).toBe(txClient);
+    expect(mockRecordAudit.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        actionKey: 'SYNDIC_MEETING_RECORDING_DELETED',
+        entityType: 'GMRecording',
+        entityId: rec.id,
+        tenantId: TENANT_A,
+        actorUserId: 'user-manager',
+        payload: { meetingId: M1, recordingId: rec.id, previousStatus: 'AVAILABLE' }
+      })
     );
-    // Déjà supprimé : 409.
+    expect(auditKeys()).not.toContain('SYNDIC_MEETING_RECORDING_DELETED');
+    // Déjà supprimé : 409, sans nouvelle trace.
     expect((await request(app).delete(url(M1, `/enregistrements/${rec.id}`))).status).toBe(409);
+    expect(recordedDeletions()).toHaveLength(1);
   });
 
   it('un enregistrement en échec peut être supprimé (objet S3 effacé au mieux, même si l effacement échoue)', async () => {
@@ -755,6 +778,37 @@ describe('DELETE /enregistrements/:recordingId', () => {
     expect((await request(app).delete(url(M1, `/enregistrements/${otherMeeting.id}`))).status).toBe(404);
     expect(rowOf(foreign.id).status).toBe('AVAILABLE');
     expect(rowOf(otherMeeting.id).status).toBe('AVAILABLE');
+  });
+
+  it('deux suppressions simultanées du même enregistrement : 200 et 409, une seule trace critique', async () => {
+    const rec = seedAvailable({ id: id(977) });
+    // Barrière : l'effacement de l'objet S3 précède toute écriture en base ; il ne rend la main qu'une
+    // fois appelé deux fois, donc les deux requêtes ont passé le contrôle de statut avant d'écrire.
+    let removed = 0;
+    let release: () => void = () => undefined;
+    const barrier = new Promise<void>(resolve => (release = resolve));
+    mockStorage.remove.mockImplementation(async () => {
+      if (++removed === 2) release();
+      await barrier;
+    });
+    const results = await Promise.all([
+      request(app).delete(url(M1, `/enregistrements/${rec.id}`)),
+      request(app).delete(url(M1, `/enregistrements/${rec.id}`))
+    ]);
+    expect(mockStorage.remove).toHaveBeenCalledTimes(2);
+    expect(results.map(res => res.status).sort()).toEqual([200, 409]);
+    expect(rowOf(rec.id)).toMatchObject({ status: 'DELETED', fileUrl: null, deletedByUserId: 'user-manager' });
+    expect(recordedDeletions()).toHaveLength(1);
+    expect(auditKeys()).not.toContain('SYNDIC_MEETING_RECORDING_DELETED');
+  });
+
+  it('si l écriture de l audit échoue, la requête échoue (500) : l erreur n est pas avalée', async () => {
+    const rec = seedAvailable({ id: id(978) });
+    mockRecordAudit.mockRejectedValueOnce(new Error('audit down'));
+    const res = await request(app).delete(url(M1, `/enregistrements/${rec.id}`));
+    expect(res.status).toBe(500);
+    expect(mockRecordAudit).toHaveBeenCalledTimes(1);
+    // La base en mémoire n'a pas de retour arrière : l'état de la ligne n'est pas affirmé ici.
   });
 });
 
@@ -1012,6 +1066,7 @@ describe('suppression : seul ENOENT est toléré', () => {
     expect(rowOf(rec.id)).toMatchObject({ status: 'AVAILABLE', fileUrl: rec.fileUrl });
     expect(mockStorage.remove).not.toHaveBeenCalled();
     expect(mockAudit.mock.calls.some(([entry]) => entry.actionKey === 'SYNDIC_MEETING_RECORDING_DELETED')).toBe(false);
+    expect(recordedDeletions()).toHaveLength(0);
   });
 });
 
