@@ -2333,6 +2333,17 @@
       "sensitive": true
     },
     {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/returns",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/returns",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / returns",
+      "permissions": ["RENTAL_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "GET /api/tenants/:tenantId/rental/documents",
       "method": "GET",
       "path": "/api/tenants/:tenantId/rental/documents",
@@ -6229,6 +6240,28 @@
       "sensitive": true
     },
     {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/lines/:lineId/reject",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/lines/:lineId/reject",
+      "pathParams": ["remittanceId", "lineId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / lines / {lineId} / reject",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/lines/:lineId/settle",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/lines/:lineId/settle",
+      "pathParams": ["remittanceId", "lineId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / lines / {lineId} / settle",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/prenotifications",
       "method": "POST",
       "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/prenotifications",
@@ -6251,6 +6284,17 @@
       "sensitive": true
     },
     {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/settle-all",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/settle-all",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / settle-all",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/submit",
       "method": "POST",
       "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/submit",
@@ -6268,6 +6312,28 @@
       "pathParams": ["remittanceId"],
       "module": "rental",
       "summary": "rental / direct-debit / remittances / {remittanceId} / validate",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/returns/apply",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/returns/apply",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / returns / apply",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/returns/preview",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/returns/preview",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / returns / preview",
       "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
       "anyOfPermissions": null,
       "sensitive": true
