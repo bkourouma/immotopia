@@ -32,9 +32,11 @@ export function corsMiddleware(req: Request, res: Response, next: NextFunction):
   // X-Portal-Tenant-Id : posé par `apps/web/src/utils/api-client.ts` sur les
   // routes `/portal/*`, pour qu'un client rattaché à plusieurs agences dise
   // laquelle.
+  // X-Signature-View-Token : jeton de consultation remis après le code à usage
+  // unique, pour les documents « code avant consultation » (spec 042 §10.5).
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'Content-Type, Authorization, X-Requested-With, Idempotency-Key, X-Portal-Tenant-Id'
+    'Content-Type, Authorization, X-Requested-With, Idempotency-Key, X-Portal-Tenant-Id, X-Signature-View-Token'
   );
 
   // Exposed headers
