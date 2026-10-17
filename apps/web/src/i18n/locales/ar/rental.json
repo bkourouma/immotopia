@@ -995,5 +995,17 @@
   "Voir le paiement": "عرض الدفعة",
   "Voir le scan": "عرض النسخة الممسوحة",
   "Voulez-vous le régénérer à partir des données actuelles du bail ? La version précédente est remplacée.": "هل تريدون إعادة إنشائه انطلاقًا من البيانات الحالية لعقد الإيجار؟ سيتم استبدال النسخة السابقة.",
-  "Vous n'avez pas l'autorisation d'effectuer cette action.": "ليست لديكم صلاحية تنفيذ هذا الإجراء."
+  "Vous n'avez pas l'autorisation d'effectuer cette action.": "ليست لديكم صلاحية تنفيذ هذا الإجراء.",
+  "Des frais de rejet de {{montant}} seront refacturés au débiteur.": "ستُعاد فوترة رسوم الرفض البالغة {{montant}} إلى المدين.",
+  "Ce rejet suspendra le mandat {{reference}} (rejets consécutifs).": "سيؤدي هذا الرفض إلى تعليق التفويض {{reference}} (رفض متتالٍ).",
+  "Réglées : {{n}}": "المسدّدة: {{n}}",
+  "Rejetées : {{n}}": "المرفوضة: {{n}}",
+  "En échec : {{n}}": "الفاشلة: {{n}}",
+  "Rejet tardif": "رفض متأخر",
+  "Confirmer l'application": "تأكيد التطبيق",
+  "Confirmer l'application du fichier ?": "هل تريد تطبيق هذا الملف؟",
+  "{{settle}} règlements créent des encaissements et des quittances ; {{reject}} rejets, dont {{late}} rejets tardifs qui annulent des encaissements et leurs quittances.": "تُنشئ {{settle}} تسديدات مقبوضات وإيصالات؛ و{{reject}} حالات رفض، منها {{late}} رفض متأخر يلغي مقبوضات وإيصالاتها.",
+  "Ce fichier a déjà été importé le {{date}}.": "تم استيراد هذا الملف سابقاً بتاريخ {{date}}.",
+  "Fichier {{name}} importé avec des constats en échec.": "تم استيراد الملف {{name}} مع قيود فاشلة.",
+  "Fichier {{name}} importé, mais {{n}} constats ont échoué.": "تم استيراد الملف {{name}}، لكن فشل {{n}} من القيود."
 }

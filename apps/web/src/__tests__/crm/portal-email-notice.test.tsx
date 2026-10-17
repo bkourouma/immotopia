@@ -40,7 +40,7 @@ describe('Note « avis au compte portail » de la fiche contact', () => {
   it('affiche le masque quand la fiche diffère du compte', () => {
     renderForm({ portalAccountEmailNotice: { maskedEmail: 'a•••@ex•••.ci' } });
     const note = screen.getByTestId('portal-email-notice');
-    expect(note.textContent).toContain("Les avis (prélèvement, rappels…) partent à l'adresse du compte portail :");
+    expect(note.textContent).toContain("Les avis de prélèvement partent à l'adresse du compte portail :");
     const bdi = note.querySelector('bdi');
     expect(bdi?.getAttribute('dir')).toBe('ltr');
     expect(bdi?.textContent).toBe('a•••@ex•••.ci');

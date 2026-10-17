@@ -31,6 +31,7 @@ import {
   SkippedMandatesAlert
 } from '../../components/rental/direct-debit/RemittanceNotices';
 import {
+  invalidateRentalCollections,
   RejectLineModal,
   SettleAllModal,
   SettleLineModal
@@ -293,6 +294,7 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
       'settle',
       async () => {
         apply(await settleRemittanceLine(tenantId as string, id, line.id, { settledAt }));
+        invalidateRentalCollections(queryClient, tenantId);
         setLineToSettle(null);
         message.success(t('Règlement constaté'));
       },
@@ -307,6 +309,7 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
       'reject',
       async () => {
         apply(await rejectRemittanceLine(tenantId as string, id, line.id, input));
+        invalidateRentalCollections(queryClient, tenantId);
         setLineToReject(null);
         message.success(t('Rejet constaté'));
       },
@@ -320,6 +323,7 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
       async () => {
         const result = await settleAllRemittanceLines(tenantId as string, id, { settledAt });
         apply(result.remittance);
+        invalidateRentalCollections(queryClient, tenantId);
         setSettleAllResult(result);
       },
       t('Erreur lors du constat des règlements')

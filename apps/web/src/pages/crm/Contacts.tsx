@@ -43,6 +43,7 @@ import { ActivityForm } from '../../components/crm/ActivityForm';
 import { BulkTagManager } from '../../components/crm/BulkTagManager';
 import {
   listContacts,
+  getContact,
   createContact,
   updateContact,
   createActivity,
@@ -75,6 +76,9 @@ export const Contacts: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingContact, setEditingContact] = useState<CrmContact | null>(null);
+  // La liste ne porte pas la note « avis au compte portail » : le détail est lu à l'ouverture.
+  const [editingDetail, setEditingDetail] = useState<CrmContact | null>(null);
+  const [editingDetailLoading, setEditingDetailLoading] = useState(false);
   const [filters, setFilters] = useState<ContactFilters>({
     page: 1,
     limit: 20
@@ -176,6 +180,30 @@ export const Contacts: React.FC = () => {
       throw err; // Let ContactForm handle the error
     }
   };
+
+  const editingId = editingContact?.id;
+  useEffect(() => {
+    setEditingDetail(null);
+    if (!tenantId || !editingId) {
+      setEditingDetailLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setEditingDetailLoading(true);
+    getContact(tenantId, editingId)
+      .then(response => {
+        if (!cancelled && response.success) setEditingDetail(response.data);
+      })
+      .catch(() => {
+        // Sans détail, le formulaire s'ouvre sur la ligne de la liste (sans la note).
+      })
+      .finally(() => {
+        if (!cancelled) setEditingDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId, editingId]);
 
   const handleUpdate = async (data: UpdateCrmContactRequest) => {
     if (!tenantId || !editingContact) return;
@@ -302,7 +330,14 @@ export const Contacts: React.FC = () => {
             />
           </Tooltip>
           <Tooltip title={translate('Modifier')}>
-            <Button type="text" icon={<EditOutlined />} onClick={() => setEditingContact(record)} />
+            <Button
+              type="text"
+              icon={<EditOutlined />}
+              onClick={() => {
+                setEditingDetailLoading(true);
+                setEditingContact(record);
+              }}
+            />
           </Tooltip>
           <Tooltip title={translate('Supprimer')}>
             <Popconfirm
@@ -383,9 +418,16 @@ export const Contacts: React.FC = () => {
           footer={null}
           width={800}
         >
-          {editingContact && (
-            <ContactForm contact={editingContact} onSubmit={handleUpdate} onCancel={() => setEditingContact(null)} />
-          )}
+          {editingContact &&
+            (editingDetailLoading ? (
+              <Spin />
+            ) : (
+              <ContactForm
+                contact={editingDetail ?? editingContact}
+                onSubmit={handleUpdate}
+                onCancel={() => setEditingContact(null)}
+              />
+            ))}
         </Modal>
 
         <Modal

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, Modal, Space, Table, Tag, Typography, Upload } from 'antd';
+import { Alert, Button, Modal, Space, Table, Tag, theme, Typography, Upload } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { UploadOutlined } from '@ant-design/icons';
 import {
@@ -10,7 +10,7 @@ import {
   type ReturnRecordDto
 } from '../../../services/direct-debit-service';
 import { formatMoney } from '../../primitives';
-import { apiErrorMessage, formatDay, returnSkipReasonLabel } from './direct-debit-shared';
+import { apiErrorMessage, formatDate, formatDay, returnSkipReasonLabel } from './direct-debit-shared';
 import { t } from '../../../i18n/t';
 
 const { Text } = Typography;
@@ -49,6 +49,19 @@ const SummaryCounts: React.FC<{ summary: ReturnPreviewDto['summary'] }> = ({ sum
   </Space>
 );
 
+const AppliedCounts: React.FC<{ summary: ReturnApplyDto['appliedSummary'] }> = ({ summary }) => (
+  <Space wrap size={[16, 4]}>
+    <span>{t('Réglées : {{n}}', { n: summary.settled })}</span>
+    <span>{t('Rejetées : {{n}}', { n: summary.rejected })}</span>
+    <span>{t('En échec : {{n}}', { n: summary.failed })}</span>
+  </Space>
+);
+
+/** Rejet d'une ligne déjà constatée réglée : annule un encaissement et sa quittance. */
+function isLateReject(record: ReturnRecordDto): boolean {
+  return record.action === 'REJECT' && record.match?.lineStatus === 'SETTLED';
+}
+
 const ReadErrors: React.FC<{ errors: ReturnPreviewDto['errors'] }> = ({ errors }) => {
   if (errors.length === 0) return null;
   return (
@@ -81,6 +94,8 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({ tenantId, 
   const [applied, setApplied] = useState<ReturnApplyDto | null>(null);
   const [busy, setBusy] = useState<'preview' | 'apply' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const { token } = theme.useToken();
 
   useEffect(() => {
     if (open) {
@@ -89,6 +104,7 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({ tenantId, 
       setApplied(null);
       setBusy(null);
       setError(null);
+      setConfirming(false);
     }
   }, [open]);
 
@@ -96,6 +112,7 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({ tenantId, 
     setFile(next);
     setPreview(null);
     setError(null);
+    setConfirming(false);
     setBusy('preview');
     try {
       setPreview(await previewReturnFile(tenantId, next));
@@ -113,8 +130,11 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({ tenantId, 
     try {
       const result = await applyReturnFile(tenantId, file);
       setApplied(result);
+      setConfirming(false);
       onApplied(result);
     } catch (err) {
+      // 400 (plafond) et 409 (déjà appliqué, application en cours) : le message de l'API est affiché tel quel.
+      setConfirming(false);
       setError(apiErrorMessage(err, t("Erreur lors de l'application du fichier de retour")));
     } finally {
       setBusy(null);
@@ -151,7 +171,12 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({ tenantId, 
     {
       title: t('Action'),
       key: 'action',
-      render: (_value, record) => <Tag color={ACTION_COLOR[record.action]}>{actionLabel(record.action)}</Tag>
+      render: (_value, record) => (
+        <div>
+          <Tag color={ACTION_COLOR[record.action]}>{actionLabel(record.action)}</Tag>
+          {isLateReject(record) && <Tag color="warning">{t('Rejet tardif')}</Tag>}
+        </div>
+      )
     },
     {
       title: t("Raison de l'écart"),
@@ -176,25 +201,38 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({ tenantId, 
 
   const nothingToApply = !preview || preview.summary.settle + preview.summary.reject === 0;
 
+  const lateCount = preview?.records.filter(isLateReject).length ?? 0;
+
   const footer = applied ? (
     <Button type="primary" onClick={onClose}>
       {t('Fermer')}
     </Button>
-  ) : (
-    <Space>
-      <Button onClick={onClose}>{t('Fermer')}</Button>
+  ) : confirming ? (
+    <Space key="confirm">
+      <Button onClick={() => setConfirming(false)} disabled={busy !== null}>
+        {t('Retour')}
+      </Button>
       <Button
         type="primary"
-        disabled={nothingToApply || busy !== null}
+        danger
         loading={busy === 'apply'}
+        disabled={busy !== null}
         onClick={() => void handleApply()}
       >
+        {t("Confirmer l'application")}
+      </Button>
+    </Space>
+  ) : (
+    <Space key="review">
+      <Button onClick={onClose}>{t('Fermer')}</Button>
+      <Button key="apply" type="primary" disabled={nothingToApply || busy !== null} onClick={() => setConfirming(true)}>
         {t('Appliquer')}
       </Button>
     </Space>
   );
 
   const failed = applied?.results.filter(item => !item.ok) ?? [];
+  const failedCount = applied ? Math.max(applied.appliedSummary.failed, failed.length) : 0;
 
   return (
     <Modal
@@ -208,10 +246,14 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({ tenantId, 
       {applied ? (
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
           <Alert
-            type={failed.length > 0 ? 'warning' : 'success'}
+            type={failedCount > 0 ? 'warning' : 'success'}
             showIcon
-            message={t('Fichier {{name}} importé.', { name: applied.fileName })}
-            description={<SummaryCounts summary={applied.summary} />}
+            message={
+              failedCount > 0
+                ? t('Fichier {{name}} importé avec des constats en échec.', { name: applied.fileName })
+                : t('Fichier {{name}} importé.', { name: applied.fileName })
+            }
+            description={<AppliedCounts summary={applied.appliedSummary} />}
           />
           {failed.length > 0 && (
             <Alert
@@ -262,6 +304,26 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({ tenantId, 
           {error && <Alert type="error" showIcon message={error} />}
           {preview && (
             <>
+              {preview.alreadyImported && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={t('Ce fichier a déjà été importé le {{date}}.', {
+                    date: formatDate(preview.alreadyImported.importedAt)
+                  })}
+                />
+              )}
+              {confirming && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={t("Confirmer l'application du fichier ?")}
+                  description={t(
+                    '{{settle}} règlements créent des encaissements et des quittances ; {{reject}} rejets, dont {{late}} rejets tardifs qui annulent des encaissements et leurs quittances.',
+                    { settle: preview.summary.settle, reject: preview.summary.reject, late: lateCount }
+                  )}
+                />
+              )}
               <SummaryCounts summary={preview.summary} />
               <ReadErrors errors={preview.errors} />
               {preview.records.length === 0 ? (
@@ -273,6 +335,7 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({ tenantId, 
                   columns={columns}
                   dataSource={preview.records}
                   pagination={false}
+                  onRow={record => (isLateReject(record) ? { style: { background: token.colorWarningBg } } : {})}
                   scroll={{ x: 'max-content', y: 360 }}
                 />
               )}

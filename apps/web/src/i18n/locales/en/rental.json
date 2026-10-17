@@ -995,5 +995,17 @@
   "Voir le paiement": "View payment",
   "Voir le scan": "View the scan",
   "Voulez-vous le régénérer à partir des données actuelles du bail ? La version précédente est remplacée.": "Do you want to regenerate it from the lease's current data? The previous version will be replaced.",
-  "Vous n'avez pas l'autorisation d'effectuer cette action.": "You are not allowed to perform this action."
+  "Vous n'avez pas l'autorisation d'effectuer cette action.": "You are not allowed to perform this action.",
+  "Des frais de rejet de {{montant}} seront refacturés au débiteur.": "Rejection fees of {{montant}} will be re-invoiced to the debtor.",
+  "Ce rejet suspendra le mandat {{reference}} (rejets consécutifs).": "This rejection will suspend mandate {{reference}} (consecutive rejections).",
+  "Réglées : {{n}}": "Paid: {{n}}",
+  "Rejetées : {{n}}": "Rejected: {{n}}",
+  "En échec : {{n}}": "Failed: {{n}}",
+  "Rejet tardif": "Late rejection",
+  "Confirmer l'application": "Confirm and apply",
+  "Confirmer l'application du fichier ?": "Apply this file?",
+  "{{settle}} règlements créent des encaissements et des quittances ; {{reject}} rejets, dont {{late}} rejets tardifs qui annulent des encaissements et leurs quittances.": "{{settle}} settlements create payments and receipts; {{reject}} rejections, including {{late}} late rejections that cancel payments and their receipts.",
+  "Ce fichier a déjà été importé le {{date}}.": "This file was already imported on {{date}}.",
+  "Fichier {{name}} importé avec des constats en échec.": "File {{name}} imported with failed entries.",
+  "Fichier {{name}} importé, mais {{n}} constats ont échoué.": "File {{name}} imported, but {{n}} entries failed."
 }

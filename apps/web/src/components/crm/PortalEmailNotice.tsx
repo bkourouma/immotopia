@@ -15,8 +15,7 @@ export const PortalEmailNotice: React.FC<{ notice?: PortalAccountEmailNotice | n
   if (!notice) return null;
   return (
     <Typography.Text type="secondary" style={{ fontSize: 12 }} data-testid="portal-email-notice">
-      {t("Les avis (prélèvement, rappels…) partent à l'adresse du compte portail :")}{' '}
-      <bdi dir="ltr">{notice.maskedEmail}</bdi>.
+      {t("Les avis de prélèvement partent à l'adresse du compte portail :")} <bdi dir="ltr">{notice.maskedEmail}</bdi>.
     </Typography.Text>
   );
 };

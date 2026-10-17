@@ -42,8 +42,7 @@ vi.mock('../../utils/save-blob', () => ({
 
 configure({ asyncUtilTimeout: 8000 });
 
-function mount() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function mount(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
@@ -327,6 +326,58 @@ describe('DirectDebitRemittanceDetail — retour banque (P3)', () => {
         reason: 'Provision insuffisante'
       })
     );
+  });
+
+  it('rejet avec impact connu : frais exacts et suspension du mandat, sans texte général', async () => {
+    const user = userEvent.setup();
+    getRemittance.mockResolvedValue(
+      exportedPendingOnly({ lines: [{ ...pendingLine, rejectionImpact: { fee: 5000, willSuspend: true } }] })
+    );
+    mount();
+    await user.click(await screen.findByRole('button', { name: 'Constater le rejet' }));
+    const dialog = await screen.findByRole('dialog');
+
+    expect(
+      within(dialog).getByText(/Des frais de rejet de .*5.*000.* seront refacturés au débiteur\./)
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/Ce rejet suspendra le mandat MDT-.* \(rejets consécutifs\)\./)
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/peuvent être refacturés/)).not.toBeInTheDocument();
+  });
+
+  it('rejet sans frais ni suspension : aucune des deux phrases, ni le texte général', async () => {
+    const user = userEvent.setup();
+    getRemittance.mockResolvedValue(
+      exportedPendingOnly({ lines: [{ ...pendingLine, rejectionImpact: { fee: 0, willSuspend: false } }] })
+    );
+    mount();
+    await user.click(await screen.findByRole('button', { name: 'Constater le rejet' }));
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).queryByText(/Des frais de rejet/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Ce rejet suspendra/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/peuvent être refacturés/)).not.toBeInTheDocument();
+  });
+
+  it('un constat relit aussi les paiements, les échéances et les baux', async () => {
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const spy = vi.spyOn(queryClient, 'invalidateQueries');
+    getRemittance.mockResolvedValue(exportedPendingOnly());
+    settleRemittanceLine.mockResolvedValue(exportedPendingOnly());
+    mount(queryClient);
+    await user.click(await screen.findByRole('button', { name: 'Constater le règlement' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Constater le règlement' }));
+
+    await waitFor(() => expect(settleRemittanceLine).toHaveBeenCalled());
+    const seen = () => spy.mock.calls.map(call => JSON.stringify((call[0] as { queryKey: unknown[] }).queryKey));
+    await waitFor(() => {
+      expect(seen()).toContain(JSON.stringify(['payments', TENANT_ID]));
+      expect(seen()).toContain(JSON.stringify(['installments', TENANT_ID]));
+      expect(seen()).toContain(JSON.stringify(['leases', TENANT_ID]));
+    });
   });
 
   it("rejet tardif d'une ligne réglée : avertit que l'encaissement et la quittance seront annulés", async () => {

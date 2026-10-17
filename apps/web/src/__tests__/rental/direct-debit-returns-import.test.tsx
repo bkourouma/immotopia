@@ -108,7 +108,8 @@ const preview = {
     }
   ],
   errors: [{ row: 6, message: 'Date illisible.' }],
-  summary: { settle: 1, reject: 1, skip: 2, errors: 1 }
+  summary: { settle: 1, reject: 1, skip: 2, errors: 1 },
+  alreadyImported: null
 };
 
 beforeEach(() => {
@@ -181,12 +182,13 @@ describe('Import d’un retour de la banque', () => {
     expect(within(dialog).getByRole('button', { name: 'Appliquer' })).toBeDisabled();
   });
 
-  it('applique le même fichier puis affiche le résultat, sans masquer un constat en échec', async () => {
+  it('applique après confirmation, puis affiche les compteurs réels sans masquer un constat en échec', async () => {
     const user = userEvent.setup();
     previewReturnFile.mockResolvedValue(preview);
     applyReturnFile.mockResolvedValue({
       ...preview,
       importId: 'imp-1',
+      appliedSummary: { settled: 1, rejected: 0, failed: 1 },
       results: [
         { row: 2, lineId: 'l-1', ok: true, error: null },
         { row: 3, lineId: 'l-2', ok: false, error: 'Cette ligne vient d’être traitée.' }
@@ -196,15 +198,110 @@ describe('Import d’un retour de la banque', () => {
     const { dialog, file } = await openAndUpload(user);
     await within(dialog).findByText('PRL-2026-0001-001');
 
+    // « Appliquer » ne lance rien : il demande d'abord confirmation, avec le récapitulatif.
     await user.click(within(dialog).getByRole('button', { name: 'Appliquer' }));
+    expect(applyReturnFile).not.toHaveBeenCalled();
+    expect(
+      within(dialog).getByText(
+        '1 règlements créent des encaissements et des quittances ; 1 rejets, dont 0 rejets tardifs qui annulent des encaissements et leurs quittances.'
+      )
+    ).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: "Confirmer l'application" }));
 
     await waitFor(() => expect(applyReturnFile).toHaveBeenCalledWith(TENANT_ID, file));
-    expect(await within(dialog).findByText('Fichier retour.csv importé.')).toBeInTheDocument();
+    expect(
+      await within(dialog).findByText('Fichier retour.csv importé avec des constats en échec.')
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText('Réglées : 1')).toBeInTheDocument();
+    expect(within(dialog).getByText('Rejetées : 0')).toBeInTheDocument();
+    expect(within(dialog).getByText('En échec : 1')).toBeInTheDocument();
     expect(within(dialog).getByText('Constats en échec : 1')).toBeInTheDocument();
     expect(within(dialog).getByText(/Ligne 3 : Cette ligne vient d’être traitée\./)).toBeInTheDocument();
+    // Un échec : avertissement, jamais le message de succès.
+    expect(screen.queryByText('Fichier retour.csv importé.')).not.toBeInTheDocument();
     // L'application relance la lecture de l'historique et des remises.
     await waitFor(() => expect(listReturnImports.mock.calls.length).toBeGreaterThanOrEqual(2));
     expect(within(dialog).queryByRole('button', { name: 'Appliquer' })).not.toBeInTheDocument();
+  });
+
+  it('sans échec : succès, compteurs réels et relecture des paiements et des échéances', async () => {
+    const user = userEvent.setup();
+    previewReturnFile.mockResolvedValue(preview);
+    applyReturnFile.mockResolvedValue({
+      ...preview,
+      importId: 'imp-1',
+      appliedSummary: { settled: 1, rejected: 1, failed: 0 },
+      results: [
+        { row: 2, lineId: 'l-1', ok: true, error: null },
+        { row: 3, lineId: 'l-2', ok: true, error: null }
+      ]
+    });
+    mount();
+    const { dialog } = await openAndUpload(user);
+    await within(dialog).findByText('PRL-2026-0001-001');
+    await user.click(within(dialog).getByRole('button', { name: 'Appliquer' }));
+    await user.click(within(dialog).getByRole('button', { name: "Confirmer l'application" }));
+
+    expect(await within(dialog).findByText('Fichier retour.csv importé.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Réglées : 1')).toBeInTheDocument();
+    expect(within(dialog).getByText('Rejetées : 1')).toBeInTheDocument();
+    expect(within(dialog).getByText('En échec : 0')).toBeInTheDocument();
+    expect(within(dialog).queryByText(/avec des constats en échec/)).not.toBeInTheDocument();
+  });
+
+  it('met en évidence les rejets tardifs et les compte dans le récapitulatif', async () => {
+    const user = userEvent.setup();
+    previewReturnFile.mockResolvedValue({
+      ...preview,
+      records: [
+        preview.records[0],
+        { ...preview.records[1], match: { ...match, lineId: 'l-2', lineStatus: 'SETTLED' } }
+      ],
+      summary: { settle: 1, reject: 1, skip: 0, errors: 0 },
+      errors: []
+    });
+    mount();
+    const { dialog } = await openAndUpload(user);
+    await within(dialog).findByText('PRL-2026-0001-001');
+
+    const lateRow = within(dialog).getByText('PRL-2026-0001-002').closest('tr') as HTMLElement;
+    expect(within(lateRow).getByText('Rejet tardif')).toBeInTheDocument();
+    const normalRow = within(dialog).getByText('PRL-2026-0001-001').closest('tr') as HTMLElement;
+    expect(within(normalRow).queryByText('Rejet tardif')).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Appliquer' }));
+    expect(within(dialog).getByText(/dont 1 rejets tardifs qui annulent des encaissements/)).toBeInTheDocument();
+  });
+
+  it('prévient quand le fichier a déjà été importé', async () => {
+    const user = userEvent.setup();
+    previewReturnFile.mockResolvedValue({
+      ...preview,
+      alreadyImported: { importId: 'imp-0', importedAt: '2026-11-08T10:30:00.000Z' }
+    });
+    mount();
+    const { dialog } = await openAndUpload(user);
+    expect(await within(dialog).findByText('Ce fichier a déjà été importé le 08/11/2026.')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['409', 'Ce fichier a déjà été appliqué en entier.'],
+    ['409', 'Une application de ce fichier est déjà en cours.'],
+    ['400', 'Ce fichier comporte plus de 500 enregistrements à appliquer.']
+  ])("affiche clairement l'erreur %s de l'API à l'application : %s", async (status, apiMessage) => {
+    const user = userEvent.setup();
+    previewReturnFile.mockResolvedValue(preview);
+    applyReturnFile.mockRejectedValue({ response: { status: Number(status), data: { message: apiMessage } } });
+    mount();
+    const { dialog } = await openAndUpload(user);
+    await within(dialog).findByText('PRL-2026-0001-001');
+    await user.click(within(dialog).getByRole('button', { name: 'Appliquer' }));
+    await user.click(within(dialog).getByRole('button', { name: "Confirmer l'application" }));
+
+    expect(await within(dialog).findByText(apiMessage)).toBeInTheDocument();
+    // La fenêtre reste sur l'aperçu : on peut corriger, puis réappliquer.
+    expect(within(dialog).getByRole('button', { name: 'Appliquer' })).toBeEnabled();
   });
 
   it("affiche l'erreur de l'API quand le fichier est refusé", async () => {
