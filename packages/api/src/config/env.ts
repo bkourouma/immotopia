@@ -120,11 +120,43 @@ const paymentSecretsKeySchema = z
   );
 
 /**
- * Clé DÉDIÉE aux IBAN des mandats de prélèvement (spec 042) : même forme que
- * `PAYMENT_SECRETS_KEY` (32 octets en base64), mais une valeur vide vaut
- * absente. Distincte de `PAYMENT_SECRETS_KEY` (contrôle dans `superRefine`).
+ * Contrôle strict d'une clé IBAN : forme canonique d'une clé de 32 octets en
+ * base64 (43 caractères et un `=`), 32 octets décodés, au moins 16 octets
+ * distincts (refus d'une clé manifestement faible : zéros, motif répété…).
+ * Renvoie la raison du refus, jamais la valeur.
  */
-const directDebitIbanKeySchema = emptyAsUndefined(paymentSecretsKeySchema);
+export function ibanKeyProblem(value: string): string | null {
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(value)) {
+    return 'doit être une clé de 32 octets en base64 canonique, 44 caractères (`openssl rand -base64 32`)';
+  }
+  const bytes = Buffer.from(value, 'base64');
+  if (bytes.length !== 32) return 'doit faire 32 octets une fois décodée (`openssl rand -base64 32`)';
+  if (new Set(bytes).size < 16) {
+    return 'est trop faible (octets trop peu variés) : générez-la avec `openssl rand -base64 32`';
+  }
+  return null;
+}
+
+/** `true` quand la valeur est une clé IBAN acceptable (voir `ibanKeyProblem`). */
+export function isStrictIbanKey(value: string | undefined): value is string {
+  return typeof value === 'string' && ibanKeyProblem(value) === null;
+}
+
+/**
+ * Clé DÉDIÉE aux IBAN des mandats de prélèvement (spec 042) : 32 octets en
+ * base64 canonique et non triviale ; une valeur vide vaut absente. Distincte
+ * de `PAYMENT_SECRETS_KEY` (contrôle dans `superRefine`). Le message ne cite
+ * jamais la valeur.
+ */
+const directDebitIbanKeySchema = emptyAsUndefined(
+  z
+    .string()
+    .optional()
+    .superRefine((value, ctx) => {
+      const problem = value === undefined ? null : ibanKeyProblem(value);
+      if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+    })
+);
 
 function isBase64Key32(value: string): boolean {
   try {
@@ -152,10 +184,11 @@ const directDebitIbanPreviousKeysSchema = z
   .optional()
   .superRefine((value, ctx) => {
     parseKeyList(value).forEach((entry, index) => {
-      if (!isBase64Key32(entry)) {
+      const problem = ibanKeyProblem(entry);
+      if (problem) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `l'entrée n°${index + 1} doit être 32 octets encodés en base64 (\`openssl rand -base64 32\`)`
+          message: `l'entrée n°${index + 1} ${problem}`
         });
       }
     });

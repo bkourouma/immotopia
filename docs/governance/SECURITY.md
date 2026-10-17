@@ -271,6 +271,12 @@ n'est retirée qu'après un passage à 0 et une sauvegarde vérifiée. Les valeu
 de l'ancien format `pg1` restent lisibles (repli sur `PAYMENT_SECRETS_KEY`).
 Aucun message, journal ou sortie du script ne contient IBAN, chiffré ou clé.
 
+Limite connue : les données associées ne lient le chiffré qu'à l'identifiant de
+clé, pas au mandat. Copier la valeur chiffrée d'une ligne vers une autre suppose
+un accès en écriture à la base, hors du modèle de menace actuel. Si ce risque
+était retenu, un format `ddk2` (données associées incluant l'agence et le mandat)
+serait possible.
+
 **Déployer la production.** `deploy.sh prod` prouve l'état git au lieu de le
 supposer : git utilisable, version identifiable, arbre propre, `origin/main`
 présent et `HEAD` dedans, sinon échec ; `HEAD` et l'arbre sont revérifiés juste

@@ -23,6 +23,8 @@
 # seul checkout pour les deux environnements).
 
 set -Eeuo pipefail
+# Les secrets du fichier d'environnement ne doivent jamais apparaitre dans une trace.
+case $- in *x*) echo "deploy.sh refuse set -x : les secrets apparaitraient dans la trace." >&2; exit 2;; esac
 
 usage() {
   echo "Usage : $0 <staging|prod> [--no-build]" >&2
@@ -134,6 +136,9 @@ iban_key_hashes() {
   current="$(envval DIRECT_DEBIT_IBAN_KEY "$file")"
   previous="$(envval DIRECT_DEBIT_IBAN_PREVIOUS_KEYS "$file")"
   [[ -z "$current" ]] || hash_of "$current"
+  # Variables non quotees ci-dessous : pas de developpement de glob.
+  local -
+  set -f
   local IFS=','
   for entry in $previous; do
     entry="${entry#"${entry%%[![:space:]]*}"}"
@@ -248,6 +253,23 @@ if [[ -n "$iban_key_value" && -n "$payment_key_value" \
       && "$(hash_of "$iban_key_value")" == "$(hash_of "$payment_key_value")" ]]; then
   fail "DIRECT_DEBIT_IBAN_KEY est identique a PAYMENT_SECRETS_KEY : la cle des IBAN doit etre dediee (openssl rand -base64 32)."
 fi
+# Forme canonique d'une cle de 32 octets en base64 : l'API refuse de demarrer
+# sur une cle mal formee, deploy.sh doit le detecter avant de remplacer le
+# conteneur. Aucun message ne cite de valeur, seulement le nom et le rang.
+is_canonical_key() { [[ "$1" =~ ^[A-Za-z0-9+/]{43}=$ ]]; }
+if [[ -n "$iban_key_value" ]]; then
+  is_canonical_key "$iban_key_value"     || fail "DIRECT_DEBIT_IBAN_KEY n'a pas la forme d'une cle de 32 octets en base64 (44 caracteres, openssl rand -base64 32)."
+fi
+iban_rank=0
+while IFS= read -r -d ',' iban_entry || [[ -n "$iban_entry" ]]; do
+  iban_entry="${iban_entry#"${iban_entry%%[![:space:]]*}"}"
+  iban_entry="${iban_entry%"${iban_entry##*[![:space:]]}"}"
+  iban_rank=$((iban_rank + 1))
+  [[ -z "$iban_entry" ]] && { iban_entry=""; continue; }
+  is_canonical_key "$iban_entry"     || fail "DIRECT_DEBIT_IBAN_PREVIOUS_KEYS : l'entree n°$iban_rank n'a pas la forme d'une cle de 32 octets en base64 (44 caracteres)."
+  iban_entry=""
+done <<< "$iban_previous_value"
+iban_entry=""
 iban_key_value=""; iban_previous_value=""; payment_key_value=""
 ok "DIRECT_DEBIT_IBAN_KEY sans valeur d'exemple et distincte de PAYMENT_SECRETS_KEY (ou absente)"
 

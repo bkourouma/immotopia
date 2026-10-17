@@ -8,8 +8,10 @@
  * de la clé courante et les identifiants des mandats illisibles : jamais d'IBAN,
  * de texte chiffré ni de clé.
  *
- * Codes de sortie : 0 tout est lisible, 2 il reste des mandats illisibles,
- * 1 erreur d'usage ou de configuration.
+ * Codes de sortie : 0 toutes les valeurs ont été déchiffrées (celles de la clé
+ * courante comprises) et aucune n'a changé entre-temps, 2 il reste des mandats
+ * illisibles (prioritaire), 3 des mandats ont changé entre la lecture et
+ * l'écriture (relancer), 1 erreur d'usage ou de configuration.
  */
 
 import { currentIbanKeyId } from '../lib/direct-debit/iban-crypto';
@@ -48,6 +50,7 @@ async function main(): Promise<void> {
     console.log(`Illisibles : ${result.unreadableIds.length}`);
     for (const id of result.unreadableIds) console.log(`  - mandat ${id}`);
     if (result.unreadableIds.length > 0) exitCode = 2;
+    else if (result.changedConcurrently > 0) exitCode = 3;
   } catch (error) {
     if (error instanceof IbanReencryptionConfigError) {
       console.error(error.message);

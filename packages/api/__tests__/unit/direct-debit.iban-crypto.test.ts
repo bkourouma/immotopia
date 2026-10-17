@@ -6,6 +6,10 @@
 import { createCipheriv, createHash, randomBytes } from 'crypto';
 
 jest.mock('dotenv/config', () => ({}));
+const mockWarn = jest.fn();
+jest.mock('../../src/utils/logger', () => ({
+  logger: { warn: (...args: unknown[]) => mockWarn(...args), info: jest.fn(), error: jest.fn(), debug: jest.fn() }
+}));
 
 type IbanCrypto = typeof import('../../src/lib/direct-debit/iban-crypto');
 
@@ -197,7 +201,61 @@ describe('iban-crypto (ddk1)', () => {
   });
 });
 
+describe('iban-crypto : GCM strict et journal de cause', () => {
+  beforeEach(() => mockWarn.mockClear());
+
+  it('une balise tronquée à 4 octets ou un IV de mauvaise taille est refusé', () => {
+    const c = load({ current: newKey() });
+    const [p, id, iv, tag, ct] = c.encryptIban(IBAN).split(':');
+    const shortTag = Buffer.from(tag, 'base64').subarray(0, 4).toString('base64');
+    const shortIv = Buffer.from(iv, 'base64').subarray(0, 8).toString('base64');
+    expect(() => c.decryptIban([p, id, iv, shortTag, ct].join(':'))).toThrow(UNREADABLE);
+    expect(() => c.decryptIban([p, id, shortIv, tag, ct].join(':'))).toThrow(UNREADABLE);
+    expect(c.decryptIban([p, id, iv, tag, ct].join(':'))).toBe(IBAN);
+  });
+
+  it('journalise seulement un code de cause, sans IBAN, chiffré ni identifiant de clé', () => {
+    const c = load({ current: newKey() });
+    const value = c.encryptIban(IBAN);
+    const [p, id, iv, tag, ct] = value.split(':');
+    const other = load({ current: newKey() }).encryptIban(IBAN);
+    const flipped = Buffer.from(ct, 'base64');
+    flipped[0] ^= 1;
+    const legacy = loadLegacy(newKey()).encryptSecret(IBAN);
+    const cases: Array<[string, string]> = [
+      ['format libre', 'FORMAT'],
+      [other, 'KEY_UNKNOWN'],
+      [[p, id, iv, tag, flipped.toString('base64')].join(':'), 'AUTH_FAILED'],
+      [legacy, 'LEGACY_KEY_MISSING']
+    ];
+    for (const [bad, cause] of cases) {
+      mockWarn.mockClear();
+      expect(() => c.decryptIban(bad)).toThrow(UNREADABLE);
+      expect(mockWarn).toHaveBeenCalledTimes(1);
+      const logged = JSON.stringify(mockWarn.mock.calls);
+      expect(logged).toContain(cause);
+      for (const secret of [IBAN, bad, value, id, ct, tag]) expect(logged).not.toContain(secret);
+    }
+  });
+});
+
 describe('validation de l’environnement des clés IBAN', () => {
+  it('refuse une clé faible ou non canonique, sans afficher la valeur', () => {
+    const weak = Buffer.alloc(32, 7).toString('base64');
+    const urlSafe = Buffer.alloc(32, 0xfb).toString('base64url');
+    const spaced = ` ${newKey()}`;
+    for (const bad of [weak, urlSafe, spaced]) {
+      const out = loadEnvOutcome({ current: bad });
+      expect(out.exited).toBe(true);
+      expect(out.errors).toContain('DIRECT_DEBIT_IBAN_KEY');
+      expect(out.errors).not.toContain(bad.trim());
+    }
+    const prev = loadEnvOutcome({ current: newKey(), previous: `${newKey()},${weak}` });
+    expect(prev.exited).toBe(true);
+    expect(prev.errors).toContain('n°2');
+    expect(prev.errors).not.toContain(weak);
+  });
+
   it('accepte l’absence, une chaîne vide et une clé valide avec trousseau', () => {
     expect(loadEnvOutcome({}).exited).toBe(false);
     expect(loadEnvOutcome({ current: '', previous: '' }).exited).toBe(false);

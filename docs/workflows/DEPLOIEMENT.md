@@ -1455,7 +1455,10 @@ jamais en `pg1`.
 - **Sans clé**, l'API démarre mais refuse de créer un mandat ; les mandats
   existants au format `pg1` restent lisibles. L'API **refuse de démarrer** si la
   clé est identique à `PAYMENT_SECRETS_KEY` ou si une entrée de
-  `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` n'est pas une clé de 32 octets en base64.
+  `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` n'est pas une clé de 32 octets en base64
+  canonique (44 caractères, terminée par `=`) ou est manifestement faible
+  (moins de 16 octets distincts). `deploy.sh` applique la même forme et refuse
+  avant de remplacer le conteneur.
 - **Contrôles de `deploy.sh`** : doublons de ligne, valeur `REMPLACER`, égalité
   avec `PAYMENT_SECRETS_KEY` (échec) ; en production, unicité face au staging,
   trousseau compris (échec) ; clé absente en production (avertissement). Rien
@@ -1475,13 +1478,28 @@ jamais en `pg1`.
 4. Rechiffrer : `docker exec <conteneur-api> node dist/scripts/reencrypt-direct-debit-ibans.js --dry-run`,
    puis la même commande sans `--dry-run`. Le script n'affiche que des compteurs,
    l'identifiant de la clé courante et les identifiants des mandats illisibles
-   (code de sortie 0 : tout est lisible ; 2 : il reste des illisibles ; 1 :
-   erreur d'usage ou de configuration). Il est idempotent : relancé, il annonce
-   0 mandat rechiffré. « Modifiés entre-temps » demande de le relancer.
+   (code de sortie 0 : **toutes** les valeurs ont été déchiffrées, y compris
+   celles déjà sur la clé courante, et aucune n'a changé entre-temps ; 2 : il
+   reste des illisibles, code prioritaire ; 3 : des mandats ont changé entre la
+   lecture et l'écriture, relancer ; 1 : erreur d'usage ou de configuration). Il
+   est idempotent : relancé, il annonce 0 mandat rechiffré, et préserve la date
+   de dernière modification des mandats.
 5. N'**ôter l'ancienne clé** de `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` (et recréer
    l'API) qu'après un passage à 0 à rechiffrer, 0 illisible, **et** une
    sauvegarde de la base vérifiée faite après le rechiffrement : une sauvegarde
    antérieure contient encore des valeurs chiffrées avec l'ancienne clé.
+
+Points d'attention de la rotation :
+
+- **Pas de retour arrière après rechiffrement.** Une version de l'API
+  antérieure à ce changement ne sait pas lire le format `ddk1` : une fois des
+  valeurs rechiffrées, revenir à cette version rend les IBAN illisibles. Le
+  retour arrière passe par un correctif en avant, pas par l'ancienne image.
+- **Conserver l'ancienne clé** dans le gestionnaire de mots de passe jusqu'à
+  l'expiration des sauvegardes (14 jours), avec l'identifiant de clé affiché par
+  le script : c'est la seule façon de relire une sauvegarde antérieure.
+- **Rotation après une fuite** : purger aussi du serveur les copies du fichier
+  de secrets (`*.env.bak-*`), qui contiennent l'ancienne clé en clair.
 
 > **Staging — commandes à lancer par l'utilisateur** (aucun agent ne touche au
 > fichier de secrets). Ordre : la clé peut être ajoutée **avant** la fusion de la
@@ -1491,9 +1509,34 @@ jamais en `pg1`.
 > ```bash
 > F=/home/deployer/immotopia-saas.env
 >
-> # 1. Ajout idempotent de la clé, sans l'afficher (rien si elle existe déjà).
-> grep -q '^DIRECT_DEBIT_IBAN_KEY=' "$F" || printf '\nDIRECT_DEBIT_IBAN_KEY=%s\n' "$(openssl rand -base64 32)" >> "$F"
-> grep -q '^DIRECT_DEBIT_IBAN_PREVIOUS_KEYS=' "$F" || printf 'DIRECT_DEBIT_IBAN_PREVIOUS_KEYS=\n' >> "$F"
+> # 1. Ajout idempotent de la clé, sans jamais l'afficher. Le bloc est dans un
+> #    sous-shell ( … ) : aucun `exit`, la session SSH reste ouverte, et le
+> #    `umask 077` ne la déborde pas. Une valeur de 44 caractères déjà présente
+> #    est laissée telle quelle ; une ligne vide, « REMPLACER » ou entre
+> #    guillemets est à corriger À LA MAIN (jamais de doublon : Compose retient
+> #    la dernière occurrence).
+> (
+>   umask 077
+>   F=/home/deployer/immotopia-saas.env
+>   if [ ! -f "$F" ]; then
+>     echo "fichier absent"
+>   else
+>     if grep -Eq '^DIRECT_DEBIT_IBAN_KEY=.{44}$' "$F"; then
+>       echo "DIRECT_DEBIT_IBAN_KEY déjà renseignée : inchangée"
+>     elif grep -q '^DIRECT_DEBIT_IBAN_KEY=' "$F"; then
+>       echo "ligne DIRECT_DEBIT_IBAN_KEY présente mais vide ou non conforme : à corriger à la main"
+>     else
+>       K="$(openssl rand -base64 32)"
+>       if [ "${#K}" -eq 44 ]; then
+>         printf '\nDIRECT_DEBIT_IBAN_KEY=%s\n' "$K" >> "$F"
+>       else
+>         echo "génération de la clé échouée : rien n'est écrit"
+>       fi
+>       unset K
+>     fi
+>     grep -q '^DIRECT_DEBIT_IBAN_PREVIOUS_KEYS=' "$F" || printf '\nDIRECT_DEBIT_IBAN_PREVIOUS_KEYS=\n' >> "$F"
+>   fi
+> )
 >
 > # 2. Mode 600 attendu (affiche « 600 »).
 > stat -c '%a' "$F"

@@ -20,6 +20,7 @@ import { BadRequestError } from '../../middleware/error-middleware';
 
 const ALGORITHM = 'aes-256-gcm';
 const FORMAT_PREFIX = 'pg1';
+const TAG_LENGTH = 16;
 const IV_LENGTH = 12; // recommandé pour GCM
 
 function secretKey(): Buffer | null {
@@ -47,7 +48,7 @@ function requireKey(): Buffer {
 export function encryptSecret(plaintext: string): string {
   const key = requireKey();
   const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv(ALGORITHM, key, iv);
+  const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: TAG_LENGTH });
   const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const authTag = cipher.getAuthTag();
 
@@ -74,7 +75,10 @@ export function decryptSecret(encrypted: string): string {
     const authTag = Buffer.from(authTagB64, 'base64');
     const ciphertext = Buffer.from(ciphertextB64, 'base64');
 
-    const decipher = createDecipheriv(ALGORITHM, key, iv);
+    // IV de 12 octets et balise de 16 octets exigés : GCM accepterait sinon une
+    // balise tronquée (authentification affaiblie).
+    if (iv.length !== IV_LENGTH || authTag.length !== TAG_LENGTH) throw new Error('longueur');
+    const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: TAG_LENGTH });
     decipher.setAuthTag(authTag);
     const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     return plaintext.toString('utf8');
