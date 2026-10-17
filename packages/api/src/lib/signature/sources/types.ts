@@ -1,4 +1,4 @@
-import type { SignatureDocumentKind } from '@prisma/client';
+import type { SignatureChannel, SignatureDocumentKind } from '@prisma/client';
 import type { PrismaTransactionClient } from '../../../utils/database';
 import type { Feature } from '../../subscription/features';
 
@@ -70,6 +70,21 @@ export interface SignatureDocumentSource {
    * fournisseur actif est `internal` ou `log`.
    */
   readonly providerRequired?: boolean;
+  /**
+   * Spec 042 §10 (SIG-S1) : le code à usage unique est demandé AVANT toute
+   * consultation du document. Option déclarée seulement, à brancher par le noyau.
+   */
+  readonly codeBeforeView?: boolean;
+  /**
+   * Spec 042 §10 (SIG-S2) : canaux d'envoi autorisés pour ce type (ex. sans
+   * `IN_PERSON`, qui n'a pas de code). Absent : tous les canaux. À brancher par le noyau.
+   */
+  readonly allowedChannels?: SignatureChannel[];
+  /**
+   * Spec 042 §10 (SIG-S6) : le fournisseur externe (Yousign) n'envoie rien lui-même,
+   * ImmoTopia garde la porte (lien et code propres). À brancher par le noyau.
+   */
+  readonly externalGateway?: boolean;
   /** Clé RBAC qui autorise à LIRE (liste, détail, fichiers) les demandes de ce type. */
   readonly viewPermission: string;
   /** Clé RBAC qui autorise à CRÉER, annuler et relancer les demandes de ce type. */
