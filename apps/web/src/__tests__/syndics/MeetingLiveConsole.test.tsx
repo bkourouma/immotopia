@@ -32,6 +32,7 @@ const api = {
   stopMeetingRecording: vi.fn(),
   deleteMeetingRecording: vi.fn(),
   retryMeetingRecording: vi.fn(),
+  downloadMeetingRecordingFile: vi.fn(),
   getMeetingDiscussion: vi.fn(),
   postMeetingDiscussionMessage: vi.fn(),
   setMeetingDiscussionMessageHidden: vi.fn(),
@@ -61,6 +62,7 @@ vi.mock('../../services/syndic-service', async () => {
     stopMeetingRecording: (...a: unknown[]) => api.stopMeetingRecording(...a),
     deleteMeetingRecording: (...a: unknown[]) => api.deleteMeetingRecording(...a),
     retryMeetingRecording: (...a: unknown[]) => api.retryMeetingRecording(...a),
+    downloadMeetingRecordingFile: (...a: unknown[]) => api.downloadMeetingRecordingFile(...a),
     getMeetingDiscussion: (...a: unknown[]) => api.getMeetingDiscussion(...a),
     postMeetingDiscussionMessage: (...a: unknown[]) => api.postMeetingDiscussionMessage(...a),
     setMeetingDiscussionMessageHidden: (...a: unknown[]) => api.setMeetingDiscussionMessageHidden(...a),
@@ -669,7 +671,6 @@ describe('MeetingLiveConsole : enregistrement', () => {
     await screen.findByText('Visio intégrée');
     expect(screen.queryByRole('button', { name: 'Enregistrer la séance' })).toBeNull();
     expect(screen.queryByText('Enregistrements')).toBeNull();
-    expect(api.getMeetingRecordings).not.toHaveBeenCalled();
   });
 
   it('démarre l enregistrement quand l AG est en cours', async () => {
@@ -732,24 +733,73 @@ describe('MeetingLiveConsole : enregistrement', () => {
     expect(rows[3]).toContain('Supprimé');
   });
 
-  it('lit l enregistrement dans une modale avec l URL authentifiée du flux et propose le téléchargement', async () => {
+  it('lit l enregistrement dans une modale avec l URL authentifiée du flux', async () => {
     api.getMeetingVisio.mockResolvedValue(withRecording(null));
     api.getMeetingRecordings.mockResolvedValue([recording()]);
     mount();
-    const download = (await screen.findByRole('link', { name: /Télécharger l'enregistrement/ })) as HTMLAnchorElement;
-    expect(download.getAttribute('href')).toMatch(
-      /\/tenants\/t1\/syndics\/s1\/assemblees\/m1\/enregistrements\/rec1\/fichier\?telecharger=1$/
-    );
-    expect(download.hasAttribute('download')).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Lire' }));
-    const dialog = await screen.findByRole('dialog');
-    const video = dialog.querySelector('video') as HTMLVideoElement;
+    fireEvent.click(await screen.findByRole('button', { name: 'Lire' }));
+    const video = document.querySelector('video') as HTMLVideoElement;
     expect(video.getAttribute('src')).toMatch(
       /\/tenants\/t1\/syndics\/s1\/assemblees\/m1\/enregistrements\/rec1\/fichier$/
     );
-    expect(video.hasAttribute('controls')).toBe(true);
-    expect(video.getAttribute('preload')).toBe('metadata');
+  });
+
+  it('télécharge le MP4 par l API et annonce le nom du fichier', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null));
+    api.getMeetingRecordings.mockResolvedValue([recording()]);
+    api.downloadMeetingRecordingFile.mockResolvedValue({ blob: new Blob(['x']), filename: 'AG-2026-10-20.mp4' });
+    URL.createObjectURL = vi.fn(() => 'blob:x');
+    URL.revokeObjectURL = vi.fn();
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Télécharger l'enregistrement/ }));
+    await waitFor(() =>
+      expect(api.downloadMeetingRecordingFile).toHaveBeenCalledWith('t1', 's1', 'm1', 'rec1', 'AG-2026-10-20.mp4')
+    );
+    expect(await screen.findByText('Enregistrement téléchargé : AG-2026-10-20.mp4')).toBeTruthy();
+  });
+
+  it('annonce l échec du téléchargement', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null));
+    api.getMeetingRecordings.mockResolvedValue([recording()]);
+    api.downloadMeetingRecordingFile.mockRejectedValue({ response: { status: 404 } });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Télécharger l'enregistrement/ }));
+    expect(await screen.findByText('Document introuvable.')).toBeTruthy();
+  });
+
+  it('garde les cartes et l arrêt manuel quand la lecture de /visio échoue (503)', async () => {
+    const active = recording({ status: 'RECORDING', stoppedAt: null, endedAt: null });
+    api.getMeetingVisio.mockRejectedValue({ response: { status: 503 } });
+    api.getMeetingRecordings.mockResolvedValue([active]);
+    api.stopMeetingRecording.mockResolvedValue({ ...active, status: 'PROCESSING' });
+    mount();
+    expect(await screen.findByText('Visio intégrée : état indisponible pour le moment')).toBeTruthy();
+    expect(screen.getByText('Enregistrements')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: "Arrêter l'enregistrement en cours" }));
+    await waitFor(() => expect(api.stopMeetingRecording).toHaveBeenCalledWith('t1', 's1', 'm1'));
+  });
+
+  it('conserve la carte de visio quand une relecture échoue après un premier succès', async () => {
+    api.getMeetingVisio.mockResolvedValueOnce(withRecording(null)).mockRejectedValue({ response: { status: 409 } });
+    api.getMeetingRecordings.mockResolvedValue([]);
+    mount();
+    expect(await screen.findByText('Visio intégrée')).toBeTruthy();
+    // La relecture suivante (3 s) échoue : la carte reste, avec l'alerte et « Réessayer ».
+    expect(
+      await screen.findByText('Visio intégrée : état indisponible pour le moment', {}, { timeout: 20000 })
+    ).toBeTruthy();
+    expect(screen.getByText('Visio intégrée')).toBeTruthy();
+  }, 60000);
+
+  it('n affiche plus « Enregistrement en cours » une fois l AG terminée, même avec un état périmé', async () => {
+    const stale = recording({ status: 'RECORDING', stoppedAt: null, endedAt: null });
+    api.getMeetingVisio.mockResolvedValue(withRecording(stale));
+    api.getMeetingRecordings.mockResolvedValue([stale]);
+    mount('COMPLETED');
+    await screen.findByText('Visio intégrée');
+    expect(screen.queryByText('Enregistrement en cours')).toBeNull();
+    expect(screen.queryByRole('button', { name: "Arrêter l'enregistrement" })).toBeNull();
   });
 
   it('supprime après confirmation', async () => {

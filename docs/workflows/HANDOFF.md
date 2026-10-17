@@ -57,6 +57,16 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `fix/syndic-ag-direct-recette` — 2026-10-17
+
+**État :** prêt à relire (PR vers `main`), non déployé.
+
+**Fait :** correctifs de la recette staging du 2026-10-17 (AG en direct, visio, compte rendu). `GET /visio` ne tombe plus (identités non UUID comme l'enregistreur `EG_…`, échec LiveKit → réponse dégradée `degraded`/`unrecognized`) ; règle de reconnaissance des gestionnaires alignée sur l'émission du jeton (plus d'éviction d'un modérateur légitime) ; cartes Visio/Enregistrements conservées en séance, arrêt manuel de l'enregistrement toujours possible, bandeau d'enregistrement éteint à la clôture, reconnexion après coupure, retour visuel aux téléchargements MP4 et Word ; création d'AG : convocations en arrière-plan, `Idempotency-Key`, bouton protégé ; compte rendu Word : feuille de présence, quorum « 16,2 % », ordre du jour repris des résolutions ; navigation : « mandants » n'est plus pris pour une copropriété.
+
+**Reste :** causes des anomalies 1, 2 et 4 non prouvées sur un vrai LiveKit (Docker éteint) : à rejouer sur le staging ; le regroupement des convocations par copropriétaire existait déjà (un message par contact) ; micro/caméra des copropriétaires (PR séparée empilée, spec 045) ; statut d'envoi des convocations non consultable (journal seulement) ; renvoi de convocation toujours synchrone ; idempotence en mémoire du processus ; classeur de fonctionnalités non mis à jour (correctifs sans nouvel écran ni route).
+
+**Pièges :** `i18n:extract` réécrit tous les catalogues et crée des `*.orphans.json` : relire le diff des locales. `npx jest <fichier>` lance toute la suite : utiliser `--runTestsByPath`. `node_modules` du worktree est une jonction vers un autre worktree : `rmdir` avant tout retrait.
+
 ## Branche `feat/syndic-ag-visio` — 2026-10-17
 
 **État :** FUSIONNÉE dans `main` le 2026-10-17 (PR https://github.com/bkourouma/immotopia/pull/144, commit de fusion `79aeb324`), avec les PR #145 (enregistrements orphelins) et #148 (discussion modérée), fusionnées dans la branche avant elle pour ne passer qu'une CI (7/7 verte sur `0011c4d1`). Section gardée pour la mise en service ; à supprimer une fois la visio en service.

@@ -38,6 +38,12 @@ jest.mock('../../src/middleware/property-rbac-middleware', () => ({
   requirePropertyPermission: () => (_req: any, _res: any, next: any) => next()
 }));
 
+// Droits par rôle (route de jeton modérateur) : simulés, la garde de route l'est aussi.
+const mockHasPermission = jest.fn();
+jest.mock('../../src/services/permission-service', () => ({
+  hasPermission: (...args: unknown[]) => mockHasPermission(...args)
+}));
+
 const mockAudit = jest.fn();
 jest.mock('../../src/services/audit-service', () => ({
   logAuditEvent: (...args: unknown[]) => mockAudit(...args),
@@ -420,7 +426,9 @@ describe('GET /visio (console)', () => {
       roomName: null,
       roomActive: false,
       participants: [],
-      recording: { enabled: false, active: null }
+      recording: { enabled: false, active: null },
+      degraded: false,
+      unrecognized: 0
     });
     expect(mockLk.listRoomParticipants).not.toHaveBeenCalled();
     expect((await request(app).get(`/api/tenants/${TENANT_A}/syndics/${S1}/assemblees/${MB}/visio`)).status).toBe(404);
@@ -829,6 +837,196 @@ describe('corps des routes du gestionnaire : champs inconnus refusés', () => {
       ).status
     ).toBe(400);
     expect(mockLk.setCanSpeak).not.toHaveBeenCalled();
+    expect(mockLk.removeParticipant).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recette du 2026-10-17 : GET /visio pendant la séance (cartes qui disparaissent,
+// copropriétaire absent de la liste, gestionnaire expulsé)
+// ---------------------------------------------------------------------------
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * `GMParticipant.id` est une colonne Postgres `uuid` : une valeur qui n'en est pas une dans un
+ * `id IN (...)` fait échouer TOUTE la requête (Prisma P2023). La base en mémoire ne le sait pas.
+ */
+function makeParticipantIdStrictUuid(): void {
+  const original = mockPrisma.gMParticipant.findMany.bind(mockPrisma.gMParticipant);
+  mockPrisma.gMParticipant.findMany = (async (args: any) => {
+    const ids: unknown[] = args?.where?.id?.in ?? [];
+    if (ids.some(value => typeof value !== 'string' || !UUID_RE.test(value))) {
+      throw Object.assign(new Error('Inconsistent column data: Error creating UUID'), { code: 'P2023' });
+    }
+    return original(args);
+  }) as any;
+}
+
+function seedRunningRecording(): void {
+  mockPrisma.gMRecording.rows.push({
+    id: id(901),
+    tenantId: TENANT_A,
+    meetingId: M1,
+    egressId: 'EG_rec1',
+    status: 'RECORDING',
+    storageKey: 'k',
+    fileUrl: null,
+    fileSize: null,
+    durationSeconds: null,
+    failureReason: null,
+    webhookEventId: null,
+    startedAt: new Date('2026-10-10T09:30:00Z'),
+    startedByUserId: 'user-manager',
+    stoppedAt: null,
+    endedAt: null
+  });
+}
+
+describe('GET /visio : identités de salle qui ne sont pas des participants (enregistreur, agents)', () => {
+  it('le participant enregistreur EG_… ne fait pas échouer la lecture ; le copropriétaire reste listé', async () => {
+    makeParticipantIdStrictUuid();
+    const awa = await joinedToken(AWA);
+    seedRunningRecording();
+    mockLk.listRoomParticipants.mockResolvedValue([
+      lkInfo('EG_aBcDeF123456'),
+      lkInfo(awa.participantId),
+      lkInfo('gestionnaire-user-manager', { permission: { canPublish: true } })
+    ]);
+
+    const res = await request(app).get(url(M1, '/visio'));
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.participants.map((p: any) => p.name)).toEqual(['Awa Traore', 'Marie Syndic']);
+    expect(res.body.data.recording.active).toMatchObject({ id: id(901), status: 'RECORDING' });
+    expect(res.body.data.degraded).toBe(false);
+    expect(res.body.data.unrecognized).toBe(1);
+    // L'enregistreur n'est jamais expulsé de la salle.
+    expect(mockLk.removeParticipant).not.toHaveBeenCalled();
+  });
+
+  it('un participant d une autre AG ou agence reste ignoré (compté, jamais exposé)', async () => {
+    makeParticipantIdStrictUuid();
+    mockPrisma.gMParticipant.rows.push(
+      { id: id(701), tenantId: TENANT_A, meetingId: M_PLANNED, contactId: AWA },
+      { id: id(702), tenantId: TENANT_B, meetingId: MB, contactId: CONTACT_B }
+    );
+    mockLk.listRoomParticipants.mockResolvedValue([lkInfo(id(701)), lkInfo(id(702)), lkInfo('EG_x')]);
+    const res = await request(app).get(url(M1, '/visio'));
+    expect(res.status).toBe(200);
+    expect(res.body.data.participants).toEqual([]);
+    expect(res.body.data.unrecognized).toBe(3);
+    expect(mockLk.removeParticipant).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /visio : dégradation si LiveKit échoue', () => {
+  it('liste des participants indisponible : 200, enabled vrai, degraded vrai, enregistrement lu en base', async () => {
+    seedRunningRecording();
+    mockLk.listRoomParticipants.mockRejectedValue(new VisioUnavailableError());
+
+    const res = await request(app).get(url(M1, '/visio'));
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({
+      enabled: true,
+      roomName: ROOM,
+      roomActive: false,
+      participants: [],
+      degraded: true,
+      unrecognized: 0
+    });
+    expect(res.body.data.recording.active).toMatchObject({ id: id(901) });
+    expect(mockLk.removeParticipant).not.toHaveBeenCalled();
+  });
+
+  it('existence de la salle indisponible (salle vide) : 200 dégradé', async () => {
+    mockLk.listRoomParticipants.mockResolvedValue([]);
+    mockLk.roomExists.mockRejectedValue(new VisioUnavailableError());
+    const res = await request(app).get(url(M1, '/visio'));
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ enabled: true, participants: [], degraded: true });
+  });
+
+  it('état nominal : degraded faux, unrecognized 0 ; visio désactivée : mêmes champs', async () => {
+    let res = await request(app).get(url(M1, '/visio'));
+    expect(res.body.data).toMatchObject({ degraded: false, unrecognized: 0 });
+    mockLk.enabled = false;
+    res = await request(app).get(url(M1, '/visio'));
+    expect(res.body.data).toMatchObject({ enabled: false, degraded: false, unrecognized: 0 });
+  });
+
+  it('une AG d une autre agence reste un 404, même quand LiveKit est en panne', async () => {
+    mockLk.listRoomParticipants.mockRejectedValue(new VisioUnavailableError());
+    expect((await request(app).get(`/api/tenants/${TENANT_A}/syndics/${S1}/assemblees/${MB}/visio`)).status).toBe(404);
+  });
+});
+
+describe('GET /visio : un gestionnaire qui a pu obtenir un jeton n est pas expulsé', () => {
+  beforeEach(() => {
+    mockHasPermission.mockReset();
+    mockHasPermission.mockResolvedValue(false);
+  });
+
+  it('accès par TenantClient + SYNDIC_EDIT dans CETTE agence : reconnu, non expulsé', async () => {
+    mockPrisma.user.rows.push({ id: 'user-client', fullName: 'Paul Client', passwordHash: 'h' });
+    mockPrisma.tenantClient.rows.push({ userId: 'user-client', tenantId: TENANT_A, clientType: 'OWNER' });
+    mockHasPermission.mockImplementation(
+      async (userId: string, key: string, tenantId?: string) =>
+        userId === 'user-client' && key === 'SYNDIC_EDIT' && tenantId === TENANT_A
+    );
+    mockLk.listRoomParticipants.mockResolvedValue([lkInfo('gestionnaire-user-client')]);
+
+    const res = await request(app).get(url(M1, '/visio'));
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.participants.map((p: any) => p.name)).toEqual(['Paul Client']);
+    expect(mockLk.removeParticipant).not.toHaveBeenCalled();
+  });
+
+  it('membre suspendu, sans accès client, ou droit d une autre agence : expulsé', async () => {
+    mockPrisma.user.rows.push(
+      { id: 'user-disabled', fullName: 'Suspendu', passwordHash: 'h' },
+      { id: 'user-noperm', fullName: 'Sans droit', passwordHash: 'h' }
+    );
+    mockPrisma.membership.rows.push({
+      userId: 'user-disabled',
+      tenantId: TENANT_A,
+      status: 'DISABLED',
+      user: { fullName: 'Suspendu' }
+    });
+    mockPrisma.tenantClient.rows.push({ userId: 'user-noperm', tenantId: TENANT_A, clientType: 'OWNER' });
+    // Droit SYNDIC_EDIT, mais seulement dans l'agence B.
+    mockHasPermission.mockImplementation(
+      async (userId: string, _key: string, tenantId?: string) => userId === 'user-other' && tenantId === TENANT_B
+    );
+    mockPrisma.tenantClient.rows.push({ userId: 'user-other', tenantId: TENANT_B, clientType: 'OWNER' });
+    mockLk.listRoomParticipants.mockResolvedValue([
+      lkInfo('gestionnaire-user-disabled'),
+      lkInfo('gestionnaire-user-noperm'),
+      lkInfo('gestionnaire-user-other')
+    ]);
+
+    const res = await request(app).get(url(M1, '/visio'));
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.participants).toEqual([]);
+    expect(mockLk.removeParticipant).toHaveBeenCalledTimes(3);
+    expect(mockLk.removeParticipant).toHaveBeenCalledWith(ROOM, 'gestionnaire-user-disabled', { revokeTokens: true });
+    expect(mockLk.removeParticipant).toHaveBeenCalledWith(ROOM, 'gestionnaire-user-noperm', { revokeTokens: true });
+    expect(mockLk.removeParticipant).toHaveBeenCalledWith(ROOM, 'gestionnaire-user-other', { revokeTokens: true });
+  });
+
+  it('si la vérification des droits échoue, personne n est expulsé (on ne retire pas dans le doute)', async () => {
+    mockPrisma.user.rows.push({ id: 'user-client', fullName: 'Paul Client', passwordHash: 'h' });
+    mockPrisma.tenantClient.rows.push({ userId: 'user-client', tenantId: TENANT_A, clientType: 'OWNER' });
+    mockHasPermission.mockRejectedValue(new Error('db down'));
+    mockLk.listRoomParticipants.mockResolvedValue([lkInfo('gestionnaire-user-client')]);
+
+    const res = await request(app).get(url(M1, '/visio'));
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.degraded).toBe(true);
     expect(mockLk.removeParticipant).not.toHaveBeenCalled();
   });
 });

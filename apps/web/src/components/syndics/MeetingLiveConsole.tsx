@@ -197,14 +197,15 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
     meetingStatus,
     onLinksRevoked: refresh
   });
-  const { visio, visioEnabled, inVisioContactIds, activeRecording } = visioState;
+  const { visio, visioEnabled, inVisioContactIds } = visioState;
   const recordingState = useMeetingRecordings({
     tenantId,
     syndicId,
     meetingId,
     meetingStatus,
-    enabled: visioState.recordingConfigured,
-    activeId: activeRecording?.id ?? null,
+    // La liste est indépendante de `/visio` : elle se lit toujours, pour garder l'arrêt manuel accessible.
+    enabled: true,
+    activeId: visioState.activeRecording?.id ?? null,
     onChanged: visioState.refreshVisio
   });
 
@@ -361,6 +362,22 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
 
       {live ? <QuorumPanel live={live} /> : null}
 
+      {visioState.visioError || visio?.degraded ? (
+        <Alert
+          type="warning"
+          showIcon
+          message={t('Visio intégrée : état indisponible pour le moment')}
+          description={t(
+            "La salle et les participants n'ont pas pu être relus. L'arrêt de l'enregistrement reste possible plus bas."
+          )}
+          action={
+            <Button size="small" onClick={() => visioState.refreshVisio()}>
+              {t('Réessayer')}
+            </Button>
+          }
+        />
+      ) : null}
+
       {visioEnabled && visio ? (
         <MeetingVisioCard
           visio={visio}
@@ -376,6 +393,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
           onStartRecording={() => void recordingState.start()}
           onStopRecording={() => void recordingState.stop()}
           failedRecording={recordingState.latestFailed}
+          listActiveRecording={frozen ? null : recordingState.listActive}
           discussion={discussionState.discussionEnabled && inProgress ? discussionState.roomAdapter : undefined}
           onWriting={(participant, allowed) => void visioState.writing(participant, allowed)}
           busyWritingParticipantId={visioState.busyWritingId}
@@ -395,7 +413,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
         />
       ) : null}
 
-      {visioState.recordingConfigured ? (
+      {visioState.recordingConfigured || recordingState.recordings.length > 0 ? (
         <MeetingRecordingsCard
           recordings={recordingState.recordings}
           fileUrl={(recordingId, download) =>
@@ -405,6 +423,11 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
           processingSlow={recordingState.processingSlow}
           onDelete={recording => void recordingState.remove(recording)}
           onRetry={recording => void recordingState.retry(recording)}
+          onDownload={recording => void recordingState.download(recording)}
+          activeRecording={visioEnabled && visio ? null : recordingState.listActive}
+          frozen={frozen}
+          stopBusy={recordingState.busy}
+          onStop={() => void recordingState.stop()}
         />
       ) : null}
 

@@ -231,6 +231,8 @@ export interface MeetingVisioAdminView {
   roomName: string | null;
   roomActive: boolean;
   participants: MeetingVisioParticipant[];
+  /** Vrai quand l'API n'a pas pu relire la salle ou les enregistrements : la liste peut être incomplète. */
+  degraded?: boolean;
   /** Absent d'une API plus ancienne : traité comme « enregistrement non configuré ». */
   recording?: { enabled: boolean; active: MeetingRecordingView | null };
 }

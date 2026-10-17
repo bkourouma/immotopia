@@ -382,18 +382,32 @@ export async function createMeeting(
   return response.data.data;
 }
 
-/** Crée l'assemblée et rend aussi le décompte d'envoi de la convocation. */
+/**
+ * Crée l'assemblée. Les convocations partent APRÈS la réponse (`convocationPending`) ;
+ * `idempotencyKey` rejoue la même création en cas de réessai (pas de doublon).
+ */
 export async function createMeetingWithConvocation(
   tenantId: string,
   syndicId: string,
-  data: CreateMeetingRequest
-): Promise<{ meeting: GeneralMeeting; convocation: MeetingConvocationResult | null }> {
+  data: CreateMeetingRequest,
+  idempotencyKey?: string
+): Promise<{ meeting: GeneralMeeting; convocation: MeetingConvocationResult | null; convocationPending: boolean }> {
   const response = await apiClient.post<{
     success: boolean;
     data: GeneralMeeting;
-    convocation?: MeetingConvocationResult;
-  }>(`/tenants/${tenantId}/syndics/${syndicId}/assemblees`, data);
-  return { meeting: response.data.data, convocation: response.data.convocation ?? null };
+    convocation?: MeetingConvocationResult | { status: 'SENDING' };
+  }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees`,
+    data,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined
+  );
+  const raw = response.data.convocation;
+  const convocationPending = !!raw && 'status' in raw && raw.status === 'SENDING';
+  return {
+    meeting: response.data.data,
+    convocation: convocationPending ? null : ((raw as MeetingConvocationResult | undefined) ?? null),
+    convocationPending
+  };
 }
 
 /** Renvoie la convocation d'une assemblée planifiée. */
@@ -551,13 +565,22 @@ export async function downloadMeetingConvocationWord(
   };
 }
 
-export async function generateMeetingMinutesDocx(tenantId: string, syndicId: string, meetingId: string): Promise<Blob> {
-  const response = await apiClient.post(
+/** Compte rendu Word de l'AG ; le nom vient de `Content-Disposition`, sinon `fallbackName`. */
+export async function generateMeetingMinutesDocx(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  fallbackName = 'compte-rendu.docx'
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.post<Blob>(
     `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/compte-rendu`,
     {},
     { responseType: 'blob' }
   );
-  return response.data;
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
 }
 
 export async function listProvidersContracts(tenantId: string, syndicId: string): Promise<SyndicProvidersPayload> {
@@ -1600,4 +1623,28 @@ export function meetingRecordingFileUrl(
 ): string {
   const base = `${API_URL}${liveBase(tenantId, syndicId, meetingId)}/enregistrements/${recordingId}/fichier`;
   return download ? `${base}?telecharger=1` : base;
+}
+
+/** Délai d'un téléchargement d'enregistrement : un MP4 de séance est volumineux (15 min). */
+const RECORDING_DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000;
+
+/**
+ * Télécharge le MP4 par l'API authentifiée (blob) pour pouvoir annoncer le nom du fichier et
+ * l'échec éventuel ; le nom vient de `Content-Disposition`, sinon `fallbackName`.
+ */
+export async function downloadMeetingRecordingFile(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  recordingId: string,
+  fallbackName = 'enregistrement.mp4'
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(
+    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements/${recordingId}/fichier`,
+    { params: { telecharger: 1 }, responseType: 'blob', timeout: RECORDING_DOWNLOAD_TIMEOUT_MS }
+  );
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
 }

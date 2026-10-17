@@ -28,7 +28,14 @@ vi.mock('@livekit/components-styles', () => ({}));
 vi.mock('livekit-client', () => ({
   Track: { Source: { Microphone: 'microphone', Camera: 'camera', ScreenShare: 'screen_share' } },
   RoomEvent: { Reconnected: 'reconnected' },
-  DisconnectReason: { CLIENT_INITIATED: 1, PARTICIPANT_REMOVED: 4, ROOM_DELETED: 5, ROOM_CLOSED: 10 },
+  DisconnectReason: {
+    CLIENT_INITIATED: 1,
+    DUPLICATE_IDENTITY: 2,
+    SERVER_SHUTDOWN: 3,
+    PARTICIPANT_REMOVED: 4,
+    ROOM_DELETED: 5,
+    ROOM_CLOSED: 10
+  },
   MediaDeviceFailure: {
     PermissionDenied: 'PermissionDenied',
     NotFound: 'NotFound',
@@ -252,6 +259,15 @@ describe('MeetingVisioRoom', () => {
     await mount();
     act(() => (lk.roomProps?.onDisconnected as (reason: number) => void)(DISCONNECT.ROOM_DELETED));
     expect(await screen.findByText('La visio est terminée.')).toBeTruthy();
+  });
+
+  it('propose de se reconnecter après une coupure inattendue (pas « vous avez quitté »)', async () => {
+    const { getToken } = await mount();
+    act(() => (lk.roomProps?.onDisconnected as (reason?: number) => void)(undefined));
+    expect(await screen.findByText('La connexion à la visio a été interrompue.')).toBeTruthy();
+    expect(screen.queryByText('Vous avez quitté la visio.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Se reconnecter' }));
+    await waitFor(() => expect(getToken).toHaveBeenCalledTimes(2));
   });
 
   it('propose de revenir après un départ volontaire et redemande un jeton', async () => {
