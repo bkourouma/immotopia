@@ -30,12 +30,12 @@ Modèle de section :
 
 ## Branche `docs/spec-syndic-paiement-declare` — 2026-10-17
 
-**État :** PR 165 en brouillon, spec seule, D7 à D10 tranchées par Baba le 2026-10-17 (relances, validation, IA, numéro partagé) ; dix questions encore ouvertes au §11.
-**Dernier commit :** `32e4a4a5` (spec 047), puis cette passation.
+**État :** PR 165 en brouillon, spec seule, décisions produit D7 à D18 tranchées par Baba le 2026-10-17 ; seule reste ouverte la validation comptable des sous-comptes 552x (Q9).
+**Dernier commit :** décisions D11 à D18 de la spec 047 (voir `git log`).
 
 **Fait :** `specs/047-syndic-paiement-declare/spec.md` : paiement mobile money hors d'ImmoTopia, déclaré par le copropriétaire (référence obligatoire, capture facultative pré-lue par IA), validé par le gestionnaire. Rien n'est crédité avant validation ; la validation réutilise `recordLotPaymentTx` + `issueReceiptsForPaymentTx`.
 
-**Reste :** décisions du §11 ; puis `plan.md`, `contracts.md` et `tasks.md` ; validation comptable des sous-comptes 552x (Q9).
+**Reste :** validation comptable (Q9) ; puis `plan.md`, `contracts.md` et `tasks.md` ; validation comptable des sous-comptes 552x (Q9).
 
 **Pièges :** le hook `validate-bash.sh` refuse une commande qui contient `--base main` (il y voit une poussée sur main) : lancer `gh pr create` sans `--base`, dans une commande séparée du `git push`. `TreasuryAccount` est au niveau de l'agence, pas de la copropriété. Le côté loyers a déjà `RentalPaymentDeclaration`.
 
