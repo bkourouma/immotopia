@@ -217,7 +217,7 @@ Pièges :
 
 ## Branche `feat/prelevement-p2-remises` — 2026-10-17
 
-**État :** prêt à relire — PR vers `fix/prelevement-cle-iban` (empilée sur la PR 153), ouverte par le pilote. Recette navigateur NON faite (démo indisponible, voir pièges).
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/155 (base `fix/prelevement-cle-iban`, empilée sur la PR 153). Recette navigateur NON faite (démo indisponible, voir pièges).
 **Dernier commit :** voir `git log` (fusion de `fix/prelevement-cle-iban` à jour de `main`, migrations renommées en `20261017090000_*` et `20261017090100_*`).
 **Worktree :** `.claude/worktrees/prelevement-p2`, `node_modules` PROPRE (`npm ci`), client Prisma propre.
 
