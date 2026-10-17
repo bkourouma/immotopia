@@ -441,6 +441,22 @@ describe('retour banque / constat de rejet', () => {
     expect(mockMail.send.mock.calls[1][1].reason).toBe('MD01');
   });
 
+  it('le motif envoyé au débiteur est court et sans lien ; le motif complet reste sur la ligne', async () => {
+    const full = `Compte clôturé, voir https://exemple.test/paiement?id=1 ou www.exemple.test/x ${'très long '.repeat(30)}`;
+    await reject(1, { reason: full });
+    expect(line(1).rejectionReason).toBe(full.trim());
+
+    const sent = mockMail.send.mock.calls[0][1].reason as string;
+    expect(sent.length).toBeLessThanOrEqual(120);
+    expect(sent).not.toMatch(/https?:|www\./i);
+    expect(sent.startsWith('Compte clôturé, voir')).toBe(true);
+  });
+
+  it('un motif réduit à un lien retombe sur le code', async () => {
+    await reject(1, { code: 'MD01', reason: 'https://exemple.test/x' });
+    expect(mockMail.send.mock.calls[0][1].reason).toBe('MD01');
+  });
+
   describe('notification du débiteur', () => {
     it('adresse de la fiche contact quand le débiteur n’a pas de compte', async () => {
       await reject(2);

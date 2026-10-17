@@ -35,6 +35,10 @@ jest.mock('../../src/services/email-service', () => ({
 jest.mock('../../src/services/email-notification-config-service', () => ({
   getEmailNotificationConfig: jest.fn().mockResolvedValue({ enabled: false })
 }));
+const mockLock = jest.fn(async (_key: string, fn: () => Promise<unknown>, _options?: unknown) => fn());
+jest.mock('../../src/lib/ai/advisory-lock', () => ({
+  withExclusiveSection: (...args: [string, () => Promise<unknown>, unknown?]) => mockLock(...args)
+}));
 jest.mock('../../src/lib/direct-debit/collectors', () => ({ getCollector: () => mockCollector }));
 jest.mock('../../src/lib/direct-debit/return-formats', () => ({
   getReturnAdapter: () => ({ format: 'GENERIC_CSV', parse: (...args: unknown[]) => mockParse(...args) })
@@ -44,6 +48,7 @@ import { createHmac, hkdfSync } from 'node:crypto';
 import { AppError, BadRequestError } from '../../src/middleware/error-middleware';
 import { applyReturnFile, listReturnImports, previewReturnFile } from '../../src/lib/direct-debit/returns';
 import { AuditActionKey } from '../../src/types/audit-types';
+import { logger } from '../../src/utils/logger';
 import { NOW, OTHER_TENANT, REMITTANCE, TENANT, harness, lineId } from '../helpers/direct-debit-return-db';
 
 const { state, db } = harness;
@@ -348,6 +353,141 @@ describe('import d’un retour / application', () => {
     const result = await apply();
     expect(result.errors).toHaveLength(1);
     expect(state.imports[0]).toMatchObject({ settledCount: 1, errorCount: 1 });
+  });
+
+  it('compteurs réels dans appliedSummary, et lineId + importId (rien de personnel) dans le journal d’un échec', async () => {
+    twoRecords();
+    mockCollector.settleTx.mockRejectedValue(new Error('base injoignable'));
+    const result = await apply();
+    expect(result.appliedSummary).toEqual({ settled: 0, rejected: 1, failed: 1 });
+    expect(result.summary).toMatchObject({ settle: 1, reject: 1 });
+    const warn = (logger.warn as jest.Mock).mock.calls.find(call => /non appliquée/.test(call[0]));
+    expect(warn?.[1]).toMatchObject({ tenantId: TENANT, importId: result.importId, lineId: lineId(1) });
+    expect(JSON.stringify(warn)).not.toMatch(/Awa|Traor|@example/);
+  });
+
+  it('un arrêt en cours de route laisse les compteurs des lignes déjà traitées', async () => {
+    parsed([record({ row: 2 }), record({ row: 3, operationReference: 'PRL-2026-0001-002' })]);
+    mockCollector.settleTx.mockImplementation(async (_tx: unknown, _ctx: unknown, l: any) => {
+      if (l.id === lineId(2)) throw new Error('panne');
+      return { rentalPaymentId: `pay-${l.id}` };
+    });
+    // Le journal lui-même tombe : la boucle s'interrompt après la première ligne appliquée.
+    (logger.warn as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('journal indisponible');
+    });
+    await expect(apply()).rejects.toThrow('journal indisponible');
+    expect(state.imports[0]).toMatchObject({ settledCount: 1, errorCount: 1 });
+    expect(mockAudit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ actionKey: AuditActionKey.DIRECT_DEBIT_RETURN_IMPORTED })
+    );
+  });
+
+  it('refuse plus de 500 enregistrements à appliquer, avant toute écriture', async () => {
+    const extra = Array.from({ length: 499 }, (_, index) => ({
+      ...line(1),
+      id: `66666666-6666-4666-8666-${String(index).padStart(12, '0')}`,
+      lineNumber: 4 + index
+    }));
+    state.lines.push(...extra);
+    const records = Array.from({ length: 502 }, (_, index) =>
+      record({ row: index + 2, operationReference: `PRL-2026-0001-${String(index + 1).padStart(3, '0')}` })
+    );
+    parsed(records);
+    await expect(apply()).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('502') });
+    expect(state.imports).toHaveLength(0);
+    expect(line(1).status).toBe('PENDING');
+
+    // Pile 500 : accepté.
+    parsed(records.slice(0, 500));
+    const result = await apply();
+    expect(result.appliedSummary).toEqual({ settled: 500, rejected: 0, failed: 0 });
+  });
+
+  it('au plus 50 remises distinctes par fichier (aperçu comme application)', async () => {
+    const records = Array.from({ length: 51 }, (_, index) =>
+      record({ row: index + 2, operationReference: `PRL-2026-${String(index + 1).padStart(4, '0')}-001` })
+    );
+    parsed(records);
+    await expect(preview()).rejects.toBeInstanceOf(BadRequestError);
+    await expect(apply()).rejects.toBeInstanceOf(BadRequestError);
+    expect(state.imports).toHaveLength(0);
+
+    parsed(records.slice(0, 50));
+    await expect(preview()).resolves.toMatchObject({ summary: { skip: 49 } });
+    // Une seule requête pour 50 couples (lots de 200).
+    expect(db.directDebitRemittance.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('rang de 3 à 6 chiffres dans la référence d’opération', async () => {
+    state.lines.push({ ...line(1), id: lineId(8), lineNumber: 1234 });
+    parsed([
+      record({ operationReference: 'PRL-2026-0001-001234' }),
+      record({ row: 3, operationReference: 'PRL-2026-0001-1' })
+    ]);
+    const result = await preview();
+    expect(result.records[0].match?.lineId).toBe(lineId(8));
+    expect(result.records[1].skipReason).toBe('UNKNOWN_REFERENCE');
+  });
+
+  it('une seule application à la fois par agence et périmètre : la seconde reçoit 409', async () => {
+    parsed([record()]);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    mockLock.mockImplementationOnce(async (_key, fn) => {
+      await gate;
+      return fn();
+    });
+    const first = apply();
+    await expect(apply()).rejects.toMatchObject({ statusCode: 409 });
+    expect(mockLock).toHaveBeenCalledTimes(1);
+    expect(mockLock.mock.calls[0][0]).toBe(`direct-debit-return:${TENANT}:RENTAL_LEASE`);
+    release();
+    await expect(first).resolves.toMatchObject({ appliedSummary: { settled: 1, rejected: 0, failed: 0 } });
+    // Le verrou local est relâché : une application suivante repart.
+    parsed([record({ row: 5, operationReference: 'PRL-2026-0001-002' })]);
+    await expect(apply()).resolves.toBeDefined();
+  });
+
+  it('verrou non obtenu à temps (autre instance) : 409 traduit', async () => {
+    parsed([record()]);
+    mockLock.mockRejectedValueOnce(
+      Object.assign(new Error('Unable to start a transaction in the given time'), { code: 'P2028' })
+    );
+    await expect(apply()).rejects.toMatchObject({ statusCode: 409 });
+    expect(state.imports).toHaveLength(0);
+  });
+
+  it('un fichier déjà appliqué dont tout est ALREADY_PROCESSED : 409 daté, sans nouvel import', async () => {
+    parsed([record(), record({ row: 3, operationReference: 'PRL-2026-0001-002', outcome: 'REJECTED' })]);
+    await apply();
+    expect(state.imports).toHaveLength(1);
+
+    // L'aperçu signale l'import précédent.
+    const again = await preview();
+    expect(again.alreadyImported).toEqual({
+      importId: state.imports[0].id,
+      importedAt: state.imports[0].createdAt.toISOString()
+    });
+
+    await expect(apply()).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Ce fichier a déjà été appliqué le 28/10/2026.'
+    });
+    expect(state.imports).toHaveLength(1);
+  });
+
+  it('autre fichier, autre agence ou autre périmètre : alreadyImported reste null', async () => {
+    parsed([record()]);
+    expect((await preview()).alreadyImported).toBeNull();
+    await apply();
+    const other = Buffer.from('autre contenu');
+    expect((await preview({ buffer: other })).alreadyImported).toBeNull();
+    expect((await previewReturnFile(OTHER_TENANT, RENTAL, FILE, undefined)).alreadyImported).toBeNull();
+    expect((await previewReturnFile(TENANT, SYNDIC, FILE, undefined)).alreadyImported).toBeNull();
   });
 
   it('sans clé d’empreinte, rien n’est écrit', async () => {

@@ -25,7 +25,8 @@ const REJECTION_CODE_MAX = 20;
 const REJECTION_REASON_MAX = 500;
 const AMOUNT_MAX_INTEGER_DIGITS = 12;
 
-const OPERATION_REFERENCE = /^PRL-\d{4}-\d{4}-\d{3}$/;
+/** Même forme que le rapprochement (`returns/import.ts`) : séquence de 4 à 10 chiffres, rang de 3 à 6. */
+const OPERATION_REFERENCE = /^PRL-\d{4}-\d{4,10}-\d{3,6}$/;
 
 const SETTLED_STATUSES = new Set(['REGLE', 'REGLEE', 'PAYE', 'OK']);
 const REJECTED_STATUSES = new Set(['REJETE', 'REJET', 'KO']);
@@ -68,7 +69,8 @@ function decode(buffer: Buffer): string {
   try {
     text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer);
   } catch {
-    throw notText();
+    // Cas courant : un export Excel en Windows-1252 (accents). On dit quoi faire plutôt que « illisible ».
+    throw new BadRequestError(t('Enregistrez le fichier au format CSV UTF-8.'));
   }
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }

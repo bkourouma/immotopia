@@ -44,11 +44,15 @@ export interface ReturnPreviewDto {
   records: ReturnRecordDto[];
   errors: { row: number; message: string }[];
   summary: { settle: number; reject: number; skip: number; errors: number };
+  /** Un import de même empreinte, même agence et même périmètre existe déjà (sinon null). */
+  alreadyImported: { importId: string; importedAt: string } | null;
 }
 
 export interface ReturnApplyDto extends ReturnPreviewDto {
   importId: string;
   results: { row: number; lineId: string; ok: boolean; error: string | null }[];
+  /** Compteurs réels issus des résultats (le `summary` reste celui de l'aperçu). */
+  appliedSummary: { settled: number; rejected: number; failed: number };
 }
 
 export interface ReturnImportDto {

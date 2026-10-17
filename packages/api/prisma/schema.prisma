@@ -10810,5 +10810,6 @@ model DirectDebitReturnImport {
   lines  DirectDebitRemittanceLine[]
 
   @@index([tenantId, createdAt])
+  @@index([tenantId, fileDigest])
   @@map("direct_debit_return_imports")
 }

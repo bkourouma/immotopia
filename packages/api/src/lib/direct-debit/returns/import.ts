@@ -1,10 +1,12 @@
 import type { Prisma } from '@prisma/client';
 import { t } from '../../../i18n';
-import { AppError, BadRequestError, ErrorCode } from '../../../middleware/error-middleware';
+import { AppError, BadRequestError, ConflictError, ErrorCode } from '../../../middleware/error-middleware';
 import { recordAuditEvent } from '../../../services/audit-service';
 import { AuditActionKey } from '../../../types/audit-types';
 import { prisma } from '../../../utils/database';
 import { logger } from '../../../utils/logger';
+import { withExclusiveSection } from '../../ai/advisory-lock';
+import { formatFrenchDate } from '../business-days';
 import { resolveDebtorNames } from '../dto';
 import { assertFileDigestAvailable, computeRemittanceFileDigest } from '../file-digest';
 import { remittanceReferenceOf } from '../remittance-dto';
@@ -42,8 +44,19 @@ export interface UploadedReturnFile {
   originalname?: string;
 }
 
+/** Même forme que le parseur CSV (`return-formats/generic-csv.ts`) : rang de 3 à 6 chiffres. */
 const REFERENCE = /^PRL-(\d{4})-(\d{4,10})-(\d{3,6})$/i;
 const MAX_INT = 2_000_000_000;
+
+/** Application d'un fichier : au plus 500 enregistrements actionnables (une transaction chacun). */
+export const APPLY_MAX_ACTIONABLE_RECORDS = 500;
+/** Rapprochement : au plus 50 remises distinctes par fichier, requêtes par lots de 200 couples. */
+export const RECONCILE_MAX_REMITTANCES = 50;
+const RECONCILE_BATCH_SIZE = 200;
+/** Une application tient le verrou le temps de ses transactions (500 lignes au plus). */
+const APPLY_LOCK_OPTIONS = { maxWaitMs: 10_000, timeoutMs: 15 * 60_000 };
+/** Applications en cours dans ce processus : la seconde est refusée tout de suite, sans attendre. */
+const applyingNow = new Set<string>();
 
 interface ParsedReference {
   year: number;
@@ -127,34 +140,46 @@ export async function reconcileRecords(
     lineNumbers.add(reference.lineNumber);
   }
 
-  const remittances: MatchedRemittance[] =
-    pairs.size === 0
-      ? []
-      : ((await prisma.directDebitRemittance.findMany({
-          where: {
-            tenantId,
-            ...remittanceScopeWhere(scope),
-            OR: [...pairs.values()].map(pair => ({ year: pair.year, sequence: pair.sequence }))
-          },
-          select: {
-            id: true,
-            year: true,
-            sequence: true,
-            status: true,
-            collectionDate: true,
-            lines: {
-              where: { tenantId, lineNumber: { in: [...lineNumbers] } },
-              select: {
-                id: true,
-                lineNumber: true,
-                status: true,
-                amount: true,
-                debtorClientId: true,
-                debtor: { select: { id: true, details: true, user: { select: { fullName: true } } } }
-              }
+  if (pairs.size > RECONCILE_MAX_REMITTANCES) {
+    throw new BadRequestError(
+      t('Ce fichier concerne trop de remises ({{max}} au maximum) : découpez-le par remise.', {
+        max: RECONCILE_MAX_REMITTANCES
+      })
+    );
+  }
+
+  const remittances: MatchedRemittance[] = [];
+  const pairList = [...pairs.values()];
+  for (let start = 0; start < pairList.length; start += RECONCILE_BATCH_SIZE) {
+    const batch = pairList.slice(start, start + RECONCILE_BATCH_SIZE);
+    remittances.push(
+      ...((await prisma.directDebitRemittance.findMany({
+        where: {
+          tenantId,
+          ...remittanceScopeWhere(scope),
+          OR: batch.map(pair => ({ year: pair.year, sequence: pair.sequence }))
+        },
+        select: {
+          id: true,
+          year: true,
+          sequence: true,
+          status: true,
+          collectionDate: true,
+          lines: {
+            where: { tenantId, lineNumber: { in: [...lineNumbers] } },
+            select: {
+              id: true,
+              lineNumber: true,
+              status: true,
+              amount: true,
+              debtorClientId: true,
+              debtor: { select: { id: true, details: true, user: { select: { fullName: true } } } }
             }
           }
-        })) as MatchedRemittance[]);
+        }
+      })) as MatchedRemittance[])
+    );
+  }
 
   const remittanceByKey = new Map(remittances.map(entry => [`${entry.year}-${entry.sequence}`, entry]));
   const names = await resolveDebtorNames(
@@ -226,9 +251,37 @@ async function buildPreview(
     errors: parsed.errors.length
   };
   return {
-    preview: { format, fileName: sanitizeFileName(upload.originalname), records, errors: parsed.errors, summary },
+    preview: {
+      format,
+      fileName: sanitizeFileName(upload.originalname),
+      records,
+      errors: parsed.errors,
+      summary,
+      alreadyImported: await findPreviousImport(tenantId, scope, upload.buffer)
+    },
     buffer: upload.buffer
   };
+}
+
+/** Dernier import de la même empreinte (même agence, même périmètre) ; null sans clé d'empreinte. */
+async function findPreviousImport(
+  tenantId: string,
+  scope: ReturnScope,
+  buffer: Buffer
+): Promise<ReturnPreviewDto['alreadyImported']> {
+  let fileDigest: string;
+  try {
+    fileDigest = computeRemittanceFileDigest(buffer);
+  } catch {
+    // Sans clé d'empreinte l'aperçu reste possible ; l'application, elle, est refusée en amont.
+    return null;
+  }
+  const previous = await prisma.directDebitReturnImport.findFirst({
+    where: { tenantId, scope: scopeOf(scope), fileDigest },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, createdAt: true }
+  });
+  return previous ? { importId: previous.id, importedAt: previous.createdAt.toISOString() } : null;
 }
 
 export async function previewReturnFileAt(
@@ -251,7 +304,70 @@ export async function applyReturnFileAt(
 ): Promise<ReturnApplyDto> {
   // Sans clé d'empreinte, rien n'est écrit : la vérification précède tout constat.
   assertFileDigestAvailable();
+
+  // Une seule application à la fois par agence et par périmètre : deux clics, ou deux onglets, ne rejouent pas
+  // le même fichier en parallèle. La seconde, dans ce processus, est refusée sans attendre.
+  const lockKey = `direct-debit-return:${tenantId}:${scopeOf(scope)}${
+    scope.scope === 'SYNDIC_LOT' ? `:${scope.syndicateId}` : ''
+  }`;
+  if (applyingNow.has(lockKey)) throw applicationInProgress();
+  applyingNow.add(lockKey);
+
+  let started = false;
+  try {
+    return await withExclusiveSection(
+      lockKey,
+      () => {
+        started = true;
+        return applyLocked(tenantId, scope, file, format, actorUserId, now);
+      },
+      APPLY_LOCK_OPTIONS
+    );
+  } catch (error) {
+    // Autre instance : le verrou n'a pas pu être obtenu à temps (la transaction gardienne n'a pas démarré).
+    if (!started && (error as { code?: unknown } | null)?.code === 'P2028') throw applicationInProgress();
+    throw error;
+  } finally {
+    applyingNow.delete(lockKey);
+  }
+}
+
+const applicationInProgress = () =>
+  new ConflictError(t("Un fichier de retour est déjà en cours d'application : patientez puis rechargez la page."));
+
+async function applyLocked(
+  tenantId: string,
+  scope: ReturnScope,
+  file: UploadedReturnFile | undefined,
+  format: string | undefined,
+  actorUserId: string | null,
+  now: Date
+): Promise<ReturnApplyDto> {
+  // Rapprochement DANS le verrou : une application qui nous précède est déjà visible (lignes traitées).
   const { preview, buffer } = await buildPreview(tenantId, scope, file, format, now);
+
+  // Fichier déjà appliqué : tous ses enregistrements ne sont plus que des doublons, rien à constater.
+  if (
+    preview.alreadyImported &&
+    preview.records.length > 0 &&
+    preview.records.every(record => record.skipReason === 'ALREADY_PROCESSED')
+  ) {
+    throw new ConflictError(
+      t('Ce fichier a déjà été appliqué le {{date}}.', {
+        date: formatFrenchDate(new Date(preview.alreadyImported.importedAt))
+      })
+    );
+  }
+
+  const actionable = preview.records.filter(record => record.action !== 'SKIP').length;
+  if (actionable > APPLY_MAX_ACTIONABLE_RECORDS) {
+    throw new BadRequestError(
+      t(
+        'Ce fichier compte {{count}} enregistrements à appliquer ({{max}} au maximum par import) : découpez-le en plusieurs fichiers.',
+        { count: actionable, max: APPLY_MAX_ACTIONABLE_RECORDS }
+      )
+    );
+  }
 
   const created = await prisma.directDebitReturnImport.create({
     data: {
@@ -270,65 +386,91 @@ export async function applyReturnFileAt(
   let settled = 0;
   let rejected = 0;
   let failed = 0;
-  for (const record of preview.records) {
-    if (record.action === 'SKIP' || !record.match) continue;
-    const { remittanceId, lineId } = record.match;
-    const origin = { source: 'IMPORT' as const, importId: created.id, actorUserId };
-    try {
-      if (record.action === 'SETTLE') {
-        await settleLine(tenantId, scope, remittanceId, lineId, record.date, origin, now);
-        settled += 1;
-      } else {
-        await rejectLine(
-          tenantId,
-          scope,
-          remittanceId,
-          lineId,
-          record.date,
-          { code: record.rejectionCode, reason: record.rejectionReason },
-          origin,
-          now
-        );
-        rejected += 1;
-      }
-      results.push({ row: record.row, lineId, ok: true, error: null });
-    } catch (error) {
-      failed += 1;
-      logger.warn('Prélèvement : ligne du fichier de retour non appliquée', {
-        tenantId,
-        row: record.row,
-        errorName: errorNameOf(error)
-      });
-      results.push({ row: record.row, lineId, ok: false, error: publicErrorMessage(error) });
-    }
-  }
-
   const skipped = preview.summary.skip;
-  const errorCount = preview.errors.length + failed;
-  await prisma.$transaction(async tx => {
-    await tx.directDebitReturnImport.updateMany({
-      where: { id: created.id, tenantId },
-      data: { settledCount: settled, rejectedCount: rejected, skippedCount: skipped, errorCount }
-    });
-    await recordAuditEvent(tx, {
-      actorUserId,
-      tenantId,
-      actionKey: AuditActionKey.DIRECT_DEBIT_RETURN_IMPORTED,
-      entityType: 'DirectDebitReturnImport',
-      entityId: created.id,
-      // Compteurs seulement : ni nom de fichier, ni contenu.
-      payload: {
-        format: preview.format,
-        recordCount: preview.records.length,
-        settled,
-        rejected,
-        skipped,
-        errors: errorCount
-      }
-    });
-  });
 
-  return { ...preview, importId: created.id, results };
+  // Les compteurs sont écrits quoi qu'il arrive (même si la boucle s'arrête) : l'import ne reste pas à zéro.
+  const finalize = async () => {
+    const errorCount = preview.errors.length + failed;
+    await prisma.$transaction(async tx => {
+      await tx.directDebitReturnImport.updateMany({
+        where: { id: created.id, tenantId },
+        data: { settledCount: settled, rejectedCount: rejected, skippedCount: skipped, errorCount }
+      });
+      await recordAuditEvent(tx, {
+        actorUserId,
+        tenantId,
+        actionKey: AuditActionKey.DIRECT_DEBIT_RETURN_IMPORTED,
+        entityType: 'DirectDebitReturnImport',
+        entityId: created.id,
+        // Compteurs seulement : ni nom de fichier, ni contenu.
+        payload: {
+          format: preview.format,
+          recordCount: preview.records.length,
+          settled,
+          rejected,
+          skipped,
+          errors: errorCount
+        }
+      });
+    });
+  };
+
+  let interrupted = false;
+  let interruption: unknown;
+  try {
+    for (const record of preview.records) {
+      if (record.action === 'SKIP' || !record.match) continue;
+      const { remittanceId, lineId } = record.match;
+      const origin = { source: 'IMPORT' as const, importId: created.id, actorUserId };
+      try {
+        if (record.action === 'SETTLE') {
+          await settleLine(tenantId, scope, remittanceId, lineId, record.date, origin, now);
+          settled += 1;
+        } else {
+          await rejectLine(
+            tenantId,
+            scope,
+            remittanceId,
+            lineId,
+            record.date,
+            { code: record.rejectionCode, reason: record.rejectionReason },
+            origin,
+            now
+          );
+          rejected += 1;
+        }
+        results.push({ row: record.row, lineId, ok: true, error: null });
+      } catch (error) {
+        failed += 1;
+        // Identifiants techniques seulement : jamais de nom, d'IBAN ni d'adresse.
+        logger.warn('Prélèvement : ligne du fichier de retour non appliquée', {
+          tenantId,
+          importId: created.id,
+          lineId,
+          row: record.row,
+          errorName: errorNameOf(error)
+        });
+        results.push({ row: record.row, lineId, ok: false, error: publicErrorMessage(error) });
+      }
+    }
+  } catch (error) {
+    interrupted = true;
+    interruption = error;
+  }
+  try {
+    await finalize();
+  } catch (error) {
+    // Si la boucle s'est déjà arrêtée sur une erreur, c'est celle-là qui doit remonter.
+    if (!interrupted) throw error;
+    logger.warn('Prélèvement : compteurs de l’import non enregistrés', {
+      tenantId,
+      importId: created.id,
+      errorName: errorNameOf(error)
+    });
+  }
+  if (interrupted) throw interruption;
+
+  return { ...preview, importId: created.id, results, appliedSummary: { settled, rejected, failed } };
 }
 
 export async function listReturnImportsFor(

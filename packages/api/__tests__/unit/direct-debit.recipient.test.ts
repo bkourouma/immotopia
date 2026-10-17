@@ -28,7 +28,19 @@ describe('maskEmail', () => {
   it('garde la première lettre, deux lettres du domaine et l extension', () => {
     expect(maskEmail('awa.gogoua@example.ci')).toBe('a•••@ex•••.ci');
     expect(maskEmail('  Koffi@Banque.com ')).toBe('K•••@Ba•••.com');
-    expect(maskEmail('x@yz.fr')).toBe('x•••@yz•••.fr');
+    expect(maskEmail('abc@mail.ci')).toBe('a•••@ma•••.ci');
+  });
+
+  it('ne laisse rien deviner d’une partie locale de moins de 3 caractères', () => {
+    expect(maskEmail('x@example.ci')).toBe('•••@ex•••.ci');
+    expect(maskEmail('ab@example.ci')).toBe('•••@ex•••.ci');
+  });
+
+  it('ne laisse rien deviner d’un domaine de moins de 4 caractères (extension exclue)', () => {
+    expect(maskEmail('awa.gogoua@yz.fr')).toBe('a•••@•••.fr');
+    expect(maskEmail('awa.gogoua@abc.ci')).toBe('a•••@•••.ci');
+    expect(maskEmail('x@yz.fr')).toBe('•••@•••.fr');
+    expect(maskEmail('awa.gogoua@abcd.ci')).toBe('a•••@ab•••.ci');
   });
 
   it('ne révèle rien d une adresse invalide ou absente', () => {

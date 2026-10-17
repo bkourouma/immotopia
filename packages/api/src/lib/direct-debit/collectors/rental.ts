@@ -1,7 +1,7 @@
 import { DocumentType, RentalDocumentStatus, RentalDocumentType, RentalPaymentStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { t } from '../../../i18n';
-import { ConflictError, NotFoundError } from '../../../middleware/error-middleware';
+import { AppError, ConflictError, NotFoundError } from '../../../middleware/error-middleware';
 import { generateDocument } from '../../../services/document-generation-service';
 import { compteLocataireDuBailTx } from '../../../services/rental-installment-service';
 import { allocatePaymentTx, updatePaymentStatusTx } from '../../../services/rental-payment-service';
@@ -59,6 +59,15 @@ async function generateReceipt(
   await withExclusiveSection(
     `direct-debit-receipt:${tenantId}:${paymentId}`,
     async () => {
+      // Entre le commit et ici, un rejet tardif a pu contre-passer l'encaissement : pas de quittance valide.
+      const payment = await prisma.rentalPayment.findFirst({
+        where: { id: paymentId, tenant_id: tenantId },
+        select: { status: true }
+      });
+      if (payment?.status !== RentalPaymentStatus.SUCCESS) {
+        logger.info('Prélèvement : quittance non générée (encaissement plus réussi)', { tenantId });
+        return;
+      }
       const existing = await prisma.rentalDocument.findFirst({
         where: {
           tenant_id: tenantId,
@@ -141,6 +150,9 @@ async function settleTx(
       ctx.actorUserId ?? 'system'
     );
   } catch (error) {
+    // Seules les erreurs applicatives disent « rien d'allouable » ; une panne de base ou un bogue remonte
+    // (et fait échouer la transaction, plutôt que de la poursuivre dans un état douteux).
+    if (!(error instanceof AppError)) throw error;
     // Rien d'allouable (échéance soldée entre-temps) : le montant reste en avance du locataire.
     logger.warn('Prélèvement : affectation impossible après règlement, montant conservé en avance', {
       tenantId: ctx.tenantId,

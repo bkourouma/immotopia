@@ -2124,5 +2124,10 @@
   "Cette ligne de remise n'est liée à aucune échéance de loyer.": "لا يرتبط سطر الدفعة هذا بأي قسط إيجار.",
   "Frais de rejet de prélèvement": "رسوم رفض السحب المباشر",
   "Le prélèvement en copropriété n'est pas encore disponible.": "السحب المباشر للملكية المشتركة غير متاح بعد.",
-  "Ce paiement provient d'un prélèvement : constatez un rejet depuis la remise.": "هذه الدفعة ناتجة عن سحب مباشر: سجّل الرفض من الدفعة."
+  "Ce paiement provient d'un prélèvement : constatez un rejet depuis la remise.": "هذه الدفعة ناتجة عن سحب مباشر: سجّل الرفض من الدفعة.",
+  "Ce fichier concerne trop de remises ({{max}} au maximum) : découpez-le par remise.": "يخص هذا الملف عدداً كبيراً جداً من الدفعات (الحد الأقصى {{max}}): قسّمه حسب الدفعة.",
+  "Enregistrez le fichier au format CSV UTF-8.": "احفظ الملف بصيغة CSV بترميز UTF-8.",
+  "Un fichier de retour est déjà en cours d'application : patientez puis rechargez la page.": "يجري بالفعل تطبيق ملف إرجاع: انتظر ثم أعد تحميل الصفحة.",
+  "Ce fichier a déjà été appliqué le {{date}}.": "تم تطبيق هذا الملف مسبقاً بتاريخ {{date}}.",
+  "Ce fichier compte {{count}} enregistrements à appliquer ({{max}} au maximum par import) : découpez-le en plusieurs fichiers.": "يحتوي هذا الملف على {{count}} سجلاً للتطبيق (الحد الأقصى {{max}} لكل استيراد): قسّمه إلى عدة ملفات."
 }

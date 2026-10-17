@@ -93,7 +93,7 @@ jest.mock('../../src/lib/ai/advisory-lock', () => ({
   })
 }));
 
-import { NotFoundError } from '../../src/middleware/error-middleware';
+import { ConflictError, NotFoundError } from '../../src/middleware/error-middleware';
 import { logger } from '../../src/utils/logger';
 import { withExclusiveSection } from '../../src/lib/ai/advisory-lock';
 import { rentalCollector } from '../../src/lib/direct-debit/collectors/rental';
@@ -198,10 +198,17 @@ describe('encaisseur RENTAL_LEASE / règlement', () => {
   });
 
   it('garde le montant en avance quand rien n’est allouable', async () => {
-    mockServices.allocate.mockRejectedValue(new Error('Aucune échéance trouvée'));
+    mockServices.allocate.mockRejectedValue(new ConflictError('Aucune échéance trouvée'));
     const result = await rentalCollector.settleTx(mockTx as any, ctx, collectorLine(), SETTLED_AT);
     expect(result.rentalPaymentId).toBe('pay-1');
     expect(logger.warn).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ tenantId: TENANT }));
+  });
+
+  it('une erreur qui n’est pas applicative (panne de base, bogue) remonte et fait échouer le constat', async () => {
+    mockServices.allocate.mockRejectedValue(new Error('connexion perdue'));
+    await expect(rentalCollector.settleTx(mockTx as any, ctx, collectorLine(), SETTLED_AT)).rejects.toThrow(
+      'connexion perdue'
+    );
   });
 
   it('refuse un bail ou une échéance qui n’est pas de l’agence (404)', async () => {
@@ -221,6 +228,7 @@ describe('encaisseur RENTAL_LEASE / règlement', () => {
     it('génère la quittance sous verrou quand aucune quittance FINAL n’existe', async () => {
       const result = await rentalCollector.settleTx(mockTx as any, ctx, collectorLine(), SETTLED_AT);
       expect(mockServices.generate).not.toHaveBeenCalled();
+      mockState.payments[0].status = 'SUCCESS'; // le statut est passé par le service (simulé) puis commité
       await result.afterCommit?.();
       expect(withExclusiveSection).toHaveBeenCalledWith(
         `direct-debit-receipt:${TENANT}:pay-1`,
@@ -237,8 +245,16 @@ describe('encaisseur RENTAL_LEASE / règlement', () => {
       );
     });
 
+    it('ne génère rien si l’encaissement n’est plus SUCCESS au moment de la quittance (rejet entre-temps)', async () => {
+      const result = await rentalCollector.settleTx(mockTx as any, ctx, collectorLine(), SETTLED_AT);
+      mockState.payments[0].status = 'FAILED';
+      await expect(result.afterCommit?.()).resolves.toBeUndefined();
+      expect(mockServices.generate).not.toHaveBeenCalled();
+    });
+
     it('est idempotente : une quittance FINAL existante n’est pas régénérée', async () => {
       const result = await rentalCollector.settleTx(mockTx as any, ctx, collectorLine(), SETTLED_AT);
+      mockState.payments[0].status = 'SUCCESS';
       mockState.documents.push({
         id: 'doc-1',
         tenant_id: TENANT,
@@ -253,6 +269,7 @@ describe('encaisseur RENTAL_LEASE / règlement', () => {
     it('journalise l’absence de modèle sans lever', async () => {
       mockServices.generate.mockRejectedValue(new Error('Aucun modèle de quittance'));
       const result = await rentalCollector.settleTx(mockTx as any, ctx, collectorLine(), SETTLED_AT);
+      mockState.payments[0].status = 'SUCCESS';
       await expect(result.afterCommit?.()).resolves.toBeUndefined();
       expect(logger.warn).toHaveBeenCalled();
     });

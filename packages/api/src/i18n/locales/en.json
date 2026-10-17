@@ -2124,5 +2124,10 @@
   "Cette ligne de remise n'est liée à aucune échéance de loyer.": "This remittance line is not linked to any rent installment.",
   "Frais de rejet de prélèvement": "Direct debit rejection fee",
   "Le prélèvement en copropriété n'est pas encore disponible.": "Direct debit for co-ownership is not available yet.",
-  "Ce paiement provient d'un prélèvement : constatez un rejet depuis la remise.": "This payment comes from a direct debit: record a rejection from the remittance."
+  "Ce paiement provient d'un prélèvement : constatez un rejet depuis la remise.": "This payment comes from a direct debit: record a rejection from the remittance.",
+  "Ce fichier concerne trop de remises ({{max}} au maximum) : découpez-le par remise.": "This file covers too many remittances ({{max}} maximum): split it by remittance.",
+  "Enregistrez le fichier au format CSV UTF-8.": "Save the file as UTF-8 CSV.",
+  "Un fichier de retour est déjà en cours d'application : patientez puis rechargez la page.": "A return file is already being applied: wait, then reload the page.",
+  "Ce fichier a déjà été appliqué le {{date}}.": "This file was already applied on {{date}}.",
+  "Ce fichier compte {{count}} enregistrements à appliquer ({{max}} au maximum par import) : découpez-le en plusieurs fichiers.": "This file has {{count}} records to apply ({{max}} maximum per import): split it into several files."
 }

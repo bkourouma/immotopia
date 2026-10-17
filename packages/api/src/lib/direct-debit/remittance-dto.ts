@@ -102,6 +102,18 @@ export interface RemittanceLineDto {
   returnSource: ReturnSourceDto | null;
   /** RentalPayment (P3) ou ChargePayment (P4). */
   paymentId: string | null;
+  /**
+   * Conséquence d'un rejet constaté maintenant, pour la confirmation de l'écran : renseigné pour une ligne
+   * PENDING ou SETTLED d'une remise EXPORTED/SUBMITTED, `null` sinon.
+   */
+  rejectionImpact: RejectionImpactDto | null;
+}
+
+export interface RejectionImpactDto {
+  /** Frais refacturés au débiteur si la ligne était rejetée maintenant (0 si l'encaisseur ne refacture pas). */
+  fee: number;
+  /** Le mandat est ACTIVE et ce rejet atteindrait le seuil de rejets consécutifs du créancier. */
+  willSuspend: boolean;
 }
 
 export interface RemittanceDto extends RemittanceSummaryDto {
@@ -172,6 +184,17 @@ export const REMITTANCE_SUMMARY_SELECT = {
 export const REMITTANCE_SELECT = {
   ...REMITTANCE_SUMMARY_SELECT,
   notes: true,
+  scope: true,
+  creditor: {
+    select: {
+      id: true,
+      label: true,
+      creditorIdentifier: true,
+      fileFormat: true,
+      rejectFeeAmount: true,
+      maxConsecutiveRejects: true
+    }
+  },
   lines: {
     orderBy: { lineNumber: 'asc' },
     select: {
@@ -203,7 +226,8 @@ export const REMITTANCE_SELECT = {
           status: true,
           ibanLast4: true,
           holderName: true,
-          maxAmount: true
+          maxAmount: true,
+          consecutiveRejects: true
         }
       },
       debtor: { select: { id: true, details: true, user: { select: { fullName: true } } } },
@@ -335,6 +359,22 @@ function recipientOf(
   return recipient ? { masked: maskEmail(recipient.email), source: recipient.source } : null;
 }
 
+/**
+ * Conséquence d'un rejet immédiat. Seul l'encaisseur des loyers refacture les frais (voir
+ * `collectors/rental.ts#applyRejectFeeTx`) ; les autres périmètres donnent 0.
+ */
+function rejectionImpactOf(row: FullRow, line: FullRow['lines'][number]): RejectionImpactDto | null {
+  if (row.status !== 'EXPORTED' && row.status !== 'SUBMITTED') return null;
+  if (line.status !== 'PENDING' && line.status !== 'SETTLED') return null;
+  const configuredFee = Number(row.creditor.rejectFeeAmount ?? 0);
+  const threshold = row.creditor.maxConsecutiveRejects ?? 0;
+  return {
+    fee: row.scope === 'RENTAL_LEASE' && configuredFee > 0 ? configuredFee : 0,
+    willSuspend:
+      line.mandate.status === 'ACTIVE' && threshold > 0 && (line.mandate.consecutiveRejects ?? 0) + 1 >= threshold
+  };
+}
+
 export function toRemittanceDto(
   row: FullRow,
   debtorNames: Map<string, string | null>,
@@ -376,7 +416,8 @@ export function toRemittanceDto(
     rejectFeeAmount: num(line.rejectFeeAmount),
     returnSource: line.returnSource ?? null,
     // P3 : l'encaissement locatif ; P4 y ajoutera le paiement de charges.
-    paymentId: line.rentalPaymentId ?? null
+    paymentId: line.rentalPaymentId ?? null,
+    rejectionImpact: rejectionImpactOf(row, line)
   }));
   return {
     ...toRemittanceSummaryDto(row),

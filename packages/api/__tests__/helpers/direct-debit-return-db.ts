@@ -166,6 +166,12 @@ export function createReturnHarness() {
         rows.forEach(row => applyData(row, data));
         return { count: rows.length };
       }),
+      findFirst: jest.fn(
+        async ({ where }: Row) =>
+          state.imports
+            .filter(row => matches(row, where))
+            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null
+      ),
       count: jest.fn(async ({ where }: Row) => state.imports.filter(row => matches(row, where)).length),
       findMany: jest.fn(async ({ where, skip = 0, take = 100 }: Row) =>
         state.imports

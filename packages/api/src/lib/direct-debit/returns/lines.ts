@@ -318,6 +318,21 @@ export async function rejectLine(
   if (outcome) await notifyRejection(tenantId, outcome, details);
 }
 
+const EMAIL_REASON_MAX = 120;
+
+/**
+ * Motif tel qu'il part chez le débiteur : le texte vient d'un fichier de la banque (ou d'une saisie), donc sans
+ * lien (hameçonnage) et court. Le motif complet reste sur la ligne de remise.
+ */
+export function emailReasonOf(reason: string | null | undefined): string {
+  return (reason ?? '')
+    .replace(/(?:https?:\/\/|www\.)\S*/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, EMAIL_REASON_MAX)
+    .trim();
+}
+
 /**
  * E-mail `DIRECT_DEBIT_REJECTED` au débiteur (§8.8), après la transaction : IBAN
  * masqué, adresse masquée dans les journaux (`redactRecipient`), échec isolé.
@@ -344,7 +359,7 @@ async function notifyRejection(tenantId: string, outcome: RejectOutcome, details
         ibanMasked: maskIban(outcome.mandate.ibanLast4),
         amount: money(outcome.amount),
         collectionDate: formatFrenchDate(outcome.collectionDate),
-        reason: details.reason || details.code || t('Non précisé par la banque'),
+        reason: emailReasonOf(details.reason) || details.code || t('Non précisé par la banque'),
         rejectFee:
           outcome.fee > 0
             ? t('Des frais de rejet de {{amount}} vous sont refacturés.', { amount: money(outcome.fee) })

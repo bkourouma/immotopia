@@ -222,4 +222,30 @@ describe('retour banque GENERIC_CSV (data-model 8.5)', () => {
     // UTF-8 invalide (fichier en Windows-1252, par exemple).
     expect(() => parse(Buffer.from([0x72, 0xe9, 0x67, 0x6c, 0xe9]))).toThrow(BadRequestError);
   });
+
+  it('dit quoi faire quand le fichier n’est pas en UTF-8', () => {
+    const latin1 = Buffer.from(`${HEADER}\n${REF};KO;2026-10-05;10;AC04;Compte clôturé\n`, 'latin1');
+    expect(() => parse(latin1)).toThrow('Enregistrez le fichier au format CSV UTF-8.');
+  });
+
+  it('accepte un rang de 3 à 6 chiffres (comme le rapprochement) et rien d’autre', () => {
+    const result = parse(
+      [
+        HEADER,
+        'PRL-2026-0001-001;OK;2026-10-05;10',
+        'PRL-2026-0001-1234;OK;2026-10-05;10',
+        'PRL-2026-0001-123456;OK;2026-10-05;10',
+        'PRL-2026-0001-1234567;OK;2026-10-05;10',
+        'PRL-2026-0001-12;OK;2026-10-05;10',
+        'PRL-2026-0000000001-001;OK;2026-10-05;10'
+      ].join('\n')
+    );
+    expect(result.records.map(record => record.operationReference)).toEqual([
+      'PRL-2026-0001-001',
+      'PRL-2026-0001-1234',
+      'PRL-2026-0001-123456',
+      'PRL-2026-0000000001-001'
+    ]);
+    expect(result.errors.map(error => error.row)).toEqual([5, 6]);
+  });
 });
