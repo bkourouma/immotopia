@@ -190,44 +190,40 @@ Relevés de recette du staging, 2026-10-16 (Claude dans Chrome, rapportés par l
 - Paiement mobile money d'un appel de charges (copropriété « Résidence Les Jacarandas », agence « Pack Syndic · 3 ans », mode Simulateur) réussi de bout en bout : reçu Q-2026-000093, statut « Payé », compte 5525 crédité.
 - Réglages du staging complétés le 2026-10-16 dans son fichier d'environnement (aucune valeur ici) : `SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`, clé `PAYMENT_SECRETS_KEY` propre au staging, SMTP configuré (vérifié). `SMS_PROVIDER` reste `disabled` : l'application Orange « ImmoTopia Staging » existe, mais Orange exige un nom d'expéditeur personnalisé approuvé (demande « IMMOTOPIA », à déposer par l'utilisateur) avant tout achat de forfait.
 
-## Branche `feat/syndic-paiement-mobile` — 2026-10-15
+## Branche `feat/syndic-lien-paiement-ui` — 2026-10-16
 
-**État :** PR brouillon https://github.com/bkourouma/immotopia/pull/132 (base `main`) (worktree `.claude/worktrees/syndic-paiement-mobile`, `node_modules` propre par `npm ci`, pas de jonction)
-**Dernier commit :** voir `git log` (poussé sur origin) — arrêt de session à ~90 % de la limite de 5 h, à la demande de l'utilisateur
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/150 (base `main`), CI à lire, à fusionner par l'utilisateur ; worktree `.claude/worktrees/brave-noether-f68511` (`node_modules` = jonctions vers le checkout principal : son client Prisma est plus ancien, ne pas lancer `prisma generate` ni le typecheck API ici)
+**Dernier commit :** voir `git log` (poussé sur origin).
 
-Paiement mobile money des appels de charges par les copropriétaires (spec `specs/042-syndic-paiement-mobile/`, contrat d'API dans `contracts.md`). Décisions de l'utilisateur : un compte PaySecureHub PAR COPROPRIÉTÉ, sans repli vers le compte du cabinet ; appels entiers seulement ; frais selon le `feesPaidBy` de l'agence ; lien « Payer cet appel » sans connexion dans les avis et relances.
+Suite de la PR #132 (paiement mobile des appels de charges par les copropriétaires, spec `specs/042-syndic-paiement-mobile/`), fusionnée et déployée sur le staging le 2026-10-16 ; paiement par le portail recetté avec succès.
 
-Fait (commité, tsc API et web à 0 erreur, tests ciblés verts) :
+Fait :
 
-- Spec et contrats ; schéma et 2 migrations (`SyndicPaymentGatewayConfig`, `SyndicOnlineCheckout`, idempotence de `ChargePayment`, portée `CHARGE_CALL_PAYMENT`).
-- `lib/payment-gateway/checkout-core.ts` (cœur commun, loyers inchangés).
-- Moteur `lib/syndics/online-payment/` (démarrage, rapprochement IPN/simulateur/tâche, REVIEW, décision ACCEPT/REJECT), encaissement au 5525 et reversements 5525 → 521.
-- API gestionnaire `/syndics/:id/paiement-en-ligne/*` et `/paiements-en-ligne/*` (configuration, test, solde, suivi, vérifier, trancher, reversements).
-- Lien « Payer cet appel » (M6 API) : routes publiques `/api/public/secure-links/charge-call-payment[/start|/status]`, routes gestionnaire du lien, résolveur branché dans avis et relances, événement `CHARGE_CALL_PAYMENT_LINK_SENT`.
-- Écrans : portail (bouton Payer, sélection, retour), onglet gestionnaire « Paiements en ligne », pages publiques `/payer-charges`.
-
-- API du portail (M3) : `/api/portal/copropriete/paiements-en-ligne[/disponibilite|/:codePaiement]`, champs `onlinePayable`, `onlineCheckout`, `syndicateId`, `onlineCheckoutCode` sur `GET /appels` ; écran : copropriété par `syndicateId`, « Reprendre le paiement », onglet Finances actif.
-
-Vérifié le 2026-10-15 : tsc API et web à 0 erreur ; jest 92 suites / 1463 tests verts (syndic, portail, paiement, inventaires) ; vitest portail, navigation, gestionnaire et pages publiques verts.
+- Lien « Payer cet appel » côté gestionnaire (`Syndic › Finances › Appels de charges`, colonne Actions) : `ChargeCallPaymentLinkModal` (copier avec URL montrée une fois, envoyer par e-mail ou WhatsApp, liste des liens, révoquer), hook `useSyndicOnlinePaymentUsable` (lit `usable` de la configuration), `canOfferChargePaymentLink` dans `ChargeCallTable`, câblage dans `SyndicCharges`. Droits : écriture `SYNDIC_EDIT` (après lecture des droits), liste `SYNDIC_VIEW`. Aucune route API modifiée.
+- Revue `security-auditor` du diff web : 0 critique, 0 important, 3 mineurs corrigés (champ de copie de repli retiré en `finally`, URL effacée au changement d'appel, fenêtre non fermable par le fond pendant que l'URL est visible).
+- Variables WhatsApp (`apps/web/src/constants/whatsapp-notification-variables.ts` ; le fichier côté API n'existe pas) pour `CHARGE_CALL_PAYMENT_LINK_SENT`, `CHARGE_CALL_ISSUED`, `CHARGE_CALL_REMINDER`.
+- `npm run i18n:extract` web et API, puis traductions en/ar (183 clés web par langue, 36 + 16 clés API par langue).
+- Classeur : 24 lignes ajoutées, 4 mises à jour, 3 notes, miroir régénéré (1015 lignes).
+- Recette du staging du 2026-10-17 (copropriété Les Jacarandas, appel P02, simulateur : « Solde insuffisant », « Annuler », « Payer » → ni ligne ni compteur « Annulé ») : **pas de défaut du moteur trouvé**. Le test `syndics.online-payment-simulator-sequence.test.ts` rejoue la séquence avec le vrai client simulateur : chaque essai sur une nouvelle tentative donne Échoué, Annulé, Payé, tous listés et comptés. Deux causes possibles côté recette, à départager par le code `IMS-…` de l'adresse de retour (`?paiement=`) après chaque clic : (1) « Annuler » cliqué sur la page périmée d'une tentative déjà close (bouton Précédent) : rien n'est enregistré, le retour affiche l'ancien statut ; (2) rapprochement en échec après « Annuler » (erreur avalée par le contrôleur, journal `Simulateur PaySecureHub (charges) : rapprochement en échec`) : la tentative reste en attente et le « Payer » suivant la reprend (R10). Amélioration possible, non faite : la page du simulateur d'une tentative close pourrait afficher son état au lieu des trois boutons.
+- Vérifié : tsc web 0 erreur, eslint 0 erreur, `check:architecture`, `wiki:check`, Vitest syndics / portail copropriétaire / pages publiques / i18n verts, Jest `i18n-*` API verts.
 
 Reste à faire :
 
-- Le GET de statut du portail ne revérifie pas le droit SYNDIC (voulu : un paiement lancé doit pouvoir se rapprocher) ; contrat §2 à aligner.
-- Web : variables `CHARGE_CALL_PAYMENT_LINK_SENT` dans `apps/web/src/constants/whatsapp-notification-variables.ts` ; boutons du lien « Payer cet appel » côté gestionnaire (service déjà prêt, route 1.10).
-- `npm run i18n:extract` dans `packages/api` ET `apps/web` (en une fois, aucun agent ne l'a lancé), puis traductions en/ar.
-- Classeur des fonctionnalités + `npm run wiki:export` (sous-fonctionnalités listées dans les rapports : configuration marchande par copropriété, paiement portail, lien, suivi/vérifier/trancher, reversements, événement de notification).
-- Mutualiser `isCurrentLotOwner` (dupliqué dans `notifications.ts` et `charge-call-link.ts`).
-- Rejouer les tests sur PostgreSQL réel (conteneur `immotopia-smm-test` : Docker était arrêté, tout a tourné sur doubles en mémoire ; verrous consultatifs et P2002 non prouvés), `npm run test:isolation`.
-- Audit `security-auditor` fait le 2026-10-15 : 0 critique, 0 haute ; la moyenne (double encaissement après la fenêtre de reprise) et 4 basses corrigées (succès sans montant → REVIEW, succès après expiration → REVIEW, simulateur coupé → plus de règlement, liens automatiques précédents révoqués). Reste la basse n° 4, à décider : reversements et décision REVIEW n'exigent que `SYNDIC_EDIT` ; `merchantId` et `apiKeyLast4` visibles avec `SYNDIC_VIEW`.
-- Relecture `code-reviewer` non faite ; recette démo au simulateur non faite ; sortir la PR #132 du brouillon après i18n, classeur et recette.
-- Changement de comportement à valider : un succès automatique dont les appels sont déjà soldés (paiement manuel entre-temps) passe en REVIEW `CALLS_UNAVAILABLE` au lieu d'être mis en avance ; le gestionnaire peut l'accepter (excédent en avance).
+- **Recette navigateur du lien gestionnaire au simulateur** (non faite : tests Vitest seulement) ; relecture `code-reviewer` non faite sur l'ensemble de la spec 042 ; rejouer les tests du module sur PostgreSQL réel (Docker était arrêté pour la PR #132), `npm run test:isolation`.
+- **Outil d'extraction i18n** : `apps/web/scripts/i18n-migrate.mjs` et `packages/api/scripts/i18n-extract.mjs` déplacent vers `*.orphans.json` les traductions utilisées via `t(variable)` (invisibles). Elles ont été restaurées à la main (47 clés web par langue, 36 clés API par langue) ; la prochaine extraction les déplacera de nouveau et le test de complétude refusera le fichier d'orphelins : corriger l'outil (garder toute entrée dont le texte figure encore dans `src`) avant la prochaine extraction.
+- Catalogues déjà fautifs dans `main` : `en/syndic.json` (37 valeurs en arabe), `en/common.json` (5), `en/documents.json` (1) ; la clé « Mode » vaut « Method » alors que `GatewayConfigCard` s'en sert pour Simulateur / Réel.
+- Route de disponibilité du paiement en ligne sans `merchantId`, `apiKeyLast4`, `lastTest` ni solde du 5525 (visibles avec `SYNDIC_VIEW` ; l'interface ne lit que `usable`) ; reversements et décision REVIEW n'exigent que `SYNDIC_EDIT` : basse n° 4 de l'audit de la PR #132, toujours à décider.
+- Le GET de statut du portail ne revérifie pas le droit SYNDIC (voulu : un paiement lancé doit pouvoir se rapprocher) ; contrat §2 à aligner. Exercice clos : `assertFiscalYearOpenTx` lève un 409, le contrat §0.2 / §1.7 dit 400 : corriger le contrat.
+- Mutualiser `isCurrentLotOwner` (dupliqué dans `notifications.ts` et `charge-call-link.ts`) ; `copyToClipboard` existe maintenant dans `utils/copy-to-clipboard.ts` et reste dupliqué dans `InstallmentPaymentLinkButton.tsx` et `OwnerStatementSecureLinks.tsx`.
+- Changement de comportement à valider : un succès automatique dont les appels sont déjà soldés passe en REVIEW `CALLS_UNAVAILABLE` au lieu d'être mis en avance ; le gestionnaire peut l'accepter (excédent en avance).
+- À trancher par l'utilisateur : WhatsApp `CHARGE_CALL_PAYMENT_LINK_SENT` actif par défaut (le lien de loyer est en opt-in) ; langue du libellé « Payer en ligne » ; numéro du reçu absent du statut public (§3.3) ; règle « lot revendu » ; `TENANT_SETTINGS_EDIT` exigé en plus de `SYNDIC_EDIT` pour la configuration (le rôle Gestionnaire ne la détient pas) ; deux copropriétés peuvent partager un compte marchand ; mode LIVE non validé (le montant BMI inclut-il les frais ? sinon REVIEW à tort).
 
-Pièges et décisions :
+Pièges :
 
 - Ne pas lancer `prisma format` : il réécrit ~600 lignes du schéma.
-- Exercice clos : `assertFiscalYearOpenTx` lève une `ConflictError` 409 (le contrat §0.2/§1.7 dit 400) : corriger le contrat.
+- Les tests de page Vitest (`SyndicCharges` complet) prennent 15 à 40 s chacun sur ce poste : `vi.setConfig({ testTimeout: 90_000 })` dans `SyndicChargesPaymentLink.test.tsx` ; un timeout seul ne prouve rien, relancer le fichier seul.
+- Dans l'outil Bash de cette session, un heredoc perd un antislash (`\` devient `\`) : écrire les scripts à expressions régulières avec l'outil d'écriture de fichier.
 - Pas de colonne `mode` sur `SyndicOnlineCheckout` : le mode affiché vient de la configuration actuelle.
-- À trancher par l'utilisateur : langue du libellé « Payer en ligne » dans les messages ; numéro du reçu absent du statut public (§3.3) ; WhatsApp `CHARGE_CALL_PAYMENT_LINK_SENT` activé par défaut (le lien loyer est en opt-in) ; règle « lot revendu » (copropriétaire de plus fort pourcentage, `ownedSince` > début de période) ; permission `TENANT_SETTINGS_EDIT` exigée en plus de `SYNDIC_EDIT` pour la configuration ; deux copropriétés peuvent partager un compte marchand ; mode LIVE non validé (le montant BMI inclut-il les frais ? sinon REVIEW à tort).
 
 ## Branche `ci/deploiement-continu-staging` — 2026-10-16
 
