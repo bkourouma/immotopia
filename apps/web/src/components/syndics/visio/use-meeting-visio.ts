@@ -6,12 +6,15 @@ import {
   getMeetingRecordings,
   getMeetingVisio,
   issueMeetingVisioToken,
+  muteVisioParticipant,
   removeVisioParticipant,
   retryMeetingRecording,
+  setVisioMediaLock,
   setVisioParticipantSpeaking,
   setVisioParticipantWriting,
   startMeetingRecording,
-  stopMeetingRecording
+  stopMeetingRecording,
+  type VisioMuteSource
 } from '../../../services/syndic-service';
 import type {
   MeetingRecordingView,
@@ -67,6 +70,7 @@ export function useMeetingVisio({
   const [visio, setVisio] = useState<MeetingVisioAdminView | null>(null);
   const [busyVisioId, setBusyVisioId] = useState<string | null>(null);
   const [busyWritingId, setBusyWritingId] = useState<string | null>(null);
+  const [lockBusy, setLockBusy] = useState(false);
   const inProgress = meetingStatus === 'IN_PROGRESS';
 
   // Compte les actions du gestionnaire : une lecture partie avant l'une d'elles est périmée et ne l'écrase pas.
@@ -149,8 +153,8 @@ export function useMeetingVisio({
       setVisio(updated);
       message.success(
         allowed
-          ? t('Parole donnée à {{name}}', { name: participant.name })
-          : t('Parole retirée à {{name}}', { name: participant.name })
+          ? t('Micro et caméra autorisés pour {{name}}', { name: participant.name })
+          : t('Micro et caméra interdits à {{name}}', { name: participant.name })
       );
     } catch (err) {
       message.error(apiErrorText(err, t('Action impossible, réessayez.')));
@@ -158,6 +162,58 @@ export function useMeetingVisio({
       refreshVisio();
     } finally {
       setBusyVisioId(null);
+    }
+  };
+
+  /** Coupe le micro et/ou la caméra publiés d'un participant (V16c) ; il peut les rouvrir. */
+  const mute = async (participant: MeetingVisioParticipant, sources: VisioMuteSource[]) => {
+    if (!participant.participantId) return;
+    setBusyVisioId(participant.participantId);
+    writeSeqRef.current += 1;
+    const label =
+      sources.length === 1 && sources[0] === 'MICROPHONE'
+        ? t('Micro de {{name}} coupé', { name: participant.name })
+        : sources.length === 1
+          ? t('Caméra de {{name}} coupée', { name: participant.name })
+          : t('Micro et caméra de {{name}} coupés', { name: participant.name });
+    try {
+      const { mutedTracks, ...view } = await muteVisioParticipant(
+        tenantId,
+        syndicId,
+        meetingId,
+        participant.participantId,
+        sources
+      );
+      writeSeqRef.current += 1;
+      visioRef.current = view;
+      setVisio(view);
+      if (mutedTracks > 0) message.success(label);
+      else message.info(t('Rien à couper : {{name}} ne diffuse pas.', { name: participant.name }));
+    } catch (err) {
+      message.error(apiErrorText(err, t('Action impossible, réessayez.')));
+      writeSeqRef.current += 1;
+      refreshVisio();
+    } finally {
+      setBusyVisioId(null);
+    }
+  };
+
+  /** Interdit (`locked: true`) ou rend micro et caméra à tous les copropriétaires (V16d). */
+  const lockMedia = async (locked: boolean) => {
+    setLockBusy(true);
+    writeSeqRef.current += 1;
+    try {
+      const updated = await setVisioMediaLock(tenantId, syndicId, meetingId, locked);
+      writeSeqRef.current += 1;
+      visioRef.current = updated;
+      setVisio(updated);
+      message.success(locked ? t('Micros et caméras interdits à tous') : t('Micros et caméras rendus à tous'));
+    } catch (err) {
+      message.error(apiErrorText(err, t('Action impossible, réessayez.')));
+      writeSeqRef.current += 1;
+      refreshVisio();
+    } finally {
+      setLockBusy(false);
     }
   };
 
@@ -220,9 +276,12 @@ export function useMeetingVisio({
     refreshVisio,
     busyVisioId,
     busyWritingId,
+    lockBusy,
     inVisioContactIds,
     getToken,
     speak,
+    mute,
+    lockMedia,
     writing,
     remove
   };

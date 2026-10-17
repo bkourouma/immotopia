@@ -57,6 +57,16 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/syndic-visio-micro-camera` — 2026-10-17
+
+**État :** prêt à relire (PR empilée sur `fix/syndic-ag-direct-recette`, PR 163), non déployé. Migration Prisma `20261017120000_syndic_ag_media_moderation` à appliquer (`demo:sync --migrate`).
+
+**Fait :** les copropriétaires activent micro et caméra dans la visio de l'AG ; le gestionnaire coupe un micro/une caméra, interdit/autorise un participant ou tous (`mediaPolicy`, `mediaLockedAt`, droits décidés côté serveur à chaque jeton, rattrapage à la connexion par le webhook LiveKit `participant_joined`). Audit, avis d'enregistrement (convocation et bandeau), spec 045 §V16 datée du 2026-10-17. Audit sécurité : 1 point important corrigé (jeton ancien), 2 mineurs corrigés.
+
+**Reste :** rien vérifié avec un vrai LiveKit (mute, interdiction, ordre d'arrivée de `participant_joined`) ; vérifier que `participant_joined` est envoyé à l'URL de webhook LiveKit ; rendu RTL non vu ; traductions en/ar non relues ; classeur de fonctionnalités à compléter (micro/caméra, couper, interdire, interdire à tous, rattrapage à la connexion) ; pas de « couper tous les micros » en un geste.
+
+**Pièges :** jeton copropriétaire valable 600 s, non révocable : seule la règle serveur à l'arrivée le rattrape. Mêmes pièges d'i18n et de jest que la branche de la PR 163.
+
 ## Branche `fix/syndic-ag-direct-recette` — 2026-10-17
 
 **État :** prêt à relire (PR vers `main`), non déployé.
