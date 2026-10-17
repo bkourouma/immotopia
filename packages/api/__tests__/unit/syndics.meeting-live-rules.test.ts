@@ -23,6 +23,11 @@ jest.mock('../../src/services/email-notification-config-service', () => ({
     .fn()
     .mockResolvedValue({ enabled: true, subjectOverride: null, bodyHtmlOverride: null })
 }));
+let mockRecordingEnabled = false;
+jest.mock('../../src/services/livekit-service', () => ({
+  ...jest.requireActual('../../src/services/livekit-service'),
+  isRecordingEnabled: () => mockRecordingEnabled
+}));
 const mockWhatsapp = jest.fn().mockResolvedValue(true);
 jest.mock('../../src/services/whatsapp-notification-send-service', () => ({
   ...jest.requireActual('../../src/services/whatsapp-notification-send-service'),
@@ -41,7 +46,11 @@ import {
 } from '../../src/lib/syndics/meeting-live-rules';
 import { computeMeetingAttendance } from '../../src/lib/syndics/meeting-majority';
 import { updateMeetingSchema } from '../../src/lib/syndics/schemas';
-import { dropMeetingLinkParagraph, notifyMeetingConvocation } from '../../src/lib/syndics/notifications';
+import {
+  dropEmptyVariableParagraphs,
+  dropMeetingLinkParagraph,
+  notifyMeetingConvocation
+} from '../../src/lib/syndics/notifications';
 import { omitSentencesWithEmptyVariables } from '../../src/services/whatsapp-notification-send-service';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../src/constants/email-notification-default-templates';
 import { WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES } from '../../src/constants/whatsapp-notification-default-templates';
@@ -229,8 +238,8 @@ describe('gabarits de convocation', () => {
 
     const text = omitSentencesWithEmptyVariables(
       WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES.GENERAL_MEETING_CONVOCATION,
-      { meetingLink: '' },
-      ['meetingLink']
+      { meetingLink: '', recordingNotice: '' },
+      ['meetingLink', 'recordingNotice']
     );
     expect(text).not.toContain('Suivez');
     expect(text.endsWith('lieu : {{meetingLocation}}.')).toBe(true);
@@ -274,6 +283,7 @@ describe('notifyMeetingConvocation avec lien personnel', () => {
     mockPrisma.gMParticipant.create.mockImplementation(async () => ({ id: `p${++n}` }));
     mockPrisma.secureLink.create.mockResolvedValue({ id: 'link-1' });
     mockSendEmail.mockResolvedValue(undefined);
+    mockRecordingEnabled = false;
   });
 
   it('un participant et un lien personnel par destinataire, passes aux gabarits e-mail et WhatsApp', async () => {
@@ -297,7 +307,7 @@ describe('notifyMeetingConvocation avec lien personnel', () => {
     expect(links[0]).not.toBe(links[1]);
     expect(mails[0]).toContain('Suivez l’assemblée et votez en ligne');
     expect(mockWhatsapp.mock.calls[0][0].variables.meetingLink).toMatch(/\/ag-direct#/);
-    expect(mockWhatsapp.mock.calls[0][0].optionalVariables).toEqual(['meetingLink']);
+    expect(mockWhatsapp.mock.calls[0][0].optionalVariables).toEqual(['meetingLink', 'recordingNotice']);
   });
 
   it('un echec de creation du lien ne fait pas echouer la convocation : e-mail sans la phrase du lien', async () => {
@@ -311,6 +321,108 @@ describe('notifyMeetingConvocation avec lien personnel', () => {
       expect(html).toContain('Convocation');
     }
     expect(mockWhatsapp.mock.calls[0][0].variables.meetingLink).toBe('');
+  });
+});
+
+const NOTICE =
+  "La séance pourra être enregistrée (image et son) ; un avis s'affichera à l'écran pendant l'enregistrement.";
+
+describe('avis d enregistrement dans la convocation (spec 045)', () => {
+  const owner = (id: string) => ({
+    id,
+    firstName: id,
+    lastName: 'X',
+    legalName: null,
+    email: `${id}@x.ci`,
+    whatsappNumber: null,
+    phonePrimary: null
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrisma.notificationMarker.findMany.mockResolvedValue([]);
+    mockPrisma.generalMeeting.findUnique.mockResolvedValue({
+      id: 'm1',
+      scheduledAt: new Date(Date.now() + 5 * 86_400_000),
+      location: 'Salle',
+      syndicate: {
+        tenantId: 't1',
+        name: 'Residence',
+        lots: [{ generalShares: 100, owner: owner('a'), ownerProfiles: [] }]
+      }
+    });
+    mockPrisma.gMParticipant.findFirst.mockResolvedValue(null);
+    mockPrisma.gMParticipant.create.mockResolvedValue({ id: 'p1' });
+    mockPrisma.secureLink.create.mockResolvedValue({ id: 'link-1' });
+    mockSendEmail.mockResolvedValue(undefined);
+    mockWhatsapp.mockResolvedValue(true);
+    mockRecordingEnabled = false;
+  });
+
+  it('gabarits par défaut : paragraphe e-mail après celui du lien, phrase WhatsApp en fin de message', () => {
+    const html = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES.GENERAL_MEETING_CONVOCATION.bodyHtml;
+    expect(html).toContain('<p style="margin:0 0 12px 0; font-size:14px; color:#555;">{{recordingNotice}}</p>');
+    expect(html.indexOf('{{recordingNotice}}')).toBeGreaterThan(html.indexOf('{{meetingLink}}'));
+    expect(WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES.GENERAL_MEETING_CONVOCATION.endsWith('{{recordingNotice}}')).toBe(
+      true
+    );
+  });
+
+  it('enregistrement configuré : la phrase est dans l e-mail et fournie au WhatsApp', async () => {
+    mockRecordingEnabled = true;
+    await notifyMeetingConvocation('m1');
+    const html = (mockSendEmail.mock.calls[0][0] as any).html as string;
+    // L'e-mail est echappe en HTML : l'apostrophe devient une entite.
+    expect(html).toContain(NOTICE.replace(/'/g, '&#39;'));
+    expect(html).not.toContain('{{');
+    expect(mockWhatsapp.mock.calls[0][0].variables.recordingNotice).toBe(NOTICE);
+  });
+
+  it('non configuré : ni phrase, ni paragraphe vide dans l e-mail', async () => {
+    await notifyMeetingConvocation('m1');
+    const html = (mockSendEmail.mock.calls[0][0] as any).html as string;
+    expect(html).not.toContain('enregistrée');
+    expect(html).not.toMatch(/<p[^>]*>\s*<\/p>/);
+    expect(html).not.toContain('{{');
+    expect(html).toContain('Suivez l’assemblée et votez en ligne');
+    expect(mockWhatsapp.mock.calls[0][0].variables.recordingNotice).toBe('');
+  });
+
+  it('lien ET avis vides : aucun des deux paragraphes, aucun paragraphe vide', async () => {
+    mockPrisma.secureLink.create.mockRejectedValue(new Error('base indisponible'));
+    await notifyMeetingConvocation('m1');
+    const html = (mockSendEmail.mock.calls[0][0] as any).html as string;
+    expect(html).not.toContain('Suivez');
+    expect(html).not.toMatch(/<p[^>]*>\s*<\/p>/);
+    expect(html).not.toContain('{{');
+  });
+
+  it('dropEmptyVariableParagraphs : retire seulement le paragraphe de la variable vide', () => {
+    const tpl = '<p>A</p><p style="x">Lien {{meetingLink}}</p><p style="y">{{recordingNotice}}</p>';
+    expect(
+      dropEmptyVariableParagraphs(tpl, { meetingLink: 'u', recordingNotice: '' }, ['meetingLink', 'recordingNotice'])
+    ).toBe('<p>A</p><p style="x">Lien {{meetingLink}}</p>');
+    expect(
+      dropEmptyVariableParagraphs(tpl, { meetingLink: '', recordingNotice: 'n' }, ['meetingLink', 'recordingNotice'])
+    ).toBe('<p>A</p><p style="y">{{recordingNotice}}</p>');
+  });
+
+  it('WhatsApp : avec avis, il termine le message ; sans avis, ni espace final ni phrase orpheline ; la phrase du lien reste', () => {
+    const tpl = WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES.GENERAL_MEETING_CONVOCATION;
+    const optional = ['meetingLink', 'recordingNotice'];
+    const render = (vars: Record<string, string>) =>
+      omitSentencesWithEmptyVariables(tpl, vars, optional).replace(/\{\{(\w+)\}\}/g, (_m, k) => vars[k] ?? '');
+    const full = render({ meetingLink: 'https://x.test/ag-direct#t', recordingNotice: NOTICE, ownerName: 'A' });
+    expect(full.endsWith(NOTICE)).toBe(true);
+    expect(full).toContain('en ligne : https://x.test/ag-direct#t');
+    const noNotice = render({ meetingLink: 'https://x.test/ag-direct#t', recordingNotice: '', ownerName: 'A' });
+    expect(noNotice).toBe(noNotice.trimEnd());
+    expect(noNotice.endsWith('https://x.test/ag-direct#t')).toBe(true);
+    expect(noNotice).not.toContain('enregistrée');
+    const neither = render({ meetingLink: '', recordingNotice: '', ownerName: 'A' });
+    expect(neither).toBe(neither.trimEnd());
+    expect(neither).not.toContain('Suivez');
+    expect(neither.endsWith('lieu : {{meetingLocation}}.'.replace('{{meetingLocation}}', ''))).toBe(true);
   });
 });
 

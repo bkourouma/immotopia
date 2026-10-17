@@ -65,6 +65,10 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
   { method: 'POST', test: exact('/api/public/assemblees/etat'), reason: PUBLIC_MEETING_LIVE_REASON },
   { method: 'POST', test: exact('/api/public/assemblees/rejoindre'), reason: PUBLIC_MEETING_LIVE_REASON },
   { method: 'POST', test: exact('/api/public/assemblees/voter'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/visio'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/visio/main'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/discussion'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/discussion/envoyer'), reason: PUBLIC_MEETING_LIVE_REASON },
   {
     method: '*',
     test: withPrefix('/api/auth'),
@@ -104,6 +108,12 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
     test: exact('/api/webhooks/whatsapp-cloud/events'),
     reason:
       'Webhook Meta WhatsApp Cloud (lot 041) : signature X-Hub-Signature-256 toujours vérifiée, aucune session par nature.'
+  },
+  {
+    method: 'POST',
+    test: exact('/api/webhooks/livekit'),
+    reason:
+      'Webhook LiveKit (spec 045) : signature du projet LiveKit toujours vérifiée sur le corps brut, aucune session par nature.'
   },
   {
     method: 'POST',

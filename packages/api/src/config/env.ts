@@ -362,6 +362,50 @@ const envSchema = z
     META_WA_PHONE_NUMBER_ID: emptyAsUndefined(
       z.string().regex(/^\d+$/, 'chiffres seulement (phone_number_id de Meta)').optional()
     ),
+    // Visio integree a l'AG en direct (spec 045). Projet LiveKit DEDIE a
+    // ImmoTopia : les trois variables ou aucune (verifie dans le superRefine).
+    // `ws://` n'est accepte qu'en developpement et en test.
+    LIVEKIT_URL: emptyAsUndefined(
+      z
+        .string()
+        .regex(/^wss?:\/\/\S+$/, 'doit commencer par wss:// (ou ws:// en développement)')
+        .optional()
+    ),
+    LIVEKIT_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+    LIVEKIT_API_SECRET: optionalSecretSchema,
+    // Enregistrement des AG (spec 045, R3) : stockage S3 (ou compatible) vers lequel LiveKit
+    // Egress ecrit le MP4. Bucket et cles : tous ou aucun, et la visio doit etre configuree.
+    LIVEKIT_RECORDING_S3_BUCKET: emptyAsUndefined(z.string().min(3).max(255).optional()),
+    LIVEKIT_RECORDING_S3_REGION: emptyAsUndefined(z.string().min(1).default('us-east-1')),
+    LIVEKIT_RECORDING_S3_ENDPOINT: emptyAsUndefined(
+      z
+        .string()
+        .regex(/^https?:\/\/\S+$/, 'doit commencer par http:// ou https://')
+        .optional()
+    ),
+    // Cles d'acces S3 : pas de minimum de 32 caracteres (ce ne sont pas des secrets applicatifs).
+    LIVEKIT_RECORDING_S3_ACCESS_KEY: emptyAsUndefined(z.string().min(1).optional()),
+    LIVEKIT_RECORDING_S3_SECRET: emptyAsUndefined(z.string().min(1).optional()),
+    LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE: z.enum(['0', '1']).default('0'),
+    // Prefixe des objets : relatif (pas de / initial) et sans « .. ».
+    LIVEKIT_RECORDING_S3_PREFIX: emptyAsUndefined(
+      z
+        .string()
+        .min(1)
+        .max(200)
+        .refine(value => !value.startsWith('/') && !value.split('/').includes('..') && !value.includes('\\'), {
+          message: 'doit être relatif : pas de / initial, pas de « .. »'
+        })
+        .default('ag-enregistrements/')
+    ),
+    // Taille maximale (octets) d'un enregistrement rapatrie ; au-dela : echec `TOO_LARGE`, objet conserve.
+    LIVEKIT_RECORDING_MAX_BYTES: emptyAsUndefined(
+      z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(8 * 1024 ** 3)
+    ),
     META_WA_GRAPH_BASE_URL: z.string().url().default('https://graph.facebook.com'),
     // [A verifier au deploiement] : derniere version stable de l'API Graph.
     META_WA_GRAPH_VERSION: z
@@ -398,6 +442,11 @@ const envSchema = z
     // production. Cle et secret de webhook : aucun defaut, requis si SIGNATURE_PROVIDER=yousign.
     YOUSIGN_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
     YOUSIGN_API_BASE_URL: emptyAsUndefined(z.string().url().default('https://api-sandbox.yousign.app/v3')),
+    // '1' autorise la base SANDBOX de Yousign quand NODE_ENV=production : le staging
+    // tourne en production (make-env.sh) mais ne doit pas produire de vraies signatures
+    // facturees. Sans ce drapeau, une base « sandbox » en production est refusee au
+    // demarrage. deploy.sh prod refuse YOUSIGN_ALLOW_SANDBOX=1.
+    YOUSIGN_ALLOW_SANDBOX: emptyAsUndefined(z.enum(['0', '1']).default('0')),
     YOUSIGN_WEBHOOK_SECRET: emptyAsUndefined(z.string().min(16).optional()),
     // Niveau de signature demande a Yousign. Seuls `advanced` et `qualified` rendent le
     // fournisseur « qualifie » (SG-R1) ; le defaut (simple) ne leve donc pas l'exigence.
@@ -557,6 +606,66 @@ const envSchema = z
       });
     }
 
+    // Spec 045 : visio LiveKit, les trois variables ou aucune ; `wss://` hors développement et test.
+    const livekit = [
+      ['LIVEKIT_URL', value.LIVEKIT_URL],
+      ['LIVEKIT_API_KEY', value.LIVEKIT_API_KEY],
+      ['LIVEKIT_API_SECRET', value.LIVEKIT_API_SECRET]
+    ] as const;
+    if (livekit.some(([, present]) => present) && !livekit.every(([, present]) => present)) {
+      for (const [name, present] of livekit) {
+        if (!present) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: 'LIVEKIT_URL, LIVEKIT_API_KEY et LIVEKIT_API_SECRET vont ensemble : les trois ou aucune'
+          });
+        }
+      }
+    }
+    // Comme ws:// : un endpoint S3 en clair (http://) n'est accepte qu'en developpement et en test.
+    if (value.LIVEKIT_RECORDING_S3_ENDPOINT?.startsWith('http://') && !fakeProviderAllowed(process.env.NODE_ENV)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LIVEKIT_RECORDING_S3_ENDPOINT'],
+        message: "http:// n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test' : utilisez https://"
+      });
+    }
+    if (value.LIVEKIT_URL?.startsWith('ws://') && !fakeProviderAllowed(process.env.NODE_ENV)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LIVEKIT_URL'],
+        message: "ws:// n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test' : utilisez wss://"
+      });
+    }
+
+    // Spec 045 (R3) : enregistrement, bucket et cles ensemble, et seulement avec la visio.
+    const recording = [
+      ['LIVEKIT_RECORDING_S3_BUCKET', value.LIVEKIT_RECORDING_S3_BUCKET],
+      ['LIVEKIT_RECORDING_S3_ACCESS_KEY', value.LIVEKIT_RECORDING_S3_ACCESS_KEY],
+      ['LIVEKIT_RECORDING_S3_SECRET', value.LIVEKIT_RECORDING_S3_SECRET]
+    ] as const;
+    if (recording.some(([, present]) => present) && !recording.every(([, present]) => present)) {
+      for (const [name, present] of recording) {
+        if (!present) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: 'LIVEKIT_RECORDING_S3_BUCKET, _ACCESS_KEY et _SECRET vont ensemble : les trois ou aucune'
+          });
+        }
+      }
+    }
+    if (
+      value.LIVEKIT_RECORDING_S3_BUCKET &&
+      !(value.LIVEKIT_URL && value.LIVEKIT_API_KEY && value.LIVEKIT_API_SECRET)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LIVEKIT_RECORDING_S3_BUCKET'],
+        message: "l'enregistrement exige la visio configurée (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)"
+      });
+    }
     // Transport SMS (signature, lot S7).
     if (value.SMS_PROVIDER === 'orange') {
       const requisSms = [
@@ -593,12 +702,14 @@ const envSchema = z
     if (
       value.NODE_ENV === 'production' &&
       value.SIGNATURE_PROVIDER === 'yousign' &&
-      value.YOUSIGN_API_BASE_URL.includes('sandbox')
+      value.YOUSIGN_API_BASE_URL.includes('sandbox') &&
+      value.YOUSIGN_ALLOW_SANDBOX !== '1'
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['YOUSIGN_API_BASE_URL'],
-        message: 'la base SANDBOX Yousign est refusée en production (https://api.yousign.app/v3)'
+        message:
+          'la base SANDBOX Yousign est refusée en production (https://api.yousign.app/v3) ; seul le staging l’autorise, avec YOUSIGN_ALLOW_SANDBOX=1'
       });
     }
     if (!value.YOUSIGN_API_BASE_URL.startsWith('https://')) {
@@ -744,11 +855,11 @@ function loadEnv(): Env {
   if (
     env.NODE_ENV === 'production' &&
     env.SIGNATURE_PROVIDER === 'yousign' &&
-    env.YOUSIGN_API_BASE_URL.includes('api-sandbox.yousign.app')
+    env.YOUSIGN_API_BASE_URL.includes('sandbox')
   ) {
     // eslint-disable-next-line no-console
     console.warn(
-      '⚠️  SIGNATURE_PROVIDER=yousign en production avec la base SANDBOX : les signatures n’ont aucune valeur. Renseignez YOUSIGN_API_BASE_URL (production) après recette.'
+      '⚠️  SIGNATURE_PROVIDER=yousign en production avec la base SANDBOX (YOUSIGN_ALLOW_SANDBOX=1, staging seulement) : les signatures n’ont aucune valeur. Renseignez YOUSIGN_API_BASE_URL (production) après recette.'
     );
   }
 

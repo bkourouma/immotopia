@@ -643,7 +643,10 @@ export const SyndicDetail: React.FC = () => {
 
       <div id="fiche-lots">
         <Card title={t('Résumé des lots')}>
-          <LotTable lots={syndicate.lots || []} />
+          <LotTable
+            lots={syndicate.lots || []}
+            portalManageHref={`/tenant/${effectiveTenantId}/syndics/${syndicId}/profils-incidents`}
+          />
         </Card>
       </div>
 

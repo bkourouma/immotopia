@@ -1,4 +1,5 @@
 ﻿import React from 'react';
+import { Link } from 'react-router-dom';
 import { Button, Popconfirm, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Table } from '../primitives';
@@ -21,10 +22,48 @@ function buildPropertyLabel(property: NonNullable<SyndicateLot['property']>): st
   return property.title?.trim() || property.internalReference || property.id || t('Sans libellé');
 }
 
+/**
+ * Libellé de l'accès au portail copropriétaire d'un lot (même vocabulaire que la
+ * colonne « Portail » de « Profils et incidents »). `null` quand l'API n'a pas
+ * renvoyé l'information.
+ */
+function portalAccessLabel(lot: SyndicateLot): string | null {
+  const access = lot.portalAccess;
+  if (!access) return null;
+  switch (access.status) {
+    case 'ACTIVE':
+      return t('Actif');
+    case 'PARTIAL':
+      return t('Partiel ({{active}}/{{total}})', { active: access.activeCount, total: access.ownerCount });
+    case 'INACTIVE':
+      return t('Inactif');
+    default:
+      return t('Sans profil');
+  }
+}
+
+const portalAccessColors = { ACTIVE: 'green', PARTIAL: 'gold', INACTIVE: undefined, NONE: undefined } as const;
+
+/** Détail par propriétaire, en infobulle native : utile en indivision (« Nom 1 : Actif, Nom 2 : Inactif »). */
+function portalAccessDetail(lot: SyndicateLot): string | undefined {
+  const access = lot.portalAccess;
+  if (!access) return undefined;
+  if (access.status === 'NONE') {
+    return t("Aucun profil propriétaire sur ce lot : créez-en un dans « Profils et incidents » pour ouvrir l'accès.");
+  }
+  if (!lot.owners || lot.owners.length < 2) return undefined;
+  return lot.owners.map(owner => `${owner.name} : ${owner.portalAccessEnabled ? t('Actif') : t('Inactif')}`).join('\n');
+}
+
 interface LotTableProps {
   lots: SyndicateLot[];
   loading?: boolean;
   showMobileHint?: boolean;
+  /**
+   * Lien vers « Profils et incidents », où l'on invite au portail ou révoque
+   * l'accès. Absent : la colonne « Portail » s'affiche sans lien.
+   */
+  portalManageHref?: string;
   propertyLabelById?: Record<string, string>;
   ownerLabelById?: Record<string, string>;
   ownerLabelByEmail?: Record<string, string>;
@@ -39,6 +78,7 @@ export const LotTable: React.FC<LotTableProps> = ({
   lots,
   loading = false,
   showMobileHint = false,
+  portalManageHref,
   propertyLabelById,
   ownerLabelById,
   ownerLabelByEmail,
@@ -124,6 +164,35 @@ export const LotTable: React.FC<LotTableProps> = ({
         }
 
         return t('Non renseigné');
+      }
+    },
+    {
+      title: t('Portail'),
+      key: 'portalAccess',
+      width: 200,
+      // Le rendu accole l'étiquette et le lien : on n'exporte que l'état.
+      exportValue: (lot: SyndicateLot) => portalAccessLabel(lot) ?? '',
+      render: (_value: unknown, lot: SyndicateLot) => {
+        const access = lot.portalAccess;
+        const label = portalAccessLabel(lot);
+        if (!access || !label) {
+          return '-';
+        }
+        return (
+          <Space size={6} wrap>
+            <Tag color={portalAccessColors[access.status]} title={portalAccessDetail(lot)}>
+              {label}
+            </Tag>
+            {portalManageHref ? (
+              <Link
+                to={portalManageHref}
+                aria-label={t("Gérer l'accès au portail du lot {{lot}}", { lot: lot.lotNumber })}
+              >
+                {t("Gérer l'accès")}
+              </Link>
+            ) : null}
+          </Space>
+        );
       }
     },
     {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Badge, Button, Popconfirm, Space, Table, Typography } from 'antd';
+import { Badge, Button, Popconfirm, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { MeetingParticipantView } from '../../../types/syndic-live-types';
 import { formatDateTime } from './live-labels';
@@ -9,6 +9,8 @@ const { Text } = Typography;
 
 interface LiveParticipantsTableProps {
   participants: MeetingParticipantView[];
+  /** Contacts actuellement dans la salle de visio (spec 045) ; absent si la visio n'est pas activée. */
+  inVisioContactIds?: ReadonlySet<string>;
   readOnly: boolean;
   busyContactId: string | null;
   onCopyLink: (participant: MeetingParticipantView) => void;
@@ -17,6 +19,7 @@ interface LiveParticipantsTableProps {
 
 export const LiveParticipantsTable: React.FC<LiveParticipantsTableProps> = ({
   participants,
+  inVisioContactIds,
   readOnly,
   busyContactId,
   onCopyLink,
@@ -44,10 +47,13 @@ export const LiveParticipantsTable: React.FC<LiveParticipantsTableProps> = ({
       title: t('En ligne'),
       key: 'online',
       render: (_: unknown, participant) => (
-        <Badge
-          status={participant.online ? 'success' : 'default'}
-          text={participant.online ? t('En ligne') : t('Hors ligne')}
-        />
+        <Space size={8} wrap>
+          <Badge
+            status={participant.online ? 'success' : 'default'}
+            text={participant.online ? t('En ligne') : t('Hors ligne')}
+          />
+          {inVisioContactIds?.has(participant.contactId) ? <Tag color="blue">{t('En visio')}</Tag> : null}
+        </Space>
       )
     },
     { title: t('Liens actifs'), dataIndex: 'activeLinks', key: 'links', align: 'end' },
