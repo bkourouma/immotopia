@@ -35,7 +35,7 @@ Modèle de section :
 
 **Fait :** `specs/047-syndic-paiement-declare/spec.md` : paiement mobile money hors d'ImmoTopia, déclaré par le copropriétaire (référence obligatoire, capture facultative pré-lue par IA), validé par le gestionnaire. Rien n'est crédité avant validation ; la validation réutilise `recordLotPaymentTx` + `issueReceiptsForPaymentTx`.
 
-**Reste :** plan.md, contracts.md et tasks.md écrits (3 PR empilées, lots N1 à N7, 70 tâches) : réalisation à lancer sur `feat/syndic-paiement-declare` depuis main une fois la PR 165 fusionnée ; validation comptable des sous-comptes 5521x (Q9) avant la production.
+**Reste :** spec, plan (lots L1 à L8 par territoire de fichiers), contrats (routes et modèle Prisma) et tâches écrits ; le Pilote implémente sur `feat/syndic-paiement-declare`. Comptes : hypothèse H1 (sous-comptes 5521x par numéro), révisable, à faire valider par un comptable avant la production (T069).
 
 **Pièges :** le hook `validate-bash.sh` refuse une commande qui contient `--base main` (il y voit une poussée sur main) : lancer `gh pr create` sans `--base`, dans une commande séparée du `git push`. `TreasuryAccount` est au niveau de l'agence, pas de la copropriété. Le côté loyers a déjà `RentalPaymentDeclaration`.
 
