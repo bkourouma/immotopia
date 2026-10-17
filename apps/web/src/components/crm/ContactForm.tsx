@@ -29,6 +29,7 @@ import { CreateCrmContactRequest, UpdateCrmContactRequest, CrmContact } from '..
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
+import { PortalEmailNotice } from './PortalEmailNotice';
 
 const { TextArea } = Input;
 const { TabPane } = Tabs;
@@ -430,6 +431,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                   >
                     <Input type="email" placeholder="email@example.com" />
                   </Form.Item>
+                  <PortalEmailNotice notice={contact?.portalAccountEmailNotice} />
                 </Col>
                 <Col xs={24} sm={12}>
                   <Form.Item label={t('Email professionnel')} name="emailSecondary">
