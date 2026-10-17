@@ -164,6 +164,8 @@ export function skipReasonLabel(reason: SkipReason): string {
       return t("Le bail n'est pas actif");
     case 'COLLECTION_DAY_LATER':
       return t('Jour de collecte plus tard dans le mois');
+    case 'MANDATE_NOT_ACTIVE':
+      return t('Mandat non actif (brouillon ou suspendu)');
     default:
       return reason;
   }

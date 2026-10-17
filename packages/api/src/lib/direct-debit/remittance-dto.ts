@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { toIsoDate } from './business-days';
 import { resolveDebtorNames, type DbClient, type MandateStatus } from './dto';
 import { maskIban } from './iban';
+import { maskEmail, resolveDebtorRecipients, type DebtorRecipient, type RecipientSource } from './recipient';
 
 /**
  * Objets renvoyés par l'API des remises (data-model §7.7).
@@ -12,7 +13,9 @@ import { maskIban } from './iban';
  */
 
 export type RemittanceStatus = 'DRAFT' | 'VALIDATED' | 'EXPORTED' | 'SUBMITTED' | 'CANCELED';
-export type RemittanceLineStatus = 'PENDING' | 'CANCELED';
+export type RemittanceLineStatus = 'PENDING' | 'CANCELED' | 'SETTLED' | 'REJECTED';
+export type ReturnSourceDto = 'MANUAL' | 'IMPORT';
+export type ReturnStateDto = 'NOT_APPLICABLE' | 'AWAITING' | 'PARTIAL' | 'COMPLETE';
 export type PrenotificationStatus = 'PENDING' | 'SENT' | 'NO_EMAIL' | 'DISABLED' | 'FAILED';
 
 export interface PrenotificationSummaryDto {
@@ -21,6 +24,22 @@ export interface PrenotificationSummaryDto {
   noEmail: number;
   disabled: number;
   failed: number;
+  /** Lignes PENDING de la remise, selon l'adresse où part (ou est partie) l'avis. */
+  recipients: { account: number; contact: number; none: number };
+}
+
+/** Adresse masquée de l'avis : jamais l'adresse complète. */
+export interface PrenotificationRecipientDto {
+  masked: string;
+  source: RecipientSource;
+}
+
+export interface ReturnSummaryDto {
+  pending: number;
+  settled: number;
+  rejected: number;
+  settledAmount: number;
+  rejectedAmount: number;
 }
 
 export interface RemittanceSummaryDto {
@@ -42,6 +61,10 @@ export interface RemittanceSummaryDto {
   submittedAt: string | null;
   canceledAt: string | null;
   cancellationReason: string | null;
+  /** Avancement du retour banque, calculé sur les lignes non annulées (spec 042 §8.7). */
+  returnSummary: ReturnSummaryDto;
+  /** NOT_APPLICABLE avant dépôt ; AWAITING : aucun constat ; PARTIAL ; COMPLETE : plus aucune ligne PENDING. */
+  returnState: ReturnStateDto;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,18 +90,35 @@ export interface RemittanceLineDto {
   capped: boolean;
   prenotificationStatus: PrenotificationStatus;
   prenotifiedAt: string | null;
+  /** Valeurs stockées à l'envoi (SENT/FAILED), sinon adresse prévue (ligne PENDING) ; null sans adresse. */
+  prenotificationRecipient: PrenotificationRecipientDto | null;
   canceledAt: string | null;
   cancellationReason: string | null;
+  settledAt: string | null;
+  rejectedAt: string | null;
+  rejectionCode: string | null;
+  rejectionReason: string | null;
+  rejectFeeAmount: number | null;
+  returnSource: ReturnSourceDto | null;
+  /** RentalPayment (P3) ou ChargePayment (P4). */
+  paymentId: string | null;
 }
 
 export interface RemittanceDto extends RemittanceSummaryDto {
   notes: string | null;
   lines: RemittanceLineDto[];
   prenotificationSummary: PrenotificationSummaryDto;
+  /** Mandats du créancier non retenus, recalculés en lecture seule ; présent seulement en DRAFT. */
+  skipped?: SkippedMandateDto[];
 }
 
 export type SkipReasonDto =
-  'NO_INSTALLMENT' | 'NOTHING_DUE' | 'ALREADY_IN_REMITTANCE' | 'LEASE_NOT_ACTIVE' | 'COLLECTION_DAY_LATER';
+  | 'NO_INSTALLMENT'
+  | 'NOTHING_DUE'
+  | 'ALREADY_IN_REMITTANCE'
+  | 'LEASE_NOT_ACTIVE'
+  | 'COLLECTION_DAY_LATER'
+  | 'MANDATE_NOT_ACTIVE';
 
 export interface SkippedMandateDto {
   mandateId: string;
@@ -124,7 +164,9 @@ export const REMITTANCE_SUMMARY_SELECT = {
   updatedAt: true,
   creditor: {
     select: { id: true, label: true, creditorIdentifier: true, fileFormat: true }
-  }
+  },
+  // Pour l'avancement du retour banque (returnSummary) : statut et montant seulement.
+  lines: { select: { status: true, amount: true } }
 } satisfies Prisma.DirectDebitRemittanceSelect;
 
 export const REMITTANCE_SELECT = {
@@ -143,6 +185,15 @@ export const REMITTANCE_SELECT = {
       cancellationReason: true,
       prenotificationStatus: true,
       prenotifiedAt: true,
+      prenotificationRecipientMasked: true,
+      prenotificationRecipientSource: true,
+      settledAt: true,
+      rejectedAt: true,
+      rejectionCode: true,
+      rejectionReason: true,
+      rejectFeeAmount: true,
+      returnSource: true,
+      rentalPaymentId: true,
       // Jamais ibanEncrypted : seuls les 4 derniers caractères servent au masque.
       mandate: {
         select: {
@@ -164,6 +215,37 @@ export const REMITTANCE_SELECT = {
 
 type SummaryRow = Prisma.DirectDebitRemittanceGetPayload<{ select: typeof REMITTANCE_SUMMARY_SELECT }>;
 type FullRow = Prisma.DirectDebitRemittanceGetPayload<{ select: typeof REMITTANCE_SELECT }>;
+
+/**
+ * Avancement du retour banque, sur les lignes non annulées. `lineCount` et
+ * `totalAmount` restent ceux de la remise déposée (spec 042 §8.7).
+ */
+export function summarizeReturn(
+  status: RemittanceStatus,
+  lines: Array<{ status: string; amount: Prisma.Decimal | number }>
+): { returnSummary: ReturnSummaryDto; returnState: ReturnStateDto } {
+  const returnSummary: ReturnSummaryDto = { pending: 0, settled: 0, rejected: 0, settledAmount: 0, rejectedAmount: 0 };
+  for (const line of lines) {
+    const amount = Number(line.amount);
+    if (line.status === 'PENDING') returnSummary.pending += 1;
+    else if (line.status === 'SETTLED') {
+      returnSummary.settled += 1;
+      returnSummary.settledAmount += amount;
+    } else if (line.status === 'REJECTED') {
+      returnSummary.rejected += 1;
+      returnSummary.rejectedAmount += amount;
+    }
+  }
+  returnSummary.settledAmount = Math.round(returnSummary.settledAmount * 100) / 100;
+  returnSummary.rejectedAmount = Math.round(returnSummary.rejectedAmount * 100) / 100;
+  let returnState: ReturnStateDto = 'NOT_APPLICABLE';
+  if (status === 'EXPORTED' || status === 'SUBMITTED') {
+    const recorded = returnSummary.settled + returnSummary.rejected;
+    if (recorded === 0) returnState = 'AWAITING';
+    else returnState = returnSummary.pending === 0 ? 'COMPLETE' : 'PARTIAL';
+  }
+  return { returnSummary, returnState };
+}
 
 export function toRemittanceSummaryDto(row: SummaryRow): RemittanceSummaryDto {
   // Après validation, le créancier est celui figé ; avant, celui de la fiche.
@@ -192,6 +274,7 @@ export function toRemittanceSummaryDto(row: SummaryRow): RemittanceSummaryDto {
     submittedAt: iso(row.submittedAt),
     canceledAt: iso(row.canceledAt),
     cancellationReason: row.cancellationReason ?? null,
+    ...summarizeReturn(row.status, row.lines),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString()
   };
@@ -199,11 +282,26 @@ export function toRemittanceSummaryDto(row: SummaryRow): RemittanceSummaryDto {
 
 /** Compteurs de prénotification des lignes PENDING seulement. */
 export function summarizePrenotifications(
-  lines: Array<{ status: string; prenotificationStatus: string }>
+  lines: Array<{
+    status: string;
+    prenotificationStatus: string;
+    prenotificationRecipient?: PrenotificationRecipientDto | null;
+  }>
 ): PrenotificationSummaryDto {
-  const summary: PrenotificationSummaryDto = { pending: 0, sent: 0, noEmail: 0, disabled: 0, failed: 0 };
+  const summary: PrenotificationSummaryDto = {
+    pending: 0,
+    sent: 0,
+    noEmail: 0,
+    disabled: 0,
+    failed: 0,
+    recipients: { account: 0, contact: 0, none: 0 }
+  };
   for (const line of lines) {
     if (line.status !== 'PENDING') continue;
+    const recipient = line.prenotificationRecipient;
+    if (!recipient) summary.recipients.none += 1;
+    else if (recipient.source === 'ACCOUNT') summary.recipients.account += 1;
+    else summary.recipients.contact += 1;
     switch (line.prenotificationStatus) {
       case 'SENT':
         summary.sent += 1;
@@ -224,7 +322,24 @@ export function summarizePrenotifications(
   return summary;
 }
 
-export function toRemittanceDto(row: FullRow, debtorNames: Map<string, string | null>): RemittanceDto {
+/** Adresse affichée d'une ligne : celle gardée à l'envoi, sinon l'adresse prévue d'une ligne PENDING. */
+function recipientOf(
+  line: FullRow['lines'][number],
+  planned: Map<string, DebtorRecipient | null>
+): PrenotificationRecipientDto | null {
+  if (line.prenotificationRecipientMasked && line.prenotificationRecipientSource) {
+    return { masked: line.prenotificationRecipientMasked, source: line.prenotificationRecipientSource };
+  }
+  if (line.status !== 'PENDING') return null;
+  const recipient = planned.get(line.debtor.id) ?? null;
+  return recipient ? { masked: maskEmail(recipient.email), source: recipient.source } : null;
+}
+
+export function toRemittanceDto(
+  row: FullRow,
+  debtorNames: Map<string, string | null>,
+  plannedRecipients: Map<string, DebtorRecipient | null> = new Map()
+): RemittanceDto {
   const lines: RemittanceLineDto[] = row.lines.map(line => ({
     id: line.id,
     lineNumber: line.lineNumber,
@@ -251,14 +366,29 @@ export function toRemittanceDto(row: FullRow, debtorNames: Map<string, string | 
     capped: line.capped,
     prenotificationStatus: line.prenotificationStatus,
     prenotifiedAt: iso(line.prenotifiedAt),
+    prenotificationRecipient: recipientOf(line, plannedRecipients),
     canceledAt: iso(line.canceledAt),
-    cancellationReason: line.cancellationReason ?? null
+    cancellationReason: line.cancellationReason ?? null,
+    settledAt: line.settledAt ? toIsoDate(line.settledAt) : null,
+    rejectedAt: line.rejectedAt ? toIsoDate(line.rejectedAt) : null,
+    rejectionCode: line.rejectionCode ?? null,
+    rejectionReason: line.rejectionReason ?? null,
+    rejectFeeAmount: num(line.rejectFeeAmount),
+    returnSource: line.returnSource ?? null,
+    // P3 : l'encaissement locatif ; P4 y ajoutera le paiement de charges.
+    paymentId: line.rentalPaymentId ?? null
   }));
   return {
     ...toRemittanceSummaryDto(row),
     notes: row.notes ?? null,
     lines,
-    prenotificationSummary: summarizePrenotifications(row.lines)
+    prenotificationSummary: summarizePrenotifications(
+      lines.map(line => ({
+        status: line.status,
+        prenotificationStatus: line.prenotificationStatus,
+        prenotificationRecipient: line.prenotificationRecipient
+      }))
+    )
   };
 }
 
@@ -278,5 +408,10 @@ export async function loadRemittanceDto(
     tenantId,
     row.lines.map(line => line.debtor)
   );
-  return toRemittanceDto(row, names);
+  // Adresse prévue des lignes PENDING dont l'avis n'est pas encore parti (rien n'est stocké avant l'envoi).
+  const toPlan = row.lines
+    .filter(line => line.status === 'PENDING' && !line.prenotificationRecipientMasked)
+    .map(line => line.debtor.id);
+  const planned = await resolveDebtorRecipients(db, tenantId, toPlan);
+  return toRemittanceDto(row, names, planned);
 }

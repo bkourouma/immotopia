@@ -770,6 +770,7 @@ model Tenant {
   directDebitMandates      DirectDebitMandate[]
   directDebitRemittances   DirectDebitRemittance[]
   directDebitRemittanceLines DirectDebitRemittanceLine[]
+  directDebitReturnImports DirectDebitReturnImport[]
   leaseInspectionPhotos    LeaseInspectionPhoto[]
   propertyOwnershipShares  PropertyOwnershipShare[]
   // PATRIMOINE — Lot P4
@@ -2906,6 +2907,8 @@ model RentalPayment {
   /// Lot 7 : tentative de paiement en ligne (PaySecureHub) adossée 1-1 à ce
   /// paiement PENDING.
   onlineCheckout   OnlinePaymentCheckout?
+  /// Prélèvement (spec 042 P3) ayant généré cet encaissement, le cas échéant.
+  directDebitLine  DirectDebitRemittanceLine?
 
   // Client-supplied idempotency keys are only unique within a tenant.
   @@unique([tenant_id, idempotency_key])
@@ -10645,7 +10648,25 @@ enum DirectDebitRemittanceStatus {
 enum DirectDebitRemittanceLineStatus {
   PENDING
   CANCELED
-  // P3 : SETTLED, REJECTED
+  SETTLED   // règlement constaté (P3)
+  REJECTED  // rejet constaté (P3)
+}
+
+/// Origine d'un constat de retour banque (spec 042 P3).
+enum DirectDebitReturnSource {
+  MANUAL
+  IMPORT
+}
+
+/// Origine de l'adresse e-mail de l'avis de prélèvement (spec 042 P3).
+enum DirectDebitRecipientSource {
+  ACCOUNT  // compte portail du débiteur
+  CONTACT  // fiche contact CRM
+}
+
+/// Format d'un fichier de retour de la banque (spec 042 P3).
+enum DirectDebitReturnFormat {
+  GENERIC_CSV
 }
 
 enum DirectDebitPrenotificationStatus {
@@ -10728,21 +10749,66 @@ model DirectDebitRemittanceLine {
   cancellationReason      String?                          @map("cancellation_reason")
   prenotificationStatus   DirectDebitPrenotificationStatus @default(PENDING) @map("prenotification_status")
   prenotifiedAt           DateTime?                        @map("prenotified_at")
+  /// Adresse masquée où l'avis est parti (jamais l'adresse complète), posée à l'envoi.
+  prenotificationRecipientMasked String?                   @map("prenotification_recipient_masked")
+  prenotificationRecipientSource DirectDebitRecipientSource? @map("prenotification_recipient_source")
+  /// Date de valeur du règlement (relevé), AAAA-MM-JJ (P3).
+  settledAt               DateTime?                        @map("settled_at") @db.Date
+  /// Date du rejet (relevé ou fichier de rejets), AAAA-MM-JJ (P3).
+  rejectedAt              DateTime?                        @map("rejected_at") @db.Date
+  rejectionCode           String?                          @map("rejection_code")
+  rejectionReason         String?                          @map("rejection_reason")
+  /// Frais de rejet réellement refacturés au débiteur (0 ou nul : aucun).
+  rejectFeeAmount         Decimal?                         @map("reject_fee_amount") @db.Decimal(12, 2)
+  returnSource            DirectDebitReturnSource?         @map("return_source")
+  returnImportId          String?                          @map("return_import_id") @db.Uuid
+  returnRecordedAt        DateTime?                        @map("return_recorded_at")
+  returnRecordedByUserId  String?                          @map("return_recorded_by_user_id")
+  /// Encaissement locatif créé au règlement (RENTAL_LEASE). Jamais deux lignes pour un paiement.
+  rentalPaymentId         String?                          @unique @map("rental_payment_id") @db.Uuid
   createdAt               DateTime                         @default(now()) @map("created_at")
   updatedAt               DateTime                         @updatedAt @map("updated_at")
 
-  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  remittance  DirectDebitRemittance @relation(fields: [remittanceId], references: [id], onDelete: Cascade)
-  mandate     DirectDebitMandate    @relation(fields: [mandateId], references: [id], onDelete: Restrict)
-  lease       RentalLease           @relation(fields: [leaseId], references: [id], onDelete: Restrict)
-  installment RentalInstallment     @relation(fields: [installmentId], references: [id], onDelete: Restrict)
-  debtor      TenantClient          @relation(fields: [debtorClientId], references: [id], onDelete: Restrict)
+  tenant        Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  remittance    DirectDebitRemittance     @relation(fields: [remittanceId], references: [id], onDelete: Cascade)
+  mandate       DirectDebitMandate        @relation(fields: [mandateId], references: [id], onDelete: Restrict)
+  lease         RentalLease               @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  installment   RentalInstallment         @relation(fields: [installmentId], references: [id], onDelete: Restrict)
+  debtor        TenantClient              @relation(fields: [debtorClientId], references: [id], onDelete: Restrict)
+  rentalPayment RentalPayment?            @relation(fields: [rentalPaymentId], references: [id], onDelete: Restrict)
+  returnImport  DirectDebitReturnImport?  @relation(fields: [returnImportId], references: [id], onDelete: SetNull)
 
   @@unique([remittanceId, lineNumber])
   @@unique([tenantId, activeKey])
   @@index([tenantId, status])
+  @@index([returnImportId])
   @@index([mandateId])
   @@index([installmentId])
   @@index([leaseId])
   @@map("direct_debit_remittance_lines")
+}
+
+/// Un fichier de retour importé (relevé ou rejets) : traçabilité, jamais le fichier lui-même (spec 042 P3).
+model DirectDebitReturnImport {
+  id               String                  @id @default(uuid()) @db.Uuid
+  tenantId         String                  @map("tenant_id")
+  scope            DirectDebitMandateScope @default(RENTAL_LEASE)
+  format           DirectDebitReturnFormat @default(GENERIC_CSV)
+  /// Nom de fichier assaini (200 caractères au plus), pour l'affichage.
+  fileName         String                  @map("file_name")
+  /// HMAC-SHA-256 du fichier (même clé dérivée que la remise, `file-digest.ts`).
+  fileDigest       String                  @map("file_digest")
+  recordCount      Int                     @map("record_count")
+  settledCount     Int                     @default(0) @map("settled_count")
+  rejectedCount    Int                     @default(0) @map("rejected_count")
+  skippedCount     Int                     @default(0) @map("skipped_count")
+  errorCount       Int                     @default(0) @map("error_count")
+  importedByUserId String?                 @map("imported_by_user_id")
+  createdAt        DateTime                @default(now()) @map("created_at")
+
+  tenant Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lines  DirectDebitRemittanceLine[]
+
+  @@index([tenantId, createdAt])
+  @@map("direct_debit_return_imports")
 }

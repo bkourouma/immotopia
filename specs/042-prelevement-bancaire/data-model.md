@@ -1,4 +1,4 @@
-# 042 — Modèle de données et contrat d'API (P1, P2)
+# 042 — Modèle de données et contrat d'API (P1 à P3)
 
 > Chemins relatifs à `packages/api/`. Ce document est le **contrat** entre
 > l'API et l'écran : l'un et l'autre s'y conforment à la lettre.
@@ -655,3 +655,469 @@ quels).
   mandats non retenus après création ou actualisation avec leur raison.
   Bandeau sur une remise `EXPORTED` : le fichier est produit mais la remise
   n'est pas marquée déposée (ADR-007, risque d'oubli).
+
+## 8. P3 — Retour banque (contrat)
+
+> Ajouté le 17/10/2026. Décisions de l'utilisateur du 17/10/2026 : P3 puis
+> P4, signature électronique du mandat en option. Même règle que §1–§7 :
+> l'API et l'écran s'y conforment à la lettre. Chemins relatifs à
+> `packages/api/`.
+
+### 8.1 Principe
+
+Une ligne de remise déposée à la banque reçoit un **constat** : réglée
+(`SETTLED`) ou rejetée (`REJECTED`). Le constat est manuel (ligne par ligne
+ou toute la remise) ou importé d'un fichier de retour. Le loyer ne compte
+comme payé qu'au constat de règlement (D3, ADR-007 §5). Un rejet tardif
+d'une ligne déjà réglée contre-passe l'encaissement.
+
+L'encaissement dépend du périmètre de la ligne : un **encaisseur**
+(`lib/direct-debit/collectors/`) par `scope`. P3 livre l'encaisseur
+`RENTAL_LEASE` ; P4 livrera `SYNDIC_LOT` derrière la même interface.
+
+### 8.2 Schéma (P3)
+
+```prisma
+// Migration 1 (seule) : 20261017100000_prelevement_retour_statuts
+enum DirectDebitRemittanceLineStatus {
+  PENDING
+  CANCELED
+  SETTLED   // règlement constaté
+  REJECTED  // rejet constaté
+}
+
+// Migration 2 : 20261017100100_prelevement_retour_banque
+enum DirectDebitReturnSource {
+  MANUAL
+  IMPORT
+}
+
+enum DirectDebitReturnFormat {
+  GENERIC_CSV
+}
+
+model DirectDebitRemittanceLine {
+  // … champs P2 inchangés, plus :
+  /// Date de valeur du règlement (relevé), AAAA-MM-JJ.
+  settledAt              DateTime?                @map("settled_at") @db.Date
+  /// Date du rejet (relevé ou fichier de rejets), AAAA-MM-JJ.
+  rejectedAt             DateTime?                @map("rejected_at") @db.Date
+  rejectionCode          String?                  @map("rejection_code")
+  rejectionReason        String?                  @map("rejection_reason")
+  /// Frais de rejet réellement refacturés au débiteur (0 ou nul : aucun).
+  rejectFeeAmount        Decimal?                 @map("reject_fee_amount") @db.Decimal(12, 2)
+  returnSource           DirectDebitReturnSource? @map("return_source")
+  returnImportId         String?                  @map("return_import_id") @db.Uuid
+  returnRecordedAt       DateTime?                @map("return_recorded_at")
+  returnRecordedByUserId String?                  @map("return_recorded_by_user_id")
+  /// Encaissement locatif créé au règlement (RENTAL_LEASE). Jamais deux lignes pour un paiement.
+  rentalPaymentId        String?                  @unique @map("rental_payment_id") @db.Uuid
+
+  rentalPayment RentalPayment?           @relation(fields: [rentalPaymentId], references: [id], onDelete: Restrict)
+  returnImport  DirectDebitReturnImport? @relation(fields: [returnImportId], references: [id], onDelete: SetNull)
+  @@index([returnImportId])
+}
+
+/// Un fichier de retour importé (relevé ou rejets) : traçabilité, jamais le fichier lui-même.
+model DirectDebitReturnImport {
+  id               String                  @id @default(uuid()) @db.Uuid
+  tenantId         String                  @map("tenant_id")
+  scope            DirectDebitMandateScope @default(RENTAL_LEASE)
+  format           DirectDebitReturnFormat @default(GENERIC_CSV)
+  /// Nom de fichier assaini (200 caractères au plus), pour l'affichage.
+  fileName         String                  @map("file_name")
+  /// HMAC-SHA-256 du fichier (même clé dérivée que la remise, `file-digest.ts`).
+  fileDigest       String                  @map("file_digest")
+  recordCount      Int                     @map("record_count")
+  settledCount     Int                     @default(0) @map("settled_count")
+  rejectedCount    Int                     @default(0) @map("rejected_count")
+  skippedCount     Int                     @default(0) @map("skipped_count")
+  errorCount       Int                     @default(0) @map("error_count")
+  importedByUserId String?                 @map("imported_by_user_id")
+  createdAt        DateTime                @default(now()) @map("created_at")
+
+  tenant Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lines  DirectDebitRemittanceLine[]
+
+  @@index([tenantId, createdAt])
+  @@map("direct_debit_return_imports")
+}
+```
+
+Relation inverse : `RentalPayment.directDebitLine DirectDebitRemittanceLine?`,
+`Tenant.directDebitReturnImports`. Aucune autre table ne change ; la remise
+garde son statut `SUBMITTED` (l'avancement du retour se calcule, §8.7).
+
+### 8.3 Constat de règlement (`settle`)
+
+Pré-conditions : remise de l'agence, du bon périmètre, au statut `EXPORTED`
+ou `SUBMITTED` (un constat sur une remise `EXPORTED` la passe d'abord à
+`SUBMITTED`, `submittedAt = maintenant`, audit `DIRECT_DEBIT_REMITTANCE_SUBMITTED`) ;
+ligne `PENDING` ; `settledAt` (AAAA-MM-JJ) entre `collectionDate` et
+aujourd'hui inclus, sinon `BadRequestError` traduite.
+
+Effets, **une transaction par ligne** (`{ maxWait: 10_000, timeout: 30_000 }`) :
+
+1. réservation de la ligne par `updateMany` conditionnel (`status = PENDING`) ;
+   0 ligne → `ConflictError` « Cette ligne vient d'être traitée : rechargez la page. » ;
+2. `collector.settleTx` (§8.6) crée l'encaissement et renvoie sa référence ;
+3. ligne : `SETTLED`, `settledAt`, `returnSource`, `returnImportId`,
+   `returnRecordedAt/ByUserId`, référence de l'encaissement ; `activeKey`
+   gardée si `collector.keepsActiveKeyOnSettle` (RENTAL : oui), sinon nulle ;
+4. mandat : `consecutiveRejects = 0` (D5) ;
+5. audit `DIRECT_DEBIT_LINE_SETTLED` (critique) : référence de ligne, montant,
+   date de valeur, source, identifiant de l'encaissement ; jamais d'IBAN.
+
+Après la transaction : `afterCommit` de l'encaisseur (quittance, voir §8.6).
+Une erreur après commit est journalisée sans faire échouer le constat.
+
+**Constat de toute la remise** (`settle-all`, même `settledAt`) : chaque ligne
+`PENDING` dans sa propre transaction ; réponse `{ settled, failed: [{ lineId, reference, error }] }`.
+
+### 8.4 Constat de rejet (`reject`)
+
+Pré-conditions : remise `EXPORTED` ou `SUBMITTED` (même passage automatique à
+`SUBMITTED`) ; ligne `PENDING` **ou** `SETTLED` (rejet tardif) ; `rejectedAt`
+entre `collectionDate` et aujourd'hui ; `code` (1–20, `[A-Za-z0-9_-]`) et/ou
+`reason` (1–500), au moins l'un des deux.
+
+Effets, une transaction :
+
+1. réservation conditionnelle (`status IN (PENDING, SETTLED)`) ;
+2. si la ligne était `SETTLED` : `collector.reverseTx` (contre-passation de
+   l'encaissement, quittance annulée) — un encaisseur qui ne sait pas
+   contre-passer lève `ConflictError` traduite et rien n'est écrit ;
+3. frais de rejet (D4) : si `creditor.rejectFeeAmount > 0`,
+   `collector.applyRejectFeeTx` ; `line.rejectFeeAmount` = montant refacturé
+   (0 si l'encaisseur ne refacture pas) ;
+4. ligne : `REJECTED`, `rejectedAt`, `rejectionCode`, `rejectionReason`,
+   `activeKey = null` (l'échéance peut être représentée), traçabilité du retour ;
+5. mandat : `consecutiveRejects + 1` ; si le compteur atteint
+   `creditor.maxConsecutiveRejects` et que le mandat est `ACTIVE` →
+   `SUSPENDED`, `suspendedAt`, `suspensionReason` = « Suspendu automatiquement
+   après N rejets consécutifs. », audit `DIRECT_DEBIT_MANDATE_AUTO_SUSPENDED`
+   (critique) ;
+6. audit `DIRECT_DEBIT_LINE_REJECTED` (critique).
+
+Après la transaction : notification e-mail au débiteur (§8.8).
+
+### 8.5 Import d'un fichier de retour
+
+Adaptateur par format, comme le fichier de remise :
+`lib/direct-debit/return-formats/index.ts` (registre `getReturnAdapter(format)`)
+et `generic-csv.ts`.
+
+```ts
+interface ReturnRecord {
+  row: number; // numéro de ligne du fichier (en-tête = 1)
+  operationReference: string; // PRL-AAAA-NNNN-RRR
+  outcome: "SETTLED" | "REJECTED";
+  date: string; // AAAA-MM-JJ
+  amount: number;
+  rejectionCode: string | null;
+  rejectionReason: string | null;
+}
+interface ReturnParseResult {
+  records: ReturnRecord[];
+  errors: { row: number; message: string }[];
+}
+interface DirectDebitReturnAdapter {
+  format: "GENERIC_CSV";
+  parse(buffer: Buffer): ReturnParseResult;
+}
+```
+
+**Format `GENERIC_CSV` de retour** : UTF-8 (BOM accepté), séparateur `;`
+(`,` accepté si l'en-tête l'emploie), CRLF ou LF, champs entre guillemets
+RFC 4180 ; en-tête obligatoire, colonnes dans n'importe quel ordre, noms
+insensibles à la casse et aux accents :
+`reference_operation;statut;date;montant;code_rejet;motif`.
+`statut` : `REGLE`/`RÉGLÉ`/`PAYE`/`OK` → `SETTLED` ; `REJETE`/`REJETÉ`/`KO` →
+`REJECTED`. `date` : `AAAA-MM-JJ` ou `JJ/MM/AAAA`. `montant` : décimal à `.`
+ou `,`, espaces de milliers tolérés. Une ligne illisible donne une entrée
+`errors` (message traduit, sans valeur sensible) et n'arrête pas la lecture.
+Fichier ≤ 2 Mo et ≤ 5 000 lignes, sinon `BadRequestError`. Le parseur est
+maison (aucune dépendance nouvelle), pur et testé.
+
+**Rapprochement** (périmètre de la route, agence) : la référence
+`PRL-AAAA-NNNN-RRR` donne (année, séquence) de la remise et le rang de la
+ligne. Résultat par enregistrement :
+
+| Situation                                           | `action` | `skipReason`               |
+| --------------------------------------------------- | -------- | -------------------------- |
+| ligne `PENDING`, `SETTLED`, montant égal            | `SETTLE` | —                          |
+| ligne `PENDING` ou `SETTLED`, `REJECTED`            | `REJECT` | —                          |
+| référence inconnue dans l'agence et le périmètre    | `SKIP`   | `UNKNOWN_REFERENCE`        |
+| montant différent de celui de la ligne (au centime) | `SKIP`   | `AMOUNT_MISMATCH`          |
+| ligne déjà dans l'état demandé                      | `SKIP`   | `ALREADY_PROCESSED`        |
+| ligne `REJECTED`, `SETTLED` demandé                 | `SKIP`   | `CONFLICT`                 |
+| ligne `CANCELED`                                    | `SKIP`   | `LINE_CANCELED`            |
+| remise ni `EXPORTED` ni `SUBMITTED`                 | `SKIP`   | `REMITTANCE_NOT_SUBMITTED` |
+| date hors de [date de prélèvement, aujourd'hui]     | `SKIP`   | `INVALID_DATE`             |
+
+Deux temps : **aperçu** (lecture, aucun écrit) puis **application** du même
+fichier (relu, rapproché à nouveau, puis chaque action dans sa propre
+transaction par §8.3/§8.4 avec `returnSource = IMPORT`). L'application crée
+une ligne `DirectDebitReturnImport` (compteurs, empreinte HMAC du fichier) et
+l'audit `DIRECT_DEBIT_RETURN_IMPORTED` (critique, compteurs seulement).
+Rejouer le même fichier ne change rien (`ALREADY_PROCESSED`).
+
+### 8.6 Encaisseurs (`lib/direct-debit/collectors/`)
+
+```ts
+type Tx = Prisma.TransactionClient;
+
+interface CollectorLine {
+  // chargée par le service, filtrée par agence
+  id: string;
+  tenantId: string;
+  remittanceId: string;
+  reference: string;
+  mandateId: string;
+  amount: number;
+  scope: "RENTAL_LEASE" | "SYNDIC_LOT";
+  leaseId: string | null;
+  installmentId: string | null; // RENTAL_LEASE
+  lotId: string | null;
+  chargeCallIds: string[]; // SYNDIC_LOT (P4)
+  syndicateId: string | null;
+  rentalPaymentId: string | null;
+  chargePaymentId: string | null;
+  treasuryAccountId: string | null; // compte du créancier
+}
+
+interface CollectorContext {
+  tenantId: string;
+  actorUserId: string | null;
+  now: Date;
+}
+
+interface DirectDebitCollector {
+  scope: "RENTAL_LEASE" | "SYNDIC_LOT";
+  keepsActiveKeyOnSettle: boolean;
+  settleTx(
+    tx: Tx,
+    ctx: CollectorContext,
+    line: CollectorLine,
+    settledAt: Date,
+  ): Promise<{
+    rentalPaymentId?: string;
+    chargePaymentId?: string;
+    afterCommit?: () => Promise<void>;
+  }>;
+  reverseTx(
+    tx: Tx,
+    ctx: CollectorContext,
+    line: CollectorLine,
+  ): Promise<{ afterCommit?: () => Promise<void> }>;
+  applyRejectFeeTx(
+    tx: Tx,
+    ctx: CollectorContext,
+    line: CollectorLine,
+    fee: number,
+  ): Promise<{ appliedAmount: number }>;
+}
+export function getCollector(scope): DirectDebitCollector;
+```
+
+**Encaisseur `RENTAL_LEASE`** (`collectors/rental.ts`) :
+
+- `settleTx` : `RentalPayment` créé `PENDING` puis passé `SUCCESS` par
+  `updatePaymentStatusTx` (recette de `lib/payment-gateway/checkout.ts`) :
+  `method = DIRECT_DEBIT`, `amount = line.amount`, `lease_id`,
+  `renter_client_id` = locataire principal du bail, `treasury_account_id` =
+  compte du créancier, `succeeded_at = settledAt`, `idempotency_key =
+direct-debit-line:<lineId>`, `psp_reference = <référence de ligne>`
+  (jamais `psp_transaction_id`) ; puis `allocatePaymentTx` sur l'échéance de
+  la ligne (montant manuel = montant de la ligne) dans un `try/catch` : si rien
+  n'est allouable, le montant reste en avance du locataire. `afterCommit` :
+  quittance `RENT_RECEIPT` idempotente (verrou `withExclusiveSection`, puis
+  `generateDocument` seulement si aucune quittance `FINAL` n'existe pour ce
+  paiement ; l'absence de modèle DOCX est journalisée, pas une erreur).
+- `reverseTx` : `updatePaymentStatusTx(FAILED)` sur le paiement de la ligne
+  (désallocation, contre-passation au compte du locataire et en trésorerie) ;
+  les quittances `RENT_RECEIPT` `FINAL` de ce paiement passent `VOID`.
+- `applyRejectFeeTx` : sur l'échéance de la ligne, `amount_other_fees += fee`,
+  un `RentalInstallmentItem` `OTHER` « Frais de rejet de prélèvement »
+  (`metadata: { kind: 'DIRECT_DEBIT_REJECT_FEE', lineId }`) et un mouvement
+  de compte de tiers `ADJUSTMENT` (`billed = fee`, `sourceType =
+'DIRECT_DEBIT_REJECT_FEE'`, `sourceId = lineId`, idempotent). La nouvelle
+  source s'ajoute à `FinanceSourceType` et à `BILLING_SOURCES`
+  (`lib/finance/rental-direct-ledger.ts`, produit **7088** comme les
+  pénalités) ; `lib/owner-account/sync.ts` exclut ces frais des sommes dues au
+  propriétaire (ils rémunèrent le créancier qui a supporté les frais bancaires).
+  `appliedAmount = fee`.
+- La route générique de changement de statut d'un paiement
+  (`rental-payment-controller.ts`) refuse un paiement `DIRECT_DEBIT` lié à une
+  ligne de remise (`ConflictError` : « Ce paiement provient d'un prélèvement :
+  constatez un rejet depuis la remise. »).
+
+### 8.7 Routes (sous `/api/tenants/:tenantId/rental/direct-debit`)
+
+Gardes de P1 ; `MANAGE` pour les écritures, `VIEW` pour la lecture.
+
+| Méthode | Chemin                                            | Permission | Corps                                                       | `data`                                                                                   |
+| ------- | ------------------------------------------------- | ---------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| POST    | `/remittances/:remittanceId/lines/:lineId/settle` | MANAGE     | `{ settledAt }`                                             | `RemittanceDto`                                                                          |
+| POST    | `/remittances/:remittanceId/lines/:lineId/reject` | MANAGE     | `{ rejectedAt, code?, reason? }`                            | `RemittanceDto`                                                                          |
+| POST    | `/remittances/:remittanceId/settle-all`           | MANAGE     | `{ settledAt }`                                             | `{ remittance: RemittanceDto, settled: number, failed: { lineId, reference, error }[] }` |
+| POST    | `/returns/preview`                                | MANAGE     | multipart `file` (≤ 2 Mo), `format?` (défaut `GENERIC_CSV`) | `ReturnPreviewDto`                                                                       |
+| POST    | `/returns/apply`                                  | MANAGE     | même fichier                                                | `ReturnApplyDto`                                                                         |
+| GET     | `/returns`                                        | VIEW       | `?page&pageSize`                                            | `{ items: ReturnImportDto[], total, page, pageSize }`                                    |
+
+Les mêmes services servent P4 avec `scope = SYNDIC_LOT` et le syndicat (§9) :
+chaque fonction de service prend `ReturnScope = { scope: 'RENTAL_LEASE' } |
+{ scope: 'SYNDIC_LOT'; syndicateId: string }` et ne voit que les remises de ce
+périmètre (sinon `NotFoundError`).
+
+```ts
+interface ReturnRecordDto {
+  row: number;
+  operationReference: string;
+  outcome: "SETTLED" | "REJECTED";
+  date: string;
+  amount: number;
+  rejectionCode: string | null;
+  rejectionReason: string | null;
+  action: "SETTLE" | "REJECT" | "SKIP";
+  skipReason:
+    | "UNKNOWN_REFERENCE"
+    | "AMOUNT_MISMATCH"
+    | "ALREADY_PROCESSED"
+    | "CONFLICT"
+    | "LINE_CANCELED"
+    | "REMITTANCE_NOT_SUBMITTED"
+    | "INVALID_DATE"
+    | null;
+  match: {
+    remittanceId: string;
+    remittanceReference: string;
+    lineId: string;
+    lineStatus: RemittanceLineStatus;
+    lineAmount: number;
+    debtorName: string | null;
+  } | null;
+}
+interface ReturnPreviewDto {
+  format: "GENERIC_CSV";
+  fileName: string;
+  records: ReturnRecordDto[];
+  errors: { row: number; message: string }[];
+  summary: { settle: number; reject: number; skip: number; errors: number };
+}
+interface ReturnApplyDto extends ReturnPreviewDto {
+  importId: string;
+  results: { row: number; lineId: string; ok: boolean; error: string | null }[];
+}
+interface ReturnImportDto {
+  id: string;
+  format: "GENERIC_CSV";
+  fileName: string;
+  recordCount: number;
+  settledCount: number;
+  rejectedCount: number;
+  skippedCount: number;
+  errorCount: number;
+  importedBy: { id: string; fullName: string | null } | null;
+  createdAt: string;
+}
+```
+
+**Objets de remise (ajouts à §7.7)** :
+
+```ts
+type RemittanceLineStatus = "PENDING" | "CANCELED" | "SETTLED" | "REJECTED";
+interface RemittanceLineDto {
+  // … champs §7.7, plus :
+  settledAt: string | null; // AAAA-MM-JJ
+  rejectedAt: string | null; // AAAA-MM-JJ
+  rejectionCode: string | null;
+  rejectionReason: string | null;
+  rejectFeeAmount: number | null;
+  returnSource: "MANUAL" | "IMPORT" | null;
+  paymentId: string | null; // RentalPayment (P3) ou ChargePayment (P4)
+}
+interface RemittanceSummaryDto {
+  // … champs §7.7, plus :
+  returnSummary: {
+    pending: number;
+    settled: number;
+    rejected: number;
+    settledAmount: number;
+    rejectedAmount: number;
+  };
+  /** NOT_APPLICABLE avant dépôt ; AWAITING : aucun constat ; PARTIAL ; COMPLETE : plus aucune ligne PENDING. */
+  returnState: "NOT_APPLICABLE" | "AWAITING" | "PARTIAL" | "COMPLETE";
+}
+```
+
+`lineCount` et `totalAmount` restent ceux de la remise déposée (ils ne
+changent plus après la validation). Le fichier de remise re-téléchargé
+contient toutes les lignes non annulées (`PENDING`, `SETTLED`, `REJECTED`) :
+il reste identique à celui déposé.
+
+### 8.8 Notifications
+
+E-mail `DIRECT_DEBIT_REJECTED` (destinataire : le débiteur ; fonctionnalité
+RENTAL ; réglable dans « Notifications e-mail ») : agence, référence du
+mandat, IBAN **masqué**, montant, date de prélèvement, motif, frais refacturés
+éventuels, et la mention de la suspension du mandat si elle a eu lieu. Envoi
+après la transaction, adresse masquée dans les journaux (`redactRecipient`),
+échec isolé. Le règlement n'envoie pas d'e-mail en P3 (la quittance est
+visible au portail).
+
+### 8.9 Audit
+
+Nouvelles clés (`tenant('BILLING')`, toutes critiques) :
+`DIRECT_DEBIT_LINE_SETTLED`, `DIRECT_DEBIT_LINE_REJECTED`,
+`DIRECT_DEBIT_RETURN_IMPORTED`, `DIRECT_DEBIT_MANDATE_AUTO_SUSPENDED`.
+
+### 8.10 Écrans
+
+Détail d'une remise `EXPORTED`/`SUBMITTED` (et les suivantes) :
+
+- résumé du retour (`returnSummary`, `returnState`) dans l'en-tête ;
+- par ligne `PENDING` : « Constater le règlement » (date de valeur, défaut :
+  date de prélèvement) et « Constater le rejet » (date, code, motif ; le texte
+  dit si des frais seront refacturés et si le mandat sera suspendu au rejet
+  suivant) ; par ligne `SETTLED` : « Constater un rejet tardif » (avertit que
+  l'encaissement et sa quittance seront annulés) ;
+- « Tout constater réglé » (confirmation, date unique) ;
+- colonnes : statut de la ligne (Réglée, Rejetée + code et motif), date de
+  valeur ou de rejet, frais refacturés, lien vers le paiement ;
+- Location › Prélèvements : bouton « Importer un retour de la banque »
+  (onglet Remises) → fenêtre en deux temps : dépôt du fichier, aperçu
+  (actions, raisons d'écart traduites, erreurs de lecture), puis
+  « Appliquer » ; historique des imports (GET `/returns`).
+
+### 8.11 Hors P3
+
+Retour automatique par API bancaire ; format réel de la banque pilote (nouvel
+adaptateur de retour quand les pièces arriveront) ; e-mail de règlement ;
+WhatsApp ; frais de rejet en copropriété (P4 : non refacturés).
+
+### 8.12 Retours de recette du staging (17/10/2026, remise PRL-2026-0001)
+
+- **Mandats non retenus invisibles.** Un mandat du créancier en brouillon ou
+  suspendu n'était pas évalué, donc absent de `skipped`. Désormais la
+  sélection lit aussi les mandats `DRAFT` et `SUSPENDED` (jamais `REVOKED`)
+  et les renvoie avec la raison `MANDATE_NOT_ACTIVE` ; ils ne deviennent
+  jamais des lignes. `GET /remittances/:remittanceId` d'une remise `DRAFT`
+  renvoie `skipped` (recalculé, lecture seule), affiché en permanence sur le
+  détail (section « Mandats non retenus »).
+- **Téléchargements silencieux.** Le PDF d'autorisation, la production et le
+  re-téléchargement du fichier de remise affichent un message de succès qui
+  nomme le fichier, ou une erreur.
+- **Destinataire des avis (décision de l'utilisateur : « Compte, et le
+  dire »).** L'avis part à l'e-mail du compte portail du débiteur s'il en a
+  un, sinon à celui de sa fiche contact CRM (règle inchangée,
+  `lib/direct-debit/recipient.ts`). À l'envoi, la ligne garde l'adresse
+  **masquée** (`a•••@ex•••.ci`) et sa provenance
+  (`prenotificationRecipientMasked`, `prenotificationRecipientSource` :
+  `ACCOUNT` | `CONTACT`). Chaque ligne renvoie
+  `prenotificationRecipient: { masked, source } | null` (adresse utilisée, ou
+  prévue tant que l'avis n'est pas parti) et le résumé des avis
+  `recipients: { account, contact, none }`. La fiche contact du CRM signale,
+  sous le champ e-mail, l'adresse masquée du compte portail quand elle
+  diffère (`portalAccountEmailNotice` dans la réponse de détail du contact,
+  jamais dans les listes). Jamais d'adresse complète dans une réponse.

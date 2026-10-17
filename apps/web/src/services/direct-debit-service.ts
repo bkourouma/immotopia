@@ -268,10 +268,25 @@ export async function downloadSignedScan(
 // fichier de remise (IBAN complet) ne se télécharge que par `exportRemittance`.
 
 export type RemittanceStatus = 'DRAFT' | 'VALIDATED' | 'EXPORTED' | 'SUBMITTED' | 'CANCELED';
-export type RemittanceLineStatus = 'PENDING' | 'CANCELED';
+export type RemittanceLineStatus = 'PENDING' | 'CANCELED' | 'SETTLED' | 'REJECTED';
+export type ReturnSource = 'MANUAL' | 'IMPORT';
+export type ReturnState = 'NOT_APPLICABLE' | 'AWAITING' | 'PARTIAL' | 'COMPLETE';
 export type PrenotificationStatus = 'PENDING' | 'SENT' | 'NO_EMAIL' | 'DISABLED' | 'FAILED';
 export type SkipReason =
-  'NO_INSTALLMENT' | 'NOTHING_DUE' | 'ALREADY_IN_REMITTANCE' | 'LEASE_NOT_ACTIVE' | 'COLLECTION_DAY_LATER';
+  | 'NO_INSTALLMENT'
+  | 'NOTHING_DUE'
+  | 'ALREADY_IN_REMITTANCE'
+  | 'LEASE_NOT_ACTIVE'
+  | 'COLLECTION_DAY_LATER'
+  | 'MANDATE_NOT_ACTIVE';
+
+export interface ReturnSummaryDto {
+  pending: number;
+  settled: number;
+  rejected: number;
+  settledAmount: number;
+  rejectedAmount: number;
+}
 
 export interface RemittanceSummaryDto {
   id: string;
@@ -296,6 +311,10 @@ export interface RemittanceSummaryDto {
   submittedAt: string | null;
   canceledAt: string | null;
   cancellationReason: string | null;
+  /** Avancement du retour banque, lignes non annulées (spec 042 §8.7). */
+  returnSummary: ReturnSummaryDto;
+  /** NOT_APPLICABLE avant dépôt ; AWAITING : aucun constat ; PARTIAL ; COMPLETE : plus aucune ligne PENDING. */
+  returnState: ReturnState;
   createdAt: string;
   updatedAt: string;
 }
@@ -323,8 +342,20 @@ export interface RemittanceLineDto {
   capped: boolean;
   prenotificationStatus: PrenotificationStatus;
   prenotifiedAt: string | null;
+  /** Adresse gardée à l'envoi, sinon adresse prévue (ligne PENDING) ; null sans adresse. */
+  prenotificationRecipient: PrenotificationRecipientDto | null;
   canceledAt: string | null;
   cancellationReason: string | null;
+  /** AAAA-MM-JJ. */
+  settledAt: string | null;
+  /** AAAA-MM-JJ. */
+  rejectedAt: string | null;
+  rejectionCode: string | null;
+  rejectionReason: string | null;
+  rejectFeeAmount: number | null;
+  returnSource: ReturnSource | null;
+  /** RentalPayment (P3) ou ChargePayment (P4). */
+  paymentId: string | null;
 }
 
 export interface PrenotificationSummaryDto {
@@ -333,6 +364,15 @@ export interface PrenotificationSummaryDto {
   noEmail: number;
   disabled: number;
   failed: number;
+  /** Lignes PENDING de la remise, selon l'adresse où part (ou est partie) l'avis. */
+  recipients: { account: number; contact: number; none: number };
+}
+
+/** Adresse masquée de l'avis (jamais l'adresse complète) et son origine. */
+export interface PrenotificationRecipientDto {
+  masked: string;
+  /** ACCOUNT : compte portail du débiteur ; CONTACT : fiche contact CRM. */
+  source: 'ACCOUNT' | 'CONTACT';
 }
 
 export interface RemittanceDto extends RemittanceSummaryDto {
@@ -341,6 +381,68 @@ export interface RemittanceDto extends RemittanceSummaryDto {
   lines: RemittanceLineDto[];
   /** Lignes PENDING seulement ; les envois se font en arrière-plan (lignes `PENDING` le temps de l'envoi). */
   prenotificationSummary: PrenotificationSummaryDto;
+  /** Mandats du créancier non retenus, recalculés en lecture seule ; présent seulement en DRAFT. */
+  skipped?: SkippedMandateDto[];
+}
+
+// --- Retour banque (spec 042 P3, data-model §8.7) ---
+
+export type ReturnFormat = 'GENERIC_CSV';
+export type ReturnSkipReason =
+  | 'UNKNOWN_REFERENCE'
+  | 'AMOUNT_MISMATCH'
+  | 'ALREADY_PROCESSED'
+  | 'CONFLICT'
+  | 'LINE_CANCELED'
+  | 'REMITTANCE_NOT_SUBMITTED'
+  | 'INVALID_DATE';
+
+export interface ReturnRecordDto {
+  row: number;
+  /** PRL-AAAA-NNNN-RRR. */
+  operationReference: string;
+  outcome: 'SETTLED' | 'REJECTED';
+  /** AAAA-MM-JJ. */
+  date: string;
+  amount: number;
+  rejectionCode: string | null;
+  rejectionReason: string | null;
+  action: 'SETTLE' | 'REJECT' | 'SKIP';
+  skipReason: ReturnSkipReason | null;
+  match: {
+    remittanceId: string;
+    remittanceReference: string;
+    lineId: string;
+    lineStatus: RemittanceLineStatus;
+    lineAmount: number;
+    debtorName: string | null;
+  } | null;
+}
+
+export interface ReturnPreviewDto {
+  format: ReturnFormat;
+  fileName: string;
+  records: ReturnRecordDto[];
+  errors: { row: number; message: string }[];
+  summary: { settle: number; reject: number; skip: number; errors: number };
+}
+
+export interface ReturnApplyDto extends ReturnPreviewDto {
+  importId: string;
+  results: { row: number; lineId: string; ok: boolean; error: string | null }[];
+}
+
+export interface ReturnImportDto {
+  id: string;
+  format: ReturnFormat;
+  fileName: string;
+  recordCount: number;
+  settledCount: number;
+  rejectedCount: number;
+  skippedCount: number;
+  errorCount: number;
+  importedBy: { id: string; fullName: string | null } | null;
+  createdAt: string;
 }
 
 export interface SkippedMandateDto {

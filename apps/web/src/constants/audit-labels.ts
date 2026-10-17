@@ -185,6 +185,10 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   DIRECT_DEBIT_REMITTANCE_EXPORTED: t('Production du fichier de remise de prélèvement'),
   DIRECT_DEBIT_REMITTANCE_SUBMITTED: t('Remise de prélèvement déposée à la banque'),
   DIRECT_DEBIT_REMITTANCE_CANCELED: t("Annulation d'une remise de prélèvement"),
+  DIRECT_DEBIT_LINE_SETTLED: t("Règlement constaté d'un prélèvement"),
+  DIRECT_DEBIT_LINE_REJECTED: t("Rejet constaté d'un prélèvement"),
+  DIRECT_DEBIT_RETURN_IMPORTED: t("Import d'un retour de la banque"),
+  DIRECT_DEBIT_MANDATE_AUTO_SUSPENDED: t("Suspension automatique d'un mandat de prélèvement"),
 
   // Stock de chantier (lot 040, spec B6-R1, ecrans §10.6)
   STOCK_RECEIPT_RECORDED: t("Enregistrement d'une réception de stock (bon de réception)"),

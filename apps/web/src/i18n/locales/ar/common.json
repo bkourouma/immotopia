@@ -1,4 +1,9 @@
 {
+  "Import d'un retour de la banque": "استيراد ملف إرجاع من البنك",
+  "Mandat non actif (brouillon ou suspendu)": "التفويض غير نشط (مسودة أو معلّق)",
+  "Rejet constaté d'un prélèvement": "تسجيل رفض خصم مباشر",
+  "Règlement constaté d'un prélèvement": "تسجيل تسوية خصم مباشر",
+  "Suspension automatique d'un mandat de prélèvement": "تعليق تلقائي لتفويض الخصم المباشر",
   "—": "—",
   "« {{champ}} » : « {{valeur}} » correspond à plusieurs entrées. Précisez.": "«{{champ}}»: «{{valeur}}» يطابق عدة إدخالات. حدِّد أكثر.",
   "« {{champ}} » : « {{valeur}} » est introuvable dans la liste.": "«{{champ}}»: «{{valeur}}» غير موجود في القائمة.",
