@@ -47,10 +47,10 @@ Pièges et décisions :
 - …
 ```
 
-## Branche `feat/syndic-ag-visio` — 2026-10-16
+## Branche `feat/syndic-ag-visio` — 2026-10-17
 
-**État :** fusion dans `main` accordée par l'utilisateur le 2026-10-16 (PR https://github.com/bkourouma/immotopia/pull/144). La branche embarque les PR #145 (enregistrements orphelins) et #148 (discussion modérée), fusionnées dedans par le Pilote pour ne passer qu'une CI ; la fusion de la 144 dans `main` reste conditionnée à une CI verte.
-**Dernier commit :** fusion de `origin/main` (PR 146) après `9d6e12cb` (fusion de la PR 148, classeur à 1012 sous-fonctionnalités) et `cfd6d20c` (fusion de la PR 145).
+**État :** FUSIONNÉE dans `main` le 2026-10-17 (PR https://github.com/bkourouma/immotopia/pull/144, commit de fusion `79aeb324`), avec les PR #145 (enregistrements orphelins) et #148 (discussion modérée), fusionnées dans la branche avant elle pour ne passer qu'une CI (7/7 verte sur `0011c4d1`). Section gardée pour la mise en service ; à supprimer une fois la visio en service.
+**Dernier commit :** `0011c4d1` (fusion de `origin/main`, PR 146) ; `main` = `79aeb324`, arbre identique à `0011c4d1`.
 **Worktrees :** `.claude/worktrees/suspicious-cartwright-fc4a4c` et `zen-poincare-ac73f3` ont leur propre `node_modules` ; `sweet-kilby-b1ed43` a trois JONCTIONS vers ceux de `suspicious-cartwright-fc4a4c` : les retirer avec `rmdir` AVANT tout `git worktree remove`, et retirer ce worktree avant `suspicious-cartwright-fc4a4c`.
 
 Fait :
@@ -62,7 +62,7 @@ Fait :
 
 Reste à faire :
 
-- Après la fusion : vérifier `main` (typecheck, `wiki:check`) et que les PR #145 et #148 apparaissent fusionnées ; supprimer cette section.
+- Staging : un déploiement de `79aeb324` a été lancé à la main (workflow_dispatch, compte `bkourouma`, pas par le Pilote) le 2026-10-17 à 05:21 UTC, juste après la fusion ; il applique les migrations `20261016120000_syndic_ag_enregistrement` et `20261016150000_syndic_ag_discussion`. Sans `LIVEKIT_*` sur le staging, la visio intégrée reste désactivée (le lien de visio externe reste affiché). Vérifier l'issue de ce déploiement.
 - Mise en service par l'utilisateur : projet LiveKit Cloud dédié (compte et dépense), `LIVEKIT_*` et `LIVEKIT_RECORDING_S3_*` en staging puis production, webhook `<BACKEND_URL>/api/webhooks/livekit`, bucket S3 dédié, CSP `connect-src` vers le `wss://`.
 - Fondateur : base juridique de l'enregistrement ; V2–V4, V7–V9, V11–V13 (dont la visibilité des noms en salle) ; M1–M15 de la discussion.
 - Le jour où une suppression d'AG ou une purge d'agence est créée : appeler la purge avec `{ kind: 'MEETING' }` ou `{ kind: 'TENANT' }`.
