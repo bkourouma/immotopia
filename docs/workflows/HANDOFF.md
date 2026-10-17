@@ -47,24 +47,24 @@ Pièges et décisions :
 - …
 ```
 
-## Branches `docs/prospectus-syndic`, `-agence`, `-promoteur` et `-integre` — 2026-10-17
+## Branches `docs/prospectus-*` (syndic, agence, promoteur, integre, patrimoine) — 2026-10-17
 
-**État :** prêt à relire. PR #156 (Syndic, base `main`), #158 (Agence, sur Syndic), #159 (Promoteur, sur Agence), PR Opérateur intégré empilée sur `docs/prospectus-promoteur`.
-**Worktree :** `.claude/worktrees/prospectus-syndic` (porte aujourd'hui `docs/prospectus-integre`), jonction `node_modules` vers le checkout principal.
+**État :** prêt à relire. PR #156 (Syndic, base `main`), #158 (Agence, sur Syndic), #159 (Promoteur, sur Agence), #160 (Opérateur intégré, sur Promoteur), PR Patrimoine empilée sur `docs/prospectus-integre`. Fusionner dans l'ordre 156, 158, 159, 160, puis la PR Patrimoine.
+**Worktree :** `.claude/worktrees/prospectus-syndic` (porte aujourd'hui `docs/prospectus-patrimoine`), jonction `node_modules` vers le checkout principal.
 
 Fait :
 
-- Prospectus recto-verso A4 dans `docs/commercial/prospectus/` : `syndic`, `agence`, `promoteur` et `integre` en `.html`/`.pdf` (même gabarit, CSS recopiée), chacun publié en page claude.ai, PDF Chrome de 2 pages vérifiés en image.
+- Prospectus recto-verso A4 dans `docs/commercial/prospectus/` : `syndic`, `agence`, `promoteur`, `integre` et `patrimoine` en `.html`/`.pdf` (même gabarit, CSS recopiée), chacun publié en page claude.ai, PDF Chrome de 2 pages vérifiés en image.
 - `README.md` du dossier : règles de contenu, liste des « Bientôt » par pack, régénération du PDF.
 
 Reste à faire :
 
-- Fiche Patrimoine (Essentiel, Pro, Particulier) sur le même gabarit, à la demande.
+- Les cinq fiches sont faites. Éventuellement : version anglaise, coordonnées commerciales réelles.
 - À valider par l'utilisateur : affichage des prix, coordonnées commerciales (bloc « Votre conseiller » vierge), Mobile Money mis en avant alors que le mode réel PaySecureHub n'est pas activé.
 
 Pièges et décisions :
 
-- Le classeur local du checkout principal (branche `feat/signature-s5-s7`) est en retard : lire `origin/main:docs/fonctionnalites/sous-fonctionnalites.md` (Syndic 163 lignes, Agence 565, Promoteur 541, Opérateur intégré 873, Patrimoine compris).
+- Le classeur local du checkout principal (branche `feat/signature-s5-s7`) est en retard : lire `origin/main:docs/fonctionnalites/sous-fonctionnalites.md` (Syndic 163 lignes, Agence 565, Promoteur 541, Opérateur intégré 873, Patrimoine 250, Patrimoine compris).
 - Le PDF déborde vite : après toute retouche du texte, régénérer et vérifier le bas de chaque face (le recto Agence est au pixel près).
 - Dans un `display:flex`, un `<sup>` devient un élément à part : envelopper le texte dans un `<span>`.
 

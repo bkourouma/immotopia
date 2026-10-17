@@ -23,7 +23,7 @@ Une fiche recto-verso A4 par pack, à remettre ou envoyer à un prospect.
 - Les tarifs viennent du catalogue d'abonnement
   (`packages/api/src/lib/subscription/catalog.ts`). Les reprendre à chaque
   changement de prix.
-- Les visuels chiffrés (grille lot × mois, quorum, relevé propriétaire, budget de chantier, vie d'un logement) sont des illustrations
+- Les visuels chiffrés (grille lot × mois, quorum, relevé propriétaire, budget de chantier, vie d'un logement, valeur nette) sont des illustrations
   marquées comme telles, jamais des données de client.
 - Le bloc « Votre conseiller » est laissé vierge pour être complété à la main
   ou au tampon.
@@ -50,6 +50,12 @@ dérive de prix) ; plus l'export complet des données.
 
 La fiche Opérateur intégré résume les trois métiers et reprend l'union de
 leurs « Bientôt » ; le détail de chaque métier reste sur sa fiche dédiée.
+
+La fiche Patrimoine présente les quatre offres de la famille (Particulier
+Gratuit et Plus, Patrimoine Essentiel et Pro) ; ses « Bientôt » sont le
+prélèvement automatique, les relances automatiques des loyers et l'export
+complet. Le prix du Particulier Plus (2 900 FCFA) a été confirmé le 29/09/2026
+mais reste modifiable au catalogue.
 
 ## Régénérer le PDF
 

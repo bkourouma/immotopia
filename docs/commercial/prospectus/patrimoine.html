@@ -1,0 +1,547 @@
+<title>ImmoTopia Patrimoine</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Prospectus A4 recto-verso. Recto : une bande marine qui porte la promesse et une valeur
+   nette consolidée par classe d'actifs, puis six preuves. Verso : l'inventaire complet en trois colonnes, le tarif,
+   l'appel à la démonstration. Une seule apparence « papier », identique à l'écran et à l'impression. */
+:root {
+  --navy: #00215f;        /* bleu nuit ImmoTopia : bandeau, titres */
+  --blue: #1b4db1;        /* bleu de marque : liens, puces, réglé */
+  --blue-soft: #e6eeff;   /* fond des pastilles bleues */
+  --orange: #fc5e00;      /* accent de marque, jamais en texte fin */
+  --orange-ink: #c94600;  /* orange qui porte du texte */
+  --orange-soft: #fff1e8;
+  --paper: #ffffff;
+  --desk: #e9edf5;        /* fond derrière les feuilles, à l'écran */
+  --ink: #0f1a33;
+  --muted: #4d5a75;
+  --rule: #d6ddea;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--desk);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.stack { display: grid; gap: 28px; justify-items: center; }
+.sheet {
+  width: 100%;
+  max-width: 794px;
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgba(0, 33, 95, .08), 0 12px 40px rgba(0, 33, 95, .10);
+  position: relative;
+  overflow: hidden;
+}
+h1, h2, h3 { font-family: var(--font-display); color: var(--navy); margin: 0; text-wrap: balance; }
+p { margin: 0; }
+ul { margin: 0; padding: 0; list-style: none; }
+.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+/* ---------- En-tête commun ---------- */
+.mast {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 18px 36px 14px;
+}
+.brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 800; font-size: 19px; color: var(--navy); letter-spacing: -.01em; }
+.brand-mark { width: 22px; height: 22px; flex: none; }
+.brand small { font-weight: 500; font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+.pack-tag {
+  font-family: var(--font-data); font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--orange-ink); border: 1.5px solid var(--orange); padding: 4px 9px; border-radius: 3px;
+}
+
+/* ---------- Recto : bandeau ---------- */
+.hero {
+  background: var(--navy);
+  color: #fff;
+  display: grid;
+  grid-template-columns: 1.08fr 1fr;
+  gap: 26px;
+  padding: 20px 36px 20px;
+  position: relative;
+  align-items: center;
+}
+.hero::after { /* filet orange : la seule touche vive du bandeau */
+  content: ""; position: absolute; left: 36px; bottom: 0; width: 120px; height: 4px; background: var(--orange);
+}
+.hero-copy { display: grid; align-content: start; gap: 10px; min-width: 0; }
+.eyebrow { font-family: var(--font-data); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: #a9bff0; }
+.hero h1 { color: #fff; font-size: 35px; line-height: 1.02; font-weight: 800; letter-spacing: -.025em; }
+.hero h1 em { font-style: normal; color: var(--orange); }
+.hero .lede { color: #d5e0fa; font-size: 12.5px; line-height: 1.45; max-width: 42ch; }
+.hero-points { display: grid; gap: 5px; margin-top: 2px; }
+.hero-points li { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: #fff; }
+.hero-points li::before { content: ""; width: 7px; height: 7px; background: var(--orange); flex: none; transform: translateY(-1px); }
+
+/* Grille lot × mois (illustration) */
+.ledger {
+  background: #fff; color: var(--ink); border-radius: 6px; padding: 12px 12px 10px;
+  display: grid; gap: 8px; min-width: 0; align-self: start;
+}
+.ledger-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ledger-title { font-family: var(--font-display); font-weight: 700; font-size: 12.5px; color: var(--navy); }
+.ledger-sub { font-size: 10px; color: var(--muted); }
+.grid-wrap { overflow-x: auto; }
+.lm { display: grid; grid-template-columns: 28px repeat(12, minmax(0, 1fr)) 50px; gap: 2px; font-size: 9px; }
+.lm .h { font-family: var(--font-data); color: var(--muted); text-align: center; font-size: 8.5px; padding-bottom: 1px; }
+.lm .h.l, .lm .lot { text-align: start; }
+.lm .lot { font-family: var(--font-data); font-weight: 600; color: var(--navy); font-size: 9px; align-self: center; }
+.lm .c { height: 15px; border-radius: 2px; }
+.c.ok { background: var(--blue); }
+.c.adv { background: repeating-linear-gradient(135deg, var(--blue) 0 3px, #5b82d6 3px 6px); }
+.c.part { background: var(--orange-soft); box-shadow: inset 0 0 0 1.5px var(--orange); }
+.c.late { background: var(--orange); }
+.c.due { background: #fff; box-shadow: inset 0 0 0 1px var(--rule); }
+.lm .bal { font-family: var(--font-data); font-variant-numeric: tabular-nums; text-align: end; font-size: 8.5px; align-self: center; color: var(--ink); }
+.lm .bal.neg { color: var(--orange-ink); font-weight: 600; }
+.lm .bal.pos { color: var(--blue); font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 9px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.illus { font-family: var(--font-data); font-size: 8.5px; color: var(--muted); letter-spacing: .04em; }
+
+/* ---------- Bande de chiffres ---------- */
+.proof {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--rule);
+}
+.proof div { padding: 10px 14px 9px 36px; display: grid; gap: 2px; min-width: 0; }
+.proof div + div { border-inline-start: 1px solid var(--rule); padding-inline-start: 16px; }
+.proof b { font-family: var(--font-display); font-weight: 800; font-size: 25px; line-height: 1; color: var(--navy); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.proof span { font-size: 10.5px; color: var(--muted); line-height: 1.3; }
+
+/* ---------- Six preuves ---------- */
+.features { display: grid; grid-template-columns: repeat(3, 1fr); padding: 0 36px; }
+.feat { padding: 12px 16px 11px 0; display: grid; gap: 5px; align-content: start; min-width: 0; border-bottom: 1px solid var(--rule); }
+.feat:nth-child(3n+2), .feat:nth-child(3n+3) { padding-inline-start: 16px; border-inline-start: 1px solid var(--rule); }
+.feat:nth-child(n+4) { border-bottom: 0; }
+.feat .k { font-family: var(--font-data); font-size: 10px; font-weight: 600; color: var(--orange-ink); letter-spacing: .06em; text-transform: uppercase; }
+.feat h3 { font-size: 16px; line-height: 1.12; font-weight: 700; letter-spacing: -.01em; }
+.feat p { font-size: 11.2px; color: var(--muted); }
+.feat ul { display: grid; gap: 3px; margin-top: 2px; }
+.feat li { font-size: 11px; padding-inline-start: 12px; position: relative; }
+.feat li::before { content: ""; position: absolute; inset-inline-start: 0; top: .55em; width: 5px; height: 5px; border-radius: 50%; background: var(--blue); }
+.quorum { display: grid; gap: 4px; margin-top: 4px; padding: 7px 8px; background: var(--blue-soft); border-radius: 4px; }
+.quorum-row { display: flex; justify-content: space-between; gap: 6px; font-size: 9.5px; color: var(--navy); }
+.bar { height: 7px; background: #fff; border-radius: 4px; overflow: hidden; display: flex; }
+.bar i { display: block; height: 100%; }
+
+/* ---------- Pourquoi plus loin ---------- */
+.edge { background: var(--blue-soft); padding: 12px 36px 13px; display: grid; gap: 8px; }
+.edge h2 { font-size: 15px; font-weight: 700; }
+.edge-list { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.edge-list li { display: grid; gap: 3px; align-content: start; min-width: 0; }
+.edge-list b { font-family: var(--font-display); font-size: 12.5px; color: var(--navy); line-height: 1.15; }
+.edge-list span { font-size: 10.3px; color: var(--muted); line-height: 1.35; }
+.foot {
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center;
+  padding: 10px 36px 12px; font-size: 10px; color: var(--muted);
+}
+.foot b { color: var(--navy); }
+
+/* ---------- Verso ---------- */
+.verso-head { padding: 4px 36px 12px; display: grid; gap: 6px; border-bottom: 2px solid var(--navy); margin: 0 36px; padding-inline: 0; }
+.verso-head h2 { font-size: 27px; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; }
+.verso-head p { font-size: 11.5px; color: var(--muted); max-width: 72ch; }
+.key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 10px; color: var(--muted); }
+.soon {
+  font-family: var(--font-data); font-size: 8.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--orange-ink); background: var(--orange-soft); border: 1px solid #ffc29b; border-radius: 3px; padding: 0 4px; white-space: nowrap;
+}
+.catalog { column-count: 3; column-gap: 22px; column-rule: 1px solid var(--rule); padding: 10px 36px 2px; }
+.group { break-inside: avoid; display: grid; gap: 3px; margin-bottom: 9px; }
+.group h3 { font-size: 13px; font-weight: 700; display: flex; align-items: baseline; gap: 6px; }
+.group h3 .n { font-family: var(--font-data); font-size: 9.5px; color: var(--orange-ink); font-weight: 600; }
+.group li { font-size: 10.3px; line-height: 1.33; padding-inline-start: 9px; position: relative; color: var(--ink); }
+.group li::before { content: ""; position: absolute; inset-inline-start: 0; top: .55em; width: 4px; height: 4px; background: var(--blue); }
+.group li.later::before { background: var(--orange); }
+
+.close { display: grid; grid-template-columns: 1.15fr 1fr; gap: 0; margin: 0 36px 0; border-top: 2px solid var(--navy); }
+.price { padding: 11px 18px 12px 0; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.price h3 { font-size: 13px; }
+.price-main { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.price-main b { font-family: var(--font-display); font-size: 30px; font-weight: 800; color: var(--navy); letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+.price-main span { font-size: 11px; color: var(--muted); }
+.price table { border-collapse: collapse; width: 100%; font-size: 10px; }
+.price td { padding: 3px 0; border-bottom: 1px dotted var(--rule); vertical-align: baseline; }
+.price td:last-child { text-align: end; font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; padding-inline-start: 8px; color: var(--navy); }
+.price .fine { font-size: 9px; color: var(--muted); }
+.cta { background: var(--navy); color: #fff; padding: 13px 18px 12px; display: grid; gap: 7px; align-content: start; min-width: 0; }
+.cta h3 { color: #fff; font-size: 18px; line-height: 1.1; font-weight: 800; }
+.cta h3 em { font-style: normal; color: var(--orange); }
+.cta p { font-size: 10.8px; color: #d5e0fa; }
+.cta ol { margin: 0; padding-inline-start: 16px; display: grid; gap: 2px; font-size: 10.5px; color: #fff; }
+.contact { margin-top: 2px; display: grid; gap: 6px; }
+.contact div { display: flex; gap: 8px; align-items: flex-end; font-size: 9.5px; color: #a9bff0; }
+.contact div::after { content: ""; flex: 1; border-bottom: 1px dotted #6d86c0; height: 1px; }
+
+/* ---------- Écran étroit ---------- */
+@media (max-width: 720px) {
+  body { padding-block: 16px; }
+  .mast, .features, .edge, .foot, .catalog { padding-left: 18px; padding-right: 18px; }
+  .hero { grid-template-columns: 1fr; padding: 22px 18px 24px; }
+  .hero::after { left: 18px; }
+  .hero h1 { font-size: 30px; }
+  .lm { min-width: 300px; }
+  .proof { grid-template-columns: repeat(2, 1fr); }
+  .proof div, .proof div + div { padding: 12px 18px; border-inline-start: 0; }
+  .proof div:nth-child(even) { border-inline-start: 1px solid var(--rule); }
+  .features { grid-template-columns: 1fr; }
+  .feat, .feat:nth-child(3n+2), .feat:nth-child(3n+3) { padding: 14px 0; border-inline-start: 0; border-bottom: 1px solid var(--rule); }
+  .feat:last-child { border-bottom: 0; }
+  .edge-list { grid-template-columns: 1fr 1fr; }
+  .verso-head, .close { margin-left: 18px; margin-right: 18px; }
+  .verso-head h2 { font-size: 23px; }
+  .catalog { column-count: 1; }
+  .close { grid-template-columns: 1fr; }
+  .price { padding-inline-end: 0; }
+}
+@media (max-width: 420px) { .edge-list { grid-template-columns: 1fr; } }
+
+/* ---------- Impression : deux pages A4 exactes ---------- */
+@page { size: A4; margin: 0; }
+@media print {
+  body { background: #fff; padding: 0; }
+  .stack { gap: 0; display: block; }
+  .sheet { box-shadow: none; max-width: none; width: 210mm; height: 297mm; break-after: page; }
+  .sheet:last-child { break-after: auto; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .c { transition: transform .15s ease; }
+  .c:hover { transform: scale(1.25); }
+}
+
+/* Relevé propriétaire (illustration) */
+.stmt { background: #fff; color: var(--ink); border-radius: 6px; padding: 12px 14px 10px; display: grid; gap: 7px; min-width: 0; align-self: start; }
+.stmt table { width: 100%; border-collapse: collapse; font-size: 10px; }
+.stmt td { padding: 2px 0; border-bottom: 1px solid #edf0f6; vertical-align: baseline; }
+.stmt td:last-child { text-align: end; font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; padding-inline-start: 8px; }
+.stmt .sec td { font-family: var(--font-data); font-size: 8.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 0; padding-top: 4px; }
+.hero.wide { grid-template-columns: 1fr 1fr; }
+.stmt .minus td:last-child { color: var(--orange-ink); }
+.stmt .net td { border-bottom: 0; border-top: 2px solid var(--navy); padding-top: 6px; font-weight: 700; color: var(--navy); font-size: 11.5px; }
+.stmt .net td:last-child { font-size: 13px; }
+.sent { display: flex; align-items: center; gap: 6px; font-size: 9.5px; color: var(--blue); font-weight: 600; }
+.sent i { width: 8px; height: 8px; border-radius: 50%; background: #1f9d55; display: inline-block; }
+.lock { display: flex; gap: 8px; align-items: center; margin-top: 4px; padding: 7px 8px; background: var(--blue-soft); border-radius: 4px; font-size: 9.5px; color: var(--navy); }
+.lock .sig { font-family: var(--font-data); font-size: 9px; color: var(--muted); }
+.steps { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 3px; }
+.steps span { font-family: var(--font-data); font-size: 8.8px; padding: 2px 5px; border-radius: 3px; background: var(--blue-soft); color: var(--navy); }
+.steps span.on { background: var(--navy); color: #fff; }
+
+/* Budget de chantier (illustration) */
+.bud { display: grid; grid-template-columns: minmax(0, 1fr) 92px 34px; gap: 4px 8px; align-items: center; font-size: 9.8px; }
+.bud .hd { font-family: var(--font-data); font-size: 8.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.bud .hd.r, .bud .pc { text-align: end; }
+.bud .pc { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 9.5px; }
+.bud .pc.over { color: var(--orange-ink); font-weight: 600; }
+.track { position: relative; height: 8px; background: #edf0f6; border-radius: 2px; }
+.track i { position: absolute; inset-block: 0; inset-inline-start: 0; background: var(--blue); border-radius: 2px; }
+.track i.over { background: var(--orange); }
+.track b { position: absolute; inset-block: -2px; inset-inline-start: 100%; width: 1.5px; background: var(--navy); }
+.alert { display: flex; gap: 6px; align-items: baseline; font-size: 9.5px; color: var(--orange-ink); background: var(--orange-soft); border-radius: 3px; padding: 4px 6px; }
+.kpis { display: flex; gap: 14px; flex-wrap: wrap; font-size: 9.5px; color: var(--muted); border-top: 1px solid #edf0f6; padding-top: 6px; }
+.kpis b { font-family: var(--font-data); color: var(--navy); font-size: 11px; }
+.wa { display: grid; gap: 4px; margin-top: 4px; padding: 7px 8px; background: #eef6f0; border-radius: 4px; }
+.catalog.roomy { padding-top: 14px; }
+.catalog.roomy .group { margin-bottom: 14px; gap: 4px; }
+.catalog.roomy .group h3 { font-size: 14px; }
+.catalog.roomy .group li { font-size: 11px; line-height: 1.4; }
+.wa .msg { font-size: 9.5px; padding: 4px 7px; border-radius: 6px; max-width: 92%; line-height: 1.3; }
+.wa .me { background: #d8f5d3; justify-self: end; color: #12361b; }
+.wa .bot { background: #fff; color: var(--ink); }
+
+.offers td:first-child b { color: var(--navy); }
+.offers td:first-child span { color: var(--muted); font-size: 9px; }
+</style>
+
+<main class="stack">
+
+<!-- ======================= RECTO ======================= -->
+<article class="sheet" aria-label="Recto">
+  <header class="mast">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#00215f"/><path d="M5 12.2 12 6l7 6.2V18a1 1 0 0 1-1 1h-3.6v-4.4H9.6V19H6a1 1 0 0 1-1-1z" fill="#fff"/><rect x="15.6" y="4" width="3.4" height="3.4" fill="#fc5e00"/></svg>
+      ImmoTopia <small>· Gestion de patrimoine</small>
+    </div>
+    <span class="pack-tag">Pack Patrimoine</span>
+  </header>
+
+  <section class="hero wide">
+    <div class="hero-copy">
+      <span class="eyebrow">Particuliers · diaspora · familles · sociétés</span>
+      <h1>Votre patrimoine, <em>enfin sous les yeux.</em> D'où que vous soyez.</h1>
+      <p class="lede">Maisons, terrains, parts de sociétés, plantations, véhicules, épargne : tout ce que vous possédez, évalué et suivi au même endroit. Vos loyers arrivent par Mobile Money. Votre rapport du mois arrive sur WhatsApp. Vos titres fonciers avancent étape par étape.</p>
+      <ul class="hero-points">
+        <li>Fini les biens au pays que personne ne suit</li>
+        <li>Fini les valeurs au doigt mouillé</li>
+        <li>Fini les papiers fonciers qui dorment dans un tiroir</li>
+      </ul>
+    </div>
+
+    <figure class="stmt" aria-label="Illustration d'une valeur nette consolidée">
+      <div class="ledger-head">
+        <span class="ledger-title">Valeur nette · Famille Diallo</span>
+        <span class="ledger-sub">au 30 septembre 2026</span>
+      </div>
+      <table>
+        <tr class="sec"><td colspan="2">Actifs par classe</td></tr>
+        <tr><td>Immobilier · 6 biens</td><td>412 M</td></tr>
+        <tr><td>Parts de sociétés</td><td>85 M</td></tr>
+        <tr><td>Épargne et placements</td><td>38 M</td></tr>
+        <tr><td>Agriculture · hévéa, Dabou</td><td>30 M</td></tr>
+        <tr><td>Véhicules et équipements</td><td>22 M</td></tr>
+        <tr class="sec"><td colspan="2">Dettes</td></tr>
+        <tr class="minus"><td>Emprunts immobiliers</td><td>−96 M</td></tr>
+        <tr class="net"><td>Valeur nette</td><td>491 M FCFA</td></tr>
+      </table>
+      <div class="kpis">
+        <span>Dans 10 ans, scénario central <b>742 M</b></span>
+        <span>Valeurs peu fiables <b>18 %</b></span>
+      </div>
+      <span class="illus">ILLUSTRATION · montants en FCFA</span>
+    </figure>
+  </section>
+
+  <section class="proof" aria-label="Chiffres clés">
+    <div><b class="num">10</b><span>classes d'actifs suivies, de la maison à la plantation</span></div>
+    <div><b class="num">30</b><span>ans de projection, trois scénarios comparés</span></div>
+    <div><b class="num">250+</b><span>actions métier couvertes</span></div>
+    <div><b class="num">0</b><span>FCFA pour commencer, jusqu'à 10 actifs</span></div>
+  </section>
+
+  <section class="features" aria-label="Fonctionnalités phares">
+    <div class="feat">
+      <span class="k">Valeur nette</span>
+      <h3>Tout ce que vous possédez, sur une ligne</h3>
+      <ul>
+        <li>Dix classes d'actifs, dettes déduites</li>
+        <li>Devises converties en FCFA</li>
+        <li>Parts détenues via vos SCI et holdings</li>
+      </ul>
+    </div>
+    <div class="feat">
+      <span class="k">Valorisation</span>
+      <h3>Des valeurs justes, et vous savez lesquelles</h3>
+      <ul>
+        <li>Valeur suggérée selon la classe de l'actif</li>
+        <li>Fiabilité élevée, moyenne ou faible, expliquée</li>
+        <li>Statut juridique : titre foncier, ACD, attestation</li>
+      </ul>
+    </div>
+    <div class="feat">
+      <span class="k">Projections</span>
+      <h3>Et si je vendais ce terrain dans 5 ans ?</h3>
+      <ul>
+        <li>Prudent, central, optimiste, jusqu'à 30 ans</li>
+        <li>Vente, achat, emprunt, épargne simulés</li>
+        <li>Rien n'est modifié dans vos vraies données</li>
+      </ul>
+    </div>
+    <div class="feat">
+      <span class="k">Location en direct</span>
+      <h3>Vos loyers encaissés sans intermédiaire</h3>
+      <ul>
+        <li>Bail et état des lieux signés à distance</li>
+        <li>Lien de paiement Mobile Money par WhatsApp</li>
+        <li>Rapport du mois envoyé automatiquement</li>
+      </ul>
+    </div>
+    <div class="feat">
+      <span class="k">Foncier et protection</span>
+      <h3>Vos titres avancent, vos biens sont couverts</h3>
+      <ul>
+        <li>Régularisation foncière étape par étape</li>
+        <li>Assurances, sinistres, carnet d'entretien</li>
+        <li>Alertes avant chaque échéance</li>
+      </ul>
+    </div>
+    <div class="feat">
+      <span class="k">Rendement et fiscalité</span>
+      <h3>Ce que rapporte vraiment chaque bien</h3>
+      <ul>
+        <li>Rendement, DSCR, LTV, TRI par bien</li>
+        <li>Impôt foncier estimé, Côte d'Ivoire et Mali</li>
+        <li>Trésorerie prévue sur 24 mois, creux signalés</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="edge">
+    <h2>Ce que vous ne trouverez pas ailleurs</h2>
+    <ul class="edge-list">
+      <li><b>Pensé pour la diaspora</b><span>Suivez vos biens au pays depuis votre téléphone, où que vous viviez.</span></li>
+      <li><b>Vos tiers de confiance</b><span>Notaire, banquier, comptable : accès en lecture seule, borné et tracé.</span></li>
+      <li><b>Tout importé d'un coup</b><span>Votre fichier Excel contrôlé ligne par ligne avant l'import.</span></li>
+      <li><b>Un assistant IA intégré</b><span>Posez votre question, obtenez le tableau ou le graphique.</span></li>
+      <li><b>Pensé pour l'Afrique</b><span>FCFA, Mobile Money, ACD, fiscalité locale, français, anglais, arabe.</span></li>
+    </ul>
+  </section>
+
+  <footer class="foot">
+    <span><b>ImmoTopia</b> · la plateforme immobilière tout-en-un : agence, syndic, promotion, patrimoine</span>
+    <span>Tout le détail au verso →</span>
+  </footer>
+</article>
+
+<!-- ======================= VERSO ======================= -->
+<article class="sheet" aria-label="Verso">
+  <header class="mast">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#00215f"/><path d="M5 12.2 12 6l7 6.2V18a1 1 0 0 1-1 1h-3.6v-4.4H9.6V19H6a1 1 0 0 1-1-1z" fill="#fff"/><rect x="15.6" y="4" width="3.4" height="3.4" fill="#fc5e00"/></svg>
+      ImmoTopia <small>· Gestion de patrimoine</small>
+    </div>
+    <span class="pack-tag">Pack Patrimoine</span>
+  </header>
+
+  <div class="verso-head">
+    <h2>Tout le Pack Patrimoine, fonction par fonction</h2>
+    <p>Pour les biens que vous détenez vous-même, en direct ou par vos sociétés. Pour confier des biens à gérer pour le compte de tiers, voyez le Pack Agence.</p>
+    <div class="key"><span>■ Disponible</span><span><span class="soon">Bientôt</span> En cours de développement</span></div>
+  </div>
+
+  <div class="catalog roomy">
+    <section class="group">
+      <h3><span class="n">01</span>Actifs et valeur nette</h3>
+      <ul>
+        <li>Immobilier, parts de sociétés, stocks, véhicules, comptes et Mobile Money, épargne, créances, agriculture, objets de valeur</li>
+        <li>Devise d'origine convertie en FCFA</li>
+        <li>Dettes adossées à un actif ou personnelles</li>
+        <li>Valeur nette à une date, évolution mois par mois</li>
+        <li>Actif cédé ou archivé, historique conservé</li>
+        <li>Situation patrimoniale en PDF ou Excel</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">02</span>Valorisation</h3>
+      <ul>
+        <li>Historique des valorisations de chaque actif</li>
+        <li>Valeur suggérée par classe, enregistrée sur confirmation</li>
+        <li>Fiabilité calculée, valeurs périmées repérées</li>
+        <li>Statut juridique : titre foncier, ACD, certificat, lettre d'attribution, attestation coutumière</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">03</span>Projections et simulations</h3>
+      <ul>
+        <li>Valeur nette projetée de 1 à 30 ans</li>
+        <li>Trois scénarios sur la même courbe</li>
+        <li>Croissance par classe et inflation modifiables</li>
+        <li>Vente, achat, emprunt, remboursement, épargne simulés</li>
+        <li>Scénarios enregistrés, rejoués sur les chiffres du jour</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">04</span>Biens, rendement, fiscalité</h3>
+      <ul>
+        <li>Fiche bien, photos, documents, dépenses, emprunts</li>
+        <li>Programmes de travaux</li>
+        <li>Rendement, DSCR, LTV, cash-on-cash, TRI</li>
+        <li>SCI et holdings, détenteurs et quotes-parts</li>
+        <li>Impôt foncier et sur les revenus fonciers estimés, Côte d'Ivoire et Mali</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">05</span>Trésorerie prévisionnelle</h3>
+      <ul>
+        <li>Plan sur 12 ou 24 mois, par bien ou global</li>
+        <li>Alerte de creux de trésorerie</li>
+        <li>Échéance de la taxe foncière prise en compte</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">06</span>Assurances et entretien</h3>
+      <ul>
+        <li>Polices d'assurance, sinistres suivis avec leurs pièces</li>
+        <li>Carnet d'entretien exportable</li>
+        <li>Alertes : assurance, entretien, fin de garantie</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">07</span>Régularisation foncière</h3>
+      <ul>
+        <li>Filière ACD de Côte d'Ivoire ou filière personnalisée</li>
+        <li>Étapes, échéances, coûts, pièces justificatives</li>
+        <li>Relance quotidienne des étapes en retard</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">08</span>Location en direct</h3>
+      <ul>
+        <li>Baux, révision, renouvellement, résiliation</li>
+        <li>États des lieux en photos, dépôt de garantie</li>
+        <li>Échéances, paiements, pénalités de retard</li>
+        <li>Lien de paiement Mobile Money par WhatsApp</li>
+        <li>Signature électronique du bail et de l'état des lieux</li>
+        <li>Mandats de prélèvement, IBAN et RIB contrôlés</li>
+        <li class="later">Prélèvement automatique des loyers <span class="soon">Bientôt</span></li>
+        <li class="later">Relances automatiques des loyers <span class="soon">Bientôt</span></li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">09</span>Rapports et partage</h3>
+      <ul>
+        <li>Rapport du mois par WhatsApp ou e-mail, lien sécurisé</li>
+        <li>Alertes d'échéance de bail et de documents</li>
+        <li>Accès en lecture seule pour notaire, banquier, comptable : rubriques choisies, échéance, journal des consultations</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">10</span>Import et plateforme</h3>
+      <ul>
+        <li>Import Excel ou CSV : gabarit, aperçu, doublons, rapport</li>
+        <li>Espace particulier créé seul, en ligne</li>
+        <li>Passage au palier supérieur payé par Mobile Money</li>
+        <li>Assistant IA ImmoCopilot</li>
+        <li>Français, anglais, arabe ; application mobile</li>
+        <li class="later">Export complet de vos données <span class="soon">Bientôt</span></li>
+      </ul>
+    </section>
+  </div>
+
+  <div class="close">
+    <section class="price">
+      <h3>Quatre offres, selon ce que vous possédez</h3>
+      <div class="price-main"><b class="num">0</b><span>FCFA pour commencer</span></div>
+      <table class="offers">
+        <tr><td><b>Particulier Gratuit</b> <span>· 10 actifs</span></td><td>0 FCFA</td></tr>
+        <tr><td><b>Particulier Plus</b> <span>· 100 actifs</span></td><td>2 900 FCFA / mois</td></tr>
+        <tr><td><b>Patrimoine Essentiel</b> <span>· 10 biens</span></td><td>9 900 FCFA / mois</td></tr>
+        <tr><td><b>Patrimoine Pro</b> <span>· 100 biens</span></td><td>29 900 FCFA / mois</td></tr>
+      </table>
+      <p class="fine">Particulier : espace personnel au menu simplifié. Essentiel et Pro : mise en route 30 000 et 90 000 FCFA ; 10 biens de plus pour 9 900 FCFA par mois avec Essentiel, 299 FCFA le bien au-delà de 100 avec Pro. Prix HT.</p>
+    </section>
+    <section class="cta">
+      <h3>Voyez votre patrimoine <em>sur un seul écran.</em></h3>
+      <p>Démonstration de 30 minutes, avec vos propres biens.</p>
+      <ol>
+        <li>Nous importons vos biens depuis votre fichier Excel</li>
+        <li>Vous voyez votre valeur nette et vos rendements</li>
+        <li>Vous simulez la vente d'un bien sur 10 ans</li>
+      </ol>
+      <div class="contact">
+        <div>Votre conseiller</div>
+        <div>Téléphone / WhatsApp</div>
+        <div>E-mail</div>
+      </div>
+    </section>
+  </div>
+</article>
+
+</main>
