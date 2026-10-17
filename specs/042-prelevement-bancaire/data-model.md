@@ -1,4 +1,4 @@
-# 042 — Modèle de données et contrat d'API (P1 à P3)
+# 042 — Modèle de données et contrat d'API (P1 à P4)
 
 > Chemins relatifs à `packages/api/`. Ce document est le **contrat** entre
 > l'API et l'écran : l'un et l'autre s'y conforment à la lettre.
@@ -1121,3 +1121,267 @@ WhatsApp ; frais de rejet en copropriété (P4 : non refacturés).
   sous le champ e-mail, l'adresse masquée du compte portail quand elle
   diffère (`portalAccountEmailNotice` dans la réponse de détail du contact,
   jamais dans les listes). Jamais d'adresse complète dans une réponse.
+
+## 9. P4 — Copropriété (contrat)
+
+> Ajouté le 17/10/2026. Prélèvement des appels de charges des
+> copropriétaires. Les portails restent pour P5. Chemins relatifs à
+> `packages/api/`.
+
+### 9.1 Principe et décisions
+
+- **Créancier** = le compte bancaire **du syndicat** (sa banque, sa
+  convention d'émetteur), pas un compte de trésorerie de l'agence : un
+  `DirectDebitCreditor` de périmètre `SYNDIC_LOT`, rattaché au syndicat, sans
+  `treasuryAccountId`. L'encaissement passe par la comptabilité de la
+  copropriété (`ChargePayment`, compte 521 du syndicat). Un seul créancier par
+  syndicat.
+- **Mandat** = par **lot** : débiteur = un contact copropriétaire du lot
+  (`CrmContact` : `ownerContactId`, `coownerId` ou un `LotOwnerProfile`
+  en cours), pas un `TenantClient`. Un seul mandat ouvert par (lot, créancier).
+- **Remise** = par syndicat : pour chaque lot dont le mandat est actif, la
+  somme des appels de charges **échus et non soldés**, plus ancien d'abord,
+  plafonnée par le mandat. L'avance du lot est déjà imputée aux appels
+  (invariant de `charge-allocation.ts`) ; un trop-perçu redevient une avance.
+  Les pénalités de retard ne sont jamais prélevées.
+- **Règlement** = `ChargePayment` (`recordLotPaymentTx`, méthode
+  `DIRECT_DEBIT`, origine `DIRECT_DEBIT`) puis reçus et quittances S3
+  (`issueReceiptsForPaymentTx`), dans la transaction du constat (§8.3).
+- **Rejet** d'une ligne non réglée : comme §8.4. **Rejet tardif** d'une ligne
+  déjà réglée : refusé (`ConflictError`), car aucune contre-passation d'un
+  `ChargePayment` n'existe ; la régularisation se fait en comptabilité.
+  **Frais de rejet** : non refacturés en copropriété (`rejectFeeAmount` forcé
+  à 0 pour ce périmètre). Compteur et suspension (D5) comme en locatif.
+- **Garde** : routes sous `/syndics/:syndicId/prelevements` (fonctionnalité
+  `SYNDIC` par `lib/subscription/route-features.ts`, règle `/syndics`
+  existante) ; permissions dédiées `SYNDIC_DIRECT_DEBIT_VIEW` (consulter, IBAN
+  masqué) et `SYNDIC_DIRECT_DEBIT_MANAGE` (le reste, dont le PDF et le
+  fichier à IBAN complet).
+
+### 9.2 Schéma (P4)
+
+```prisma
+// Migration 1 (seule) : 20261017110000_prelevement_copro_valeurs
+enum DirectDebitMandateScope { RENTAL_LEASE  SYNDIC_LOT }
+enum ChargePaymentOrigin { MANUAL  ONLINE  DIRECT_DEBIT }
+
+// Migration 2 : 20261017110100_prelevement_copropriete
+model DirectDebitCreditor {
+  // … champs P1, et :
+  scope              DirectDebitMandateScope @default(RENTAL_LEASE)
+  treasuryAccountId  String?  @map("treasury_account_id") @db.Uuid   // devient facultatif : obligatoire en RENTAL_LEASE (contrôle du service)
+  syndicateId        String?  @map("syndicate_id") @db.Uuid          // obligatoire en SYNDIC_LOT
+  bankName           String?  @map("bank_name")                      // banque du syndicat (SYNDIC_LOT)
+  bankAccountRef     String?  @map("bank_account_ref")               // compte du syndicat, pour l'affichage
+  syndicate Syndicate? @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
+  @@unique([tenantId, syndicateId])  // un créancier par syndicat
+  @@index([tenantId, scope])
+}
+
+model DirectDebitMandate {
+  // … champs P1, et :
+  debtorClientId   String?  @map("debtor_client_id")                  // devient facultatif : obligatoire en RENTAL_LEASE
+  debtorContactId  String?  @map("debtor_contact_id")                 // obligatoire en SYNDIC_LOT (CrmContact)
+  syndicateId      String?  @map("syndicate_id") @db.Uuid
+  lotId            String?  @map("lot_id") @db.Uuid
+  debtorContact CrmContact?   @relation(fields: [debtorContactId], references: [id], onDelete: Restrict)
+  syndicate     Syndicate?    @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
+  lot           SyndicateLot? @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  @@index([lotId])
+  @@index([tenantId, scope])
+  // openSlotKey : "lot:<lotId>:<creditorId>" en SYNDIC_LOT
+}
+
+model DirectDebitRemittance {
+  // … champs P2, et :
+  syndicateId String? @map("syndicate_id") @db.Uuid                    // obligatoire en SYNDIC_LOT
+  syndicate   Syndicate? @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
+  @@index([tenantId, scope])
+}
+
+model DirectDebitRemittanceLine {
+  // … champs P2/P3, et :
+  leaseId          String?  @map("lease_id") @db.Uuid                 // devient facultatif (RENTAL_LEASE)
+  installmentId    String?  @map("installment_id") @db.Uuid           // devient facultatif (RENTAL_LEASE)
+  debtorClientId   String?  @map("debtor_client_id")                  // devient facultatif (RENTAL_LEASE)
+  lotId            String?  @map("lot_id") @db.Uuid                   // SYNDIC_LOT
+  debtorContactId  String?  @map("debtor_contact_id")                 // SYNDIC_LOT
+  /// Appels de charges couverts, figés à la sélection, plus ancien d'abord.
+  chargeCallIds    String[] @default([]) @map("charge_call_ids") @db.Uuid
+  /// Encaissement de charges créé au règlement (SYNDIC_LOT).
+  chargePaymentId  String?  @unique @map("charge_payment_id") @db.Uuid
+  lot           SyndicateLot?  @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  debtorContact CrmContact?    @relation(fields: [debtorContactId], references: [id], onDelete: Restrict)
+  chargePayment ChargePayment? @relation(fields: [chargePaymentId], references: [id], onDelete: Restrict)
+  @@index([lotId])
+  // activeKey : "lot:<lotId>" en SYNDIC_LOT (une seule ligne vivante par lot)
+}
+
+model DirectDebitReturnImport {
+  // … champs P3, et :
+  syndicateId String? @map("syndicate_id") @db.Uuid
+  syndicate   Syndicate? @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
+}
+```
+
+Migration 3 : `20261017110200_prelevement_copro_permissions` —
+`SYNDIC_DIRECT_DEBIT_VIEW` et `SYNDIC_DIRECT_DEBIT_MANAGE`, attribution
+idempotente : VIEW à tout rôle qui a `SYNDIC_VIEW`, MANAGE aux seuls rôles
+`TENANT_ADMIN` et `TENANT_MANAGER` (modèle :
+`20261015090100_prelevement_bancaire_permissions`). Seed :
+`prisma/seeds/syndic-permissions-seed.ts`.
+
+Les modèles portent `tenantId` : rien à déclarer dans `schema-tenant-coverage`.
+Les routes et services locatifs filtrent désormais `scope = RENTAL_LEASE`
+(un identifiant de copropriété sur une route locative → 404, et l'inverse).
+
+### 9.3 Règles
+
+- **Créancier** : libellé (1–120), banque (≤ 120), référence du compte
+  (≤ 64), numéro d'émetteur, jour de collecte (1–28), délai de prénotification
+  (0–30), seuil de suspension (1–10), actif. `rejectFeeAmount` = 0, non
+  modifiable. Le syndicat doit appartenir à l'agence (sinon 404).
+- **Mandat** : `lotId` d'un lot **du syndicat de la route** ; `debtorContactId`
+  parmi les contacts copropriétaires de ce lot (`ownerContactId`, `coownerId`,
+  `LotOwnerProfile` sans `ownedUntil` passé) — sinon `NotFoundError`. Même
+  contrôle d'IBAN, chiffrement, statuts, PDF et scan qu'en P1. Le PDF
+  d'autorisation mentionne le syndicat, le lot et « les appels de charges de
+  copropriété de ce lot » (pas de bail).
+- **Sélection** (remplace §7.2 pour ce périmètre) : mandats `ACTIVE`
+  `SYNDIC_LOT` du créancier du syndicat ; jour effectif de collecte ≤ jour de
+  `collectionDate` ; appels du lot avec `amount > 0`, `dueDate ≤
+collectionDate` et reste dû > 0 (allocations), triés par `dueDate`, puis
+  `createdAt`, puis `id` ; reste dû = somme ; montant = min(reste dû,
+  `maxAmount`) ; `chargeCallIds` = ces appels ; raisons de non-sélection :
+  `NOTHING_DUE`, `ALREADY_IN_REMITTANCE` (ligne vivante pour le lot),
+  `COLLECTION_DAY_LATER`. La validation recompare montant, reste dû, plafond et
+  l'ensemble des appels.
+- **Fichier** : libellé `CHARGES LOT <numéro> MM/AAAA` (ASCII majuscules) ;
+  le reste du format `GENERIC_CSV` est celui de §7.4.
+- **Prénotification** : clé e-mail `SYNDIC_DIRECT_DEBIT_PRENOTIFICATION`
+  (fonctionnalité SYNDIC) au contact débiteur (son e-mail CRM) ; variables :
+  `debtorName`, `agencyName`, `syndicateName`, `lotNumber`, `mandateReference`,
+  `creditorIdentifier`, `ibanMasked`, `amount`, `collectionDate`.
+- **Rejet** : clé `SYNDIC_DIRECT_DEBIT_REJECTED` (SYNDIC), mêmes variables que
+  `DIRECT_DEBIT_REJECTED` plus `syndicateName` et `lotNumber`.
+- **Encaisseur `SYNDIC_LOT`** (`collectors/syndic.ts`) :
+  `keepsActiveKeyOnSettle = false` (le lot redevient prélevable pour ses
+  appels suivants) ; `settleTx` = `recordLotPaymentTx({ tenantId, syndicateId,
+lotId, amount, paidAt: settledAt, method: 'DIRECT_DEBIT', reference:
+<référence de ligne>, chargeCallIds, actorUserId, idempotencyKey:
+'direct-debit-line:<lineId>', origin: 'DIRECT_DEBIT' })` puis
+  `issueReceiptsForPaymentTx`, `afterCommit` = `scheduleChargeDocumentDelivery` ;
+  `reverseTx` lève `ConflictError` « Le rejet d'un prélèvement de charges déjà
+  réglé n'est pas pris en charge : régularisez dans la comptabilité de la
+  copropriété. » ; `applyRejectFeeTx` renvoie `{ appliedAmount: 0 }`.
+  `METHOD_LABELS` des reçus connaît `DIRECT_DEBIT` (« Prélèvement bancaire »).
+- **Signature électronique (préparation §10)** : `activateMandate` accepte
+  `signedAt` absent quand le mandat porte déjà une date de signature ;
+  `revokeMandate` et le dépôt manuel d'un scan annulent toute demande de
+  signature ouverte pour ce mandat (`cancelOpenRequestsForTarget`, cible
+  `DIRECT_DEBIT_MANDATE`).
+- **Passerelle IA** : le chemin `prelevements` est ajouté aux motifs sensibles
+  de `lib/ai/gateway/path-rules.ts` (comme `direct-debit`).
+
+### 9.4 Routes (sous `/api/tenants/:tenantId/syndics/:syndicId/prelevements`)
+
+Gardes : `authenticate`, `requireTenantAccess`, syndicat de l'agence (404
+sinon), puis `SYNDIC_DIRECT_DEBIT_VIEW` (lecture) ou `_MANAGE` (le reste).
+Les objets renvoyés sont ceux du locatif (§4, §7.7, §8.7) élargis (§9.5).
+
+| Méthode     | Chemin                                          | Corps / requête                                                                                                                               | `data`                                           |
+| ----------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| GET         | `/creancier`                                    | —                                                                                                                                             | `CreditorDto \| null`                            |
+| PUT         | `/creancier`                                    | `{ label, bankName?, bankAccountRef?, creditorIdentifier?, collectionDay?, prenotificationBusinessDays?, maxConsecutiveRejects?, isActive? }` | `CreditorDto`                                    |
+| POST        | `/controle-iban`                                | `{ iban }`                                                                                                                                    | `IbanCheckDto`                                   |
+| GET         | `/lots/:lotId/debiteurs`                        | —                                                                                                                                             | `{ contactId, displayName, hasEmail }[]`         |
+| GET         | `/mandats`                                      | `?lotId&status&search&page&pageSize`                                                                                                          | `{ items: MandateDto[], total, page, pageSize }` |
+| POST        | `/mandats`                                      | `{ lotId, debtorContactId, iban, holderName, maxAmount?, collectionDay?, notes? }`                                                            | `{ mandate, warnings }`                          |
+| GET / PATCH | `/mandats/:mandateId`                           | PATCH : `{ maxAmount?, collectionDay?, notes? }`                                                                                              | `MandateDto`                                     |
+| POST        | `/mandats/:mandateId/activer`                   | `{ signedAt? }`                                                                                                                               | `MandateDto`                                     |
+| POST        | `/mandats/:mandateId/suspendre`                 | `{ reason }`                                                                                                                                  | `MandateDto`                                     |
+| POST        | `/mandats/:mandateId/reactiver`                 | —                                                                                                                                             | `MandateDto`                                     |
+| POST        | `/mandats/:mandateId/revoquer`                  | `{ reason, revokedAt? }`                                                                                                                      | `MandateDto`                                     |
+| GET         | `/mandats/:mandateId/autorisation-pdf`          | —                                                                                                                                             | PDF                                              |
+| POST / GET  | `/mandats/:mandateId/scan-signe`                | multipart `file` / —                                                                                                                          | `MandateDto` / fichier                           |
+| GET         | `/remises`                                      | `?status&page&pageSize`                                                                                                                       | `{ items: RemittanceSummaryDto[], … }`           |
+| POST        | `/remises`                                      | `{ collectionDate, notes? }`                                                                                                                  | `{ remittance, skipped }`                        |
+| GET         | `/remises/:remittanceId`                        | —                                                                                                                                             | `RemittanceDto`                                  |
+| POST        | `/remises/:remittanceId/actualiser`             | —                                                                                                                                             | `{ remittance, skipped }`                        |
+| POST        | `/remises/:remittanceId/lignes/:lineId/retirer` | `{ reason? }`                                                                                                                                 | `RemittanceDto`                                  |
+| POST        | `/remises/:remittanceId/valider`                | —                                                                                                                                             | `{ remittance, prenotifications }`               |
+| POST        | `/remises/:remittanceId/avis`                   | —                                                                                                                                             | `{ remittance, prenotifications }`               |
+| POST        | `/remises/:remittanceId/fichier`                | —                                                                                                                                             | fichier CSV                                      |
+| POST        | `/remises/:remittanceId/deposer`                | —                                                                                                                                             | `RemittanceDto`                                  |
+| POST        | `/remises/:remittanceId/annuler`                | `{ reason }`                                                                                                                                  | `RemittanceDto`                                  |
+| POST        | `/remises/:remittanceId/lignes/:lineId/regler`  | `{ settledAt }`                                                                                                                               | `RemittanceDto`                                  |
+| POST        | `/remises/:remittanceId/lignes/:lineId/rejeter` | `{ rejectedAt, code?, reason? }`                                                                                                              | `RemittanceDto`                                  |
+| POST        | `/remises/:remittanceId/tout-regler`            | `{ settledAt }`                                                                                                                               | comme §8.7                                       |
+| POST        | `/retours/apercu`                               | multipart `file`, `format?`                                                                                                                   | `ReturnPreviewDto`                               |
+| POST        | `/retours/appliquer`                            | multipart `file`, `format?`                                                                                                                   | `ReturnApplyDto`                                 |
+| GET         | `/retours`                                      | `?page&pageSize`                                                                                                                              | `{ items: ReturnImportDto[], … }`                |
+
+Le créancier de la remise est toujours celui du syndicat (aucun
+`creditorId` dans le corps).
+
+### 9.5 Objets renvoyés (ajouts)
+
+```ts
+interface CreditorDto {
+  // … §4, et :
+  scope: 'RENTAL_LEASE' | 'SYNDIC_LOT';
+  treasuryAccountId: string | null; treasuryAccountLabel: string | null;  // nuls en SYNDIC_LOT
+  syndicate: { id: string; name: string } | null;
+  bankAccountRef: string | null;     // bankName existe déjà
+}
+interface MandateDto {
+  // … §4, et :
+  scope: 'RENTAL_LEASE' | 'SYNDIC_LOT';
+  debtor: { id: string; displayName: string | null; kind: 'CLIENT' | 'CONTACT' };
+  lease: … | null;                    // nul en SYNDIC_LOT
+  syndicate: { id: string; name: string } | null;
+  lot: { id: string; lotNumber: string } | null;
+}
+interface RemittanceSummaryDto {
+  // … §7.7, §8.7, et :
+  scope: 'RENTAL_LEASE' | 'SYNDIC_LOT';
+  syndicate: { id: string; name: string } | null;
+}
+interface RemittanceLineDto {
+  // … §7.7, §8.7, et :
+  lease: { id: string; leaseNumber: string } | null;                       // nul en SYNDIC_LOT
+  installment: { id: string; periodYear: number; periodMonth: number; dueDate: string } | null;
+  lot: { id: string; lotNumber: string } | null;                           // SYNDIC_LOT
+  chargeCalls: { id: string; period: string; dueDate: string; amount: number }[];  // SYNDIC_LOT
+  debtor: { id: string; displayName: string | null; kind: 'CLIENT' | 'CONTACT' };
+}
+interface ReturnImportDto { /* … §8.7, et : */ scope: 'RENTAL_LEASE' | 'SYNDIC_LOT' }
+```
+
+`paymentId` (§8.7) vaut `chargePaymentId` en `SYNDIC_LOT`.
+
+### 9.6 Écrans (gestionnaire du syndic)
+
+Syndic › Finances : onglet « Prélèvements »
+(`/tenant/:tenantId/syndics/:syndicId/prelevements`, entrée ajoutée à
+`buildTabs` de `SyndicWorkspaceLayout`, à `activeFor` du menu
+`syndics-finances` et à `route-labels.ts`), cohérent avec les autres onglets
+de Finances (cartes empilées, `useSyndicRouteContext`) :
+
+- carte « Compte de prélèvement du syndicat » (créancier : création,
+  modification, désactivation) ;
+- « Mandats » : liste filtrable par lot et statut ; « Nouveau mandat » (lot →
+  copropriétaire du lot → IBAN ou RIB contrôlé, titulaire, plafond, jour) ;
+  actions comme en locatif (PDF, scan, activer, suspendre, réactiver,
+  révoquer) ;
+- « Remises » : liste, « Préparer une remise », détail
+  (`/prelevements/remises/:remittanceId`) avec les mêmes actions, constats et
+  avertissements que le locatif (§7.10, §8.10), et l'import d'un retour de la
+  banque ;
+- textes en fr/en/ar dans `syndic.json`.
+
+### 9.7 Hors P4
+
+Portails copropriétaire (P5) ; frais de rejet refacturés en copropriété ;
+contre-passation d'un `ChargePayment` ; mandat couvrant plusieurs lots d'un
+même copropriétaire.

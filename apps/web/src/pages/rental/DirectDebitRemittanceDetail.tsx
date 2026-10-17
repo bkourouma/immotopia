@@ -296,9 +296,10 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
     {
       title: t('Bail'),
       key: 'lease',
-      render: (_value, line) => (
-        <Link to={`/tenant/${tenantId}/rental/leases/${line.lease.id}`}>{line.lease.leaseNumber}</Link>
-      )
+      render: (_value, line) =>
+        line.lease ? (
+          <Link to={`/tenant/${tenantId}/rental/leases/${line.lease.id}`}>{line.lease.leaseNumber}</Link>
+        ) : null
     },
     {
       title: t('Mandat'),
@@ -320,7 +321,8 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
     {
       title: t('Période'),
       key: 'period',
-      render: (_value, line) => formatPeriod(line.installment.periodYear, line.installment.periodMonth)
+      render: (_value, line) =>
+        line.installment ? formatPeriod(line.installment.periodYear, line.installment.periodMonth) : null
     },
     {
       title: t('Reste dû'),

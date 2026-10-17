@@ -17,9 +17,11 @@ export function makeLine(overrides: Record<string, unknown> = {}) {
       maxAmount: null,
       status: 'ACTIVE'
     },
-    debtor: { id: 'client-1', displayName: 'Awa Traoré' },
+    debtor: { id: 'client-1', displayName: 'Awa Traoré', kind: 'CLIENT' },
     lease: { id: 'bail-1', leaseNumber: 'BAIL-001' },
     installment: { id: 'i-1', periodYear: 2026, periodMonth: 11, dueDate: '2026-11-01' },
+    lot: null,
+    chargeCalls: [],
     amount: 150000,
     remainingDueAtSelection: 150000,
     capped: false,
@@ -54,7 +56,7 @@ export function makeRemittance(overrides: Record<string, unknown> = {}) {
         maxAmount: 100000,
         status: 'ACTIVE'
       },
-      debtor: { id: 'client-2', displayName: 'Moussa Diallo' },
+      debtor: { id: 'client-2', displayName: 'Moussa Diallo', kind: 'CLIENT' },
       lease: { id: 'bail-2', leaseNumber: 'BAIL-002' },
       amount: 100000,
       remainingDueAtSelection: 180000,
@@ -64,6 +66,8 @@ export function makeRemittance(overrides: Record<string, unknown> = {}) {
   return {
     id: REMITTANCE_ID,
     reference: 'PRL-2026-0001',
+    scope: 'RENTAL_LEASE',
+    syndicate: null,
     status: 'DRAFT',
     creditor: { id: 'c-1', label: 'Compte loyers', creditorIdentifier: 'CI123456' },
     collectionDate: '2026-11-05',
@@ -101,9 +105,12 @@ export function makeRemittance(overrides: Record<string, unknown> = {}) {
 export const creditor = {
   id: 'c-1',
   label: 'Compte loyers',
+  scope: 'RENTAL_LEASE',
   treasuryAccountId: 'ta-1',
   treasuryAccountLabel: 'Banque principale',
+  syndicate: null,
   bankName: 'Banque X',
+  bankAccountRef: null,
   creditorIdentifier: 'CI123456',
   fileFormat: 'GENERIC_CSV',
   collectionDay: 5,

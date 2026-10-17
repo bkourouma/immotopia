@@ -118,7 +118,7 @@ interface Candidate {
   mandateReference: string;
   leaseId: string | null;
   leaseNumber: string | null;
-  debtorClientId: string;
+  debtorClientId: string | null;
   debtorName: string | null;
   installmentId: string | null;
   result: SelectionResult;
@@ -238,12 +238,17 @@ async function evaluateCandidates(
       leaseId: mandate.leaseId,
       leaseNumber: mandate.lease?.lease_number ?? null,
       debtorClientId: mandate.debtorClientId,
-      debtorName: names.get(mandate.debtor.id) ?? null,
+      debtorName: mandate.debtor ? (names.get(mandate.debtor.id) ?? null) : null,
       installmentId: installment?.id ?? null,
       result
     };
   });
 }
+
+/** Le fichier des remises de copropriété est réalisé en P4 (spec 042 §9.3). */
+const failOutsideRental = (): never => {
+  throw new Error('Ligne hors périmètre locatif : fichier de copropriété à réaliser (spec 042 §9.3)');
+};
 
 type SelectedCandidate = Candidate & {
   leaseId: string;
@@ -918,9 +923,9 @@ export async function exportRemittance(
       holderName: line.mandate.holderName,
       iban: decryptMandateIban(line.mandate.ibanEncrypted),
       amount: Number(line.amount),
-      leaseNumber: line.lease.lease_number,
-      periodYear: line.installment.period_year,
-      periodMonth: line.installment.period_month
+      leaseNumber: line.lease?.lease_number ?? failOutsideRental(),
+      periodYear: line.installment?.period_year ?? failOutsideRental(),
+      periodMonth: line.installment?.period_month ?? failOutsideRental()
     }))
   });
   // HMAC, pas un SHA-256 vérifiable de l extérieur : le fichier porte les IBAN complets.

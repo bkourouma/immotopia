@@ -213,6 +213,7 @@ export async function generateAuthorizationPdf(
           label: true,
           creditorIdentifier: true,
           collectionDay: true,
+          bankName: true,
           treasuryAccount: { select: { bankName: true } }
         }
       },
@@ -233,8 +234,8 @@ export async function generateAuthorizationPdf(
       reference,
       creditorLabel: row.creditor.label,
       creditorIdentifier: row.creditor.creditorIdentifier ?? null,
-      creditorBankName: row.creditor.treasuryAccount.bankName ?? null,
-      debtorName: names.get(row.debtor.id) ?? null,
+      creditorBankName: row.creditor.treasuryAccount?.bankName ?? row.creditor.bankName ?? null,
+      debtorName: row.debtor ? (names.get(row.debtor.id) ?? null) : null,
       holderName: row.holderName,
       iban,
       bankCode: row.ibanBankCode,

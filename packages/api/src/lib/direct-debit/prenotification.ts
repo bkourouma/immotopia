@@ -126,7 +126,9 @@ async function runPrenotifications(
   const lines = await loadPendingLines(tenantId, remittanceId);
   if (lines.length === 0) return counters;
 
-  const debtors = lines.map(line => line.debtor);
+  const debtors = lines
+    .map(line => line.debtor)
+    .filter((debtor): debtor is NonNullable<typeof debtor> => debtor !== null);
   const [names, emails] = await Promise.all([
     resolveDebtorNames(prisma, tenantId, debtors),
     resolveEmails(tenantId, debtors)
@@ -145,24 +147,29 @@ async function runPrenotifications(
   const processLine = async (line: PendingLine): Promise<void> => {
     let status: PrenotificationStatus = 'FAILED';
     try {
+      const { debtor, installment, lease } = line;
+      if (!debtor || !installment || !lease) {
+        // Ligne de copropriété : sa prénotification est réalisée en P4 (spec 042 §9.3).
+        throw new Error('Prénotification : ligne hors périmètre locatif');
+      }
       if (config === null) {
         status = 'FAILED';
       } else if (!config.enabled) {
         status = 'DISABLED';
       } else {
-        const to = emails.get(line.debtor.id);
+        const to = emails.get(debtor.id);
         if (!to) {
           status = 'NO_EMAIL';
         } else {
           await emailService.sendDirectDebitPrenotification(
             to,
             {
-              debtorName: names.get(line.debtor.id) ?? t('Locataire'),
+              debtorName: names.get(debtor.id) ?? t('Locataire'),
               agencyName: remittance.tenant?.name ?? t('Votre agence'),
               amount: amountLabel(Number(line.amount)),
               collectionDate: formatFrenchDate(remittance.collectionDate),
-              period: `${String(line.installment.period_month).padStart(2, '0')}/${line.installment.period_year}`,
-              leaseNumber: line.lease.lease_number,
+              period: `${String(installment.period_month).padStart(2, '0')}/${installment.period_year}`,
+              leaseNumber: lease.lease_number,
               ibanMasked: maskIban(line.mandate.ibanLast4),
               mandateReference: mandateReferenceOf(line.mandate.year, line.mandate.sequence),
               creditorIdentifier: remittance.creditorIdentifierSnapshot ?? ''

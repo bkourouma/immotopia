@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { toIsoDate } from './business-days';
-import { resolveDebtorNames, type DbClient, type MandateStatus } from './dto';
+import { contactDisplayName, resolveDebtorNames, type DbClient, type MandateStatus } from './dto';
 import { maskIban } from './iban';
 import { maskEmail, resolveDebtorRecipients, type DebtorRecipient, type RecipientSource } from './recipient';
 
@@ -45,6 +45,9 @@ export interface ReturnSummaryDto {
 export interface RemittanceSummaryDto {
   id: string;
   reference: string;
+  scope: 'RENTAL_LEASE' | 'SYNDIC_LOT';
+  /** Syndicat de la remise (SYNDIC_LOT), nul en RENTAL_LEASE. */
+  syndicate: { id: string; name: string } | null;
   status: RemittanceStatus;
   creditor: { id: string; label: string; creditorIdentifier: string | null };
   collectionDate: string;
@@ -82,9 +85,14 @@ export interface RemittanceLineDto {
     holderName: string;
     maxAmount: number | null;
   };
-  debtor: { id: string; displayName: string | null };
-  lease: { id: string; leaseNumber: string };
-  installment: { id: string; periodYear: number; periodMonth: number; dueDate: string };
+  debtor: { id: string; displayName: string | null; kind: 'CLIENT' | 'CONTACT' };
+  /** Nuls en SYNDIC_LOT. */
+  lease: { id: string; leaseNumber: string } | null;
+  installment: { id: string; periodYear: number; periodMonth: number; dueDate: string } | null;
+  /** SYNDIC_LOT. */
+  lot: { id: string; lotNumber: string } | null;
+  /** Appels de charges couverts (SYNDIC_LOT), plus ancien d'abord ; vide en RENTAL_LEASE. */
+  chargeCalls: ChargeCallBriefDto[];
   amount: number;
   remainingDueAtSelection: number;
   capped: boolean;
@@ -102,6 +110,13 @@ export interface RemittanceLineDto {
   returnSource: ReturnSourceDto | null;
   /** RentalPayment (P3) ou ChargePayment (P4). */
   paymentId: string | null;
+}
+
+export interface ChargeCallBriefDto {
+  id: string;
+  period: string;
+  dueDate: string;
+  amount: number;
 }
 
 export interface RemittanceDto extends RemittanceSummaryDto {
@@ -141,6 +156,8 @@ export const mandateReferenceOf = (year: number, sequence: number) =>
 
 export const REMITTANCE_SUMMARY_SELECT = {
   id: true,
+  scope: true,
+  syndicate: { select: { id: true, name: true } },
   year: true,
   sequence: true,
   status: true,
@@ -194,6 +211,8 @@ export const REMITTANCE_SELECT = {
       rejectFeeAmount: true,
       returnSource: true,
       rentalPaymentId: true,
+      chargePaymentId: true,
+      chargeCallIds: true,
       // Jamais ibanEncrypted : seuls les 4 derniers caractères servent au masque.
       mandate: {
         select: {
@@ -207,6 +226,8 @@ export const REMITTANCE_SELECT = {
         }
       },
       debtor: { select: { id: true, details: true, user: { select: { fullName: true } } } },
+      debtorContact: { select: { id: true, contactType: true, firstName: true, lastName: true, legalName: true } },
+      lot: { select: { id: true, lotNumber: true } },
       lease: { select: { id: true, lease_number: true } },
       installment: { select: { id: true, period_year: true, period_month: true, due_date: true } }
     }
@@ -253,6 +274,8 @@ export function toRemittanceSummaryDto(row: SummaryRow): RemittanceSummaryDto {
   return {
     id: row.id,
     reference: remittanceReferenceOf(row.year, row.sequence),
+    scope: row.scope,
+    syndicate: row.syndicate ? { id: row.syndicate.id, name: row.syndicate.name } : null,
     status: row.status,
     creditor: {
       id: row.creditor.id,
@@ -331,14 +354,15 @@ function recipientOf(
     return { masked: line.prenotificationRecipientMasked, source: line.prenotificationRecipientSource };
   }
   if (line.status !== 'PENDING') return null;
-  const recipient = planned.get(line.debtor.id) ?? null;
+  const recipient = line.debtor ? (planned.get(line.debtor.id) ?? null) : null;
   return recipient ? { masked: maskEmail(recipient.email), source: recipient.source } : null;
 }
 
 export function toRemittanceDto(
   row: FullRow,
   debtorNames: Map<string, string | null>,
-  plannedRecipients: Map<string, DebtorRecipient | null> = new Map()
+  plannedRecipients: Map<string, DebtorRecipient | null> = new Map(),
+  chargeCallsById: Map<string, ChargeCallBriefDto> = new Map()
 ): RemittanceDto {
   const lines: RemittanceLineDto[] = row.lines.map(line => ({
     id: line.id,
@@ -353,14 +377,27 @@ export function toRemittanceDto(
       holderName: line.mandate.holderName,
       maxAmount: num(line.mandate.maxAmount)
     },
-    debtor: { id: line.debtor.id, displayName: debtorNames.get(line.debtor.id) ?? null },
-    lease: { id: line.lease.id, leaseNumber: line.lease.lease_number },
-    installment: {
-      id: line.installment.id,
-      periodYear: line.installment.period_year,
-      periodMonth: line.installment.period_month,
-      dueDate: toIsoDate(line.installment.due_date)
-    },
+    debtor: line.debtor
+      ? { id: line.debtor.id, displayName: debtorNames.get(line.debtor.id) ?? null, kind: 'CLIENT' }
+      : {
+          id: line.debtorContact?.id ?? '',
+          displayName: line.debtorContact ? contactDisplayName(line.debtorContact) : null,
+          kind: 'CONTACT'
+        },
+    lease: line.lease ? { id: line.lease.id, leaseNumber: line.lease.lease_number } : null,
+    installment: line.installment
+      ? {
+          id: line.installment.id,
+          periodYear: line.installment.period_year,
+          periodMonth: line.installment.period_month,
+          dueDate: toIsoDate(line.installment.due_date)
+        }
+      : null,
+    lot: line.lot ? { id: line.lot.id, lotNumber: line.lot.lotNumber } : null,
+    chargeCalls: line.chargeCallIds.flatMap(id => {
+      const call = chargeCallsById.get(id);
+      return call ? [call] : [];
+    }),
     amount: Number(line.amount),
     remainingDueAtSelection: Number(line.remainingDueAtSelection),
     capped: line.capped,
@@ -375,8 +412,8 @@ export function toRemittanceDto(
     rejectionReason: line.rejectionReason ?? null,
     rejectFeeAmount: num(line.rejectFeeAmount),
     returnSource: line.returnSource ?? null,
-    // P3 : l'encaissement locatif ; P4 y ajoutera le paiement de charges.
-    paymentId: line.rentalPaymentId ?? null
+    // RentalPayment (RENTAL_LEASE) ou ChargePayment (SYNDIC_LOT).
+    paymentId: line.rentalPaymentId ?? line.chargePaymentId ?? null
   }));
   return {
     ...toRemittanceSummaryDto(row),
@@ -390,6 +427,30 @@ export function toRemittanceDto(
       }))
     )
   };
+}
+
+/** Appels de charges couverts par les lignes (SYNDIC_LOT), filtrés par agence. */
+async function loadChargeCalls(
+  db: DbClient,
+  tenantId: string,
+  lines: Array<{ chargeCallIds: string[] }>
+): Promise<Map<string, ChargeCallBriefDto>> {
+  const ids = [...new Set(lines.flatMap(line => line.chargeCallIds))];
+  const byId = new Map<string, ChargeCallBriefDto>();
+  if (ids.length === 0) return byId;
+  const calls = await db.chargeCall.findMany({
+    where: { id: { in: ids }, syndicate: { tenantId } },
+    select: { id: true, period: true, dueDate: true, amount: true }
+  });
+  for (const call of calls) {
+    byId.set(call.id, {
+      id: call.id,
+      period: call.period,
+      dueDate: toIsoDate(call.dueDate),
+      amount: Number(call.amount)
+    });
+  }
+  return byId;
 }
 
 /** Lit une remise de l'agence et la met en forme ; null si elle n'existe pas dans cette agence. */
@@ -411,7 +472,7 @@ export async function loadRemittanceDto(
   // Adresse prévue des lignes PENDING dont l'avis n'est pas encore parti (rien n'est stocké avant l'envoi).
   const toPlan = row.lines
     .filter(line => line.status === 'PENDING' && !line.prenotificationRecipientMasked)
-    .map(line => line.debtor.id);
+    .flatMap(line => (line.debtor ? [line.debtor.id] : []));
   const planned = await resolveDebtorRecipients(db, tenantId, toPlan);
-  return toRemittanceDto(row, names, planned);
+  return toRemittanceDto(row, names, planned, await loadChargeCalls(db, tenantId, row.lines));
 }

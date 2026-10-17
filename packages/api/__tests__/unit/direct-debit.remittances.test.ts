@@ -68,6 +68,7 @@ function lineView(line: Row): Row {
   const installment = state.installments.find(entry => entry.id === line.installmentId) as Row;
   return {
     ...line,
+    chargeCallIds: [],
     mandate,
     lease: { id: lease.id, lease_number: lease.lease_number },
     installment,

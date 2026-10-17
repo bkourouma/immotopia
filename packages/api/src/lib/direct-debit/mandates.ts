@@ -128,7 +128,7 @@ export async function listMandates(
     rows.map(row => row.debtor)
   );
   return {
-    items: rows.map(row => toMandateDto(row, names.get(row.debtor.id) ?? null)),
+    items: rows.map(row => toMandateDto(row, row.debtor ? (names.get(row.debtor.id) ?? null) : null)),
     total,
     page: query.page,
     pageSize: query.pageSize

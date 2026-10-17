@@ -1941,6 +1941,10 @@ model CrmContact {
 
   syndicChargeReceipts SyndicChargeReceipt[]
 
+  // Spec 042 P4 : prélèvement des appels de charges
+  directDebitMandates        DirectDebitMandate[]
+  directDebitRemittanceLines DirectDebitRemittanceLine[]
+
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([tenantId, status])
@@ -4052,6 +4056,11 @@ model Syndicate {
   /// Lot S4 : programmations d'appels de charges automatiques.
   chargeSchedules    SyndicChargeSchedule[]
   providerInvoices   SyndicProviderInvoice[]
+  /// Spec 042 P4 : prélèvement bancaire des appels de charges.
+  directDebitCreditors      DirectDebitCreditor[]
+  directDebitMandates       DirectDebitMandate[]
+  directDebitRemittances    DirectDebitRemittance[]
+  directDebitReturnImports  DirectDebitReturnImport[]
 
   @@index([tenantId])
   @@index([tenantId, name])
@@ -4126,6 +4135,9 @@ model SyndicateLot {
   incidentImputations  IncidentCostImputation[]
   maintenanceLinks     SyndicateMaintenanceLink[]
   chargeReceipts       SyndicChargeReceipt[]
+  /// Spec 042 P4.
+  directDebitMandates        DirectDebitMandate[]
+  directDebitRemittanceLines DirectDebitRemittanceLine[]
 
   @@index([syndicateId])
   @@index([syndicateId, lotNumber])
@@ -4283,6 +4295,8 @@ model ChargePayment {
   receipts    SyndicChargeReceipt[]
   /// Spec 042 : tentative de paiement en ligne a l'origine de ce paiement.
   onlineCheckout SyndicOnlineCheckout?
+  /// Spec 042 P4 : ligne de prélèvement à l'origine de ce paiement.
+  directDebitLine DirectDebitRemittanceLine?
 
   @@index([chargeCallId])
   @@index([lotId, paidAt])
@@ -4293,6 +4307,7 @@ model ChargePayment {
 enum ChargePaymentOrigin {
   MANUAL
   ONLINE
+  DIRECT_DEBIT
 }
 
 enum ChargeAllocationSource {
@@ -10545,7 +10560,7 @@ enum DirectDebitFileFormat {
 
 enum DirectDebitMandateScope {
   RENTAL_LEASE
-  // P4 : SYNDIC_LOT
+  SYNDIC_LOT
 }
 
 enum DirectDebitMandateStatus {
@@ -10559,7 +10574,14 @@ enum DirectDebitMandateStatus {
 model DirectDebitCreditor {
   id                         String                @id @default(uuid()) @db.Uuid
   tenantId                   String                @map("tenant_id")
-  treasuryAccountId          String                @map("treasury_account_id") @db.Uuid
+  scope                      DirectDebitMandateScope @default(RENTAL_LEASE)
+  /// Obligatoire en RENTAL_LEASE (contrôle du service), nul en SYNDIC_LOT (spec 042 §9.2).
+  treasuryAccountId          String?               @map("treasury_account_id") @db.Uuid
+  /// Obligatoire en SYNDIC_LOT : un créancier par syndicat.
+  syndicateId                String?               @map("syndicate_id") @db.Uuid
+  /// Banque et compte du syndicat (SYNDIC_LOT), pour l'affichage.
+  bankName                   String?               @map("bank_name")
+  bankAccountRef             String?               @map("bank_account_ref")
   label                      String
   /// Numéro d'émetteur attribué par la banque. Nul tant que la convention n'est pas signée.
   creditorIdentifier         String?               @map("creditor_identifier")
@@ -10574,13 +10596,17 @@ model DirectDebitCreditor {
   updatedAt                  DateTime              @updatedAt @map("updated_at")
 
   tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  treasuryAccount TreasuryAccount      @relation(fields: [treasuryAccountId], references: [id], onDelete: Restrict)
+  treasuryAccount TreasuryAccount?     @relation(fields: [treasuryAccountId], references: [id], onDelete: Restrict)
+  syndicate       Syndicate?           @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
   mandates        DirectDebitMandate[]
   remittances     DirectDebitRemittance[]
 
   /// PB1-R3 : un créancier par compte de trésorerie.
   @@unique([tenantId, treasuryAccountId])
+  /// Spec 042 §9.2 : un créancier par syndicat.
+  @@unique([tenantId, syndicateId])
   @@index([tenantId])
+  @@index([tenantId, scope])
   @@map("direct_debit_creditors")
 }
 
@@ -10593,8 +10619,13 @@ model DirectDebitMandate {
   sequence             Int
   scope                DirectDebitMandateScope  @default(RENTAL_LEASE)
   creditorId           String                   @map("creditor_id") @db.Uuid
-  debtorClientId       String                   @map("debtor_client_id")
+  /// Obligatoire en RENTAL_LEASE (contrôle du service).
+  debtorClientId       String?                  @map("debtor_client_id")
+  /// Obligatoire en SYNDIC_LOT (CrmContact copropriétaire du lot).
+  debtorContactId      String?                  @map("debtor_contact_id")
   leaseId              String?                  @map("lease_id") @db.Uuid
+  syndicateId          String?                  @map("syndicate_id") @db.Uuid
+  lotId                String?                  @map("lot_id") @db.Uuid
   status               DirectDebitMandateStatus @default(DRAFT)
   /// IBAN chiffré (lib/direct-debit/iban-crypto.ts, format ddk1:<id de clé>:…, clé DIRECT_DEBIT_IBAN_KEY ;
   /// anciennes valeurs pg1:… lisibles en repli). Jamais renvoyé.
@@ -10614,7 +10645,7 @@ model DirectDebitMandate {
   revokedAt            DateTime?                @map("revoked_at")
   revocationReason     String?                  @map("revocation_reason")
   consecutiveRejects   Int                      @default(0) @map("consecutive_rejects")
-  /// PB2-R7 : "<leaseId>:<creditorId>" tant que le mandat n'est pas révoqué,
+  /// PB2-R7 : "<leaseId>:<creditorId>" ("lot:<lotId>:<creditorId>" en SYNDIC_LOT) tant que le mandat n'est pas révoqué,
   /// nul une fois révoqué. L'unicité en base interdit deux mandats ouverts.
   openSlotKey          String?                  @map("open_slot_key")
   notes                String?                  @db.Text
@@ -10624,13 +10655,18 @@ model DirectDebitMandate {
 
   tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   creditor DirectDebitCreditor @relation(fields: [creditorId], references: [id], onDelete: Restrict)
-  debtor   TenantClient        @relation(fields: [debtorClientId], references: [id], onDelete: Restrict)
+  debtor   TenantClient?       @relation(fields: [debtorClientId], references: [id], onDelete: Restrict)
+  debtorContact CrmContact?    @relation(fields: [debtorContactId], references: [id], onDelete: Restrict)
   lease    RentalLease?        @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  syndicate Syndicate?         @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
+  lot      SyndicateLot?       @relation(fields: [lotId], references: [id], onDelete: Restrict)
   remittanceLines DirectDebitRemittanceLine[]
 
   @@unique([tenantId, year, sequence])
   @@unique([tenantId, openSlotKey])
   @@index([tenantId, status])
+  @@index([tenantId, scope])
+  @@index([lotId])
   @@index([leaseId])
   @@index([debtorClientId])
   @@index([creditorId])
@@ -10686,6 +10722,8 @@ model DirectDebitRemittance {
   sequence              Int
   scope                 DirectDebitMandateScope     @default(RENTAL_LEASE)
   creditorId            String                      @map("creditor_id") @db.Uuid
+  /// Obligatoire en SYNDIC_LOT.
+  syndicateId           String?                     @map("syndicate_id") @db.Uuid
   status                DirectDebitRemittanceStatus @default(DRAFT)
   collectionDate        DateTime                    @map("collection_date") @db.Date
   /// Dernier jour de prénotification : recalculé à l'actualisation et à la validation, figé ensuite.
@@ -10717,10 +10755,12 @@ model DirectDebitRemittance {
 
   tenant   Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   creditor DirectDebitCreditor         @relation(fields: [creditorId], references: [id], onDelete: Restrict)
+  syndicate Syndicate?                 @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
   lines    DirectDebitRemittanceLine[]
 
   @@unique([tenantId, year, sequence])
   @@index([tenantId, status])
+  @@index([tenantId, scope])
   @@index([creditorId])
   @@map("direct_debit_remittances")
 }
@@ -10733,9 +10773,15 @@ model DirectDebitRemittanceLine {
   /// Rang dans la remise (1, 2, …), jamais réutilisé : référence d'opération PRL-AAAA-NNNN-<rang sur 3 chiffres>.
   lineNumber              Int                              @map("line_number")
   mandateId               String                           @map("mandate_id") @db.Uuid
-  leaseId                 String                           @map("lease_id") @db.Uuid
-  installmentId           String                           @map("installment_id") @db.Uuid
-  debtorClientId          String                           @map("debtor_client_id")
+  /// Facultatifs : renseignés en RENTAL_LEASE.
+  leaseId                 String?                          @map("lease_id") @db.Uuid
+  installmentId           String?                          @map("installment_id") @db.Uuid
+  debtorClientId          String?                          @map("debtor_client_id")
+  /// SYNDIC_LOT (spec 042 §9.2).
+  lotId                   String?                          @map("lot_id") @db.Uuid
+  debtorContactId         String?                          @map("debtor_contact_id")
+  /// Appels de charges couverts, figés à la sélection, plus ancien d'abord.
+  chargeCallIds           String[]                         @default([]) @map("charge_call_ids") @db.Uuid
   status                  DirectDebitRemittanceLineStatus  @default(PENDING)
   amount                  Decimal                          @db.Decimal(12, 2)
   /// Reste dû (hors pénalités) au moment de la sélection, avant plafond.
@@ -10766,16 +10812,21 @@ model DirectDebitRemittanceLine {
   returnRecordedByUserId  String?                          @map("return_recorded_by_user_id")
   /// Encaissement locatif créé au règlement (RENTAL_LEASE). Jamais deux lignes pour un paiement.
   rentalPaymentId         String?                          @unique @map("rental_payment_id") @db.Uuid
+  /// Encaissement de charges créé au règlement (SYNDIC_LOT).
+  chargePaymentId         String?                          @unique @map("charge_payment_id") @db.Uuid
   createdAt               DateTime                         @default(now()) @map("created_at")
   updatedAt               DateTime                         @updatedAt @map("updated_at")
 
   tenant        Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   remittance    DirectDebitRemittance     @relation(fields: [remittanceId], references: [id], onDelete: Cascade)
   mandate       DirectDebitMandate        @relation(fields: [mandateId], references: [id], onDelete: Restrict)
-  lease         RentalLease               @relation(fields: [leaseId], references: [id], onDelete: Restrict)
-  installment   RentalInstallment         @relation(fields: [installmentId], references: [id], onDelete: Restrict)
-  debtor        TenantClient              @relation(fields: [debtorClientId], references: [id], onDelete: Restrict)
+  lease         RentalLease?              @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  installment   RentalInstallment?        @relation(fields: [installmentId], references: [id], onDelete: Restrict)
+  debtor        TenantClient?             @relation(fields: [debtorClientId], references: [id], onDelete: Restrict)
   rentalPayment RentalPayment?            @relation(fields: [rentalPaymentId], references: [id], onDelete: Restrict)
+  lot           SyndicateLot?             @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  debtorContact CrmContact?               @relation(fields: [debtorContactId], references: [id], onDelete: Restrict)
+  chargePayment ChargePayment?            @relation(fields: [chargePaymentId], references: [id], onDelete: Restrict)
   returnImport  DirectDebitReturnImport?  @relation(fields: [returnImportId], references: [id], onDelete: SetNull)
 
   @@unique([remittanceId, lineNumber])
@@ -10785,6 +10836,7 @@ model DirectDebitRemittanceLine {
   @@index([mandateId])
   @@index([installmentId])
   @@index([leaseId])
+  @@index([lotId])
   @@map("direct_debit_remittance_lines")
 }
 
@@ -10793,6 +10845,7 @@ model DirectDebitReturnImport {
   id               String                  @id @default(uuid()) @db.Uuid
   tenantId         String                  @map("tenant_id")
   scope            DirectDebitMandateScope @default(RENTAL_LEASE)
+  syndicateId      String?                 @map("syndicate_id") @db.Uuid
   format           DirectDebitReturnFormat @default(GENERIC_CSV)
   /// Nom de fichier assaini (200 caractères au plus), pour l'affichage.
   fileName         String                  @map("file_name")
@@ -10806,8 +10859,9 @@ model DirectDebitReturnImport {
   importedByUserId String?                 @map("imported_by_user_id")
   createdAt        DateTime                @default(now()) @map("created_at")
 
-  tenant Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  lines  DirectDebitRemittanceLine[]
+  tenant    Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate Syndicate?                  @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
+  lines     DirectDebitRemittanceLine[]
 
   @@index([tenantId, createdAt])
   @@map("direct_debit_return_imports")
