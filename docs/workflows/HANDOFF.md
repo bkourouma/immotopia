@@ -47,26 +47,26 @@ Pièges et décisions :
 - …
 ```
 
-## Branche `docs/prospectus-syndic` — 2026-10-17
+## Branches `docs/prospectus-syndic` et `docs/prospectus-agence` — 2026-10-17
 
-**État :** prêt à relire (PR ouverte vers `main`).
-**Worktree :** `.claude/worktrees/prospectus-syndic`, jonction `node_modules` vers le checkout principal.
+**État :** prêt à relire. PR #156 (Syndic, base `main`) ; PR Agence empilée sur `docs/prospectus-syndic`.
+**Worktree :** `.claude/worktrees/prospectus-syndic` (porte aujourd'hui `docs/prospectus-agence`), jonction `node_modules` vers le checkout principal.
 
 Fait :
 
-- Prospectus recto-verso A4 du Pack Syndic : `docs/commercial/prospectus/syndic.html` (source, publiée en artefact claude.ai) et `syndic.pdf` (rendu Chrome sans en-tête, exactement 2 pages, vérifié en image).
-- `docs/commercial/prospectus/README.md` : règles de contenu (classeur et specs comme sources, badge « Bientôt », tarifs du catalogue) et commande de régénération du PDF.
+- Prospectus recto-verso A4 dans `docs/commercial/prospectus/` : `syndic.html`/`.pdf` et `agence.html`/`.pdf` (même gabarit, CSS recopiée), chacun publié en page claude.ai, PDF Chrome de 2 pages vérifiés en image.
+- `README.md` du dossier : règles de contenu, liste des « Bientôt » par pack, régénération du PDF.
 
 Reste à faire :
 
-- Fiches des autres packs (Agence, Promoteur, Opérateur intégré, Patrimoine) sur le même gabarit, à la demande de l'utilisateur.
-- À faire valider par l'utilisateur : affichage des prix sur le prospectus, coordonnées commerciales (bloc « Votre conseiller » laissé vierge), mise en avant du Mobile Money alors que le mode réel PaySecureHub n'est pas activé.
+- Fiches Promoteur, Opérateur intégré, Patrimoine sur le même gabarit, à la demande.
+- À valider par l'utilisateur : affichage des prix, coordonnées commerciales (bloc « Votre conseiller » vierge), Mobile Money mis en avant alors que le mode réel PaySecureHub n'est pas activé.
 
 Pièges et décisions :
 
-- Le classeur local du checkout principal (branche `feat/signature-s5-s7`) est en retard : lire `origin/main:docs/fonctionnalites/sous-fonctionnalites.md` (163 lignes Syndic au 17/10).
-- Marqués « Bientôt » : clôture d'exercice (spec 027 brouillon), place de marché des prestataires (besoin 10, non spécifié), export complet (S7, non réalisé).
-- Le PDF déborde vite : après toute retouche du texte, régénérer et vérifier le bas de chaque face.
+- Le classeur local du checkout principal (branche `feat/signature-s5-s7`) est en retard : lire `origin/main:docs/fonctionnalites/sous-fonctionnalites.md` (Syndic 163 lignes, Agence 565 lignes Patrimoine compris).
+- Le PDF déborde vite : après toute retouche du texte, régénérer et vérifier le bas de chaque face (le recto Agence est au pixel près).
+- Dans un `display:flex`, un `<sup>` devient un élément à part : envelopper le texte dans un `<span>`.
 
 ## Branche `feat/syndic-ag-visio` — 2026-10-16
 
