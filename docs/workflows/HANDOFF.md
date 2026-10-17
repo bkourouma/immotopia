@@ -57,6 +57,16 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `fix/crm-contact-commune` — 2026-10-17
+
+**État :** prêt à relire (PR vers `main`).
+
+**Fait :** `ContactForm` n'exige plus la commune qu'à la création ; une fiche existante sans commune (recette staging, contact « Awa Gogoua ») s'enregistre. La bascule vers l'onglet du premier champ fautif existait déjà dans `main` (`FIELD_TABS`, `handleFinishFailed`) : le staging n'avait vraisemblablement pas encore cette version. Test `contact-form-commune.test.tsx`. Aucune validation API de la commune (rien à changer côté serveur).
+
+**Reste :** redéployer le staging pour constater la correction ; classeur des fonctionnalités non modifié (aucune ligne ne décrit cette règle).
+
+**Pièges :** `tsc` web signale 7 erreurs préexistantes (livekit absent), sans lien.
+
 ## Branche `feat/syndic-ag-visio` — 2026-10-17
 
 **État :** FUSIONNÉE dans `main` le 2026-10-17 (PR https://github.com/bkourouma/immotopia/pull/144, commit de fusion `79aeb324`), avec les PR #145 (enregistrements orphelins) et #148 (discussion modérée), fusionnées dans la branche avant elle pour ne passer qu'une CI (7/7 verte sur `0011c4d1`). Section gardée pour la mise en service ; à supprimer une fois la visio en service.
