@@ -22,6 +22,7 @@ import {
   sendRefreshSignal,
   setCanSpeak,
   setHandRaised,
+  VisioUnavailableError,
   type VisioToken
 } from '../../services/livekit-service';
 import { contactDisplayName } from './meeting-live-rules';
@@ -29,6 +30,7 @@ import { loadMeetingBase, loadMeetingBaseById } from './meeting-live-context';
 import { withAccess } from './meeting-live-public';
 import { revokeParticipantLinks } from './meeting-participants';
 import { findActiveRecording, type MeetingRecordingView } from './meeting-recording';
+import { hasPermission } from '../../services/permission-service';
 
 /**
  * Visio integree a l'AG en direct (spec 045), cote metier : jetons de salle,
@@ -36,7 +38,8 @@ import { findActiveRecording, type MeetingRecordingView } from './meeting-record
  *
  * Identites LiveKit : id du `GMParticipant` (copropriétaire) et
  * `gestionnaire-<userId>` (gestionnaire). Une identite qui n'est ni l'un ni
- * l'autre est ignoree de la vue du gestionnaire.
+ * l'autre (enregistreur `EG_…`, agent, participant d'une autre AG ou agence) est
+ * ignoree de la vue du gestionnaire et seulement COMPTEE (`unrecognized`).
  */
 
 export const MANAGER_IDENTITY_PREFIX = 'gestionnaire-';
@@ -61,7 +64,18 @@ export interface MeetingVisioAdminView {
   participants: MeetingVisioParticipantView[];
   /** Enregistrement (spec 045, R1) : configuré ? et celui qui est en cours. */
   recording: { enabled: boolean; active: MeetingRecordingView | null };
+  /**
+   * Vrai si un sous-appel (liste LiveKit, existence de la salle, droits des gestionnaires, lecture de
+   * l'enregistrement) a échoué : la vue est partielle (`participants` éventuellement vide, `roomActive`
+   * faux, `recording.active` null) mais la visio RESTE configurée (`enabled`). Le front garde ses cartes.
+   */
+  degraded: boolean;
+  /** Identités présentes dans la salle qui ne correspondent à aucun participant ni gestionnaire de CETTE AG. */
+  unrecognized: number;
 }
+
+/** `GMParticipant.id` est une colonne `uuid` : toute autre identité ne peut pas être un copropriétaire. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function assertEnabled(): void {
   if (!isVisioEnabled()) throw new ConflictError(t("La visio intégrée n'est pas activée"));
@@ -167,19 +181,25 @@ function handRaisedAtOf(info: ParticipantInfo): string | null {
 interface RoomIdentities {
   managers: Map<string, ParticipantInfo>;
   coowners: Map<string, ParticipantInfo>;
+  /** Identités qui ne peuvent être ni un gestionnaire ni un copropriétaire (enregistreur `EG_…`, agent…). */
+  foreign: number;
 }
 
 function splitIdentities(infos: ParticipantInfo[]): RoomIdentities {
   const managers = new Map<string, ParticipantInfo>();
   const coowners = new Map<string, ParticipantInfo>();
+  let foreign = 0;
   for (const info of infos) {
     if (info.identity.startsWith(MANAGER_IDENTITY_PREFIX)) {
       managers.set(info.identity.slice(MANAGER_IDENTITY_PREFIX.length), info);
-    } else {
+    } else if (UUID_PATTERN.test(info.identity)) {
       coowners.set(info.identity, info);
+    } else {
+      // Jamais interrogée en base : un `id IN ('EG_…')` sur une colonne uuid fait échouer TOUTE la requête.
+      foreign += 1;
     }
   }
-  return { managers, coowners };
+  return { managers, coowners, foreign };
 }
 
 async function coownerViews(
@@ -220,7 +240,35 @@ async function coownerViews(
   return views;
 }
 
-/** Utilisateurs autorisés à animer la salle de cette agence : membres ACTIFS, et le super-administrateur. */
+/**
+ * Accès « client » historique (TenantClient) à CETTE agence AVEC le droit SYNDIC_EDIT dans cette agence :
+ * c'est exactement ce que `requireTenantAccess` + `requirePropertyPermission('SYNDIC_EDIT')` acceptent pour
+ * émettre un jeton de modérateur (POST /visio/jeton) sans membre ACTIF. Le droit est lu pour CETTE agence
+ * seulement (`hasPermission(userId, clé, tenantId)`) : un droit d'une autre agence ne compte pas.
+ */
+async function tokenHoldersWithEditRight(tenantId: string, userIds: string[]): Promise<Map<string, string>> {
+  const known = new Map<string, string>();
+  if (userIds.length === 0) return known;
+  const clients = await prisma.tenantClient.findMany({
+    where: { tenantId, userId: { in: userIds } },
+    select: { userId: true }
+  });
+  const allowed: string[] = [];
+  for (const client of clients) {
+    if (await hasPermission(client.userId, 'SYNDIC_EDIT', tenantId)) allowed.push(client.userId);
+  }
+  if (allowed.length === 0) return known;
+  // Select explicite : l'objet User complet porte `passwordHash`.
+  const users = await prisma.user.findMany({ where: { id: { in: allowed } }, select: { id: true, fullName: true } });
+  for (const user of users) known.set(user.id, user.fullName?.trim() ?? '');
+  return known;
+}
+
+/**
+ * Utilisateurs autorisés à animer la salle de cette agence : ceux qui ont pu obtenir un jeton de modérateur
+ * pour elle — membres ACTIFS, super-administrateur, accès client avec SYNDIC_EDIT. Jamais un utilisateur
+ * sans lien avec CETTE agence.
+ */
 async function authorizedManagers(tenantId: string, userIds: string[]): Promise<Map<string, string>> {
   const known = new Map<string, string>();
   if (userIds.length === 0) return known;
@@ -238,6 +286,8 @@ async function authorizedManagers(tenantId: string, userIds: string[]): Promise<
     });
     for (const admin of admins) known.set(admin.id, admin.fullName?.trim() ?? '');
   }
+  const remaining = userIds.filter(userId => !known.has(userId));
+  for (const [userId, name] of await tokenHoldersWithEditRight(tenantId, remaining)) known.set(userId, name);
   return known;
 }
 
@@ -266,18 +316,42 @@ function sortViews(views: MeetingVisioParticipantView[]): MeetingVisioParticipan
   });
 }
 
+interface Reconciled {
+  participants: MeetingVisioParticipantView[];
+  unrecognized: number;
+  degraded: boolean;
+}
+
+/**
+ * Droits des gestionnaires présents : en cas d'échec de la vérification, on ne sait pas, donc on n'expulse
+ * personne (`null`) et la vue est marquée dégradée.
+ */
+async function safeAuthorizedManagers(tenantId: string, userIds: string[]): Promise<Map<string, string> | null> {
+  try {
+    return await authorizedManagers(tenantId, userIds);
+  } catch (error) {
+    logger.warn('Visio managers could not be verified', {
+      name: error instanceof Error ? error.name : 'Error'
+    });
+    return null;
+  }
+}
+
 /** Rapproche les participants LiveKit des GMParticipant de CETTE AG et des utilisateurs autorisés de CETTE agence. */
 async function reconcile(
   tenantId: string,
   meetingId: string,
   roomName: string,
   infos: ParticipantInfo[]
-): Promise<MeetingVisioParticipantView[]> {
-  const { managers, coowners } = splitIdentities(infos);
-  const [views, allowed] = await Promise.all([
+): Promise<Reconciled> {
+  const { managers, coowners, foreign } = splitIdentities(infos);
+  const [views, verified] = await Promise.all([
     coownerViews(tenantId, meetingId, coowners),
-    authorizedManagers(tenantId, [...managers.keys()])
+    safeAuthorizedManagers(tenantId, [...managers.keys()])
   ]);
+  const unrecognized = foreign + (coowners.size - views.length);
+  if (verified === null) return { participants: sortViews(views), unrecognized, degraded: true };
+  const allowed = verified;
   const strangers: ParticipantInfo[] = [];
   for (const [userId, info] of managers) {
     const name = allowed.get(userId);
@@ -298,7 +372,37 @@ async function reconcile(
     });
   }
   await evictStrangers(roomName, strangers);
-  return sortViews(views);
+  return { participants: sortViews(views), unrecognized, degraded: false };
+}
+
+/** Lecture LiveKit de la salle ; un échec de LiveKit (503) donne une vue dégradée, pas une erreur. */
+async function readRoom(
+  roomName: string
+): Promise<{ infos: ParticipantInfo[]; roomActive: boolean; degraded: boolean }> {
+  try {
+    const infos = await listRoomParticipants(roomName);
+    const roomActive = infos.length > 0 || (await roomExists(roomName));
+    return { infos, roomActive, degraded: false };
+  } catch (error) {
+    if (!(error instanceof VisioUnavailableError)) throw error;
+    logger.warn('Visio room could not be read, degraded view returned', { roomName });
+    return { infos: [], roomActive: false, degraded: true };
+  }
+}
+
+async function readActiveRecording(
+  tenantId: string,
+  meetingId: string
+): Promise<{ active: MeetingRecordingView | null; degraded: boolean }> {
+  try {
+    return { active: await findActiveRecording(tenantId, meetingId), degraded: false };
+  } catch (error) {
+    logger.warn('Active recording could not be read, degraded view returned', {
+      meetingId,
+      name: error instanceof Error ? error.name : 'Error'
+    });
+    return { active: null, degraded: true };
+  }
 }
 
 /** GET /visio */
@@ -315,15 +419,24 @@ export async function getVisioAdminView(
       roomName: null,
       roomActive: false,
       participants: [],
-      recording: { enabled: false, active: null }
+      recording: { enabled: false, active: null },
+      degraded: false,
+      unrecognized: 0
     };
   }
   const roomName = buildMeetingRoomName(tenantId, meeting.id);
-  const infos = await listRoomParticipants(roomName);
-  const roomActive = infos.length > 0 || (await roomExists(roomName));
-  const participants = await reconcile(tenantId, meeting.id, roomName, infos);
-  const active = await findActiveRecording(tenantId, meeting.id);
-  return { enabled: true, roomName, roomActive, participants, recording: { enabled: isRecordingEnabled(), active } };
+  const room = await readRoom(roomName);
+  const reconciled = await reconcile(tenantId, meeting.id, roomName, room.infos);
+  const recording = await readActiveRecording(tenantId, meeting.id);
+  return {
+    enabled: true,
+    roomName,
+    roomActive: room.roomActive,
+    participants: reconciled.participants,
+    recording: { enabled: isRecordingEnabled(), active: recording.active },
+    degraded: room.degraded || reconciled.degraded || recording.degraded,
+    unrecognized: reconciled.unrecognized
+  };
 }
 
 /** POST /visio/jeton : jeton de modérateur (AG planifiée ou en cours). */
