@@ -317,7 +317,7 @@ describe('Emargement par le gestionnaire', () => {
     });
   });
 
-  it('absent : le lot sort du quorum s il n a pas vote, mais reste compte s il a vote', async () => {
+  it('absent : le lot sort du quorum, même avec un bulletin en base', async () => {
     await request(app)
       .put(url(M1, `/presences/${L1}`))
       .send({ status: 'PRESENT' });
@@ -330,7 +330,7 @@ describe('Emargement par le gestionnaire', () => {
     res = await request(app)
       .put(url(M1, `/presences/${L1}`))
       .send({ status: 'ABSENT' });
-    expect(res.body.data.attendance).toMatchObject({ presentLots: 1, quorumPercent: 10 });
+    expect(res.body.data.attendance).toMatchObject({ presentLots: 0, quorumPercent: 0 });
   });
 
   it('emargement en masse', async () => {

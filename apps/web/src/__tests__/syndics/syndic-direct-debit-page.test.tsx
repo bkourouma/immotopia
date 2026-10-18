@@ -494,7 +494,28 @@ describe('SyndicDirectDebit — mandats', () => {
 
     const row = (await screen.findByText('MDT-2026-0001')).closest('tr') as HTMLElement;
     await user.click(within(row).getByRole('button', { name: 'Réactiver' }));
+    const bubble = await screen.findByText('Réactiver ce mandat de prélèvement ?');
+    const popover = bubble.closest('.ant-popover') as HTMLElement;
+    await user.click(within(popover).getByRole('button', { name: /Réactiver|OK|Oui/ }));
     await waitFor(() => expect(reactivateSyndicMandate).toHaveBeenCalledWith(TENANT, SYNDIC, 'm-1'));
+  });
+
+  it('annule la bulle de réactivation : le mandat n’est pas réactivé', async () => {
+    listSyndicMandates.mockResolvedValue({
+      items: [makeMandate({ status: 'SUSPENDED' })],
+      total: 1,
+      page: 1,
+      pageSize: 20
+    });
+    const user = userEvent.setup();
+    mount();
+
+    const row = (await screen.findByText('MDT-2026-0001')).closest('tr') as HTMLElement;
+    await user.click(within(row).getByRole('button', { name: 'Réactiver' }));
+    const bubble = await screen.findByText('Réactiver ce mandat de prélèvement ?');
+    const popover = bubble.closest('.ant-popover') as HTMLElement;
+    await user.click(within(popover).getByRole('button', { name: 'Annuler' }));
+    expect(reactivateSyndicMandate).not.toHaveBeenCalled();
   });
 });
 
