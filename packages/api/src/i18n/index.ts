@@ -37,6 +37,16 @@ export function runWithLanguage<T>(language: Language, callback: () => T): T {
   return requestLanguage.run(language, callback);
 }
 
+/**
+ * Documents officiels (PV d'AG, convocation, avis d'appel, quittance) :
+ * toujours en francais, quelle que soit la langue de l'interface. Les textes
+ * dynamiques `t()` produits dans le callback (et dans les promesses qu'il
+ * lance) restent en francais.
+ */
+export function runInFrench<T>(callback: () => T): T {
+  return runWithLanguage(DEFAULT_LANGUAGE, callback);
+}
+
 /** Langue de la requete en cours, ou francais hors requete (jobs, scripts). */
 export function currentLanguage(): Language {
   return requestLanguage.getStore() ?? DEFAULT_LANGUAGE;

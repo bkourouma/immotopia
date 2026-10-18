@@ -21,6 +21,8 @@ export interface LotAttendanceChange {
 interface LiveLotsTableProps {
   lots: LiveLotRow[];
   contacts: ContactOption[];
+  /** Mandataire de la procuration, par mandant (contactId d'un votant du lot). */
+  proxyHolders?: Record<string, ContactOption>;
   readOnly: boolean;
   busy: boolean;
   onSetLot: (lotId: string, data: LotAttendanceChange) => void;
@@ -39,27 +41,51 @@ function currentValue(lot: LiveLotRow): string {
   return attendance.mode === 'ONLINE' ? 'PRESENT_ONLINE' : 'PRESENT';
 }
 
-export const LiveLotsTable: React.FC<LiveLotsTableProps> = ({ lots, contacts, readOnly, busy, onSetLot, onBulk }) => {
+/** Mandataire de la procuration du lot : celui du premier votant qui en a donné une. */
+function lotProxyHolder(lot: LiveLotRow, proxyHolders?: Record<string, ContactOption>): ContactOption | null {
+  if (!proxyHolders) return null;
+  for (const voter of lot.voters) {
+    const holder = proxyHolders[voter.contactId];
+    if (holder) return holder;
+  }
+  return null;
+}
+
+export const LiveLotsTable: React.FC<LiveLotsTableProps> = ({
+  lots,
+  contacts,
+  proxyHolders,
+  readOnly,
+  busy,
+  onSetLot,
+  onBulk
+}) => {
   const [selected, setSelected] = useState<string[]>([]);
 
-  const options = useMemo(
-    () => [
-      { value: 'PRESENT', label: t('Présent en salle') },
-      { value: 'PRESENT_ONLINE', label: t('Présent en ligne'), disabled: true },
-      { value: 'ABSENT', label: t('Absent') },
-      { value: 'REPRESENTED', label: t('Représenté'), disabled: true },
-      {
-        label: t('Représenté par…'),
-        options: contacts.map(contact => ({ value: `${REP_PREFIX}${contact.contactId}`, label: contact.name }))
-      }
-    ],
+  const contactOptions = useMemo(
+    () => contacts.map(contact => ({ value: `${REP_PREFIX}${contact.contactId}`, label: contact.name })),
     [contacts]
   );
+
+  /** « Représenté » n'est offert en un clic que si une procuration désigne un mandataire pour ce lot. */
+  const optionsFor = (lot: LiveLotRow) => [
+    { value: 'PRESENT', label: t('Présent en salle') },
+    { value: 'PRESENT_ONLINE', label: t('Présent en ligne'), disabled: true },
+    { value: 'ABSENT', label: t('Absent') },
+    { value: 'REPRESENTED', label: t('Représenté'), disabled: lotProxyHolder(lot, proxyHolders) === null },
+    { label: t('Représenté par…'), options: contactOptions }
+  ];
 
   const handleChange = (lot: LiveLotRow, value: string) => {
     if (value === 'PRESENT') onSetLot(lot.lotId, { status: 'PRESENT', mode: 'IN_PERSON' });
     else if (value === 'ABSENT') onSetLot(lot.lotId, { status: 'ABSENT' });
-    else if (value.startsWith(REP_PREFIX)) {
+    else if (value === 'REPRESENTED') {
+      // Procuration connue : on envoie explicitement son mandataire, sans sélecteur.
+      const holder = lotProxyHolder(lot, proxyHolders);
+      if (holder) {
+        onSetLot(lot.lotId, { status: 'REPRESENTED', mode: 'IN_PERSON', representedByContactId: holder.contactId });
+      }
+    } else if (value.startsWith(REP_PREFIX)) {
       onSetLot(lot.lotId, {
         status: 'REPRESENTED',
         mode: 'IN_PERSON',
@@ -112,7 +138,7 @@ export const LiveLotsTable: React.FC<LiveLotsTableProps> = ({ lots, contacts, re
           size="small"
           style={{ minWidth: 190 }}
           value={currentValue(lot)}
-          options={options}
+          options={optionsFor(lot)}
           disabled={readOnly || busy}
           showSearch
           optionFilterProp="label"

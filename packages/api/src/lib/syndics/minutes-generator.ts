@@ -199,7 +199,10 @@ function attendanceStatusLabel(status: string): string {
   }
 }
 
-function attendanceModeLabel(mode?: string | null): string {
+function attendanceModeLabel(mode?: string | null, representedBy?: string | null): string {
+  if (representedBy !== undefined) {
+    return t('Représenté (par {{representative}})', { representative: representedBy?.trim() || t('Non renseigné') });
+  }
   if (mode === 'ONLINE') return t('En ligne');
   if (mode === 'IN_PERSON') return t('En salle');
   return '-';
@@ -223,8 +226,9 @@ export function buildAttendanceSheet(meeting: MeetingInput): AttendanceSheet {
   const rows = lots.map(lot => {
     const row = attendanceByLot.get(lot.id);
     const voted = votedLotIds.has(lot.id);
-    const counted = row?.status === 'PRESENT' || row?.status === 'REPRESENTED' || voted;
-    const status = row?.status === 'REPRESENTED' ? 'REPRESENTED' : counted ? 'PRESENT' : 'ABSENT';
+    // Un emargement ABSENT l'emporte sur d'eventuels votes en base ; sans ligne d'emargement, avoir vote vaut presence.
+    const counted = row ? row.status === 'PRESENT' || row.status === 'REPRESENTED' : voted;
+    const status = !counted ? 'ABSENT' : row?.status === 'REPRESENTED' ? 'REPRESENTED' : 'PRESENT';
     const voters = (lot.voters ?? [])
       .map(voter => contactLabel(voter))
       .filter(label => label !== t('Non renseigné'))
@@ -245,7 +249,11 @@ export function buildAttendanceSheet(meeting: MeetingInput): AttendanceSheet {
       shares: lot.generalShares || 0,
       person,
       status: attendanceStatusLabel(status),
-      mode: counted ? attendanceModeLabel(row?.mode) : '-'
+      mode: !counted
+        ? '-'
+        : status === 'REPRESENTED'
+          ? attendanceModeLabel(row?.mode, row?.representedByName ?? '')
+          : attendanceModeLabel(row?.mode)
     };
   });
 
