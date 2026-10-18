@@ -79,3 +79,42 @@ describe('<ChargeCallTable> — fonds de copropriété', () => {
     expect(screen.queryByRole('button', { name: 'Affecter à un fonds' })).not.toBeInTheDocument();
   });
 });
+
+describe('<ChargeCallTable> — lien de paiement (spec 042)', () => {
+  it('propose « Lien de paiement » pour un appel à reste dû et appelle onPaymentLink avec l’appel', () => {
+    const onPaymentLink = vi.fn();
+    render(<ChargeCallTable items={[CHARGE]} onPaymentLink={onPaymentLink} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Lien de paiement/ }));
+
+    expect(onPaymentLink).toHaveBeenCalledWith(CHARGE);
+  });
+
+  it("n'affiche ni la colonne Actions ni le bouton sans callback", () => {
+    render(<ChargeCallTable items={[CHARGE]} />);
+    expect(screen.queryByRole('button', { name: /Lien de paiement/ })).not.toBeInTheDocument();
+  });
+
+  it('masque le bouton pour un appel soldé (statut ou reste nul)', () => {
+    const solde = { ...CHARGE, id: 'charge-2', status: 'PAID' } as ChargeCall;
+    const sansReste = { ...CHARGE, id: 'charge-3', paidAmount: 100000, outstandingAmount: 0 } as ChargeCall;
+    render(<ChargeCallTable items={[solde, sansReste]} onPaymentLink={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: /Lien de paiement/ })).not.toBeInTheDocument();
+  });
+
+  it('le propose pour un appel partiellement payé (reste dû > 0)', () => {
+    const partiel = { ...CHARGE, status: 'PARTIAL', paidAmount: 40000, outstandingAmount: 60000 } as ChargeCall;
+    render(<ChargeCallTable items={[partiel]} onPaymentLink={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: /Lien de paiement/ })).toBeInTheDocument();
+  });
+
+  it('le masque pour une devise que le paiement en ligne refuse', () => {
+    const euros = { ...CHARGE, currency: 'EUR' } as ChargeCall;
+    const fcfa = { ...CHARGE, id: 'charge-4', currency: 'FCFA' } as ChargeCall;
+    render(<ChargeCallTable items={[euros, fcfa]} onPaymentLink={vi.fn()} />);
+
+    expect(screen.getAllByRole('button', { name: /Lien de paiement/ })).toHaveLength(1);
+  });
+});

@@ -391,6 +391,16 @@ const SyndicOnlinePayments = lazy(() =>
     default: m.SyndicOnlinePayments
   }))
 );
+const SyndicDirectDebit = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicDirectDebit').then(m => ({
+    default: m.SyndicDirectDebit
+  }))
+);
+const SyndicDirectDebitRemittanceDetail = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicDirectDebitRemittanceDetail').then(m => ({
+    default: m.SyndicDirectDebitRemittanceDetail
+  }))
+);
 const SyndicMandatingAgencies = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicMandatingAgencies').then(m => ({
     default: m.SyndicMandatingAgencies
@@ -1021,6 +1031,14 @@ function App() {
                             <Route
                               path="/tenant/:tenantId/syndics/:syndicId/paiements-en-ligne"
                               element={<SyndicOnlinePayments />}
+                            />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/prelevements"
+                              element={<SyndicDirectDebit />}
+                            />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId"
+                              element={<SyndicDirectDebitRemittanceDetail />}
                             />
                             <Route
                               path="/tenant/:tenantId/syndics/:syndicId/comptabilite"

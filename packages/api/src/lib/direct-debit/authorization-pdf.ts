@@ -14,9 +14,10 @@ import {
 } from '../documents/document-branding';
 import { sanitizeForPdf } from '../documents/pdf-text';
 import { A4, formatAmount, wrapText } from '../syndics/charge-receipt-pdf';
-import { referenceOf, resolveDebtorNames } from './dto';
+import { contactDisplayName, referenceOf, resolveDebtorNames } from './dto';
 import { formatIbanGroups } from './iban';
 import { decryptMandateIban } from './mandates';
+import { RENTAL_CTX, auditScope, scopeWhere, type DirectDebitScopeCtx } from './syndic/scope';
 
 /**
  * PDF « Autorisation de prélèvement » prérempli (spec 042, PB3-R1).
@@ -39,6 +40,9 @@ export interface AuthorizationPdfData {
   bankCode: string;
   leaseNumber: string | null;
   propertyLabel: string | null;
+  /** Copropriété (SYNDIC_LOT) : syndicat et lot débités ; nuls pour un bail. */
+  syndicateName?: string | null;
+  lotNumber?: string | null;
   maxAmount: number | null;
   collectionDay: number;
   currency: string;
@@ -110,7 +114,9 @@ export async function renderAuthorizationPdf(data: AuthorizationPdfData, brandin
 
   y = drawSection(page, y, 'Débiteur (titulaire du compte à débiter)', fonts);
   y = drawRow(page, y, 'Titulaire du compte', data.holderName, fonts);
-  if (data.debtorName && data.debtorName !== data.holderName) y = drawRow(page, y, 'Locataire', data.debtorName, fonts);
+  if (data.debtorName && data.debtorName !== data.holderName) {
+    y = drawRow(page, y, data.lotNumber ? 'Copropriétaire' : 'Locataire', data.debtorName, fonts);
+  }
   y = drawRow(page, y, 'IBAN', formatIbanGroups(data.iban), fonts);
   y = drawRow(page, y, 'Code banque', data.bankCode, fonts);
   y -= 6;
@@ -118,6 +124,8 @@ export async function renderAuthorizationPdf(data: AuthorizationPdfData, brandin
   y = drawSection(page, y, 'Conditions du prélèvement', fonts);
   if (data.leaseNumber) y = drawRow(page, y, 'Bail', data.leaseNumber, fonts);
   if (data.propertyLabel) y = drawRow(page, y, 'Bien loué', data.propertyLabel, fonts);
+  if (data.syndicateName) y = drawRow(page, y, 'Copropriété', data.syndicateName, fonts);
+  if (data.lotNumber) y = drawRow(page, y, 'Lot', data.lotNumber, fonts);
   y = drawRow(page, y, 'Jour de prélèvement', `Le ${data.collectionDay} de chaque mois`, fonts);
   y = drawRow(
     page,
@@ -131,7 +139,7 @@ export async function renderAuthorizationPdf(data: AuthorizationPdfData, brandin
   y = drawParagraph(
     page,
     y,
-    `En signant ce formulaire, j'autorise ${data.creditorLabel} à envoyer des instructions à ma banque pour débiter mon compte, et ma banque à débiter mon compte conformément à ces instructions, au titre du loyer et des charges de mon bail. Je peux révoquer cette autorisation à tout moment en prévenant le créancier et ma banque par écrit. Je serai prévenu avant chaque prélèvement.`,
+    `En signant ce formulaire, j'autorise ${data.creditorLabel} à envoyer des instructions à ma banque pour débiter mon compte, et ma banque à débiter mon compte conformément à ces instructions, au titre ${data.lotNumber ? 'des appels de charges de copropriété de ce lot' : 'du loyer et des charges de mon bail'}. Je peux révoquer cette autorisation à tout moment en prévenant le créancier et ma banque par écrit. Je serai prévenu avant chaque prélèvement.`,
     fonts
   );
   y = drawParagraph(
@@ -194,10 +202,11 @@ export async function renderAuthorizationPdf(data: AuthorizationPdfData, brandin
 export async function generateAuthorizationPdf(
   tenantId: string,
   mandateId: string,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<{ buffer: Buffer; fileName: string }> {
   const row = await prisma.directDebitMandate.findFirst({
-    where: { id: mandateId, tenantId },
+    where: { id: mandateId, tenantId, ...scopeWhere(ctx) },
     select: {
       id: true,
       year: true,
@@ -218,7 +227,10 @@ export async function generateAuthorizationPdf(
         }
       },
       debtor: { select: { id: true, details: true, user: { select: { fullName: true } } } },
-      lease: { select: { lease_number: true, currency: true, property: { select: { title: true, address: true } } } }
+      lease: { select: { lease_number: true, currency: true, property: { select: { title: true, address: true } } } },
+      debtorContact: { select: { contactType: true, firstName: true, lastName: true, legalName: true } },
+      syndicate: { select: { name: true } },
+      lot: { select: { lotNumber: true } }
     }
   });
   if (!row) throw new NotFoundError(t('Mandat introuvable.'));
@@ -235,12 +247,18 @@ export async function generateAuthorizationPdf(
       creditorLabel: row.creditor.label,
       creditorIdentifier: row.creditor.creditorIdentifier ?? null,
       creditorBankName: row.creditor.treasuryAccount?.bankName ?? row.creditor.bankName ?? null,
-      debtorName: row.debtor ? (names.get(row.debtor.id) ?? null) : null,
+      debtorName: row.debtor
+        ? (names.get(row.debtor.id) ?? null)
+        : row.debtorContact
+          ? contactDisplayName(row.debtorContact)
+          : null,
       holderName: row.holderName,
       iban,
       bankCode: row.ibanBankCode,
       leaseNumber: row.lease?.lease_number ?? null,
       propertyLabel: property ? [property.title, property.address].filter(Boolean).join(' - ') : null,
+      syndicateName: row.syndicate?.name ?? null,
+      lotNumber: row.lot?.lotNumber ?? null,
       maxAmount: row.maxAmount === null ? null : Number(row.maxAmount),
       collectionDay: row.collectionDay ?? row.creditor.collectionDay,
       currency: row.lease?.currency ?? 'FCFA'
@@ -255,7 +273,7 @@ export async function generateAuthorizationPdf(
     actionKey: AuditActionKey.DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED,
     entityType: 'DirectDebitMandate',
     entityId: mandateId,
-    payload: { reference, bankCode: row.ibanBankCode, last4Digits: row.ibanLast4 }
+    payload: { ...auditScope(ctx), reference, bankCode: row.ibanBankCode, last4Digits: row.ibanLast4 }
   });
   return { buffer, fileName: authorizationFileName(reference) };
 }

@@ -39,6 +39,8 @@ export type {
 
 // Extended Contact with relationships
 export interface ContactDetail extends CrmContact {
+  /** Détail seulement : adresse masquée du compte portail si elle diffère de la fiche. */
+  portalAccountEmailNotice?: { maskedEmail: string } | null;
   roles?: CrmContactRole[];
   deals?: CrmDeal[];
   recentActivities?: CrmActivity[];

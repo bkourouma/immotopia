@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { maskIban } from './iban';
+import { RENTAL_CTX, scopeWhere, type DirectDebitScopeCtx } from './syndic/scope';
 
 /**
  * Objets renvoyés par l'API du prélèvement bancaire (data-model §4).
@@ -279,8 +280,16 @@ export function toMandateDto(row: MandateRow, debtorName: string | null): Mandat
 }
 
 /** Lit un mandat de l'agence et le met en forme ; `null` s'il n'existe pas dans cette agence. */
-export async function loadMandateDto(db: DbClient, tenantId: string, mandateId: string): Promise<MandateDto | null> {
-  const row = await db.directDebitMandate.findFirst({ where: { id: mandateId, tenantId }, select: MANDATE_SELECT });
+export async function loadMandateDto(
+  db: DbClient,
+  tenantId: string,
+  mandateId: string,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
+): Promise<MandateDto | null> {
+  const row = await db.directDebitMandate.findFirst({
+    where: { id: mandateId, tenantId, ...scopeWhere(ctx) },
+    select: MANDATE_SELECT
+  });
   if (!row) return null;
   const names = await resolveDebtorNames(db, tenantId, [row.debtor]);
   return toMandateDto(row, row.debtor ? (names.get(row.debtor.id) ?? null) : null);

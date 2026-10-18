@@ -58,10 +58,27 @@ class IdempotencyStore<T> {
     this.sweep();
     this.entries.set(this.buildKey(actorId, idempotencyKey), { value, expiresAt: Date.now() + this.ttlMs });
   }
+
+  /** Oublie la cle (ex. creation echouee : un reessai doit pouvoir recommencer). */
+  delete(actorId: string, idempotencyKey: string): void {
+    this.entries.delete(this.buildKey(actorId, idempotencyKey));
+  }
+
+  /** Pour les tests uniquement. */
+  clear(): void {
+    this.entries.clear();
+  }
 }
 
 /** Magasin dedie a la creation d'agence (F1). Un module = une instance = un seul magasin partage par tous les appels. */
 export const tenantProvisioningIdempotencyStore = new IdempotencyStore<unknown>();
+
+/**
+ * Magasin de la creation d'assemblee (POST .../assemblees). Stocke la PROMESSE de
+ * creation : un reessai qui arrive pendant que la premiere requete tourne encore
+ * attend le meme resultat au lieu de creer un doublon.
+ */
+export const meetingCreationIdempotencyStore = new IdempotencyStore<Promise<unknown>>();
 
 /** Longueur max de l'en-tete `Idempotency-Key` accepte (voir F2). */
 export const IDEMPOTENCY_KEY_MAX_LENGTH = 100;

@@ -56,6 +56,8 @@ import {
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+import { saveBlob } from '../../utils/save-blob';
+import { describeDownloadError } from '../../utils/download-error';
 
 const { Paragraph, Title, Text } = Typography;
 
@@ -273,18 +275,12 @@ export const SyndicMeetingDetail: React.FC = () => {
     if (!effectiveTenantId || !syndicId || !meetingId) return;
     setGeneratingMinutes(true);
     try {
-      const blob = await generateMeetingMinutesDocx(effectiveTenantId, syndicId, meetingId);
-      const url = window.URL.createObjectURL(new Blob([blob]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `compte-rendu-${meetingId}.docx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      message.success(t('Compte rendu généré'));
-    } catch (err: any) {
-      message.error(err.response?.data?.error || t('Génération du compte rendu impossible'));
+      const fallbackName = `compte-rendu-AG-${dayjs(meeting?.scheduledAt).format('YYYY-MM-DD')}.docx`;
+      const { blob, filename } = await generateMeetingMinutesDocx(effectiveTenantId, syndicId, meetingId, fallbackName);
+      saveBlob(blob, filename);
+      message.success(t('Compte rendu téléchargé : {{filename}}', { filename }));
+    } catch (err) {
+      message.error(await describeDownloadError(err));
     } finally {
       setGeneratingMinutes(false);
     }

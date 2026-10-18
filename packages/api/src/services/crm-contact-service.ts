@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { diffForAudit } from '../lib/audit/changes';
 import { CRM_ENTITY_TYPES } from '../types/audit-types';
+import { getPortalAccountEmailNotice } from '../lib/crm/portal-email-notice';
 import { CreateContactRequest, UpdateContactRequest, ContactFilters, ContactDetail } from '../types/crm-types';
 import { CrmContactStatus, MembershipStatus, Prisma } from '@prisma/client';
 import { autoInviteContactToWhatsappGroup } from './whatsapp-group-automation-service';
@@ -298,6 +299,14 @@ export async function getContactById(tenantId: string, contactId: string): Promi
       CrmContactTag: ct
     }))
   } as ContactDetail;
+
+  // Détail seulement (pas les listes) : prévient si les avis partent ailleurs que sur la fiche.
+  transformedContact.portalAccountEmailNotice = await getPortalAccountEmailNotice(
+    prisma as never,
+    tenantId,
+    contactId,
+    contact.email
+  );
 
   return transformedContact;
 }

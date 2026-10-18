@@ -18,17 +18,23 @@ export interface DebtorRecipient {
 const MASK = '•••';
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@.]+$/;
 
-/** `awa.gogoua@example.ci` -> `a•••@ex•••.ci` ; adresse invalide -> `•••`. */
+/**
+ * `awa.gogoua@example.ci` -> `a•••@ex•••.ci` ; adresse invalide -> `•••`.
+ * Une partie locale de moins de 3 caractères ou un domaine (sans l'extension) de moins de 4 ne laisse rien
+ * deviner : `ab@x.ci` -> `•••@•••.ci`.
+ */
 export function maskEmail(email: string | null | undefined): string {
   const value = (email ?? '').trim();
   if (!EMAIL_SHAPE.test(value)) return MASK;
   const at = value.lastIndexOf('@');
-  const local = value.slice(0, at);
+  const local = Array.from(value.slice(0, at));
   const domain = value.slice(at + 1);
   const dot = domain.lastIndexOf('.');
-  const host = domain.slice(0, dot);
+  const host = Array.from(domain.slice(0, dot));
   const extension = domain.slice(dot + 1);
-  return `${Array.from(local)[0]}${MASK}@${Array.from(host).slice(0, 2).join('')}${MASK}.${extension}`;
+  const maskedLocal = local.length < 3 ? MASK : `${local[0]}${MASK}`;
+  const maskedHost = host.length < 4 ? MASK : `${host.slice(0, 2).join('')}${MASK}`;
+  return `${maskedLocal}@${maskedHost}.${extension}`;
 }
 
 /**

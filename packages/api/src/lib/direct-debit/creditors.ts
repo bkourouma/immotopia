@@ -21,7 +21,7 @@ function isUniqueViolation(error: unknown): boolean {
 
 export async function listCreditors(tenantId: string): Promise<CreditorDto[]> {
   const rows = await prisma.directDebitCreditor.findMany({
-    where: { tenantId },
+    where: { tenantId, scope: 'RENTAL_LEASE' },
     select: CREDITOR_SELECT,
     orderBy: [{ isActive: 'desc' }, { label: 'asc' }]
   });
@@ -30,7 +30,7 @@ export async function listCreditors(tenantId: string): Promise<CreditorDto[]> {
 
 export async function getCreditor(tenantId: string, creditorId: string): Promise<CreditorDto> {
   const row = await prisma.directDebitCreditor.findFirst({
-    where: { id: creditorId, tenantId },
+    where: { id: creditorId, tenantId, scope: 'RENTAL_LEASE' },
     select: CREDITOR_SELECT
   });
   if (!row) throw notFoundCreditor();
@@ -108,7 +108,7 @@ export async function updateCreditor(
   actorUserId?: string | null
 ): Promise<CreditorDto> {
   const current = await prisma.directDebitCreditor.findFirst({
-    where: { id: creditorId, tenantId },
+    where: { id: creditorId, tenantId, scope: 'RENTAL_LEASE' },
     select: {
       label: true,
       creditorIdentifier: true,
@@ -137,7 +137,10 @@ export async function updateCreditor(
   set('isActive', input.isActive, current.isActive);
 
   if (Object.keys(data).length > 0) {
-    const result = await prisma.directDebitCreditor.updateMany({ where: { id: creditorId, tenantId }, data });
+    const result = await prisma.directDebitCreditor.updateMany({
+      where: { id: creditorId, tenantId, scope: 'RENTAL_LEASE' },
+      data
+    });
     if (result.count === 0) throw notFoundCreditor();
     logAuditEvent({
       actorUserId: actorUserId ?? null,

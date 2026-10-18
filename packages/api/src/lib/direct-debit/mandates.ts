@@ -5,6 +5,9 @@ import { logAuditEvent, recordAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { prisma } from '../../utils/database';
 import { assertBelongsToTenant } from '../../utils/tenant-ownership';
+import { logger } from '../../utils/logger';
+import { cancelOpenRequestsForTarget } from '../signature/cancel';
+import { auditScope, RENTAL_CTX, scopeWhere, type DirectDebitScopeCtx } from './syndic/scope';
 import { decryptIban, encryptIban, isIbanEncryptionAvailable } from './iban-crypto';
 import { nextSequenceTx } from '../sales/numbering';
 import {
@@ -21,7 +24,6 @@ import {
 import { parseIbanInput } from './iban';
 import { assertMandateScan, readMandateScan, removeMandateScan, storeMandateScan } from './mandate-files';
 import type {
-  ActivateMandateInput,
   CreateMandateInput,
   ListMandatesQuery,
   RevokeMandateInput,
@@ -93,7 +95,7 @@ export async function listMandates(
   tenantId: string,
   query: ListMandatesQuery
 ): Promise<{ items: MandateDto[]; total: number; page: number; pageSize: number }> {
-  const where: Prisma.DirectDebitMandateWhereInput = { tenantId };
+  const where: Prisma.DirectDebitMandateWhereInput = { tenantId, scope: 'RENTAL_LEASE' };
   if (query.leaseId) where.leaseId = query.leaseId;
   if (query.debtorClientId) where.debtorClientId = query.debtorClientId;
   if (query.creditorId) where.creditorId = query.creditorId;
@@ -135,8 +137,12 @@ export async function listMandates(
   };
 }
 
-export async function getMandate(tenantId: string, mandateId: string): Promise<MandateDto> {
-  const dto = await loadMandateDto(prisma, tenantId, mandateId);
+export async function getMandate(
+  tenantId: string,
+  mandateId: string,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
+): Promise<MandateDto> {
+  const dto = await loadMandateDto(prisma, tenantId, mandateId, ctx);
   if (!dto) throw notFoundMandate();
   return dto;
 }
@@ -162,7 +168,7 @@ export async function createMandate(
     try {
       createdId = await prisma.$transaction(async tx => {
         const creditor = await tx.directDebitCreditor.findFirst({
-          where: { id: input.creditorId, tenantId },
+          where: { id: input.creditorId, tenantId, scope: 'RENTAL_LEASE' },
           select: { id: true, isActive: true }
         });
         if (!creditor) throw new NotFoundError(t('Créancier introuvable.'));
@@ -268,10 +274,11 @@ export async function updateMandate(
   tenantId: string,
   mandateId: string,
   input: UpdateMandateInput,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<MandateDto> {
   const current = await prisma.directDebitMandate.findFirst({
-    where: { id: mandateId, tenantId },
+    where: { id: mandateId, tenantId, ...scopeWhere(ctx) },
     select: { status: true, maxAmount: true, collectionDay: true, notes: true }
   });
   if (!current) throw notFoundMandate();
@@ -302,7 +309,7 @@ export async function updateMandate(
 
   if (Object.keys(data).length > 0) {
     const result = await prisma.directDebitMandate.updateMany({
-      where: { id: mandateId, tenantId, status: { not: 'REVOKED' } },
+      where: { id: mandateId, tenantId, ...scopeWhere(ctx), status: { not: 'REVOKED' } },
       data
     });
     if (result.count === 0) throw new ConflictError(t('Un mandat révoqué ne peut plus être modifié.'));
@@ -312,11 +319,11 @@ export async function updateMandate(
       actionKey: AuditActionKey.DIRECT_DEBIT_MANDATE_UPDATED,
       entityType: 'DirectDebitMandate',
       entityId: mandateId,
-      payload: { fields: Object.keys(changes) },
+      payload: { ...auditScope(ctx), fields: Object.keys(changes) },
       changes
     });
   }
-  return getMandate(tenantId, mandateId);
+  return getMandate(tenantId, mandateId, ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -335,16 +342,25 @@ async function applyTransition(
   tenantId: string,
   mandateId: string,
   actorUserId: string | null | undefined,
-  plan: (current: { status: MandateStatus; signedScanUrl: string | null }) => TransitionPlan
+  plan: (current: { status: MandateStatus; signedScanUrl: string | null; signedAt: Date | null }) => TransitionPlan,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<MandateDto> {
   await prisma.$transaction(async tx => {
     const current = await tx.directDebitMandate.findFirst({
-      where: { id: mandateId, tenantId },
-      select: { status: true, year: true, sequence: true, ibanBankCode: true, ibanLast4: true, signedScanUrl: true }
+      where: { id: mandateId, tenantId, ...scopeWhere(ctx) },
+      select: {
+        status: true,
+        year: true,
+        sequence: true,
+        ibanBankCode: true,
+        ibanLast4: true,
+        signedScanUrl: true,
+        signedAt: true
+      }
     });
     if (!current) throw notFoundMandate();
 
-    const step = plan({ status: current.status, signedScanUrl: current.signedScanUrl });
+    const step = plan({ status: current.status, signedScanUrl: current.signedScanUrl, signedAt: current.signedAt });
     if (!step.from.includes(current.status)) {
       throw new ConflictError(
         t('Transition impossible : le mandat est {{status}}.', { status: statusLabel(current.status) })
@@ -353,7 +369,7 @@ async function applyTransition(
 
     // Garde de concurrence : la mise à jour ne réussit que si le statut lu n'a pas bougé.
     const result = await tx.directDebitMandate.updateMany({
-      where: { id: mandateId, tenantId, status: current.status },
+      where: { id: mandateId, tenantId, ...scopeWhere(ctx), status: current.status },
       data: { ...step.data, status: step.to }
     });
     if (result.count === 0) {
@@ -367,6 +383,7 @@ async function applyTransition(
       entityType: 'DirectDebitMandate',
       entityId: mandateId,
       payload: {
+        ...auditScope(ctx),
         reference: referenceOf(current.year, current.sequence),
         from: current.status,
         to: step.to,
@@ -376,28 +393,38 @@ async function applyTransition(
       }
     });
   });
-  return getMandate(tenantId, mandateId);
+  return getMandate(tenantId, mandateId, ctx);
 }
 
 /** DRAFT → ACTIVE : exige le scan signé déposé et la date de signature. */
 export function activateMandate(
   tenantId: string,
   mandateId: string,
-  input: ActivateMandateInput,
-  actorUserId?: string | null
+  input: { signedAt?: Date },
+  actorUserId?: string | null,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<MandateDto> {
-  return applyTransition(tenantId, mandateId, actorUserId, current => {
-    if (current.status === 'DRAFT' && !current.signedScanUrl) {
-      throw new BadRequestError(t("Déposez le scan de l'autorisation signée avant d'activer le mandat."));
-    }
-    return {
-      from: ['DRAFT'],
-      to: 'ACTIVE',
-      auditKey: AuditActionKey.DIRECT_DEBIT_MANDATE_ACTIVATED,
-      data: { signedAt: input.signedAt, activatedAt: new Date() },
-      payload: { signedAt: input.signedAt.toISOString() }
-    };
-  });
+  return applyTransition(
+    tenantId,
+    mandateId,
+    actorUserId,
+    current => {
+      if (current.status === 'DRAFT' && !current.signedScanUrl) {
+        throw new BadRequestError(t("Déposez le scan de l'autorisation signée avant d'activer le mandat."));
+      }
+      // Un mandat déjà daté (signature électronique, spec 042 §10) s'active sans redonner la date.
+      const signedAt = input.signedAt ?? current.signedAt;
+      if (!signedAt) throw new BadRequestError(t('Indiquez la date de signature du mandat.'));
+      return {
+        from: ['DRAFT'],
+        to: 'ACTIVE',
+        auditKey: AuditActionKey.DIRECT_DEBIT_MANDATE_ACTIVATED,
+        data: { ...(input.signedAt ? { signedAt: input.signedAt } : {}), activatedAt: new Date() },
+        payload: { signedAt: signedAt.toISOString() }
+      };
+    },
+    ctx
+  );
 }
 
 /** ACTIVE → SUSPENDED (motif obligatoire). */
@@ -405,46 +432,91 @@ export function suspendMandate(
   tenantId: string,
   mandateId: string,
   input: SuspendMandateInput,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<MandateDto> {
-  return applyTransition(tenantId, mandateId, actorUserId, () => ({
-    from: ['ACTIVE'],
-    to: 'SUSPENDED',
-    auditKey: AuditActionKey.DIRECT_DEBIT_MANDATE_SUSPENDED,
-    data: { suspendedAt: new Date(), suspensionReason: input.reason },
-    payload: { reason: input.reason }
-  }));
+  return applyTransition(
+    tenantId,
+    mandateId,
+    actorUserId,
+    () => ({
+      from: ['ACTIVE'],
+      to: 'SUSPENDED',
+      auditKey: AuditActionKey.DIRECT_DEBIT_MANDATE_SUSPENDED,
+      data: { suspendedAt: new Date(), suspensionReason: input.reason },
+      payload: { reason: input.reason }
+    }),
+    ctx
+  );
 }
 
 /** SUSPENDED → ACTIVE : le compteur de rejets repart de zéro. */
 export function reactivateMandate(
   tenantId: string,
   mandateId: string,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<MandateDto> {
-  return applyTransition(tenantId, mandateId, actorUserId, () => ({
-    from: ['SUSPENDED'],
-    to: 'ACTIVE',
-    auditKey: AuditActionKey.DIRECT_DEBIT_MANDATE_REACTIVATED,
-    data: { suspendedAt: null, suspensionReason: null, consecutiveRejects: 0 }
-  }));
+  return applyTransition(
+    tenantId,
+    mandateId,
+    actorUserId,
+    () => ({
+      from: ['SUSPENDED'],
+      to: 'ACTIVE',
+      auditKey: AuditActionKey.DIRECT_DEBIT_MANDATE_REACTIVATED,
+      data: { suspendedAt: null, suspensionReason: null, consecutiveRejects: 0 }
+    }),
+    ctx
+  );
 }
 
 /** DRAFT | ACTIVE | SUSPENDED → REVOKED : définitif, libère l'emplacement (bail, créancier). */
-export function revokeMandate(
+export async function revokeMandate(
   tenantId: string,
   mandateId: string,
   input: RevokeMandateInput,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<MandateDto> {
   const revokedAt = input.revokedAt ?? new Date();
-  return applyTransition(tenantId, mandateId, actorUserId, () => ({
-    from: [...OPEN_MANDATE_STATUSES],
-    to: 'REVOKED',
-    auditKey: AuditActionKey.DIRECT_DEBIT_MANDATE_REVOKED,
-    data: { revokedAt, revocationReason: input.reason, openSlotKey: null },
-    payload: { reason: input.reason, revokedAt: revokedAt.toISOString() }
-  }));
+  const revoked = await applyTransition(
+    tenantId,
+    mandateId,
+    actorUserId,
+    () => ({
+      from: [...OPEN_MANDATE_STATUSES],
+      to: 'REVOKED',
+      auditKey: AuditActionKey.DIRECT_DEBIT_MANDATE_REVOKED,
+      data: { revokedAt, revocationReason: input.reason, openSlotKey: null },
+      payload: { reason: input.reason, revokedAt: revokedAt.toISOString() }
+    }),
+    ctx
+  );
+  // Une demande de signature encore ouverte pour ce mandat n'a plus d'objet (spec 042 §10).
+  await cancelOpenSignatureRequests(tenantId, mandateId, actorUserId);
+  return revoked;
+}
+
+/**
+ * Annule toute demande de signature électronique ouverte pour le mandat. Hors
+ * transaction et au mieux : un échec est journalisé (sans donnée bancaire) et
+ * n'annule pas l'opération du mandat, déjà validée.
+ */
+async function cancelOpenSignatureRequests(
+  tenantId: string,
+  mandateId: string,
+  actorUserId?: string | null
+): Promise<void> {
+  try {
+    await cancelOpenRequestsForTarget({ tenantId, userId: actorUserId ?? null }, 'DIRECT_DEBIT_MANDATE', mandateId);
+  } catch (error) {
+    logger.warn('Mandat de prélèvement : demandes de signature non annulées', {
+      tenantId,
+      mandateId,
+      errorName: error instanceof Error ? error.name : 'UnknownError'
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -461,10 +533,11 @@ export async function uploadSignedScan(
   tenantId: string,
   mandateId: string,
   file: UploadedScan | undefined,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
 ): Promise<MandateDto> {
   const existing = await prisma.directDebitMandate.findFirst({
-    where: { id: mandateId, tenantId },
+    where: { id: mandateId, tenantId, ...scopeWhere(ctx) },
     select: { status: true }
   });
   if (!existing) throw notFoundMandate();
@@ -483,7 +556,7 @@ export async function uploadSignedScan(
   try {
     previousPath = await prisma.$transaction(async tx => {
       const current = await tx.directDebitMandate.findFirst({
-        where: { id: mandateId, tenantId },
+        where: { id: mandateId, tenantId, ...scopeWhere(ctx) },
         select: { status: true, year: true, sequence: true, signedScanUrl: true, ibanBankCode: true, ibanLast4: true }
       });
       if (!current) throw notFoundMandate();
@@ -496,7 +569,13 @@ export async function uploadSignedScan(
         );
       // Condition sur le scan lu : deux dépôts concurrents ne laissent pas de fichier orphelin.
       const result = await tx.directDebitMandate.updateMany({
-        where: { id: mandateId, tenantId, status: current.status, signedScanUrl: current.signedScanUrl },
+        where: {
+          id: mandateId,
+          tenantId,
+          ...scopeWhere(ctx),
+          status: current.status,
+          signedScanUrl: current.signedScanUrl
+        },
         data: { signedScanUrl: storedPath, signedScanUploadedAt: new Date() }
       });
       if (result.count === 0) {
@@ -509,6 +588,7 @@ export async function uploadSignedScan(
         entityType: 'DirectDebitMandate',
         entityId: mandateId,
         payload: {
+          ...auditScope(ctx),
           reference: referenceOf(current.year, current.sequence),
           bankCode: current.ibanBankCode,
           last4Digits: current.ibanLast4,
@@ -523,13 +603,19 @@ export async function uploadSignedScan(
   }
 
   if (previousPath) await removeMandateScan(tenantId, mandateId, previousPath);
-  return getMandate(tenantId, mandateId);
+  // Le scan déposé à la main remplace toute demande de signature électronique encore ouverte.
+  await cancelOpenSignatureRequests(tenantId, mandateId, actorUserId);
+  return getMandate(tenantId, mandateId, ctx);
 }
 
 /** Lit le scan d'un mandat de l'agence. Toute situation d'échec répond la même 404. */
-export async function getSignedScanFile(tenantId: string, mandateId: string): Promise<PrivateFile> {
+export async function getSignedScanFile(
+  tenantId: string,
+  mandateId: string,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
+): Promise<PrivateFile> {
   const row = await prisma.directDebitMandate.findFirst({
-    where: { id: mandateId, tenantId },
+    where: { id: mandateId, tenantId, ...scopeWhere(ctx) },
     select: { id: true, tenantId: true, year: true, sequence: true, signedScanUrl: true }
   });
   if (!row || !row.signedScanUrl) throw new NotFoundError(t('Scan signé introuvable.'));

@@ -371,6 +371,11 @@ export interface RemittanceLineDto {
   returnSource: ReturnSource | null;
   /** RentalPayment (P3) ou ChargePayment (P4). */
   paymentId: string | null;
+  /**
+   * Conséquences d'un rejet constaté maintenant (ligne PENDING ou SETTLED d'une
+   * remise EXPORTED/SUBMITTED) ; null ailleurs.
+   */
+  rejectionImpact: { fee: number; willSuspend: boolean } | null;
 }
 
 export interface PrenotificationSummaryDto {
@@ -440,10 +445,14 @@ export interface ReturnPreviewDto {
   records: ReturnRecordDto[];
   errors: { row: number; message: string }[];
   summary: { settle: number; reject: number; skip: number; errors: number };
+  /** Non nul quand ce fichier a déjà été importé. */
+  alreadyImported: { importId: string; importedAt: string } | null;
 }
 
 export interface ReturnApplyDto extends ReturnPreviewDto {
   importId: string;
+  /** Compteurs réels de l'application (`summary` reste celui de l'aperçu). */
+  appliedSummary: { settled: number; rejected: number; failed: number };
   results: { row: number; lineId: string; ok: boolean; error: string | null }[];
 }
 
@@ -599,5 +608,102 @@ export async function submitRemittance(tenantId: string, remittanceId: string): 
 
 export async function cancelRemittance(tenantId: string, remittanceId: string, reason: string): Promise<RemittanceDto> {
   const response = await apiClient.post(`${base(tenantId)}/remittances/${remittanceId}/cancel`, { reason });
+  return response.data.data;
+}
+
+// --- Retour banque : constats et import (spec 042 P3, data-model §8.7) -----------
+
+export interface SettleLineInput {
+  /** AAAA-MM-JJ, entre la date de prélèvement et aujourd'hui. */
+  settledAt: string;
+}
+
+export interface RejectLineInput {
+  /** AAAA-MM-JJ, entre la date de prélèvement et aujourd'hui. */
+  rejectedAt: string;
+  /** 1 à 20 caractères `[A-Za-z0-9_-]`. */
+  code?: string;
+  /** 1 à 500 caractères. Au moins un des deux, code ou motif. */
+  reason?: string;
+}
+
+export interface SettleAllResult {
+  remittance: RemittanceDto;
+  settled: number;
+  failed: { lineId: string; reference: string; error: string }[];
+}
+
+export interface ReturnImportListResult {
+  items: ReturnImportDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export async function settleRemittanceLine(
+  tenantId: string,
+  remittanceId: string,
+  lineId: string,
+  input: SettleLineInput
+): Promise<RemittanceDto> {
+  const response = await apiClient.post(`${base(tenantId)}/remittances/${remittanceId}/lines/${lineId}/settle`, input);
+  return response.data.data;
+}
+
+export async function rejectRemittanceLine(
+  tenantId: string,
+  remittanceId: string,
+  lineId: string,
+  input: RejectLineInput
+): Promise<RemittanceDto> {
+  const response = await apiClient.post(`${base(tenantId)}/remittances/${remittanceId}/lines/${lineId}/reject`, input);
+  return response.data.data;
+}
+
+export async function settleAllRemittanceLines(
+  tenantId: string,
+  remittanceId: string,
+  input: SettleLineInput
+): Promise<SettleAllResult> {
+  const response = await apiClient.post(`${base(tenantId)}/remittances/${remittanceId}/settle-all`, input);
+  return response.data.data;
+}
+
+function returnFileBody(file: File, format: ReturnFormat): FormData {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('format', format);
+  return formData;
+}
+
+/** Aperçu du rapprochement d'un fichier de retour : rien n'est écrit. */
+export async function previewReturnFile(
+  tenantId: string,
+  file: File,
+  format: ReturnFormat = 'GENERIC_CSV'
+): Promise<ReturnPreviewDto> {
+  const response = await apiClient.post(`${base(tenantId)}/returns/preview`, returnFileBody(file, format), {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data.data;
+}
+
+/** Applique le même fichier : relu, rapproché à nouveau, puis chaque constat. */
+export async function applyReturnFile(
+  tenantId: string,
+  file: File,
+  format: ReturnFormat = 'GENERIC_CSV'
+): Promise<ReturnApplyDto> {
+  const response = await apiClient.post(`${base(tenantId)}/returns/apply`, returnFileBody(file, format), {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data.data;
+}
+
+export async function listReturnImports(
+  tenantId: string,
+  params: { page?: number; pageSize?: number } = {}
+): Promise<ReturnImportListResult> {
+  const response = await apiClient.get(`${base(tenantId)}/returns`, { params });
   return response.data.data;
 }

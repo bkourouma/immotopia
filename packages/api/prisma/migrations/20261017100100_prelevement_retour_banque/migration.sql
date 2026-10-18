@@ -46,6 +46,9 @@ CREATE TABLE "direct_debit_return_imports" (
 CREATE INDEX "direct_debit_return_imports_tenant_id_created_at_idx" ON "direct_debit_return_imports"("tenant_id", "created_at");
 
 -- CreateIndex
+CREATE INDEX "direct_debit_return_imports_tenant_id_file_digest_idx" ON "direct_debit_return_imports"("tenant_id", "file_digest");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "direct_debit_remittance_lines_rental_payment_id_key" ON "direct_debit_remittance_lines"("rental_payment_id");
 
 -- CreateIndex

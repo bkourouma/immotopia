@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { requireDirectDebitManage, requireDirectDebitView } from '../middleware/rental-rbac-middleware';
 import { MANDATE_SCAN_MAX_BYTES } from '../lib/direct-debit/mandate-files';
+import { RETURN_FILE_MAX_BYTES } from '../lib/direct-debit/return-formats/types';
 import {
   activateMandateHandler,
   checkIbanHandler,
@@ -33,6 +34,14 @@ import {
   submitRemittanceHandler,
   validateRemittanceHandler
 } from '../controllers/direct-debit-remittance-controller';
+import {
+  applyReturnHandler,
+  listReturnImportsHandler,
+  previewReturnHandler,
+  rejectLineHandler,
+  settleAllHandler,
+  settleLineHandler
+} from '../controllers/direct-debit-return-controller';
 
 /**
  * Prélèvement bancaire : créanciers, mandats (spec 042, lot P1) et remises de loyers (lot P2).
@@ -57,6 +66,11 @@ const manage = [authenticate, requireTenantAccess, requireDirectDebitManage];
 const uploadScan = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MANDATE_SCAN_MAX_BYTES, files: 1 }
+});
+
+const uploadReturn = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: RETURN_FILE_MAX_BYTES, files: 1 }
 });
 
 const BASE = '/tenants/:tenantId/rental/direct-debit';
@@ -96,5 +110,14 @@ router.post(`${BASE}/remittances/:remittanceId/prenotifications`, ...manage, res
 router.post(`${BASE}/remittances/:remittanceId/export`, ...manage, exportRemittanceHandler);
 router.post(`${BASE}/remittances/:remittanceId/submit`, ...manage, submitRemittanceHandler);
 router.post(`${BASE}/remittances/:remittanceId/cancel`, ...manage, cancelRemittanceHandler);
+
+// Retour de la banque (lot P3) : constat ligne par ligne, de toute la remise, ou par fichier importé.
+router.post(`${BASE}/remittances/:remittanceId/lines/:lineId/settle`, ...manage, settleLineHandler);
+router.post(`${BASE}/remittances/:remittanceId/lines/:lineId/reject`, ...manage, rejectLineHandler);
+router.post(`${BASE}/remittances/:remittanceId/settle-all`, ...manage, settleAllHandler);
+// Le fichier de retour reste en mémoire (jamais stocké) ; seule son empreinte HMAC est gardée.
+router.post(`${BASE}/returns/preview`, ...manage, uploadReturn.single('file'), previewReturnHandler);
+router.post(`${BASE}/returns/apply`, ...manage, uploadReturn.single('file'), applyReturnHandler);
+router.get(`${BASE}/returns`, ...view, listReturnImportsHandler);
 
 export default router;

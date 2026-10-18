@@ -18,6 +18,57 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `feat/prelevement-p4-copropriete` — 2026-10-18
+
+**État :** lot P4 terminé côté code et documentation, à relire (PR empilée sur P3 = #166). Rien n'est commité par l'agent : le pilote commite.
+**Worktree :** `.claude/worktrees/agent-a8c45bf28b7afdbdf`.
+
+Fait (spec 042 P4, contrat `specs/042-prelevement-bancaire/data-model.md` §9) :
+
+- Typage de la fusion P3 dans P4 : le service de retour (`lib/direct-debit/returns/`) fonctionne pour `RENTAL_LEASE` et `SYNDIC_LOT` (filtre du syndicat sur remises et imports, ligne de l'encaisseur complète, `chargePaymentId` écrit au règlement, avis de rejet `SYNDIC_DIRECT_DEBIT_REJECTED`, nom du contact débiteur dans l'aperçu, `scope` dans l'historique des imports).
+- Écrans : détail complet d'une remise de copropriété et import d'un retour banque (aperçu, application, historique) ; le détail locatif a été extrait dans `components/rental/direct-debit/RemittanceDetailView.tsx` (commun aux deux périmètres, `pages/rental/DirectDebitRemittanceDetail.tsx` n'est plus qu'un habillage) ; `ReturnImportModal` et `ReturnImportsHistory` acceptent l'API d'un périmètre. Droits : `useSyndicDirectDebitRights` (VIEW lit, MANAGE écrit).
+- Service web `syndic-direct-debit-service.ts` : constats, tout régler, aperçu, application, historique.
+- Traductions en/ar ajoutées à la main dans `syndic.json` (15 textes) ; classeur : 26 lignes (1081 au total) ; `plan.md` : P4 fait.
+
+Reste à faire :
+
+- Recette navigateur de l'onglet Prélèvements (jamais ouvert dans un vrai navigateur) ; migrations P4 jamais appliquées sur une vraie base ; `npm run test:isolation` non lancé.
+- Les cartes « compte » et « mandats » de l'onglet ne masquent pas leurs boutons de gestion pour un profil en lecture seule (l'API répond 403) ; le détail de remise et la carte « remises » le font.
+- Un fichier de retour qui rejette une ligne déjà réglée en copropriété est rapproché comme `REJECT` puis échoue à l'application (message de l'API) : l'aperçu prévient, mais ne l'écarte pas (pas de raison d'écart dédiée dans le contrat).
+- P5 (portails) non commencé.
+
+Pièges :
+
+- Le rejet tardif n'existe pas en copropriété (aucune contre-passation d'un `ChargePayment`) : le bouton n'est pas proposé et l'API répond 409.
+- Les écrans de finances du syndic ne passent pas par React Query : après un constat, rien à invalider côté appels de charges (ils se relisent au montage).
+- Les tests vitest d'un fichier syndic prennent plus de 7 minutes quand la machine est chargée ; relancer seul le fichier avant de conclure à un échec.
+- Le correctif de typage portait sur le service de P3 : sa dérogation « le syndicat s'ajoutera avec la colonne de P4 » est tenue.
+
+## Branche `feat/prelevement-p3-retour-banque` — 2026-10-17
+
+**État :** prêt à relire — PR vers `main` ouverte par le pilote (premier des trois lots empilés : P3, puis P4 `feat/prelevement-p4-copropriete`, puis signature `feat/prelevement-signature-mandat`). Relectures de code et de sécurité faites, constats corrigés.
+**Dernier commit :** voir `git log` (fusion des correctifs de relecture, classeur et plan).
+**Worktree d'intégration :** `.claude/worktrees/amazing-brattain-ff3069`, `node_modules` PROPRE (`npm ci`, pas de jonction).
+
+Fait (spec 042 P3, contrat `specs/042-prelevement-bancaire/data-model.md` §8, dont §8.12) :
+
+- Retour banque : constat de règlement (encaissement `DIRECT_DEBIT` ventilé, quittance après commit), de rejet y compris tardif (contre-passation, quittance annulée, frais refacturés portés sur l'échéance et exclus de la part du propriétaire, suspension automatique au seuil, e-mail `DIRECT_DEBIT_REJECTED`), constat de toute la remise, import d'un fichier de retour `GENERIC_CSV` (aperçu puis application, historique, au plus 500 enregistrements actionnables et 50 remises, un import à la fois par agence).
+- Retours de recette du staging : mandats brouillons ou suspendus dans les non retenus (`MANDATE_NOT_ACTIVE`) et non retenus affichés en permanence sur un brouillon ; messages nommant le fichier téléchargé ; adresse masquée et provenance (compte portail ou fiche contact) de chaque avis ; note sur la fiche contact du CRM quand le compte portail a une autre adresse.
+- Classeur des fonctionnalités : 9 lignes (1031 au total) ; `plan.md` : P3 fait.
+
+Reste à faire :
+
+- Recette navigateur sur la démo (`packages/api/.env.demo` absent du checkout principal : `demo:sync` impossible tant que l'utilisateur ne l'a pas recréé).
+- Migrations `20261017100000_*` et `20261017100100_*` jamais appliquées sur une vraie base ; `test:isolation` non lancé.
+- Points ouverts : format réel de la banque pilote ; e-mail de règlement ; traitement de fond des gros imports ; un paiement fait seulement de frais de rejet ne crée pas de mouvement propriétaire (comme les pénalités).
+
+Pièges et décisions :
+
+- Méthode du 17/10 : contrats d'abord (data-model §8 à §10), échafaudage commun par le pilote, puis agents en worktrees isolés (`isolation: worktree`, chacun son `npm ci`) qui partent de la branche du lot par avance rapide ; le pilote commite dans chaque worktree d'agent (`EnterWorktree`) puis fusionne dans la branche du lot.
+- Ne pas changer de worktree (`EnterWorktree`) pendant qu'un sous-agent NON isolé travaille dans celui de la session : son shell est coupé.
+- La machine saturée (plusieurs `npm ci` et suites de tests en parallèle) fait échouer des suites jest « au démarrage » et des tests vitest par délai : relancer seules avant de conclure.
+- `git worktree remove` d'un worktree d'agent peut s'arrêter à mi-chemin (« Directory not empty ») : le dossier reste mais n'est plus enregistré ; le checkout principal n'est pas touché (les `node_modules` d'agents sont réels, sans jonction).
+
 ## Branche `docs/handoff-staging-deploiement` — 2026-10-16
 
 **État :** prêt à relire.
@@ -56,6 +107,26 @@ Pièges et décisions :
 
 - …
 ```
+
+## Branche `feat/syndic-visio-micro-camera` — 2026-10-17
+
+**État :** prêt à relire (PR empilée sur `fix/syndic-ag-direct-recette`, PR 163), non déployé. Migration Prisma `20261017120000_syndic_ag_media_moderation` à appliquer (`demo:sync --migrate`).
+
+**Fait :** les copropriétaires activent micro et caméra dans la visio de l'AG ; le gestionnaire coupe un micro/une caméra, interdit/autorise un participant ou tous (`mediaPolicy`, `mediaLockedAt`, droits décidés côté serveur à chaque jeton, rattrapage à la connexion par le webhook LiveKit `participant_joined`). Audit, avis d'enregistrement (convocation et bandeau), spec 045 §V16 datée du 2026-10-17. Audit sécurité : 1 point important corrigé (jeton ancien), 2 mineurs corrigés.
+
+**Reste :** rien vérifié avec un vrai LiveKit (mute, interdiction, ordre d'arrivée de `participant_joined`) ; vérifier que `participant_joined` est envoyé à l'URL de webhook LiveKit ; rendu RTL non vu ; traductions en/ar non relues ; classeur de fonctionnalités à compléter (micro/caméra, couper, interdire, interdire à tous, rattrapage à la connexion) ; pas de « couper tous les micros » en un geste.
+
+**Pièges :** jeton copropriétaire valable 600 s, non révocable : seule la règle serveur à l'arrivée le rattrape. Mêmes pièges d'i18n et de jest que la branche de la PR 163.
+
+## Branche `fix/crm-contact-commune` — 2026-10-17
+
+**État :** prêt à relire (PR vers `main`).
+
+**Fait :** `ContactForm` n'exige plus la commune qu'à la création ; une fiche existante sans commune (recette staging, contact « Awa Gogoua ») s'enregistre. La bascule vers l'onglet du premier champ fautif existait déjà dans `main` (`FIELD_TABS`, `handleFinishFailed`) : le staging n'avait vraisemblablement pas encore cette version. Test `contact-form-commune.test.tsx`. Aucune validation API de la commune (rien à changer côté serveur).
+
+**Reste :** redéployer le staging pour constater la correction ; classeur des fonctionnalités non modifié (aucune ligne ne décrit cette règle).
+
+**Pièges :** `tsc` web signale 7 erreurs préexistantes (livekit absent), sans lien.
 
 ## Branche `feat/syndic-ag-visio` — 2026-10-17
 
@@ -180,44 +251,40 @@ Relevés de recette du staging, 2026-10-16 (Claude dans Chrome, rapportés par l
 - Paiement mobile money d'un appel de charges (copropriété « Résidence Les Jacarandas », agence « Pack Syndic · 3 ans », mode Simulateur) réussi de bout en bout : reçu Q-2026-000093, statut « Payé », compte 5525 crédité.
 - Réglages du staging complétés le 2026-10-16 dans son fichier d'environnement (aucune valeur ici) : `SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`, clé `PAYMENT_SECRETS_KEY` propre au staging, SMTP configuré (vérifié). `SMS_PROVIDER` reste `disabled` : l'application Orange « ImmoTopia Staging » existe, mais Orange exige un nom d'expéditeur personnalisé approuvé (demande « IMMOTOPIA », à déposer par l'utilisateur) avant tout achat de forfait.
 
-## Branche `feat/syndic-paiement-mobile` — 2026-10-15
+## Branche `feat/syndic-lien-paiement-ui` — 2026-10-16
 
-**État :** PR brouillon https://github.com/bkourouma/immotopia/pull/132 (base `main`) (worktree `.claude/worktrees/syndic-paiement-mobile`, `node_modules` propre par `npm ci`, pas de jonction)
-**Dernier commit :** voir `git log` (poussé sur origin) — arrêt de session à ~90 % de la limite de 5 h, à la demande de l'utilisateur
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/150 (base `main`), CI à lire, à fusionner par l'utilisateur ; worktree `.claude/worktrees/brave-noether-f68511` (`node_modules` = jonctions vers le checkout principal : son client Prisma est plus ancien, ne pas lancer `prisma generate` ni le typecheck API ici)
+**Dernier commit :** voir `git log` (poussé sur origin).
 
-Paiement mobile money des appels de charges par les copropriétaires (spec `specs/042-syndic-paiement-mobile/`, contrat d'API dans `contracts.md`). Décisions de l'utilisateur : un compte PaySecureHub PAR COPROPRIÉTÉ, sans repli vers le compte du cabinet ; appels entiers seulement ; frais selon le `feesPaidBy` de l'agence ; lien « Payer cet appel » sans connexion dans les avis et relances.
+Suite de la PR #132 (paiement mobile des appels de charges par les copropriétaires, spec `specs/042-syndic-paiement-mobile/`), fusionnée et déployée sur le staging le 2026-10-16 ; paiement par le portail recetté avec succès.
 
-Fait (commité, tsc API et web à 0 erreur, tests ciblés verts) :
+Fait :
 
-- Spec et contrats ; schéma et 2 migrations (`SyndicPaymentGatewayConfig`, `SyndicOnlineCheckout`, idempotence de `ChargePayment`, portée `CHARGE_CALL_PAYMENT`).
-- `lib/payment-gateway/checkout-core.ts` (cœur commun, loyers inchangés).
-- Moteur `lib/syndics/online-payment/` (démarrage, rapprochement IPN/simulateur/tâche, REVIEW, décision ACCEPT/REJECT), encaissement au 5525 et reversements 5525 → 521.
-- API gestionnaire `/syndics/:id/paiement-en-ligne/*` et `/paiements-en-ligne/*` (configuration, test, solde, suivi, vérifier, trancher, reversements).
-- Lien « Payer cet appel » (M6 API) : routes publiques `/api/public/secure-links/charge-call-payment[/start|/status]`, routes gestionnaire du lien, résolveur branché dans avis et relances, événement `CHARGE_CALL_PAYMENT_LINK_SENT`.
-- Écrans : portail (bouton Payer, sélection, retour), onglet gestionnaire « Paiements en ligne », pages publiques `/payer-charges`.
-
-- API du portail (M3) : `/api/portal/copropriete/paiements-en-ligne[/disponibilite|/:codePaiement]`, champs `onlinePayable`, `onlineCheckout`, `syndicateId`, `onlineCheckoutCode` sur `GET /appels` ; écran : copropriété par `syndicateId`, « Reprendre le paiement », onglet Finances actif.
-
-Vérifié le 2026-10-15 : tsc API et web à 0 erreur ; jest 92 suites / 1463 tests verts (syndic, portail, paiement, inventaires) ; vitest portail, navigation, gestionnaire et pages publiques verts.
+- Lien « Payer cet appel » côté gestionnaire (`Syndic › Finances › Appels de charges`, colonne Actions) : `ChargeCallPaymentLinkModal` (copier avec URL montrée une fois, envoyer par e-mail ou WhatsApp, liste des liens, révoquer), hook `useSyndicOnlinePaymentUsable` (lit `usable` de la configuration), `canOfferChargePaymentLink` dans `ChargeCallTable`, câblage dans `SyndicCharges`. Droits : écriture `SYNDIC_EDIT` (après lecture des droits), liste `SYNDIC_VIEW`. Aucune route API modifiée.
+- Revue `security-auditor` du diff web : 0 critique, 0 important, 3 mineurs corrigés (champ de copie de repli retiré en `finally`, URL effacée au changement d'appel, fenêtre non fermable par le fond pendant que l'URL est visible).
+- Variables WhatsApp (`apps/web/src/constants/whatsapp-notification-variables.ts` ; le fichier côté API n'existe pas) pour `CHARGE_CALL_PAYMENT_LINK_SENT`, `CHARGE_CALL_ISSUED`, `CHARGE_CALL_REMINDER`.
+- `npm run i18n:extract` web et API, puis traductions en/ar (183 clés web par langue, 36 + 16 clés API par langue).
+- Classeur : 24 lignes ajoutées, 4 mises à jour, 3 notes, miroir régénéré (1015 lignes).
+- Recette du staging du 2026-10-17 (copropriété Les Jacarandas, appel P02, simulateur : « Solde insuffisant », « Annuler », « Payer » → ni ligne ni compteur « Annulé ») : **pas de défaut du moteur trouvé**. Le test `syndics.online-payment-simulator-sequence.test.ts` rejoue la séquence avec le vrai client simulateur : chaque essai sur une nouvelle tentative donne Échoué, Annulé, Payé, tous listés et comptés. Deux causes possibles côté recette, à départager par le code `IMS-…` de l'adresse de retour (`?paiement=`) après chaque clic : (1) « Annuler » cliqué sur la page périmée d'une tentative déjà close (bouton Précédent) : rien n'est enregistré, le retour affiche l'ancien statut ; (2) rapprochement en échec après « Annuler » (erreur avalée par le contrôleur, journal `Simulateur PaySecureHub (charges) : rapprochement en échec`) : la tentative reste en attente et le « Payer » suivant la reprend (R10). Amélioration possible, non faite : la page du simulateur d'une tentative close pourrait afficher son état au lieu des trois boutons.
+- Vérifié : tsc web 0 erreur, eslint 0 erreur, `check:architecture`, `wiki:check`, Vitest syndics / portail copropriétaire / pages publiques / i18n verts, Jest `i18n-*` API verts.
 
 Reste à faire :
 
-- Le GET de statut du portail ne revérifie pas le droit SYNDIC (voulu : un paiement lancé doit pouvoir se rapprocher) ; contrat §2 à aligner.
-- Web : variables `CHARGE_CALL_PAYMENT_LINK_SENT` dans `apps/web/src/constants/whatsapp-notification-variables.ts` ; boutons du lien « Payer cet appel » côté gestionnaire (service déjà prêt, route 1.10).
-- `npm run i18n:extract` dans `packages/api` ET `apps/web` (en une fois, aucun agent ne l'a lancé), puis traductions en/ar.
-- Classeur des fonctionnalités + `npm run wiki:export` (sous-fonctionnalités listées dans les rapports : configuration marchande par copropriété, paiement portail, lien, suivi/vérifier/trancher, reversements, événement de notification).
-- Mutualiser `isCurrentLotOwner` (dupliqué dans `notifications.ts` et `charge-call-link.ts`).
-- Rejouer les tests sur PostgreSQL réel (conteneur `immotopia-smm-test` : Docker était arrêté, tout a tourné sur doubles en mémoire ; verrous consultatifs et P2002 non prouvés), `npm run test:isolation`.
-- Audit `security-auditor` fait le 2026-10-15 : 0 critique, 0 haute ; la moyenne (double encaissement après la fenêtre de reprise) et 4 basses corrigées (succès sans montant → REVIEW, succès après expiration → REVIEW, simulateur coupé → plus de règlement, liens automatiques précédents révoqués). Reste la basse n° 4, à décider : reversements et décision REVIEW n'exigent que `SYNDIC_EDIT` ; `merchantId` et `apiKeyLast4` visibles avec `SYNDIC_VIEW`.
-- Relecture `code-reviewer` non faite ; recette démo au simulateur non faite ; sortir la PR #132 du brouillon après i18n, classeur et recette.
-- Changement de comportement à valider : un succès automatique dont les appels sont déjà soldés (paiement manuel entre-temps) passe en REVIEW `CALLS_UNAVAILABLE` au lieu d'être mis en avance ; le gestionnaire peut l'accepter (excédent en avance).
+- **Recette navigateur du lien gestionnaire au simulateur** (non faite : tests Vitest seulement) ; relecture `code-reviewer` non faite sur l'ensemble de la spec 042 ; rejouer les tests du module sur PostgreSQL réel (Docker était arrêté pour la PR #132), `npm run test:isolation`.
+- **Outil d'extraction i18n** : `apps/web/scripts/i18n-migrate.mjs` et `packages/api/scripts/i18n-extract.mjs` déplacent vers `*.orphans.json` les traductions utilisées via `t(variable)` (invisibles). Elles ont été restaurées à la main (47 clés web par langue, 36 clés API par langue) ; la prochaine extraction les déplacera de nouveau et le test de complétude refusera le fichier d'orphelins : corriger l'outil (garder toute entrée dont le texte figure encore dans `src`) avant la prochaine extraction.
+- Catalogues déjà fautifs dans `main` : `en/syndic.json` (37 valeurs en arabe), `en/common.json` (5), `en/documents.json` (1) ; la clé « Mode » vaut « Method » alors que `GatewayConfigCard` s'en sert pour Simulateur / Réel.
+- Route de disponibilité du paiement en ligne sans `merchantId`, `apiKeyLast4`, `lastTest` ni solde du 5525 (visibles avec `SYNDIC_VIEW` ; l'interface ne lit que `usable`) ; reversements et décision REVIEW n'exigent que `SYNDIC_EDIT` : basse n° 4 de l'audit de la PR #132, toujours à décider.
+- Le GET de statut du portail ne revérifie pas le droit SYNDIC (voulu : un paiement lancé doit pouvoir se rapprocher) ; contrat §2 à aligner. Exercice clos : `assertFiscalYearOpenTx` lève un 409, le contrat §0.2 / §1.7 dit 400 : corriger le contrat.
+- Mutualiser `isCurrentLotOwner` (dupliqué dans `notifications.ts` et `charge-call-link.ts`) ; `copyToClipboard` existe maintenant dans `utils/copy-to-clipboard.ts` et reste dupliqué dans `InstallmentPaymentLinkButton.tsx` et `OwnerStatementSecureLinks.tsx`.
+- Changement de comportement à valider : un succès automatique dont les appels sont déjà soldés passe en REVIEW `CALLS_UNAVAILABLE` au lieu d'être mis en avance ; le gestionnaire peut l'accepter (excédent en avance).
+- À trancher par l'utilisateur : WhatsApp `CHARGE_CALL_PAYMENT_LINK_SENT` actif par défaut (le lien de loyer est en opt-in) ; langue du libellé « Payer en ligne » ; numéro du reçu absent du statut public (§3.3) ; règle « lot revendu » ; `TENANT_SETTINGS_EDIT` exigé en plus de `SYNDIC_EDIT` pour la configuration (le rôle Gestionnaire ne la détient pas) ; deux copropriétés peuvent partager un compte marchand ; mode LIVE non validé (le montant BMI inclut-il les frais ? sinon REVIEW à tort).
 
-Pièges et décisions :
+Pièges :
 
 - Ne pas lancer `prisma format` : il réécrit ~600 lignes du schéma.
-- Exercice clos : `assertFiscalYearOpenTx` lève une `ConflictError` 409 (le contrat §0.2/§1.7 dit 400) : corriger le contrat.
+- Les tests de page Vitest (`SyndicCharges` complet) prennent 15 à 40 s chacun sur ce poste : `vi.setConfig({ testTimeout: 90_000 })` dans `SyndicChargesPaymentLink.test.tsx` ; un timeout seul ne prouve rien, relancer le fichier seul.
+- Dans l'outil Bash de cette session, un heredoc perd un antislash (`\` devient `\`) : écrire les scripts à expressions régulières avec l'outil d'écriture de fichier.
 - Pas de colonne `mode` sur `SyndicOnlineCheckout` : le mode affiché vient de la configuration actuelle.
-- À trancher par l'utilisateur : langue du libellé « Payer en ligne » dans les messages ; numéro du reçu absent du statut public (§3.3) ; WhatsApp `CHARGE_CALL_PAYMENT_LINK_SENT` activé par défaut (le lien loyer est en opt-in) ; règle « lot revendu » (copropriétaire de plus fort pourcentage, `ownedSince` > début de période) ; permission `TENANT_SETTINGS_EDIT` exigée en plus de `SYNDIC_EDIT` pour la configuration ; deux copropriétés peuvent partager un compte marchand ; mode LIVE non validé (le montant BMI inclut-il les frais ? sinon REVIEW à tort).
 
 ## Branche `ci/deploiement-continu-staging` — 2026-10-16
 
@@ -244,57 +311,6 @@ Pièges :
 - Un essai manuel sur le serveur (checkout hors `origin/main`) bloque le déploiement CI : c'est voulu.
 - Un changement de `ci-deploy.sh` ne s'applique qu'au déploiement suivant.
 - Python lancé par heredoc depuis Git Bash lit le texte en cp1252 : pour une retouche de texte accentué, passer par l'outil d'édition.
-
-## Branche `feat/prelevement-p2-remises` — 2026-10-17
-
-**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/155 (base `fix/prelevement-cle-iban`, empilée sur la PR 153). Recette navigateur NON faite (démo indisponible, voir pièges).
-**Dernier commit :** voir `git log` (fusion de `fix/prelevement-cle-iban` à jour de `main`, migrations renommées en `20261017090000_*` et `20261017090100_*`).
-**Worktree :** `.claude/worktrees/prelevement-p2`, `node_modules` PROPRE (`npm ci`), client Prisma propre.
-
-Fait (lot P2 de la spec 042, contrat `specs/042-prelevement-bancaire/data-model.md` §7) :
-
-- Remises `PRL-AAAA-NNNN` par créancier et date de prélèvement : sélection D6 (mandats actifs dont le jour de collecte est atteint, reste dû de l'échéance du mois hors pénalités, plafonné), une échéance dans une seule ligne non annulée (unicité `(tenantId, activeKey)`), actualisation, retrait de ligne, validation humaine (date limite de prénotification D7 en jours ouvrés, figée), avis de prélèvement par e-mail en arrière-plan sous verrou (`DIRECT_DEBIT_PRENOTIFICATION`, rattachée à RENTAL), fichier `GENERIC_CSV` (IBAN déchiffré à l'export seulement, audit avant l'envoi, empreinte HMAC), « déposée à la banque », annulation.
-- `DIRECT_DEBIT` ajouté à `RentalPaymentMethod` (libellés API et écrans, compte `BANK`, absent des saisies manuelles).
-- Écrans : onglets Mandats / Remises de Location › Prélèvements, liste, préparation, détail (actions par statut, avertissements d'annulation et de production, résumé des avis relu pendant l'envoi).
-- Relectures `code-reviewer` et `security-auditor` faites, constats corrigés (`fee1dbf0`). Classeur des fonctionnalités : 10 lignes (1022 lignes au total). `plan.md` : P1 et P2 « fait ».
-
-Reste à faire :
-
-- Recette navigateur sur la démo (spec P2) dès que `packages/api/.env.demo` existe : préparer, actualiser, retirer, valider, produire le fichier, déposer, annuler ; IBAN absent des réponses ; arabe.
-- Migrations jamais appliquées sur une vraie base (pas de base dédiée dans le worktree) ; `npm run test:isolation` non lancé.
-- Format réel de la banque pilote (nouvel adaptateur, après réception des pièces de la spec §2) ; avis par WhatsApp/SMS et avis d'annulation (P5) ; jours fériés ; P3 (retour banque).
-
-Pièges et décisions :
-
-- Une échéance ne figure que dans UNE ligne non annulée, quel que soit le mandat (ADR-007 §6), plus strict que « (mandat, échéance) » du plan.
-- `npm run i18n:extract` ramène des centaines de lignes d'autres branches et des `*.orphans.json` : n'ajouter que ses clés.
-- Après un agent qui passe prettier, des fichiers n'ont que des fins de ligne différentes : leur remettre les fins de ligne de `HEAD` plutôt que de les commiter.
-
-## Branche `fix/prelevement-cle-iban` — 2026-10-17
-
-**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/153 (base `main`), `main` fusionné le 2026-10-17. Fusion à faire par l'utilisateur.
-**Dernier commit :** `c89414ae` (fusion de `main`), après `4fb78828` (correctifs de l'audit de sécurité).
-**Worktree :** `.claude/worktrees/amazing-brattain-ff3069`, `node_modules` PROPRE (`npm ci`, pas de jonction).
-
-Fait :
-
-- IBAN des mandats chiffrés avec une clé DÉDIÉE `DIRECT_DEBIT_IBAN_KEY` (`lib/direct-debit/iban-crypto.ts`, format `ddk1:<id de clé>:…`, id de clé en données associées, balise GCM de 16 octets imposée), trousseau `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` pour la rotation, lecture héritée des valeurs `pg1` (`PAYMENT_SECRETS_KEY`). Démarrage refusé si la clé est mal formée, faible ou égale à `PAYMENT_SECRETS_KEY`.
-- Script idempotent `dist/scripts/reencrypt-direct-debit-ibans.js [--dry-run]` (codes 0 / 2 illisibles / 3 à relancer / 1 erreur).
-- `make-env.sh` génère la clé ; `deploy.sh` contrôle forme, doublons, `REMPLACER`, égalité avec `PAYMENT_SECRETS_KEY`, trousseau prod face au staging, refuse `set -x`.
-- DEPLOIEMENT.md (section « Clé dédiée aux IBAN », encadré « Staging — commandes à lancer par l'utilisateur »), SECURITY.md, ADR-007, spec PB2-R4, `setup-dev-env.ps1`.
-- `security-auditor` : 0 critique, 0 élevée ; la moyenne et les faibles corrigées, sauf le lien chiffré ↔ mandat (`ddk2`), documenté comme hors modèle de menace.
-
-Reste à faire :
-
-- L'utilisateur, sur le serveur : poser `DIRECT_DEBIT_IBAN_KEY` dans `/home/deployer/immotopia-saas.env` (commandes de DEPLOIEMENT.md, aucune n'affiche la clé), sauvegarder le fichier hors serveur, puis, après déploiement de la PR, lancer le script en `--dry-run` puis réel. Tant que la clé manque, la création de mandats est refusée sur le staging.
-- Points ouverts hérités de P1 : borne basse de `signedAt`/`revokedAt` ; « Nouveau mandat » désactivé dès qu'un mandat ouvert existe sur le bail ; non joués à la recette P1 : modification d'un mandat, plafond, jour de collecte propre, rôle sans MANAGE, `test:isolation`.
-
-Pièges et décisions :
-
-- `packages/api/.env.demo` a disparu du checkout principal : `npm run demo:sync` refuse de tourner sans lui (base DÉDIÉE `immotopia_demo`) ; à recréer par l'utilisateur avant toute recette sur la démo.
-- Le hook `validate-bash.sh` bloque toute commande qui contient à la fois « push » et « main » : pousser et lancer `gh pr create --base main` séparément.
-- Contrôle d'empreintes entre deux variables : hacher la VALEUR (`cut -d= -f2-`), pas la ligne, sinon les noms rendent toujours les empreintes différentes.
-- Un pilote qui change de worktree avec `EnterWorktree` coupe le shell des sous-agents encore actifs dans l'ancien : attendre leur fin avant de basculer.
 
 ## Branche `feat/pwa-mobile` — 2026-10-15
 

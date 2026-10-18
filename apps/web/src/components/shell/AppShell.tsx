@@ -18,7 +18,13 @@ import { particulierNavigation } from '../../navigation/particulier';
 import { useTenantType } from '../../hooks/useTenantType';
 import { useCopilotStatus } from '../../hooks/useCopilotStatus';
 import { withAssistantMenu, withOwnerPatrimoineMenu } from '../../navigation/owner-patrimoine-menu';
-import { contextFromPath, lastSyndicKey, portalRedirect, resolvePersona } from '../../navigation/resolve';
+import {
+  contextFromPath,
+  isSyndicIdSegment,
+  lastSyndicKey,
+  portalRedirect,
+  resolvePersona
+} from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
 import { ownerPortalPatrimoineService } from '../../services/owner-portal-patrimoine-service';
 import { AccountNotLinked } from '../primitives/AccountNotLinked';
@@ -100,6 +106,8 @@ export const AppShell: React.FC = () => {
         // sur la liste, ce qui reste utilisable.
         syndicId = null;
       }
+      // Une valeur mémorisée par une version antérieure peut être un segment réservé.
+      if (!isSyndicIdSegment(syndicId)) syndicId = null;
     }
     return { tenantId, syndicId };
   }, [location.pathname, tenantMembership?.tenantId]);

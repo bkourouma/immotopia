@@ -4428,6 +4428,8 @@ model GeneralMeeting {
   videoConferenceUrl String?       @map("video_conference_url")
   /// Discussion écrite de la visio fermée par le gestionnaire (spec 046, M5).
   chatClosedAt DateTime?     @map("chat_closed_at")
+  /// Micro et caméra interdits à tous les copropriétaires de la visio par le gestionnaire (spec 045, V16).
+  mediaLockedAt DateTime?    @map("media_locked_at")
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
@@ -4537,6 +4539,13 @@ enum GMAttendanceRecorder {
 }
 
 /// Contact invite a une AG (porteur des liens personnels, spec 043). Un par contact et par AG.
+/// DEFAULT suit l'interdiction globale de l'AG, ALLOWED l'outrepasse (parole donnée), BLOCKED l'emporte toujours.
+enum GMMediaPolicy {
+  DEFAULT
+  ALLOWED
+  BLOCKED
+}
+
 model GMParticipant {
   id         String    @id @default(uuid()) @db.Uuid
   tenantId   String    @map("tenant_id")
@@ -4546,6 +4555,8 @@ model GMParticipant {
   lastSeenAt DateTime? @map("last_seen_at")
   /// Écriture coupée dans la discussion de la visio par le gestionnaire (spec 046, M6).
   chatMutedAt DateTime? @map("chat_muted_at")
+  /// Droit de publier micro et caméra dans la visio, décidé par le gestionnaire (spec 045, V16).
+  mediaPolicy GMMediaPolicy @default(DEFAULT) @map("media_policy")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
@@ -10874,5 +10885,6 @@ model DirectDebitReturnImport {
   lines     DirectDebitRemittanceLine[]
 
   @@index([tenantId, createdAt])
+  @@index([tenantId, fileDigest])
   @@map("direct_debit_return_imports")
 }

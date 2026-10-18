@@ -318,6 +318,7 @@ function resetState() {
     {
       id: CREDITOR,
       tenantId: TENANT,
+      scope: 'RENTAL_LEASE',
       label: 'Compte loyers',
       creditorIdentifier: 'CI-EMET-001',
       isActive: true,

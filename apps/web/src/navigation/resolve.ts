@@ -93,10 +93,23 @@ export function resolvePersona(input: {
   return 'non-rattache';
 }
 
+/**
+ * Segments de `/tenant/:t/syndics/<segment>` qui sont des écrans de la liste et
+ * non un identifiant de copropriété (ex. « Agences mandantes »).
+ */
+export const RESERVED_SYNDIC_SEGMENTS = ['mandants'] as const;
+
+/** Le segment peut-il être l'identifiant d'une copropriété ? */
+export function isSyndicIdSegment(segment: string | null | undefined): segment is string {
+  return !!segment && !(RESERVED_SYNDIC_SEGMENTS as readonly string[]).includes(segment);
+}
+
 /** Extrait `tenantId` et `syndicId` d'un chemin de route, s'ils s'y trouvent. */
 export function contextFromPath(pathname: string): NavContext {
   const syndic = pathname.match(/^\/tenant\/([^/]+)\/syndics\/([^/]+)/);
-  if (syndic) return { tenantId: syndic[1], syndicId: syndic[2] };
+  if (syndic) {
+    return isSyndicIdSegment(syndic[2]) ? { tenantId: syndic[1], syndicId: syndic[2] } : { tenantId: syndic[1] };
+  }
 
   const tenant = pathname.match(/^\/tenant\/([^/]+)\//);
   if (tenant) return { tenantId: tenant[1] };

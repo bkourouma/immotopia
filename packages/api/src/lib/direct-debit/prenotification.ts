@@ -9,6 +9,7 @@ import { withExclusiveSection } from '../ai/advisory-lock';
 import { formatFrenchDate } from './business-days';
 import { resolveDebtorNames } from './dto';
 import { maskIban } from './iban';
+import { maskEmail, resolveDebtorRecipients } from './recipient';
 import { mandateReferenceOf, remittanceReferenceOf, type PrenotificationStatus } from './remittance-dto';
 
 /**
@@ -43,34 +44,6 @@ const SECTION_OPTIONS = { maxWaitMs: 10_000, timeoutMs: 15 * 60_000 };
 const amountLabel = (amount: number) => `${new Intl.NumberFormat('fr-FR').format(amount)} FCFA`;
 const errorNameOf = (error: unknown) => (error instanceof Error ? error.name : 'UnknownError');
 
-/** E-mail du débiteur : le compte utilisateur, sinon le contact CRM de l'agence. Jamais renvoyé. */
-async function resolveEmails(
-  tenantId: string,
-  debtors: Array<{ id: string; details: unknown; user: { email: string | null } | null }>
-): Promise<Map<string, string | null>> {
-  const emails = new Map<string, string | null>();
-  const missing: Array<{ id: string; contactId: string }> = [];
-  for (const debtor of debtors) {
-    const own = debtor.user?.email?.trim();
-    if (own) {
-      emails.set(debtor.id, own);
-      continue;
-    }
-    emails.set(debtor.id, null);
-    const contactId = (debtor.details as { crmContactId?: unknown } | null)?.crmContactId;
-    if (typeof contactId === 'string' && contactId) missing.push({ id: debtor.id, contactId });
-  }
-  if (missing.length > 0) {
-    const contacts = await prisma.crmContact.findMany({
-      where: { id: { in: [...new Set(missing.map(entry => entry.contactId))] }, tenantId },
-      select: { id: true, email: true }
-    });
-    const byId = new Map(contacts.map(contact => [contact.id, contact.email?.trim() || null]));
-    for (const entry of missing) emails.set(entry.id, byId.get(entry.contactId) ?? null);
-  }
-  return emails;
-}
-
 function loadPendingLines(tenantId: string, remittanceId: string) {
   return prisma.directDebitRemittanceLine.findMany({
     where: { tenantId, remittanceId, status: 'PENDING', prenotificationStatus: { not: 'SENT' } },
@@ -80,7 +53,7 @@ function loadPendingLines(tenantId: string, remittanceId: string) {
       mandate: { select: { year: true, sequence: true, ibanLast4: true } },
       lease: { select: { lease_number: true } },
       installment: { select: { period_year: true, period_month: true } },
-      debtor: { select: { id: true, details: true, user: { select: { fullName: true, email: true } } } }
+      debtor: { select: { id: true, details: true, user: { select: { fullName: true } } } }
     }
   });
 }
@@ -129,9 +102,14 @@ async function runPrenotifications(
   const debtors = lines
     .map(line => line.debtor)
     .filter((debtor): debtor is NonNullable<typeof debtor> => debtor !== null);
-  const [names, emails] = await Promise.all([
+  // Même règle qu'à l'affichage (recipient.ts) : compte portail d'abord, puis fiche contact CRM.
+  const [names, recipients] = await Promise.all([
     resolveDebtorNames(prisma, tenantId, debtors),
-    resolveEmails(tenantId, debtors)
+    resolveDebtorRecipients(
+      prisma,
+      tenantId,
+      debtors.map(debtor => debtor.id)
+    )
   ]);
 
   let config: Awaited<ReturnType<typeof getEmailNotificationConfig>> | null = null;
@@ -146,6 +124,9 @@ async function runPrenotifications(
 
   const processLine = async (line: PendingLine): Promise<void> => {
     let status: PrenotificationStatus = 'FAILED';
+    const recipient = line.debtor ? (recipients.get(line.debtor.id) ?? null) : null;
+    // Vrai dès qu'un envoi est tenté : l'adresse (masquée) est alors gardée sur la ligne, réussi ou non.
+    let attempted = false;
     try {
       const { debtor, installment, lease } = line;
       if (!debtor || !installment || !lease) {
@@ -157,12 +138,12 @@ async function runPrenotifications(
       } else if (!config.enabled) {
         status = 'DISABLED';
       } else {
-        const to = emails.get(debtor.id);
-        if (!to) {
+        if (!recipient) {
           status = 'NO_EMAIL';
         } else {
+          attempted = true;
           await emailService.sendDirectDebitPrenotification(
-            to,
+            recipient.email,
             {
               debtorName: names.get(debtor.id) ?? t('Locataire'),
               agencyName: remittance.tenant?.name ?? t('Votre agence'),
@@ -204,7 +185,17 @@ async function runPrenotifications(
     try {
       await prisma.directDebitRemittanceLine.updateMany({
         where: { id: line.id, tenantId, remittanceId, status: 'PENDING' },
-        data: { prenotificationStatus: status, prenotifiedAt: status === 'SENT' ? new Date() : null }
+        data: {
+          prenotificationStatus: status,
+          prenotifiedAt: status === 'SENT' ? new Date() : null,
+          // Jamais l'adresse complète en base : seulement le masque et sa provenance.
+          ...(attempted && recipient
+            ? {
+                prenotificationRecipientMasked: maskEmail(recipient.email),
+                prenotificationRecipientSource: recipient.source
+              }
+            : {})
+        }
       });
     } catch (error) {
       logger.warn('Prénotification de prélèvement : statut non enregistré', {

@@ -8,6 +8,7 @@ import {
   BankOutlined,
   CalendarOutlined,
   ClockCircleOutlined,
+  CreditCardOutlined,
   FolderOutlined,
   IdcardOutlined,
   MobileOutlined,
@@ -90,6 +91,12 @@ function buildTabs(family: SyndicWorkspaceFamily, tenantId: string, syndicId: st
           label: t('Paiements en ligne'),
           href: `${base}/paiements-en-ligne`,
           icon: <MobileOutlined />
+        },
+        {
+          key: 'prelevements',
+          label: t('Prélèvements'),
+          href: `${base}/prelevements`,
+          icon: <CreditCardOutlined />
         },
         {
           key: 'comptabilite',
