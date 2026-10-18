@@ -26,7 +26,9 @@
         en: ["You are offline", "ImmoTopia needs a connection to show your data. Check your network and try again.", "Try again"],
         ar: ["أنت غير متصل بالإنترنت", "يحتاج ImmoTopia إلى اتصال لعرض بياناتك. تحقق من الشبكة ثم أعد المحاولة.", "إعادة المحاولة"]
       };
-      var code = (navigator.language || "fr").slice(0, 2);
+      var stored = null;
+      try { stored = localStorage.getItem("immotopia.language"); } catch (e) {}
+      var code = (stored || navigator.language || "fr").slice(0, 2);
       if (L[code]) {
         document.documentElement.lang = code;
         if (code === "ar") document.documentElement.dir = "rtl";

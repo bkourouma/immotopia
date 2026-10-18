@@ -116,7 +116,9 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
         <Space size="large">
           <Space size="small">
             <FolderOpenOutlined />
-            <Text>{lotCount} lots</Text>
+            <Text>
+              {lotCount} {t('lots')}
+            </Text>
           </Space>
           <Space size="small">
             <BankOutlined />
