@@ -207,8 +207,9 @@ export async function getChargeCallNoticeForCoOwner(
 ): Promise<PrivateFile> {
   if (scope.lotIds.length === 0) throw new NotFoundError('Appel de charges introuvable.');
   const call = await prisma.chargeCall.findFirst({
-    // Périmètre S5 : seuls les appels postérieurs à l'acquisition du lot
-    // (`ownedSince`) ; ceux de l'ancien propriétaire répondent le même 404.
+    // Périmètre S5 : si le lot a changé de propriétaire (`visibleSince`), seuls les
+    // appels postérieurs à l'acquisition ; ceux de l'ancien propriétaire répondent
+    // le même 404. Sans autre propriétaire avant, aucune borne.
     where: { id: chargeCallId, amount: { gt: 0 }, ...ownedChargeCallsWhere(scope, scope.lotIds) },
     select: NOTICE_CALL_SELECT
   });

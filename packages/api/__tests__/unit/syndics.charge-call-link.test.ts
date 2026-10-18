@@ -254,6 +254,56 @@ describe('lot revendu (R27)', () => {
     expect(db.store.checkouts).toHaveLength(0);
   });
 
+  it('changement de propriétaire (ancien jusqu’au 30/06, nouveau depuis le 01/07) : appel de mai refusé, appel de juillet accepté', async () => {
+    const { token } = await openLink();
+    // Ancien propriétaire désactivé : sa fiche compte quand même pour l'historique.
+    db.addOwnerProfile({
+      contactId: 'contact-ancien',
+      ownedUntil: new Date('2026-06-30T00:00:00.000Z'),
+      isActive: false
+    });
+    db.addOwnerProfile({ contactId: IDS.AWA, ownedSince: new Date('2026-07-01T00:00:00.000Z') });
+    const call = db.store.calls.find(row => row.id === IDS.C1)!;
+
+    call.dueDate = new Date('2026-05-10T00:00:00.000Z');
+    await expectUniform404(getChargeCallPaymentByToken(token, VISITOR));
+
+    call.dueDate = new Date('2026-07-10T00:00:00.000Z');
+    await expect(getChargeCallPaymentByToken(token, VISITOR)).resolves.toMatchObject({ amountDue: 30000 });
+  });
+
+  it('propriétaire unique, profil créé aujourd’hui, appel de janvier : lien accepté (pas d’OWNER_CHANGED)', async () => {
+    const { token } = await openLink();
+    db.addOwnerProfile({ contactId: IDS.AWA, ownedSince: new Date('2026-10-18T00:00:00.000Z') });
+    db.store.calls.find(row => row.id === IDS.C1)!.dueDate = new Date('2026-01-10T00:00:00.000Z');
+
+    await expect(getChargeCallPaymentByToken(token, VISITOR)).resolves.toMatchObject({ amountDue: 30000 });
+    await startChargeCallPaymentByToken(token, VISITOR);
+    expect(db.store.checkouts[0].contactId).toBe(IDS.AWA);
+  });
+
+  it('indivision : deux contacts propriétaires en même temps (l’un depuis 2020, l’autre depuis aujourd’hui) : aucun OWNER_CHANGED', async () => {
+    const { token } = await openLink();
+    db.addOwnerProfile({ contactId: 'contact-depuis-2020', ownershipPercentage: 50 });
+    db.addOwnerProfile({
+      contactId: IDS.AWA,
+      ownershipPercentage: 50,
+      ownedSince: new Date('2026-10-18T00:00:00.000Z')
+    });
+    db.store.calls.find(row => row.id === IDS.C1)!.dueDate = new Date('2026-01-10T00:00:00.000Z');
+
+    await expect(getChargeCallPaymentByToken(token, VISITOR)).resolves.toMatchObject({ amountDue: 30000 });
+  });
+
+  it('un autre propriétaire commencé le même jour n’est pas un ancien propriétaire (jour UTC)', async () => {
+    const { token } = await openLink();
+    db.addOwnerProfile({ contactId: 'contact-coindivisaire', ownedSince: new Date('2026-10-18T18:00:00.000Z') });
+    db.addOwnerProfile({ contactId: IDS.AWA, ownedSince: new Date('2026-10-18T00:00:00.000Z') });
+    db.store.calls.find(row => row.id === IDS.C1)!.dueDate = new Date('2026-01-10T00:00:00.000Z');
+
+    await expect(getChargeCallPaymentByToken(token, VISITOR)).resolves.toBeDefined();
+  });
+
   it('le copropriétaire actuel l’est depuis avant l’appel : payable, et il est le payeur', async () => {
     const { token } = await openLink();
     db.addOwnerProfile({ contactId: IDS.AWA, ownedSince: new Date('2025-06-01T00:00:00.000Z') });
@@ -266,12 +316,13 @@ describe('lot revendu (R27)', () => {
   it('la période de l’appel (periodStart) prime sur l’échéance', async () => {
     const { token } = await openLink();
     db.store.calls.find(call => call.id === IDS.C1)!.periodStart = new Date('2026-07-01T00:00:00.000Z');
+    db.addOwnerProfile({ contactId: 'contact-ancien', ownedUntil: new Date('2026-06-30T00:00:00.000Z') });
     db.addOwnerProfile({ ownedSince: new Date('2026-07-01T00:00:00.000Z') });
 
     // Propriétaire depuis le premier jour de la période : l'appel est le sien (même si l'échéance est antérieure).
     await expect(getChargeCallPaymentByToken(token, VISITOR)).resolves.toBeDefined();
 
-    db.profiles[0].ownedSince = new Date('2026-07-02T00:00:00.000Z');
+    db.profiles[1].ownedSince = new Date('2026-07-02T00:00:00.000Z');
     await expectUniform404(getChargeCallPaymentByToken(token, VISITOR));
   });
 
@@ -543,6 +594,7 @@ describe('côté gestionnaire', () => {
     await expectAppError(createChargeCallPaymentLink(IDS.T1, IDS.S1, IDS.C2, MANAGER), 403, 'SYNDIC_FEATURE_DENIED');
     db.engine.evaluateSchedulingGate.mockResolvedValue(null);
 
+    db.addOwnerProfile({ contactId: 'contact-ancien', ownedUntil: new Date('2026-06-30T00:00:00.000Z') });
     db.addOwnerProfile({ contactId: 'contact-nouveau', ownedSince: new Date('2026-07-01T00:00:00.000Z') });
     await expectAppError(createChargeCallPaymentLink(IDS.T1, IDS.S1, IDS.C2, MANAGER), 400);
     expect(db.links).toHaveLength(0);

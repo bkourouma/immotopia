@@ -35,6 +35,7 @@ import { toCents } from '../charge-allocation-plan';
 import { resolveChargeCallRecipient } from '../notifications';
 import { PENDING_REUSE_WINDOW_MS, startSyndicCheckout } from './checkout-start';
 import { refreshSyndicCheckout } from './checkout-reconcile';
+import { hasPreviousOtherOwner } from '../lot-owner-history';
 import { toPublicStatus } from './checkout-queries';
 import { getSyndicOnlineAvailability, unavailableError } from './gateway-config';
 import { ONLINE_PAYMENT_CHANNELS, isSupportedCurrency } from './types';
@@ -121,18 +122,25 @@ export type ChargeCallContextFailure =
   | 'CURRENCY_UNSUPPORTED'
   | 'NOT_CONFIGURED'
   | 'SUBSCRIPTION'
-  /** Le copropriétaire actuel est propriétaire depuis APRÈS la période de l'appel : il relève de l'ancien. */
+  /**
+   * Le copropriétaire actuel est propriétaire depuis APRÈS la période de l'appel ET un autre propriétaire (autre
+   * contact) l'a précédé sur le lot : l'appel relève de l'ancien. Sans propriétaire précédent, pas de refus.
+   */
   | 'OWNER_CHANGED';
 
 // ---------------------------------------------------------------------------
 // Lot revendu (R27)
 // ---------------------------------------------------------------------------
 
-/** Contact d'un copropriétaire actuel du lot, ou `null` quand le lot n'a pas (ou plus) de fiche de propriété. */
+/**
+ * Copropriétaire principal actuel du lot, ou 'NO_PROFILE' quand le lot n'a pas (ou plus) de fiche de propriété.
+ * `hasPreviousOwner` : un AUTRE contact (fiche active ou non) a été propriétaire avant le principal (au jour UTC
+ * près). Sans lui, l'historique du lot est celui du principal : aucun appel n'est « à l'ancien propriétaire ».
+ */
 async function currentPrincipalOwner(
   lotId: string,
   now: Date
-): Promise<{ contactId: string; ownedSince: Date } | null | 'NO_PROFILE'> {
+): Promise<{ contactId: string; ownedSince: Date; hasPreviousOwner: boolean } | null | 'NO_PROFILE'> {
   const profiles = await prisma.lotOwnerProfile.findMany({
     where: { lotId, isActive: true },
     select: { contactId: true, ownershipPercentage: true, ownedSince: true, ownedUntil: true }
@@ -146,7 +154,16 @@ async function currentPrincipalOwner(
       a.ownedSince.getTime() - b.ownedSince.getTime() ||
       a.contactId.localeCompare(b.contactId)
   );
-  return { contactId: principal.contactId, ownedSince: principal.ownedSince };
+  // Toutes les fiches du lot, désactivées comprises : un ancien propriétaire peut avoir été désactivé.
+  const lotProfiles = await prisma.lotOwnerProfile.findMany({
+    where: { lotId },
+    select: { contactId: true, ownedSince: true, ownedUntil: true, isActive: true }
+  });
+  return {
+    contactId: principal.contactId,
+    ownedSince: principal.ownedSince,
+    hasPreviousOwner: hasPreviousOtherOwner(principal.ownedSince, [principal.contactId], lotProfiles)
+  };
 }
 
 /**
@@ -223,9 +240,12 @@ export async function loadChargeCallPaymentContext(
   const principal = await currentPrincipalOwner(call.lotId, new Date());
   let payerContactId: string | null = lotRecipientContactId;
   if (principal !== 'NO_PROFILE' && principal) {
-    // L'appel relève du propriétaire de sa période : dates de jour, comparées en UTC.
+    // L'appel relève du propriétaire de sa période : dates de jour, comparées en UTC. Refus seulement s'il y a eu
+    // un autre propriétaire avant l'actuel ; un copropriétaire saisi sur une copropriété existante paie tout.
     const reference = call.periodStart ?? call.dueDate;
-    if (principal.ownedSince.getTime() > reference.getTime()) return { failure: 'OWNER_CHANGED' };
+    if (principal.hasPreviousOwner && principal.ownedSince.getTime() > reference.getTime()) {
+      return { failure: 'OWNER_CHANGED' };
+    }
     payerContactId = principal.contactId;
   }
 

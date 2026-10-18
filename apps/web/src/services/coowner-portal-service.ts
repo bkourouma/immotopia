@@ -338,11 +338,17 @@ export interface CoOwnerLotMonthlyTracking {
   lot: { id: string; lotNumber: string };
   syndicate: { id: string; name: string | null };
   /**
-   * `AAAA-MM-JJ` : date d'acquisition du lot par le copropriétaire connecté.
-   * Les mois qui la précèdent arrivent à zéro (`NONE`) — ceux de l'ancien
-   * propriétaire, jamais montrés ici (audit S5).
+   * `AAAA-MM-JJ` : date d'acquisition du lot par le copropriétaire connecté
+   * (information seulement ; ne borne pas la visibilité).
    */
   ownedSince: string;
+  /**
+   * `AAAA-MM-JJ` : borne de visibilité, présente seulement après un vrai
+   * changement de propriétaire du lot. Les mois qui la précèdent arrivent à
+   * zéro (`NONE`) — ceux de l'ancien propriétaire, jamais montrés ici.
+   * `null` : aucune borne, tout l'historique du lot est visible.
+   */
+  visibleSince: string | null;
   advance: number;
   totals: { due: number; paid: number; outstanding: number };
   months: CoOwnerMonthCell[];
