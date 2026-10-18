@@ -17,6 +17,7 @@ import {
   type CoOwnerReceipt
 } from '../../services/coowner-portal-service';
 import { saveBlob } from '../../utils/save-blob';
+import { displayCurrency } from '../../utils/syndic-currency';
 import { blobErrorMessage, portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
@@ -92,7 +93,7 @@ export default function CoOwnerReceipts() {
       key: 'amount',
       align: 'end',
       exportValue: row => Number(row.amount),
-      render: (_, row) => <MoneyValue value={row.amount} currency={row.currency} />
+      render: (_, row) => <MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />
     },
     { title: t('Émise le'), key: 'issuedAt', render: (_, row) => dayjs(row.issuedAt).format('DD/MM/YYYY') },
     { title: t('Action'), key: 'action', align: 'end', render: (_, row) => <DownloadButton receipt={row} /> }
@@ -186,7 +187,7 @@ export default function CoOwnerReceipts() {
                 subtitle={[t('Lot {{lotNumber}}', { lotNumber: row.lot.lotNumber }), row.periodLabel]
                   .filter(Boolean)
                   .join(' · ')}
-                highlight={<MoneyValue value={row.amount} currency={row.currency} />}
+                highlight={<MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />}
                 fields={[
                   { label: t('Émise le'), value: dayjs(row.issuedAt).format('DD/MM/YYYY') },
                   { label: t('Téléchargement'), value: <DownloadButton receipt={row} /> }

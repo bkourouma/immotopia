@@ -17,6 +17,7 @@ import {
   type CoOwnerPaymentDocument
 } from '../../services/coowner-portal-service';
 import { saveBlob } from '../../utils/save-blob';
+import { displayCurrency } from '../../utils/syndic-currency';
 import { blobErrorMessage, portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
@@ -102,7 +103,7 @@ function PaymentDetail({ payment }: { payment: CoOwnerPayment }) {
       {payment.remainingAdvance > 0 ? (
         <Space size={4}>
           <Text>{t('Avance restante après affectation :')}</Text>
-          <MoneyValue value={payment.remainingAdvance} currency={payment.currency} />
+          <MoneyValue value={payment.remainingAdvance} currency={displayCurrency(payment.currency)} />
         </Space>
       ) : null}
       <div>
@@ -161,7 +162,7 @@ export default function CoOwnerPayments() {
       key: 'amount',
       align: 'end',
       exportValue: row => Number(row.amount),
-      render: (_, row) => <MoneyValue value={row.amount} currency={row.currency} />
+      render: (_, row) => <MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />
     },
     { title: t('Mode'), key: 'method', render: (_, row) => row.methodLabel ?? '—' },
     { title: t('Référence'), key: 'reference', render: (_, row) => row.reference ?? '—' },
@@ -170,7 +171,7 @@ export default function CoOwnerPayments() {
       key: 'remainingAdvance',
       align: 'end',
       exportValue: row => Number(row.remainingAdvance),
-      render: (_, row) => <MoneyValue value={row.remainingAdvance} currency={row.currency} />
+      render: (_, row) => <MoneyValue value={row.remainingAdvance} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Détail'),
@@ -229,7 +230,7 @@ export default function CoOwnerPayments() {
                     {t('Avance disponible — lot {{lotNumber}}', { lotNumber: advance.lot.lotNumber })}
                   </Text>
                   <div style={{ marginTop: 4 }}>
-                    <MoneyValue value={advance.advance} currency={advance.currency} />
+                    <MoneyValue value={advance.advance} currency={displayCurrency(advance.currency)} />
                   </div>
                 </Card>
               </Col>
@@ -265,12 +266,12 @@ export default function CoOwnerPayments() {
                 subtitle={[t('Lot {{lotNumber}}', { lotNumber: row.lot.lotNumber }), row.methodLabel]
                   .filter(Boolean)
                   .join(' · ')}
-                highlight={<MoneyValue value={row.amount} currency={row.currency} />}
+                highlight={<MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />}
                 fields={[
                   { label: t('Référence'), value: row.reference ?? '—' },
                   {
                     label: t('Avance restante'),
-                    value: <MoneyValue value={row.remainingAdvance} currency={row.currency} />
+                    value: <MoneyValue value={row.remainingAdvance} currency={displayCurrency(row.currency)} />
                   }
                 ]}
                 primaryAction={{ label: t('Détail'), icon: <EyeOutlined />, onClick: () => setDetail(row) }}

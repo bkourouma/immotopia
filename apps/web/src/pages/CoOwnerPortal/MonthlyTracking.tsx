@@ -8,6 +8,7 @@ import {
   getCoOwnerLotMonthlyTracking,
   type CoOwnerMonthStatus
 } from '../../services/coowner-portal-service';
+import { displayCurrency } from '../../utils/syndic-currency';
 import { portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
@@ -107,7 +108,7 @@ export default function CoOwnerMonthlyTracking() {
     if (ownedSinceYear !== undefined && year < ownedSinceYear) setYear(ownedSinceYear);
   }, [ownedSinceYear, year]);
 
-  const currency = tracking.data?.currency;
+  const currency = displayCurrency(tracking.data?.currency);
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>

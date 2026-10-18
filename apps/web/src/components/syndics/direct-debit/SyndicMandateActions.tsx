@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Alert, App, Button, DatePicker, Form, Input, InputNumber, Modal, Space, Tooltip } from 'antd';
+import { Alert, App, Button, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Space, Tooltip } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { SIGNED_SCAN_MAX_BYTES, SIGNED_SCAN_MIME_TYPES, type MandateDto } from '../../../services/direct-debit-service';
 import {
@@ -252,9 +252,16 @@ export const SyndicMandateActions: React.FC<SyndicMandateActionsProps> = ({
           </Button>
         )}
         {mandate.status === 'SUSPENDED' && (
-          <Button size="small" onClick={() => void handleReactivate()} disabled={busy}>
-            {t('Réactiver')}
-          </Button>
+          <Popconfirm
+            title={t('Réactiver ce mandat de prélèvement ?')}
+            okText={t('Réactiver')}
+            cancelText={t('Annuler')}
+            onConfirm={() => void handleReactivate()}
+          >
+            <Button size="small" disabled={busy}>
+              {t('Réactiver')}
+            </Button>
+          </Popconfirm>
         )}
         {!isRevoked && (
           <>
