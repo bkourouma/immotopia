@@ -32,7 +32,7 @@ const state: {
 
 const mockAudit = { record: jest.fn(), log: jest.fn() };
 const mockCancel = jest.fn();
-const mockFiles = { store: jest.fn(), remove: jest.fn() };
+const mockFiles = { store: jest.fn(), remove: jest.fn(), read: jest.fn() };
 const mockCrypto = { available: true };
 
 function matches(row: Row, where: Row = {}): boolean {
@@ -209,7 +209,8 @@ jest.mock('../../src/lib/direct-debit/iban-crypto', () => ({
 jest.mock('../../src/lib/direct-debit/mandate-files', () => ({
   ...jest.requireActual('../../src/lib/direct-debit/mandate-files'),
   storeMandateScan: (...args: unknown[]) => mockFiles.store(...args),
-  removeMandateScan: (...args: unknown[]) => mockFiles.remove(...args)
+  removeMandateScan: (...args: unknown[]) => mockFiles.remove(...args),
+  readMandateScan: (...args: unknown[]) => mockFiles.read(...args)
 }));
 jest.mock('../../src/lib/documents/document-branding', () => ({
   ...jest.requireActual('../../src/lib/documents/document-branding'),
@@ -240,6 +241,7 @@ import { syndicCtx } from '../../src/lib/direct-debit/syndic/scope';
 import {
   activateMandate,
   getMandate,
+  getSignedScanFile,
   revokeMandate,
   suspendMandate,
   uploadSignedScan
@@ -693,6 +695,30 @@ describe('syndic / activation et signature électronique (préparation)', () => 
     expect(lastCall(mockDb.directDebitMandate.updateMany)[0].data).not.toHaveProperty('signedAt');
   });
 
+  it('parcours signé puis activé : le scan signature:<id> posé au scellement s active avec la date préremplie, sans nouveau scan', async () => {
+    const mandate = await draft();
+    const ctx = syndicCtx(SYN);
+    // État laissé par onSealed (source de signature) : scan électronique, date de dernière signature, demande liée.
+    Object.assign(state.mandates[0], {
+      signedScanUrl: 'signature:33333333-3333-4333-8333-333333333333',
+      signedScanUploadedAt: new Date('2026-10-12T09:00:00Z'),
+      signedAt: new Date('2026-10-12T08:30:00Z'),
+      signatureRequestId: '33333333-3333-4333-8333-333333333333'
+    });
+
+    const body = activateSyndicMandateSchema.parse({});
+    const active = await activateMandate(TENANT, mandate.id, body, 'user-1', ctx);
+    expect(active).toMatchObject({ status: 'ACTIVE', signedAt: '2026-10-12T08:30:00.000Z' });
+    expect(lastCall(mockDb.directDebitMandate.updateMany)[0].data).not.toHaveProperty('signedAt');
+    expect(lastCall(mockAudit.record)[1].payload).toMatchObject({
+      scope: 'SYNDIC_LOT',
+      signedAt: '2026-10-12T08:30:00.000Z'
+    });
+    // Aucun fichier n'a été déposé à la main et aucune annulation de demande n'a eu lieu.
+    expect(mockFiles.store).not.toHaveBeenCalled();
+    expect(mockCancel).not.toHaveBeenCalled();
+  });
+
   it('le schéma d activation accepte l absence de signedAt, refuse une date future et un champ inconnu', () => {
     expect(activateSyndicMandateSchema.safeParse({}).success).toBe(true);
     expect(activateSyndicMandateSchema.safeParse({ signedAt: '2999-01-01' }).success).toBe(false);
@@ -712,6 +738,41 @@ describe('syndic / activation et signature électronique (préparation)', () => 
     ).resolves.toMatchObject({
       status: 'REVOKED'
     });
+  });
+
+  it('la lecture du scan signé transmet le lecteur (audit SIG-S5) et reste cloisonnée par syndicat', async () => {
+    const mandate = await draft();
+    await uploadSignedScan(TENANT, mandate.id, { buffer: pdf }, 'user-1', syndicCtx(SYN));
+    mockFiles.read.mockResolvedValue({ buffer: pdf, fileName: 'x.pdf', mimeType: 'application/pdf' });
+    await getSignedScanFile(TENANT, mandate.id, syndicCtx(SYN), 'user-7');
+    expect(mockFiles.read).toHaveBeenCalledWith(expect.objectContaining({ id: mandate.id, actorUserId: 'user-7' }));
+    mockFiles.read.mockClear();
+    await expect(getSignedScanFile(TENANT, mandate.id, syndicCtx(SYN2), 'user-7')).rejects.toBeInstanceOf(
+      NotFoundError
+    );
+    expect(mockFiles.read).not.toHaveBeenCalled();
+  });
+
+  it('un scan papier qui remplace un scan électronique remet à zéro le lien de la demande et la date reprise', async () => {
+    const mandate = await draft();
+    const ctx = syndicCtx(SYN);
+    Object.assign(state.mandates[0], {
+      signedScanUrl: 'signature:33333333-3333-4333-8333-333333333333',
+      signedAt: new Date('2026-10-12T08:30:00Z'),
+      signatureRequestId: '33333333-3333-4333-8333-333333333333'
+    });
+    await uploadSignedScan(TENANT, mandate.id, { buffer: pdf }, 'user-1', ctx);
+    expect(state.mandates[0]).toMatchObject({ signatureRequestId: null, signedAt: null });
+    expect(state.mandates[0].signedScanUrl).not.toContain('signature:');
+  });
+
+  it('le remplacement d un scan papier par un autre garde la date de signature saisie', async () => {
+    const mandate = await draft();
+    const ctx = syndicCtx(SYN);
+    await uploadSignedScan(TENANT, mandate.id, { buffer: pdf }, 'user-1', ctx);
+    state.mandates[0].signedAt = new Date('2026-10-08T00:00:00Z');
+    await uploadSignedScan(TENANT, mandate.id, { buffer: pdf }, 'user-1', ctx);
+    expect(state.mandates[0].signedAt).toEqual(new Date('2026-10-08T00:00:00Z'));
   });
 
   it('le dépôt d un scan à la main annule aussi les demandes de signature ouvertes', async () => {

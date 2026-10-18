@@ -23,6 +23,8 @@ export interface CreateRequestInput {
     sequential: boolean;
     expiresAt: Date;
     signers: import('./provider/external/types').ExternalSignerInput[];
+    /** `none` : le prestataire n'envoie rien, ImmoTopia garde la porte (option `externalGateway`, spec 042 §10). */
+    deliveryMode?: import('./provider/external/types').ExternalDeliveryMode;
   };
 }
 
@@ -77,6 +79,7 @@ export type SignatureEventType =
   | 'OTP_SENT'
   | 'OTP_FAILED'
   | 'OTP_LOCKED'
+  | 'OTP_VERIFIED'
   | 'SIGNED'
   | 'DECLINED'
   | 'SEALED'

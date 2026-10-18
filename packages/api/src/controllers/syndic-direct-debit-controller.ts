@@ -178,7 +178,7 @@ export const uploadSignedScanHandler = asyncHandler(async (req: Request, res: Re
 });
 
 export const downloadSignedScanHandler = asyncHandler(async (req: Request, res: Response) => {
-  const file = await getSignedScanFile(tenantOf(req), mandateOf(req), ctxOf(req));
+  const file = await getSignedScanFile(tenantOf(req), mandateOf(req), ctxOf(req), actorOf(req));
   sendPrivateFile(res, file);
 });
 

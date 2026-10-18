@@ -1579,5 +1579,7 @@
   "Une référence courte pour l'affichage, pas l'IBAN ni le RIB.": "مرجع قصير للعرض، وليس رقم IBAN أو RIB.",
   "Rien à payer : aucun appel de charges échu et non soldé": "لا شيء للدفع: لا يوجد نداء أعباء مستحق وغير مسدّد",
   "Appels de charges déjà dans une remise": "نداءات الأعباء موجودة بالفعل في دفعة",
-  "Lot {{lot}}": "القطعة {{lot}}"
+  "Lot {{lot}}": "القطعة {{lot}}",
+  "Détail complet à venir": "التفاصيل الكاملة قريبًا",
+  "Signature électronique": "التوقيع الإلكتروني"
 }

@@ -1,7 +1,7 @@
 import { t, currentLanguage } from '../i18n';
 import { AppError, BadRequestError, ConflictError } from '../middleware/error-middleware';
 import { invalidSecureLinkError } from '../lib/secure-links';
-import { prisma } from '../utils/database';
+import { prisma, type PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { recordAuditEvent, AuditActionKey } from './audit-service';
@@ -30,6 +30,10 @@ import {
 } from '../lib/signature/types';
 import { cancelRequestInternal } from '../lib/signature/cancel';
 import { findSignatureSource } from '../lib/signature/sources';
+import { sourceGateOf, newViewGrant, viewGrantIsValid } from '../lib/signature/view-grant';
+import { auditSignatureFileServed } from '../lib/signature/file-audit';
+import { providerSignerRef } from '../lib/signature/external-gateway';
+import { getExternalSignatureClientById } from '../lib/signature/provider/external';
 
 /**
  * Signature électronique, côté signataire (spec 044, lot S1) : routes publiques
@@ -57,6 +61,8 @@ const SIGNER_SELECT = {
   otpSends: true,
   otpLastSentAt: true,
   inPersonIssuedBy: true,
+  viewGrantHash: true,
+  viewGrantExpiresAt: true,
   request: {
     select: {
       id: true,
@@ -67,6 +73,7 @@ const SIGNER_SELECT = {
       language: true,
       status: true,
       providerId: true,
+      providerRef: true,
       sequential: true,
       expiresAt: true,
       sourceFileKey: true,
@@ -86,17 +93,28 @@ function loadSigner(token: string) {
 
 /**
  * Résout un jeton. `readOnly` : un signataire ayant déjà signé, ou une demande
- * terminée, peut encore consulter (confirmation) mais pas agir.
+ * terminée, peut encore consulter (confirmation) mais pas agir. `allowExternal` : une
+ * demande confiée à un prestataire n'est atteignable que pour une source `externalGateway`
+ * (ImmoTopia garde la porte : page, code et lien) ; signer et refuser restent refusés.
  */
-async function resolveToken(token: string, options: { readOnly?: boolean } = {}): Promise<ResolvedSigner> {
+async function resolveToken(
+  token: string,
+  options: { readOnly?: boolean; allowExternal?: boolean } = {}
+): Promise<ResolvedSigner> {
   if (!looksLikeToken(token)) throw invalidSecureLinkError();
   const signer = await loadSigner(token);
   const now = Date.now();
   if (!signer || signer.tokenExpiresAt.getTime() <= now || signer.request.expiresAt.getTime() <= now) {
     throw invalidSecureLinkError();
   }
-  // Demande confiée à un prestataire externe : aucun jeton interne n'agit, même refus uniforme.
-  if (!isInternalSignatureProvider(signer.request.providerId)) throw invalidSecureLinkError();
+  // Demande confiée à un prestataire externe : aucun jeton interne n'agit, même refus uniforme,
+  // sauf (parcours public limité) pour une source `externalGateway`.
+  if (
+    !isInternalSignatureProvider(signer.request.providerId) &&
+    !(options.allowExternal && sourceGateOf(signer.request.kind).externalGateway)
+  ) {
+    throw invalidSecureLinkError();
+  }
   const { status } = signer.request;
   const requestOk =
     (ACTIVE_REQUEST_STATUSES as readonly string[]).includes(status) || (options.readOnly && status === 'COMPLETED');
@@ -134,7 +152,7 @@ function inTenant<T>(signer: ResolvedSigner, run: () => Promise<T>): Promise<T> 
 // ------------------------------------------------------------------ lecture
 
 export async function getPublicSignature(token: string) {
-  const signer = await resolveToken(token, { readOnly: true });
+  const signer = await resolveToken(token, { readOnly: true, allowExternal: true });
   return inTenant(signer, async () => {
     if (signer.status === 'PENDING') {
       const opened = await prisma.signatureSigner.updateMany({
@@ -151,12 +169,20 @@ export async function getPublicSignature(token: string) {
       }
     }
     const canSign = signer.status !== 'SIGNED' && signer.request.status !== 'COMPLETED' && (await isSignerTurn(signer));
+    // Spec 042 §10.5 : le parcours public sait s'il faut le code AVANT de montrer le document, et si la
+    // signature se fait chez le prestataire. Pour ces sources, rien du document hors titre et contact masqué.
+    const codeRequiredBeforeView = sourceGateOf(signer.request.kind).codeBeforeView;
+    const external = !isInternalSignatureProvider(signer.request.providerId);
     return {
+      codeRequiredBeforeView,
+      external,
       request: {
         kind: signer.request.kind,
         title: signer.request.title,
         status: signer.request.status,
-        expiresAt: signer.request.expiresAt.toISOString()
+        expiresAt: signer.request.expiresAt.toISOString(),
+        codeRequiredBeforeView,
+        external
       },
       signer: {
         fullName: signer.fullName,
@@ -164,18 +190,39 @@ export async function getPublicSignature(token: string) {
         maskedContact: maskContact(signer.channel, signer.contact),
         status: signer.status === 'PENDING' ? 'OPENED' : signer.status,
         channel: signer.channel,
-        canSign
+        // Demande externe : la signature se fait chez le prestataire, jamais ici.
+        canSign: canSign && !external
       },
       consentText: consentText(currentLanguage())
     };
   });
 }
 
-/** PDF source à lire par le signataire (flux). */
-export async function getPublicSourceFile(token: string): Promise<{ buffer: Buffer; title: string }> {
-  const signer = await resolveToken(token, { readOnly: true });
+/**
+ * PDF source à lire par le signataire (flux). Source `codeBeforeView` : le jeton de consultation
+ * (en-tête `X-Signature-View-Token`, posé par `verifyPublicOtp`) est exigé, sinon le même 404 ; la
+ * lecture est auditée AVANT l'envoi (un échec d'audit bloque). Le mode lecture seule après
+ * signature suit la même règle.
+ */
+export async function getPublicSourceFile(
+  token: string,
+  viewToken?: string
+): Promise<{ buffer: Buffer; title: string }> {
+  const signer = await resolveToken(token, { readOnly: true, allowExternal: true });
+  if (sourceGateOf(signer.request.kind).codeBeforeView && !viewGrantIsValid(signer, viewToken)) {
+    throw invalidSecureLinkError();
+  }
   return inTenant(signer, async () => {
     const file = await readSignatureFile(signer.tenantId, signer.requestId, signer.request.sourceFileKey);
+    await auditSignatureFileServed({
+      tenantId: signer.tenantId,
+      requestId: signer.requestId,
+      kind: signer.request.kind,
+      targetId: signer.request.targetId,
+      channel: 'SIGNER',
+      variant: 'source',
+      signerId: signer.id
+    });
     return { buffer: file.buffer, title: signer.request.title };
   });
 }
@@ -183,7 +230,7 @@ export async function getPublicSourceFile(token: string): Promise<{ buffer: Buff
 // --------------------------------------------------------------------- code
 
 export async function sendPublicOtp(token: string) {
-  const signer = await resolveToken(token);
+  const signer = await resolveToken(token, { allowExternal: true });
   return inTenant(signer, async () => {
     await assertCanAct(signer);
     if (signer.channel === 'IN_PERSON') {
@@ -264,6 +311,117 @@ export async function sendPublicOtp(token: string) {
   });
 }
 
+// ------------------------------------------- code avant consultation (042 §10.5)
+
+type VerifyOutcome = OtpCheck | { kind: 'GONE' } | { kind: 'DONE' };
+
+/**
+ * Vérifie le code AVANT toute consultation du document (source `codeBeforeView` ; sinon le même
+ * 404 qu'un jeton invalide). Mêmes essais, verrouillage et événements que la signature par code
+ * (essai réservé avant la comparaison). Au succès : le code est consommé, `otpVerifiedAt` posé,
+ * un jeton de consultation de 32 octets (empreinte SHA-256 stockée, 15 minutes) est remis une
+ * seule fois, et l'événement de preuve `OTP_VERIFIED` entre dans la chaîne.
+ */
+export async function verifyPublicOtp(token: string, rawCode: string | undefined) {
+  const signer = await resolveToken(token, { allowExternal: true });
+  if (!sourceGateOf(signer.request.kind).codeBeforeView || signer.channel === 'IN_PERSON') {
+    throw invalidSecureLinkError();
+  }
+  return inTenant(signer, async () => {
+    await assertCanAct(signer);
+    const code = normalizeOtpInput(rawCode);
+    if (!code) throw new BadRequestError(t('Saisissez le code reçu pour continuer.'));
+    const limits = otpLimits();
+    const now = new Date();
+    const grant = newViewGrant(now);
+    const outcome: VerifyOutcome = await prisma.$transaction(async tx => {
+      // La demande doit être active et non échue (pose aussi le verrou de ligne).
+      const live = await tx.signatureRequest.updateMany({
+        where: {
+          id: signer.requestId,
+          tenantId: signer.tenantId,
+          status: { in: [...ACTIVE_REQUEST_STATUSES] },
+          expiresAt: { gt: now }
+        },
+        data: { updatedAt: now }
+      });
+      if (live.count !== 1) return { kind: 'GONE' };
+      const checked = await checkOtpInTx(tx, signer, code, limits, now);
+      if (checked.kind !== 'OK') return checked;
+      const verified = await tx.signatureSigner.updateMany({
+        where: { id: signer.id, tenantId: signer.tenantId, status: { in: [...ACTIONABLE_SIGNER_STATUSES] } },
+        data: {
+          otpHash: null,
+          otpExpiresAt: null,
+          otpVerifiedAt: now,
+          viewGrantHash: grant.hash,
+          viewGrantExpiresAt: grant.expiresAt
+        }
+      });
+      if (verified.count !== 1) return { kind: 'LOCKED' };
+      await appendSignatureEvent(tx, {
+        tenantId: signer.tenantId,
+        requestId: signer.requestId,
+        signerId: signer.id,
+        type: 'OTP_VERIFIED',
+        payload: { channel: signer.channel },
+        now
+      });
+      return { kind: 'DONE' };
+    });
+    if (outcome.kind === 'GONE') throw invalidSecureLinkError();
+    if (outcome.kind === 'WRONG') {
+      throw new AppError(t('Code invalide ou expiré.'), 400, 'SIGNATURE_OTP_INVALID', undefined, {
+        remainingAttempts: outcome.remaining
+      });
+    }
+    if (outcome.kind !== 'DONE') throw new AppError(t('Code invalide ou expiré.'), 400, 'SIGNATURE_OTP_INVALID');
+    return { viewToken: grant.token, expiresAt: grant.expiresAt.toISOString() };
+  });
+}
+
+/**
+ * Lien de signature du prestataire (source `externalGateway`, SIG-S6) : exige le jeton de
+ * consultation, puis lit EN DIRECT chez le prestataire le lien du signataire. L'URL n'est ni
+ * stockée ni journalisée. Fournisseur interne, source ordinaire ou jeton de consultation absent :
+ * 404 uniforme.
+ */
+export async function getPublicExternalLink(token: string, viewToken?: string) {
+  const signer = await resolveToken(token, { allowExternal: true });
+  const gate = sourceGateOf(signer.request.kind);
+  if (
+    !gate.externalGateway ||
+    isInternalSignatureProvider(signer.request.providerId) ||
+    !signer.request.providerRef ||
+    !viewGrantIsValid(signer, viewToken)
+  ) {
+    throw invalidSecureLinkError();
+  }
+  const client = getExternalSignatureClientById(signer.request.providerId);
+  if (!client) throw invalidSecureLinkError();
+  const providerRef = signer.request.providerRef;
+  return inTenant(signer, async () => {
+    await assertCanAct(signer);
+    const signerRef = await providerSignerRef(signer.tenantId, signer.requestId, signer.position);
+    if (!signerRef) throw invalidSecureLinkError();
+    try {
+      return { url: await client.getSignerLink(providerRef, signerRef) };
+    } catch (error) {
+      // Ni l'URL ni le corps de la réponse ne sont journalisés : le code d'erreur typé seulement.
+      logger.warn('Signature : lien du prestataire indisponible', {
+        tenantId: signer.tenantId,
+        requestId: signer.requestId,
+        code: (error as { code?: unknown } | null)?.code ?? 'inconnu'
+      });
+      throw new AppError(
+        t("Le lien de signature n'est pas disponible pour le moment. Réessayez dans un instant."),
+        503,
+        'SERVICE_UNAVAILABLE'
+      );
+    }
+  });
+}
+
 // ----------------------------------------------------------------- signature
 
 export type SignInput = {
@@ -309,9 +467,68 @@ async function assertSourceIntact(signer: ResolvedSigner): Promise<void> {
   }
 }
 
+type OtpCheck = { kind: 'OK' } | { kind: 'WRONG'; remaining: number } | { kind: 'LOCKED' };
+
+/**
+ * Vérifie un code DANS la transaction `tx` (signature, ou vérification avant consultation) :
+ * l'essai est RÉSERVÉ avant la comparaison, si bien que la limite tient sous requêtes simultanées.
+ * Un échec écrit l'événement de preuve (et l'audit au verrouillage) ; ces écritures sont conservées
+ * parce que l'appelant renvoie le résultat au lieu de lever.
+ */
+async function checkOtpInTx(
+  tx: PrismaTransactionClient,
+  signer: ResolvedSigner,
+  code: string | null,
+  limits: ReturnType<typeof otpLimits>,
+  now: Date
+): Promise<OtpCheck> {
+  const reserved = await tx.signatureSigner.updateMany({
+    where: {
+      id: signer.id,
+      tenantId: signer.tenantId,
+      status: { in: [...ACTIONABLE_SIGNER_STATUSES] },
+      otpAttempts: { lt: limits.maxAttempts },
+      otpExpiresAt: { gt: now },
+      otpHash: { not: null }
+    },
+    data: { otpAttempts: { increment: 1 } }
+  });
+  if (reserved.count !== 1) return { kind: 'LOCKED' };
+  const current = await tx.signatureSigner.findFirst({
+    where: { id: signer.id, tenantId: signer.tenantId },
+    select: { otpAttempts: true, otpHash: true }
+  });
+  if (!current?.otpHash) return { kind: 'LOCKED' };
+  if (!code || !otpMatches(current.otpHash, code, signer.id)) {
+    const locked = current.otpAttempts >= limits.maxAttempts;
+    await appendSignatureEvent(tx, {
+      tenantId: signer.tenantId,
+      requestId: signer.requestId,
+      signerId: signer.id,
+      type: locked ? 'OTP_LOCKED' : 'OTP_FAILED',
+      payload: { reason: 'WRONG_CODE', attempts: current.otpAttempts }
+    });
+    if (locked) {
+      await recordAuditEvent(tx, {
+        tenantId: signer.tenantId,
+        actorUserId: null,
+        actorType: 'PORTAL',
+        actionKey: AuditActionKey.SIGNATURE_OTP_LOCKED,
+        entityType: 'SignatureSigner',
+        entityId: signer.id,
+        payload: { requestId: signer.requestId, signerId: signer.id, channel: signer.channel }
+      });
+    }
+    return { kind: 'WRONG', remaining: Math.max(0, limits.maxAttempts - current.otpAttempts) };
+  }
+  return { kind: 'OK' };
+}
+
 async function recordSignature(args: {
   signer: ResolvedSigner;
   code: string | null;
+  /** Source `codeBeforeView` : empreinte du jeton de consultation présenté (remplace le code). */
+  viewGrant?: { hash: string };
   parsed: ReturnType<typeof parseSignatureInput>;
   meta: PublicMeta;
   consentHash: string;
@@ -336,47 +553,21 @@ async function recordSignature(args: {
       });
       if (live.count !== 1) return { kind: 'GONE' } as SignOutcome;
 
-      if (signer.channel !== 'IN_PERSON') {
-        // L'essai est RÉSERVÉ avant la comparaison : la limite tient sous requêtes simultanées.
-        const reserved = await tx.signatureSigner.updateMany({
+      if (args.viewGrant) {
+        // Source « code avant consultation » : le code a déjà été consommé à la vérification ; la signature
+        // exige le jeton de consultation valide (revérifié ici, dans la transaction).
+        const granted = await tx.signatureSigner.count({
           where: {
             id: signer.id,
             tenantId: signer.tenantId,
-            status: { in: [...ACTIONABLE_SIGNER_STATUSES] },
-            otpAttempts: { lt: limits.maxAttempts },
-            otpExpiresAt: { gt: now },
-            otpHash: { not: null }
-          },
-          data: { otpAttempts: { increment: 1 } }
-        });
-        if (reserved.count !== 1) return { kind: 'LOCKED' } as SignOutcome;
-        const current = await tx.signatureSigner.findFirst({
-          where: { id: signer.id, tenantId: signer.tenantId },
-          select: { otpAttempts: true, otpHash: true }
-        });
-        if (!current?.otpHash) return { kind: 'LOCKED' } as SignOutcome;
-        if (!args.code || !otpMatches(current.otpHash, args.code, signer.id)) {
-          const locked = current.otpAttempts >= limits.maxAttempts;
-          await appendSignatureEvent(tx, {
-            tenantId: signer.tenantId,
-            requestId: signer.requestId,
-            signerId: signer.id,
-            type: locked ? 'OTP_LOCKED' : 'OTP_FAILED',
-            payload: { reason: 'WRONG_CODE', attempts: current.otpAttempts }
-          });
-          if (locked) {
-            await recordAuditEvent(tx, {
-              tenantId: signer.tenantId,
-              actorUserId: null,
-              actorType: 'PORTAL',
-              actionKey: AuditActionKey.SIGNATURE_OTP_LOCKED,
-              entityType: 'SignatureSigner',
-              entityId: signer.id,
-              payload: { requestId: signer.requestId, signerId: signer.id, channel: signer.channel }
-            });
+            viewGrantHash: args.viewGrant.hash,
+            viewGrantExpiresAt: { gt: now }
           }
-          return { kind: 'WRONG', remaining: Math.max(0, limits.maxAttempts - current.otpAttempts) } as SignOutcome;
-        }
+        });
+        if (granted !== 1) return { kind: 'GONE' } as SignOutcome;
+      } else if (signer.channel !== 'IN_PERSON') {
+        const checked = await checkOtpInTx(tx, signer, args.code, limits, now);
+        if (checked.kind !== 'OK') return checked as SignOutcome;
       }
 
       const drawn = args.parsed.mode === 'DRAWN' ? args.parsed.png : null;
@@ -387,6 +578,9 @@ async function recordSignature(args: {
           signedAt: now,
           otpHash: null,
           otpExpiresAt: null,
+          // Le jeton de consultation est à usage de cette signature : il ne survit pas à l'acte.
+          viewGrantHash: null,
+          viewGrantExpiresAt: null,
           signatureMode: args.parsed.mode,
           signatureTyped: args.parsed.mode === 'TYPED' ? args.parsed.typed : null,
           signatureImageKey: drawn ? signatureFileKey(signer.tenantId, signer.requestId, imageName) : null,
@@ -424,7 +618,7 @@ async function recordSignature(args: {
           ...(drawn ? { imageSha256: sha256Hex(drawn) } : {}),
           ...(signer.channel === 'IN_PERSON'
             ? { presence: 'IN_PERSON', agentUserId: signer.inPersonIssuedBy }
-            : { otp: true })
+            : { otp: true, ...(args.viewGrant ? { viewGrant: true } : {}) })
         },
         now
       });
@@ -482,8 +676,17 @@ async function inviteNextSigner(signer: ResolvedSigner): Promise<void> {
   if (status === 'SENT') await commitSignerToken(signer.tenantId, next.id, prepared);
 }
 
-export async function signPublic(token: string, input: SignInput, meta: PublicMeta) {
+/**
+ * Signature. Source `codeBeforeView` (spec 042 §10.5) : le code a déjà été consommé par
+ * `verifyPublicOtp` ; la signature exige le jeton de consultation (`viewToken`, valide et non
+ * échu), sinon le 404 uniforme. Une demande confiée à un prestataire ne se signe jamais ici.
+ */
+export async function signPublic(token: string, input: SignInput, meta: PublicMeta, viewToken?: string) {
   const signer = await resolveToken(token);
+  const gated = sourceGateOf(signer.request.kind).codeBeforeView;
+  if (gated && (signer.channel === 'IN_PERSON' || !viewGrantIsValid(signer, viewToken))) {
+    throw invalidSecureLinkError();
+  }
   return inTenant(signer, async () => {
     await assertCanAct(signer);
     const parsed = parseSignatureInput(input.signature.mode, input.signature.value);
@@ -495,7 +698,7 @@ export async function signPublic(token: string, input: SignInput, meta: PublicMe
     }
     if (parsed.mode === 'DRAWN') await assertReadablePng(parsed.png);
     let code: string | null = null;
-    if (signer.channel !== 'IN_PERSON') {
+    if (!gated && signer.channel !== 'IN_PERSON') {
       code = normalizeOtpInput(input.code);
       if (!code) throw new BadRequestError(t('Saisissez le code reçu pour signer.'));
     }
@@ -505,6 +708,7 @@ export async function signPublic(token: string, input: SignInput, meta: PublicMe
     const outcome = await recordSignature({
       signer,
       code,
+      viewGrant: gated && viewToken ? { hash: hashToken(viewToken) } : undefined,
       parsed,
       meta,
       consentHash: sha256Hex(consentText(language)),
@@ -538,8 +742,12 @@ function sanitizeReason(reason: string | undefined): string | null {
   return text.trim().slice(0, 500) || null;
 }
 
-export async function declinePublic(token: string, reason: string | undefined) {
+export async function declinePublic(token: string, reason: string | undefined, viewToken?: string) {
   const signer = await resolveToken(token);
+  // Type « code avant consultation » : le refus exige, comme la signature, le jeton de consultation.
+  if (sourceGateOf(signer.request.kind).codeBeforeView && !viewGrantIsValid(signer, viewToken)) {
+    throw invalidSecureLinkError();
+  }
   return inTenant(signer, async () => {
     await assertCanAct(signer);
     const cleaned = sanitizeReason(reason);
@@ -547,7 +755,14 @@ export async function declinePublic(token: string, reason: string | undefined) {
     const declined = await prisma.$transaction(async tx => {
       const updated = await tx.signatureSigner.updateMany({
         where: { id: signer.id, tenantId: signer.tenantId, status: { in: [...ACTIONABLE_SIGNER_STATUSES] } },
-        data: { status: 'DECLINED', declineReason: cleaned, otpHash: null, otpExpiresAt: null }
+        data: {
+          status: 'DECLINED',
+          declineReason: cleaned,
+          otpHash: null,
+          otpExpiresAt: null,
+          viewGrantHash: null,
+          viewGrantExpiresAt: null
+        }
       });
       if (updated.count !== 1) return false;
       await tx.signatureRequest.updateMany({

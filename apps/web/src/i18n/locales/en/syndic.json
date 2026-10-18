@@ -1579,5 +1579,7 @@
   "Une référence courte pour l'affichage, pas l'IBAN ni le RIB.": "A short reference for display, not the IBAN or RIB.",
   "Rien à payer : aucun appel de charges échu et non soldé": "Nothing to pay: no overdue unpaid service charge call",
   "Appels de charges déjà dans une remise": "Service charge calls already in a remittance",
-  "Lot {{lot}}": "Lot {{lot}}"
+  "Lot {{lot}}": "Lot {{lot}}",
+  "Détail complet à venir": "Full details coming soon",
+  "Signature électronique": "Electronic signature"
 }

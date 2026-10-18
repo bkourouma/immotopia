@@ -2192,5 +2192,13 @@
   "Le rejet d'un prélèvement de charges déjà réglé n'est pas pris en charge : régularisez dans la comptabilité de la copropriété.": "Reversing a service charge debit that has already been settled is not supported: adjust it in the co-ownership's accounting.",
   "Rejet par la banque": "Rejected by the bank",
   "Un mandat ouvert existe déjà pour ce lot et ce créancier.": "An open mandate already exists for this unit and this creditor.",
-  "Votre copropriété": "Your co-ownership"
+  "Votre copropriété": "Your co-ownership",
+  "Autorisation de prélèvement {{reference}}": "Direct debit authorization {{reference}}",
+  "Ce mandat n'est pas du bon type pour cette signature.": "This mandate is not of the right type for this signature.",
+  "Seul un mandat en brouillon peut être envoyé en signature électronique.": "Only a draft mandate can be sent for electronic signature.",
+  "Un scan signé est déjà déposé pour ce mandat : il ne peut pas être envoyé en signature électronique.": "A signed scan has already been uploaded for this mandate: it cannot be sent for electronic signature.",
+  "Saisissez le code reçu pour continuer.": "Enter the code you received to continue.",
+  "Le lien de signature n'est pas disponible pour le moment. Réessayez dans un instant.": "The signing link is not available right now. Please try again in a moment.",
+  "La signature sur place n’est pas autorisée pour ce type de document : un code est obligatoire.": "In-person signing is not allowed for this type of document: a code is required.",
+  "Ce canal d’envoi n’est pas autorisé pour ce type de document.": "This sending channel is not allowed for this type of document."
 }

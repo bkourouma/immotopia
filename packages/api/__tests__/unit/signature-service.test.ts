@@ -21,6 +21,7 @@ const txMock: Row = {
     updateMany: jest.fn(async () => ({ count: 1 }))
   },
   signatureSigner: {
+    updateMany: jest.fn(async () => ({ count: 1 })),
     createMany: jest.fn(async ({ data }: Row) => {
       db.signers = data.map((row: Row, index: number) => ({ ...row, id: `s${index}`, signedAt: null, otpAttempts: 0 }));
     })
@@ -453,6 +454,42 @@ describe('registre des sources de document', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
     expect(reserveSignature).not.toHaveBeenCalled();
     expect(writeSignatureFile).not.toHaveBeenCalled();
+  });
+
+  describe('type « code avant consultation » : destinataire différent du débiteur', () => {
+    const debtorSigner = (emailAddress: string | null) =>
+      jest.fn(async () => [{ role: 'DEBITEUR', fullName: 'Awa Koné', email: emailAddress }]);
+    const sentAudit = () =>
+      (recordAuditEvent as jest.Mock).mock.calls
+        .map(call => call[1])
+        .find(entry => entry.actionKey === AuditActionKey.SIGNATURE_REQUEST_SENT);
+
+    it("l'e-mail du débiteur proposé par la source : aucune dérogation tracée", async () => {
+      registerSignatureSource(
+        fakeSource({ codeBeforeView: true, defaultSigners: debtorSigner('awa@exemple.ci') } as never)
+      );
+      await createSignatureRequest(ctx, { ...input([email]), kind: 'LEASE_INSPECTION' } as never);
+      expect(sentAudit().payload).not.toHaveProperty('signerOverride');
+    });
+
+    it('une autre adresse est permise (rien ne bloque) mais tracée à l’audit, masquée', async () => {
+      registerSignatureSource(
+        fakeSource({ codeBeforeView: true, defaultSigners: debtorSigner('debiteur@banque.ci') } as never)
+      );
+      await createSignatureRequest(ctx, { ...input([email]), kind: 'LEASE_INSPECTION' } as never);
+      expect(db.created).toMatchObject({ kind: 'LEASE_INSPECTION' });
+      const payload = sentAudit().payload;
+      expect(payload).toMatchObject({ signerOverride: true, overriddenSigners: ['a***@exemple.ci'] });
+      expect(JSON.stringify(payload)).not.toContain('Awa@Exemple.ci');
+    });
+
+    it('type ordinaire (sans codeBeforeView) : la source n’est pas interrogée, aucune dérogation', async () => {
+      const defaultSigners = debtorSigner('debiteur@banque.ci');
+      registerSignatureSource(fakeSource({ defaultSigners } as never));
+      await createSignatureRequest(ctx, { ...input([email]), kind: 'LEASE_INSPECTION' } as never);
+      expect(defaultSigners).not.toHaveBeenCalled();
+      expect(sentAudit().payload).not.toHaveProperty('signerOverride');
+    });
   });
 
   it('la source du bail est enregistrée et garde ses permissions et sa fonctionnalité', () => {

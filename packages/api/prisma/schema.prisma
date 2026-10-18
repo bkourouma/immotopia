@@ -10398,6 +10398,10 @@ enum SignatureDocumentKind {
   SALE_MANDATE
   LEASE_INSPECTION
   SALE_AGREEMENT
+  /// Autorisation de prélèvement d'un mandat locatif (spec 042 §10).
+  DIRECT_DEBIT_MANDATE
+  /// Autorisation de prélèvement d'un mandat de copropriété (spec 042 §10).
+  SYNDIC_DIRECT_DEBIT_MANDATE
 }
 
 enum SignatureRequestStatus {
@@ -10513,6 +10517,10 @@ model SignatureSigner {
   declineReason     String?               @map("decline_reason") @db.VarChar(500)
   /// Signature sur place : utilisateur de l'agence qui a remis le jeton (creation ou reemission), consigne a la signature.
   inPersonIssuedBy  String?               @map("in_person_issued_by")
+  /// Code vérifié avant consultation (spec 042 §10, SIG-S1) : SHA-256 du jeton de consultation remis au navigateur.
+  viewGrantHash      String?   @map("view_grant_hash") @db.Char(64)
+  viewGrantExpiresAt DateTime? @map("view_grant_expires_at")
+  otpVerifiedAt      DateTime? @map("otp_verified_at")
   createdAt         DateTime              @default(now()) @map("created_at")
   updatedAt         DateTime              @updatedAt @map("updated_at")
 
@@ -10650,6 +10658,8 @@ model DirectDebitMandate {
   /// Identifiant /uploads/… du scan signé. Jamais renvoyé au client.
   signedScanUrl        String?                  @map("signed_scan_url")
   signedScanUploadedAt DateTime?                @map("signed_scan_uploaded_at")
+  /// Demande de signature dont le PDF scellé tient lieu de scan (spec 042 §10 ; pas de clé étrangère, comme les autres mandats).
+  signatureRequestId   String?                  @map("signature_request_id") @db.Uuid
   activatedAt          DateTime?                @map("activated_at")
   suspendedAt          DateTime?                @map("suspended_at")
   suspensionReason     String?                  @map("suspension_reason")

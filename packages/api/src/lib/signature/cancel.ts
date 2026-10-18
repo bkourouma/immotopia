@@ -4,6 +4,7 @@ import { recordAuditEvent, AuditActionKey } from '../../services/audit-service';
 import { appendSignatureEvent } from './events';
 import { getSignatureProvider } from './provider';
 import { releaseSignature } from './quota';
+import { removeSignatureFile } from './files';
 import { findSignatureSource } from './sources';
 import { OPEN_REQUEST_STATUSES } from './types';
 
@@ -26,6 +27,7 @@ export async function cancelRequestInternal(
 ): Promise<boolean> {
   const now = new Date();
   let providerRef: string | null = null;
+  let purgeSource = false;
   const canceled = await prisma.$transaction(async tx => {
     const request = await tx.signatureRequest.findFirst({
       where: { id: requestId, tenantId: ctx.tenantId },
@@ -46,6 +48,13 @@ export async function cancelRequestInternal(
       data: { status: 'CANCELED', canceledAt: now }
     });
     if (updated.count !== 1) return false;
+    // Jetons de consultation (types « code avant consultation ») : plus aucun n'ouvre une demande annulée.
+    await tx.signatureSigner.updateMany({
+      where: { requestId, tenantId: ctx.tenantId },
+      data: { viewGrantHash: null, viewGrantExpiresAt: null }
+    });
+    // Le PDF source de ces types porte l'IBAN complet : inutile après l'annulation, il est supprimé.
+    purgeSource = Boolean(request && findSignatureSource(request.kind)?.codeBeforeView);
     await appendSignatureEvent(tx, {
       tenantId: ctx.tenantId,
       requestId,
@@ -66,6 +75,7 @@ export async function cancelRequestInternal(
     return true;
   });
   if (canceled) {
+    if (purgeSource) await removeSignatureFile(ctx.tenantId, requestId, 'source.pdf');
     if (options.refundMonth) await releaseSignature(ctx.tenantId, options.refundMonth);
     // Le prestataire est prévenu hors transaction ; son échec n'annule pas l'annulation locale.
     await getSignatureProvider()

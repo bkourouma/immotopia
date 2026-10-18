@@ -271,6 +271,7 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.DIRECT_DEBIT_MANDATE_REVOKED]: tenant('BILLING', { critical: true }),
   [AuditActionKey.DIRECT_DEBIT_MANDATE_SCAN_UPLOADED]: tenant('BILLING'),
   [AuditActionKey.DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_SIGNED_ELECTRONICALLY]: tenant('BILLING', { critical: true }),
   [AuditActionKey.DIRECT_DEBIT_REMITTANCE_CREATED]: tenant('BILLING'),
   [AuditActionKey.DIRECT_DEBIT_REMITTANCE_REFRESHED]: tenant('BILLING'),
   [AuditActionKey.DIRECT_DEBIT_REMITTANCE_LINE_CANCELED]: tenant('BILLING'),

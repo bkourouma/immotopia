@@ -1,4 +1,4 @@
-# 042 — Modèle de données et contrat d'API (P1 à P4)
+# 042 — Modèle de données et contrat d'API (P1 à P4, signature)
 
 > Chemins relatifs à `packages/api/`. Ce document est le **contrat** entre
 > l'API et l'écran : l'un et l'autre s'y conforment à la lettre.
@@ -1385,3 +1385,163 @@ de Finances (cartes empilées, `useSyndicRouteContext`) :
 Portails copropriétaire (P5) ; frais de rejet refacturés en copropriété ;
 contre-passation d'un `ChargePayment` ; mandat couvrant plusieurs lots d'un
 même copropriétaire.
+
+## 10. Signature électronique du mandat, en option (contrat)
+
+> Ajouté le 17/10/2026 (décision de l'utilisateur : « en option »). Le papier
+> reste possible (PDF, signature manuscrite, dépôt du scan, P1). S'appuie sur
+> le module de signature de la spec 044 (`lib/signature/**`). Chemins relatifs
+> à `packages/api/`.
+
+### 10.1 Principe
+
+L'agence envoie l'autorisation de prélèvement d'un mandat **en brouillon**
+pour signature électronique au débiteur. Le document à signer est le PDF
+d'autorisation (P1, IBAN **complet**, puisque le débiteur le remet à sa
+banque). À la fin, le PDF scellé **tient lieu de scan signé** et la date de
+signature est reprise pour l'activation, qui reste un geste de l'agence.
+Valable pour les mandats locatifs et de copropriété.
+
+### 10.2 Exigences de sécurité
+
+- **SIG-S1. Rien sans le code.** Le lien d'invitation ne révèle rien sans le
+  code à usage unique : ni le PDF, ni l'IBAN, même masqué. Le code est demandé
+  **avant** toute consultation du document, puis sert à signer.
+- **SIG-S2. Code obligatoire.** Aucune signature sans code : la signature
+  « sur place » (`IN_PERSON`, sans code) est refusée pour ces types.
+- **SIG-S3. IBAN masqué hors du PDF.** Titre de la demande, e-mails, SMS,
+  WhatsApp, réponses publiques et agence, journaux, audit, preuve : jamais
+  l'IBAN complet ; au plus le masque `CI•• … 0589`. Le titre est
+  « Autorisation de prélèvement MDT-AAAA-NNNN ».
+- **SIG-S4. Empreinte non réversible.** L'empreinte des données du document
+  (`sourceDocHash`) est un HMAC-SHA-256 à clé dérivée de
+  `DIRECT_DEBIT_IBAN_KEY` (info `immotopia:direct-debit:signature-snapshot`),
+  jamais un SHA-256 d'un JSON contenant l'IBAN.
+- **SIG-S5. Accès réservé.** Les PDF source, signé et de preuve de ces types
+  ne se lisent qu'avec `RENTAL_DIRECT_DEBIT_MANAGE` (locatif) ou
+  `SYNDIC_DIRECT_DEBIT_MANAGE` (copropriété), et chaque lecture côté agence ou
+  côté signataire est auditée (`DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED`,
+  avant l'envoi du fichier).
+- **SIG-S6. Fournisseur interne et Yousign.** Avec Yousign, ImmoTopia garde
+  la porte : la demande Yousign est créée **sans envoi par Yousign**
+  (`delivery_mode: 'none'`), l'invitation part par ImmoTopia avec son propre
+  lien et son propre code, et le lien de signature Yousign n'est remis au
+  signataire qu'**après** vérification du code (lu en direct chez Yousign,
+  jamais stocké, jamais journalisé). Yousign exige en plus son code
+  (`otp_email`) au moment de signer. Le PDF à IBAN complet est transmis à
+  Yousign (sous-traitant) : risque accepté, écrit dans SECURITY.md.
+
+### 10.3 Schéma
+
+```prisma
+// Migration 1 (seule) : 20261017120000_signature_prelevement_types
+enum SignatureDocumentKind {
+  // … valeurs 044, et :
+  DIRECT_DEBIT_MANDATE         // mandat locatif (RENTAL)
+  SYNDIC_DIRECT_DEBIT_MANDATE  // mandat de copropriété (SYNDIC)
+}
+
+// Migration 2 : 20261017120100_signature_prelevement
+model SignatureSigner {
+  // … champs 044, et :
+  /// Code vérifié avant consultation (SIG-S1) : SHA-256 du jeton de consultation remis au navigateur.
+  viewGrantHash      String?   @map("view_grant_hash") @db.Char(64)
+  viewGrantExpiresAt DateTime? @map("view_grant_expires_at")
+  otpVerifiedAt      DateTime? @map("otp_verified_at")
+}
+
+model DirectDebitMandate {
+  // … et :
+  /// Demande de signature dont le PDF scellé tient lieu de scan (pas de clé étrangère, comme les autres mandats).
+  signatureRequestId String? @map("signature_request_id") @db.Uuid
+}
+```
+
+`SIGNATURE_DOCUMENT_KINDS` (`src/config/env.ts`) reçoit les deux valeurs
+(test `signature-kinds-sync`).
+
+### 10.4 Sources de signature (`lib/signature/sources/direct-debit-mandate.ts`)
+
+Deux sources enregistrées, cible `targetType = 'DIRECT_DEBIT_MANDATE'`,
+`targetId` = identifiant du mandat :
+
+| `kind`                        | Périmètre du mandat | Permission (lecture et écriture) | Fonctionnalité |
+| ----------------------------- | ------------------- | -------------------------------- | -------------- |
+| `DIRECT_DEBIT_MANDATE`        | `RENTAL_LEASE`      | `RENTAL_DIRECT_DEBIT_MANAGE`     | `RENTAL`       |
+| `SYNDIC_DIRECT_DEBIT_MANDATE` | `SYNDIC_LOT`        | `SYNDIC_DIRECT_DEBIT_MANAGE`     | `SYNDIC`       |
+
+Nouvelles options du contrat `SignatureDocumentSource` (spec 044, toutes
+facultatives, sans effet sur les types existants) :
+
+- `codeBeforeView?: boolean` — SIG-S1 (vrai pour ces deux types) ;
+- `allowedChannels?: SignatureChannel[]` — canaux admis à la création
+  (`EMAIL`, `SMS`, `WHATSAPP` pour ces types ; `IN_PERSON` refusé : 400) ;
+- `externalGateway?: boolean` — SIG-S6 avec un fournisseur externe.
+
+Comportement de la source :
+
+- `assertTarget` : mandat de l'agence, du périmètre du type, au statut
+  `DRAFT`, sans scan déposé (sinon `ConflictError` traduite) ;
+- `loadSource` : PDF d'autorisation du mandat (même rendu que la route
+  `authorization-pdf`, sans son audit de téléchargement), titre SIG-S3,
+  empreinte SIG-S4 des données du mandat (référence, créancier, débiteur,
+  bail ou lot, IBAN, titulaire, plafond) ;
+- `isSourceIntact` : empreinte recalculée égale ;
+- `defaultSigners` : le débiteur (nom, e-mail et téléphone de son compte ou
+  de son contact CRM) ;
+- `onSealed(tx, request, now)` : si le mandat n'est plus `DRAFT` ou porte déjà
+  un scan → `SourceChangedError` (la demande est annulée) ; sinon
+  `signedScanUrl = 'signature:<requestId>'`, `signedScanUploadedAt = now`,
+  `signedAt` = date de la dernière signature des signataires (à défaut `now`),
+  `signatureRequestId` ; audit `DIRECT_DEBIT_MANDATE_SIGNED_ELECTRONICALLY`
+  (critique). Le mandat reste `DRAFT` : l'agence l'active (la date est
+  pré-remplie, §9.3).
+- Lecture du scan (`lib/direct-debit/mandate-files.ts`) : une valeur
+  `signature:<requestId>` sert le `signed.pdf` de cette demande (même agence,
+  même cible), nommé `MDT-AAAA-NNNN-autorisation-signee.pdf`. Aucune copie du
+  PDF scellé n'est faite.
+
+### 10.5 Parcours public pour ces types
+
+Préfixe existant `/api/public/signatures/:token` (mêmes limiteurs, mêmes 404
+indistincts, en-têtes `no-store`).
+
+| Méthode | Chemin                  | Changement                                                                                                                                                                                                                                                                              |
+| ------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET     | `/:token`               | ajoute `codeRequiredBeforeView: true` et `external: boolean` ; ne renvoie rien du document (titre SIG-S3)                                                                                                                                                                               |
+| POST    | `/:token/otp`           | inchangé (envoi du code au contact de l'invitation)                                                                                                                                                                                                                                     |
+| POST    | `/:token/otp/verify`    | **nouveau** : `{ code }` → vérifie (mêmes essais et verrouillage que 044), consomme le code, pose `otpVerifiedAt`, `viewGrantHash`, `viewGrantExpiresAt` (15 min) ; répond `{ viewToken, expiresAt }` (jeton de 32 octets, jamais stocké en clair) ; événement de preuve `OTP_VERIFIED` |
+| GET     | `/:token/file`          | exige l'en-tête `X-Signature-View-Token` valide et non expiré, sinon le même 404 ; audit SIG-S5 avant l'envoi                                                                                                                                                                           |
+| POST    | `/:token/sign`          | exige le jeton de consultation au lieu du code (déjà consommé) ; le reste de 044 inchangé                                                                                                                                                                                               |
+| GET     | `/:token/external-link` | **nouveau**, fournisseur externe seulement : exige le jeton de consultation ; lit chez le fournisseur le lien de signature du signataire et répond `{ url }` (`no-store`, jamais journalisé)                                                                                            |
+
+Pour les autres types, rien ne change.
+
+### 10.6 Écrans
+
+- Bail › Prélèvements (et onglet Prélèvements de Syndic › Finances) : sur un
+  mandat `DRAFT` sans scan, section « Signature électronique (facultatif) »
+  avec « Envoyer pour signature électronique » (signataire prérempli, canal
+  e-mail, SMS ou WhatsApp, jamais « sur place ») et le suivi de la demande
+  (relance, annulation) ; le dépôt d'un scan papier reste proposé et annule une
+  demande en cours. Une fois signé : « Scan signé (signature électronique) »,
+  téléchargement, et « Activer » avec la date pré-remplie.
+- Page publique `/signer/:token` : pour ces types, l'étape du code vient
+  **avant** l'affichage du document ; le PDF est chargé par une requête qui
+  porte le jeton de consultation (objet blob, jamais une URL avec jeton dans
+  `<iframe src>`) ; avec un fournisseur externe, « Continuer vers la
+  signature » redirige vers le lien remis par l'API.
+- Écran Signatures de l'agence : libellés des deux types.
+
+### 10.7 Audit
+
+Nouvelle clé `DIRECT_DEBIT_MANDATE_SIGNED_ELECTRONICALLY`
+(`tenant('BILLING', { critical: true })`) ; réutilisation de
+`DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED` pour toute lecture d'un PDF
+de ces types (payload : canal `AGENCY` ou `SIGNER`, variante, demande ; jamais
+d'IBAN). Les audits `SIGNATURE_*` de 044 s'appliquent.
+
+### 10.8 Hors périmètre
+
+Signature qualifiée ; transmission électronique du mandat à la banque du
+débiteur ; signature par plusieurs titulaires d'un compte joint.
