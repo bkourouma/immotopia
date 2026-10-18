@@ -18,6 +18,15 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `chore/skill-chef-orchestre` — 2026-10-18
+
+**État :** PR [#171](https://github.com/bkourouma/immotopia/pull/171) ouverte vers `main`, à fusionner par l'utilisateur.
+**Worktree :** `.claude/worktrees/skill-chef-orchestre` (jonction `node_modules` posée : la retirer avec `rmdir` AVANT `git worktree remove`).
+
+**Fait :** skill `chef-orchestre` (`.claude/skills/chef-orchestre/SKILL.md`) et agents `chef-de-lot`, `executant`, `executant-rapide`, `expert`, `verificateur` (`.claude/agents/`) installés tels quels depuis l'archive.
+
+**Reste à faire :** relancer Claude Code après fusion pour charger le skill. Adapter le skill au dépôt si on l'utilise ici : il copie les `.env` dans ses worktrees (interdit sans accord), crée ses worktrees dans `../immotopia-worktrees/` sans jonction `node_modules`, et fait `git worktree remove` (incident des jonctions).
+
 ## Branche `feat/syndic-paiement-declare` — 2026-10-18
 
 **État :** PR1 et PR2 (spec 047) écrites, non commitées par l'agent ; L8 (pré-remplissage IA, T059 à T066) non commencé.
