@@ -183,6 +183,7 @@ describe('Devise du portail copropriétaire', () => {
       lot: { id: 'lot-1', lotNumber: 'A1' },
       syndicate: { id: 's1', name: 'Résidence Les Acacias' },
       ownedSince: '2025-06-01',
+      visibleSince: null,
       advance: 5000,
       totals: { due: 300000, paid: 100000, outstanding: 200000 },
       months: Array.from({ length: 12 }, (_, index) => ({

@@ -28,7 +28,7 @@ function isExternalUrl(fileUrl: string | null | undefined): fileUrl is string {
 function documentTypeLabels(): Record<SyndicateDocument['type'], string> {
   return {
     REGULATION: t('Règlement'),
-    GENERAL_MEETING_MINUTES: t("Proces-verbal d'AG"),
+    GENERAL_MEETING_MINUTES: t("Procès-verbal d'AG"),
     DIAGNOSTIC: t('Diagnostic'),
     INSURANCE: t('Assurance'),
     BUDGET: t('Budget'),
