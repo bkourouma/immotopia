@@ -21,9 +21,21 @@ import {
   updateMandateHandler,
   uploadSignedScanHandler
 } from '../controllers/direct-debit-controller';
+import {
+  cancelRemittanceHandler,
+  cancelRemittanceLineHandler,
+  createRemittanceHandler,
+  exportRemittanceHandler,
+  getRemittanceHandler,
+  listRemittancesHandler,
+  refreshRemittanceHandler,
+  resendPrenotificationsHandler,
+  submitRemittanceHandler,
+  validateRemittanceHandler
+} from '../controllers/direct-debit-remittance-controller';
 
 /**
- * Prélèvement bancaire : créanciers et mandats (spec 042, lot P1).
+ * Prélèvement bancaire : créanciers, mandats (spec 042, lot P1) et remises de loyers (lot P2).
  *
  * Monté sur `/api` tout entier par `app.ts` : chaque route porte donc ses
  * gardes avec son chemin, jamais en `router.use` nu (modèle :
@@ -71,5 +83,18 @@ router.post(`${BASE}/mandates/:mandateId/revoke`, ...manage, revokeMandateHandle
 router.get(`${BASE}/mandates/:mandateId/authorization-pdf`, ...manage, downloadAuthorizationPdfHandler);
 router.post(`${BASE}/mandates/:mandateId/signed-scan`, ...manage, uploadScan.single('file'), uploadSignedScanHandler);
 router.get(`${BASE}/mandates/:mandateId/signed-scan`, ...manage, downloadSignedScanHandler);
+
+// Remises de loyers (lot P2)
+router.get(`${BASE}/remittances`, ...view, listRemittancesHandler);
+router.post(`${BASE}/remittances`, ...manage, createRemittanceHandler);
+router.get(`${BASE}/remittances/:remittanceId`, ...view, getRemittanceHandler);
+router.post(`${BASE}/remittances/:remittanceId/refresh`, ...manage, refreshRemittanceHandler);
+router.post(`${BASE}/remittances/:remittanceId/lines/:lineId/cancel`, ...manage, cancelRemittanceLineHandler);
+router.post(`${BASE}/remittances/:remittanceId/validate`, ...manage, validateRemittanceHandler);
+router.post(`${BASE}/remittances/:remittanceId/prenotifications`, ...manage, resendPrenotificationsHandler);
+// Le fichier porte les IBAN complets : POST (jamais mis en cache ni préchargé), permission de gestion.
+router.post(`${BASE}/remittances/:remittanceId/export`, ...manage, exportRemittanceHandler);
+router.post(`${BASE}/remittances/:remittanceId/submit`, ...manage, submitRemittanceHandler);
+router.post(`${BASE}/remittances/:remittanceId/cancel`, ...manage, cancelRemittanceHandler);
 
 export default router;

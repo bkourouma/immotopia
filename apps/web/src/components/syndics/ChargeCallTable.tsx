@@ -7,7 +7,6 @@ import { MoneyValue } from '../primitives/MoneyValue';
 import { Table } from '../primitives';
 import { ChargeCall, ChargeCallStatus } from '../../types/syndic-types';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
-import { ChargeCallPaymentLinkButton } from './ChargeCallPaymentLinkButton';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -48,18 +47,19 @@ function computeOutstandingAmount(item: ChargeCall): number {
   return Math.max(0, Number(item.amount) - computePaidAmount(item));
 }
 
-/** Lien « Payer cet appel » (spec 042) : droits de l'écran et ouverture de la liste des liens. */
-export interface ChargeCallPaymentLinkActions {
-  tenantId: string;
-  syndicId: string;
-  /** `SYNDIC_EDIT` : bouton « Payer cet appel ». */
-  canCreate: boolean;
-  /** `SYNDIC_VIEW` : bouton « Liens de paiement ». */
-  canView: boolean;
-  /** Ouvre le panneau des liens de l'appel. */
-  onOpenLinks: (charge: ChargeCall) => void;
-  /** Appelé après un envoi ou une création réussis. */
-  onChanged?: () => void;
+/** Devises que le paiement en ligne accepte (le serveur refuse les autres : `isSupportedCurrency`). */
+const ONLINE_PAYMENT_CURRENCIES = ['XOF', 'FCFA'];
+
+/**
+ * Un lien « Payer cet appel » n'a de sens que pour un appel à reste dû, non
+ * soldé, en francs CFA (spec 042, R8 : le serveur refuse le reste en 400).
+ */
+export function canOfferChargePaymentLink(item: ChargeCall): boolean {
+  return (
+    item.status !== 'PAID' &&
+    Math.round(computeOutstandingAmount(item)) > 0 &&
+    ONLINE_PAYMENT_CURRENCIES.includes((item.currency ?? '').trim().toUpperCase())
+  );
 }
 
 interface ChargeCallTableProps {
@@ -81,8 +81,13 @@ interface ChargeCallTableProps {
   funds?: Array<{ id: string; name: string }>;
   /** Callback pour l'action « Affecter à un fonds ». Optionnel, même règle que les autres actions. */
   onAssignFund?: (charge: ChargeCall) => void;
-  /** Actions du lien de paiement mobile ; absent : aucune de ces actions n'est affichée. */
-  paymentLinks?: ChargeCallPaymentLinkActions;
+  /**
+   * Callback pour l'action « Lien de paiement » (spec 042, lien « Payer cet
+   * appel »). Optionnel, même règle que les autres actions : l'appelant ne le
+   * fournit que si la copropriété a un paiement en ligne utilisable. Le bouton
+   * n'apparaît ensuite que pour un appel à reste dû (`canOfferChargePaymentLink`).
+   */
+  onPaymentLink?: (charge: ChargeCall) => void;
 }
 
 export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
@@ -93,7 +98,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
   onDownloadNoticeWord,
   funds,
   onAssignFund,
-  paymentLinks
+  onPaymentLink
 }) => {
   const fundNames = new Map((funds || []).map(fund => [fund.id, fund.name]));
   const columns: ColumnsType<ChargeCall> = [
@@ -163,7 +168,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
           }
         ]
       : []),
-    ...(onRecordPayment || onDownloadNotice || onDownloadNoticeWord || onAssignFund || paymentLinks
+    ...(onRecordPayment || onDownloadNotice || onDownloadNoticeWord || onAssignFund || onPaymentLink
       ? [
           {
             title: t('Actions'),
@@ -190,25 +195,10 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
                     {t('Affecter à un fonds')}
                   </Button>
                 ) : null}
-                {paymentLinks ? (
-                  <>
-                    <ChargeCallPaymentLinkButton
-                      size="small"
-                      tenantId={paymentLinks.tenantId}
-                      syndicId={paymentLinks.syndicId}
-                      chargeId={item.id}
-                      remaining={computeOutstandingAmount(item)}
-                      status={item.status}
-                      canCreate={paymentLinks.canCreate}
-                      periodLabel={item.period}
-                      onChanged={paymentLinks.onChanged}
-                    />
-                    {paymentLinks.canView ? (
-                      <Button size="small" icon={<LinkOutlined />} onClick={() => paymentLinks.onOpenLinks(item)}>
-                        {t('Liens de paiement')}
-                      </Button>
-                    ) : null}
-                  </>
+                {onPaymentLink && canOfferChargePaymentLink(item) ? (
+                  <Button size="small" icon={<LinkOutlined />} onClick={() => onPaymentLink(item)}>
+                    {t('Lien de paiement')}
+                  </Button>
                 ) : null}
               </Space>
             )

@@ -1,5 +1,7 @@
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
+import { t } from '../../i18n';
+import { isRecordingEnabled } from '../../services/livekit-service';
 import type { EmailNotificationKey } from '../../constants/email-notification-keys';
 import type { WhatsappNotificationKey } from '../../constants/whatsapp-notification-keys';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../constants/email-notification-default-templates';
@@ -463,12 +465,36 @@ async function recordConvocationDelivery(tenantId: string, meetingId: string, co
 }
 
 /**
- * Gabarit e-mail sans le paragraphe du lien quand aucun lien n'a pu etre cree :
- * la convocation part sans phrase orpheline (« … votez en ligne : »).
+ * Gabarit e-mail sans le paragraphe d'une variable facultative VIDE : la convocation part sans
+ * phrase orpheline (« … votez en ligne : ») ni paragraphe vide.
  */
+export function dropEmptyVariableParagraphs(
+  template: string,
+  vars: Record<string, string>,
+  optionalKeys: string[]
+): string {
+  let output = template;
+  for (const key of optionalKeys) {
+    if ((vars[key] ?? '').trim()) continue;
+    output = output
+      .replace(new RegExp(`<p\\b[^>]*>[^<]*\\{\\{${key}\\}\\}[^<]*</p>\\s*`, 'g'), '')
+      .replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), '');
+  }
+  return output;
+}
+
+/** Cas du lien personnel (spec 043) : conserve pour les appelants et tests existants. */
 export function dropMeetingLinkParagraph(template: string, meetingLink: string): string {
-  if (meetingLink.trim()) return template;
-  return template.replace(/<p\b[^>]*>[^<]*\{\{meetingLink\}\}[^<]*<\/p>\s*/g, '').replace(/\{\{meetingLink\}\}/g, '');
+  return dropEmptyVariableParagraphs(template, { meetingLink }, ['meetingLink']);
+}
+
+/** Avis d'enregistrement de la convocation (spec 045, decision du 2026-10-16) ; vide si non configure. */
+export function recordingNoticeText(): string {
+  return isRecordingEnabled()
+    ? t(
+        "La séance pourra être enregistrée (image et son), y compris la voix et l'image des participants qui activent leur micro ou leur caméra ; un avis s'affichera à l'écran pendant l'enregistrement."
+      )
+    : '';
 }
 
 /**
@@ -522,6 +548,8 @@ export async function notifyMeetingConvocation(
   const emailConfig = await getEmailNotificationConfig(tenantId, eventKeyEmail);
   const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKeyEmail];
 
+  const recordingNotice = recordingNoticeText();
+
   let emailSent = 0;
   let emailFailed = 0;
   let emailSkippedNoAddress = 0;
@@ -543,7 +571,8 @@ export async function notifyMeetingConvocation(
       meetingDate,
       meetingTime,
       meetingLocation: meeting.location || 'À préciser',
-      meetingLink
+      meetingLink,
+      recordingNotice
     };
     let served = false;
     let failed = false;
@@ -556,7 +585,10 @@ export async function notifyMeetingConvocation(
           to: owner.email,
           subject: applyTemplate(emailConfig.subjectOverride || defaults.subject, templateVars),
           html: applyTemplate(
-            dropMeetingLinkParagraph(emailConfig.bodyHtmlOverride || defaults.bodyHtml, meetingLink),
+            dropEmptyVariableParagraphs(emailConfig.bodyHtmlOverride || defaults.bodyHtml, templateVars, [
+              'meetingLink',
+              'recordingNotice'
+            ]),
             templateVars,
             true
           )
@@ -582,7 +614,7 @@ export async function notifyMeetingConvocation(
       notificationKey: eventKeyWhatsApp,
       variables: templateVars,
       contactId: owner.id,
-      optionalVariables: ['meetingLink']
+      optionalVariables: ['meetingLink', 'recordingNotice']
     });
     if (sentWhatsapp) {
       whatsappSent += 1;
@@ -595,7 +627,7 @@ export async function notifyMeetingConvocation(
           notificationKey: eventKeyWhatsApp,
           variables: templateVars,
           to: directPhone,
-          optionalVariables: ['meetingLink']
+          optionalVariables: ['meetingLink', 'recordingNotice']
         });
         if (sentDirectWhatsapp) {
           whatsappSent += 1;

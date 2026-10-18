@@ -3,6 +3,7 @@ import { App, Alert, Button, Card, Col, Input, Modal, Progress, Row, Space, Stat
 import {
   closeResolutionVote,
   getLiveMeeting,
+  meetingRecordingFileUrl,
   issueParticipantLink,
   listMeetingParticipants,
   openResolutionVote,
@@ -16,8 +17,13 @@ import type { LiveMeetingAdminView, MeetingParticipantView } from '../../types/s
 import type { MeetingStatus } from '../../types/syndic-types';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { LiveLotsTable, type ContactOption, type LotAttendanceChange } from './live/LiveLotsTable';
+import { apiErrorText as errorText, useMeetingRecordings, useMeetingVisio } from './visio/use-meeting-visio';
 import { LiveParticipantsTable } from './live/LiveParticipantsTable';
 import { LiveResolutionsPanel } from './live/LiveResolutionsPanel';
+import { MeetingVisioCard } from './visio/MeetingVisioCard';
+import { MeetingDiscussionCard } from './visio/MeetingDiscussionCard';
+import { useMeetingDiscussion } from './visio/use-meeting-discussion';
+import { MeetingRecordingsCard } from './visio/MeetingRecordingsCard';
 import { clampPercent } from './live/live-labels';
 import { t } from '../../i18n/t';
 
@@ -77,11 +83,6 @@ async function copyToClipboard(text: string): Promise<boolean> {
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
-}
-
-function errorText(err: unknown, fallback: string): string {
-  const message = (err as { response?: { data?: { error?: unknown } } })?.response?.data?.error;
-  return typeof message === 'string' && message ? message : fallback;
 }
 
 function uniqueContacts(live: LiveMeetingAdminView | null, participants: MeetingParticipantView[]): ContactOption[] {
@@ -156,6 +157,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   const [shownLink, setShownLink] = useState<{ name: string; url: string } | null>(null);
   const [videoDraft, setVideoDraft] = useState<string | null>(null);
   const [savingVideo, setSavingVideo] = useState(false);
+  const [visioRoomOpen, setVisioRoomOpen] = useState(false);
 
   const frozen = meetingStatus === 'COMPLETED' || meetingStatus === 'CANCELLED';
   const inProgress = meetingStatus === 'IN_PROGRESS';
@@ -186,6 +188,29 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   }, [tenantId, syndicId, meetingId, frozen]);
 
   const { refresh } = useVisiblePolling(load, { resetKey: `${meetingStatus}|${refreshKey ?? ''}` });
+
+  // Visio intégrée et enregistrement (spec 045) : lectures et actions dans leurs hooks.
+  const visioState = useMeetingVisio({
+    tenantId,
+    syndicId,
+    meetingId,
+    meetingStatus,
+    onLinksRevoked: refresh
+  });
+  const { visio, visioEnabled, inVisioContactIds } = visioState;
+  const recordingState = useMeetingRecordings({
+    tenantId,
+    syndicId,
+    meetingId,
+    meetingStatus,
+    // La liste est indépendante de `/visio` : elle se lit toujours, pour garder l'arrêt manuel accessible.
+    enabled: true,
+    activeId: visioState.activeRecording?.id ?? null,
+    onChanged: visioState.refreshVisio
+  });
+
+  const discussionState = useMeetingDiscussion({ tenantId, syndicId, meetingId, meetingStatus });
+  const { discussion } = discussionState;
 
   const contacts = useMemo(() => uniqueContacts(live, participants), [live, participants]);
 
@@ -337,6 +362,78 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
 
       {live ? <QuorumPanel live={live} /> : null}
 
+      {visioState.visioError || visio?.degraded ? (
+        <Alert
+          type="warning"
+          showIcon
+          message={t('Visio intégrée : état indisponible pour le moment')}
+          description={t(
+            "La salle et les participants n'ont pas pu être relus. L'arrêt de l'enregistrement reste possible plus bas."
+          )}
+          action={
+            <Button size="small" onClick={() => visioState.refreshVisio()}>
+              {t('Réessayer')}
+            </Button>
+          }
+        />
+      ) : null}
+
+      {visioEnabled && visio ? (
+        <MeetingVisioCard
+          visio={visio}
+          frozen={frozen}
+          roomOpen={visioRoomOpen && !frozen}
+          onToggleRoom={() => setVisioRoomOpen(open => !open)}
+          getToken={visioState.getToken}
+          busyParticipantId={visioState.busyVisioId}
+          onSpeak={(participant, allowed) => void visioState.speak(participant, allowed)}
+          onMute={(participant, sources) => void visioState.mute(participant, sources)}
+          onLockMedia={locked => void visioState.lockMedia(locked)}
+          lockBusy={visioState.lockBusy}
+          onRemove={visioState.remove}
+          inProgress={visioState.inProgress}
+          recordingBusy={recordingState.busy}
+          onStartRecording={() => void recordingState.start()}
+          onStopRecording={() => void recordingState.stop()}
+          failedRecording={recordingState.latestFailed}
+          listActiveRecording={frozen ? null : recordingState.listActive}
+          discussion={discussionState.discussionEnabled && inProgress ? discussionState.roomAdapter : undefined}
+          onWriting={(participant, allowed) => void visioState.writing(participant, allowed)}
+          busyWritingParticipantId={visioState.busyWritingId}
+        />
+      ) : null}
+
+      {discussion ? (
+        <MeetingDiscussionCard
+          discussion={discussion}
+          inProgress={inProgress}
+          frozen={frozen}
+          busyOpen={discussionState.busyOpen}
+          busyMessageId={discussionState.busyMessageId}
+          onToggleOpen={open => void discussionState.toggleOpen(open)}
+          onHide={(item, hidden) => void discussionState.setHidden(item.id, hidden)}
+          onSend={discussionState.send}
+        />
+      ) : null}
+
+      {visioState.recordingConfigured || recordingState.recordings.length > 0 ? (
+        <MeetingRecordingsCard
+          recordings={recordingState.recordings}
+          fileUrl={(recordingId, download) =>
+            meetingRecordingFileUrl(tenantId, syndicId, meetingId, recordingId, download)
+          }
+          busyRecordingId={recordingState.busyRecordingId}
+          processingSlow={recordingState.processingSlow}
+          onDelete={recording => void recordingState.remove(recording)}
+          onRetry={recording => void recordingState.retry(recording)}
+          onDownload={recording => void recordingState.download(recording)}
+          activeRecording={visioEnabled && visio ? null : recordingState.listActive}
+          frozen={frozen}
+          stopBusy={recordingState.busy}
+          onStop={() => void recordingState.stop()}
+        />
+      ) : null}
+
       <Card size="small" title={t('Visioconférence')}>
         <Space.Compact style={{ width: '100%' }}>
           <Input
@@ -387,6 +484,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
       <Card size="small" title={t('Participants et liens personnels')}>
         <LiveParticipantsTable
           participants={participants}
+          inVisioContactIds={visioEnabled ? inVisioContactIds : undefined}
           readOnly={frozen}
           busyContactId={busyContactId}
           onCopyLink={participant => void handleCopyLink(participant)}

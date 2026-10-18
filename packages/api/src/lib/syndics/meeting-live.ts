@@ -22,6 +22,7 @@ import {
   type LiveContext,
   type LiveMeetingBase
 } from './meeting-live-context';
+import { notifyVisioRefresh } from './meeting-visio';
 
 /**
  * AG en direct, cote gestionnaire (spec 043) : vue de la console, emargement,
@@ -339,6 +340,9 @@ async function transitionVote(
     entityId: resolutionId,
     payload: { meetingId, resolutionId }
   });
+
+  // Spec 045 : la salle relit l'etat (au mieux, apres la transaction).
+  notifyVisioRefresh(tenantId, meetingId);
 
   return readAdminView(tenantId, syndicateId, meetingId);
 }

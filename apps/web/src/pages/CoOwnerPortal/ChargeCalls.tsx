@@ -30,7 +30,7 @@ function channelLabel(channel: OnlinePaymentChannel): string {
     case 'ORANGE_MONEY':
       return 'Orange Money';
     case 'MTN_MONEY':
-      return 'MTN Money';
+      return t('MTN Money');
     case 'MOOV_MONEY':
       return 'Moov Money';
     default:

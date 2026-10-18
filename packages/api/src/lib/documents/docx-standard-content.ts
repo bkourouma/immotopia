@@ -427,6 +427,23 @@ function minutesBlocks(): Block[] {
       '**Lieu :** {{MEETING_LOCATION}}',
       '**Quorum :** {{MEETING_QUORUM}}'
     ),
+    h2('FEUILLE DE PRÉSENCE'),
+    p('{{ATTENDANCE_SUMMARY}}'),
+    {
+      t: 'grid',
+      head: ['Lot', 'Tantièmes', 'Copropriétaire', 'Statut', 'Mode'],
+      rows: [
+        [
+          '{{#ATTENDANCE}}{{ATTENDANCE_LOT}}',
+          '{{ATTENDANCE_SHARES}}',
+          '{{ATTENDANCE_PERSON}}',
+          '{{ATTENDANCE_STATUS}}',
+          '{{ATTENDANCE_MODE}}{{/ATTENDANCE}}'
+        ]
+      ],
+      widths: [900, 1300, 3838, 2000, 1600],
+      right: [1]
+    },
     h2('ORDRE DU JOUR ET DISCUSSIONS'),
     p('{{^AGENDA_ITEMS}}- Aucun point d’ordre du jour renseigné.{{/AGENDA_ITEMS}}'),
     p('{{#AGENDA_ITEMS}}'),
@@ -451,8 +468,8 @@ function minutesBlocks(): Block[] {
     p('- {{PROXY_GRANTOR}} est représenté(e) par {{PROXY_REPRESENTATIVE}}.'),
     p('{{/PROXIES}}'),
     h2('SYNTHÈSE'),
-    p('{{FINAL_SUMMARY}}'),
-    { t: 'sign', left: ['Le Président de séance', 'Signature'], right: ['Le Secrétaire', 'Signature'] }
+    { t: 'p', text: '{{FINAL_SUMMARY}}', opts: { keepNext: true } },
+    { t: 'sign', left: ['Le Président de séance', 'Signature'], right: ['Le Secrétaire', 'Signature'], keep: true }
   ];
 }
 

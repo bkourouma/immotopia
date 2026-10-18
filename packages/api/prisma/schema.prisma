@@ -632,6 +632,8 @@ model Tenant {
   secureLinks                   SecureLink[]
   gmParticipants                GMParticipant[]
   gmAttendances                 GMAttendance[]
+  gmRecordings                  GMRecording[]
+  gmChatMessages                GMChatMessage[]
   externalAccessGrants          ExternalAccessGrant[]
   externalAccessGrantProperties ExternalAccessGrantProperty[]
   externalAccessGrantEntities   ExternalAccessGrantEntity[]
@@ -766,6 +768,8 @@ model Tenant {
   leaseInspections         LeaseInspection[]
   directDebitCreditors     DirectDebitCreditor[]
   directDebitMandates      DirectDebitMandate[]
+  directDebitRemittances   DirectDebitRemittance[]
+  directDebitRemittanceLines DirectDebitRemittanceLine[]
   leaseInspectionPhotos    LeaseInspectionPhoto[]
   propertyOwnershipShares  PropertyOwnershipShare[]
   // PATRIMOINE — Lot P4
@@ -852,6 +856,7 @@ model TenantClient {
   ownerLeases         RentalLease[]              @relation("RentalLeaseOwner")
   coRenterLeases      RentalLeaseCoRenter[]
   directDebitMandates DirectDebitMandate[]
+  directDebitRemittanceLines DirectDebitRemittanceLine[]
   rentalPayments      RentalPayment[]
   paymentDeclarations RentalPaymentDeclaration[] @relation("RentalPaymentDeclarationDeclarer")
 
@@ -2577,6 +2582,7 @@ enum RentalPaymentMethod {
   MOBILE_MONEY
   CARD
   OTHER
+  DIRECT_DEBIT
 }
 
 enum RentalPaymentStatus {
@@ -2764,6 +2770,7 @@ model RentalLease {
   events              LeaseEvent[]
   inspections         LeaseInspection[]
   directDebitMandates DirectDebitMandate[]
+  directDebitRemittanceLines DirectDebitRemittanceLine[]
 
   @@unique([tenant_id, lease_number])
   @@index([tenant_id])
@@ -2824,6 +2831,7 @@ model RentalInstallment {
   depositMovements    RentalDepositMovement[]
   documents           RentalDocument[]
   paymentDeclarations RentalPaymentDeclaration[] @relation("RentalPaymentDeclarationInstallment")
+  directDebitRemittanceLines DirectDebitRemittanceLine[]
 
   partnershipDistributions PartnershipDistribution[]
 
@@ -4400,6 +4408,10 @@ model GeneralMeeting {
   minutesUrl  String?       @map("minutes_url")
   /// URL de visioconference facultative (https uniquement), affichee sur la page en direct (spec 043).
   videoConferenceUrl String?       @map("video_conference_url")
+  /// Discussion écrite de la visio fermée par le gestionnaire (spec 046, M5).
+  chatClosedAt DateTime?     @map("chat_closed_at")
+  /// Micro et caméra interdits à tous les copropriétaires de la visio par le gestionnaire (spec 045, V16).
+  mediaLockedAt DateTime?    @map("media_locked_at")
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
@@ -4409,6 +4421,8 @@ model GeneralMeeting {
   proxies     GMProxy[]
   participants GMParticipant[]
   attendances  GMAttendance[]
+  recordings   GMRecording[]
+  chatMessages GMChatMessage[]
 
   @@index([syndicateId])
   @@index([status])
@@ -4507,6 +4521,13 @@ enum GMAttendanceRecorder {
 }
 
 /// Contact invite a une AG (porteur des liens personnels, spec 043). Un par contact et par AG.
+/// DEFAULT suit l'interdiction globale de l'AG, ALLOWED l'outrepasse (parole donnée), BLOCKED l'emporte toujours.
+enum GMMediaPolicy {
+  DEFAULT
+  ALLOWED
+  BLOCKED
+}
+
 model GMParticipant {
   id         String    @id @default(uuid()) @db.Uuid
   tenantId   String    @map("tenant_id")
@@ -4514,17 +4535,98 @@ model GMParticipant {
   contactId  String    @map("contact_id")
   joinedAt   DateTime? @map("joined_at")
   lastSeenAt DateTime? @map("last_seen_at")
+  /// Écriture coupée dans la discussion de la visio par le gestionnaire (spec 046, M6).
+  chatMutedAt DateTime? @map("chat_muted_at")
+  /// Droit de publier micro et caméra dans la visio, décidé par le gestionnaire (spec 045, V16).
+  mediaPolicy GMMediaPolicy @default(DEFAULT) @map("media_policy")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
   tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   meeting GeneralMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   contact CrmContact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  chatMessages GMChatMessage[]
 
   @@unique([meetingId, contactId])
   @@index([tenantId])
   @@index([contactId])
   @@map("gm_participants")
+}
+
+enum GMRecordingStatus {
+  RECORDING
+  PROCESSING
+  AVAILABLE
+  FAILED
+  DELETED
+}
+
+/// Enregistrement d'une AG en visio (spec 045, R1-R10). Le fichier MP4 est rapatrie
+/// depuis le stockage S3 de LiveKit vers le stockage prive d'ImmoTopia.
+model GMRecording {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @map("tenant_id")
+  meetingId       String            @map("meeting_id") @db.Uuid
+  egressId        String            @unique @map("egress_id")
+  status          GMRecordingStatus @default(RECORDING)
+  /// Cle S3 de l'objet produit par LiveKit.
+  storageKey      String            @map("storage_key")
+  /// Identifiant de stockage prive (/uploads/...), jamais servi en statique.
+  fileUrl         String?           @map("file_url")
+  fileSize        BigInt?           @map("file_size")
+  durationSeconds Int?              @map("duration_seconds")
+  failureReason   String?           @map("failure_reason")
+  /// Identifiant de l'evenement egress_ended traite (idempotence du webhook).
+  webhookEventId  String?           @unique @map("webhook_event_id")
+  startedAt       DateTime          @default(now()) @map("started_at")
+  startedByUserId String?           @map("started_by_user_id")
+  stoppedAt       DateTime?         @map("stopped_at")
+  stoppedByUserId String?           @map("stopped_by_user_id")
+  endedAt         DateTime?         @map("ended_at")
+  deletedAt       DateTime?         @map("deleted_at")
+  deletedByUserId String?           @map("deleted_by_user_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  meeting GeneralMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([meetingId])
+  @@map("gm_recordings")
+}
+
+enum GMChatAuthorKind {
+  COOWNER
+  MANAGER
+}
+
+/// Message de la discussion écrite de la visio d'une AG (spec 046).
+model GMChatMessage {
+  id             String           @id @default(uuid()) @db.Uuid
+  tenantId       String           @map("tenant_id")
+  meetingId      String           @map("meeting_id") @db.Uuid
+  authorKind     GMChatAuthorKind @map("author_kind")
+  /// GMParticipant auteur (COOWNER) ; nul pour le gestionnaire.
+  participantId  String?          @map("participant_id") @db.Uuid
+  /// Utilisateur auteur (MANAGER) ; nul pour un copropriétaire.
+  authorUserId   String?          @map("author_user_id")
+  /// Nom affiché, figé à l'envoi (M12).
+  authorName     String           @map("author_name")
+  /// Texte brut normalisé, 500 caractères au plus (M3).
+  body           String
+  hiddenAt       DateTime?        @map("hidden_at")
+  hiddenByUserId String?          @map("hidden_by_user_id")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  meeting     GeneralMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  participant GMParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([meetingId, createdAt])
+  @@map("gm_chat_messages")
 }
 
 /// Emargement d'un lot a une AG (spec 043). Absence de ligne = absent.
@@ -10482,6 +10584,7 @@ model DirectDebitCreditor {
   tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   treasuryAccount TreasuryAccount      @relation(fields: [treasuryAccountId], references: [id], onDelete: Restrict)
   mandates        DirectDebitMandate[]
+  remittances     DirectDebitRemittance[]
 
   /// PB1-R3 : un créancier par compte de trésorerie.
   @@unique([tenantId, treasuryAccountId])
@@ -10501,7 +10604,8 @@ model DirectDebitMandate {
   debtorClientId       String                   @map("debtor_client_id")
   leaseId              String?                  @map("lease_id") @db.Uuid
   status               DirectDebitMandateStatus @default(DRAFT)
-  /// IBAN chiffré (lib/payment-gateway/crypto.ts, format pg1:…). Jamais renvoyé.
+  /// IBAN chiffré (lib/direct-debit/iban-crypto.ts, format ddk1:<id de clé>:…, clé DIRECT_DEBIT_IBAN_KEY ;
+  /// anciennes valeurs pg1:… lisibles en repli). Jamais renvoyé.
   ibanEncrypted        String                   @map("iban_encrypted")
   ibanBankCode         String                   @map("iban_bank_code")
   ibanLast4            String                   @map("iban_last4")
@@ -10530,6 +10634,7 @@ model DirectDebitMandate {
   creditor DirectDebitCreditor @relation(fields: [creditorId], references: [id], onDelete: Restrict)
   debtor   TenantClient        @relation(fields: [debtorClientId], references: [id], onDelete: Restrict)
   lease    RentalLease?        @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  remittanceLines DirectDebitRemittanceLine[]
 
   @@unique([tenantId, year, sequence])
   @@unique([tenantId, openSlotKey])
@@ -10538,4 +10643,117 @@ model DirectDebitMandate {
   @@index([debtorClientId])
   @@index([creditorId])
   @@map("direct_debit_mandates")
+}
+
+enum DirectDebitRemittanceStatus {
+  DRAFT      // brouillon : lignes modifiables, rien n'est parti
+  VALIDATED  // validée par un humain, prénotifications envoyées
+  EXPORTED   // fichier de remise produit au moins une fois
+  SUBMITTED  // marquée « déposée à la banque » par l'agence
+  CANCELED
+}
+
+enum DirectDebitRemittanceLineStatus {
+  PENDING
+  CANCELED
+  // P3 : SETTLED, REJECTED
+}
+
+enum DirectDebitPrenotificationStatus {
+  PENDING   // pas encore envoyée (brouillon)
+  SENT
+  NO_EMAIL  // le débiteur n'a pas d'adresse e-mail
+  DISABLED  // notification désactivée par l'agence (Notifications email)
+  FAILED
+}
+
+/// Remise de prélèvements d'un créancier pour une date de collecte (spec 042 P2).
+model DirectDebitRemittance {
+  id                    String                      @id @default(uuid()) @db.Uuid
+  tenantId              String                      @map("tenant_id")
+  /// Référence PRL-<year>-<sequence sur 4 chiffres>, par (agence, année).
+  year                  Int
+  sequence              Int
+  scope                 DirectDebitMandateScope     @default(RENTAL_LEASE)
+  creditorId            String                      @map("creditor_id") @db.Uuid
+  status                DirectDebitRemittanceStatus @default(DRAFT)
+  collectionDate        DateTime                    @map("collection_date") @db.Date
+  /// Dernier jour de prénotification : recalculé à l'actualisation et à la validation, figé ensuite.
+  prenotificationDeadline DateTime                  @map("prenotification_deadline") @db.Date
+  periodYear            Int                         @map("period_year")
+  periodMonth           Int                         @map("period_month")
+  /// Totaux des lignes PENDING, tenus à jour dans la même transaction que les lignes.
+  lineCount             Int                         @default(0) @map("line_count")
+  totalAmount           Decimal                     @default(0) @map("total_amount") @db.Decimal(12, 2)
+  /// Figés à la validation : le fichier reste identique à chaque téléchargement.
+  fileFormat            DirectDebitFileFormat?      @map("file_format")
+  creditorLabelSnapshot String?                     @map("creditor_label_snapshot")
+  creditorIdentifierSnapshot String?                @map("creditor_identifier_snapshot")
+  validatedAt           DateTime?                   @map("validated_at")
+  validatedByUserId     String?                     @map("validated_by_user_id")
+  firstExportedAt       DateTime?                   @map("first_exported_at")
+  lastExportedAt        DateTime?                   @map("last_exported_at")
+  exportCount           Int                         @default(0) @map("export_count")
+  /// HMAC-SHA-256 (clé dérivée de DIRECT_DEBIT_IBAN_KEY) du dernier fichier produit : traçabilité, pas un SHA-256 vérifiable de l'extérieur ; le fichier n'est jamais stocké.
+  lastFileDigest        String?                     @map("last_file_digest")
+  submittedAt           DateTime?                   @map("submitted_at")
+  submittedByUserId     String?                     @map("submitted_by_user_id")
+  canceledAt            DateTime?                   @map("canceled_at")
+  cancellationReason    String?                     @map("cancellation_reason")
+  notes                 String?                     @db.Text
+  createdByUserId       String?                     @map("created_by_user_id")
+  createdAt             DateTime                    @default(now()) @map("created_at")
+  updatedAt             DateTime                    @updatedAt @map("updated_at")
+
+  tenant   Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creditor DirectDebitCreditor         @relation(fields: [creditorId], references: [id], onDelete: Restrict)
+  lines    DirectDebitRemittanceLine[]
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, status])
+  @@index([creditorId])
+  @@map("direct_debit_remittances")
+}
+
+/// Une échéance à prélever dans une remise (spec 042 P2).
+model DirectDebitRemittanceLine {
+  id                      String                           @id @default(uuid()) @db.Uuid
+  tenantId                String                           @map("tenant_id")
+  remittanceId            String                           @map("remittance_id") @db.Uuid
+  /// Rang dans la remise (1, 2, …), jamais réutilisé : référence d'opération PRL-AAAA-NNNN-<rang sur 3 chiffres>.
+  lineNumber              Int                              @map("line_number")
+  mandateId               String                           @map("mandate_id") @db.Uuid
+  leaseId                 String                           @map("lease_id") @db.Uuid
+  installmentId           String                           @map("installment_id") @db.Uuid
+  debtorClientId          String                           @map("debtor_client_id")
+  status                  DirectDebitRemittanceLineStatus  @default(PENDING)
+  amount                  Decimal                          @db.Decimal(12, 2)
+  /// Reste dû (hors pénalités) au moment de la sélection, avant plafond.
+  remainingDueAtSelection Decimal                          @map("remaining_due_at_selection") @db.Decimal(12, 2)
+  capped                  Boolean                          @default(false)
+  /// ADR-007 §6 : `<installmentId>` tant que la ligne n'est pas annulée, nul
+  /// ensuite. L'unicité en base interdit deux lignes vivantes pour une même
+  /// échéance, quel que soit le mandat ou le créancier.
+  activeKey               String?                          @map("active_key")
+  canceledAt              DateTime?                        @map("canceled_at")
+  cancellationReason      String?                          @map("cancellation_reason")
+  prenotificationStatus   DirectDebitPrenotificationStatus @default(PENDING) @map("prenotification_status")
+  prenotifiedAt           DateTime?                        @map("prenotified_at")
+  createdAt               DateTime                         @default(now()) @map("created_at")
+  updatedAt               DateTime                         @updatedAt @map("updated_at")
+
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  remittance  DirectDebitRemittance @relation(fields: [remittanceId], references: [id], onDelete: Cascade)
+  mandate     DirectDebitMandate    @relation(fields: [mandateId], references: [id], onDelete: Restrict)
+  lease       RentalLease           @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  installment RentalInstallment     @relation(fields: [installmentId], references: [id], onDelete: Restrict)
+  debtor      TenantClient          @relation(fields: [debtorClientId], references: [id], onDelete: Restrict)
+
+  @@unique([remittanceId, lineNumber])
+  @@unique([tenantId, activeKey])
+  @@index([tenantId, status])
+  @@index([mandateId])
+  @@index([installmentId])
+  @@index([leaseId])
+  @@map("direct_debit_remittance_lines")
 }

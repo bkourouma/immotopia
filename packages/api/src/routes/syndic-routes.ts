@@ -19,6 +19,29 @@ import {
   setLotAttendanceHandler
 } from '../controllers/syndic-meeting-live-controller';
 import {
+  getMeetingVisioHandler,
+  issueMeetingVisioTokenHandler,
+  muteVisioParticipantHandler,
+  removeVisioParticipantHandler,
+  setVisioMediaLockHandler,
+  setVisioParticipantSpeakingHandler
+} from '../controllers/syndic-meeting-visio-controller';
+import {
+  getMeetingDiscussionHandler,
+  sendMeetingDiscussionMessageHandler,
+  setMeetingDiscussionMessageHiddenHandler,
+  setMeetingDiscussionOpenHandler,
+  setParticipantWritingHandler
+} from '../controllers/syndic-meeting-discussion-controller';
+import {
+  deleteRecordingHandler,
+  listRecordingsHandler,
+  retryRecordingHandler,
+  startRecordingHandler,
+  stopRecordingHandler,
+  streamRecordingHandler
+} from '../controllers/syndic-meeting-recording-controller';
+import {
   inviteCoOwnerToPortalHandler,
   revokeCoOwnerPortalAccessHandler
 } from '../controllers/syndic-coowner-portal-controller';
@@ -473,6 +496,95 @@ router.delete(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants/:contactId/liens',
   requirePropertyPermission('SYNDIC_EDIT'),
   revokeParticipantLinksHandler
+);
+// Spec 045 : visio integree a l'AG en direct.
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  getMeetingVisioHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/jeton',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  issueMeetingVisioTokenHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/parole',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setVisioParticipantSpeakingHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/exclure',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  removeVisioParticipantHandler
+);
+// Spec 045, V16 : moderation du micro et de la camera des participants.
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/couper',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  muteVisioParticipantHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/media/verrou',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setVisioMediaLockHandler
+);
+// Spec 046 : discussion ecrite moderee de la visio.
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  getMeetingDiscussionHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/messages',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  sendMeetingDiscussionMessageHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/messages/:messageId/masquer',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setMeetingDiscussionMessageHiddenHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/etat',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setMeetingDiscussionOpenHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/ecriture',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setParticipantWritingHandler
+);
+// Spec 045 : enregistrement de l'AG (le fichier ne sort que par la route authentifiee ci-dessous).
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/demarrer',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  startRecordingHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/arreter',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  stopRecordingHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  listRecordingsHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/fichier',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  streamRecordingHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/reessayer',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  retryRecordingHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  deleteRecordingHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/compte-rendu',

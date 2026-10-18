@@ -282,6 +282,52 @@ export const meetingLiveStateRateLimiter = rateLimit({
   legacyHeaders: false
 });
 
+/** Visio (jeton de salle et main levee ensemble) : 20/min par jeton (spec 045). */
+export const meetingVisioRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => meetingLiveTokenKey(req, 'visio'),
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Discussion de la visio (spec 046, M4) : lecture de l'historique, 30/min par jeton. */
+export const meetingDiscussionReadRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: req => meetingLiveTokenKey(req, 'discussion'),
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Discussion de la visio (spec 046, M4) : envoi d'un message, 10/min par jeton. */
+export const meetingDiscussionSendRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => meetingLiveTokenKey(req, 'discussion-envoi'),
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Webhook LiveKit (spec 045, R4) : 3000/min par IP, applique AVANT la lecture du corps et
+ * la verification de signature (qui reste toujours exigee). LiveKit envoie TOUS ses
+ * evenements (entrees, sorties, pistes) a cette URL depuis une seule IP : une AG de
+ * 300 participants en produit des centaines par minute, et un `egress_ended` refuse
+ * ici ne serait rattrape que par la reconciliation de la liste des enregistrements.
+ */
+export const livekitWebhookRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 3000,
+  keyGenerator: req => `livekit-webhook:${req.ip ?? 'inconnue'}`,
+  message: { success: false, message: 'Trop de requêtes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 /** Rejoindre et voter : 30/min par jeton. */
 export const meetingLiveActionRateLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -397,6 +443,14 @@ export const chargePaymentStatusRateLimiter = rateLimit({
  * Sized well above normal single-user traffic; the per-endpoint limiters above
  * remain the tight ones on sensitive routes.
  */
+/**
+ * Le webhook LiveKit (spec 045) a son propre limiteur (`livekitWebhookRateLimiter`) : le plancher
+ * global (1000/15 min par IP) couperait des evenements legitimes d'un meme serveur LiveKit.
+ */
+export function isLivekitWebhookPath(path: string): boolean {
+  return path === '/api/webhooks/livekit' || path.startsWith('/api/webhooks/livekit/');
+}
+
 export const globalApiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000,
@@ -410,7 +464,10 @@ export const globalApiRateLimiter = rateLimit({
   // L'AG en direct (spec 043) interroge toutes les 3 s depuis une IP souvent partagee : elle a ses
   // propres limiteurs (600/min par IP, 60/min par jeton), le plancher global la couperait trop tot.
   skip: req =>
-    req.path === '/health' || req.path.startsWith('/uploads/') || req.path.startsWith('/api/public/assemblees/')
+    req.path === '/health' ||
+    req.path.startsWith('/uploads/') ||
+    req.path.startsWith('/api/public/assemblees/') ||
+    isLivekitWebhookPath(req.path)
 });
 
 /**

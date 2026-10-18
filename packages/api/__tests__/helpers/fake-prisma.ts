@@ -360,6 +360,10 @@ export const FAKE_MODEL_NAMES = [
   'gMParticipant',
   'gMAttendance',
   'gMProxy',
+  // Spec 045 : enregistrements d'AG.
+  'gMRecording',
+  // Spec 046 : discussion ecrite de la visio.
+  'gMChatMessage',
   'secureLink',
   'user',
   'passwordResetToken',
@@ -448,6 +452,10 @@ export function createFakePrisma(): FakePrisma {
   DERIVED_RELATIONS.set('secureLink.tenant', row => ({
     model: 'tenant',
     row: fake.tenant.rows.find((tenant: Row) => tenant.id === row.tenantId) ?? null
+  }));
+  DERIVED_RELATIONS.set('gMParticipant.meeting', row => ({
+    model: 'generalMeeting',
+    row: fake.generalMeeting.rows.find((meeting: Row) => meeting.id === row.meetingId) ?? null
   }));
   fake.reset = () => {
     for (const name of FAKE_MODEL_NAMES) {

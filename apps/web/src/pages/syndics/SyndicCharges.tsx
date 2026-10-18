@@ -6,7 +6,6 @@ import {
   Card,
   Col,
   DatePicker,
-  Drawer,
   Form,
   Input,
   InputNumber,
@@ -21,8 +20,8 @@ import { PlusOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
 import { LotPaymentModal } from '../../components/syndics/LotPaymentModal';
-import { ChargeCallPaymentLinksPanel } from '../../components/syndics/ChargeCallPaymentLinksPanel';
-import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { ChargeCallPaymentLinkModal } from '../../components/syndics/online-payment/ChargeCallPaymentLinkModal';
+import { useSyndicOnlinePaymentUsable } from '../../components/syndics/online-payment/useOnlinePaymentUsable';
 import { MoneyValue, StatCard, formatMoney } from '../../components/primitives';
 import {
   assignChargeCallFund,
@@ -45,6 +44,7 @@ import {
   SyndicateFund,
   SyndicateLot
 } from '../../types/syndic-types';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
@@ -81,13 +81,6 @@ export const SyndicCharges: React.FC = () => {
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
 
-  // Lien « Payer cet appel » : création et révocation exigent SYNDIC_EDIT, la liste SYNDIC_VIEW.
-  // `permissions === null` : aucune restriction (administrateur d'agence, échec réseau).
-  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
-  const canEditLinks = permissionsReady && (permissions === null || permissions.has('SYNDIC_EDIT'));
-  const canViewLinks = permissionsReady && (permissions === null || permissions.has('SYNDIC_VIEW'));
-  const [linksTarget, setLinksTarget] = useState<ChargeCall | null>(null);
-
   const [syndicate, setSyndicate] = useState<Syndicate | null>(null);
   const [lots, setLots] = useState<SyndicateLot[]>([]);
   const [charges, setCharges] = useState<ChargeCall[]>([]);
@@ -120,6 +113,13 @@ export const SyndicCharges: React.FC = () => {
   const [fundTarget, setFundTarget] = useState<ChargeCall | null>(null);
   const [fundChoice, setFundChoice] = useState<string | undefined>(undefined);
   const [fundSaving, setFundSaving] = useState(false);
+
+  // Lien « Payer cet appel » (spec 042) : proposé seulement si la copropriété a un paiement en ligne
+  // utilisable ; créer et révoquer exigent SYNDIC_EDIT (lire la liste, SYNDIC_VIEW). L'API reste l'autorité.
+  const onlinePaymentUsable = useSyndicOnlinePaymentUsable(effectiveTenantId, syndicId);
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const canEditSyndic = permissionsReady && (permissions === null || permissions.has('SYNDIC_EDIT'));
+  const [linkTarget, setLinkTarget] = useState<ChargeCall | null>(null);
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
@@ -404,17 +404,7 @@ export const SyndicCharges: React.FC = () => {
                 onDownloadNoticeWord={charge => void handleDownloadNoticeWord(charge)}
                 funds={funds}
                 onAssignFund={funds.length > 0 ? handleOpenAssignFund : undefined}
-                paymentLinks={
-                  effectiveTenantId && syndicId && (canEditLinks || canViewLinks)
-                    ? {
-                        tenantId: effectiveTenantId,
-                        syndicId,
-                        canCreate: canEditLinks,
-                        canView: canViewLinks,
-                        onOpenLinks: setLinksTarget
-                      }
-                    : undefined
-                }
+                onPaymentLink={onlinePaymentUsable ? setLinkTarget : undefined}
               />
             </Card>
           </>
@@ -643,32 +633,17 @@ export const SyndicCharges: React.FC = () => {
         />
       </Modal>
 
-      {/* Monté seulement à l'ouverture : la liste des liens ne se charge que sur demande. */}
-      {linksTarget && effectiveTenantId && syndicId ? (
-        <Drawer
+      {/* Monté seulement ouvert : l'URL du lien, montrée une fois, ne survit pas dans l'état de la page. */}
+      {effectiveTenantId && syndicId && linkTarget ? (
+        <ChargeCallPaymentLinkModal
+          key={`${effectiveTenantId}:${syndicId}:${linkTarget.id}`}
+          tenantId={effectiveTenantId}
+          syndicId={syndicId}
+          charge={linkTarget}
           open
-          onClose={() => setLinksTarget(null)}
-          width={760}
-          destroyOnHidden
-          title={t('Liens de paiement · {{period}}', { period: linksTarget.period })}
-        >
-          <ChargeCallPaymentLinksPanel
-            tenantId={effectiveTenantId}
-            syndicId={syndicId}
-            chargeId={linksTarget.id}
-            remaining={
-              linksTarget.outstandingAmount !== undefined
-                ? Number(linksTarget.outstandingAmount)
-                : Number(linksTarget.amount) - Number(linksTarget.paidAmount ?? 0)
-            }
-            status={linksTarget.status}
-            periodLabel={linksTarget.period}
-            currency={linksTarget.currency}
-            canView={canViewLinks}
-            canCreate={canEditLinks}
-            onChanged={() => void loadCharges()}
-          />
-        </Drawer>
+          canEdit={canEditSyndic}
+          onClose={() => setLinkTarget(null)}
+        />
       ) : null}
 
       {effectiveTenantId && syndicId ? (

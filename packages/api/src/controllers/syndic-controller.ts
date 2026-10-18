@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { t } from '../i18n';
+import { closeMeetingRoom } from '../lib/syndics/meeting-visio';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import {
@@ -145,6 +146,8 @@ import { notifyChargeCall, notifyMeetingConvocation } from '../lib/syndics/notif
 import { deliverReminderNotification } from '../lib/syndics/reminder-delivery';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { logger } from '../utils/logger';
+import { runWithTenantContext } from '../utils/tenant-context';
+import { IDEMPOTENCY_KEY_MAX_LENGTH, meetingCreationIdempotencyStore } from '../utils/idempotency';
 import { asyncHandler } from '../middleware/error-middleware';
 import { presentSyndicateLots } from '../lib/syndics/lot-owner';
 import { buildMeetingMinutesDocx } from '../lib/syndics/minutes-generator';
@@ -249,7 +252,7 @@ export const deleteSyndicHandler = asyncHandler(async (req: Request, res: Respon
     throw badRequest('TenantId manquant pour la suppression de copropriete');
   }
 
-  const syndic = await deleteEmptySyndicateByTenant(tenantId, syndicId);
+  const syndic = await deleteEmptySyndicateByTenant(tenantId, syndicId, req.user?.userId ?? null);
 
   res.json({
     success: true,
@@ -739,21 +742,69 @@ export const createMeetingHandler = asyncHandler(async (req: Request, res: Respo
     ? req.body.resolutions.map((resolution: any) => createResolutionSchema.omit({ meetingId: true }).parse(resolution))
     : [];
 
-  const meeting = await createMeetingForTenant(tenantId, {
-    ...meetingBase,
-    resolutions
-  });
+  const idempotencyKey = req.header('Idempotency-Key')?.trim() || undefined;
+  if (idempotencyKey && idempotencyKey.length > IDEMPOTENCY_KEY_MAX_LENGTH) {
+    throw badRequest(`L'en-tête Idempotency-Key ne doit pas dépasser ${IDEMPOTENCY_KEY_MAX_LENGTH} caractères.`);
+  }
 
-  // Convocation APRES la validation de la creation : un echec d'envoi ne defait
-  // pas l'assemblee, il est journalise et rendu dans `convocation`.
-  const convocation = await sendMeetingConvocation(meeting.id);
+  // Creation + planification de l'envoi : la reponse n'attend JAMAIS les e-mails /
+  // WhatsApp (une AG de ~30 lots depassait le delai du proxy : 503 alors que l'AG
+  // etait creee, puis un doublon au reessai).
+  const create = async () => {
+    const meeting = await createMeetingForTenant(tenantId, { ...meetingBase, resolutions });
+    scheduleMeetingConvocation(tenantId, meeting.id, req.user?.userId);
+    return meeting;
+  };
 
-  res.status(201).json({
+  let meeting: Awaited<ReturnType<typeof createMeetingForTenant>>;
+  let replay = false;
+  if (!idempotencyKey) {
+    meeting = await create();
+  } else {
+    const actorId = req.user?.userId ?? 'anonymous';
+    const storeKey = `${tenantId}:${syndicateId}:${idempotencyKey}`;
+    const existing = meetingCreationIdempotencyStore.get(actorId, storeKey);
+    if (existing) {
+      replay = true;
+      meeting = (await existing) as typeof meeting;
+    } else {
+      const pending = create();
+      meetingCreationIdempotencyStore.set(actorId, storeKey, pending);
+      // Une creation echouee ne doit pas verrouiller la cle : le reessai recommence.
+      pending.catch(() => meetingCreationIdempotencyStore.delete(actorId, storeKey));
+      meeting = await pending;
+    }
+  }
+
+  res.status(replay ? 200 : 201).json({
     success: true,
     data: meeting,
-    convocation
+    // Etat d'envoi : les convocations partent apres la reponse (journal par
+    // copropriétaire consultable, renvoi possible via .../convocation).
+    convocation: { status: 'SENDING' as const },
+    ...(replay ? { replay: true } : {})
   });
 });
+
+/**
+ * Envoi differe, non bloquant, des convocations d'une AG qui vient d'etre creee.
+ * Garde le contexte d'agence (garde Prisma, audit) ; ne leve jamais et journalise
+ * le resultat ou l'echec.
+ */
+export function scheduleMeetingConvocation(tenantId: string, meetingId: string, userId?: string): void {
+  setImmediate(() => {
+    void runWithTenantContext({ tenantId, userId }, async () => {
+      const result = await sendMeetingConvocation(meetingId);
+      logger.info('Meeting convocation sent in background', { tenantId, meetingId, result });
+    }).catch(error => {
+      logger.error('Meeting convocation background job crashed', {
+        tenantId,
+        meetingId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+  });
+}
 
 /**
  * Convocation d'une AG : ne leve jamais. Le resultat (envoyes / echoues) est
@@ -859,6 +910,11 @@ export const updateMeetingHandler = asyncHandler(async (req: Request, res: Respo
 
   const parsed = updateMeetingSchema.parse(req.body);
   const updatedMeeting = await updateMeetingByTenant(tenantId, syndicateId, meetingId, parsed);
+
+  // Spec 045 : la cloture ou l'annulation ferme la salle de visio (au mieux, ne bloque pas la reponse).
+  if (parsed.status === 'COMPLETED' || parsed.status === 'CANCELLED') {
+    void closeMeetingRoom(tenantId, meetingId);
+  }
 
   res.json({
     success: true,

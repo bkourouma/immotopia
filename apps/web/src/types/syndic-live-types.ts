@@ -179,7 +179,126 @@ export interface LiveMeetingPublicView {
     };
   }>;
   canVote: boolean;
+  /** Visio intégrée (spec 045). Une réponse sans ce champ vaut `enabled: false`. */
+  visio?: {
+    enabled: boolean;
+    /** Une séance est enregistrée en ce moment (avis R2). */
+    recording?: boolean;
+    /** Ce participant peut-il activer micro et caméra (V16) ? Absent d'une API plus ancienne : oui. */
+    mediaAllowed?: boolean;
+  };
   serverTime: string;
 }
 
 export type PublicLiveResolution = LiveMeetingPublicView['resolutions'][number];
+
+/* ------------------------------------------------------------------- visio */
+
+/** Connexion à la salle de visio (spec 045) : jeton LiveKit à durée courte. */
+export interface VisioJoinInfo {
+  serverUrl: string;
+  token: string;
+  identity: string;
+  roomName: string;
+  expiresAt: string;
+  /** Droit d'activer micro et caméra décidé par le serveur à l'émission du jeton (V16). */
+  mediaAllowed?: boolean;
+}
+
+/** Droit de publier d'un participant (V16a) : `DEFAULT` suit l'interdiction globale. */
+export type MeetingMediaPolicy = 'DEFAULT' | 'ALLOWED' | 'BLOCKED';
+
+/** État d'une piste publiée : publiée ou non, coupée ou non. */
+export interface MeetingVisioTrackState {
+  published: boolean;
+  muted: boolean;
+}
+
+export interface MeetingVisioParticipant {
+  identity: string;
+  kind: 'COOWNER' | 'MANAGER';
+  /** GMParticipant (copropriétaire). */
+  participantId: string | null;
+  contactId: string | null;
+  name: string;
+  handRaisedAt: string | null;
+  /** Droit de publier micro et caméra. */
+  canSpeak: boolean;
+  /** Droit d'activer micro et caméra décidé par le serveur (V16). Absent d'une API plus ancienne : `canSpeak`. */
+  mediaAllowed?: boolean;
+  mediaPolicy?: MeetingMediaPolicy;
+  mic?: MeetingVisioTrackState;
+  camera?: MeetingVisioTrackState;
+  joinedAt: string | null;
+  /** Écriture dans la discussion coupée (spec 046, M6). Absent d'une API plus ancienne : `false`. */
+  chatMuted?: boolean;
+}
+
+export type MeetingRecordingStatus = 'RECORDING' | 'PROCESSING' | 'AVAILABLE' | 'FAILED' | 'DELETED';
+
+export interface MeetingRecordingView {
+  id: string;
+  status: MeetingRecordingStatus;
+  startedAt: string;
+  stoppedAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  fileSize: number | null;
+  failureReason: string | null;
+  startedByName: string | null;
+}
+
+export interface MeetingVisioAdminView {
+  enabled: boolean;
+  roomName: string | null;
+  roomActive: boolean;
+  participants: MeetingVisioParticipant[];
+  /** Micros et caméras interdits à tous les copropriétaires (V16d). Absent d'une API plus ancienne : `false`. */
+  mediaLocked?: boolean;
+  /** Vrai quand l'API n'a pas pu relire la salle ou les enregistrements : la liste peut être incomplète. */
+  degraded?: boolean;
+  /** Absent d'une API plus ancienne : traité comme « enregistrement non configuré ». */
+  recording?: { enabled: boolean; active: MeetingRecordingView | null };
+}
+
+/* ------------------------------------------------------------- discussion (spec 046) */
+
+/** Message de la discussion écrite de la visio. `body` est nul quand le message est masqué (vue copropriétaire). */
+export interface DiscussionMessageView {
+  id: string;
+  authorKind: 'COOWNER' | 'MANAGER';
+  /** Identité LiveKit : id du GMParticipant ou `gestionnaire-<userId>`. */
+  authorIdentity: string;
+  authorName: string;
+  body: string | null;
+  hidden: boolean;
+  createdAt: string;
+}
+
+export interface PublicDiscussionView {
+  /** Discussion ouverte pour la salle (M5). */
+  open: boolean;
+  /** Mon écriture est coupée (M6). */
+  muted: boolean;
+  /** `open && !muted` ; la présence dans la salle se vérifie à l'envoi. */
+  canWrite: boolean;
+  maxLength: number;
+  messages: DiscussionMessageView[];
+}
+
+export type ManagerDiscussionMessageView = Omit<DiscussionMessageView, 'body'> & {
+  /** Toujours le texte, même masqué. */
+  body: string;
+  participantId: string | null;
+  hiddenAt: string | null;
+  hiddenByName: string | null;
+};
+
+export interface ManagerDiscussionView {
+  /** Visio configurée (écriture possible). */
+  enabled: boolean;
+  open: boolean;
+  maxLength: number;
+  mutedParticipantIds: string[];
+  messages: ManagerDiscussionMessageView[];
+}

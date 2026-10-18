@@ -114,6 +114,7 @@ export default function TenantDeposit() {
       CASH: t('Espèces'),
       BANK_TRANSFER: t('Virement bancaire'),
       MOBILE_MONEY: t('Mobile Money'),
+      DIRECT_DEBIT: t('Prélèvement bancaire'),
       CHECK: t('Chèque'),
       CARD: t('Carte bancaire'),
       OTHER: 'Autre'

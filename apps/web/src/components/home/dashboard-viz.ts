@@ -81,6 +81,7 @@ const EXTRA_LABELS: Record<string, string> = {
   BANK_TRANSFER: 'Virement',
   CHECK: t('Chèque'),
   MOBILE_MONEY: t('Mobile Money'),
+  DIRECT_DEBIT: t('Prélèvement bancaire'),
   CARD: t('Carte bancaire'),
   OTHER: 'Autre',
 
