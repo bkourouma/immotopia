@@ -230,6 +230,38 @@ describe('ACCEPT : encaissement du montant REÇU, une seule transaction', () => 
   });
 });
 
+describe('CONTRARY_STATE sans encaissement (succès tardif après expiration)', () => {
+  it('ACCEPT encaisse le montant reçu comme les autres motifs, reçus programmés, audit de confirmation', async () => {
+    const checkout = inReview('CONTRARY_STATE', { chargePaymentId: null, receivedAmount: 49000 });
+
+    const result = await decide(checkout.id);
+
+    expect(payments()).toHaveLength(1);
+    expect(db.engine.recordLotPaymentTx).toHaveBeenCalledTimes(1);
+    expect(result.payment).toMatchObject({ id: payments()[0].id, amount: 49000 });
+    expect(result.checkout).toMatchObject({
+      status: 'SUCCESS',
+      resolution: 'ACCEPTED',
+      chargePaymentId: payments()[0].id
+    });
+    expect(db.engine.scheduleChargeDocumentDelivery).toHaveBeenCalledTimes(1);
+    expect(db.engine.logAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ actionKey: 'SYNDIC_ONLINE_PAYMENT_CONFIRMED' })
+    );
+  });
+
+  it('REJECT est permis : FAILED, REJECTED, aucun encaissement', async () => {
+    const checkout = inReview('CONTRARY_STATE', { chargePaymentId: null });
+
+    const result = await decide(checkout.id, { decision: 'REJECT' });
+
+    expect(result.payment).toBeNull();
+    expect(result.checkout).toMatchObject({ status: 'FAILED', resolution: 'REJECTED', chargePaymentId: null });
+    expect(payments()).toHaveLength(0);
+    expect(db.engine.recordLotPaymentTx).not.toHaveBeenCalled();
+  });
+});
+
 describe('garde-fous', () => {
   it('seule une tentative en REVIEW se tranche : 409 CHECKOUT_NOT_IN_REVIEW', async () => {
     for (const status of ['PENDING', 'SUCCESS', 'FAILED', 'CANCELED', 'EXPIRED']) {

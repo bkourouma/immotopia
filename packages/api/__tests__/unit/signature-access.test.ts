@@ -151,4 +151,13 @@ describe('liste : types lisibles', () => {
     hasPermission.mockResolvedValue(false);
     expect(await permittedSignatureKinds('u1', 't1')).toEqual([]);
   });
+
+  it('mode edit : permission d’ÉDITION de chaque type, la lecture reste le défaut', async () => {
+    hasPermission.mockImplementation(async (_user: string, key: string) =>
+      ['RENTAL_LEASES_VIEW', 'CRM_DEALS_VIEW', 'CRM_DEALS_EDIT'].includes(key)
+    );
+    expect((await permittedSignatureKinds('u1', 't1')).sort()).toEqual(['LEASE_CONTRACT', 'SALE_AGREEMENT']);
+    expect(await permittedSignatureKinds('u1', 't1', 'edit')).toEqual(['SALE_AGREEMENT']);
+    expect(hasPermission).toHaveBeenCalledWith('u1', 'RENTAL_LEASES_EDIT', 't1');
+  });
 });

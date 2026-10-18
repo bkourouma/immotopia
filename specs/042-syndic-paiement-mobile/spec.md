@@ -174,8 +174,10 @@ droit SYNDIC. Détail dans [plan.md](./plan.md).
   transaction), sur une date `paidAt` au choix (utile pour sortir d'un exercice clos) ; `REJECT` n'enregistre
   rien et marque `FAILED` avec la note. Une note est obligatoire et auditée. Deux décisions concurrentes :
   une seule gagne (claim atomique sur `REVIEW`).
-- **R21** — `CONTRARY_STATE` : `ACCEPT` clôt le suivi (l'encaissement existe déjà) ; `REJECT` est refusé (pas
-  d'annulation d'encaissement dans ce chantier). `DUPLICATE_TRANSACTION` : `REJECT` seulement.
+- **R21** — `CONTRARY_STATE` avec encaissement déjà enregistré : `ACCEPT` clôt le suivi ; `REJECT` est refusé (pas
+  d'annulation d'encaissement dans ce chantier). `CONTRARY_STATE` sans encaissement (succès tardif après
+  expiration, l'argent est parti) : `ACCEPT` encaisse comme R20, `REJECT` est permis (`FAILED`, sans
+  remboursement). `DUPLICATE_TRANSACTION` : `REJECT` seulement.
 - **R22** — Refuser ne rembourse pas : l'argent reste chez PaySecureHub. L'écran le dit ; le remboursement se
   fait hors ImmoTopia.
 
@@ -235,8 +237,8 @@ droit SYNDIC. Détail dans [plan.md](./plan.md).
    │                └── REVIEW[AMOUNT_MISMATCH | FISCAL_YEAR_CLOSED |        │
    │                           CALLS_UNAVAILABLE | DUPLICATE_TRANSACTION]   │
    └─ 48 h sans réponse ─> EXPIRED                                          │
- REVIEW ── ACCEPT ─> SUCCESS (encaissement du montant reçu, sauf CONTRARY_STATE / DUPLICATE_TRANSACTION)
-        └─ REJECT ─> FAILED  (sauf CONTRARY_STATE : refusé)
+ REVIEW ── ACCEPT ─> SUCCESS (encaissement du montant reçu, sauf CONTRARY_STATE déjà encaissé / DUPLICATE_TRANSACTION)
+        └─ REJECT ─> FAILED  (sauf CONTRARY_STATE déjà encaissé : refusé)
 ```
 
 Vues publiques : `REVIEW` → `PENDING` (+ `underReview`), `EXPIRED` → `CANCELED`.

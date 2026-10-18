@@ -20,6 +20,12 @@ import type { DecideSyndicCheckoutResult } from './types';
  * Décision du gestionnaire sur un paiement en `REVIEW` (spec 042, R20 à R22,
  * contracts §1.7). Deux décisions concurrentes : une seule gagne, par claim
  * atomique sur le statut `REVIEW`. Refuser ne rembourse pas le payeur.
+ *
+ * `CONTRARY_STATE` se tranche selon l'existence de l'encaissement, pas selon le
+ * seul motif : avec `chargePaymentId` (succès déjà encaissé que le fournisseur
+ * contredit), Accepter clôt le suivi et Refuser est interdit ; sans lui (succès
+ * tardif après expiration, l'argent est parti mais rien n'est enregistré),
+ * Accepter encaisse comme les autres motifs et Refuser est permis.
  */
 
 export interface DecideSyndicCheckoutParams {
@@ -65,7 +71,8 @@ function resolutionData(resolution: 'ACCEPTED' | 'REJECTED', note: string, actor
 /** Refus : aucun encaissement, la tentative passe `FAILED` avec la note. */
 async function reject(checkout: SyndicOnlineCheckout, p: DecideSyndicCheckoutParams, now: Date): Promise<void> {
   // Un encaissement déjà enregistré (état contraire) ne se défait pas dans ce chantier.
-  if (checkout.reviewKind === 'CONTRARY_STATE' || checkout.chargePaymentId) throw notRejectable();
+  // Un succès tardif non encaissé (`CONTRARY_STATE` sans `chargePaymentId`) se refuse comme les autres motifs.
+  if (checkout.chargePaymentId) throw notRejectable();
   const claim = await prisma.syndicOnlineCheckout.updateMany({
     where: { id: checkout.id, tenantId: p.tenantId, syndicateId: p.syndicateId, status: 'REVIEW' },
     data: {
@@ -78,7 +85,7 @@ async function reject(checkout: SyndicOnlineCheckout, p: DecideSyndicCheckoutPar
   if (claim.count !== 1) throw notInReview();
 }
 
-/** Acceptation d'un état contraire : l'encaissement existe déjà, on clôt seulement le suivi. */
+/** Acceptation d'un état contraire déjà encaissé : l'encaissement existe, on clôt seulement le suivi. */
 async function acceptExistingPayment(checkout: SyndicOnlineCheckout, p: DecideSyndicCheckoutParams, now: Date) {
   if (!checkout.chargePaymentId) throw notAcceptable();
   const claim = await prisma.syndicOnlineCheckout.updateMany({
@@ -148,9 +155,10 @@ export async function decideSyndicCheckout(p: DecideSyndicCheckoutParams): Promi
     await reject(checkout, params, now);
   } else if (checkout.reviewKind === 'DUPLICATE_TRANSACTION') {
     throw notAcceptable();
-  } else if (checkout.reviewKind === 'CONTRARY_STATE') {
+  } else if (checkout.reviewKind === 'CONTRARY_STATE' && checkout.chargePaymentId) {
     await acceptExistingPayment(checkout, params, now);
   } else {
+    // Autres motifs, et succès tardif après expiration (`CONTRARY_STATE` sans encaissement) : on encaisse.
     settled = await acceptAndRecord(checkout, params, now);
     // Reçus et quittances : APRÈS le commit.
     scheduleChargeDocumentDelivery(p.tenantId, settled.documents);

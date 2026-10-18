@@ -194,7 +194,7 @@ const SignaturesPage: React.FC = () => {
           <Button size="small" onClick={() => void download(request)}>
             {t('Télécharger')}
           </Button>
-          {isOpenRequest(request.status) && (
+          {request.canEdit === true && isOpenRequest(request.status) && (
             <>
               <Button size="small" onClick={() => void remind(request)}>
                 {t('Relancer')}

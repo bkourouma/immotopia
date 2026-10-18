@@ -29,6 +29,8 @@ export interface CheckoutsTableProps {
   onDecide: (row: SyndicOnlineCheckoutRow) => void;
   /** Un paiement a changé d'état à la suite d'un « Vérifier » : les soldes ont pu bouger. */
   onChanged?: () => void;
+  /** Droit `SYNDIC_EDIT` : sans lui, « Vérifier » et « Trancher » sont masqués (l'API répondrait 403). */
+  canEdit: boolean;
 }
 
 /** Suivi des paiements en ligne de la copropriété (contrat §1.5 et §1.6). */
@@ -37,7 +39,8 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
   syndicId,
   refreshToken = 0,
   onDecide,
-  onChanged
+  onChanged,
+  canEdit
 }) => {
   const { message } = App.useApp();
   const [items, setItems] = useState<SyndicOnlineCheckoutRow[]>([]);
@@ -193,7 +196,7 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
         const verifiable = row.status === 'PENDING' || row.status === 'REVIEW';
         return (
           <Space wrap>
-            {verifiable ? (
+            {canEdit && verifiable ? (
               <Button
                 size="small"
                 icon={<SyncOutlined aria-hidden />}
@@ -203,7 +206,7 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
                 {t('Vérifier')}
               </Button>
             ) : null}
-            {row.status === 'REVIEW' ? (
+            {canEdit && row.status === 'REVIEW' ? (
               <Button
                 size="small"
                 type="primary"
