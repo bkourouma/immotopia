@@ -106,6 +106,12 @@ async function optionTexts(input: HTMLElement): Promise<string[]> {
   return visibleOptions().map(el => el.textContent ?? '');
 }
 
+/** Ouvre la liste et attend qu'elle propose exactement `expected` (le filtre par copropriétaire est asynchrone). */
+async function expectOptions(input: HTMLElement, expected: string[]): Promise<void> {
+  fireEvent.mouseDown(input);
+  await waitFor(() => expect(visibleOptions().map(el => el.textContent ?? '')).toEqual(expected));
+}
+
 function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
@@ -187,10 +193,10 @@ describe('DeclareForThirdPartyModal', () => {
     setup();
     await ready();
     await pick(screen.getByLabelText('Copropriétaire'), 'Moussa Diallo');
-    expect(await optionTexts(screen.getAllByLabelText('Lot')[0])).toEqual(['B07', 'C03']);
+    await expectOptions(screen.getAllByLabelText('Lot')[0], ['B07', 'C03']);
     await pick(screen.getAllByLabelText('Lot')[0], 'B07');
     fireEvent.click(screen.getByRole('button', { name: /Ajouter un lot/ }));
-    expect(await optionTexts(screen.getAllByLabelText('Lot')[1])).toEqual(['C03']);
+    await expectOptions(screen.getAllByLabelText('Lot')[1], ['C03']);
   });
 
   it('bloque une référence trop courte', async () => {
