@@ -281,4 +281,45 @@ describe('SyndicDirectDebit — retours de la banque', () => {
     expect(screen.queryByRole('button', { name: /Préparer une remise/ })).not.toBeInTheDocument();
     expect(await screen.findByText('avant.csv')).toBeInTheDocument();
   });
+
+  it('sans MANAGE, aucun geste de gestion (compte, mandats, remises)', async () => {
+    permissions = new Set(['SYNDIC_DIRECT_DEBIT_VIEW']);
+    listSyndicMandates.mockResolvedValue({
+      items: [
+        {
+          id: 'm-1',
+          reference: 'MDT-2026-0001',
+          scope: 'SYNDIC_LOT',
+          status: 'DRAFT',
+          creditor: { id: 'cr-1', label: 'C', creditorIdentifier: null },
+          debtor: { id: 'ct-1', displayName: 'Awa Traoré', kind: 'CONTACT' },
+          lease: null,
+          syndicate: { id: SYNDIC, name: 'R' },
+          lot: { id: 'lot-1', lotNumber: 'A01' },
+          ibanMasked: 'CI•• 5678',
+          bankCode: 'CI000',
+          holderName: 'Awa Traoré',
+          maxAmount: null,
+          collectionDay: null,
+          effectiveCollectionDay: 5,
+          hasSignedScan: false
+        }
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20
+    });
+    mount();
+    expect(await screen.findByText('MDT-2026-0001')).toBeInTheDocument();
+    for (const name of [
+      /Modifier|Configurer le compte|Désactiver/,
+      /Nouveau mandat/,
+      /Préparer une remise/,
+      /Importer un retour/,
+      /Activer|Suspendre|Révoquer|autorisation|scan/i
+    ]) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).not.toBeInTheDocument();
+  });
 });

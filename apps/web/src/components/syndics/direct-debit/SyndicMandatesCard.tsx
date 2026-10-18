@@ -1,3 +1,4 @@
+import { useSyndicDirectDebitRights } from './useSyndicDirectDebitRights';
 import React, { useMemo, useState } from 'react';
 import { Alert, App, Button, Card, Select, Space, Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -35,6 +36,7 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
   const [status, setStatus] = useState<MandateStatus | undefined>();
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
+  const { canManage } = useSyndicDirectDebitRights(tenantId);
 
   const { data: lots = [] } = useQuery({
     queryKey: SYNDIC_DD_KEYS.lots(tenantId, syndicId),
@@ -82,27 +84,33 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
       render: (_value, mandate) => (mandate.maxAmount != null ? formatMoney(mandate.maxAmount) : '—')
     },
     { title: t('Jour de collecte'), dataIndex: 'effectiveCollectionDay', key: 'day', align: 'end' },
-    {
-      title: t('Actions'),
-      key: 'actions',
-      render: (_value, mandate) => (
-        <SyndicMandateActions
-          tenantId={tenantId}
-          syndicId={syndicId}
-          mandate={mandate}
-          onChanged={() => void refresh()}
-        />
-      )
-    }
+    ...(canManage
+      ? [
+          {
+            title: t('Actions'),
+            key: 'actions',
+            render: (_value: unknown, mandate: MandateDto) => (
+              <SyndicMandateActions
+                tenantId={tenantId}
+                syndicId={syndicId}
+                mandate={mandate}
+                onChanged={() => void refresh()}
+              />
+            )
+          }
+        ]
+      : [])
   ];
 
   return (
     <Card
       title={t('Mandats de prélèvement')}
       extra={
-        <Button type="primary" icon={<PlusOutlined />} disabled={!creditorReady} onClick={() => setCreating(true)}>
-          {t('Nouveau mandat')}
-        </Button>
+        canManage ? (
+          <Button type="primary" icon={<PlusOutlined />} disabled={!creditorReady} onClick={() => setCreating(true)}>
+            {t('Nouveau mandat')}
+          </Button>
+        ) : null
       }
     >
       <Space direction="vertical" size={16} style={{ width: '100%' }}>

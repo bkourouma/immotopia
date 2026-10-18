@@ -1,3 +1,4 @@
+import { useSyndicDirectDebitRights } from './useSyndicDirectDebitRights';
 import React, { useState } from 'react';
 import { Alert, App, Button, Card, Descriptions, Form, Input, InputNumber, Modal, Space, Spin, Tag } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
@@ -55,6 +56,7 @@ export const SyndicCreditorCard: React.FC<SyndicCreditorCardProps> = ({
   error
 }) => {
   const { message } = App.useApp();
+  const { canManage } = useSyndicDirectDebitRights(tenantId);
   const queryClient = useQueryClient();
   const [form] = Form.useForm<CreditorFormValues>();
   const [open, setOpen] = useState(false);
@@ -129,16 +131,18 @@ export const SyndicCreditorCard: React.FC<SyndicCreditorCardProps> = ({
     <Card
       title={t('Compte de prélèvement du syndicat')}
       extra={
-        <Space wrap>
-          {creditor && (
-            <Button onClick={() => void handleToggle()} disabled={saving}>
-              {creditor.isActive ? t('Désactiver') : t('Activer')}
+        canManage ? (
+          <Space wrap>
+            {creditor && (
+              <Button onClick={() => void handleToggle()} disabled={saving}>
+                {creditor.isActive ? t('Désactiver') : t('Activer')}
+              </Button>
+            )}
+            <Button type="primary" onClick={openModal} disabled={saving || loading}>
+              {creditor ? t('Modifier') : t('Configurer le compte')}
             </Button>
-          )}
-          <Button type="primary" onClick={openModal} disabled={saving || loading}>
-            {creditor ? t('Modifier') : t('Configurer le compte')}
-          </Button>
-        </Space>
+          </Space>
+        ) : null
       }
     >
       <Space direction="vertical" size={12} style={{ width: '100%' }}>

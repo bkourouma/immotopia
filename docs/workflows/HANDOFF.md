@@ -33,7 +33,6 @@ Fait (spec 042 P4, contrat `specs/042-prelevement-bancaire/data-model.md` §9) :
 Reste à faire :
 
 - Recette navigateur de l'onglet Prélèvements (jamais ouvert dans un vrai navigateur) ; migrations P4 jamais appliquées sur une vraie base ; `npm run test:isolation` non lancé.
-- Les cartes « compte » et « mandats » de l'onglet ne masquent pas leurs boutons de gestion pour un profil en lecture seule (l'API répond 403) ; le détail de remise et la carte « remises » le font.
 - Un fichier de retour qui rejette une ligne déjà réglée en copropriété est rapproché comme `REJECT` puis échoue à l'application (message de l'API) : l'aperçu prévient, mais ne l'écarte pas (pas de raison d'écart dédiée dans le contrat).
 - P5 (portails) non commencé.
 
