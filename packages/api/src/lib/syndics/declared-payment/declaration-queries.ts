@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma, type PrismaTransactionClient } from '../../../utils/database';
 import { BadRequestError, NotFoundError } from '../../../middleware/error-middleware';
 import { t } from '../../../i18n';
-import { assertSyndicateOfTenant } from '../charge-allocation';
+import { assertSyndicateOfTenant, listOpenCallsForLot } from '../charge-allocation';
 import { fromCents, toCents } from '../charge-allocation-plan';
 import type { CoOwnerPortalScope } from '../coowner-portal';
 import { isOverdue } from './business-days';
@@ -245,6 +245,31 @@ async function loadNames(tenantId: string, contactIds: string[], userIds: string
   };
 }
 
+/**
+ * Appels ouverts de chaque couple copropriété/lot, clé `syndicateId:lotId`. `listOpenCallsForLot` vérifie le lot,
+ * la copropriété et l'agence ; un lot sorti de la copropriété depuis la déclaration n'expose simplement aucun appel.
+ */
+async function loadOpenCallsByLot(
+  tenantId: string,
+  pairs: Array<{ syndicateId: string; lotId: string }>
+): Promise<Map<string, Array<{ id: string; period: string; remainingDue: number }>>> {
+  const entries = await Promise.all(
+    pairs.map(async ({ syndicateId, lotId }) => {
+      let calls: Awaited<ReturnType<typeof listOpenCallsForLot>> = [];
+      try {
+        calls = await listOpenCallsForLot(tenantId, syndicateId, lotId);
+      } catch (error) {
+        if (!(error instanceof NotFoundError)) throw error;
+      }
+      return [
+        `${syndicateId}:${lotId}`,
+        calls.map(call => ({ id: call.id, period: call.period, remainingDue: call.outstanding }))
+      ] as const;
+    })
+  );
+  return new Map(entries);
+}
+
 /** Transforme des déclarations chargées avec `SYNDIC_ROW_SELECT` en lignes gestionnaire, dans l'ordre reçu. */
 async function buildSyndicRows(
   tenantId: string,
@@ -278,7 +303,19 @@ async function buildSyndicRows(
     )
   );
 
-  const [alertsById, targets, names, documents] = await Promise.all([
+  // Appels ouverts complets du lot, pour les seules déclarations en attente (une lecture par couple copropriété/lot).
+  const openCallLots = new Map<string, { syndicateId: string; lotId: string }>();
+  for (const declaration of declarations) {
+    if (declaration.status !== 'PENDING') continue;
+    for (const line of declaration.lines) {
+      openCallLots.set(`${declaration.syndicateId}:${line.lotId}`, {
+        syndicateId: declaration.syndicateId,
+        lotId: line.lotId
+      });
+    }
+  }
+
+  const [alertsById, targets, names, documents, openCallsByLot] = await Promise.all([
     computeDeclarationAlertsBatch(prisma, declarations, now),
     resolveLineTargets(prisma, targetInputs),
     loadNames(tenantId, contactIds, userIds),
@@ -288,7 +325,8 @@ async function buildSyndicRows(
         d.lines.map(line => ({ lineId: line.id, chargePaymentId: line.chargePaymentId ?? null }))
       ),
       reviewedAtByLine
-    )
+    ),
+    loadOpenCallsByLot(tenantId, Array.from(openCallLots.values()))
   ]);
 
   return declarations.map(declaration => {
@@ -330,6 +368,10 @@ async function buildSyndicRows(
           period: call.period,
           remainingDue: fromCents(call.remainingCents)
         })),
+        openCalls:
+          declaration.status === 'PENDING'
+            ? (openCallsByLot.get(`${declaration.syndicateId}:${line.lotId}`) ?? [])
+            : [],
         chargePaymentId: line.chargePaymentId ?? null,
         documents: documents.get(line.id) ?? []
       })),

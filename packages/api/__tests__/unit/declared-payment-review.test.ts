@@ -506,6 +506,40 @@ describe('approveDeclaration : correction (R18)', () => {
     expectNothingRecorded();
   });
 
+  it('appel ouvert quelconque du lot (pas seulement les premiers) : accepté et transmis à l’affectation', async () => {
+    store().calls.push(
+      { id: 'call-a3', lotId: LOT_A, syndicateId: SYNDIC, outstanding: 1000 },
+      { id: 'call-a4', lotId: LOT_A, syndicateId: SYNDIC, outstanding: 40000 }
+    );
+    await approve({
+      correction: { lines: allLines(20000, 10000, { a: { chargeCallIds: ['call-a4'] } }) },
+      note: NOTE
+    });
+    const byLot = new Map(mockRecordLotPaymentTx.mock.calls.map(call => [call[1].lotId, call[1]]));
+    expect(byLot.get(LOT_A)!.chargeCallIds).toEqual(['call-a4']);
+    expect(declaration().status).toBe('APPROVED');
+  });
+
+  it('appel corrigé d’une autre agence : 404, même erreur qu’un appel inexistant', async () => {
+    store().calls.push({
+      id: 'call-other-tenant',
+      lotId: LOT_A,
+      syndicateId: 'syndic-other-tenant',
+      outstanding: 5000
+    });
+    const run = (id: string) =>
+      approve({ correction: { lines: allLines(20000, 10000, { a: { chargeCallIds: [id] } }) }, note: NOTE });
+    await expect(run('call-other-tenant')).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Appel de charges introuvable pour ce lot.'
+    });
+    await expect(run('call-inexistant')).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Appel de charges introuvable pour ce lot.'
+    });
+    expectNothingRecorded();
+  });
+
   it('appel corrigé d’une autre copropriété : 404', async () => {
     store().calls.push({ id: 'call-x', lotId: LOT_A, syndicateId: 'syndic-2', outstanding: 5000 });
     await expectAppError(

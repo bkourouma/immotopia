@@ -108,6 +108,7 @@ export const DECLARED_FAKE_MODELS = [
   'syndicPaymentDeclaration',
   'syndicDeclaredPaymentSettings',
   'chargeCall',
+  'syndicateLot',
   'chargePayment',
   'chargePaymentAllocation',
   'lotOwnerProfile',

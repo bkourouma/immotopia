@@ -46,6 +46,14 @@ export interface ApproveModalProps {
   onStale?: () => void;
 }
 
+type LineView = SyndicDeclarationRow['lines'][number];
+
+/** Appels proposables : tous les appels ouverts du lot (ordre reçu), plus ceux de la présélection absents de cette liste. */
+const callOptionsOf = (line: LineView): NonNullable<LineView['openCalls']> => {
+  const open = line.openCalls ?? [];
+  return [...open, ...line.chargeCalls.filter(call => !open.some(o => o.id === call.id))];
+};
+
 const sameSet = (a: string[], b: string[]): boolean => a.length === b.length && a.every(id => b.includes(id));
 
 /**
@@ -180,7 +188,9 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
     const accepted = amounts[line.id];
     const selected = calls[line.id] ?? [];
     if (typeof accepted !== 'number' || accepted <= 0 || selected.length === 0) return null;
-    const due = line.chargeCalls.filter(call => selected.includes(call.id)).reduce((sum, c) => sum + c.remainingDue, 0);
+    const due = callOptionsOf(line)
+      .filter(call => selected.includes(call.id))
+      .reduce((sum, c) => sum + c.remainingDue, 0);
     if (accepted > due) return { kind: 'excess' as const, amount: accepted - due };
     if (accepted < due) return { kind: 'partial' as const, amount: due - accepted };
     return null;
@@ -292,7 +302,7 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
                       setCalls(prev => ({ ...prev, [line.id]: value }));
                       setCallsTouched(prev => ({ ...prev, [line.id]: true }));
                     }}
-                    options={line.chargeCalls.map(call => ({
+                    options={callOptionsOf(line).map(call => ({
                       value: call.id,
                       label: t('{{periode}} · reste dû {{montant}}', {
                         periode: call.period,
