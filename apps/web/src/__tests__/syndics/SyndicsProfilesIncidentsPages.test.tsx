@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
@@ -408,5 +408,96 @@ describe('Syndics profiles/incidents page', () => {
     );
     expect(mockApiClient.post).toHaveBeenCalledTimes(1);
     formValidateFields.mockReset();
+  });
+
+  describe('lot déjà détenu (409 OPEN_OWNERS)', () => {
+    const ownerValues = {
+      lotId: 'lot-1',
+      contactId: 'c-1',
+      ownershipPercentage: 100,
+      ownedSince: '2026-01-01',
+      portalAccessEnabled: false
+    };
+    const openOwnersError = {
+      response: {
+        status: 409,
+        data: {
+          success: false,
+          message: 'Conflit',
+          errors: [
+            {
+              field: 'previousOwnersHandling',
+              message: 'Lot déjà détenu',
+              reason: 'OPEN_OWNERS',
+              owners: [{ profileId: 'op-1', contactName: 'Awa Traoré' }]
+            }
+          ]
+        }
+      }
+    };
+    const url = '/tenants/tenant-1/syndics/syndic-1/profils/proprietaires';
+
+    const submitOwnerForm = async () => {
+      formValidateFields.mockResolvedValue(ownerValues);
+      renderWithRoute();
+      fireEvent.click(await screen.findByText('Profil propriétaire'));
+      fireEvent.click(screen.getAllByText('OK')[1]);
+    };
+
+    afterEach(() => formValidateFields.mockReset());
+
+    it('ouvre la modale avec le nom du propriétaire en cours', async () => {
+      mockApiClient.post.mockRejectedValueOnce(openOwnersError);
+      await submitOwnerForm();
+      expect(await screen.findByText('Awa Traoré')).toBeTruthy();
+      expect(screen.getByText('Propriétaire(s) actuel(s) de ce lot :')).toBeTruthy();
+      expect(mockApiClient.post).toHaveBeenCalledTimes(1);
+      expect(mockApiClient.post.mock.calls[0][1].previousOwnersHandling).toBeUndefined();
+    });
+
+    it('« Revente » renvoie la création avec CLOSE', async () => {
+      mockApiClient.post
+        .mockRejectedValueOnce(openOwnersError)
+        .mockResolvedValueOnce({ data: { success: true, data: { id: 'op-2' } } });
+      await submitOwnerForm();
+      fireEvent.click(await screen.findByText(/Revente/));
+      await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledTimes(2));
+      expect(mockApiClient.post).toHaveBeenLastCalledWith(
+        url,
+        expect.objectContaining({ lotId: 'lot-1', contactId: 'c-1', previousOwnersHandling: 'CLOSE' })
+      );
+    });
+
+    it('« Indivision » renvoie la création avec KEEP', async () => {
+      mockApiClient.post
+        .mockRejectedValueOnce(openOwnersError)
+        .mockResolvedValueOnce({ data: { success: true, data: { id: 'op-2' } } });
+      await submitOwnerForm();
+      fireEvent.click(await screen.findByText(/Indivision/));
+      await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledTimes(2));
+      expect(mockApiClient.post).toHaveBeenLastCalledWith(
+        url,
+        expect.objectContaining({ previousOwnersHandling: 'KEEP' })
+      );
+    });
+
+    it('« Annuler » ne crée rien', async () => {
+      mockApiClient.post.mockRejectedValueOnce(openOwnersError);
+      await submitOwnerForm();
+      const wrapper = (await screen.findByText(/Revente/)).closest('div')!.parentElement!.parentElement!;
+      fireEvent.click(within(wrapper).getByText('Annuler'));
+      await waitFor(() => expect(screen.queryByText(/Revente/)).toBeNull());
+      expect(mockApiClient.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('une autre erreur affiche le message habituel, sans modale', async () => {
+      const { message } = (await import('antd')) as any;
+      mockApiClient.post.mockRejectedValueOnce({
+        response: { status: 409, data: { error: 'Parts au-delà de 100 %' } }
+      });
+      await submitOwnerForm();
+      await waitFor(() => expect(message.error).toHaveBeenCalledWith('Parts au-delà de 100 %'));
+      expect(screen.queryByText(/Revente/)).toBeNull();
+    });
   });
 });

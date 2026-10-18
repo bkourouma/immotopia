@@ -116,6 +116,15 @@ jest.mock('@prisma/client', () => {
         const row = { id: `att-${++mockSeq}`, ...data };
         mockWorld.attendances.push(row);
         return row;
+      }),
+      // Emargement automatique du vote : upsert sur (meetingId, lotId), jamais d'ecrasement.
+      upsert: jest.fn(async ({ where, create }: Row) => {
+        const key = where.meetingId_lotId;
+        const existing = mockWorld.attendances.find(a => a.meetingId === key.meetingId && a.lotId === key.lotId);
+        if (existing) return existing;
+        const row = { id: `att-${++mockSeq}`, ...create };
+        mockWorld.attendances.push(row);
+        return row;
       })
     },
     gMVote: {
@@ -176,7 +185,7 @@ jest.mock('@prisma/client', () => {
   // Verrou consultatif de l'AG (spec 043) : sans effet sur le faux client.
   client.$executeRaw = jest.fn(async () => 0);
 
-  return { PrismaClient: jest.fn(() => client), Prisma: {} };
+  return { PrismaClient: jest.fn(() => client), Prisma: {}, __mockPrisma: client };
 });
 
 import {
@@ -189,6 +198,7 @@ import {
   updateMeetingByTenant
 } from '../../src/lib/syndics/queries';
 
+const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as { __mockPrisma: any };
 const T1 = 'tenant-1';
 const T2 = 'tenant-2';
 const S1 = 'syndic-1';
@@ -537,6 +547,23 @@ describe('AG en direct (spec 043) - ecritures du gestionnaire', () => {
     await castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A2', 'AGAINST', { userId: 'u-mgr' });
     expect(mockWorld.attendances).toHaveLength(1);
     expect(mockWorld.votes[0].vote).toBe('AGAINST');
+  });
+
+  it('l emargement automatique passe par un upsert (meetingId, lotId) : deux votes simultanes ne creent qu un emargement', async () => {
+    mockPrisma.gMAttendance.create.mockClear();
+    mockPrisma.gMAttendance.upsert.mockClear();
+    await Promise.all([
+      castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A2', 'FOR'),
+      castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A2', 'AGAINST')
+    ]);
+    expect(mockPrisma.gMAttendance.create).not.toHaveBeenCalled();
+    expect(mockPrisma.gMAttendance.upsert).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.gMAttendance.upsert.mock.calls[0][0]).toMatchObject({
+      where: { meetingId_lotId: { meetingId: 'M1', lotId: 'A2' } },
+      update: {},
+      create: { status: 'PRESENT', mode: 'IN_PERSON' }
+    });
+    expect(mockWorld.attendances).toHaveLength(1);
   });
 
   it('refuse le vote d un lot emarge absent, sans ecrire le vote ni toucher a l emargement', async () => {
