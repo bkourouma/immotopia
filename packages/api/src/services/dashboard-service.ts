@@ -132,6 +132,8 @@ export interface TenantDashboard {
     chargeCallsByStatus: DashboardBucket[];
     /** Part des appels de charges soldés, sur le montant appelé. */
     recoveryRate: number | null;
+    /** Paiements mobile money déclarés par les copropriétaires, en attente de vérification (spec 047, R32). */
+    pendingDeclarations: number;
   } | null;
   patrimoine: { workProgramsByStatus: DashboardBucket[]; plannedCost: number } | null;
   workQueue: DashboardTask[];
@@ -864,7 +866,7 @@ async function getMaintenance(tenantId: string, base: string): Promise<TenantDas
  * la relation — l'oublier ferait fuir les chiffres d'une agence vers l'autre.
  */
 async function getSyndic(tenantId: string, base: string): Promise<TenantDashboard['syndic']> {
-  const [syndicates, lots, chargeGroups] = await Promise.all([
+  const [syndicates, lots, chargeGroups, pendingDeclarations] = await Promise.all([
     prisma.syndicate.count({ where: { tenantId } }),
     prisma.syndicateLot.count({ where: { syndicate: { tenantId } } }),
     prisma.chargeCall.groupBy({
@@ -872,7 +874,8 @@ async function getSyndic(tenantId: string, base: string): Promise<TenantDashboar
       where: { syndicate: { tenantId } },
       _count: { _all: true },
       _sum: { amount: true }
-    })
+    }),
+    prisma.syndicPaymentDeclaration.count({ where: { tenantId, status: 'PENDING' } })
   ]);
 
   const chargeCallsByStatus = chargeGroups
@@ -889,7 +892,7 @@ async function getSyndic(tenantId: string, base: string): Promise<TenantDashboar
     .filter(bucket => bucket.key === 'PAID')
     .reduce((somme, bucket) => somme + (bucket.amount ?? 0), 0);
 
-  return { syndicates, lots, chargeCallsByStatus, recoveryRate: part(solde, appele) };
+  return { syndicates, lots, chargeCallsByStatus, recoveryRate: part(solde, appele), pendingDeclarations };
 }
 
 /** Patrimoine : programmes de travaux et enveloppe engagée. */

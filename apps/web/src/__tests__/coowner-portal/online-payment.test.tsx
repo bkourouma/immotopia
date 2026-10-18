@@ -24,6 +24,7 @@ const listMyChargeCalls = vi.fn();
 const getOnlinePaymentAvailability = vi.fn();
 const startOnlinePayment = vi.fn();
 const getOnlinePayment = vi.fn();
+const getDeclaredAvailability = vi.fn();
 
 vi.mock('../../services/coowner-portal-service', async () => {
   const actual = await vi.importActual<typeof import('../../services/coowner-portal-service')>(
@@ -34,7 +35,8 @@ vi.mock('../../services/coowner-portal-service', async () => {
     listMyChargeCalls: (...a: unknown[]) => listMyChargeCalls(...a),
     getOnlinePaymentAvailability: (...a: unknown[]) => getOnlinePaymentAvailability(...a),
     startOnlinePayment: (...a: unknown[]) => startOnlinePayment(...a),
-    getOnlinePayment: (...a: unknown[]) => getOnlinePayment(...a)
+    getOnlinePayment: (...a: unknown[]) => getOnlinePayment(...a),
+    getDeclaredAvailability: (...a: unknown[]) => getDeclaredAvailability(...a)
   };
 });
 
@@ -136,6 +138,8 @@ const twoCallsSameLot = () => [
 beforeEach(() => {
   vi.clearAllMocks();
   getOnlinePaymentAvailability.mockResolvedValue(availability());
+  // Spec 047 : jamais le vrai réseau ; paiement déclaré fermé par défaut.
+  getDeclaredAvailability.mockRejectedValue(new Error('indisponible'));
 });
 
 describe('Appels de charges — paiement en ligne', () => {

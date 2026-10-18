@@ -4,6 +4,8 @@ import { CreditCardOutlined, SyncOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
+import { DeclaredPaymentSection } from '../../components/coowner-portal/declared-payment/DeclaredPaymentSection';
+import { useDeclaredAvailabilities } from '../../components/coowner-portal/declared-payment/useDeclaredAvailabilities';
 import { t } from '../../i18n/t';
 import {
   getOnlinePayment,
@@ -101,6 +103,9 @@ export default function CoOwnerChargeCalls() {
     queryFn: () => getOnlinePaymentAvailability(),
     retry: false
   });
+
+  // Paiement mobile money déclaré (spec 047) : n'attend rien, ne bloque rien.
+  const { entries: declaredEntries, anyAvailable: declaredAvailable } = useDeclaredAvailabilities(calls ?? []);
 
   const removePaiementParam = () =>
     setSearchParams(
@@ -302,6 +307,8 @@ export default function CoOwnerChargeCalls() {
         </Card>
       ) : null}
 
+      <DeclaredPaymentSection calls={calls} entries={declaredEntries} />
+
       <Card>
         <ChargeCallsTable
           calls={calls}
@@ -312,7 +319,7 @@ export default function CoOwnerChargeCalls() {
         />
       </Card>
 
-      {availabilityKnown && !onlineEnabled && hasSomethingToPay ? (
+      {availabilityKnown && !onlineEnabled && !declaredAvailable && hasSomethingToPay ? (
         <Text type="secondary">
           {t(
             "Le règlement en ligne n'est pas encore ouvert pour votre copropriété. Rapprochez-vous de votre agence pour régler vos appels de charges."

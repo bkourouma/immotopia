@@ -224,30 +224,31 @@ export interface CoOwnerDeclaration {
 
 ### 0.2 Codes d'erreur (ajouts à `ErrorCode`)
 
-| Code                              | HTTP | Sens                                                                                |
-| --------------------------------- | ---- | ----------------------------------------------------------------------------------- |
-| `DECLARED_PAYMENT_UNAVAILABLE`    | 400  | Copropriété qui n'accepte pas les déclarations, ou sans numéro actif                |
-| `RECEIVING_NUMBER_INACTIVE`       | 400  | Numéro de réception désactivé ou d'une autre copropriété                            |
-| `RECEIVING_NUMBER_DUPLICATE`      | 409  | Même opérateur et même numéro déjà enregistrés dans cette copropriété               |
-| `INVALID_PHONE`                   | 400  | Numéro non normalisable en numéro ivoirien                                          |
-| `INVALID_TRANSACTION_REFERENCE`   | 400  | Référence hors du motif après normalisation                                         |
-| `DECLARATION_AMOUNT_MISMATCH`     | 400  | Somme des lignes ≠ montant                                                          |
-| `DECLARATION_AMOUNT_TOO_HIGH`     | 400  | Montant > 5 000 000 FCFA                                                            |
-| `DECLARATION_DATE_OUT_OF_RANGE`   | 400  | `paidAt` dans le futur (> 10 min) ou de plus de 90 jours                            |
-| `DECLARATION_PROOF_REQUIRED`      | 400  | Capture exigée par la copropriété et absente                                        |
-| `DECLARATION_PROOF_INVALID`       | 400  | Fichier ni JPEG, ni PNG, ni WebP, ni PDF (type réel), ou illisible                  |
-| `DECLARATION_PROOF_TOO_LARGE`     | 413  | Capture de plus de 5 Mo                                                             |
-| `DECLARATION_REFERENCE_USED`      | 409  | Référence déjà déclarée (`PENDING` ou `APPROVED`) sur ce numéro de réception        |
-| `DECLARATION_PENDING_LIMIT`       | 409  | Déjà 10 déclarations en attente sur un des lots                                     |
-| `DECLARATION_NOT_PENDING`         | 409  | Validation, rejet ou annulation d'une déclaration qui n'est pas (ou plus) `PENDING` |
-| `CHARGE_CALL_DECLARATION_PENDING` | 409  | Paiement en ligne demandé sur un appel visé par une déclaration en attente (R15)    |
-| `RECEIVING_NUMBER_IN_USE`         | 409  | Suppression demandée d'un numéro qui porte des déclarations (le désactiver)         |
-| `PROOF_READ_UNAVAILABLE`          | 409  | Lecture IA coupée pour l'agence ou aucun fournisseur sur le serveur (PR3)           |
-| `PROOF_READ_QUOTA_EXCEEDED`       | 429  | Quota mensuel de lectures de l'agence atteint (PR3)                                 |
-| `PROOF_READ_INVALID`              | 409  | `proofReadId` inconnu, d'un autre contact, déjà utilisé ou expiré                   |
+| Code                                 | HTTP | Sens                                                                                                                                                        |
+| ------------------------------------ | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DECLARED_PAYMENT_UNAVAILABLE`       | 400  | Copropriété qui n'accepte pas les déclarations, ou sans numéro actif                                                                                        |
+| `RECEIVING_NUMBER_INACTIVE`          | 400  | Numéro de réception désactivé ou d'une autre copropriété                                                                                                    |
+| `RECEIVING_NUMBER_DUPLICATE`         | 409  | Même opérateur et même numéro déjà enregistrés dans cette copropriété                                                                                       |
+| `INVALID_PHONE`                      | 400  | Numéro non normalisable en numéro ivoirien                                                                                                                  |
+| `INVALID_TRANSACTION_REFERENCE`      | 400  | Référence hors du motif après normalisation                                                                                                                 |
+| `DECLARATION_AMOUNT_MISMATCH`        | 400  | Somme des lignes ≠ montant                                                                                                                                  |
+| `DECLARATION_AMOUNT_TOO_HIGH`        | 400  | Montant > 5 000 000 FCFA                                                                                                                                    |
+| `DECLARATION_DATE_OUT_OF_RANGE`      | 400  | `paidAt` dans le futur (> 10 min) ou de plus de 90 jours                                                                                                    |
+| `DECLARATION_PROOF_REQUIRED`         | 400  | Capture exigée par la copropriété et absente                                                                                                                |
+| `DECLARATION_PROOF_INVALID`          | 400  | Fichier ni JPEG, ni PNG, ni WebP, ni PDF (type réel), ou illisible                                                                                          |
+| `DECLARATION_PROOF_TOO_LARGE`        | 413  | Capture de plus de 5 Mo                                                                                                                                     |
+| `DECLARATION_REFERENCE_USED`         | 409  | Référence déjà déclarée (`PENDING` ou `APPROVED`) sur ce numéro de réception                                                                                |
+| `DECLARATION_PENDING_LIMIT`          | 409  | Déjà 10 déclarations en attente sur un des lots                                                                                                             |
+| `DECLARATION_NOT_PENDING`            | 409  | Validation, rejet ou annulation d'une déclaration qui n'est pas (ou plus) `PENDING`                                                                         |
+| `CHARGE_CALL_DECLARATION_PENDING`    | 409  | Paiement en ligne demandé sur un appel visé par une déclaration en attente (R15)                                                                            |
+| `CHARGE_CALL_ONLINE_PAYMENT_PENDING` | 409  | Déclaration sur un appel qui a un paiement en ligne `PENDING` (moins de 15 min) ou `REVIEW` ; `data: { chargeCallIds }` (cas limite 9, sens inverse de R15) |
+| `RECEIVING_NUMBER_IN_USE`            | 409  | Suppression demandée d'un numéro qui porte des déclarations (le désactiver)                                                                                 |
+| `PROOF_READ_UNAVAILABLE`             | 409  | Lecture IA coupée pour l'agence ou aucun fournisseur sur le serveur (PR3)                                                                                   |
+| `PROOF_READ_QUOTA_EXCEEDED`          | 429  | Quota mensuel de lectures de l'agence atteint (PR3)                                                                                                         |
+| `PROOF_READ_INVALID`                 | 409  | `proofReadId` inconnu, d'un autre contact, déjà utilisé ou expiré                                                                                           |
 
 Restent : `VALIDATION_ERROR` (400), 401, 403 (`SYNDIC_FEATURE_DENIED` au portail, déjà défini en spec 042),
-404, 429 (limiteurs). L'exercice clos lève la `BadRequestError` existante d'`assertFiscalYearOpenTx`.
+404, 429 (limiteurs). L'exercice clos lève la `ConflictError` existante d'`assertFiscalYearOpenTx` : 409, pas 400.
 
 ---
 
@@ -352,7 +353,7 @@ interface ApproveDeclarationResponse {
 ```
 
 Une ligne à `acceptedAmount: 0` n'est pas encaissée (il en faut au moins une > 0). Erreurs :
-`DECLARATION_NOT_PENDING`, `VALIDATION_ERROR`, 400 d'exercice clos. Audit `SYNDIC_PAYMENT_DECLARATION_APPROVED`
+`DECLARATION_NOT_PENDING`, `VALIDATION_ERROR`, 409 d'exercice clos (`ConflictError`). Audit `SYNDIC_PAYMENT_DECLARATION_APPROVED`
 (montants, sans capture).
 
 ### 1.10 `POST /paiements-declares/:declarationId/rejet` — `canEdit` (PR2)

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, DatePicker, Input, InputNumber, Modal, Space, Typography } from 'antd';
+import { Alert, DatePicker, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { formatMoney } from '../../primitives';
 import { RecordGatewayPayoutResult, recordSyndicGatewayPayout } from '../../../services/syndic-online-payment-service';
@@ -8,12 +8,20 @@ import { apiErrorMessage } from './helpers';
 
 const { Text, Paragraph } = Typography;
 
+/** Compte qu'on peut reverser : le 5525 ou le sous-compte 5521x d'un numéro de réception (spec 047, R23). */
+export interface PayoutAccountOption {
+  accountNumber: string;
+  label: string;
+  /** Solde comptable : plafond du reversement. */
+  balance: number;
+}
+
 export interface PayoutModalProps {
   tenantId: string;
   syndicId: string;
   open: boolean;
-  /** Solde comptable du compte 5525 : plafond du reversement. */
-  collectionBalance: number;
+  /** Comptes reversables (le premier est choisi d'emblée). */
+  accounts: PayoutAccountOption[];
   onClose: () => void;
   onRecorded: (result: RecordGatewayPayoutResult) => void;
 }
@@ -26,10 +34,11 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
   tenantId,
   syndicId,
   open,
-  collectionBalance,
+  accounts,
   onClose,
   onRecorded
 }) => {
+  const [accountNumber, setAccountNumber] = useState<string>(accounts[0]?.accountNumber ?? '5525');
   const [amount, setAmount] = useState<number | null>(null);
   const [date, setDate] = useState<Dayjs | null>(dayjs());
   const [reference, setReference] = useState('');
@@ -39,14 +48,18 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
 
   useEffect(() => {
     if (!open) return;
+    setAccountNumber((accounts.find(option => option.balance > 0) ?? accounts[0])?.accountNumber ?? '5525');
     setAmount(null);
     setDate(dayjs());
     setReference('');
     setNote('');
     setError(null);
     setSubmitting(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  const selected = accounts.find(option => option.accountNumber === accountNumber);
+  const collectionBalance = selected?.balance ?? 0;
   const exceeds = amount !== null && amount > collectionBalance;
   const valid = amount !== null && amount > 0 && !exceeds && date !== null && reference.trim().length > 0;
 
@@ -59,7 +72,8 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
         amount,
         date: date.format('YYYY-MM-DD'),
         reference: reference.trim(),
-        note: note.trim() ? note.trim() : null
+        note: note.trim() ? note.trim() : null,
+        ...(accountNumber !== '5525' ? { treasuryAccountNumber: accountNumber } : {})
       });
       onRecorded(result);
     } catch (e) {
@@ -83,10 +97,30 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Paragraph type="secondary" style={{ marginBottom: 0 }}>
           {t(
-            'À saisir quand PaySecureHub a versé l’argent sur le compte bancaire de la copropriété. Cet écran enregistre l’écriture comptable (5525 vers 521) ; il ne déclenche aucun virement.'
+            'À saisir quand le fournisseur ou l’opérateur a versé l’argent sur le compte bancaire de la copropriété. Cet écran enregistre l’écriture comptable (compte de collecte vers 521) ; il ne déclenche aucun virement.'
           )}
         </Paragraph>
-        <Text>{t('Solde du compte 5525 : {{amount}}', { amount: formatMoney(collectionBalance) })}</Text>
+        <div>
+          <label htmlFor="payout-account">
+            <Text strong>{t('Compte à reverser')}</Text>
+          </label>
+          <Select
+            id="payout-account"
+            style={{ display: 'block', marginTop: 8, width: '100%' }}
+            value={accountNumber}
+            onChange={value => setAccountNumber(value)}
+            options={accounts.map(option => ({
+              value: option.accountNumber,
+              label: `${option.label} — ${formatMoney(option.balance)}`
+            }))}
+          />
+        </div>
+        <Text>
+          {t('Solde du compte {{account}} : {{amount}}', {
+            account: accountNumber,
+            amount: formatMoney(collectionBalance)
+          })}
+        </Text>
 
         <div>
           <label htmlFor="payout-amount">
@@ -103,7 +137,7 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
           />
           {exceeds ? (
             <Text type="danger" style={{ fontSize: 12 }}>
-              {t('Le montant dépasse le solde du compte 5525.')}
+              {t('Le montant dépasse le solde du compte sélectionné.')}
             </Text>
           ) : null}
         </div>

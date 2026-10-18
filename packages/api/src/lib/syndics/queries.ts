@@ -75,6 +75,9 @@ import { recurrenceStepMonths, resolvePeriodBounds, shiftPeriodBounds, type Peri
 // Lot S4 : quote-part annuelle du budget divisee par le nombre de periodes.
 import { annualShareForPeriod } from './charge-schedule-periods';
 import { AppError, ConflictError, QuotaExceededError } from '../../middleware/error-middleware';
+import { pendingDeclarationsByCall } from './declared-payment/declaration-queries';
+import { isOverdue as isDeclarationReviewOverdue } from './declared-payment/business-days';
+import { getDeclaredPaymentRules } from './declared-payment/settings';
 import { t } from '../../i18n';
 import { logAuditEvent, recordAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
@@ -3095,7 +3098,11 @@ export async function createManualReminderForChargeCall(
     throw unprocessableEntity('Aucune relance possible: appel deja solde');
   }
 
-  return prisma.paymentReminder.create({
+  // Spec 047 (D7) : la relance manuelle reste permise, mais l'écran est prévenu qu'un paiement
+  // mobile money déclaré attend déjà sa vérification pour cet appel.
+  const declared = (await pendingDeclarationsByCall(tenantId, [call.lotId])).get(call.id);
+
+  const reminder = await prisma.paymentReminder.create({
     data: {
       chargeCallId,
       lotId: call.lotId,
@@ -3106,6 +3113,12 @@ export async function createManualReminderForChargeCall(
       responseAction: data.responseAction
     }
   });
+  return {
+    ...reminder,
+    pendingDeclaration: declared
+      ? { declarationId: declared.declarationId, createdAt: declared.createdAt.toISOString() }
+      : null
+  };
 }
 
 export async function runReminderBatchForSyndicate(tenantId: string, syndicateId: string) {
@@ -3125,6 +3138,17 @@ export async function runReminderBatchForSyndicate(tenantId: string, syndicateId
     }
   });
 
+  // Spec 047 (D7) : un appel visé par une déclaration de paiement mobile money en attente depuis
+  // moins de N jours ouvrés n'est pas relancé (le copropriétaire a déjà payé, la vérification suit).
+  const declaredByCall = await pendingDeclarationsByCall(
+    tenantId,
+    Array.from(new Set(dueCalls.map(call => call.lotId)))
+  );
+  const reviewDays =
+    declaredByCall.size > 0
+      ? (await getDeclaredPaymentRules(prisma, tenantId, syndicateId)).reviewAlertBusinessDays
+      : 0;
+
   return prisma.$transaction(async tx => {
     let created = 0;
     const createdReminderIds: string[] = [];
@@ -3134,6 +3158,11 @@ export async function runReminderBatchForSyndicate(tenantId: string, syndicateId
       const paid = paidFromAllocations(call.allocations);
       const outstanding = computeOutstanding(Number(call.amount), paid);
       if (outstanding <= 0) {
+        continue;
+      }
+
+      const declared = declaredByCall.get(call.id);
+      if (declared && !isDeclarationReviewOverdue(declared.createdAt, reviewDays, now)) {
         continue;
       }
 

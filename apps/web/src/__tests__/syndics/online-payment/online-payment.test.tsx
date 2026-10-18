@@ -19,6 +19,7 @@ const testSyndicGatewayConnection = vi.fn();
 const getSyndicProviderBalance = vi.fn();
 const decideSyndicOnlineCheckout = vi.fn();
 const listSyndicGatewayPayouts = vi.fn();
+const listSyndicReceivingNumbers = vi.fn();
 const recordSyndicGatewayPayout = vi.fn();
 
 vi.mock('../../../services/syndic-online-payment-service', () => ({
@@ -29,6 +30,10 @@ vi.mock('../../../services/syndic-online-payment-service', () => ({
   decideSyndicOnlineCheckout: (...a: unknown[]) => decideSyndicOnlineCheckout(...a),
   listSyndicGatewayPayouts: (...a: unknown[]) => listSyndicGatewayPayouts(...a),
   recordSyndicGatewayPayout: (...a: unknown[]) => recordSyndicGatewayPayout(...a)
+}));
+
+vi.mock('../../../services/syndic-declared-payment-service', () => ({
+  listSyndicReceivingNumbers: (...a: unknown[]) => listSyndicReceivingNumbers(...a)
 }));
 
 const SETTINGS = {
@@ -289,6 +294,109 @@ describe('ReviewDecisionModal', () => {
       note: 'Montant incohérent'
     });
     await waitFor(() => expect(onDecided).toHaveBeenCalled());
+  });
+});
+
+describe('PayoutsPanel — reversement d’un numéro de réception (spec 047, R23)', () => {
+  const NUMBER = {
+    id: 'rn-1',
+    operator: 'ORANGE',
+    phoneNumber: '+2250707070707',
+    holderName: 'Syndic Palmiers',
+    treasuryAccountNumber: '55211',
+    treasuryBalance: 80000
+  };
+
+  it('propose le sous-compte 5521x, le choisit quand le 5525 est vide et envoie son numéro de compte', async () => {
+    listSyndicGatewayPayouts.mockResolvedValue({
+      items: [
+        {
+          entryId: 'e0',
+          reference: 'ANCIEN',
+          date: '2026-10-01',
+          amount: 1000,
+          note: null,
+          treasuryAccountNumber: '55211',
+          createdAt: ''
+        }
+      ]
+    });
+    listSyndicReceivingNumbers.mockResolvedValue([NUMBER]);
+    recordSyndicGatewayPayout.mockResolvedValue({
+      entryId: 'e1',
+      reference: 'VIR-9',
+      amount: 50000,
+      date: '2026-10-15',
+      treasuryAccountNumber: '55211',
+      collectionBalanceAfter: 30000
+    });
+    const onRecorded = vi.fn();
+    wrap(<PayoutsPanel tenantId="t1" syndicId="s1" canEdit collectionBalance={0} onRecorded={onRecorded} />);
+
+    // La colonne « Compte » indique le compte reversé.
+    expect(await screen.findByText('ANCIEN')).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: /Enregistrer un reversement/ });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/Solde du compte 55211 :/)).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText('Référence du virement'), { target: { value: 'VIR-9' } });
+    fireEvent.change(within(dialog).getByLabelText('Montant reversé'), { target: { value: '50000' } });
+    const confirm = within(dialog).getByRole('button', { name: 'Enregistrer' }) as HTMLButtonElement;
+    await waitFor(() => expect(confirm.disabled).toBe(false));
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(recordSyndicGatewayPayout).toHaveBeenCalled());
+    expect(recordSyndicGatewayPayout.mock.calls[0][2]).toMatchObject({
+      amount: 50000,
+      reference: 'VIR-9',
+      treasuryAccountNumber: '55211'
+    });
+    await waitFor(() => expect(onRecorded).toHaveBeenCalled());
+  });
+
+  it('plafonne au solde du compte choisi : 80 000 au plus sur le sous-compte', async () => {
+    listSyndicGatewayPayouts.mockResolvedValue({ items: [] });
+    listSyndicReceivingNumbers.mockResolvedValue([NUMBER]);
+    wrap(<PayoutsPanel tenantId="t1" syndicId="s1" canEdit collectionBalance={0} />);
+    const button = await screen.findByRole('button', { name: /Enregistrer un reversement/ });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Référence du virement'), { target: { value: 'R' } });
+    fireEvent.change(within(dialog).getByLabelText('Montant reversé'), { target: { value: '90000' } });
+    fireEvent.blur(within(dialog).getByLabelText('Montant reversé'));
+    const confirm = within(dialog).getByRole('button', { name: 'Enregistrer' }) as HTMLButtonElement;
+    recordSyndicGatewayPayout.mockResolvedValue({
+      entryId: 'e2',
+      reference: 'R',
+      amount: 80000,
+      date: '2026-10-15',
+      treasuryAccountNumber: '55211',
+      collectionBalanceAfter: 0
+    });
+    // Le champ ramène 90 000 au plafond (80 000, solde du sous-compte) : jamais plus ne peut partir.
+    await waitFor(() => expect(confirm.disabled).toBe(false));
+    fireEvent.click(confirm);
+    await waitFor(() => expect(recordSyndicGatewayPayout).toHaveBeenCalled());
+    expect(recordSyndicGatewayPayout.mock.calls[0][2].amount).toBeLessThanOrEqual(80000);
+  });
+
+  it('sans aucun solde à reverser, le bouton reste inactif', async () => {
+    listSyndicGatewayPayouts.mockResolvedValue({ items: [] });
+    listSyndicReceivingNumbers.mockResolvedValue([{ ...NUMBER, treasuryBalance: 0 }]);
+    wrap(<PayoutsPanel tenantId="t1" syndicId="s1" canEdit collectionBalance={0} />);
+    await screen.findByText('Aucun reversement enregistré');
+    expect(screen.getByRole('button', { name: /Enregistrer un reversement/ })).toBeDisabled();
+  });
+
+  it('une lecture des numéros en échec laisse le 5525 utilisable', async () => {
+    listSyndicGatewayPayouts.mockResolvedValue({ items: [] });
+    listSyndicReceivingNumbers.mockRejectedValue(new Error('403'));
+    wrap(<PayoutsPanel tenantId="t1" syndicId="s1" canEdit collectionBalance={20000} />);
+    await screen.findByText('Aucun reversement enregistré');
+    expect(screen.getByRole('button', { name: /Enregistrer un reversement/ })).toBeEnabled();
   });
 });
 

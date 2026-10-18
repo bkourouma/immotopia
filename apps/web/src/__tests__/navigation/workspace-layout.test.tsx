@@ -1,9 +1,13 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { FinanceWorkspaceLayout } from '../../components/navigation/FinanceWorkspaceLayout';
-import { SyndicWorkspaceLayout, syndicSwitchPath } from '../../components/navigation/SyndicWorkspaceLayout';
+import {
+  DECLARATIONS_CHANGED_EVENT,
+  SyndicWorkspaceLayout,
+  syndicSwitchPath
+} from '../../components/navigation/SyndicWorkspaceLayout';
 import type { FinanceWorkspaceFamily } from '../../navigation/finance-workspaces';
 import { listSyndicates } from '../../services/syndic-service';
 
@@ -20,6 +24,11 @@ vi.mock('../../services/syndic-service', () => ({
   listSyndicates: vi.fn().mockResolvedValue([{ id: 's1', name: 'Résidence Les Palmiers' }])
 }));
 
+const mockListDeclarations = vi.fn();
+vi.mock('../../services/syndic-declared-payment-service', () => ({
+  listSyndicDeclarations: (...a: unknown[]) => mockListDeclarations(...a)
+}));
+
 // Droits d'abonnement : contrôle non appliqué, tous les onglets sont visibles.
 vi.mock('../../services/entitlements-service', () => ({
   getMenuEntitlements: vi
@@ -28,6 +37,11 @@ vi.mock('../../services/entitlements-service', () => ({
 }));
 
 const mockListSyndicates = listSyndicates as unknown as ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+  mockListDeclarations.mockReset();
+  mockListDeclarations.mockResolvedValue({ counts: { pending: 0, overdue: 0, suspectedDuplicate: 0 } });
+});
 
 const TENANT = 't1';
 
@@ -125,6 +139,70 @@ describe('FinanceWorkspaceLayout', () => {
   });
 });
 
+describe('SyndicWorkspaceLayout — compteur des paiements déclarés (spec 047, R32)', () => {
+  const renderPayments = () =>
+    render(
+      <MemoryRouter initialEntries={['/tenant/t1/syndics/s1/paiements-en-ligne']}>
+        <Routes>
+          <Route element={<SyndicWorkspaceLayout family="finances" />}>
+            <Route path="/tenant/:tenantId/syndics/:syndicId/*" element={<p>Écran rendu</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    );
+
+  beforeEach(() => {
+    mockListDeclarations.mockReset();
+    mockListDeclarations.mockResolvedValue({ counts: { pending: 0, overdue: 0, suspectedDuplicate: 0 } });
+  });
+
+  it('affiche le nombre de déclarations en attente sur l’onglet « Paiements » seulement', async () => {
+    mockListDeclarations.mockResolvedValue({ counts: { pending: 3, overdue: 0, suspectedDuplicate: 0 } });
+    renderPayments();
+    expect(await screen.findByTestId('tab-badge-paiements-en-ligne')).toHaveTextContent('3');
+    expect(screen.getAllByTestId(/^tab-badge-/)).toHaveLength(1);
+    expect(mockListDeclarations).toHaveBeenCalledWith('t1', 's1', { status: 'PENDING', limit: 1 });
+  });
+
+  it('aucune pastille à zéro, ni quand la lecture échoue (droit absent)', async () => {
+    mockListDeclarations.mockResolvedValue({ counts: { pending: 0, overdue: 0, suspectedDuplicate: 0 } });
+    const { unmount } = renderPayments();
+    await screen.findByRole('tab', { name: 'Paiements' });
+    await waitFor(() => expect(mockListDeclarations).toHaveBeenCalled());
+    expect(screen.queryByTestId(/^tab-badge-/)).not.toBeInTheDocument();
+    unmount();
+
+    mockListDeclarations.mockRejectedValue(new Error('403'));
+    renderPayments();
+    await screen.findByRole('tab', { name: 'Paiements' });
+    await waitFor(() => expect(mockListDeclarations).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId(/^tab-badge-/)).not.toBeInTheDocument();
+  });
+
+  it('se relit quand la file change (événement de l’onglet Paiements)', async () => {
+    mockListDeclarations.mockResolvedValue({ counts: { pending: 2, overdue: 0, suspectedDuplicate: 0 } });
+    renderPayments();
+    expect(await screen.findByTestId('tab-badge-paiements-en-ligne')).toHaveTextContent('2');
+    mockListDeclarations.mockResolvedValue({ counts: { pending: 1, overdue: 0, suspectedDuplicate: 0 } });
+    window.dispatchEvent(new Event(DECLARATIONS_CHANGED_EVENT));
+    await waitFor(() => expect(screen.getByTestId('tab-badge-paiements-en-ligne')).toHaveTextContent('1'));
+  });
+
+  it('les autres familles n’interrogent pas les déclarations', async () => {
+    render(
+      <MemoryRouter initialEntries={['/tenant/t1/syndics/s1/lots']}>
+        <Routes>
+          <Route element={<SyndicWorkspaceLayout family="copropriete" />}>
+            <Route path="/tenant/:tenantId/syndics/:syndicId/*" element={<p>Écran rendu</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    );
+    await screen.findByRole('tab', { name: 'Lots' });
+    expect(mockListDeclarations).not.toHaveBeenCalled();
+  });
+});
+
 describe('SyndicWorkspaceLayout — après la mise en commun du rendu', () => {
   it('affiche toujours le nom de la copropriété et les onglets de sa famille', async () => {
     render(
@@ -147,7 +225,7 @@ describe('SyndicWorkspaceLayout — après la mise en commun du rendu', () => {
       'Quittances',
       'Recouvrement',
       'Trésorerie',
-      'Paiements en ligne',
+      'Paiements',
       'Prélèvements',
       'Comptabilité'
     ]);

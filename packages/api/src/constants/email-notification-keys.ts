@@ -64,6 +64,12 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'SYNDIC_DIRECT_DEBIT_REJECTED',
   // Syndic – lien « Payer cet appel » envoyé au copropriétaire (spec 042)
   'CHARGE_CALL_PAYMENT_LINK_SENT',
+  // Syndic – paiement mobile money déclaré par le copropriétaire (spec 047)
+  'SYNDIC_PAYMENT_DECLARATION_RECEIVED',
+  'SYNDIC_PAYMENT_DECLARATION_APPROVED',
+  'SYNDIC_PAYMENT_DECLARATION_REJECTED',
+  'SYNDIC_PAYMENT_DECLARATION_TO_REVIEW',
+  'SYNDIC_RECEIVING_NUMBER_CHANGED',
   // Patrimoine – accès en lecture seule des tiers de confiance (lot B3)
   'EXTERNAL_ACCESS_LINK_SENT',
   // Chantiers – contrôle du stock (lot 040, B7-R6)
@@ -366,6 +372,41 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     description:
       "Envoi au copropriétaire d'un lien sécurisé pour régler un appel de charges en ligne par Mobile Money (durée limitée, révocable), à la demande du gestionnaire, lorsque le canal e-mail est retenu.",
     recipientLabel: 'Copropriétaire'
+  },
+  SYNDIC_PAYMENT_DECLARATION_RECEIVED: {
+    key: 'SYNDIC_PAYMENT_DECLARATION_RECEIVED',
+    label: 'Paiement déclaré reçu (accusé de réception)',
+    description:
+      'Envoyé au copropriétaire pour accuser réception de sa déclaration de paiement mobile money, en attente de vérification par le gestionnaire.',
+    recipientLabel: 'Copropriétaire'
+  },
+  SYNDIC_PAYMENT_DECLARATION_APPROVED: {
+    key: 'SYNDIC_PAYMENT_DECLARATION_APPROVED',
+    label: 'Paiement déclaré validé',
+    description:
+      'Envoyé au copropriétaire quand le gestionnaire valide sa déclaration de paiement mobile money (avec le montant retenu et la note de correction éventuelle). Les reçus et quittances partent dans leurs propres messages.',
+    recipientLabel: 'Copropriétaire'
+  },
+  SYNDIC_PAYMENT_DECLARATION_REJECTED: {
+    key: 'SYNDIC_PAYMENT_DECLARATION_REJECTED',
+    label: 'Paiement déclaré rejeté',
+    description:
+      'Envoyé au copropriétaire quand le gestionnaire rejette sa déclaration de paiement mobile money, avec le motif et la note du gestionnaire.',
+    recipientLabel: 'Copropriétaire'
+  },
+  SYNDIC_PAYMENT_DECLARATION_TO_REVIEW: {
+    key: 'SYNDIC_PAYMENT_DECLARATION_TO_REVIEW',
+    label: 'Paiements déclarés à vérifier (récapitulatif)',
+    description:
+      'Récapitulatif envoyé chaque heure aux gestionnaires de la copropriété (droit de modification du syndic) quand de nouveaux paiements mobile money déclarés attendent leur vérification, et chaque matin à 8 h pour ceux qui sont en retard.',
+    recipientLabel: 'Gestionnaires de la copropriété'
+  },
+  SYNDIC_RECEIVING_NUMBER_CHANGED: {
+    key: 'SYNDIC_RECEIVING_NUMBER_CHANGED',
+    label: 'Numéro de réception mobile money changé',
+    description:
+      'Envoyé aux autres gestionnaires de la copropriété (droit de modification du syndic) quand le numéro qui reçoit les paiements mobile money est changé : seuls les numéros masqués sont indiqués.',
+    recipientLabel: 'Gestionnaires de la copropriété'
   },
   EXTERNAL_ACCESS_LINK_SENT: {
     key: 'EXTERNAL_ACCESS_LINK_SENT',

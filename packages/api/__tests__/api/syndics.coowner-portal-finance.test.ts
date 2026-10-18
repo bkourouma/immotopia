@@ -37,6 +37,8 @@ jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 (mockPrisma as any).syndicPaymentGatewayConfig = { findMany: jest.fn(async () => []) };
 (mockPrisma as any).paymentGatewayConfig = { findFirst: jest.fn(async () => null) };
 (mockPrisma as any).syndicOnlineCheckout = { findMany: jest.fn(async () => []) };
+// Paiement mobile money déclaré (spec 047) : aucune déclaration en attente dans ces scénarios.
+(mockPrisma as any).syndicPaymentDeclaration = { findMany: jest.fn(async () => []) };
 jest.mock('../../src/lib/syndics/charge-schedule-tenant-gate', () => ({
   evaluateSchedulingGate: async () => null
 }));

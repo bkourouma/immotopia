@@ -111,6 +111,8 @@ export function createEngineDb() {
     contacts: [] as Row[],
     receipts: [] as Row[],
     users: [] as Row[],
+    /** Déclarations de paiement mobile money (spec 047) : vide par défaut, lues pour bloquer le paiement en ligne. */
+    declarations: [] as Row[],
     closedYears: new Set<string>(),
     /** Écritures « d'une autre connexion » : appliquées APRÈS le retour arrière de la transaction en cours. */
     afterRollback: [] as Array<() => void>
@@ -127,7 +129,8 @@ export function createEngineDb() {
     'agencyConfigs',
     'contacts',
     'receipts',
-    'users'
+    'users',
+    'declarations'
   ] as const;
 
   /** Relations lues par les filtres du moteur, posées à la lecture. */
@@ -240,6 +243,7 @@ export function createEngineDb() {
     crmContact: model('contacts'),
     syndicChargeReceipt: model('receipts'),
     user: model('users'),
+    syndicPaymentDeclaration: model('declarations'),
     $executeRaw: jest.fn(async () => 0)
   };
   // L'agence n'est JAMAIS lue par `findUnique` (c'est ce que fait `loadConfig` des loyers).

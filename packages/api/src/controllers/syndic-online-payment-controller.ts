@@ -155,7 +155,12 @@ const payoutBodySchema = z
     amount: z.number().positive().max(GATEWAY_PAYOUT_MAX_AMOUNT),
     date: isoDaySchema,
     reference: z.string().trim().min(1).max(120),
-    note: z.string().trim().max(250).nullish()
+    note: z.string().trim().max(250).nullish(),
+    // Spec 047 (R23) : 5525 par défaut ; sinon le sous-compte 5521x d'un numéro de réception de la copropriété.
+    treasuryAccountNumber: z
+      .string()
+      .regex(/^(5525|5521\d+)$/)
+      .optional()
   })
   .strict();
 
@@ -178,7 +183,8 @@ export const recordPayoutHandler = asyncHandler(async (req: Request, res: Respon
     date: body.date,
     reference: body.reference,
     note: body.note ?? null,
-    actorUserId
+    actorUserId,
+    treasuryAccountNumber: body.treasuryAccountNumber ?? null
   });
   if (actorUserId) {
     logAuditEvent({
@@ -187,7 +193,13 @@ export const recordPayoutHandler = asyncHandler(async (req: Request, res: Respon
       actionKey: AuditActionKey.SYNDIC_GATEWAY_PAYOUT_RECORDED,
       entityType: 'JournalEntry',
       entityId: result.entryId,
-      payload: { syndicateId, reference: result.reference, amount: result.amount, date: result.date }
+      payload: {
+        syndicateId,
+        reference: result.reference,
+        amount: result.amount,
+        date: result.date,
+        treasuryAccountNumber: result.treasuryAccountNumber
+      }
     });
   }
   res.status(201).json({ success: true, data: result });

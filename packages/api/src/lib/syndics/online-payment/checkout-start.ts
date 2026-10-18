@@ -12,6 +12,8 @@ import { requestProviderCheckoutRedirect } from '../../payment-gateway/checkout-
 import { gatewayClientForMode } from '../../payment-gateway/paysecurehub';
 import { sumAllocationsByCall } from '../charge-allocation';
 import { toCents } from '../charge-allocation-plan';
+import { pendingDeclarationsByCall } from '../declared-payment/declaration-queries';
+import { lockLotPayment } from '../lot-payment-lock';
 import { assertSyndicOnlinePaymentAllowed } from './feature-gate';
 import { assertSyndicConfigUsable, loadSyndicGatewayConfig, syndicCredentialsFrom } from './gateway-config';
 import { isSupportedCurrency } from './types';
@@ -219,6 +221,16 @@ async function failStart(checkout: SyndicOnlineCheckout, error: unknown): Promis
   );
 }
 
+function declarationPendingError(chargeCallIds: string[]): AppError {
+  return new AppError(
+    t('Un paiement mobile money déclaré est en cours de vérification pour cet appel.'),
+    409,
+    ErrorCode.CHARGE_CALL_DECLARATION_PENDING,
+    undefined,
+    { chargeCallIds }
+  );
+}
+
 /**
  * Démarre (ou reprend) le paiement en ligne d'appels entiers d'un lot.
  * Lève 403 `SYNDIC_FEATURE_DENIED`, 404 (lot ou appel hors de l'agence), 400
@@ -243,6 +255,12 @@ export async function startSyndicCheckout(params: StartSyndicCheckoutParams): Pr
   });
   if (!lot) throw new NotFoundError(t('Lot introuvable.'));
 
+  // Spec 047 (R15) : un appel visé par un paiement mobile money déclaré en attente ne se paie pas en
+  // ligne en même temps (risque de double paiement). Relu AVANT la transaction (lecture hors `tx`).
+  const declared = await pendingDeclarationsByCall(tenantId, [lotId]);
+  const blockedCallIds = ids.filter(id => declared.has(id));
+  if (blockedCallIds.length > 0) throw declarationPendingError(blockedCallIds);
+
   // Chargée AVANT la transaction (aucune requête hors `tx` pendant qu'elle tient une connexion).
   const config = assertSyndicConfigUsable(await loadSyndicGatewayConfig(tenantId, syndicateId));
   const codePaiement = generateSyndicCodePaiement();
@@ -251,6 +269,14 @@ export async function startSyndicCheckout(params: StartSyndicCheckoutParams): Pr
   const outcome = await prisma.$transaction(async tx => {
     // Verrou libéré au COMMIT : sérialise les démarrages concurrents d'un même lot.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+
+    // Verrou commun avec la création d'une déclaration (cas limite 9) PUIS relecture des déclarations
+    // en attente : une déclaration validée avant ce verrou est vue ici, une déclaration concurrente
+    // attend la fin de cette transaction et voit alors le paiement en ligne.
+    await lockLotPayment(tx, [lotId]);
+    const declaredNow = await pendingDeclarationsByCall(tenantId, [lotId], tx);
+    const blockedNow = ids.filter(id => declaredNow.has(id));
+    if (blockedNow.length > 0) throw declarationPendingError(blockedNow);
 
     // Chevauchements D'ABORD, appels et restes dus ensuite : un succès conclu entre les deux lectures
     // est vu côté appel (soldé) et ne laisse pas passer un doublon.

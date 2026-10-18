@@ -19,6 +19,7 @@ import propertyRoutes from './routes/property-routes';
 import syndicRoutes from './routes/syndic-routes';
 import syndicLotPaymentsRoutes from './routes/syndic-lot-payments-routes';
 import syndicOnlinePaymentRoutes from './routes/syndic-online-payment-routes';
+import syndicDeclaredPaymentRoutes from './routes/syndic-declared-payment-routes';
 import syndicReceiptsRoutes from './routes/syndic-receipts-routes';
 import syndicChargeSchedulesRoutes from './routes/syndic-charge-schedules-routes';
 import syndicProviderInvoiceRoutes from './routes/syndic-provider-invoice-routes';
@@ -345,6 +346,7 @@ app.use('/api', syndicProviderInvoiceRoutes); // Syndic S6 : factures et paiemen
 app.use('/api', documentBrandingRoutes); // Identite des documents : mandants, logos, signature et cachet (lot S1)
 app.use('/api', syndicLotPaymentsRoutes); // Paiements par lot, avance et suivi mensuel des charges (lot S2)
 app.use('/api', syndicOnlinePaymentRoutes); // Paiement mobile des coproprietaires, cote gestionnaire (spec 042)
+app.use('/api', syndicDeclaredPaymentRoutes); // Paiement mobile money declare par le coproprietaire, cote gestionnaire (spec 047)
 app.use('/api', syndicReceiptsRoutes); // Recus de paiement et quittances de charges, impression groupee (lot S3)
 app.use('/api', syndicChargeSchedulesRoutes); // Programmations d'appels automatiques et avis d'appel PDF (lot S4)
 app.use('/api', syndicRoutes); // Syndic (copropriétés) routes (tenant-scoped)

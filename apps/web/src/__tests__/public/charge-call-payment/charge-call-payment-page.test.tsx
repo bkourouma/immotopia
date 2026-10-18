@@ -307,6 +307,20 @@ describe('ChargeCallPaymentPage', () => {
       expect(redirectMock).not.toHaveBeenCalled();
     });
 
+    it('affiche le message dédié sur le 409 CHARGE_CALL_DECLARATION_PENDING (paiement mobile money déclaré en vérification)', async () => {
+      const button = await openPage();
+      mockPost.mockResolvedValueOnce({
+        status: 409,
+        data: { success: false, code: 'CHARGE_CALL_DECLARATION_PENDING', message: 'x', data: { chargeCallIds: ['c1'] } }
+      });
+      fireEvent.click(button);
+      expect(
+        await screen.findByText('Un paiement mobile money déclaré est en cours de vérification.')
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Un paiement en ligne est déjà en cours pour cet appel.')).not.toBeInTheDocument();
+      expect(redirectMock).not.toHaveBeenCalled();
+    });
+
     it("affiche l'écran « lien invalide » quand le lien est refusé au démarrage", async () => {
       const button = await openPage();
       mockPost.mockResolvedValueOnce({ status: 404, data: { success: false } });

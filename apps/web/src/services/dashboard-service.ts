@@ -100,6 +100,8 @@ export interface TenantDashboard {
     lots: number;
     chargeCallsByStatus: DashboardBucket[];
     recoveryRate: number | null;
+    /** Spec 047 : paiements mobile money déclarés en attente de vérification. */
+    pendingDeclarations?: number;
   } | null;
   patrimoine: { workProgramsByStatus: DashboardBucket[]; plannedCost: number } | null;
   workQueue: DashboardTask[];

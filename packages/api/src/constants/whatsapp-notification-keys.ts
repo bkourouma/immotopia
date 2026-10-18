@@ -29,6 +29,10 @@ export const WHATSAPP_NOTIFICATION_KEYS = [
   'RENTER_PAYMENT_LINK_SENT',
   // Syndic – lien « Payer cet appel » envoyé au copropriétaire (spec 042)
   'CHARGE_CALL_PAYMENT_LINK_SENT',
+  // Syndic – paiement mobile money déclaré par le copropriétaire (spec 047)
+  'SYNDIC_PAYMENT_DECLARATION_RECEIVED',
+  'SYNDIC_PAYMENT_DECLARATION_APPROVED',
+  'SYNDIC_PAYMENT_DECLARATION_REJECTED',
   // Syndic – appels de charges & AG & incidents
   'CHARGE_CALL_ISSUED',
   'CHARGE_CALL_REMINDER',
@@ -186,6 +190,27 @@ export const WHATSAPP_NOTIFICATION_META: Record<WhatsappNotificationKey, Whatsap
     label: "Lien de paiement d'un appel de charges (WhatsApp)",
     description:
       "Envoi WhatsApp au copropriétaire d'un lien sécurisé pour régler un appel de charges en ligne par Mobile Money (durée limitée, révocable), à la demande du gestionnaire, lorsque le copropriétaire a consenti et que son numéro est renseigné.",
+    recipientLabel: 'Copropriétaire'
+  },
+  SYNDIC_PAYMENT_DECLARATION_RECEIVED: {
+    key: 'SYNDIC_PAYMENT_DECLARATION_RECEIVED',
+    label: 'Paiement déclaré reçu (WhatsApp)',
+    description:
+      'Accusé de réception WhatsApp envoyé au copropriétaire pour sa déclaration de paiement mobile money, en attente de vérification.',
+    recipientLabel: 'Copropriétaire'
+  },
+  SYNDIC_PAYMENT_DECLARATION_APPROVED: {
+    key: 'SYNDIC_PAYMENT_DECLARATION_APPROVED',
+    label: 'Paiement déclaré validé (WhatsApp)',
+    description:
+      'Message WhatsApp envoyé au copropriétaire quand le gestionnaire valide sa déclaration de paiement mobile money.',
+    recipientLabel: 'Copropriétaire'
+  },
+  SYNDIC_PAYMENT_DECLARATION_REJECTED: {
+    key: 'SYNDIC_PAYMENT_DECLARATION_REJECTED',
+    label: 'Paiement déclaré rejeté (WhatsApp)',
+    description:
+      'Message WhatsApp envoyé au copropriétaire quand le gestionnaire rejette sa déclaration de paiement mobile money, avec le motif.',
     recipientLabel: 'Copropriétaire'
   },
   CHARGE_CALL_ISSUED: {

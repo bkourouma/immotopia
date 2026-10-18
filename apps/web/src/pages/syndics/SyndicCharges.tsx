@@ -18,6 +18,7 @@ import {
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
+import { Link } from 'react-router-dom';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
 import { LotPaymentModal } from '../../components/syndics/LotPaymentModal';
 import { ChargeCallPaymentLinkModal } from '../../components/syndics/online-payment/ChargeCallPaymentLinkModal';
@@ -31,6 +32,7 @@ import {
   listSyndicateFunds,
   listSyndicateLots
 } from '../../services/syndic-service';
+import { listSyndicDeclarations } from '../../services/syndic-declared-payment-service';
 import { downloadChargeCallNotice, downloadChargeCallNoticeWord } from '../../services/syndic-charge-schedule-service';
 import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
@@ -121,6 +123,11 @@ export const SyndicCharges: React.FC = () => {
   const canEditSyndic = permissionsReady && (permissions === null || permissions.has('SYNDIC_EDIT'));
   const [linkTarget, setLinkTarget] = useState<ChargeCall | null>(null);
 
+  // Paiements mobile money déclarés en attente (spec 047) : pastille sur les appels visés et bandeau.
+  // Information annexe : son échec (403 compris) est silencieux et ne bloque jamais la page.
+  const [declaredPendingCallIds, setDeclaredPendingCallIds] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const [declaredPendingCount, setDeclaredPendingCount] = useState(0);
+
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
       setLoading(false);
@@ -136,6 +143,28 @@ export const SyndicCharges: React.FC = () => {
     }
     void loadCharges();
   }, [effectiveTenantId, syndicId, statusFilter, periodFilter]);
+
+  const loadDeclaredPending = async () => {
+    if (!effectiveTenantId || !syndicId) return;
+    try {
+      const data = await listSyndicDeclarations(effectiveTenantId, syndicId, { status: 'PENDING', limit: 100 });
+      const ids = new Set<string>();
+      for (const declaration of data.items ?? []) {
+        for (const line of declaration.lines ?? []) {
+          for (const call of line.chargeCalls ?? []) ids.add(call.id);
+        }
+      }
+      setDeclaredPendingCallIds(ids);
+      setDeclaredPendingCount(data.pagination?.total ?? 0);
+    } catch {
+      setDeclaredPendingCallIds(new Set<string>());
+      setDeclaredPendingCount(0);
+    }
+  };
+
+  useEffect(() => {
+    void loadDeclaredPending();
+  }, [effectiveTenantId, syndicId]);
 
   const loadBaseData = async () => {
     if (!effectiveTenantId || !syndicId) {
@@ -325,6 +354,7 @@ export const SyndicCharges: React.FC = () => {
         : t('Paiement enregistré : avance de {{advance}}', { advance })
     );
     void loadCharges();
+    void loadDeclaredPending();
   };
 
   return (
@@ -397,6 +427,25 @@ export const SyndicCharges: React.FC = () => {
             </Card>
 
             <Card title={t('Liste des appels de charges')}>
+              {declaredPendingCount > 0 ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  message={
+                    <Space wrap size={8}>
+                      <span>
+                        {t('{{count}} paiement(s) déclaré(s) en attente de validation.', {
+                          count: declaredPendingCount
+                        })}
+                      </span>
+                      <Link to={`/tenant/${effectiveTenantId}/syndics/${syndicId}/paiements-en-ligne`}>
+                        {t('Voir les paiements')}
+                      </Link>
+                    </Space>
+                  }
+                />
+              ) : null}
               <ChargeCallTable
                 items={charges}
                 onRecordPayment={handleOpenPaymentForCharge}
@@ -405,6 +454,7 @@ export const SyndicCharges: React.FC = () => {
                 funds={funds}
                 onAssignFund={funds.length > 0 ? handleOpenAssignFund : undefined}
                 onPaymentLink={onlinePaymentUsable ? setLinkTarget : undefined}
+                declaredPendingCallIds={declaredPendingCallIds}
               />
             </Card>
           </>

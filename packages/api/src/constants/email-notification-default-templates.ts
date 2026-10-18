@@ -417,6 +417,43 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 20px 0; padding:14px; background:#eff6ff; border-radius:8px; font-size:14px;"><a href="{{paymentUrl}}" style="color:#1d4ed8; font-weight:600; text-decoration:underline;">Payer cet appel</a></p>
 <p style="margin:0 0 12px 0; font-size:13px; color:#666;">Ce lien est personnel et valable jusqu'au {{expiresAt}}. Ne le transmettez pas.</p>`
   },
+  SYNDIC_PAYMENT_DECLARATION_RECEIVED: {
+    subject: 'Paiement déclaré reçu - {{syndicName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Déclaration de paiement reçue</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
+<p style="margin:0 0 20px 0;">Nous avons bien reçu votre déclaration de paiement mobile money de <strong>{{amount}}</strong> (référence {{transactionReference}}, effectué le {{paidAt}}) pour la copropriété <strong>{{syndicName}}</strong>.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Elle est en cours de vérification par le gestionnaire : votre compte ne sera crédité qu'après sa validation. Vous serez prévenu(e) de la décision.</p>`
+  },
+  SYNDIC_PAYMENT_DECLARATION_APPROVED: {
+    subject: 'Paiement validé - {{syndicName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#0f766e;">Paiement validé</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
+<p style="margin:0 0 20px 0;">Votre paiement mobile money (référence {{transactionReference}}, effectué le {{paidAt}}) pour la copropriété <strong>{{syndicName}}</strong> a été validé : <strong>{{acceptedAmount}}</strong> ont été enregistrés sur votre compte.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Montant corrigé par le gestionnaire : {{corrected}}. {{reviewNote}}</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Votre reçu ou votre quittance vous est envoyé séparément et reste disponible dans votre espace copropriétaire.</p>`
+  },
+  SYNDIC_PAYMENT_DECLARATION_REJECTED: {
+    subject: 'Paiement non retenu - {{syndicName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b91c1c;">Paiement non retenu</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
+<p style="margin:0 0 20px 0;">Votre déclaration de paiement mobile money de <strong>{{amount}}</strong> (référence {{transactionReference}}, effectué le {{paidAt}}) pour la copropriété <strong>{{syndicName}}</strong> n'a pas été retenue.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Motif : {{rejectReasonLabel}}. {{reviewNote}}</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Aucun montant n'a été enregistré. Vous pouvez faire une nouvelle déclaration depuis votre espace copropriétaire ou contacter le gestionnaire.</p>`
+  },
+  SYNDIC_PAYMENT_DECLARATION_TO_REVIEW: {
+    subject: 'Paiements déclarés à vérifier - {{syndicName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Paiements déclarés à vérifier</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;"><strong>{{pendingCount}}</strong> paiement(s) mobile money déclaré(s) attendent votre vérification pour la copropriété <strong>{{syndicName}}</strong>, dont <strong>{{overdueCount}}</strong> en retard.</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#fffbeb; border-radius:8px; font-size:14px;"><a href="{{link}}" style="color:#b45309; font-weight:600; text-decoration:underline;">Ouvrir l'onglet Paiements</a></p>`
+  },
+  SYNDIC_RECEIVING_NUMBER_CHANGED: {
+    subject: 'Numéro de réception changé - {{syndicName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Numéro de réception changé</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;"><strong>{{actorName}}</strong> a changé le numéro mobile money qui reçoit les paiements de la copropriété <strong>{{syndicName}}</strong> : {{previousPhone}} devient {{newPhone}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Si vous n'êtes pas au courant de ce changement, vérifiez-le sans attendre auprès de votre collègue.</p>`
+  },
   EXTERNAL_ACCESS_LINK_SENT: {
     subject: 'Accès partagé par {{agencyName}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Accès en lecture seule</h1>

@@ -7,8 +7,10 @@ import dayjs from 'dayjs';
 import { DataCard, DataView, MoneyValue, SkeletonList, StateBlock, Table } from '../../components/primitives';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
+import { DeclarationsList } from '../../components/coowner-portal/declared-payment/DeclarationsList';
 import {
   downloadCoOwnerReceiptFile,
+  listMyDeclarations,
   listMyLots,
   listMyPayments,
   type CoOwnerPayment,
@@ -132,6 +134,19 @@ export default function CoOwnerPayments() {
     queryFn: () => listMyPayments({ lotId, year })
   });
 
+  // Section facultative : toute erreur (API absente, droit refusé) la masque sans casser la page.
+  const declarations = useQuery({
+    queryKey: ['coowner-portal', 'declarations'],
+    queryFn: () => listMyDeclarations({ status: 'ALL', limit: 50 }),
+    retry: false
+  });
+  const declarationItems = declarations.isError ? [] : (declarations.data?.items ?? []);
+
+  const refreshAll = () => {
+    void payments.refetch();
+    void declarations.refetch();
+  };
+
   const lotOptions = useMemo(
     () =>
       (lots.data ?? []).map(lot => ({ value: lot.id, label: t('Lot {{lotNumber}}', { lotNumber: lot.lotNumber }) })),
@@ -177,7 +192,7 @@ export default function CoOwnerPayments() {
           <Title level={2}>{t('Mes paiements')}</Title>
           <Text type="secondary">{t('Vos règlements de charges, leur affectation et les documents associés.')}</Text>
         </div>
-        <Button icon={<SyncOutlined />} onClick={() => void payments.refetch()} loading={payments.isFetching}>
+        <Button icon={<SyncOutlined />} onClick={refreshAll} loading={payments.isFetching}>
           {t('Actualiser')}
         </Button>
       </div>
@@ -264,6 +279,22 @@ export default function CoOwnerPayments() {
           />
         </Card>
       )}
+
+      {declarationItems.length > 0 ? (
+        <Card>
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <div>
+              <Title level={3}>{t('Mes déclarations')}</Title>
+              <Text type="secondary">
+                {t(
+                  'Paiements mobile money que vous avez déclarés au syndic. Rien n’est porté à votre compte avant validation.'
+                )}
+              </Text>
+            </div>
+            <DeclarationsList items={declarationItems} />
+          </Space>
+        </Card>
+      ) : null}
 
       <Modal
         open={Boolean(detail)}

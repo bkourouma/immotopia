@@ -12,6 +12,7 @@ import CoOwnerLotAccount from '../../pages/CoOwnerPortal/LotAccount';
 import { ChargeCallsTable } from '../../pages/CoOwnerPortal/ChargeCallsTable';
 import type {
   CoOwnerChargeCall,
+  CoOwnerDeclaration,
   CoOwnerLot,
   CoOwnerLotAccount as LotAccountData,
   CoOwnerLotMonthlyTracking,
@@ -29,6 +30,7 @@ import type {
 
 const listMyLots = vi.fn();
 const listMyPayments = vi.fn();
+const listMyDeclarations = vi.fn();
 const listMyReceipts = vi.fn();
 const downloadCoOwnerReceiptFile = vi.fn();
 const downloadCoOwnerLotStatement = vi.fn();
@@ -48,6 +50,7 @@ vi.mock('../../services/coowner-portal-service', async () => {
     ...actual,
     listMyLots: (...a: unknown[]) => listMyLots(...a),
     listMyPayments: (...a: unknown[]) => listMyPayments(...a),
+    listMyDeclarations: (...a: unknown[]) => listMyDeclarations(...a),
     listMyReceipts: (...a: unknown[]) => listMyReceipts(...a),
     downloadCoOwnerReceiptFile: (...a: unknown[]) => downloadCoOwnerReceiptFile(...a),
     downloadCoOwnerLotStatement: (...a: unknown[]) => downloadCoOwnerLotStatement(...a),
@@ -98,6 +101,10 @@ function lot(overrides: Partial<CoOwnerLot> = {}): CoOwnerLot {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  listMyDeclarations.mockResolvedValue({
+    items: [],
+    pagination: { page: 1, limit: 50, total: 0, totalPages: 1 }
+  });
   Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:fichier'), revokeObjectURL: vi.fn() });
 });
 
@@ -186,6 +193,62 @@ describe('Mes paiements', () => {
     mount('/copropriete/paiements', <CoOwnerPayments />);
 
     expect(await screen.findByText('Accès refusé.', {}, WAIT)).toBeInTheDocument();
+  });
+
+  describe('section « Mes déclarations »', () => {
+    const declared: CoOwnerDeclaration = {
+      id: 'decl-1',
+      status: 'PENDING',
+      syndicate: { id: 's1', name: 'Résidence Les Acacias' },
+      receivingNumber: { operator: 'ORANGE', phoneNumber: '+2250707070707', holderName: 'Syndic' },
+      payerPhone: '+2250101010101',
+      amount: 50000,
+      acceptedAmount: null,
+      paidAt: '2026-10-10T09:30:00.000Z',
+      transactionReference: 'MP261010.ABCD',
+      lines: [{ lot: { id: 'lot-1', lotNumber: 'A1' }, amount: 50000, acceptedAmount: null, chargeCallIds: [] }],
+      documents: [],
+      rejectReason: null,
+      reviewNote: null,
+      canCancel: true,
+      createdAt: '2026-10-10T10:00:00.000Z',
+      reviewedAt: null
+    };
+
+    async function mountWithPayments() {
+      listMyLots.mockResolvedValue([lot()]);
+      listMyPayments.mockResolvedValue(payments);
+      mount('/copropriete/paiements', <CoOwnerPayments />);
+      expect(await screen.findByText('Virement', {}, WAIT)).toBeInTheDocument();
+      await waitFor(() => expect(listMyDeclarations).toHaveBeenCalled());
+    }
+
+    it('masque la section quand la liste est vide', async () => {
+      await mountWithPayments();
+      expect(screen.queryByText('Mes déclarations')).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['un refus 403', { response: { status: 403, data: { message: 'Accès refusé.' } } }],
+      ['une erreur réseau', new Error('Network Error')]
+    ])('masque la section sans casser la page sur %s', async (_label, error) => {
+      listMyDeclarations.mockRejectedValue(error);
+      await mountWithPayments();
+      expect(screen.queryByText('Mes déclarations')).not.toBeInTheDocument();
+      expect(screen.queryByText('Accès refusé.')).not.toBeInTheDocument();
+      expect(screen.getByText(/Avance disponible/)).toBeInTheDocument();
+    });
+
+    it('affiche la section avec une déclaration en vérification', async () => {
+      listMyDeclarations.mockResolvedValue({
+        items: [declared],
+        pagination: { page: 1, limit: 50, total: 1, totalPages: 1 }
+      });
+      await mountWithPayments();
+      expect(await screen.findByText('Mes déclarations', {}, WAIT)).toBeInTheDocument();
+      expect((await screen.findAllByText('En vérification', {}, WAIT)).length).toBeGreaterThan(0);
+      expect(listMyDeclarations).toHaveBeenCalledWith({ status: 'ALL', limit: 50 });
+    });
   });
 });
 

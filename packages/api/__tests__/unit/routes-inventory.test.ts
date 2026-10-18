@@ -454,6 +454,61 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     expect(routes.filter(r => r.path.startsWith(base))).toHaveLength(expected.length);
   });
 
+  it('declare les 12 routes agence du paiement mobile money declare (spec 047) avec authentification, garde d’agence et droit SYNDIC', () => {
+    const base = '/api/tenants/:tenantId/syndics/:syndicId';
+    const expected: Array<[string, string, 'SYNDIC_VIEW' | 'SYNDIC_EDIT']> = [
+      ['GET', `${base}/numeros-reception`, 'SYNDIC_VIEW'],
+      ['POST', `${base}/numeros-reception`, 'SYNDIC_EDIT'],
+      ['PATCH', `${base}/numeros-reception/:numberId`, 'SYNDIC_EDIT'],
+      ['DELETE', `${base}/numeros-reception/:numberId`, 'SYNDIC_EDIT'],
+      ['GET', `${base}/paiements-declares/reglages`, 'SYNDIC_VIEW'],
+      ['PUT', `${base}/paiements-declares/reglages`, 'SYNDIC_EDIT'],
+      ['GET', `${base}/paiements-declares`, 'SYNDIC_VIEW'],
+      ['GET', `${base}/paiements-declares/:declarationId`, 'SYNDIC_VIEW'],
+      ['GET', `${base}/paiements-declares/:declarationId/preuve`, 'SYNDIC_VIEW'],
+      ['POST', `${base}/paiements-declares/:declarationId/validation`, 'SYNDIC_EDIT'],
+      ['POST', `${base}/paiements-declares/:declarationId/rejet`, 'SYNDIC_EDIT'],
+      ['POST', `${base}/paiements-declares`, 'SYNDIC_EDIT']
+    ];
+    for (const [method, path, permission] of expected) {
+      const route = routes.find(r => r.method === method && r.path === path);
+      expect(route ? `${method} ${path}` : `ABSENTE : ${method} ${path}`).toBe(`${method} ${path}`);
+      expect(hasTenantOrPortalGuard(route!)).toBe(true);
+      expect(route!.middlewares).toContain(authenticate);
+      expect(isWhitelisted(route!)).toBeUndefined();
+      // requirePropertyPermission expose `permissionKey`, requireAnyPropertyPermission `anyPermissionKeys`.
+      const keys = route!.middlewares.flatMap(mw => [
+        (mw as any)?.permissionKey,
+        ...((mw as any)?.anyPermissionKeys ?? [])
+      ]);
+      expect(keys).toContain(permission);
+    }
+    // Le chemin littéral « reglages » précède « :declarationId » dans la pile (sinon il serait capturé).
+    const order = routes
+      .filter(r => r.method === 'GET' && r.path.startsWith(`${base}/paiements-declares/`))
+      .map(r => r.path.slice(`${base}/paiements-declares/`.length));
+    expect(order.indexOf('reglages')).toBeLessThan(order.indexOf(':declarationId'));
+  });
+
+  it('declare les 5 routes portail du paiement mobile money declare (spec 047) derriere la garde du portail copropriétaire', () => {
+    const base = '/api/portal/copropriete/paiements-declares';
+    const expected: Array<[string, string]> = [
+      ['GET', `${base}/disponibilite`],
+      ['POST', `${base}/lecture`],
+      ['POST', base],
+      ['GET', base],
+      ['POST', `${base}/:declarationId/annulation`]
+    ];
+    for (const [method, path] of expected) {
+      const route = routes.find(r => r.method === method && r.path === path);
+      expect(route ? `${method} ${path}` : `ABSENTE : ${method} ${path}`).toBe(`${method} ${path}`);
+      expect(route!.middlewares).toContain(requireCoOwnerPortalAccess);
+      expect(route!.middlewares).toContain(authenticate);
+      expect(isWhitelisted(route!)).toBeUndefined();
+    }
+    expect(routes.filter(r => r.path.startsWith(base))).toHaveLength(expected.length);
+  });
+
   it('les 2 routes publiques des acces tiers (lot B3) sont des POST en liste blanche, sans autre methode', () => {
     const publicRoutes = routes.filter(r => r.path.startsWith('/api/public/external-access'));
     expect(publicRoutes.map(r => `${r.method} ${r.path}`).sort()).toEqual([

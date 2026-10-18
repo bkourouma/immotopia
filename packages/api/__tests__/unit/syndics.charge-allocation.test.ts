@@ -14,6 +14,12 @@ import { createFakePrisma } from '../helpers/fake-prisma';
 const mockPrisma = createFakePrisma();
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
+// Paiement mobile money déclaré (spec 047, D7) : déclarations en attente et réglages de la copropriété.
+const mockDeclarations: any[] = [];
+const mockDeclaredSettings: { current: any } = { current: null };
+(mockPrisma as any).syndicPaymentDeclaration = { findMany: jest.fn(async () => mockDeclarations) };
+(mockPrisma as any).syndicDeclaredPaymentSettings = { findFirst: jest.fn(async () => mockDeclaredSettings.current) };
+
 const mockSendEmail = jest.fn(async (_params: any) => undefined);
 jest.mock('../../src/services/email-service', () => ({
   emailService: { sendEmail: (params: any) => mockSendEmail(params) },
@@ -41,6 +47,7 @@ import { getMonthlyTrackingBySyndicate } from '../../src/lib/syndics/charge-mont
 import {
   createChargeCallAndUpdateStatus,
   recordChargePaymentWithStatusUpdate,
+  createManualReminderForChargeCall,
   runReminderBatchForSyndicate
 } from '../../src/lib/syndics/queries';
 import { notifyChargeCall, notifyChargeCallReminder } from '../../src/lib/syndics/notifications';
@@ -501,6 +508,93 @@ describe('un appel couvert n est ni notifie ni relance', () => {
 
     expect(await notifyChargeCallReminder('rem-1')).toMatchObject({ skipped: 'ALREADY_PAID' });
     expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe('relances et déclaration de paiement mobile money en attente (spec 047, D7)', () => {
+  const declare = (lotId: string, chargeCallIds: string[], createdAt: Date) =>
+    mockDeclarations.push({
+      id: 'decl-1',
+      syndicateId: S1,
+      createdAt,
+      lines: [{ id: 'line-1', lotId, amount: 10000, chargeCallIds }]
+    });
+  const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  beforeEach(() => {
+    mockDeclarations.length = 0;
+    mockDeclaredSettings.current = null;
+  });
+
+  it('saute l’appel visé par une déclaration arrivée aujourd’hui et relance les autres', async () => {
+    const declared = await createCall(L1, '2026-01', 10000, '2026-01-05');
+    const other = await createCall(L2, '2026-01', 10000, '2026-01-05');
+    attachCallRelations();
+    declare(L1, [declared.id], new Date());
+
+    const result = await runReminderBatchForSyndicate(TENANT_A, S1);
+
+    expect(result.remindersCreated).toBe(1);
+    expect(mockPrisma.paymentReminder.rows.map(row => row.chargeCallId)).toEqual([other.id]);
+  });
+
+  it('relance de nouveau au-delà de 3 jours ouvrés (délai par défaut)', async () => {
+    const declared = await createCall(L1, '2026-01', 10000, '2026-01-05');
+    await createCall(L2, '2026-01', 10000, '2026-01-05');
+    attachCallRelations();
+    declare(L1, [declared.id], daysAgo(10));
+
+    const result = await runReminderBatchForSyndicate(TENANT_A, S1);
+
+    expect(result.remindersCreated).toBe(2);
+  });
+
+  it('respecte le délai propre à la copropriété (15 jours ouvrés)', async () => {
+    const declared = await createCall(L1, '2026-01', 10000, '2026-01-05');
+    attachCallRelations();
+    mockDeclaredSettings.current = { reviewAlertBusinessDays: 15 };
+    declare(L1, [declared.id], daysAgo(10));
+
+    const result = await runReminderBatchForSyndicate(TENANT_A, S1);
+
+    expect(result.remindersCreated).toBe(0);
+  });
+
+  it('ne lit que les déclarations EN ATTENTE de l’agence : rejetée ou annulée, la relance reste normale', async () => {
+    await createCall(L1, '2026-01', 10000, '2026-01-05');
+    attachCallRelations();
+
+    await runReminderBatchForSyndicate(TENANT_A, S1);
+
+    const query = (mockPrisma as any).syndicPaymentDeclaration.findMany.mock.calls.at(-1)[0];
+    expect(query.where).toMatchObject({ tenantId: TENANT_A, status: 'PENDING' });
+  });
+
+  it('une déclaration sans appel nommé vise le plus ancien appel ouvert du lot', async () => {
+    const oldest = await createCall(L1, '2026-01', 10000, '2026-01-05');
+    await createCall(L1, '2026-02', 10000, '2026-02-05');
+    attachCallRelations();
+    declare(L1, [], new Date());
+
+    const result = await runReminderBatchForSyndicate(TENANT_A, S1);
+
+    expect(result.remindersCreated).toBe(1);
+    expect(mockPrisma.paymentReminder.rows.map(row => row.chargeCallId)).not.toContain(oldest.id);
+  });
+
+  it('la relance manuelle reste permise et indique la déclaration en attente', async () => {
+    const declared = await createCall(L1, '2026-01', 10000, '2026-01-05');
+    const free = await createCall(L2, '2026-01', 10000, '2026-01-05');
+    attachCallRelations();
+    const createdAt = new Date('2026-10-17T10:00:00.000Z');
+    declare(L1, [declared.id], createdAt);
+
+    const withDeclaration: any = await createManualReminderForChargeCall(TENANT_A, S1, declared.id, {});
+    const without: any = await createManualReminderForChargeCall(TENANT_A, S1, free.id, {});
+
+    expect(withDeclaration.chargeCallId).toBe(declared.id);
+    expect(withDeclaration.pendingDeclaration).toEqual({ declarationId: 'decl-1', createdAt: createdAt.toISOString() });
+    expect(without.pendingDeclaration).toBeNull();
   });
 });
 

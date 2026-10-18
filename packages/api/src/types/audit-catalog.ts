@@ -28,6 +28,9 @@ type Extra = Pick<AuditCatalogEntry, 'critical' | 'redact'>;
 /** Lot 041 : le numero du chef de chantier n'apparait jamais en clair dans l'audit. */
 const STOCK_WHATSAPP_REDACT = ['phone', 'phoneE164'];
 
+/** Spec 047 : numeros de telephone (reception, payeur) jamais en clair dans l'audit. */
+const DECLARED_PAYMENT_REDACT = ['phone', 'phoneE164', 'payerPhone', 'receivingPhone', 'phoneNumber'];
+
 /** Spec 044 : contact (e-mail, numero), IP et signature ne figurent jamais en clair dans l'audit. */
 const SIGNATURE_REDACT = ['contact', 'email', 'phone', 'phoneE164', 'ip', 'ipAddress', 'signature'];
 
@@ -172,6 +175,21 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SYNDIC_GATEWAY_PAYOUT_RECORDED]: tenant('BILLING'),
   [AuditActionKey.SYNDIC_CHARGE_PAYMENT_LINK_SENT]: tenant('BILLING'),
   [AuditActionKey.SECURE_LINK_CHARGE_PAYMENT_STARTED]: tenant('BILLING'),
+
+  // Spec 047 : paiement mobile money declare par le coproprietaire.
+  [AuditActionKey.SYNDIC_RECEIVING_NUMBER_CREATED]: tenant('DATA', { redact: DECLARED_PAYMENT_REDACT }),
+  [AuditActionKey.SYNDIC_RECEIVING_NUMBER_UPDATED]: tenant('DATA', { redact: DECLARED_PAYMENT_REDACT }),
+  [AuditActionKey.SYNDIC_RECEIVING_NUMBER_DEACTIVATED]: tenant('DATA', { redact: DECLARED_PAYMENT_REDACT }),
+  [AuditActionKey.SYNDIC_DECLARED_PAYMENT_SETTINGS_UPDATED]: tenant('SECURITY'),
+  [AuditActionKey.SYNDIC_PAYMENT_DECLARATION_CREATED]: tenant('BILLING', { redact: DECLARED_PAYMENT_REDACT }),
+  [AuditActionKey.SYNDIC_PAYMENT_DECLARATION_CANCELED]: tenant('BILLING', { redact: DECLARED_PAYMENT_REDACT }),
+  [AuditActionKey.SYNDIC_PAYMENT_DECLARATION_APPROVED]: tenant('BILLING', {
+    critical: true,
+    redact: DECLARED_PAYMENT_REDACT
+  }),
+  [AuditActionKey.SYNDIC_PAYMENT_DECLARATION_REJECTED]: tenant('BILLING', { redact: DECLARED_PAYMENT_REDACT }),
+  [AuditActionKey.SYNDIC_PAYMENT_PROOF_VIEWED]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_PAYMENT_PROOF_READ]: tenant('DATA', { redact: DECLARED_PAYMENT_REDACT }),
 
   // Patrimoine : rapport propriétaire, sinistres, régularisation foncière.
   [AuditActionKey.PATRIMOINE_OWNER_MONTHLY_REPORT_SENT]: tenant('DATA'),

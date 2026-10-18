@@ -426,7 +426,7 @@ describe('fournisseur OpenRouter (W8-R3)', () => {
       type: 'json_schema',
       json_schema: { name: 'stock_count', strict: true, schema: STOCK_VISION_JSON_SCHEMA }
     });
-    expect(body.provider).toEqual({ require_parameters: true });
+    expect(body.provider).toEqual({ require_parameters: true, data_collection: 'deny' });
     const raw = String(init.body);
     expect(raw).not.toMatch(BLIND_FIELDS);
     expect(raw).not.toContain('fake:');

@@ -1,8 +1,10 @@
+import type { MobileMoneyOperator } from '@prisma/client';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { ConflictError } from '../../middleware/error-middleware';
 import { unprocessableEntity } from '../errors';
 import { t } from '../../i18n';
 import { isJournalEntryBalanced, roundMoney } from './finance-utils';
+import { maskPhone } from './declared-payment/phone';
 
 /**
  * Socle comptable d'une copropriete pour les factures de prestataires (S6).
@@ -25,7 +27,9 @@ import { isJournalEntryBalanced, roundMoney } from './finance-utils';
  *   6241 travaux sur parties communes (sous-compte du 624) ;
  *   450  coproprietaires (encaissement des appels de charges, ligne par lot) ;
  *   571  caisse (encaissement en especes) ;
- *   5525 PaySecureHub (collecte mobile money, spec 042), reverse vers le 521.
+ *   5525 PaySecureHub (collecte mobile money, spec 042), reverse vers le 521 ;
+ *   5521x numero de reception mobile money d'une copropriete (spec 047,
+ *   hypothese comptable H1, voir `ensureSyndicReceivingAccountTx`).
  */
 
 export type SyndicAccountNumber = '401' | '521' | '624' | '6241' | '450' | '571' | '5525';
@@ -121,6 +125,147 @@ export async function ensureSyndicAccountsTx(
   }
 
   return index;
+}
+
+// ---------------------------------------------------------------------------
+// Sous-comptes de reception mobile money (spec 047, hypothese comptable H1)
+// ---------------------------------------------------------------------------
+
+/** Numero d'un sous-compte de reception : `5521` suivi d'un rang (`55211`, `55212`...). */
+export type ReceivingAccountNumber = `5521${number}`;
+
+const RECEIVING_ACCOUNT_PATTERN = /^5521\d+$/;
+const RECEIVING_ACCOUNT_PREFIX = '5521';
+const RECEIVING_PARENT_NUMBER = '552';
+
+export function isReceivingAccountNumber(value: string | null | undefined): value is ReceivingAccountNumber {
+  return typeof value === 'string' && RECEIVING_ACCOUNT_PATTERN.test(value);
+}
+
+function operatorLabel(operator: MobileMoneyOperator): string {
+  switch (operator) {
+    case 'ORANGE':
+      return t('Orange Money');
+    case 'MTN':
+      return t('MTN MoMo');
+    case 'MOOV':
+      return t('Moov Money');
+    case 'WAVE':
+      return t('Wave');
+    default:
+      return t('Autre mobile money');
+  }
+}
+
+/**
+ * Remet à jour le LIBELLÉ du sous-compte 5521x d'un numéro de réception dont le téléphone (ou l'opérateur) a
+ * changé : « <Opérateur> <numéro masqué> ». Seul le libellé du sous-compte de CE numéro bouge ; son numéro de
+ * compte, ses écritures et tous les autres comptes restent intacts. Renvoie le nombre de comptes renommés.
+ */
+export async function renameSyndicReceivingAccount(
+  client: Pick<PrismaTransactionClient, 'chartOfAccount'>,
+  tenantId: string,
+  syndicateId: string,
+  accountNumber: string,
+  receiving: { operator: MobileMoneyOperator; phoneNumber: string }
+): Promise<number> {
+  if (!isReceivingAccountNumber(accountNumber)) return 0;
+  const result = await client.chartOfAccount.updateMany({
+    where: { tenantId, syndicateId, scope: 'SYNDICATE', accountNumber },
+    data: { accountName: `${operatorLabel(receiving.operator)} ${maskPhone(receiving.phoneNumber)}`.slice(0, 250) }
+  });
+  return result.count;
+}
+
+/** Compte parent 552 du plan de la copropriete : l'utilise s'il existe, sinon le cree (compte NOUVEAU, rien n'est modifie). */
+async function ensureReceivingParentTx(tx: PrismaTransactionClient, tenantId: string, syndicateId: string) {
+  const parent = await tx.chartOfAccount.findFirst({
+    where: { tenantId, syndicateId, scope: 'SYNDICATE', accountNumber: RECEIVING_PARENT_NUMBER },
+    select: { id: true }
+  });
+  if (parent) return parent.id;
+  const created = await tx.chartOfAccount.create({
+    data: {
+      tenantId,
+      syndicateId,
+      scope: 'SYNDICATE',
+      accountNumber: RECEIVING_PARENT_NUMBER,
+      accountName: t('Monnaie électronique — téléphone portable'),
+      accountClass: 5,
+      accountType: 'ASSET'
+    },
+    select: { id: true }
+  });
+  return created.id;
+}
+
+/** Plus grand rang deja pris sous 5521 dans la copropriete (0 si aucun). */
+async function highestReceivingRankTx(tx: PrismaTransactionClient, tenantId: string, syndicateId: string) {
+  // Classe 5 filtree en base, motif `^5521\d+$` en memoire : un plan compte
+  // quelques dizaines de comptes de tresorerie au plus.
+  const accounts = await tx.chartOfAccount.findMany({
+    where: { tenantId, syndicateId, scope: 'SYNDICATE', accountClass: 5 },
+    select: { accountNumber: true }
+  });
+  let highest = 0;
+  for (const account of accounts) {
+    if (!isReceivingAccountNumber(account.accountNumber)) continue;
+    highest = Math.max(highest, Number(account.accountNumber.slice(RECEIVING_ACCOUNT_PREFIX.length)));
+  }
+  return highest;
+}
+
+/**
+ * Sous-compte de tresorerie d'un numero de reception mobile money dans le plan
+ * SYNDICATE de LA copropriete (jamais dans celui du cabinet). Hypothese H1 :
+ * `5521` + rang, sous le compte 552, libelle « <Operateur> <numero masque> ».
+ *
+ *   - le numero deja enregistre pour cette copropriete garde son compte ;
+ *   - sinon le rang libre suivant (plus grand rang + 1, en partant de 1) ;
+ *   - aucun compte existant n'est modifie, renomme ni supprime.
+ *
+ * `ChartOfAccount` n'a aucune contrainte d'unicite sur le numero : un verrou
+ * consultatif de transaction par copropriete serialise les allocations. Toute
+ * la numerotation vit ici.
+ */
+export async function ensureSyndicReceivingAccountTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  syndicateId: string,
+  receiving: { operator: MobileMoneyOperator; phoneNumber: string }
+): Promise<{ accountId: string; accountNumber: ReceivingAccountNumber }> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('syndic-receiving-account'), hashtext(${syndicateId}))`;
+
+  const known = await tx.syndicReceivingNumber.findFirst({
+    where: { tenantId, syndicateId, operator: receiving.operator, phoneNumber: receiving.phoneNumber },
+    select: { treasuryAccountNumber: true }
+  });
+  const knownNumber = isReceivingAccountNumber(known?.treasuryAccountNumber) ? known.treasuryAccountNumber : null;
+  if (knownNumber) {
+    const account = await tx.chartOfAccount.findFirst({
+      where: { tenantId, syndicateId, scope: 'SYNDICATE', accountNumber: knownNumber },
+      select: { id: true }
+    });
+    if (account) return { accountId: account.id, accountNumber: knownNumber };
+  }
+
+  const accountNumber: ReceivingAccountNumber =
+    knownNumber ?? `${RECEIVING_ACCOUNT_PREFIX}${(await highestReceivingRankTx(tx, tenantId, syndicateId)) + 1}`;
+  const parentAccountId = await ensureReceivingParentTx(tx, tenantId, syndicateId);
+  const created = await tx.chartOfAccount.create({
+    data: {
+      tenantId,
+      syndicateId,
+      scope: 'SYNDICATE',
+      accountNumber,
+      accountName: `${operatorLabel(receiving.operator)} ${maskPhone(receiving.phoneNumber)}`.slice(0, 250),
+      accountClass: 5,
+      accountType: 'ASSET',
+      parentAccountId
+    },
+    select: { id: true }
+  });
+  return { accountId: created.id, accountNumber };
 }
 
 const JOURNALS = {

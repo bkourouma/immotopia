@@ -18,6 +18,19 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `feat/syndic-paiement-declare` — 2026-10-18
+
+**État :** PR1 et PR2 (spec 047) écrites, non commitées par l'agent ; L8 (pré-remplissage IA, T059 à T066) non commencé.
+**Dernier commit :** `66dddfea` (L1, L2, L6, L7) ; le reste est dans l'arbre de travail.
+
+**Fait :** API agence (routes 1.1 à 1.11, `syndic-declared-payment-routes.ts`), API portail (2.1, 2.4, 2.5, 2.6, `coowner-portal-routes.ts`), `portal.ts`, limiteurs `syndicDeclaredWriteRateLimiter` et `coOwnerDeclarationCreateLimiter`, capture reçue par `middleware/declared-proof-upload.ts` (5 Mo, type réel contrôlé par le moteur), `sendPrivateFile` gagne `{ inline }`. `pendingDeclaration` et `onlinePayable` sur `/appels`, 409 `CHARGE_CALL_DECLARATION_PENDING` au démarrage du paiement en ligne, relances groupées suspendues (D7), relance manuelle qui renvoie `pendingDeclaration`. Notifications (quatre clés e-mail, trois WhatsApp), tâche `syndic-declared-payment-job` (récapitulatif horaire, alerte 8 h Africa/Abidjan, purge) inscrite dans `index.ts`. Traductions en/ar ajoutées à la main (web : `common.json`, `syndic.json` ; API : `en.json`, `ar.json`). Classeur : 22 lignes, onglet renommé « Paiements » dans les menus des anciennes lignes, README à 1068 lignes (`A1:O1069`).
+
+**Compléments (2026-10-18, après relecture) :** reversement depuis un sous-compte 5521x (R23, T071), compteurs de déclarations (onglet, tableau de bord, lot), job idempotent (verrou + `NotificationMarker`), ApproveModal sans liste d'appels figée, avance possible sans appel, libellé du sous-compte et langue des notifications, audit masqué du changement de numéro + alerte aux autres gestionnaires, passerelle IA (numeros-reception et preuve sensibles), plafond du montant retenu (total ≤ déclaré, R18 autorise la répartition entre lots), lecture de la capture limitée et auditée, CSP sur les fichiers inline. Piège : ne jamais lancer `prettier --write` sur un dossier entier (réécrit les fins de ligne de centaines de fichiers).
+
+**Reste à faire :** T031 et T058 (isolation `npm run test:isolation` non lancée : pas de `DATABASE_URL_TEST`), recette navigateur sur la démo, relecture `code-reviewer` + `security-auditor`, validation comptable des comptes 5521x (T069), L8, catalogue IA à régénérer (`npm run ai:catalog` dans `packages/api`) si le test `ai.catalog` échoue.
+
+**Pièges :** le message de validation ne joint pas les PDF : ils partent déjà par `scheduleChargeDocumentDelivery` (évite un doublon). Les `notifyDeclaration*` ne font rien sous Jest (`isTest`). La fenêtre horaire du récapitulatif est l'heure pleine précédente : une heure sans serveur n'est pas rattrapée. Fichiers à fins de ligne mixtes (CRLF/LF) : normaliser avant un remplacement multi-lignes. Les fixtures `syndics.online-payment-fixtures.ts` et deux tests du portail simulent maintenant `syndicPaymentDeclaration`.
+
 ## Branche `feat/prelevement-signature-mandat` — 2026-10-18
 
 **État :** signature électronique du mandat de prélèvement (spec 042 §10) branchée côté copropriété et vérifiée côté API, empilée sur P4 (64456315). Rien n'est commité par l'agent : le pilote commite.
@@ -613,7 +626,7 @@ qui reste vrai et ouvert.
 - `npm run test:isolation` jamais rejoué sur l'ensemble depuis les dernières intégrations (pas de `DATABASE_URL_TEST` sur le poste).
 - Deux ADR numérotés 005 (`environnements-staging-production` et `patrimoine-multi-actifs`) : renuméroter l'un. L'ADR-006 est l'audit à deux niveaux.
 - Lint API : 1 erreur locale `no-irregular-whitespace` (`src/lib/audit/platform-audit-csv.ts:70`, BOM littéral à remplacer par l'échappement) ; verte en CI. Le backend garde des erreurs TypeScript préexistantes (dont `archiver`) : ne pas en ajouter.
-- Budget d'entrée du web (`npm run measure:entry`, 228 352 octets gzip depuis le 2026-10-16, relevé trois fois en trois semaines) : alléger l'entrée de façon structurelle (routes et menus du patrimoine, moteur de formulaires d'Ant Design via `ConfigProvider`). Toujours remesurer avant de pousser du web.
+- Budget d'entrée du web (`npm run measure:entry`, 229 376 octets gzip depuis le 2026-10-18, relevé quatre fois en trois semaines) : alléger l'entrée de façon structurelle (routes et menus du patrimoine, moteur de formulaires d'Ant Design via `ConfigProvider`). Toujours remesurer avant de pousser du web.
 - Classeur des fonctionnalités : les annotations « À vérifier (en développement, PR n°X non fusionnée) » ajoutées pour les PR aujourd'hui fusionnées sont à retirer s'il en reste.
 - Test web instable, non élucidé : un échec isolé du test « gabarit » de l'import patrimoine après 22,8 s en local (piste non prouvée : premier chargement d'`exceljs`). Les 4 tests `ai.write-plan` « miroir du front » n'échouent que sous Windows (CRLF).
 

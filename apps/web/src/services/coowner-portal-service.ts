@@ -84,6 +84,11 @@ export interface CoOwnerChargeCall {
   onlineCheckout: 'NONE' | 'IN_PROGRESS' | 'REVIEW';
   /** Code du paiement ouvert de CE compte (pour le reprendre) ; null sinon. */
   onlineCheckoutCode: string | null;
+  /**
+   * Spec 047 : déclaration de paiement en attente visant cet appel. Absent d'un
+   * serveur antérieur à la spec 047 : lire avec `?? null`.
+   */
+  pendingDeclaration?: { declarationId: string; createdAt: string } | null;
 }
 
 export interface CoOwnerDocument {
@@ -516,6 +521,175 @@ export async function startOnlinePayment(body: StartCoOwnerOnlinePaymentBody): P
 export async function getOnlinePayment(codePaiement: string): Promise<CoOwnerOnlineCheckout> {
   const response = await apiClient.get<ApiResponse<CoOwnerOnlineCheckout>>(
     `${BASE}/paiements-en-ligne/${encodeURIComponent(codePaiement)}`
+  );
+  return response.data.data;
+}
+
+// ---------------------------------------------------------------------------
+// Spec 047 — paiement mobile money déclaré (types recopiés de contracts.md §0.1)
+// ---------------------------------------------------------------------------
+
+export type MobileMoneyOperator = 'ORANGE' | 'MTN' | 'MOOV' | 'WAVE' | 'OTHER';
+export type DeclarationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELED';
+export type DeclarationRejectReason = 'NOT_FOUND' | 'AMOUNT_MISMATCH' | 'REFERENCE_USED' | 'WRONG_NUMBER' | 'OTHER';
+/** Champs que l'IA peut proposer et dont on suit la retouche. */
+export type PrefillField = 'operator' | 'amount' | 'paidAt' | 'transactionReference' | 'payerPhone';
+
+export interface ReceivingNumber {
+  id: string;
+  operator: MobileMoneyOperator;
+  /** E.164 */
+  phoneNumber: string;
+  holderName: string;
+  label: string | null;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+/** Proposition de l'IA : chaque champ peut manquer, il n'est jamais deviné. */
+export interface PaymentProofReading {
+  /** À renvoyer dans la déclaration (`proofReadId`). */
+  readId: string;
+  quality: 'OK' | 'UNREADABLE' | 'NOT_A_PAYMENT';
+  operator: MobileMoneyOperator | null;
+  amount: number | null;
+  paidAt: string | null;
+  transactionReference: string | null;
+  payerPhone: string | null;
+  recipientPhone: string | null;
+  recipientName: string | null;
+  /** 0 à 1 */
+  confidence: Partial<Record<PrefillField, number>>;
+  warnings: Array<'RECIPIENT_NOT_A_RECEIVING_NUMBER' | 'REFERENCE_ALREADY_DECLARED'>;
+  matchedReceivingNumberId: string | null;
+}
+
+export interface DeclarationLineInput {
+  lotId: string;
+  /** Part de ce lot, entier > 0. */
+  amount: number;
+  /** 0 à 24 appels ouverts du lot ; [] = plus anciens d'abord. */
+  chargeCallIds: string[];
+}
+
+export interface DeclarationInput {
+  syndicId: string;
+  receivingNumberId: string;
+  payerPhone: string;
+  /** 1 à 5 000 000, égal à la somme des lignes. */
+  amount: number;
+  /** Date-heure ISO avec décalage. */
+  paidAt: string;
+  transactionReference: string;
+  /** 1 à 10 lots distincts. */
+  lines: DeclarationLineInput[];
+  /** 500 caractères au plus. */
+  comment?: string | null;
+  /** Lecture IA dont la capture devient la preuve ; exclusif avec un fichier `proof`. */
+  proofReadId?: string | null;
+}
+
+/** Vue du copropriétaire. */
+export interface CoOwnerDeclaration {
+  id: string;
+  status: DeclarationStatus;
+  syndicate: { id: string; name: string };
+  receivingNumber: { operator: MobileMoneyOperator; phoneNumber: string; holderName: string };
+  payerPhone: string;
+  amount: number;
+  /** Si corrigé par le gestionnaire. */
+  acceptedAmount: number | null;
+  paidAt: string;
+  transactionReference: string;
+  lines: Array<{
+    lot: { id: string; lotNumber: string };
+    amount: number;
+    acceptedAmount: number | null;
+    chargeCallIds: string[];
+  }>;
+  documents: DocumentRef[];
+  rejectReason: DeclarationRejectReason | null;
+  /** Note de correction ou de rejet. */
+  reviewNote: string | null;
+  canCancel: boolean;
+  createdAt: string;
+  reviewedAt: string | null;
+}
+
+export interface CoOwnerDeclaredAvailability {
+  syndicateId: string;
+  available: boolean;
+  receivingNumbers: ReceivingNumber[];
+  payerInstructions: string | null;
+  proofRequired: boolean;
+  aiPrefillAvailable: boolean;
+  maxAmount: number;
+}
+
+export interface CoOwnerDeclarationsResult {
+  items: CoOwnerDeclaration[];
+  pagination: CoOwnerPagination;
+}
+
+export const MAX_DECLARATION_LINES = 10;
+export const MAX_DECLARATION_CHARGE_CALLS_PER_LINE = 24;
+export const DECLARATION_PROOF_MAX_BYTES = 5 * 1024 * 1024;
+export const DECLARATION_PROOF_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
+const MULTIPART = { headers: { 'Content-Type': 'multipart/form-data' } };
+
+/** `GET /paiements-declares/disponibilite?syndicId=` (contrat §2.1). */
+export async function getDeclaredAvailability(syndicId: string): Promise<CoOwnerDeclaredAvailability> {
+  const response = await apiClient.get<ApiResponse<CoOwnerDeclaredAvailability>>(
+    `${BASE}/paiements-declares/disponibilite`,
+    { params: { syndicId } }
+  );
+  return response.data.data;
+}
+
+/** `POST /paiements-declares/lecture` multipart `syndicId` + `proof` (contrat §2.3). */
+export async function readPaymentProof(syndicId: string, proof: File): Promise<PaymentProofReading> {
+  const form = new FormData();
+  form.append('syndicId', syndicId);
+  form.append('proof', proof);
+  const response = await apiClient.post<ApiResponse<PaymentProofReading>>(
+    `${BASE}/paiements-declares/lecture`,
+    form,
+    MULTIPART
+  );
+  return response.data.data;
+}
+
+/**
+ * `POST /paiements-declares` multipart `payload` + `proof?` (contrat §2.4).
+ * `proofReadId` et `proof` sont exclusifs : si un fichier est joint, l'identifiant est retiré.
+ */
+export async function createDeclaration(input: DeclarationInput, proof?: File | null): Promise<CoOwnerDeclaration> {
+  const { proofReadId, ...rest } = input;
+  const payload: Record<string, unknown> = { ...rest };
+  if (!proof && proofReadId) payload.proofReadId = proofReadId;
+  if (payload.comment === undefined) delete payload.comment;
+  const form = new FormData();
+  form.append('payload', JSON.stringify(payload));
+  if (proof) form.append('proof', proof);
+  const response = await apiClient.post<ApiResponse<CoOwnerDeclaration>>(`${BASE}/paiements-declares`, form, MULTIPART);
+  return response.data.data;
+}
+
+/** `GET /paiements-declares` (contrat §2.5). */
+export async function listMyDeclarations(
+  params: { status?: DeclarationStatus | 'ALL'; page?: number; limit?: number } = {}
+): Promise<CoOwnerDeclarationsResult> {
+  const response = await apiClient.get<ApiResponse<CoOwnerDeclarationsResult>>(`${BASE}/paiements-declares`, {
+    params
+  });
+  return response.data.data;
+}
+
+/** `POST /paiements-declares/:declarationId/annulation` sans corps (contrat §2.6). */
+export async function cancelDeclaration(declarationId: string): Promise<CoOwnerDeclaration> {
+  const response = await apiClient.post<ApiResponse<CoOwnerDeclaration>>(
+    `${BASE}/paiements-declares/${encodeURIComponent(declarationId)}/annulation`
   );
   return response.data.data;
 }

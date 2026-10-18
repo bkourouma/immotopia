@@ -3334,6 +3334,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/numeros-reception",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/numeros-reception",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / numeros-reception",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": true
+    },
+    {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration",
       "method": "GET",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration",
@@ -3362,6 +3373,50 @@
       "pathParams": ["syndicId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / paiement-en-ligne / solde",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiements-declares",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-declares",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-declares",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiements-declares/:declarationId",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-declares/:declarationId",
+      "pathParams": ["syndicId", "declarationId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-declares / {declarationId}",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiements-declares/:declarationId/preuve",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-declares/:declarationId/preuve",
+      "pathParams": ["syndicId", "declarationId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-declares / {declarationId} / preuve",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiements-declares/reglages",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-declares/reglages",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-declares / reglages",
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_VIEW"]],
       "sensitive": false
@@ -4421,6 +4476,17 @@
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "PATCH /api/tenants/:tenantId/syndics/:syndicId/numeros-reception/:numberId",
+      "method": "PATCH",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/numeros-reception/:numberId",
+      "pathParams": ["syndicId", "numberId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / numeros-reception / {numberId}",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
     },
     {
       "id": "PATCH /api/tenants/:tenantId/syndics/:syndicId/penalites/:penaltyId/remise",
@@ -7472,6 +7538,17 @@
       "sensitive": false
     },
     {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/numeros-reception",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/numeros-reception",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / numeros-reception",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "POST /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration/test",
       "method": "POST",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration/test",
@@ -7489,6 +7566,39 @@
       "pathParams": ["syndicId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / paiement-en-ligne / reversements",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/paiements-declares",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-declares",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-declares",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/paiements-declares/:declarationId/rejet",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-declares/:declarationId/rejet",
+      "pathParams": ["syndicId", "declarationId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-declares / {declarationId} / rejet",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/paiements-declares/:declarationId/validation",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-declares/:declarationId/validation",
+      "pathParams": ["syndicId", "declarationId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-declares / {declarationId} / validation",
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -8337,6 +8447,17 @@
       "module": "syndics",
       "summary": "syndics / {syndicId} / paiement-en-ligne / configuration",
       "permissions": ["SYNDIC_EDIT", "TENANT_SETTINGS_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "PUT /api/tenants/:tenantId/syndics/:syndicId/paiements-declares/reglages",
+      "method": "PUT",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-declares/reglages",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-declares / reglages",
+      "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
     },
