@@ -29,7 +29,7 @@ interface SyndicCreditorCardProps {
   error?: string | null;
 }
 
-/** Valeurs actuelles du créancier, au format du `PUT` (qui remplace). */
+/** Valeurs actuelles du créancier pour le `PUT` : un champ absent reste inchangé, `null` l'efface. */
 function toInput(creditor: CreditorDto): SyndicCreditorInput {
   return {
     label: creditor.label,
@@ -89,12 +89,13 @@ export const SyndicCreditorCard: React.FC<SyndicCreditorCardProps> = ({
     } catch {
       return;
     }
-    const clean = (value?: string) => (value?.trim() ? value.trim() : undefined);
+    // Champ vidé : `null` efface la valeur côté API (absent, il resterait inchangé).
+    const clean = (value?: string) => (value?.trim() ? value.trim() : null);
     const input: SyndicCreditorInput = {
       label: values.label.trim(),
-      ...(clean(values.bankName) ? { bankName: clean(values.bankName) } : {}),
-      ...(clean(values.bankAccountRef) ? { bankAccountRef: clean(values.bankAccountRef) } : {}),
-      ...(clean(values.creditorIdentifier) ? { creditorIdentifier: clean(values.creditorIdentifier) } : {}),
+      bankName: clean(values.bankName),
+      bankAccountRef: clean(values.bankAccountRef),
+      creditorIdentifier: clean(values.creditorIdentifier),
       collectionDay: values.collectionDay,
       prenotificationBusinessDays: values.prenotificationBusinessDays,
       maxConsecutiveRejects: values.maxConsecutiveRejects,
@@ -222,6 +223,7 @@ export const SyndicCreditorCard: React.FC<SyndicCreditorCardProps> = ({
             name="bankAccountRef"
             label={t('Compte du syndicat')}
             rules={[{ max: 64, message: t('64 caractères au plus') }]}
+            extra={t("Une référence courte pour l'affichage, pas l'IBAN ni le RIB.")}
           >
             <Input dir="ltr" style={{ textAlign: 'start' }} />
           </Form.Item>

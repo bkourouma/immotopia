@@ -1548,7 +1548,6 @@
   "Configurer le compte de prélèvement": "Set up the direct debit account",
   "Configurez et activez le compte de prélèvement du syndicat pour créer des mandats.": "Set up and activate the condominium's direct debit account to create mandates.",
   "Copropriétaire à prélever": "Co-owner to debit",
-  "Détail complet à venir": "Full details coming soon",
   "Erreur lors de l'enregistrement du compte de prélèvement": "Error saving the direct debit account",
   "Erreur lors de la mise à jour du compte de prélèvement": "Error updating the direct debit account",
   "Erreur lors du chargement du compte de prélèvement": "Error loading the direct debit account",
@@ -1576,5 +1575,9 @@
   "Constater réglée la ligne encore en attente de cette remise ? Un encaissement et son reçu sont enregistrés. Un règlement constaté à tort ne s'annule pas depuis cet écran : il se régularise dans la comptabilité de la copropriété.": "Record the pending line of this remittance as paid? A payment and its receipt are recorded. A payment recorded by mistake cannot be undone from this screen: correct it in the co-ownership accounting.",
   "Constater réglées les {{n}} lignes encore en attente de cette remise, à la même date de valeur ? Un encaissement et son reçu sont enregistrés pour chacune. Un règlement constaté à tort ne s'annule pas depuis cet écran : il se régularise dans la comptabilité de la copropriété.": "Record the {{n}} pending lines of this remittance as paid, with the same value date? A payment and its receipt are recorded for each. A payment recorded by mistake cannot be undone from this screen: correct it in the co-ownership accounting.",
   "{{settle}} règlements créent des encaissements et des reçus ; {{reject}} rejets. Un règlement constaté à tort ne s'annule pas depuis cet écran.": "{{settle}} payments create collections and receipts; {{reject}} rejections. A payment recorded by mistake cannot be undone from this screen.",
-  "Le rejet d'un prélèvement déjà constaté réglé n'est pas pris en charge en copropriété : {{n}} enregistrements concernés échoueront à l'application, régularisez-les dans la comptabilité de la copropriété.": "Rejecting a direct debit already recorded as paid is not supported for co-ownerships: {{n}} records concerned will fail when applied. Correct them in the co-ownership accounting."
+  "Le rejet d'un prélèvement déjà constaté réglé n'est pas pris en charge en copropriété : {{n}} enregistrements concernés échoueront à l'application, régularisez-les dans la comptabilité de la copropriété.": "Rejecting a direct debit already recorded as paid is not supported for co-ownerships: {{n}} records concerned will fail when applied. Correct them in the co-ownership accounting.",
+  "Une référence courte pour l'affichage, pas l'IBAN ni le RIB.": "A short reference for display, not the IBAN or RIB.",
+  "Rien à payer : aucun appel de charges échu et non soldé": "Nothing to pay: no overdue unpaid service charge call",
+  "Appels de charges déjà dans une remise": "Service charge calls already in a remittance",
+  "Lot {{lot}}": "Lot {{lot}}"
 }

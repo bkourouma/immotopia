@@ -271,7 +271,7 @@ export const SyndicMandateFormModal: React.FC<SyndicMandateFormModalProps> = ({
           <Input autoComplete="off" disabled={!stepTwoReady} />
         </Form.Item>
         <Form.Item name="maxAmount" label={t('Plafond par prélèvement (FCFA), facultatif')}>
-          <InputNumber min={0} style={{ width: '100%' }} disabled={!stepTwoReady} />
+          <InputNumber min={1} style={{ width: '100%' }} disabled={!stepTwoReady} />
         </Form.Item>
         <Form.Item name="collectionDay" label={t('Jour de collecte (1 à 28), facultatif')}>
           <InputNumber min={1} max={28} precision={0} style={{ width: '100%' }} disabled={!stepTwoReady} />

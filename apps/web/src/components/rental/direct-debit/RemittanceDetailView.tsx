@@ -846,8 +846,8 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
           <PrenotificationSummaryAlert summary={summary} lineCount={remittance.lineCount} scope={scope} />
         )}
         {showReturnSummary && <ReturnSummaryAlert summary={remittance.returnSummary} state={remittance.returnState} />}
-        <SkippedMandatesAlert skipped={skipped} onClose={() => setSkipped([])} />
-        {status === 'DRAFT' && <DraftSkippedMandatesSection skipped={remittance.skipped} />}
+        <SkippedMandatesAlert scope={scope} skipped={skipped} onClose={() => setSkipped([])} />
+        {status === 'DRAFT' && <DraftSkippedMandatesSection scope={scope} skipped={remittance.skipped} />}
 
         <Descriptions bordered size="small" column={{ xs: 1, md: 2, xl: 3 }}>
           <Descriptions.Item label={t('Référence')}>

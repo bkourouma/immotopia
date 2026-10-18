@@ -59,7 +59,11 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
     staleTime: STALE_TIME.list
   });
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: SYNDIC_DD_KEYS.mandatesPrefix(tenantId) });
+  const refresh = () => {
+    // Le nombre de mandats ouverts du compte change avec les mandats.
+    void queryClient.invalidateQueries({ queryKey: SYNDIC_DD_KEYS.creditorPrefix(tenantId) });
+    return queryClient.invalidateQueries({ queryKey: SYNDIC_DD_KEYS.mandatesPrefix(tenantId) });
+  };
 
   const creditorReady = Boolean(creditor?.isActive);
 

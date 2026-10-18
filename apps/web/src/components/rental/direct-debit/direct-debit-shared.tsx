@@ -208,7 +208,11 @@ export const PrenotificationTag: React.FC<{ status: PrenotificationStatus }> = (
 );
 
 /** Raison pour laquelle un mandat n'entre pas dans la remise. */
-export function skipReasonLabel(reason: SkipReason): string {
+export function skipReasonLabel(reason: SkipReason, scope?: 'RENTAL_LEASE' | 'SYNDIC_LOT'): string {
+  if (scope === 'SYNDIC_LOT') {
+    if (reason === 'NOTHING_DUE') return t('Rien à payer : aucun appel de charges échu et non soldé');
+    if (reason === 'ALREADY_IN_REMITTANCE') return t('Appels de charges déjà dans une remise');
+  }
   switch (reason) {
     case 'NO_INSTALLMENT':
       return t('Aucune échéance pour ce mois');

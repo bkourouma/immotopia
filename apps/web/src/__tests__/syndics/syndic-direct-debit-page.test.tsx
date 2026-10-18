@@ -237,10 +237,35 @@ describe('SyndicDirectDebit — créancier du syndicat', () => {
     expect(saveSyndicCreditor).toHaveBeenCalledWith(TENANT, SYNDIC, {
       label: 'Compte du syndicat',
       bankName: 'Banque Atlantique',
+      bankAccountRef: null,
+      creditorIdentifier: null,
       collectionDay: 5,
       prenotificationBusinessDays: 5,
       maxConsecutiveRejects: 2,
       isActive: true
+    });
+  });
+
+  it('vider un champ facultatif envoie null pour effacer la valeur', async () => {
+    saveSyndicCreditor.mockResolvedValue(creditor);
+    const user = userEvent.setup();
+    mount();
+
+    await screen.findByText('Banque Atlantique');
+    const creditorCard = screen.getByText('Compte de prélèvement du syndicat').closest('.ant-card') as HTMLElement;
+    await user.click(within(creditorCard).getByRole('button', { name: 'Modifier' }));
+    const modal = await dialog();
+    expect(modal.getByLabelText("Numéro d'émetteur")).toHaveValue('EMT-77');
+    expect(modal.getByText("Une référence courte pour l'affichage, pas l'IBAN ni le RIB.")).toBeInTheDocument();
+    await user.clear(modal.getByLabelText("Numéro d'émetteur"));
+    await user.clear(modal.getByLabelText('Banque'));
+    await user.click(modal.getByRole('button', { name: /Enregistrer/ }));
+
+    await waitFor(() => expect(saveSyndicCreditor).toHaveBeenCalledTimes(1));
+    expect(saveSyndicCreditor.mock.calls[0][2]).toMatchObject({
+      bankName: null,
+      creditorIdentifier: null,
+      bankAccountRef: 'CI0001'
     });
   });
 
