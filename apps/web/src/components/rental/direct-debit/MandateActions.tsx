@@ -68,6 +68,7 @@ export const MandateActions: React.FC<MandateActionsProps> = ({ tenantId, mandat
     try {
       const { blob, filename } = await downloadAuthorizationPdf(tenantId, mandate.id, `${mandate.reference}.pdf`);
       saveBlob(blob, filename);
+      message.success(t('Autorisation téléchargée : {{fichier}}', { fichier: filename }));
     } catch (error) {
       message.error(apiErrorMessage(error, t("Erreur lors du téléchargement de l'autorisation")));
     } finally {
@@ -187,8 +188,15 @@ export const MandateActions: React.FC<MandateActionsProps> = ({ tenantId, mandat
     }
   };
 
+  /** La date de signature d'une signature électronique est reprise : l'agence peut la corriger. */
+  const openActivate = () => {
+    const known = mandate.signedAt ? dayjs(mandate.signedAt) : null;
+    setSignedAt(known && known.isValid() ? known : null);
+    setDialog('activate');
+  };
+
   const activateButton = (
-    <Button type="primary" size="small" disabled={!mandate.hasSignedScan || busy} onClick={() => setDialog('activate')}>
+    <Button type="primary" size="small" disabled={!mandate.hasSignedScan || busy} onClick={openActivate}>
       {t('Activer')}
     </Button>
   );

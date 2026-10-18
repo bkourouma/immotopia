@@ -566,6 +566,7 @@ describe('import d’un retour / historique', () => {
     expect(page.items).toEqual([
       {
         id: 'i-2',
+        scope: 'RENTAL_LEASE',
         format: 'GENERIC_CSV',
         fileName: 'b.csv',
         recordCount: 1,

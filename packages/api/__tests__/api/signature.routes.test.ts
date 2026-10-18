@@ -283,7 +283,7 @@ describe('agence : /api/signatures', () => {
     expect(ok.status).toBe(200);
     expect(ok.headers['content-type']).toContain('application/pdf');
     expect(ok.headers['cache-control']).toContain('no-store');
-    expect(sendSignatureFile).toHaveBeenCalledWith('tenant-1', R1, 'signed', expect.anything());
+    expect(sendSignatureFile).toHaveBeenCalledWith('tenant-1', R1, 'signed', expect.anything(), 'user-1');
     expect((await request(app).get(`/api/signatures/${R1}/file?variant=../etc`)).status).toBe(400);
   });
 
@@ -362,7 +362,12 @@ describe('public : /api/public/signatures/:token', () => {
       .send({ code: '123456', consent: true, signature });
     expect(ok.status).toBe(200);
     expect(ok.body.data).toEqual({ status: 'SIGNED' });
-    expect(signPublic).toHaveBeenCalledWith(token, { code: '123456', consent: true, signature }, expect.any(Object));
+    expect(signPublic).toHaveBeenCalledWith(
+      token,
+      { code: '123456', consent: true, signature },
+      expect.any(Object),
+      undefined
+    );
   });
 
   it('POST /sign sans code est transmis (mode sur place), le service tranche', async () => {
@@ -378,8 +383,18 @@ describe('public : /api/public/signatures/:token', () => {
     expect(
       (await request(app).post(`/api/public/signatures/${token}/decline`).send({ reason: 'Clause 4' })).status
     ).toBe(200);
-    expect(declinePublic).toHaveBeenCalledWith(token, 'Clause 4');
+    expect(declinePublic).toHaveBeenCalledWith(token, 'Clause 4', undefined);
     expect((await request(app).post(`/api/public/signatures/${token}/decline`).send({})).status).toBe(200);
+  });
+
+  it('POST /decline transmet le jeton de consultation de l’en-tête (types « code avant consultation »)', async () => {
+    declinePublic.mockResolvedValue({ status: 'DECLINED' });
+    const viewToken = 'v'.repeat(43);
+    await request(app)
+      .post(`/api/public/signatures/${token}/decline`)
+      .set('X-Signature-View-Token', viewToken)
+      .send({});
+    expect(declinePublic).toHaveBeenLastCalledWith(token, undefined, viewToken);
   });
 
   it('les erreurs publiques portent code et details (essais restants, délai de renvoi)', async () => {

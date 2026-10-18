@@ -96,7 +96,8 @@ export const signatureFileHandler = asyncHandler(async (req: Request, res: Respo
   void _ignored;
   const parsed = fileQuerySchema.safeParse(query);
   if (!parsed.success) throw new BadRequestError('Variante de fichier invalide.');
-  await sendSignatureFile(ctxOf(req).tenantId, idSchema.parse(req.params.id), parsed.data.variant, res);
+  const { tenantId, userId } = ctxOf(req);
+  await sendSignatureFile(tenantId, idSchema.parse(req.params.id), parsed.data.variant, res, userId);
 });
 
 const targetContextParams = z.object({

@@ -35,6 +35,9 @@
  *     .expired, .canceled, signer.done, signer.declined) sont documentés ; la liste à cocher
  *     chez Yousign est dans docs/integrations/signature-prestataire.md.
  *
+ * 14. Lien de signature d'un signataire (`signature_link` de la ressource signataire) : présent
+ *     seulement pour une demande en `delivery_mode: 'none'` ; lu en direct, jamais stocké ni journalisé.
+ *
  * Vérifié dans la doc : bases `https://api-sandbox.yousign.app/v3` (sandbox) et
  * `https://api.yousign.app/v3` (production), authentification Bearer, routes de création,
  * document (multipart `file`, `nature=signable_document`), signataire (info, signature_level,
@@ -59,6 +62,17 @@ import { ExternalProviderError } from './types';
 
 export const YOUSIGN_SANDBOX_BASE_URL = 'https://api-sandbox.yousign.app/v3';
 export const YOUSIGN_PRODUCTION_BASE_URL = 'https://api.yousign.app/v3';
+
+/** Le lien de signature rendu par Yousign pointe-t-il bien chez Yousign (hôte de l'API configurée ou *.yousign.app) ? */
+export function isYousignHost(hostname: string, apiBaseUrl: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === 'yousign.app' || host.endsWith('.yousign.app')) return true;
+  try {
+    return host === new URL(apiBaseUrl).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+}
 export const YOUSIGN_SIGNATURE_HEADER = 'x-yousign-signature-256';
 /** Langue arabe non prise en charge par Yousign : les invitations partent en français. */
 export const ARABIC_FALLBACK_LOCALE = 'fr';
@@ -306,7 +320,7 @@ export function createYousignClient(options: YousignClientOptions = {}): Externa
   async function create(input: ExternalCreateInput): Promise<ExternalCreated> {
     const created = await sendJson('POST', '/signature_requests', {
       name: input.title.slice(0, 128),
-      delivery_mode: 'email',
+      delivery_mode: input.deliveryMode ?? 'email',
       ordered_signers: input.sequential,
       timezone: 'UTC',
       expiration_date: formatExpiration(input.expiresAt, now()),
@@ -349,6 +363,26 @@ export function createYousignClient(options: YousignClientOptions = {}): Externa
       return { ref: signer.id, state: signerState, signedAt: null };
     });
     return { ref: idOf(payload), state, signers };
+  }
+
+  async function getSignerLink(providerRef: string, signerRef: string): Promise<string> {
+    const signer = await sendJson(
+      'GET',
+      `/signature_requests/${encodeURIComponent(providerRef)}/signers/${encodeURIComponent(signerRef)}`
+    );
+    const link = signer.signature_link;
+    if (typeof link !== 'string' || link.length > 2048) throw new ExternalProviderError('INVALID_RESPONSE');
+    let parsed: URL;
+    try {
+      parsed = new URL(link);
+    } catch {
+      throw new ExternalProviderError('INVALID_RESPONSE');
+    }
+    // Seul un lien https est remis au navigateur du signataire (jamais javascript:, data:, http:).
+    if (parsed.protocol !== 'https:') throw new ExternalProviderError('INVALID_RESPONSE');
+    // Et seulement chez Yousign : même domaine que l'API configurée, ou un sous-domaine de yousign.app.
+    if (!isYousignHost(parsed.hostname, baseUrl)) throw new ExternalProviderError('INVALID_RESPONSE');
+    return parsed.toString();
   }
 
   async function cancel(providerRef: string): Promise<void> {
@@ -409,5 +443,15 @@ export function createYousignClient(options: YousignClientOptions = {}): Externa
     }
   }
 
-  return { id: 'yousign', create, cancel, getSnapshot, downloadSigned, downloadEvidence, verifyWebhook, parseWebhook };
+  return {
+    id: 'yousign',
+    create,
+    cancel,
+    getSignerLink,
+    getSnapshot,
+    downloadSigned,
+    downloadEvidence,
+    verifyWebhook,
+    parseWebhook
+  };
 }

@@ -25,7 +25,8 @@ export function createExternalProvider(
         language: input.external.language,
         sequential: input.external.sequential,
         expiresAt: input.external.expiresAt,
-        signers: input.external.signers
+        signers: input.external.signers,
+        deliveryMode: input.external.deliveryMode
       });
       return { providerRef: created.providerRef, signerRefs: created.signerRefs };
     },

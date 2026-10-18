@@ -176,6 +176,7 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   DIRECT_DEBIT_MANDATE_REVOKED: t("Révocation d'un mandat de prélèvement"),
   DIRECT_DEBIT_MANDATE_SCAN_UPLOADED: t("Dépôt du scan signé d'un mandat de prélèvement"),
   DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED: t("Téléchargement de l'autorisation de prélèvement"),
+  DIRECT_DEBIT_MANDATE_SIGNED_ELECTRONICALLY: t("Signature électronique d'une autorisation de prélèvement"),
   // Remises (lot P2)
   DIRECT_DEBIT_REMITTANCE_CREATED: t("Préparation d'une remise de prélèvement"),
   DIRECT_DEBIT_REMITTANCE_REFRESHED: t("Actualisation d'une remise de prélèvement"),

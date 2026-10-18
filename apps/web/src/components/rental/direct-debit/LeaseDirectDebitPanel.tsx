@@ -4,6 +4,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { getLease } from '../../../services/rental-service';
 import { CreditorDto, listCreditors, listMandates, MandateDto } from '../../../services/direct-debit-service';
 import { formatMoney } from '../../primitives';
+import { MandateSignatureSection } from '../../direct-debit/MandateSignatureSection';
 import { MandateActions } from './MandateActions';
 import { DebtorOption, MandateFormModal } from './MandateFormModal';
 import { apiErrorMessage, formatDate, MandateStatusTag } from './direct-debit-shared';
@@ -65,24 +66,27 @@ export const LeaseDirectDebitPanel: React.FC<LeaseDirectDebitPanelProps> = ({ te
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [list, creditorList, leaseResponse] = await Promise.all([
-        listMandates(tenantId, { leaseId, pageSize: 100 }),
-        listCreditors(tenantId),
-        getLease(tenantId, leaseId).catch(() => null)
-      ]);
-      setMandates(list.items);
-      setCreditors(creditorList);
-      setDebtors(debtorOptionsFromLease(leaseResponse?.success ? (leaseResponse.data as LeaseWithParties) : null));
-    } catch (err) {
-      setError(apiErrorMessage(err, t('Erreur lors du chargement des mandats de prélèvement')));
-    } finally {
-      setLoading(false);
-    }
-  }, [tenantId, leaseId]);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      setError(null);
+      try {
+        const [list, creditorList, leaseResponse] = await Promise.all([
+          listMandates(tenantId, { leaseId, pageSize: 100 }),
+          listCreditors(tenantId),
+          getLease(tenantId, leaseId).catch(() => null)
+        ]);
+        setMandates(list.items);
+        setCreditors(creditorList);
+        setDebtors(debtorOptionsFromLease(leaseResponse?.success ? (leaseResponse.data as LeaseWithParties) : null));
+      } catch (err) {
+        setError(apiErrorMessage(err, t('Erreur lors du chargement des mandats de prélèvement')));
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [tenantId, leaseId]
+  );
 
   useEffect(() => {
     void load();
@@ -193,6 +197,19 @@ export const LeaseDirectDebitPanel: React.FC<LeaseDirectDebitPanelProps> = ({ te
                     <Descriptions.Item label={t('Motif de révocation')}>{mandate.revocationReason}</Descriptions.Item>
                   )}
                 </Descriptions>
+                {mandate.status === 'DRAFT' && (
+                  <div style={{ marginBlockStart: 12 }}>
+                    <MandateSignatureSection
+                      kind="DIRECT_DEBIT_MANDATE"
+                      mandateId={mandate.id}
+                      status={mandate.status}
+                      hasSignedScan={mandate.hasSignedScan}
+                      signedAt={mandate.signedAt}
+                      reference={mandate.reference}
+                      onChanged={() => void load(true)}
+                    />
+                  </div>
+                )}
                 <div style={{ marginBlockStart: 12 }}>
                   <MandateActions tenantId={tenantId} mandate={mandate} onChanged={replaceMandate} />
                 </div>

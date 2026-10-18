@@ -2,7 +2,11 @@ import React, { useState } from 'react';
 import { Alert, Table, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
-import { listReturnImports, type ReturnImportDto } from '../../../services/direct-debit-service';
+import {
+  listReturnImports,
+  type ReturnImportDto,
+  type ReturnImportListResult
+} from '../../../services/direct-debit-service';
 import { apiErrorMessage, formatDate } from './direct-debit-shared';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
@@ -14,13 +18,22 @@ const PAGE_SIZE = 10;
 /** Clé de requête de l'historique, pour que l'import l'invalide. */
 export const RETURN_IMPORTS_ENTITY = 'direct-debit-return-imports';
 
-/** Historique des fichiers de retour importés (GET `/returns`, spec 042 P3 §8.10). */
-export const ReturnImportsHistory: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+/**
+ * Historique des fichiers de retour importés (GET `/returns`, spec 042 P3 §8.10).
+ * Copropriété (P4) : `fetchPage` et `entity` propres au syndicat.
+ */
+export const ReturnImportsHistory: React.FC<{
+  tenantId: string;
+  entity?: string;
+  /** Extra de clé (le syndicat) pour que deux copropriétés ne partagent pas leur cache. */
+  scopeKey?: string;
+  fetchPage?: (params: { page: number; pageSize: number }) => Promise<ReturnImportListResult>;
+}> = ({ tenantId, entity = RETURN_IMPORTS_ENTITY, scopeKey, fetchPage }) => {
   const [page, setPage] = useState(1);
   const params = { page, pageSize: PAGE_SIZE };
   const { data, isPending, error } = useQuery({
-    queryKey: queryKey(RETURN_IMPORTS_ENTITY, tenantId, params),
-    queryFn: () => listReturnImports(tenantId, params),
+    queryKey: queryKey(entity, tenantId, scopeKey ? { ...params, scopeKey } : params),
+    queryFn: () => (fetchPage ? fetchPage(params) : listReturnImports(tenantId, params)),
     staleTime: STALE_TIME.list
   });
 

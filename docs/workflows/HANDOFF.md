@@ -18,6 +18,62 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `feat/prelevement-signature-mandat` — 2026-10-18
+
+**État :** signature électronique du mandat de prélèvement (spec 042 §10) branchée côté copropriété et vérifiée côté API, empilée sur P4 (64456315). Rien n'est commité par l'agent : le pilote commite.
+**Worktree :** `.claude/worktrees/prelevement-p2`.
+
+Fait :
+
+- Écran : `MandateSignatureSection` (type `SYNDIC_DIRECT_DEBIT_MANDATE`) dans l'onglet Prélèvements de Syndic. Un bouton « Signature électronique » (actions d'un mandat en brouillon, `SyndicMandateActions`) déplie la section sous la ligne du mandat (`SyndicMandatesCard`, ligne extensible). Bouton et section réservés à `SYNDIC_DIRECT_DEBIT_MANAGE` (`useSyndicDirectDebitRights`).
+- API, §9.3 vérifié : l'activation sans `signedAt` d'un mandat déjà daté, et l'annulation des demandes ouvertes à la révocation et au dépôt d'un scan, sont dans les fonctions communes `lib/direct-debit/mandates.ts` (paramètre de périmètre) : les deux périmètres en bénéficient, rien à ajouter dans `syndic/mandates.ts`.
+- Défaut corrigé : `signature-pdf-data.ts` présentait le numéro de lot comme un « Bail » et le syndicat comme un « Bien loué » dans le PDF envoyé en signature. Il renseigne maintenant `syndicateName` et `lotNumber` (lignes « Copropriété » et « Lot », mention des appels de charges) ; l'empreinte HMAC (`signature-snapshot.ts`) les inclut, ce qui change l'empreinte des demandes en cours (aucune en production : branche non fusionnée).
+- Tests : jest `direct-debit.signature-source` (rendu du PDF de copropriété et du PDF locatif, empreinte sensible au lot et au syndicat), `direct-debit.syndic-mandates` (parcours signé puis activé avec date préremplie) ; vitest `syndics/syndic-direct-debit-signature` (5 tests).
+- Traductions en/ar de « Signature électronique » dans `syndic.json` ; classeur : 5 lignes ajoutées + 1 ligne locative modifiée (1086 lignes, `A1:O1087`).
+
+Correctifs de l'audit de sécurité (commit b1571a3f) :
+
+- SIG-S5 : la lecture du `signed.pdf` par la route du scan signé (locatif et copropriété) est auditée avant l'envoi (`auditSignatureFileServed`, lecteur transmis par les contrôleurs).
+- Jeton de consultation : effacé à la signature, au refus et à l'annulation ; exigé aussi pour refuser (le web l'envoie, le lien « Refuser de signer » n'apparaît qu'après le code) ; `sourceGateOf` fermé par défaut pour les deux types de mandat.
+- Yousign : l'hôte du lien de signature doit être celui de l'API configurée ou `*.yousign.app` (`isYousignHost`).
+- Un scan papier qui remplace un scan électronique remet `signatureRequestId` et `signedAt` à zéro ; l'annulation supprime `source.pdf` des deux types ; `onSealed` recalcule l'empreinte dans la transaction (`tx`).
+- Empreinte : syndicat et lot en fin de tableau canonique, seulement en copropriété (l'empreinte locative garde sa forme initiale). Rotation de `DIRECT_DEBIT_IBAN_KEY` : voir SECURITY.md et DEPLOIEMENT.md.
+- Destinataire e-mail différent du débiteur : permis, tracé dans l'audit (`signerOverride`, adresse masquée). CORS lit `FRONTEND_URL` par `config/env`.
+
+Reste à faire :
+
+- Recette navigateur du parcours complet (envoi, code, signature, activation) en copropriété ; Yousign non essayé pour ce type.
+- `npm run test:isolation` non lancé.
+
+Pièges :
+
+- La cible de signature est `DIRECT_DEBIT_MANDATE` pour les deux types ; seul `kind` distingue le périmètre.
+
+## Branche `feat/prelevement-p4-copropriete` — 2026-10-18
+
+**État :** lot P4 terminé côté code et documentation, à relire (PR empilée sur P3 = #166). Rien n'est commité par l'agent : le pilote commite.
+**Worktree :** `.claude/worktrees/agent-a8c45bf28b7afdbdf`.
+
+Fait (spec 042 P4, contrat `specs/042-prelevement-bancaire/data-model.md` §9) :
+
+- Typage de la fusion P3 dans P4 : le service de retour (`lib/direct-debit/returns/`) fonctionne pour `RENTAL_LEASE` et `SYNDIC_LOT` (filtre du syndicat sur remises et imports, ligne de l'encaisseur complète, `chargePaymentId` écrit au règlement, avis de rejet `SYNDIC_DIRECT_DEBIT_REJECTED`, nom du contact débiteur dans l'aperçu, `scope` dans l'historique des imports).
+- Écrans : détail complet d'une remise de copropriété et import d'un retour banque (aperçu, application, historique) ; le détail locatif a été extrait dans `components/rental/direct-debit/RemittanceDetailView.tsx` (commun aux deux périmètres, `pages/rental/DirectDebitRemittanceDetail.tsx` n'est plus qu'un habillage) ; `ReturnImportModal` et `ReturnImportsHistory` acceptent l'API d'un périmètre. Droits : `useSyndicDirectDebitRights` (VIEW lit, MANAGE écrit).
+- Service web `syndic-direct-debit-service.ts` : constats, tout régler, aperçu, application, historique.
+- Traductions en/ar ajoutées à la main dans `syndic.json` (15 textes) ; classeur : 26 lignes (1081 au total) ; `plan.md` : P4 fait.
+
+Reste à faire :
+
+- Recette navigateur de l'onglet Prélèvements (jamais ouvert dans un vrai navigateur) ; migrations P4 jamais appliquées sur une vraie base ; `npm run test:isolation` non lancé.
+- Un fichier de retour qui rejette une ligne déjà réglée en copropriété est rapproché comme `REJECT` puis échoue à l'application (message de l'API) : l'aperçu prévient, mais ne l'écarte pas (pas de raison d'écart dédiée dans le contrat).
+- P5 (portails) non commencé.
+
+Pièges :
+
+- Le rejet tardif n'existe pas en copropriété (aucune contre-passation d'un `ChargePayment`) : le bouton n'est pas proposé et l'API répond 409.
+- Les écrans de finances du syndic ne passent pas par React Query : après un constat, rien à invalider côté appels de charges (ils se relisent au montage).
+- Les tests vitest d'un fichier syndic prennent plus de 7 minutes quand la machine est chargée ; relancer seul le fichier avant de conclure à un échec.
+- Le correctif de typage portait sur le service de P3 : sa dérogation « le syndicat s'ajoutera avec la colonne de P4 » est tenue.
+
 ## Branche `feat/prelevement-p3-retour-banque` — 2026-10-17
 
 **État :** prêt à relire — PR vers `main` ouverte par le pilote (premier des trois lots empilés : P3, puis P4 `feat/prelevement-p4-copropriete`, puis signature `feat/prelevement-signature-mandat`). Relectures de code et de sécurité faites, constats corrigés.

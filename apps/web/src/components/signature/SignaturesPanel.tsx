@@ -7,7 +7,13 @@ import {
   reissueInPersonToken,
   remindSignatureRequest
 } from '../../services/signature-service';
-import type { SignatureKind, SignatureRequestDto, SignerDto, SignerInput } from '../../types/signature-types';
+import type {
+  SignatureKind,
+  SignatureRequestDto,
+  SignerChannel,
+  SignerDto,
+  SignerInput
+} from '../../types/signature-types';
 import { SendForSignatureModal } from './SendForSignatureModal';
 import { PublicSigningFlow } from './PublicSigningFlow';
 import { channelLabel, isOpenRequest, requestStatusLabel, roleLabel, signerStatusLabel } from './signature-labels';
@@ -32,6 +38,12 @@ interface SignaturesPanelProps {
   externalProvider?: boolean;
   /** Le statut de la cible interdit un nouvel envoi (ex. compromis déjà signé) ; l'historique reste visible. */
   sendDisabled?: boolean;
+  /** Canaux admis à l'envoi (ex. jamais « sur place » pour un mandat de prélèvement). */
+  allowedChannels?: SignerChannel[];
+  /** Libellé du bouton d'envoi (« Envoyer pour signature » par défaut). */
+  sendLabel?: string;
+  /** Relit les demandes à cet intervalle (ms) tant qu'une demande est ouverte, pour voir une signature faite entre-temps. */
+  pollMs?: number;
   /** Appelé quand l'état des demandes a changé (envoi, annulation, signature, scellement) : le parent peut se rafraîchir. */
   onChanged?: () => void;
   /** Appelé à chaque chargement avec « une demande est ouverte ». */
@@ -57,6 +69,9 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
   providerRequired = false,
   externalProvider = false,
   sendDisabled = false,
+  allowedChannels,
+  sendLabel,
+  pollMs,
   onChanged,
   onOpenChange
 }) => {
@@ -144,12 +159,18 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
 
   const hasOpen = (requests ?? []).some(request => isOpenRequest(request.status));
 
+  useEffect(() => {
+    if (!pollMs || !hasOpen) return undefined;
+    const timer = window.setInterval(() => void load(), pollMs);
+    return () => window.clearInterval(timer);
+  }, [pollMs, hasOpen, load]);
+
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Space style={{ justifyContent: 'space-between', width: '100%' }} wrap>
         <Text type="secondary">{t('Signature électronique du document, signataire par signataire.')}</Text>
         <Button type="primary" onClick={() => setSendOpen(true)} disabled={hasOpen || providerRequired || sendDisabled}>
-          {t('Envoyer pour signature')}
+          {sendLabel ?? t('Envoyer pour signature')}
         </Button>
       </Space>
 
@@ -265,6 +286,7 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
         kind={kind}
         targetId={targetId}
         defaultSigners={defaultSigners}
+        allowedChannels={allowedChannels}
         onClose={() => setSendOpen(false)}
         onCreated={handleCreated}
       />

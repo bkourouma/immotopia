@@ -88,6 +88,8 @@ function dateIsValid(value: Dayjs | null, bounds: DateBounds): boolean {
 
 interface BaseModalProps extends DateBounds {
   open: boolean;
+  /** Périmètre de la remise (locatif par défaut) : change les textes d'explication. */
+  scope?: 'RENTAL_LEASE' | 'SYNDIC_LOT';
   loading?: boolean;
   /** Message d'erreur de l'API, affiché dans la fenêtre. */
   error?: string | null;
@@ -98,7 +100,7 @@ interface BaseModalProps extends DateBounds {
 
 export const SettleLineModal: React.FC<
   BaseModalProps & { line: RemittanceLineDto | null; onSubmit: (settledAt: string) => void }
-> = ({ open, line, collectionDate, today, loading, error, onCancel, onSubmit }) => {
+> = ({ open, scope, line, collectionDate, today, loading, error, onCancel, onSubmit }) => {
   const [date, setDate] = useState<Dayjs | null>(null);
   const bounds = { collectionDate, today };
 
@@ -119,9 +121,13 @@ export const SettleLineModal: React.FC<
       destroyOnHidden
     >
       <p>
-        {t(
-          'Le prélèvement a été payé par la banque : un encaissement est enregistré sur le bail et sa quittance est émise.'
-        )}
+        {scope === 'SYNDIC_LOT'
+          ? t(
+              'Le prélèvement a été payé par la banque : un encaissement est enregistré sur le lot, imputé sur les appels de charges couverts, et son reçu est émis.'
+            )
+          : t(
+              'Le prélèvement a été payé par la banque : un encaissement est enregistré sur le bail et sa quittance est émise.'
+            )}
       </p>
       <Form layout="vertical">
         <ReturnDateField label={t('Date de valeur')} value={date} onChange={setDate} bounds={bounds} />
@@ -140,7 +146,7 @@ export const RejectLineModal: React.FC<
     late: boolean;
     onSubmit: (input: { rejectedAt: string; code?: string; reason?: string }) => void;
   }
-> = ({ open, line, late, collectionDate, today, loading, error, onCancel, onSubmit }) => {
+> = ({ open, scope, line, late, collectionDate, today, loading, error, onCancel, onSubmit }) => {
   const [date, setDate] = useState<Dayjs | null>(null);
   const [code, setCode] = useState('');
   const [reason, setReason] = useState('');
@@ -216,9 +222,13 @@ export const RejectLineModal: React.FC<
         </>
       ) : (
         <p>
-          {t(
-            'Des frais de rejet peuvent être refacturés au locataire selon le réglage du créancier. Le mandat est suspendu automatiquement après un certain nombre de rejets consécutifs.'
-          )}
+          {scope === 'SYNDIC_LOT'
+            ? t(
+                "Aucun frais de rejet n'est refacturé en copropriété. Le mandat est suspendu automatiquement après un certain nombre de rejets consécutifs."
+              )
+            : t(
+                'Des frais de rejet peuvent être refacturés au locataire selon le réglage du créancier. Le mandat est suspendu automatiquement après un certain nombre de rejets consécutifs.'
+              )}
         </p>
       )}
       <Form layout="vertical">
@@ -261,7 +271,7 @@ export const SettleAllModal: React.FC<
     result: SettleAllResult | null;
     onSubmit: (settledAt: string) => void;
   }
-> = ({ open, pendingCount, result, collectionDate, today, loading, error, onCancel, onSubmit }) => {
+> = ({ open, scope, pendingCount, result, collectionDate, today, loading, error, onCancel, onSubmit }) => {
   const [date, setDate] = useState<Dayjs | null>(null);
   const bounds = { collectionDate, today };
 
@@ -323,14 +333,23 @@ export const SettleAllModal: React.FC<
       destroyOnHidden
     >
       <p>
-        {pendingCount === 1
-          ? t(
-              "Constater réglée la ligne encore en attente de cette remise ? Un encaissement et sa quittance sont enregistrés. Cette action ne s'annule que par un rejet tardif."
-            )
-          : t(
-              "Constater réglées les {{n}} lignes encore en attente de cette remise, à la même date de valeur ? Un encaissement et sa quittance sont enregistrés pour chacune. Cette action ne s'annule que par un rejet tardif.",
-              { n: pendingCount }
-            )}
+        {scope === 'SYNDIC_LOT'
+          ? pendingCount === 1
+            ? t(
+                "Constater réglée la ligne encore en attente de cette remise ? Un encaissement et son reçu sont enregistrés. Un règlement constaté à tort ne s'annule pas depuis cet écran : il se régularise dans la comptabilité de la copropriété."
+              )
+            : t(
+                "Constater réglées les {{n}} lignes encore en attente de cette remise, à la même date de valeur ? Un encaissement et son reçu sont enregistrés pour chacune. Un règlement constaté à tort ne s'annule pas depuis cet écran : il se régularise dans la comptabilité de la copropriété.",
+                { n: pendingCount }
+              )
+          : pendingCount === 1
+            ? t(
+                "Constater réglée la ligne encore en attente de cette remise ? Un encaissement et sa quittance sont enregistrés. Cette action ne s'annule que par un rejet tardif."
+              )
+            : t(
+                "Constater réglées les {{n}} lignes encore en attente de cette remise, à la même date de valeur ? Un encaissement et sa quittance sont enregistrés pour chacune. Cette action ne s'annule que par un rejet tardif.",
+                { n: pendingCount }
+              )}
       </p>
       <Form layout="vertical">
         <ReturnDateField label={t('Date de valeur')} value={date} onChange={setDate} bounds={bounds} />

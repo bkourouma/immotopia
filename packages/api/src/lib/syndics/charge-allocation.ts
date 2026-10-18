@@ -86,7 +86,7 @@ export interface LotPaymentInput {
   /** Spec 042 : identifiant de transaction du fournisseur (unique en base). */
   providerTransactionId?: string | null;
   /** Spec 042 : provenance ; `MANUAL` par defaut. */
-  origin?: 'MANUAL' | 'ONLINE';
+  origin?: 'MANUAL' | 'ONLINE' | 'DIRECT_DEBIT';
   /** Spec 042 : compte de tresorerie debite ; absent = deduit de `method` (521/571). */
   treasuryAccountNumber?: '521' | '571' | '5525';
 }

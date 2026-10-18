@@ -18,9 +18,13 @@ export type MandateStatus = 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
 export interface CreditorDto {
   id: string;
   label: string;
-  treasuryAccountId: string;
-  treasuryAccountLabel: string;
+  scope: 'RENTAL_LEASE' | 'SYNDIC_LOT';
+  /** Nuls en SYNDIC_LOT (créancier = compte du syndicat). */
+  treasuryAccountId: string | null;
+  treasuryAccountLabel: string | null;
+  syndicate: { id: string; name: string } | null;
   bankName: string | null;
+  bankAccountRef: string | null;
   creditorIdentifier: string | null;
   fileFormat: 'GENERIC_CSV';
   collectionDay: number;
@@ -67,11 +71,14 @@ export interface MandateDto {
   id: string;
   /** Ex. MDT-2026-0001. */
   reference: string;
-  scope: 'RENTAL_LEASE';
+  scope: 'RENTAL_LEASE' | 'SYNDIC_LOT';
   status: MandateStatus;
   creditor: { id: string; label: string; creditorIdentifier: string | null };
-  debtor: { id: string; displayName: string | null };
+  debtor: { id: string; displayName: string | null; kind: 'CLIENT' | 'CONTACT' };
+  /** Nul en SYNDIC_LOT. */
   lease: { id: string; leaseNumber: string; status: string } | null;
+  syndicate: { id: string; name: string } | null;
+  lot: { id: string; lotNumber: string } | null;
   ibanMasked: string;
   bankCode: string;
   holderName: string;
@@ -292,6 +299,9 @@ export interface RemittanceSummaryDto {
   id: string;
   /** Ex. PRL-2026-0001. */
   reference: string;
+  scope: 'RENTAL_LEASE' | 'SYNDIC_LOT';
+  /** Nul en RENTAL_LEASE. */
+  syndicate: { id: string; name: string } | null;
   status: RemittanceStatus;
   /** Valeurs figées après validation. */
   creditor: { id: string; label: string; creditorIdentifier: string | null };
@@ -334,9 +344,14 @@ export interface RemittanceLineDto {
     /** Statut actuel du mandat : un mandat non actif garde sa ligne tant que la remise n'est pas annulée. */
     status: MandateStatus;
   };
-  debtor: { id: string; displayName: string | null };
-  lease: { id: string; leaseNumber: string };
-  installment: { id: string; periodYear: number; periodMonth: number; dueDate: string };
+  debtor: { id: string; displayName: string | null; kind: 'CLIENT' | 'CONTACT' };
+  /** Nuls en SYNDIC_LOT. */
+  lease: { id: string; leaseNumber: string } | null;
+  installment: { id: string; periodYear: number; periodMonth: number; dueDate: string } | null;
+  /** SYNDIC_LOT. */
+  lot: { id: string; lotNumber: string } | null;
+  /** Appels de charges couverts (SYNDIC_LOT), plus ancien d'abord ; vide en RENTAL_LEASE. */
+  chargeCalls: { id: string; period: string; dueDate: string; amount: number }[];
   amount: number;
   remainingDueAtSelection: number;
   capped: boolean;
@@ -443,6 +458,7 @@ export interface ReturnApplyDto extends ReturnPreviewDto {
 
 export interface ReturnImportDto {
   id: string;
+  scope: 'RENTAL_LEASE' | 'SYNDIC_LOT';
   format: ReturnFormat;
   fileName: string;
   recordCount: number;
@@ -458,6 +474,8 @@ export interface SkippedMandateDto {
   mandateId: string;
   mandateReference: string;
   leaseNumber: string | null;
+  /** Numéro du lot (copropriété). */
+  lotNumber?: string | null;
   debtorName: string | null;
   reason: SkipReason;
 }

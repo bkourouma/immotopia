@@ -3389,6 +3389,105 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/prelevements/creancier",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/creancier",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / creancier",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/prelevements/lots/:lotId/debiteurs",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/lots/:lotId/debiteurs",
+      "pathParams": ["syndicId", "lotId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / lots / {lotId} / debiteurs",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / mandats",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId",
+      "pathParams": ["syndicId", "mandateId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / mandats / {mandateId}",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/autorisation-pdf",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/autorisation-pdf",
+      "pathParams": ["syndicId", "mandateId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / mandats / {mandateId} / autorisation-pdf",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/scan-signe",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/scan-signe",
+      "pathParams": ["syndicId", "mandateId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / mandats / {mandateId} / scan-signe",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/prelevements/remises",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/remises",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / remises",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId",
+      "pathParams": ["syndicId", "remittanceId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / remises / {remittanceId}",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/prelevements/retours",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/retours",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / retours",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/prestataires",
       "method": "GET",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/prestataires",
@@ -4333,6 +4432,17 @@
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "PATCH /api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId",
+      "method": "PATCH",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId",
+      "pathParams": ["syndicId", "mandateId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / mandats / {mandateId}",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
     },
     {
       "id": "PATCH /api/tenants/:tenantId/syndics/:syndicId/prestataires/:providerId",
@@ -7406,6 +7516,226 @@
       "sensitive": false
     },
     {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/controle-iban",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/controle-iban",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / controle-iban",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / mandats",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/activer",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/activer",
+      "pathParams": ["syndicId", "mandateId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / mandats / {mandateId} / activer",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/reactiver",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/reactiver",
+      "pathParams": ["syndicId", "mandateId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / mandats / {mandateId} / reactiver",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/revoquer",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/revoquer",
+      "pathParams": ["syndicId", "mandateId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / mandats / {mandateId} / revoquer",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/scan-signe",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/scan-signe",
+      "pathParams": ["syndicId", "mandateId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / mandats / {mandateId} / scan-signe",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/suspendre",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/mandats/:mandateId/suspendre",
+      "pathParams": ["syndicId", "mandateId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / mandats / {mandateId} / suspendre",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/remises",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/remises",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / remises",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/actualiser",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/actualiser",
+      "pathParams": ["syndicId", "remittanceId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / remises / {remittanceId} / actualiser",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/annuler",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/annuler",
+      "pathParams": ["syndicId", "remittanceId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / remises / {remittanceId} / annuler",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/avis",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/avis",
+      "pathParams": ["syndicId", "remittanceId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / remises / {remittanceId} / avis",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/deposer",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/deposer",
+      "pathParams": ["syndicId", "remittanceId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / remises / {remittanceId} / deposer",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/fichier",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/fichier",
+      "pathParams": ["syndicId", "remittanceId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / remises / {remittanceId} / fichier",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/lignes/:lineId/regler",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/lignes/:lineId/regler",
+      "pathParams": ["syndicId", "remittanceId", "lineId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / remises / {remittanceId} / lignes / {lineId} / regler",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/lignes/:lineId/rejeter",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/lignes/:lineId/rejeter",
+      "pathParams": ["syndicId", "remittanceId", "lineId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / remises / {remittanceId} / lignes / {lineId} / rejeter",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/lignes/:lineId/retirer",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/lignes/:lineId/retirer",
+      "pathParams": ["syndicId", "remittanceId", "lineId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / remises / {remittanceId} / lignes / {lineId} / retirer",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/tout-regler",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/tout-regler",
+      "pathParams": ["syndicId", "remittanceId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / remises / {remittanceId} / tout-regler",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/valider",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId/valider",
+      "pathParams": ["syndicId", "remittanceId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / remises / {remittanceId} / valider",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/retours/apercu",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/retours/apercu",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / retours / apercu",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prelevements/retours/appliquer",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/retours/appliquer",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / retours / appliquer",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "POST /api/tenants/:tenantId/syndics/:syndicId/prestataires",
       "method": "POST",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/prestataires",
@@ -8009,6 +8339,17 @@
       "permissions": ["SYNDIC_EDIT", "TENANT_SETTINGS_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "PUT /api/tenants/:tenantId/syndics/:syndicId/prelevements/creancier",
+      "method": "PUT",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/prelevements/creancier",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / prelevements / creancier",
+      "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
     }
   ]
 }

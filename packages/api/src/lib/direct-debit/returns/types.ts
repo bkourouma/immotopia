@@ -57,6 +57,7 @@ export interface ReturnApplyDto extends ReturnPreviewDto {
 
 export interface ReturnImportDto {
   id: string;
+  scope: 'RENTAL_LEASE' | 'SYNDIC_LOT';
   format: DirectDebitReturnFormatKey;
   fileName: string;
   recordCount: number;

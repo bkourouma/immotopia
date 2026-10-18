@@ -3,9 +3,13 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { env } from '../../config/env';
 import { getUploadsRoot } from '../../utils/project-root';
-import { BadRequestError } from '../../middleware/error-middleware';
+import { BadRequestError, NotFoundError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
+import { prisma } from '../../utils/database';
 import { privateUploadPath, readPrivateUpload, type PrivateFile } from '../files/private-files';
+import { auditSignatureFileServed } from '../signature/file-audit';
+import { readSignatureFile } from '../signature/files';
+import { isUuid } from '../signature/sources/guards';
 
 /**
  * Scan de l'autorisation signée d'un mandat (spec 042, PB3-R2).
@@ -79,13 +83,64 @@ export async function removeMandateScan(tenantId: string, mandateId: string, fil
   await fs.unlink(absolute).catch(() => undefined);
 }
 
+/** Préfixe de la valeur `signedScanUrl` d'un mandat dont le PDF scellé tient lieu de scan (spec 042 §10.4). */
+const SIGNATURE_SCAN_PREFIX = 'signature:';
+
+/** Identifiant de la demande de signature si la valeur est de la forme `signature:<uuid>`. */
+export function signatureRequestIdOfScan(signedScanUrl: string | null | undefined): string | null {
+  if (!signedScanUrl?.startsWith(SIGNATURE_SCAN_PREFIX)) return null;
+  const requestId = signedScanUrl.slice(SIGNATURE_SCAN_PREFIX.length);
+  return isUuid(requestId) ? requestId : null;
+}
+
+/**
+ * Sert le `signed.pdf` de la demande : même agence, cible ce mandat, demande terminée.
+ * Toute autre situation répond la même 404. Aucune copie du PDF scellé n'est faite.
+ */
+async function readSignedAuthorization(
+  mandate: { tenantId: string; id: string; reference: string },
+  requestId: string,
+  actorUserId?: string | null
+): Promise<PrivateFile> {
+  const request = await prisma.signatureRequest.findFirst({
+    where: {
+      id: requestId,
+      tenantId: mandate.tenantId,
+      targetType: 'DIRECT_DEBIT_MANDATE',
+      targetId: mandate.id,
+      status: 'COMPLETED'
+    },
+    select: { kind: true, signedFileKey: true }
+  });
+  if (!request?.signedFileKey) throw new NotFoundError(t('Scan signé introuvable.'));
+  const file = await readSignatureFile(mandate.tenantId, requestId, request.signedFileKey);
+  // SIG-S5 : le PDF signé porte l'IBAN complet ; la lecture est tracée AVANT l'envoi (un échec d'audit bloque l'envoi).
+  await auditSignatureFileServed({
+    tenantId: mandate.tenantId,
+    requestId,
+    kind: request.kind,
+    targetId: mandate.id,
+    channel: 'AGENCY',
+    variant: 'signed',
+    actorUserId: actorUserId ?? null
+  });
+  return { ...file, fileName: `${mandate.reference}-autorisation-signee.pdf`, mimeType: 'application/pdf' };
+}
+
 /** Lit le scan d'un mandat DÉJÀ AUTORISÉ. 404 si absent. */
-export function readMandateScan(mandate: {
+export async function readMandateScan(mandate: {
   tenantId: string;
   id: string;
   signedScanUrl: string | null;
   reference: string;
+  /** Lecteur côté agence, pour l'audit de lecture du PDF signé électroniquement. */
+  actorUserId?: string | null;
 }): Promise<PrivateFile> {
+  if (mandate.signedScanUrl?.startsWith(SIGNATURE_SCAN_PREFIX)) {
+    const requestId = signatureRequestIdOfScan(mandate.signedScanUrl);
+    if (!requestId) throw new NotFoundError(t('Scan signé introuvable.'));
+    return readSignedAuthorization(mandate, requestId, mandate.actorUserId);
+  }
   return readPrivateUpload(
     privateUploadPath(mandate.signedScanUrl, folderSegments(mandate.tenantId, mandate.id)),
     `mandat-${mandate.reference}-signe`,

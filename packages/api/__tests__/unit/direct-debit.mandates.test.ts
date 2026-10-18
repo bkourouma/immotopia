@@ -158,7 +158,9 @@ const baseInput = (over: Row = {}) => ({
 });
 
 function resetState() {
-  mockState.creditors = [{ id: CREDITOR, tenantId: TENANT, label: 'Compte loyers', isActive: true, collectionDay: 5 }];
+  mockState.creditors = [
+    { id: CREDITOR, tenantId: TENANT, scope: 'RENTAL_LEASE', label: 'Compte loyers', isActive: true, collectionDay: 5 }
+  ];
   mockState.leases = [
     {
       id: LEASE,
@@ -217,7 +219,7 @@ describe('direct-debit / création', () => {
     expect(mandate.bankCode).toBe('CI008');
     expect(mandate.hasSignedScan).toBe(false);
     expect(mandate.effectiveCollectionDay).toBe(5);
-    expect(mandate.debtor).toEqual({ id: 'client-1', displayName: 'Awa Traoré' });
+    expect(mandate.debtor).toEqual({ id: 'client-1', displayName: 'Awa Traoré', kind: 'CLIENT' });
     expect(mandate.lease).toEqual({ id: LEASE, leaseNumber: 'BAIL-001', status: 'ACTIVE' });
     expect(Array.isArray(warnings)).toBe(true);
 

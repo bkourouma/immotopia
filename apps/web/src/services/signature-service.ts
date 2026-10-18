@@ -9,6 +9,7 @@ import type {
   PublicSignatureDto,
   PublicSignInput,
   PublicSignOutcome,
+  PublicVerifyResult,
   RemindOutcome,
   SignatureKind,
   SignatureRequestDto,
@@ -153,10 +154,46 @@ export function requestPublicOtp(token: string): Promise<PublicResult<PublicOtpR
   return publicCall(() => apiClient.post(`${publicBase(token)}/otp`, {}, PUBLIC_CONFIG));
 }
 
-export function submitPublicSignature(token: string, input: PublicSignInput): Promise<PublicResult<PublicSignOutcome>> {
-  return publicCall(() => apiClient.post(`${publicBase(token)}/sign`, input, PUBLIC_CONFIG));
+/** En-tête du jeton de consultation (types « code avant consultation ») : jamais dans l'URL. */
+const VIEW_TOKEN_HEADER = 'X-Signature-View-Token';
+
+function viewTokenConfig(viewToken?: string) {
+  return viewToken ? { ...PUBLIC_CONFIG, headers: { [VIEW_TOKEN_HEADER]: viewToken } } : PUBLIC_CONFIG;
 }
 
-export function declinePublicSignature(token: string, reason?: string): Promise<PublicResult<{ status?: string }>> {
-  return publicCall(() => apiClient.post(`${publicBase(token)}/decline`, reason ? { reason } : {}, PUBLIC_CONFIG));
+/** Signature : avec un jeton de consultation (code déjà vérifié), il remplace le code. */
+export function submitPublicSignature(
+  token: string,
+  input: PublicSignInput,
+  viewToken?: string
+): Promise<PublicResult<PublicSignOutcome>> {
+  return publicCall(() => apiClient.post(`${publicBase(token)}/sign`, input, viewTokenConfig(viewToken)));
+}
+
+/** Vérifie le code reçu et obtient le jeton de consultation (valable 15 min). */
+export function verifyPublicOtp(token: string, code: string): Promise<PublicResult<PublicVerifyResult>> {
+  return publicCall(() => apiClient.post(`${publicBase(token)}/otp/verify`, { code }, PUBLIC_CONFIG));
+}
+
+/** PDF lu par une requête portant le jeton de consultation (réponse en blob, jamais d'URL avec jeton). */
+export function fetchPublicSignatureBlob(token: string, viewToken: string): Promise<PublicResult<Blob>> {
+  return publicCall(() =>
+    apiClient.get(`${publicBase(token)}/file`, { ...viewTokenConfig(viewToken), responseType: 'blob' })
+  );
+}
+
+/** Fournisseur externe : lien de signature du signataire, remis après vérification du code. */
+export function fetchPublicExternalLink(token: string, viewToken: string): Promise<PublicResult<{ url: string }>> {
+  return publicCall(() => apiClient.get(`${publicBase(token)}/external-link`, viewTokenConfig(viewToken)));
+}
+
+/** Refus : les types « code avant consultation » exigent le jeton de consultation (en-tête), comme la signature. */
+export function declinePublicSignature(
+  token: string,
+  reason?: string,
+  viewToken?: string
+): Promise<PublicResult<{ status?: string }>> {
+  return publicCall(() =>
+    apiClient.post(`${publicBase(token)}/decline`, reason ? { reason } : {}, viewTokenConfig(viewToken))
+  );
 }

@@ -125,3 +125,29 @@ Autres changements :
   `SIGNATURE_SIGNED`, `SIGNATURE_DECLINED`, `SIGNATURE_SEALED`,
   `SIGNATURE_OTP_LOCKED` (critiques, contacts masqués).
 - Capacité d'abonnement `SIGNATURES_MENSUELLES` dans `subscription/catalog.ts`.
+
+## Ajout du 17/10/2026 : mandat de prélèvement bancaire
+
+Contrat détaillé : [042 data-model.md §10](../042-prelevement-bancaire/data-model.md).
+Ces ajouts ne modifient aucun type ni aucun champ existant.
+
+- `SignatureDocumentKind` reçoit `DIRECT_DEBIT_MANDATE` et
+  `SYNDIC_DIRECT_DEBIT_MANDATE` (cible : `targetType = 'DIRECT_DEBIT_MANDATE'`,
+  `targetId` = identifiant du mandat). `SIGNATURE_DOCUMENT_KINDS`
+  (`src/config/env.ts`) reçoit les mêmes valeurs.
+- `SignatureSigner` reçoit trois champs facultatifs pour le parcours « code
+  avant consultation » : `viewGrantHash` (SHA-256 du jeton de consultation, jamais
+  le jeton), `viewGrantExpiresAt` (15 minutes) et `otpVerifiedAt`.
+- `DirectDebitMandate` reçoit `signatureRequestId` (sans clé étrangère) : la
+  demande dont le PDF scellé tient lieu de scan signé.
+- Contrat `SignatureDocumentSource` : trois options facultatives,
+  `codeBeforeView`, `allowedChannels`, `externalGateway`.
+- Routes publiques nouvelles, sous `/api/public/signatures/:token` :
+  `POST /otp/verify` (répond `{ viewToken, expiresAt }`) et
+  `GET /external-link` (fournisseur externe seulement, répond `{ url }`) ;
+  `GET /file` et `POST /sign` exigent l'en-tête `X-Signature-View-Token` pour
+  ces types seulement.
+- Événement de preuve `OTP_VERIFIED` ; les types d'événements existants sont
+  inchangés.
+- Audit : `DIRECT_DEBIT_MANDATE_SIGNED_ELECTRONICALLY` (critique) et, pour toute
+  lecture d'un PDF de ces types, `DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED`.

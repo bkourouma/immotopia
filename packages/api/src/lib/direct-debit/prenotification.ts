@@ -99,7 +99,9 @@ async function runPrenotifications(
   const lines = await loadPendingLines(tenantId, remittanceId);
   if (lines.length === 0) return counters;
 
-  const debtors = lines.map(line => line.debtor);
+  const debtors = lines
+    .map(line => line.debtor)
+    .filter((debtor): debtor is NonNullable<typeof debtor> => debtor !== null);
   // Même règle qu'à l'affichage (recipient.ts) : compte portail d'abord, puis fiche contact CRM.
   const [names, recipients] = await Promise.all([
     resolveDebtorNames(prisma, tenantId, debtors),
@@ -122,10 +124,15 @@ async function runPrenotifications(
 
   const processLine = async (line: PendingLine): Promise<void> => {
     let status: PrenotificationStatus = 'FAILED';
-    const recipient = recipients.get(line.debtor.id) ?? null;
+    const recipient = line.debtor ? (recipients.get(line.debtor.id) ?? null) : null;
     // Vrai dès qu'un envoi est tenté : l'adresse (masquée) est alors gardée sur la ligne, réussi ou non.
     let attempted = false;
     try {
+      const { debtor, installment, lease } = line;
+      if (!debtor || !installment || !lease) {
+        // Ligne de copropriété : sa prénotification est réalisée en P4 (spec 042 §9.3).
+        throw new Error('Prénotification : ligne hors périmètre locatif');
+      }
       if (config === null) {
         status = 'FAILED';
       } else if (!config.enabled) {
@@ -138,12 +145,12 @@ async function runPrenotifications(
           await emailService.sendDirectDebitPrenotification(
             recipient.email,
             {
-              debtorName: names.get(line.debtor.id) ?? t('Locataire'),
+              debtorName: names.get(debtor.id) ?? t('Locataire'),
               agencyName: remittance.tenant?.name ?? t('Votre agence'),
               amount: amountLabel(Number(line.amount)),
               collectionDate: formatFrenchDate(remittance.collectionDate),
-              period: `${String(line.installment.period_month).padStart(2, '0')}/${line.installment.period_year}`,
-              leaseNumber: line.lease.lease_number,
+              period: `${String(installment.period_month).padStart(2, '0')}/${installment.period_year}`,
+              leaseNumber: lease.lease_number,
               ibanMasked: maskIban(line.mandate.ibanLast4),
               mandateReference: mandateReferenceOf(line.mandate.year, line.mandate.sequence),
               creditorIdentifier: remittance.creditorIdentifierSnapshot ?? ''

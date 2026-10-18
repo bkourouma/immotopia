@@ -59,6 +59,9 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'DIRECT_DEBIT_PRENOTIFICATION',
   // Location – rejet d'un prélèvement bancaire (spec 042, P3)
   'DIRECT_DEBIT_REJECTED',
+  // Syndic – prénotification et rejet d'un prélèvement de charges (spec 042, P4)
+  'SYNDIC_DIRECT_DEBIT_PRENOTIFICATION',
+  'SYNDIC_DIRECT_DEBIT_REJECTED',
   // Syndic – lien « Payer cet appel » envoyé au copropriétaire (spec 042)
   'CHARGE_CALL_PAYMENT_LINK_SENT',
   // Patrimoine – accès en lecture seule des tiers de confiance (lot B3)
@@ -342,6 +345,20 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     description:
       "Envoi au locataire, lorsque l'agence constate le rejet d'un prélèvement, du montant, de la date, de la référence du mandat, de l'IBAN masqué, du motif du rejet, des frais éventuellement refacturés et, le cas échéant, de la suspension du mandat.",
     recipientLabel: 'Locataire (débiteur)'
+  },
+  SYNDIC_DIRECT_DEBIT_PRENOTIFICATION: {
+    key: 'SYNDIC_DIRECT_DEBIT_PRENOTIFICATION',
+    label: "Prénotification d'un prélèvement de charges",
+    description:
+      "Envoi au copropriétaire, avant la date de prélèvement, du montant, de la date, de la référence du mandat et de l'IBAN masqué du compte qui sera débité pour les appels de charges de son lot (remise de prélèvements validée par le gestionnaire).",
+    recipientLabel: 'Copropriétaire (débiteur)'
+  },
+  SYNDIC_DIRECT_DEBIT_REJECTED: {
+    key: 'SYNDIC_DIRECT_DEBIT_REJECTED',
+    label: "Rejet d'un prélèvement de charges",
+    description:
+      "Envoi au copropriétaire, lorsque le gestionnaire constate le rejet d'un prélèvement d'appels de charges, du montant, de la date, de la référence du mandat, de l'IBAN masqué, du motif du rejet et, le cas échéant, de la suspension du mandat.",
+    recipientLabel: 'Copropriétaire (débiteur)'
   },
   CHARGE_CALL_PAYMENT_LINK_SENT: {
     key: 'CHARGE_CALL_PAYMENT_LINK_SENT',
