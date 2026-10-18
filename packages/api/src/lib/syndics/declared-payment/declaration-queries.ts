@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { prisma } from '../../../utils/database';
+import { prisma, type PrismaTransactionClient } from '../../../utils/database';
 import { BadRequestError, NotFoundError } from '../../../middleware/error-middleware';
 import { t } from '../../../i18n';
 import { assertSyndicateOfTenant } from '../charge-allocation';
@@ -721,12 +721,13 @@ export async function listCoOwnerDeclarations(
  */
 export async function pendingDeclarationsByCall(
   tenantId: string,
-  lotIds: string[]
+  lotIds: string[],
+  client: PrismaTransactionClient | typeof prisma = prisma
 ): Promise<Map<string, { declarationId: string; createdAt: Date }>> {
   const result = new Map<string, { declarationId: string; createdAt: Date }>();
   if (lotIds.length === 0) return result;
 
-  const declarations = await prisma.syndicPaymentDeclaration.findMany({
+  const declarations = await client.syndicPaymentDeclaration.findMany({
     where: { tenantId, status: 'PENDING', lines: { some: { lotId: { in: lotIds } } } },
     select: {
       id: true,
@@ -751,7 +752,7 @@ export async function pendingDeclarationsByCall(
     }))
   );
   const targets = await resolveLineTargets(
-    prisma,
+    client,
     inputs.filter(input => input.chargeCallIds.length === 0)
   );
 

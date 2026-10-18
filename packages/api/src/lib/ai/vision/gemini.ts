@@ -1,5 +1,12 @@
 import { logger } from '../../../utils/logger';
-import { VisionCallError, imageToBase64, type VisionFetch, type VisionPayload } from './call';
+import {
+  DEFAULT_VISION_USER_TEXT,
+  VisionCallError,
+  imageToBase64,
+  readLimitedJson,
+  type VisionFetch,
+  type VisionPayload
+} from './call';
 
 /**
  * Transport Gemini, appelé directement :
@@ -27,11 +34,12 @@ export function buildGeminiRequest(
   apiKey: string
 ): { url: string; init: RequestInit } {
   const body = {
+    ...(payload.separateSystem ? { systemInstruction: { parts: [{ text: payload.prompt }] } } : {}),
     contents: [
       {
         role: 'user',
         parts: [
-          { text: payload.prompt },
+          { text: payload.separateSystem ? (payload.userText ?? DEFAULT_VISION_USER_TEXT) : payload.prompt },
           { inlineData: { mimeType: payload.mimeType, data: imageToBase64(payload.image) } }
         ]
       }
@@ -91,11 +99,5 @@ export async function callGemini(params: {
     logger.warn('Vision IA (gemini) : réponse HTTP en erreur', { status: response.status, model: params.model });
     throw new VisionCallError('PROVIDER_ERROR', `HTTP ${response.status}`);
   }
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    throw new VisionCallError('PROVIDER_ERROR', 'réponse illisible');
-  }
-  return extractGeminiText(body);
+  return extractGeminiText(await readLimitedJson(response));
 }

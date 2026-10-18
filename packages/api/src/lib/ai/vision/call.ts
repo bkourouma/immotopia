@@ -40,6 +40,50 @@ export interface VisionPayload {
   jsonSchema: Record<string, unknown>;
   /** Nom du schéma chez OpenRouter (lettres, chiffres, souligné). */
   schemaName: string;
+  /**
+   * Place la consigne dans le message système (`systemInstruction` chez Gemini, rôle `system` chez
+   * OpenRouter) et n'envoie que `userText` et l'image comme message utilisateur : une consigne séparée
+   * du contenu non fiable résiste mieux à une injection par l'image.
+   */
+  separateSystem?: boolean;
+  userText?: string;
+}
+
+/** Texte du message utilisateur quand la consigne est dans le message système. */
+export const DEFAULT_VISION_USER_TEXT = 'Lis ce document et réponds uniquement par l’objet JSON demandé.';
+
+/** Plafond de lecture de la réponse d'un fournisseur : une sortie structurée tient en quelques Ko. */
+export const MAX_VISION_RESPONSE_BYTES = 256 * 1024;
+
+/**
+ * Lit la réponse d'un fournisseur comme du JSON en plafonnant la taille lue
+ * (`MAX_VISION_RESPONSE_BYTES`), pour qu'un fournisseur défaillant ou détourné ne remplisse pas la mémoire.
+ */
+export async function readLimitedJson(response: Response): Promise<unknown> {
+  const declared = Number(response.headers?.get?.('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_VISION_RESPONSE_BYTES) {
+    throw new VisionCallError('PROVIDER_ERROR', 'réponse trop volumineuse');
+  }
+  const reader = response.body?.getReader?.();
+  try {
+    if (!reader) return await response.json(); // client simulé sans flux
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_VISION_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new VisionCallError('PROVIDER_ERROR', 'réponse trop volumineuse');
+      }
+      chunks.push(value);
+    }
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch (error) {
+    if (error instanceof VisionCallError) throw error;
+    throw new VisionCallError('PROVIDER_ERROR', 'réponse illisible');
+  }
 }
 
 export type VisionFetch = (url: string, init: RequestInit) => Promise<Response>;

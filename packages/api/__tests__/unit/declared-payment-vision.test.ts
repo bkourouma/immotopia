@@ -3,7 +3,13 @@
  * Spec 047, T059 et T061 : transport de vision partagé (`lib/ai/vision`) et lecture
  * des captures (`lib/syndics/declared-payment/vision`).
  */
-import { buildGeminiRequest, buildOpenRouterRequest, runVisionCall } from '../../src/lib/ai/vision';
+import {
+  MAX_VISION_RESPONSE_BYTES,
+  buildGeminiRequest,
+  buildOpenRouterRequest,
+  readLimitedJson,
+  runVisionCall
+} from '../../src/lib/ai/vision';
 import {
   DisabledPaymentProofProvider,
   GeminiPaymentProofProvider,
@@ -121,6 +127,27 @@ describe('transport commun', () => {
     expect(buildOpenRouterRequest(payload, options).url).toBe('https://x/api/v1/chat/completions');
   });
 
+  it('OpenRouter : data_collection deny toujours, zdr seulement sur demande, consigne en message système', () => {
+    const options = { model: 'a/b', apiKey: 'k', baseUrl: 'https://x/api/v1', referer: 'https://app' };
+    const separate = { ...payload, separateSystem: true };
+    const normal = JSON.parse(buildOpenRouterRequest(separate, options).init.body as string);
+    expect(normal.provider).toEqual({ require_parameters: true, data_collection: 'deny' });
+    expect(normal.messages[0]).toEqual({ role: 'system', content: 'consigne' });
+    expect(normal.messages[1].role).toBe('user');
+    expect(JSON.stringify(normal.messages[1])).not.toContain('consigne');
+    const zdr = JSON.parse(buildOpenRouterRequest(separate, { ...options, zdr: true }).init.body as string);
+    expect(zdr.provider).toEqual({ require_parameters: true, data_collection: 'deny', zdr: true });
+  });
+
+  it('Gemini : consigne en systemInstruction, absente du message utilisateur', () => {
+    const body = JSON.parse(buildGeminiRequest({ ...payload, separateSystem: true }, 'm', 'k').init.body as string);
+    expect(body.systemInstruction).toEqual({ parts: [{ text: 'consigne' }] });
+    expect(body.contents[0].parts[0].text).not.toContain('consigne');
+    const legacy = JSON.parse(buildGeminiRequest(payload, 'm', 'k').init.body as string);
+    expect(legacy.systemInstruction).toBeUndefined();
+    expect(legacy.contents[0].parts[0].text).toBe('consigne');
+  });
+
   it('runVisionCall ne lève jamais : erreur, délai et sortie invalide deviennent des issues', async () => {
     const meta = { provider: 'p', model: 'm', timeoutMs: 20 };
     const signal = new AbortController().signal;
@@ -150,6 +177,37 @@ describe('transport commun', () => {
       ok: true,
       result: { a: 1 }
     });
+  });
+});
+
+describe('réponse du fournisseur plafonnée', () => {
+  const stream = (chunks: string[]) =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk));
+        controller.close();
+      }
+    });
+
+  it('lit une réponse normale', async () => {
+    await expect(readLimitedJson(new Response(stream(['{"a"', ':1}'])))).resolves.toEqual({ a: 1 });
+  });
+
+  it('refuse une réponse annoncée trop grande (Content-Length)', async () => {
+    const response = new Response('{}', { headers: { 'content-length': String(MAX_VISION_RESPONSE_BYTES + 1) } });
+    await expect(readLimitedJson(response)).rejects.toMatchObject({ reason: 'PROVIDER_ERROR' });
+  });
+
+  it('coupe un flux qui dépasse le plafond sans tout lire', async () => {
+    const big = 'x'.repeat(64 * 1024);
+    await expect(readLimitedJson(new Response(stream(Array(8).fill(big))))).rejects.toMatchObject({
+      reason: 'PROVIDER_ERROR',
+      message: 'réponse trop volumineuse'
+    });
+  });
+
+  it('JSON illisible : PROVIDER_ERROR', async () => {
+    await expect(readLimitedJson(new Response('pas du json'))).rejects.toMatchObject({ reason: 'PROVIDER_ERROR' });
   });
 });
 

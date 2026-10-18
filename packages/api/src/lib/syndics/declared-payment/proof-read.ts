@@ -8,7 +8,7 @@ import { prisma } from '../../../utils/database';
 import { logger } from '../../../utils/logger';
 import type { CoOwnerPortalScope } from '../coowner-portal';
 import { normalizeIvorianMsisdn } from './phone';
-import { prepareProofFile, saveTempProofRead, type ProofFileInput } from './proof-files';
+import { discardTempProof, prepareProofFile, saveTempProofRead, type ProofFileInput } from './proof-files';
 import { normalizeTransactionReference } from './reference';
 import { AI_READS_MONTHLY_QUOTA, assertSyndicFeatureForDeclared, getDeclaredPaymentRules } from './settings';
 import {
@@ -37,6 +37,12 @@ import { getPaymentProofVisionProvider, isPaymentProofVisionConfigured, type Pro
  */
 
 export const PROOF_READ_RETENTION_HOURS = 24;
+
+/**
+ * Plafond mensuel de lectures par contact (en plus du quota de l'agence, 300) : un seul compte ne peut
+ * pas consommer le quota de toute l'agence, ni faire facturer des lectures en boucle.
+ */
+export const AI_READS_MONTHLY_PER_CONTACT = 30;
 
 const MS_PER_MINUTE = 60_000;
 const MS_PER_DAY = 24 * 60 * MS_PER_MINUTE;
@@ -172,8 +178,10 @@ async function crossChecks(params: {
   }
   if (reading.transactionReference) {
     const used = await prisma.syndicPaymentDeclaration.findFirst({
+      // Limité à CETTE copropriété : ne révèle rien des déclarations des autres copropriétés de l'agence.
       where: {
         tenantId,
+        syndicateId,
         transactionReference: reading.transactionReference,
         status: { in: ['PENDING', 'APPROVED'] }
       },
@@ -222,10 +230,17 @@ async function reserveRead(params: {
   const { readId, tenantId, now } = params;
   await prisma.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`syndic-proof-read:${tenantId}`}))`;
+    // Seules les lectures qui ont réellement appelé le modèle comptent : une lecture refusée avant l'appel
+    // (fournisseur coupé, capture non conservée) est retirée ou marquée DISABLED.
+    const since = startOfMonthUtc(now);
     const used = await tx.syndicPaymentProofRead.count({
-      where: { tenantId, createdAt: { gte: startOfMonthUtc(now) } }
+      where: { tenantId, createdAt: { gte: since }, outcome: { not: 'DISABLED' } }
     });
     if (used >= AI_READS_MONTHLY_QUOTA) throw quotaExceeded();
+    const usedByContact = await tx.syndicPaymentProofRead.count({
+      where: { tenantId, contactId: params.contactId, createdAt: { gte: since }, outcome: { not: 'DISABLED' } }
+    });
+    if (usedByContact >= AI_READS_MONTHLY_PER_CONTACT) throw quotaExceeded();
     await tx.syndicPaymentProofRead.create({
       data: {
         id: readId,
@@ -289,38 +304,50 @@ export async function readPaymentProof(params: {
   let tempFileUrl: string | null = null;
   try {
     tempFileUrl = (await saveTempProofRead({ tenantId, readId, file: { buffer: prepared.buffer } })).fileUrl;
+    // Le chemin est posé en base AVANT l'appel au modèle : un arrêt du processus ou une erreur
+    // plus loin laisse une ligne que la purge sait retrouver, jamais un fichier sans trace.
+    await prisma.syndicPaymentProofRead.updateMany({ where: { id: readId, tenantId }, data: { tempFileUrl } });
   } catch (error) {
-    // Sans capture conservée, la lecture n'a pas de suite possible : on la retire.
+    // Sans capture conservée, la lecture n'a pas de suite possible : on retire fichier et ligne.
+    if (tempFileUrl) await discardTempProof(tenantId, tempFileUrl);
     await prisma.syndicPaymentProofRead.deleteMany({ where: { id: readId, tenantId } }).catch(() => undefined);
     throw error;
   }
 
-  // Appel au modèle : ne lève jamais ; une panne devient « illisible ».
-  const outcome = await provider.analyze(
-    { image: prepared.buffer, mimeType: prepared.mimeType },
-    new AbortController().signal
-  );
-
+  let outcome: Awaited<ReturnType<typeof provider.analyze>>;
   let reading = emptyReading('UNREADABLE');
   let rowOutcome: ProofReadOutcome = 'FAILED';
-  if (outcome.ok) {
-    reading = normalizeModelRead(outcome.result, now);
-    rowOutcome = reading.quality;
-  } else if (outcome.reason === 'DISABLED') {
-    rowOutcome = 'DISABLED';
-  }
-
-  const checks = reading.quality === 'OK' ? await crossChecks({ tenantId, syndicateId, reading }) : null;
-
-  await prisma.syndicPaymentProofRead.updateMany({
-    where: { id: readId, tenantId },
-    data: {
-      outcome: rowOutcome,
-      latencyMs: outcome.latencyMs,
-      tempFileUrl,
-      result: reading as unknown as Prisma.InputJsonValue
+  let checks: Awaited<ReturnType<typeof crossChecks>> | null = null;
+  try {
+    // Appel au modèle : ne lève jamais ; une panne devient « illisible ».
+    outcome = await provider.analyze(
+      { image: prepared.buffer, mimeType: prepared.mimeType },
+      new AbortController().signal
+    );
+    if (outcome.ok) {
+      reading = normalizeModelRead(outcome.result, now);
+      rowOutcome = reading.quality;
+    } else if (outcome.reason === 'DISABLED') {
+      rowOutcome = 'DISABLED';
     }
-  });
+    checks = reading.quality === 'OK' ? await crossChecks({ tenantId, syndicateId, reading }) : null;
+    await prisma.syndicPaymentProofRead.updateMany({
+      where: { id: readId, tenantId },
+      data: {
+        outcome: rowOutcome,
+        latencyMs: outcome.latencyMs,
+        result: reading as unknown as Prisma.InputJsonValue
+      }
+    });
+  } catch (error) {
+    // Aucune réponse ne sera rendue : la capture n'a plus d'usage, on la supprime.
+    if (await discardTempProof(tenantId, tempFileUrl)) {
+      await prisma.syndicPaymentProofRead
+        .updateMany({ where: { id: readId, tenantId }, data: { tempFileUrl: null } })
+        .catch(() => undefined);
+    }
+    throw error;
+  }
 
   const fields = readFieldNames(reading);
   logger.info('[declared-payment] lecture de capture', {

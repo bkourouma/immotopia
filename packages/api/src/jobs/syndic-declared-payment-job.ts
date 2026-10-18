@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { isOverdue } from '../lib/syndics/declared-payment/business-days';
 import { sendReviewSummary } from '../lib/syndics/declared-payment/notifications';
-import { purgeExpiredProofReads } from '../lib/syndics/declared-payment/proof-files';
+import { purgeExpiredProofReads, purgeOrphanTempProofs } from '../lib/syndics/declared-payment/proof-files';
 import { getDeclaredPaymentRules } from '../lib/syndics/declared-payment/settings';
 
 /**
@@ -124,6 +124,8 @@ export async function runHourlyDeclarationBatch(now: Date = new Date()): Promise
   try {
     const purged = await purgeExpiredProofReads(now);
     if (purged > 0) logger.info('[declared-payment] captures temporaires expirées purgées', { purged });
+    const swept = await purgeOrphanTempProofs(now);
+    if (swept > 0) logger.info('[declared-payment] captures temporaires orphelines supprimées', { swept });
   } catch (error) {
     logger.error('[declared-payment] purge des captures temporaires en échec', {
       error: error instanceof Error ? error.message : String(error)

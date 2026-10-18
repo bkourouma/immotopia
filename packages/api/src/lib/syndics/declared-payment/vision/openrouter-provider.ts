@@ -37,6 +37,7 @@ export class OpenRouterPaymentProofProvider implements PaymentProofVisionProvide
           apiKey: this.apiKey,
           baseUrl: this.baseUrl,
           referer: env.FRONTEND_URL,
+          zdr: env.OPENROUTER_VISION_ZDR,
           model: this.model,
           signal: callSignal,
           payload: {
@@ -44,7 +45,8 @@ export class OpenRouterPaymentProofProvider implements PaymentProofVisionProvide
             image: request.image,
             mimeType: request.mimeType,
             jsonSchema: PAYMENT_PROOF_JSON_SCHEMA as unknown as Record<string, unknown>,
-            schemaName: PAYMENT_PROOF_SCHEMA_NAME
+            schemaName: PAYMENT_PROOF_SCHEMA_NAME,
+            separateSystem: true
           }
         }),
       parseProofModelOutput

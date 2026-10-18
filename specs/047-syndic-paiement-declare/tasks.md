@@ -171,7 +171,7 @@ Agence — **L7** :
 - [x] T065 Web : `DeclarationForm.tsx` (capture d'abord, champs « Lu automatiquement, vérifiez », suivi des
       retouches), `DeclarationDrawer.tsx` (témoins IA), `DeclaredSettingsCard.tsx` (interrupteur, compteur) ;
       tests Vitest
-- [ ] T066 `npm run i18n:extract` (deux paquets), vérifications, classeur (8) + `npm run wiki:export`,
+- [x] T066 `npm run i18n:extract` (deux paquets), vérifications, classeur (8) + `npm run wiki:export`,
       relecture `security-auditor` (injection par l'image, fichiers, quota) ; PR3
 
 ## Hors agents de réalisation

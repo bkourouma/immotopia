@@ -73,7 +73,9 @@ async function buildSettings(
   const [rules, activeNumbers, aiReadsThisMonth] = await Promise.all([
     getDeclaredPaymentRules(prisma, tenantId, syndicateId),
     prisma.syndicReceivingNumber.count({ where: { tenantId, syndicateId, isActive: true } }),
-    prisma.syndicPaymentProofRead.count({ where: { tenantId, createdAt: { gte: startOfMonthUtc(now) } } })
+    prisma.syndicPaymentProofRead.count({
+      where: { tenantId, createdAt: { gte: startOfMonthUtc(now) }, outcome: { not: 'DISABLED' } }
+    })
   ]);
   return {
     syndicateId,

@@ -14,6 +14,7 @@ const store = {
   rules: { enabled: true, aiPrefillEnabled: true } as Row,
   reads: [] as Row[],
   readsThisMonth: 0,
+  contactReadsThisMonth: 0,
   numbers: [] as Row[],
   declarations: [] as Row[]
 };
@@ -26,7 +27,7 @@ const mockPrisma: Row = {
     )
   },
   syndicPaymentProofRead: {
-    count: jest.fn(async () => store.readsThisMonth),
+    count: jest.fn(async ({ where }: Row) => (where.contactId ? store.contactReadsThisMonth : store.readsThisMonth)),
     create: jest.fn(async ({ data }: Row) => {
       store.reads.push({ ...data });
       return data;
@@ -60,9 +61,11 @@ jest.mock('../../src/lib/syndics/declared-payment/settings', () => ({
 
 const mockPrepare = jest.fn();
 const mockSaveTemp = jest.fn();
+const mockDiscard = jest.fn();
 jest.mock('../../src/lib/syndics/declared-payment/proof-files', () => ({
   prepareProofFile: (...args: unknown[]) => mockPrepare(...args),
-  saveTempProofRead: (...args: unknown[]) => mockSaveTemp(...args)
+  saveTempProofRead: (...args: unknown[]) => mockSaveTemp(...args),
+  discardTempProof: (...args: unknown[]) => mockDiscard(...args)
 }));
 
 const mockAnalyze = jest.fn();
@@ -112,6 +115,8 @@ beforeEach(() => {
   store.rules = { enabled: true, aiPrefillEnabled: true };
   store.reads = [];
   store.readsThisMonth = 0;
+  store.contactReadsThisMonth = 0;
+  mockDiscard.mockReset().mockResolvedValue(true);
   store.numbers = [{ id: 'num-1', phoneNumber: '+2250101010101' }];
   store.declarations = [];
   configured = true;
@@ -216,6 +221,55 @@ describe('readPaymentProof', () => {
     mockAnalyze.mockResolvedValue(okRead({ quality: 'NOT_A_PAYMENT', amount: null }));
     expect((await run()).quality).toBe('NOT_A_PAYMENT');
     expect(store.reads[0].outcome).toBe('NOT_A_PAYMENT');
+  });
+
+  it('pose le chemin de la capture en base AVANT l’appel au modèle', async () => {
+    let seenAtCall: unknown = 'jamais appelé';
+    mockAnalyze.mockImplementation(async () => {
+      seenAtCall = store.reads[0]?.tempFileUrl;
+      return okRead();
+    });
+    await run();
+    expect(seenAtCall).toBe('/uploads/syndics/payment-proofs/tmp/tenant-a/x.png');
+    expect(store.reads[0].tempFileUrl).toBe('/uploads/syndics/payment-proofs/tmp/tenant-a/x.png');
+  });
+
+  it('erreur après l’écriture de la capture : fichier supprimé, chemin effacé en base, erreur relayée', async () => {
+    mockPrisma.syndicReceivingNumber.findMany.mockRejectedValueOnce(new Error('base HS'));
+    await expect(run()).rejects.toThrow('base HS');
+    expect(mockDiscard).toHaveBeenCalledWith(TENANT, '/uploads/syndics/payment-proofs/tmp/tenant-a/x.png');
+    expect(store.reads[0].tempFileUrl).toBeNull();
+  });
+
+  it('chemin non posé en base (échec) : fichier supprimé et lecture retirée', async () => {
+    mockPrisma.syndicPaymentProofRead.updateMany.mockRejectedValueOnce(new Error('base HS'));
+    await expect(run()).rejects.toThrow('base HS');
+    expect(mockDiscard).toHaveBeenCalled();
+    expect(store.reads).toHaveLength(0);
+    expect(mockAnalyze).not.toHaveBeenCalled();
+  });
+
+  it('plafond mensuel par contact atteint : 429 sans appel au modèle', async () => {
+    store.contactReadsThisMonth = 30;
+    await expect(run()).rejects.toMatchObject({ statusCode: 429, code: 'PROOF_READ_QUOTA_EXCEEDED' });
+    expect(mockAnalyze).not.toHaveBeenCalled();
+    expect(store.reads).toHaveLength(0);
+  });
+
+  it('le quota ne compte que les lectures qui ont appelé le modèle (hors DISABLED)', async () => {
+    await run();
+    for (const [args] of mockPrisma.syndicPaymentProofRead.count.mock.calls) {
+      expect(args.where.outcome).toEqual({ not: 'DISABLED' });
+    }
+  });
+
+  it('référence déjà déclarée : contrôle limité à la copropriété', async () => {
+    store.declarations = [{ transactionReference: 'CI241017.1000.A12345' }];
+    await run();
+    expect(mockPrisma.syndicPaymentDeclaration.findFirst.mock.calls[0][0].where).toMatchObject({
+      tenantId: TENANT,
+      syndicateId: SYNDIC
+    });
   });
 
   it('quota mensuel atteint : 429 PROOF_READ_QUOTA_EXCEEDED, le modèle n’est pas appelé', async () => {

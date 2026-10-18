@@ -1,4 +1,7 @@
 export {
+  DEFAULT_VISION_USER_TEXT,
+  MAX_VISION_RESPONSE_BYTES,
+  readLimitedJson,
   VisionCallError,
   imageToBase64,
   runVisionCall,

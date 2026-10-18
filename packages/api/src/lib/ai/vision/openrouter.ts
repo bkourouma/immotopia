@@ -1,5 +1,12 @@
 import { logger } from '../../../utils/logger';
-import { VisionCallError, imageToBase64, type VisionFetch, type VisionPayload } from './call';
+import {
+  DEFAULT_VISION_USER_TEXT,
+  VisionCallError,
+  imageToBase64,
+  readLimitedJson,
+  type VisionFetch,
+  type VisionPayload
+} from './call';
 
 /**
  * Transport OpenRouter : `POST {OPENROUTER_BASE_URL}/chat/completions`, sans
@@ -21,7 +28,7 @@ type ChatCompletionResponse = {
 
 export function buildOpenRouterRequest(
   payload: VisionPayload,
-  options: { model: string; apiKey: string; baseUrl: string; referer: string }
+  options: { model: string; apiKey: string; baseUrl: string; referer: string; zdr?: boolean }
 ): { url: string; init: RequestInit } {
   const dataUri = `data:${payload.mimeType};base64,${imageToBase64(payload.image)}`;
   const mediaPart =
@@ -32,12 +39,19 @@ export function buildOpenRouterRequest(
     model: options.model,
     stream: false,
     temperature: 0,
-    messages: [{ role: 'user', content: [{ type: 'text', text: payload.prompt }, mediaPart] }],
+    messages: payload.separateSystem
+      ? [
+          { role: 'system', content: payload.prompt },
+          { role: 'user', content: [{ type: 'text', text: payload.userText ?? DEFAULT_VISION_USER_TEXT }, mediaPart] }
+        ]
+      : [{ role: 'user', content: [{ type: 'text', text: payload.prompt }, mediaPart] }],
     response_format: {
       type: 'json_schema',
       json_schema: { name: payload.schemaName, strict: true, schema: payload.jsonSchema }
     },
-    provider: { require_parameters: true }
+    // data_collection « deny » : seuls les fournisseurs qui ne conservent ni n'entraînent sur les données
+    // sont routés (les captures contiennent des numéros et des noms). `zdr` : rétention nulle exigée.
+    provider: { require_parameters: true, data_collection: 'deny', ...(options.zdr ? { zdr: true } : {}) }
   };
   return {
     url: `${options.baseUrl.replace(/\/+$/, '')}/chat/completions`,
@@ -82,6 +96,7 @@ export async function callOpenRouter(params: {
   apiKey: string | undefined;
   baseUrl: string;
   referer: string;
+  zdr?: boolean;
   model: string;
   payload: VisionPayload;
   signal: AbortSignal;
@@ -91,18 +106,13 @@ export async function callOpenRouter(params: {
     model: params.model,
     apiKey: params.apiKey,
     baseUrl: params.baseUrl,
-    referer: params.referer
+    referer: params.referer,
+    zdr: params.zdr
   });
   const response = await params.fetchImpl(url, { ...init, signal: params.signal });
   if (!response.ok) {
     logger.warn('Vision IA (openrouter) : réponse HTTP en erreur', { status: response.status, model: params.model });
     throw new VisionCallError('PROVIDER_ERROR', `HTTP ${response.status}`);
   }
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    throw new VisionCallError('PROVIDER_ERROR', 'réponse illisible');
-  }
-  return extractOpenRouterText(body);
+  return extractOpenRouterText(await readLimitedJson(response));
 }

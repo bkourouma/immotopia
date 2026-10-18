@@ -208,6 +208,26 @@ describe('PAYMENT_PROOF_VISION_PROVIDER (spec 047, T060)', () => {
     }
   });
 
+  it('OPENROUTER_BASE_URL en http est refusé en production, accepté en développement', () => {
+    const prod = loadWith({
+      ...CLEAN,
+      ...META_VARS,
+      NODE_ENV: 'production',
+      OPENROUTER_BASE_URL: 'http://proxy.local/v1'
+    });
+    expect(prod.exited).toBe(true);
+    expect(prod.errors).toContain('OPENROUTER_BASE_URL');
+    const dev = loadWith({ ...CLEAN, ...META_VARS, NODE_ENV: 'test', OPENROUTER_BASE_URL: 'http://localhost:9999/v1' });
+    expect(dev.exited).toBe(false);
+  });
+
+  it('OPENROUTER_VISION_ZDR vaut false par défaut', () => {
+    const r = loadWith({ ...CLEAN, ...META_VARS, NODE_ENV: 'test', OPENROUTER_VISION_ZDR: undefined });
+    expect(r.env?.OPENROUTER_VISION_ZDR).toBe(false);
+    const on = loadWith({ ...CLEAN, ...META_VARS, NODE_ENV: 'test', OPENROUTER_VISION_ZDR: 'true' });
+    expect(on.env?.OPENROUTER_VISION_ZDR).toBe(true);
+  });
+
   it('fake est accepté en test', () => {
     const r = loadWith({ ...CLEAN, ...META_VARS, NODE_ENV: 'test', PAYMENT_PROOF_VISION_PROVIDER: 'fake' });
     expect(r.exited).toBe(false);

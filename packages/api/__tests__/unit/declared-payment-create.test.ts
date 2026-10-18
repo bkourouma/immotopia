@@ -84,7 +84,10 @@ const mockPrisma: Row = {
     }),
     updateMany: jest.fn(async ({ where, data }: Row) => {
       const found = store.proofReads.find(
-        r => r.id === where.id && r.tenantId === where.tenantId && r.consumedAt === null
+        r =>
+          r.id === where.id &&
+          r.tenantId === where.tenantId &&
+          (where.consumedAt === undefined || r.consumedAt === where.consumedAt)
       );
       if (!found) return { count: 0 };
       Object.assign(found, data);
@@ -155,7 +158,7 @@ jest.mock('../../src/lib/syndics/declared-payment/settings', () => ({
 
 const mockSaveProof = jest.fn();
 const mockPromote = jest.fn();
-const mockDiscard = jest.fn(async (..._args: unknown[]) => undefined);
+const mockDiscard = jest.fn(async (..._args: unknown[]) => true);
 jest.mock('../../src/lib/syndics/declared-payment/proof-files', () => ({
   saveDeclarationProof: (...args: unknown[]) => mockSaveProof(...args),
   promoteTempProofToDeclaration: (...args: unknown[]) => mockPromote(...args),
@@ -273,7 +276,7 @@ beforeEach(() => {
   store.proofReads = [];
   store.onlineCheckouts = [];
   mockPromote.mockReset();
-  mockDiscard.mockClear();
+  mockDiscard.mockReset().mockResolvedValue(true);
   auditEvents.length = 0;
   mockAssertFeature.mockReset().mockResolvedValue(undefined);
   mockSaveProof.mockReset();
@@ -557,6 +560,21 @@ describe('createDeclaration : périmètre (portail)', () => {
   });
 
   describe('paiement en ligne sur le même appel (cas limite 9)', () => {
+    it('course : un paiement en ligne apparu après la lecture rapide est vu dans la transaction, après le verrou', async () => {
+      store.visibleCalls = ['call-1'];
+      store.openCalls[LOT_1] = ['call-1'];
+      store.onlineCheckouts = [{ lotId: LOT_1, chargeCallIds: ['call-1'], status: 'PENDING' }];
+      // Lecture rapide : rien ; relecture sous verrou : le paiement en ligne.
+      mockPrisma.syndicOnlineCheckout.findMany.mockResolvedValueOnce([]);
+      await expectError(
+        run({ input: baseInput({ amount: 100, lines: [{ lotId: LOT_1, amount: 100, chargeCallIds: ['call-1'] }] }) }),
+        409,
+        'CHARGE_CALL_ONLINE_PAYMENT_PENDING'
+      );
+      expect(mockPrisma.$executeRaw).toHaveBeenCalled();
+      expect(store.declarations).toHaveLength(0);
+    });
+
     const lineOn = (ids: string[]) =>
       baseInput({ amount: 100, lines: [{ lotId: LOT_1, amount: 100, chargeCallIds: ids }] });
 
@@ -853,6 +871,14 @@ describe('createDeclaration : capture', () => {
       expect(store.proofReads[0].tempFileUrl).toBeNull();
       expect(mockDiscard).toHaveBeenCalledWith(TENANT, tempUrl);
       expect(auditEvents[0].payload).toMatchObject({ aiPrefilled: true, aiEditedFields: [] });
+    });
+
+    it('suppression du temporaire en échec : le chemin reste en base pour la purge', async () => {
+      store.proofReads = [aiRead()];
+      mockDiscard.mockResolvedValue(false);
+      await withRead();
+      expect(store.proofReads[0].consumedAt).toEqual(NOW);
+      expect(store.proofReads[0].tempFileUrl).toBe(tempUrl);
     });
 
     it('satisfait la capture exigée', async () => {

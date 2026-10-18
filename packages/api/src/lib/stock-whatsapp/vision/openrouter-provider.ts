@@ -59,6 +59,7 @@ export class OpenRouterVisionProvider implements StockVisionProvider {
         apiKey: this.apiKey,
         baseUrl: this.baseUrl,
         referer: env.FRONTEND_URL,
+        zdr: env.OPENROUTER_VISION_ZDR,
         model: this.model,
         payload: stockVisionPayload(request),
         signal: callSignal

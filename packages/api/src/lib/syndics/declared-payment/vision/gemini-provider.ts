@@ -35,7 +35,8 @@ export class GeminiPaymentProofProvider implements PaymentProofVisionProvider {
             image: request.image,
             mimeType: request.mimeType,
             jsonSchema: PAYMENT_PROOF_JSON_SCHEMA as unknown as Record<string, unknown>,
-            schemaName: PAYMENT_PROOF_SCHEMA_NAME
+            schemaName: PAYMENT_PROOF_SCHEMA_NAME,
+            separateSystem: true
           }
         }),
       parseProofModelOutput

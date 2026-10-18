@@ -440,6 +440,12 @@ const envSchema = z
     PAYMENT_PROOF_VISION_PROVIDER: z.enum(['disabled', 'fake', 'gemini', 'openrouter']).default('disabled'),
     PAYMENT_PROOF_VISION_MODEL: z.string().min(1).default('gemini-3.8-flash'),
     PAYMENT_PROOF_VISION_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000),
+    // Vision via OpenRouter : exige en plus une retention nulle (zero data retention) chez le fournisseur
+    // routé. `data_collection: deny` (aucune conservation ni entrainement) est TOUJOURS demande.
+    OPENROUTER_VISION_ZDR: z
+      .enum(['true', 'false', '1', '0'])
+      .default('false')
+      .transform(value => value === 'true' || value === '1'),
 
     // Signature electronique (spec 044, SG-R13). `disabled` par defaut : toute
     // demande est refusee. `log` : rien ne part, seules des metadonnees sont
@@ -812,6 +818,14 @@ const envSchema = z
           message: 'identifiant OpenRouter requis quand STOCK_VISION_PROVIDER=openrouter (ex. google/gemini-3.8-flash)'
         });
       }
+    }
+    // Les cles et les captures transitent par OPENROUTER_BASE_URL : jamais en clair en production.
+    if (value.NODE_ENV === 'production' && !value.OPENROUTER_BASE_URL.startsWith('https://')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['OPENROUTER_BASE_URL'],
+        message: 'en production, OPENROUTER_BASE_URL doit utiliser https'
+      });
     }
     // Spec 047 : lecture IA des captures de paiement. Le faux fournisseur n'existe
     // qu'en developpement et en test ; une cle est exigee pour un vrai fournisseur.
