@@ -26,6 +26,8 @@ export interface LiveMeetingBase {
   videoConferenceUrl: string | null;
   syndicateId: string;
   syndicate: { id: string; name: string; tenantId: string };
+  /** Micro et caméra interdits à tous par le gestionnaire (spec 045, V16) ; absent = non. */
+  mediaLockedAt?: Date | null;
 }
 
 const MEETING_BASE_SELECT = {
@@ -38,6 +40,7 @@ const MEETING_BASE_SELECT = {
   location: true,
   videoConferenceUrl: true,
   syndicateId: true,
+  mediaLockedAt: true,
   syndicate: { select: { id: true, name: true, tenantId: true } }
 } as const;
 

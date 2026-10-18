@@ -20,7 +20,8 @@ import { t } from '../../i18n/t';
  * `listTreasuryAccounts` : ce composant le réutilise sans dupliquer le
  * service réseau.
  */
-export type TreasuryPaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'MOBILE_MONEY' | 'CHECK' | 'CARD' | 'OTHER';
+export type TreasuryPaymentMethod =
+  'CASH' | 'BANK_TRANSFER' | 'MOBILE_MONEY' | 'DIRECT_DEBIT' | 'CHECK' | 'CARD' | 'OTHER';
 
 /**
  * Sens du mouvement. `in` (défaut) : un encaissement, où un chèque ou une carte
@@ -38,6 +39,7 @@ function outflowKindsFor(method: TreasuryPaymentMethod | null | undefined): Trea
     case 'MOBILE_MONEY':
       return ['MOBILE_MONEY'];
     case 'BANK_TRANSFER':
+    case 'DIRECT_DEBIT':
     case 'CHECK':
     case 'CARD':
       return ['BANK'];
@@ -52,6 +54,7 @@ function kindsAcceptedFor(method: TreasuryPaymentMethod | null | undefined): Tre
     case 'CASH':
       return ['CASH'];
     case 'BANK_TRANSFER':
+    case 'DIRECT_DEBIT':
       return ['BANK'];
     case 'MOBILE_MONEY':
       return ['MOBILE_MONEY'];

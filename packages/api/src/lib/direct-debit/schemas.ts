@@ -1,3 +1,4 @@
+import { t } from '../../i18n';
 import { z } from 'zod';
 
 /**
@@ -7,7 +8,19 @@ import { z } from 'zod';
 
 const emptyToNull = (value: unknown) => (typeof value === 'string' && value.trim() === '' ? null : value);
 
-const label = z.string().trim().min(1).max(120);
+/** Caractères de contrôle : retour à la ligne, tabulation, séparateurs de ligne Unicode… */
+// eslint-disable-next-line no-control-regex -- c'est précisément l'objet : refuser les caractères de contrôle
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f\p{Zl}\p{Zp}]/u; // Zl, Zp : séparateurs de ligne et de paragraphe Unicode (U+2028, U+2029)
+const noControlCharacters = (value: string) => !CONTROL_CHARACTERS.test(value);
+
+const label = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .refine(noControlCharacters, () => ({
+    message: t('Ce champ ne doit contenir ni retour à la ligne ni caractère de contrôle.')
+  }));
 const creditorIdentifier = z.preprocess(emptyToNull, z.string().trim().min(1).max(32).nullable());
 const collectionDay = z.number().int().min(1).max(28);
 const prenotificationBusinessDays = z.number().int().min(0).max(30);
@@ -48,7 +61,14 @@ export const createMandateSchema = z.object({
   leaseId: z.string().uuid(),
   debtorClientId: z.string().trim().min(1).max(64),
   iban: z.string().max(80),
-  holderName: z.string().trim().min(1).max(120),
+  holderName: z
+    .string()
+    .trim()
+    .min(1)
+    .max(120)
+    .refine(noControlCharacters, () => ({
+      message: t('Ce champ ne doit contenir ni retour à la ligne ni caractère de contrôle.')
+    })),
   maxAmount: maxAmount.nullable().optional(),
   collectionDay: collectionDay.nullable().optional(),
   notes: notes.optional()

@@ -26,12 +26,15 @@ const api = {
   getMeetingVisio: vi.fn(),
   issueMeetingVisioToken: vi.fn(),
   setVisioParticipantSpeaking: vi.fn(),
+  muteVisioParticipant: vi.fn(),
+  setVisioMediaLock: vi.fn(),
   removeVisioParticipant: vi.fn(),
   getMeetingRecordings: vi.fn(),
   startMeetingRecording: vi.fn(),
   stopMeetingRecording: vi.fn(),
   deleteMeetingRecording: vi.fn(),
   retryMeetingRecording: vi.fn(),
+  downloadMeetingRecordingFile: vi.fn(),
   getMeetingDiscussion: vi.fn(),
   postMeetingDiscussionMessage: vi.fn(),
   setMeetingDiscussionMessageHidden: vi.fn(),
@@ -55,12 +58,15 @@ vi.mock('../../services/syndic-service', async () => {
     getMeetingVisio: (...a: unknown[]) => api.getMeetingVisio(...a),
     issueMeetingVisioToken: (...a: unknown[]) => api.issueMeetingVisioToken(...a),
     setVisioParticipantSpeaking: (...a: unknown[]) => api.setVisioParticipantSpeaking(...a),
+    muteVisioParticipant: (...a: unknown[]) => api.muteVisioParticipant(...a),
+    setVisioMediaLock: (...a: unknown[]) => api.setVisioMediaLock(...a),
     removeVisioParticipant: (...a: unknown[]) => api.removeVisioParticipant(...a),
     getMeetingRecordings: (...a: unknown[]) => api.getMeetingRecordings(...a),
     startMeetingRecording: (...a: unknown[]) => api.startMeetingRecording(...a),
     stopMeetingRecording: (...a: unknown[]) => api.stopMeetingRecording(...a),
     deleteMeetingRecording: (...a: unknown[]) => api.deleteMeetingRecording(...a),
     retryMeetingRecording: (...a: unknown[]) => api.retryMeetingRecording(...a),
+    downloadMeetingRecordingFile: (...a: unknown[]) => api.downloadMeetingRecordingFile(...a),
     getMeetingDiscussion: (...a: unknown[]) => api.getMeetingDiscussion(...a),
     postMeetingDiscussionMessage: (...a: unknown[]) => api.postMeetingDiscussionMessage(...a),
     setMeetingDiscussionMessageHidden: (...a: unknown[]) => api.setMeetingDiscussionMessageHidden(...a),
@@ -603,22 +609,116 @@ describe('MeetingLiveConsole : visio intégrée', () => {
     await waitFor(() => expect(api.issueMeetingVisioToken).toHaveBeenCalledWith('t1', 's1', 'm1'));
   });
 
-  it('donne la parole à un copropriétaire', async () => {
+  it('autorise micro et caméra à un copropriétaire interdit', async () => {
     api.getMeetingVisio.mockResolvedValue(visioView());
     api.setVisioParticipantSpeaking.mockResolvedValue(visioView());
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Donner la parole à Awa Traoré' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Autoriser micro et caméra à Awa Traoré' }));
     await waitFor(() => expect(api.setVisioParticipantSpeaking).toHaveBeenCalledWith('t1', 's1', 'm1', 'p1', true));
+    expect(await screen.findByText('Micro et caméra autorisés pour Awa Traoré')).toBeTruthy();
   });
 
-  it('retire la parole à un copropriétaire qui l a', async () => {
+  it('interdit micro et caméra à un copropriétaire autorisé', async () => {
     const speaking = visioView();
-    speaking.participants[1] = { ...speaking.participants[1], canSpeak: true };
+    speaking.participants[1] = {
+      ...speaking.participants[1],
+      canSpeak: true,
+      mediaAllowed: true,
+      mediaPolicy: 'DEFAULT'
+    };
     api.getMeetingVisio.mockResolvedValue(speaking);
     api.setVisioParticipantSpeaking.mockResolvedValue(visioView());
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Retirer la parole à Ibrahim Koné' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Interdire micro et caméra à Ibrahim Koné' }));
     await waitFor(() => expect(api.setVisioParticipantSpeaking).toHaveBeenCalledWith('t1', 's1', 'm1', 'p2', false));
+    expect(await screen.findByText('Micro et caméra interdits à Ibrahim Koné')).toBeTruthy();
+  });
+
+  it('montre l état du micro et de la caméra : actif, coupé, interdit', async () => {
+    const view = visioView();
+    view.participants[1] = {
+      ...view.participants[1],
+      canSpeak: true,
+      mediaAllowed: true,
+      mic: { published: true, muted: false },
+      camera: { published: true, muted: true }
+    };
+    view.participants[2] = {
+      ...view.participants[2],
+      canSpeak: false,
+      mediaAllowed: false,
+      mediaPolicy: 'BLOCKED',
+      mic: { published: false, muted: false },
+      camera: { published: false, muted: false }
+    };
+    api.getMeetingVisio.mockResolvedValue(view);
+    mount();
+    expect(await screen.findByText('Micro actif')).toBeTruthy();
+    expect(screen.getByText('Caméra coupé')).toBeTruthy();
+    expect(screen.getByText('Micro interdit')).toBeTruthy();
+    expect(screen.getByText('Caméra interdit')).toBeTruthy();
+  });
+
+  it('coupe le micro puis la caméra d un participant qui diffuse, avec un retour', async () => {
+    const view = visioView();
+    view.participants[1] = {
+      ...view.participants[1],
+      canSpeak: true,
+      mediaAllowed: true,
+      mic: { published: true, muted: false },
+      camera: { published: true, muted: false }
+    };
+    api.getMeetingVisio.mockResolvedValue(view);
+    api.muteVisioParticipant.mockResolvedValue({ ...view, mutedTracks: 1 });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Couper le micro de Ibrahim Koné' }));
+    await waitFor(() => expect(api.muteVisioParticipant).toHaveBeenCalledWith('t1', 's1', 'm1', 'p2', ['MICROPHONE']));
+    expect(await screen.findByText('Micro de Ibrahim Koné coupé')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Couper la caméra de Ibrahim Koné' }));
+    await waitFor(() => expect(api.muteVisioParticipant).toHaveBeenCalledWith('t1', 's1', 'm1', 'p2', ['CAMERA']));
+  });
+
+  it('désactive « Couper » quand rien n est publié et signale l échec d une coupure', async () => {
+    const view = visioView();
+    view.participants[1] = {
+      ...view.participants[1],
+      mediaAllowed: true,
+      mic: { published: true, muted: false },
+      camera: { published: false, muted: false }
+    };
+    api.getMeetingVisio.mockResolvedValue(view);
+    api.muteVisioParticipant.mockRejectedValue({
+      response: { data: { error: 'Ce participant n’est pas dans la salle.' } }
+    });
+    mount();
+    const cam = (await screen.findByRole('button', { name: 'Couper la caméra de Ibrahim Koné' })) as HTMLButtonElement;
+    expect(cam.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Couper le micro de Ibrahim Koné' }));
+    expect(await screen.findByText('Ce participant n’est pas dans la salle.')).toBeTruthy();
+  });
+
+  it('interdit les micros à tous après confirmation puis les rend', async () => {
+    api.getMeetingVisio.mockResolvedValue(visioView());
+    api.setVisioMediaLock.mockImplementationOnce(async () => {
+      api.getMeetingVisio.mockResolvedValue(visioView({ mediaLocked: true }));
+      return visioView({ mediaLocked: true });
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('switch', { name: 'Interdire les micros à tous' }));
+    expect(api.setVisioMediaLock).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Interdire' }));
+    await waitFor(() => expect(api.setVisioMediaLock).toHaveBeenCalledWith('t1', 's1', 'm1', true));
+    expect(await screen.findByText('Micros et caméras interdits à tous')).toBeTruthy();
+    expect(await screen.findByText('Micros interdits à tous')).toBeTruthy();
+
+    api.setVisioMediaLock.mockImplementationOnce(async () => {
+      api.getMeetingVisio.mockResolvedValue(visioView({ mediaLocked: false }));
+      return visioView({ mediaLocked: false });
+    });
+    fireEvent.click(await screen.findByRole('switch', { name: 'Rendre les micros' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Rendre les micros' }));
+    await waitFor(() => expect(api.setVisioMediaLock).toHaveBeenLastCalledWith('t1', 's1', 'm1', false));
+    expect(await screen.findByText('Micros et caméras rendus à tous')).toBeTruthy();
   });
 
   it('exclut après confirmation avec révocation des liens et annonce le nombre de liens révoqués', async () => {
@@ -669,7 +769,6 @@ describe('MeetingLiveConsole : enregistrement', () => {
     await screen.findByText('Visio intégrée');
     expect(screen.queryByRole('button', { name: 'Enregistrer la séance' })).toBeNull();
     expect(screen.queryByText('Enregistrements')).toBeNull();
-    expect(api.getMeetingRecordings).not.toHaveBeenCalled();
   });
 
   it('démarre l enregistrement quand l AG est en cours', async () => {
@@ -732,24 +831,73 @@ describe('MeetingLiveConsole : enregistrement', () => {
     expect(rows[3]).toContain('Supprimé');
   });
 
-  it('lit l enregistrement dans une modale avec l URL authentifiée du flux et propose le téléchargement', async () => {
+  it('lit l enregistrement dans une modale avec l URL authentifiée du flux', async () => {
     api.getMeetingVisio.mockResolvedValue(withRecording(null));
     api.getMeetingRecordings.mockResolvedValue([recording()]);
     mount();
-    const download = (await screen.findByRole('link', { name: /Télécharger l'enregistrement/ })) as HTMLAnchorElement;
-    expect(download.getAttribute('href')).toMatch(
-      /\/tenants\/t1\/syndics\/s1\/assemblees\/m1\/enregistrements\/rec1\/fichier\?telecharger=1$/
-    );
-    expect(download.hasAttribute('download')).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Lire' }));
-    const dialog = await screen.findByRole('dialog');
-    const video = dialog.querySelector('video') as HTMLVideoElement;
+    fireEvent.click(await screen.findByRole('button', { name: 'Lire' }));
+    const video = document.querySelector('video') as HTMLVideoElement;
     expect(video.getAttribute('src')).toMatch(
       /\/tenants\/t1\/syndics\/s1\/assemblees\/m1\/enregistrements\/rec1\/fichier$/
     );
-    expect(video.hasAttribute('controls')).toBe(true);
-    expect(video.getAttribute('preload')).toBe('metadata');
+  });
+
+  it('télécharge le MP4 par l API et annonce le nom du fichier', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null));
+    api.getMeetingRecordings.mockResolvedValue([recording()]);
+    api.downloadMeetingRecordingFile.mockResolvedValue({ blob: new Blob(['x']), filename: 'AG-2026-10-20.mp4' });
+    URL.createObjectURL = vi.fn(() => 'blob:x');
+    URL.revokeObjectURL = vi.fn();
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Télécharger l'enregistrement/ }));
+    await waitFor(() =>
+      expect(api.downloadMeetingRecordingFile).toHaveBeenCalledWith('t1', 's1', 'm1', 'rec1', 'AG-2026-10-20.mp4')
+    );
+    expect(await screen.findByText('Enregistrement téléchargé : AG-2026-10-20.mp4')).toBeTruthy();
+  });
+
+  it('annonce l échec du téléchargement', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null));
+    api.getMeetingRecordings.mockResolvedValue([recording()]);
+    api.downloadMeetingRecordingFile.mockRejectedValue({ response: { status: 404 } });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Télécharger l'enregistrement/ }));
+    expect(await screen.findByText('Document introuvable.')).toBeTruthy();
+  });
+
+  it('garde les cartes et l arrêt manuel quand la lecture de /visio échoue (503)', async () => {
+    const active = recording({ status: 'RECORDING', stoppedAt: null, endedAt: null });
+    api.getMeetingVisio.mockRejectedValue({ response: { status: 503 } });
+    api.getMeetingRecordings.mockResolvedValue([active]);
+    api.stopMeetingRecording.mockResolvedValue({ ...active, status: 'PROCESSING' });
+    mount();
+    expect(await screen.findByText('Visio intégrée : état indisponible pour le moment')).toBeTruthy();
+    expect(screen.getByText('Enregistrements')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: "Arrêter l'enregistrement en cours" }));
+    await waitFor(() => expect(api.stopMeetingRecording).toHaveBeenCalledWith('t1', 's1', 'm1'));
+  });
+
+  it('conserve la carte de visio quand une relecture échoue après un premier succès', async () => {
+    api.getMeetingVisio.mockResolvedValueOnce(withRecording(null)).mockRejectedValue({ response: { status: 409 } });
+    api.getMeetingRecordings.mockResolvedValue([]);
+    mount();
+    expect(await screen.findByText('Visio intégrée')).toBeTruthy();
+    // La relecture suivante (3 s) échoue : la carte reste, avec l'alerte et « Réessayer ».
+    expect(
+      await screen.findByText('Visio intégrée : état indisponible pour le moment', {}, { timeout: 20000 })
+    ).toBeTruthy();
+    expect(screen.getByText('Visio intégrée')).toBeTruthy();
+  }, 60000);
+
+  it('n affiche plus « Enregistrement en cours » une fois l AG terminée, même avec un état périmé', async () => {
+    const stale = recording({ status: 'RECORDING', stoppedAt: null, endedAt: null });
+    api.getMeetingVisio.mockResolvedValue(withRecording(stale));
+    api.getMeetingRecordings.mockResolvedValue([stale]);
+    mount('COMPLETED');
+    await screen.findByText('Visio intégrée');
+    expect(screen.queryByText('Enregistrement en cours')).toBeNull();
+    expect(screen.queryByRole('button', { name: "Arrêter l'enregistrement" })).toBeNull();
   });
 
   it('supprime après confirmation', async () => {

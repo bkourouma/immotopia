@@ -208,8 +208,12 @@ jest.mock('../../src/lib/syndics/notifications', () => ({
 }));
 
 import { notifyMeetingConvocation } from '../../src/lib/syndics/notifications';
+import { createMeetingForTenant } from '../../src/lib/syndics/meeting-writes';
+import { meetingCreationIdempotencyStore } from '../../src/utils/idempotency';
 import syndicRoutes from '../../src/routes/syndic-routes';
 import { errorHandler } from '../../src/middleware/error-middleware';
+
+const flushBackground = () => new Promise<void>(resolve => setImmediate(() => setImmediate(resolve)));
 
 describe('Syndics meetings routes', () => {
   const app = express();
@@ -222,6 +226,8 @@ describe('Syndics meetings routes', () => {
 
   beforeEach(() => {
     (notifyMeetingConvocation as jest.Mock).mockClear();
+    (createMeetingForTenant as jest.Mock).mockClear();
+    meetingCreationIdempotencyStore.clear();
     store.meetings.clear();
     store.proxies = [];
     store.meetings.set('other-tenant-meeting', {
@@ -247,13 +253,29 @@ describe('Syndics meetings routes', () => {
     expect(response.status).toBe(201);
     expect(response.body.success).toBe(true);
     expect(response.body.data.status).toBe('PLANNED');
-    // BUG-090 : la reponse porte l'AG creee et la convocation part apres creation.
+    // La reponse porte l'AG creee ; la convocation part APRES la reponse (anomalie 3 : 503 + doublon).
     expect(response.body.data.id).toBe(MEETING_ID);
+    expect(response.body.convocation).toEqual({ status: 'SENDING' });
+    await flushBackground();
     expect(notifyMeetingConvocation).toHaveBeenCalledWith(MEETING_ID);
-    expect(response.body.convocation).toMatchObject({ emailSent: 1 });
   });
 
-  it('keeps the meeting (201) and reports the failure when the convocation fails', async () => {
+  it('answers immediately even when the convocation is slow, and never fails because of it', async () => {
+    let release!: () => void;
+    (notifyMeetingConvocation as jest.Mock).mockImplementationOnce(
+      () => new Promise(resolve => (release = () => resolve({ emailSent: 30 })))
+    );
+    const response = await request(app).post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees`).send({
+      type: 'ORDINARY',
+      scheduledAt: '2026-06-20T09:00:00.000Z'
+    });
+    expect(response.status).toBe(201);
+    await flushBackground();
+    expect(notifyMeetingConvocation).toHaveBeenCalledTimes(1);
+    release();
+  });
+
+  it('keeps the meeting (201) when the convocation fails in background', async () => {
     (notifyMeetingConvocation as jest.Mock).mockRejectedValueOnce(new Error('SMTP down'));
     const response = await request(app).post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees`).send({
       type: 'ORDINARY',
@@ -261,7 +283,43 @@ describe('Syndics meetings routes', () => {
     });
     expect(response.status).toBe(201);
     expect(response.body.data.id).toBe(MEETING_ID);
-    expect(response.body.convocation).toMatchObject({ emailSent: 0, error: 'CONVOCATION_FAILED' });
+    await flushBackground();
+    expect(notifyMeetingConvocation).toHaveBeenCalledTimes(1);
+  });
+
+  it('replays the same meeting for the same Idempotency-Key instead of creating a duplicate', async () => {
+    const url = `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees`;
+    const body = { type: 'ORDINARY', scheduledAt: '2026-06-20T09:00:00.000Z' };
+    const first = await request(app).post(url).set('Idempotency-Key', 'key-1').send(body);
+    const retry = await request(app).post(url).set('Idempotency-Key', 'key-1').send(body);
+    const other = await request(app).post(url).set('Idempotency-Key', 'key-2').send(body);
+    expect(first.status).toBe(201);
+    expect(retry.status).toBe(200);
+    expect(retry.body.replay).toBe(true);
+    expect(retry.body.data.id).toBe(first.body.data.id);
+    expect(other.status).toBe(201);
+    await flushBackground();
+    // une creation par cle distincte, une seule convocation par creation
+    expect(createMeetingForTenant).toHaveBeenCalledTimes(2);
+    expect(notifyMeetingConvocation).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets a retry recreate after a failed creation with the same key', async () => {
+    const url = `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees`;
+    const body = { type: 'ORDINARY', scheduledAt: '2026-06-20T09:00:00.000Z' };
+    (createMeetingForTenant as jest.Mock).mockRejectedValueOnce(new Error('db down'));
+    const failed = await request(app).post(url).set('Idempotency-Key', 'key-fail').send(body);
+    expect(failed.status).toBeGreaterThanOrEqual(400);
+    const retry = await request(app).post(url).set('Idempotency-Key', 'key-fail').send(body);
+    expect(retry.status).toBe(201);
+  });
+
+  it('rejects an Idempotency-Key that is too long', async () => {
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees`)
+      .set('Idempotency-Key', 'x'.repeat(101))
+      .send({ type: 'ORDINARY', scheduledAt: '2026-06-20T09:00:00.000Z' });
+    expect(response.status).toBe(400);
   });
 
   it('resends the convocation of a planned meeting only', async () => {

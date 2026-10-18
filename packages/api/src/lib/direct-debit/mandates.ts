@@ -5,7 +5,7 @@ import { logAuditEvent, recordAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { prisma } from '../../utils/database';
 import { assertBelongsToTenant } from '../../utils/tenant-ownership';
-import { decryptSecret, encryptSecret, isEncryptionAvailable } from '../payment-gateway/crypto';
+import { decryptIban, encryptIban, isIbanEncryptionAvailable } from './iban-crypto';
 import { nextSequenceTx } from '../sales/numbering';
 import {
   loadMandateDto,
@@ -153,8 +153,8 @@ export async function createMandate(
   const parsed = parseIbanInput(input.iban);
   if (!parsed.ok) throw new BadRequestError(parsed.error);
   // Sans clé de chiffrement valide, rien n'est écrit (PB2-R4).
-  if (!isEncryptionAvailable()) throw encryptionUnavailable();
-  const ibanEncrypted = encryptSecret(parsed.iban);
+  if (!isIbanEncryptionAvailable()) throw encryptionUnavailable();
+  const ibanEncrypted = encryptIban(parsed.iban);
   const year = new Date().getFullYear();
 
   let createdId: string | null = null;
@@ -550,10 +550,8 @@ export async function getSignedScanFile(tenantId: string, mandateId: string): Pr
  * PDF d'autorisation ; la valeur ne doit jamais être journalisée ni renvoyée.
  */
 export function decryptMandateIban(ibanEncrypted: string): string {
-  if (!isEncryptionAvailable()) throw encryptionUnavailable();
-  try {
-    return decryptSecret(ibanEncrypted);
-  } catch {
-    throw new BadRequestError(t('Les coordonnées bancaires de ce mandat ne peuvent pas être lues.'));
-  }
+  // Pas besoin de la clé courante : une valeur d'une ancienne clé ou de
+  // l'ancien format pg1 reste lisible. Toute défaillance lève « Les
+  // coordonnées bancaires de ce mandat ne peuvent pas être lues. ».
+  return decryptIban(ibanEncrypted);
 }
