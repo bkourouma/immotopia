@@ -116,6 +116,10 @@ beforeEach(() => {
     { id: SYNDIC, tenantId: TENANT, name: 'Résidence Les Palmiers' },
     { id: OTHER_SYNDIC, tenantId: OTHER_TENANT, name: 'Autre résidence' }
   );
+  // Lots de la copropriété (garde de `listOpenCallsForLot` : lot, copropriété, agence).
+  mockDb.syndicateLot.rows.push(
+    ...[LOT_1, LOT_2, LOT_3].map(id => ({ id, syndicateId: SYNDIC, syndicate: { tenantId: TENANT } }))
+  );
   mockDb.chargeCall.rows.push(
     {
       id: 'call-1',
@@ -542,6 +546,93 @@ describe('getDeclarationDetail', () => {
     );
     const detail = await getDeclarationDetail(TENANT, SYNDIC, 'D2', NOW);
     expect(detail.lines[0].chargeCalls.map(call => call.id)).toEqual(['call-1', 'call-2']);
+  });
+
+  describe('appels ouverts du lot (openCalls)', () => {
+    const call = (id: string, amount: number, due: string, over: Row = {}) => ({
+      id,
+      lotId: 'lot-m3',
+      syndicateId: SYNDIC,
+      period: `P-${id}`,
+      amount,
+      status: 'PENDING',
+      dueDate: new Date(due),
+      createdAt: new Date(due),
+      ...over
+    });
+    function seedFourCalls() {
+      mockDb.syndicateLot.rows.push({ id: 'lot-m3', syndicateId: SYNDIC, syndicate: { tenantId: TENANT } });
+      mockDb.chargeCall.rows.push(
+        call('m1', 10000, '2026-01-31'),
+        call('m2', 1000, '2026-02-28'),
+        call('m3', 40000, '2026-03-31'),
+        call('m4', 5000, '2026-04-30'),
+        call('m-paid', 7000, '2026-05-31')
+      );
+      mockDb.chargePaymentAllocation.rows.push({ chargeCallId: 'm-paid', amount: 7000 });
+    }
+    const m3Line = (over: Row = {}) => lineOf('m3-l', 'lot-m3', { amount: 20000, ...over });
+
+    it('expose les 4 appels ouverts du lot même si le montant n’en couvre que trois ; chargeCalls inchangé', async () => {
+      seedFourCalls();
+      mockDb.syndicPaymentDeclaration.rows.push(declaration('M3', { amount: 20000, lines: [m3Line()] }));
+      const detail = await getDeclarationDetail(TENANT, SYNDIC, 'M3', NOW);
+      expect(detail.lines[0].openCalls).toEqual([
+        { id: 'm1', period: 'P-m1', remainingDue: 10000 },
+        { id: 'm2', period: 'P-m2', remainingDue: 1000 },
+        { id: 'm3', period: 'P-m3', remainingDue: 40000 },
+        { id: 'm4', period: 'P-m4', remainingDue: 5000 }
+      ]);
+      // Présélection par défaut inchangée : de quoi couvrir 20 000 (10 000 + 1 000 + 40 000), pas le dernier appel.
+      expect(ids(detail.lines[0].chargeCalls)).toEqual(['m1', 'm2', 'm3']);
+      const list = await listDeclarations({ tenantId: TENANT, syndicateId: SYNDIC, now: NOW });
+      expect(ids(list.items[0].lines[0].openCalls)).toEqual(['m1', 'm2', 'm3', 'm4']);
+    });
+
+    it('appels nommés : openCalls reste la liste complète du lot', async () => {
+      seedFourCalls();
+      mockDb.syndicPaymentDeclaration.rows.push(
+        declaration('M3n', { amount: 20000, lines: [m3Line({ chargeCallIds: ['m4'] })] })
+      );
+      const detail = await getDeclarationDetail(TENANT, SYNDIC, 'M3n', NOW);
+      expect(ids(detail.lines[0].chargeCalls)).toEqual(['m4']);
+      expect(ids(detail.lines[0].openCalls)).toEqual(['m1', 'm2', 'm3', 'm4']);
+    });
+
+    it('vide hors déclaration en attente', async () => {
+      seedFourCalls();
+      for (const status of ['APPROVED', 'REJECTED', 'CANCELED']) {
+        mockDb.syndicPaymentDeclaration.rows.push(
+          declaration(`done-${status}`, { status, amount: 20000, lines: [m3Line({ chargeCallIds: ['m3'] })] })
+        );
+        const detail = await getDeclarationDetail(TENANT, SYNDIC, `done-${status}`, NOW);
+        expect(detail.lines[0].openCalls).toEqual([]);
+        expect(ids(detail.lines[0].chargeCalls)).toEqual(['m3']);
+      }
+    });
+
+    it('liste : lecture dédupliquée par lot ; un lot sorti de la copropriété n’expose aucun appel', async () => {
+      seedFourCalls();
+      mockDb.syndicPaymentDeclaration.rows.push(
+        declaration('X1', { amount: 20000, lines: [m3Line()] }),
+        declaration('X2', { amount: 20000, lines: [m3Line({ id: 'x2-l' })] }),
+        declaration('X3', { amount: 20000, lines: [lineOf('x3-l', 'lot-gone', { amount: 20000 })] })
+      );
+      const list = await listDeclarations({ tenantId: TENANT, syndicateId: SYNDIC, now: NOW });
+      const byId = new Map(list.items.map(item => [item.id, item]));
+      expect(ids(byId.get('X1')!.lines[0].openCalls)).toEqual(['m1', 'm2', 'm3', 'm4']);
+      expect(ids(byId.get('X2')!.lines[0].openCalls)).toEqual(['m1', 'm2', 'm3', 'm4']);
+      expect(byId.get('X3')!.lines[0].openCalls).toEqual([]);
+      const guardReads = mockDb.syndicateLot.findFirst.mock.calls.filter(([args]: any[]) => args.where.id === 'lot-m3');
+      expect(guardReads).toHaveLength(1);
+    });
+
+    it('le portail copropriétaire n’expose pas openCalls', async () => {
+      seedFourCalls();
+      mockDb.syndicPaymentDeclaration.rows.push(declaration('P1', { amount: 20000 }));
+      const view = await getCoOwnerDeclaration(scope(), 'P1');
+      expect(JSON.stringify(view)).not.toContain('openCalls');
+    });
   });
 
   it('déclaration validée : documents émis, montant retenu, relecteur ; pas d’alerte de décision', async () => {

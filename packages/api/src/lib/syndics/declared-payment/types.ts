@@ -147,6 +147,12 @@ export interface DeclarationLineView {
   amount: number;
   acceptedAmount: number | null;
   chargeCalls: Array<{ id: string; period: string; remainingDue: number }>; // reste dû ACTUEL
+  /**
+   * TOUS les appels ouverts (reste dû > 0) du lot, le plus ancien d'abord (ordre d'affectation), pour que le
+   * gestionnaire affecte le montant à un appel quelconque du lot à la validation. `chargeCalls` reste la
+   * proposition par défaut. Vide hors déclaration en attente.
+   */
+  openCalls: Array<{ id: string; period: string; remainingDue: number }>;
   chargePaymentId: string | null;
   documents: DocumentRef[]; // après validation
 }
