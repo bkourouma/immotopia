@@ -180,6 +180,23 @@ function createSource(config: {
       if (mandate.signatureRequestId === request.id && mandate.signedScanUrl === scanKey) return;
       if (mandate.status !== 'DRAFT' || mandate.signedScanUrl) throw new SourceChangedError();
 
+      // Les données du mandat (IBAN, titulaire, plafond…) n'ont pas bougé depuis l'envoi : empreinte HMAC
+      // recalculée DANS la transaction du scellement (lecture par `tx`), pas sur une lecture antérieure.
+      if (request.sourceDocHash) {
+        let intact = false;
+        try {
+          const current = await loadMandateSignatureData(request.tenantId, mandate.id, tx);
+          intact =
+            Boolean(current) &&
+            current!.scope === scope &&
+            computeMandateSignatureSnapshot(current!.snapshot) === request.sourceDocHash;
+        } catch {
+          // IBAN illisible ou clé absente : le document n'est plus vérifiable, donc plus valable.
+          intact = false;
+        }
+        if (!intact) throw new SourceChangedError();
+      }
+
       // Date de la signature : la dernière de la demande (lue dans la transaction), à défaut `now`.
       const last = await tx.signatureSigner.findFirst({
         where: { requestId: request.id, tenantId: request.tenantId, signedAt: { not: null } },

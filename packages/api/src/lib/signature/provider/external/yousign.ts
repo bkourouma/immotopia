@@ -62,6 +62,17 @@ import { ExternalProviderError } from './types';
 
 export const YOUSIGN_SANDBOX_BASE_URL = 'https://api-sandbox.yousign.app/v3';
 export const YOUSIGN_PRODUCTION_BASE_URL = 'https://api.yousign.app/v3';
+
+/** Le lien de signature rendu par Yousign pointe-t-il bien chez Yousign (hôte de l'API configurée ou *.yousign.app) ? */
+export function isYousignHost(hostname: string, apiBaseUrl: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === 'yousign.app' || host.endsWith('.yousign.app')) return true;
+  try {
+    return host === new URL(apiBaseUrl).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+}
 export const YOUSIGN_SIGNATURE_HEADER = 'x-yousign-signature-256';
 /** Langue arabe non prise en charge par Yousign : les invitations partent en français. */
 export const ARABIC_FALLBACK_LOCALE = 'fr';
@@ -369,6 +380,8 @@ export function createYousignClient(options: YousignClientOptions = {}): Externa
     }
     // Seul un lien https est remis au navigateur du signataire (jamais javascript:, data:, http:).
     if (parsed.protocol !== 'https:') throw new ExternalProviderError('INVALID_RESPONSE');
+    // Et seulement chez Yousign : même domaine que l'API configurée, ou un sous-domaine de yousign.app.
+    if (!isYousignHost(parsed.hostname, baseUrl)) throw new ExternalProviderError('INVALID_RESPONSE');
     return parsed.toString();
   }
 

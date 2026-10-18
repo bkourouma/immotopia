@@ -261,6 +261,32 @@ async function visibleSigners(ctx: Ctx, signers: DefaultSigner[]) {
     .filter(signer => signer.fullName);
 }
 
+/** E-mail masqué pour la trace (« a***@domaine ») : l'adresse complète n'a pas à s'écrire dans l'audit. */
+function maskEmail(email: string): string {
+  const [local = '', domain = ''] = email.split('@');
+  return `${local.slice(0, 1)}***@${domain}`;
+}
+
+/**
+ * Types « code avant consultation » (mandats de prélèvement) : le signataire e-mail proposé par la
+ * source est le débiteur. Un autre destinataire est permis (ne bloque pas) mais est tracé : renvoie
+ * les adresses concernées, masquées.
+ */
+async function findSignerOverrides(
+  source: { codeBeforeView?: boolean; defaultSigners?: (ctx: Ctx, targetId: string) => Promise<DefaultSigner[]> },
+  ctx: Ctx,
+  targetId: string,
+  signers: ReadonlyArray<{ channel: string; contact: string }>
+): Promise<string[]> {
+  if (!source.codeBeforeView || !source.defaultSigners) return [];
+  const defaults = (await source.defaultSigners(ctx, targetId))
+    .map(signer => signer.email?.trim().toLowerCase())
+    .filter((email): email is string => Boolean(email));
+  return signers
+    .filter(signer => signer.channel === 'EMAIL' && !defaults.includes(signer.contact.trim().toLowerCase()))
+    .map(signer => maskEmail(signer.contact.trim()));
+}
+
 async function persistRequest(args: {
   ctx: Ctx;
   requestId: string;
@@ -277,6 +303,8 @@ async function persistRequest(args: {
   providerSignerRefs?: string[];
   /** Passerelle externe : le prestataire n'invite personne, l'invitation part d'ImmoTopia ensuite. */
   gateway?: boolean;
+  /** Destinataires e-mail différents du signataire proposé par la source (masqués), tracés à l'audit. */
+  signerOverrides?: string[];
   now: Date;
 }): Promise<void> {
   const { ctx, requestId } = args;
@@ -355,7 +383,8 @@ async function persistRequest(args: {
           signerCount: args.signers.length,
           channels: args.signers.map(s => s.channel),
           sequential: args.input.sequential ?? false,
-          sourceHash: args.sourceHash
+          sourceHash: args.sourceHash,
+          ...(args.signerOverrides?.length ? { signerOverride: true, overriddenSigners: args.signerOverrides } : {})
         }
       });
     });
@@ -391,6 +420,7 @@ export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInp
   assertChannelsAllowed(source, input.signers);
   const signers = normalizeSigners(input.signers);
   for (const signer of signers) await assertSignerContact(ctx.tenantId, signer);
+  const signerOverrides = await findSignerOverrides(source, ctx, input.targetId, signers);
   // Prestataire externe (S6) : il invite par e-mail ; ni WhatsApp, ni SMS, ni signature sur place.
   if (provider.external && signers.some(signer => signer.channel !== 'EMAIL')) {
     throw new BadRequestError(t('Ce prestataire de signature n’accepte que des signataires joignables par e-mail.'));
@@ -467,6 +497,7 @@ export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInp
       providerRef: created.providerRef,
       providerSignerRefs: created.signerRefs,
       gateway,
+      signerOverrides,
       now
     });
   } catch (error) {

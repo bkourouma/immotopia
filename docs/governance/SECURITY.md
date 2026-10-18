@@ -330,6 +330,25 @@ Six règles (SIG-S1 à SIG-S6, contrat dans
   quand ce fournisseur est configuré. Avec le fournisseur interne, rien ne sort
   d'ImmoTopia.
 
+Complément (audit de la branche) :
+
+- **Rétention.** `source.pdf` (IBAN complet) est supprimé à l'annulation de la
+  demande. `signed.pdf` est **conservé** tant que le mandat existe : il tient lieu
+  de scan signé (preuve de l'autorisation). Il ne se lit que par la route
+  authentifiée du mandat ou de la demande, avec `_MANAGE`, et chaque lecture est
+  auditée avant l'envoi. Le remplacement par un scan papier remet le lien du
+  mandat à zéro mais ne supprime pas ce fichier.
+- **Jeton de consultation.** Invalidé à la signature, au refus et à l'annulation ;
+  exigé aussi pour refuser. Le lien de signature Yousign n'est accepté que si son
+  hôte est celui de l'API configurée ou un sous-domaine de `yousign.app`.
+- **Rotation de `DIRECT_DEBIT_IBAN_KEY`.** L'empreinte du document (SIG-S4) est
+  recalculée avec la clé courante : une rotation rend les demandes de signature
+  ouvertes non valides (annulées au scellement ou à la lecture). Les renvoyer après
+  une rotation (voir DEPLOIEMENT.md).
+- **Destinataire différent.** Si l'agence envoie l'invitation à une adresse autre
+  que celle du débiteur, l'envoi n'est pas bloqué mais l'audit
+  (`SIGNATURE_REQUEST_SENT`) porte `signerOverride` et l'adresse masquée.
+
 **Déployer la production.** `deploy.sh prod` prouve l'état git au lieu de le
 supposer : git utilisable, version identifiable, arbre propre, `origin/main`
 présent et `HEAD` dedans, sinon échec ; `HEAD` et l'arbre sont revérifiés juste

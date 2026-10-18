@@ -576,7 +576,13 @@ export async function uploadSignedScan(
           status: current.status,
           signedScanUrl: current.signedScanUrl
         },
-        data: { signedScanUrl: storedPath, signedScanUploadedAt: new Date() }
+        data: {
+          signedScanUrl: storedPath,
+          signedScanUploadedAt: new Date(),
+          // Un scan papier remplace un scan électronique : le lien vers la demande de signature et la date
+          // reprise de celle-ci ne valent plus (l'agence date alors l'activation elle-même).
+          ...(current.signedScanUrl?.startsWith('signature:') ? { signatureRequestId: null, signedAt: null } : {})
+        }
       });
       if (result.count === 0) {
         throw new ConflictError(t("Le mandat vient d'être modifié : rechargez la page."));
@@ -612,7 +618,8 @@ export async function uploadSignedScan(
 export async function getSignedScanFile(
   tenantId: string,
   mandateId: string,
-  ctx: DirectDebitScopeCtx = RENTAL_CTX
+  ctx: DirectDebitScopeCtx = RENTAL_CTX,
+  actorUserId?: string | null
 ): Promise<PrivateFile> {
   const row = await prisma.directDebitMandate.findFirst({
     where: { id: mandateId, tenantId, ...scopeWhere(ctx) },
@@ -623,7 +630,8 @@ export async function getSignedScanFile(
     tenantId: row.tenantId,
     id: row.id,
     signedScanUrl: row.signedScanUrl,
-    reference: referenceOf(row.year, row.sequence)
+    reference: referenceOf(row.year, row.sequence),
+    actorUserId
   });
 }
 

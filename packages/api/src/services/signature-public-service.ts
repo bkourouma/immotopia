@@ -578,6 +578,9 @@ async function recordSignature(args: {
           signedAt: now,
           otpHash: null,
           otpExpiresAt: null,
+          // Le jeton de consultation est à usage de cette signature : il ne survit pas à l'acte.
+          viewGrantHash: null,
+          viewGrantExpiresAt: null,
           signatureMode: args.parsed.mode,
           signatureTyped: args.parsed.mode === 'TYPED' ? args.parsed.typed : null,
           signatureImageKey: drawn ? signatureFileKey(signer.tenantId, signer.requestId, imageName) : null,
@@ -739,8 +742,12 @@ function sanitizeReason(reason: string | undefined): string | null {
   return text.trim().slice(0, 500) || null;
 }
 
-export async function declinePublic(token: string, reason: string | undefined) {
+export async function declinePublic(token: string, reason: string | undefined, viewToken?: string) {
   const signer = await resolveToken(token);
+  // Type « code avant consultation » : le refus exige, comme la signature, le jeton de consultation.
+  if (sourceGateOf(signer.request.kind).codeBeforeView && !viewGrantIsValid(signer, viewToken)) {
+    throw invalidSecureLinkError();
+  }
   return inTenant(signer, async () => {
     await assertCanAct(signer);
     const cleaned = sanitizeReason(reason);
@@ -748,7 +755,14 @@ export async function declinePublic(token: string, reason: string | undefined) {
     const declined = await prisma.$transaction(async tx => {
       const updated = await tx.signatureSigner.updateMany({
         where: { id: signer.id, tenantId: signer.tenantId, status: { in: [...ACTIONABLE_SIGNER_STATUSES] } },
-        data: { status: 'DECLINED', declineReason: cleaned, otpHash: null, otpExpiresAt: null }
+        data: {
+          status: 'DECLINED',
+          declineReason: cleaned,
+          otpHash: null,
+          otpExpiresAt: null,
+          viewGrantHash: null,
+          viewGrantExpiresAt: null
+        }
       });
       if (updated.count !== 1) return false;
       await tx.signatureRequest.updateMany({

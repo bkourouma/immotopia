@@ -130,6 +130,27 @@ describe('PublicSigningFlow, code avant consultation (prélèvement)', () => {
     expect(await screen.findByText('Merci, votre signature est enregistrée')).toBeInTheDocument();
   });
 
+  it('le refus n’est pas proposé avant le code, puis il envoie le jeton de consultation', async () => {
+    fetchPublicSignature.mockResolvedValue({ status: 'ok', data: dto() });
+    verifyPublicOtp.mockResolvedValue({
+      status: 'ok',
+      data: { viewToken: 'vue-secrete', expiresAt: '2026-10-17T12:15:00Z' }
+    });
+    fetchPublicSignatureBlob.mockResolvedValue({ status: 'ok', data: new Blob(['%PDF'], { type: 'application/pdf' }) });
+    declinePublicSignature.mockResolvedValue({ status: 'ok', data: {} });
+    const user = userEvent.setup();
+    renderFlow();
+
+    await screen.findByText('Autorisation de prélèvement MDT-2026-0001');
+    expect(screen.queryByRole('button', { name: 'Refuser de signer' })).not.toBeInTheDocument();
+
+    await verifyCode(user);
+    await user.click(await screen.findByRole('button', { name: 'Refuser de signer' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirmer le refus' }));
+
+    await waitFor(() => expect(declinePublicSignature).toHaveBeenCalledWith('jeton-1', undefined, 'vue-secrete'));
+  });
+
   it("révoque l'URL d'objet du PDF au démontage", async () => {
     fetchPublicSignature.mockResolvedValue({ status: 'ok', data: dto() });
     verifyPublicOtp.mockResolvedValue({ status: 'ok', data: { viewToken: 'vue' } });

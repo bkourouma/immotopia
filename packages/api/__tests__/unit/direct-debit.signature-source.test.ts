@@ -57,7 +57,11 @@ const mockEnv: Record<string, string | undefined> = {
 jest.mock('../../src/config/env', () => ({ env: mockEnv, parseKeyList: () => [] }));
 
 const recordAuditEvent = jest.fn(async (_tx: unknown, _entry: Row) => undefined);
-jest.mock('../../src/services/audit-service', () => ({ recordAuditEvent, logAuditEvent: jest.fn() }));
+jest.mock('../../src/services/audit-service', () => ({
+  AuditActionKey: jest.requireActual('../../src/types/audit-types').AuditActionKey,
+  recordAuditEvent,
+  logAuditEvent: jest.fn()
+}));
 
 // Garde d'appartenance : refuse toute cible d'une autre agence (NotFoundError, comme l'originale).
 jest.mock('../../src/utils/tenant-ownership', () => ({
@@ -376,6 +380,47 @@ describe('direct-debit / sources de signature du mandat', () => {
       }
     });
 
+    it("l'empreinte d'un mandat locatif garde sa forme initiale ; syndicat et lot s'ajoutent en fin, seulement en copropriété", async () => {
+      const { createHmac, hkdfSync } = await import('crypto');
+      const snapshot = (await loadMandateSignatureData(TENANT, RENTAL_ID))!.snapshot;
+      const key = Buffer.from(
+        hkdfSync(
+          'sha256',
+          Buffer.alloc(32, 7),
+          Buffer.alloc(0),
+          Buffer.from('immotopia:direct-debit:signature-snapshot', 'utf8'),
+          32
+        )
+      );
+      const initial = JSON.stringify([
+        snapshot.scope,
+        snapshot.reference,
+        snapshot.creditorId,
+        snapshot.creditorLabel,
+        snapshot.creditorIdentifier,
+        snapshot.creditorBankName,
+        snapshot.debtorName,
+        snapshot.holderName,
+        snapshot.iban.replace(/\s+/g, '').toUpperCase(),
+        snapshot.bankCode,
+        snapshot.leaseId,
+        snapshot.lotId,
+        snapshot.syndicateId,
+        snapshot.leaseNumber,
+        snapshot.propertyLabel,
+        snapshot.maxAmount,
+        snapshot.collectionDay,
+        snapshot.currency
+      ]);
+      expect(computeMandateSignatureSnapshot(snapshot)).toBe(
+        createHmac('sha256', key).update(initial, 'utf8').digest('hex')
+      );
+      const copro = (await loadMandateSignatureData(TENANT, SYNDIC_ID))!.snapshot;
+      expect(copro).toMatchObject({ syndicateName: 'Résidence Palmiers', lotNumber: 'A12' });
+      const withoutLot = { ...copro, syndicateName: null, lotNumber: null };
+      expect(computeMandateSignatureSnapshot(copro)).not.toBe(computeMandateSignatureSnapshot(withoutLot));
+    });
+
     it('dépend de la clé : sans clé courante, refuse', async () => {
       const snapshot = (await loadMandateSignatureData(TENANT, RENTAL_ID))!.snapshot;
       const other = Buffer.alloc(32, 9).toString('base64');
@@ -482,6 +527,37 @@ describe('direct-debit / sources de signature du mandat', () => {
       expect(db.mandates[1].signedAt).toEqual(now);
     });
 
+    it("recalcule l'empreinte DANS la transaction (lecture par tx) et scelle si elle correspond", async () => {
+      db.signers = [{ requestId: REQUEST_ID, tenantId: TENANT, signedAt: new Date('2026-10-17T09:30:00Z') }];
+      const hash = computeMandateSignatureSnapshot((await loadMandateSignatureData(TENANT, RENTAL_ID))!.snapshot);
+      const txFindFirst = jest.fn(async ({ where }: Row) => db.mandates.find(row => matchesWhere(row, where)) ?? null);
+      const tx = { ...prismaMock, directDebitMandate: { ...prismaMock.directDebitMandate, findFirst: txFindFirst } };
+      mandateFindFirst.mockClear();
+      await directDebitMandateSource.onSealed(tx as never, view('DIRECT_DEBIT_MANDATE', RENTAL_ID, hash), now);
+      expect(db.mandates[0].signedScanUrl).toBe(`signature:${REQUEST_ID}`);
+      // Toutes les lectures du scellement passent par `tx`, aucune par le client global.
+      expect(txFindFirst).toHaveBeenCalledTimes(2);
+      expect(mandateFindFirst).not.toHaveBeenCalled();
+    });
+
+    it("données du mandat changées depuis l'envoi (IBAN, titulaire, plafond) : SourceChangedError, rien n'est posé", async () => {
+      const hash = computeMandateSignatureSnapshot((await loadMandateSignatureData(TENANT, RENTAL_ID))!.snapshot);
+      db.mandates[0].holderName = 'Autre Titulaire';
+      await expect(
+        directDebitMandateSource.onSealed(prismaMock as never, view('DIRECT_DEBIT_MANDATE', RENTAL_ID, hash), now)
+      ).rejects.toBeInstanceOf(SourceChangedError);
+      expect(db.mandates[0]).toMatchObject({ signedScanUrl: null, signatureRequestId: null });
+      expect(recordAuditEvent).not.toHaveBeenCalled();
+    });
+
+    it('clé de chiffrement absente au scellement : le document n’est plus vérifiable, SourceChangedError', async () => {
+      const hash = computeMandateSignatureSnapshot((await loadMandateSignatureData(TENANT, RENTAL_ID))!.snapshot);
+      mockEnv.DIRECT_DEBIT_IBAN_KEY = undefined;
+      await expect(
+        directDebitMandateSource.onSealed(prismaMock as never, view('DIRECT_DEBIT_MANDATE', RENTAL_ID, hash), now)
+      ).rejects.toBeInstanceOf(SourceChangedError);
+    });
+
     it("refuse un mandat qui n'est plus brouillon ou porte déjà un scan", async () => {
       db.mandates[0].status = 'ACTIVE';
       await expect(
@@ -526,6 +602,7 @@ describe('direct-debit / sources de signature du mandat', () => {
     const signedRequest = {
       id: REQUEST_ID,
       tenantId: TENANT,
+      kind: 'DIRECT_DEBIT_MANDATE',
       targetType: 'DIRECT_DEBIT_MANDATE',
       targetId: RENTAL_ID,
       status: 'COMPLETED',
@@ -538,6 +615,37 @@ describe('direct-debit / sources de signature du mandat', () => {
       expect(readSignatureFile).toHaveBeenCalledWith(TENANT, REQUEST_ID, signedRequest.signedFileKey);
       expect(file.fileName).toBe('MDT-2026-0012-autorisation-signee.pdf');
       expect(file.mimeType).toBe('application/pdf');
+    });
+
+    it('trace la lecture côté agence AVANT de rendre le fichier, sans IBAN (SIG-S5)', async () => {
+      db.requests = [signedRequest];
+      recordAuditEvent.mockImplementationOnce(async () => {
+        expect(readSignatureFile).toHaveBeenCalled();
+      });
+      await readMandateScan({ ...mandate, actorUserId: 'user-9' });
+      expect(recordAuditEvent).toHaveBeenCalledTimes(1);
+      const entry = recordAuditEvent.mock.calls[0][1];
+      expect(entry).toMatchObject({
+        tenantId: TENANT,
+        actorUserId: 'user-9',
+        actionKey: 'DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED',
+        entityType: 'DirectDebitMandate',
+        entityId: RENTAL_ID,
+        payload: { channel: 'AGENCY', variant: 'signed', requestId: REQUEST_ID }
+      });
+      expect(JSON.stringify(entry)).not.toContain(IBAN);
+    });
+
+    it('trace aussi un mandat de copropriété', async () => {
+      db.requests = [{ ...signedRequest, kind: 'SYNDIC_DIRECT_DEBIT_MANDATE', targetId: SYNDIC_ID }];
+      await readMandateScan({ ...mandate, id: SYNDIC_ID, actorUserId: 'user-9' });
+      expect(recordAuditEvent.mock.calls[0][1]).toMatchObject({ entityId: SYNDIC_ID, actorUserId: 'user-9' });
+    });
+
+    it("un échec d'écriture de l'audit bloque la lecture du fichier", async () => {
+      db.requests = [signedRequest];
+      recordAuditEvent.mockRejectedValueOnce(new Error('audit indisponible'));
+      await expect(readMandateScan({ ...mandate, actorUserId: 'user-9' })).rejects.toThrow('audit indisponible');
     });
 
     it("répond 404 pour une demande d'une autre agence", async () => {

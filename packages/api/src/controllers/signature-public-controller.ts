@@ -105,6 +105,6 @@ export const getPublicExternalLinkHandler = asyncHandler(async (req: Request, re
 
 export const declinePublicHandler = asyncHandler(async (req: Request, res: Response) => {
   const body = declineBodySchema.parse(req.body ?? {});
-  const data = await declinePublic(tokenOf(req), body.reason);
+  const data = await declinePublic(tokenOf(req), body.reason, viewTokenOf(req));
   res.json({ success: true, data });
 });

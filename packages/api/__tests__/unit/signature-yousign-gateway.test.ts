@@ -6,6 +6,7 @@
 import {
   createYousignClient,
   YOUSIGN_SANDBOX_BASE_URL,
+  isYousignHost,
   type YousignHttp,
   type YousignHttpRequest
 } from '../../src/lib/signature/provider/external/yousign';
@@ -13,7 +14,7 @@ import { createExternalProvider } from '../../src/lib/signature/provider/externa
 import { ExternalProviderError } from '../../src/lib/signature/provider/external/types';
 
 const API_KEY = 'sk_test_SUPERSECRETKEY123';
-const LINK = 'https://sign.exemple-prestataire.test/s/ABC123-secret';
+const LINK = 'https://sign.yousign.app/s/ABC123-secret';
 
 type Reply = { status: number; json?: unknown } | Error;
 
@@ -90,7 +91,10 @@ describe('getSignerLink', () => {
     ['lien non texte', { id: 'sg-a', signature_link: 42 }],
     ['lien http', { id: 'sg-a', signature_link: 'http://sign.exemple.test/x' }],
     ['lien javascript', { id: 'sg-a', signature_link: 'javascript:alert(1)' }],
-    ['lien illisible', { id: 'sg-a', signature_link: 'pas une url' }]
+    ['lien illisible', { id: 'sg-a', signature_link: 'pas une url' }],
+    ['hôte étranger', { id: 'sg-a', signature_link: 'https://sign.exemple-prestataire.test/s/ABC' }],
+    ['hôte piégé (suffixe)', { id: 'sg-a', signature_link: 'https://yousign.app.evil.test/s/ABC' }],
+    ['hôte piégé (préfixe)', { id: 'sg-a', signature_link: 'https://evilyousign.app/s/ABC' }]
   ])('refuse une réponse invalide (%s) sans citer la réponse', async (_label, json) => {
     const { http } = mockHttp([{ status: 200, json }]);
     const error = await client(http)
@@ -99,6 +103,16 @@ describe('getSignerLink', () => {
     expect(error).toBeInstanceOf(ExternalProviderError);
     expect(error).toMatchObject({ code: 'INVALID_RESPONSE' });
     expect(String((error as Error).message)).not.toContain('javascript');
+  });
+
+  it("accepte l'hôte de l'API configurée, et seulement lui ou *.yousign.app", () => {
+    expect(isYousignHost('api-sandbox.yousign.app', YOUSIGN_SANDBOX_BASE_URL)).toBe(true);
+    expect(isYousignHost('YOUSIGN.app', YOUSIGN_SANDBOX_BASE_URL)).toBe(true);
+    expect(isYousignHost('proxy.exemple.test', 'https://proxy.exemple.test/v3')).toBe(true);
+    expect(isYousignHost('proxy.exemple.test', YOUSIGN_SANDBOX_BASE_URL)).toBe(false);
+    expect(isYousignHost('yousign.app.evil.test', YOUSIGN_SANDBOX_BASE_URL)).toBe(false);
+    expect(isYousignHost('sign.yousign.app', 'pas une url')).toBe(true);
+    expect(isYousignHost('evil.test', 'pas une url')).toBe(false);
   });
 
   it('erreur HTTP : erreur typée, ni clé API ni lien dans le message', async () => {

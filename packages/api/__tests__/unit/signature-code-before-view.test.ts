@@ -442,6 +442,33 @@ describe('POST /:token/sign', () => {
   });
 });
 
+describe('jeton de consultation : invalidé à l’acte, exigé pour refuser', () => {
+  it('la signature efface l’empreinte et l’échéance du jeton de consultation', async () => {
+    grantView();
+    await signPublic(token, { consent: true, signature: typed }, {}, viewToken);
+    expect(state.signer).toMatchObject({ status: 'SIGNED', viewGrantHash: null, viewGrantExpiresAt: null });
+    // Le jeton ne rouvre plus rien après l'acte.
+    await expectInvalidLink(() => getPublicSourceFile(token, viewToken));
+  });
+
+  it('refuser exige le jeton de consultation, comme signer : sans lui ou périmé, le même 404 et rien ne change', async () => {
+    await expectInvalidLink(() => declinePublic(token, 'non'));
+    await expectInvalidLink(() => declinePublic(token, 'non', generateToken()));
+    grantView(new Date(Date.now() - 1000));
+    await expectInvalidLink(() => declinePublic(token, 'non', viewToken));
+    expect(state.signer.status).toBe('PENDING');
+    expect(state.request.status).toBe('SENT');
+  });
+
+  it('avec le jeton valide : le refus passe et efface l’empreinte du jeton', async () => {
+    grantView();
+    await expect(declinePublic(token, 'Montant erroné', viewToken)).resolves.toEqual({ status: 'DECLINED' });
+    expect(state.signer).toMatchObject({ status: 'DECLINED', viewGrantHash: null, viewGrantExpiresAt: null });
+    expect(state.request.status).toBe('DECLINED');
+    await expectInvalidLink(() => getPublicSourceFile(token, viewToken));
+  });
+});
+
 describe('demande confiée à un prestataire (passerelle externe)', () => {
   beforeEach(() => reset({ request: { providerId: 'yousign', providerRef: 'yp-1' } }));
 

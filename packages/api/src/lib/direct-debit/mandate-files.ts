@@ -7,6 +7,7 @@ import { BadRequestError, NotFoundError } from '../../middleware/error-middlewar
 import { t } from '../../i18n';
 import { prisma } from '../../utils/database';
 import { privateUploadPath, readPrivateUpload, type PrivateFile } from '../files/private-files';
+import { auditSignatureFileServed } from '../signature/file-audit';
 import { readSignatureFile } from '../signature/files';
 import { isUuid } from '../signature/sources/guards';
 
@@ -98,7 +99,8 @@ export function signatureRequestIdOfScan(signedScanUrl: string | null | undefine
  */
 async function readSignedAuthorization(
   mandate: { tenantId: string; id: string; reference: string },
-  requestId: string
+  requestId: string,
+  actorUserId?: string | null
 ): Promise<PrivateFile> {
   const request = await prisma.signatureRequest.findFirst({
     where: {
@@ -108,10 +110,20 @@ async function readSignedAuthorization(
       targetId: mandate.id,
       status: 'COMPLETED'
     },
-    select: { signedFileKey: true }
+    select: { kind: true, signedFileKey: true }
   });
   if (!request?.signedFileKey) throw new NotFoundError(t('Scan signé introuvable.'));
   const file = await readSignatureFile(mandate.tenantId, requestId, request.signedFileKey);
+  // SIG-S5 : le PDF signé porte l'IBAN complet ; la lecture est tracée AVANT l'envoi (un échec d'audit bloque l'envoi).
+  await auditSignatureFileServed({
+    tenantId: mandate.tenantId,
+    requestId,
+    kind: request.kind,
+    targetId: mandate.id,
+    channel: 'AGENCY',
+    variant: 'signed',
+    actorUserId: actorUserId ?? null
+  });
   return { ...file, fileName: `${mandate.reference}-autorisation-signee.pdf`, mimeType: 'application/pdf' };
 }
 
@@ -121,11 +133,13 @@ export async function readMandateScan(mandate: {
   id: string;
   signedScanUrl: string | null;
   reference: string;
+  /** Lecteur côté agence, pour l'audit de lecture du PDF signé électroniquement. */
+  actorUserId?: string | null;
 }): Promise<PrivateFile> {
   if (mandate.signedScanUrl?.startsWith(SIGNATURE_SCAN_PREFIX)) {
     const requestId = signatureRequestIdOfScan(mandate.signedScanUrl);
     if (!requestId) throw new NotFoundError(t('Scan signé introuvable.'));
-    return readSignedAuthorization(mandate, requestId);
+    return readSignedAuthorization(mandate, requestId, mandate.actorUserId);
   }
   return readPrivateUpload(
     privateUploadPath(mandate.signedScanUrl, folderSegments(mandate.tenantId, mandate.id)),

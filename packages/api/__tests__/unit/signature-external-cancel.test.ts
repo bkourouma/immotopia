@@ -18,6 +18,7 @@ const prismaMock: Row = {
     })),
     updateMany: jest.fn(async (..._args: unknown[]) => ({ count: 1 }))
   },
+  signatureSigner: { updateMany: jest.fn(async (..._args: unknown[]) => ({ count: 1 })) },
   $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn(prismaMock))
 };
 jest.mock('../../src/utils/database', () => ({ prisma: prismaMock }));

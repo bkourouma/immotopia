@@ -333,7 +333,11 @@ export const PublicSigningFlow: React.FC<PublicSigningFlowProps> = ({ token, onD
   const decline = async () => {
     setBusy(true);
     setError(null);
-    const result = await declinePublicSignature(token, reason.trim() || undefined);
+    const cleaned = reason.trim() || undefined;
+    const result =
+      codeBeforeView && viewToken
+        ? await declinePublicSignature(token, cleaned, viewToken)
+        : await declinePublicSignature(token, cleaned);
     setBusy(false);
     if (result.status === 'ok') {
       finish({ kind: 'declined' });
@@ -520,7 +524,7 @@ export const PublicSigningFlow: React.FC<PublicSigningFlowProps> = ({ token, onD
         </Button>
       )}
 
-      {declining ? (
+      {codeBeforeView && !viewToken ? null : declining ? (
         <Space direction="vertical" style={{ width: '100%' }}>
           <Input.TextArea
             value={reason}

@@ -68,11 +68,12 @@ export function computeMandateSignatureSnapshot(input: MandateSnapshotInput): st
     input.syndicateId,
     input.leaseNumber,
     input.propertyLabel,
-    input.syndicateName ?? null,
-    input.lotNumber ?? null,
     input.maxAmount,
     input.collectionDay,
-    input.currency
+    input.currency,
+    // Copropriété : syndicat et lot, EN FIN de tableau et seulement s'ils existent. L'empreinte d'un mandat
+    // locatif garde ainsi exactement sa forme initiale (demandes déjà envoyées toujours valides).
+    ...(input.syndicateName || input.lotNumber ? [input.syndicateName ?? null, input.lotNumber ?? null] : [])
   ]);
   return createHmac('sha256', snapshotKey()).update(canonical, 'utf8').digest('hex');
 }

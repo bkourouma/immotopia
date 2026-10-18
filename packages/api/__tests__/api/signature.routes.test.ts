@@ -344,8 +344,18 @@ describe('public : /api/public/signatures/:token', () => {
     expect(
       (await request(app).post(`/api/public/signatures/${token}/decline`).send({ reason: 'Clause 4' })).status
     ).toBe(200);
-    expect(declinePublic).toHaveBeenCalledWith(token, 'Clause 4');
+    expect(declinePublic).toHaveBeenCalledWith(token, 'Clause 4', undefined);
     expect((await request(app).post(`/api/public/signatures/${token}/decline`).send({})).status).toBe(200);
+  });
+
+  it('POST /decline transmet le jeton de consultation de l’en-tête (types « code avant consultation »)', async () => {
+    declinePublic.mockResolvedValue({ status: 'DECLINED' });
+    const viewToken = 'v'.repeat(43);
+    await request(app)
+      .post(`/api/public/signatures/${token}/decline`)
+      .set('X-Signature-View-Token', viewToken)
+      .send({});
+    expect(declinePublic).toHaveBeenLastCalledWith(token, undefined, viewToken);
   });
 
   it('les erreurs publiques portent code et details (essais restants, délai de renvoi)', async () => {

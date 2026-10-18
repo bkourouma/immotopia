@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
+import { env } from '../config/env';
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
-const ALLOWED_ORIGINS = [FRONTEND_URL];
+const ALLOWED_ORIGINS = [env.FRONTEND_URL];
 
 /**
  * CORS middleware

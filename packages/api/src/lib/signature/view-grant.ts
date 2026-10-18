@@ -18,9 +18,18 @@ export type SourceGate = {
   allowedChannels: readonly string[] | undefined;
 };
 
-/** Options déclarées par la source d'un type ; tout faux / absent pour un type ordinaire. */
+/** Types dont le PDF porte l'IBAN complet : le code reste exigé même si leur source est introuvable. */
+const FAIL_CLOSED_KINDS: ReadonlySet<string> = new Set(['DIRECT_DEBIT_MANDATE', 'SYNDIC_DIRECT_DEBIT_MANDATE']);
+
+/**
+ * Options déclarées par la source d'un type ; tout faux / absent pour un type ordinaire.
+ * Fermé par défaut pour les mandats de prélèvement : source non enregistrée => code exigé avant consultation.
+ */
 export function sourceGateOf(kind: string): SourceGate {
   const source = findSignatureSource(kind);
+  if (!source && FAIL_CLOSED_KINDS.has(kind)) {
+    return { codeBeforeView: true, externalGateway: false, allowedChannels: ['EMAIL', 'SMS', 'WHATSAPP'] };
+  }
   return {
     codeBeforeView: Boolean(source?.codeBeforeView),
     externalGateway: Boolean(source?.externalGateway),

@@ -13,16 +13,14 @@ import { findSignatureSource } from './sources';
  * dans les contrôleurs. Un type sans entrée, ou dont la source n'active pas `codeBeforeView`,
  * n'écrit rien. Le payload ne porte jamais d'IBAN ni de contenu du PDF.
  */
-const FILE_READ_AUDIT: Record<string, { actionKey: AuditActionKey; entityType: string }> = {
-  DIRECT_DEBIT_MANDATE: {
-    actionKey: AuditActionKey.DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED,
-    entityType: 'DirectDebitMandate'
-  },
-  SYNDIC_DIRECT_DEBIT_MANDATE: {
-    actionKey: AuditActionKey.DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED,
-    entityType: 'DirectDebitMandate'
-  }
-};
+const FILE_READ_KINDS: ReadonlySet<string> = new Set(['DIRECT_DEBIT_MANDATE', 'SYNDIC_DIRECT_DEBIT_MANDATE']);
+
+/** Résolu à l'appel (pas au chargement du module) : ce module est importé par des fichiers au cycle d'imports serré. */
+function mappingOf(kind: string): { actionKey: AuditActionKey; entityType: string } | null {
+  return FILE_READ_KINDS.has(kind)
+    ? { actionKey: AuditActionKey.DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED, entityType: 'DirectDebitMandate' }
+    : null;
+}
 
 export type ServedFile = {
   tenantId: string;
@@ -38,7 +36,7 @@ export type ServedFile = {
 
 /** À appeler AVANT d'envoyer le PDF. Ne fait rien pour un type ordinaire. */
 export async function auditSignatureFileServed(file: ServedFile): Promise<void> {
-  const mapping = FILE_READ_AUDIT[file.kind];
+  const mapping = mappingOf(file.kind);
   if (!mapping || !findSignatureSource(file.kind)?.codeBeforeView) return;
   await recordAuditEvent(prisma, {
     tenantId: file.tenantId,

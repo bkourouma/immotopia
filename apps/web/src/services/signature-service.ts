@@ -187,6 +187,13 @@ export function fetchPublicExternalLink(token: string, viewToken: string): Promi
   return publicCall(() => apiClient.get(`${publicBase(token)}/external-link`, viewTokenConfig(viewToken)));
 }
 
-export function declinePublicSignature(token: string, reason?: string): Promise<PublicResult<{ status?: string }>> {
-  return publicCall(() => apiClient.post(`${publicBase(token)}/decline`, reason ? { reason } : {}, PUBLIC_CONFIG));
+/** Refus : les types « code avant consultation » exigent le jeton de consultation (en-tête), comme la signature. */
+export function declinePublicSignature(
+  token: string,
+  reason?: string,
+  viewToken?: string
+): Promise<PublicResult<{ status?: string }>> {
+  return publicCall(() =>
+    apiClient.post(`${publicBase(token)}/decline`, reason ? { reason } : {}, viewTokenConfig(viewToken))
+  );
 }

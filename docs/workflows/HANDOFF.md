@@ -31,6 +31,15 @@ Fait :
 - Tests : jest `direct-debit.signature-source` (rendu du PDF de copropriété et du PDF locatif, empreinte sensible au lot et au syndicat), `direct-debit.syndic-mandates` (parcours signé puis activé avec date préremplie) ; vitest `syndics/syndic-direct-debit-signature` (5 tests).
 - Traductions en/ar de « Signature électronique » dans `syndic.json` ; classeur : 5 lignes ajoutées + 1 ligne locative modifiée (1086 lignes, `A1:O1087`).
 
+Correctifs de l'audit de sécurité (commit b1571a3f) :
+
+- SIG-S5 : la lecture du `signed.pdf` par la route du scan signé (locatif et copropriété) est auditée avant l'envoi (`auditSignatureFileServed`, lecteur transmis par les contrôleurs).
+- Jeton de consultation : effacé à la signature, au refus et à l'annulation ; exigé aussi pour refuser (le web l'envoie, le lien « Refuser de signer » n'apparaît qu'après le code) ; `sourceGateOf` fermé par défaut pour les deux types de mandat.
+- Yousign : l'hôte du lien de signature doit être celui de l'API configurée ou `*.yousign.app` (`isYousignHost`).
+- Un scan papier qui remplace un scan électronique remet `signatureRequestId` et `signedAt` à zéro ; l'annulation supprime `source.pdf` des deux types ; `onSealed` recalcule l'empreinte dans la transaction (`tx`).
+- Empreinte : syndicat et lot en fin de tableau canonique, seulement en copropriété (l'empreinte locative garde sa forme initiale). Rotation de `DIRECT_DEBIT_IBAN_KEY` : voir SECURITY.md et DEPLOIEMENT.md.
+- Destinataire e-mail différent du débiteur : permis, tracé dans l'audit (`signerOverride`, adresse masquée). CORS lit `FRONTEND_URL` par `config/env`.
+
 Reste à faire :
 
 - Recette navigateur du parcours complet (envoi, code, signature, activation) en copropriété ; Yousign non essayé pour ce type.
