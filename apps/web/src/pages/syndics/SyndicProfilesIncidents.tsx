@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   App,
   Alert,
@@ -161,6 +161,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
   const [providers, setProviders] = useState<ServiceProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  // Soumission du profil propriétaire en cours (anti double clic, voir handleCreateOwner).
+  const submittingOwnerRef = useRef(false);
   const [assigningProviderIncidentId, setAssigningProviderIncidentId] = useState<string | null>(null);
   // Portail copropriétaire : invitation en cours, résultat affiché, révocation.
   const [invitingProfileId, setInvitingProfileId] = useState<string | null>(null);
@@ -243,29 +245,37 @@ export const SyndicProfilesIncidents: React.FC = () => {
   };
 
   const handleCreateOwner = async () => {
-    if (!effectiveTenantId || !syndicId) return;
-    const values = await ownerForm.validateFields();
+    // Garde-fou anti double clic : la validation étant asynchrone, un second clic
+    // ne voit pas encore `submitting` à true ; la ref, elle, l'est immédiatement.
+    if (!effectiveTenantId || !syndicId || submittingOwnerRef.current) return;
+    submittingOwnerRef.current = true;
     setSubmitting(true);
     try {
-      await createLotOwnerProfile(effectiveTenantId, syndicId, {
-        lotId: values.lotId,
-        contactId: values.contactId,
-        ownershipPercentage: values.ownershipPercentage,
-        ownedSince: new Date(values.ownedSince).toISOString(),
-        portalAccessEnabled: values.portalAccessEnabled || false
-      });
-      message.success(t('Profil propriétaire créé'));
-      setOpenOwner(false);
-      ownerForm.resetFields();
-      await loadData();
-    } catch (err: any) {
-      // Parts au-delà de 100 % (409) : le message chiffré est reporté sous le champ fautif.
-      const shareError = (err.response?.data?.errors as Array<{ field: string; message: string }> | undefined)?.find(
-        fieldErr => fieldErr.field === 'ownershipPercentage'
-      );
-      if (shareError) ownerForm.setFields([{ name: 'ownershipPercentage', errors: [shareError.message] }]);
-      message.error(err.response?.data?.error || t('Création profil propriétaire impossible'));
+      // Champs invalides : AntD affiche les erreurs sous les champs, rien n'est envoyé.
+      const values = await ownerForm.validateFields().catch(() => null);
+      if (!values) return;
+      try {
+        await createLotOwnerProfile(effectiveTenantId, syndicId, {
+          lotId: values.lotId,
+          contactId: values.contactId,
+          ownershipPercentage: values.ownershipPercentage,
+          ownedSince: new Date(values.ownedSince).toISOString(),
+          portalAccessEnabled: values.portalAccessEnabled || false
+        });
+        message.success(t('Profil propriétaire créé'));
+        setOpenOwner(false);
+        ownerForm.resetFields();
+        await loadData();
+      } catch (err: any) {
+        // Parts au-delà de 100 % (409) : le message chiffré est reporté sous le champ fautif.
+        const shareError = (err.response?.data?.errors as Array<{ field: string; message: string }> | undefined)?.find(
+          fieldErr => fieldErr.field === 'ownershipPercentage'
+        );
+        if (shareError) ownerForm.setFields([{ name: 'ownershipPercentage', errors: [shareError.message] }]);
+        message.error(err.response?.data?.error || t('Création profil propriétaire impossible'));
+      }
     } finally {
+      submittingOwnerRef.current = false;
       setSubmitting(false);
     }
   };

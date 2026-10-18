@@ -7,8 +7,10 @@
 type Profile = {
   id: string;
   lotId: string;
+  contactId: string;
   ownershipPercentage: number;
   isActive: boolean;
+  ownedSince: Date;
   ownedUntil: Date | null;
   portalAccessToken: string | null;
 };
@@ -20,11 +22,21 @@ jest.mock('@prisma/client', () => {
     { id: 'lot-b1', lotNumber: 'B1', syndicateId: 's1' }
   ];
   let seq = 0;
-  const currentOnly = (p: Profile, where: any) =>
-    p.lotId === where.lotId &&
-    (where.isActive === undefined || p.isActive === where.isActive) &&
-    (!where.id?.not || p.id !== where.id.not) &&
-    (!where.OR || p.ownedUntil === null || p.ownedUntil > where.OR[1].ownedUntil.gt);
+  // Evaluateur minimal du `where` Prisma : AND, OR, id { not }, dates { gt, lt }, egalite.
+  const matches = (p: any, where: any): boolean =>
+    Object.entries(where).every(([key, cond]: [string, any]) => {
+      if (key === 'AND') return (cond as any[]).every(c => matches(p, c));
+      if (key === 'OR') return (cond as any[]).some(c => matches(p, c));
+      const value = p[key];
+      if (cond === null) return value === null;
+      if (cond instanceof Date || typeof cond !== 'object') return value === cond;
+      return Object.entries(cond).every(([op, bound]: [string, any]) => {
+        if (op === 'not') return value !== bound;
+        if (op === 'gt') return value !== null && value > bound;
+        if (op === 'lt') return value !== null && value < bound;
+        return true;
+      });
+    });
 
   const prisma: any = {
     __profiles: profiles,
@@ -41,9 +53,9 @@ jest.mock('@prisma/client', () => {
             .filter(p => p.isActive && (p.ownedUntil === null || p.ownedUntil > new Date()))
             .map(p => ({ ...p, lot: { lotNumber: lots.find(l => l.id === p.lotId)!.lotNumber } }));
         }
-        return profiles.filter(p => currentOnly(p, where));
+        return profiles.filter(p => matches(p, where));
       }),
-      findFirst: jest.fn(async ({ where }: any) => profiles.find(p => p.id === where.id) ?? null),
+      findFirst: jest.fn(async ({ where }: any) => profiles.find(p => matches(p, where)) ?? null),
       create: jest.fn(async ({ data }: any) => {
         const profile = {
           id: `op${++seq}`,
@@ -77,10 +89,12 @@ import { createLotOwnerProfileSchema } from '../../src/lib/syndics/schemas';
 
 const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as { __mockPrisma: any };
 
+let contactSeq = 0;
+// Un contact distinct par appel : un meme contact ne detient qu'un profil non clos par lot.
 const create = (lotId: string, pct: number, extra: Record<string, unknown> = {}) =>
   createLotOwnerProfileBySyndicate('t1', 's1', {
     lotId,
-    contactId: 'c1',
+    contactId: `c${++contactSeq}`,
     ownershipPercentage: pct,
     ownedSince: new Date('2021-07-02T00:00:00.000Z'),
     ...extra
@@ -138,6 +152,48 @@ describe("Parts des proprietaires d'un lot (BUG-069)", () => {
       ConflictError
     );
     expect(third).toBeTruthy();
+  });
+
+  it('refuse un second profil non clos du meme contact sur le lot (actif ou futur), pas sur un autre lot', async () => {
+    const first = await create('lot-a201', 30, { contactId: 'dup' });
+    const error = await create('lot-a201', 30, { contactId: 'dup' }).catch(e => e);
+    expect(error).toBeInstanceOf(ConflictError);
+    expect(error.message).toBe(
+      "Ce contact est déjà propriétaire de ce lot : modifiez son profil existant au lieu d'en créer un second."
+    );
+    expect(error.errors).toEqual([{ field: 'contactId', message: error.message }]);
+    // Profil futur du meme contact : refuse aussi.
+    const future = new Date(Date.now() + 365 * 24 * 3600 * 1000);
+    await expect(create('lot-a201', 10, { contactId: 'dup', ownedSince: future })).rejects.toBeInstanceOf(
+      ConflictError
+    );
+    await expect(create('lot-b1', 30, { contactId: 'dup' })).resolves.toBeTruthy();
+    // Apres cloture du profil, le contact peut redevenir proprietaire.
+    await updateLotOwnerProfileBySyndicate('t1', 's1', first.id, { ownedUntil: new Date('2022-01-01T00:00:00.000Z') });
+    await expect(create('lot-a201', 30, { contactId: 'dup' })).resolves.toBeTruthy();
+  });
+
+  it('modification : un profil ne se compare pas a lui-meme, mais reactiver un doublon est refuse', async () => {
+    const first = await create('lot-a201', 20, { contactId: 'dup' });
+    await expect(
+      updateLotOwnerProfileBySyndicate('t1', 's1', first.id, { ownershipPercentage: 25 })
+    ).resolves.toBeTruthy();
+    await updateLotOwnerProfileBySyndicate('t1', 's1', first.id, { isActive: false });
+    await create('lot-a201', 20, { contactId: 'dup' });
+    await expect(updateLotOwnerProfileBySyndicate('t1', 's1', first.id, { isActive: true })).rejects.toMatchObject({
+      errors: [{ field: 'contactId' }]
+    });
+  });
+
+  it('compte les profils futurs qui se chevauchent, mais pas ceux d une autre periode', async () => {
+    const future = new Date(Date.now() + 365 * 24 * 3600 * 1000);
+    await create('lot-a201', 60, { ownedSince: future });
+    // Meme periode future : 60 + 50 > 100.
+    await expect(create('lot-a201', 50, { ownedSince: future })).rejects.toBeInstanceOf(ConflictError);
+    // Profil actuel sans fin : il recoupe la periode future du profil de 60 %.
+    await expect(create('lot-a201', 50)).rejects.toBeInstanceOf(ConflictError);
+    // Profil actuel qui se termine avant le debut du futur : pas de chevauchement.
+    await expect(create('lot-a201', 50, { ownedUntil: new Date(future.getTime() - 1000) })).resolves.toBeTruthy();
   });
 
   it('bloque les parts nulles, negatives ou superieures a 100 % a la validation', () => {

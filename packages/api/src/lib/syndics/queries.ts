@@ -42,6 +42,7 @@ import {
   applyLotAdvanceTx,
   CHARGE_CALL_ALLOCATIONS_INCLUDE,
   compareLotIdsForLocking,
+  consumeAdvancesForDebitTx,
   lockLotTx,
   sortLotIdsForLocking,
   paidFromAllocations,
@@ -2227,6 +2228,16 @@ export async function castVoteAndRecomputeResolutionCounters(
       throw notFound('Lot introuvable ou inaccessible');
     }
 
+    // Un lot emarge absent ne vote pas : refus avant toute ecriture du vote.
+    const attendance = await tx.gMAttendance.findFirst({
+      where: { meetingId: meeting.id, lotId },
+      select: { id: true, status: true }
+    });
+    if (attendance?.status === 'ABSENT') {
+      const message = t("Ce lot est émargé absent : modifiez son émargement avant d'enregistrer son vote.");
+      throw new ConflictError(message, [{ field: 'lotId', message }]);
+    }
+
     await tx.gMVote.upsert({
       where: {
         resolutionId_lotId: {
@@ -2245,10 +2256,6 @@ export async function castVoteAndRecomputeResolutionCounters(
     });
 
     // Un lot qui vote est present : emargement cree s'il manque (jamais ecrase).
-    const attendance = await tx.gMAttendance.findFirst({
-      where: { meetingId: meeting.id, lotId },
-      select: { id: true }
-    });
     if (!attendance) {
       await tx.gMAttendance.create({
         data: {
@@ -3291,7 +3298,7 @@ export async function createLatePaymentPenaltyForChargeCall(
         accountId: account.id,
         type: 'PENALTY',
         debit: penaltyAmount,
-        label: 'Penalite de retard',
+        label: 'Pénalité de retard',
         sourceId: penalty.id,
         transactionDate: appliedAt
       });
@@ -3342,7 +3349,7 @@ export async function waiveLatePaymentPenaltyByTenant(
         accountId: account.id,
         type: 'WAIVER',
         credit: Number(penalty.penaltyAmount),
-        label: 'Remise de penalite',
+        label: 'Remise de pénalité',
         sourceId: penalty.id,
         transactionDate: new Date()
       });
@@ -3672,6 +3679,11 @@ export async function createOwnerAccountAdjustmentByLot(
   const account = await getOwnerAccountByLot(tenantId, syndicateId, lotId);
 
   return prisma.$transaction(async tx => {
+    if (data.direction === 'DEBIT') {
+      // Un debit consomme d'abord l'avance disponible du lot (FIFO), sous verrou.
+      await lockLotTx(tx, lotId);
+      await consumeAdvancesForDebitTx(tx, lotId, toCents(data.amount));
+    }
     const transaction = await appendOwnerAccountTransactionTx(tx, {
       accountId: account.id,
       type: 'ADJUSTMENT',
@@ -4886,6 +4898,39 @@ function currentOwnerProfileWhere(now: Date): Prisma.LotOwnerProfileWhereInput {
   return { isActive: true, ownedSince: { lte: now }, OR: [{ ownedUntil: null }, { ownedUntil: { gt: now } }] };
 }
 
+/** Profil proprietaire non clos : actif, ni termine ni a terme passe (actuel ou futur). */
+function openOwnerProfileWhere(now: Date): Prisma.LotOwnerProfileWhereInput {
+  return { isActive: true, OR: [{ ownedUntil: null }, { ownedUntil: { gt: now } }] };
+}
+
+/**
+ * Un contact ne detient qu'un profil non clos par lot : un second profil
+ * (actif ou date dans le futur) est refuse, il faut modifier l'existant.
+ * Appele sous le verrou du lot, dans la transaction d'ecriture.
+ */
+async function assertNoOpenOwnerProfileForContact(
+  tx: PrismaTransactionClient,
+  lotId: string,
+  contactId: string,
+  excludeProfileId?: string
+): Promise<void> {
+  const duplicate = await tx.lotOwnerProfile.findFirst({
+    where: {
+      lotId,
+      contactId,
+      ...openOwnerProfileWhere(new Date()),
+      ...(excludeProfileId ? { id: { not: excludeProfileId } } : {})
+    },
+    select: { id: true }
+  });
+  if (duplicate) {
+    const message = t(
+      "Ce contact est déjà propriétaire de ce lot : modifiez son profil existant au lieu d'en créer un second."
+    );
+    throw new ConflictError(message, [{ field: 'contactId', message }]);
+  }
+}
+
 /**
  * BUG-2026-09-30-069 : la somme des parts des proprietaires d'un lot ne
  * depasse jamais 100 % (indivision). `addHundredths` est la part du profil
@@ -4897,14 +4942,20 @@ async function assertOwnerSharesWithinLimit(
   tx: PrismaTransactionClient,
   lotId: string,
   addHundredths: number,
+  period: { ownedSince: Date; ownedUntil?: Date | null },
   excludeProfileId?: string
 ): Promise<void> {
+  // Profils non clos (actuels ou futurs) dont l'intervalle recoupe celui du profil ecrit.
+  const overlap: Prisma.LotOwnerProfileWhereInput[] = [
+    { OR: [{ ownedUntil: null }, { ownedUntil: { gt: period.ownedSince } }] },
+    ...(period.ownedUntil ? [{ ownedSince: { lt: period.ownedUntil } }] : [])
+  ];
   const [lot, others] = await Promise.all([
     tx.syndicateLot.findFirst({ where: { id: lotId }, select: { lotNumber: true } }),
     tx.lotOwnerProfile.findMany({
       where: {
         lotId,
-        ...currentOwnerProfileWhere(new Date()),
+        AND: [openOwnerProfileWhere(new Date()), ...overlap],
         ...(excludeProfileId ? { id: { not: excludeProfileId } } : {})
       },
       select: { ownershipPercentage: true }
@@ -4975,7 +5026,11 @@ export async function createLotOwnerProfileBySyndicate(
   return prisma.$transaction(async tx => {
     if (isCurrent) {
       await lockLotTx(tx, data.lotId);
-      await assertOwnerSharesWithinLimit(tx, data.lotId, toShareHundredths(ownershipPercentage));
+      await assertNoOpenOwnerProfileForContact(tx, data.lotId, data.contactId);
+      await assertOwnerSharesWithinLimit(tx, data.lotId, toShareHundredths(ownershipPercentage), {
+        ownedSince: data.ownedSince,
+        ownedUntil: data.ownedUntil
+      });
     }
     const created = await tx.lotOwnerProfile.create({
       data: {
@@ -5022,8 +5077,10 @@ export async function updateLotOwnerProfileBySyndicate(
     select: {
       id: true,
       lotId: true,
+      contactId: true,
       portalAccessToken: true,
       ownershipPercentage: true,
+      ownedSince: true,
       ownedUntil: true,
       isActive: true
     }
@@ -5041,7 +5098,14 @@ export async function updateLotOwnerProfileBySyndicate(
   return prisma.$transaction(async tx => {
     if (willCount) {
       await lockLotTx(tx, profile.lotId);
-      await assertOwnerSharesWithinLimit(tx, profile.lotId, toShareHundredths(nextPercentage), profileId);
+      await assertNoOpenOwnerProfileForContact(tx, profile.lotId, profile.contactId, profileId);
+      await assertOwnerSharesWithinLimit(
+        tx,
+        profile.lotId,
+        toShareHundredths(nextPercentage),
+        { ownedSince: data.ownedSince ?? profile.ownedSince, ownedUntil: nextUntil },
+        profileId
+      );
     }
     const updated = await updateLotOwnerProfileRow(tx, profileId, profile, data);
     await syncLotOwnerFromProfilesTx(tx, profile.lotId);
