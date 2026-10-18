@@ -49,6 +49,8 @@ export interface StartSyndicCheckoutParams {
   payerContactId: string | null;
   /** Utilisateur à l'origine (créateur du lien) ; nul pour le portail et les liens automatiques. */
   actorUserId?: string | null;
+  /** Portail : bornes `visibleSince` par lot ; les déclarations en attente de l'ancien propriétaire ne bloquent pas. */
+  visibleSinceByLot?: ReadonlyMap<string, Date | null>;
 }
 
 export interface StartSyndicCheckoutResult {
@@ -257,7 +259,7 @@ export async function startSyndicCheckout(params: StartSyndicCheckoutParams): Pr
 
   // Spec 047 (R15) : un appel visé par un paiement mobile money déclaré en attente ne se paie pas en
   // ligne en même temps (risque de double paiement). Relu AVANT la transaction (lecture hors `tx`).
-  const declared = await pendingDeclarationsByCall(tenantId, [lotId]);
+  const declared = await pendingDeclarationsByCall(tenantId, [lotId], undefined, params.visibleSinceByLot);
   const blockedCallIds = ids.filter(id => declared.has(id));
   if (blockedCallIds.length > 0) throw declarationPendingError(blockedCallIds);
 
@@ -274,7 +276,7 @@ export async function startSyndicCheckout(params: StartSyndicCheckoutParams): Pr
     // en attente : une déclaration validée avant ce verrou est vue ici, une déclaration concurrente
     // attend la fin de cette transaction et voit alors le paiement en ligne.
     await lockLotPayment(tx, [lotId]);
-    const declaredNow = await pendingDeclarationsByCall(tenantId, [lotId], tx);
+    const declaredNow = await pendingDeclarationsByCall(tenantId, [lotId], tx, params.visibleSinceByLot);
     const blockedNow = ids.filter(id => declaredNow.has(id));
     if (blockedNow.length > 0) throw declarationPendingError(blockedNow);
 

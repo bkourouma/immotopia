@@ -1284,8 +1284,8 @@ describe('erreurs techniques et doublons', () => {
   });
 });
 
-describe('avis d appel : ni signature ni cachet', () => {
-  it('le generateur de l avis ne recoit ni signature ni cachet, logos conserves (gestion, portail, e-mail)', async () => {
+describe('avis d appel : signature et cachet de l emetteur', () => {
+  it('le generateur de l avis recoit signature, cachet et logos tels que resolus (gestion, portail, e-mail)', async () => {
     const image = (name: string) => ({ format: 'png', bytes: Buffer.from(name) }) as any;
     const branding = jest.spyOn(documentBranding, 'resolveDocumentBranding').mockImplementation(async () => ({
       issuer: {
@@ -1339,8 +1339,8 @@ describe('avis d appel : ni signature ni cachet', () => {
 
     expect(render.mock.calls.length).toBeGreaterThanOrEqual(4);
     for (const [, used] of render.mock.calls) {
-      expect(used.signature).toBeNull();
-      expect(used.stamp).toBeNull();
+      expect(used.signature).not.toBeNull();
+      expect(used.stamp).not.toBeNull();
       expect(used.issuerLogo).not.toBeNull();
       expect(used.syndicate?.logo).not.toBeNull();
     }

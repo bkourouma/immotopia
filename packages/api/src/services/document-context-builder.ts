@@ -1124,7 +1124,7 @@ export function validateContext(
   const criticalPlaceholders = ['AGENCE_NOM', 'LOCATAIRE_NOM', 'BAIL_NUMERO', 'BAIL_LOYER_MENSUEL'];
   // Les logos ne sont pas des valeurs du contexte : ils sont posés après le
   // rendu (injectDocxImages) et disparaissent d'eux-mêmes sans image.
-  const injectedAfterRender = ['LOGO_EMETTEUR', 'LOGO_COPROPRIETE'];
+  const injectedAfterRender = ['LOGO_EMETTEUR', 'LOGO_COPROPRIETE', 'SIGNATURE_EMETTEUR', 'CACHET_EMETTEUR'];
 
   placeholders.forEach(placeholder => {
     if (injectedAfterRender.includes(placeholder)) return;

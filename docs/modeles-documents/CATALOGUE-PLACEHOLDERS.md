@@ -27,10 +27,12 @@ déterministe.
 
 ## Logos
 
-| Balise                 | Signification                                               | Source                                     |
-| ---------------------- | ----------------------------------------------------------- | ------------------------------------------ |
-| `{{LOGO_EMETTEUR}}`    | Logo de l'émetteur (mandant, sinon agence), inséré en image | `resolveDocumentBranding().issuerLogo`     |
-| `{{LOGO_COPROPRIETE}}` | Logo de la copropriété, inséré en image                     | `resolveDocumentBranding().syndicate.logo` |
+| Balise                   | Signification                                                  | Source                                     |
+| ------------------------ | -------------------------------------------------------------- | ------------------------------------------ |
+| `{{LOGO_EMETTEUR}}`      | Logo de l'émetteur (mandant, sinon agence), inséré en image    | `resolveDocumentBranding().issuerLogo`     |
+| `{{LOGO_COPROPRIETE}}`   | Logo de la copropriété, inséré en image                        | `resolveDocumentBranding().syndicate.logo` |
+| `{{SIGNATURE_EMETTEUR}}` | Signature de l'émetteur, insérée en image (retirée sans image) | `resolveDocumentBranding().signature`      |
+| `{{CACHET_EMETTEUR}}`    | Cachet de l'émetteur, inséré en image (retiré sans image)      | `resolveDocumentBranding().stamp`          |
 
 Le marqueur est remplacé APRÈS le rendu par un dessin inline (hauteur max 2,5 cm,
 largeur max 4 cm, proportions conservées) ; sans image il disparaît. Il peut être
@@ -63,7 +65,7 @@ Une valeur absente reste vide dans le document (jamais le nom de la balise).
 | `{{REFERENCE_DOCUMENT}}`               | Numéro ou référence du document                             | Bail : `BAIL_NUMERO` ; reçu : `RECU_NUMERO` (numéro définitif) ; relevé : `RELEVE_REFERENCE` ; AG : `AG-<id>` | BAIL-2026-0012                             |
 
 Pour les documents locatifs, l'émetteur est l'agence (aucune copropriété) : les
-balises `COPROPRIETE_*` sont vides et `{{LOGO_COPROPRIETE}}` disparaît.
+balises `COPROPRIETE_*` sont vides et `{{LOGO_COPROPRIETE}}` disparaît. De même, `{{SIGNATURE_EMETTEUR}}` et `{{CACHET_EMETTEUR}}` disparaissent quand l'émetteur n'a ni signature ni cachet.
 
 ## Contrat de bail d'habitation (`bail_habitation.docx`)
 

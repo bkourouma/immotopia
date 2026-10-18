@@ -283,3 +283,137 @@ describe('injection des logos après le rendu', () => {
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[Content_Types].xml'), expect.anything());
   });
 });
+
+describe('signature et cachet de l’émetteur', () => {
+  const SIGNED = branding({ signature: pngImage(pngHeader(800, 200)), stamp: pngImage(pngHeader(300, 300)) });
+  const fullContext = (b: DocumentBranding | null): Record<string, unknown> => ({
+    ...buildCommonDocumentContext(b),
+    LIGNES: [],
+    LOT_NUMERO: '12',
+    COPROPRIETAIRE_NOM: 'Awa Traoré'
+  });
+  const parts = (zip: PizZip): string[] =>
+    zip.file(/^word\/(document|header\d*|footer\d*)\.xml$/).map(file => file.asText());
+  const noResidue = (xml: string): void => {
+    expect(xml).not.toMatch(/@@/);
+    expect(xml).not.toMatch(/\{\{(?:SIGNATURE|CACHET|LOGO)_/);
+  };
+
+  it('reconnaît les clés dont le vide reste vide et expose les images du branding', () => {
+    expect(isOptionalBrandingKey('SIGNATURE_EMETTEUR')).toBe(true);
+    expect(isOptionalBrandingKey('CACHET_EMETTEUR')).toBe(true);
+    const images = (buildCommonDocumentContext(SIGNED) as { __images: Record<string, unknown> }).__images;
+    expect(images.SIGNATURE_EMETTEUR).toBe(SIGNED.signature);
+    expect(images.CACHET_EMETTEUR).toBe(SIGNED.stamp);
+  });
+
+  it('borne la signature à 4 x 2 cm et le cachet à 3 x 3 cm, sans agrandir', () => {
+    const zip = new PizZip();
+    zip.file(
+      '[Content_Types].xml',
+      '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>'
+    );
+    zip.file(
+      'word/document.xml',
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>@@SIGNATURE_EMETTEUR@@ @@CACHET_EMETTEUR@@</w:t></w:r></w:p></w:body></w:document>'
+    );
+    injectDocxImages(zip, {
+      SIGNATURE_EMETTEUR: pngImage(pngHeader(2000, 1000)),
+      CACHET_EMETTEUR: pngImage(pngHeader(1200, 600))
+    });
+    const extents = [...textOf(zip, 'word/document.xml').matchAll(/<wp:extent cx="(\d+)" cy="(\d+)"\/>/g)].map(m => [
+      Number(m[1]),
+      Number(m[2])
+    ]);
+    expect(extents).toEqual([
+      [1440000, 720000],
+      [1080000, 540000]
+    ]);
+    expect(zip.file('word/media/signature_emetteur.png')).not.toBeNull();
+    expect(zip.file('word/media/cachet_emetteur.png')).not.toBeNull();
+
+    const small = new PizZip();
+    small.file(
+      '[Content_Types].xml',
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>'
+    );
+    small.file(
+      'word/document.xml',
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>@@CACHET_EMETTEUR@@</w:t></w:r></w:p></w:body></w:document>'
+    );
+    injectDocxImages(small, { CACHET_EMETTEUR: pngImage() });
+    expect(textOf(small, 'word/document.xml')).toContain('<wp:extent cx="9525" cy="9525"/>');
+  });
+
+  it.each(['avis_appel_charges', 'quittance_charges'] as const)(
+    '%s standard avec signature et cachet : deux dessins, relations, aucun résidu',
+    key => {
+      const zip = new PizZip(renderDocxBuffer(buildStandardTemplate(key), fullContext(SIGNED)));
+      const body = textOf(zip, 'word/document.xml');
+
+      expect(body.match(/<w:drawing>/g)).toHaveLength(2);
+      expect(body).toContain('Cabinet Horizon');
+      parts(zip).forEach(noResidue);
+      const ids = [...body.matchAll(/<wp:docPr id="(\d+)"/g)].map(match => match[1]);
+      expect(new Set(ids).size).toBe(ids.length);
+      const rels = textOf(zip, 'word/_rels/document.xml.rels');
+      for (const [, id] of body.matchAll(/r:embed="([^"]+)"/g)) expect(rels).toContain(`Id="${id}"`);
+      expect(rels).toContain('media/signature_emetteur.png');
+      expect(rels).toContain('media/cachet_emetteur.png');
+      expect(textOf(zip, '[Content_Types].xml')).toContain('Extension="png"');
+    }
+  );
+
+  it.each(['avis_appel_charges', 'quittance_charges'] as const)(
+    '%s standard sans signature ni cachet : marqueurs retirés, aucun média, XML propre',
+    key => {
+      const zip = new PizZip(renderDocxBuffer(buildStandardTemplate(key), fullContext(branding())));
+      const body = textOf(zip, 'word/document.xml');
+
+      expect(body).not.toContain('<w:drawing>');
+      expect(body).not.toContain('SIGNATURE_EMETTEUR');
+      expect(body).not.toContain('CACHET_EMETTEUR');
+      expect(body).toContain('Le Syndic');
+      parts(zip).forEach(noResidue);
+      expect(zip.file(/^word\/media\//).filter(file => /signature|cachet/.test(file.name))).toHaveLength(0);
+      // XML bien formé : autant d'ouvertures que de fermetures de paragraphes et de cellules.
+      expect(body.match(/<w:p[ >]/g)?.length).toBe(body.match(/<\/w:p>/g)?.length);
+      expect(body.match(/<w:tc>/g)?.length).toBe(body.match(/<\/w:tc>/g)?.length);
+    }
+  );
+
+  it('signature seule : un seul dessin, le cachet absent disparaît', () => {
+    const zip = new PizZip(
+      renderDocxBuffer(buildStandardTemplate('quittance_charges'), fullContext(branding({ signature: pngImage() })))
+    );
+    const body = textOf(zip, 'word/document.xml');
+    expect(body.match(/<w:drawing>/g)).toHaveLength(1);
+    expect(zip.file('word/media/signature_emetteur.png')).not.toBeNull();
+    expect(zip.file('word/media/cachet_emetteur.png')).toBeNull();
+    parts(zip).forEach(noResidue);
+  });
+
+  it('sans branding du tout : aucun résidu', () => {
+    const zip = new PizZip(renderDocxBuffer(buildStandardTemplate('avis_appel_charges'), {}));
+    parts(zip).forEach(noResidue);
+  });
+
+  it('un modèle personnalisé sans ces marqueurs est inchangé par l’injection', () => {
+    const custom = new PizZip();
+    custom.file(
+      '[Content_Types].xml',
+      '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'
+    );
+    const documentXml =
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Avis pour {{COPROPRIETAIRE_NOM}}, le syndic {{EMETTEUR_NOM}}</w:t></w:r></w:p></w:body></w:document>';
+    custom.file('word/document.xml', documentXml);
+    const rendered = new PizZip(renderDocxBuffer(custom.generate({ type: 'nodebuffer' }), fullContext(SIGNED)));
+
+    const body = textOf(rendered, 'word/document.xml');
+    expect(body).toContain('Avis pour Awa Traoré, le syndic Cabinet Horizon');
+    expect(body).not.toContain('<w:drawing>');
+    expect(rendered.file(/^word\/media\//)).toHaveLength(0);
+    expect(textOf(rendered, '[Content_Types].xml')).not.toContain('image/png');
+    expect(rendered.file('word/_rels/document.xml.rels')).toBeNull();
+  });
+});

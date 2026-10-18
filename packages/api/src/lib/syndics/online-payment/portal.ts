@@ -4,6 +4,7 @@ import { t } from '../../../i18n';
 import { NotFoundError } from '../../../middleware/error-middleware';
 import { isSyndicCodePaiement } from '../../payment-gateway/codes';
 import { loadSyndicates, ownedChargeCallsWhere, scopeOrThrow, type CoOwnerPortalScope } from '../coowner-portal';
+import { lotBounds } from '../declared-payment/declaration-queries';
 import { assertSyndicOnlinePaymentAllowed } from './feature-gate';
 import { getSyndicOnlineAvailabilities } from './gateway-config';
 import { MAX_CHARGE_CALLS_PER_CHECKOUT, startSyndicCheckout } from './checkout-start';
@@ -119,7 +120,8 @@ export async function startCoOwnerCheckout(
     chargeCallIds: ids,
     origin: 'PORTAL',
     tenantClientId,
-    payerContactId: lot.contactId
+    payerContactId: lot.contactId,
+    visibleSinceByLot: lotBounds(scope)
   });
   return { checkout: await toPortalCheckout(checkout, tenantClientId, reused), reused };
 }

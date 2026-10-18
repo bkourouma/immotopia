@@ -616,15 +616,70 @@ type CoOwnerSource = {
 };
 
 /**
+ * Borne de visibilité par lot du périmètre (`CoOwnerLotScope.visibleSince`).
+ * Un lot absent de `scope.lots` ou sans borne n'en a pas ; si le même lot figure
+ * plusieurs fois, la lecture la plus large l'emporte (comme les autres modules
+ * du portail, qui combinent les lots en `OR`).
+ */
+export function lotBounds(scope: CoOwnerPortalScope): Map<string, Date | null> {
+  const bounded = new Map<string, Date>();
+  const free = new Set<string>();
+  for (const lot of scope.lots) {
+    if (!lot.visibleSince) {
+      free.add(lot.lotId);
+      continue;
+    }
+    const known = bounded.get(lot.lotId);
+    if (!known || lot.visibleSince < known) bounded.set(lot.lotId, lot.visibleSince);
+  }
+  const bounds = new Map<string, Date | null>();
+  for (const lotId of scope.lotIds) bounds.set(lotId, free.has(lotId) ? null : (bounded.get(lotId) ?? null));
+  return bounds;
+}
+
+/**
+ * Une ligne est visible si son lot est dans le périmètre ET, quand ce lot est
+ * borné (il a eu un autre propriétaire avant), si la déclaration a été créée à
+ * `visibleSince` ou après : les déclarations de l'ancien propriétaire restent à
+ * la gestion.
+ */
+function lineVisibleFrom(bounds: Map<string, Date | null>, lotId: string, createdAt: Date): boolean {
+  if (!bounds.has(lotId)) return false;
+  const since = bounds.get(lotId);
+  return !since || createdAt.getTime() >= since.getTime();
+}
+
+/** Vrai si toutes les lignes sont sur des lots du périmètre et à partir de leur borne (annulation, portail). */
+export function declarationVisibleToCoOwner(
+  scope: CoOwnerPortalScope,
+  lines: Array<{ lotId: string }>,
+  createdAt: Date
+): boolean {
+  const bounds = lotBounds(scope);
+  return lines.length > 0 && lines.every(line => lineVisibleFrom(bounds, line.lotId, createdAt));
+}
+
+/**
  * Filtre de périmètre : TOUTES les lignes sur des lots du copropriétaire (et
  * au moins une, pour écarter une déclaration sans ligne), dans les copropriétés
- * de son périmètre.
+ * de son périmètre, et, pour chaque ligne dont le lot est borné, une
+ * déclaration créée à la borne du lot ou après. Une déclaration multi-lots dont
+ * un lot borné a été déclaré avant sa borne disparaît entièrement.
  */
 function coOwnerScopeWhere(scope: CoOwnerPortalScope): Prisma.SyndicPaymentDeclarationWhereInput {
+  const bounds = lotBounds(scope);
+  const freeLotIds = [...bounds].filter(([, since]) => !since).map(([lotId]) => lotId);
+  const boundedLots = [...bounds].flatMap(([lotId, since]) => (since ? [{ lotId, since }] : []));
+  const lineVisible: Prisma.SyndicPaymentDeclarationLineWhereInput = {
+    OR: [
+      { lotId: { in: freeLotIds } },
+      ...boundedLots.map(({ lotId, since }) => ({ lotId, declaration: { createdAt: { gte: since } } }))
+    ]
+  };
   return {
     tenantId: scope.tenantId,
     syndicateId: { in: scope.syndicateIds },
-    lines: { some: { lotId: { in: scope.lotIds } }, every: { lotId: { in: scope.lotIds } } }
+    lines: { some: { lotId: { in: scope.lotIds } }, every: lineVisible }
   };
 }
 
@@ -633,10 +688,11 @@ async function buildCoOwnerDeclarations(
   sources: CoOwnerSource[]
 ): Promise<CoOwnerDeclaration[]> {
   // Deuxième garde, indépendante du filtre SQL : une ligne hors périmètre fait disparaître la déclaration.
-  const allowedLots = new Set(scope.lotIds);
+  const bounds = lotBounds(scope);
   const allowedContacts = new Set(scope.contactIds);
   const inScope = sources.filter(
-    source => source.lines.length > 0 && source.lines.every(line => allowedLots.has(line.lotId))
+    source =>
+      source.lines.length > 0 && source.lines.every(line => lineVisibleFrom(bounds, line.lotId, source.createdAt))
   );
   if (inScope.length === 0) return [];
 
@@ -766,16 +822,21 @@ export async function listCoOwnerDeclarations(
  *
  * Sert au portail (`pendingDeclaration` des appels), aux relances et au
  * blocage du paiement en ligne.
+ *
+ * `visibleSinceByLot` (portail, `lotBounds(scope)`) : une déclaration créée avant
+ * la borne d'un lot borné qu'elle vise est celle de l'ancien propriétaire ; elle
+ * n'apparaît pas sur les appels du nouveau et ne bloque pas son paiement en ligne.
  */
 export async function pendingDeclarationsByCall(
   tenantId: string,
   lotIds: string[],
-  client: PrismaTransactionClient | typeof prisma = prisma
+  client: PrismaTransactionClient | typeof prisma = prisma,
+  visibleSinceByLot?: ReadonlyMap<string, Date | null>
 ): Promise<Map<string, { declarationId: string; createdAt: Date }>> {
   const result = new Map<string, { declarationId: string; createdAt: Date }>();
   if (lotIds.length === 0) return result;
 
-  const declarations = await client.syndicPaymentDeclaration.findMany({
+  const allDeclarations = await client.syndicPaymentDeclaration.findMany({
     where: { tenantId, status: 'PENDING', lines: { some: { lotId: { in: lotIds } } } },
     select: {
       id: true,
@@ -788,6 +849,14 @@ export async function pendingDeclarationsByCall(
     },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
   });
+  const declarations = visibleSinceByLot
+    ? allDeclarations.filter(declaration =>
+        declaration.lines.every(line => {
+          const since = visibleSinceByLot.get(line.lotId);
+          return !since || declaration.createdAt.getTime() >= since.getTime();
+        })
+      )
+    : allDeclarations;
   if (declarations.length === 0) return result;
 
   const inputs: LineTargetInput[] = declarations.flatMap(declaration =>

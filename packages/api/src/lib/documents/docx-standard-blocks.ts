@@ -109,18 +109,36 @@ function colsXml(block: Extract<Block, { t: 'cols' }>): string {
   return table([row([side(block.left), side(block.right)])], [HALF, HALF]) + spacer(60);
 }
 
+/** Ligne qui porte la signature ou le cachet de l'émetteur (marqueurs remplacés par des images au rendu). */
+const isImageLine = (line: string): boolean => /\{\{(?:SIGNATURE|CACHET)_EMETTEUR\}\}/.test(line);
+
+/**
+ * Ligne d'images : hauteur d'au moins 900 vingtièmes de point (la place de la
+ * signature manuscrite, comme le spacer qu'elle remplace), qui grandit avec
+ * l'image ; sans image, le marqueur disparaît et la place reste.
+ */
+const imageLineXml = (line: string, keepNext: boolean): string =>
+  `<w:p><w:pPr>${keepNext ? '<w:keepNext/>' : ''}<w:spacing w:before="0" w:after="40" w:line="900" w:lineRule="atLeast"/></w:pPr>${run(line)}</w:p>`;
+
 function signXml(block: Extract<Block, { t: 'sign' }>): string {
   const keepNext = block.keep === true;
-  const side = (lines: string[]) =>
-    cell(
+  const side = (lines: string[]) => {
+    const hasImages = lines.some(isImageLine);
+    return cell(
       paragraph(lines[0], { bold: true, color: COLOR.navy, after: 40, keepNext }) +
         lines
           .slice(1)
-          .map(line => paragraph(line, { size: 19, color: COLOR.grey, after: 40, keepNext }))
+          .map(line =>
+            isImageLine(line)
+              ? imageLineXml(line, keepNext)
+              : paragraph(line, { size: 19, color: COLOR.grey, after: 40, keepNext })
+          )
           .join('') +
-        spacer(900),
+        // Le spacer réserve la place de la signature manuscrite, sauf si la ligne d'images la réserve déjà.
+        spacer(hasImages ? 60 : 900),
       { width: HALF, borders: 'none' }
     );
+  };
   // `keep` : le bloc reste avec le paragraphe qui le précède (jamais seul sur une page).
   const gap = keepNext
     ? '<w:p><w:pPr><w:keepNext/><w:spacing w:before="0" w:after="0" w:line="160" w:lineRule="exact"/></w:pPr></w:p>'

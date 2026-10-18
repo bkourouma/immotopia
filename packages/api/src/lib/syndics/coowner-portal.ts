@@ -14,7 +14,7 @@ import {
 import { getSyndicOnlineAvailabilities } from './online-payment/gateway-config';
 import { PENDING_REUSE_WINDOW_MS } from './online-payment/checkout-start';
 import { isSupportedCurrency } from './online-payment/types';
-import { pendingDeclarationsByCall } from './declared-payment/declaration-queries';
+import { lotBounds, pendingDeclarationsByCall } from './declared-payment/declaration-queries';
 import { resolveVisibleSince, type LotOwnerProfileHistoryRow } from './lot-owner-history';
 
 export { hasPreviousOtherOwner, resolveVisibleSince } from './lot-owner-history';
@@ -563,7 +563,7 @@ export async function listCoOwnerChargeCalls(
     getSyndicOnlineAvailabilities(scope.tenantId, Array.from(new Set(calls.map(call => call.syndicateId)))),
     loadOpenCheckoutsByCall(scope, lotIds, callIds, filters.tenantClientId ?? null),
     // Spec 047 : déclarations de paiement mobile money en attente qui visent ces appels.
-    pendingDeclarationsByCall(scope.tenantId, lotIds)
+    pendingDeclarationsByCall(scope.tenantId, lotIds, undefined, lotBounds(scope))
   ]);
 
   const now = new Date();

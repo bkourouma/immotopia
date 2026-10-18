@@ -475,6 +475,9 @@ function minutesBlocks(): Block[] {
 
 // ------------------------------------------------- syndic : nouveaux modèles
 
+/** Ligne d'images du bloc de signature : signature et cachet de l'émetteur, vides sans image. */
+const SIGN_IMAGES_LINE = '{{SIGNATURE_EMETTEUR}}  {{CACHET_EMETTEUR}}';
+
 const SYNDICATE_REFS: Array<[string, string]> = [
   ['Copropriété', '{{COPROPRIETE_NOM}}'],
   ['Adresse', '{{COPROPRIETE_ADRESSE}}'],
@@ -527,7 +530,7 @@ function chargeCallBlocks(): Block[] {
     p('{{MODALITES_PAIEMENT}}'),
     p('Le présent avis vaut demande de paiement ; il n’atteste aucun règlement.'),
     p('Fait à {{LIEU_EMISSION}}, le {{DATE_EMISSION_DOCUMENT}}'),
-    { t: 'sign', left: ['Le Syndic', '{{EMETTEUR_NOM}}'], right: [''] }
+    { t: 'sign', left: ['Le Syndic', SIGN_IMAGES_LINE, '{{EMETTEUR_NOM}}'], right: [''] }
   ];
 }
 
@@ -560,7 +563,7 @@ function chargeReceiptBlocks(): Block[] {
       '**ATTESTATION** : Le syndic {{EMETTEUR_NOM}} reconnaît avoir reçu de {{COPROPRIETAIRE_NOM}} la somme de **{{MONTANT_PAYE}} {{DEVISE}}** ({{MONTANT_PAYE_LETTRES}}), au titre des charges de copropriété de la période {{PERIODE}}, pour le lot n° {{LOT_NUMERO}}.'
     ),
     p('Fait à {{LIEU_EMISSION}}, le {{DATE_EMISSION_DOCUMENT}}'),
-    { t: 'sign', left: ['Le Syndic', 'Signature / Cachet'], right: [''] }
+    { t: 'sign', left: ['Le Syndic', SIGN_IMAGES_LINE, '{{EMETTEUR_NOM}}'], right: [''] }
   ];
 }
 
