@@ -7,7 +7,7 @@ import { prisma } from '../../../utils/database';
 import { logger } from '../../../utils/logger';
 import { withExclusiveSection } from '../../ai/advisory-lock';
 import { formatFrenchDate } from '../business-days';
-import { resolveDebtorNames } from '../dto';
+import { contactDisplayName, resolveDebtorNames } from '../dto';
 import { assertFileDigestAvailable, computeRemittanceFileDigest } from '../file-digest';
 import { remittanceReferenceOf } from '../remittance-dto';
 import { sameMoney } from '../remittance-selection';
@@ -20,8 +20,10 @@ import {
   isReturnDateInRange,
   publicErrorMessage,
   remittanceScopeWhere,
+  returnImportScopeWhere,
   sanitizeFileName,
-  scopeOf
+  scopeOf,
+  syndicateIdOf
 } from './shared';
 import type {
   ReturnApplyDto,
@@ -81,8 +83,14 @@ type MatchedLine = {
   lineNumber: number;
   status: 'PENDING' | 'CANCELED' | 'SETTLED' | 'REJECTED';
   amount: Prisma.Decimal | number;
-  debtorClientId: string;
-  debtor: { id: string; details: unknown; user: { fullName: string | null } | null };
+  debtorClientId: string | null;
+  debtor: { id: string; details: unknown; user: { fullName: string | null } | null } | null;
+  debtorContact: {
+    contactType: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    legalName: string | null;
+  } | null;
 };
 
 type MatchedRemittance = {
@@ -173,7 +181,8 @@ export async function reconcileRecords(
               status: true,
               amount: true,
               debtorClientId: true,
-              debtor: { select: { id: true, details: true, user: { select: { fullName: true } } } }
+              debtor: { select: { id: true, details: true, user: { select: { fullName: true } } } },
+              debtorContact: { select: { contactType: true, firstName: true, lastName: true, legalName: true } }
             }
           }
         }
@@ -212,7 +221,11 @@ export async function reconcileRecords(
               lineId: line.id,
               lineStatus: line.status,
               lineAmount: Number(line.amount),
-              debtorName: names.get(line.debtorClientId) ?? null
+              debtorName: line.debtorContact
+                ? contactDisplayName(line.debtorContact)
+                : line.debtorClientId
+                  ? (names.get(line.debtorClientId) ?? null)
+                  : null
             }
           : null
     };
@@ -277,7 +290,7 @@ async function findPreviousImport(
     return null;
   }
   const previous = await prisma.directDebitReturnImport.findFirst({
-    where: { tenantId, scope: scopeOf(scope), fileDigest },
+    where: { tenantId, ...returnImportScopeWhere(scope), fileDigest },
     orderBy: { createdAt: 'desc' },
     select: { id: true, createdAt: true }
   });
@@ -373,6 +386,7 @@ async function applyLocked(
     data: {
       tenantId,
       scope: scopeOf(scope),
+      syndicateId: syndicateIdOf(scope),
       format: preview.format,
       fileName: preview.fileName,
       fileDigest: computeRemittanceFileDigest(buffer),
@@ -478,7 +492,7 @@ export async function listReturnImportsFor(
   scope: ReturnScope,
   query: { page: number; pageSize: number }
 ): Promise<{ items: ReturnImportDto[]; total: number; page: number; pageSize: number }> {
-  const where: Prisma.DirectDebitReturnImportWhereInput = { tenantId, scope: scopeOf(scope) };
+  const where: Prisma.DirectDebitReturnImportWhereInput = { tenantId, ...returnImportScopeWhere(scope) };
   const [total, rows] = await Promise.all([
     prisma.directDebitReturnImport.count({ where }),
     prisma.directDebitReturnImport.findMany({
@@ -510,6 +524,7 @@ export async function listReturnImportsFor(
   return {
     items: rows.map(row => ({
       id: row.id,
+      scope: scopeOf(scope),
       format: row.format,
       fileName: row.fileName,
       recordCount: row.recordCount,

@@ -29,6 +29,11 @@ function lineRow(over: Row = {}, mandate: Row = {}): Row {
     rejectFeeAmount: null,
     returnSource: null,
     rentalPaymentId: null,
+    lotId: null,
+    lot: null,
+    chargeCallIds: [],
+    chargePaymentId: null,
+    debtorContactId: null,
     mandate: {
       id: 'mandate-1',
       year: 2026,

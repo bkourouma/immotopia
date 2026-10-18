@@ -9,7 +9,14 @@ import type {
   RemittanceListResult,
   RemittanceStatus,
   RemittanceWithPrenotifications,
-  RemittanceWithSkipped
+  RemittanceWithSkipped,
+  RejectLineInput,
+  ReturnApplyDto,
+  ReturnFormat,
+  ReturnImportListResult,
+  ReturnPreviewDto,
+  SettleAllResult,
+  SettleLineInput
 } from './direct-debit-service';
 
 /**
@@ -20,8 +27,8 @@ import type {
  * `{ success, data }`. Les objets renvoyés sont ceux du locatif (types de
  * `direct-debit-service`), élargis au périmètre `SYNDIC_LOT`.
  *
- * Les retours banque et les constats (régler, rejeter) relèvent d'une autre
- * partie du lot : ils ne sont pas ici.
+ * Constats de la banque (régler, rejeter, tout régler) et import d'un fichier de
+ * retour (aperçu, application, historique) : voir la fin du fichier.
  */
 
 export interface SyndicCreditorInput {
@@ -359,5 +366,87 @@ export async function cancelSyndicRemittance(
   reason: string
 ): Promise<RemittanceDto> {
   const response = await apiClient.post(`${base(tenantId, syndicId)}/remises/${remittanceId}/annuler`, { reason });
+  return response.data.data;
+}
+
+// --- Retour banque : constats et import (data-model §9.4, service de retour §8) ---
+
+export async function settleSyndicRemittanceLine(
+  tenantId: string,
+  syndicId: string,
+  remittanceId: string,
+  lineId: string,
+  input: SettleLineInput
+): Promise<RemittanceDto> {
+  const response = await apiClient.post(
+    `${base(tenantId, syndicId)}/remises/${remittanceId}/lignes/${lineId}/regler`,
+    input
+  );
+  return response.data.data;
+}
+
+export async function rejectSyndicRemittanceLine(
+  tenantId: string,
+  syndicId: string,
+  remittanceId: string,
+  lineId: string,
+  input: RejectLineInput
+): Promise<RemittanceDto> {
+  const response = await apiClient.post(
+    `${base(tenantId, syndicId)}/remises/${remittanceId}/lignes/${lineId}/rejeter`,
+    input
+  );
+  return response.data.data;
+}
+
+export async function settleAllSyndicRemittanceLines(
+  tenantId: string,
+  syndicId: string,
+  remittanceId: string,
+  input: SettleLineInput
+): Promise<SettleAllResult> {
+  const response = await apiClient.post(`${base(tenantId, syndicId)}/remises/${remittanceId}/tout-regler`, input);
+  return response.data.data;
+}
+
+function returnFileBody(file: File, format: ReturnFormat): FormData {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('format', format);
+  return formData;
+}
+
+/** Aperçu du rapprochement d'un fichier de retour : rien n'est écrit. */
+export async function previewSyndicReturnFile(
+  tenantId: string,
+  syndicId: string,
+  file: File,
+  format: ReturnFormat = 'GENERIC_CSV'
+): Promise<ReturnPreviewDto> {
+  const response = await apiClient.post(`${base(tenantId, syndicId)}/retours/apercu`, returnFileBody(file, format), {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data.data;
+}
+
+/** Applique le même fichier : relu, rapproché à nouveau, puis chaque constat. */
+export async function applySyndicReturnFile(
+  tenantId: string,
+  syndicId: string,
+  file: File,
+  format: ReturnFormat = 'GENERIC_CSV'
+): Promise<ReturnApplyDto> {
+  const response = await apiClient.post(`${base(tenantId, syndicId)}/retours/appliquer`, returnFileBody(file, format), {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data.data;
+}
+
+export async function listSyndicReturnImports(
+  tenantId: string,
+  syndicId: string,
+  params: { page?: number; pageSize?: number } = {}
+): Promise<ReturnImportListResult> {
+  const response = await apiClient.get(`${base(tenantId, syndicId)}/retours`, { params });
   return response.data.data;
 }

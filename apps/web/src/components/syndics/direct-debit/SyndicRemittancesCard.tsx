@@ -2,10 +2,15 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Alert, App, Button, Card, Select, Space, Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CreditorDto, RemittanceStatus, RemittanceSummaryDto } from '../../../services/direct-debit-service';
-import { listSyndicRemittances } from '../../../services/syndic-direct-debit-service';
+import {
+  applySyndicReturnFile,
+  listSyndicRemittances,
+  listSyndicReturnImports,
+  previewSyndicReturnFile
+} from '../../../services/syndic-direct-debit-service';
 import { formatMoney } from '../../primitives';
 import {
   apiErrorMessage,
@@ -14,7 +19,10 @@ import {
   remittanceStatusLabel,
   RemittanceStatusTag
 } from '../../rental/direct-debit/direct-debit-shared';
+import { ReturnImportModal } from '../../rental/direct-debit/ReturnImportModal';
+import { ReturnImportsHistory } from '../../rental/direct-debit/ReturnImportsHistory';
 import { SyndicPrepareRemittanceModal } from './SyndicPrepareRemittanceModal';
+import { useSyndicDirectDebitRights } from './useSyndicDirectDebitRights';
 import { SYNDIC_DD_KEYS } from './keys';
 import { STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
@@ -42,6 +50,8 @@ export const SyndicRemittancesCard: React.FC<SyndicRemittancesCardProps> = ({
   const [status, setStatus] = useState<RemittanceStatus | undefined>();
   const [page, setPage] = useState(1);
   const [preparing, setPreparing] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const { canManage } = useSyndicDirectDebitRights(tenantId);
 
   const filters = { status, page, pageSize: PAGE_SIZE };
   const { data, isPending, error } = useQuery({
@@ -87,14 +97,21 @@ export const SyndicRemittancesCard: React.FC<SyndicRemittancesCardProps> = ({
     <Card
       title={t('Remises')}
       extra={
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          disabled={!creditor?.isActive}
-          onClick={() => setPreparing(true)}
-        >
-          {t('Préparer une remise')}
-        </Button>
+        canManage ? (
+          <Space wrap>
+            <Button icon={<UploadOutlined />} disabled={!creditor} onClick={() => setImporting(true)}>
+              {t('Importer un retour de la banque')}
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              disabled={!creditor?.isActive}
+              onClick={() => setPreparing(true)}
+            >
+              {t('Préparer une remise')}
+            </Button>
+          </Space>
+        ) : null
       }
     >
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -133,7 +150,39 @@ export const SyndicRemittancesCard: React.FC<SyndicRemittancesCardProps> = ({
           }}
           locale={{ emptyText: t('Aucune remise de prélèvement') }}
         />
+        <ReturnImportsHistory
+          tenantId={tenantId}
+          entity={SYNDIC_DD_KEYS.returns}
+          scopeKey={syndicId}
+          fetchPage={params => listSyndicReturnImports(tenantId, syndicId, params)}
+        />
       </Space>
+
+      <ReturnImportModal
+        tenantId={tenantId}
+        scope="SYNDIC_LOT"
+        api={{
+          preview: file => previewSyndicReturnFile(tenantId, syndicId, file),
+          apply: file => applySyndicReturnFile(tenantId, syndicId, file)
+        }}
+        open={importing}
+        onClose={() => setImporting(false)}
+        onApplied={result => {
+          // Les constats changent les remises (statuts, retour) et l'historique.
+          void queryClient.invalidateQueries({ queryKey: SYNDIC_DD_KEYS.remittancesPrefix(tenantId) });
+          void queryClient.invalidateQueries({ queryKey: SYNDIC_DD_KEYS.returnsPrefix(tenantId) });
+          if (result.appliedSummary.failed > 0) {
+            message.warning(
+              t('Fichier {{name}} importé, mais {{n}} constats ont échoué.', {
+                name: result.fileName,
+                n: result.appliedSummary.failed
+              })
+            );
+          } else {
+            message.success(t('Fichier {{name}} importé.', { name: result.fileName }));
+          }
+        }}
+      />
 
       <SyndicPrepareRemittanceModal
         tenantId={tenantId}

@@ -17,10 +17,11 @@ const { Text } = Typography;
  * remise. Vert seulement si toutes les lignes ont reçu leur avis ; tant que
  * l'envoi se poursuit en arrière-plan, le message le dit.
  */
-export const PrenotificationSummaryAlert: React.FC<{ summary: PrenotificationSummaryDto; lineCount: number }> = ({
-  summary,
-  lineCount
-}) => {
+export const PrenotificationSummaryAlert: React.FC<{
+  summary: PrenotificationSummaryDto;
+  lineCount: number;
+  scope?: 'RENTAL_LEASE' | 'SYNDIC_LOT';
+}> = ({ summary, lineCount, scope }) => {
   const allSent = summary.sent >= lineCount;
   return (
     <Alert
@@ -55,9 +56,11 @@ export const PrenotificationSummaryAlert: React.FC<{ summary: PrenotificationSum
           )}
           <div>
             <Text type="secondary">
-              {t(
-                "Les avis partent à l'adresse du compte portail du locataire quand il en a un, sinon à celle de sa fiche contact."
-              )}
+              {scope === 'SYNDIC_LOT'
+                ? t("Les avis partent à l'adresse de la fiche contact du copropriétaire.")
+                : t(
+                    "Les avis partent à l'adresse du compte portail du locataire quand il en a un, sinon à celle de sa fiche contact."
+                  )}
             </Text>
           </div>
         </div>

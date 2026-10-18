@@ -28,18 +28,28 @@ export const lineJustProcessed = () => new ConflictError(t("Cette ligne vient d'
 const reloadConflict = () => new ConflictError(t("La remise vient d'être modifiée : rechargez la page."));
 
 /**
- * Filtre de périmètre d'une remise. SYNDIC_LOT : la remise porte le périmètre ;
- * le syndicat s'y ajoutera avec la colonne de P4 (la remise de loyers n'en a pas).
+ * Filtre de périmètre d'une remise. SYNDIC_LOT : le syndicat de la route s'ajoute au périmètre, une remise d'un
+ * autre syndicat de la même agence est introuvable (même NotFoundError qu'un identifiant inconnu).
  */
 export function remittanceScopeWhere(scope: ReturnScope): Prisma.DirectDebitRemittanceWhereInput {
-  return { scope: scopeOf(scope) };
+  return scope.scope === 'SYNDIC_LOT'
+    ? { scope: 'SYNDIC_LOT', syndicateId: scope.syndicateId }
+    : { scope: 'RENTAL_LEASE' };
 }
 
-/**
- * Périmètre en valeur de l'enum Prisma. L'enum ne porte que RENTAL_LEASE jusqu'à la migration de P4, qui
- * ajoute SYNDIC_LOT ; ce transtypage tombe alors de lui-même.
- */
-export const scopeOf = (scope: ReturnScope) => scope.scope as 'RENTAL_LEASE';
+/** Filtre de périmètre d'un import de fichier de retour (même règle que pour les remises). */
+export function returnImportScopeWhere(scope: ReturnScope): Prisma.DirectDebitReturnImportWhereInput {
+  return scope.scope === 'SYNDIC_LOT'
+    ? { scope: 'SYNDIC_LOT', syndicateId: scope.syndicateId }
+    : { scope: 'RENTAL_LEASE' };
+}
+
+/** Périmètre en valeur de l'enum Prisma. */
+export const scopeOf = (scope: ReturnScope): 'RENTAL_LEASE' | 'SYNDIC_LOT' => scope.scope;
+
+/** Syndicat porté par l'import ou la remise (nul en locatif). */
+export const syndicateIdOf = (scope: ReturnScope): string | null =>
+  scope.scope === 'SYNDIC_LOT' ? scope.syndicateId : null;
 
 export const RETURN_REMITTANCE_SELECT = {
   id: true,
@@ -48,6 +58,7 @@ export const RETURN_REMITTANCE_SELECT = {
   status: true,
   collectionDate: true,
   scope: true,
+  syndicateId: true,
   lineCount: true,
   totalAmount: true,
   creditor: { select: { id: true, treasuryAccountId: true, rejectFeeAmount: true, maxConsecutiveRejects: true } },
@@ -68,6 +79,10 @@ export const RETURN_LINE_SELECT = {
   leaseId: true,
   installmentId: true,
   debtorClientId: true,
+  lotId: true,
+  chargeCallIds: true,
+  chargePaymentId: true,
+  debtorContactId: true,
   rentalPaymentId: true,
   mandate: { select: { id: true, year: true, sequence: true, status: true, ibanLast4: true } }
 } satisfies Prisma.DirectDebitRemittanceLineSelect;

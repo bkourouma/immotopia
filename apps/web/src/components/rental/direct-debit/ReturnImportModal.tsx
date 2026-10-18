@@ -15,8 +15,17 @@ import { t } from '../../../i18n/t';
 
 const { Text } = Typography;
 
+/** Les deux appels de l'API d'un périmètre ; le locatif par défaut. */
+export interface ReturnImportApi {
+  preview: (file: File) => Promise<ReturnPreviewDto>;
+  apply: (file: File) => Promise<ReturnApplyDto>;
+}
+
 interface ReturnImportModalProps {
   tenantId: string;
+  /** Appels de l'API du périmètre (copropriété : P4) ; absent : retours des loyers. */
+  api?: ReturnImportApi;
+  scope?: 'RENTAL_LEASE' | 'SYNDIC_LOT';
   open: boolean;
   onClose: () => void;
   /** Appelée après une application réussie (le fichier a été importé), avant la fermeture. */
@@ -88,7 +97,15 @@ const ReadErrors: React.FC<{ errors: ReturnPreviewDto['errors'] }> = ({ errors }
  * écrit), puis « Appliquer » qui relit le même fichier et constate chaque
  * ligne retenue.
  */
-export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({ tenantId, open, onClose, onApplied }) => {
+export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({
+  tenantId,
+  api,
+  scope,
+  open,
+  onClose,
+  onApplied
+}) => {
+  const syndic = scope === 'SYNDIC_LOT';
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ReturnPreviewDto | null>(null);
   const [applied, setApplied] = useState<ReturnApplyDto | null>(null);
@@ -115,7 +132,7 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({ tenantId, 
     setConfirming(false);
     setBusy('preview');
     try {
-      setPreview(await previewReturnFile(tenantId, next));
+      setPreview(await (api ? api.preview(next) : previewReturnFile(tenantId, next)));
     } catch (err) {
       setError(apiErrorMessage(err, t('Erreur lors de la lecture du fichier de retour')));
     } finally {
@@ -128,7 +145,7 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({ tenantId, 
     setBusy('apply');
     setError(null);
     try {
-      const result = await applyReturnFile(tenantId, file);
+      const result = await (api ? api.apply(file) : applyReturnFile(tenantId, file));
       setApplied(result);
       setConfirming(false);
       onApplied(result);
@@ -318,9 +335,26 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({ tenantId, 
                   type="warning"
                   showIcon
                   message={t("Confirmer l'application du fichier ?")}
-                  description={t(
-                    '{{settle}} règlements créent des encaissements et des quittances ; {{reject}} rejets, dont {{late}} rejets tardifs qui annulent des encaissements et leurs quittances.',
-                    { settle: preview.summary.settle, reject: preview.summary.reject, late: lateCount }
+                  description={
+                    syndic
+                      ? t(
+                          "{{settle}} règlements créent des encaissements et des reçus ; {{reject}} rejets. Un règlement constaté à tort ne s'annule pas depuis cet écran.",
+                          { settle: preview.summary.settle, reject: preview.summary.reject }
+                        )
+                      : t(
+                          '{{settle}} règlements créent des encaissements et des quittances ; {{reject}} rejets, dont {{late}} rejets tardifs qui annulent des encaissements et leurs quittances.',
+                          { settle: preview.summary.settle, reject: preview.summary.reject, late: lateCount }
+                        )
+                  }
+                />
+              )}
+              {syndic && lateCount > 0 && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={t(
+                    "Le rejet d'un prélèvement déjà constaté réglé n'est pas pris en charge en copropriété : {{n}} enregistrements concernés échoueront à l'application, régularisez-les dans la comptabilité de la copropriété.",
+                    { n: lateCount }
                   )}
                 />
               )}

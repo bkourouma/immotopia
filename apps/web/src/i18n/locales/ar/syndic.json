@@ -1561,5 +1561,20 @@
   "Prélèvement bancaire des appels de charges : compte du syndicat, mandats des copropriétaires et remises.": "الخصم المصرفي لنداءات الأعباء: حساب الاتحاد وتفويضات الملاك المشتركين والدفعات.",
   "Retour aux prélèvements": "العودة إلى الخصومات المباشرة",
   "sans e-mail": "بلا بريد إلكتروني",
-  "Téléchargez l'autorisation, faites-la signer, puis déposez le scan pour activer le mandat.": "نزّلوا التفويض واحصلوا على توقيعه ثم أودعوا النسخة الممسوحة لتفعيل التفويض."
+  "Téléchargez l'autorisation, faites-la signer, puis déposez le scan pour activer le mandat.": "نزّلوا التفويض واحصلوا على توقيعه ثم أودعوا النسخة الممسوحة لتفعيل التفويض.",
+  "Les copropriétaires ont déjà reçu un avis de prélèvement : prévenez-les que le prélèvement n'aura pas lieu. Toutes les lignes de la remise seront annulées. Cette action est définitive.": "تلقى الملاك المشتركون إشعار الخصم المباشر بالفعل: أبلغوهم بأن الخصم لن يتم. ستُلغى جميع بنود الدفعة. هذا الإجراء نهائي.",
+  "Rien n'est encore parti : les appels de charges redeviendront disponibles pour une autre remise. Toutes les lignes seront annulées. Cette action est définitive.": "لم يُرسل شيء بعد: ستصبح نداءات الأعباء متاحة من جديد لدفعة أخرى. ستُلغى جميع البنود. هذا الإجراء نهائي.",
+  "Appels de charges couverts": "نداءات الأعباء المشمولة",
+  "{{period}} (échéance {{date}}) : {{amount}}": "{{period}} (الاستحقاق {{date}}): {{amount}}",
+  "1 copropriétaire n'a pas reçu l'avis de prélèvement.": "لم يتلقَّ مالك مشترك واحد إشعار الخصم المباشر.",
+  "{{n}} copropriétaires n'ont pas reçu l'avis de prélèvement.": "لم يتلقَّ {{n}} من الملاك المشتركين إشعار الخصم المباشر.",
+  "Le rejet d'un prélèvement déjà constaté réglé n'est pas pris en charge en copropriété : régularisez dans la comptabilité de la copropriété.": "رفض خصم مباشر سُجّل كمدفوع غير مدعوم في الملكية المشتركة: قم بالتسوية في محاسبة الملكية المشتركة.",
+  "Le copropriétaire a déjà reçu l'avis de prélèvement : prévenez-le que ce prélèvement n'aura pas lieu.": "تلقى المالك المشترك إشعار الخصم المباشر بالفعل: أبلغه بأن هذا الخصم لن يتم.",
+  "Les avis partent à l'adresse de la fiche contact du copropriétaire.": "تُرسل الإشعارات إلى العنوان المسجل في بطاقة جهة اتصال المالك المشترك.",
+  "Le prélèvement a été payé par la banque : un encaissement est enregistré sur le lot, imputé sur les appels de charges couverts, et son reçu est émis.": "دفع البنك الخصم المباشر: يُسجَّل تحصيل على القطعة ويُوزَّع على نداءات الأعباء المشمولة ويُصدر إيصاله.",
+  "Aucun frais de rejet n'est refacturé en copropriété. Le mandat est suspendu automatiquement après un certain nombre de rejets consécutifs.": "لا تُعاد فوترة أي رسوم رفض في الملكية المشتركة. يُعلَّق التفويض تلقائيًا بعد عدد معين من حالات الرفض المتتالية.",
+  "Constater réglée la ligne encore en attente de cette remise ? Un encaissement et son reçu sont enregistrés. Un règlement constaté à tort ne s'annule pas depuis cet écran : il se régularise dans la comptabilité de la copropriété.": "تسجيل البند المعلّق في هذه الدفعة كمدفوع؟ يُسجَّل تحصيل وإيصاله. لا يمكن التراجع عن دفعة سُجّلت عن طريق الخطأ من هذه الشاشة: قم بالتسوية في محاسبة الملكية المشتركة.",
+  "Constater réglées les {{n}} lignes encore en attente de cette remise, à la même date de valeur ? Un encaissement et son reçu sont enregistrés pour chacune. Un règlement constaté à tort ne s'annule pas depuis cet écran : il se régularise dans la comptabilité de la copropriété.": "تسجيل {{n}} من البنود المعلّقة في هذه الدفعة كمدفوعة بنفس تاريخ القيمة؟ يُسجَّل تحصيل وإيصال لكل منها. لا يمكن التراجع عن دفعة سُجّلت عن طريق الخطأ من هذه الشاشة: قم بالتسوية في محاسبة الملكية المشتركة.",
+  "{{settle}} règlements créent des encaissements et des reçus ; {{reject}} rejets. Un règlement constaté à tort ne s'annule pas depuis cet écran.": "تُنشئ {{settle}} مدفوعات تحصيلات وإيصالات؛ و{{reject}} حالات رفض. لا يمكن التراجع عن دفعة سُجّلت عن طريق الخطأ من هذه الشاشة.",
+  "Le rejet d'un prélèvement déjà constaté réglé n'est pas pris en charge en copropriété : {{n}} enregistrements concernés échoueront à l'application, régularisez-les dans la comptabilité de la copropriété.": "رفض خصم مباشر سُجّل كمدفوع غير مدعوم في الملكية المشتركة: ستفشل {{n}} سجلات معنية عند التطبيق. قم بتسويتها في محاسبة الملكية المشتركة."
 }

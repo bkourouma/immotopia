@@ -18,6 +18,32 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `feat/prelevement-p4-copropriete` — 2026-10-18
+
+**État :** lot P4 terminé côté code et documentation, à relire (PR empilée sur P3 = #166). Rien n'est commité par l'agent : le pilote commite.
+**Worktree :** `.claude/worktrees/agent-a8c45bf28b7afdbdf`.
+
+Fait (spec 042 P4, contrat `specs/042-prelevement-bancaire/data-model.md` §9) :
+
+- Typage de la fusion P3 dans P4 : le service de retour (`lib/direct-debit/returns/`) fonctionne pour `RENTAL_LEASE` et `SYNDIC_LOT` (filtre du syndicat sur remises et imports, ligne de l'encaisseur complète, `chargePaymentId` écrit au règlement, avis de rejet `SYNDIC_DIRECT_DEBIT_REJECTED`, nom du contact débiteur dans l'aperçu, `scope` dans l'historique des imports).
+- Écrans : détail complet d'une remise de copropriété et import d'un retour banque (aperçu, application, historique) ; le détail locatif a été extrait dans `components/rental/direct-debit/RemittanceDetailView.tsx` (commun aux deux périmètres, `pages/rental/DirectDebitRemittanceDetail.tsx` n'est plus qu'un habillage) ; `ReturnImportModal` et `ReturnImportsHistory` acceptent l'API d'un périmètre. Droits : `useSyndicDirectDebitRights` (VIEW lit, MANAGE écrit).
+- Service web `syndic-direct-debit-service.ts` : constats, tout régler, aperçu, application, historique.
+- Traductions en/ar ajoutées à la main dans `syndic.json` (15 textes) ; classeur : 26 lignes (1081 au total) ; `plan.md` : P4 fait.
+
+Reste à faire :
+
+- Recette navigateur de l'onglet Prélèvements (jamais ouvert dans un vrai navigateur) ; migrations P4 jamais appliquées sur une vraie base ; `npm run test:isolation` non lancé.
+- Les cartes « compte » et « mandats » de l'onglet ne masquent pas leurs boutons de gestion pour un profil en lecture seule (l'API répond 403) ; le détail de remise et la carte « remises » le font.
+- Un fichier de retour qui rejette une ligne déjà réglée en copropriété est rapproché comme `REJECT` puis échoue à l'application (message de l'API) : l'aperçu prévient, mais ne l'écarte pas (pas de raison d'écart dédiée dans le contrat).
+- P5 (portails) non commencé.
+
+Pièges :
+
+- Le rejet tardif n'existe pas en copropriété (aucune contre-passation d'un `ChargePayment`) : le bouton n'est pas proposé et l'API répond 409.
+- Les écrans de finances du syndic ne passent pas par React Query : après un constat, rien à invalider côté appels de charges (ils se relisent au montage).
+- Les tests vitest d'un fichier syndic prennent plus de 7 minutes quand la machine est chargée ; relancer seul le fichier avant de conclure à un échec.
+- Le correctif de typage portait sur le service de P3 : sa dérogation « le syndicat s'ajoutera avec la colonne de P4 » est tenue.
+
 ## Branche `feat/prelevement-p3-retour-banque` — 2026-10-17
 
 **État :** prêt à relire — PR vers `main` ouverte par le pilote (premier des trois lots empilés : P3, puis P4 `feat/prelevement-p4-copropriete`, puis signature `feat/prelevement-signature-mandat`). Relectures de code et de sécurité faites, constats corrigés.

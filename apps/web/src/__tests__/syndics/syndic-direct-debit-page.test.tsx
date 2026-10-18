@@ -7,6 +7,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SyndicDirectDebit } from '../../pages/syndics/SyndicDirectDebit';
 import { SyndicDirectDebitRemittanceDetail } from '../../pages/syndics/SyndicDirectDebitRemittanceDetail';
+import { makeRemittance as makeFullRemittance } from '../rental/direct-debit-remittances-fixtures';
 
 /**
  * Spec 042, P4 (§9.6) : onglet « Prélèvements » de Syndic › Finances —
@@ -39,6 +40,7 @@ const createSyndicRemittance = vi.fn();
 const getSyndicRemittance = vi.fn();
 const listSyndicateLots = vi.fn();
 const saveBlob = vi.fn();
+const listSyndicReturnImports = vi.fn();
 
 vi.mock('../../services/syndic-direct-debit-service', () => ({
   getSyndicCreditor: (...a: unknown[]) => getSyndicCreditor(...a),
@@ -57,7 +59,14 @@ vi.mock('../../services/syndic-direct-debit-service', () => ({
   uploadSyndicSignedScan: (...a: unknown[]) => uploadSyndicSignedScan(...a),
   listSyndicRemittances: (...a: unknown[]) => listSyndicRemittances(...a),
   createSyndicRemittance: (...a: unknown[]) => createSyndicRemittance(...a),
-  getSyndicRemittance: (...a: unknown[]) => getSyndicRemittance(...a)
+  getSyndicRemittance: (...a: unknown[]) => getSyndicRemittance(...a),
+  listSyndicReturnImports: (...a: unknown[]) => listSyndicReturnImports(...a),
+  previewSyndicReturnFile: vi.fn(),
+  applySyndicReturnFile: vi.fn()
+}));
+
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ disabled: new Set(), enabled: new Set(), permissions: null, ready: true })
 }));
 
 vi.mock('../../services/syndic-service', () => ({
@@ -182,6 +191,7 @@ beforeEach(() => {
   getSyndicCreditor.mockResolvedValue(creditor);
   listSyndicMandates.mockResolvedValue({ items: [makeMandate()], total: 1, page: 1, pageSize: 20 });
   listSyndicRemittances.mockResolvedValue({ items: [makeRemittance()], total: 1, page: 1, pageSize: 20 });
+  listSyndicReturnImports.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10 });
   listSyndicateLots.mockResolvedValue([
     { id: 'lot-1', lotNumber: 'A01', ownersLabel: 'Awa Traoré' },
     { id: 'lot-2', lotNumber: 'B02', ownersLabel: '' }
@@ -483,7 +493,9 @@ describe('SyndicDirectDebit — remises', () => {
       remittance: makeRemittance({ id: 'r-9', reference: 'PRL-2026-0009' }),
       skipped: []
     });
-    getSyndicRemittance.mockResolvedValue(makeRemittance({ id: 'r-9', reference: 'PRL-2026-0009' }));
+    getSyndicRemittance.mockResolvedValue(
+      makeFullRemittance({ id: 'r-9', reference: 'PRL-2026-0009', scope: 'SYNDIC_LOT', lines: [] })
+    );
     const user = userEvent.setup();
     mount();
 
@@ -500,12 +512,11 @@ describe('SyndicDirectDebit — remises', () => {
     await waitFor(() =>
       expect(createSyndicRemittance).toHaveBeenCalledWith(TENANT, SYNDIC, { collectionDate: '2026-11-05' })
     );
-    // Après création, le détail s'ouvre (page provisoire).
+    // Après création, le détail s'ouvre.
     expect(await screen.findByTestId('location')).toHaveTextContent(
       `/tenant/${TENANT}/syndics/${SYNDIC}/prelevements/remises/r-9`
     );
-    expect(await screen.findByText('Détail complet à venir')).toBeInTheDocument();
-    expect(await screen.findByText('PRL-2026-0009')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'PRL-2026-0009' })).toBeInTheDocument();
   });
 
   it('affiche l’erreur de l’API dans la fenêtre sans la fermer', async () => {

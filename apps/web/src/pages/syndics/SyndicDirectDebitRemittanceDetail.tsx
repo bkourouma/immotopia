@@ -1,67 +1,86 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Alert, Card, Descriptions, Space, Spin, Typography } from 'antd';
-import { useQuery } from '@tanstack/react-query';
-import { getSyndicRemittance } from '../../services/syndic-direct-debit-service';
-import { formatMoney } from '../../components/primitives';
+import { Alert, Typography } from 'antd';
 import {
-  apiErrorMessage,
-  formatDay,
-  RemittanceStatusTag
-} from '../../components/rental/direct-debit/direct-debit-shared';
-import { detailKey, STALE_TIME } from '../../lib/query-keys';
+  cancelSyndicRemittance,
+  exportSyndicRemittance,
+  getSyndicRemittance,
+  refreshSyndicRemittance,
+  rejectSyndicRemittanceLine,
+  removeSyndicRemittanceLine,
+  resendSyndicPrenotifications,
+  settleAllSyndicRemittanceLines,
+  settleSyndicRemittanceLine,
+  submitSyndicRemittance,
+  validateSyndicRemittance
+} from '../../services/syndic-direct-debit-service';
+import {
+  RemittanceDetailView,
+  type RemittanceDetailApi
+} from '../../components/rental/direct-debit/RemittanceDetailView';
+import { SYNDIC_DD_KEYS } from '../../components/syndics/direct-debit/keys';
+import { useSyndicDirectDebitRights } from '../../components/syndics/direct-debit/useSyndicDirectDebitRights';
+import { detailKey } from '../../lib/query-keys';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
-const { Title, Paragraph } = Typography;
+const { Title } = Typography;
 
 /**
- * Détail d'une remise de copropriété. Page PROVISOIRE (spec 042, P4, première
- * partie) : seul l'en-tête est affiché ; l'écran complet des remises réutilisera
- * celui du locatif.
+ * Détail d'une remise de copropriété (spec 042, P4, §9.6) : le même écran que
+ * celui des loyers (`RemittanceDetailView`), branché sur les routes
+ * `/syndics/:syndicId/prelevements/remises/...`. Consultation avec
+ * `SYNDIC_DIRECT_DEBIT_VIEW`, gestes avec `SYNDIC_DIRECT_DEBIT_MANAGE`.
  */
 export const SyndicDirectDebitRemittanceDetail: React.FC = () => {
   const { tenantId, syndicId } = useSyndicRouteContext();
   const { remittanceId } = useParams<{ remittanceId: string }>();
+  const { canManage } = useSyndicDirectDebitRights(tenantId);
 
-  const { data, isPending, error } = useQuery({
-    queryKey: detailKey('syndic-direct-debit-remittances', tenantId, remittanceId ?? ''),
-    queryFn: () => getSyndicRemittance(tenantId as string, syndicId as string, remittanceId as string),
-    enabled: Boolean(tenantId && syndicId && remittanceId),
-    staleTime: STALE_TIME.list
-  });
+  const api = useMemo<RemittanceDetailApi>(() => {
+    const tenant = tenantId as string;
+    const syndic = syndicId as string;
+    const remittance = remittanceId as string;
+    return {
+      get: () => getSyndicRemittance(tenant, syndic, remittance),
+      refresh: () => refreshSyndicRemittance(tenant, syndic, remittance),
+      validate: () => validateSyndicRemittance(tenant, syndic, remittance),
+      resend: () => resendSyndicPrenotifications(tenant, syndic, remittance),
+      exportFile: fallbackName => exportSyndicRemittance(tenant, syndic, remittance, fallbackName),
+      submit: () => submitSyndicRemittance(tenant, syndic, remittance),
+      cancel: reason => cancelSyndicRemittance(tenant, syndic, remittance, reason),
+      withdrawLine: (lineId, reason) => removeSyndicRemittanceLine(tenant, syndic, remittance, lineId, reason),
+      settleLine: (lineId, input) => settleSyndicRemittanceLine(tenant, syndic, remittance, lineId, input),
+      rejectLine: (lineId, input) => rejectSyndicRemittanceLine(tenant, syndic, remittance, lineId, input),
+      settleAll: input => settleAllSyndicRemittanceLines(tenant, syndic, remittance, input)
+    };
+  }, [tenantId, syndicId, remittanceId]);
 
   if (!tenantId || !syndicId || !remittanceId) {
     return <Alert type="error" showIcon message={t('Paramètres copropriété manquants')} />;
   }
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Link to={`/tenant/${tenantId}/syndics/${syndicId}/prelevements`}>{t('Retour aux prélèvements')}</Link>
-      {error && (
-        <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement de la remise'))} />
-      )}
-      {isPending ? (
-        <Spin />
-      ) : data ? (
-        <Card>
-          <Title level={3} style={{ marginTop: 0 }}>
-            {data.reference}
+    <RemittanceDetailView
+      scope="SYNDIC_LOT"
+      api={api}
+      tenantId={tenantId}
+      remittanceId={remittanceId}
+      queryKey={detailKey('syndic-direct-debit-remittances', tenantId, remittanceId)}
+      invalidateKey={SYNDIC_DD_KEYS.remittancesPrefix(tenantId)}
+      canManage={canManage}
+      renderHeader={remittance => (
+        <div style={{ marginBottom: 16 }}>
+          <Link to={`/tenant/${tenantId}/syndics/${syndicId}/prelevements`}>{t('Retour aux prélèvements')}</Link>
+          <Title level={3} style={{ marginTop: 8, marginBottom: 0 }}>
+            {remittance ? remittance.reference : t('Remise de prélèvements')}
           </Title>
-          <Descriptions size="small" column={{ xs: 1, md: 2 }} bordered>
-            <Descriptions.Item label={t('Statut')}>
-              <RemittanceStatusTag status={data.status} />
-            </Descriptions.Item>
-            <Descriptions.Item label={t('Date de prélèvement')}>{formatDay(data.collectionDate)}</Descriptions.Item>
-            <Descriptions.Item label={t('Total')}>{formatMoney(data.totalAmount)}</Descriptions.Item>
-            <Descriptions.Item label={t('Lignes')}>{data.lineCount}</Descriptions.Item>
-          </Descriptions>
-          <Paragraph type="secondary" style={{ marginTop: 16, marginBottom: 0 }}>
-            {t('Détail complet à venir')}
-          </Paragraph>
-        </Card>
-      ) : null}
-    </Space>
+          {remittance?.syndicate && (
+            <Typography.Text type="secondary">{`${remittance.syndicate.name} · ${remittance.creditor.label}`}</Typography.Text>
+          )}
+        </div>
+      )}
+    />
   );
 };
 

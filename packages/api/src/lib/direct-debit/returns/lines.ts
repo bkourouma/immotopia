@@ -24,6 +24,7 @@ import {
   type ReturnRemittance
 } from './shared';
 import type { ReturnScope } from './types';
+import { sendSyndicDirectDebitRejectionNotice } from '../syndic/notifications';
 
 /**
  * Constat de règlement et de rejet d'une ligne de remise (spec 042, P3,
@@ -56,12 +57,11 @@ function toCollectorLine(remittance: ReturnRemittance, line: ReturnLine): Collec
     scope: remittance.scope,
     leaseId: line.leaseId,
     installmentId: line.installmentId,
-    // P4 (SYNDIC_LOT) : l'encaisseur des charges lira ces champs sur sa propre ligne.
-    lotId: null,
-    chargeCallIds: [],
-    syndicateId: null,
+    lotId: line.lotId,
+    chargeCallIds: line.chargeCallIds,
+    syndicateId: remittance.syndicateId,
     rentalPaymentId: line.rentalPaymentId,
-    chargePaymentId: null,
+    chargePaymentId: line.chargePaymentId,
     treasuryAccountId: remittance.creditor.treasuryAccountId
   };
 }
@@ -126,10 +126,12 @@ export async function settleLine(
       settledAt
     );
     afterCommit = result.afterCommit;
-    if (result.rentalPaymentId) {
+    if (result.rentalPaymentId || result.chargePaymentId) {
       await tx.directDebitRemittanceLine.updateMany({
         where: { id: line.id, tenantId },
-        data: { rentalPaymentId: result.rentalPaymentId }
+        data: result.rentalPaymentId
+          ? { rentalPaymentId: result.rentalPaymentId }
+          : { chargePaymentId: result.chargePaymentId }
       });
     }
 
@@ -176,7 +178,10 @@ interface RejectOutcome {
   amount: number;
   collectionDate: Date;
   mandate: ReturnLine['mandate'];
-  debtorClientId: string;
+  /** Locataire (RENTAL_LEASE) ; nul en SYNDIC_LOT, où l'avis part par la fiche du contact débiteur. */
+  debtorClientId: string | null;
+  lineId: string;
+  scope: 'RENTAL_LEASE' | 'SYNDIC_LOT';
   agencyName: string | null;
 }
 
@@ -310,6 +315,8 @@ export async function rejectLine(
       collectionDate: remittance.collectionDate,
       mandate: line.mandate,
       debtorClientId: line.debtorClientId,
+      lineId: line.id,
+      scope: remittance.scope,
       agencyName: remittance.tenant?.name ?? null
     };
   }, LINE_TRANSACTION_OPTIONS);
@@ -338,14 +345,21 @@ export function emailReasonOf(reason: string | null | undefined): string {
  * masqué, adresse masquée dans les journaux (`redactRecipient`), échec isolé.
  */
 async function notifyRejection(tenantId: string, outcome: RejectOutcome, details: RejectDetails): Promise<void> {
+  if (outcome.scope === 'SYNDIC_LOT') {
+    // Clé SYNDIC_DIRECT_DEBIT_REJECTED : ne lève jamais, échec isolé (data-model §9.3).
+    await sendSyndicDirectDebitRejectionNotice(tenantId, outcome.lineId, { suspended: outcome.suspended });
+    return;
+  }
+  const debtorClientId = outcome.debtorClientId;
+  if (!debtorClientId) return;
   try {
     const config = await getEmailNotificationConfig(tenantId, 'DIRECT_DEBIT_REJECTED');
     if (!config.enabled) return;
-    const recipients = await resolveDebtorRecipients(prisma, tenantId, [outcome.debtorClientId]);
-    const to = recipients.get(outcome.debtorClientId)?.email;
+    const recipients = await resolveDebtorRecipients(prisma, tenantId, [debtorClientId]);
+    const to = recipients.get(debtorClientId)?.email;
     if (!to) return;
     const debtor = await prisma.tenantClient.findFirst({
-      where: { id: outcome.debtorClientId, tenantId },
+      where: { id: debtorClientId, tenantId },
       select: { id: true, details: true, user: { select: { fullName: true } } }
     });
     const names = debtor ? await resolveDebtorNames(prisma, tenantId, [debtor]) : new Map<string, string | null>();
@@ -353,7 +367,7 @@ async function notifyRejection(tenantId: string, outcome: RejectOutcome, details
     await emailService.sendDirectDebitRejected(
       to,
       {
-        debtorName: names.get(outcome.debtorClientId) ?? t('Locataire'),
+        debtorName: names.get(debtorClientId) ?? t('Locataire'),
         agencyName: outcome.agencyName ?? t('Votre agence'),
         mandateReference: mandateReferenceOf(outcome.mandate.year, outcome.mandate.sequence),
         ibanMasked: maskIban(outcome.mandate.ibanLast4),

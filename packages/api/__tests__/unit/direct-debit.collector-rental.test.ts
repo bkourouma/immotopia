@@ -97,6 +97,7 @@ import { ConflictError, NotFoundError } from '../../src/middleware/error-middlew
 import { logger } from '../../src/utils/logger';
 import { withExclusiveSection } from '../../src/lib/ai/advisory-lock';
 import { rentalCollector } from '../../src/lib/direct-debit/collectors/rental';
+import { syndicCollector } from '../../src/lib/direct-debit/collectors/syndic';
 import { getCollector, type CollectorContext, type CollectorLine } from '../../src/lib/direct-debit/collectors';
 
 const TENANT = 'tenant-a';
@@ -162,7 +163,9 @@ describe('encaisseur RENTAL_LEASE / règlement', () => {
   it('est l’encaisseur du périmètre des loyers et garde la clé d’activité', () => {
     expect(getCollector('RENTAL_LEASE')).toBe(rentalCollector);
     expect(rentalCollector.keepsActiveKeyOnSettle).toBe(true);
-    expect(() => getCollector('SYNDIC_LOT')).toThrow();
+    // P4 : la copropriété a son encaisseur, qui ne garde pas la clé d'activité (le lot redevient prélevable).
+    expect(getCollector('SYNDIC_LOT')).toBe(syndicCollector);
+    expect(syndicCollector.keepsActiveKeyOnSettle).toBe(false);
   });
 
   it('crée le paiement PENDING, le passe SUCCESS puis le ventile, dans cet ordre', async () => {
