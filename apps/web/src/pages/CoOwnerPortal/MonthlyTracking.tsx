@@ -8,6 +8,7 @@ import {
   getCoOwnerLotMonthlyTracking,
   type CoOwnerMonthStatus
 } from '../../services/coowner-portal-service';
+import { displayCurrency } from '../../utils/syndic-currency';
 import { portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
@@ -65,9 +66,10 @@ function parseIsoDay(value: string): { year: number; month: number } {
   return { year, month };
 }
 
-/** Vrai si ce mois précède l'acquisition du lot : le mois de l'ancien propriétaire, jamais montré ici. */
-function isBeforeOwnership(year: number, month: number, ownedSince: string): boolean {
-  const owned = parseIsoDay(ownedSince);
+/** Vrai si ce mois précède la borne de visibilité (changement de propriétaire) : mois de l'ancien propriétaire, jamais montré ici. Sans borne (`null`), rien n'est masqué. */
+function isBeforeOwnership(year: number, month: number, visibleSince: string | null): boolean {
+  if (!visibleSince) return false;
+  const owned = parseIsoDay(visibleSince);
   return year < owned.year || (year === owned.year && month < owned.month);
 }
 
@@ -98,7 +100,7 @@ export default function CoOwnerMonthlyTracking() {
     enabled: Boolean(lotId)
   });
 
-  const ownedSinceYear = tracking.data ? parseIsoDay(tracking.data.ownedSince).year : undefined;
+  const ownedSinceYear = tracking.data?.visibleSince ? parseIsoDay(tracking.data.visibleSince).year : undefined;
 
   // Un lot acquis après l'année choisie (par ex. après un changement de lot) :
   // l'API répondrait 404 sur une année qui n'existe pas pour ce copropriétaire.
@@ -106,7 +108,7 @@ export default function CoOwnerMonthlyTracking() {
     if (ownedSinceYear !== undefined && year < ownedSinceYear) setYear(ownedSinceYear);
   }, [ownedSinceYear, year]);
 
-  const currency = tracking.data?.currency;
+  const currency = displayCurrency(tracking.data?.currency);
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -198,7 +200,7 @@ export default function CoOwnerMonthlyTracking() {
                       const beforeOwnership = isBeforeOwnership(
                         tracking.data.year,
                         cell.month,
-                        tracking.data.ownedSince
+                        tracking.data.visibleSince
                       );
                       const config = STATUS_CONFIG[cell.status];
                       const tooltip = beforeOwnership

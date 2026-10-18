@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   App,
   Alert,
@@ -52,6 +52,24 @@ import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
+
+interface OpenOwner {
+  profileId?: string;
+  contactName: string;
+}
+
+/** Propriétaires en cours listés par le 409 `OPEN_OWNERS`, ou null pour toute autre erreur. */
+function extractOpenOwners(err: any): OpenOwner[] | null {
+  if (err?.response?.status !== 409) return null;
+  const data = err.response?.data;
+  const lists = [data?.errors];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    const entry = list.find((item: any) => item?.field === 'previousOwnersHandling' && item?.reason === 'OPEN_OWNERS');
+    if (entry) return Array.isArray(entry.owners) ? entry.owners : [];
+  }
+  return null;
+}
 
 const incidentTypeLabels: Record<string, string> = {
   BREAKDOWN: 'Panne',
@@ -161,6 +179,10 @@ export const SyndicProfilesIncidents: React.FC = () => {
   const [providers, setProviders] = useState<ServiceProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  // Soumission du profil propriétaire en cours (anti double clic, voir handleCreateOwner).
+  const submittingOwnerRef = useRef(false);
+  // Création refusée car le lot a déjà un propriétaire en cours : en attente du choix revente / indivision.
+  const [pendingOwner, setPendingOwner] = useState<{ values: any; owners: OpenOwner[] } | null>(null);
   const [assigningProviderIncidentId, setAssigningProviderIncidentId] = useState<string | null>(null);
   // Portail copropriétaire : invitation en cours, résultat affiché, révocation.
   const [invitingProfileId, setInvitingProfileId] = useState<string | null>(null);
@@ -243,29 +265,64 @@ export const SyndicProfilesIncidents: React.FC = () => {
   };
 
   const handleCreateOwner = async () => {
-    if (!effectiveTenantId || !syndicId) return;
-    const values = await ownerForm.validateFields();
+    // Garde-fou anti double clic : la validation étant asynchrone, un second clic
+    // ne voit pas encore `submitting` à true ; la ref, elle, l'est immédiatement.
+    if (!effectiveTenantId || !syndicId || submittingOwnerRef.current) return;
+    submittingOwnerRef.current = true;
     setSubmitting(true);
+    try {
+      // Champs invalides : AntD affiche les erreurs sous les champs, rien n'est envoyé.
+      const values = await ownerForm.validateFields().catch(() => null);
+      if (!values) return;
+      await submitOwner(values);
+    } finally {
+      submittingOwnerRef.current = false;
+      setSubmitting(false);
+    }
+  };
+
+  // Envoie la création ; `previousOwnersHandling` n'est posé qu'après le choix de l'utilisateur
+  // dans la modale « propriétaire en cours ».
+  const submitOwner = async (values: any, previousOwnersHandling?: 'CLOSE' | 'KEEP') => {
+    if (!effectiveTenantId || !syndicId) return;
     try {
       await createLotOwnerProfile(effectiveTenantId, syndicId, {
         lotId: values.lotId,
         contactId: values.contactId,
         ownershipPercentage: values.ownershipPercentage,
         ownedSince: new Date(values.ownedSince).toISOString(),
-        portalAccessEnabled: values.portalAccessEnabled || false
+        portalAccessEnabled: values.portalAccessEnabled || false,
+        ...(previousOwnersHandling ? { previousOwnersHandling } : {})
       });
       message.success(t('Profil propriétaire créé'));
       setOpenOwner(false);
       ownerForm.resetFields();
       await loadData();
     } catch (err: any) {
+      const openOwners = extractOpenOwners(err);
+      if (openOwners) {
+        setPendingOwner({ values, owners: openOwners });
+        return;
+      }
       // Parts au-delà de 100 % (409) : le message chiffré est reporté sous le champ fautif.
       const shareError = (err.response?.data?.errors as Array<{ field: string; message: string }> | undefined)?.find(
         fieldErr => fieldErr.field === 'ownershipPercentage'
       );
       if (shareError) ownerForm.setFields([{ name: 'ownershipPercentage', errors: [shareError.message] }]);
       message.error(err.response?.data?.error || t('Création profil propriétaire impossible'));
+    }
+  };
+
+  const resolveOpenOwners = async (handling: 'CLOSE' | 'KEEP') => {
+    if (!pendingOwner || submittingOwnerRef.current) return;
+    submittingOwnerRef.current = true;
+    setSubmitting(true);
+    const { values } = pendingOwner;
+    setPendingOwner(null);
+    try {
+      await submitOwner(values, handling);
     } finally {
+      submittingOwnerRef.current = false;
       setSubmitting(false);
     }
   };
@@ -862,6 +919,33 @@ export const SyndicProfilesIncidents: React.FC = () => {
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title={t('Ce lot a déjà un propriétaire en cours')}
+        open={pendingOwner !== null}
+        onCancel={() => setPendingOwner(null)}
+        cancelText={t('Annuler')}
+        okButtonProps={{ style: { display: 'none' } }}
+      >
+        {pendingOwner ? (
+          <div>
+            <Paragraph>{t('Propriétaire(s) actuel(s) de ce lot :')}</Paragraph>
+            <ul>
+              {pendingOwner.owners.map((owner, index) => (
+                <li key={owner.profileId ?? index}>{owner.contactName}</li>
+              ))}
+            </ul>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Button block type="primary" onClick={() => void resolveOpenOwners('CLOSE')}>
+                {t("Revente : clôturer l'ancien propriétaire à la date d'acquisition")}
+              </Button>
+              <Button block onClick={() => void resolveOpenOwners('KEEP')}>
+                {t('Indivision : ils sont propriétaires ensemble')}
+              </Button>
+            </Space>
+          </div>
+        ) : null}
       </Modal>
 
       <Modal

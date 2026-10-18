@@ -225,6 +225,39 @@ export async function lotAdvanceCents(client: Client, lotId: string): Promise<nu
   return advances.reduce((sum, advance) => sum + advance.availableCents, 0);
 }
 
+/**
+ * Consomme l'avance du lot pour absorber un debit de compte (ajustement) :
+ * decremente `unallocatedAmount` des paiements du lot, FIFO (meme ordre que
+ * `loadAdvances` : paidAt puis createdAt), jusqu'a `debitCents`. Renvoie les
+ * centimes reellement consommes (0 si debit <= 0 ou pas d'avance).
+ *
+ * Ne prend PAS le verrou du lot : l'appelant a deja appele `lockLotTx` dans la
+ * meme transaction. Ne cree aucune `ChargePaymentAllocation` : aucun appel de
+ * charges n'est regle par ce mouvement.
+ */
+export async function consumeAdvancesForDebitTx(
+  tx: PrismaTransactionClient,
+  lotId: string,
+  debitCents: number
+): Promise<number> {
+  if (!Number.isFinite(debitCents) || debitCents <= 0) return 0;
+  const advances = await loadAdvances(tx, lotId);
+  let remaining = Math.round(debitCents);
+  let consumed = 0;
+  for (const advance of advances) {
+    if (remaining <= 0) break;
+    const take = Math.min(advance.availableCents, remaining);
+    if (take <= 0) continue;
+    await tx.chargePayment.update({
+      where: { id: advance.paymentId },
+      data: { unallocatedAmount: fromCents(advance.availableCents - take) }
+    });
+    remaining -= take;
+    consumed += take;
+  }
+  return consumed;
+}
+
 // ---------------------------------------------------------------------------
 // Ecritures
 // ---------------------------------------------------------------------------

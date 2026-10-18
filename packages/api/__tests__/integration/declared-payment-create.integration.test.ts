@@ -84,7 +84,8 @@ maybeDescribe('création concurrente de déclarations (base réelle)', () => {
         syndicateId,
         contactId,
         ownershipPercentage: 100,
-        ownedSince: new Date(0)
+        ownedSince: new Date(0),
+        visibleSince: null
       })),
       lotIds,
       syndicateIds: [syndicateId]
@@ -123,7 +124,14 @@ maybeDescribe('création concurrente de déclarations (base réelle)', () => {
     const lot = await prisma.syndicateLot.create({
       data: { syndicateId, lotNumber: `L${randomUUID().slice(0, 4)}`, lotType: 'APARTMENT', generalShares: 100 }
     });
-    scope.lots.push({ lotId: lot.id, syndicateId, contactId, ownershipPercentage: 100, ownedSince: new Date(0) });
+    scope.lots.push({
+      lotId: lot.id,
+      syndicateId,
+      contactId,
+      ownershipPercentage: 100,
+      ownedSince: new Date(0),
+      visibleSince: null
+    });
     scope.lotIds.push(lot.id);
     const results = await Promise.allSettled(Array.from({ length: 13 }, () => declare(lot.id, ref('LIM'))));
     expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(10);

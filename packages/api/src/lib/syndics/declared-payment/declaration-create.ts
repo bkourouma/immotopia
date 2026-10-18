@@ -225,7 +225,10 @@ async function assertLotScope(
   if (lotIds.some(lotId => !owned.has(lotId))) throw lotNotFound();
 }
 
-/** Appels visés : du lot de LEUR ligne, ouverts, et (portail) visibles du copropriétaire ; 404 sinon. */
+/**
+ * Appels visés : du lot de LEUR ligne, ouverts, et (portail) visibles du copropriétaire ; 404 sinon. Côté portail,
+ * `ownedChargeCallsWhere` n'écarte les appels d'avant l'acquisition que s'il y a eu un autre propriétaire avant.
+ */
 async function assertCallsOfLines(
   tenantId: string,
   syndicateId: string,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { SyndicOnlinePayments } from '../../../pages/syndics/SyndicOnlinePayments';
@@ -234,8 +234,9 @@ describe('<SyndicOnlinePayments> — écran « Paiements » (spec 047)', () => {
 
     fireEvent.click(screen.getByText('approve-confirm'));
 
-    expect(await screen.findByText('Paiement validé (REC-001, QUI-002)')).toBeInTheDocument();
-    expect(screen.queryByText(/approve-modal:/)).not.toBeInTheDocument();
+    // La page n’émet plus de toast (la modale s’en charge) : elle ferme la modale et recharge.
+    await waitFor(() => expect(screen.queryByText(/approve-modal:/)).not.toBeInTheDocument());
+    expect(screen.queryByText(/Paiement validé/)).not.toBeInTheDocument();
     // Le compteur des déclarations ET celui du paiement en ligne avancent.
     expect(screen.getByText('table refresh:1')).toBeInTheDocument();
     expect(screen.getByText('checkouts refresh:1')).toBeInTheDocument();
@@ -253,8 +254,9 @@ describe('<SyndicOnlinePayments> — écran « Paiements » (spec 047)', () => {
 
     fireEvent.click(screen.getByText('reject-confirm'));
 
-    expect(await screen.findByText('Déclaration rejetée')).toBeInTheDocument();
-    expect(screen.queryByText(/reject-modal:/)).not.toBeInTheDocument();
+    // Pas de toast côté page : la modale ferme et la file se recharge.
+    await waitFor(() => expect(screen.queryByText(/reject-modal:/)).not.toBeInTheDocument());
+    expect(screen.queryByText('Déclaration rejetée')).not.toBeInTheDocument();
     expect(screen.getByText('table refresh:1')).toBeInTheDocument();
     expect(screen.getByText('checkouts refresh:0')).toBeInTheDocument();
   });

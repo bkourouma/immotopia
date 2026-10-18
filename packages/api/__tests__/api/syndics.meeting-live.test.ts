@@ -317,7 +317,7 @@ describe('Emargement par le gestionnaire', () => {
     });
   });
 
-  it('absent : le lot sort du quorum s il n a pas vote, mais reste compte s il a vote', async () => {
+  it('absent : le lot sort du quorum, même avec un bulletin en base', async () => {
     await request(app)
       .put(url(M1, `/presences/${L1}`))
       .send({ status: 'PRESENT' });
@@ -330,7 +330,7 @@ describe('Emargement par le gestionnaire', () => {
     res = await request(app)
       .put(url(M1, `/presences/${L1}`))
       .send({ status: 'ABSENT' });
-    expect(res.body.data.attendance).toMatchObject({ presentLots: 1, quorumPercent: 10 });
+    expect(res.body.data.attendance).toMatchObject({ presentLots: 0, quorumPercent: 0 });
   });
 
   it('emargement en masse', async () => {
@@ -678,7 +678,7 @@ describe('Routes publiques : etat et rejoindre', () => {
     expect(admin.body.data.participants).toMatchObject({ joined: 1 });
   });
 
-  it('ne retrograde jamais un emargement du gestionnaire, mais remplace un ABSENT', async () => {
+  it('ne retrograde jamais un emargement du gestionnaire et laisse un lot ABSENT absent (il ne vote pas)', async () => {
     await request(app)
       .put(url(M1, `/presences/${L1}`))
       .send({ status: 'REPRESENTED', representedByContactId: ERIC });
@@ -692,7 +692,7 @@ describe('Routes publiques : etat et rejoindre', () => {
       recordedBy: 'MANAGER',
       representedByContactId: ERIC
     });
-    expect(attendanceOf(L3)).toMatchObject({ status: 'PRESENT', recordedBy: 'SELF', mode: 'ONLINE' });
+    expect(attendanceOf(L3)).toMatchObject({ status: 'ABSENT', recordedBy: 'MANAGER' });
   });
 
   it('un mandataire rejoint : le lot du mandant est REPRESENTED, le sien reste a lui', async () => {

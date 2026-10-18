@@ -310,6 +310,7 @@ describe('Suivi mensuel', () => {
     lot: { id: 'lot-1', lotNumber: 'A1' },
     syndicate: { id: 's1', name: 'Résidence Les Acacias' },
     ownedSince: '2025-06-01',
+    visibleSince: null,
     advance: 5000,
     totals: { due: 300000, paid: 100000, outstanding: 200000 },
     months: Array.from({ length: 12 }, (_, index) => ({
@@ -338,12 +339,28 @@ describe('Suivi mensuel', () => {
     getCoOwnerLotMonthlyTracking.mockResolvedValue({
       ...tracking,
       ownedSince: '2026-04-01',
+      visibleSince: '2026-04-01',
       months: tracking.months.map(cell => (cell.month < 4 ? { ...cell, due: 0, paid: 0, status: 'NONE' } : cell))
     });
 
     mount('/copropriete/suivi-mensuel', <CoOwnerMonthlyTracking />);
 
     expect(await screen.findAllByLabelText('Avant votre acquisition', {}, WAIT)).toHaveLength(3);
+  });
+
+  it("ne masque aucun mois quand il n'y a pas de borne de visibilité, même acquis aujourd'hui", async () => {
+    listMyLots.mockResolvedValue([lot()]);
+    getCoOwnerLotMonthlyTracking.mockResolvedValue({
+      ...tracking,
+      year: new Date().getFullYear(),
+      ownedSince: new Date().toISOString().slice(0, 10),
+      visibleSince: null
+    });
+
+    mount('/copropriete/suivi-mensuel', <CoOwnerMonthlyTracking />);
+
+    expect((await screen.findAllByText('Réglé', {}, WAIT)).length).toBeGreaterThan(0);
+    expect(screen.queryAllByLabelText('Avant votre acquisition')).toHaveLength(0);
   });
 });
 

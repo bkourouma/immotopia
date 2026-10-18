@@ -42,14 +42,17 @@ const receiptKindLabel: Record<ReceiptKind, string> = {
 
 const { Paragraph, Title } = Typography;
 
-const transactionTypeLabels: Record<OwnerAccountTransaction['type'], string> = {
-  CHARGE_CALL: t('Appel de charges'),
-  PAYMENT: 'Paiement',
-  PENALTY: t('Pénalité'),
-  WAIVER: 'Remise',
-  ADJUSTMENT: 'Ajustement',
-  FUND_TRANSFER: t('Transfert de fonds')
-};
+/** Libellés affichés, construits au rendu : `t()` doit être appelé après le chargement de la langue. */
+function transactionTypeLabels(): Record<OwnerAccountTransaction['type'], string> {
+  return {
+    CHARGE_CALL: t('Appel de charges'),
+    PAYMENT: t('Paiement'),
+    PENALTY: t('Pénalité'),
+    WAIVER: t('Remise'),
+    ADJUSTMENT: t('Ajustement'),
+    FUND_TRANSFER: t('Transfert de fonds')
+  };
+}
 
 /**
  * Sens du solde d'un compte copropriétaire.
@@ -310,7 +313,7 @@ export const SyndicOwnerAccount: React.FC = () => {
                   {
                     title: t('Type'),
                     dataIndex: 'type',
-                    render: (value: OwnerAccountTransaction['type']) => transactionTypeLabels[value] || value
+                    render: (value: OwnerAccountTransaction['type']) => transactionTypeLabels()[value] || value
                   },
                   { title: t('Libellé'), dataIndex: 'label' },
                   {

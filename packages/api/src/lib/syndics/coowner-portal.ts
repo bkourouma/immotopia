@@ -6,11 +6,18 @@ import { computeOutstanding, deriveChargeCallStatus, roundMoney, type ChargeCall
 import { computeResolutionTally, normalizeMajorityRule, type MajorityRule } from './meeting-majority';
 import { sumAllocationsByCall } from './charge-allocation';
 import { fromCents } from './charge-allocation-plan';
-import { applyChronologicalBalances } from './owner-account-running-balance';
+import {
+  applyChronologicalBalances,
+  compareChronologically,
+  type RunningBalanceMovement
+} from './owner-account-running-balance';
 import { getSyndicOnlineAvailabilities } from './online-payment/gateway-config';
 import { PENDING_REUSE_WINDOW_MS } from './online-payment/checkout-start';
 import { isSupportedCurrency } from './online-payment/types';
-import { pendingDeclarationsByCall } from './declared-payment/declaration-queries';
+import { lotBounds, pendingDeclarationsByCall } from './declared-payment/declaration-queries';
+import { resolveVisibleSince, type LotOwnerProfileHistoryRow } from './lot-owner-history';
+
+export { hasPreviousOtherOwner, resolveVisibleSince } from './lot-owner-history';
 
 /**
  * Portail copropriétaire — lectures, en lecture seule.
@@ -68,12 +75,19 @@ export interface CoOwnerLotScope {
   contactId: string;
   ownershipPercentage: number;
   /**
-   * Début de la détention (`LotOwnerProfile.ownedSince`). Les lectures
-   * financières du portail (paiements, compte, relevé, suivi mensuel) ne
-   * remontent jamais avant : l'historique de l'ancien propriétaire du lot
-   * reste réservé à la gestion (audit S5).
+   * Début de la détention (`LotOwnerProfile.ownedSince`) : le plus ancien des
+   * profils actuels du copropriétaire sur ce lot. Information seulement : ne
+   * pas s'en servir pour filtrer, utiliser `visibleSince`.
    */
   ownedSince: Date;
+  /**
+   * Borne de visibilité des lectures financières du portail (paiements, compte,
+   * relevé, suivi mensuel, appels). `ownedSince` UNIQUEMENT s'il y a eu un
+   * autre propriétaire avant (l'historique de l'ancien propriétaire reste alors
+   * réservé à la gestion, audit S5) ; `null` sinon = aucune borne, tout
+   * l'historique du lot est visible. Voir `lot-owner-history.ts`.
+   */
+  visibleSince: Date | null;
 }
 
 export interface CoOwnerPortalScope {
@@ -130,20 +144,48 @@ export async function resolveCoOwnerScope(
     candidateLots.filter(lot => tenantSyndicateIds.has(lot.syndicateId)).map(lot => [lot.id, lot.syndicateId])
   );
 
+  // Profils de TOUS les contacts sur les lots retenus (actifs ou non : la fiche
+  // d'un ancien propriétaire peut avoir été désactivée) : ils disent s'il y a
+  // eu un autre propriétaire avant, donc si la borne de visibilité s'applique.
+  // Lots déjà vérifiés comme appartenant à l'agence (copropriété de `tenantId`).
+  const history = await prisma.lotOwnerProfile.findMany({
+    where: { lotId: { in: Array.from(syndicateByLot.keys()) } },
+    select: { lotId: true, contactId: true, ownedSince: true, ownedUntil: true, isActive: true }
+  });
+  const historyByLot = new Map<string, LotOwnerProfileHistoryRow[]>();
+  for (const row of history) {
+    const rows = historyByLot.get(row.lotId) ?? [];
+    rows.push({
+      contactId: row.contactId,
+      ownedSince: row.ownedSince,
+      ownedUntil: row.ownedUntil,
+      isActive: row.isActive
+    });
+    historyByLot.set(row.lotId, rows);
+  }
+
   // Un même lot peut porter deux profils (indivision entre deux fiches liées
-  // au même compte) : le premier créé l'emporte, le lot n'apparaît qu'une fois.
+  // au même compte) : le premier créé l'emporte (contact, part), le lot
+  // n'apparaît qu'une fois ; `ownedSince` est le plus ancien des profils actuels.
   const lots: CoOwnerLotScope[] = [];
   const seen = new Set<string>();
   for (const profile of current) {
     const syndicateId = syndicateByLot.get(profile.lotId);
     if (!syndicateId || seen.has(profile.lotId)) continue;
     seen.add(profile.lotId);
+    const ownedSince = current
+      .filter(candidate => candidate.lotId === profile.lotId)
+      .reduce(
+        (earliest, candidate) => (candidate.ownedSince < earliest ? candidate.ownedSince : earliest),
+        profile.ownedSince
+      );
     lots.push({
       lotId: profile.lotId,
       syndicateId,
       contactId: profile.contactId,
       ownershipPercentage: Number(profile.ownershipPercentage),
-      ownedSince: profile.ownedSince
+      ownedSince,
+      visibleSince: resolveVisibleSince(ownedSince, contactIds, historyByLot.get(profile.lotId) ?? [])
     });
   }
 
@@ -217,6 +259,53 @@ async function loadLots(scope: CoOwnerPortalScope, lotIds: string[] = scope.lotI
 }
 
 // ---------------------------------------------------------------------------
+// Soldes du périmètre (lot ayant changé de propriétaire)
+// ---------------------------------------------------------------------------
+
+function movementTime(movement: { transactionDate: Date | string }): number {
+  return new Date(movement.transactionDate).getTime();
+}
+
+/** Mouvements datés de `visibleSince` ou après : le périmètre du nouveau propriétaire. */
+function movementsFrom<T extends { transactionDate: Date | string }>(movements: T[], visibleSince: Date): T[] {
+  return movements.filter(movement => movementTime(movement) >= visibleSince.getTime());
+}
+
+/**
+ * Solde du périmètre d'un lot qui a changé de propriétaire : somme (débit -
+ * crédit) des seuls mouvements datés de `visibleSince` ou après. Ni le solde
+ * d'origine du compte ni les mouvements de l'ancien propriétaire n'y entrent :
+ * sa dette ou son avance ne sont pas celles du nouveau propriétaire.
+ */
+export function scopedBalanceOf(
+  movements: { transactionDate: Date | string; debit?: unknown; credit?: unknown }[],
+  visibleSince: Date
+): number {
+  return roundMoney(
+    movementsFrom(movements, visibleSince).reduce(
+      (sum, movement) => sum + Number(movement.debit ?? 0) - Number(movement.credit ?? 0),
+      0
+    )
+  );
+}
+
+/**
+ * Solde après chaque mouvement du périmètre (`id -> solde`), cumulé dans l'ordre
+ * chronologique en PARTANT DE ZÉRO au premier mouvement daté de `visibleSince`
+ * ou après (même ordre total que `computeChronologicalBalances`, sans le solde
+ * d'origine du compte). Les mouvements antérieurs n'ont pas d'entrée.
+ */
+export function computeScopedBalances(movements: RunningBalanceMovement[], visibleSince: Date): Map<string, number> {
+  const balances = new Map<string, number>();
+  let balance = 0;
+  for (const movement of movementsFrom(movements, visibleSince).sort(compareChronologically)) {
+    balance = roundMoney(balance + Number(movement.debit ?? 0) - Number(movement.credit ?? 0));
+    balances.set(movement.id, balance);
+  }
+  return balances;
+}
+
+// ---------------------------------------------------------------------------
 // 1. Mes lots
 // ---------------------------------------------------------------------------
 
@@ -227,14 +316,17 @@ export async function listCoOwnerLots(scope: CoOwnerPortalScope) {
       ? []
       : await prisma.ownerAccount.findMany({
           where: { lotId: { in: lots.map(lot => lot.id) }, syndicateId: { in: scope.syndicateIds } },
-          select: { lotId: true, balance: true, currency: true }
+          select: { id: true, lotId: true, balance: true, currency: true }
         });
   const accountByLot = new Map(accounts.map(account => [account.lotId, account]));
+  const scopedBalanceByLot = await loadScopedBalances(scope, accountByLot);
 
   return lots.map(lot => {
     const lotScope = scopeOrThrow(scope, lot.id);
     const account = accountByLot.get(lot.id);
     const syndicate = syndicates.get(lot.syndicateId);
+    // Lot sans borne : solde du compte. Lot ayant changé de propriétaire : solde du périmètre.
+    const rawBalance = scopedBalanceByLot.get(lot.id) ?? account?.balance;
     return {
       id: lot.id,
       lotNumber: lot.lotNumber,
@@ -243,9 +335,37 @@ export async function listCoOwnerLots(scope: CoOwnerPortalScope) {
       specialShares: lot.specialShares,
       ownershipPercentage: lotScope.ownershipPercentage,
       syndicate: syndicate ? { id: syndicate.id, name: syndicate.name, address: syndicate.address } : null,
-      balance: account ? { ...describeBalance(account.balance), currency: account.currency } : null
+      balance: account ? { ...describeBalance(rawBalance), currency: account.currency } : null
     };
   });
+}
+
+/**
+ * Solde du périmètre des lots à borne de visibilité : UNE requête groupée sur
+ * les comptes de ces lots seulement. `accountByLot` ne contient que des comptes
+ * déjà filtrés par lot ET copropriété du périmètre. Un lot sans borne n'a pas
+ * d'entrée (son solde est celui du compte).
+ */
+async function loadScopedBalances(
+  scope: CoOwnerPortalScope,
+  accountByLot: Map<string, { id: string }>
+): Promise<Map<string, number>> {
+  const bounded = scope.lots.flatMap(lot => {
+    const account = accountByLot.get(lot.lotId);
+    return lot.visibleSince && account ? [{ lotId: lot.lotId, accountId: account.id, since: lot.visibleSince }] : [];
+  });
+  const balances = new Map<string, number>();
+  if (bounded.length === 0) return balances;
+
+  const movements = await prisma.ownerAccountTransaction.findMany({
+    where: { OR: bounded.map(entry => ({ accountId: entry.accountId, transactionDate: { gte: entry.since } })) },
+    select: { accountId: true, transactionDate: true, debit: true, credit: true }
+  });
+  for (const entry of bounded) {
+    const own = movements.filter(movement => movement.accountId === entry.accountId);
+    balances.set(entry.lotId, scopedBalanceOf(own, entry.since));
+  }
+  return balances;
 }
 
 // ---------------------------------------------------------------------------
@@ -267,12 +387,16 @@ export async function getCoOwnerLotAccount(scope: CoOwnerPortalScope, lotId: str
     where: { lotId: lot.id, syndicateId: lot.syndicateId },
     select: { id: true, balance: true, currency: true, lastUpdatedAt: true }
   });
+  // Lot sans autre propriétaire avant (`visibleSince` nul) : tout le compte et
+  // son solde. Lot ayant changé de propriétaire : mouvements datés de
+  // `visibleSince` ou après (l'historique de l'ancien propriétaire reste à la
+  // gestion, audit S5), soldes cumulés depuis zéro sur ce périmètre, et solde
+  // affiché = solde du périmètre.
+  const visibleSince = lotScope.visibleSince;
+  const sinceFilter = visibleSince ? { transactionDate: { gte: visibleSince } } : {};
   const rows = account
     ? await prisma.ownerAccountTransaction.findMany({
-        // Seulement depuis l'acquisition du lot : les mouvements de l'ancien
-        // propriétaire ne sont pas les siens (audit S5). Le solde affiché
-        // reste celui du compte du lot, à ce jour.
-        where: { accountId: account.id, transactionDate: { gte: lotScope.ownedSince } },
+        where: { accountId: account.id, ...sinceFilter },
         orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
         take: 200,
         select: {
@@ -288,15 +412,20 @@ export async function getCoOwnerLotAccount(scope: CoOwnerPortalScope, lotId: str
       })
     : [];
   // BUG-006 : même solde cumulé chronologique que l'écran de gestion.
-  const transactions = account
-    ? applyChronologicalBalances(
-        rows,
-        await prisma.ownerAccountTransaction.findMany({
-          where: { accountId: account.id },
-          select: { id: true, transactionDate: true, createdAt: true, debit: true, credit: true, balanceAfter: true }
-        })
-      )
-    : rows;
+  const movements = account
+    ? await prisma.ownerAccountTransaction.findMany({
+        where: { accountId: account.id, ...sinceFilter },
+        select: { id: true, transactionDate: true, createdAt: true, debit: true, credit: true, balanceAfter: true }
+      })
+    : [];
+  let transactions: (Omit<(typeof rows)[number], 'balanceAfter'> & { balanceAfter: unknown })[] = rows;
+  if (visibleSince) {
+    const scoped = computeScopedBalances(movements, visibleSince);
+    transactions = rows.map(row => (scoped.has(row.id) ? { ...row, balanceAfter: scoped.get(row.id) } : row));
+  } else if (account) {
+    transactions = applyChronologicalBalances(rows, movements);
+  }
+  const accountBalance = account && visibleSince ? scopedBalanceOf(movements, visibleSince) : account?.balance;
 
   return {
     lot: {
@@ -310,7 +439,7 @@ export async function getCoOwnerLotAccount(scope: CoOwnerPortalScope, lotId: str
     syndicate: { id: syndicate.id, name: syndicate.name, address: syndicate.address },
     account: account
       ? {
-          ...describeBalance(account.balance),
+          ...describeBalance(accountBalance),
           currency: account.currency,
           lastUpdatedAt: account.lastUpdatedAt
         }
@@ -337,20 +466,27 @@ export async function getCoOwnerLotAccount(scope: CoOwnerPortalScope, lotId: str
 // ---------------------------------------------------------------------------
 
 /**
- * Appels des lots `lotIds` postérieurs à l'acquisition, lot par lot : début
- * de période >= `ownedSince` s'il est renseigné, sinon échéance >=
- * `ownedSince`. Les appels de l'ancien propriétaire restent à la gestion
+ * Appels des lots `lotIds` visibles du copropriétaire, lot par lot. Lot sans
+ * autre propriétaire avant (`visibleSince` nul) : tous ses appels. Lot ayant
+ * changé de propriétaire : appels postérieurs à l'acquisition seulement, début
+ * de période >= `visibleSince` s'il est renseigné, sinon échéance >=
+ * `visibleSince` ; les appels de l'ancien propriétaire restent à la gestion
  * (audit S5). À réutiliser par toute lecture d'un appel du portail (un appel
- * antérieur répond alors le même 404 qu'un appel inconnu).
+ * masqué répond alors le même 404 qu'un appel inconnu). Un lot absent du
+ * périmètre ne donne aucune clause : il n'est jamais lisible.
  */
 export function ownedChargeCallsWhere(scope: CoOwnerPortalScope, lotIds: string[]): Prisma.ChargeCallWhereInput {
   const owned = scope.lots.filter(lot => lotIds.includes(lot.lotId));
   return {
     syndicateId: { in: scope.syndicateIds },
-    OR: owned.flatMap(lot => [
-      { lotId: lot.lotId, periodStart: { gte: lot.ownedSince } },
-      { lotId: lot.lotId, periodStart: null, dueDate: { gte: lot.ownedSince } }
-    ])
+    OR: owned.flatMap((lot): Prisma.ChargeCallWhereInput[] =>
+      lot.visibleSince
+        ? [
+            { lotId: lot.lotId, periodStart: { gte: lot.visibleSince } },
+            { lotId: lot.lotId, periodStart: null, dueDate: { gte: lot.visibleSince } }
+          ]
+        : [{ lotId: lot.lotId }]
+    )
   };
 }
 
@@ -427,7 +563,7 @@ export async function listCoOwnerChargeCalls(
     getSyndicOnlineAvailabilities(scope.tenantId, Array.from(new Set(calls.map(call => call.syndicateId)))),
     loadOpenCheckoutsByCall(scope, lotIds, callIds, filters.tenantClientId ?? null),
     // Spec 047 : déclarations de paiement mobile money en attente qui visent ces appels.
-    pendingDeclarationsByCall(scope.tenantId, lotIds)
+    pendingDeclarationsByCall(scope.tenantId, lotIds, undefined, lotBounds(scope))
   ]);
 
   const now = new Date();
@@ -577,6 +713,13 @@ export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
           where: { resolutionId: { in: resolutions.map(resolution => resolution.id) } },
           select: { resolutionId: true, lotId: true, vote: true }
         });
+  const attendances =
+    resolutions.length === 0
+      ? []
+      : await prisma.gMAttendance.findMany({
+          where: { tenantId: scope.tenantId, meetingId: { in: completed.map(meeting => meeting.id) } },
+          select: { meetingId: true, lotId: true, status: true }
+        });
   // Tantièmes de TOUS les lots des copropriétés concernées : nécessaires au
   // décompte (le total de référence). Ils servent au calcul et ne sortent
   // jamais de cette fonction — seuls les totaux sont rendus, jamais le vote
@@ -620,7 +763,12 @@ export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
               .filter(resolution => resolution.meetingId === meeting.id)
               .map(resolution => {
                 const resolutionVotes = votes.filter(vote => vote.resolutionId === resolution.id);
-                const tally = computeResolutionTally(resolution.majorityRule, syndicateLots, resolutionVotes);
+                const tally = computeResolutionTally(
+                  resolution.majorityRule,
+                  syndicateLots,
+                  resolutionVotes,
+                  attendances.filter(row => row.meetingId === meeting.id)
+                );
                 const rule: MajorityRule = normalizeMajorityRule(resolution.majorityRule);
                 return {
                   id: resolution.id,

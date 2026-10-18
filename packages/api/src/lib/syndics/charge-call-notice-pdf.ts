@@ -15,8 +15,9 @@ import { frenchDay, periodText, type SnapshotPeriod } from './charge-receipt-sna
  * Avis d'appel de charges en PDF (lot S4, besoin 6), une page A4.
  *
  * Même identité que les reçus et quittances (lot S1 : mandant ou agence,
- * logo de la copropriété, signature et cachet). Contrairement à eux, l'avis
- * n'est pas un original archivé : il est construit à la demande depuis les
+ * logo de la copropriété, signature et cachet). L'avis porte lui aussi la
+ * signature et le cachet de l'émetteur quand ils existent. Contrairement aux
+ * reçus, il n'est pas un original archivé : il est construit à la demande depuis les
  * tables vivantes, et affiche donc toujours le reste à payer du moment.
  */
 
@@ -194,7 +195,7 @@ export async function renderChargeCallNoticePdf(
   y = drawPaymentMethods(page, y, data, fonts);
   y = drawMention(page, y, data, fonts);
 
-  // Bloc signature en bas à droite, jamais par-dessus le contenu.
+  // Bloc signature et cachet en bas à droite, jamais par-dessus le contenu.
   await drawSignatureBlock(pdfDoc, page, branding, {
     x: A4.width - MARGIN - 200,
     y: Math.min(y - 20, 150),

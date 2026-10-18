@@ -4,6 +4,7 @@ import { t } from '../../../i18n';
 import { NotFoundError } from '../../../middleware/error-middleware';
 import { isSyndicCodePaiement } from '../../payment-gateway/codes';
 import { loadSyndicates, ownedChargeCallsWhere, scopeOrThrow, type CoOwnerPortalScope } from '../coowner-portal';
+import { lotBounds } from '../declared-payment/declaration-queries';
 import { assertSyndicOnlinePaymentAllowed } from './feature-gate';
 import { getSyndicOnlineAvailabilities } from './gateway-config';
 import { MAX_CHARGE_CALLS_PER_CHECKOUT, startSyndicCheckout } from './checkout-start';
@@ -93,7 +94,8 @@ async function toPortalCheckout(
 /**
  * Démarre (ou reprend) le paiement d'appels d'UN lot du périmètre. Le droit
  * SYNDIC d'abord (403), puis le lot et chaque appel contre `scope` /
- * `ownedChargeCallsWhere` (appel antérieur à l'acquisition = introuvable), puis
+ * `ownedChargeCallsWhere` (appel antérieur à l'acquisition = introuvable, seulement
+ * s'il y a eu un autre propriétaire avant), puis
  * le moteur, qui revérifie configuration, montant et chevauchements.
  */
 export async function startCoOwnerCheckout(
@@ -118,7 +120,8 @@ export async function startCoOwnerCheckout(
     chargeCallIds: ids,
     origin: 'PORTAL',
     tenantClientId,
-    payerContactId: lot.contactId
+    payerContactId: lot.contactId,
+    visibleSinceByLot: lotBounds(scope)
   });
   return { checkout: await toPortalCheckout(checkout, tenantClientId, reused), reused };
 }
@@ -141,8 +144,13 @@ export async function getCoOwnerCheckout(
   });
   if (!row) throw notFound();
   const lot = scope.lots.find(candidate => candidate.lotId === row.lotId);
-  // Un paiement lancé avant l'acquisition du lot est celui de l'ancien propriétaire.
-  if (!lot || lot.syndicateId !== row.syndicateId || row.createdAt.getTime() < lot.ownedSince.getTime()) {
+  // Un paiement lancé avant l'acquisition du lot est celui de l'ancien propriétaire, mais seulement s'il y en a eu
+  // un (`visibleSince` nul : aucune borne, tout l'historique du lot est visible).
+  if (
+    !lot ||
+    lot.syndicateId !== row.syndicateId ||
+    (lot.visibleSince !== null && row.createdAt.getTime() < lot.visibleSince.getTime())
+  ) {
     throw notFound();
   }
 

@@ -69,6 +69,11 @@ jest.mock('../../src/lib/syndics/owner-account-statement', () => {
 import coOwnerPortalRoutes from '../../src/routes/coowner-portal-routes';
 import { buildOwnerAccountStatementPdf } from '../../src/lib/syndics/owner-account-statement';
 import { ownedChargeCallsWhere } from '../../src/lib/syndics/coowner-portal';
+import {
+  hideMonthsBeforeOwnership,
+  ownedPaymentsWhere,
+  visibleReceiptsWhere
+} from '../../src/lib/syndics/coowner-portal-finance';
 import { requireCoOwnerPortalAccess } from '../../src/middleware/coowner-portal-access';
 import { errorHandler } from '../../src/middleware/error-middleware';
 
@@ -924,11 +929,39 @@ describe('GET /coproprietes/:syndicId/logo et /logo-emetteur', () => {
 
 const statementMock = buildOwnerAccountStatementPdf as jest.MockedFunction<typeof buildOwnerAccountStatementPdf>;
 
-/** Awa n'a acquis le lot L1 qu'à cette date. */
+/**
+ * Awa n'a acquis le lot L1 qu'à cette date, après un ancien propriétaire (vrai
+ * changement de propriétaire) : la borne de visibilité s'applique.
+ */
 function acquiredOn(day: string) {
   const profile = mockPrisma.lotOwnerProfile.rows.find((row: any) => row.id === 'p-1');
   if (!profile) throw new Error('profil p-1 absent');
   profile.ownedSince = new Date(day);
+  mockPrisma.lotOwnerProfile.rows.push({
+    id: 'p-prev',
+    lotId: L1,
+    contactId: CONTACT_PREVIOUS,
+    ownershipPercentage: 100,
+    ownedSince: new Date('2020-01-01'),
+    ownedUntil: new Date(day),
+    portalAccessEnabled: false,
+    isActive: false,
+    createdAt: new Date('2020-01-01')
+  });
+}
+
+/** Awa est seule propriétaire de L1, saisie à cette date : aucun ancien propriétaire, donc aucune borne. */
+function enteredOn(day: string) {
+  const profile = mockPrisma.lotOwnerProfile.rows.find((row: any) => row.id === 'p-1');
+  if (!profile) throw new Error('profil p-1 absent');
+  profile.ownedSince = new Date(day);
+  profile.createdAt = new Date(day);
+}
+
+async function scopeOfAwa() {
+  const req: any = { user: { userId: USER_AWA }, headers: {} };
+  await requireCoOwnerPortalAccess(req, {} as any, jest.fn());
+  return req.coOwnerPortal.scope;
 }
 
 describe('Historique de l’ancien propriétaire du lot', () => {
@@ -1031,6 +1064,7 @@ describe('Historique de l’ancien propriétaire du lot', () => {
     const res = await request(app).get(`${BASE}/lots/${L1}/suivi-mensuel?year=2026`).set(as(USER_AWA));
     expect(res.status).toBe(200);
     expect(res.body.data.ownedSince).toBe('2026-02-10');
+    expect(res.body.data.visibleSince).toBe('2026-02-10');
     expect(res.body.data.months[0]).toEqual({ month: 1, due: 0, paid: 0, status: 'NONE' });
     // CALL_L1 (période commencée le 01/01) est l'appel de l'ancien propriétaire :
     // ni février ni mars ne le reprennent, même partiellement (audit S5).
@@ -1132,8 +1166,10 @@ describe('Historique de l’ancien propriétaire du lot', () => {
     expect(res.status).toBe(200);
     const [payload] = statementMock.mock.calls[0];
     expect(payload.transactions.map(tx => tx.label)).toEqual(['Paiement']);
-    expect(payload.openingBalance).toBe(90000);
-    expect(payload.closingBalance).toBe(50000);
+    // Soldes du périmètre, cumulés depuis zéro à l'acquisition : pas la dette de l'ancien propriétaire.
+    expect(payload.openingBalance).toBe(0);
+    expect(payload.closingBalance).toBe(-40000);
+    expect(payload.transactions.map(tx => tx.balanceAfter)).toEqual([-40000]);
     expect(payload.ownerName).toBe('Awa Test');
   });
 
@@ -1234,6 +1270,190 @@ describe('Historique de l’ancien propriétaire du lot', () => {
     const res = await request(app).get(`${BASE}/paiements?lotId=${L1}`).set(as(USER_AWA));
     expect(res.status).toBe(200);
     expect(res.body.data.items[0].documents.map((doc: any) => doc.id)).toEqual([R_L1_RECEIPT]);
+  });
+});
+
+describe('Lot à propriétaire unique saisi aujourd’hui : aucune borne de visibilité', () => {
+  const monthlyCall = (month: number) => ({
+    id: id(700 + month),
+    syndicateId: S1,
+    lotId: L1,
+    period: `2026-${String(month).padStart(2, '0')}`,
+    periodStart: new Date(Date.UTC(2026, month - 1, 1)),
+    periodEnd: new Date(Date.UTC(2026, month, 0)),
+    amount: 1000,
+    currency: 'XOF',
+    dueDate: new Date(Date.UTC(2026, month - 1, 5)),
+    status: 'PENDING',
+    createdAt: new Date('2026-01-01')
+  });
+
+  it('where sans borne : paiements, quittances sans destinataire et appels antérieurs à la saisie correspondent', async () => {
+    enteredOn('2026-10-18');
+    const scope = await scopeOfAwa();
+    const lot = scope.lots.find((candidate: any) => candidate.lotId === L1);
+    expect(lot.ownedSince.toISOString().slice(0, 10)).toBe('2026-10-18');
+    expect(lot.visibleSince).toBeNull();
+
+    const payments = ownedPaymentsWhere(scope, [L1]);
+    expect(payments).toEqual({ OR: [{ lotId: L1 }] });
+    for (const paymentId of [PAY_L1, PAY_L1_2025]) {
+      const row = mockPrisma.chargePayment.rows.find((candidate: any) => candidate.id === paymentId);
+      expect(matchesWhere(row as any, payments)).toBe(true);
+    }
+
+    const receipts = visibleReceiptsWhere(scope, [L1]);
+    const orphan = {
+      tenantId: TENANT_A,
+      syndicateId: S1,
+      lotId: L1,
+      contactId: null,
+      issuedAt: new Date('2026-01-05'),
+      periodStart: new Date('2026-01-01')
+    };
+    expect(matchesWhere(orphan, receipts)).toBe(true);
+
+    const calls = ownedChargeCallsWhere(scope, [L1]);
+    const callRow = mockPrisma.chargeCall.rows.find((row: any) => row.id === CALL_L1);
+    expect(matchesWhere(callRow as any, { id: CALL_L1, ...calls })).toBe(true);
+  });
+
+  it('/paiements, /quittances, /appels : tout l’historique de janvier à octobre est visible', async () => {
+    enteredOn('2026-10-18');
+    mockPrisma.chargePayment.rows.push({
+      id: id(498),
+      lotId: L1,
+      chargeCallId: null,
+      amount: 7000,
+      unallocatedAmount: 0,
+      paidAt: new Date('2026-01-05'),
+      method: 'CASH',
+      reference: 'JANVIER-REF',
+      createdAt: new Date('2026-01-05')
+    });
+    mockPrisma.syndicChargeReceipt.rows.push({
+      id: id(509),
+      tenantId: TENANT_A,
+      syndicateId: S1,
+      lotId: L1,
+      contactId: null,
+      kind: 'RECEIPT',
+      number: 'R-2026-000095',
+      issuerKey: MANDANT,
+      chargePaymentId: null,
+      chargeCallId: null,
+      periodStart: new Date('2026-01-01'),
+      periodEnd: new Date('2026-01-31'),
+      periodLabel: '2026-01',
+      amount: 7000,
+      currency: 'XOF',
+      snapshot: snapshot('RECEIPT', 'R-2026-000095', 'Sans destinataire'),
+      filePath: null,
+      issuedAt: new Date('2026-01-06'),
+      emailedAt: null,
+      createdById: 'user-mariam'
+    });
+
+    const payments = await request(app).get(`${BASE}/paiements?lotId=${L1}`).set(as(USER_AWA));
+    expect(payments.status).toBe(200);
+    expect(payments.body.data.items.map((item: any) => item.id).sort()).toEqual([PAY_L1, PAY_L1_2025, id(498)].sort());
+    expect(payments.body.data.advances[0].advance).toBe(10000);
+
+    const receipts = await request(app).get(`${BASE}/quittances?lotId=${L1}`).set(as(USER_AWA));
+    expect(receipts.status).toBe(200);
+    expect(receipts.body.data.items.map((item: any) => item.id)).toContain(id(509));
+
+    const calls = await request(app).get(`${BASE}/appels?lotId=${L1}`).set(as(USER_AWA));
+    expect(calls.status).toBe(200);
+    expect(calls.body.data.map((row: any) => row.id)).toEqual(expect.arrayContaining([CALL_L1, CALL_L1_2025]));
+  });
+
+  it('/suivi-mensuel : mois de janvier à octobre complets, année précédente non 404', async () => {
+    enteredOn('2026-10-18');
+    mockPrisma.chargeCall.rows.push(...[4, 5, 6, 7, 8, 9, 10].map(monthlyCall));
+
+    const res = await request(app).get(`${BASE}/lots/${L1}/suivi-mensuel?year=2026`).set(as(USER_AWA));
+    expect(res.status).toBe(200);
+    expect(res.body.data.ownedSince).toBe('2026-10-18');
+    expect(res.body.data.visibleSince).toBeNull();
+    for (const cell of res.body.data.months.slice(0, 10)) {
+      expect(cell.status).not.toBe('NONE');
+      expect(cell.due).toBeGreaterThan(0);
+    }
+    // Janvier à mars : l'appel du premier trimestre (90 000 sur trois mois).
+    expect(res.body.data.months[0].due).toBe(30000);
+    expect(res.body.data.totals.due).toBeGreaterThan(90000);
+
+    const previousYear = await request(app).get(`${BASE}/lots/${L1}/suivi-mensuel?year=2025`).set(as(USER_AWA));
+    expect(previousYear.status).toBe(200);
+    // Décembre 2025 : l'appel de la période est visible.
+    expect(previousYear.body.data.months[11].due).toBe(1000);
+  });
+
+  it('hideMonthsBeforeOwnership sans borne : mois inchangés', () => {
+    const months = Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      due: 100,
+      paid: 0,
+      status: 'OVERDUE' as const
+    }));
+    expect(hideMonthsBeforeOwnership(months, 2026, null)).toBe(months);
+    expect(hideMonthsBeforeOwnership(months, 2025, null)).toBe(months);
+  });
+});
+
+describe('Changement de propriétaire (ancien jusqu’au 30/06, nouveau depuis le 01/07) : la borne s’applique', () => {
+  it('where borné : paiements et quittances sans destinataire d’avant juillet exclus', async () => {
+    acquiredOn('2026-07-01');
+    const scope = await scopeOfAwa();
+    const lot = scope.lots.find((candidate: any) => candidate.lotId === L1);
+    expect(lot.visibleSince.toISOString().slice(0, 10)).toBe('2026-07-01');
+
+    const payments = ownedPaymentsWhere(scope, [L1]);
+    const paid = (paidAt: string) => ({ lotId: L1, paidAt: new Date(paidAt) });
+    expect(matchesWhere(paid('2026-06-30'), payments)).toBe(false);
+    expect(matchesWhere(paid('2026-07-01'), payments)).toBe(true);
+
+    const receipts = visibleReceiptsWhere(scope, [L1]);
+    const orphan = (extra: any) => ({
+      tenantId: TENANT_A,
+      syndicateId: S1,
+      lotId: L1,
+      contactId: null,
+      issuedAt: new Date('2026-08-01'),
+      periodStart: null,
+      ...extra
+    });
+    expect(matchesWhere(orphan({ issuedAt: new Date('2026-06-15') }), receipts)).toBe(false);
+    expect(matchesWhere(orphan({ periodStart: new Date('2026-06-01') }), receipts)).toBe(false);
+    expect(matchesWhere(orphan({}), receipts)).toBe(true);
+  });
+
+  it('/suivi-mensuel : mois avant juillet masqués, année antérieure → 404', async () => {
+    acquiredOn('2026-07-01');
+    const res = await request(app).get(`${BASE}/lots/${L1}/suivi-mensuel?year=2026`).set(as(USER_AWA));
+    expect(res.status).toBe(200);
+    expect(res.body.data.visibleSince).toBe('2026-07-01');
+    for (const cell of res.body.data.months.slice(0, 6)) {
+      expect(cell).toEqual({ month: cell.month, due: 0, paid: 0, status: 'NONE' });
+    }
+    const previous = await request(app).get(`${BASE}/lots/${L1}/suivi-mensuel?year=2025`).set(as(USER_AWA));
+    expect(previous.status).toBe(404);
+  });
+
+  it('isolation : un lot hors périmètre ne produit aucune clause ni donnée', async () => {
+    enteredOn('2026-10-18');
+    const scope = await scopeOfAwa();
+    const where = ownedPaymentsWhere(scope, [L2]);
+    expect(where).toEqual({ OR: [] });
+    for (const row of mockPrisma.chargePayment.rows) expect(matchesWhere(row, where)).toBe(false);
+
+    const missing = await request(app)
+      .get(`${BASE}/lots/${id(999)}/suivi-mensuel?year=2026`)
+      .set(as(USER_AWA));
+    const foreign = await request(app).get(`${BASE}/lots/${L2}/suivi-mensuel?year=2026`).set(as(USER_AWA));
+    expect(foreign.status).toBe(404);
+    expect(foreign.body.message).toBe(missing.body.message);
   });
 });
 

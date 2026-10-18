@@ -39,7 +39,7 @@ export async function recomputeMeetingResultsTx(
   });
 
   for (const resolution of resolutions) {
-    const tally = computeResolutionTally(resolution.majorityRule, majorityLots, resolution.votes);
+    const tally = computeResolutionTally(resolution.majorityRule, majorityLots, resolution.votes, attendances);
     await tx.gMResolution.update({
       where: { id: resolution.id },
       data: {

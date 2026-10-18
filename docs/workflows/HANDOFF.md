@@ -18,6 +18,18 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `orch/2026-10-18-recette-syndic` — 2026-10-18
+
+**État :** correctifs de la recette Syndic du 18/10 (staging, ChatGPT agent puis complétée) livrés en 10 lots fusionnés dans cette branche d'intégration, PR vers `main` ouverte, à fusionner par l'utilisateur. Rien n'est déployé.
+**Dernier commit :** fusion du lot T (`6b4fc71a`) + cette passation.
+
+**Fait :** portail copropriétaire (historique masqué seulement après un ancien propriétaire, `lib/syndics/lot-owner-history.ts`) ; revente/indivision demandée à la création d'un profil (409 `OPEN_OWNERS`, `previousOwnersHandling` CLOSE/KEEP) ; doublon de profil refusé ; ajustement débit qui consomme l'avance ; validation d'une déclaration sur tout appel ouvert ; déclarations de l'ancien propriétaire invisibles ; budget à plusieurs postes ; signature/cachet sur l'avis d'appel PDF/Word (marqueurs DOCX `SIGNATURE_EMETTEUR`, `CACHET_EMETTEUR`, modèles régénérés) ; documents d'AG toujours en français (`runInFrench`) ; lot absent hors de tous les décomptes ; procuration reprise à l'émargement ; FCFA au portail ; traductions en/ar (43 valeurs arabes retirées des catalogues anglais) ; wiki (33 lignes) et README du wiki rétabli (vidé par `d3f2fd44`).
+**Décisions métier validées :** H1 à H5 (voir la PR).
+
+**Reste à faire :** recette navigateur sur le staging après déploiement (rejouer le scénario Syndic) ; tests d'API à base dédiée et `npm run test:isolation` non lancés ; ouvrir les Word régénérés dans Word ; décisions ouvertes : relevé du portail sans signature/cachet, « Total réalisé » du budget, profil désactivé compté comme ancien propriétaire.
+
+**Pièges :** la machine sature en mémoire quand plusieurs agents lancent leurs tests en parallèle (0,6 Go libres observés, sessions coupées) : une vérification à la fois, `jest --runInBand`, `vitest --maxWorkers=2`. Le checkout principal (`feat/signature-s5-s7`) a un schéma Prisma différent de `main` : les worktrees de ce chantier utilisaient les `node_modules` de `.claude/worktrees/qa-syndic-base` (npm ci sur `main`). Retirer les jonctions `node_modules` (`rmdir`) AVANT `git worktree remove`. `ai.write-plan.test.ts` échoue sous Windows (fichiers CRLF, `'\n}\n'` cherché), hors de ce diff.
+
 ## Branche `chore/skill-chef-orchestre` — 2026-10-18
 
 **État :** PR [#171](https://github.com/bkourouma/immotopia/pull/171) ouverte vers `main`, à fusionner par l'utilisateur.

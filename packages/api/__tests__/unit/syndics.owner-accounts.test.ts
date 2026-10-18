@@ -2,6 +2,11 @@
 jest.mock('../../src/lib/syndics/charge-collection-accounting', () => ({
   postChargePaymentEntryTx: jest.fn(async () => 'entry-1')
 }));
+// Lot Q : un debit d'ajustement consomme l'avance (la fonction a sa propre suite).
+jest.mock('../../src/lib/syndics/charge-allocation', () => ({
+  ...jest.requireActual('../../src/lib/syndics/charge-allocation'),
+  consumeAdvancesForDebitTx: jest.fn(async () => 0)
+}));
 jest.mock('@prisma/client', () => {
   const tx = {
     chargeCall: {
@@ -218,6 +223,54 @@ describe('Syndics owner accounts queries - US2', () => {
         })
       })
     );
+  });
+
+  it('un ajustement DEBIT consomme d abord l avance du lot, en centimes, sous verrou', async () => {
+    const { consumeAdvancesForDebitTx } = jest.requireMock('../../src/lib/syndics/charge-allocation');
+    mockPrisma.ownerAccount.findFirst.mockResolvedValue({
+      id: 'acc-1',
+      syndicateId: 'syndic-1',
+      lotId: 'lot-1',
+      balance: 20000
+    });
+    mockPrisma.$transaction.mockImplementationOnce(async (callback: any) => callback(mockTx));
+    mockTx.ownerAccount.findUnique.mockResolvedValue({ id: 'acc-1', balance: 20000 });
+    mockTx.ownerAccountTransaction.create.mockResolvedValue({ id: 'tx-adj-2', type: 'ADJUSTMENT' });
+    mockTx.ownerAccount.update.mockResolvedValue({ id: 'acc-1', balance: 25000 });
+
+    await createOwnerAccountAdjustmentByLot('tenant-1', 'syndic-1', 'lot-1', {
+      direction: 'DEBIT',
+      amount: 5000.5,
+      label: 'Regularisation debit'
+    });
+
+    expect(consumeAdvancesForDebitTx).toHaveBeenCalledTimes(1);
+    expect(consumeAdvancesForDebitTx).toHaveBeenCalledWith(mockTx, 'lot-1', 500050);
+    // Verrou du lot pris avant la consommation.
+    const lockOrder = mockTx.$executeRaw.mock.invocationCallOrder[0];
+    expect(lockOrder).toBeLessThan((consumeAdvancesForDebitTx as jest.Mock).mock.invocationCallOrder[0]);
+  });
+
+  it('un ajustement CREDIT ne consomme aucune avance', async () => {
+    const { consumeAdvancesForDebitTx } = jest.requireMock('../../src/lib/syndics/charge-allocation');
+    mockPrisma.ownerAccount.findFirst.mockResolvedValue({
+      id: 'acc-1',
+      syndicateId: 'syndic-1',
+      lotId: 'lot-1',
+      balance: 20000
+    });
+    mockPrisma.$transaction.mockImplementationOnce(async (callback: any) => callback(mockTx));
+    mockTx.ownerAccount.findUnique.mockResolvedValue({ id: 'acc-1', balance: 20000 });
+    mockTx.ownerAccountTransaction.create.mockResolvedValue({ id: 'tx-adj-3', type: 'ADJUSTMENT' });
+    mockTx.ownerAccount.update.mockResolvedValue({ id: 'acc-1', balance: 15000 });
+
+    await createOwnerAccountAdjustmentByLot('tenant-1', 'syndic-1', 'lot-1', {
+      direction: 'CREDIT',
+      amount: 5000,
+      label: 'Regularisation credit'
+    });
+
+    expect(consumeAdvancesForDebitTx).not.toHaveBeenCalled();
   });
 
   it('returns account statement with opening and closing balances', async () => {

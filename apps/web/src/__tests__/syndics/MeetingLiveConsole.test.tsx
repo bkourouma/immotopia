@@ -1206,3 +1206,43 @@ describe('MeetingLiveConsole : discussion de la visio', () => {
     expect(button.disabled).toBe(true);
   });
 });
+
+describe('MeetingLiveConsole - lectures périmées', () => {
+  it('ignore une lecture lancée avant la clôture du vote et résolue après', async () => {
+    const openView = live();
+    const closedView = live({
+      resolutions: live().resolutions.map(r => (r.id === 'r2' ? { ...r, voteStatus: 'CLOSED' as const } : r))
+    });
+    let releaseStale: (view: LiveMeetingAdminView) => void = () => undefined;
+    let calls = 0;
+    api.getLiveMeeting.mockImplementation(() => {
+      calls += 1;
+      if (calls === 2) return new Promise<LiveMeetingAdminView>(resolve => (releaseStale = resolve));
+      // Lectures suivantes laissées en vol : seule la lecture périmée peut modifier l'écran.
+      return calls === 1 ? Promise.resolve(openView) : new Promise<LiveMeetingAdminView>(() => undefined);
+    });
+    api.closeResolutionVote.mockResolvedValue(closedView);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mount();
+      fireEvent.click(await screen.findByRole('button', { name: 'Clore le vote' }));
+      const confirm = (await screen.findAllByRole('button', { name: 'Clore le vote' })).pop() as HTMLElement;
+      // Le sondage périodique lance une lecture (2e appel) qui reste en vol.
+      await act(async () => {
+        vi.advanceTimersByTime(3100);
+      });
+      await waitFor(() => expect(calls).toBe(2));
+      fireEvent.click(confirm);
+      await waitFor(() => expect(api.closeResolutionVote).toHaveBeenCalled());
+      await screen.findAllByText('Vote clos');
+      // La lecture périmée (vote encore ouvert) arrive après la clôture.
+      await act(async () => {
+        releaseStale(openView);
+      });
+      expect(screen.queryByText('Vote ouvert')).toBeNull();
+      expect(screen.getAllByText('Vote clos').length).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

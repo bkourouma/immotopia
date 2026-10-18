@@ -1143,6 +1143,8 @@ export interface CreateLotOwnerProfileRequest {
   portalAccessEnabled?: boolean;
   notificationPrefs?: any;
   isActive?: boolean;
+  /** Lot déjà détenu par un autre contact : CLOSE (revente) clôture l'ancien, KEEP (indivision) le conserve. */
+  previousOwnersHandling?: 'CLOSE' | 'KEEP';
 }
 
 export interface CreateLotTenantProfileRequest {

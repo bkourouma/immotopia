@@ -8,6 +8,7 @@ import {
   Form,
   Input,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Spin,
@@ -420,6 +421,7 @@ export const SyndicMeetingDetail: React.FC = () => {
               meetingStatus={meeting.status}
               videoConferenceUrl={meeting.videoConferenceUrl}
               refreshKey={meeting.updatedAt}
+              proxies={meeting.proxies}
               onMeetingChanged={loadMeeting}
               onLiveChanged={refreshMeetingSilently}
             />
@@ -491,15 +493,22 @@ export const SyndicMeetingDetail: React.FC = () => {
                             </Button>
                           </Tooltip>
                         ) : (
-                          <Button
-                            size="small"
-                            danger
-                            icon={<DeleteOutlined />}
-                            loading={deletingAgendaId === item.id}
-                            onClick={() => void handleDeleteAgenda(item.id)}
+                          <Popconfirm
+                            title={t("Supprimer ce point de l'ordre du jour ?")}
+                            okText={t('Supprimer')}
+                            cancelText={t('Annuler')}
+                            okButtonProps={{ danger: true }}
+                            onConfirm={() => handleDeleteAgenda(item.id)}
                           >
-                            {t('Supprimer')}
-                          </Button>
+                            <Button
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                              loading={deletingAgendaId === item.id}
+                            >
+                              {t('Supprimer')}
+                            </Button>
+                          </Popconfirm>
                         )}
                       </Space>
                     }

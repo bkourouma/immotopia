@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { t } from '../i18n';
+import { runInFrench, t } from '../i18n';
 import { closeMeetingRoom } from '../lib/syndics/meeting-visio';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -1139,7 +1139,7 @@ export const generateMeetingMinutesHandler = asyncHandler(async (req: Request, r
   }
 
   const branding = await resolveDocumentBranding(tenantId, syndicateId);
-  const buffer = await buildMeetingMinutesDocx(meeting, tenantId, branding);
+  const buffer = await runInFrench(() => buildMeetingMinutesDocx(meeting, tenantId, branding));
   const filename = `compte-rendu-${meetingId}.docx`;
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');

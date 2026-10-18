@@ -500,7 +500,8 @@ export const createLotOwnerProfileSchema = z.object({
   ownedUntil: z.coerce.date().optional(),
   portalAccessEnabled: z.boolean().optional().default(false),
   notificationPrefs: z.record(z.any()).optional(),
-  isActive: z.boolean().optional().default(true)
+  isActive: z.boolean().optional().default(true),
+  previousOwnersHandling: z.enum(['CLOSE', 'KEEP']).optional()
 });
 
 export const updateLotOwnerProfileSchema = z

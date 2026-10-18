@@ -80,7 +80,7 @@ describe('computeMeetingAttendance (D3)', () => {
     });
   });
 
-  it('PRESENT et REPRESENTED comptent, ABSENT non ; ABSENT qui a vote compte comme present', () => {
+  it('PRESENT et REPRESENTED comptent, ABSENT jamais, meme s il figure dans les votes', () => {
     const result = computeMeetingAttendance(
       lots,
       [{ lotId: 'd' }],
@@ -92,15 +92,27 @@ describe('computeMeetingAttendance (D3)', () => {
       ]
     );
     expect(result).toMatchObject({
-      presentLots: 2,
-      presentShares: 500,
+      presentLots: 1,
+      presentShares: 100,
       representedOnlyLots: 1,
       representedOnlyShares: 200,
-      representedLots: 3,
-      representedShares: 700,
-      quorumPercent: 70,
+      representedLots: 2,
+      representedShares: 300,
+      quorumPercent: 30,
       onlineLots: 1
     });
+  });
+
+  it('un lot sans ligne d emargement qui a vote reste compte present', () => {
+    const result = computeMeetingAttendance(
+      lots,
+      [{ lotId: 'd' }],
+      [
+        { lotId: 'a', status: 'PRESENT', mode: 'ONLINE' },
+        { lotId: 'c', status: 'ABSENT', mode: 'IN_PERSON' }
+      ]
+    );
+    expect(result).toMatchObject({ presentLots: 2, representedLots: 2 });
   });
 
   it('ignore les lots etrangers a la copropriete et un total nul', () => {
@@ -453,8 +465,8 @@ describe('feuille de presence du compte rendu', () => {
     const sheet = buildAttendanceSheet(meeting as any);
     expect(sheet.rows.map(row => row.lot)).toEqual(['L1', 'L2', 'L3', 'L4']);
     expect(sheet.rows[0]).toMatchObject({ person: 'Awa Traore', status: 'Présent(e)', mode: 'En ligne' });
-    expect(sheet.rows[1]).toMatchObject({ status: 'Représenté(e)', mode: 'En salle' });
-    expect(sheet.rows[1].person).toContain('Eric Mandataire');
+    expect(sheet.rows[1]).toMatchObject({ status: 'Représenté(e)', mode: 'Représenté (par Eric Mandataire)' });
+    expect(sheet.rows[1].person).toBe('Bakary Diallo');
     expect(sheet.rows[2]).toMatchObject({ status: 'Absent(e)', mode: '-' });
     expect(sheet.rows[3]).toMatchObject({ person: 'SCI Soleil', status: 'Présent(e)' });
     expect(sheet.summary).toContain('3 sur 4');

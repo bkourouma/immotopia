@@ -57,7 +57,12 @@ async function loadSyndicate(scope: CoOwnerPortalScope, syndicateId: string) {
   return syndicate;
 }
 
-/** Émetteur des documents : identité textuelle et présence d'un logo. */
+/**
+ * Émetteur des documents : identité textuelle et présence d'un logo. Un
+ * mandant sans téléphone NI e-mail emprunte les deux coordonnées de l'agence
+ * (jamais un mélange : s'il en a un seul, ses coordonnées restent les siennes).
+ * Nom, adresse et type restent ceux du mandant.
+ */
 async function loadIssuer(tenantId: string, mandatingAgencyId: string | null) {
   const mandant = mandatingAgencyId
     ? await prisma.syndicMandatingAgency.findFirst({
@@ -65,11 +70,19 @@ async function loadIssuer(tenantId: string, mandatingAgencyId: string | null) {
         select: { ...MANDANT_IDENTITY_SELECT, logoPath: true }
       })
     : null;
-  if (mandant) return { issuer: issuerFromMandant(mandant), hasLogo: Boolean(mandant.logoPath) };
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
     select: { ...TENANT_IDENTITY_SELECT, logoUrl: true }
   });
+  if (mandant) {
+    const issuer = issuerFromMandant(mandant);
+    if (!issuer.phone && !issuer.email) {
+      const fallback = issuerFromTenant(tenant);
+      issuer.phone = fallback.phone;
+      issuer.email = fallback.email;
+    }
+    return { issuer, hasLogo: Boolean(mandant.logoPath) };
+  }
   return { issuer: issuerFromTenant(tenant), hasLogo: Boolean(tenant?.logoUrl) };
 }
 

@@ -81,6 +81,8 @@ export interface DeclarationLineView {
   amount: number;
   acceptedAmount: number | null;
   chargeCalls: Array<{ id: string; period: string; remainingDue: number }>;
+  /** Tous les appels ouverts du lot (reste dû > 0), plus ancien d’abord ; renseigné pour les déclarations PENDING. */
+  openCalls?: Array<{ id: string; period: string; remainingDue: number }>;
   chargePaymentId: string | null;
   documents: DocumentRef[];
 }

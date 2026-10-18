@@ -14,7 +14,7 @@ import { DeclaredSettingsCard } from '../../components/syndics/declared-payment/
 import { ReceivingNumbersCard } from '../../components/syndics/declared-payment/ReceivingNumbersCard';
 import { RejectModal } from '../../components/syndics/declared-payment/RejectModal';
 import type { DecideSyndicCheckoutResult, SyndicOnlineCheckoutRow } from '../../services/syndic-online-payment-service';
-import type { ApproveDeclarationResponse, SyndicDeclarationRow } from '../../services/syndic-declared-payment-service';
+import type { SyndicDeclarationRow } from '../../services/syndic-declared-payment-service';
 import { formatMoney } from '../../components/primitives';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
@@ -80,9 +80,7 @@ export const SyndicOnlinePayments: React.FC = () => {
     bump();
   };
 
-  const handleApproved = (result: ApproveDeclarationResponse) => {
-    const documents = result.documents.map(doc => doc.number).join(', ');
-    message.success(t('Paiement validé{{documents}}', { documents: documents ? ` (${documents})` : '' }));
+  const handleApproved = () => {
     setApproving(null);
     bumpDeclared();
     // Les soldes de la section « Paiement en ligne » ont pu changer.
@@ -90,7 +88,6 @@ export const SyndicOnlinePayments: React.FC = () => {
   };
 
   const handleRejected = () => {
-    message.success(t('Déclaration rejetée'));
     setRejecting(null);
     bumpDeclared();
   };

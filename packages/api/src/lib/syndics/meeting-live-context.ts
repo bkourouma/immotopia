@@ -1,5 +1,5 @@
 import type { PrismaTransactionClient } from '../../utils/database';
-import { NotFoundError } from '../../middleware/error-middleware';
+import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
 import { loadMeetingLots, MEETING_CONTACT_SELECT, type MeetingLotsData } from './meeting-lots';
 import { contactDisplayName, resolveVotableLots, type VotableLot } from './meeting-live-rules';
@@ -183,15 +183,33 @@ export async function loadLiveContext(
   };
 }
 
+/** Lots emarges ABSENT (ils ne peuvent pas voter). */
+export function absentLotIdsOf(ctx: LiveContext): Set<string> {
+  return new Set(ctx.attendances.filter(row => row.status === 'ABSENT').map(row => row.lotId));
+}
+
+/**
+ * Refuse un vote sur un lot emarge ABSENT (409 explicite plutot qu'un 404
+ * generique). A appeler avant le controle de votabilite d'un vote public.
+ */
+export function assertLotsNotAbsent(ctx: LiveContext, lotIds: Iterable<string>): void {
+  const absent = absentLotIdsOf(ctx);
+  for (const lotId of lotIds) {
+    if (absent.has(lotId)) throw new ConflictError(t('Ce lot est émargé absent : il ne peut pas voter'));
+  }
+}
+
 /**
  * Lots que `contactId` peut voter dans cette AG (D6). Les lots a 0 tantieme
  * (desactives) ne votent pas.
  */
 export function votableLotsFor(ctx: LiveContext, contactId: string): VotableLot[] {
+  // Un lot emarge ABSENT par le gestionnaire ne vote pas en ligne.
+  const absentLotIds = absentLotIdsOf(ctx);
   return resolveVotableLots(
     contactId,
     ctx.lots
-      .filter(lot => lot.generalShares > 0)
+      .filter(lot => lot.generalShares > 0 && !absentLotIds.has(lot.id))
       .map(lot => ({ lotId: lot.id, voterContactIds: lot.voters.map(voter => voter.contactId) })),
     ctx.proxies.filter(proxy => proxy.representativeContactId === contactId).map(proxy => proxy.grantorContactId)
   );

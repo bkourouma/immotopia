@@ -4,6 +4,7 @@ import { logAuditEvent } from '../../../services/audit-service';
 import { AuditActionKey } from '../../../types/audit-types';
 import { t } from '../../../i18n';
 import type { CoOwnerPortalScope } from '../coowner-portal';
+import { declarationVisibleToCoOwner } from './declaration-queries';
 
 /**
  * Annulation d'une déclaration par son déclarant (spec 047, contrats §2.6).
@@ -26,6 +27,7 @@ export async function cancelDeclaration(params: {
       syndicateId: true,
       amount: true,
       declaredByContactId: true,
+      createdAt: true,
       lines: { select: { lotId: true, amount: true } }
     }
   });
@@ -34,8 +36,8 @@ export async function cancelDeclaration(params: {
   if (!declaration.declaredByContactId || !scope.contactIds.includes(declaration.declaredByContactId)) {
     throw notFound();
   }
-  const allowedLots = new Set(scope.lotIds);
-  if (declaration.lines.some(line => !allowedLots.has(line.lotId))) throw notFound();
+  // Lots du périmètre ET borne `visibleSince` : un nouveau propriétaire n'agit pas sur les déclarations de l'ancien.
+  if (!declarationVisibleToCoOwner(scope, declaration.lines, declaration.createdAt)) throw notFound();
 
   // Claim atomique : une validation ou un rejet concurrent a déjà quitté PENDING.
   const claimed = await prisma.syndicPaymentDeclaration.updateMany({

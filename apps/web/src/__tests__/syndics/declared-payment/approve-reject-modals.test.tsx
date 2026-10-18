@@ -72,6 +72,19 @@ function row(alerts: DeclarationAlert[] = []): SyndicDeclarationRow {
   };
 }
 
+// Ligne l1 : un seul appel présélectionné, quatre appels ouverts (10 000, 1 000, 40 000, 5 000).
+function withOpenCalls(): SyndicDeclarationRow {
+  const declaration = row();
+  declaration.lines[0].chargeCalls = [{ id: 'oc-1', period: 'P1 2026', remainingDue: 10000 }];
+  declaration.lines[0].openCalls = [
+    { id: 'oc-1', period: 'P1 2026', remainingDue: 10000 },
+    { id: 'oc-2', period: 'P2 2026', remainingDue: 1000 },
+    { id: 'oc-3', period: 'P3 2026', remainingDue: 40000 },
+    { id: 'oc-4', period: 'P4 2026', remainingDue: 5000 }
+  ];
+  return declaration;
+}
+
 const apiError = (status: number, code: string | undefined, message: string) => ({
   response: { status, data: { code, message } }
 });
@@ -278,6 +291,52 @@ describe('ApproveModal', () => {
       acceptedAmount: 60000,
       chargeCallIds: ['cc-1']
     });
+  });
+
+  it('propose tous les appels ouverts du lot ; sans choix explicite, aucun chargeCallIds ne part', async () => {
+    renderApprove(withOpenCalls());
+    toggleCorrection();
+    setAmount(0, '10000');
+    setAmount(1, '40000');
+    setNote('Montant réellement reçu : 10 000');
+    fireEvent.click(okButton('Valider avec correction'));
+    await waitFor(() => expect(approveSyndicDeclaration).toHaveBeenCalledTimes(1));
+    expect(approveSyndicDeclaration.mock.calls[0][3].correction.lines[0]).toEqual({
+      lineId: 'l1',
+      acceptedAmount: 10000
+    });
+  });
+
+  it('choisir un appel ouvert non présélectionné l’envoie dans chargeCallIds', async () => {
+    renderApprove(withOpenCalls());
+    toggleCorrection();
+
+    fireEvent.mouseDown(document.getElementById('approve-calls-l1') as HTMLElement);
+    const options = Array.from(document.querySelectorAll('.ant-select-item-option-content')).map(
+      node => node.textContent?.split(' · ')[0]
+    );
+    expect(options).toEqual(['P1 2026', 'P2 2026', 'P3 2026', 'P4 2026']);
+    fireEvent.click(screen.getByText(/^P3 2026 · reste dû/, { selector: '.ant-select-item-option-content' }));
+
+    setNote('Appel de 40 000 visé explicitement');
+    await waitFor(() => expect(okButton('Valider avec correction')).toBeEnabled());
+    fireEvent.click(okButton('Valider avec correction'));
+    await waitFor(() => expect(approveSyndicDeclaration).toHaveBeenCalledTimes(1));
+    const sent = approveSyndicDeclaration.mock.calls[0][3].correction.lines[0];
+    expect(sent.lineId).toBe('l1');
+    expect(sent.chargeCallIds).toContain('oc-3');
+  });
+
+  it('un appel présélectionné absent des appels ouverts reste proposé, après les appels ouverts', () => {
+    const declaration = withOpenCalls();
+    declaration.lines[0].chargeCalls = [{ id: 'solde', period: 'P0 2026', remainingDue: 0 }];
+    renderApprove(declaration);
+    toggleCorrection();
+    fireEvent.mouseDown(document.getElementById('approve-calls-l1') as HTMLElement);
+    const options = Array.from(document.querySelectorAll('.ant-select-item-option-content')).map(
+      node => node.textContent?.split(' · ')[0]
+    );
+    expect(options).toEqual(['P1 2026', 'P2 2026', 'P3 2026', 'P4 2026', 'P0 2026']);
   });
 
   it('exercice clos : correction imposée, date à changer, corps avec paidAt', async () => {
