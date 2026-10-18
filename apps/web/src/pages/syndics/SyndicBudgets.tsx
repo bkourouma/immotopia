@@ -1,6 +1,13 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { App, Alert, Button, Card, Form, Input, InputNumber, Modal, Select, Space, Spin, Tag, Typography } from 'antd';
-import { CheckOutlined, LockOutlined, PlusOutlined, ReloadOutlined, UndoOutlined } from '@ant-design/icons';
+import {
+  CheckOutlined,
+  DeleteOutlined,
+  LockOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  UndoOutlined
+} from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { formatMoney, MoneyValue, Table } from '../../components/primitives';
 import {
@@ -58,6 +65,22 @@ function sumBudgetLines(budget: SyndicateBudget, field: 'amountForecast' | 'amou
   return (budget.lines || []).reduce((acc, line) => acc + Number(line[field] || 0), 0);
 }
 
+interface BudgetLineFormValue {
+  category?: string;
+  description?: string;
+  amountForecast?: number | null;
+  fundId?: string | null;
+}
+
+/** Somme des montants prévus saisis (arrondie au centime pour éviter les dérives de flottants). */
+function sumFormLines(lines: BudgetLineFormValue[] | undefined): number {
+  const total = (lines || []).reduce((acc, line) => {
+    const amount = Number(line?.amountForecast);
+    return acc + (Number.isFinite(amount) ? amount : 0);
+  }, 0);
+  return Math.round(total * 100) / 100;
+}
+
 function buildLotDisplayName(allocation: BudgetAllocation, lotDirectoryEntry?: SyndicateLot): string {
   const lot = allocation.lot || lotDirectoryEntry;
   return formatLotLabel(lot, allocation.lotId);
@@ -89,6 +112,8 @@ export const SyndicBudgets: React.FC = () => {
   const [savingLineId, setSavingLineId] = useState<string | null>(null);
 
   const [budgetForm] = Form.useForm();
+  const watchedBudgetLines = Form.useWatch('lines', budgetForm) as BudgetLineFormValue[] | undefined;
+  const budgetFormTotal = sumFormLines(watchedBudgetLines);
   const [generateForm] = Form.useForm();
   const [batchForm] = Form.useForm();
 
@@ -169,30 +194,33 @@ export const SyndicBudgets: React.FC = () => {
     }
     setSubmitting(true);
     try {
+      const formLines: BudgetLineFormValue[] = values.lines || [];
       await createBudget(effectiveTenantId, syndicId, {
         fiscalYear: values.fiscalYear,
         label: values.label,
-        totalAmount: values.totalAmount,
+        totalAmount: sumFormLines(formLines),
         currency: values.currency || 'XOF',
-        lines: [
-          {
-            category: values.category,
-            description: values.description,
-            amountForecast: values.totalAmount,
-            distributionKey: values.distributionKey,
-            fundId: values.fundId || undefined
-          }
-        ]
+        lines: formLines.map(line => ({
+          category: String(line.category),
+          description: String(line.description),
+          amountForecast: Number(line.amountForecast),
+          distributionKey: values.distributionKey,
+          fundId: line.fundId || undefined
+        }))
       });
       message.success(t('Budget créé'));
-      setOpenBudgetModal(false);
-      budgetForm.resetFields();
+      closeBudgetModal();
       await loadData();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Création budget impossible'));
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const closeBudgetModal = () => {
+    setOpenBudgetModal(false);
+    budgetForm.resetFields();
   };
 
   const handleChangeBudgetStatus = async (
@@ -440,25 +468,26 @@ export const SyndicBudgets: React.FC = () => {
                           >
                             {t('Voir allocations')}
                           </Button>
-                          <Button
-                            size="small"
-                            type="primary"
-                            disabled={isClosed}
-                            onClick={() => {
-                              setSelectedBudget(budget);
-                              setOpenGenerateModal(true);
-                              generateForm.setFieldsValue({
-                                label: t('Campagne {{fiscalYear}}', { fiscalYear: budget.fiscalYear }),
-                                period: `${budget.fiscalYear}-01`,
-                                batchType: 'REGULAR',
-                                currency: budget.currency || 'XOF',
-                                periodsPerYear: 1,
-                                periodIndex: 1
-                              });
-                            }}
-                          >
-                            {t('Générer appels')}
-                          </Button>
+                          {!isClosed && (
+                            <Button
+                              size="small"
+                              type="primary"
+                              onClick={() => {
+                                setSelectedBudget(budget);
+                                setOpenGenerateModal(true);
+                                generateForm.setFieldsValue({
+                                  label: t('Campagne {{fiscalYear}}', { fiscalYear: budget.fiscalYear }),
+                                  period: `${budget.fiscalYear}-01`,
+                                  batchType: 'REGULAR',
+                                  currency: budget.currency || 'XOF',
+                                  periodsPerYear: 1,
+                                  periodIndex: 1
+                                });
+                              }}
+                            >
+                              {t('Générer appels')}
+                            </Button>
+                          )}
                         </Space>
                       );
                     }
@@ -547,7 +576,7 @@ export const SyndicBudgets: React.FC = () => {
       <Modal
         title={t('Nouveau budget')}
         open={openBudgetModal}
-        onCancel={() => setOpenBudgetModal(false)}
+        onCancel={closeBudgetModal}
         onOk={() => void handleCreateBudget()}
         okText={t('Créer budget')}
         cancelText={t('Annuler')}
@@ -556,33 +585,17 @@ export const SyndicBudgets: React.FC = () => {
         <Form
           form={budgetForm}
           layout="vertical"
-          initialValues={{ fiscalYear: new Date().getFullYear(), distributionKey: 'GENERAL_SHARES', currency: 'XOF' }}
+          initialValues={{
+            fiscalYear: new Date().getFullYear(),
+            distributionKey: 'GENERAL_SHARES',
+            currency: 'XOF',
+            lines: [{}]
+          }}
         >
           <Form.Item label={t('Exercice')} name="fiscalYear" rules={[{ required: true }]}>
             <InputNumber min={2020} max={2100} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item label={t('Libellé')} name="label" rules={[{ required: true, message: t('Libellé obligatoire') }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label={t('Montant total')}
-            name="totalAmount"
-            rules={[{ required: true, message: t('Montant obligatoire') }]}
-          >
-            <InputNumber min={1} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item
-            label={t('Catégorie principale')}
-            name="category"
-            rules={[{ required: true, message: t('Catégorie obligatoire') }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label={t('Description ligne')}
-            name="description"
-            rules={[{ required: true, message: t('Description obligatoire') }]}
-          >
             <Input />
           </Form.Item>
           <Form.Item label={t('Clé de distribution')} name="distributionKey" rules={[{ required: true }]}>
@@ -600,15 +613,68 @@ export const SyndicBudgets: React.FC = () => {
           <Form.Item label={t('Devise')} name="currency">
             <Input />
           </Form.Item>
-          {funds.length > 0 ? (
-            <Form.Item
-              label={t('Fonds alimenté par ce poste (optionnel)')}
-              name="fundId"
-              extra={t('Le fonds recevra la part de ce poste dans chaque paiement de charges.')}
-            >
-              <Select allowClear showSearch optionFilterProp="label" options={fundSelectOptions} />
-            </Form.Item>
-          ) : null}
+          <Typography.Text strong>{t('Postes du budget')}</Typography.Text>
+          <Form.List name="lines">
+            {(fields, { add, remove }) => (
+              <Space direction="vertical" size="small" style={{ width: '100%', marginTop: 8 }}>
+                {fields.map((field, index) => (
+                  <Card key={field.key} size="small" title={t('Poste {{n}}', { n: index + 1 })}>
+                    <Form.Item
+                      label={t('Catégorie')}
+                      name={[field.name, 'category']}
+                      rules={[{ required: true, whitespace: true, message: t('Catégorie obligatoire') }]}
+                    >
+                      <Input />
+                    </Form.Item>
+                    <Form.Item
+                      label={t('Description')}
+                      name={[field.name, 'description']}
+                      rules={[{ required: true, whitespace: true, message: t('Description obligatoire') }]}
+                    >
+                      <Input />
+                    </Form.Item>
+                    <Form.Item
+                      label={t('Montant prévu')}
+                      name={[field.name, 'amountForecast']}
+                      rules={[
+                        {
+                          validator: (_, value) =>
+                            Number(value) > 0
+                              ? Promise.resolve()
+                              : Promise.reject(new Error(t('Montant supérieur à 0 obligatoire')))
+                        }
+                      ]}
+                    >
+                      <InputNumber style={{ width: '100%' }} />
+                    </Form.Item>
+                    {funds.length > 0 ? (
+                      <Form.Item
+                        label={t('Fonds alimenté par ce poste (optionnel)')}
+                        name={[field.name, 'fundId']}
+                        extra={t('Le fonds recevra la part de ce poste dans chaque paiement de charges.')}
+                      >
+                        <Select allowClear showSearch optionFilterProp="label" options={fundSelectOptions} />
+                      </Form.Item>
+                    ) : null}
+                    {fields.length > 1 ? (
+                      <Button danger size="small" icon={<DeleteOutlined />} onClick={() => remove(field.name)}>
+                        {t('Retirer le poste')}
+                      </Button>
+                    ) : null}
+                  </Card>
+                ))}
+                <Button icon={<PlusOutlined />} onClick={() => add({})}>
+                  {t('Ajouter un poste')}
+                </Button>
+              </Space>
+            )}
+          </Form.List>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 12 }}>
+            <Typography.Text strong>{t('Total du budget')}</Typography.Text>
+            <Typography.Text strong>
+              <MoneyValue value={budgetFormTotal} />
+            </Typography.Text>
+          </div>
         </Form>
       </Modal>
 
@@ -701,19 +767,22 @@ export const SyndicBudgets: React.FC = () => {
               title: t('Fonds alimenté'),
               // Sélecteur de fonds par ligne : rien à exporter.
               exportable: false,
-              render: (_, line: BudgetLineItem) => (
-                <Select
-                  allowClear
-                  showSearch
-                  optionFilterProp="label"
-                  style={{ minWidth: 200 }}
-                  placeholder={t('Aucun fonds')}
-                  disabled={funds.length === 0 || savingLineId === line.id || linesBudget?.status === 'CLOSED'}
-                  value={line.fundId ?? undefined}
-                  onChange={value => void handleAssignLineFund(line, value)}
-                  options={fundSelectOptions}
-                />
-              )
+              render: (_, line: BudgetLineItem) =>
+                linesBudget?.status === 'CLOSED' ? (
+                  <span>{funds.find(fund => fund.id === line.fundId)?.name ?? t('Aucun fonds')}</span>
+                ) : (
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    style={{ minWidth: 200 }}
+                    placeholder={t('Aucun fonds')}
+                    disabled={funds.length === 0 || savingLineId === line.id}
+                    value={line.fundId ?? undefined}
+                    onChange={value => void handleAssignLineFund(line, value)}
+                    options={fundSelectOptions}
+                  />
+                )
             }
           ]}
         />

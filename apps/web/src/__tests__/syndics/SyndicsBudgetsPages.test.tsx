@@ -46,6 +46,9 @@ vi.mock('antd', async () => {
   const FormComponent: any = passthrough('form');
   FormComponent.useForm = () => [formInstance];
   FormComponent.Item = passthrough();
+  FormComponent.useWatch = () => undefined;
+  // Form.List : un seul poste statique (le comportement réel est testé dans SyndicBudgetsCreateLines.test.tsx).
+  FormComponent.List = ({ children }: any) => children([{ key: 0, name: 0 }], { add: vi.fn(), remove: vi.fn() });
 
   const Table = ({ dataSource, columns }: any) => (
     <div>
@@ -333,7 +336,7 @@ describe('Syndics budgets page — budget clôturé (lecture seule)', () => {
     });
   });
 
-  it('n affiche ni Approuver, ni Réviser, ni Clôturer, et désactive Répartir/Générer appels', async () => {
+  it('n affiche ni Approuver, ni Réviser, ni Clôturer, masque Générer appels et désactive Répartir', async () => {
     renderWithRoute();
     expect(await screen.findByText('Clôturé')).toBeTruthy();
     expect(screen.queryByText('Approuver')).toBeNull();
@@ -342,7 +345,6 @@ describe('Syndics budgets page — budget clôturé (lecture seule)', () => {
 
     const repartirButton = (await screen.findByText('Répartir')) as HTMLButtonElement;
     expect(repartirButton.disabled).toBe(true);
-    const genererButton = (await screen.findByText('Générer appels')) as HTMLButtonElement;
-    expect(genererButton.disabled).toBe(true);
+    expect(screen.queryByText('Générer appels')).toBeNull();
   });
 });
