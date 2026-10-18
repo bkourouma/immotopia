@@ -433,6 +433,20 @@ const envSchema = z
     GEMINI_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
     STOCK_VISION_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000),
 
+    // Lecture IA des captures de paiement mobile money (spec 047, D9). `disabled`
+    // par defaut : le pre-remplissage est alors indisponible, sans erreur. Le
+    // transport et les cles sont ceux de la vision du stock (GEMINI_API_KEY,
+    // OPENROUTER_API_KEY) ; seuls le choix, le modele et le delai sont propres.
+    PAYMENT_PROOF_VISION_PROVIDER: z.enum(['disabled', 'fake', 'gemini', 'openrouter']).default('disabled'),
+    PAYMENT_PROOF_VISION_MODEL: z.string().min(1).default('gemini-3.8-flash'),
+    PAYMENT_PROOF_VISION_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000),
+    // Vision via OpenRouter : exige en plus une retention nulle (zero data retention) chez le fournisseur
+    // routé. `data_collection: deny` (aucune conservation ni entrainement) est TOUJOURS demande.
+    OPENROUTER_VISION_ZDR: z
+      .enum(['true', 'false', '1', '0'])
+      .default('false')
+      .transform(value => value === 'true' || value === '1'),
+
     // Signature electronique (spec 044, SG-R13). `disabled` par defaut : toute
     // demande est refusee. `log` : rien ne part, seules des metadonnees sont
     // journalisees (jamais lien, jeton ni code). `internal` : jeton + code a
@@ -802,6 +816,47 @@ const envSchema = z
           code: z.ZodIssueCode.custom,
           path: ['STOCK_VISION_MODEL'],
           message: 'identifiant OpenRouter requis quand STOCK_VISION_PROVIDER=openrouter (ex. google/gemini-3.8-flash)'
+        });
+      }
+    }
+    // Les cles et les captures transitent par OPENROUTER_BASE_URL : jamais en clair en production.
+    if (value.NODE_ENV === 'production' && !value.OPENROUTER_BASE_URL.startsWith('https://')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['OPENROUTER_BASE_URL'],
+        message: 'en production, OPENROUTER_BASE_URL doit utiliser https'
+      });
+    }
+    // Spec 047 : lecture IA des captures de paiement. Le faux fournisseur n'existe
+    // qu'en developpement et en test ; une cle est exigee pour un vrai fournisseur.
+    if (value.PAYMENT_PROOF_VISION_PROVIDER === 'fake' && !fakeProviderAllowed(process.env.NODE_ENV)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PAYMENT_PROOF_VISION_PROVIDER'],
+        message: "le faux fournisseur 'fake' n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test'"
+      });
+    }
+    if (value.PAYMENT_PROOF_VISION_PROVIDER === 'gemini' && !value.GEMINI_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GEMINI_API_KEY'],
+        message: 'variable requise quand PAYMENT_PROOF_VISION_PROVIDER=gemini'
+      });
+    }
+    if (value.PAYMENT_PROOF_VISION_PROVIDER === 'openrouter') {
+      if (!value.OPENROUTER_API_KEY) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['OPENROUTER_API_KEY'],
+          message: 'variable requise quand PAYMENT_PROOF_VISION_PROVIDER=openrouter'
+        });
+      }
+      if (!value.PAYMENT_PROOF_VISION_MODEL.includes('/')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PAYMENT_PROOF_VISION_MODEL'],
+          message:
+            'identifiant OpenRouter requis quand PAYMENT_PROOF_VISION_PROVIDER=openrouter (ex. google/gemini-3.8-flash)'
         });
       }
     }

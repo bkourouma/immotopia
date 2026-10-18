@@ -490,10 +490,11 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     expect(order.indexOf('reglages')).toBeLessThan(order.indexOf(':declarationId'));
   });
 
-  it('declare les 4 routes portail du paiement mobile money declare (spec 047) derriere la garde du portail copropriétaire', () => {
+  it('declare les 5 routes portail du paiement mobile money declare (spec 047) derriere la garde du portail copropriétaire', () => {
     const base = '/api/portal/copropriete/paiements-declares';
     const expected: Array<[string, string]> = [
       ['GET', `${base}/disponibilite`],
+      ['POST', `${base}/lecture`],
       ['POST', base],
       ['GET', base],
       ['POST', `${base}/:declarationId/annulation`]

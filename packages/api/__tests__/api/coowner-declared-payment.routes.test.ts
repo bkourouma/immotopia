@@ -44,6 +44,11 @@ jest.mock('../../src/lib/syndics/declared-payment/portal', () => ({
   cancelCoOwnerDeclaration: (...a: any[]) => cancelDeclaration(...a)
 }));
 
+const readProof = jest.fn();
+jest.mock('../../src/lib/syndics/declared-payment/proof-read', () => ({
+  readPaymentProof: (...a: any[]) => readProof(...a)
+}));
+
 import { errorHandler, AppError, ErrorCode, NotFoundError } from '../../src/middleware/error-middleware';
 import router from '../../src/routes/coowner-portal-routes';
 
@@ -204,5 +209,46 @@ describe('2.5 liste et 2.6 annulation', () => {
 
   it('ne sert aucune capture au portail', async () => {
     expect((await request(app).get(`${BASE}/${DECL}/preuve`)).status).toBe(404);
+  });
+});
+
+describe('2.3 lecture IA d’une capture', () => {
+  const readingResult = { readId: DECL, quality: 'OK' };
+
+  it('lit la capture avec le périmètre de la session et le syndicId du formulaire', async () => {
+    readProof.mockResolvedValue(readingResult);
+    const res = await request(app)
+      .post(`${BASE}/lecture`)
+      .field('syndicId', SYNDIC)
+      .attach('proof', Buffer.from('fichier'), 'preuve.png');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual(readingResult);
+    const params = readProof.mock.calls[0][0];
+    expect(params).toMatchObject({ scope: SCOPE, syndicateId: SYNDIC });
+    expect(params.file.buffer.toString()).toBe('fichier');
+  });
+
+  it('exige un syndicId valide (400) et transmet les erreurs du moteur', async () => {
+    expect((await request(app).post(`${BASE}/lecture`).field('syndicId', 'nope')).status).toBe(400);
+    expect((await request(app).post(`${BASE}/lecture`)).status).toBe(400);
+    expect(readProof).not.toHaveBeenCalled();
+    readProof.mockRejectedValueOnce(new AppError('quota', 429, ErrorCode.PROOF_READ_QUOTA_EXCEEDED));
+    const res = await request(app).post(`${BASE}/lecture`).field('syndicId', SYNDIC);
+    expect(res.status).toBe(429);
+    expect(res.body.code).toBe('PROOF_READ_QUOTA_EXCEEDED');
+  });
+
+  it('limiteur : 5 lectures par minute et par compte, 429 avant tout traitement', async () => {
+    readProof.mockResolvedValue(readingResult);
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      statuses.push((await request(app).post(`${BASE}/lecture`).field('syndicId', SYNDIC)).status);
+    }
+    // Les deux appels des tests précédents comptent déjà dans la minute.
+    expect(statuses.filter(status => status === 429).length).toBeGreaterThanOrEqual(1);
+    expect(statuses[statuses.length - 1]).toBe(429);
+    const calls = readProof.mock.calls.length;
+    await request(app).post(`${BASE}/lecture`).field('syndicId', SYNDIC);
+    expect(readProof.mock.calls.length).toBe(calls);
   });
 });

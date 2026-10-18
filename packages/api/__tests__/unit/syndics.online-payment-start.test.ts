@@ -165,6 +165,19 @@ describe('startSyndicCheckout — déclaration mobile money en attente (spec 047
     expect(db.engine.client.buildAway).not.toHaveBeenCalled();
   });
 
+  it('course : une déclaration validée entre la lecture rapide et le verrou est vue dans la transaction (409)', async () => {
+    // Lecture rapide hors transaction : rien ; relecture après le verrou commun : déclaration en attente.
+    db.prisma.syndicPaymentDeclaration.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce(pending([IDS.C1]));
+
+    const error = await startSyndicCheckout(base()).catch(e => e);
+
+    expect(error).toMatchObject({ statusCode: 409, code: 'CHARGE_CALL_DECLARATION_PENDING' });
+    expect(db.store.checkouts).toHaveLength(0);
+    expect(db.engine.client.buildAway).not.toHaveBeenCalled();
+    // Verrou du démarrage + verrou commun avec la création de déclaration.
+    expect(db.prisma.$executeRaw.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('un appel non visé par la déclaration se paie normalement', async () => {
     db.prisma.syndicPaymentDeclaration.findMany.mockResolvedValueOnce(pending([IDS.C2]));
 

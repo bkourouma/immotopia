@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
+import type { Prisma } from '@prisma/client';
 import { prisma, type PrismaTransactionClient } from '../../../utils/database';
 import { AppError, ErrorCode, NotFoundError } from '../../../middleware/error-middleware';
 import { logAuditEvent } from '../../../services/audit-service';
@@ -8,10 +9,25 @@ import { AuditActionKey } from '../../../types/audit-types';
 import { logger } from '../../../utils/logger';
 import { t } from '../../../i18n';
 import { privateUploadPath, privateUploadReadRoots } from '../../files/private-files';
+import { PENDING_REUSE_WINDOW_MS } from '../online-payment/checkout-start';
+import { lockLotPayment } from '../lot-payment-lock';
 import { assertLotOfSyndicate, assertSyndicateOfTenant, listOpenCallsForLot } from '../charge-allocation';
 import { ownedChargeCallsWhere, type CoOwnerPortalScope } from '../coowner-portal';
 import { normalizeIvorianMsisdn } from './phone';
-import { saveDeclarationProof, type ProofFileInput, type StoredProofFile } from './proof-files';
+import {
+  discardTempProof,
+  promoteTempProofToDeclaration,
+  saveDeclarationProof,
+  type ProofFileInput,
+  type StoredProofFile
+} from './proof-files';
+import {
+  buildAiPrefill,
+  computeEditedFields,
+  loadProofReadForDeclaration,
+  proofReadInvalid,
+  type LoadedProofRead
+} from './proof-read-link';
 import { getActiveReceivingNumber } from './receiving-numbers';
 import { normalizeTransactionReference } from './reference';
 import { assertSyndicFeatureForDeclared, getDeclaredPaymentRules } from './settings';
@@ -238,6 +254,43 @@ async function assertCallsOfLines(
     const openIds = new Set(open.map(call => call.id));
     if (line.chargeCallIds.some(id => !openIds.has(id))) throw callNotFound();
   }
+  await assertNoOnlineCheckout(prisma, tenantId, lines);
+}
+
+/**
+ * Cas limite 9 (bloqué dans les deux sens) : un appel qui a un paiement en ligne en cours (PENDING
+ * dans la fenêtre de reprise) ou à vérifier (REVIEW) ne se déclare pas en même temps. Appelée une
+ * première fois en lecture rapide, puis DANS la transaction de création après le verrou commun
+ * (`lockLotPayment`) : c'est cette seconde lecture qui arbitre la course avec le démarrage du paiement.
+ */
+async function assertNoOnlineCheckout(client: Client, tenantId: string, lines: CheckedBody['lines']): Promise<void> {
+  for (const line of lines) {
+    if (line.chargeCallIds.length === 0) continue;
+    const checkouts = await client.syndicOnlineCheckout.findMany({
+      where: {
+        tenantId,
+        lotId: line.lotId,
+        chargeCallIds: { hasSome: line.chargeCallIds },
+        OR: [
+          { status: 'PENDING', createdAt: { gte: new Date(Date.now() - PENDING_REUSE_WINDOW_MS) } },
+          { status: 'REVIEW' }
+        ]
+      },
+      select: { chargeCallIds: true }
+    });
+    if (checkouts.length > 0) {
+      const covered = new Set(checkouts.flatMap(checkout => checkout.chargeCallIds));
+      throw new AppError(
+        t(
+          'Un paiement en ligne est en cours ou à vérifier pour cet appel : il ne peut pas être déclaré en même temps.'
+        ),
+        409,
+        ErrorCode.CHARGE_CALL_ONLINE_PAYMENT_PENDING,
+        undefined,
+        { chargeCallIds: line.chargeCallIds.filter(id => covered.has(id)) }
+      );
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -343,22 +396,24 @@ export async function createDeclaration(params: {
   // 5. Limite de déclarations en attente par lot (relue sous verrou à l'écriture).
   await assertPendingLimit(prisma, tenantId, lotIds);
 
-  // 6. Capture. `proofReadId` (lecture IA, PR3) n'est pas encore traité.
+  // 6. Capture : fichier envoyé, ou capture d'une lecture IA déjà faite (portail seulement).
   if (proof && input.proofReadId) {
     throw invalidBody(t('Envoyez une capture ou une lecture déjà faite, pas les deux.'));
   }
+  let proofRead: LoadedProofRead | null = null;
   if (input.proofReadId) {
-    // Point d'extension T064 : charger la lecture (`SyndicPaymentProofRead`) du contact,
-    // non consommée et non expirée (`PROOF_READ_INVALID` sinon), promouvoir sa capture
-    // temporaire (`promoteTempProofToDeclaration`), renseigner `proofReadId`/`aiPrefill`,
-    // calculer `aiEditedFields` et marquer la lecture consommée dans la transaction.
-    throw new AppError(
-      t("La lecture automatique des captures n'est pas disponible."),
-      409,
-      ErrorCode.PROOF_READ_UNAVAILABLE
-    );
+    if (actor.type !== 'COOWNER') {
+      throw invalidBody(t('La lecture automatique des captures est réservée au portail.'));
+    }
+    proofRead = await loadProofReadForDeclaration(prisma, {
+      tenantId,
+      syndicateId,
+      readId: input.proofReadId,
+      contactIds: actor.scope.contactIds,
+      now
+    });
   }
-  if (!proof && rules.proofRequired) {
+  if (!proof && !proofRead && rules.proofRequired) {
     throw badRequest(
       t('Cette copropriété exige une capture de la preuve de paiement.'),
       ErrorCode.DECLARATION_PROOF_REQUIRED
@@ -379,10 +434,34 @@ export async function createDeclaration(params: {
   if (sameReference) throw referenceUsedError();
 
   // 7. Écriture : identifiant d'abord (il nomme le fichier), capture, puis une transaction.
+  // Tout ce qui peut lever est calculé AVANT d'écrire un fichier définitif.
+  const aiPrefill = proofRead ? (buildAiPrefill(proofRead.id, proofRead.raw) as Prisma.InputJsonObject) : null;
+  const aiEditedFields = proofRead
+    ? computeEditedFields(proofRead.values, {
+        amount: body.amount,
+        paidAt: body.paidAt,
+        transactionReference: body.transactionReference,
+        payerPhone: body.payerPhone
+      })
+    : [];
   const declarationId = randomUUID();
   let stored: StoredProofFile | null = null;
   if (proof) {
     stored = await saveDeclarationProof({ tenantId, syndicateId, declarationId, file: proof });
+  } else if (proofRead) {
+    try {
+      // Le temporaire est gardé jusqu'à la fin de la création : un échec laisse la lecture réutilisable.
+      stored = await promoteTempProofToDeclaration({
+        tenantId,
+        syndicateId,
+        declarationId,
+        tempFileUrl: proofRead.tempFileUrl,
+        keepSource: true
+      });
+    } catch (error) {
+      if (error instanceof NotFoundError) throw proofReadInvalid();
+      throw error;
+    }
   }
 
   const declaredByContactId = actor.type === 'COOWNER' ? actor.contactId : (actor.declaredForContactId ?? null);
@@ -390,12 +469,21 @@ export async function createDeclaration(params: {
 
   try {
     await prisma.$transaction(async tx => {
-      // Verrou par lot (ordre trié : pas d'interblocage) pour que deux déclarations
-      // simultanées ne dépassent pas la limite de déclarations en attente.
-      for (const lotId of [...lotIds].sort()) {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`syndic-declaration-pending:${lotId}`}))`;
-      }
+      // Verrou par lot, commun avec le démarrage d'un paiement en ligne (ordre trié : pas
+      // d'interblocage) : deux déclarations simultanées ne dépassent pas la limite d'attente, et
+      // une déclaration et un paiement en ligne ne se croisent pas sur le même appel.
+      await lockLotPayment(tx, lotIds);
       await assertPendingLimit(tx, tenantId, lotIds);
+      await assertNoOnlineCheckout(tx, tenantId, body.lines);
+
+      if (proofRead) {
+        // Une lecture ne sert qu'une fois : la consommation est atomique avec la création.
+        const consumed = await tx.syndicPaymentProofRead.updateMany({
+          where: { id: proofRead.id, tenantId, consumedAt: null, expiresAt: { gt: now } },
+          data: { consumedAt: now }
+        });
+        if (consumed.count !== 1) throw proofReadInvalid();
+      }
 
       await tx.syndicPaymentDeclaration.create({
         data: {
@@ -416,7 +504,9 @@ export async function createDeclaration(params: {
           proofFileUrl: stored?.fileUrl ?? null,
           proofSha256: stored?.sha256 ?? null,
           status: 'PENDING',
-          aiEditedFields: [],
+          proofReadId: proofRead?.id ?? null,
+          ...(aiPrefill ? { aiPrefill } : {}),
+          aiEditedFields,
           lines: {
             // [] est conservé tel quel : « plus anciens d'abord » se résout à la validation.
             create: body.lines.map(line => ({
@@ -435,6 +525,14 @@ export async function createDeclaration(params: {
     if (isReferenceUniqueViolation(error)) throw referenceUsedError();
     throw error;
   }
+  if (proofRead) {
+    // Le chemin n'est effacé en base qu'une fois le fichier réellement supprimé : sinon la purge le retrouve.
+    if (await discardTempProof(tenantId, proofRead.tempFileUrl)) {
+      await prisma.syndicPaymentProofRead
+        .updateMany({ where: { id: proofRead.id, tenantId }, data: { tempFileUrl: null } })
+        .catch(() => undefined);
+    }
+  }
 
   // 8. Audit : identifiants, statut, montant, nombre de lignes. Ni capture, ni téléphone.
   logAuditEvent({
@@ -452,7 +550,9 @@ export async function createDeclaration(params: {
       lines: body.lines.map(line => ({ lotId: line.lotId, amount: line.amount })),
       receivingNumberId: receivingNumber.id,
       contactId: declaredByContactId,
-      hasProof: stored !== null
+      hasProof: stored !== null,
+      aiPrefilled: proofRead !== null,
+      aiEditedFields
     }
   });
 

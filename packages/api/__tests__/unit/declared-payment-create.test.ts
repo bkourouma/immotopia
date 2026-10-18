@@ -25,7 +25,9 @@ const store = {
   contacts: [] as Row[],
   visibleCalls: [] as string[],
   openCalls: {} as Record<string, string[]>,
-  foreignLots: new Set<string>()
+  foreignLots: new Set<string>(),
+  proofReads: [] as Row[],
+  onlineCheckouts: [] as Row[]
 };
 
 const mockPrisma: Row = {
@@ -54,6 +56,42 @@ const mockPrisma: Row = {
     create: jest.fn(async ({ data }: Row) => {
       store.declarations.push({ ...data });
       return { id: data.id };
+    })
+  },
+  syndicOnlineCheckout: {
+    findMany: jest.fn(async ({ where }: Row) =>
+      store.onlineCheckouts.filter(
+        c =>
+          c.lotId === where.lotId &&
+          where.chargeCallIds.hasSome.some((id: string) => c.chargeCallIds.includes(id)) &&
+          (c.status === 'REVIEW' || c.status === 'PENDING')
+      )
+    )
+  },
+  syndicPaymentProofRead: {
+    findFirst: jest.fn(async ({ where }: Row) => {
+      const found = store.proofReads.find(
+        r =>
+          r.id === where.id &&
+          r.tenantId === where.tenantId &&
+          r.syndicateId === where.syndicateId &&
+          where.contactId.in.includes(r.contactId) &&
+          r.consumedAt === null &&
+          r.expiresAt > where.expiresAt.gt &&
+          r.tempFileUrl !== null
+      );
+      return found ? { id: found.id, tempFileUrl: found.tempFileUrl, result: found.result } : null;
+    }),
+    updateMany: jest.fn(async ({ where, data }: Row) => {
+      const found = store.proofReads.find(
+        r =>
+          r.id === where.id &&
+          r.tenantId === where.tenantId &&
+          (where.consumedAt === undefined || r.consumedAt === where.consumedAt)
+      );
+      if (!found) return { count: 0 };
+      Object.assign(found, data);
+      return { count: 1 };
     })
   },
   syndicPaymentDeclarationLine: {
@@ -119,8 +157,12 @@ jest.mock('../../src/lib/syndics/declared-payment/settings', () => ({
 }));
 
 const mockSaveProof = jest.fn();
+const mockPromote = jest.fn();
+const mockDiscard = jest.fn(async (..._args: unknown[]) => true);
 jest.mock('../../src/lib/syndics/declared-payment/proof-files', () => ({
-  saveDeclarationProof: (...args: unknown[]) => mockSaveProof(...args)
+  saveDeclarationProof: (...args: unknown[]) => mockSaveProof(...args),
+  promoteTempProofToDeclaration: (...args: unknown[]) => mockPromote(...args),
+  discardTempProof: (...args: unknown[]) => mockDiscard(...args)
 }));
 
 jest.mock('../../src/lib/files/private-files', () => ({
@@ -231,6 +273,10 @@ beforeEach(() => {
   store.visibleCalls = [];
   store.openCalls = {};
   store.foreignLots = new Set();
+  store.proofReads = [];
+  store.onlineCheckouts = [];
+  mockPromote.mockReset();
+  mockDiscard.mockReset().mockResolvedValue(true);
   auditEvents.length = 0;
   mockAssertFeature.mockReset().mockResolvedValue(undefined);
   mockSaveProof.mockReset();
@@ -513,6 +559,52 @@ describe('createDeclaration : périmètre (portail)', () => {
     );
   });
 
+  describe('paiement en ligne sur le même appel (cas limite 9)', () => {
+    it('course : un paiement en ligne apparu après la lecture rapide est vu dans la transaction, après le verrou', async () => {
+      store.visibleCalls = ['call-1'];
+      store.openCalls[LOT_1] = ['call-1'];
+      store.onlineCheckouts = [{ lotId: LOT_1, chargeCallIds: ['call-1'], status: 'PENDING' }];
+      // Lecture rapide : rien ; relecture sous verrou : le paiement en ligne.
+      mockPrisma.syndicOnlineCheckout.findMany.mockResolvedValueOnce([]);
+      await expectError(
+        run({ input: baseInput({ amount: 100, lines: [{ lotId: LOT_1, amount: 100, chargeCallIds: ['call-1'] }] }) }),
+        409,
+        'CHARGE_CALL_ONLINE_PAYMENT_PENDING'
+      );
+      expect(mockPrisma.$executeRaw).toHaveBeenCalled();
+      expect(store.declarations).toHaveLength(0);
+    });
+
+    const lineOn = (ids: string[]) =>
+      baseInput({ amount: 100, lines: [{ lotId: LOT_1, amount: 100, chargeCallIds: ids }] });
+
+    beforeEach(() => {
+      store.visibleCalls = ['call-1', 'call-2'];
+      store.openCalls[LOT_1] = ['call-1', 'call-2'];
+    });
+
+    it.each(['PENDING', 'REVIEW'])(
+      'paiement en ligne %s : 409 CHARGE_CALL_ONLINE_PAYMENT_PENDING, rien n’est créé',
+      async status => {
+        store.onlineCheckouts = [{ lotId: LOT_1, chargeCallIds: ['call-2'], status }];
+        await expect(run({ input: lineOn(['call-1', 'call-2']) })).rejects.toMatchObject({
+          statusCode: 409,
+          code: 'CHARGE_CALL_ONLINE_PAYMENT_PENDING',
+          data: { chargeCallIds: ['call-2'] }
+        });
+        expect(store.declarations).toHaveLength(0);
+      }
+    );
+
+    it('paiement en ligne sur un autre appel ou un autre lot : la déclaration passe', async () => {
+      store.onlineCheckouts = [
+        { lotId: LOT_1, chargeCallIds: ['call-2'], status: 'PENDING' },
+        { lotId: LOT_2, chargeCallIds: ['call-1'], status: 'REVIEW' }
+      ];
+      await expect(run({ input: lineOn(['call-1']) })).resolves.toMatchObject({ declarationId: expect.any(String) });
+    });
+  });
+
   it('appel ouvert mais antérieur à l’acquisition (non visible) : 404', async () => {
     store.visibleCalls = [];
     store.openCalls[LOT_1] = ['call-1'];
@@ -724,12 +816,135 @@ describe('createDeclaration : capture', () => {
     expect(unlinkSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('proofReadId seul : PROOF_READ_UNAVAILABLE (409) tant que PR3 n’est pas livré', async () => {
-    await expectError(
-      run({ input: baseInput({ proofReadId: 'a0a0a0a0-0000-4000-8000-000000000000' }) }),
-      409,
-      'PROOF_READ_UNAVAILABLE'
-    );
+  describe('lecture IA (proofReadId, T064)', () => {
+    const READ_ID = 'a0a0a0a0-0000-4000-8000-000000000000';
+    const tempUrl = `/uploads/syndics/payment-proofs/tmp/${TENANT}/${READ_ID}.png`;
+    const aiRead = (over: Row = {}): Row => ({
+      id: READ_ID,
+      tenantId: TENANT,
+      syndicateId: SYNDIC,
+      contactId: 'contact-1',
+      consumedAt: null,
+      expiresAt: new Date(NOW.getTime() + 3_600_000),
+      tempFileUrl: tempUrl,
+      result: {
+        quality: 'OK',
+        operator: 'ORANGE',
+        amount: 30000,
+        paidAt: '2026-10-17T10:00:00.000Z',
+        transactionReference: 'MP261017.ABC',
+        payerPhone: '+2250707070707',
+        recipientPhone: '+2250909090909',
+        recipientName: 'Syndic',
+        confidence: { amount: 0.9 }
+      },
+      ...over
+    });
+    const promoted = (declarationId: string) => ({
+      fileUrl: `/uploads/syndics/payment-proofs/${TENANT}/${SYNDIC}/${declarationId}.png`,
+      sha256: 'promoted-sha',
+      kind: 'png',
+      mimeType: 'image/png',
+      sizeBytes: 4
+    });
+    const withRead = (over: Row = {}) => run({ input: baseInput({ proofReadId: READ_ID }), ...over });
+
+    beforeEach(() => {
+      mockPromote.mockImplementation(async ({ declarationId }: Row) => promoted(declarationId));
+    });
+
+    it('promeut la capture, lie la lecture, mémorise aiPrefill et consomme la lecture', async () => {
+      store.proofReads = [aiRead()];
+      const { declarationId } = await withRead();
+      expect(mockPromote).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: TENANT, syndicateId: SYNDIC, tempFileUrl: tempUrl, keepSource: true })
+      );
+      expect(store.declarations[0]).toMatchObject({
+        id: declarationId,
+        proofReadId: READ_ID,
+        proofFileUrl: promoted(declarationId).fileUrl,
+        proofSha256: 'promoted-sha',
+        aiEditedFields: []
+      });
+      expect(store.declarations[0].aiPrefill).toMatchObject({ readId: READ_ID, recipientPhone: '+2250909090909' });
+      expect(store.proofReads[0].consumedAt).toEqual(NOW);
+      expect(store.proofReads[0].tempFileUrl).toBeNull();
+      expect(mockDiscard).toHaveBeenCalledWith(TENANT, tempUrl);
+      expect(auditEvents[0].payload).toMatchObject({ aiPrefilled: true, aiEditedFields: [] });
+    });
+
+    it('suppression du temporaire en échec : le chemin reste en base pour la purge', async () => {
+      store.proofReads = [aiRead()];
+      mockDiscard.mockResolvedValue(false);
+      await withRead();
+      expect(store.proofReads[0].consumedAt).toEqual(NOW);
+      expect(store.proofReads[0].tempFileUrl).toBe(tempUrl);
+    });
+
+    it('satisfait la capture exigée', async () => {
+      store.rules = { enabled: true, proofRequired: true };
+      store.proofReads = [aiRead()];
+      await expect(withRead()).resolves.toMatchObject({ declarationId: expect.any(String) });
+    });
+
+    it('enregistre les champs proposés puis retouchés', async () => {
+      store.proofReads = [aiRead()];
+      await run({
+        input: baseInput({
+          proofReadId: READ_ID,
+          payerPhone: '05 05 05 05 05',
+          transactionReference: 'MP261017.XYZ',
+          lines: [
+            { lotId: LOT_1, amount: 20000, chargeCallIds: [] },
+            { lotId: LOT_2, amount: 5000, chargeCallIds: [] }
+          ],
+          amount: 25000
+        })
+      });
+      expect(store.declarations[0].aiEditedFields).toEqual(['amount', 'transactionReference', 'payerPhone']);
+    });
+
+    it.each([
+      ['inconnue', () => []],
+      ['d’un autre contact', () => [aiRead({ contactId: 'contact-9' })]],
+      ['d’une autre agence', () => [aiRead({ tenantId: 'tenant-b' })]],
+      ['d’une autre copropriété', () => [aiRead({ syndicateId: 'syndic-2' })]],
+      ['déjà utilisée', () => [aiRead({ consumedAt: new Date(NOW.getTime() - 1000) })]],
+      ['expirée', () => [aiRead({ expiresAt: new Date(NOW.getTime() - 1000) })]],
+      ['sans capture temporaire', () => [aiRead({ tempFileUrl: null })]]
+    ])('lecture %s : PROOF_READ_INVALID (409), rien n’est créé', async (_name, make) => {
+      store.proofReads = make();
+      await expectError(withRead(), 409, 'PROOF_READ_INVALID');
+      expect(store.declarations).toHaveLength(0);
+      expect(mockPromote).not.toHaveBeenCalled();
+    });
+
+    it('capture temporaire disparue : PROOF_READ_INVALID', async () => {
+      const { NotFoundError } = jest.requireActual('../../src/middleware/error-middleware');
+      store.proofReads = [aiRead()];
+      mockPromote.mockRejectedValue(new NotFoundError('Capture introuvable.'));
+      await expectError(withRead(), 409, 'PROOF_READ_INVALID');
+    });
+
+    it('échec de la transaction : capture définitive supprimée, lecture non consommée, temporaire gardé', async () => {
+      store.proofReads = [aiRead()];
+      mockPrisma.syndicPaymentDeclaration.create.mockRejectedValueOnce(new Error('boom'));
+      await expect(withRead()).rejects.toThrow('boom');
+      expect(unlinkSpy).toHaveBeenCalled();
+      expect(mockDiscard).not.toHaveBeenCalled();
+    });
+
+    it('lecture consommée entre-temps (course) : PROOF_READ_INVALID', async () => {
+      store.proofReads = [aiRead()];
+      mockPrisma.syndicPaymentProofRead.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expectError(withRead(), 409, 'PROOF_READ_INVALID');
+      expect(store.declarations).toHaveLength(0);
+    });
+
+    it('réservé au portail : un gestionnaire ne peut pas passer de lecture', async () => {
+      store.proofReads = [aiRead()];
+      await expectError(withRead({ actor: { type: 'MANAGER', userId: 'user-1' } }), 400, 'VALIDATION_ERROR');
+    });
   });
 
   it('fichier et proofReadId ensemble : 400 VALIDATION_ERROR', async () => {

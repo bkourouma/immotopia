@@ -7,6 +7,7 @@ import { t } from '../../../i18n';
 import { assertSyndicateOfTenant } from '../charge-allocation';
 import { isSyndicOnlinePaymentAllowed } from '../online-payment/feature-gate';
 import { listActiveReceivingNumbersForPortal } from './receiving-numbers';
+import { isPaymentProofVisionConfigured } from './vision';
 import type { DeclaredPaymentSettings, ReceivingNumber } from './types';
 
 /**
@@ -72,13 +73,15 @@ async function buildSettings(
   const [rules, activeNumbers, aiReadsThisMonth] = await Promise.all([
     getDeclaredPaymentRules(prisma, tenantId, syndicateId),
     prisma.syndicReceivingNumber.count({ where: { tenantId, syndicateId, isActive: true } }),
-    prisma.syndicPaymentProofRead.count({ where: { tenantId, createdAt: { gte: startOfMonthUtc(now) } } })
+    prisma.syndicPaymentProofRead.count({
+      where: { tenantId, createdAt: { gte: startOfMonthUtc(now) }, outcome: { not: 'DISABLED' } }
+    })
   ]);
   return {
     syndicateId,
     ...rules,
-    // Le fournisseur de vision est branché en PR3.
-    aiPrefillAvailable: false,
+    // Un fournisseur de vision est configuré sur le serveur (`PAYMENT_PROOF_VISION_PROVIDER`).
+    aiPrefillAvailable: isPaymentProofVisionConfigured(),
     aiReadsThisMonth,
     aiReadsMonthlyQuota: AI_READS_MONTHLY_QUOTA,
     usable: rules.enabled && activeNumbers > 0

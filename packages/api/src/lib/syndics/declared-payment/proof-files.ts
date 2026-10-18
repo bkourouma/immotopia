@@ -184,6 +184,8 @@ export async function promoteTempProofToDeclaration(params: {
   syndicateId: string;
   declarationId: string;
   tempFileUrl: string;
+  /** Conserve le temporaire (supprimé ensuite par `discardTempProof`) : la création peut encore échouer. */
+  keepSource?: boolean;
 }): Promise<StoredProofFile> {
   const relative = privateUploadPath(params.tempFileUrl, tempSegments(params.tenantId));
   const source = await readPrivateUpload(relative, null, t('Capture introuvable.'));
@@ -193,8 +195,61 @@ export async function promoteTempProofToDeclaration(params: {
     params.declarationId,
     prepared
   );
-  if (relative) await removeUpload(relative);
+  if (relative && !params.keepSource) await removeUpload(relative);
   return stored;
+}
+
+/** Supprime la capture temporaire d'une lecture ; rend `true` si elle n'existe plus. Ne lève jamais. */
+export async function discardTempProof(tenantId: string, tempFileUrl: string): Promise<boolean> {
+  try {
+    const relative = privateUploadPath(tempFileUrl, tempSegments(tenantId));
+    if (!relative) return false;
+    await removeUpload(relative);
+    return true;
+  } catch (error) {
+    logger.warn('[declared-payment] suppression de capture temporaire en échec', {
+      code: (error as NodeJS.ErrnoException)?.code
+    });
+    return false;
+  }
+}
+
+/** Âge au-delà duquel une capture temporaire n'a plus lieu d'être (durée de conservation d'une lecture). */
+export const TEMP_PROOF_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Balayage du dossier temporaire par DATE DE MODIFICATION, sans passer par la base : supprime tout
+ * fichier de `uploads/syndics/payment-proofs/tmp/<agence>/` de plus de 24 h. Rattrape les captures
+ * orphelines (processus arrêté entre l'écriture et l'enregistrement, ligne supprimée, chemin non
+ * effacé). Un échec sur un fichier est journalisé sans arrêter le balayage ; rend le nombre supprimé.
+ */
+export async function purgeOrphanTempProofs(now: Date = new Date()): Promise<number> {
+  let removed = 0;
+  const roots = new Set(privateUploadReadRoots().map(root => path.resolve(root)));
+  for (const root of roots) {
+    const tmpRoot = path.join(root, ...PROOF_ROOT, 'tmp');
+    const tenants = await fs.readdir(tmpRoot, { withFileTypes: true }).catch(() => []);
+    for (const tenantDir of tenants) {
+      if (!tenantDir.isDirectory()) continue;
+      const directory = path.join(tmpRoot, tenantDir.name);
+      const files = await fs.readdir(directory, { withFileTypes: true }).catch(() => []);
+      for (const file of files) {
+        if (!file.isFile()) continue;
+        const absolute = path.join(directory, file.name);
+        try {
+          const stat = await fs.stat(absolute);
+          if (now.getTime() - stat.mtimeMs <= TEMP_PROOF_MAX_AGE_MS) continue;
+          await fs.unlink(absolute);
+          removed += 1;
+        } catch (error) {
+          logger.warn('[declared-payment] balayage de capture temporaire en échec', {
+            code: (error as NodeJS.ErrnoException)?.code
+          });
+        }
+      }
+    }
+  }
+  return removed;
 }
 
 // ---------------------------------------------------------------------------
@@ -241,7 +296,7 @@ export async function getDeclarationProofForTenant(params: {
  */
 export async function purgeExpiredProofReads(now: Date = new Date()): Promise<number> {
   const rows = await prisma.syndicPaymentProofRead.findMany({
-    where: { expiresAt: { lt: now }, consumedAt: null, tempFileUrl: { not: null } },
+    where: { expiresAt: { lt: now }, tempFileUrl: { not: null } },
     select: { id: true, tenantId: true, tempFileUrl: true }
   });
   let purged = 0;

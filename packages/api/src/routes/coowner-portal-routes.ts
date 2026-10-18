@@ -5,6 +5,7 @@ import { requireCoOwnerPortalAccess } from '../middleware/coowner-portal-access'
 import {
   coOwnerChargeNoticeRateLimiter,
   coOwnerDeclarationCreateLimiter,
+  coOwnerProofReadLimiter,
   coOwnerMeetingAccessRateLimiter,
   coOwnerPortalPdfRateLimiter
 } from '../middleware/rate-limit-middleware';
@@ -35,6 +36,7 @@ import {
 } from '../controllers/coowner-online-payment-controller';
 import {
   cancelCoOwnerDeclarationHandler,
+  readCoOwnerPaymentProofHandler,
   createCoOwnerDeclarationHandler,
   getCoOwnerDeclaredAvailabilityHandler,
   listCoOwnerDeclarationsHandler
@@ -106,6 +108,13 @@ router.get('/paiements-en-ligne/:codePaiement', coOwnerOnlinePaymentStatusLimite
 // AVANT `:declarationId`. Droit SYNDIC contrôlé dans le moteur (portail hors garde d'abonnement).
 // Limiteur AVANT le parseur multipart, après authenticate et la garde du portail.
 router.get('/paiements-declares/disponibilite', getCoOwnerDeclaredAvailabilityHandler);
+// Lecture IA d'une capture (PR3) : limiteurs (5/min, 30/jour) AVANT le parseur multipart.
+router.post(
+  '/paiements-declares/lecture',
+  coOwnerProofReadLimiter,
+  receiveDeclarationProof,
+  readCoOwnerPaymentProofHandler
+);
 router.post(
   '/paiements-declares',
   coOwnerDeclarationCreateLimiter,

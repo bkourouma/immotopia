@@ -274,7 +274,16 @@ phoneNumber)`.
 - **R29** — Coût et abus : limiteur 5 lectures par minute et 30 par jour par compte copropriétaire ;
   plafond mensuel de lectures par agence (D9) ; le prompt ne contient aucune donnée personnelle autre que
   l'image ; aucune image n'est conservée par ImmoTopia au-delà de la déclaration ou de 24 h si elle est
-  abandonnée ; le fournisseur est appelé sans conservation lorsque son API le permet.
+  abandonnée ; le fournisseur est appelé sans conservation lorsque son API le permet. Un balayage du
+  dossier temporaire par date de modification (au-delà de 24 h, sans passer par la base) rattrape toute
+  capture orpheline. Plafond mensuel par contact : 30 lectures (en plus des 300 de l'agence) ; seules les
+  lectures qui ont réellement appelé le modèle comptent.
+  **Exigence de confidentialité (déploiement)** : avec `gemini`, la clé doit être celle de l'API
+  **payante** (Cloud Billing actif), dont les données ne servent pas à l'entraînement ; jamais une clé du
+  palier gratuit. Avec `openrouter`, la requête exige toujours `data_collection: deny` (aucun
+  fournisseur qui conserve ou entraîne), et `OPENROUTER_VISION_ZDR=true` exige en plus une rétention
+  nulle. La consigne est envoyée en message système, séparée de l'image ; la réponse lue est plafonnée à
+  256 Ko.
 - **R30** — Panne ou délai dépassé du fournisseur : le formulaire reste utilisable à la main, message « La
   lecture automatique n'a pas abouti, remplissez les champs. » La lecture ne fait jamais échouer une
   déclaration.

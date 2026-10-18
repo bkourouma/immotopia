@@ -23,7 +23,9 @@ import {
   prepareProofFile,
   promoteTempProofToDeclaration,
   PROOF_MAX_BYTES,
+  discardTempProof,
   purgeExpiredProofReads,
+  purgeOrphanTempProofs,
   saveDeclarationProof,
   saveTempProofRead
 } from '../../src/lib/syndics/declared-payment/proof-files';
@@ -219,6 +221,43 @@ describe('getDeclarationProofForTenant', () => {
   });
 });
 
+describe('discardTempProof', () => {
+  it('rend true quand le fichier est supprimé ou déjà absent, false pour un chemin hors du dossier de l’agence', async () => {
+    const saved = await saveTempProofRead({ tenantId: TENANT, readId: READ, file: { buffer: pdf() } });
+    await expect(discardTempProof(TENANT, saved.fileUrl)).resolves.toBe(true);
+    await expect(fs.access(tempFile(TENANT, `${READ}.pdf`))).rejects.toBeTruthy();
+    await expect(discardTempProof(TENANT, saved.fileUrl)).resolves.toBe(true);
+    await expect(discardTempProof(OTHER_TENANT, saved.fileUrl)).resolves.toBe(false);
+  });
+});
+
+describe('purgeOrphanTempProofs', () => {
+  it('supprime par date de modification, sans la base, les captures de plus de 24 h seulement', async () => {
+    const old = await saveTempProofRead({ tenantId: TENANT, readId: READ, file: { buffer: pdf() } });
+    const recent = await saveTempProofRead({
+      tenantId: OTHER_TENANT,
+      readId: '44444444-4444-4444-8444-444444444444',
+      file: { buffer: pdf() }
+    });
+    expect(old.fileUrl).toBeTruthy();
+    const longAgo = new Date(Date.now() - 25 * 3600 * 1000);
+    await fs.utimes(tempFile(TENANT, `${READ}.pdf`), longAgo, longAgo);
+
+    await expect(purgeOrphanTempProofs()).resolves.toBe(1);
+
+    await expect(fs.access(tempFile(TENANT, `${READ}.pdf`))).rejects.toBeTruthy();
+    await expect(
+      fs.access(tempFile(OTHER_TENANT, '44444444-4444-4444-8444-444444444444.pdf'))
+    ).resolves.toBeUndefined();
+    expect(recent.fileUrl).toBeTruthy();
+    expect(db.syndicPaymentProofRead.findMany).not.toHaveBeenCalled();
+  });
+
+  it('dossier temporaire absent : rien à faire, pas d’erreur', async () => {
+    await expect(purgeOrphanTempProofs()).resolves.toBe(0);
+  });
+});
+
 describe('purgeExpiredProofReads', () => {
   it('supprime les fichiers expirés, annule tempFileUrl et compte', async () => {
     const a = await saveTempProofRead({ tenantId: TENANT, readId: READ, file: { buffer: pdf() } });
@@ -234,7 +273,7 @@ describe('purgeExpiredProofReads', () => {
 
     expect(db.syndicPaymentProofRead.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { expiresAt: { lt: now }, consumedAt: null, tempFileUrl: { not: null } }
+        where: { expiresAt: { lt: now }, tempFileUrl: { not: null } }
       })
     );
     expect(db.syndicPaymentProofRead.updateMany).toHaveBeenCalledWith({

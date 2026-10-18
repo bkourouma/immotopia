@@ -48,8 +48,10 @@ jest.mock('../../src/lib/syndics/declared-payment/notifications', () => ({
   sendReviewSummary: (...a: any[]) => sendReviewSummary(...a)
 }));
 const purgeExpiredProofReads = jest.fn();
+const purgeOrphanTempProofs = jest.fn(async () => 0);
 jest.mock('../../src/lib/syndics/declared-payment/proof-files', () => ({
-  purgeExpiredProofReads: (...a: any[]) => purgeExpiredProofReads(...a)
+  purgeExpiredProofReads: (...a: any[]) => purgeExpiredProofReads(...a),
+  purgeOrphanTempProofs: (...a: any[]) => (purgeOrphanTempProofs as any)(...a)
 }));
 const getDeclaredPaymentRules = jest.fn();
 jest.mock('../../src/lib/syndics/declared-payment/settings', () => ({
