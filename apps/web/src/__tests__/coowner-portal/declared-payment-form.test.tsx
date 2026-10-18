@@ -152,7 +152,9 @@ async function fillCommon(user: ReturnType<typeof userEvent.setup>, amount = '45
 }
 
 function submitButton() {
-  return screen.getByRole('button', { name: 'Envoyer la déclaration' });
+  // Regex : Ant Design garde l'icône de chargement (aria-label « loading ») dans le bouton pendant son
+  // animation de sortie, ce qui préfixe le nom accessible tant que jsdom n'a pas fini la transition.
+  return screen.getByRole('button', { name: /Envoyer la déclaration/ });
 }
 
 function proofFile(name = 'sms.png', type = 'image/png', size = 2048) {
@@ -478,7 +480,7 @@ describe('DeclarationForm — erreurs serveur', () => {
       await screen.findByText('La lecture de la capture a expiré : envoyez de nouveau la déclaration.', {}, WAIT)
     ).toBeInTheDocument();
 
-    // Pendant l'envoi, le nom accessible du bouton porte l'icône de chargement.
+    // Le bouton est réactivé dans le même rendu que l'alerte : on attend seulement qu'il ne soit plus désactivé.
     await waitFor(() => expect(submitButton()).toBeEnabled(), WAIT);
     await user.click(submitButton());
     await waitFor(() => expect(createDeclaration).toHaveBeenCalledTimes(2), WAIT);
