@@ -474,6 +474,8 @@ export interface SkippedMandateDto {
   mandateId: string;
   mandateReference: string;
   leaseNumber: string | null;
+  /** Numéro du lot (copropriété). */
+  lotNumber?: string | null;
   debtorName: string | null;
   reason: SkipReason;
 }

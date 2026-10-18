@@ -95,7 +95,10 @@ export const ReturnSummaryAlert: React.FC<{ summary: ReturnSummaryDto; state: Re
  * Mandats du créancier que la remise en brouillon ne retient pas, relus par
  * l'API à chaque lecture (spec 042 §8.12) : section dépliable, toujours visible.
  */
-export const DraftSkippedMandatesSection: React.FC<{ skipped: SkippedMandateDto[] | undefined }> = ({ skipped }) => {
+export const DraftSkippedMandatesSection: React.FC<{
+  skipped: SkippedMandateDto[] | undefined;
+  scope?: 'RENTAL_LEASE' | 'SYNDIC_LOT';
+}> = ({ skipped, scope }) => {
   if (!skipped || skipped.length === 0) return null;
   return (
     <Collapse
@@ -110,7 +113,9 @@ export const DraftSkippedMandatesSection: React.FC<{ skipped: SkippedMandateDto[
                 <li key={item.mandateId}>
                   <bdi dir="ltr">{item.mandateReference}</bdi>
                   {item.debtorName ? ` — ${item.debtorName}` : ''}
-                  {item.leaseNumber ? ` (${item.leaseNumber})` : ''} : {skipReasonLabel(item.reason)}
+                  {item.leaseNumber ? ` (${item.leaseNumber})` : ''}
+                  {item.lotNumber ? ` (${t('Lot {{lot}}', { lot: item.lotNumber })})` : ''} :{' '}
+                  {skipReasonLabel(item.reason, scope)}
                 </li>
               ))}
             </ul>
@@ -122,10 +127,11 @@ export const DraftSkippedMandatesSection: React.FC<{ skipped: SkippedMandateDto[
 };
 
 /** Mandats actifs qui n'ont pas été retenus dans la remise, avec la raison. */
-export const SkippedMandatesAlert: React.FC<{ skipped: SkippedMandateDto[]; onClose?: () => void }> = ({
-  skipped,
-  onClose
-}) => {
+export const SkippedMandatesAlert: React.FC<{
+  skipped: SkippedMandateDto[];
+  onClose?: () => void;
+  scope?: 'RENTAL_LEASE' | 'SYNDIC_LOT';
+}> = ({ skipped, onClose, scope }) => {
   if (skipped.length === 0) return null;
   return (
     <Alert
@@ -140,7 +146,9 @@ export const SkippedMandatesAlert: React.FC<{ skipped: SkippedMandateDto[]; onCl
             <li key={item.mandateId}>
               <bdi dir="ltr">{item.mandateReference}</bdi>
               {item.debtorName ? ` — ${item.debtorName}` : ''}
-              {item.leaseNumber ? ` (${item.leaseNumber})` : ''} : {skipReasonLabel(item.reason)}
+              {item.leaseNumber ? ` (${item.leaseNumber})` : ''}
+              {item.lotNumber ? ` (${t('Lot {{lot}}', { lot: item.lotNumber })})` : ''} :{' '}
+              {skipReasonLabel(item.reason, scope)}
             </li>
           ))}
         </ul>

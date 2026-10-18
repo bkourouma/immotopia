@@ -74,7 +74,7 @@ export async function settleAllLines(
     }
   }
 
-  const dto = await loadRemittanceDto(prisma, tenantId, remittanceId);
+  const dto = await loadRemittanceDto(prisma, tenantId, remittanceId, scope);
   if (!dto) throw notFoundRemittance();
   return { remittance: dto, settled, failed };
 }

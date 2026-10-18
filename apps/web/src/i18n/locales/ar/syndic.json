@@ -1548,7 +1548,6 @@
   "Configurer le compte de prélèvement": "إعداد حساب الخصم المباشر",
   "Configurez et activez le compte de prélèvement du syndicat pour créer des mandats.": "أعدّوا وفعّلوا حساب الخصم المباشر للاتحاد لإنشاء التفويضات.",
   "Copropriétaire à prélever": "المالك المشترك المراد الخصم منه",
-  "Détail complet à venir": "التفاصيل الكاملة قريبًا",
   "Erreur lors de l'enregistrement du compte de prélèvement": "حدث خطأ أثناء حفظ حساب الخصم المباشر",
   "Erreur lors de la mise à jour du compte de prélèvement": "حدث خطأ أثناء تحديث حساب الخصم المباشر",
   "Erreur lors du chargement du compte de prélèvement": "حدث خطأ أثناء تحميل حساب الخصم المباشر",
@@ -1577,5 +1576,10 @@
   "Constater réglées les {{n}} lignes encore en attente de cette remise, à la même date de valeur ? Un encaissement et son reçu sont enregistrés pour chacune. Un règlement constaté à tort ne s'annule pas depuis cet écran : il se régularise dans la comptabilité de la copropriété.": "تسجيل {{n}} من البنود المعلّقة في هذه الدفعة كمدفوعة بنفس تاريخ القيمة؟ يُسجَّل تحصيل وإيصال لكل منها. لا يمكن التراجع عن دفعة سُجّلت عن طريق الخطأ من هذه الشاشة: قم بالتسوية في محاسبة الملكية المشتركة.",
   "{{settle}} règlements créent des encaissements et des reçus ; {{reject}} rejets. Un règlement constaté à tort ne s'annule pas depuis cet écran.": "تُنشئ {{settle}} مدفوعات تحصيلات وإيصالات؛ و{{reject}} حالات رفض. لا يمكن التراجع عن دفعة سُجّلت عن طريق الخطأ من هذه الشاشة.",
   "Le rejet d'un prélèvement déjà constaté réglé n'est pas pris en charge en copropriété : {{n}} enregistrements concernés échoueront à l'application, régularisez-les dans la comptabilité de la copropriété.": "رفض خصم مباشر سُجّل كمدفوع غير مدعوم في الملكية المشتركة: ستفشل {{n}} سجلات معنية عند التطبيق. قم بتسويتها في محاسبة الملكية المشتركة.",
+  "Une référence courte pour l'affichage, pas l'IBAN ni le RIB.": "مرجع قصير للعرض، وليس رقم IBAN أو RIB.",
+  "Rien à payer : aucun appel de charges échu et non soldé": "لا شيء للدفع: لا يوجد نداء أعباء مستحق وغير مسدّد",
+  "Appels de charges déjà dans une remise": "نداءات الأعباء موجودة بالفعل في دفعة",
+  "Lot {{lot}}": "القطعة {{lot}}",
+  "Détail complet à venir": "التفاصيل الكاملة قريبًا",
   "Signature électronique": "التوقيع الإلكتروني"
 }

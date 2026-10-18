@@ -15,6 +15,7 @@ import { resolveDebtorRecipients } from '../recipient';
 import {
   LINE_TRANSACTION_OPTIONS,
   checkReturnDate,
+  emailReasonOf,
   errorNameOf,
   lineJustProcessed,
   loadReturnLine,
@@ -323,21 +324,6 @@ export async function rejectLine(
 
   await runAfterCommit(tenantId, afterCommit);
   if (outcome) await notifyRejection(tenantId, outcome, details);
-}
-
-const EMAIL_REASON_MAX = 120;
-
-/**
- * Motif tel qu'il part chez le débiteur : le texte vient d'un fichier de la banque (ou d'une saisie), donc sans
- * lien (hameçonnage) et court. Le motif complet reste sur la ligne de remise.
- */
-export function emailReasonOf(reason: string | null | undefined): string {
-  return (reason ?? '')
-    .replace(/(?:https?:\/\/|www\.)\S*/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, EMAIL_REASON_MAX)
-    .trim();
 }
 
 /**

@@ -1,5 +1,6 @@
 import { t } from '../../i18n';
 import { z } from 'zod';
+import { parseIbanInput } from './iban';
 
 /**
  * Validation des corps et requêtes du prélèvement bancaire (spec 042, P1).
@@ -151,7 +152,11 @@ export const upsertSyndicCreditorSchema = z
   .object({
     label,
     bankName: optionalText(120).optional(),
-    bankAccountRef: optionalText(64).optional(),
+    bankAccountRef: optionalText(64)
+      .refine(value => value == null || !parseIbanInput(value).ok, {
+        message: t('La référence du compte ne doit pas être un IBAN ni un RIB.')
+      })
+      .optional(),
     creditorIdentifier: creditorIdentifier.optional(),
     collectionDay: collectionDay.optional(),
     prenotificationBusinessDays: prenotificationBusinessDays.optional(),

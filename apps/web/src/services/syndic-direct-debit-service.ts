@@ -33,9 +33,10 @@ import type {
 
 export interface SyndicCreditorInput {
   label: string;
-  bankName?: string;
-  bankAccountRef?: string;
-  creditorIdentifier?: string;
+  /** `null` efface la valeur ; absent, elle reste inchangée. */
+  bankName?: string | null;
+  bankAccountRef?: string | null;
+  creditorIdentifier?: string | null;
   collectionDay?: number;
   prenotificationBusinessDays?: number;
   maxConsecutiveRejects?: number;

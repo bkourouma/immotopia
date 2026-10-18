@@ -7,6 +7,7 @@ import { formatFrenchDate } from '../business-days';
 import { contactDisplayName } from '../dto';
 import { maskIban } from '../iban';
 import { mandateReferenceOf } from '../remittance-dto';
+import { emailReasonOf } from '../returns/shared';
 
 /**
  * Avis de rejet d'un prélèvement de charges au copropriétaire (spec 042, P4,
@@ -72,7 +73,8 @@ export async function sendSyndicDirectDebitRejectionNotice(
         ibanMasked: maskIban(line.mandate.ibanLast4),
         amount: amountLabel(Number(line.amount)),
         collectionDate: formatFrenchDate(line.remittance.collectionDate),
-        reason: line.rejectionReason?.trim() || line.rejectionCode?.trim() || t('Rejet par la banque'),
+        // Texte venu d'un fichier de la banque : sans lien, court (comme l'avis locatif).
+        reason: emailReasonOf(line.rejectionReason) || line.rejectionCode?.trim() || t('Rejet par la banque'),
         // Aucun frais de rejet n'est refacturé en copropriété.
         rejectFee: '',
         suspensionNotice: options.suspended

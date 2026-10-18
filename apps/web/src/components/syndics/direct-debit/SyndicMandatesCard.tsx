@@ -1,3 +1,4 @@
+import { useSyndicDirectDebitRights } from './useSyndicDirectDebitRights';
 import React, { useMemo, useState } from 'react';
 import { Alert, App, Button, Card, Select, Space, Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -17,7 +18,6 @@ import { MandateSignatureSection } from '../../direct-debit/MandateSignatureSect
 import { SyndicMandateActions } from './SyndicMandateActions';
 import { SyndicMandateFormModal } from './SyndicMandateFormModal';
 import { SYNDIC_DD_KEYS } from './keys';
-import { useSyndicDirectDebitRights } from './useSyndicDirectDebitRights';
 import { STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
 
@@ -66,7 +66,11 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
     staleTime: STALE_TIME.list
   });
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: SYNDIC_DD_KEYS.mandatesPrefix(tenantId) });
+  const refresh = () => {
+    // Le nombre de mandats ouverts du compte change avec les mandats.
+    void queryClient.invalidateQueries({ queryKey: SYNDIC_DD_KEYS.creditorPrefix(tenantId) });
+    return queryClient.invalidateQueries({ queryKey: SYNDIC_DD_KEYS.mandatesPrefix(tenantId) });
+  };
 
   const creditorReady = Boolean(creditor?.isActive);
 
@@ -91,28 +95,34 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
       render: (_value, mandate) => (mandate.maxAmount != null ? formatMoney(mandate.maxAmount) : '—')
     },
     { title: t('Jour de collecte'), dataIndex: 'effectiveCollectionDay', key: 'day', align: 'end' },
-    {
-      title: t('Actions'),
-      key: 'actions',
-      render: (_value, mandate) => (
-        <SyndicMandateActions
-          tenantId={tenantId}
-          syndicId={syndicId}
-          mandate={mandate}
-          onChanged={() => void refresh()}
-          onToggleSignature={canManage ? toggleSignature : undefined}
-        />
-      )
-    }
+    ...(canManage
+      ? [
+          {
+            title: t('Actions'),
+            key: 'actions',
+            render: (_value: unknown, mandate: MandateDto) => (
+              <SyndicMandateActions
+                tenantId={tenantId}
+                syndicId={syndicId}
+                mandate={mandate}
+                onChanged={() => void refresh()}
+                onToggleSignature={toggleSignature}
+              />
+            )
+          }
+        ]
+      : [])
   ];
 
   return (
     <Card
       title={t('Mandats de prélèvement')}
       extra={
-        <Button type="primary" icon={<PlusOutlined />} disabled={!creditorReady} onClick={() => setCreating(true)}>
-          {t('Nouveau mandat')}
-        </Button>
+        canManage ? (
+          <Button type="primary" icon={<PlusOutlined />} disabled={!creditorReady} onClick={() => setCreating(true)}>
+            {t('Nouveau mandat')}
+          </Button>
+        ) : null
       }
     >
       <Space direction="vertical" size={16} style={{ width: '100%' }}>

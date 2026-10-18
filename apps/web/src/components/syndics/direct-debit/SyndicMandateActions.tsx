@@ -351,7 +351,7 @@ export const SyndicMandateActions: React.FC<SyndicMandateActionsProps> = ({
         />
         <Form form={editForm} name="syndicMandateEdit" layout="vertical">
           <Form.Item name="maxAmount" label={t('Plafond par prélèvement (FCFA)')}>
-            <InputNumber min={0} style={{ width: '100%' }} />
+            <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="collectionDay" label={t('Jour de collecte (1 à 28)')}>
             <InputNumber min={1} max={28} precision={0} style={{ width: '100%' }} />
