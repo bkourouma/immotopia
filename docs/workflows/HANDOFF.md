@@ -30,6 +30,15 @@ Modèle de section :
 
 **Pièges :** la machine sature en mémoire quand plusieurs agents lancent leurs tests en parallèle (0,6 Go libres observés, sessions coupées) : une vérification à la fois, `jest --runInBand`, `vitest --maxWorkers=2`. Le checkout principal (`feat/signature-s5-s7`) a un schéma Prisma différent de `main` : les worktrees de ce chantier utilisaient les `node_modules` de `.claude/worktrees/qa-syndic-base` (npm ci sur `main`). Retirer les jonctions `node_modules` (`rmdir`) AVANT `git worktree remove`. `ai.write-plan.test.ts` échoue sous Windows (fichiers CRLF, `'\n}\n'` cherché), hors de ce diff.
 
+## Branche `chore/skill-chef-orchestre` — 2026-10-18
+
+**État :** PR [#171](https://github.com/bkourouma/immotopia/pull/171) ouverte vers `main`, à fusionner par l'utilisateur.
+**Worktree :** `.claude/worktrees/skill-chef-orchestre` (jonction `node_modules` posée : la retirer avec `rmdir` AVANT `git worktree remove`).
+
+**Fait :** skill `chef-orchestre` (`.claude/skills/chef-orchestre/SKILL.md`) et agents `chef-de-lot`, `executant`, `executant-rapide`, `expert`, `verificateur` (`.claude/agents/`) installés tels quels depuis l'archive.
+
+**Reste à faire :** relancer Claude Code après fusion pour charger le skill. Adapter le skill au dépôt si on l'utilise ici : il copie les `.env` dans ses worktrees (interdit sans accord), crée ses worktrees dans `../immotopia-worktrees/` sans jonction `node_modules`, et fait `git worktree remove` (incident des jonctions).
+
 ## Branche `feat/syndic-paiement-declare` — 2026-10-18
 
 **État :** PR1 et PR2 (spec 047) écrites, non commitées par l'agent ; L8 (pré-remplissage IA, T059 à T066) non commencé.
