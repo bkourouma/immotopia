@@ -134,6 +134,33 @@ Pièges et décisions :
 - `npm run i18n:extract` salit tout l'arbre : traductions de ces lots ajoutées à la main. Tests instables surveillés : `MeetingLiveConsole.test.tsx` (« supprime après confirmation »), `property-ownership.test.tsx`.
 - Classeur des fonctionnalités en conflit à chaque fusion : reporter ligne à ligne les lignes de la branche sur la version de `main` (openpyxl, `difflib` sur les lignes de la table `SousFonctionnalites`), puis `wiki:export` et comparer le miroir.
 
+## Branche `fix/i18n-extracteurs-cles-dynamiques` — 2026-10-17
+
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/154 (base `main`), CI en cours à l'ouverture ; worktree `.claude/worktrees/distracted-greider-b4a494` (jonctions `node_modules` à retirer avec `rmdir`/`Directory.Delete($p, $false)`, jamais `rm -rf`).
+**Dernier commit :** voir `git log` (poussé sur origin).
+
+Fait :
+
+- `npm run i18n:extract` (web `apps/web/scripts/i18n-migrate.mjs`, API `packages/api/scripts/i18n-extract.mjs`) ne supprime PLUS jamais une traduction non vide : une clé non recensée mais traduite reste dans le catalogue (le bilan la compte, `--unreferenced` la liste). Plus aucun `*.orphans.json` sans `--prune` ; `--prune` fusionne par union avec le fichier existant, qui n'est jamais supprimé. Reproduit sur `main` avant correction : 172 entrées par langue perdues côté web (dont 161 = celles de la PR 151), 69 côté API.
+- Clés dynamiques recensées : résolution automatique des constantes de niveau module du même fichier (`t(CAPACITY_LABELS[k] ?? …)`, `throw notFound(MESSAGE)`) et marqueur `// @i18n-keys [noms…]` sur sa propre ligne. Documenté dans `docs/architecture/i18n.md` (section « Clés dynamiques »). Marqueur posé sur `OWN_ASSETS_ONLY_MESSAGES` (`middleware/error-middleware.ts`).
+- Nouvelles options communes : `--check` (sans écriture, exit 1 s'il y a à écrire), `--dry`, `--prune`, `--unreferenced`, `--root=<dossier>` ; option inconnue = exit 2. Scripts `i18n:check` dans les deux paquets. Bibliothèque partagée `scripts/i18n/catalog.mjs`. Les catalogues existants gardent leurs fins de ligne et ne sont plus réécrits quand le contenu est identique.
+- Le web ne réécrit plus `pages/CoOwnerPortal/ChargeCalls.tsx` (`MTN Money` ajouté aux noms propres).
+- Les clés dynamiques jusque-là jamais recensées (donc jamais traduites : 14 côté web, 37 côté API) sont traduites en/ar.
+- Test : `packages/api/__tests__/unit/i18n-extractors.test.ts` lance les deux scripts pour de vrai sur des paquets jetables (perte, clés dynamiques, point fixe, `--check`, `--prune`, CRLF).
+
+Reste à faire :
+
+- Fusionner la PR 151 (restaure et traduit les clés de la PR 132) : c'est elle qui rend `main` point fixe. Vérifié sur l'arbre de la branche de la PR 151 + ces traductions : `--check` → « Catalogues à jour. » dans les deux paquets, aucun orphelin, 0 source réécrite. Sur `main` seul, le premier passage ajoute encore 176 clés web et 41 clés API (paiement mobile, traduites dans la PR 151) et remet en ordre une quinzaine de catalogues (ordre trié non respecté par des ajouts manuels) ; une fois la PR 151 fusionnée, plus rien.
+- `--check` n'est PAS branché dans la CI (les catalogues dérivent d'une PR à l'autre) : à décider, une fois `main` propre.
+- Les traductions « non référencées » conservées (web 171 dont 44 doublons d'une clé référencée dans un autre module ; API 49) sont des restes (textes retouchés, anciennes versions sans accents, clés d'audit disparues) : à examiner avec `--unreferenced`, puis `--prune` si on veut les sortir. Une partie côté API a un littéral présent dans le code sous une forme non reconnue (messages Zod `.min(1, '…')`, `super('…')`, `{ message: '…' }`) : y poser `// @i18n-keys` si on veut qu'elles soient recensées.
+
+Pièges :
+
+- Les mentions « ne pas lancer `i18n:extract` » des sections voisines de ce fichier datent d'avant ce correctif ; elles restent vraies pour le bruit d'ordre et les 176/41 clés ajoutées vides tant que la PR 151 n'est pas fusionnée.
+- Un `// @i18n-keys` suivi d'un mot sur la même ligne lit ce mot comme un nom de propriété ; un commentaire collé en fin de ligne de code n'est pas vu.
+- Le `trim()` de `record()` côté API reste (une clé avec espaces en tête, comme `'  - Discussion : non renseignée.'`, est recensée sans ses espaces alors que `t()` la cherche avec) : écart préexistant, non traité.
+- Ne pas copier `apps/web/src` « sous la main » pour essayer : utiliser `--root=<copie>`.
+
 ## Branche `fix/syndic-ag-audit-critique-enregistrement` — 2026-10-17
 
 **État :** prêt à relire (PR sur `main` ; les PR 144 et 145 y sont fusionnées). Worktree `.claude/worktrees/bold-wilson-73a664`, avec trois JONCTIONS `node_modules` vers ceux de `suspicious-cartwright-fc4a4c` (seul client Prisma qui connaît `GMRecording`) : les retirer avec `rmdir` AVANT tout `git worktree remove`.
@@ -224,6 +251,34 @@ Relevés de recette du staging, 2026-10-16 (Claude dans Chrome, rapportés par l
 - Contournement validé sans cette PR : sur « Pack Agence · 6 mois », le modèle `assets/modeles_standard/bail_habitation.docx` téléversé par l'interface puis défini par défaut ; contrat généré sur BAIL-2026-0008 ; envoi pour signature par e-mail à deux signataires, codes reçus, les deux ont signé, document scellé, « Piste de preuve intacte ». La signature interne fonctionne donc de bout en bout sur le staging, et la conversion DOCX → PDF par LibreOffice de l'image Docker est vérifiée en réel pour la première fois. Contenu du PDF signé pas encore relu.
 - Paiement mobile money d'un appel de charges (copropriété « Résidence Les Jacarandas », agence « Pack Syndic · 3 ans », mode Simulateur) réussi de bout en bout : reçu Q-2026-000093, statut « Payé », compte 5525 crédité.
 - Réglages du staging complétés le 2026-10-16 dans son fichier d'environnement (aucune valeur ici) : `SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`, clé `PAYMENT_SECRETS_KEY` propre au staging, SMTP configuré (vérifié). `SMS_PROVIDER` reste `disabled` : l'application Orange « ImmoTopia Staging » existe, mais Orange exige un nom d'expéditeur personnalisé approuvé (demande « IMMOTOPIA », à déposer par l'utilisateur) avant tout achat de forfait.
+
+## Branche `fix/paiement-mobile-signature-defauts` — 2026-10-16
+
+**État :** prêt à relire (PR ouverte vers `main`, voir `gh pr list`), worktree `.claude/worktrees/affectionate-mendeleev-85d25c` (`node_modules` propre par `npm ci`, pas de jonction).
+**Dernier commit :** voir `git log` de la branche (poussée sur origin).
+
+Correctifs des défauts relevés le 2026-10-16 en relisant les PR fusionnées #132 (paiement mobile des charges de copropriété) et #141 (signature électronique). Les sections `feat/syndic-paiement-mobile` (#132) et `feat/finance-fournisseurs-tresorerie` (#142), fusionnées, sont retirées ; leurs restes encore ouverts sont repris ci-dessous.
+
+Fait :
+
+- Impasse de décision levée : un `REVIEW` `CONTRARY_STATE` sans encaissement (succès fournisseur après expiration) s'accepte en encaissant ou se refuse ; avec encaissement, inchangé (`checkout-review.ts`, spec R21, contrat §1.7). Raison explicite et texte « le montant demandé sera enregistré » quand le fournisseur ne rapporte pas de montant.
+- Écran « Paiements en ligne » : Vérifier, Trancher, reversements derrière `SYNDIC_EDIT` ; configuration et test derrière `SYNDIC_EDIT` + `TENANT_SETTINGS_EDIT` (`useMyMenuAccess`).
+- T075 : l'écran Charges propose le lien « Payer cet appel » par la fenêtre de la PR 150 (`ChargeCallPaymentLinkModal`, bouton « Lien de paiement », devises XOF/FCFA, droits création/consultation) ; l'implémentation concurrente de cette branche (bouton + tiroir) a été retirée à la fusion de `main` du 2026-10-18. Reste de cette branche sur ce sujet : `Cache-Control: no-store` sur la réponse qui porte l'URL.
+- Signature : rôle et canal en libellés (page `/signer/:jeton`, certificat PDF via `lib/signature/labels.ts`), libellé de `IN_PERSON_TOKEN_ISSUED`, `q` accepté par `GET /api/signatures/summary`, champ `canEdit` (liste et détail) qui masque Relancer/Annuler.
+- Traductions en/ar : 238 libellés (web `common`, `syndic`, API). Classeur : 23 lignes ajoutées, 14 modifiées (1015 lignes après fusion de main, qui en ajoutait une).
+
+Reste à faire :
+
+- Extracteur i18n : `npm run i18n:extract` (web et API) retire des catalogues des clés encore utilisées dynamiquement (`t(CAPACITY_LABELS[...])`…) et un second passage efface le fichier d'orphelins ; 460 entrées ont été restaurées à la main. Ne pas relancer l'extracteur tel quel avant correction (session de suivi proposée).
+- Audit du 2026-10-16, basses non traitées : refuser un succès tardif affiche « échoué » au payeur alors qu'il a été débité (même comportement que les autres refus) ; aucun signal quand les appels d'un succès tardif ont été soldés entre-temps par une autre tentative (le montant part en avance du lot).
+- Hérité de #132 : rejouer les tests sur PostgreSQL réel et `npm run test:isolation` ; variables `CHARGE_CALL_PAYMENT_LINK_SENT` dans `apps/web/src/constants/whatsapp-notification-variables.ts` ; mutualiser `isCurrentLotOwner` ; GET de statut du portail sans revérification du droit SYNDIC (contrat §2 à aligner) ; exercice clos 409 contre 400 au contrat ; décisions encore à prendre par l'utilisateur (WhatsApp du lien activé par défaut, mode LIVE et frais BMI, deux copropriétés sur un même compte marchand).
+- Recette navigateur du lien de paiement (fenêtre de la PR 150) et de l'écran Paiements en ligne au simulateur non faite ; panneaux de signature intégrés (bail, mandat, état des lieux, compromis) non alignés sur `canEdit`.
+
+Pièges :
+
+- Pas de nouvelle valeur d'enum `SyndicReviewKind` : le cas « succès tardif » se reconnaît à `CONTRARY_STATE` + `chargePaymentId` nul.
+- Le certificat PDF reste en français pour une demande en arabe (polices PDF standard, `safeText`).
+- Tests lourds lancés en parallèle par plusieurs agents : jest tué (SIGTERM) et `tsc` web à court de mémoire ; relancer avec `--maxWorkers=2` ou `NODE_OPTIONS=--max-old-space-size=8192`.
 
 ## Branche `feat/syndic-lien-paiement-ui` — 2026-10-16
 

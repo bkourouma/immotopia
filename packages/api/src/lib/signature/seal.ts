@@ -1,6 +1,7 @@
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from 'pdf-lib';
 import { t, type Language } from '../../i18n';
 import { sha256Hex } from './evidence';
+import { signerChannelLabel, signerRoleLabel } from './labels';
 
 /**
  * Scellement du PDF signé (spec 044, SG-R7). À partir du PDF source figé :
@@ -179,13 +180,16 @@ async function drawSignaturesPage(
       font: fonts.bold,
       color: INK
     });
-    cursor.page.drawText(safeText(fonts.regular, `${signer.role} — ${formatUtc(signer.signedAt)}`), {
-      x: MARGIN + 10,
-      y: top - 32,
-      size: 9,
-      font: fonts.regular,
-      color: MUTED
-    });
+    cursor.page.drawText(
+      safeText(fonts.regular, `${signerRoleLabel(signer.role, lang)} — ${formatUtc(signer.signedAt)}`),
+      {
+        x: MARGIN + 10,
+        y: top - 32,
+        size: 9,
+        font: fonts.regular,
+        color: MUTED
+      }
+    );
     // Un dessin illisible ne bloque jamais le scellement : repli sur le nom saisi.
     const image = signer.mode === 'DRAWN' && signer.png ? await doc.embedPng(signer.png).catch(() => null) : null;
     if (image) {
@@ -233,9 +237,9 @@ function drawCertificate(
   cursor.rule();
   input.signers.forEach((signer, index) => {
     cursor.heading(`${index + 1}. ${signer.fullName}`, 12);
-    cursor.field(t('Rôle :', undefined, lang), signer.role);
+    cursor.field(t('Rôle :', undefined, lang), signerRoleLabel(signer.role, lang));
     cursor.field(t('Signé le :', undefined, lang), formatUtc(signer.signedAt));
-    cursor.field(t('Canal :', undefined, lang), signer.channel);
+    cursor.field(t('Canal :', undefined, lang), signerChannelLabel(signer.channel, lang));
     cursor.field(t('Adresse IP (tronquée) :', undefined, lang), signer.ipTruncated ?? '-');
     cursor.field(
       t('Mode de signature :', undefined, lang),
