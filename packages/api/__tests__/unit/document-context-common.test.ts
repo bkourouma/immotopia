@@ -143,7 +143,12 @@ describe('contexte commun des documents locatifs', () => {
       REFERENCE_DOCUMENT: 'BBBBBBBB'
     });
     expect(context.DATE_EMISSION_DOCUMENT).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
-    expect(context.__images).toEqual({ LOGO_EMETTEUR: null, LOGO_COPROPRIETE: null });
+    expect(context.__images).toEqual({
+      LOGO_EMETTEUR: null,
+      LOGO_COPROPRIETE: null,
+      SIGNATURE_EMETTEUR: null,
+      CACHET_EMETTEUR: null
+    });
   });
 
   it('le rendu du reçu standard suit le numéro définitif de la quittance', async () => {

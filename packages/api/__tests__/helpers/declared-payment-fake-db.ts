@@ -28,7 +28,8 @@ function matches(row: Row, where: any): boolean {
   const { lines, ...rest } = where;
   if (!matchesWhere(row, rest)) return false;
   if (lines === undefined) return true;
-  const own: Row[] = row.lines ?? [];
+  // Chaque ligne voit sa déclaration (`declaration: { createdAt }`), comme la relation Prisma.
+  const own: Row[] = (row.lines ?? []).map((line: Row) => ({ ...line, declaration: row }));
   if (lines.some && !own.some(line => matchesWhere(line, lines.some))) return false;
   if (lines.every && !own.every(line => matchesWhere(line, lines.every))) return false;
   return true;

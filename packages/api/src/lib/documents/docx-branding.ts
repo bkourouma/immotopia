@@ -10,8 +10,9 @@ import type { DocumentBranding, DocumentImage } from './document-branding';
  * 1. le contexte commun (`buildCommonDocumentContext`) : balises `EMETTEUR_*`,
  *    `COPROPRIETE_*`, `DATE_EMISSION_DOCUMENT`, `REFERENCE_DOCUMENT`, offertes
  *    à TOUS les modèles DOCX ;
- * 2. l'injection des logos (`injectDocxImages`) : après le rendu docxtemplater,
- *    chaque marqueur `{{LOGO_EMETTEUR}}` / `{{LOGO_COPROPRIETE}}` est remplacé
+ * 2. l'injection des images (`injectDocxImages`) : après le rendu docxtemplater,
+ *    chaque marqueur `{{LOGO_EMETTEUR}}`, `{{LOGO_COPROPRIETE}}`,
+ *    `{{SIGNATURE_EMETTEUR}}` ou `{{CACHET_EMETTEUR}}` est remplacé
  *    par un vrai dessin (word/media, relation, type de contenu). Sans image, le
  *    marqueur disparaît.
  *
@@ -20,9 +21,14 @@ import type { DocumentBranding, DocumentImage } from './document-branding';
  * (CVE-2021-21366). L'injection se fait directement dans le zip avec pizzip.
  */
 
-export type DocxLogoKey = 'LOGO_EMETTEUR' | 'LOGO_COPROPRIETE';
-export const DOCX_LOGO_KEYS: readonly DocxLogoKey[] = ['LOGO_EMETTEUR', 'LOGO_COPROPRIETE'];
-export type DocxImages = Partial<Record<DocxLogoKey, DocumentImage | null>>;
+export type DocxImageKey = 'LOGO_EMETTEUR' | 'LOGO_COPROPRIETE' | 'SIGNATURE_EMETTEUR' | 'CACHET_EMETTEUR';
+export const DOCX_IMAGE_KEYS: readonly DocxImageKey[] = [
+  'LOGO_EMETTEUR',
+  'LOGO_COPROPRIETE',
+  'SIGNATURE_EMETTEUR',
+  'CACHET_EMETTEUR'
+];
+export type DocxImages = Partial<Record<DocxImageKey, DocumentImage | null>>;
 
 /** Clé réservée du contexte qui porte les images (retirée avant le rendu des textes). */
 export const DOCX_IMAGES_CONTEXT_KEY = '__images';
@@ -35,14 +41,31 @@ export const DOCX_IMAGES_CONTEXT_KEY = '__images';
 const EMU_PER_CM = 360000;
 const MAX_LOGO_HEIGHT_EMU = Math.round(2.5 * EMU_PER_CM);
 const MAX_LOGO_WIDTH_EMU = Math.round(3.4 * EMU_PER_CM);
+const LOGO_BOX = { width: MAX_LOGO_WIDTH_EMU, height: MAX_LOGO_HEIGHT_EMU };
+/** Signature : 4 cm x 2 cm ; cachet : 3 cm x 3 cm (les deux côte à côte tiennent dans une demi-largeur utile). */
+const SIGNATURE_BOX = { width: Math.round(4 * EMU_PER_CM), height: Math.round(2 * EMU_PER_CM) };
+const STAMP_BOX = { width: Math.round(3 * EMU_PER_CM), height: Math.round(3 * EMU_PER_CM) };
+
+/** Boîte d'affichage maximale (EMU) de chaque image. */
+const BOX_BY_KEY: Record<DocxImageKey, { width: number; height: number }> = {
+  LOGO_EMETTEUR: LOGO_BOX,
+  LOGO_COPROPRIETE: LOGO_BOX,
+  SIGNATURE_EMETTEUR: SIGNATURE_BOX,
+  CACHET_EMETTEUR: STAMP_BOX
+};
 /** 96 points par pouce : un pixel vaut 9525 EMU (taille naturelle de l'image). */
 const EMU_PER_PIXEL = 9525;
 
-const markerOf = (key: DocxLogoKey): string => `@@${key}@@`;
+const markerOf = (key: DocxImageKey): string => `@@${key}@@`;
 
-/** Valeurs de contexte qui posent les marqueurs de logo dans le texte rendu. */
-export function logoMarkerContext(): Record<DocxLogoKey, string> {
-  return { LOGO_EMETTEUR: markerOf('LOGO_EMETTEUR'), LOGO_COPROPRIETE: markerOf('LOGO_COPROPRIETE') };
+/** Valeurs de contexte qui posent les marqueurs d'image (logos, signature, cachet) dans le texte rendu. */
+export function logoMarkerContext(): Record<DocxImageKey, string> {
+  return {
+    LOGO_EMETTEUR: markerOf('LOGO_EMETTEUR'),
+    LOGO_COPROPRIETE: markerOf('LOGO_COPROPRIETE'),
+    SIGNATURE_EMETTEUR: markerOf('SIGNATURE_EMETTEUR'),
+    CACHET_EMETTEUR: markerOf('CACHET_EMETTEUR')
+  };
 }
 
 /**
@@ -55,6 +78,8 @@ export function isOptionalBrandingKey(key: string): boolean {
     key.startsWith('EMETTEUR_') ||
     key.startsWith('COPROPRIETE_') ||
     key.startsWith('LOGO_') ||
+    key === 'SIGNATURE_EMETTEUR' ||
+    key === 'CACHET_EMETTEUR' ||
     key === 'DATE_EMISSION_DOCUMENT' ||
     key === 'REFERENCE_DOCUMENT'
   );
@@ -106,11 +131,13 @@ export function buildSyndicateContext(branding?: DocumentBranding | null): Recor
   };
 }
 
-/** Images du contexte : logo de l'émetteur et logo de la copropriété. */
+/** Images du contexte : logos de l'émetteur et de la copropriété, signature et cachet de l'émetteur. */
 export function brandingImages(branding?: DocumentBranding | null): DocxImages {
   return {
     LOGO_EMETTEUR: branding?.issuerLogo ?? null,
-    LOGO_COPROPRIETE: branding?.syndicate?.logo ?? null
+    LOGO_COPROPRIETE: branding?.syndicate?.logo ?? null,
+    SIGNATURE_EMETTEUR: branding?.signature ?? null,
+    CACHET_EMETTEUR: branding?.stamp ?? null
   };
 }
 
@@ -183,18 +210,17 @@ export function readImageSize(image: DocumentImage): ImageSize | null {
   return size && size.width > 0 && size.height > 0 ? size : null;
 }
 
-/** Taille d'affichage en EMU : bornée à la boîte du logo, proportions conservées, jamais agrandie. */
-export function fitLogoEmu(size: ImageSize): { cx: number; cy: number } {
-  const scale = Math.min(
-    MAX_LOGO_WIDTH_EMU / (size.width * EMU_PER_PIXEL),
-    MAX_LOGO_HEIGHT_EMU / (size.height * EMU_PER_PIXEL),
-    1
-  );
+/** Taille d'affichage en EMU : bornée à la boîte donnée, proportions conservées, jamais agrandie. */
+export function fitImageEmu(size: ImageSize, box: { width: number; height: number }): { cx: number; cy: number } {
+  const scale = Math.min(box.width / (size.width * EMU_PER_PIXEL), box.height / (size.height * EMU_PER_PIXEL), 1);
   return {
     cx: Math.max(1, Math.round(size.width * EMU_PER_PIXEL * scale)),
     cy: Math.max(1, Math.round(size.height * EMU_PER_PIXEL * scale))
   };
 }
+
+/** Taille d'affichage d'un logo (boîte 3,4 x 2,5 cm). */
+export const fitLogoEmu = (size: ImageSize): { cx: number; cy: number } => fitImageEmu(size, LOGO_BOX);
 
 // ------------------------------------------------------------------ injection
 
@@ -276,7 +302,7 @@ function contentParts(zip: PizZip): string[] {
 }
 
 interface LogoAsset {
-  key: DocxLogoKey;
+  key: DocxImageKey;
   mediaName: string;
   cx: number;
   cy: number;
@@ -285,7 +311,7 @@ interface LogoAsset {
 /** Écrit chaque image exploitable dans word/media et renvoie ses références. */
 function writeMedia(zip: PizZip, images: DocxImages): LogoAsset[] {
   const assets: LogoAsset[] = [];
-  for (const key of DOCX_LOGO_KEYS) {
+  for (const key of DOCX_IMAGE_KEYS) {
     const image = images[key];
     const size = image ? readImageSize(image) : null;
     if (!image || !size) {
@@ -299,7 +325,7 @@ function writeMedia(zip: PizZip, images: DocxImages): LogoAsset[] {
     }
     const mediaName = `${key.toLowerCase()}.${EXTENSION_BY_FORMAT[image.format]}`;
     zip.file(`word/media/${mediaName}`, Buffer.from(image.bytes));
-    assets.push({ key, mediaName, ...fitLogoEmu(size) });
+    assets.push({ key, mediaName, ...fitImageEmu(size, BOX_BY_KEY[key]) });
   }
   return assets;
 }
@@ -309,7 +335,13 @@ function writeMedia(zip: PizZip, images: DocxImages): LogoAsset[] {
  * marqueur sans image (ou toute balise `{{LOGO_…}}` restée en clair) est supprimé.
  */
 export function injectDocxImages(zip: PizZip, images: DocxImages): void {
-  const assets = writeMedia(zip, images);
+  // Seules les images dont le marqueur figure dans le modèle sont embarquées : un modèle sans marqueur reste intact.
+  const texts = contentParts(zip).map(part => zip.file(part)!.asText());
+  const used = (key: DocxImageKey): boolean => texts.some(xml => xml.includes(markerOf(key)));
+  const assets = writeMedia(
+    zip,
+    Object.fromEntries(DOCX_IMAGE_KEYS.filter(used).map(key => [key, images[key]])) as DocxImages
+  );
   let drawingId = 9000;
   let relIndex = 0;
   for (const partPath of contentParts(zip)) {
@@ -329,8 +361,8 @@ export function injectDocxImages(zip: PizZip, images: DocxImages): void {
         return `${acc}</w:t></w:r><w:r>${drawing}</w:r><w:r><w:t xml:space="preserve">${piece}`;
       }, '');
     }
-    xml = DOCX_LOGO_KEYS.reduce((acc, key) => acc.split(markerOf(key)).join(''), xml);
-    xml = xml.replace(/\{\{LOGO_[A-Z_]+\}\}/g, '');
+    xml = DOCX_IMAGE_KEYS.reduce((acc, key) => acc.split(markerOf(key)).join(''), xml);
+    xml = xml.replace(/\{\{(?:LOGO_[A-Z_]+|SIGNATURE_EMETTEUR|CACHET_EMETTEUR)\}\}/g, '');
     if (xml !== original) zip.file(partPath, xml);
   }
 }
