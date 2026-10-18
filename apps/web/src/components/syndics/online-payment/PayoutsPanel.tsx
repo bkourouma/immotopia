@@ -21,7 +21,7 @@ export interface PayoutsPanelProps {
   /** Pour relire les soldes après un reversement. */
   onRecorded?: (result: RecordGatewayPayoutResult) => void;
   /** Droit d'écriture ; sans lui, le bouton est masqué. */
-  canEdit?: boolean;
+  canEdit: boolean;
 }
 
 /** Reversements PaySecureHub vers la banque : liste (§1.8) et saisie (§1.9). */
@@ -30,7 +30,7 @@ export const PayoutsPanel: React.FC<PayoutsPanelProps> = ({
   syndicId,
   collectionBalance,
   onRecorded,
-  canEdit = true
+  canEdit
 }) => {
   const { message } = App.useApp();
   const [items, setItems] = useState<SyndicGatewayPayout[]>([]);

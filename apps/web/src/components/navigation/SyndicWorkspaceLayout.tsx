@@ -8,6 +8,7 @@ import {
   BankOutlined,
   CalendarOutlined,
   ClockCircleOutlined,
+  CreditCardOutlined,
   FolderOutlined,
   IdcardOutlined,
   MobileOutlined,
@@ -100,6 +101,12 @@ function buildTabs(
           href: `${base}/paiements-en-ligne`,
           icon: <MobileOutlined />,
           badge: pendingDeclarations
+        },
+        {
+          key: 'prelevements',
+          label: t('Prélèvements'),
+          href: `${base}/prelevements`,
+          icon: <CreditCardOutlined />
         },
         {
           key: 'comptabilite',

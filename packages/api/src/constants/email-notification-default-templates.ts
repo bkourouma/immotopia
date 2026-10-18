@@ -368,6 +368,47 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 12px 0; font-size:13px; color:#666;">Veillez à ce que votre compte soit approvisionné à cette date. Pour toute question, contactez votre agence avant le prélèvement.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
+  DIRECT_DEBIT_REJECTED: {
+    subject: 'Prélèvement rejeté - {{agencyName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Prélèvement rejeté par votre banque</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{debtorName}},</p>
+<p style="margin:0 0 20px 0;">Le prélèvement de <strong>{{amount}}</strong> prévu le <strong>{{collectionDate}}</strong> par <strong>{{agencyName}}</strong> n'a pas pu être effectué.</p>
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
+  <tr><td style="padding:6px 0;"><strong>Compte concerné :</strong> {{ibanMasked}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Référence du mandat :</strong> {{mandateReference}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Motif :</strong> {{reason}}</td></tr>
+</table>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">{{rejectFee}} {{suspensionNotice}}</p>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Merci de régulariser votre loyer et de contacter votre agence si besoin.</p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
+  SYNDIC_DIRECT_DEBIT_PRENOTIFICATION: {
+    subject: 'Prélèvement de vos charges le {{collectionDate}} - {{syndicateName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Prélèvement à venir sur votre compte</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{debtorName}},</p>
+<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> prélèvera <strong>{{amount}}</strong> sur votre compte bancaire le <strong>{{collectionDate}}</strong>, au titre des appels de charges de votre lot {{lotNumber}} de la copropriété <strong>{{syndicateName}}</strong>.</p>
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
+  <tr><td style="padding:6px 0;"><strong>Compte débité :</strong> {{ibanMasked}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Référence du mandat :</strong> {{mandateReference}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Numéro d'émetteur :</strong> {{creditorIdentifier}}</td></tr>
+</table>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Veillez à ce que votre compte soit approvisionné à cette date. Pour toute question, contactez le syndic avant le prélèvement.</p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
+  SYNDIC_DIRECT_DEBIT_REJECTED: {
+    subject: 'Prélèvement de charges rejeté - {{syndicateName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Prélèvement rejeté par votre banque</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{debtorName}},</p>
+<p style="margin:0 0 20px 0;">Le prélèvement de <strong>{{amount}}</strong> prévu le <strong>{{collectionDate}}</strong> par <strong>{{agencyName}}</strong> pour les charges de votre lot {{lotNumber}} (copropriété <strong>{{syndicateName}}</strong>) n'a pas pu être effectué.</p>
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
+  <tr><td style="padding:6px 0;"><strong>Compte concerné :</strong> {{ibanMasked}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Référence du mandat :</strong> {{mandateReference}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Motif :</strong> {{reason}}</td></tr>
+</table>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">{{rejectFee}} {{suspensionNotice}}</p>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Merci de régulariser vos charges et de contacter le syndic si besoin.</p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
   CHARGE_CALL_PAYMENT_LINK_SENT: {
     subject: 'Appel de charges {{period}} - {{syndicateName}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Paiement de votre appel de charges</h1>

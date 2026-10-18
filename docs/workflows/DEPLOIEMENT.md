@@ -1104,6 +1104,12 @@ n'arrive qu'ensuite, et le workflow n'existe pas avant pour `workflow_dispatch` 
 
 ### Arrêt d'urgence, rotation
 
+- **Rotation de `DIRECT_DEBIT_IBAN_KEY` et signatures de mandats ouvertes.** L'empreinte
+  HMAC des demandes de signature de mandats de prélèvement dérive de cette clé : après
+  une rotation, toute demande encore ouverte est tenue pour périmée (la signature est
+  refusée, la demande s'annule). Avant de tourner la clé, laisser les demandes aboutir
+  ou les annuler ; après, les renvoyer (les mandats restent en brouillon).
+
 - **Couper le staging automatique** :
   `gh variable set AUTO_DEPLOY_STAGING --body false` (n'empêche pas un « Run
   workflow » manuel).

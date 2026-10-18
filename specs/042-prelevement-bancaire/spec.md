@@ -1,8 +1,11 @@
 # Spécification 042 — Prélèvement bancaire
 
 > **Branche** : `feat/prelevement-bancaire` · **Créée** : 15/10/2026 ·
-> **Statut** : P0 (cadrage), P1 (mandats) et P2 (remises, contrat dans
-> data-model.md §7) réalisés ; P3 à P6 décrits, non réalisés.
+> **Statut** (17/10/2026) : P0 (cadrage), P1 (mandats) et P2 (remises,
+> contrat dans data-model.md §7) livrés. P3 (retour banque, contrat §8),
+> P4 (copropriété, contrat §9) et la signature électronique du mandat (en
+> option, contrat §10) sont en cours de réalisation ; P5 décrit, non réalisé ;
+> P6 non planifié.
 > **Documents liés** : [data-model.md](data-model.md) (schéma),
 > [plan.md](plan.md) (lots, territoires, vérifications),
 > [ADR-007](../../docs/architecture/adr/ADR-007-prelevement-bancaire-fichier-et-reglement-confirme.md)
@@ -69,13 +72,21 @@ de la clé RIB.
 
 ### 4.2 Hors P1, planifié
 
-P2 remises, P3 retour banque, P4 copropriété, P5 portails et automatismes
-(voir [plan.md](plan.md) §1). P6 (abonnements prélevés) : non planifié.
+P2 remises (livré), P3 retour banque (§7), P4 copropriété (§8), signature
+électronique du mandat (§9), P5 portails et automatismes (voir
+[plan.md](plan.md) §1). P6 (abonnements prélevés) : non planifié.
 
 ### 4.3 Hors périmètre
 
 Débit Mobile Money récurrent ; intégration bancaire directe ; signature
-électronique du mandat (le mandat se signe sur papier, déposé à la banque).
+qualifiée du mandat et transmission électronique du mandat à la banque du
+débiteur.
+
+**Signature électronique du mandat : une option.** Décision de l'utilisateur
+du 17/10/2026 : elle n'est plus hors périmètre. Elle s'ajoute au circuit
+papier (PDF, signature manuscrite, dépôt du scan, P1), qui reste possible et
+n'est pas remplacé. L'agence choisit mandat par mandat (exigences PB7,
+contrat [data-model.md](data-model.md) §10).
 
 ## 5. Exigences de P1
 
@@ -179,4 +190,170 @@ Débit Mobile Money récurrent ; intégration bancaire directe ; signature
    télécharger le PDF, déposer un scan, activer, suspendre, révoquer ;
    l'IBAN n'est visible en clair nulle part dans l'interface ni dans les
    réponses réseau.
+5. Classeur des fonctionnalités mis à jour et `npm run wiki:export` lancé.
+
+## 7. Exigences de P3 (retour banque)
+
+Contrat : [data-model.md](data-model.md) §8, retours de recette du staging
+compris (§8.12). Décisions D3, D4 et D5 (§3).
+
+### PB5 — Retour banque
+
+- PB5-R1. **Constat.** Une ligne de remise déposée reçoit un constat, réglée
+  ou rejetée. Le constat est **manuel** (ligne par ligne, ou toute la remise
+  d'un coup) ou **importé** d'un fichier de retour. Le loyer ne compte comme
+  payé qu'au constat de règlement (D3). Règles et préconditions : §8.3, §8.4.
+- PB5-R2. **Règlement par encaisseur.** L'encaissement dépend du périmètre de
+  la ligne (un encaisseur par périmètre). En locatif, il crée un paiement
+  `DIRECT_DEBIT` réussi, la ventilation sur l'échéance et la quittance (§8.6).
+  Une transaction par ligne ; une ligne déjà traitée donne un conflit clair.
+- PB5-R3. **Rejet.** Le rejet porte une date, un code et/ou un motif. Il
+  rend la ligne représentable, incrémente le compteur du mandat et suspend le
+  mandat au seuil du créancier (D5), avec un audit critique (§8.4). Le
+  débiteur reçoit un e-mail (§8.8).
+- PB5-R4. **Rejet tardif.** Une ligne déjà réglée peut être rejetée après
+  coup : en locatif, l'encaissement est contre-passé et sa quittance annulée.
+  L'écran prévient avant de confirmer (§8.10).
+- PB5-R5. **Frais de rejet.** En locatif, si le créancier fixe des frais (D4),
+  ils sont refacturés sur l'échéance et exclus des sommes dues au
+  propriétaire (§8.6).
+- PB5-R6. **Import d'un fichier de retour.** Format `GENERIC_CSV` de retour,
+  lecture en deux temps (aperçu sans écriture, puis application du même
+  fichier). Fichier de 2 Mo et 5 000 lignes au plus. Chaque enregistrement est
+  rapproché par sa référence d'opération ; les écarts (référence inconnue,
+  montant différent, déjà traité, conflit, date hors bornes) sont écartés avec
+  une raison traduite, jamais appliqués. Rejouer le fichier ne change rien
+  (§8.5). Le fichier n'est pas conservé : seules son empreinte et ses
+  compteurs le sont.
+- PB5-R7. **Retours de recette (17/10/2026).** Les mandats non retenus à la
+  sélection (brouillon, suspendu) sont listés en permanence sur la remise avec
+  leur raison ; les téléchargements confirment le nom du fichier ou
+  signalent l'erreur ; chaque avis de prénotification garde l'adresse
+  **masquée** du destinataire et sa provenance (compte portail ou fiche
+  contact), et l'écran le dit (§8.12).
+- PB5-R8. **Droits et audit.** Écritures sous `RENTAL_DIRECT_DEBIT_MANAGE`,
+  lecture sous `_VIEW` (PB4). Quatre actions d'audit critiques, sans IBAN
+  (§8.9).
+
+Hors P3 : §8.11.
+
+## 8. Exigences de P4 (copropriété)
+
+Contrat : [data-model.md](data-model.md) §9. Décision D1 (§3).
+
+### PB6 — Copropriété
+
+- PB6-R1. **Créancier du syndicat.** Le créancier est le compte bancaire du
+  syndicat, pas un compte de trésorerie de l'agence. Un seul par syndicat
+  (§9.1, §9.3).
+- PB6-R2. **Mandat par lot.** Le débiteur est un contact copropriétaire du
+  lot ; un seul mandat ouvert par lot et par créancier. Même contrôle et même
+  chiffrement de l'IBAN, mêmes statuts, même PDF et même scan qu'en P1 (§9.3).
+- PB6-R3. **Remise du syndicat.** Pour chaque lot à mandat actif : somme des
+  appels de charges échus et non soldés, plus ancien d'abord, plafonnée par le
+  mandat. Les pénalités de retard ne sont jamais prélevées (§9.1, §9.3).
+- PB6-R4. **Règlement.** Le constat crée un paiement de charges (méthode
+  `DIRECT_DEBIT`), puis les reçus et quittances de la copropriété. Un
+  trop-perçu devient une avance du lot (§9.1, §9.3).
+- PB6-R5. **Rejet.** Un rejet avant règlement suit PB5-R3. Le **rejet tardif
+  est refusé** : aucune contre-passation d'un paiement de charges n'existe, la
+  régularisation se fait en comptabilité. Les **frais de rejet ne sont pas
+  refacturés**. Le compteur et la suspension (D5) s'appliquent (§9.1, §9.3).
+- PB6-R6. **Étanchéité des périmètres.** Les routes et services locatifs ne
+  voient que le locatif, ceux de la copropriété que le syndicat de la route :
+  un identifiant de l'autre périmètre donne un 404 (§9.2).
+- PB6-R7. **Droits et module.** Routes sous
+  `/syndics/:syndicId/prelevements`, fonctionnalité d'abonnement `SYNDIC`,
+  permissions `SYNDIC_DIRECT_DEBIT_VIEW` et `_MANAGE`, attribuées comme en
+  PB4-R1 (§9.1, §9.2).
+- PB6-R8. **Écran.** Onglet « Prélèvements » de Syndic › Finances : compte du
+  syndicat, mandats, remises, import d'un retour (§9.6).
+
+Hors P4 : §9.7 (les portails copropriétaire relèvent de P5).
+
+## 9. Exigences de la signature électronique du mandat
+
+Contrat : [data-model.md](data-model.md) §10. S'appuie sur le module de
+signature ([spec 044](../044-signature-electronique/spec.md)).
+
+### PB7 — Signature électronique du mandat (option)
+
+- PB7-R1. **Option.** L'agence peut envoyer l'autorisation d'un mandat en
+  brouillon, sans scan déposé, pour signature électronique au débiteur. Le
+  papier reste possible ; déposer un scan annule une demande en cours (§10.1,
+  §10.6).
+- PB7-R2. **Document signé.** Le PDF à signer est l'autorisation de P1 (IBAN
+  complet, car le débiteur la remet à sa banque). Le PDF scellé tient lieu de
+  scan signé ; la date de signature est reprise, mais **l'activation reste un
+  geste de l'agence** (§10.1, §10.4).
+- PB7-R3. **Deux types de document** : mandat locatif et mandat de
+  copropriété, chacun sous la permission `_MANAGE` et la fonctionnalité de son
+  périmètre (§10.4).
+- PB7-R4. **Code avant consultation.** Le lien ne montre rien sans le code à
+  usage unique, ni le PDF ni l'IBAN. Pas de signature « sur place » (§10.2
+  SIG-S1, SIG-S2, §10.5).
+- PB7-R5. **L'IBAN complet reste dans le PDF.** Partout ailleurs (titre,
+  messages, journaux, audit, preuve), au plus le masque. L'empreinte des
+  données est non réversible (§10.2 SIG-S3, SIG-S4).
+- PB7-R6. **Accès et traçabilité.** Lecture des PDF réservée aux détenteurs de
+  `_MANAGE`, chaque lecture auditée avant l'envoi. La signature produit un
+  audit critique (§10.2 SIG-S5, §10.7).
+- PB7-R7. **Fournisseur.** Fournisseur interne ou Yousign ; avec Yousign,
+  ImmoTopia garde la porte (invitation et code par ImmoTopia, lien Yousign
+  remis après vérification du code). Le PDF à IBAN complet est transmis à
+  Yousign : risque accepté, écrit dans SECURITY.md (§10.2 SIG-S6).
+
+Hors périmètre : §10.8.
+
+## 10. Critères de fin de P3
+
+1. Migrations (statuts de ligne, puis retour banque) appliquées sur une base
+   vierge et sur la base de développement ; `schema-tenant-coverage` et
+   `routes-inventory` passent.
+2. Tests unitaires : constat de règlement (paiement, ventilation, quittance
+   idempotente, compteur remis à zéro), constat de rejet (frais, suspension au
+   seuil, ligne représentable), rejet tardif et contre-passation, double
+   constat concurrent, bornes de date, parseur de retour (en-têtes, formats de
+   date et de montant, lignes illisibles, plafonds), rapprochement (chaque
+   raison d'écart), rejeu d'un fichier, aucune réponse ne contient un IBAN
+   complet ni une adresse e-mail complète.
+3. `npm run typecheck`, `npm run lint`, `npm run check:architecture`, tests API
+   et web ciblés verts ; `npm run test:isolation` si la base dédiée est
+   disponible (sinon : dit dans la PR).
+4. Recette navigateur : remise déposée, règlement d'une ligne, rejet d'une
+   ligne, rejet tardif, « Tout constater réglé », import d'un retour (aperçu
+   puis application, puis rejeu) ; les points de data-model.md §8.12 vérifiés.
+5. Classeur des fonctionnalités mis à jour et `npm run wiki:export` lancé.
+
+## 11. Critères de fin de P4
+
+1. Migrations (valeurs d'énumération, copropriété, permissions) appliquées sur
+   une base vierge et sur la base de développement ; couverture de schéma et
+   inventaire des routes verts.
+2. Tests unitaires : créancier du syndicat, mandat par lot et choix du
+   copropriétaire, sélection (ordre des appels, plafond, avance, raisons de
+   non-sélection), encaisseur de copropriété (paiement, quittances, rejet
+   tardif refusé, aucun frais), étanchéité locatif et copropriété (404
+   croisés), permissions.
+3. Mêmes vérifications que le point 3 de P3.
+4. Recette navigateur sur un syndicat : créancier, mandat, remise, constats,
+   import d'un retour, contrôle de la comptabilité de la copropriété.
+5. Classeur des fonctionnalités mis à jour et `npm run wiki:export` lancé.
+
+## 12. Critères de fin de la signature électronique du mandat
+
+1. Migrations (types de document, parcours code avant consultation) appliquées ;
+   `signature-kinds-sync`, couverture de schéma et inventaire des routes verts.
+2. Tests unitaires : conditions d'envoi (brouillon, sans scan, périmètre), refus
+   du canal « sur place », aucun accès au fichier sans jeton de consultation
+   valide, expiration du jeton, aucun IBAN complet hors du PDF (titre,
+   messages, réponses, preuve, audit), empreinte non réversible, scellement
+   puis reprise comme scan signé, annulation par dépôt d'un scan ou par
+   révocation, audit des lectures, parcours Yousign simulé (aucun envoi par le
+   fournisseur, lien lu en direct).
+3. Mêmes vérifications que le point 3 de P3 ; les types de signature existants
+   restent inchangés (tests de la spec 044 verts).
+4. Recette navigateur : envoi d'un mandat locatif puis d'un mandat de
+   copropriété, code demandé avant l'affichage, signature, PDF scellé tenant
+   lieu de scan, activation avec la date pré-remplie.
 5. Classeur des fonctionnalités mis à jour et `npm run wiki:export` lancé.

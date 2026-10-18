@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { maskIban } from './iban';
+import { RENTAL_CTX, scopeWhere, type DirectDebitScopeCtx } from './syndic/scope';
 
 /**
  * Objets renvoyés par l'API du prélèvement bancaire (data-model §4).
@@ -17,9 +18,13 @@ export type DbClient = PrismaTransactionClient | typeof prisma;
 export interface CreditorDto {
   id: string;
   label: string;
-  treasuryAccountId: string;
-  treasuryAccountLabel: string;
+  scope: 'RENTAL_LEASE' | 'SYNDIC_LOT';
+  /** Nuls en SYNDIC_LOT (créancier = compte du syndicat, spec 042 §9.5). */
+  treasuryAccountId: string | null;
+  treasuryAccountLabel: string | null;
+  syndicate: { id: string; name: string } | null;
   bankName: string | null;
+  bankAccountRef: string | null;
   creditorIdentifier: string | null;
   fileFormat: 'GENERIC_CSV';
   collectionDay: number;
@@ -45,11 +50,14 @@ export type MandateStatus = 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
 export interface MandateDto {
   id: string;
   reference: string;
-  scope: 'RENTAL_LEASE';
+  scope: 'RENTAL_LEASE' | 'SYNDIC_LOT';
   status: MandateStatus;
   creditor: { id: string; label: string; creditorIdentifier: string | null };
-  debtor: { id: string; displayName: string | null };
+  debtor: { id: string; displayName: string | null; kind: 'CLIENT' | 'CONTACT' };
+  /** Nul en SYNDIC_LOT. */
   lease: { id: string; leaseNumber: string; status: string } | null;
+  syndicate: { id: string; name: string } | null;
+  lot: { id: string; lotNumber: string } | null;
   ibanMasked: string;
   bankCode: string;
   holderName: string;
@@ -81,8 +89,12 @@ export const referenceOf = (year: number, sequence: number) => `MDT-${year}-${St
 
 export const CREDITOR_SELECT = {
   id: true,
+  scope: true,
   label: true,
   treasuryAccountId: true,
+  syndicateId: true,
+  bankName: true,
+  bankAccountRef: true,
   creditorIdentifier: true,
   fileFormat: true,
   collectionDay: true,
@@ -93,6 +105,7 @@ export const CREDITOR_SELECT = {
   createdAt: true,
   updatedAt: true,
   treasuryAccount: { select: { label: true, bankName: true } },
+  syndicate: { select: { id: true, name: true } },
   _count: { select: { mandates: { where: { status: { in: [...OPEN_MANDATE_STATUSES] } } } } }
 } satisfies Prisma.DirectDebitCreditorSelect;
 
@@ -101,10 +114,13 @@ type CreditorRow = Prisma.DirectDebitCreditorGetPayload<{ select: typeof CREDITO
 export function toCreditorDto(row: CreditorRow): CreditorDto {
   return {
     id: row.id,
+    scope: row.scope,
     label: row.label,
-    treasuryAccountId: row.treasuryAccountId,
-    treasuryAccountLabel: row.treasuryAccount.label,
-    bankName: row.treasuryAccount.bankName ?? null,
+    treasuryAccountId: row.treasuryAccountId ?? null,
+    treasuryAccountLabel: row.treasuryAccount?.label ?? null,
+    syndicate: row.syndicate ? { id: row.syndicate.id, name: row.syndicate.name } : null,
+    bankName: row.treasuryAccount?.bankName ?? row.bankName ?? null,
+    bankAccountRef: row.bankAccountRef ?? null,
     creditorIdentifier: row.creditorIdentifier ?? null,
     fileFormat: row.fileFormat,
     collectionDay: row.collectionDay,
@@ -154,7 +170,10 @@ export const MANDATE_SELECT = {
       user: { select: { fullName: true } }
     }
   },
-  lease: { select: { id: true, lease_number: true, status: true } }
+  lease: { select: { id: true, lease_number: true, status: true } },
+  debtorContact: { select: { id: true, contactType: true, firstName: true, lastName: true, legalName: true } },
+  syndicate: { select: { id: true, name: true } },
+  lot: { select: { id: true, lotNumber: true } }
 } satisfies Prisma.DirectDebitMandateSelect;
 
 export type MandateRow = Prisma.DirectDebitMandateGetPayload<{ select: typeof MANDATE_SELECT }>;
@@ -167,12 +186,14 @@ export type MandateRow = Prisma.DirectDebitMandateGetPayload<{ select: typeof MA
 export async function resolveDebtorNames(
   db: DbClient,
   tenantId: string,
-  debtors: Array<{ id: string; details: unknown; user: { fullName: string | null } | null }>
+  debtors: Array<{ id: string; details: unknown; user: { fullName: string | null } | null } | null>
 ): Promise<Map<string, string | null>> {
   const names = new Map<string, string | null>();
   const missing: Array<{ id: string; contactId: string }> = [];
 
   for (const debtor of debtors) {
+    // Mandat de copropriété (SYNDIC_LOT) : pas de client locatif, le débiteur est un contact CRM.
+    if (!debtor) continue;
     const own = debtor.user?.fullName?.trim();
     if (own) {
       names.set(debtor.id, own);
@@ -202,6 +223,20 @@ export async function resolveDebtorNames(
   return names;
 }
 
+/** Nom d'un contact CRM : raison sociale pour une société, sinon prénom et nom. */
+export function contactDisplayName(contact: {
+  contactType: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  legalName: string | null;
+}): string | null {
+  const name =
+    contact.contactType === 'COMPANY'
+      ? contact.legalName?.trim() || ''
+      : `${contact.firstName?.trim() || ''} ${contact.lastName?.trim() || ''}`.trim();
+  return name || null;
+}
+
 export function toMandateDto(row: MandateRow, debtorName: string | null): MandateDto {
   return {
     id: row.id,
@@ -213,7 +248,15 @@ export function toMandateDto(row: MandateRow, debtorName: string | null): Mandat
       label: row.creditor.label,
       creditorIdentifier: row.creditor.creditorIdentifier ?? null
     },
-    debtor: { id: row.debtor.id, displayName: debtorName },
+    debtor: row.debtor
+      ? { id: row.debtor.id, displayName: debtorName, kind: 'CLIENT' }
+      : {
+          id: row.debtorContact?.id ?? '',
+          displayName: row.debtorContact ? contactDisplayName(row.debtorContact) : null,
+          kind: 'CONTACT'
+        },
+    syndicate: row.syndicate ? { id: row.syndicate.id, name: row.syndicate.name } : null,
+    lot: row.lot ? { id: row.lot.id, lotNumber: row.lot.lotNumber } : null,
     lease: row.lease ? { id: row.lease.id, leaseNumber: row.lease.lease_number, status: row.lease.status } : null,
     ibanMasked: maskIban(row.ibanLast4),
     bankCode: row.ibanBankCode,
@@ -237,9 +280,17 @@ export function toMandateDto(row: MandateRow, debtorName: string | null): Mandat
 }
 
 /** Lit un mandat de l'agence et le met en forme ; `null` s'il n'existe pas dans cette agence. */
-export async function loadMandateDto(db: DbClient, tenantId: string, mandateId: string): Promise<MandateDto | null> {
-  const row = await db.directDebitMandate.findFirst({ where: { id: mandateId, tenantId }, select: MANDATE_SELECT });
+export async function loadMandateDto(
+  db: DbClient,
+  tenantId: string,
+  mandateId: string,
+  ctx: DirectDebitScopeCtx = RENTAL_CTX
+): Promise<MandateDto | null> {
+  const row = await db.directDebitMandate.findFirst({
+    where: { id: mandateId, tenantId, ...scopeWhere(ctx) },
+    select: MANDATE_SELECT
+  });
   if (!row) return null;
   const names = await resolveDebtorNames(db, tenantId, [row.debtor]);
-  return toMandateDto(row, names.get(row.debtor.id) ?? null);
+  return toMandateDto(row, row.debtor ? (names.get(row.debtor.id) ?? null) : null);
 }

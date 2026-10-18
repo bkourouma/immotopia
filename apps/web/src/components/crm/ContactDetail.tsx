@@ -56,6 +56,7 @@ import { TagManager } from './TagManager';
 import { AddDealDialog } from './AddDealDialog';
 import { ActivityForm } from './ActivityForm';
 import { t } from '../../i18n/t';
+import { PortalEmailNotice } from './PortalEmailNotice';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { getContactRoleLabel } from '../../utils/crm-utils';
 
@@ -281,6 +282,11 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
               }
             >
               {contact.email || <Text type="secondary">{t('Aucun email')}</Text>}
+              {contact.portalAccountEmailNotice && (
+                <div>
+                  <PortalEmailNotice notice={contact.portalAccountEmailNotice} />
+                </div>
+              )}
             </Descriptions.Item>
             <Descriptions.Item
               label={

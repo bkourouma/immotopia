@@ -1,19 +1,32 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Space, Spin } from 'antd';
 import { fetchSignatureContext } from '../../services/signature-service';
-import type { SignatureKind, SignerInput } from '../../types/signature-types';
+import type { SignatureKind, SignerChannel, SignerInput } from '../../types/signature-types';
 import { SignaturesPanel } from './SignaturesPanel';
 import { t } from '../../i18n/t';
 
 interface MandateSignaturesProps {
-  kind: Extract<SignatureKind, 'MANAGEMENT_MANDATE' | 'SALE_MANDATE'>;
+  kind: Extract<
+    SignatureKind,
+    'MANAGEMENT_MANDATE' | 'SALE_MANDATE' | 'DIRECT_DEBIT_MANDATE' | 'SYNDIC_DIRECT_DEBIT_MANDATE'
+  >;
   /** Identifiant du mandat (`PropertyMandate` ou `SaleMandate`). */
   mandateId: string;
   /** Nom de base des PDF téléchargés. */
   fileLabel: string;
+  /** Canaux admis à l'envoi (prélèvement : e-mail, SMS, WhatsApp, jamais « sur place »). */
+  allowedChannels?: SignerChannel[];
+  sendLabel?: string;
+  pollMs?: number;
+  onChanged?: () => void;
 }
 
-const TARGET_TYPES = { MANAGEMENT_MANDATE: 'PropertyMandate', SALE_MANDATE: 'SaleMandate' } as const;
+const TARGET_TYPES = {
+  MANAGEMENT_MANDATE: 'PropertyMandate',
+  SALE_MANDATE: 'SaleMandate',
+  DIRECT_DEBIT_MANDATE: 'DIRECT_DEBIT_MANDATE',
+  SYNDIC_DIRECT_DEBIT_MANDATE: 'DIRECT_DEBIT_MANDATE'
+} as const;
 
 /**
  * Panneau « Signatures » d'un mandat (gestion ou vente) : les signataires
@@ -22,7 +35,15 @@ const TARGET_TYPES = { MANAGEMENT_MANDATE: 'PropertyMandate', SALE_MANDATE: 'Sal
  * source du type de document. Sans contexte (mandat révoqué, droit refusé), le
  * panneau reste utilisable avec une liste vide : l'API refusera l'envoi.
  */
-export const MandateSignatures: React.FC<MandateSignaturesProps> = ({ kind, mandateId, fileLabel }) => {
+export const MandateSignatures: React.FC<MandateSignaturesProps> = ({
+  kind,
+  mandateId,
+  fileLabel,
+  allowedChannels,
+  sendLabel,
+  pollMs,
+  onChanged
+}) => {
   const [signers, setSigners] = useState<SignerInput[] | null>(null);
   const [providerRequired, setProviderRequired] = useState(false);
   const [externalProvider, setExternalProvider] = useState(false);
@@ -74,6 +95,10 @@ export const MandateSignatures: React.FC<MandateSignaturesProps> = ({ kind, mand
         providerRequired={providerRequired}
         externalProvider={externalProvider}
         sendDisabled={Boolean(error)}
+        allowedChannels={allowedChannels}
+        sendLabel={sendLabel}
+        pollMs={pollMs}
+        onChanged={onChanged}
       />
     </Space>
   );

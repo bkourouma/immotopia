@@ -7,7 +7,9 @@ export const SIGNATURE_KINDS = [
   'MANAGEMENT_MANDATE',
   'SALE_MANDATE',
   'LEASE_INSPECTION',
-  'SALE_AGREEMENT'
+  'SALE_AGREEMENT',
+  'DIRECT_DEBIT_MANDATE',
+  'SYNDIC_DIRECT_DEBIT_MANDATE'
 ] as const;
 
 /** Statuts affichés en pastilles, dans l'ordre de lecture. */
@@ -33,6 +35,10 @@ export function kindLabel(kind: string): string {
       return t('État des lieux');
     case 'SALE_AGREEMENT':
       return t('Compromis de vente');
+    case 'DIRECT_DEBIT_MANDATE':
+      return t('Autorisation de prélèvement (bail)');
+    case 'SYNDIC_DIRECT_DEBIT_MANDATE':
+      return t('Autorisation de prélèvement (copropriété)');
     default:
       return kind;
   }
@@ -69,6 +75,8 @@ export function eventLabel(type: string): string {
       return t('Rappel envoyé');
     case 'REMINDER_AUTO':
       return t('Rappel automatique envoyé');
+    case 'IN_PERSON_TOKEN_ISSUED':
+      return t('Nouveau lien de signature sur place émis');
     default:
       return type;
   }

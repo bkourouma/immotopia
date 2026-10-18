@@ -230,6 +230,10 @@ export const createChargeCallPaymentLinkHandler = asyncHandler(async (req: Reque
   const body = createPaymentLinkSchema.parse(req.body ?? {});
   const actorUserId = actorOf(req);
 
+  // La réponse COPY porte l'URL à jeton : jamais en cache (modèle : signature-controller.ts).
+  // Posé pour les deux modes de remise : aucune réponse de cette route n'a à être mise en cache.
+  res.setHeader('Cache-Control', 'no-store');
+
   if (body.delivery === 'COPY') {
     const { link, context } = await createChargeCallPaymentLink(tenantId, syndicateId, chargeCallId, actorUserId, {
       ttlDays: body.ttlDays

@@ -44,6 +44,11 @@ export function operationLabel(periodMonth: number, periodYear: number, leaseNum
   return toAsciiUpper(`LOYER ${String(periodMonth).padStart(2, '0')}/${periodYear} ${leaseNumber}`);
 }
 
+/** Libellé d'une opération de copropriété : `CHARGES LOT <numéro> MM/AAAA` (spec 042 §9.3). */
+export function syndicOperationLabel(periodMonth: number, periodYear: number, lotNumber: string): string {
+  return toAsciiUpper(`CHARGES LOT ${lotNumber} ${String(periodMonth).padStart(2, '0')}/${periodYear}`);
+}
+
 // eslint-disable-next-line no-control-regex -- c'est précisément l'objet : retirer les caractères de contrôle
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f\p{Zl}\p{Zp}]/gu; // Zl, Zp : séparateurs de ligne et de paragraphe Unicode (U+2028, U+2029)
 
@@ -73,7 +78,11 @@ function build(input: FileInput): Buffer {
       line.iban,
       formatCsvAmount(line.amount),
       'XOF',
-      stripControlCharacters(operationLabel(line.periodMonth, line.periodYear, line.leaseNumber))
+      stripControlCharacters(
+        line.lotNumber
+          ? syndicOperationLabel(line.periodMonth, line.periodYear, line.lotNumber)
+          : operationLabel(line.periodMonth, line.periodYear, line.leaseNumber ?? '')
+      )
     ]);
   }
   return Buffer.from(toCsvString(rows, { separator: ';' }), 'utf8');

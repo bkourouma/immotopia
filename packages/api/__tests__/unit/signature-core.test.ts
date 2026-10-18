@@ -3,7 +3,8 @@
  * jeton, chaînage de la piste de preuve, scellement PDF, saisie de signature,
  * masquage des contacts et du jeton dans les journaux.
  */
-import { PDFDocument, StandardFonts } from 'pdf-lib';
+import { PDFDocument, PDFPage, StandardFonts } from 'pdf-lib';
+import { signerChannelLabel, signerRoleLabel } from '../../src/lib/signature/labels';
 import {
   generateOtpCode,
   normalizeOtpInput,
@@ -205,6 +206,55 @@ describe('scellement du PDF', () => {
       });
       expect((await PDFDocument.load(result.pdf)).getPageCount()).toBeGreaterThanOrEqual(3);
     }
+  });
+
+  it('écrit des libellés lisibles (rôle, canal) et non les codes bruts, accents compris', async () => {
+    const spy = jest.spyOn(PDFPage.prototype, 'drawText');
+    try {
+      await sealSignedPdf({
+        ...base,
+        sourcePdf: await sourcePdf(),
+        language: 'fr',
+        signers: [
+          { ...signer('Awa Koné', 'TYPED'), role: 'ACQUEREUR', channel: 'IN_PERSON' },
+          { ...signer('Moussa Traoré', 'TYPED'), role: 'CO_LOCATAIRE', channel: 'EMAIL' }
+        ]
+      });
+      const texts = spy.mock.calls.map(call => String(call[0]));
+      const joined = texts.join('\n');
+      expect(joined).toContain('Acquéreur — ');
+      expect(joined).toContain('Co-locataire — ');
+      expect(texts).toContain('Acquéreur');
+      expect(texts).toContain('Co-locataire');
+      expect(joined).toContain('Sur place');
+      expect(joined).toContain('E-mail');
+      for (const raw of ['ACQUEREUR', 'CO_LOCATAIRE', 'IN_PERSON', 'EMAIL']) expect(joined).not.toContain(raw);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('libellés de rôle et de canal : tous les codes, valeur inconnue rendue telle quelle', () => {
+    const roles = [
+      ['LOCATAIRE', 'Locataire'],
+      ['CO_LOCATAIRE', 'Co-locataire'],
+      ['BAILLEUR', 'Bailleur'],
+      ['AGENT', 'Agent'],
+      ['MANDANT', 'Mandant'],
+      ['VENDEUR', 'Vendeur'],
+      ['COVENDEUR', 'Co-vendeur'],
+      ['ACQUEREUR', 'Acquéreur']
+    ];
+    for (const [code, label] of roles) expect(signerRoleLabel(code, 'fr')).toBe(label);
+    const channels = [
+      ['EMAIL', 'E-mail'],
+      ['WHATSAPP', 'WhatsApp'],
+      ['SMS', 'SMS'],
+      ['IN_PERSON', 'Sur place']
+    ];
+    for (const [code, label] of channels) expect(signerChannelLabel(code, 'fr')).toBe(label);
+    expect(signerRoleLabel('AUTRE_ROLE', 'fr')).toBe('AUTRE_ROLE');
+    expect(signerChannelLabel('PIGEON', 'en')).toBe('PIGEON');
   });
 
   it('ne casse pas sur un nom hors alphabet latin', async () => {

@@ -7,7 +7,12 @@
  */
 
 export type SkipReason =
-  'NO_INSTALLMENT' | 'NOTHING_DUE' | 'ALREADY_IN_REMITTANCE' | 'LEASE_NOT_ACTIVE' | 'COLLECTION_DAY_LATER';
+  | 'NO_INSTALLMENT'
+  | 'NOTHING_DUE'
+  | 'ALREADY_IN_REMITTANCE'
+  | 'LEASE_NOT_ACTIVE'
+  | 'COLLECTION_DAY_LATER'
+  | 'MANDATE_NOT_ACTIVE';
 
 /** Statuts d'échéance prélevables (`PAID` et `CANCELED` ne le sont jamais). */
 export const COLLECTABLE_INSTALLMENT_STATUSES = ['DRAFT', 'DUE', 'OVERDUE', 'PARTIAL'] as const;

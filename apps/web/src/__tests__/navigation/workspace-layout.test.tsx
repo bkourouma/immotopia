@@ -226,6 +226,7 @@ describe('SyndicWorkspaceLayout — après la mise en commun du rendu', () => {
       'Recouvrement',
       'Trésorerie',
       'Paiements',
+      'Prélèvements',
       'Comptabilité'
     ]);
     expect(screen.getByRole('tab', { name: 'Appels de charges' })).toHaveAttribute('aria-selected', 'true');

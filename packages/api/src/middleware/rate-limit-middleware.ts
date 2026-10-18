@@ -904,3 +904,23 @@ export const signatureActionRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+/** Vérification du code avant consultation (devinette du code) : 20 par 15 minutes et par IP, en plus du plafond d'essais par code. */
+export const signatureOtpVerifyRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: req => `signature-otp-verify:${req.ip ?? 'inconnue'}`,
+  handler: signatureLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lien de signature du prestataire (coûte un appel au prestataire) : 20 par 15 minutes et par IP. */
+export const signatureExternalLinkRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: req => `signature-external-link:${req.ip ?? 'inconnue'}`,
+  handler: signatureLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});

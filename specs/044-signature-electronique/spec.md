@@ -153,3 +153,34 @@ prestataire, lot S6).
 6. **SMS** : transport minimal livré au lot S7 ; réglages d'agence et quota SMS
    du lot SMS-1 non intégrés ; consentement SMS du CRM à créer.
 7. **Numérotation spec** : 044 (042 est réservé au paiement mobile Syndic, 043 à l'AG en direct Syndic ; renumérotée de 043 en 044 le 2026-10-15).
+
+## 7. Ajout du 17/10/2026 : mandat de prélèvement bancaire
+
+Deux types de document s'ajoutent à ceux du §3 : `DIRECT_DEBIT_MANDATE`
+(mandat de prélèvement locatif) et `SYNDIC_DIRECT_DEBIT_MANDATE` (mandat de
+copropriété). La signature y est une **option** de la spec
+[042](../042-prelevement-bancaire/spec.md) (exigence PB7) ; le contrat complet
+est dans [042 data-model.md §10](../042-prelevement-bancaire/data-model.md).
+Ces ajouts ne changent rien aux cinq types existants ni à leurs parcours.
+
+- **Nouvelles options de source**, toutes facultatives et sans effet quand elles
+  sont absentes : `codeBeforeView` (le code est demandé avant de montrer le
+  document), `allowedChannels` (canaux admis à la création ; `IN_PERSON` refusé
+  pour ces types, SG-R10 ne s'y applique donc pas) et `externalGateway` (la
+  porte reste chez ImmoTopia quand un fournisseur externe signe).
+- **Parcours « code avant consultation ».** Le lien ne révèle ni le PDF ni
+  l'IBAN sans le code à usage unique. Nouvelle route publique
+  `POST /api/public/signatures/:token/otp/verify` : elle vérifie le code
+  (mêmes essais et verrouillage que SG-R4), le consomme, et remet un **jeton de
+  consultation** valable 15 minutes, que le navigateur renvoie dans l'en-tête
+  `X-Signature-View-Token` pour lire le fichier et signer. Chaque lecture du
+  fichier est auditée avant l'envoi. Titre de la demande, messages et réponses
+  publiques ne portent jamais l'IBAN complet.
+- **Passerelle vers Yousign.** Avec ce fournisseur, la demande est créée sans
+  envoi par Yousign (`delivery_mode: 'none'`) : invitations et codes partent
+  d'ImmoTopia. Le lien de signature Yousign n'est remis qu'après vérification du
+  code, par `GET /api/public/signatures/:token/external-link`, lu en direct chez
+  Yousign, jamais stocké ni journalisé. Yousign demande en plus son propre
+  code au moment de signer.
+- **Fin de parcours.** Le PDF scellé tient lieu de scan signé du mandat ; le
+  mandat reste en brouillon jusqu'à l'activation par l'agence.

@@ -92,6 +92,16 @@ describe('PublicSigningFlow', () => {
     expect(await screen.findByText('Lien invalide ou expiré')).toBeInTheDocument();
   });
 
+  it('affiche le libellé du rôle du signataire, jamais le code brut', async () => {
+    fetchPublicSignature.mockResolvedValue({
+      status: 'ok',
+      data: publicDto({ signer: { role: 'CO_LOCATAIRE' } })
+    });
+    renderInApp(<PublicSigningFlow token="role" />);
+    expect(await screen.findByText(/Signataire : Awa Traoré \(Co-locataire\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/CO_LOCATAIRE/)).not.toBeInTheDocument();
+  });
+
   it('affiche les états déjà signé, refusé et expiré', async () => {
     fetchPublicSignature.mockResolvedValueOnce({ status: 'ok', data: publicDto({ signer: { status: 'SIGNED' } }) });
     const { unmount } = renderInApp(<PublicSigningFlow token="t1" />);

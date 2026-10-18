@@ -14,8 +14,8 @@
 | P0  | Cadrage : spec, modèle de données, ADR-007, ce plan. Liste des pièces à obtenir de la banque pilote (spec §2).                                                                                                                                                                                                                        | D1–D8                                  | fait         |
 | P1  | Créanciers et mandats (spec §5, contrat data-model.md).                                                                                                                                                                                                                                                                               | P0                                     | fait         |
 | P2  | Remises de loyers : sélection des échéances dues (reste dû de l'échéance du mois, plafonné, D6), brouillon `PRL-AAAA-NNNN`, validation humaine, fichier par adaptateur (`GENERIC_CSV`), prénotification à J − 5 ouvrés (D7). Ajout de `DIRECT_DEBIT` à `RentalPaymentMethod`. Unicité (mandat, échéance) sur les lignes non annulées. | P1                                     | fait         |
-| P3  | Retour banque : constat manuel par ligne ou par remise, import du relevé ou du fichier de rejets ; règlement → `RentalPayment` `DIRECT_DEBIT` `SUCCESS` + ventilation + quittance (D3) ; rejet → `updatePaymentStatusTx`, frais de rejet (D4), compteur et suspension (D5), notifications.                                            | P2                                     | à faire      |
-| P4  | Copropriété : `scope = SYNDIC_LOT`, créancier = compte du syndicat, encaissement par `ChargePayment` (plus ancien d'abord, avance, quittances S3), garde `SYNDIC`.                                                                                                                                                                    | P3                                     | à faire      |
+| P3  | Retour banque : constat manuel par ligne ou par remise, import du relevé ou du fichier de rejets ; règlement → `RentalPayment` `DIRECT_DEBIT` `SUCCESS` + ventilation + quittance (D3) ; rejet → `updatePaymentStatusTx`, frais de rejet (D4), compteur et suspension (D5), notifications.                                            | P2                                     | fait         |
+| P4  | Copropriété : `scope = SYNDIC_LOT`, créancier = compte du syndicat, encaissement par `ChargePayment` (plus ancien d'abord, avance, quittances S3), garde `SYNDIC`.                                                                                                                                                                    | P3                                     | fait         |
 | P5  | Portails locataire et copropriétaire (mandat masqué, prochain prélèvement, demande de révocation) ; tâche quotidienne (brouillons, prénotifications) ; tableau de bord des rejets.                                                                                                                                                    | P3 (P4 pour la copropriété)            | à faire      |
 | P6  | Abonnements des agences prélevés (Alliance Consultants créancier).                                                                                                                                                                                                                                                                    | décision du fondateur (D1 : plus tard) | non planifié |
 
@@ -118,3 +118,58 @@ dédiée et versionnée des IBAN, décision du 16/10/2026).
   réception des pièces de la spec §2) ; prénotification par WhatsApp ou SMS et
   avis d'annulation au débiteur (P5) ; règlements et rejets (P3) ; jours
   fériés ivoiriens.
+
+## 6. P3 — réalisé (17/10/2026)
+
+Contrat : [data-model.md](data-model.md) §8 (dont §8.12, retours de recette
+du staging). Branche `feat/prelevement-p3-retour-banque`, depuis `main`.
+
+- **Méthode** : contrat puis échafaudage commun (schéma, migrations,
+  interfaces des encaisseurs, des adaptateurs de retour et du service de
+  retour), puis quatre agents en parallèle dans des worktrees séparés (API,
+  parseur du fichier de retour, écrans, note de la fiche contact du CRM),
+  relectures de code et de sécurité, correctifs en parallèle (API, écrans).
+- **API** : `lib/direct-debit/returns/` (constats, rejet tardif, constat
+  global, import en deux temps avec historique), `collectors/rental.ts`
+  (encaissement, contre-passation, quittance, frais de rejet),
+  `return-formats/generic-csv.ts`, `recipient.ts` (destinataire masqué) ;
+  6 routes ; migrations `20261017100000_prelevement_retour_statuts` et
+  `20261017100100_prelevement_retour_banque`.
+- **Écrans** : constats et import sur le détail et la liste des remises,
+  résumé du retour, non retenus d'un brouillon, adresse masquée des avis,
+  note de la fiche contact.
+- **Choix** : rejet tardif contre-passé ; frais de rejet portés sur
+  l'échéance et exclus de la part du propriétaire ; import limité à 500
+  enregistrements actionnables et 50 remises, un seul à la fois par agence ;
+  pas d'e-mail de règlement (la quittance est au portail).
+- **Reste ouvert** : format réel de la banque pilote (adaptateur de retour) ;
+  e-mail de règlement ; traitement de fond pour les gros imports ; un
+  paiement fait seulement de frais de rejet ne crée pas de mouvement
+  propriétaire (comportement déjà existant pour les pénalités).
+
+## 7. P4 — réalisé (18/10/2026)
+
+Contrat : [data-model.md](data-model.md) §9. Branche
+`feat/prelevement-p4-copropriete`, empilée sur P3
+(`feat/prelevement-p3-retour-banque`, PR #166).
+
+- **API** : créancier du syndicat, mandats par lot (débiteur = contact
+  copropriétaire), remises par syndicat (appels de charges échus et non
+  soldés, plafonnés), encaisseur `SYNDIC_LOT` (`recordLotPaymentTx`, reçus et
+  quittances), prénotification et avis de rejet (clés `SYNDIC_DIRECT_DEBIT_*`),
+  permissions `SYNDIC_DIRECT_DEBIT_VIEW` / `_MANAGE`, 31 routes sous
+  `/syndics/:syndicId/prelevements`. Le service de retour de P3 est branché
+  sur les deux périmètres : filtre du syndicat sur les remises et sur les
+  imports (une remise d'un autre syndicat est introuvable), ligne de
+  l'encaisseur complète (lot, appels figés, encaissement de charges), avis de
+  rejet de copropriété, nom du débiteur contact dans l'aperçu.
+- **Écrans** : onglet « Prélèvements » de Syndic › Finances (compte du
+  syndicat, mandats, remises) ; détail d'une remise et import d'un retour
+  banque via le composant commun `RemittanceDetailView` (locatif et
+  copropriété), droits de consultation et de gestion lus par
+  `useSyndicDirectDebitRights`.
+- **Choix** : rejet tardif refusé en copropriété (aucune contre-passation d'un
+  `ChargePayment`) et non proposé à l'écran ; frais de rejet toujours à 0.
+- **Reste ouvert** : portails copropriétaire (P5) ; rejet tardif en
+  copropriété ; les cartes « compte » et « mandats » de l'onglet ne masquent
+  pas encore leurs boutons de gestion sans le droit (l'API refuse en 403).

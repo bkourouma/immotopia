@@ -68,6 +68,7 @@ function lineView(line: Row): Row {
   const installment = state.installments.find(entry => entry.id === line.installmentId) as Row;
   return {
     ...line,
+    chargeCallIds: [],
     mandate,
     lease: { id: lease.id, lease_number: lease.lease_number },
     installment,
@@ -139,6 +140,13 @@ const mockDb: Row = {
   },
   crmContact: {
     findMany: jest.fn(async ({ where }: Row) => state.contacts.filter(row => matches(row, where)))
+  },
+  tenantClient: {
+    findMany: jest.fn(async ({ where }: Row) =>
+      state.debtors
+        .filter(row => where.id.in.includes(row.id))
+        .map(row => ({ id: row.id, details: row.details ?? null, user: { email: row.email ?? null } }))
+    )
   },
   directDebitRemittance: {
     count: jest.fn(async ({ where }: Row) => state.remittances.filter(row => matches(row, where)).length),
@@ -310,6 +318,7 @@ function resetState() {
     {
       id: CREDITOR,
       tenantId: TENANT,
+      scope: 'RENTAL_LEASE',
       label: 'Compte loyers',
       creditorIdentifier: 'CI-EMET-001',
       isActive: true,
@@ -646,7 +655,7 @@ describe('remises / validation et prénotifications', () => {
     const first = await validateRemittance(TENANT, remittance.id, 'user-1', NOW);
     // La réponse n'attend pas les e-mails : les lignes sont encore à envoyer.
     expect(first.remittance.status).toBe('VALIDATED');
-    expect(first.prenotifications).toEqual({ pending: 2, sent: 0, noEmail: 0, disabled: 0, failed: 0 });
+    expect(first.prenotifications).toMatchObject({ pending: 2, sent: 0, noEmail: 0, disabled: 0, failed: 0 });
     expect(mockMail.send).not.toHaveBeenCalled();
     release();
     await waitForRemittancePrenotifications();
@@ -662,7 +671,7 @@ describe('remises / validation et prénotifications', () => {
       validatedByUserId: 'user-1'
     });
     // Ligne 1 : e-mail du compte ; ligne 2 : aucune adresse.
-    expect(result.prenotifications).toEqual({ pending: 0, sent: 1, noEmail: 1, disabled: 0, failed: 0 });
+    expect(result.prenotifications).toMatchObject({ pending: 0, sent: 1, noEmail: 1, disabled: 0, failed: 0 });
     expect(result.remittance.lines.map(line => line.prenotificationStatus)).toEqual(['SENT', 'NO_EMAIL']);
     expect(result.remittance.lines[0].prenotifiedAt).not.toBeNull();
 
@@ -708,7 +717,7 @@ describe('remises / validation et prénotifications', () => {
     await validateRemittance(TENANT, first.remittance.id, 'user-1', NOW);
     await waitForRemittancePrenotifications();
     const disabled = await getRemittance(TENANT, first.remittance.id);
-    expect(disabled.prenotificationSummary).toEqual({ pending: 0, sent: 0, noEmail: 0, disabled: 2, failed: 0 });
+    expect(disabled.prenotificationSummary).toMatchObject({ pending: 0, sent: 0, noEmail: 0, disabled: 2, failed: 0 });
     expect(mockMail.send).not.toHaveBeenCalled();
 
     resetState();
@@ -719,7 +728,7 @@ describe('remises / validation et prénotifications', () => {
     await waitForRemittancePrenotifications();
     const failed = await getRemittance(TENANT, second.remittance.id);
     expect(failed.status).toBe('VALIDATED');
-    expect(failed.prenotificationSummary).toEqual({ pending: 0, sent: 0, noEmail: 1, disabled: 0, failed: 1 });
+    expect(failed.prenotificationSummary).toMatchObject({ pending: 0, sent: 0, noEmail: 1, disabled: 0, failed: 1 });
     expectNoLeak(failed);
     // Ni l'adresse ni le texte du transport ne sont journalisés.
     expectNoLeak((logger.warn as jest.Mock).mock.calls);
@@ -790,7 +799,7 @@ describe('remises / renvoi des prénotifications', () => {
     await resendPrenotifications(TENANT, id, 'user-1', NOW);
     await waitForRemittancePrenotifications();
     expect(mockMail.send).toHaveBeenCalledTimes(2);
-    expect((await getRemittance(TENANT, id)).prenotificationSummary).toEqual({
+    expect((await getRemittance(TENANT, id)).prenotificationSummary).toMatchObject({
       pending: 0,
       sent: 2,
       noEmail: 0,
@@ -1260,5 +1269,100 @@ describe('remises / écritures en lot et transactions longues', () => {
     await validateRemittance(TENANT, remittance.id, 'user-1', NOW);
     await waitForRemittancePrenotifications();
     expect(mockDb.$transaction).toHaveBeenCalledWith(expect.any(Function), OPTIONS);
+  });
+});
+
+describe('remises / mandats non actifs', () => {
+  const addInactiveMandates = () => {
+    const extra = (n: number, status: string) => {
+      state.leases.push({ id: `lease-${n}`, tenant_id: TENANT, lease_number: `BAIL-00${n}`, status: 'ACTIVE' });
+      state.debtors.push({ id: `client-${n}`, fullName: `Débiteur ${n}`, email: null });
+      state.installments.push({
+        id: `inst-${n}`,
+        tenant_id: TENANT,
+        lease_id: `lease-${n}`,
+        period_year: 2026,
+        period_month: 10,
+        due_date: new Date('2026-10-05T00:00:00Z'),
+        status: 'DUE',
+        amount_rent: 90000,
+        amount_service: 0,
+        amount_other_fees: 0,
+        penalty_amount: 0,
+        amount_paid: 0
+      });
+      state.mandates.push({
+        ...state.mandates[0],
+        id: `mandate-${n}`,
+        sequence: n,
+        leaseId: `lease-${n}`,
+        debtorClientId: `client-${n}`,
+        holderName: `Titulaire ${n}`,
+        status
+      });
+    };
+    extra(6, 'SUSPENDED');
+    extra(7, 'DRAFT');
+    extra(8, 'REVOKED');
+  };
+
+  it('signale les mandats brouillon et suspendus (jamais révoqués) sans en faire des lignes', async () => {
+    addInactiveMandates();
+    const { remittance, skipped } = await create();
+
+    expect(remittance.lines.map(line => line.mandate.reference)).toEqual(['MDT-2026-0001', 'MDT-2026-0002']);
+    const inactive = skipped.filter(entry => entry.reason === 'MANDATE_NOT_ACTIVE');
+    expect(inactive.map(entry => entry.mandateReference)).toEqual(['MDT-2026-0006', 'MDT-2026-0007']);
+    expect(skipped.some(entry => entry.mandateReference === 'MDT-2026-0008')).toBe(false);
+    expect(state.lines.some(line => ['mandate-6', 'mandate-7', 'mandate-8'].includes(line.mandateId))).toBe(false);
+  });
+
+  it('la lecture d un brouillon renvoie les mandats non retenus, pas celle d une remise validée', async () => {
+    addInactiveMandates();
+    const { remittance } = await create();
+
+    const draft = await getRemittance(TENANT, remittance.id);
+    expect(draft.skipped?.map(entry => entry.mandateReference)).toEqual(
+      expect.arrayContaining(['MDT-2026-0006', 'MDT-2026-0007', 'MDT-2026-0003'])
+    );
+    // Les mandats qui ont déjà une ligne ne sont pas « non retenus ».
+    expect(draft.skipped?.some(entry => entry.mandateReference === 'MDT-2026-0001')).toBe(false);
+
+    state.mandates = state.mandates.filter(row => row.status === 'ACTIVE');
+    await validateRemittance(TENANT, remittance.id, 'user-1', NOW);
+    await waitForRemittancePrenotifications();
+    expect((await getRemittance(TENANT, remittance.id)).skipped).toBeUndefined();
+  });
+});
+
+describe('remises / destinataire de l avis', () => {
+  it('affiche l adresse prévue masquée des lignes PENDING, jamais l adresse complète', async () => {
+    const { remittance } = await create();
+    const read = await getRemittance(TENANT, remittance.id);
+
+    expect(read.lines[0].prenotificationRecipient).toEqual({ masked: 'a•••@ex•••.test', source: 'ACCOUNT' });
+    expect(read.lines[1].prenotificationRecipient).toBeNull();
+    expect(read.prenotificationSummary.recipients).toEqual({ account: 1, contact: 0, none: 1 });
+    expect(JSON.stringify(read)).not.toContain('awa@example.test');
+  });
+
+  it('reprend les valeurs gardées à l envoi, même si l adresse a changé depuis', async () => {
+    const { remittance } = await create();
+    state.lines[0].prenotificationStatus = 'SENT';
+    state.lines[0].prenotificationRecipientMasked = 'z•••@ma•••.ci';
+    state.lines[0].prenotificationRecipientSource = 'CONTACT';
+    const read = await getRemittance(TENANT, remittance.id);
+
+    expect(read.lines[0].prenotificationRecipient).toEqual({ masked: 'z•••@ma•••.ci', source: 'CONTACT' });
+    expect(read.prenotificationSummary.recipients).toEqual({ account: 0, contact: 1, none: 1 });
+  });
+
+  it('une ligne annulée n a pas de destinataire', async () => {
+    const { remittance } = await create();
+    state.lines[1].status = 'CANCELED';
+    const read = await getRemittance(TENANT, remittance.id);
+
+    expect(read.lines[1].prenotificationRecipient).toBeNull();
+    expect(read.prenotificationSummary.recipients.none).toBe(0);
   });
 });

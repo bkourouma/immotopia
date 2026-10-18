@@ -31,6 +31,87 @@ Modèle de section :
 
 **Pièges :** le message de validation ne joint pas les PDF : ils partent déjà par `scheduleChargeDocumentDelivery` (évite un doublon). Les `notifyDeclaration*` ne font rien sous Jest (`isTest`). La fenêtre horaire du récapitulatif est l'heure pleine précédente : une heure sans serveur n'est pas rattrapée. Fichiers à fins de ligne mixtes (CRLF/LF) : normaliser avant un remplacement multi-lignes. Les fixtures `syndics.online-payment-fixtures.ts` et deux tests du portail simulent maintenant `syndicPaymentDeclaration`.
 
+## Branche `feat/prelevement-signature-mandat` — 2026-10-18
+
+**État :** signature électronique du mandat de prélèvement (spec 042 §10) branchée côté copropriété et vérifiée côté API, empilée sur P4 (64456315). Rien n'est commité par l'agent : le pilote commite.
+**Worktree :** `.claude/worktrees/prelevement-p2`.
+
+Fait :
+
+- Écran : `MandateSignatureSection` (type `SYNDIC_DIRECT_DEBIT_MANDATE`) dans l'onglet Prélèvements de Syndic. Un bouton « Signature électronique » (actions d'un mandat en brouillon, `SyndicMandateActions`) déplie la section sous la ligne du mandat (`SyndicMandatesCard`, ligne extensible). Bouton et section réservés à `SYNDIC_DIRECT_DEBIT_MANAGE` (`useSyndicDirectDebitRights`).
+- API, §9.3 vérifié : l'activation sans `signedAt` d'un mandat déjà daté, et l'annulation des demandes ouvertes à la révocation et au dépôt d'un scan, sont dans les fonctions communes `lib/direct-debit/mandates.ts` (paramètre de périmètre) : les deux périmètres en bénéficient, rien à ajouter dans `syndic/mandates.ts`.
+- Défaut corrigé : `signature-pdf-data.ts` présentait le numéro de lot comme un « Bail » et le syndicat comme un « Bien loué » dans le PDF envoyé en signature. Il renseigne maintenant `syndicateName` et `lotNumber` (lignes « Copropriété » et « Lot », mention des appels de charges) ; l'empreinte HMAC (`signature-snapshot.ts`) les inclut, ce qui change l'empreinte des demandes en cours (aucune en production : branche non fusionnée).
+- Tests : jest `direct-debit.signature-source` (rendu du PDF de copropriété et du PDF locatif, empreinte sensible au lot et au syndicat), `direct-debit.syndic-mandates` (parcours signé puis activé avec date préremplie) ; vitest `syndics/syndic-direct-debit-signature` (5 tests).
+- Traductions en/ar de « Signature électronique » dans `syndic.json` ; classeur : 5 lignes ajoutées + 1 ligne locative modifiée (1086 lignes, `A1:O1087`).
+
+Correctifs de l'audit de sécurité (commit b1571a3f) :
+
+- SIG-S5 : la lecture du `signed.pdf` par la route du scan signé (locatif et copropriété) est auditée avant l'envoi (`auditSignatureFileServed`, lecteur transmis par les contrôleurs).
+- Jeton de consultation : effacé à la signature, au refus et à l'annulation ; exigé aussi pour refuser (le web l'envoie, le lien « Refuser de signer » n'apparaît qu'après le code) ; `sourceGateOf` fermé par défaut pour les deux types de mandat.
+- Yousign : l'hôte du lien de signature doit être celui de l'API configurée ou `*.yousign.app` (`isYousignHost`).
+- Un scan papier qui remplace un scan électronique remet `signatureRequestId` et `signedAt` à zéro ; l'annulation supprime `source.pdf` des deux types ; `onSealed` recalcule l'empreinte dans la transaction (`tx`).
+- Empreinte : syndicat et lot en fin de tableau canonique, seulement en copropriété (l'empreinte locative garde sa forme initiale). Rotation de `DIRECT_DEBIT_IBAN_KEY` : voir SECURITY.md et DEPLOIEMENT.md.
+- Destinataire e-mail différent du débiteur : permis, tracé dans l'audit (`signerOverride`, adresse masquée). CORS lit `FRONTEND_URL` par `config/env`.
+
+Reste à faire :
+
+- Recette navigateur du parcours complet (envoi, code, signature, activation) en copropriété ; Yousign non essayé pour ce type.
+- `npm run test:isolation` non lancé.
+
+Pièges :
+
+- La cible de signature est `DIRECT_DEBIT_MANDATE` pour les deux types ; seul `kind` distingue le périmètre.
+
+## Branche `feat/prelevement-p4-copropriete` — 2026-10-18
+
+**État :** lot P4 terminé côté code et documentation, à relire (PR empilée sur P3 = #166). Rien n'est commité par l'agent : le pilote commite.
+**Worktree :** `.claude/worktrees/agent-a8c45bf28b7afdbdf`.
+
+Fait (spec 042 P4, contrat `specs/042-prelevement-bancaire/data-model.md` §9) :
+
+- Typage de la fusion P3 dans P4 : le service de retour (`lib/direct-debit/returns/`) fonctionne pour `RENTAL_LEASE` et `SYNDIC_LOT` (filtre du syndicat sur remises et imports, ligne de l'encaisseur complète, `chargePaymentId` écrit au règlement, avis de rejet `SYNDIC_DIRECT_DEBIT_REJECTED`, nom du contact débiteur dans l'aperçu, `scope` dans l'historique des imports).
+- Écrans : détail complet d'une remise de copropriété et import d'un retour banque (aperçu, application, historique) ; le détail locatif a été extrait dans `components/rental/direct-debit/RemittanceDetailView.tsx` (commun aux deux périmètres, `pages/rental/DirectDebitRemittanceDetail.tsx` n'est plus qu'un habillage) ; `ReturnImportModal` et `ReturnImportsHistory` acceptent l'API d'un périmètre. Droits : `useSyndicDirectDebitRights` (VIEW lit, MANAGE écrit).
+- Service web `syndic-direct-debit-service.ts` : constats, tout régler, aperçu, application, historique.
+- Traductions en/ar ajoutées à la main dans `syndic.json` (15 textes) ; classeur : 26 lignes (1081 au total) ; `plan.md` : P4 fait.
+
+Reste à faire :
+
+- Recette navigateur de l'onglet Prélèvements (jamais ouvert dans un vrai navigateur) ; migrations P4 jamais appliquées sur une vraie base ; `npm run test:isolation` non lancé.
+- Un fichier de retour qui rejette une ligne déjà réglée en copropriété est rapproché comme `REJECT` puis échoue à l'application (message de l'API) : l'aperçu prévient, mais ne l'écarte pas (pas de raison d'écart dédiée dans le contrat).
+- P5 (portails) non commencé.
+
+Pièges :
+
+- Le rejet tardif n'existe pas en copropriété (aucune contre-passation d'un `ChargePayment`) : le bouton n'est pas proposé et l'API répond 409.
+- Les écrans de finances du syndic ne passent pas par React Query : après un constat, rien à invalider côté appels de charges (ils se relisent au montage).
+- Les tests vitest d'un fichier syndic prennent plus de 7 minutes quand la machine est chargée ; relancer seul le fichier avant de conclure à un échec.
+- Le correctif de typage portait sur le service de P3 : sa dérogation « le syndicat s'ajoutera avec la colonne de P4 » est tenue.
+
+## Branche `feat/prelevement-p3-retour-banque` — 2026-10-17
+
+**État :** prêt à relire — PR vers `main` ouverte par le pilote (premier des trois lots empilés : P3, puis P4 `feat/prelevement-p4-copropriete`, puis signature `feat/prelevement-signature-mandat`). Relectures de code et de sécurité faites, constats corrigés.
+**Dernier commit :** voir `git log` (fusion des correctifs de relecture, classeur et plan).
+**Worktree d'intégration :** `.claude/worktrees/amazing-brattain-ff3069`, `node_modules` PROPRE (`npm ci`, pas de jonction).
+
+Fait (spec 042 P3, contrat `specs/042-prelevement-bancaire/data-model.md` §8, dont §8.12) :
+
+- Retour banque : constat de règlement (encaissement `DIRECT_DEBIT` ventilé, quittance après commit), de rejet y compris tardif (contre-passation, quittance annulée, frais refacturés portés sur l'échéance et exclus de la part du propriétaire, suspension automatique au seuil, e-mail `DIRECT_DEBIT_REJECTED`), constat de toute la remise, import d'un fichier de retour `GENERIC_CSV` (aperçu puis application, historique, au plus 500 enregistrements actionnables et 50 remises, un import à la fois par agence).
+- Retours de recette du staging : mandats brouillons ou suspendus dans les non retenus (`MANDATE_NOT_ACTIVE`) et non retenus affichés en permanence sur un brouillon ; messages nommant le fichier téléchargé ; adresse masquée et provenance (compte portail ou fiche contact) de chaque avis ; note sur la fiche contact du CRM quand le compte portail a une autre adresse.
+- Classeur des fonctionnalités : 9 lignes (1031 au total) ; `plan.md` : P3 fait.
+
+Reste à faire :
+
+- Recette navigateur sur la démo (`packages/api/.env.demo` absent du checkout principal : `demo:sync` impossible tant que l'utilisateur ne l'a pas recréé).
+- Migrations `20261017100000_*` et `20261017100100_*` jamais appliquées sur une vraie base ; `test:isolation` non lancé.
+- Points ouverts : format réel de la banque pilote ; e-mail de règlement ; traitement de fond des gros imports ; un paiement fait seulement de frais de rejet ne crée pas de mouvement propriétaire (comme les pénalités).
+
+Pièges et décisions :
+
+- Méthode du 17/10 : contrats d'abord (data-model §8 à §10), échafaudage commun par le pilote, puis agents en worktrees isolés (`isolation: worktree`, chacun son `npm ci`) qui partent de la branche du lot par avance rapide ; le pilote commite dans chaque worktree d'agent (`EnterWorktree`) puis fusionne dans la branche du lot.
+- Ne pas changer de worktree (`EnterWorktree`) pendant qu'un sous-agent NON isolé travaille dans celui de la session : son shell est coupé.
+- La machine saturée (plusieurs `npm ci` et suites de tests en parallèle) fait échouer des suites jest « au démarrage » et des tests vitest par délai : relancer seules avant de conclure.
+- `git worktree remove` d'un worktree d'agent peut s'arrêter à mi-chemin (« Directory not empty ») : le dossier reste mais n'est plus enregistré ; le checkout principal n'est pas touché (les `node_modules` d'agents sont réels, sans jonction).
+
 ## Branche `docs/handoff-staging-deploiement` — 2026-10-16
 
 **État :** prêt à relire.
@@ -133,6 +214,33 @@ Pièges et décisions :
 - `npm run i18n:extract` salit tout l'arbre : traductions de ces lots ajoutées à la main. Tests instables surveillés : `MeetingLiveConsole.test.tsx` (« supprime après confirmation »), `property-ownership.test.tsx`.
 - Classeur des fonctionnalités en conflit à chaque fusion : reporter ligne à ligne les lignes de la branche sur la version de `main` (openpyxl, `difflib` sur les lignes de la table `SousFonctionnalites`), puis `wiki:export` et comparer le miroir.
 
+## Branche `fix/i18n-extracteurs-cles-dynamiques` — 2026-10-17
+
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/154 (base `main`), CI en cours à l'ouverture ; worktree `.claude/worktrees/distracted-greider-b4a494` (jonctions `node_modules` à retirer avec `rmdir`/`Directory.Delete($p, $false)`, jamais `rm -rf`).
+**Dernier commit :** voir `git log` (poussé sur origin).
+
+Fait :
+
+- `npm run i18n:extract` (web `apps/web/scripts/i18n-migrate.mjs`, API `packages/api/scripts/i18n-extract.mjs`) ne supprime PLUS jamais une traduction non vide : une clé non recensée mais traduite reste dans le catalogue (le bilan la compte, `--unreferenced` la liste). Plus aucun `*.orphans.json` sans `--prune` ; `--prune` fusionne par union avec le fichier existant, qui n'est jamais supprimé. Reproduit sur `main` avant correction : 172 entrées par langue perdues côté web (dont 161 = celles de la PR 151), 69 côté API.
+- Clés dynamiques recensées : résolution automatique des constantes de niveau module du même fichier (`t(CAPACITY_LABELS[k] ?? …)`, `throw notFound(MESSAGE)`) et marqueur `// @i18n-keys [noms…]` sur sa propre ligne. Documenté dans `docs/architecture/i18n.md` (section « Clés dynamiques »). Marqueur posé sur `OWN_ASSETS_ONLY_MESSAGES` (`middleware/error-middleware.ts`).
+- Nouvelles options communes : `--check` (sans écriture, exit 1 s'il y a à écrire), `--dry`, `--prune`, `--unreferenced`, `--root=<dossier>` ; option inconnue = exit 2. Scripts `i18n:check` dans les deux paquets. Bibliothèque partagée `scripts/i18n/catalog.mjs`. Les catalogues existants gardent leurs fins de ligne et ne sont plus réécrits quand le contenu est identique.
+- Le web ne réécrit plus `pages/CoOwnerPortal/ChargeCalls.tsx` (`MTN Money` ajouté aux noms propres).
+- Les clés dynamiques jusque-là jamais recensées (donc jamais traduites : 14 côté web, 37 côté API) sont traduites en/ar.
+- Test : `packages/api/__tests__/unit/i18n-extractors.test.ts` lance les deux scripts pour de vrai sur des paquets jetables (perte, clés dynamiques, point fixe, `--check`, `--prune`, CRLF).
+
+Reste à faire :
+
+- Fusionner la PR 151 (restaure et traduit les clés de la PR 132) : c'est elle qui rend `main` point fixe. Vérifié sur l'arbre de la branche de la PR 151 + ces traductions : `--check` → « Catalogues à jour. » dans les deux paquets, aucun orphelin, 0 source réécrite. Sur `main` seul, le premier passage ajoute encore 176 clés web et 41 clés API (paiement mobile, traduites dans la PR 151) et remet en ordre une quinzaine de catalogues (ordre trié non respecté par des ajouts manuels) ; une fois la PR 151 fusionnée, plus rien.
+- `--check` n'est PAS branché dans la CI (les catalogues dérivent d'une PR à l'autre) : à décider, une fois `main` propre.
+- Les traductions « non référencées » conservées (web 171 dont 44 doublons d'une clé référencée dans un autre module ; API 49) sont des restes (textes retouchés, anciennes versions sans accents, clés d'audit disparues) : à examiner avec `--unreferenced`, puis `--prune` si on veut les sortir. Une partie côté API a un littéral présent dans le code sous une forme non reconnue (messages Zod `.min(1, '…')`, `super('…')`, `{ message: '…' }`) : y poser `// @i18n-keys` si on veut qu'elles soient recensées.
+
+Pièges :
+
+- Les mentions « ne pas lancer `i18n:extract` » des sections voisines de ce fichier datent d'avant ce correctif ; elles restent vraies pour le bruit d'ordre et les 176/41 clés ajoutées vides tant que la PR 151 n'est pas fusionnée.
+- Un `// @i18n-keys` suivi d'un mot sur la même ligne lit ce mot comme un nom de propriété ; un commentaire collé en fin de ligne de code n'est pas vu.
+- Le `trim()` de `record()` côté API reste (une clé avec espaces en tête, comme `'  - Discussion : non renseignée.'`, est recensée sans ses espaces alors que `t()` la cherche avec) : écart préexistant, non traité.
+- Ne pas copier `apps/web/src` « sous la main » pour essayer : utiliser `--root=<copie>`.
+
 ## Branche `fix/syndic-ag-audit-critique-enregistrement` — 2026-10-17
 
 **État :** prêt à relire (PR sur `main` ; les PR 144 et 145 y sont fusionnées). Worktree `.claude/worktrees/bold-wilson-73a664`, avec trois JONCTIONS `node_modules` vers ceux de `suspicious-cartwright-fc4a4c` (seul client Prisma qui connaît `GMRecording`) : les retirer avec `rmdir` AVANT tout `git worktree remove`.
@@ -224,6 +332,34 @@ Relevés de recette du staging, 2026-10-16 (Claude dans Chrome, rapportés par l
 - Paiement mobile money d'un appel de charges (copropriété « Résidence Les Jacarandas », agence « Pack Syndic · 3 ans », mode Simulateur) réussi de bout en bout : reçu Q-2026-000093, statut « Payé », compte 5525 crédité.
 - Réglages du staging complétés le 2026-10-16 dans son fichier d'environnement (aucune valeur ici) : `SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`, clé `PAYMENT_SECRETS_KEY` propre au staging, SMTP configuré (vérifié). `SMS_PROVIDER` reste `disabled` : l'application Orange « ImmoTopia Staging » existe, mais Orange exige un nom d'expéditeur personnalisé approuvé (demande « IMMOTOPIA », à déposer par l'utilisateur) avant tout achat de forfait.
 
+## Branche `fix/paiement-mobile-signature-defauts` — 2026-10-16
+
+**État :** prêt à relire (PR ouverte vers `main`, voir `gh pr list`), worktree `.claude/worktrees/affectionate-mendeleev-85d25c` (`node_modules` propre par `npm ci`, pas de jonction).
+**Dernier commit :** voir `git log` de la branche (poussée sur origin).
+
+Correctifs des défauts relevés le 2026-10-16 en relisant les PR fusionnées #132 (paiement mobile des charges de copropriété) et #141 (signature électronique). Les sections `feat/syndic-paiement-mobile` (#132) et `feat/finance-fournisseurs-tresorerie` (#142), fusionnées, sont retirées ; leurs restes encore ouverts sont repris ci-dessous.
+
+Fait :
+
+- Impasse de décision levée : un `REVIEW` `CONTRARY_STATE` sans encaissement (succès fournisseur après expiration) s'accepte en encaissant ou se refuse ; avec encaissement, inchangé (`checkout-review.ts`, spec R21, contrat §1.7). Raison explicite et texte « le montant demandé sera enregistré » quand le fournisseur ne rapporte pas de montant.
+- Écran « Paiements en ligne » : Vérifier, Trancher, reversements derrière `SYNDIC_EDIT` ; configuration et test derrière `SYNDIC_EDIT` + `TENANT_SETTINGS_EDIT` (`useMyMenuAccess`).
+- T075 : l'écran Charges propose le lien « Payer cet appel » par la fenêtre de la PR 150 (`ChargeCallPaymentLinkModal`, bouton « Lien de paiement », devises XOF/FCFA, droits création/consultation) ; l'implémentation concurrente de cette branche (bouton + tiroir) a été retirée à la fusion de `main` du 2026-10-18. Reste de cette branche sur ce sujet : `Cache-Control: no-store` sur la réponse qui porte l'URL.
+- Signature : rôle et canal en libellés (page `/signer/:jeton`, certificat PDF via `lib/signature/labels.ts`), libellé de `IN_PERSON_TOKEN_ISSUED`, `q` accepté par `GET /api/signatures/summary`, champ `canEdit` (liste et détail) qui masque Relancer/Annuler.
+- Traductions en/ar : 238 libellés (web `common`, `syndic`, API). Classeur : 23 lignes ajoutées, 14 modifiées (1015 lignes après fusion de main, qui en ajoutait une).
+
+Reste à faire :
+
+- Extracteur i18n : `npm run i18n:extract` (web et API) retire des catalogues des clés encore utilisées dynamiquement (`t(CAPACITY_LABELS[...])`…) et un second passage efface le fichier d'orphelins ; 460 entrées ont été restaurées à la main. Ne pas relancer l'extracteur tel quel avant correction (session de suivi proposée).
+- Audit du 2026-10-16, basses non traitées : refuser un succès tardif affiche « échoué » au payeur alors qu'il a été débité (même comportement que les autres refus) ; aucun signal quand les appels d'un succès tardif ont été soldés entre-temps par une autre tentative (le montant part en avance du lot).
+- Hérité de #132 : rejouer les tests sur PostgreSQL réel et `npm run test:isolation` ; variables `CHARGE_CALL_PAYMENT_LINK_SENT` dans `apps/web/src/constants/whatsapp-notification-variables.ts` ; mutualiser `isCurrentLotOwner` ; GET de statut du portail sans revérification du droit SYNDIC (contrat §2 à aligner) ; exercice clos 409 contre 400 au contrat ; décisions encore à prendre par l'utilisateur (WhatsApp du lien activé par défaut, mode LIVE et frais BMI, deux copropriétés sur un même compte marchand).
+- Recette navigateur du lien de paiement (fenêtre de la PR 150) et de l'écran Paiements en ligne au simulateur non faite ; panneaux de signature intégrés (bail, mandat, état des lieux, compromis) non alignés sur `canEdit`.
+
+Pièges :
+
+- Pas de nouvelle valeur d'enum `SyndicReviewKind` : le cas « succès tardif » se reconnaît à `CONTRARY_STATE` + `chargePaymentId` nul.
+- Le certificat PDF reste en français pour une demande en arabe (polices PDF standard, `safeText`).
+- Tests lourds lancés en parallèle par plusieurs agents : jest tué (SIGTERM) et `tsc` web à court de mémoire ; relancer avec `--maxWorkers=2` ou `NODE_OPTIONS=--max-old-space-size=8192`.
+
 ## Branche `feat/syndic-lien-paiement-ui` — 2026-10-16
 
 **État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/150 (base `main`), CI à lire, à fusionner par l'utilisateur ; worktree `.claude/worktrees/brave-noether-f68511` (`node_modules` = jonctions vers le checkout principal : son client Prisma est plus ancien, ne pas lancer `prisma generate` ni le typecheck API ici)
@@ -284,57 +420,6 @@ Pièges :
 - Un essai manuel sur le serveur (checkout hors `origin/main`) bloque le déploiement CI : c'est voulu.
 - Un changement de `ci-deploy.sh` ne s'applique qu'au déploiement suivant.
 - Python lancé par heredoc depuis Git Bash lit le texte en cp1252 : pour une retouche de texte accentué, passer par l'outil d'édition.
-
-## Branche `feat/prelevement-p2-remises` — 2026-10-17
-
-**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/155 (base `fix/prelevement-cle-iban`, empilée sur la PR 153). Recette navigateur NON faite (démo indisponible, voir pièges).
-**Dernier commit :** voir `git log` (fusion de `fix/prelevement-cle-iban` à jour de `main`, migrations renommées en `20261017090000_*` et `20261017090100_*`).
-**Worktree :** `.claude/worktrees/prelevement-p2`, `node_modules` PROPRE (`npm ci`), client Prisma propre.
-
-Fait (lot P2 de la spec 042, contrat `specs/042-prelevement-bancaire/data-model.md` §7) :
-
-- Remises `PRL-AAAA-NNNN` par créancier et date de prélèvement : sélection D6 (mandats actifs dont le jour de collecte est atteint, reste dû de l'échéance du mois hors pénalités, plafonné), une échéance dans une seule ligne non annulée (unicité `(tenantId, activeKey)`), actualisation, retrait de ligne, validation humaine (date limite de prénotification D7 en jours ouvrés, figée), avis de prélèvement par e-mail en arrière-plan sous verrou (`DIRECT_DEBIT_PRENOTIFICATION`, rattachée à RENTAL), fichier `GENERIC_CSV` (IBAN déchiffré à l'export seulement, audit avant l'envoi, empreinte HMAC), « déposée à la banque », annulation.
-- `DIRECT_DEBIT` ajouté à `RentalPaymentMethod` (libellés API et écrans, compte `BANK`, absent des saisies manuelles).
-- Écrans : onglets Mandats / Remises de Location › Prélèvements, liste, préparation, détail (actions par statut, avertissements d'annulation et de production, résumé des avis relu pendant l'envoi).
-- Relectures `code-reviewer` et `security-auditor` faites, constats corrigés (`fee1dbf0`). Classeur des fonctionnalités : 10 lignes (1022 lignes au total). `plan.md` : P1 et P2 « fait ».
-
-Reste à faire :
-
-- Recette navigateur sur la démo (spec P2) dès que `packages/api/.env.demo` existe : préparer, actualiser, retirer, valider, produire le fichier, déposer, annuler ; IBAN absent des réponses ; arabe.
-- Migrations jamais appliquées sur une vraie base (pas de base dédiée dans le worktree) ; `npm run test:isolation` non lancé.
-- Format réel de la banque pilote (nouvel adaptateur, après réception des pièces de la spec §2) ; avis par WhatsApp/SMS et avis d'annulation (P5) ; jours fériés ; P3 (retour banque).
-
-Pièges et décisions :
-
-- Une échéance ne figure que dans UNE ligne non annulée, quel que soit le mandat (ADR-007 §6), plus strict que « (mandat, échéance) » du plan.
-- `npm run i18n:extract` ramène des centaines de lignes d'autres branches et des `*.orphans.json` : n'ajouter que ses clés.
-- Après un agent qui passe prettier, des fichiers n'ont que des fins de ligne différentes : leur remettre les fins de ligne de `HEAD` plutôt que de les commiter.
-
-## Branche `fix/prelevement-cle-iban` — 2026-10-17
-
-**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/153 (base `main`), `main` fusionné le 2026-10-17. Fusion à faire par l'utilisateur.
-**Dernier commit :** `c89414ae` (fusion de `main`), après `4fb78828` (correctifs de l'audit de sécurité).
-**Worktree :** `.claude/worktrees/amazing-brattain-ff3069`, `node_modules` PROPRE (`npm ci`, pas de jonction).
-
-Fait :
-
-- IBAN des mandats chiffrés avec une clé DÉDIÉE `DIRECT_DEBIT_IBAN_KEY` (`lib/direct-debit/iban-crypto.ts`, format `ddk1:<id de clé>:…`, id de clé en données associées, balise GCM de 16 octets imposée), trousseau `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` pour la rotation, lecture héritée des valeurs `pg1` (`PAYMENT_SECRETS_KEY`). Démarrage refusé si la clé est mal formée, faible ou égale à `PAYMENT_SECRETS_KEY`.
-- Script idempotent `dist/scripts/reencrypt-direct-debit-ibans.js [--dry-run]` (codes 0 / 2 illisibles / 3 à relancer / 1 erreur).
-- `make-env.sh` génère la clé ; `deploy.sh` contrôle forme, doublons, `REMPLACER`, égalité avec `PAYMENT_SECRETS_KEY`, trousseau prod face au staging, refuse `set -x`.
-- DEPLOIEMENT.md (section « Clé dédiée aux IBAN », encadré « Staging — commandes à lancer par l'utilisateur »), SECURITY.md, ADR-007, spec PB2-R4, `setup-dev-env.ps1`.
-- `security-auditor` : 0 critique, 0 élevée ; la moyenne et les faibles corrigées, sauf le lien chiffré ↔ mandat (`ddk2`), documenté comme hors modèle de menace.
-
-Reste à faire :
-
-- L'utilisateur, sur le serveur : poser `DIRECT_DEBIT_IBAN_KEY` dans `/home/deployer/immotopia-saas.env` (commandes de DEPLOIEMENT.md, aucune n'affiche la clé), sauvegarder le fichier hors serveur, puis, après déploiement de la PR, lancer le script en `--dry-run` puis réel. Tant que la clé manque, la création de mandats est refusée sur le staging.
-- Points ouverts hérités de P1 : borne basse de `signedAt`/`revokedAt` ; « Nouveau mandat » désactivé dès qu'un mandat ouvert existe sur le bail ; non joués à la recette P1 : modification d'un mandat, plafond, jour de collecte propre, rôle sans MANAGE, `test:isolation`.
-
-Pièges et décisions :
-
-- `packages/api/.env.demo` a disparu du checkout principal : `npm run demo:sync` refuse de tourner sans lui (base DÉDIÉE `immotopia_demo`) ; à recréer par l'utilisateur avant toute recette sur la démo.
-- Le hook `validate-bash.sh` bloque toute commande qui contient à la fois « push » et « main » : pousser et lancer `gh pr create --base main` séparément.
-- Contrôle d'empreintes entre deux variables : hacher la VALEUR (`cut -d= -f2-`), pas la ligne, sinon les noms rendent toujours les empreintes différentes.
-- Un pilote qui change de worktree avec `EnterWorktree` coupe le shell des sous-agents encore actifs dans l'ancien : attendre leur fin avant de basculer.
 
 ## Branche `feat/pwa-mobile` — 2026-10-15
 

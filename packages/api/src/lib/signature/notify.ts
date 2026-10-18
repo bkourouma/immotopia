@@ -5,8 +5,9 @@ import { emailService } from '../../services/email-service';
 import { appendSignatureEventStandalone } from './events';
 import { buildInviteMessage, buildOtpMessage, signingUrl } from './messages';
 import { getSignatureProvider } from './provider';
+import { createInternalProvider } from './provider/internal';
 import { generateToken, hashToken } from './token';
-import type { DeliveryResult } from './types';
+import type { DeliveryResult, SignatureProvider } from './types';
 
 /**
  * Remise des liens et des codes aux signataires (spec 044), et notification de
@@ -22,6 +23,19 @@ export type InviteSigner = {
   contact: string;
   contactId: string | null;
 };
+
+/**
+ * Transport des invitations et des codes. Un prestataire externe n'envoie rien lui-même ici
+ * (`deliver` refuse) : pour une source `externalGateway` (spec 042 §10, SIG-S6), ImmoTopia garde la
+ * porte et envoie SES messages par ses canaux internes (e-mail, SMS, WhatsApp).
+ */
+let internalTransport: SignatureProvider | null = null;
+function deliveryProvider(): SignatureProvider {
+  const provider = getSignatureProvider();
+  if (!provider.external) return provider;
+  internalTransport ??= createInternalProvider();
+  return internalTransport;
+}
 
 export function languageOf(value: string): Language {
   return isLanguage(value) ? value : 'fr';
@@ -58,7 +72,7 @@ export async function inviteSigner(args: {
     reminder: args.reminder,
     channel
   });
-  const result: DeliveryResult = await getSignatureProvider().deliver({
+  const result: DeliveryResult = await deliveryProvider().deliver({
     tenantId: request.tenantId,
     channel,
     to: signer.contact,
@@ -127,7 +141,7 @@ export async function deliverOtp(args: {
     language: languageOf(args.language),
     channel
   });
-  return getSignatureProvider().deliver({
+  return deliveryProvider().deliver({
     tenantId: args.tenantId,
     channel,
     to: args.signer.contact,

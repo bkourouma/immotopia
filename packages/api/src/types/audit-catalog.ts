@@ -289,6 +289,7 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.DIRECT_DEBIT_MANDATE_REVOKED]: tenant('BILLING', { critical: true }),
   [AuditActionKey.DIRECT_DEBIT_MANDATE_SCAN_UPLOADED]: tenant('BILLING'),
   [AuditActionKey.DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_SIGNED_ELECTRONICALLY]: tenant('BILLING', { critical: true }),
   [AuditActionKey.DIRECT_DEBIT_REMITTANCE_CREATED]: tenant('BILLING'),
   [AuditActionKey.DIRECT_DEBIT_REMITTANCE_REFRESHED]: tenant('BILLING'),
   [AuditActionKey.DIRECT_DEBIT_REMITTANCE_LINE_CANCELED]: tenant('BILLING'),
@@ -297,6 +298,11 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.DIRECT_DEBIT_REMITTANCE_EXPORTED]: tenant('BILLING', { critical: true }),
   [AuditActionKey.DIRECT_DEBIT_REMITTANCE_SUBMITTED]: tenant('BILLING', { critical: true }),
   [AuditActionKey.DIRECT_DEBIT_REMITTANCE_CANCELED]: tenant('BILLING', { critical: true }),
+
+  [AuditActionKey.DIRECT_DEBIT_LINE_SETTLED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.DIRECT_DEBIT_LINE_REJECTED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.DIRECT_DEBIT_RETURN_IMPORTED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_AUTO_SUSPENDED]: tenant('BILLING', { critical: true }),
 
   // Contrôle du stock de chantier (spec 040, B6-R1) : visibles de l'agence.
   [AuditActionKey.STOCK_RECEIPT_RECORDED]: tenant('DATA', { critical: true }),

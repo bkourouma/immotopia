@@ -21,8 +21,10 @@ export interface FileLineInput {
   /** IBAN complet, déchiffré uniquement pour produire le fichier. */
   iban: string;
   amount: number;
-  /** Numéro de bail ; entre dans le libellé de l'opération. */
-  leaseNumber: string;
+  /** Numéro de bail (locatif) ; entre dans le libellé de l'opération. Nul en copropriété. */
+  leaseNumber: string | null;
+  /** Numéro de lot (copropriété) : le libellé devient `CHARGES LOT <n> MM/AAAA`. */
+  lotNumber?: string | null;
   periodYear: number;
   periodMonth: number;
 }

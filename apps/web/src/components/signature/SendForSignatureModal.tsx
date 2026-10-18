@@ -18,6 +18,8 @@ interface SendForSignatureModalProps {
   defaultSigners: SignerInput[];
   /** Faux quand le SMS n'est pas activé sur le serveur (`SignatureTargetContext.smsAvailable`). */
   smsAvailable?: boolean;
+  /** Canaux admis pour ce type de document (ex. jamais « sur place » pour un mandat de prélèvement). */
+  allowedChannels?: SignerChannel[];
   onClose: () => void;
   onCreated: (request: SignatureRequestDto) => void;
 }
@@ -38,6 +40,7 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
   targetId,
   defaultSigners,
   smsAvailable: smsAvailableProp,
+  allowedChannels,
   onClose,
   onCreated
 }) => {
@@ -50,6 +53,8 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
   const [smsFromContext, setSmsFromContext] = useState<boolean | undefined>(undefined);
   // La prop explicite prime ; sinon on lit le contexte de la cible.
   const smsAvailable = smsAvailableProp ?? smsFromContext;
+  const channels =
+    allowedChannels && allowedChannels.length > 0 ? CHANNELS.filter(c => allowedChannels.includes(c)) : CHANNELS;
 
   useEffect(() => {
     if (!open || smsAvailableProp !== undefined) return undefined;
@@ -69,7 +74,11 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
 
   useEffect(() => {
     if (open) {
-      setSigners(defaultSigners.length > 0 ? defaultSigners.map(signer => ({ ...signer })) : [emptySigner()]);
+      const initial = defaultSigners.length > 0 ? defaultSigners.map(signer => ({ ...signer })) : [emptySigner()];
+      // Un canal non admis pour ce type de document est ramené au premier canal admis.
+      setSigners(
+        initial.map(signer => (channels.includes(signer.channel) ? signer : { ...signer, channel: channels[0] }))
+      );
       setError(null);
     }
     // Les préremplissages sont relus à chaque ouverture, pas à chaque rendu du parent.
@@ -149,7 +158,7 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
               onChange={channel => update(index, { channel })}
               aria-label={t('Canal')}
               style={{ width: 120 }}
-              options={CHANNELS.map(channel => {
+              options={channels.map(channel => {
                 // WhatsApp et SMS ne sont offerts que pour un signataire lié à un contact CRM.
                 const phoneChannel = channel === 'WHATSAPP' || channel === 'SMS';
                 const noPhone = phoneChannel && Boolean(signer.contactId) && signer.phoneKnown === false;

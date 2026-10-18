@@ -20,7 +20,7 @@ const DESTRUCTIVE_SUFFIX = /\/(delete|remove|destroy|purge)(?:[-_][A-Za-z0-9]+)*
  */
 // `direct-debit` (spec 042) : mandats de prélèvement ; l'autorisation PDF porte l'IBAN complet.
 const SENSITIVE_SEGMENT =
-  /(secret|token|credential|password|passwd|api-?key|webhook|jwt|invitation|payment-gateway|payment-link|secure-link|private-key|otp|direct-debit)/i;
+  /(secret|token|credential|password|passwd|api-?key|webhook|jwt|invitation|payment-gateway|payment-link|secure-link|private-key|otp|direct-debit|prelevement)/i;
 // Spec 047 : `numeros-reception` désigne les numéros mobile money qui REÇOIVENT l'argent d'une copropriété
 // (changer l'un détourne les paiements) et `preuve` la capture privée d'un paiement déclaré : jamais
 // proposés à l'assistant comme actions ou lectures ordinaires.

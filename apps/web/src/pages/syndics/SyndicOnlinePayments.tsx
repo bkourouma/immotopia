@@ -35,11 +35,14 @@ const { Title, Paragraph } = Typography;
 export const SyndicOnlinePayments: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId, syndicId } = useSyndicRouteContext();
-  const { permissions, ready: permissionsReady } = useMyMenuAccess(tenantId);
-  const canEdit = permissionsReady && (permissions === null || permissions.has('SYNDIC_EDIT'));
   const [collectionBalance, setCollectionBalance] = useState<number | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [deciding, setDeciding] = useState<SyndicOnlineCheckoutRow | null>(null);
+  // Mêmes droits que l'API : vérifier, trancher, reverser = SYNDIC_EDIT ; configurer = en plus TENANT_SETTINGS_EDIT.
+  // `permissions === null` : aucune restriction (administrateur, super-admin, échec réseau).
+  const { permissions, ready } = useMyMenuAccess(tenantId);
+  const canEdit = ready && (permissions === null || permissions.has('SYNDIC_EDIT'));
+  const canEditSettings = canEdit && (permissions === null || permissions.has('TENANT_SETTINGS_EDIT'));
 
   // Paiements déclarés (spec 047) : compteur distinct de celui du paiement en ligne.
   const [declaredRefresh, setDeclaredRefresh] = useState(0);
@@ -165,6 +168,7 @@ export const SyndicOnlinePayments: React.FC = () => {
           tenantId={tenantId}
           syndicId={syndicId}
           refreshToken={refreshToken}
+          canEditSettings={canEditSettings}
           onSettingsLoaded={settings => setCollectionBalance(settings.collectionAccount.balance)}
         />
 
@@ -174,12 +178,14 @@ export const SyndicOnlinePayments: React.FC = () => {
           refreshToken={refreshToken}
           onDecide={setDeciding}
           onChanged={bump}
+          canEdit={canEdit}
         />
 
         <PayoutsPanel
           tenantId={tenantId}
           syndicId={syndicId}
           collectionBalance={collectionBalance}
+          canEdit={canEdit}
           onRecorded={result => {
             // Le solde affiché en haut est celui du 5525 : un reversement d'un numéro de réception n'y touche pas.
             if ((result.treasuryAccountNumber ?? '5525') === '5525')

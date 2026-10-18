@@ -286,7 +286,68 @@ servis en `Cache-Control: no-store`, et audités dans la base avant l'envoi (un
 HMAC-SHA-256 (clé dérivée de `DIRECT_DEBIT_IBAN_KEY`) : un SHA-256 nu d'un
 fichier à une seule ligne permettrait de retrouver l'IBAN par force brute. Les
 routes `direct-debit` sont marquées sensibles pour la passerelle de l'assistant
-IA, qui ne peut ni les lire ni les appeler.
+IA, qui ne peut ni les lire ni les appeler. Le chemin `prelevements` (copropriété,
+P4) l'est aussi, et les permissions `SYNDIC_DIRECT_DEBIT_MANAGE` (copropriété) et
+`RENTAL_DIRECT_DEBIT_MANAGE` donnent seules accès à l'IBAN complet.
+
+**Retours de la banque (P3).** Le fichier de retour importé
+(`POST …/direct-debit/returns/preview` et `/apply`, et leurs équivalents de
+copropriété) est borné avant lecture : 2 Mo et 5 000 lignes au plus, sinon refus.
+Il est lu en mémoire par un parseur maison, **jamais stocké** : l'import ne garde
+que son nom assaini, des compteurs et une empreinte HMAC-SHA-256 (même clé
+dérivée que le fichier de remise). Les erreurs de lecture ne reprennent aucune
+valeur du fichier. Chaque constat est audité sans IBAN. L'avis de prénotification
+et l'avis de rejet ne gardent du destinataire que l'adresse **masquée**
+(`a•••@ex•••.ci`) et sa provenance (compte portail ou fiche contact) ; aucune
+réponse d'API ni aucun journal ne contient l'adresse complète. En copropriété, le
+rejet d'un paiement déjà réglé est refusé, ce qui évite une contre-passation que
+la comptabilité ne sait pas faire.
+
+**Signature électronique d'un mandat de prélèvement.** Le mandat porte l'IBAN
+complet, que le débiteur remet à sa banque : le PDF à signer le contient donc.
+Six règles (SIG-S1 à SIG-S6, contrat dans
+[data-model.md](../../specs/042-prelevement-bancaire/data-model.md) §10.2) :
+
+- _SIG-S1._ Le lien d'invitation ne révèle rien sans le code à usage unique :
+  ni le PDF, ni l'IBAN, même masqué. Le code est demandé avant toute consultation ;
+  il remet un jeton de consultation de 15 minutes (en-tête
+  `X-Signature-View-Token`), seul son SHA-256 est stocké.
+- _SIG-S2._ Pas de signature sans code : la signature « sur place » est refusée
+  pour ces types.
+- _SIG-S3._ Hors du PDF, l'IBAN complet n'apparaît nulle part : titre de la
+  demande, e-mails, SMS, WhatsApp, réponses, journaux, audit, preuve ; au plus
+  son masque.
+- _SIG-S4._ L'empreinte des données du document est un HMAC-SHA-256 à clé dérivée
+  de `DIRECT_DEBIT_IBAN_KEY`, jamais un hachage nu d'un contenu qui porte l'IBAN.
+- _SIG-S5._ Les PDF source, signé et de preuve ne se lisent qu'avec la permission
+  `_MANAGE` du périmètre ; chaque lecture, côté agence comme côté signataire, est
+  auditée dans la base avant l'envoi du fichier.
+- _SIG-S6._ Avec Yousign, ImmoTopia garde la porte : demande créée sans envoi par
+  Yousign (`delivery_mode: 'none'`), invitation et code par ImmoTopia, lien de
+  signature Yousign remis seulement après vérification du code (lu en direct,
+  jamais stocké ni journalisé), et code Yousign en plus au moment de signer.
+  **Risque accepté** : le PDF à IBAN complet est transmis à Yousign, sous-traitant,
+  quand ce fournisseur est configuré. Avec le fournisseur interne, rien ne sort
+  d'ImmoTopia.
+
+Complément (audit de la branche) :
+
+- **Rétention.** `source.pdf` (IBAN complet) est supprimé à l'annulation de la
+  demande. `signed.pdf` est **conservé** tant que le mandat existe : il tient lieu
+  de scan signé (preuve de l'autorisation). Il ne se lit que par la route
+  authentifiée du mandat ou de la demande, avec `_MANAGE`, et chaque lecture est
+  auditée avant l'envoi. Le remplacement par un scan papier remet le lien du
+  mandat à zéro mais ne supprime pas ce fichier.
+- **Jeton de consultation.** Invalidé à la signature, au refus et à l'annulation ;
+  exigé aussi pour refuser. Le lien de signature Yousign n'est accepté que si son
+  hôte est celui de l'API configurée ou un sous-domaine de `yousign.app`.
+- **Rotation de `DIRECT_DEBIT_IBAN_KEY`.** L'empreinte du document (SIG-S4) est
+  recalculée avec la clé courante : une rotation rend les demandes de signature
+  ouvertes non valides (annulées au scellement ou à la lecture). Les renvoyer après
+  une rotation (voir DEPLOIEMENT.md).
+- **Destinataire différent.** Si l'agence envoie l'invitation à une adresse autre
+  que celle du débiteur, l'envoi n'est pas bloqué mais l'audit
+  (`SIGNATURE_REQUEST_SENT`) porte `signerOverride` et l'adresse masquée.
 
 **Déployer la production.** `deploy.sh prod` prouve l'état git au lieu de le
 supposer : git utilisable, version identifiable, arbre propre, `origin/main`

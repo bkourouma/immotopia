@@ -4,7 +4,13 @@
  */
 
 export type SignatureKind =
-  'LEASE_CONTRACT' | 'MANAGEMENT_MANDATE' | 'SALE_MANDATE' | 'LEASE_INSPECTION' | 'SALE_AGREEMENT';
+  | 'LEASE_CONTRACT'
+  | 'MANAGEMENT_MANDATE'
+  | 'SALE_MANDATE'
+  | 'LEASE_INSPECTION'
+  | 'SALE_AGREEMENT'
+  | 'DIRECT_DEBIT_MANDATE'
+  | 'SYNDIC_DIRECT_DEBIT_MANDATE';
 export type SignatureRequestStatus =
   'DRAFT' | 'SENT' | 'PARTIALLY_SIGNED' | 'COMPLETED' | 'DECLINED' | 'EXPIRED' | 'CANCELED';
 export type SignerStatus = 'PENDING' | 'OPENED' | 'SIGNED' | 'DECLINED';
@@ -65,6 +71,16 @@ export interface PublicSignatureDto {
   consentText: string;
   /** Faux tant que ce n'est pas le tour du signataire (signature séquentielle). */
   canSign?: boolean;
+  /** Types « code avant consultation » (prélèvement) : rien du document avant la vérification du code. */
+  codeRequiredBeforeView?: boolean;
+  /** Fournisseur externe : la signature se fait chez le prestataire, après la vérification du code. */
+  external?: boolean;
+}
+
+/** Réponse de `POST /otp/verify`. */
+export interface PublicVerifyResult {
+  viewToken: string;
+  expiresAt?: string;
 }
 
 export interface PublicOtpResult {

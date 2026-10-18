@@ -349,6 +349,7 @@
   "Le type de contact est requis": "The contact type is required",
   "Lead": "Lead",
   "Leads convertis": "Leads converted",
+  "Les avis de prélèvement partent à l'adresse du compte portail :": "Direct debit notices are sent to the portal account address:",
   "les filtres avancés": "the advanced filters",
   "Les paramètres de la route sont manquants ou invalides.": "The route parameters are missing or invalid.",
   "Lieu": "Place",

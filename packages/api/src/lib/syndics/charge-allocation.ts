@@ -86,7 +86,7 @@ export interface LotPaymentInput {
   /** Spec 042 : identifiant de transaction du fournisseur (unique en base). */
   providerTransactionId?: string | null;
   /** Spec 042 / 047 : provenance ; `MANUAL` par defaut (`DECLARED` = paiement mobile money declare). */
-  origin?: 'MANUAL' | 'ONLINE' | 'DECLARED';
+  origin?: 'MANUAL' | 'ONLINE' | 'DIRECT_DEBIT' | 'DECLARED';
   /** Spec 042 / 047 : compte de tresorerie debite ; absent = deduit de `method` (521/571). */
   treasuryAccountNumber?: CollectionTreasuryAccount;
 }
