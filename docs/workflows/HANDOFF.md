@@ -18,10 +18,10 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
-## Branche `orch/2026-10-18-recette-syndic` — 2026-10-18
+## Recette Syndic du 18/10 — fusionnée et déployée (2026-10-18)
 
-**État :** correctifs de la recette Syndic du 18/10 (staging, ChatGPT agent puis complétée) livrés en 10 lots fusionnés dans cette branche d'intégration, PR vers `main` ouverte, à fusionner par l'utilisateur. Rien n'est déployé.
-**Dernier commit :** fusion du lot T (`6b4fc71a`) + cette passation.
+**État :** correctifs de la recette Syndic du 18/10 fusionnés dans le tronc (PR #172, commit `0d918d30`) et déployés sur le staging le 2026-10-18 vers 23 h (workflow « Déploiement », run 39174199627, vérifié : `/health` OK et textes des correctifs présents dans les fichiers servis). Production non déployée.
+**Dernier commit :** `0d918d30`. Branche `orch/2026-10-18-recette-syndic` gardée sur le dépôt distant.
 
 **Fait :** portail copropriétaire (historique masqué seulement après un ancien propriétaire, `lib/syndics/lot-owner-history.ts`) ; revente/indivision demandée à la création d'un profil (409 `OPEN_OWNERS`, `previousOwnersHandling` CLOSE/KEEP) ; doublon de profil refusé ; ajustement débit qui consomme l'avance ; validation d'une déclaration sur tout appel ouvert ; déclarations de l'ancien propriétaire invisibles ; budget à plusieurs postes ; signature/cachet sur l'avis d'appel PDF/Word (marqueurs DOCX `SIGNATURE_EMETTEUR`, `CACHET_EMETTEUR`, modèles régénérés) ; documents d'AG toujours en français (`runInFrench`) ; lot absent hors de tous les décomptes ; procuration reprise à l'émargement ; FCFA au portail ; traductions en/ar (43 valeurs arabes retirées des catalogues anglais) ; wiki (33 lignes) et README du wiki rétabli (vidé par `d3f2fd44`).
 **Décisions métier validées :** H1 à H5 (voir la PR).
