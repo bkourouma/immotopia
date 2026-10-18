@@ -380,4 +380,33 @@ describe('Syndics profiles/incidents page', () => {
     // du formulaire est celle de l'incident.
     expect(formInstance.setFieldsValue).toHaveBeenCalledWith({ lotId: 'lot-1' });
   });
+
+  it('un double clic sur « OK » de la modale profil propriétaire ne crée le profil qu’une fois', async () => {
+    mockApiClient.post.mockResolvedValue({ data: { success: true, data: { id: 'op-2' } } });
+    // Validation asynchrone : le second clic arrive avant la fin du premier.
+    formValidateFields.mockResolvedValue({
+      lotId: 'lot-1',
+      contactId: 'c-1',
+      ownershipPercentage: 100,
+      ownedSince: '2026-01-01',
+      portalAccessEnabled: false
+    });
+
+    renderWithRoute();
+    fireEvent.click(await screen.findByText('Profil propriétaire'));
+
+    // La modale d'invitation (sans libellé de validation) précède la modale profil propriétaire.
+    const okButtons = screen.getAllByText('OK');
+    fireEvent.click(okButtons[1]);
+    fireEvent.click(okButtons[1]);
+
+    await waitFor(() =>
+      expect(mockApiClient.post).toHaveBeenCalledWith(
+        '/tenants/tenant-1/syndics/syndic-1/profils/proprietaires',
+        expect.objectContaining({ lotId: 'lot-1', contactId: 'c-1' })
+      )
+    );
+    expect(mockApiClient.post).toHaveBeenCalledTimes(1);
+    formValidateFields.mockReset();
+  });
 });

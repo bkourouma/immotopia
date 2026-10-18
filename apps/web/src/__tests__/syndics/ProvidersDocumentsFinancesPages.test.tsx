@@ -404,10 +404,12 @@ describe('Providers/Documents pages', () => {
     } as never);
     renderWithRoute('/tenant/tenant-1/syndics/syndic-1/documents');
     expect(await screen.findByText('Coffre documentaire')).toBeTruthy();
-    // Titre ET type affichent tous deux « Reglement » depuis que le mock de
-    // `Table` rend chaque colonne (au lieu d'un simple dump JSON) : plusieurs
-    // correspondances sont attendues.
+    // Le titre (« Reglement », donnée du mock) et le type affiché (« Règlement »,
+    // libellé traduit du type REGULATION) sont deux textes distincts : le mock
+    // de `Table` rend chaque colonne, donc les deux sont présents.
     expect((await screen.findAllByText(/Reglement/)).length).toBeGreaterThan(0);
+    // « Règlement » figure aussi dans la liste des types du formulaire d'envoi : on compte les occurrences.
+    expect((await screen.findAllByText('Règlement')).length).toBeGreaterThan(1);
   });
 
   it('télécharge un fichier déposé par la route authentifiée, jamais par /uploads', async () => {

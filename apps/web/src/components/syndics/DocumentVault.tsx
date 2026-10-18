@@ -24,14 +24,17 @@ function isExternalUrl(fileUrl: string | null | undefined): fileUrl is string {
   return Boolean(fileUrl && /^https?:\/\//i.test(fileUrl));
 }
 
-const DOCUMENT_TYPE_LABELS: Record<SyndicateDocument['type'], string> = {
-  REGULATION: 'Reglement',
-  GENERAL_MEETING_MINUTES: t("Proces-verbal d'AG"),
-  DIAGNOSTIC: 'Diagnostic',
-  INSURANCE: 'Assurance',
-  BUDGET: 'Budget',
-  OTHER: 'Autre'
-};
+/** Libellés affichés, construits au rendu : `t()` doit être appelé après le chargement de la langue. */
+function documentTypeLabels(): Record<SyndicateDocument['type'], string> {
+  return {
+    REGULATION: t('Règlement'),
+    GENERAL_MEETING_MINUTES: t("Proces-verbal d'AG"),
+    DIAGNOSTIC: t('Diagnostic'),
+    INSURANCE: t('Assurance'),
+    BUDGET: t('Budget'),
+    OTHER: t('Autre')
+  };
+}
 
 /**
  * Coffre documentaire d'une copropriété.
@@ -57,13 +60,14 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({ documents, tenantI
     }
   };
 
+  const typeLabels = documentTypeLabels();
   const columns: ColumnsType<SyndicateDocument> = [
     { title: t('Titre'), dataIndex: 'title', key: 'title', render: (value: string) => <Text strong>{value}</Text> },
     {
       title: t('Type'),
       dataIndex: 'type',
       key: 'type',
-      render: (value: SyndicateDocument['type']) => <Tag>{DOCUMENT_TYPE_LABELS[value] ?? value}</Tag>
+      render: (value: SyndicateDocument['type']) => <Tag>{typeLabels[value] ?? value}</Tag>
     },
     {
       title: t('Expiration'),
