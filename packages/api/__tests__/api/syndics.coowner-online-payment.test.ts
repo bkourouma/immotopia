@@ -510,6 +510,31 @@ describe('GET /appels — onlinePayable et onlineCheckout', () => {
     expect(call(res.body, IDS.C4)).toMatchObject({ syndicateId: IDS.S2, onlinePayable: false });
   });
 
+  it('déclaration mobile money en attente (spec 047) : pendingDeclaration renseignée et onlinePayable faux sur les seuls appels visés', async () => {
+    db.prisma.syndicPaymentDeclaration.findMany.mockResolvedValueOnce([
+      {
+        id: 'decl-1',
+        syndicateId: IDS.S1,
+        createdAt: new Date('2026-10-17T10:00:00.000Z'),
+        lines: [{ id: 'line-1', lotId: IDS.L1, amount: 50000, chargeCallIds: [IDS.C1] }]
+      }
+    ]);
+
+    const res = await as(request(app).get('/api/portal/copropriete/appels'), 'awa');
+
+    expect(call(res.body, IDS.C1)).toMatchObject({
+      onlinePayable: false,
+      pendingDeclaration: { declarationId: 'decl-1', createdAt: '2026-10-17T10:00:00.000Z' }
+    });
+    expect(call(res.body, IDS.C2)).toMatchObject({ onlinePayable: true, pendingDeclaration: null });
+    // Une seule lecture des déclarations en attente pour tous les appels de la liste.
+    expect(db.prisma.syndicPaymentDeclaration.findMany).toHaveBeenCalledTimes(1);
+    expect(db.prisma.syndicPaymentDeclaration.findMany.mock.calls[0][0].where).toMatchObject({
+      tenantId: IDS.T1,
+      status: 'PENDING'
+    });
+  });
+
   it('droit SYNDIC refusé ou devise non FCFA : onlinePayable faux', async () => {
     db.store.calls.find(c => c.id === IDS.C2)!.currency = 'EUR';
     const eur = await as(request(app).get('/api/portal/copropriete/appels'), 'awa');

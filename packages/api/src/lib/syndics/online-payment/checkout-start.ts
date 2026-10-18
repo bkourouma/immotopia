@@ -12,6 +12,7 @@ import { requestProviderCheckoutRedirect } from '../../payment-gateway/checkout-
 import { gatewayClientForMode } from '../../payment-gateway/paysecurehub';
 import { sumAllocationsByCall } from '../charge-allocation';
 import { toCents } from '../charge-allocation-plan';
+import { pendingDeclarationsByCall } from '../declared-payment/declaration-queries';
 import { assertSyndicOnlinePaymentAllowed } from './feature-gate';
 import { assertSyndicConfigUsable, loadSyndicGatewayConfig, syndicCredentialsFrom } from './gateway-config';
 import { isSupportedCurrency } from './types';
@@ -242,6 +243,20 @@ export async function startSyndicCheckout(params: StartSyndicCheckoutParams): Pr
     select: { id: true }
   });
   if (!lot) throw new NotFoundError(t('Lot introuvable.'));
+
+  // Spec 047 (R15) : un appel visé par un paiement mobile money déclaré en attente ne se paie pas en
+  // ligne en même temps (risque de double paiement). Relu AVANT la transaction (lecture hors `tx`).
+  const declared = await pendingDeclarationsByCall(tenantId, [lotId]);
+  const blockedCallIds = ids.filter(id => declared.has(id));
+  if (blockedCallIds.length > 0) {
+    throw new AppError(
+      t('Un paiement mobile money déclaré est en cours de vérification pour cet appel.'),
+      409,
+      ErrorCode.CHARGE_CALL_DECLARATION_PENDING,
+      undefined,
+      { chargeCallIds: blockedCallIds }
+    );
+  }
 
   // Chargée AVANT la transaction (aucune requête hors `tx` pendant qu'elle tient une connexion).
   const config = assertSyndicConfigUsable(await loadSyndicGatewayConfig(tenantId, syndicateId));

@@ -25,6 +25,10 @@ jest.mock('@prisma/client', () => {
       findFirst: jest.fn(),
       findMany: jest.fn()
     },
+    // Spec 047 : aucune déclaration de paiement mobile money en attente.
+    syndicPaymentDeclaration: {
+      findMany: jest.fn(async () => [])
+    },
     paymentReminder: {
       count: jest.fn(),
       create: jest.fn()

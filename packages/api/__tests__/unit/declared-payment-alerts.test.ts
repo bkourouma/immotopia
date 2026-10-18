@@ -289,7 +289,7 @@ describe('EXCESS et PARTIAL', () => {
     });
 
     it('un lot sans appel ouvert : tout est excédent (avance)', async () => {
-      mockDb.chargeCall.rows = mockDb.chargeCall.rows.filter(row => row.lotId !== LOT_1);
+      mockDb.chargeCall.rows = mockDb.chargeCall.rows.filter((row: any) => row.lotId !== LOT_1);
       const alerts = await computeDeclarationAlerts(mockDb as any, empty(40000), NOW);
       expect(only(alerts, 'EXCESS')).toEqual([{ kind: 'EXCESS', lotId: LOT_1, excess: 40000 }]);
     });

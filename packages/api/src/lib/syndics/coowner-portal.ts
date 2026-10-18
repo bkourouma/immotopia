@@ -10,6 +10,7 @@ import { applyChronologicalBalances } from './owner-account-running-balance';
 import { getSyndicOnlineAvailabilities } from './online-payment/gateway-config';
 import { PENDING_REUSE_WINDOW_MS } from './online-payment/checkout-start';
 import { isSupportedCurrency } from './online-payment/types';
+import { pendingDeclarationsByCall } from './declared-payment/declaration-queries';
 
 /**
  * Portail copropriétaire — lectures, en lecture seule.
@@ -422,9 +423,11 @@ export async function listCoOwnerChargeCalls(
   const callIds = calls.map(call => call.id);
   const paidCentsByCall = await sumAllocationsByCall(prisma, callIds);
   // Paiement en ligne : UNE disponibilité par copropriété du périmètre, UNE requête de tentatives ouvertes.
-  const [availabilities, openByCall] = await Promise.all([
+  const [availabilities, openByCall, declaredByCall] = await Promise.all([
     getSyndicOnlineAvailabilities(scope.tenantId, Array.from(new Set(calls.map(call => call.syndicateId)))),
-    loadOpenCheckoutsByCall(scope, lotIds, callIds, filters.tenantClientId ?? null)
+    loadOpenCheckoutsByCall(scope, lotIds, callIds, filters.tenantClientId ?? null),
+    // Spec 047 : déclarations de paiement mobile money en attente qui visent ces appels.
+    pendingDeclarationsByCall(scope.tenantId, lotIds)
   ]);
 
   const now = new Date();
@@ -434,6 +437,7 @@ export async function listCoOwnerChargeCalls(
     const outstanding = computeOutstanding(amount, paid);
     const lot = lotById.get(call.lotId);
     const open = openByCall.get(call.id);
+    const declared = declaredByCall.get(call.id);
     return {
       id: call.id,
       syndicateId: call.syndicateId,
@@ -448,11 +452,17 @@ export async function listCoOwnerChargeCalls(
       status: deriveChargeCallStatus(call.status as ChargeCallStatusValue, call.dueDate, now),
       lot: lot ? { id: lot.id, lotNumber: lot.lotNumber, lotType: lot.lotType } : null,
       syndicate: syndicates.get(call.syndicateId)?.name ?? null,
-      // Copropriété payable en ligne ET reste dû > 0 ET devise FCFA (contracts §2.2).
+      // Copropriété payable en ligne ET reste dû > 0 ET devise FCFA (contracts §2.2), ET aucune
+      // déclaration de paiement mobile money en attente sur l'appel (spec 047, R15).
       onlinePayable:
         availabilities.get(call.syndicateId)?.available === true &&
         outstanding > 0 &&
-        isSupportedCurrency(call.currency),
+        isSupportedCurrency(call.currency) &&
+        !declared,
+      // Spec 047 : déclaration en attente qui vise cet appel (le paiement en ligne est alors bloqué).
+      pendingDeclaration: declared
+        ? { declarationId: declared.declarationId, createdAt: declared.createdAt.toISOString() }
+        : null,
       onlineCheckout: open?.state ?? ('NONE' as CoOwnerOnlineCheckoutState),
       // Code du paiement ouvert DE CE COMPTE (reprise), sinon null.
       onlineCheckoutCode: open?.code ?? null

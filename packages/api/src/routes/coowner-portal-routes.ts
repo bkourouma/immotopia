@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireCoOwnerPortalAccess } from '../middleware/coowner-portal-access';
 import {
   coOwnerChargeNoticeRateLimiter,
+  coOwnerDeclarationCreateLimiter,
   coOwnerMeetingAccessRateLimiter,
   coOwnerPortalPdfRateLimiter
 } from '../middleware/rate-limit-middleware';
@@ -32,6 +33,13 @@ import {
   getCoOwnerOnlinePaymentHandler,
   startCoOwnerOnlinePaymentHandler
 } from '../controllers/coowner-online-payment-controller';
+import {
+  cancelCoOwnerDeclarationHandler,
+  createCoOwnerDeclarationHandler,
+  getCoOwnerDeclaredAvailabilityHandler,
+  listCoOwnerDeclarationsHandler
+} from '../controllers/coowner-declared-payment-controller';
+import { receiveDeclarationProof } from '../middleware/declared-proof-upload';
 
 /**
  * Limiteurs du paiement en ligne, posés APRÈS `authenticate` et la garde du
@@ -93,5 +101,18 @@ router.get(
 );
 router.post('/paiements-en-ligne', coOwnerOnlinePaymentStartLimiter, startCoOwnerOnlinePaymentHandler);
 router.get('/paiements-en-ligne/:codePaiement', coOwnerOnlinePaymentStatusLimiter, getCoOwnerOnlinePaymentHandler);
+
+// Spec 047 : paiement mobile money déclaré. Chemins littéraux (`disponibilite`, plus tard `lecture`)
+// AVANT `:declarationId`. Droit SYNDIC contrôlé dans le moteur (portail hors garde d'abonnement).
+// Limiteur AVANT le parseur multipart, après authenticate et la garde du portail.
+router.get('/paiements-declares/disponibilite', getCoOwnerDeclaredAvailabilityHandler);
+router.post(
+  '/paiements-declares',
+  coOwnerDeclarationCreateLimiter,
+  receiveDeclarationProof,
+  createCoOwnerDeclarationHandler
+);
+router.get('/paiements-declares', listCoOwnerDeclarationsHandler);
+router.post('/paiements-declares/:declarationId/annulation', cancelCoOwnerDeclarationHandler);
 
 export default router;

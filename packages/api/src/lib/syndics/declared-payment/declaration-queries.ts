@@ -166,7 +166,9 @@ async function loadLineDocuments(
           receipt.issuedAt.getTime() <= to
         );
       })
-      .map(receipt => ({ id: receipt.id, kind: receipt.kind as DocumentRef['kind'], number: receipt.number }));
+      .map(receipt => ({ id: receipt.id, kind: receipt.kind as DocumentRef['kind'], number: receipt.number }))
+      // Ordre stable : le reçu d'abord, puis la quittance, puis par numéro.
+      .sort((a, b) => (a.kind === b.kind ? a.number.localeCompare(b.number) : a.kind === 'RECEIPT' ? -1 : 1));
     result.set(line.lineId, documents);
   }
   return result;
