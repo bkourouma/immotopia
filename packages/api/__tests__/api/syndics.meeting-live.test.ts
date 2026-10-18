@@ -678,7 +678,7 @@ describe('Routes publiques : etat et rejoindre', () => {
     expect(admin.body.data.participants).toMatchObject({ joined: 1 });
   });
 
-  it('ne retrograde jamais un emargement du gestionnaire, mais remplace un ABSENT', async () => {
+  it('ne retrograde jamais un emargement du gestionnaire et laisse un lot ABSENT absent (il ne vote pas)', async () => {
     await request(app)
       .put(url(M1, `/presences/${L1}`))
       .send({ status: 'REPRESENTED', representedByContactId: ERIC });
@@ -692,7 +692,7 @@ describe('Routes publiques : etat et rejoindre', () => {
       recordedBy: 'MANAGER',
       representedByContactId: ERIC
     });
-    expect(attendanceOf(L3)).toMatchObject({ status: 'PRESENT', recordedBy: 'SELF', mode: 'ONLINE' });
+    expect(attendanceOf(L3)).toMatchObject({ status: 'ABSENT', recordedBy: 'MANAGER' });
   });
 
   it('un mandataire rejoint : le lot du mandant est REPRESENTED, le sien reste a lui', async () => {

@@ -14,7 +14,7 @@ import {
 } from '../../services/syndic-service';
 import { isSafeVideoUrl } from '../../services/public-meeting-live-service';
 import type { LiveMeetingAdminView, MeetingParticipantView } from '../../types/syndic-live-types';
-import type { MeetingStatus } from '../../types/syndic-types';
+import type { MeetingProxy, MeetingStatus } from '../../types/syndic-types';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { LiveLotsTable, type ContactOption, type LotAttendanceChange } from './live/LiveLotsTable';
 import { apiErrorText as errorText, useMeetingRecordings, useMeetingVisio } from './visio/use-meeting-visio';
@@ -24,6 +24,7 @@ import { MeetingVisioCard } from './visio/MeetingVisioCard';
 import { MeetingDiscussionCard } from './visio/MeetingDiscussionCard';
 import { useMeetingDiscussion } from './visio/use-meeting-discussion';
 import { MeetingRecordingsCard } from './visio/MeetingRecordingsCard';
+import { contactName } from './meeting-governance';
 import { clampPercent } from './live/live-labels';
 import { t } from '../../i18n/t';
 
@@ -41,6 +42,8 @@ interface MeetingLiveConsoleProps {
   videoConferenceUrl?: string | null;
   /** Change quand la fiche de l'AG a été rechargée (vote saisi à la main…) : relance une lecture. */
   refreshKey?: string;
+  /** Procurations de l'AG : permettent de pré-remplir le mandataire d'un lot « Représenté ». */
+  proxies?: MeetingProxy[];
   /** Appelé après une modification de la fiche (URL de visio) pour la recharger. */
   onMeetingChanged?: () => void | Promise<void>;
   /**
@@ -144,6 +147,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   meetingStatus,
   videoConferenceUrl,
   refreshKey,
+  proxies,
   onMeetingChanged,
   onLiveChanged
 }) => {
@@ -164,13 +168,19 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   const lastSignature = useRef<string | null>(null);
   const onLiveChangedRef = useRef(onLiveChanged);
   onLiveChangedRef.current = onLiveChanged;
+  // Garde de séquence : chaque mutation (début et fin) incrémente le compteur ; une lecture lancée
+  // avant la dernière mutation appliquée est périmée et ne doit pas écraser la vue.
+  const mutationSeq = useRef(0);
 
   const load = useCallback(async (): Promise<number | false | void> => {
+    const seqAtStart = mutationSeq.current;
     try {
       const [view, list] = await Promise.all([
         getLiveMeeting(tenantId, syndicId, meetingId),
         listMeetingParticipants(tenantId, syndicId, meetingId)
       ]);
+      // Une mutation a eu lieu pendant la lecture : cette vue est périmée, la relance déjà demandée la remplacera.
+      if (mutationSeq.current !== seqAtStart) return frozen ? false : undefined;
       setLive(view);
       setParticipants(list);
       setError(null);
@@ -212,12 +222,34 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   const discussionState = useMeetingDiscussion({ tenantId, syndicId, meetingId, meetingStatus });
   const { discussion } = discussionState;
 
-  const contacts = useMemo(() => uniqueContacts(live, participants), [live, participants]);
+  // Mandataire de la procuration, par mandant (votant du lot) : sert au « Représenté » en un clic.
+  const proxyHolders = useMemo(() => {
+    const byGrantor: Record<string, ContactOption> = {};
+    (proxies ?? []).forEach(proxy => {
+      byGrantor[proxy.grantorContactId] = {
+        contactId: proxy.representativeContactId,
+        name: contactName(proxy.representative)
+      };
+    });
+    return byGrantor;
+  }, [proxies]);
+
+  const contacts = useMemo(() => {
+    const merged = uniqueContacts(live, participants);
+    // Un mandataire extérieur aux votants doit rester sélectionnable (et afficher son nom).
+    Object.values(proxyHolders).forEach(holder => {
+      if (!merged.some(contact => contact.contactId === holder.contactId)) merged.push(holder);
+    });
+    return merged.sort((a, b) => a.name.localeCompare(b.name));
+  }, [live, participants, proxyHolders]);
 
   const runAction = async (action: () => Promise<LiveMeetingAdminView>, okText: string, failText: string) => {
     setBusy(true);
+    mutationSeq.current += 1;
     try {
-      setLive(await action());
+      const view = await action();
+      mutationSeq.current += 1;
+      setLive(view);
       message.success(okText);
       refresh();
     } catch (err) {
@@ -243,9 +275,12 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
 
   const handleVote = async (resolutionId: string, open: boolean) => {
     setBusyResolutionId(resolutionId);
+    mutationSeq.current += 1;
     try {
       const call = open ? openResolutionVote : closeResolutionVote;
-      setLive(await call(tenantId, syndicId, meetingId, resolutionId));
+      const view = await call(tenantId, syndicId, meetingId, resolutionId);
+      mutationSeq.current += 1;
+      setLive(view);
       message.success(open ? t('Vote ouvert') : t('Vote clos'));
       refresh();
     } catch (err) {
@@ -461,6 +496,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
         <LiveLotsTable
           lots={live?.lots ?? []}
           contacts={contacts}
+          proxyHolders={proxyHolders}
           readOnly={frozen}
           busy={busy}
           onSetLot={handleSetLot}

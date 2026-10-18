@@ -159,7 +159,7 @@ export async function buildAdminView(
       voteOpenedAt: resolution.voteOpenedAt,
       voteClosedAt: resolution.voteClosedAt,
       ballotCount: resolution.votes.filter(vote => knownLotIds.has(vote.lotId)).length,
-      tally: computeResolutionTally(resolution.majorityRule, ctx.majorityLots, resolution.votes),
+      tally: computeResolutionTally(resolution.majorityRule, ctx.majorityLots, resolution.votes, ctx.attendances),
       votes: resolution.votes.map(vote => ({
         lotId: vote.lotId,
         vote: vote.vote,
@@ -202,6 +202,23 @@ function assertAttendanceWritable(meeting: LiveMeetingBase): void {
   );
 }
 
+/**
+ * Mandataire de la procuration de l'AG accordee par l'un des votants du lot, ou null.
+ * Plusieurs candidates : le premier votant (ordre du lot) qui a une procuration,
+ * puis la premiere procuration de ce votant dans l'ordre de lecture de gMProxy
+ * (deterministe pour un jeu de donnees donne).
+ */
+export function proxyHolderForLot(
+  proxies: Array<{ grantorContactId: string; representativeContactId: string }>,
+  voters: Array<{ contactId: string }>
+): string | null {
+  for (const voter of voters) {
+    const proxy = proxies.find(candidate => candidate.grantorContactId === voter.contactId);
+    if (proxy) return proxy.representativeContactId;
+  }
+  return null;
+}
+
 export interface SetAttendanceInput {
   lotIds: string[];
   status: LiveAttendanceStatus;
@@ -211,8 +228,8 @@ export interface SetAttendanceInput {
 
 /**
  * Emargement par le gestionnaire (un lot ou plusieurs). Cree ou remplace la
- * ligne de chaque lot ; `ABSENT` garde la ligne (le lot sort du quorum s'il
- * n'a pas vote). Un lot ou un contact d'une autre agence = 404.
+ * ligne de chaque lot ; `ABSENT` garde la ligne (le lot sort du quorum et ne
+ * peut plus voter). Un lot ou un contact d'une autre agence = 404.
  */
 export async function setLotAttendances(
   tenantId: string,
@@ -236,9 +253,11 @@ export async function setLotAttendances(
       throw new NotFoundError(t('Lot introuvable ou inaccessible'));
     }
 
-    const representedBy = input.status === 'REPRESENTED' ? (input.representedByContactId ?? null) : null;
-    if (representedBy) {
-      await assertBelongsToTenant(tx, 'crmContact', representedBy, tenantId, {
+    // Le mandataire explicite n'est verifie que s'il est fourni : les procurations
+    // existantes ont deja ete validees a leur creation.
+    const explicitRepresentedBy = input.status === 'REPRESENTED' ? (input.representedByContactId ?? null) : null;
+    if (explicitRepresentedBy) {
+      await assertBelongsToTenant(tx, 'crmContact', explicitRepresentedBy, tenantId, {
         message: t('Contact introuvable ou inaccessible')
       });
     }
@@ -248,6 +267,11 @@ export async function setLotAttendances(
     const mode: LiveAttendanceMode = input.mode ?? 'IN_PERSON';
 
     for (const lotId of lotIds) {
+      // REPRESENTED : mandataire explicite, sinon celui de la procuration d'un votant du lot.
+      const representedBy =
+        input.status === 'REPRESENTED'
+          ? (explicitRepresentedBy ?? proxyHolderForLot(ctx.proxies, votersByLot.get(lotId) ?? []))
+          : null;
       const attendeeContactId =
         input.status === 'ABSENT'
           ? null

@@ -179,3 +179,19 @@ describe('computeMeetingAttendance', () => {
     });
   });
 });
+
+describe('computeResolutionTally - lot emarge ABSENT', () => {
+  it('ignore le bulletin d un lot ABSENT quand les emargements sont fournis', () => {
+    const lots = [
+      { id: 'a', generalShares: 100 },
+      { id: 'b', generalShares: 300 }
+    ] as MajorityLot[];
+    const votes = [
+      { lotId: 'a', vote: 'FOR' as const },
+      { lotId: 'b', vote: 'AGAINST' as const }
+    ];
+    expect(computeResolutionTally('ARTICLE_24', lots, votes).result).toBe('REJECTED');
+    const tally = computeResolutionTally('ARTICLE_24', lots, votes, [{ lotId: 'b', status: 'ABSENT' }]);
+    expect(tally).toMatchObject({ votesAgainst: 0, votesFor: 1, result: 'APPROVED' });
+  });
+});

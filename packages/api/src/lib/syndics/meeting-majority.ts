@@ -121,10 +121,13 @@ function ownerKeyOf(lot: MajorityLot): string {
 export function computeResolutionTally(
   majorityRule: string | null | undefined,
   lots: MajorityLot[],
-  votes: MajorityVote[]
+  votes: MajorityVote[],
+  attendances: MajorityAttendance[] = []
 ): ResolutionTally {
   const rule = normalizeMajorityRule(majorityRule);
   const lotsById = new Map(lots.map(lot => [lot.id, lot]));
+  // Un lot emarge ABSENT ne peut pas voter : ses eventuels bulletins sont ignores.
+  const absentLotIds = new Set(attendances.filter(a => a.status === 'ABSENT').map(a => a.lotId));
 
   let votesFor = 0;
   let votesAgainst = 0;
@@ -137,7 +140,7 @@ export function computeResolutionTally(
   for (const vote of votes) {
     const lot = lotsById.get(vote.lotId);
     // Un vote dont le lot n'appartient plus a la copropriete ne compte pas.
-    if (!lot) continue;
+    if (!lot || absentLotIds.has(vote.lotId)) continue;
     const shares = lot.generalShares || 0;
     if (vote.vote === 'FOR') {
       votesFor += 1;
@@ -205,9 +208,11 @@ export function computeResolutionTally(
 
 /**
  * Presence de l'assemblee (D3, spec 043) : un lot est compte s'il est emarge
- * PRESENT ou REPRESENTED, OU s'il a vote au moins une fois (compatibilite avec
- * les assemblees deja tenues, sans emargement). Un lot emarge ABSENT mais qui a
- * vote compte comme present. Indicatif, aucune regle de quorum n'est bloquante.
+ * PRESENT ou REPRESENTED, OU s'il a vote au moins une fois SANS ligne
+ * d'emargement (compatibilite avec les assemblees deja tenues). Un lot emarge
+ * ABSENT n'est JAMAIS compte (ni present ni votant), meme s'il figure dans
+ * `votes` : un lot absent ne peut pas voter. Indicatif, aucune regle de quorum
+ * n'est bloquante.
  */
 export function computeMeetingAttendance(
   lots: MajorityLot[],
@@ -226,6 +231,7 @@ export function computeMeetingAttendance(
 
   for (const lot of lots) {
     const attendance = attendanceByLot.get(lot.id);
+    if (attendance?.status === 'ABSENT') continue;
     const emargedIn = attendance?.status === 'PRESENT' || attendance?.status === 'REPRESENTED';
     if (!emargedIn && !votedIds.has(lot.id)) continue;
     const shares = lot.generalShares || 0;
