@@ -12,6 +12,7 @@ const mockRoom = {
   listParticipants: jest.fn(),
   getParticipant: jest.fn(),
   updateParticipant: jest.fn(),
+  mutePublishedTrack: jest.fn(),
   removeParticipant: jest.fn(),
   deleteRoom: jest.fn(),
   sendData: jest.fn()
@@ -70,9 +71,9 @@ describe('configuration', () => {
   it('non configurée : ConflictError (409), aucun appel réseau', async () => {
     mockEnv.LIVEKIT_URL = undefined;
     await expect(livekit.ensureRoom('r')).rejects.toBeInstanceOf(ConflictError);
-    await expect(livekit.mintParticipantToken({ roomName: 'r', identity: 'i', name: 'n' })).rejects.toThrow(
-      "La visio intégrée n'est pas activée"
-    );
+    await expect(
+      livekit.mintParticipantToken({ roomName: 'r', identity: 'i', name: 'n', canPublish: false })
+    ).rejects.toThrow("La visio intégrée n'est pas activée");
     expect(mockRoomCtor).not.toHaveBeenCalled();
   });
 
@@ -87,8 +88,13 @@ describe('configuration', () => {
 });
 
 describe('jetons', () => {
-  it('copropriétaire : regarde et écoute, ne publie pas, pas de données, pas roomAdmin', async () => {
-    const minted = await livekit.mintParticipantToken({ roomName: 'room-1', identity: 'part-1', name: 'Awa Traore' });
+  it('copropriétaire interdit : regarde et écoute, ne publie pas, pas de données, pas roomAdmin', async () => {
+    const minted = await livekit.mintParticipantToken({
+      roomName: 'room-1',
+      identity: 'part-1',
+      name: 'Awa Traore',
+      canPublish: false
+    });
     const claims = decode(minted.token);
     expect(claims.sub).toBe('part-1');
     expect(claims.name).toBe('Awa Traore');
@@ -110,6 +116,27 @@ describe('jetons', () => {
       roomName: 'room-1'
     });
     expect(Math.abs(new Date(minted.expiresAt).getTime() - (Date.now() + 600_000))).toBeLessThan(5_000);
+  });
+
+  it('copropriétaire autorisé : micro et caméra seulement, jamais de partage d écran ni de données', async () => {
+    const minted = await livekit.mintParticipantToken({
+      roomName: 'room-1',
+      identity: 'part-1',
+      name: 'Awa Traore',
+      canPublish: true
+    });
+    const claims = decode(minted.token);
+    expect(claims.video).toMatchObject({
+      room: 'room-1',
+      roomJoin: true,
+      canSubscribe: true,
+      canPublish: true,
+      canPublishData: false,
+      canUpdateOwnMetadata: false
+    });
+    expect(claims.video.roomAdmin).toBeFalsy();
+    expect(claims.video.canPublishSources).toEqual(['microphone', 'camera']);
+    expect(claims.video.canPublishSources).not.toContain('screen_share');
   });
 
   it("gestionnaire : micro, caméra, partage d'écran ; pas roomAdmin, pas de données", async () => {
@@ -135,7 +162,7 @@ describe('jetons', () => {
   });
 
   it("le secret n'apparaît jamais dans la réponse", async () => {
-    const minted = await livekit.mintParticipantToken({ roomName: 'r', identity: 'i', name: 'n' });
+    const minted = await livekit.mintParticipantToken({ roomName: 'r', identity: 'i', name: 'n', canPublish: true });
     expect(JSON.stringify(minted)).not.toContain(SECRET);
   });
 });
@@ -185,6 +212,41 @@ describe('salles et modération', () => {
       },
       attributes: { main_levee: '' }
     });
+  });
+
+  it('droit retiré ou rendu à toute la salle : les mains levées ne sont pas baissées', async () => {
+    await livekit.setCanSpeak('r', 'p1', false, { lowerHand: false });
+    expect(mockRoom.updateParticipant).toHaveBeenCalledWith('r', 'p1', {
+      permission: { canSubscribe: true, canPublish: false, canPublishData: false, canPublishSources: [] }
+    });
+  });
+
+  it('couper : seules les pistes publiées, non coupées, des sources demandées sont coupées', async () => {
+    mockRoom.getParticipant.mockResolvedValueOnce({
+      identity: 'p1',
+      tracks: [
+        { sid: 'TR_mic', source: TrackSource.MICROPHONE, muted: false },
+        { sid: 'TR_cam', source: TrackSource.CAMERA, muted: false },
+        { sid: 'TR_screen', source: TrackSource.SCREEN_SHARE, muted: false },
+        { sid: 'TR_mic2', source: TrackSource.MICROPHONE, muted: true }
+      ]
+    });
+    await expect(livekit.muteParticipantTracks('r', 'p1', [TrackSource.MICROPHONE])).resolves.toBe(1);
+    expect(mockRoom.mutePublishedTrack).toHaveBeenCalledTimes(1);
+    expect(mockRoom.mutePublishedTrack).toHaveBeenCalledWith('r', 'p1', 'TR_mic', true);
+  });
+
+  it('couper : participant absent = null, aucune piste touchée ; piste partie entre-temps = ignorée', async () => {
+    mockRoom.getParticipant.mockRejectedValueOnce(notFound());
+    await expect(livekit.muteParticipantTracks('r', 'x', [TrackSource.CAMERA])).resolves.toBeNull();
+    expect(mockRoom.mutePublishedTrack).not.toHaveBeenCalled();
+
+    mockRoom.getParticipant.mockResolvedValueOnce({
+      identity: 'p1',
+      tracks: [{ sid: 'TR_cam', source: TrackSource.CAMERA, muted: false }]
+    });
+    mockRoom.mutePublishedTrack.mockRejectedValueOnce(notFound());
+    await expect(livekit.muteParticipantTracks('r', 'p1', [TrackSource.CAMERA])).resolves.toBe(0);
   });
 
   it('retirer la parole : plus aucune source publiable', async () => {

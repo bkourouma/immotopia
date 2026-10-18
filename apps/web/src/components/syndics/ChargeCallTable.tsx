@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { Button, Space, Tag, Typography } from 'antd';
-import { FilePdfOutlined, FileWordOutlined } from '@ant-design/icons';
+import { FilePdfOutlined, FileWordOutlined, LinkOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
@@ -47,6 +47,21 @@ function computeOutstandingAmount(item: ChargeCall): number {
   return Math.max(0, Number(item.amount) - computePaidAmount(item));
 }
 
+/** Devises que le paiement en ligne accepte (le serveur refuse les autres : `isSupportedCurrency`). */
+const ONLINE_PAYMENT_CURRENCIES = ['XOF', 'FCFA'];
+
+/**
+ * Un lien « Payer cet appel » n'a de sens que pour un appel à reste dû, non
+ * soldé, en francs CFA (spec 042, R8 : le serveur refuse le reste en 400).
+ */
+export function canOfferChargePaymentLink(item: ChargeCall): boolean {
+  return (
+    item.status !== 'PAID' &&
+    Math.round(computeOutstandingAmount(item)) > 0 &&
+    ONLINE_PAYMENT_CURRENCIES.includes((item.currency ?? '').trim().toUpperCase())
+  );
+}
+
 interface ChargeCallTableProps {
   items: ChargeCall[];
   loading?: boolean;
@@ -66,6 +81,13 @@ interface ChargeCallTableProps {
   funds?: Array<{ id: string; name: string }>;
   /** Callback pour l'action « Affecter à un fonds ». Optionnel, même règle que les autres actions. */
   onAssignFund?: (charge: ChargeCall) => void;
+  /**
+   * Callback pour l'action « Lien de paiement » (spec 042, lien « Payer cet
+   * appel »). Optionnel, même règle que les autres actions : l'appelant ne le
+   * fournit que si la copropriété a un paiement en ligne utilisable. Le bouton
+   * n'apparaît ensuite que pour un appel à reste dû (`canOfferChargePaymentLink`).
+   */
+  onPaymentLink?: (charge: ChargeCall) => void;
 }
 
 export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
@@ -75,7 +97,8 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
   onDownloadNotice,
   onDownloadNoticeWord,
   funds,
-  onAssignFund
+  onAssignFund,
+  onPaymentLink
 }) => {
   const fundNames = new Map((funds || []).map(fund => [fund.id, fund.name]));
   const columns: ColumnsType<ChargeCall> = [
@@ -145,7 +168,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
           }
         ]
       : []),
-    ...(onRecordPayment || onDownloadNotice || onDownloadNoticeWord || onAssignFund
+    ...(onRecordPayment || onDownloadNotice || onDownloadNoticeWord || onAssignFund || onPaymentLink
       ? [
           {
             title: t('Actions'),
@@ -170,6 +193,11 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
                 {onAssignFund ? (
                   <Button size="small" onClick={() => onAssignFund(item)}>
                     {t('Affecter à un fonds')}
+                  </Button>
+                ) : null}
+                {onPaymentLink && canOfferChargePaymentLink(item) ? (
+                  <Button size="small" icon={<LinkOutlined />} onClick={() => onPaymentLink(item)}>
+                    {t('Lien de paiement')}
                   </Button>
                 ) : null}
               </Space>

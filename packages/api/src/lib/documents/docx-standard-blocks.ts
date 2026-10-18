@@ -28,7 +28,7 @@ export type Block =
   | { t: 'refs'; rows: Array<[string, string]> }
   | { t: 'grid'; head: string[]; rows: string[][]; widths: number[]; right?: number[]; boldLast?: boolean }
   | { t: 'cols'; left: Block[]; right: Block[] }
-  | { t: 'sign'; left: string[]; right: string[] }
+  | { t: 'sign'; left: string[]; right: string[]; keep?: boolean }
   | { t: 'spacer' }
   | { t: 'pageBreak' };
 
@@ -110,17 +110,22 @@ function colsXml(block: Extract<Block, { t: 'cols' }>): string {
 }
 
 function signXml(block: Extract<Block, { t: 'sign' }>): string {
+  const keepNext = block.keep === true;
   const side = (lines: string[]) =>
     cell(
-      paragraph(lines[0], { bold: true, color: COLOR.navy, after: 40 }) +
+      paragraph(lines[0], { bold: true, color: COLOR.navy, after: 40, keepNext }) +
         lines
           .slice(1)
-          .map(line => paragraph(line, { size: 19, color: COLOR.grey, after: 40 }))
+          .map(line => paragraph(line, { size: 19, color: COLOR.grey, after: 40, keepNext }))
           .join('') +
         spacer(900),
       { width: HALF, borders: 'none' }
     );
-  return spacer(160) + table([row([side(block.left), side(block.right)])], [HALF, HALF]);
+  // `keep` : le bloc reste avec le paragraphe qui le précède (jamais seul sur une page).
+  const gap = keepNext
+    ? '<w:p><w:pPr><w:keepNext/><w:spacing w:before="0" w:after="0" w:line="160" w:lineRule="exact"/></w:pPr></w:p>'
+    : spacer(160);
+  return gap + table([row([side(block.left), side(block.right)])], [HALF, HALF]);
 }
 
 export function renderBlock(block: Block): string {

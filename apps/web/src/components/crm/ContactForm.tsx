@@ -632,7 +632,9 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
               <Form.Item
                 label={t('Commune')}
                 name="communeId"
-                rules={[{ required: true, message: t('La commune est requise') }]}
+                // Obligatoire à la création seulement : une fiche existante sans
+                // commune (import, ancienne saisie) doit rester modifiable.
+                rules={contact ? [] : [{ required: true, message: t('La commune est requise') }]}
               >
                 <LocationSelector
                   value={form.getFieldValue('communeId')}

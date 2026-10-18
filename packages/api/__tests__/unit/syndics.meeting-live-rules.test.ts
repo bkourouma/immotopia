@@ -324,8 +324,9 @@ describe('notifyMeetingConvocation avec lien personnel', () => {
   });
 });
 
+// Spec 045, V16g : l'avis dit que la voix et l'image des participants qui activent micro ou caméra sont enregistrées.
 const NOTICE =
-  "La séance pourra être enregistrée (image et son) ; un avis s'affichera à l'écran pendant l'enregistrement.";
+  "La séance pourra être enregistrée (image et son), y compris la voix et l'image des participants qui activent leur micro ou leur caméra ; un avis s'affichera à l'écran pendant l'enregistrement.";
 
 describe('avis d enregistrement dans la convocation (spec 045)', () => {
   const owner = (id: string) => ({

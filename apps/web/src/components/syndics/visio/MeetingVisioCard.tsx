@@ -1,13 +1,15 @@
 import React, { Suspense, useState } from 'react';
-import { Alert, Button, Card, Checkbox, Modal, Space, Spin, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Checkbox, Modal, Popconfirm, Space, Spin, Switch, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { BellFilled } from '@ant-design/icons';
+import { AudioMutedOutlined, AudioOutlined, BellFilled, StopOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import type {
   MeetingRecordingView,
   MeetingVisioAdminView,
   MeetingVisioParticipant,
+  MeetingVisioTrackState,
   VisioJoinInfo
 } from '../../../types/syndic-live-types';
+import type { VisioMuteSource } from '../../../services/syndic-service';
 import { formatDateTime } from '../live/live-labels';
 import type { VisioDiscussionAdapter } from './use-visio-discussion';
 import { t } from '../../../i18n/t';
@@ -27,6 +29,50 @@ export function sortVisioParticipants(participants: MeetingVisioParticipant[]): 
   });
 }
 
+/* ------------------------------------------------------- micro et caméra (V16) */
+
+/** Droit de publier tel que décidé par le serveur ; repli sur `canSpeak` pour une API plus ancienne. */
+export function isMediaAllowed(participant: MeetingVisioParticipant): boolean {
+  return participant.mediaAllowed ?? participant.canSpeak;
+}
+
+interface TrackLabel {
+  text: string;
+  color?: string;
+}
+
+/** Libellé d'une piste : actif, coupé, interdit (aucune piste publiée) ou inactif. */
+export function trackLabel(
+  kind: 'mic' | 'camera',
+  track: MeetingVisioTrackState | undefined,
+  allowed: boolean
+): TrackLabel {
+  const name = kind === 'mic' ? t('Micro') : t('Caméra');
+  if (track?.published) {
+    return track.muted
+      ? { text: t('{{name}} coupé', { name }), color: 'orange' }
+      : { text: t('{{name}} actif', { name }), color: 'green' };
+  }
+  if (!allowed) return { text: t('{{name}} interdit', { name }), color: 'red' };
+  return { text: t('{{name}} inactif', { name }) };
+}
+
+const MediaIndicator: React.FC<{ participant: MeetingVisioParticipant }> = ({ participant }) => {
+  const allowed = isMediaAllowed(participant);
+  const mic = trackLabel('mic', participant.mic, allowed);
+  const camera = trackLabel('camera', participant.camera, allowed);
+  return (
+    <Space size={4} wrap>
+      <Tag color={mic.color} icon={mic.color === 'green' ? <AudioOutlined /> : <AudioMutedOutlined />}>
+        {mic.text}
+      </Tag>
+      <Tag color={camera.color} icon={camera.color === 'red' ? <StopOutlined /> : <VideoCameraOutlined />}>
+        {camera.text}
+      </Tag>
+    </Space>
+  );
+};
+
 /* ------------------------------------------------------- enregistrement (R1-R2) */
 
 interface RecordingControlsProps {
@@ -40,7 +86,8 @@ interface RecordingControlsProps {
 
 /** Voyant « Enregistrement en cours » et bouton démarrer / arrêter. */
 const RecordingControls: React.FC<RecordingControlsProps> = ({ active, frozen, inProgress, busy, onStart, onStop }) => {
-  if (!active) {
+  // AG figée : un `active` périmé (relu avant la fin du traitement) ne fait plus afficher « en cours ».
+  if (!active || frozen) {
     return (
       <Space wrap align="center">
         <Button loading={busy} disabled={frozen || !inProgress} onClick={onStart}>
@@ -137,6 +184,11 @@ interface MeetingVisioCardProps {
   getToken: () => Promise<VisioJoinInfo>;
   busyParticipantId: string | null;
   onSpeak: (participant: MeetingVisioParticipant, allowed: boolean) => void;
+  /** Coupe les pistes publiées d'un participant (V16c). */
+  onMute?: (participant: MeetingVisioParticipant, sources: VisioMuteSource[]) => void;
+  /** Interdit ou rend micro et caméra à tous (V16d). */
+  onLockMedia?: (locked: boolean) => void;
+  lockBusy?: boolean;
   onRemove: (participant: MeetingVisioParticipant, revokeLinks: boolean) => Promise<void>;
   /** L'AG est en cours : seul moment où l'on peut démarrer un enregistrement. */
   inProgress?: boolean;
@@ -145,6 +197,8 @@ interface MeetingVisioCardProps {
   onStopRecording?: () => void;
   /** Dernier enregistrement en échec, aucun n'étant actif : la séance n'est pas enregistrée. */
   failedRecording?: MeetingRecordingView | null;
+  /** Enregistrement en cours d'après la liste, si `/visio` ne le signale pas (les deux lectures sont indépendantes). */
+  listActiveRecording?: MeetingRecordingView | null;
   /** Discussion écrite de la salle (spec 046) ; absente : la salle n'a pas de panneau. */
   discussion?: VisioDiscussionAdapter;
   /** Coupe ou rétablit l'écriture d'un copropriétaire dans la discussion. */
@@ -157,6 +211,7 @@ function participantColumns(
   busyParticipantId: string | null,
   onSpeak: MeetingVisioCardProps['onSpeak'],
   onAskRemove: (participant: MeetingVisioParticipant) => void,
+  onMute?: MeetingVisioCardProps['onMute'],
   onWriting?: MeetingVisioCardProps['onWriting'],
   busyWritingParticipantId: string | null = null
 ): ColumnsType<MeetingVisioParticipant> {
@@ -181,12 +236,16 @@ function participantColumns(
               {t('Main levée')}
             </Tag>
           ) : null}
-          {participant.kind === 'COOWNER' && participant.canSpeak ? <Tag color="green">{t('A la parole')}</Tag> : null}
           {participant.kind === 'COOWNER' && participant.chatMuted ? (
             <Tag color="volcano">{t('écriture coupée')}</Tag>
           ) : null}
         </Space>
       )
+    },
+    {
+      title: t('Micro et caméra'),
+      key: 'media',
+      render: (_: unknown, participant) => <MediaIndicator participant={participant} />
     },
     {
       title: t('Entré à'),
@@ -199,21 +258,42 @@ function participantColumns(
       render: (_: unknown, participant) => {
         if (participant.kind !== 'COOWNER' || !participant.participantId) return null;
         const disabled = frozen || busyParticipantId !== null || busyWritingParticipantId !== null;
+        const allowed = isMediaAllowed(participant);
         return (
           <Space wrap>
+            {onMute ? (
+              <>
+                <Button
+                  size="small"
+                  disabled={disabled || !participant.mic?.published || participant.mic.muted}
+                  aria-label={t('Couper le micro de {{name}}', { name: participant.name })}
+                  onClick={() => onMute(participant, ['MICROPHONE'])}
+                >
+                  {t('Couper le micro')}
+                </Button>
+                <Button
+                  size="small"
+                  disabled={disabled || !participant.camera?.published || participant.camera.muted}
+                  aria-label={t('Couper la caméra de {{name}}', { name: participant.name })}
+                  onClick={() => onMute(participant, ['CAMERA'])}
+                >
+                  {t('Couper la caméra')}
+                </Button>
+              </>
+            ) : null}
             <Button
               size="small"
-              type={participant.canSpeak ? 'default' : 'primary'}
+              type={allowed ? 'default' : 'primary'}
               disabled={disabled}
               loading={busyParticipantId === participant.participantId}
               aria-label={
-                participant.canSpeak
-                  ? t('Retirer la parole à {{name}}', { name: participant.name })
-                  : t('Donner la parole à {{name}}', { name: participant.name })
+                allowed
+                  ? t('Interdire micro et caméra à {{name}}', { name: participant.name })
+                  : t('Autoriser micro et caméra à {{name}}', { name: participant.name })
               }
-              onClick={() => onSpeak(participant, !participant.canSpeak)}
+              onClick={() => onSpeak(participant, !allowed)}
             >
-              {participant.canSpeak ? t('Retirer la parole') : t('Donner la parole')}
+              {allowed ? t('Interdire micro et caméra') : t('Autoriser micro et caméra')}
             </Button>
             {onWriting ? (
               <Button
@@ -254,19 +334,23 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
   getToken,
   busyParticipantId,
   onSpeak,
+  onMute,
+  onLockMedia,
+  lockBusy = false,
   onRemove,
   inProgress = false,
   recordingBusy = false,
   onStartRecording,
   onStopRecording,
   failedRecording = null,
+  listActiveRecording = null,
   discussion,
   onWriting,
   busyWritingParticipantId = null
 }) => {
   const [removing, setRemoving] = useState<MeetingVisioParticipant | null>(null);
   const recording = visio.recording;
-  const activeRecording = recording?.enabled ? recording.active : null;
+  const activeRecording = (recording?.enabled ? recording.active : null) ?? listActiveRecording;
 
   return (
     <Card
@@ -290,7 +374,7 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
           />
         ) : null}
 
-        {recording?.enabled ? (
+        {recording?.enabled || activeRecording ? (
           <RecordingControls
             active={activeRecording}
             frozen={frozen}
@@ -299,6 +383,40 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
             onStart={onStartRecording}
             onStop={onStopRecording}
           />
+        ) : null}
+
+        {onLockMedia ? (
+          <Space wrap align="center">
+            <Popconfirm
+              title={
+                visio.mediaLocked
+                  ? t('Rendre les micros et les caméras à tous ?')
+                  : t('Interdire les micros et les caméras à tous ?')
+              }
+              description={
+                visio.mediaLocked
+                  ? t(
+                      'Les copropriétaires pourront de nouveau activer leur micro et leur caméra, sauf ceux interdits un par un.'
+                    )
+                  : t(
+                      'Les copropriétaires présents seront coupés et ne pourront plus activer leur micro ni leur caméra. Ils gardent la main levée.'
+                    )
+              }
+              okText={visio.mediaLocked ? t('Rendre les micros') : t('Interdire')}
+              cancelText={t('Annuler')}
+              disabled={frozen || lockBusy}
+              onConfirm={() => onLockMedia(!visio.mediaLocked)}
+            >
+              <Switch
+                checked={Boolean(visio.mediaLocked)}
+                loading={lockBusy}
+                disabled={frozen}
+                aria-label={visio.mediaLocked ? t('Rendre les micros') : t('Interdire les micros à tous')}
+              />
+            </Popconfirm>
+            <Text>{visio.mediaLocked ? t('Micros interdits à tous') : t('Interdire les micros à tous')}</Text>
+            {visio.mediaLocked ? <Tag color="red">{t('Micros et caméras interdits')}</Tag> : null}
+          </Space>
         ) : null}
 
         {roomOpen && !frozen ? (
@@ -329,6 +447,7 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
             busyParticipantId,
             onSpeak,
             setRemoving,
+            onMute,
             onWriting,
             busyWritingParticipantId
           )}

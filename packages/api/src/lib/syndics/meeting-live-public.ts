@@ -26,6 +26,7 @@ import {
 } from './meeting-live-context';
 import { MEETING_LINK_OBJECT_TYPE } from './meeting-participants';
 import { isVisioEnabled } from '../../services/livekit-service';
+import { isMediaAllowed, normalizeMediaPolicy } from './meeting-visio-media-rules';
 import { hasActiveRecording } from './meeting-recording';
 
 /**
@@ -92,7 +93,15 @@ export interface LiveMeetingPublicView {
   }>;
   canVote: boolean;
   /** Visio integree (spec 045) : LiveKit est-il configure ? Rien d'autre n'est expose. */
-  visio: { enabled: boolean; recording: boolean };
+  visio: {
+    enabled: boolean;
+    recording: boolean;
+    /**
+     * Ce participant peut-il activer micro et caméra (spec 045, V16) ? Décidé par le serveur : politique du
+     * participant et interdiction globale du gestionnaire. Faux = l'écran n'offre pas ces boutons.
+     */
+    mediaAllowed: boolean;
+  };
   serverTime: string;
 }
 
@@ -102,6 +111,8 @@ export interface AccessedParticipant {
   meetingId: string;
   joinedAt: Date | null;
   lastSeenAt: Date | null;
+  /** Politique micro/caméra (spec 045, V16) ; absente = `DEFAULT`. */
+  mediaPolicy?: string | null;
 }
 
 export interface Access {
@@ -254,7 +265,11 @@ async function buildPublicView(
       };
     }),
     canVote: meeting.status === 'IN_PROGRESS' && myLots.length > 0 && joined,
-    visio: { enabled: isVisioEnabled(), recording: recordingActive },
+    visio: {
+      enabled: isVisioEnabled(),
+      recording: recordingActive,
+      mediaAllowed: isMediaAllowed(normalizeMediaPolicy(participant.mediaPolicy), meeting.mediaLockedAt != null)
+    },
     serverTime: now.toISOString()
   };
 }
@@ -263,7 +278,7 @@ async function readView(access: Access, now: Date = new Date()): Promise<LiveMee
   const tenantId = access.link.tenantId;
   const participant = await prisma.gMParticipant.findFirst({
     where: { id: access.participant.id, tenantId },
-    select: { id: true, contactId: true, meetingId: true, joinedAt: true, lastSeenAt: true }
+    select: { id: true, contactId: true, meetingId: true, joinedAt: true, lastSeenAt: true, mediaPolicy: true }
   });
   if (!participant) throw invalidSecureLinkError();
   const meeting = await loadMeetingBaseById(prisma, tenantId, participant.meetingId);

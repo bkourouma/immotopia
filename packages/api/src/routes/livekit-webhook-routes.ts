@@ -3,6 +3,7 @@ import { asyncHandler } from '../middleware/error-middleware';
 import { livekitWebhookRateLimiter } from '../middleware/rate-limit-middleware';
 import { isVisioEnabled, verifyWebhook } from '../services/livekit-service';
 import { handleEgressEnded } from '../lib/syndics/meeting-recording';
+import { enforceMediaRightsOnJoin } from '../lib/syndics/meeting-visio-media';
 import { logger } from '../utils/logger';
 
 /**
@@ -12,7 +13,7 @@ import { logger } from '../utils/logger';
  * parseurs globaux : le corps arrive BRUT, pour verifier la signature sur les
  * octets recus (`WebhookReceiver`, cles du projet LiveKit). Public par nature :
  * signature TOUJOURS exigee, absente ou invalide = 401 sans detail. Visio non
- * configuree = 404. Seul `egress_ended` agit ; reponse 200 rapide, le
+ * configuree = 404. `egress_ended` rapatrie l'enregistrement, `participant_joined` rattrape le droit de publier (V16f) ; reponse 200 rapide, le
  * rapatriement du fichier suit la reponse. Journal : jamais le corps ni la
  * signature.
  */
@@ -55,6 +56,17 @@ router.post(
     } catch {
       logger.warn('Webhook LiveKit : signature absente ou invalide', { ip: req.ip });
       res.status(401).end();
+      return;
+    }
+
+    if (event.event === 'participant_joined') {
+      // V16f : rattrape le droit de publier d'un jeton emis avant une interdiction ; n'echoue jamais.
+      await enforceMediaRightsOnJoin(
+        event.room?.name ?? '',
+        event.participant?.identity ?? '',
+        event.participant?.permission?.canPublish
+      );
+      res.status(200).json({ received: true });
       return;
     }
 
