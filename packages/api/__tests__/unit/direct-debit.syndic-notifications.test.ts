@@ -123,6 +123,17 @@ describe('syndic / avis de rejet', () => {
     expect(mockSend.mock.calls[0][2].templateOverrides).toEqual({ subject: 'Sujet', bodyHtml: '<p>Corps</p>' });
   });
 
+  it('assainit le motif comme le locatif : sans lien, court', async () => {
+    mockLine.mockResolvedValue(
+      lineRow({ rejectionReason: `Voir http://hameconnage.example/x et www.piege.test ${'long '.repeat(60)}` })
+    );
+    await sendSyndicDirectDebitRejectionNotice(TENANT, 'line-1');
+    const reason: string = mockSend.mock.calls[0][1].reason;
+    expect(reason).not.toMatch(/http|www\./i);
+    expect(reason.length).toBeLessThanOrEqual(120);
+    expect(reason.startsWith('Voir')).toBe(true);
+  });
+
   it('ne lève jamais : un échec d envoi est journalisé sans adresse ni message du transport', async () => {
     mockSend.mockRejectedValue(new Error('550 awa.traore@example.ci refusé'));
     await expect(sendSyndicDirectDebitRejectionNotice(TENANT, 'line-1')).resolves.toBe('FAILED');

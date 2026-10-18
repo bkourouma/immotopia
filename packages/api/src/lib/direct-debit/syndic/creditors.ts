@@ -1,9 +1,10 @@
 import { t } from '../../../i18n';
-import { ConflictError, NotFoundError } from '../../../middleware/error-middleware';
+import { ConflictError, NotFoundError, ValidationError } from '../../../middleware/error-middleware';
 import { logAuditEvent } from '../../../services/audit-service';
 import { AuditActionKey } from '../../../types/audit-types';
 import { prisma } from '../../../utils/database';
 import { CREDITOR_SELECT, toCreditorDto, type CreditorDto } from '../dto';
+import { parseIbanInput } from '../iban';
 import type { UpsertSyndicCreditorInput } from '../schemas';
 
 /**
@@ -14,6 +15,15 @@ import type { UpsertSyndicCreditorInput } from '../schemas';
  *
  * Toute lecture et toute écriture est filtrée par `tenantId` ET par syndicat.
  */
+
+/** La référence du compte est affichée en clair : un IBAN ou un RIB n'y a pas sa place. */
+function assertNotAnIban(value: string | null | undefined): void {
+  if (value && parseIbanInput(value).ok) {
+    throw new ValidationError(t('La référence du compte ne doit pas être un IBAN ni un RIB.'), [
+      { field: 'bankAccountRef', message: t('Saisissez une référence courte, pas un IBAN ni un RIB.') }
+    ]);
+  }
+}
 
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';
@@ -61,6 +71,7 @@ export async function upsertSyndicCreditor(
   actorUserId?: string | null
 ): Promise<CreditorDto> {
   await assertSyndicateOfTenant(tenantId, syndicateId);
+  assertNotAnIban(input.bankAccountRef);
 
   const existing = await prisma.directDebitCreditor.findFirst({
     where: { tenantId, scope: 'SYNDIC_LOT', syndicateId },
@@ -124,7 +135,9 @@ export async function upsertSyndicCreditor(
   const set = (field: keyof typeof existing, value: unknown, before: unknown) => {
     if (value === undefined || value === before) return;
     data[field] = value;
-    changes[field] = { before, after: value };
+    // Jamais la valeur de la référence de compte dans l'audit : seulement le nom du champ.
+    changes[field] =
+      field === 'bankAccountRef' ? { before: '[modifié]', after: '[modifié]' } : { before, after: value };
   };
   set('label', input.label, existing.label);
   set('bankName', input.bankName, existing.bankName);

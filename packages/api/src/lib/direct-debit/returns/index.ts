@@ -18,8 +18,8 @@ import type { ReturnApplyDto, ReturnImportDto, ReturnPreviewDto, ReturnScope, Se
 
 export * from './types';
 
-async function reload(tenantId: string, remittanceId: string): Promise<RemittanceDto> {
-  const dto = await loadRemittanceDto(prisma, tenantId, remittanceId);
+async function reload(tenantId: string, scope: ReturnScope, remittanceId: string): Promise<RemittanceDto> {
+  const dto = await loadRemittanceDto(prisma, tenantId, remittanceId, scope);
   if (!dto) throw new NotFoundError(t('Remise introuvable.'));
   return dto;
 }
@@ -42,7 +42,7 @@ export async function settleRemittanceLine(
     { source: 'MANUAL', importId: null, actorUserId },
     new Date()
   );
-  return reload(tenantId, remittanceId);
+  return reload(tenantId, scope, remittanceId);
 }
 
 /** Constate le rejet d'une ligne `PENDING` ou, tardivement, `SETTLED` (§8.4). */
@@ -64,7 +64,7 @@ export async function rejectRemittanceLine(
     { source: 'MANUAL', importId: null, actorUserId },
     new Date()
   );
-  return reload(tenantId, remittanceId);
+  return reload(tenantId, scope, remittanceId);
 }
 
 /** Constate le règlement de toutes les lignes `PENDING` ; l'échec d'une ligne n'arrête pas les autres. */

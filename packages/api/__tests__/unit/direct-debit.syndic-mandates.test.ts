@@ -232,7 +232,7 @@ jest.mock('../../src/lib/documents/document-branding', () => ({
 }));
 
 import { PDFPage } from 'pdf-lib';
-import { BadRequestError, ConflictError, NotFoundError } from '../../src/middleware/error-middleware';
+import { BadRequestError, ConflictError, NotFoundError, ValidationError } from '../../src/middleware/error-middleware';
 import { generateAuthorizationPdf } from '../../src/lib/direct-debit/authorization-pdf';
 import { getSyndicCreditor, upsertSyndicCreditor } from '../../src/lib/direct-debit/syndic/creditors';
 import { createSyndicMandate, listLotDebtors, listSyndicMandates } from '../../src/lib/direct-debit/syndic/mandates';
@@ -412,6 +412,31 @@ describe('syndic / créancier du syndicat', () => {
     expect(upsertSyndicCreditorSchema.safeParse({ label: 'A', prenotificationBusinessDays: 31 }).success).toBe(false);
     expect(upsertSyndicCreditorSchema.safeParse({ label: 'A', maxConsecutiveRejects: 11 }).success).toBe(false);
     expect(upsertSyndicCreditorSchema.safeParse({ label: 'A\nB' }).success).toBe(false);
+  });
+
+  it('refuse un IBAN ou un RIB comme référence de compte (schéma et service)', async () => {
+    const iban = 'CI93CI0080111301134291200589';
+    const parsed = upsertSyndicCreditorSchema.safeParse({ label: 'A', bankAccountRef: iban });
+    expect(parsed.success).toBe(false);
+    expect(upsertSyndicCreditorSchema.safeParse({ label: 'A', bankAccountRef: 'CI008 01113 0113' }).success).toBe(true);
+    // Défense en profondeur : le service refuse aussi, avec une erreur de validation typée.
+    await expect(
+      upsertSyndicCreditor(TENANT, SYN, { label: 'A', bankAccountRef: iban } as any, 'user-1')
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(mockDb.directDebitCreditor.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('l audit d une modification de la référence de compte ne porte jamais sa valeur', async () => {
+    await upsertSyndicCreditor(
+      TENANT,
+      SYN,
+      upsertSyndicCreditorSchema.parse({ label: 'Compte principal', bankAccountRef: 'REF-SECRETE-77' }),
+      'user-1'
+    );
+    const call = mockAudit.log.mock.calls.map(c => c[0]).find(c => c.actionKey === 'DIRECT_DEBIT_CREDITOR_UPDATED');
+    expect(call.payload.fields).toContain('bankAccountRef');
+    expect(JSON.stringify(call)).not.toContain('REF-SECRETE-77');
+    expect(call.changes.label).toBeDefined();
   });
 
   it('la liste des créanciers locatifs ne voit que le périmètre RENTAL_LEASE', async () => {

@@ -206,3 +206,18 @@ export function sanitizeFileName(name: string | undefined | null): string {
   const cleaned = base.replace(/[\u0000-\u001f\u007f]/g, '').trim();
   return (cleaned || 'retour').slice(0, 200);
 }
+
+const EMAIL_REASON_MAX = 120;
+
+/**
+ * Motif tel qu'il part chez le débiteur : le texte vient d'un fichier de la banque (ou d'une saisie), donc sans
+ * lien (hameçonnage) et court. Le motif complet reste sur la ligne de remise.
+ */
+export function emailReasonOf(reason: string | null | undefined): string {
+  return (reason ?? '')
+    .replace(/(?:https?:\/\/|www\.)\S*/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, EMAIL_REASON_MAX)
+    .trim();
+}
