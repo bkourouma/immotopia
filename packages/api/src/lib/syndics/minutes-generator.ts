@@ -233,13 +233,7 @@ export function buildAttendanceSheet(meeting: MeetingInput): AttendanceSheet {
       .map(voter => contactLabel(voter))
       .filter(label => label !== t('Non renseigné'))
       .join(' / ');
-    let person = voters || row?.attendeeName || t('Non renseigné');
-    if (status === 'REPRESENTED') {
-      person = t('{{person}}, représenté(e) par {{representative}}', {
-        person,
-        representative: row?.representedByName || t('Non renseigné')
-      });
-    }
+    const person = voters || row?.attendeeName || t('Non renseigné');
     if (counted) {
       countedLots += 1;
       countedShares += lot.generalShares || 0;
