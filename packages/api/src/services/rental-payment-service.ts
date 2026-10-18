@@ -1116,6 +1116,16 @@ export async function updatePaymentStatus(
   status: RentalPaymentStatus,
   actorUserId: string
 ): Promise<any> {
+  // Un encaissement par prélèvement (spec 042, P3) ne se pilote que par le constat de la remise : changer son
+  // statut à la main le désynchroniserait de la ligne de remise (et de son mandat).
+  const directDebitLine = await prisma.directDebitRemittanceLine.findFirst({
+    where: { tenantId, rentalPaymentId: paymentId },
+    select: { id: true }
+  });
+  if (directDebitLine) {
+    throw new ConflictError(t("Ce paiement provient d'un prélèvement : constatez un rejet depuis la remise."));
+  }
+
   try {
     const updatedPayment = await prisma.$transaction(tx =>
       updatePaymentStatusTx(tx, tenantId, paymentId, status, actorUserId)

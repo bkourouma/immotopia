@@ -332,6 +332,11 @@ const mockPrisma: Row = {
     })
   },
 
+  // Prélèvement bancaire (spec 042 P3) : aucun de ces règlements n'est lié à une ligne de remise.
+  directDebitRemittanceLine: {
+    findFirst: jest.fn(async () => null)
+  },
+
   // --- Grand livre : tables réelles, code réel (rien n'est mocké ici) -------
 
   thirdPartyAccount: {

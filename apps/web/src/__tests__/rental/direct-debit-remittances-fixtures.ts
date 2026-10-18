@@ -25,8 +25,17 @@ export function makeLine(overrides: Record<string, unknown> = {}) {
     capped: false,
     prenotificationStatus: 'PENDING',
     prenotifiedAt: null,
+    prenotificationRecipient: { masked: 'a•••@ex•••.ci', source: 'ACCOUNT' },
     canceledAt: null,
     cancellationReason: null,
+    settledAt: null,
+    rejectedAt: null,
+    rejectionCode: null,
+    rejectionReason: null,
+    rejectFeeAmount: null,
+    returnSource: null,
+    paymentId: null,
+    rejectionImpact: null,
     ...overrides
   };
 }
@@ -72,10 +81,19 @@ export function makeRemittance(overrides: Record<string, unknown> = {}) {
     submittedAt: null,
     canceledAt: null,
     cancellationReason: null,
+    returnSummary: { pending: 0, settled: 0, rejected: 0, settledAmount: 0, rejectedAmount: 0 },
+    returnState: 'NOT_APPLICABLE',
     createdAt: '2026-10-16T09:00:00.000Z',
     updatedAt: '2026-10-16T09:00:00.000Z',
     notes: null,
-    prenotificationSummary: { pending: 2, sent: 0, noEmail: 0, disabled: 0, failed: 0 },
+    prenotificationSummary: {
+      pending: 2,
+      sent: 0,
+      noEmail: 0,
+      disabled: 0,
+      failed: 0,
+      recipients: { account: 2, contact: 0, none: 0 }
+    },
     ...overrides,
     lines
   };

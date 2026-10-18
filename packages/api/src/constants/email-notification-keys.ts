@@ -57,6 +57,8 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'RENTER_PAYMENT_LINK_SENT',
   // Location – prénotification d'un prélèvement bancaire (spec 042, P2)
   'DIRECT_DEBIT_PRENOTIFICATION',
+  // Location – rejet d'un prélèvement bancaire (spec 042, P3)
+  'DIRECT_DEBIT_REJECTED',
   // Syndic – lien « Payer cet appel » envoyé au copropriétaire (spec 042)
   'CHARGE_CALL_PAYMENT_LINK_SENT',
   // Patrimoine – accès en lecture seule des tiers de confiance (lot B3)
@@ -332,6 +334,13 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     label: "Prénotification d'un prélèvement bancaire",
     description:
       "Envoi au locataire, avant la date de prélèvement, du montant, de la date, de la référence du mandat et de l'IBAN masqué du compte qui sera débité (remise de prélèvements validée par l'agence).",
+    recipientLabel: 'Locataire (débiteur)'
+  },
+  DIRECT_DEBIT_REJECTED: {
+    key: 'DIRECT_DEBIT_REJECTED',
+    label: "Rejet d'un prélèvement bancaire",
+    description:
+      "Envoi au locataire, lorsque l'agence constate le rejet d'un prélèvement, du montant, de la date, de la référence du mandat, de l'IBAN masqué, du motif du rejet, des frais éventuellement refacturés et, le cas échéant, de la suspension du mandat.",
     recipientLabel: 'Locataire (débiteur)'
   },
   CHARGE_CALL_PAYMENT_LINK_SENT: {

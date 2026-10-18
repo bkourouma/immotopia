@@ -137,10 +137,17 @@ async function evaluateCandidates(
   ownRemittanceId: string | null
 ): Promise<Candidate[]> {
   const mandates = await db.directDebitMandate.findMany({
-    where: { tenantId, creditorId: creditor.id, status: 'ACTIVE', scope: 'RENTAL_LEASE' },
+    // DRAFT et SUSPENDED ne donnent jamais de ligne : ils ne servent qu'à les signaler (MANDATE_NOT_ACTIVE).
+    where: {
+      tenantId,
+      creditorId: creditor.id,
+      status: { in: ['ACTIVE', 'DRAFT', 'SUSPENDED'] },
+      scope: 'RENTAL_LEASE'
+    },
     orderBy: [{ year: 'asc' }, { sequence: 'asc' }],
     select: {
       id: true,
+      status: true,
       year: true,
       sequence: true,
       leaseId: true,
@@ -155,7 +162,10 @@ async function evaluateCandidates(
 
   const periodYear = collectionDate.getUTCFullYear();
   const periodMonth = collectionDate.getUTCMonth() + 1;
-  const leaseIds = mandates.map(mandate => mandate.leaseId).filter((id): id is string => Boolean(id));
+  const leaseIds = mandates
+    .filter(mandate => mandate.status === 'ACTIVE')
+    .map(mandate => mandate.leaseId)
+    .filter((id): id is string => Boolean(id));
   const installments =
     leaseIds.length === 0
       ? []
@@ -199,26 +209,29 @@ async function evaluateCandidates(
   );
 
   return mandates.map(mandate => {
-    const installment = mandate.leaseId ? (installmentByLease.get(mandate.leaseId) ?? null) : null;
-    const result = evaluateMandate({
-      mandate: {
-        maxAmount: mandate.maxAmount === null ? null : Number(mandate.maxAmount),
-        collectionDay: mandate.collectionDay,
-        leaseStatus: mandate.lease?.status ?? null
-      },
-      creditorCollectionDay: creditor.collectionDay,
-      collectionDayOfMonth: collectionDate.getUTCDate(),
-      installment: installment
-        ? {
-            status: installment.status,
-            amountRent: Number(installment.amount_rent),
-            amountService: Number(installment.amount_service),
-            amountOtherFees: Number(installment.amount_other_fees),
-            amountPaid: Number(installment.amount_paid)
-          }
-        : null,
-      alreadyInRemittance: installment ? takenIds.has(installment.id) : false
-    });
+    const active = mandate.status === 'ACTIVE';
+    const installment = active && mandate.leaseId ? (installmentByLease.get(mandate.leaseId) ?? null) : null;
+    const result: SelectionResult = !active
+      ? { kind: 'SKIPPED', reason: 'MANDATE_NOT_ACTIVE' }
+      : evaluateMandate({
+          mandate: {
+            maxAmount: mandate.maxAmount === null ? null : Number(mandate.maxAmount),
+            collectionDay: mandate.collectionDay,
+            leaseStatus: mandate.lease?.status ?? null
+          },
+          creditorCollectionDay: creditor.collectionDay,
+          collectionDayOfMonth: collectionDate.getUTCDate(),
+          installment: installment
+            ? {
+                status: installment.status,
+                amountRent: Number(installment.amount_rent),
+                amountService: Number(installment.amount_service),
+                amountOtherFees: Number(installment.amount_other_fees),
+                amountPaid: Number(installment.amount_paid)
+              }
+            : null,
+          alreadyInRemittance: installment ? takenIds.has(installment.id) : false
+        });
     return {
       mandateId: mandate.id,
       mandateReference: mandateReferenceOf(mandate.year, mandate.sequence),
@@ -395,7 +408,22 @@ export async function listRemittances(
 export async function getRemittance(tenantId: string, remittanceId: string): Promise<RemittanceDto> {
   const dto = await loadRemittanceDto(prisma, tenantId, remittanceId);
   if (!dto) throw notFoundRemittance();
-  return dto;
+  if (dto.status !== 'DRAFT') return dto;
+  // Brouillon : les mandats non retenus sont recalculés (lecture seule, rien n'est écrit).
+  const remittance = await prisma.directDebitRemittance.findFirst({
+    where: { id: remittanceId, tenantId },
+    select: { collectionDate: true, creditor: { select: CREDITOR_INFO_SELECT } }
+  });
+  if (!remittance) throw notFoundRemittance();
+  const candidates = await evaluateCandidates(
+    prisma,
+    tenantId,
+    remittance.creditor,
+    remittance.collectionDate,
+    remittanceId
+  );
+  const withLine = new Set(dto.lines.map(line => line.mandate.id));
+  return { ...dto, skipped: toSkipped(candidates.filter(candidate => !withLine.has(candidate.mandateId))) };
 }
 
 // ---------------------------------------------------------------------------
@@ -812,7 +840,8 @@ const EXPORT_SELECT = {
   creditorLabelSnapshot: true,
   creditorIdentifierSnapshot: true,
   lines: {
-    where: { status: 'PENDING' },
+    // Toutes les lignes non annulées (spec 042 §8.7) : le fichier re-téléchargé reste identique à celui déposé.
+    where: { status: { in: ['PENDING', 'SETTLED', 'REJECTED'] } },
     orderBy: { lineNumber: 'asc' },
     select: {
       lineNumber: true,
