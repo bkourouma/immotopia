@@ -149,6 +149,56 @@ Pièges et décisions :
 - …
 ```
 
+## Pilote — finalisation des chantiers ouverts — 2026-10-18
+
+**État :** toutes les PR prêtes, rien fusionné, rien déployé. Fusion et production à la décision de l'utilisateur.
+
+Ordre de fusion recommandé (chaque PR a été vérifiée sur sa base) :
+
+1. #151 (`fix/paiement-mobile-signature-defauts` → `main`), puis #154 (extracteurs i18n, base #151).
+2. #166 (P3 retour banque → `main`), puis #167 (P4 copropriété, base #166), puis #168 (signature du mandat, base #167).
+3. #165 (spec 047, brouillon : la passer en prête), puis #169 (paiement déclaré L1 à L8, base #165).
+4. #159 (prospectus Promoteur, base `docs/prospectus-syndic`), puis #156 (cinq prospectus → `main`).
+
+Fait le 2026-10-18 :
+
+- Conflits avec `main` résolus partout. Pour le lien « Payer cet appel », c'est la version de `main` (#150) qui est gardée ; les doublons de #151 sont retirés.
+- P4 terminé : détail de remise et import du retour banque en copropriété.
+- Signature du mandat branchée en copropriété.
+- Spec 047 réalisée : API agence et portail, notifications, lecture IA, reversement R23.
+- Audits `security-auditor` sur P4, la signature, la 047 et L8 ; relectures de code sur P4 et la 047. Tous les constats sont corrigés.
+
+Reste à faire :
+
+- Recette navigateur de tout ce qui précède. `packages/api/.env.demo` manque, donc `demo:sync` est impossible tant que l'utilisateur ne l'a pas recréé.
+- `npm run test:isolation` (base `DATABASE_URL_TEST`) : jamais lancé sur ces branches.
+- Validation comptable des sous-comptes 5521x (spec 047, T069).
+- Pour activer la lecture IA : clé Gemini payante et `PAYMENT_PROOF_VISION_PROVIDER`.
+- Production (clients.immotopia.cloud) très en retard sur `main` : sauvegarde, étiquette, `deploy.sh prod`, relecture des migrations ([DEPLOIEMENT.md](DEPLOIEMENT.md)).
+
+Pièges et décisions :
+
+- Scripts de fusion à trois voies du 2026-10-18 (catalogues JSON et classeur xlsx ligne à ligne) : ils ont été écrits dans le scratchpad de la session, pas dans le dépôt. Les fusions de catalogues doivent garder toute traduction non vide.
+- Un worktree dont `node_modules` est une jonction vers le checkout principal hérite de dépendances périmées (le checkout principal est resté sur `feat/signature-s5-s7`). Pointer la jonction vers un worktree à jour.
+- Le checkout principal porte des fichiers non suivis (`.claude/deploy-*-cles.ps1`, `.husky/`, `docs/ImmoTopia_Wiki_Fonctionnalites.xlsx`) : ne pas les commiter sans les avoir relus.
+
+## Branche `docs/prospectus-syndic` — 2026-10-18
+
+**État :** prêt à fusionner. PR #156 (base `main`) porte les cinq prospectus : Syndic, Agence (#158 fusionnée dedans), Promoteur (#159, base reciblée sur `docs/prospectus-syndic` le 2026-10-18), Opérateur intégré (#160) et Patrimoine (#161), ces deux dernières déjà fusionnées dans `docs/prospectus-promoteur`. Ordre : #159 dans `docs/prospectus-syndic`, puis #156 dans `main`.
+
+Fait :
+
+- Cinq prospectus recto-verso A4 dans `docs/commercial/prospectus/` (HTML et PDF de 2 pages vérifiés en image), `README.md` du dossier (règles de contenu, « Bientôt » par pack, régénération du PDF).
+
+Reste à faire :
+
+- À valider par l'utilisateur : affichage des prix, coordonnées commerciales (bloc « Votre conseiller » vierge), Mobile Money mis en avant alors que le mode réel PaySecureHub n'est pas activé.
+
+Pièges et décisions :
+
+- Le PDF déborde vite : après toute retouche du texte, régénérer et vérifier le bas de chaque face.
+- Dans un `display:flex`, un `<sup>` devient un élément à part : envelopper le texte dans un `<span>`.
+
 ## Branche `feat/syndic-visio-micro-camera` — 2026-10-17
 
 **État :** prêt à relire (PR empilée sur `fix/syndic-ag-direct-recette`, PR 163), non déployé. Migration Prisma `20261017120000_syndic_ag_media_moderation` à appliquer (`demo:sync --migrate`).
