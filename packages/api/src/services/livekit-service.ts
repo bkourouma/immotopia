@@ -67,6 +67,17 @@ export interface MintTokenInput {
   name: string;
 }
 
+export interface MintParticipantTokenInput extends MintTokenInput {
+  /**
+   * Droit de publier micro et caméra, décidé par le serveur à l'émission du jeton (spec 045, V16) : il
+   * vient de la base (interdiction globale de l'AG, politique du participant), jamais du client.
+   */
+  canPublish: boolean;
+}
+
+/** Sources qu'un copropriétaire peut publier : micro et caméra. Jamais de partage d'écran. */
+export const PARTICIPANT_PUBLISH_SOURCES = [TrackSource.MICROPHONE, TrackSource.CAMERA];
+
 interface LiveKitConfig {
   url: string;
   apiKey: string;
@@ -164,11 +175,16 @@ async function mint(input: MintTokenInput, grant: VideoGrant): Promise<VisioToke
   };
 }
 
-/** Copropriétaire : il regarde, écoute et lève la main ; ni publication ni données. */
-export function mintParticipantToken(input: MintTokenInput): Promise<VisioToken> {
-  return mint(input, {
+/**
+ * Copropriétaire : il regarde, écoute et lève la main ; il publie micro et caméra (jamais le partage
+ * d'écran) quand `canPublish` l'autorise, jamais de données.
+ */
+export function mintParticipantToken(input: MintParticipantTokenInput): Promise<VisioToken> {
+  const { canPublish, ...identity } = input;
+  return mint(identity, {
     canSubscribe: true,
-    canPublish: false,
+    canPublish,
+    ...(canPublish ? { canPublishSources: [...PARTICIPANT_PUBLISH_SOURCES] } : {}),
     canPublishData: false,
     canUpdateOwnMetadata: false
   });
@@ -228,8 +244,18 @@ export async function setHandRaised(roomName: string, identity: string, raised: 
   );
 }
 
-/** Donne (micro et caméra) ou retire le droit de publier ; la main est baissée dans les deux cas. */
-export async function setCanSpeak(roomName: string, identity: string, allowed: boolean): Promise<boolean> {
+/**
+ * Donne (micro et caméra) ou retire le droit de publier (LiveKit retire les pistes publiées). La main est
+ * baissée, sauf avec `lowerHand: false` (interdiction ou levée pour toute la salle : on n'efface pas les
+ * mains levées pour demander la parole).
+ */
+export async function setCanSpeak(
+  roomName: string,
+  identity: string,
+  allowed: boolean,
+  options: { lowerHand?: boolean } = {}
+): Promise<boolean> {
+  const lowerHand = options.lowerHand ?? true;
   return call(
     'updateParticipant',
     async () => {
@@ -238,14 +264,43 @@ export async function setCanSpeak(roomName: string, identity: string, allowed: b
           canSubscribe: true,
           canPublish: allowed,
           canPublishData: false,
-          canPublishSources: allowed ? [TrackSource.MICROPHONE, TrackSource.CAMERA] : []
+          canPublishSources: allowed ? [...PARTICIPANT_PUBLISH_SOURCES] : []
         },
-        attributes: { [HAND_RAISED_ATTRIBUTE]: '' }
+        ...(lowerHand ? { attributes: { [HAND_RAISED_ATTRIBUTE]: '' } } : {})
       });
       return true;
     },
     { value: false }
   );
+}
+
+/**
+ * Coupe (mute) les pistes publiées d'un participant pour les sources données. Rend le nombre de pistes
+ * coupées, ou `null` si le participant n'est pas dans la salle. Une coupure n'est PAS une interdiction : le
+ * participant peut rouvrir son micro, d'où `setCanSpeak(…, false)` pour interdire.
+ */
+export async function muteParticipantTracks(
+  roomName: string,
+  identity: string,
+  sources: TrackSource[]
+): Promise<number | null> {
+  const info = await getRoomParticipant(roomName, identity);
+  if (!info) return null;
+  let muted = 0;
+  for (const track of info.tracks ?? []) {
+    if (track.muted || !sources.includes(track.source)) continue;
+    const done = await call(
+      'mutePublishedTrack',
+      async () => {
+        await roomClient().mutePublishedTrack(roomName, identity, track.sid, true);
+        return true;
+      },
+      // Piste ou participant parti entre la lecture et l'écriture : rien à couper.
+      { value: false }
+    );
+    if (done) muted += 1;
+  }
+  return muted;
 }
 
 /**

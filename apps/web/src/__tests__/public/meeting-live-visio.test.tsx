@@ -35,6 +35,7 @@ const room = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }));
 vi.mock('../../components/syndics/visio/MeetingVisioRoom', () => ({
   default: (props: {
     role: string;
+    mediaAllowed?: boolean;
     getToken: () => Promise<unknown>;
     onRaiseHand?: (raised: boolean) => Promise<void>;
     onRefreshSignal?: () => void;
@@ -52,7 +53,7 @@ vi.mock('../../components/syndics/visio/MeetingVisioRoom', () => ({
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     return (
-      <div data-testid="visio-room" data-role={props.role}>
+      <div data-testid="visio-room" data-role={props.role} data-media={String(props.mediaAllowed)}>
         <button type="button" onClick={() => props.onRefreshSignal?.()}>
           signal-serveur
         </button>
@@ -377,18 +378,39 @@ describe('MeetingLivePage : visio intégrée', () => {
     fetchState.mockResolvedValue(ok(view({ visio: { enabled: true, recording: true } })));
     render(<MeetingLivePage />);
     await flush();
-    expect(screen.getByText('Cette assemblée est enregistrée.')).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Cette assemblée est enregistrée, y compris la voix et l'image des participants qui activent leur micro ou leur caméra."
+      )
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Rejoindre la visio' }));
     await flush();
     // Dans la salle, son propre bandeau prend le relais : l avis de la page ne fait pas doublon.
-    expect(screen.queryAllByText('Cette assemblée est enregistrée.')).toHaveLength(0);
+    expect(
+      screen.queryAllByText(
+        "Cette assemblée est enregistrée, y compris la voix et l'image des participants qui activent leur micro ou leur caméra."
+      )
+    ).toHaveLength(0);
+  });
+
+  it('transmet à la salle le droit micro et caméra de l état de la page', async () => {
+    fetchState.mockResolvedValue(ok(view({ visio: { enabled: true, mediaAllowed: false } })));
+    render(<MeetingLivePage />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Rejoindre la visio' }));
+    await flush();
+    expect(screen.getByTestId('visio-room').getAttribute('data-media')).toBe('false');
   });
 
   it('n affiche aucun avis quand la séance n est pas enregistrée', async () => {
     fetchState.mockResolvedValue(ok(view({ visio: { enabled: true, recording: false } })));
     render(<MeetingLivePage />);
     await flush();
-    expect(screen.queryByText('Cette assemblée est enregistrée.')).toBeNull();
+    expect(
+      screen.queryByText(
+        "Cette assemblée est enregistrée, y compris la voix et l'image des participants qui activent leur micro ou leur caméra."
+      )
+    ).toBeNull();
   });
 
   it('ne remonte jamais la salle quand la largeur franchit 992 px', async () => {

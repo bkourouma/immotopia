@@ -21,7 +21,9 @@ import {
 import {
   getMeetingVisioHandler,
   issueMeetingVisioTokenHandler,
+  muteVisioParticipantHandler,
   removeVisioParticipantHandler,
+  setVisioMediaLockHandler,
   setVisioParticipantSpeakingHandler
 } from '../controllers/syndic-meeting-visio-controller';
 import {
@@ -515,6 +517,17 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/exclure',
   requirePropertyPermission('SYNDIC_EDIT'),
   removeVisioParticipantHandler
+);
+// Spec 045, V16 : moderation du micro et de la camera des participants.
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/couper',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  muteVisioParticipantHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/media/verrou',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setVisioMediaLockHandler
 );
 // Spec 046 : discussion ecrite moderee de la visio.
 router.get(
