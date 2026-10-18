@@ -153,9 +153,10 @@ vérifie en CI. Détail : [docs/fonctionnalites/README.md](docs/fonctionnalites/
 - Le backend compte encore ~160 erreurs TypeScript préexistantes ; ne pas en
   ajouter dans les fichiers déjà propres.
 - Modifier un texte français **casse ses traductions** : la clé, c'est le texte.
-  Après une retouche, `npm run i18n:extract` déplace la traduction devenue
-  orpheline dans un `*.orphans.json` au lieu de la perdre — la reporter à la
-  main sur la nouvelle clé.
+  Après une retouche, l'ancienne traduction reste dans le catalogue, non
+  référencée (`npm run i18n:extract` ne supprime jamais une traduction non
+  vide) — la reporter à la main sur la nouvelle clé, puis la retirer avec
+  `--prune`.
 - Les tests frontend tournent en français parce que `setupTests.ts` l'impose.
   Sans cela jsdom se déclare `en-US` et la suite cherche « Enregistrer » dans une
   interface qui affiche « Save ».

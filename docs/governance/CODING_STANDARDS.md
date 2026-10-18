@@ -271,10 +271,11 @@ Tout libellé visible passe par `t()`. `npm run i18n:extract` (dans le
 paquet concerné) enveloppe les nouveaux textes et met les catalogues à
 jour ; il est rejouable, il ne vide jamais un catalogue existant.
 Retoucher un texte français casse ses traductions existantes — la clé
-change avec le texte. Après une retouche, `i18n:extract` déplace la
-traduction devenue orpheline dans un `*.orphans.json` : la reporter à la
-main sur la nouvelle clé plutôt que de la laisser dans ce fichier. Détail
-complet, y compris la procédure pour ajouter une langue :
+change avec le texte. Après une retouche, l'ancienne traduction reste dans
+le catalogue, non référencée : la reporter à la main sur la nouvelle clé,
+puis la retirer avec `--prune` (qui la déplace dans un `*.orphans.json`).
+`npm run i18n:check` vérifie les catalogues sans rien écrire. Détail
+complet, y compris les clés dynamiques et la procédure pour ajouter une langue :
 [docs/architecture/i18n.md](../architecture/i18n.md).
 
 ## 6. Tests
