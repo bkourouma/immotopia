@@ -87,7 +87,7 @@ function buildTabs(family: SyndicWorkspaceFamily, tenantId: string, syndicId: st
         { key: 'tresorerie', label: t('Trésorerie'), href: `${base}/finances`, icon: <BankOutlined /> },
         {
           key: 'paiements-en-ligne',
-          label: t('Paiements en ligne'),
+          label: t('Paiements'),
           href: `${base}/paiements-en-ligne`,
           icon: <MobileOutlined />
         },

@@ -330,3 +330,132 @@ describe('encaissement en ligne — compte 5525 et champs de paiement (spec 042)
     expect(mockPrisma.journalEntry.rows).toHaveLength(0);
   });
 });
+
+describe('encaissement declare — sous-compte 5521x (spec 047)', () => {
+  const declared = (extra: Partial<LotPaymentInput> = {}) =>
+    pay(10000, '2026-03-10', {
+      method: 'MOBILE_MONEY',
+      reference: 'MP260310ABC',
+      actorUserId: 'user-1',
+      idempotencyKey: 'DECL-line-1',
+      origin: 'DECLARED',
+      treasuryAccountNumber: '55211',
+      ...extra
+    });
+  const addReceivingAccount = (number: string, syndicateId = S1, tenantId = TENANT_A) =>
+    mockPrisma.chartOfAccount.rows.push({
+      id: id(500 + Number(number.slice(-1))),
+      tenantId,
+      syndicateId,
+      scope: 'SYNDICATE',
+      accountNumber: number,
+      accountName: 'Orange Money 07 •• •• •• 12',
+      accountClass: 5,
+      accountType: 'ASSET'
+    });
+
+  it('debite le 5521x, credite le 450 du lot, journal banque, libelle « (mobile money REF) »', async () => {
+    await createCall(L1, '2026-03', 10000);
+    addReceivingAccount('55211');
+
+    const recorded = await recordLotPayment(declared());
+
+    expect(recorded.payment.id).toBeTruthy();
+    expect(balance('55211')).toBe(10000);
+    expect(balance('450')).toBe(-10000);
+    expect(balance('521')).toBe(0);
+    expect(linesOf('450').every(line => line.lotId === L1)).toBe(true);
+    expect(mockPrisma.accountingJournal.rows.map(row => row.code)).toEqual(['BQ']);
+    const entry = mockPrisma.journalEntry.rows[0];
+    expect(entry.description).toBe('Encaissement appel de charges - lot A-01 (mobile money MP260310ABC)');
+    expect(entryLines(entry.id)).toHaveLength(2);
+    expect(mockPrisma.chargePayment.rows[0]).toMatchObject({
+      origin: 'DECLARED',
+      method: 'MOBILE_MONEY',
+      reference: 'MP260310ABC',
+      idempotencyKey: 'DECL-line-1'
+    });
+    // Le sous-compte n'est jamais cree par l'encaissement.
+    expect(mockPrisma.chartOfAccount.rows.filter(row => row.accountNumber === '55211')).toHaveLength(1);
+  });
+
+  it('un 5521x l emporte sur method=ESPECES : jamais la caisse', async () => {
+    await createCall(L1, '2026-03', 10000);
+    addReceivingAccount('55211');
+
+    await recordLotPayment(declared({ method: 'ESPECES' }));
+
+    expect(balance('55211')).toBe(10000);
+    expect(balance('571')).toBe(0);
+    expect(mockPrisma.accountingJournal.rows.map(row => row.code)).toEqual(['BQ']);
+  });
+
+  it('sans reference, le libelle reste « (mobile money) »', async () => {
+    await createCall(L1, '2026-03', 10000);
+    addReceivingAccount('55211');
+
+    await recordLotPayment(declared({ reference: null }));
+
+    expect(mockPrisma.journalEntry.rows[0].description).toBe('Encaissement appel de charges - lot A-01 (mobile money)');
+  });
+
+  it('compte absent de la copropriete (ou d une autre) : NotFoundError 404, rien d ecrit', async () => {
+    await createCall(L1, '2026-03', 10000);
+    addReceivingAccount('55211', SB, TENANT_B);
+
+    await expect(recordLotPayment(declared())).rejects.toMatchObject({ statusCode: 404 });
+    expect(mockPrisma.journalEntry.rows).toHaveLength(0);
+    expect(mockPrisma.chartOfAccount.rows.some(row => row.syndicateId === S1 && row.accountNumber === '55211')).toBe(
+      false
+    );
+  });
+
+  it('exercice clos : toujours refuse (409) pour un 5521x', async () => {
+    await createCall(L1, '2026-03', 10000);
+    addReceivingAccount('55211');
+    mockPrisma.syndicateBudget.rows.push({ id: id(90), syndicateId: S1, fiscalYear: 2026, status: 'CLOSED' });
+
+    await expect(recordLotPayment(declared())).rejects.toBeInstanceOf(ConflictError);
+    expect(mockPrisma.journalEntry.rows).toHaveLength(0);
+  });
+
+  it('idempotent : une seconde ecriture du meme paiement renvoie la premiere', async () => {
+    await createCall(L1, '2026-03', 10000);
+    addReceivingAccount('55211');
+    const recorded = await recordLotPayment(declared());
+
+    const again = await mockPrisma.$transaction((tx: any) =>
+      postChargePaymentEntryTx(tx, {
+        tenantId: TENANT_A,
+        syndicateId: S1,
+        lotId: L1,
+        paymentId: recorded.payment.id as string,
+        amount: 10000,
+        paidAt: d('2026-03-10'),
+        treasuryAccountNumber: '55211'
+      })
+    );
+
+    expect(mockPrisma.journalEntry.rows).toHaveLength(1);
+    expect(again).toBe(mockPrisma.journalEntry.rows[0].id);
+  });
+
+  it('521, 571 et 5525 restent inchanges : libelle « (REF) » sans mention mobile money', async () => {
+    await createCall(L1, '2026-03', 30000);
+    await recordLotPayment(pay(10000, '2026-03-10', { reference: 'VIR-9' }));
+    await recordLotPayment(pay(10000, '2026-03-11', { method: 'ESPECES', reference: 'REC-1' }));
+    await recordLotPayment(
+      pay(10000, '2026-03-12', { method: 'MOBILE_MONEY', reference: 'IMS-1', treasuryAccountNumber: '5525' })
+    );
+
+    expect(balance('521')).toBe(10000);
+    expect(balance('571')).toBe(10000);
+    expect(balance('5525')).toBe(10000);
+    const labels = mockPrisma.journalEntry.rows.map(entry => entry.description);
+    expect(labels).toEqual([
+      'Encaissement appel de charges - lot A-01 (VIR-9)',
+      'Encaissement appel de charges - lot A-01 (REC-1)',
+      'Encaissement appel de charges - lot A-01 (IMS-1)'
+    ]);
+  });
+});

@@ -32,6 +32,7 @@ const listMyDocuments = vi.fn();
 const listMyMeetings = vi.fn();
 const downloadCoOwnerDocument = vi.fn();
 const getOnlinePaymentAvailability = vi.fn();
+const getDeclaredAvailability = vi.fn();
 
 vi.mock('../../services/coowner-portal-service', async () => {
   const actual = await vi.importActual<typeof import('../../services/coowner-portal-service')>(
@@ -45,7 +46,8 @@ vi.mock('../../services/coowner-portal-service', async () => {
     listMyDocuments: (...a: unknown[]) => listMyDocuments(...a),
     listMyMeetings: (...a: unknown[]) => listMyMeetings(...a),
     downloadCoOwnerDocument: (...a: unknown[]) => downloadCoOwnerDocument(...a),
-    getOnlinePaymentAvailability: (...a: unknown[]) => getOnlinePaymentAvailability(...a)
+    getOnlinePaymentAvailability: (...a: unknown[]) => getOnlinePaymentAvailability(...a),
+    getDeclaredAvailability: (...a: unknown[]) => getDeclaredAvailability(...a)
   };
 });
 
@@ -110,6 +112,8 @@ function call(overrides: Partial<CoOwnerChargeCall> = {}): CoOwnerChargeCall {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Spec 047 : jamais le vrai réseau ; paiement déclaré fermé par défaut.
+  getDeclaredAvailability.mockRejectedValue(new Error('indisponible'));
 });
 
 describe('Mes lots', () => {

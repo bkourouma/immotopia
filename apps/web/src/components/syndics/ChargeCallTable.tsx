@@ -1,5 +1,5 @@
 ﻿import React from 'react';
-import { Button, Space, Tag, Typography } from 'antd';
+import { Button, Space, Tag, Tooltip, Typography } from 'antd';
 import { FilePdfOutlined, FileWordOutlined, LinkOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -88,6 +88,11 @@ interface ChargeCallTableProps {
    * n'apparaît ensuite que pour un appel à reste dû (`canOfferChargePaymentLink`).
    */
   onPaymentLink?: (charge: ChargeCall) => void;
+  /**
+   * Appels visés par une déclaration de paiement mobile money en attente
+   * (spec 047) : la colonne « Statut » y ajoute la pastille « Paiement déclaré ».
+   */
+  declaredPendingCallIds?: ReadonlySet<string>;
 }
 
 export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
@@ -98,7 +103,8 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
   onDownloadNoticeWord,
   funds,
   onAssignFund,
-  onPaymentLink
+  onPaymentLink,
+  declaredPendingCallIds
 }) => {
   const fundNames = new Map((funds || []).map(fund => [fund.id, fund.name]));
   const columns: ColumnsType<ChargeCall> = [
@@ -153,9 +159,21 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
       title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
-      render: (value: ChargeCallStatus) => {
+      render: (value: ChargeCallStatus, item: ChargeCall) => {
         const config = chargeCallStatusConfig[value];
-        return <Tag color={config.color}>{config.label}</Tag>;
+        const declaredPending = value !== 'PAID' && declaredPendingCallIds?.has(item.id);
+        return (
+          <>
+            <Tag color={config.color}>{config.label}</Tag>
+            {declaredPending ? (
+              <Tooltip
+                title={t('Un copropriétaire a déclaré un paiement mobile money, en attente de votre validation.')}
+              >
+                <Tag color="processing">{t('Paiement déclaré')}</Tag>
+              </Tooltip>
+            ) : null}
+          </>
+        );
       }
     },
     ...(funds

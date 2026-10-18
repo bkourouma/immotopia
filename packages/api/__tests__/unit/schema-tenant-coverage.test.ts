@@ -223,6 +223,21 @@ describe('Schema — couverture multi-tenant de chaque modele (lot E, E3)', () =
     expect(unclassified).toEqual([]);
   });
 
+  it('les modeles du paiement declare (spec 047) portent tous un tenantId (CLOISONNES)', () => {
+    const declaredPaymentModels = [
+      'SyndicReceivingNumber',
+      'SyndicDeclaredPaymentSettings',
+      'SyndicPaymentDeclaration',
+      'SyndicPaymentDeclarationLine',
+      'SyndicPaymentProofRead'
+    ];
+    const withoutTenant = declaredPaymentModels.filter(name => {
+      const model = modelsByName.get(name);
+      return !model || !tenantFieldOf(model);
+    });
+    expect(withoutTenant).toEqual([]);
+  });
+
   describe('CHILD_MODELS — chaque chemin de relation est reel, obligatoire, et mene a un modele cloisonne', () => {
     /** `expect(x).toBeDefined()` ne porte pas de message custom : on le fabrique nous-memes. */
     function assertDefined<T>(value: T | undefined, message: string): T {

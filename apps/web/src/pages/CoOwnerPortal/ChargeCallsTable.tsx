@@ -67,6 +67,7 @@ export interface ChargeCallSelection {
 
 /** Vrai si l'appel peut être coché, compte tenu de la sélection courante. */
 export function isCallSelectable(call: CoOwnerChargeCall, selected: CoOwnerChargeCall[]): boolean {
+  if (call.pendingDeclaration) return false;
   if (!call.onlinePayable || call.onlineCheckout !== 'NONE' || !call.lot) return false;
   if (selected.some(other => other.id === call.id)) return true;
   if (selected.length >= MAX_CHARGE_CALLS_PER_PAYMENT) return false;
@@ -94,6 +95,10 @@ const OnlineCheckoutTag: React.FC<{ call: CoOwnerChargeCall; onResume?: (call: C
   return null;
 };
 
+/** Paiement mobile money déclaré, en attente de validation par l'agence (spec 047). */
+const PendingDeclarationTag: React.FC<{ call: CoOwnerChargeCall }> = ({ call }) =>
+  call.pendingDeclaration ? <Tag color="warning">{t('Paiement déclaré, en vérification')}</Tag> : null;
+
 /**
  * Appels de charges d'un copropriétaire, partagé par « Mes appels de
  * charges » et par le détail d'un lot. Sans `selection`, lecture seule ; avec,
@@ -107,7 +112,7 @@ export const ChargeCallsTable: React.FC<{
   onResume?: (call: CoOwnerChargeCall) => void;
 }> = ({ calls, showLot = true, selection, onResume }) => {
   const selectedCalls = selection ? calls.filter(call => selection.selectedIds.includes(call.id)) : [];
-  const showSelection = Boolean(selection) && calls.some(call => call.onlinePayable);
+  const showSelection = Boolean(selection) && calls.some(call => call.onlinePayable || call.pendingDeclaration);
 
   const toggle = (call: CoOwnerChargeCall, checked: boolean) => {
     if (!selection) return;
@@ -117,6 +122,10 @@ export const ChargeCallsTable: React.FC<{
   };
 
   const selectBox = (call: CoOwnerChargeCall) => {
+    if (call.pendingDeclaration) {
+      const reason = t('Paiement déclaré, en vérification : paiement en ligne indisponible sur cet appel');
+      return <Checkbox checked={false} disabled title={reason} aria-label={reason} />;
+    }
     if (!call.onlinePayable) return null;
     return (
       <Checkbox
@@ -183,6 +192,7 @@ export const ChargeCallsTable: React.FC<{
         <>
           <ChargeCallStatusTag status={call.status} />
           <OnlineCheckoutTag call={call} onResume={onResume} />
+          <PendingDeclarationTag call={call} />
         </>
       )
     },
@@ -222,13 +232,16 @@ export const ChargeCallsTable: React.FC<{
             <>
               <ChargeCallStatusTag status={call.status} />
               <OnlineCheckoutTag call={call} onResume={onResume} />
+              <PendingDeclarationTag call={call} />
             </>
           }
           highlight={<MoneyValue value={call.outstanding} />}
           fields={[
             { label: t('Montant'), value: <MoneyValue value={call.amount} /> },
             { label: t('Payé'), value: <MoneyValue value={call.paid} /> },
-            ...(showSelection && call.onlinePayable ? [{ label: t('Payer'), value: selectBox(call) }] : []),
+            ...(showSelection && (call.onlinePayable || call.pendingDeclaration)
+              ? [{ label: t('Payer'), value: selectBox(call) }]
+              : []),
             { label: t('Avis'), value: <NoticeButton call={call} /> }
           ]}
         />

@@ -36,7 +36,7 @@ import { ensureOwnerAccountForLotTx } from './owner-account-tx';
 import { formatIsoDay } from './period';
 import { issueReceiptsForPaymentTx, toDocumentRefs, type IssuedChargeDocument } from './charge-receipts';
 import { scheduleChargeDocumentDelivery } from './charge-receipt-delivery';
-import { postChargePaymentEntryTx } from './charge-collection-accounting';
+import { postChargePaymentEntryTx, type CollectionTreasuryAccount } from './charge-collection-accounting';
 import { creditFundsForAllocationsTx, type FundCreditItem } from './fund-credits';
 import {
   fromCents,
@@ -85,10 +85,10 @@ export interface LotPaymentInput {
   idempotencyKey?: string | null;
   /** Spec 042 : identifiant de transaction du fournisseur (unique en base). */
   providerTransactionId?: string | null;
-  /** Spec 042 : provenance ; `MANUAL` par defaut. */
-  origin?: 'MANUAL' | 'ONLINE';
-  /** Spec 042 : compte de tresorerie debite ; absent = deduit de `method` (521/571). */
-  treasuryAccountNumber?: '521' | '571' | '5525';
+  /** Spec 042 / 047 : provenance ; `MANUAL` par defaut (`DECLARED` = paiement mobile money declare). */
+  origin?: 'MANUAL' | 'ONLINE' | 'DECLARED';
+  /** Spec 042 / 047 : compte de tresorerie debite ; absent = deduit de `method` (521/571). */
+  treasuryAccountNumber?: CollectionTreasuryAccount;
 }
 
 export interface LotPaymentAllocationView {
