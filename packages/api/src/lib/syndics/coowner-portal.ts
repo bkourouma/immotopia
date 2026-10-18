@@ -713,6 +713,13 @@ export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
           where: { resolutionId: { in: resolutions.map(resolution => resolution.id) } },
           select: { resolutionId: true, lotId: true, vote: true }
         });
+  const attendances =
+    resolutions.length === 0
+      ? []
+      : await prisma.gMAttendance.findMany({
+          where: { tenantId: scope.tenantId, meetingId: { in: completed.map(meeting => meeting.id) } },
+          select: { meetingId: true, lotId: true, status: true }
+        });
   // Tantièmes de TOUS les lots des copropriétés concernées : nécessaires au
   // décompte (le total de référence). Ils servent au calcul et ne sortent
   // jamais de cette fonction — seuls les totaux sont rendus, jamais le vote
@@ -756,7 +763,12 @@ export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
               .filter(resolution => resolution.meetingId === meeting.id)
               .map(resolution => {
                 const resolutionVotes = votes.filter(vote => vote.resolutionId === resolution.id);
-                const tally = computeResolutionTally(resolution.majorityRule, syndicateLots, resolutionVotes);
+                const tally = computeResolutionTally(
+                  resolution.majorityRule,
+                  syndicateLots,
+                  resolutionVotes,
+                  attendances.filter(row => row.meetingId === meeting.id)
+                );
                 const rule: MajorityRule = normalizeMajorityRule(resolution.majorityRule);
                 return {
                   id: resolution.id,

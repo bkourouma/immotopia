@@ -18,6 +18,8 @@ import {
   LAST_SEEN_WRITE_INTERVAL_MS
 } from './meeting-live-rules';
 import {
+  absentLotIdsOf,
+  assertLotsNotAbsent,
   loadLiveContext,
   loadMeetingBaseById,
   MeetingNotFoundError,
@@ -177,6 +179,7 @@ async function buildPublicView(
 
   const votable = votableLotsFor(ctx, participant.contactId);
   const lotById = new Map(ctx.lots.map(lot => [lot.id, lot]));
+  const absentLotIds = absentLotIdsOf(ctx);
   const attendanceByLot = new Map(ctx.attendances.map(row => [row.lotId, row]));
   const myLotIds = new Set(votable.map(lot => lot.lotId));
 
@@ -234,7 +237,7 @@ async function buildPublicView(
     resolutions: ctx.resolutions.map(resolution => {
       const visible = isResultVisible(resolution.voteStatus, meeting.status);
       const tally = visible
-        ? computeResolutionTally(resolution.majorityRule, ctx.majorityLots, resolution.votes)
+        ? computeResolutionTally(resolution.majorityRule, ctx.majorityLots, resolution.votes, ctx.attendances)
         : null;
       return {
         id: resolution.id,
@@ -244,7 +247,7 @@ async function buildPublicView(
         voteStatus: resolution.voteStatus,
         voteOpenedAt: resolution.voteOpenedAt,
         voteClosedAt: resolution.voteClosedAt,
-        ballotCount: resolution.votes.filter(vote => lotById.has(vote.lotId)).length,
+        ballotCount: resolution.votes.filter(vote => lotById.has(vote.lotId) && !absentLotIds.has(vote.lotId)).length,
         totalLots: ctx.lots.length,
         // Seulement les votes de MES lots, quelle que soit leur origine.
         myVotes: resolution.votes
@@ -425,6 +428,13 @@ export async function castPublicVotes(token: string, input: PublicVoteInput): Pr
       }
 
       const ctx = await loadLiveContext(tx, tenantId, meeting);
+      // Un lot émargé absent : 409 explicite, avant le contrôle de périmètre (404).
+      // Un lot hors périmètre du contact reste un 404 (périmètre évalué hors émargement).
+      const perimeter = new Set(votableLotsFor({ ...ctx, attendances: [] }, contactId).map(entry => entry.lotId));
+      assertLotsNotAbsent(
+        ctx,
+        [...choices.keys()].filter(lotId => perimeter.has(lotId))
+      );
       const votable = votableLotsFor(ctx, contactId);
       const votableByLot = new Map(votable.map(entry => [entry.lotId, entry]));
       for (const lotId of choices.keys()) {

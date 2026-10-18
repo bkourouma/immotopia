@@ -17,6 +17,7 @@ import {
 import {
   loadContactNames,
   loadLiveContext,
+  absentLotIdsOf,
   loadMeetingBase,
   votableLotsFor,
   type LiveContext,
@@ -99,6 +100,7 @@ export async function buildAdminView(
   const allVotes = ctx.resolutions.flatMap(resolution => resolution.votes);
   const attendance = computeMeetingAttendance(ctx.majorityLots, allVotes, ctx.attendances);
 
+  const absentLotIds = absentLotIdsOf(ctx);
   const names = await loadContactNames(
     client,
     tenantId,
@@ -158,7 +160,7 @@ export async function buildAdminView(
       voteStatus: resolution.voteStatus,
       voteOpenedAt: resolution.voteOpenedAt,
       voteClosedAt: resolution.voteClosedAt,
-      ballotCount: resolution.votes.filter(vote => knownLotIds.has(vote.lotId)).length,
+      ballotCount: resolution.votes.filter(vote => knownLotIds.has(vote.lotId) && !absentLotIds.has(vote.lotId)).length,
       tally: computeResolutionTally(resolution.majorityRule, ctx.majorityLots, resolution.votes, ctx.attendances),
       votes: resolution.votes.map(vote => ({
         lotId: vote.lotId,

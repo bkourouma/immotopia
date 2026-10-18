@@ -466,7 +466,7 @@ describe('feuille de presence du compte rendu', () => {
     expect(sheet.rows.map(row => row.lot)).toEqual(['L1', 'L2', 'L3', 'L4']);
     expect(sheet.rows[0]).toMatchObject({ person: 'Awa Traore', status: 'Présent(e)', mode: 'En ligne' });
     expect(sheet.rows[1]).toMatchObject({ status: 'Représenté(e)', mode: 'Représenté (par Eric Mandataire)' });
-    expect(sheet.rows[1].person).toContain('Eric Mandataire');
+    expect(sheet.rows[1].person).toBe('Bakary Diallo');
     expect(sheet.rows[2]).toMatchObject({ status: 'Absent(e)', mode: '-' });
     expect(sheet.rows[3]).toMatchObject({ person: 'SCI Soleil', status: 'Présent(e)' });
     expect(sheet.summary).toContain('3 sur 4');

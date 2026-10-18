@@ -1970,7 +1970,7 @@ export async function getMeetingByTenant(tenantId: string, syndicateId: string, 
     ),
     resolutions: meeting.resolutions.map(resolution => ({
       ...resolution,
-      tally: computeResolutionTally(resolution.majorityRule, lots, resolution.votes)
+      tally: computeResolutionTally(resolution.majorityRule, lots, resolution.votes, meeting.attendances ?? [])
     }))
   };
 }
