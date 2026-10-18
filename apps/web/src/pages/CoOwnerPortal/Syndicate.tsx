@@ -45,6 +45,28 @@ function PortalImage({ loader, alt }: { loader: () => Promise<Blob>; alt: string
   return <img src={url} alt={alt} style={{ maxHeight: 72, maxWidth: 200, objectFit: 'contain' }} />;
 }
 
+/** Coordonnées : la ligne Nom reste, les autres lignes vides sont masquées. */
+function ContactDetails({
+  name,
+  address,
+  phone,
+  email
+}: {
+  name: string | null;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}) {
+  return (
+    <Descriptions column={1} size="small">
+      <Descriptions.Item label={t('Nom')}>{name ?? '—'}</Descriptions.Item>
+      {address ? <Descriptions.Item label={t('Adresse')}>{address}</Descriptions.Item> : null}
+      {phone ? <Descriptions.Item label={t('Téléphone')}>{phone}</Descriptions.Item> : null}
+      {email ? <Descriptions.Item label={t('E-mail')}>{email}</Descriptions.Item> : null}
+    </Descriptions>
+  );
+}
+
 /** La fiche, une fois la copropriété choisie et chargée. */
 function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
   return (
@@ -90,23 +112,25 @@ function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
               ) : null
             }
           >
-            <Descriptions column={1} size="small">
-              <Descriptions.Item label={t('Nom')}>{data.issuer.name}</Descriptions.Item>
-              <Descriptions.Item label={t('Adresse')}>{data.issuer.address ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label={t('Téléphone')}>{data.issuer.phone ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label={t('E-mail')}>{data.issuer.email ?? '—'}</Descriptions.Item>
-            </Descriptions>
+            <ContactDetails
+              name={data.issuer.name}
+              address={data.issuer.address}
+              phone={data.issuer.phone}
+              email={data.issuer.email}
+            />
           </Card>
         </Col>
         <Col xs={24} md={12}>
           <Card title={t('Gestionnaire de la copropriété')}>
             {data.syndicContact ? (
-              <Descriptions column={1} size="small">
-                <Descriptions.Item label={t('Nom')}>{data.syndicContact.name ?? '—'}</Descriptions.Item>
-                <Descriptions.Item label={t('E-mail')}>{data.syndicContact.email ?? '—'}</Descriptions.Item>
-              </Descriptions>
+              <ContactDetails name={data.syndicContact.name} email={data.syndicContact.email} />
             ) : (
-              <Text type="secondary">{t("Aucun gestionnaire n'est désigné pour l'instant.")}</Text>
+              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                <Text type="secondary">
+                  {t("Aucun gestionnaire n'est désigné : votre interlocuteur est l'émetteur des documents.")}
+                </Text>
+                <ContactDetails name={data.issuer.name} phone={data.issuer.phone} email={data.issuer.email} />
+              </Space>
             )}
           </Card>
         </Col>
