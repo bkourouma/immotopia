@@ -46,6 +46,7 @@ const MOYEN_PAIEMENT_FR: Record<string, string> = {
   CHECK: 'cheque',
   MOBILE_MONEY: 'Mobile Money',
   CARD: 'carte',
+  DIRECT_DEBIT: 'prelevement bancaire',
   OTHER: 'autre moyen'
 };
 

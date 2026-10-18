@@ -2311,6 +2311,28 @@
       "sensitive": true
     },
     {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/remittances",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances",
+      "permissions": ["RENTAL_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId}",
+      "permissions": ["RENTAL_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "GET /api/tenants/:tenantId/rental/documents",
       "method": "GET",
       "path": "/api/tenants/:tenantId/rental/documents",
@@ -6163,6 +6185,94 @@
       "sensitive": true
     },
     {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/cancel",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/cancel",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / cancel",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/export",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/export",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / export",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/lines/:lineId/cancel",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/lines/:lineId/cancel",
+      "pathParams": ["remittanceId", "lineId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / lines / {lineId} / cancel",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/prenotifications",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/prenotifications",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / prenotifications",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/refresh",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/refresh",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / refresh",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/submit",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/submit",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / submit",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/validate",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/remittances/:remittanceId/validate",
+      "pathParams": ["remittanceId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / remittances / {remittanceId} / validate",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "POST /api/tenants/:tenantId/rental/documents",
       "method": "POST",
       "path": "/api/tenants/:tenantId/rental/documents",
@@ -6774,6 +6884,28 @@
       "pathParams": ["syndicId", "meetingId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / jeton",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/media/verrou",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/media/verrou",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / media / verrou",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/couper",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/couper",
+      "pathParams": ["syndicId", "meetingId", "participantId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / participants / {participantId} / couper",
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": true

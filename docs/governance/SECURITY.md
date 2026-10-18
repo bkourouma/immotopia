@@ -234,11 +234,12 @@ est intégrée en clair dans le bundle JavaScript livré au navigateur
 (`app.immotopia.cloud`) et la production (`clients.immotopia.cloud`) tournent
 sur le même serveur, chacun dans sa pile, avec son fichier hors dépôt
 (`/home/deployer/immotopia-saas.env`, `/home/deployer/immotopia-prod.env`,
-mode 600) et ses propres `JWT_SECRET`, mot de passe Postgres et
+mode 600) et ses propres `JWT_SECRET`, mot de passe Postgres,
 `PAYMENT_SECRETS_KEY` (la clé qui chiffre les clés de paiement des agences ; à
-sauvegarder hors serveur, sa perte les rend illisibles). `deploy.sh prod` refuse
-un `JWT_SECRET`, un mot de passe Postgres ou une `PAYMENT_SECRETS_KEY` identique
-à celui du staging (comparaison d'empreintes, rien n'est affiché), et refuse de
+sauvegarder hors serveur, sa perte les rend illisibles) et `DIRECT_DEBIT_IBAN_KEY`
+(clé **dédiée** aux IBAN des mandats de prélèvement, voir ci-dessous).
+`deploy.sh prod` refuse un `JWT_SECRET`, un mot de passe Postgres, une
+`PAYMENT_SECRETS_KEY` ou une `DIRECT_DEBIT_IBAN_KEY` identique à celui du staging (comparaison d'empreintes, rien n'est affiché), et refuse de
 déployer si le fichier du staging est illisible (l'unicité ne serait pas
 prouvée). Il refuse aussi `PAYMENT_GATEWAY_SIMULATOR=1` et `YOUSIGN_ALLOW_SANDBOX=1`
 (base sandbox de Yousign, réservée au staging), **quelle que soit leur
@@ -258,6 +259,34 @@ aux essais locaux, est refusé pour la production par `deploy.sh` et
 `bootstrap.sh`. Décision :
 [ADR-005](../architecture/adr/ADR-005-environnements-staging-production.md) ;
 procédure : [DEPLOIEMENT.md](../workflows/DEPLOIEMENT.md).
+
+**IBAN des mandats de prélèvement.** Chiffrés en AES-256-GCM avec
+`DIRECT_DEBIT_IBAN_KEY`, une clé dédiée (jamais `PAYMENT_SECRETS_KEY` : l'API
+refuse de démarrer si elles sont égales, et `deploy.sh` aussi, ainsi qu'une clé
+de production présente dans le trousseau du staging). Chaque valeur
+(`ddk1:<id de clé>:…`) porte l'identifiant de sa clé, lié au chiffré par les
+données associées. Rotation : l'ancienne clé passe dans
+`DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` (déchiffrement seul), puis
+`reencrypt-direct-debit-ibans.js` rechiffre tout vers la nouvelle ; l'ancienne
+n'est retirée qu'après un passage à 0 et une sauvegarde vérifiée. Les valeurs
+de l'ancien format `pg1` restent lisibles (repli sur `PAYMENT_SECRETS_KEY`).
+Aucun message, journal ou sortie du script ne contient IBAN, chiffré ou clé.
+
+Limite connue : les données associées ne lient le chiffré qu'à l'identifiant de
+clé, pas au mandat. Copier la valeur chiffrée d'une ligne vers une autre suppose
+un accès en écriture à la base, hors du modèle de menace actuel. Si ce risque
+était retenu, un format `ddk2` (données associées incluant l'agence et le mandat)
+serait possible.
+
+Où l'IBAN complet sort en clair : le PDF d'autorisation d'un mandat (P1) et le
+fichier de remise (P2, `POST …/direct-debit/remittances/:id/export`), tous deux
+réservés à `RENTAL_DIRECT_DEBIT_MANAGE`, générés à la demande, jamais stockés,
+servis en `Cache-Control: no-store`, et audités dans la base avant l'envoi (un
+échec d'audit bloque l'envoi). Le fichier de remise ne garde qu'une empreinte
+HMAC-SHA-256 (clé dérivée de `DIRECT_DEBIT_IBAN_KEY`) : un SHA-256 nu d'un
+fichier à une seule ligne permettrait de retrouver l'IBAN par force brute. Les
+routes `direct-debit` sont marquées sensibles pour la passerelle de l'assistant
+IA, qui ne peut ni les lire ni les appeler.
 
 **Déployer la production.** `deploy.sh prod` prouve l'état git au lieu de le
 supposer : git utilisable, version identifiable, arbre propre, `origin/main`

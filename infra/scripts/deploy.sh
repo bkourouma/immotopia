@@ -23,6 +23,8 @@
 # seul checkout pour les deux environnements).
 
 set -Eeuo pipefail
+# Les secrets du fichier d'environnement ne doivent jamais apparaitre dans une trace.
+case $- in *x*) echo "deploy.sh refuse set -x : les secrets apparaitraient dans la trace." >&2; exit 2;; esac
 
 usage() {
   echo "Usage : $0 <staging|prod> [--no-build]" >&2
@@ -126,6 +128,25 @@ hash_of() {
   fi
 }
 
+# Empreintes sha256 (une par ligne) des cles IBAN d'un fichier d'environnement :
+# cle courante puis anciennes cles (liste separee par des virgules, espaces et
+# entrees vides ignores). Ne jamais afficher la sortie brute des cles.
+iban_key_hashes() {
+  local file="$1" entry current previous
+  current="$(envval DIRECT_DEBIT_IBAN_KEY "$file")"
+  previous="$(envval DIRECT_DEBIT_IBAN_PREVIOUS_KEYS "$file")"
+  [[ -z "$current" ]] || hash_of "$current"
+  # Variables non quotees ci-dessous : pas de developpement de glob.
+  local -
+  set -f
+  local IFS=','
+  for entry in $previous; do
+    entry="${entry#"${entry%%[![:space:]]*}"}"
+    entry="${entry%"${entry##*[![:space:]]}"}"
+    [[ -z "$entry" ]] || hash_of "$entry"
+  done
+}
+
 # Port libre, ou deja tenu par un conteneur de CETTE pile (redeploiement).
 check_port() {
   local port="$1" label="$2"
@@ -198,7 +219,8 @@ ok "variables obligatoires renseignees"
 # grep lirait la premiere. Une cle critique definie deux fois (ajout a la main en
 # fin de fichier) fausserait tous les controles ci-dessous : on refuse.
 for var in NODE_ENV FRONTEND_URL BACKEND_URL PUBLIC_ORIGIN CLIENT_URL DATABASE_URL JWT_SECRET \
-           POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB PAYMENT_GATEWAY_SIMULATOR; do
+           POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB PAYMENT_GATEWAY_SIMULATOR \
+           DIRECT_DEBIT_IBAN_KEY DIRECT_DEBIT_IBAN_PREVIOUS_KEYS; do
   occurrences="$(grep -Ec "^[[:space:]]*(export[[:space:]]+)?${var}[[:space:]]*=" "$ENV_FILE" || true)"
   (( occurrences <= 1 )) \
     || fail "$var est definie $occurrences fois dans $ENV_FILE : ne garder qu'une ligne (Compose applique la derniere, les controles doivent voir la meme)."
@@ -219,6 +241,37 @@ jwt_len="${#jwt_value}"
 jwt_value=""
 (( jwt_len >= 32 )) || fail "JWT_SECRET fait $jwt_len caracteres, il en faut au moins 32."
 ok "JWT_SECRET suffisamment long ($jwt_len caracteres)"
+
+# Cle dediee aux IBAN des mandats de prelevement : jamais le modele non rempli,
+# jamais la cle des cles API de paiement (le demarrage de l'API le refuse aussi).
+iban_key_value="$(envval DIRECT_DEBIT_IBAN_KEY)"
+iban_previous_value="$(envval DIRECT_DEBIT_IBAN_PREVIOUS_KEYS)"
+[[ "$iban_key_value" != *REMPLACER* && "$iban_previous_value" != *REMPLACER* ]] \
+  || fail "DIRECT_DEBIT_IBAN_KEY (ou DIRECT_DEBIT_IBAN_PREVIOUS_KEYS) vaut encore REMPLACER (openssl rand -base64 32)."
+payment_key_value="$(envval PAYMENT_SECRETS_KEY)"
+if [[ -n "$iban_key_value" && -n "$payment_key_value" \
+      && "$(hash_of "$iban_key_value")" == "$(hash_of "$payment_key_value")" ]]; then
+  fail "DIRECT_DEBIT_IBAN_KEY est identique a PAYMENT_SECRETS_KEY : la cle des IBAN doit etre dediee (openssl rand -base64 32)."
+fi
+# Forme canonique d'une cle de 32 octets en base64 : l'API refuse de demarrer
+# sur une cle mal formee, deploy.sh doit le detecter avant de remplacer le
+# conteneur. Aucun message ne cite de valeur, seulement le nom et le rang.
+is_canonical_key() { [[ "$1" =~ ^[A-Za-z0-9+/]{43}=$ ]]; }
+if [[ -n "$iban_key_value" ]]; then
+  is_canonical_key "$iban_key_value"     || fail "DIRECT_DEBIT_IBAN_KEY n'a pas la forme d'une cle de 32 octets en base64 (44 caracteres, openssl rand -base64 32)."
+fi
+iban_rank=0
+while IFS= read -r -d ',' iban_entry || [[ -n "$iban_entry" ]]; do
+  iban_entry="${iban_entry#"${iban_entry%%[![:space:]]*}"}"
+  iban_entry="${iban_entry%"${iban_entry##*[![:space:]]}"}"
+  iban_rank=$((iban_rank + 1))
+  [[ -z "$iban_entry" ]] && { iban_entry=""; continue; }
+  is_canonical_key "$iban_entry"     || fail "DIRECT_DEBIT_IBAN_PREVIOUS_KEYS : l'entree n°$iban_rank n'a pas la forme d'une cle de 32 octets en base64 (44 caracteres)."
+  iban_entry=""
+done <<< "$iban_previous_value"
+iban_entry=""
+iban_key_value=""; iban_previous_value=""; payment_key_value=""
+ok "DIRECT_DEBIT_IBAN_KEY sans valeur d'exemple et distincte de PAYMENT_SECRETS_KEY (ou absente)"
 
 # Coherence du fichier d'environnement avec l'environnement demande : c'est ce
 # qui empeche de deployer les secrets ou les URL d'une pile sur l'autre.
@@ -315,7 +368,7 @@ if [[ "$ENV_NAME" == "prod" ]]; then
        que l'utilisateur courant peut le lire (mode 600, proprietaire deployer)."
   fi
 
-  for secret in JWT_SECRET POSTGRES_PASSWORD PAYMENT_SECRETS_KEY; do
+  for secret in JWT_SECRET POSTGRES_PASSWORD PAYMENT_SECRETS_KEY DIRECT_DEBIT_IBAN_KEY; do
     prod_value="$(envval "$secret")"
     staging_value="$(envval "$secret" "$STAGING_ENV_FILE")"
     if [[ -n "$staging_value" && "$(hash_of "$prod_value")" == "$(hash_of "$staging_value")" ]]; then
@@ -323,7 +376,21 @@ if [[ "$ENV_NAME" == "prod" ]]; then
     fi
   done
   prod_value=""; staging_value=""
-  ok "JWT_SECRET, POSTGRES_PASSWORD et PAYMENT_SECRETS_KEY distincts de ceux du staging"
+  ok "JWT_SECRET, POSTGRES_PASSWORD, PAYMENT_SECRETS_KEY et DIRECT_DEBIT_IBAN_KEY distincts de ceux du staging"
+
+  # Trousseau IBAN (cle courante + anciennes) : aucune cle de la production ne
+  # doit figurer dans celui du staging, sinon une fuite du staging ouvre la prod.
+  prod_iban_hashes="$(iban_key_hashes "$ENV_FILE")"
+  staging_iban_hashes="$(iban_key_hashes "$STAGING_ENV_FILE")"
+  if [[ -n "$prod_iban_hashes" && -n "$staging_iban_hashes" ]] \
+     && grep -qxFf <(printf '%s\n' "$prod_iban_hashes") <(printf '%s\n' "$staging_iban_hashes"); then
+    fail "une cle IBAN (DIRECT_DEBIT_IBAN_KEY ou _PREVIOUS_KEYS) de la production figure aussi dans le trousseau du staging : generer des cles neuves."
+  fi
+  prod_iban_hashes=""; staging_iban_hashes=""
+  ok "trousseau des cles IBAN distinct de celui du staging"
+
+  [[ -n "$(envval DIRECT_DEBIT_IBAN_KEY)" ]] \
+    || warn "DIRECT_DEBIT_IBAN_KEY est absente : la creation de mandats de prelevement sera refusee (openssl rand -base64 32, a sauvegarder hors serveur)."
 
   shared=()
   for var in "${INTEGRATION_KEYS[@]}"; do

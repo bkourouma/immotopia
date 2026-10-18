@@ -129,6 +129,8 @@ describe('catalogue de la passerelle IA', () => {
       'visio/enregistrement/arreter',
       'visio/enregistrement/demarrer',
       'visio/jeton',
+      'visio/media/verrou',
+      'visio/participants/:participantId/couper',
       'visio/participants/:participantId/ecriture',
       'visio/participants/:participantId/exclure',
       'visio/participants/:participantId/parole'

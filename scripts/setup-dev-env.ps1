@@ -5,7 +5,7 @@
 .DESCRIPTION
   1. Cree packages/api/.env et apps/web/.env a partir des env.example, sans jamais
      ecraser une valeur deja renseignee (sauf -Force).
-  2. Genere JWT_SECRET, REFRESH_TOKEN_SECRET et PAYMENT_SECRETS_KEY (aleatoires).
+  2. Genere JWT_SECRET, REFRESH_TOKEN_SECRET et PAYMENT_SECRETS_KEY et DIRECT_DEBIT_IBAN_KEY (aleatoires, distinctes).
   3. Demarre PostgreSQL via Docker (docker compose up -d db) et cree la base de test.
   4. Installe les dependances si besoin, genere le client Prisma, applique les migrations.
   5. Seeds NON destructifs (roles/permissions, referentiel geographique, catalogue des offres).
@@ -127,6 +127,7 @@ if ($DatabaseUrl -ne '') {
 if (Set-EnvValue $ApiEnv 'JWT_SECRET' (New-RandomHex 48)) { Ok 'JWT_SECRET genere' } else { Info 'JWT_SECRET deja renseigne' }
 if (Set-EnvValue $ApiEnv 'REFRESH_TOKEN_SECRET' (New-RandomHex 48)) { Ok 'REFRESH_TOKEN_SECRET genere' } else { Info 'REFRESH_TOKEN_SECRET deja renseigne' }
 if (Set-EnvValue $ApiEnv 'PAYMENT_SECRETS_KEY' (New-RandomBase64 32)) { Ok 'PAYMENT_SECRETS_KEY genere' } else { Info 'PAYMENT_SECRETS_KEY deja renseigne' }
+if (Set-EnvValue $ApiEnv 'DIRECT_DEBIT_IBAN_KEY' (New-RandomBase64 32)) { Ok 'DIRECT_DEBIT_IBAN_KEY genere (distincte de PAYMENT_SECRETS_KEY)' } else { Info 'DIRECT_DEBIT_IBAN_KEY deja renseigne' }
 if (Set-EnvValue $ApiEnv 'DATABASE_URL' $mainUrl) { Ok 'DATABASE_URL ecrit' } else { Info 'DATABASE_URL deja renseigne' }
 if ($testUrl -ne '') {
   if (Set-EnvValue $ApiEnv 'DATABASE_URL_TEST' $testUrl) { Ok 'DATABASE_URL_TEST ecrit (base de test dediee)' } else { Info 'DATABASE_URL_TEST deja renseigne' }

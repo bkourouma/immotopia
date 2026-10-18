@@ -280,6 +280,62 @@ describe('Meetings pages', () => {
     expect(dayjs(payload.endTime).format('YYYY-MM-DD HH:mm')).toBe('2026-10-15 11:00');
   });
 
+  const formValues = () => ({
+    type: 'ORDINARY',
+    date: dayjs('2026-10-15'),
+    startTime: dayjs('2000-01-01 09:30'),
+    location: 'Salle commune'
+  });
+
+  // Anomalie 3 (recette 17/10) : un 503 alors que l'AG était créée, puis un doublon au réessai.
+  it('envoie une Idempotency-Key et la conserve au réessai après une erreur 503', async () => {
+    mockApiClient.get.mockResolvedValue({ data: { success: true, data: [] } } as never);
+    mockApiClient.post
+      .mockRejectedValueOnce({ response: { status: 503, data: '<html>503</html>' } })
+      .mockResolvedValueOnce({
+        data: { success: true, data: { id: 'meeting-3' }, convocation: { status: 'SENDING' } }
+      } as never);
+
+    renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
+    fireEvent.click(await screen.findByText('Nouvelle assemblée'));
+
+    mockValidateFields.mockResolvedValue(formValues());
+    fireEvent.click(await screen.findByText('Créer'));
+    await waitFor(() =>
+      expect(mockMessage.error).toHaveBeenCalledWith(
+        "L'assemblée a peut-être été créée, vérifiez la liste avant de réessayer.",
+        8
+      )
+    );
+
+    fireEvent.click(await screen.findByText('Créer'));
+    await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledTimes(2));
+    const firstKey = mockApiClient.post.mock.calls[0][2].headers['Idempotency-Key'];
+    const secondKey = mockApiClient.post.mock.calls[1][2].headers['Idempotency-Key'];
+    expect(firstKey).toBeTruthy();
+    expect(secondKey).toBe(firstKey);
+    await waitFor(() => expect(mockMessage.success).toHaveBeenCalledWith('Assemblée créée'));
+  });
+
+  it('renouvelle la clé après un refus définitif (4xx)', async () => {
+    mockApiClient.get.mockResolvedValue({ data: { success: true, data: [] } } as never);
+    mockApiClient.post
+      .mockRejectedValueOnce({ response: { status: 400, data: { error: 'Date invalide' } } })
+      .mockResolvedValueOnce({ data: { success: true, data: { id: 'meeting-4' } } } as never);
+
+    renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
+    fireEvent.click(await screen.findByText('Nouvelle assemblée'));
+    mockValidateFields.mockResolvedValue(formValues());
+
+    fireEvent.click(await screen.findByText('Créer'));
+    await waitFor(() => expect(mockMessage.error).toHaveBeenCalledWith('Date invalide'));
+    fireEvent.click(await screen.findByText('Créer'));
+    await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledTimes(2));
+    expect(mockApiClient.post.mock.calls[1][2].headers['Idempotency-Key']).not.toBe(
+      mockApiClient.post.mock.calls[0][2].headers['Idempotency-Key']
+    );
+  });
+
   it("refuse une heure de fin antérieure ou égale à l'heure de début", async () => {
     mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: [] } } as never);
 
