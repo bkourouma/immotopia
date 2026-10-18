@@ -164,36 +164,48 @@ Pièges et décisions :
 
 ## Pilote — finalisation des chantiers ouverts — 2026-10-18
 
-**État :** toutes les PR prêtes, rien fusionné, rien déployé. Fusion et production à la décision de l'utilisateur.
+**État :** tout est fusionné dans `main` (`7f1c6e55`, CI verte). Rien n'est déployé. Le workflow « Déploiement » se termine en `skipped` après chaque fusion, sans doute parce que la variable `AUTO_DEPLOY_STAGING` n'est pas à `true`. Le staging est donc resté à `0469fdf7`, et la production n'a rien reçu.
 
-Ordre de fusion recommandé (chaque PR a été vérifiée sur sa base) :
+Fusionné le 2026-10-18 :
 
-1. #151 (`fix/paiement-mobile-signature-defauts` → `main`), puis #154 (extracteurs i18n, base #151).
-2. #166 (P3 retour banque → `main`), puis #167 (P4 copropriété, base #166), puis #168 (signature du mandat, base #167).
-3. #165 (spec 047, brouillon : la passer en prête), puis #169 (paiement déclaré L1 à L8, base #165).
-4. #159 (prospectus Promoteur, base `docs/prospectus-syndic`), puis #156 (cinq prospectus → `main`).
-
-Fait le 2026-10-18 :
-
-- Conflits avec `main` résolus partout. Pour le lien « Payer cet appel », c'est la version de `main` (#150) qui est gardée ; les doublons de #151 sont retirés.
-- P4 terminé : détail de remise et import du retour banque en copropriété.
-- Signature du mandat branchée en copropriété.
-- Spec 047 réalisée : API agence et portail, notifications, lecture IA, reversement R23.
-- Audits `security-auditor` sur P4, la signature, la 047 et L8 ; relectures de code sur P4 et la 047. Tous les constats sont corrigés.
+- #151 (défauts du paiement mobile et de la signature) et #154 (extracteurs i18n sans perte, `--check`).
+- #166 (P3 retour banque), #167 (P4 copropriété) et #168 (signature électronique du mandat).
+- #165 (spec 047) et #169 (paiement déclaré, lots L1 à L8 : API agence et portail, notifications, lecture IA, reversement R23).
+- #156, #159, #160 et #161 (cinq prospectus).
+- Budget du chunk d'entrée relevé à 229 376 o, sur décision de l'utilisateur.
 
 Reste à faire :
 
-- Recette navigateur de tout ce qui précède. `packages/api/.env.demo` manque, donc `demo:sync` est impossible tant que l'utilisateur ne l'a pas recréé.
-- `npm run test:isolation` (base `DATABASE_URL_TEST`) : jamais lancé sur ces branches.
-- Validation comptable des sous-comptes 5521x (spec 047, T069).
-- Pour activer la lecture IA : clé Gemini payante et `PAYMENT_PROOF_VISION_PROVIDER`.
-- Production (clients.immotopia.cloud) très en retard sur `main` : sauvegarde, étiquette, `deploy.sh prod`, relecture des migrations ([DEPLOIEMENT.md](DEPLOIEMENT.md)).
+- Déploiement, sur décision de l'utilisateur :
+  - staging : par « Run workflow », ou en remettant `AUTO_DEPLOY_STAGING` à `true` ;
+  - production : sauvegarde, étiquette, puis `deploy.sh prod` ([DEPLOIEMENT.md](DEPLOIEMENT.md)).
+- Migrations nouvelles, jamais appliquées sur une vraie base : sauvegarder la base avant.
+  - P3 : `20261017100000_*` et `20261017100100_*`.
+  - P4 : `20261017110000/110100/110200_*`.
+  - Signature : `20261017120000/120100_*`.
+  - Spec 047 : `20261017150000/150100_*`.
+  - Les deux `ALTER TYPE ChargePaymentOrigin ADD VALUE` (`DIRECT_DEBIT` et `DECLARED`) sont chacun dans leur propre migration.
+- Recette navigateur de P3, de P4, de la signature du mandat et du paiement déclaré : pas faite, car `packages/api/.env.demo` manque pour `demo:sync`.
+- Tests non lancés :
+  - `npm run test:isolation` (base `DATABASE_URL_TEST`) ;
+  - tests d'intégration de la spec 047 sur un vrai PostgreSQL.
+- Spec 047 :
+  - T069 : validation comptable des sous-comptes 5521x ;
+  - lecture IA : il faut une clé Gemini payante et `PAYMENT_PROOF_VISION_PROVIDER` ;
+  - la rotation de `DIRECT_DEBIT_IBAN_KEY` invalide les demandes de signature ouvertes.
+- Budget d'entrée du web : relevé quatre fois, l'allègement structurel reste à faire.
 
 Pièges et décisions :
 
-- Scripts de fusion à trois voies du 2026-10-18 (catalogues JSON et classeur xlsx ligne à ligne) : ils ont été écrits dans le scratchpad de la session, pas dans le dépôt. Les fusions de catalogues doivent garder toute traduction non vide.
-- Un worktree dont `node_modules` est une jonction vers le checkout principal hérite de dépendances périmées (le checkout principal est resté sur `feat/signature-s5-s7`). Pointer la jonction vers un worktree à jour.
-- Le checkout principal porte des fichiers non suivis (`.claude/deploy-*-cles.ps1`, `.husky/`, `docs/ImmoTopia_Wiki_Fonctionnalites.xlsx`) : ne pas les commiter sans les avoir relus.
+- Un worktree dont `node_modules` est une jonction vers le checkout principal hérite de dépendances périmées : le checkout principal est resté sur `feat/signature-s5-s7`. Pointer la jonction vers un worktree à jour.
+- Fusion des catalogues i18n :
+  - garder toute traduction non vide ;
+  - ensuite, `npm run i18n:extract` (corrigé par la PR 154) atteint son point fixe ;
+  - une clé qui arrive vide se remplit souvent avec le même texte d'un autre catalogue de la langue.
+- Deux tests vitest fragiles sous la charge de la CI sont corrigés :
+  - `declare-for-third-party-modal` : le filtre est asynchrone ;
+  - `declared-payment-form` : l'icône de chargement entre dans le nom accessible.
+- Le checkout principal porte des fichiers non suivis (`.claude/deploy-*-cles.ps1`, `.husky/`, `docs/ImmoTopia_Wiki_Fonctionnalites.xlsx`). Ne pas les commiter sans les avoir relus.
 
 ## Branche `docs/prospectus-syndic` — 2026-10-18
 
