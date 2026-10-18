@@ -222,6 +222,35 @@ describe('listDeclarations : tri, compteurs, pagination', () => {
     expect(result.counts).toEqual({ pending: 1, overdue: 0, suspectedDuplicate: 1 });
   });
 
+  it('une référence déjà portée par un paiement enregistré rend la déclaration suspecte : drapeau, compteur et tri', async () => {
+    seedPending();
+    // « A » reprend la référence d’une saisie manuelle antérieure de la copropriété.
+    const ref = mockDb.syndicPaymentDeclaration.rows.find((row: any) => row.id === 'A')!.transactionReference;
+    mockDb.chargePayment.rows.push(
+      { id: 'pay-manual', reference: ref.toLowerCase(), paidAt: NOW, amount: 11000, lot: { syndicateId: SYNDIC } },
+      { id: 'pay-foreign', reference: 'AUTRE', paidAt: NOW, amount: 1, lot: { syndicateId: SYNDIC } },
+      { id: 'pay-other-syndic', reference: ref, paidAt: NOW, amount: 1, lot: { syndicateId: OTHER_SYNDIC } }
+    );
+    const result = await listDeclarations({ tenantId: TENANT, syndicateId: SYNDIC, now: NOW });
+    // En retard d’abord (B), puis les suspectes (A par la référence, C et D par doublon), puis l’ancienneté.
+    expect(ids(result.items)).toEqual(['B', 'A', 'C', 'D', 'E']);
+    expect(result.counts).toEqual({ pending: 5, overdue: 1, suspectedDuplicate: 3 });
+  });
+
+  it('un paiement enregistré dans une AUTRE copropriété ne rend rien suspect', async () => {
+    seedPending();
+    const ref = mockDb.syndicPaymentDeclaration.rows.find((row: any) => row.id === 'A')!.transactionReference;
+    mockDb.chargePayment.rows.push({
+      id: 'pay-other',
+      reference: ref,
+      paidAt: NOW,
+      amount: 1,
+      lot: { syndicateId: OTHER_SYNDIC }
+    });
+    const result = await listDeclarations({ tenantId: TENANT, syndicateId: SYNDIC, now: NOW });
+    expect(result.counts.suspectedDuplicate).toBe(2);
+  });
+
   it('les compteurs portent sur toute la copropriété, pas sur la page ni sur les filtres', async () => {
     seedPending();
     mockDb.syndicPaymentDeclaration.rows.push(

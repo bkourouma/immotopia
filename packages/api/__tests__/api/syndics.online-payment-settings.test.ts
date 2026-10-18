@@ -303,6 +303,33 @@ describe('erreurs typées et validation', () => {
     expect(payouts.recordGatewayPayout).not.toHaveBeenCalled();
   });
 
+  it('reversement : le compte à reverser est le 5525 ou un sous-compte 5521x, rien d’autre (400)', async () => {
+    const send = (body: object) => request(app).post(`${GW}/reversements`).set('x-perms', EDIT).send(body);
+    const base = { amount: 10, date: '2026-01-02', reference: 'R' };
+    for (const bad of ['521', '450', '5521', '55211x', 'abc', '']) {
+      expect((await send({ ...base, treasuryAccountNumber: bad })).status).toBe(400);
+    }
+    expect(payouts.recordGatewayPayout).not.toHaveBeenCalled();
+
+    payouts.recordGatewayPayout.mockResolvedValue({
+      entryId: 'e2',
+      reference: 'R',
+      amount: 10,
+      date: '2026-01-02',
+      treasuryAccountNumber: '55211',
+      collectionBalanceAfter: 0
+    });
+    const ok = await send({ ...base, treasuryAccountNumber: '55211' });
+    expect(ok.status).toBe(201);
+    expect(payouts.recordGatewayPayout.mock.calls[0][0]).toMatchObject({
+      tenantId: TENANT,
+      syndicateId: SYNDIC,
+      treasuryAccountNumber: '55211'
+    });
+    await send(base);
+    expect(payouts.recordGatewayPayout.mock.calls[1][0].treasuryAccountNumber).toBeNull();
+  });
+
   it('reversement : 201 et appel du service avec l’agence de l’URL', async () => {
     payouts.recordGatewayPayout.mockResolvedValue({
       entryId: 'e1',

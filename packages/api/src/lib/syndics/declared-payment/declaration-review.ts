@@ -10,7 +10,7 @@ import { issueReceiptsForPaymentTx, toDocumentRefs } from '../charge-receipts';
 import type { IssuedChargeDocument } from '../charge-receipts';
 import { assertFiscalYearOpenTx, isReceivingAccountNumber } from '../provider-invoice-accounting';
 import type { ReceivingAccountNumber } from '../provider-invoice-accounting';
-import { MAX_CHARGE_CALLS_PER_LINE, PAID_AT_FUTURE_TOLERANCE_MINUTES } from './types';
+import { MAX_CHARGE_CALLS_PER_LINE, MAX_DECLARATION_AMOUNT, PAID_AT_FUTURE_TOLERANCE_MINUTES } from './types';
 import type { ApproveDeclarationBody, DeclarationRejectReason, DocumentRef } from './types';
 
 /**
@@ -227,6 +227,16 @@ const declaredLine = (line: DeclarationLine): RetainedLine => ({
   explicitCalls: false
 });
 
+function retainedTooHigh(): AppError {
+  return new AppError(
+    t('Le montant retenu dépasse le montant déclaré ou le plafond de {max} FCFA par déclaration.', {
+      max: MAX_DECLARATION_AMOUNT
+    }),
+    400,
+    ErrorCode.DECLARATION_AMOUNT_TOO_HIGH
+  );
+}
+
 type CorrectionLines = NonNullable<NonNullable<ApproveCorrection>['lines']>;
 
 /** Lignes corrigées : chaque ligne de la déclaration exactement une fois, montant entier ≥ 0. */
@@ -244,12 +254,13 @@ function parseCorrectedLines(declaration: ReviewedDeclaration, items: Correction
         t('La correction doit reprendre chaque ligne de la déclaration une seule fois.')
       );
     }
-    if (!Number.isInteger(item.acceptedAmount) || item.acceptedAmount < 0) {
+    if (!Number.isSafeInteger(item.acceptedAmount) || item.acceptedAmount < 0) {
       throw validationError(
         `correction.lines.${index}.acceptedAmount`,
         t('Le montant retenu doit être un nombre entier positif ou nul.')
       );
     }
+    if (item.acceptedAmount > MAX_DECLARATION_AMOUNT) throw retainedTooHigh();
     const explicitCalls = item.chargeCallIds !== undefined;
     corrected.set(line.id, {
       line,
@@ -281,6 +292,10 @@ function resolveRetainedDecision(
   const paidAt = fix.paidAt === undefined ? declaration.paidAt : parseCorrectedPaidAt(fix.paidAt, now);
   const lines =
     fix.lines === undefined ? declaration.lines.map(declaredLine) : parseCorrectedLines(declaration, fix.lines);
+  // R18 autorise la répartition entre lots : le plafond porte donc sur le TOTAL retenu, jamais sur une ligne.
+  // Une correction ne crédite jamais plus que ce que le copropriétaire a déclaré.
+  const declaredTotal = declaration.lines.reduce((sum, line) => sum + Number(line.amount), 0);
+  if (lines.reduce((sum, line) => sum + line.acceptedAmount, 0) > declaredTotal) throw retainedTooHigh();
   if (!lines.some(line => line.acceptedAmount > 0)) {
     throw validationError(
       'correction.lines',

@@ -171,7 +171,8 @@ describe('ApproveModal', () => {
     expect(
       screen.getByText('Cette note sera montrée au copropriétaire, avec le montant déclaré et le montant retenu.')
     ).toBeInTheDocument();
-    expect(screen.getByText('Paiement partiel')).toBeInTheDocument();
+    // Mesuré contre le reste dû des appels de CE lot (60 000), pas contre le montant déclaré.
+    expect(screen.getByText(/Paiement partiel : il restera .* dû sur le lot A12\./)).toBeInTheDocument();
 
     // Note trop courte : bloquée
     setNote('Trop bref');
@@ -183,10 +184,11 @@ describe('ApproveModal', () => {
 
     await waitFor(() => expect(approveSyndicDeclaration).toHaveBeenCalledTimes(1));
     expect(approveSyndicDeclaration).toHaveBeenCalledWith('t1', 's1', 'd1', {
+      // Aucun appel choisi par le gestionnaire : l'affectation de chaque ligne reste celle de la déclaration.
       correction: {
         lines: [
-          { lineId: 'l1', acceptedAmount: 50000, chargeCallIds: ['cc-1', 'cc-2'] },
-          { lineId: 'l2', acceptedAmount: 40000, chargeCallIds: ['cc-3'] }
+          { lineId: 'l1', acceptedAmount: 50000 },
+          { lineId: 'l2', acceptedAmount: 40000 }
         ]
       },
       note: 'Montant réellement reçu : 50 000'
@@ -211,9 +213,44 @@ describe('ApproveModal', () => {
     await waitFor(() => expect(approveSyndicDeclaration).toHaveBeenCalledTimes(1));
     const body = approveSyndicDeclaration.mock.calls[0][3];
     expect(body.correction.lines).toEqual([
-      { lineId: 'l1', acceptedAmount: 0, chargeCallIds: ['cc-1', 'cc-2'] },
-      { lineId: 'l2', acceptedAmount: 40000, chargeCallIds: ['cc-3'] }
+      { lineId: 'l1', acceptedAmount: 0 },
+      { lineId: 'l2', acceptedAmount: 40000 }
     ]);
+  });
+
+  it('n’envoie jamais de chargeCallIds sans choix du gestionnaire (« plus anciens d’abord » reste implicite)', async () => {
+    const declaration = row();
+    declaration.lines[0].chargeCalls = [];
+    renderApprove(declaration);
+    toggleCorrection();
+    setAmount(0, '30000');
+    setNote('Montant réellement reçu : 30 000');
+    fireEvent.click(okButton('Valider avec correction'));
+    await waitFor(() => expect(approveSyndicDeclaration).toHaveBeenCalledTimes(1));
+    expect(approveSyndicDeclaration.mock.calls[0][3].correction.lines[0]).toEqual({
+      lineId: 'l1',
+      acceptedAmount: 30000
+    });
+  });
+
+  it('l’excédent se mesure contre le reste dû des appels retenus, par lot', () => {
+    renderApprove();
+    toggleCorrection();
+    // Lot A12 : reste dû 60 000 ; 70 000 retenus => 10 000 d'avance (et le total reste ≤ déclaré après le lot B07 réduit).
+    setAmount(0, '70000');
+    setAmount(1, '30000');
+    expect(screen.getByText(/L’excédent de .* deviendra une avance du lot A12\./)).toBeInTheDocument();
+    expect(screen.getByText(/Paiement partiel : il restera .* dû sur le lot B07\./)).toBeInTheDocument();
+    expect(screen.queryByText('L’excédent deviendra une avance')).not.toBeInTheDocument();
+  });
+
+  it('refuse un total retenu supérieur au total déclaré', () => {
+    renderApprove();
+    toggleCorrection();
+    setAmount(0, '70000');
+    setNote('Montant réellement reçu : 110 000');
+    expect(screen.getByText('Le total retenu ne peut pas dépasser le montant déclaré.')).toBeInTheDocument();
+    expect(okButton('Valider avec correction')).toBeDisabled();
   });
 
   it('refuse que toutes les lignes soient à 0', () => {

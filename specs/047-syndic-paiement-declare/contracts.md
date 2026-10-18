@@ -247,7 +247,7 @@ export interface CoOwnerDeclaration {
 | `PROOF_READ_INVALID`              | 409  | `proofReadId` inconnu, d'un autre contact, déjà utilisé ou expiré                   |
 
 Restent : `VALIDATION_ERROR` (400), 401, 403 (`SYNDIC_FEATURE_DENIED` au portail, déjà défini en spec 042),
-404, 429 (limiteurs). L'exercice clos lève la `BadRequestError` existante d'`assertFiscalYearOpenTx`.
+404, 429 (limiteurs). L'exercice clos lève la `ConflictError` existante d'`assertFiscalYearOpenTx` : 409, pas 400.
 
 ---
 
@@ -352,7 +352,7 @@ interface ApproveDeclarationResponse {
 ```
 
 Une ligne à `acceptedAmount: 0` n'est pas encaissée (il en faut au moins une > 0). Erreurs :
-`DECLARATION_NOT_PENDING`, `VALIDATION_ERROR`, 400 d'exercice clos. Audit `SYNDIC_PAYMENT_DECLARATION_APPROVED`
+`DECLARATION_NOT_PENDING`, `VALIDATION_ERROR`, 409 d'exercice clos (`ConflictError`). Audit `SYNDIC_PAYMENT_DECLARATION_APPROVED`
 (montants, sans capture).
 
 ### 1.10 `POST /paiements-declares/:declarationId/rejet` — `canEdit` (PR2)

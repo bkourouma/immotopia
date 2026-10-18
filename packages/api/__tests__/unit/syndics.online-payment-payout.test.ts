@@ -252,6 +252,124 @@ describe('recordGatewayPayout', () => {
   });
 });
 
+describe('reversement depuis un sous-compte 5521x d’un numéro de réception (spec 047, R23)', () => {
+  const SUB = '55211';
+
+  /** Numéro de réception de S1 et son sous-compte, comme à la création d’un numéro. */
+  function addReceivingNumber(syndicateId = S1, tenantId = TENANT_A, accountNumber = SUB) {
+    mockPrisma.chartOfAccount.rows.push({
+      id: `acc-${tenantId}-${syndicateId}-${accountNumber}`,
+      tenantId,
+      syndicateId,
+      scope: 'SYNDICATE',
+      accountNumber,
+      accountName: 'Orange Money 07 •• •• •• 07',
+      accountClass: 5,
+      accountType: 'ASSET'
+    });
+    mockPrisma.syndicReceivingNumber.rows.push({
+      id: `num-${tenantId}-${syndicateId}-${accountNumber}`,
+      tenantId,
+      syndicateId,
+      operator: 'ORANGE',
+      phoneNumber: '+2250707070707',
+      holderName: 'Syndic',
+      treasuryAccountNumber: accountNumber,
+      isActive: true
+    });
+  }
+
+  async function collectOn(account: string, amount: number, key: string) {
+    await createChargeCallAndUpdateStatus(TENANT_A, {
+      syndicateId: S1,
+      lotId: L1,
+      period: `P-${key}`,
+      amount,
+      currency: 'XOF',
+      dueDate: d('2026-03-05')
+    });
+    await recordLotPayment({
+      tenantId: TENANT_A,
+      syndicateId: S1,
+      lotId: L1,
+      amount,
+      paidAt: d('2026-03-10'),
+      method: 'MOBILE_MONEY',
+      reference: key,
+      idempotencyKey: key,
+      origin: 'DECLARED',
+      treasuryAccountNumber: account as any
+    });
+  }
+
+  it('écrit débit 521 / crédit du sous-compte, plafonné au solde de CE sous-compte', async () => {
+    addReceivingNumber();
+    await collectOn(SUB, 40000, 'DECL-1');
+    await collectOn('5525', 90000, 'IMS-1');
+
+    const result = await payout({ amount: 25000, treasuryAccountNumber: SUB });
+
+    expect(result).toMatchObject({ amount: 25000, treasuryAccountNumber: SUB, collectionBalanceAfter: 15000 });
+    expect(balanceOf(SUB)).toBe(15000);
+    // Le 5525 n’est pas touché par un reversement du sous-compte.
+    expect(balanceOf('5525')).toBe(90000);
+    expect(balanceOf('521')).toBe(25000);
+    await expect(payout({ amount: 15000.01, reference: 'AUTRE', treasuryAccountNumber: SUB })).rejects.toMatchObject({
+      statusCode: 400,
+      code: ErrorCode.PAYOUT_EXCEEDS_COLLECTED
+    });
+    expect(payoutEntries()[0].description).toContain('Reversement mobile money');
+  });
+
+  it('le 5525 reste le compte par défaut', async () => {
+    await collect(10000);
+    expect(await payout({ amount: 10000 })).toMatchObject({ treasuryAccountNumber: '5525' });
+  });
+
+  it('refuse un compte qui n’est pas un numéro de réception de CETTE copropriété (404, rien d’écrit)', async () => {
+    addReceivingNumber(SB, TENANT_B, '55211');
+    addReceivingNumber(S1, TENANT_A, '55212');
+    mockPrisma.syndicReceivingNumber.rows.pop(); // 55212 existe au plan mais n’est le compte d’aucun numéro
+    await collectOn('5525', 10000, 'IMS-2');
+
+    for (const account of ['55211', '55212', '521', '450', '5521', 'abc']) {
+      await expect(payout({ treasuryAccountNumber: account })).rejects.toBeInstanceOf(NotFoundError);
+    }
+    expect(payoutEntries()).toHaveLength(0);
+  });
+
+  it('un compte de la copropriété d’une autre agence répond comme un compte inexistant', async () => {
+    addReceivingNumber(SB, TENANT_B, '55211');
+    await expect(
+      recordGatewayPayout({
+        tenantId: TENANT_B,
+        syndicateId: SB,
+        amount: 1,
+        date: d('2026-03-20'),
+        reference: 'X',
+        treasuryAccountNumber: '55299'
+      })
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(getCollectionBalance(mockPrisma as any, TENANT_A, S1, '55211')).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it('la liste indique le compte reversé de chaque reversement', async () => {
+    addReceivingNumber();
+    await collectOn(SUB, 40000, 'DECL-2');
+    await collectOn('5525', 40000, 'IMS-3');
+    await payout({ amount: 10000, reference: 'A-1', treasuryAccountNumber: SUB });
+    await payout({ amount: 5000, reference: 'B-2' });
+
+    const { items } = await listGatewayPayouts(TENANT_A, S1);
+
+    expect(Object.fromEntries(items.map(item => [item.reference, item.treasuryAccountNumber]))).toEqual({
+      'A-1': SUB,
+      'B-2': '5525'
+    });
+    expect(await getCollectionBalance(mockPrisma as any, TENANT_A, S1, SUB)).toBe(30000);
+  });
+});
+
 describe('listGatewayPayouts', () => {
   it('liste du plus recent au plus ancien, avec note, sans les reversements annules', async () => {
     await collect(90000);

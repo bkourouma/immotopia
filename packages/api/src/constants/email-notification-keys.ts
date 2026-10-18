@@ -64,6 +64,7 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'SYNDIC_PAYMENT_DECLARATION_APPROVED',
   'SYNDIC_PAYMENT_DECLARATION_REJECTED',
   'SYNDIC_PAYMENT_DECLARATION_TO_REVIEW',
+  'SYNDIC_RECEIVING_NUMBER_CHANGED',
   // Patrimoine – accès en lecture seule des tiers de confiance (lot B3)
   'EXTERNAL_ACCESS_LINK_SENT',
   // Chantiers – contrôle du stock (lot 040, B7-R6)
@@ -372,6 +373,13 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     label: 'Paiements déclarés à vérifier (récapitulatif)',
     description:
       'Récapitulatif envoyé chaque heure aux gestionnaires de la copropriété (droit de modification du syndic) quand de nouveaux paiements mobile money déclarés attendent leur vérification, et chaque matin à 8 h pour ceux qui sont en retard.',
+    recipientLabel: 'Gestionnaires de la copropriété'
+  },
+  SYNDIC_RECEIVING_NUMBER_CHANGED: {
+    key: 'SYNDIC_RECEIVING_NUMBER_CHANGED',
+    label: 'Numéro de réception mobile money changé',
+    description:
+      'Envoyé aux autres gestionnaires de la copropriété (droit de modification du syndic) quand le numéro qui reçoit les paiements mobile money est changé : seuls les numéros masqués sont indiqués.',
     recipientLabel: 'Gestionnaires de la copropriété'
   },
   EXTERNAL_ACCESS_LINK_SENT: {

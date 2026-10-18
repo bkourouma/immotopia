@@ -198,6 +198,40 @@ export async function resolveLineTargets(client: Client, lines: LineTargetInput[
   return result;
 }
 
+/**
+ * Identifiants des déclarations dont la référence figure déjà sur un paiement de charges de LEUR
+ * copropriété (saisie manuelle antérieure) : l'alerte `REFERENCE_ON_EXISTING_PAYMENT`, en une requête
+ * pour toute la liste. Même comparaison que `computeDeclarationAlertsBatch` (forme normalisée).
+ */
+export async function findDeclarationsOnExistingPayment(
+  client: Client,
+  declarations: Array<{ id: string; syndicateId: string; transactionReference: string }>
+): Promise<Set<string>> {
+  const flagged = new Set<string>();
+  if (declarations.length === 0) return flagged;
+  const payments = await client.chargePayment.findMany({
+    where: {
+      OR: Array.from(new Set(declarations.map(declaration => declaration.transactionReference))).map(reference => ({
+        reference: { equals: reference, mode: 'insensitive' as const }
+      })),
+      lot: { syndicateId: { in: Array.from(new Set(declarations.map(declaration => declaration.syndicateId))) } }
+    },
+    select: { reference: true, lot: { select: { syndicateId: true } } },
+    take: 500
+  });
+  const known = new Set<string>();
+  for (const payment of payments) {
+    if (!payment.reference || !payment.lot?.syndicateId) continue;
+    const normalized =
+      normalizeTransactionReference(payment.reference) ?? payment.reference.replace(/\s+/g, '').toUpperCase();
+    known.add(`${payment.lot.syndicateId}|${normalized}`);
+  }
+  for (const declaration of declarations) {
+    if (known.has(`${declaration.syndicateId}|${declaration.transactionReference}`)) flagged.add(declaration.id);
+  }
+  return flagged;
+}
+
 // ---------------------------------------------------------------------------
 // Doublons probables (R10)
 // ---------------------------------------------------------------------------

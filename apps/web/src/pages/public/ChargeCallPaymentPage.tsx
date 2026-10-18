@@ -22,7 +22,8 @@ type ViewState =
   | { kind: 'unavailable' }
   | { kind: 'ok'; payment: ChargeCallPaymentPublicDto };
 
-type ActionError = 'conflict' | 'review_pending' | 'rate_limited' | 'unavailable' | 'bad_url' | null;
+type ActionError =
+  'conflict' | 'review_pending' | 'declaration_pending' | 'rate_limited' | 'unavailable' | 'bad_url' | null;
 
 /**
  * Lit le jeton dans le fragment (`#<jeton>`) puis retire le fragment de la barre
@@ -71,6 +72,7 @@ function methodLabel(method: OnlinePaymentChannel): string {
 
 function actionErrorMessage(error: Exclude<ActionError, null>): string {
   if (error === 'review_pending') return reviewPendingMessage();
+  if (error === 'declaration_pending') return t('Un paiement mobile money déclaré est en cours de vérification.');
   if (error === 'conflict') return t('Un paiement en ligne est déjà en cours pour cet appel.');
   if (error === 'rate_limited') return t('Trop de tentatives, réessayez dans quelques minutes.');
   if (error === 'bad_url') return t("Le paiement n'a pas pu être lancé. Réessayez ou contactez votre syndic.");
@@ -178,7 +180,9 @@ export const ChargeCallPaymentPage: React.FC = () => {
     } else if (result.status === 'invalid') {
       setView({ kind: 'invalid' });
     } else if (result.status === 'conflict') {
-      setActionError(result.reviewPending ? 'review_pending' : 'conflict');
+      setActionError(
+        result.reviewPending ? 'review_pending' : result.declarationPending ? 'declaration_pending' : 'conflict'
+      );
     } else {
       setActionError(result.status);
     }

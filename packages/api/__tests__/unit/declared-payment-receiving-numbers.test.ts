@@ -134,14 +134,21 @@ const mockPrisma: Row = {
 
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
+const notifyChanged = jest.fn();
+jest.mock('../../src/lib/syndics/declared-payment/notifications', () => ({
+  notifyReceivingNumberChanged: (...a: any[]) => notifyChanged(...a)
+}));
+
 const auditEvents: Row[] = [];
 jest.mock('../../src/services/audit-service', () => ({
   logAuditEvent: (entry: Row) => auditEvents.push(entry)
 }));
 
 const ensureAccount = jest.fn();
+const renameAccount = jest.fn(async (..._args: unknown[]) => 1);
 jest.mock('../../src/lib/syndics/provider-invoice-accounting', () => ({
-  ensureSyndicReceivingAccountTx: (...args: unknown[]) => ensureAccount(...args)
+  ensureSyndicReceivingAccountTx: (...args: unknown[]) => ensureAccount(...args),
+  renameSyndicReceivingAccount: (...args: unknown[]) => renameAccount(...args)
 }));
 
 import {
@@ -153,6 +160,7 @@ import {
   updateReceivingNumber
 } from '../../src/lib/syndics/declared-payment/receiving-numbers';
 import { AuditActionKey } from '../../src/types/audit-types';
+import { maskPhone } from '../../src/lib/syndics/declared-payment/phone';
 
 const base = { tenantId: TENANT_A, syndicateId: SYNDIC_A1, actorUserId: ACTOR };
 const body = (over: Row = {}) => ({
@@ -327,6 +335,52 @@ describe('updateReceivingNumber', () => {
     const updated = await updateReceivingNumber({ ...base, numberId: n.id, body: { phoneNumber: '0505050512' } });
     expect(updated.phoneNumber).toBe('+2250505050512');
     expect(auditEvents.at(-1)?.actionKey).toBe(AuditActionKey.SYNDIC_RECEIVING_NUMBER_UPDATED);
+  });
+
+  it('changement de numéro : l’audit porte les numéros MASQUÉS, jamais en clair, et les autres gestionnaires sont prévenus', async () => {
+    const n = await createReceivingNumber({ ...base, body: body() });
+    notifyChanged.mockClear();
+    await updateReceivingNumber({ ...base, numberId: n.id, body: { phoneNumber: '0505050512' } });
+
+    const entry = auditEvents.at(-1)!;
+    expect(entry.payload.previousPhoneMasked).toBe(maskPhone(n.phoneNumber));
+    expect(entry.payload.newPhoneMasked).toBe(maskPhone('+2250505050512'));
+    expect(JSON.stringify(entry)).not.toContain(n.phoneNumber.slice(4));
+    expect(JSON.stringify(entry)).not.toContain('0505050512');
+    expect(notifyChanged).toHaveBeenCalledTimes(1);
+    expect(notifyChanged).toHaveBeenCalledWith({
+      tenantId: TENANT_A,
+      syndicateId: SYNDIC_A1,
+      actorUserId: ACTOR,
+      previousPhoneMasked: maskPhone(n.phoneNumber),
+      newPhoneMasked: maskPhone('+2250505050512')
+    });
+  });
+
+  it('changement de numéro : le libellé du sous-compte 5521x suit (même numéro de compte)', async () => {
+    const n = await createReceivingNumber({ ...base, body: body() });
+    renameAccount.mockClear();
+    await updateReceivingNumber({ ...base, numberId: n.id, body: { phoneNumber: '0505050512', operator: 'MTN' } });
+    expect(renameAccount).toHaveBeenCalledTimes(1);
+    expect(renameAccount).toHaveBeenCalledWith(expect.anything(), TENANT_A, SYNDIC_A1, n.treasuryAccountNumber, {
+      operator: 'MTN',
+      phoneNumber: '+2250505050512'
+    });
+  });
+
+  it('une modification qui ne touche pas l’identité du numéro ne renomme pas le compte', async () => {
+    const n = await createReceivingNumber({ ...base, body: body() });
+    renameAccount.mockClear();
+    await updateReceivingNumber({ ...base, numberId: n.id, body: { label: 'Autre' } });
+    expect(renameAccount).not.toHaveBeenCalled();
+  });
+
+  it('une modification qui ne touche pas l’identité du numéro ne prévient personne et ne masque rien', async () => {
+    const n = await createReceivingNumber({ ...base, body: body() });
+    notifyChanged.mockClear();
+    await updateReceivingNumber({ ...base, numberId: n.id, body: { label: 'Principal' } });
+    expect(notifyChanged).not.toHaveBeenCalled();
+    expect(auditEvents.at(-1)!.payload).not.toHaveProperty('previousPhoneMasked');
   });
 
   it('autorise la désactivation même avec des déclarations PENDING (audit DEACTIVATED)', async () => {

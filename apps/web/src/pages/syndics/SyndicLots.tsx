@@ -21,6 +21,7 @@ import {
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { LotTable } from '../../components/syndics/LotTable';
+import { listSyndicDeclarations } from '../../services/syndic-declared-payment-service';
 import { StatCard } from '../../components/primitives';
 import { listContacts } from '../../services/crm-service';
 import { listProperties } from '../../services/property-service';
@@ -224,6 +225,29 @@ export const SyndicLots: React.FC = () => {
       return acc;
     }, {});
   }, [ownerOptions]);
+
+  // Lots visés par un paiement mobile money déclaré en attente (spec 047, R32). Information annexe : son échec
+  // (droit absent compris) est silencieux.
+  const [declaredPendingLotIds, setDeclaredPendingLotIds] = useState<ReadonlySet<string>>(() => new Set<string>());
+  useEffect(() => {
+    if (!effectiveTenantId || !syndicId) return;
+    let cancelled = false;
+    listSyndicDeclarations(effectiveTenantId, syndicId, { status: 'PENDING', limit: 100 })
+      .then(result => {
+        if (cancelled) return;
+        const ids = new Set<string>();
+        for (const declaration of result?.items ?? []) {
+          for (const line of declaration.lines ?? []) ids.add(line.lot.id);
+        }
+        setDeclaredPendingLotIds(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setDeclaredPendingLotIds(new Set<string>());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveTenantId, syndicId]);
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
@@ -634,6 +658,7 @@ export const SyndicLots: React.FC = () => {
             <Card title={t('Tableau des lots')}>
               <LotTable
                 lots={lots}
+                declaredPendingLotIds={declaredPendingLotIds}
                 showMobileHint
                 portalManageHref={`/tenant/${effectiveTenantId}/syndics/${syndicId}/profils-incidents`}
                 propertyLabelById={propertyLabelById}

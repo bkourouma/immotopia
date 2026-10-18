@@ -3,6 +3,8 @@ import { t } from '../i18n';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
 import { assertUuidOrNotFound } from '../lib/documents/mandating-agencies';
 import { sendPrivateFile } from '../lib/files/private-files';
+import { logAuditEvent } from '../services/audit-service';
+import { AuditActionKey } from '../types/audit-types';
 import {
   createReceivingNumber,
   deleteReceivingNumber,
@@ -131,10 +133,18 @@ export const getDeclarationHandler = asyncHandler(async (req: Request, res: Resp
 });
 
 export const getDeclarationProofHandler = asyncHandler(async (req: Request, res: Response) => {
-  const file = await getDeclarationProofForTenant({
-    tenantId: tenantIdOf(req),
-    syndicateId: syndicIdOf(req),
-    declarationId: declarationIdOf(req)
+  const tenantId = tenantIdOf(req);
+  const syndicateId = syndicIdOf(req);
+  const declarationId = declarationIdOf(req);
+  const file = await getDeclarationProofForTenant({ tenantId, syndicateId, declarationId });
+  // Une capture est une donnée personnelle (SMS, numéros) : chaque lecture laisse une trace, sans le contenu.
+  logAuditEvent({
+    actorUserId: actorOf(req),
+    tenantId,
+    actionKey: AuditActionKey.SYNDIC_PAYMENT_PROOF_VIEWED,
+    entityType: 'SYNDIC_PAYMENT_DECLARATION',
+    entityId: declarationId,
+    payload: { declarationId, syndicateId }
   });
   sendPrivateFile(res, file, { inline: true });
 });

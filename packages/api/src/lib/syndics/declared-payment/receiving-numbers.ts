@@ -6,8 +6,9 @@ import { logAuditEvent } from '../../../services/audit-service';
 import { AuditActionKey } from '../../../types/audit-types';
 import { t } from '../../../i18n';
 import { assertSyndicateOfTenant } from '../charge-allocation';
-import { ensureSyndicReceivingAccountTx } from '../provider-invoice-accounting';
-import { normalizeIvorianMsisdn } from './phone';
+import { ensureSyndicReceivingAccountTx, renameSyndicReceivingAccount } from '../provider-invoice-accounting';
+import { notifyReceivingNumberChanged } from './notifications';
+import { maskPhone, normalizeIvorianMsisdn } from './phone';
 import type {
   CreateReceivingNumberBody,
   ReceivingNumber,
@@ -292,6 +293,14 @@ export async function updateReceivingNumber(params: {
       throw error;
     }
 
+    // Le libellé du sous-compte 5521x suit le numéro (le numéro de compte, lui, ne change jamais).
+    if (identityChanged) {
+      await renameSyndicReceivingAccount(prisma, tenantId, syndicateId, current.treasuryAccountNumber, {
+        operator: nextOperator,
+        phoneNumber: nextPhone
+      });
+    }
+
     const deactivated = body.isActive === false && current.isActive;
     logAuditEvent({
       actorUserId,
@@ -301,8 +310,25 @@ export async function updateReceivingNumber(params: {
         : AuditActionKey.SYNDIC_RECEIVING_NUMBER_UPDATED,
       entityType: 'SYNDIC_RECEIVING_NUMBER',
       entityId: current.id,
-      payload: { syndicateId, operator: nextOperator, changedFields }
+      payload: {
+        syndicateId,
+        operator: nextOperator,
+        changedFields,
+        // Changement du numéro qui REÇOIT l'argent : traçable sans jamais écrire le numéro en clair.
+        ...(identityChanged
+          ? { previousPhoneMasked: maskPhone(current.phoneNumber), newPhoneMasked: maskPhone(nextPhone) }
+          : {})
+      }
     });
+    if (identityChanged) {
+      notifyReceivingNumberChanged({
+        tenantId,
+        syndicateId,
+        actorUserId,
+        previousPhoneMasked: maskPhone(current.phoneNumber),
+        newPhoneMasked: maskPhone(nextPhone)
+      });
+    }
   }
   return loadAdminView(tenantId, syndicateId, current.id);
 }

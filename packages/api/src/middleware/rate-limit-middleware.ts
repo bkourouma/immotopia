@@ -406,6 +406,22 @@ export const syndicDeclaredWriteRateLimiter = rateLimit({
   legacyHeaders: false
 });
 
+/** Consultation des captures de paiements déclarés (fichiers privés, spec 047) : 60 par minute et par utilisateur. */
+export const syndicDeclaredProofReadRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyGenerator: req => `syndic-declared-proof:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 /**
  * Déclaration de paiement mobile money depuis le portail copropriétaire (spec 047, contrat §2.4) :
  * 10 par minute et par compte (repli sur l'IP), posé APRÈS `authenticate` et AVANT le parseur multipart.

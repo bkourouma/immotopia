@@ -62,15 +62,20 @@ const COOWNER_TARGETS: Record<CoOwnerEvent, ChannelTargets> = {
 };
 
 const REVIEW_KEY: EmailNotificationKey = 'SYNDIC_PAYMENT_DECLARATION_TO_REVIEW';
+const NUMBER_CHANGED_KEY: EmailNotificationKey = 'SYNDIC_RECEIVING_NUMBER_CHANGED';
 
 // ---------------------------------------------------------------------------
 // Mise en forme
 // ---------------------------------------------------------------------------
 
-const money = (value: number): string => `${Math.round(value).toLocaleString('fr-FR')} FCFA`;
+/** Format de nombres et de dates de la langue du destinataire (français par défaut). */
+const LOCALES: Record<Language, string> = { fr: 'fr-FR', en: 'en-GB', ar: 'ar' };
 
-const moment = (date: Date): string =>
-  date.toLocaleString('fr-FR', {
+const money = (value: number, language: Language): string =>
+  `${Math.round(value).toLocaleString(LOCALES[language])} FCFA`;
+
+const moment = (date: Date, language: Language): string =>
+  date.toLocaleString(LOCALES[language], {
     timeZone: 'Africa/Abidjan',
     day: '2-digit',
     month: '2-digit',
@@ -135,9 +140,17 @@ export async function sendCoOwnerDeclarationMessage(
 
     const contact = await prisma.crmContact.findFirst({
       where: { id: declaration.declaredByContactId, tenantId },
-      select: { ...CHANNEL_RECIPIENT_SELECT, firstName: true, lastName: true, legalName: true }
+      select: {
+        ...CHANNEL_RECIPIENT_SELECT,
+        firstName: true,
+        lastName: true,
+        legalName: true,
+        preferredLanguage: true
+      }
     });
     if (!contact) return { sent: false, channel: null, reason: 'NO_ELIGIBLE_CHANNEL' };
+    // Variables dites dans la langue du copropriétaire (libellés, oui/non, dates, nombres).
+    const language = languageOf(contact.preferredLanguage);
 
     const recipient: ChannelRecipient = {
       contactId: contact.id,
@@ -163,17 +176,17 @@ export async function sendCoOwnerDeclarationMessage(
       recipient,
       configs,
       targets,
-      variables: {
+      variables: runWithLanguage(language, () => ({
         ownerName: ownerNameOf(contact),
         syndicName: declaration.syndicate?.name ?? '',
-        amount: money(declared),
-        acceptedAmount: money(accepted),
+        amount: money(declared, language),
+        acceptedAmount: money(accepted, language),
         transactionReference: declaration.transactionReference,
-        paidAt: moment(declaration.paidAt),
-        corrected: corrected ? 'oui' : 'non',
+        paidAt: moment(declaration.paidAt, language),
+        corrected: corrected ? t('oui') : t('non'),
         reviewNote: declaration.reviewNote ?? '',
         rejectReasonLabel: rejectReasonLabel(declaration.rejectReason)
-      }
+      }))
     });
     if (!delivery.sent) {
       logger.warn('[declared-payment] message au copropriétaire non envoyé', {
@@ -252,6 +265,7 @@ export function notifyDeclarationRejected(tenantId: string, declarationId: strin
 // ---------------------------------------------------------------------------
 
 export interface DeclarationReviewer {
+  userId: string;
   email: string;
   language: Language;
 }
@@ -274,7 +288,7 @@ export async function resolveDeclarationReviewers(tenantId: string): Promise<Dec
     const email = membership.user?.email?.trim();
     if (!email) continue;
     if (!(await hasPermission(membership.userId, 'SYNDIC_EDIT', tenantId))) continue;
-    reviewers.push({ email, language: languageOf(membership.user?.preferredLanguage) });
+    reviewers.push({ userId: membership.userId, email, language: languageOf(membership.user?.preferredLanguage) });
   }
   return reviewers;
 }
@@ -341,5 +355,90 @@ export async function sendReviewSummary(params: {
       error: error instanceof Error ? error.message : String(error)
     });
     return 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Changement d'un numéro de réception
+// ---------------------------------------------------------------------------
+
+/**
+ * Prévient les AUTRES gestionnaires (SYNDIC_EDIT, membres actifs) qu'un numéro qui reçoit les
+ * paiements de la copropriété a été changé : un détournement du numéro est ainsi vu par un
+ * second regard. Seuls les numéros MASQUÉS circulent. Renvoie le nombre d'envois réussis ; ne
+ * lève jamais.
+ */
+export async function sendReceivingNumberChangedAlert(params: {
+  tenantId: string;
+  syndicateId: string;
+  actorUserId: string;
+  previousPhoneMasked: string;
+  newPhoneMasked: string;
+}): Promise<number> {
+  const { tenantId, syndicateId, actorUserId } = params;
+  try {
+    const config = await getEmailNotificationConfig(tenantId, NUMBER_CHANGED_KEY);
+    if (!config.enabled) return 0;
+    const reviewers = (await resolveDeclarationReviewers(tenantId)).filter(reviewer => reviewer.userId !== actorUserId);
+    if (reviewers.length === 0) return 0;
+    const [syndicate, actor] = await Promise.all([
+      prisma.syndicate.findFirst({ where: { id: syndicateId, tenantId }, select: { name: true } }),
+      prisma.user.findFirst({ where: { id: actorUserId }, select: { fullName: true } })
+    ]);
+    const variables = {
+      syndicName: syndicate?.name ?? '',
+      actorName: actor?.fullName?.trim() || t('Un gestionnaire'),
+      previousPhone: params.previousPhoneMasked,
+      newPhone: params.newPhoneMasked
+    };
+    const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[NUMBER_CHANGED_KEY];
+    let delivered = 0;
+    for (const reviewer of reviewers) {
+      try {
+        await runWithLanguage(reviewer.language, () =>
+          emailService.sendEmail({
+            to: reviewer.email,
+            tenantId,
+            subject: applyTemplate(config.subjectOverride || defaults.subject, variables),
+            html: applyTemplate(config.bodyHtmlOverride || defaults.bodyHtml, {
+              syndicName: escapeHtml(variables.syndicName),
+              actorName: escapeHtml(variables.actorName),
+              previousPhone: escapeHtml(variables.previousPhone),
+              newPhone: escapeHtml(variables.newPhone)
+            })
+          })
+        );
+        delivered += 1;
+      } catch (error) {
+        logger.warn('[declared-payment] alerte de changement de numéro non envoyée', {
+          tenantId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+    return delivered;
+  } catch (error) {
+    logger.error('[declared-payment] alerte de changement de numéro en échec', {
+      tenantId,
+      syndicateId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return 0;
+  }
+}
+
+/** Lance l'alerte sans attendre, sans jamais lever (désactivée sous Jest). */
+export function notifyReceivingNumberChanged(params: Parameters<typeof sendReceivingNumberChangedAlert>[0]): void {
+  if (isTest) return;
+  try {
+    void runWithTenantContext({ tenantId: params.tenantId }, () => sendReceivingNumberChangedAlert(params)).catch(
+      error =>
+        logger.error('[declared-payment] alerte de changement de numéro non lancée', {
+          tenantId: params.tenantId,
+          error: error instanceof Error ? error.message : String(error)
+        })
+    );
+  } catch {
+    // Le journal ne doit jamais faire échouer l'appelant.
   }
 }

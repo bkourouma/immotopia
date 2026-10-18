@@ -144,6 +144,8 @@ export interface SyndicGatewayPayout {
   date: string;
   amount: number;
   note: string | null;
+  /** Compte reversé : 5525 ou un sous-compte 5521x d'un numéro de réception (spec 047). */
+  treasuryAccountNumber?: string;
   createdAt: string;
 }
 export type SyndicGatewayPayoutsResult = { items: SyndicGatewayPayout[] };
@@ -154,12 +156,16 @@ export interface RecordGatewayPayoutBody {
   date: string;
   reference: string;
   note?: string | null;
+  /** 5525 par défaut ; sinon le sous-compte 5521x d'un numéro de réception de la copropriété. */
+  treasuryAccountNumber?: string;
 }
 export interface RecordGatewayPayoutResult {
   entryId: string;
   reference: string;
   amount: number;
   date: string;
+  treasuryAccountNumber?: string;
+  /** Solde du compte reversé après l'écriture. */
   collectionBalanceAfter: number;
 }
 

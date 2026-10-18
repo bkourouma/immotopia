@@ -3,7 +3,10 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
-import { syndicDeclaredWriteRateLimiter } from '../middleware/rate-limit-middleware';
+import {
+  syndicDeclaredProofReadRateLimiter,
+  syndicDeclaredWriteRateLimiter
+} from '../middleware/rate-limit-middleware';
 import { receiveDeclarationProof } from '../middleware/declared-proof-upload';
 import {
   approveDeclarationHandler,
@@ -53,7 +56,13 @@ router.put(`${DECLARED}/reglages`, ...guards, canEdit, syndicDeclaredWriteRateLi
 // 1.6 à 1.8 : file de validation, détail, capture (flux privé).
 router.get(DECLARED, ...guards, canView, listDeclarationsHandler);
 router.get(`${DECLARED}/:declarationId`, ...guards, canView, getDeclarationHandler);
-router.get(`${DECLARED}/:declarationId/preuve`, ...guards, canView, getDeclarationProofHandler);
+router.get(
+  `${DECLARED}/:declarationId/preuve`,
+  ...guards,
+  canView,
+  syndicDeclaredProofReadRateLimiter,
+  getDeclarationProofHandler
+);
 
 // 1.9 et 1.10 : décision.
 router.post(

@@ -182,6 +182,8 @@ export enum AuditActionKey {
   SYNDIC_PAYMENT_DECLARATION_REJECTED = 'SYNDIC_PAYMENT_DECLARATION_REJECTED',
   /** Lecture IA d'une capture : readId, fournisseur, modèle, outcome, durée. */
   SYNDIC_PAYMENT_PROOF_READ = 'SYNDIC_PAYMENT_PROOF_READ',
+  /** Consultation par un gestionnaire de la capture privée d'une déclaration : identifiants seulement. */
+  SYNDIC_PAYMENT_PROOF_VIEWED = 'SYNDIC_PAYMENT_PROOF_VIEWED',
   /** Lot C5 : lien de paiement d'une échéance envoyé au locataire (canal, jamais le jeton). */
   RENTAL_PAYMENT_LINK_SENT = 'RENTAL_PAYMENT_LINK_SENT',
 

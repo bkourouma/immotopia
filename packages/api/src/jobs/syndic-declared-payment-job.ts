@@ -3,6 +3,7 @@ import * as cron from 'node-cron';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { runWithTenantContext } from '../utils/tenant-context';
+import { withTransactionalAdvisoryLock } from '../lib/ai/advisory-lock';
 import { isOverdue } from '../lib/syndics/declared-payment/business-days';
 import { sendReviewSummary } from '../lib/syndics/declared-payment/notifications';
 import { purgeExpiredProofReads } from '../lib/syndics/declared-payment/proof-files';
@@ -14,10 +15,14 @@ import { getDeclaredPaymentRules } from '../lib/syndics/declared-payment/setting
  * 1. **Chaque heure** : récapitulatif aux gestionnaires des déclarations arrivées
  *    pendant l'heure écoulée (regroupement : un message par copropriété, jamais un
  *    par déclaration), puis purge des captures temporaires des lectures IA expirées.
- *    La fenêtre est l'heure pleine précédente `[H-1, H[`, donc un même passage rejoué
- *    au même instant n'envoie rien de plus que la première fois ; une heure où le
- *    serveur était arrêté n'est pas rattrapée (le résumé quotidien reprend alors les
- *    déclarations en retard).
+ *    La fenêtre est l'heure pleine précédente `[H-1, H[` ; une heure où le serveur était arrêté
+ *    n'est pas rattrapée (le résumé quotidien reprend alors les déclarations en retard).
+ *
+ * IDEMPOTENCE ENTRE INSTANCES : chaque récapitulatif (une copropriété, une heure ou un jour) prend un
+ * verrou consultatif PostgreSQL de transaction, relit un `NotificationMarker` et, s'il n'existe pas,
+ * envoie PUIS le pose. Deux instances qui se déclenchent à la même seconde se suivent : la seconde voit
+ * le marqueur et n'envoie rien. Un envoi qui n'a joint personne ne pose pas de marqueur (il peut être
+ * retenté). Hors de cette garde, rien n'empêche un rejeu : le marqueur est la seule mémoire.
  * 2. **Chaque jour à 8 h (Africa/Abidjan)** : alerte « en retard » pour les copropriétés
  *    dont une déclaration attend depuis au moins `reviewAlertBusinessDays` jours ouvrés.
  *
@@ -33,6 +38,10 @@ let hourlyRunning = false;
 let dailyRunning = false;
 
 const HOUR_MS = 60 * 60 * 1000;
+/** `NotificationMarker.kind` des récapitulatifs envoyés (anti-doublon entre instances). */
+export const REVIEW_SUMMARY_MARKER_KIND = 'SYNDIC_DECLARED_REVIEW_SUMMARY_SENT';
+const MARKER_ENTITY_TYPE = 'SYNDICATE';
+const LOCK_TIMEOUT_MS = 120_000;
 
 export interface DeclarationJobReport {
   syndicates: number;
@@ -75,11 +84,46 @@ async function countPending(tenantId: string, syndicateId: string, now: Date) {
 async function summarize(
   group: PendingGroup,
   now: Date,
-  options: { onlyIfOverdue: boolean },
+  options: { onlyIfOverdue: boolean; markerId: string },
   report: DeclarationJobReport
 ): Promise<void> {
+  await withTransactionalAdvisoryLock(
+    `syndic-declared-summary:${group.tenantId}:${options.markerId}`,
+    async tx => {
+      const marker = await tx.notificationMarker.findFirst({
+        where: {
+          tenantId: group.tenantId,
+          kind: REVIEW_SUMMARY_MARKER_KIND,
+          entityType: MARKER_ENTITY_TYPE,
+          entityId: options.markerId
+        },
+        select: { id: true }
+      });
+      if (marker) return;
+      const delivered = await sendSummaryOnce(group, now, options, report);
+      if (delivered > 0) {
+        await tx.notificationMarker.create({
+          data: {
+            tenantId: group.tenantId,
+            kind: REVIEW_SUMMARY_MARKER_KIND,
+            entityType: MARKER_ENTITY_TYPE,
+            entityId: options.markerId
+          }
+        });
+      }
+    },
+    { timeoutMs: LOCK_TIMEOUT_MS }
+  );
+}
+
+async function sendSummaryOnce(
+  group: PendingGroup,
+  now: Date,
+  options: { onlyIfOverdue: boolean },
+  report: DeclarationJobReport
+): Promise<number> {
   const { pendingCount, overdueCount } = await countPending(group.tenantId, group.syndicateId, now);
-  if (pendingCount === 0 || (options.onlyIfOverdue && overdueCount === 0)) return;
+  if (pendingCount === 0 || (options.onlyIfOverdue && overdueCount === 0)) return 0;
   const syndicate = await prisma.syndicate.findFirst({
     where: { id: group.syndicateId, tenantId: group.tenantId },
     select: { name: true }
@@ -92,17 +136,20 @@ async function summarize(
     overdueCount
   });
   if (delivered > 0) report.summariesSent += 1;
+  return delivered;
 }
 
 async function runGroups(
   groups: PendingGroup[],
   now: Date,
-  options: { onlyIfOverdue: boolean }
+  options: { onlyIfOverdue: boolean; markerOf: (group: PendingGroup) => string }
 ): Promise<DeclarationJobReport> {
   const report: DeclarationJobReport = { syndicates: groups.length, summariesSent: 0, failed: 0 };
   for (const group of groups) {
     try {
-      await runWithTenantContext({ tenantId: group.tenantId }, () => summarize(group, now, options, report));
+      await runWithTenantContext({ tenantId: group.tenantId }, () =>
+        summarize(group, now, { onlyIfOverdue: options.onlyIfOverdue, markerId: options.markerOf(group) }, report)
+      );
     } catch (error) {
       report.failed += 1;
       logger.error('[declared-payment] récapitulatif impossible pour une copropriété', {
@@ -120,7 +167,10 @@ export async function runHourlyDeclarationBatch(now: Date = new Date()): Promise
   const windowEnd = startOfHour(now);
   const windowStart = new Date(windowEnd.getTime() - HOUR_MS);
   const groups = await listPendingGroups({ createdAt: { gte: windowStart, lt: windowEnd } });
-  const report = await runGroups(groups, now, { onlyIfOverdue: false });
+  const report = await runGroups(groups, now, {
+    onlyIfOverdue: false,
+    markerOf: group => `${group.syndicateId}|hour|${windowStart.toISOString()}`
+  });
   try {
     const purged = await purgeExpiredProofReads(now);
     if (purged > 0) logger.info('[declared-payment] captures temporaires expirées purgées', { purged });
@@ -135,7 +185,9 @@ export async function runHourlyDeclarationBatch(now: Date = new Date()): Promise
 /** Passage quotidien : alerte pour les copropriétés qui ont des déclarations en retard. */
 export async function runDailyOverdueAlert(now: Date = new Date()): Promise<DeclarationJobReport> {
   const groups = await listPendingGroups();
-  return runGroups(groups, now, { onlyIfOverdue: true });
+  // Jour civil d'Africa/Abidjan (UTC+0, sans changement d'heure).
+  const day = now.toISOString().slice(0, 10);
+  return runGroups(groups, now, { onlyIfOverdue: true, markerOf: group => `${group.syndicateId}|day|${day}` });
 }
 
 export function startSyndicDeclaredPaymentJob(): void {

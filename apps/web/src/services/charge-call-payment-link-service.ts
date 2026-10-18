@@ -46,7 +46,7 @@ export type PublicChargeCallPaymentResult =
 export type StartChargeCallPaymentResult =
   | { status: 'ok'; checkoutUrl: string }
   | { status: PublicChargePaymentFailure }
-  | { status: 'conflict'; reviewPending: boolean };
+  | { status: 'conflict'; reviewPending: boolean; declarationPending: boolean };
 
 export type ChargeCallPaymentStatusResult =
   { status: 'ok'; payment: ChargeCallPaymentStatusDto } | { status: PublicChargePaymentFailure };
@@ -92,9 +92,14 @@ export async function startPublicChargeCallPayment(token: string): Promise<Start
       return { status: 'ok', checkoutUrl: response.data.data.checkoutUrl };
     }
     if (response.status === 409) {
-      // Deux 409 distincts (contrat §3.2) : le code dit si le syndic doit trancher.
+      // 409 distincts (contrat §3.2, spec 047 R15) : le code dit si le syndic doit trancher ou s'il vérifie
+      // un paiement mobile money déclaré pour cet appel.
       const body = response.data as { code?: unknown } | undefined;
-      return { status: 'conflict', reviewPending: body?.code === 'ONLINE_PAYMENT_UNDER_REVIEW' };
+      return {
+        status: 'conflict',
+        reviewPending: body?.code === 'ONLINE_PAYMENT_UNDER_REVIEW',
+        declarationPending: body?.code === 'CHARGE_CALL_DECLARATION_PENDING'
+      };
     }
     return { status: failureFor(response.status) };
   } catch {

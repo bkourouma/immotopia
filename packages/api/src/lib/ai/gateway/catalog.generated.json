@@ -3331,7 +3331,7 @@
       "summary": "syndics / {syndicId} / numeros-reception",
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_VIEW"]],
-      "sensitive": false
+      "sensitive": true
     },
     {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration",
@@ -3397,7 +3397,7 @@
       "summary": "syndics / {syndicId} / paiements-declares / {declarationId} / preuve",
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_VIEW"]],
-      "sensitive": false
+      "sensitive": true
     },
     {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiements-declares/reglages",
@@ -4376,7 +4376,7 @@
       "summary": "syndics / {syndicId} / numeros-reception / {numberId}",
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
-      "sensitive": false
+      "sensitive": true
     },
     {
       "id": "PATCH /api/tenants/:tenantId/syndics/:syndicId/penalites/:penaltyId/remise",
@@ -7370,7 +7370,7 @@
       "summary": "syndics / {syndicId} / numeros-reception",
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
-      "sensitive": false
+      "sensitive": true
     },
     {
       "id": "POST /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration/test",

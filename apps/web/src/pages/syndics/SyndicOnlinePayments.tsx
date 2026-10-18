@@ -1,3 +1,4 @@
+import { DECLARATIONS_CHANGED_EVENT } from '../../components/navigation/SyndicWorkspaceLayout';
 import React, { useState } from 'react';
 import { App, Alert, Button, Space, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -52,7 +53,11 @@ export const SyndicOnlinePayments: React.FC = () => {
   }
 
   const bump = () => setRefreshToken(value => value + 1);
-  const bumpDeclared = () => setDeclaredRefresh(value => value + 1);
+  const bumpDeclared = () => {
+    setDeclaredRefresh(value => value + 1);
+    // Le compteur de l'onglet « Paiements » se relit (SyndicWorkspaceLayout).
+    window.dispatchEvent(new Event(DECLARATIONS_CHANGED_EVENT));
+  };
 
   const handleDecided = (result: DecideSyndicCheckoutResult) => {
     setDeciding(null);
@@ -176,7 +181,9 @@ export const SyndicOnlinePayments: React.FC = () => {
           syndicId={syndicId}
           collectionBalance={collectionBalance}
           onRecorded={result => {
-            setCollectionBalance(result.collectionBalanceAfter);
+            // Le solde affiché en haut est celui du 5525 : un reversement d'un numéro de réception n'y touche pas.
+            if ((result.treasuryAccountNumber ?? '5525') === '5525')
+              setCollectionBalance(result.collectionBalanceAfter);
             bump();
           }}
         />

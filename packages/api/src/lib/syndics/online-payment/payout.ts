@@ -20,7 +20,7 @@
 
 import { randomUUID } from 'crypto';
 import { prisma, type PrismaTransactionClient } from '../../../utils/database';
-import { AppError, BadRequestError, ErrorCode } from '../../../middleware/error-middleware';
+import { AppError, BadRequestError, ErrorCode, NotFoundError } from '../../../middleware/error-middleware';
 import { t } from '../../../i18n';
 import { roundMoney } from '../finance-utils';
 import { formatIsoDay } from '../period';
@@ -29,7 +29,9 @@ import {
   assertFiscalYearOpenTx,
   ensureSyndicAccountsTx,
   ensureSyndicJournalTx,
-  postSyndicEntryTx
+  isReceivingAccountNumber,
+  postSyndicEntryTx,
+  type ReceivingAccountNumber
 } from '../provider-invoice-accounting';
 
 export const GATEWAY_PAYOUT_DOCUMENT_TYPE = 'SYNDIC_GATEWAY_PAYOUT';
@@ -39,6 +41,12 @@ const NOTE_MAX = 250;
 const ENTRY_REFERENCE_PREFIX = 'REV-';
 const NOTE_SEPARATOR = ' | ';
 
+/** Compte de collecte PaySecureHub : celui des reversements du paiement en ligne (spec 042). */
+export const GATEWAY_COLLECTION_ACCOUNT = '5525';
+
+/** Compte dont on reverse : le 5525 ou le sous-compte 5521x d'un numéro de réception de la copropriété (spec 047, R23). */
+export type PayoutAccountNumber = typeof GATEWAY_COLLECTION_ACCOUNT | ReceivingAccountNumber;
+
 type Client = PrismaTransactionClient | typeof prisma;
 
 export interface SyndicGatewayPayout {
@@ -47,6 +55,8 @@ export interface SyndicGatewayPayout {
   date: string;
   amount: number;
   note: string | null;
+  /** Compte reversé : 5525 ou un sous-compte 5521x. */
+  treasuryAccountNumber: string;
   createdAt: string;
 }
 
@@ -61,6 +71,8 @@ export interface RecordGatewayPayoutInput {
   reference: string;
   note?: string | null;
   actorUserId?: string | null;
+  /** Compte à reverser : 5525 par défaut, ou le sous-compte d'un numéro de réception de CETTE copropriété. */
+  treasuryAccountNumber?: string | null;
 }
 
 export interface RecordGatewayPayoutResult {
@@ -68,7 +80,9 @@ export interface RecordGatewayPayoutResult {
   reference: string;
   amount: number;
   date: string;
-  /** Solde du 5525 apres l'ecriture. */
+  /** Compte reverse. */
+  treasuryAccountNumber: string;
+  /** Solde du compte reverse (5525 ou 5521x) apres l'ecriture. */
   collectionBalanceAfter: number;
 }
 
@@ -79,12 +93,39 @@ export function normalizePayoutReference(reference: string): string {
 
 const entryReferenceOf = (normalizedReference: string) => `${ENTRY_REFERENCE_PREFIX}${normalizedReference}`;
 
-async function findCollectionAccountId(client: Client, tenantId: string, syndicateId: string): Promise<string | null> {
+async function findCollectionAccountId(
+  client: Client,
+  tenantId: string,
+  syndicateId: string,
+  accountNumber: string = GATEWAY_COLLECTION_ACCOUNT
+): Promise<string | null> {
   const account = await client.chartOfAccount.findFirst({
-    where: { tenantId, syndicateId, accountNumber: '5525' },
+    where: { tenantId, syndicateId, accountNumber },
     select: { id: true }
   });
   return account?.id ?? null;
+}
+
+/**
+ * Compte reversable : le 5525, ou le sous-compte 5521x d'un numéro de réception de CETTE copropriété
+ * (vérifié en base, agence et copropriété comprises). Tout autre compte répond comme un compte inexistant.
+ */
+async function resolvePayoutAccount(
+  client: Client,
+  tenantId: string,
+  syndicateId: string,
+  requested: string | null | undefined
+): Promise<PayoutAccountNumber> {
+  const accountNumber = (requested ?? '').trim() || GATEWAY_COLLECTION_ACCOUNT;
+  if (accountNumber === GATEWAY_COLLECTION_ACCOUNT) return GATEWAY_COLLECTION_ACCOUNT;
+  if (isReceivingAccountNumber(accountNumber)) {
+    const owned = await client.syndicReceivingNumber.findFirst({
+      where: { tenantId, syndicateId, treasuryAccountNumber: accountNumber },
+      select: { id: true }
+    });
+    if (owned) return accountNumber;
+  }
+  throw new NotFoundError(t('Compte de trésorerie introuvable pour cette copropriété.'));
 }
 
 async function syndicJournalIds(client: Client, tenantId: string, syndicateId: string): Promise<string[]> {
@@ -95,8 +136,13 @@ async function syndicJournalIds(client: Client, tenantId: string, syndicateId: s
   return journals.map(journal => journal.id);
 }
 
-async function collectionBalance(client: Client, tenantId: string, syndicateId: string): Promise<number> {
-  const accountId = await findCollectionAccountId(client, tenantId, syndicateId);
+async function collectionBalance(
+  client: Client,
+  tenantId: string,
+  syndicateId: string,
+  accountNumber: string = GATEWAY_COLLECTION_ACCOUNT
+): Promise<number> {
+  const accountId = await findCollectionAccountId(client, tenantId, syndicateId, accountNumber);
   if (!accountId) return 0;
   const totals = await client.journalEntryLine.aggregate({
     where: { accountId },
@@ -109,9 +155,15 @@ async function collectionBalance(client: Client, tenantId: string, syndicateId: 
  * Solde debiteur comptable du 5525 de la copropriete (0 si le compte n'existe
  * pas : rien n'est cree). Les contre-passations y sont comprises.
  */
-export async function getCollectionBalance(client: Client, tenantId: string, syndicateId: string): Promise<number> {
+export async function getCollectionBalance(
+  client: Client,
+  tenantId: string,
+  syndicateId: string,
+  accountNumber?: string | null
+): Promise<number> {
   await assertSyndicateOfTenant(client, tenantId, syndicateId);
-  return collectionBalance(client, tenantId, syndicateId);
+  const account = await resolvePayoutAccount(client, tenantId, syndicateId, accountNumber);
+  return collectionBalance(client, tenantId, syndicateId, account);
 }
 
 /** Reversements non annules de la copropriete, du plus recent au plus ancien. */
@@ -138,16 +190,30 @@ export async function listGatewayPayouts(
   });
   if (entries.length === 0) return { items: [] };
 
-  const accountId = await findCollectionAccountId(prisma, tenantId, syndicateId);
-  const lines = accountId
+  // Comptes reversables de la copropriété : le 5525 et les sous-comptes 5521x (spec 047, R23).
+  const accounts = (
+    await prisma.chartOfAccount.findMany({
+      where: { tenantId, syndicateId },
+      select: { id: true, accountNumber: true }
+    })
+  ).filter(
+    account => account.accountNumber === GATEWAY_COLLECTION_ACCOUNT || isReceivingAccountNumber(account.accountNumber)
+  );
+  const numberOfAccount = new Map(accounts.map(account => [account.id, account.accountNumber]));
+  const lines = accounts.length
     ? await prisma.journalEntryLine.findMany({
-        where: { accountId, entryId: { in: entries.map(entry => entry.id) } },
-        select: { entryId: true, credit: true }
+        where: {
+          accountId: { in: accounts.map(account => account.id) },
+          entryId: { in: entries.map(entry => entry.id) }
+        },
+        select: { entryId: true, accountId: true, credit: true }
       })
     : [];
   const amountByEntry = new Map<string, number>();
+  const accountByEntry = new Map<string, string>();
   for (const line of lines) {
     amountByEntry.set(line.entryId, roundMoney((amountByEntry.get(line.entryId) ?? 0) + Number(line.credit)));
+    accountByEntry.set(line.entryId, numberOfAccount.get(line.accountId) ?? GATEWAY_COLLECTION_ACCOUNT);
   }
 
   return {
@@ -164,6 +230,7 @@ export async function listGatewayPayouts(
         date: formatIsoDay(entry.entryDate) as string,
         amount: amountByEntry.get(entry.id) ?? 0,
         note: note || null,
+        treasuryAccountNumber: accountByEntry.get(entry.id) ?? GATEWAY_COLLECTION_ACCOUNT,
         createdAt: entry.createdAt.toISOString()
       };
     })
@@ -171,7 +238,7 @@ export async function listGatewayPayouts(
 }
 
 /**
- * Enregistre un reversement (debit 521 / credit 5525).
+ * Enregistre un reversement (debit 521 / credit 5525, ou credit du sous-compte 5521x d'un numero de reception).
  *
  * Erreurs : `NotFoundError` (copropriete d'une autre agence ou inconnue),
  * `BadRequestError` (montant, reference ou note invalides),
@@ -194,7 +261,14 @@ export async function recordGatewayPayout(input: RecordGatewayPayoutInput): Prom
 
   return prisma.$transaction(async tx => {
     await assertSyndicateOfTenant(tx, input.tenantId, input.syndicateId);
+    const accountNumber = await resolvePayoutAccount(
+      tx,
+      input.tenantId,
+      input.syndicateId,
+      input.treasuryAccountNumber
+    );
     // Verrou de la copropriete : doublon de reference et plafond du solde.
+
     const lockKey = `syndic-gateway-payout:${input.syndicateId}`;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 
@@ -221,18 +295,28 @@ export async function recordGatewayPayout(input: RecordGatewayPayoutInput): Prom
 
     await assertFiscalYearOpenTx(tx, input.syndicateId, input.date);
 
-    const balance = await collectionBalance(tx, input.tenantId, input.syndicateId);
+    const balance = await collectionBalance(tx, input.tenantId, input.syndicateId, accountNumber);
     if (amount > balance) {
       throw new AppError(
-        t('Le reversement dépasse le solde encaissé non reversé du compte PaySecureHub.'),
+        accountNumber === GATEWAY_COLLECTION_ACCOUNT
+          ? t('Le reversement dépasse le solde encaissé non reversé du compte PaySecureHub.')
+          : t('Le reversement dépasse le solde encaissé non reversé de ce numéro de réception.'),
         400,
         ErrorCode.PAYOUT_EXCEEDS_COLLECTED
       );
     }
 
     const accounts = await ensureSyndicAccountsTx(tx, input.tenantId, input.syndicateId, ['521', '5525']);
+    // Le 5525 est semé à la demande ; un sous-compte 5521x existe déjà (créé avec son numéro de réception).
+    const sourceAccountId =
+      accountNumber === GATEWAY_COLLECTION_ACCOUNT
+        ? accounts.get('5525')!
+        : await findCollectionAccountId(tx, input.tenantId, input.syndicateId, accountNumber);
+    if (!sourceAccountId) throw new NotFoundError(t('Compte de trésorerie introuvable pour cette copropriété.'));
     const journalId = await ensureSyndicJournalTx(tx, input.tenantId, input.syndicateId, 'BANK', input.date);
-    const description = `${t('Reversement PaySecureHub')} : ${reference}${note ? `${NOTE_SEPARATOR}${note}` : ''}`;
+    const label =
+      accountNumber === GATEWAY_COLLECTION_ACCOUNT ? t('Reversement PaySecureHub') : t('Reversement mobile money');
+    const description = `${label} : ${reference}${note ? `${NOTE_SEPARATOR}${note}` : ''}`;
     const entryId = await postSyndicEntryTx(tx, {
       tenantId: input.tenantId,
       journalId,
@@ -244,7 +328,7 @@ export async function recordGatewayPayout(input: RecordGatewayPayoutInput): Prom
       documentType: GATEWAY_PAYOUT_DOCUMENT_TYPE,
       lines: [
         { accountId: accounts.get('521')!, debit: amount, credit: 0, label: description },
-        { accountId: accounts.get('5525')!, debit: 0, credit: amount, label: description }
+        { accountId: sourceAccountId, debit: 0, credit: amount, label: description }
       ]
     });
 
@@ -253,6 +337,7 @@ export async function recordGatewayPayout(input: RecordGatewayPayoutInput): Prom
       reference,
       amount,
       date: formatIsoDay(input.date) as string,
+      treasuryAccountNumber: accountNumber,
       collectionBalanceAfter: roundMoney(balance - amount)
     };
   });

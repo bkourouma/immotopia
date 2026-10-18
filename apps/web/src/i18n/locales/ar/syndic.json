@@ -1694,5 +1694,12 @@
   "Validées": "المصادَق عليها",
   "Valider avec correction": "المصادقة مع التصحيح",
   "Valider la déclaration de paiement": "المصادقة على إقرار الدفع",
-  "Valider telle que déclarée": "المصادقة كما هو مُقَرّ به"
+  "Valider telle que déclarée": "المصادقة كما هو مُقَرّ به",
+  "À saisir quand le fournisseur ou l’opérateur a versé l’argent sur le compte bancaire de la copropriété. Cet écran enregistre l’écriture comptable (compte de collecte vers 521) ; il ne déclenche aucun virement.": "يُدخَل عندما يكون المزوّد أو المشغّل قد حوّل المال إلى الحساب البنكي للملكية المشتركة. تسجّل هذه الشاشة القيد المحاسبي (حساب التحصيل إلى 521) ولا تُجري أي تحويل.",
+  "Compte à reverser": "الحساب المراد تحويله",
+  "Le montant dépasse le solde du compte sélectionné.": "يتجاوز المبلغ رصيد الحساب المحدد.",
+  "Le total retenu ne peut pas dépasser le montant déclaré.": "لا يمكن أن يتجاوز إجمالي المقبول المبلغ المُقَرّ به.",
+  "PaySecureHub (5525)": "PaySecureHub (5525)",
+  "Reversement enregistré. Solde du compte {{account}} : {{amount}}": "تم تسجيل التحويل. رصيد الحساب {{account}}: {{amount}}",
+  "Solde du compte {{account}} : {{amount}}": "رصيد الحساب {{account}}: {{amount}}"
 }

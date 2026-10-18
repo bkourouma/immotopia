@@ -8,9 +8,10 @@ import {
   SyndicGatewayPayout,
   listSyndicGatewayPayouts
 } from '../../../services/syndic-online-payment-service';
+import { listSyndicReceivingNumbers } from '../../../services/syndic-declared-payment-service';
 import { t } from '../../../i18n/t';
 import { apiErrorMessage, formatDay } from './helpers';
-import { PayoutModal } from './PayoutModal';
+import { PayoutModal, type PayoutAccountOption } from './PayoutModal';
 
 export interface PayoutsPanelProps {
   tenantId: string;
@@ -36,6 +37,7 @@ export const PayoutsPanel: React.FC<PayoutsPanelProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [receivingAccounts, setReceivingAccounts] = useState<PayoutAccountOption[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -43,6 +45,19 @@ export const PayoutsPanel: React.FC<PayoutsPanelProps> = ({
     try {
       const result = await listSyndicGatewayPayouts(tenantId, syndicId);
       setItems(result.items);
+      // Sous-comptes 5521x des numéros de réception : reversables comme le 5525 (R23). Un échec ne bloque pas le 5525.
+      try {
+        const numbers = await listSyndicReceivingNumbers(tenantId, syndicId);
+        setReceivingAccounts(
+          numbers.map(number => ({
+            accountNumber: number.treasuryAccountNumber,
+            label: `${number.holderName} (${number.treasuryAccountNumber})`,
+            balance: number.treasuryBalance
+          }))
+        );
+      } catch {
+        setReceivingAccounts([]);
+      }
     } catch (e) {
       setError(apiErrorMessage(e, t('Impossible de charger les reversements')));
     } finally {
@@ -54,8 +69,20 @@ export const PayoutsPanel: React.FC<PayoutsPanelProps> = ({
     void load();
   }, [load]);
 
+  const accounts: PayoutAccountOption[] = [
+    { accountNumber: '5525', label: t('PaySecureHub (5525)'), balance: collectionBalance ?? 0 },
+    ...receivingAccounts
+  ];
+  const reversible = accounts.some(account => account.balance > 0);
+
   const columns: ColumnsType<SyndicGatewayPayout> = [
     { title: t('Date'), dataIndex: 'date', key: 'date', render: (value: string) => formatDay(value) },
+    {
+      title: t('Compte'),
+      dataIndex: 'treasuryAccountNumber',
+      key: 'treasuryAccountNumber',
+      render: (value?: string) => value ?? '5525'
+    },
     { title: t('Référence'), dataIndex: 'reference', key: 'reference' },
     {
       title: t('Montant'),
@@ -75,7 +102,7 @@ export const PayoutsPanel: React.FC<PayoutsPanelProps> = ({
           <Button
             type="primary"
             icon={<PlusOutlined aria-hidden />}
-            disabled={collectionBalance === null || collectionBalance <= 0}
+            disabled={!reversible}
             onClick={() => setModalOpen(true)}
           >
             {t('Enregistrer un reversement')}
@@ -112,12 +139,13 @@ export const PayoutsPanel: React.FC<PayoutsPanelProps> = ({
         tenantId={tenantId}
         syndicId={syndicId}
         open={modalOpen}
-        collectionBalance={collectionBalance ?? 0}
+        accounts={accounts}
         onClose={() => setModalOpen(false)}
         onRecorded={result => {
           setModalOpen(false);
           message.success(
-            t('Reversement enregistré. Solde du compte 5525 : {{amount}}', {
+            t('Reversement enregistré. Solde du compte {{account}} : {{amount}}', {
+              account: result.treasuryAccountNumber ?? '5525',
               amount: formatMoney(result.collectionBalanceAfter)
             })
           );

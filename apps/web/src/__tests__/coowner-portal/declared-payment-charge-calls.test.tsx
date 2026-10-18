@@ -192,8 +192,36 @@ describe('Appels de charges — paiement mobile money déclaré', () => {
     expect(screen.queryByText(/Numéros pour payer par mobile money/)).not.toBeInTheDocument();
   });
 
+  it('un copropriétaire SANS appel de charges peut déclarer une avance : la copropriété vient de ses lots', async () => {
+    listMyChargeCalls.mockResolvedValue([]);
+    listMyLots.mockResolvedValue([lot('lot-1', 'A1', 's1')]);
+    const user = userEvent.setup();
+    mountPage();
+
+    const button = await screen.findByRole('button', { name: MOBILE_BUTTON }, WAIT);
+    expect(getDeclaredAvailability).toHaveBeenCalledWith('s1');
+    await user.click(button);
+    expect(await screen.findByTestId('declaration-form')).toBeInTheDocument();
+    expect(screen.getByTestId('form-syndicate')).toHaveTextContent('s1');
+    expect(screen.getByTestId('form-lots')).toHaveTextContent('A1');
+    expect(screen.getByTestId('form-calls')).toHaveTextContent('0');
+  });
+
+  it('sans appel ni lot, rien n’est proposé', async () => {
+    listMyChargeCalls.mockResolvedValue([]);
+    listMyLots.mockResolvedValue([]);
+    mountPage();
+    await waitFor(() => expect(listMyLots).toHaveBeenCalled());
+    expect(getDeclaredAvailability).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: MOBILE_BUTTON })).not.toBeInTheDocument();
+  });
+
   it('affiche les numéros et le bouton, et le clic ouvre le formulaire de la bonne copropriété', async () => {
     listMyLots.mockResolvedValue([lot('lot-1', 'A1', 's1'), lot('lot-9', 'Z9', 's2')]);
+    // La seconde copropriété (un lot, aucun appel) n'accepte pas les déclarations.
+    getDeclaredAvailability.mockImplementation(async (id: string) =>
+      declared({ syndicateId: id, available: id === 's1' })
+    );
     const user = userEvent.setup();
     mountPage();
 

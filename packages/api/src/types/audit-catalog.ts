@@ -188,6 +188,7 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
     redact: DECLARED_PAYMENT_REDACT
   }),
   [AuditActionKey.SYNDIC_PAYMENT_DECLARATION_REJECTED]: tenant('BILLING', { redact: DECLARED_PAYMENT_REDACT }),
+  [AuditActionKey.SYNDIC_PAYMENT_PROOF_VIEWED]: tenant('DATA'),
   [AuditActionKey.SYNDIC_PAYMENT_PROOF_READ]: tenant('DATA', { redact: DECLARED_PAYMENT_REDACT }),
 
   // Patrimoine : rapport propriétaire, sinistres, régularisation foncière.

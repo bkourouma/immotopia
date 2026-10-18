@@ -109,7 +109,11 @@ export function sendPrivateFile(res: Response, file: PrivateFile, options: { inl
     'Content-Disposition',
     `${options.inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.fileName)}`
   );
-  if (options.inline) res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (options.inline) {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // Un fichier affiché dans la page ne peut ni exécuter de script ni charger quoi que ce soit.
+    res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
+  }
   res.setHeader('Content-Length', file.buffer.length.toString());
   res.setHeader('Cache-Control', 'private, no-store');
   res.send(file.buffer);

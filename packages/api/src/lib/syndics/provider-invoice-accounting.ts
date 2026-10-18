@@ -157,6 +157,26 @@ function operatorLabel(operator: MobileMoneyOperator): string {
   }
 }
 
+/**
+ * Remet à jour le LIBELLÉ du sous-compte 5521x d'un numéro de réception dont le téléphone (ou l'opérateur) a
+ * changé : « <Opérateur> <numéro masqué> ». Seul le libellé du sous-compte de CE numéro bouge ; son numéro de
+ * compte, ses écritures et tous les autres comptes restent intacts. Renvoie le nombre de comptes renommés.
+ */
+export async function renameSyndicReceivingAccount(
+  client: Pick<PrismaTransactionClient, 'chartOfAccount'>,
+  tenantId: string,
+  syndicateId: string,
+  accountNumber: string,
+  receiving: { operator: MobileMoneyOperator; phoneNumber: string }
+): Promise<number> {
+  if (!isReceivingAccountNumber(accountNumber)) return 0;
+  const result = await client.chartOfAccount.updateMany({
+    where: { tenantId, syndicateId, scope: 'SYNDICATE', accountNumber },
+    data: { accountName: `${operatorLabel(receiving.operator)} ${maskPhone(receiving.phoneNumber)}`.slice(0, 250) }
+  });
+  return result.count;
+}
+
 /** Compte parent 552 du plan de la copropriete : l'utilise s'il existe, sinon le cree (compte NOUVEAU, rien n'est modifie). */
 async function ensureReceivingParentTx(tx: PrismaTransactionClient, tenantId: string, syndicateId: string) {
   const parent = await tx.chartOfAccount.findFirst({

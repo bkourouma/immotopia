@@ -24,6 +24,8 @@ jest.mock('../../src/utils/database', () => ({
   prisma: {
     syndicPaymentDeclaration: { findFirst: (...a: any[]) => declarationFindFirst(...a) },
     crmContact: { findFirst: (...a: any[]) => contactFindFirst(...a) },
+    syndicate: { findFirst: async () => ({ name: 'Résidence Les Palmiers' }) },
+    user: { findFirst: async () => ({ fullName: 'Marc <Gestionnaire>' }) },
     membership: { findMany: (...a: any[]) => membershipFindMany(...a) }
   }
 }));
@@ -59,6 +61,7 @@ import {
   notifyDeclarationReceived,
   notifyDeclarationRejected,
   resolveDeclarationReviewers,
+  sendReceivingNumberChangedAlert,
   sendCoOwnerDeclarationMessage,
   sendReviewSummary
 } from '../../src/lib/syndics/declared-payment/notifications';
@@ -125,6 +128,30 @@ describe('sendCoOwnerDeclarationMessage', () => {
     });
     expect(args.variables.amount).toContain('FCFA');
     expect(args.variables.paidAt).toContain('2026');
+  });
+
+  it('dit les variables dans la langue du copropriétaire : libellés, oui/non, dates et nombres', async () => {
+    declarationFindFirst.mockResolvedValue(
+      declaration({ acceptedAmount: 25000, rejectReason: 'WRONG_NUMBER', paidAt: new Date('2026-10-17T14:32:00Z') })
+    );
+    contactFindFirst.mockResolvedValue(contact({ preferredLanguage: 'en' }));
+    await sendCoOwnerDeclarationMessage('tenant-A', 'decl-1', 'REJECTED');
+    const english = sendOnPlannedChannels.mock.calls.at(-1)![1].variables;
+    expect(english.rejectReasonLabel).toBe('Wrong receiving number');
+    expect(english.corrected).toBe('yes');
+    expect(english.paidAt).toContain('17/10/2026');
+    expect(english.amount).toBe('30,000 FCFA');
+
+    contactFindFirst.mockResolvedValue(contact({ preferredLanguage: 'fr' }));
+    await sendCoOwnerDeclarationMessage('tenant-A', 'decl-1', 'REJECTED');
+    const french = sendOnPlannedChannels.mock.calls.at(-1)![1].variables;
+    expect(french.rejectReasonLabel).toBe('Numéro de réception erroné');
+    expect(french.corrected).toBe('oui');
+    expect(french.paidAt).toContain('17/10/2026');
+
+    contactFindFirst.mockResolvedValue(contact({ preferredLanguage: null }));
+    await sendCoOwnerDeclarationMessage('tenant-A', 'decl-1', 'REJECTED');
+    expect(sendOnPlannedChannels.mock.calls.at(-1)![1].variables.corrected).toBe('oui');
   });
 
   it('annonce le montant retenu et signale une correction', async () => {
@@ -272,6 +299,49 @@ describe('gestionnaires', () => {
     await expect(sendReviewSummary(params)).resolves.toBe(0);
     membershipFindMany.mockRejectedValueOnce(new Error('base HS'));
     await expect(sendReviewSummary(params)).resolves.toBe(0);
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe('changement de numéro de réception : alerte aux autres gestionnaires', () => {
+  const params = {
+    tenantId: 'tenant-A',
+    syndicateId: 'syndic-1',
+    actorUserId: 'u1',
+    previousPhoneMasked: '07 •• •• •• 07',
+    newPhoneMasked: '05 •• •• •• 12'
+  };
+
+  beforeEach(() => {
+    membershipFindMany.mockResolvedValue([
+      { userId: 'u1', user: { email: 'auteur@agence.test', preferredLanguage: 'fr' } },
+      { userId: 'u2', user: { email: 'collegue@agence.test', preferredLanguage: 'fr' } },
+      { userId: 'u3', user: { email: 'sans-droit@agence.test', preferredLanguage: 'fr' } }
+    ]);
+    permissions.set('u1', true);
+    permissions.set('u2', true);
+    permissions.set('u3', false);
+  });
+
+  it('prévient les collègues SYNDIC_EDIT, jamais l’auteur du changement, avec les seuls numéros masqués', async () => {
+    const delivered = await sendReceivingNumberChangedAlert(params);
+    expect(delivered).toBe(1);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const mail = sendEmail.mock.calls[0][0];
+    expect(mail.to).toBe('collegue@agence.test');
+    expect(mail.html).toContain('07 •• •• •• 07');
+    expect(mail.html).toContain('05 •• •• •• 12');
+    expect(mail.html).toContain('Marc &lt;Gestionnaire&gt;');
+    expect(getEmailNotificationConfig).toHaveBeenCalledWith('tenant-A', 'SYNDIC_RECEIVING_NUMBER_CHANGED');
+  });
+
+  it('n’envoie rien si l’agence a désactivé l’événement, s’il n’y a personne d’autre, ou en cas de panne', async () => {
+    getEmailNotificationConfig.mockResolvedValueOnce({ enabled: false });
+    await expect(sendReceivingNumberChangedAlert(params)).resolves.toBe(0);
+    permissions.set('u2', false);
+    await expect(sendReceivingNumberChangedAlert(params)).resolves.toBe(0);
+    membershipFindMany.mockRejectedValueOnce(new Error('base HS'));
+    await expect(sendReceivingNumberChangedAlert(params)).resolves.toBe(0);
     expect(sendEmail).not.toHaveBeenCalled();
   });
 });

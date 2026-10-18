@@ -2205,5 +2205,12 @@
   "Une déclaration porte sur 1 à {max} lots.": "A declaration covers 1 to {max} units.",
   "Une ligne vise {max} appels de charges au plus.": "A line targets at most {max} charge calls.",
   "Une note de 10 à 500 caractères est obligatoire.": "A note of 10 to 500 characters is required.",
-  "Wave": "Wave"
+  "Wave": "Wave",
+  "Un gestionnaire": "A manager",
+  "Le montant retenu dépasse le montant déclaré ou le plafond de {max} FCFA par déclaration.": "The accepted amount exceeds the declared amount or the ceiling of {max} FCFA per declaration.",
+  "Compte de trésorerie introuvable pour cette copropriété.": "Treasury account not found for this co-ownership.",
+  "Le reversement dépasse le solde encaissé non reversé de ce numéro de réception.": "The payout exceeds the collected, not yet paid out balance of this receiving number.",
+  "non": "no",
+  "oui": "yes",
+  "Reversement mobile money": "Mobile money payout"
 }

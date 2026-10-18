@@ -416,7 +416,9 @@ export const FAKE_MODEL_NAMES = [
   'role',
   'auditLog',
   // Marqueurs de notification (ADR-006, phase 5) : journal de remise des convocations.
-  'notificationMarker'
+  'notificationMarker',
+  // Spec 047 : numéros de réception mobile money (sous-comptes 5521x).
+  'syndicReceivingNumber'
 ] as const;
 
 export type FakePrisma = Record<(typeof FAKE_MODEL_NAMES)[number], FakeModel> & {

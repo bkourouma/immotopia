@@ -26,6 +26,23 @@ jest.mock('../../src/utils/database', () => ({
   }
 }));
 
+// Verrou consultatif + marqueur anti-doublon (idempotence entre instances) : verrou simulé, marqueurs en mémoire.
+const markers: any[] = [];
+jest.mock('../../src/lib/ai/advisory-lock', () => ({
+  withTransactionalAdvisoryLock: async (_key: string, fn: (tx: any) => Promise<unknown>) =>
+    fn({
+      notificationMarker: {
+        findFirst: async ({ where }: any) =>
+          markers.find(m => m.tenantId === where.tenantId && m.kind === where.kind && m.entityId === where.entityId) ??
+          null,
+        create: async ({ data }: any) => {
+          markers.push(data);
+          return data;
+        }
+      }
+    })
+}));
+
 const sendReviewSummary = jest.fn();
 jest.mock('../../src/lib/syndics/declared-payment/notifications', () => ({
   sendReviewSummary: (...a: any[]) => sendReviewSummary(...a)
@@ -66,6 +83,7 @@ function stubDeclarations(pendingBySyndicate: Record<string, string[]>) {
 beforeEach(() => {
   jest.clearAllMocks();
   contexts.length = 0;
+  markers.length = 0;
   getDeclaredPaymentRules.mockResolvedValue({ reviewAlertBusinessDays: 3 });
   syndicateFindFirst.mockImplementation(async ({ where }: any) => ({ name: `Copro ${where.id}` }));
   sendReviewSummary.mockResolvedValue(2);
@@ -121,6 +139,49 @@ describe('passage horaire', () => {
     stubDeclarations({});
     purgeExpiredProofReads.mockRejectedValue(new Error('disque'));
     await expect(runHourlyDeclarationBatch(NOW)).resolves.toMatchObject({ failed: 0 });
+  });
+});
+
+describe('idempotence entre instances', () => {
+  it('rejouer le même passage horaire (deuxième instance) n’envoie rien de plus', async () => {
+    stubDeclarations({ 'syndic-1': ['2026-10-19T09:10:00Z'], 'syndic-2': ['2026-10-19T09:20:00Z'] });
+    await runHourlyDeclarationBatch(NOW);
+    expect(sendReviewSummary).toHaveBeenCalledTimes(2);
+    expect(markers.map(m => m.entityId)).toEqual([
+      'syndic-1|hour|2026-10-19T09:00:00.000Z',
+      'syndic-2|hour|2026-10-19T09:00:00.000Z'
+    ]);
+
+    const replay = await runHourlyDeclarationBatch(new Date('2026-10-19T10:07:30Z'));
+    expect(sendReviewSummary).toHaveBeenCalledTimes(2);
+    expect(replay.summariesSent).toBe(0);
+  });
+
+  it('l’heure suivante est une autre fenêtre : un nouvel envoi part', async () => {
+    stubDeclarations({ 'syndic-1': ['2026-10-19T09:10:00Z'], 'syndic-2': [] });
+    await runHourlyDeclarationBatch(NOW);
+    await runHourlyDeclarationBatch(new Date('2026-10-19T11:02:00Z'));
+    expect(sendReviewSummary).toHaveBeenCalledTimes(2);
+  });
+
+  it('un envoi qui n’a joint personne ne pose pas de marqueur et peut être retenté', async () => {
+    stubDeclarations({ 'syndic-1': ['2026-10-19T09:10:00Z'], 'syndic-2': [] });
+    sendReviewSummary.mockResolvedValue(0);
+    await runHourlyDeclarationBatch(NOW);
+    expect(markers).toEqual([]);
+    sendReviewSummary.mockResolvedValue(1);
+    await runHourlyDeclarationBatch(NOW);
+    expect(markers).toHaveLength(1);
+  });
+
+  it('l’alerte quotidienne n’est envoyée qu’une fois par jour et par copropriété', async () => {
+    stubDeclarations({ 'syndic-1': ['2026-10-12T09:00:00Z'], 'syndic-2': [] });
+    await runDailyOverdueAlert(NOW);
+    await runDailyOverdueAlert(new Date('2026-10-19T08:00:05Z'));
+    expect(sendReviewSummary).toHaveBeenCalledTimes(1);
+    expect(markers[0].entityId).toBe('syndic-1|day|2026-10-19');
+    await runDailyOverdueAlert(new Date('2026-10-20T08:00:00Z'));
+    expect(sendReviewSummary).toHaveBeenCalledTimes(2);
   });
 });
 

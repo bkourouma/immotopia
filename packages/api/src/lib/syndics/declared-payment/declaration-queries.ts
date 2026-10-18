@@ -11,6 +11,7 @@ import {
   DUPLICATE_PROBE_SELECT,
   computeDeclarationAlertsBatch,
   editedFieldsOf,
+  findDeclarationsOnExistingPayment,
   loadDuplicateCandidates,
   matchProbableDuplicates,
   resolveLineTargets,
@@ -398,10 +399,15 @@ export async function listDeclarations(params: ListDeclarationsParams): Promise<
     orderBy: { createdAt: 'asc' }
   });
   const pool = await loadDuplicateCandidates(prisma, tenantId, syndicateId, pendingAll);
+  // « Doublon suspecté » = doublon probable (R10) OU référence déjà portée par un paiement enregistré (R17).
+  const onExistingPayment = await findDeclarationsOnExistingPayment(
+    prisma,
+    pendingAll.map(declaration => ({ ...declaration, syndicateId }))
+  );
   const flagged = pendingAll.map(declaration => ({
     declaration,
     overdue: isOverdue(declaration.createdAt, rules.reviewAlertBusinessDays, now),
-    duplicate: matchProbableDuplicates(declaration, pool).length > 0
+    duplicate: matchProbableDuplicates(declaration, pool).length > 0 || onExistingPayment.has(declaration.id)
   }));
   const counts = {
     pending: flagged.length,

@@ -406,6 +406,13 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 20px 0;"><strong>{{pendingCount}}</strong> paiement(s) mobile money déclaré(s) attendent votre vérification pour la copropriété <strong>{{syndicName}}</strong>, dont <strong>{{overdueCount}}</strong> en retard.</p>
 <p style="margin:0 0 20px 0; padding:14px; background:#fffbeb; border-radius:8px; font-size:14px;"><a href="{{link}}" style="color:#b45309; font-weight:600; text-decoration:underline;">Ouvrir l'onglet Paiements</a></p>`
   },
+  SYNDIC_RECEIVING_NUMBER_CHANGED: {
+    subject: 'Numéro de réception changé - {{syndicName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Numéro de réception changé</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;"><strong>{{actorName}}</strong> a changé le numéro mobile money qui reçoit les paiements de la copropriété <strong>{{syndicName}}</strong> : {{previousPhone}} devient {{newPhone}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Si vous n'êtes pas au courant de ce changement, vérifiez-le sans attendre auprès de votre collègue.</p>`
+  },
   EXTERNAL_ACCESS_LINK_SENT: {
     subject: 'Accès partagé par {{agencyName}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Accès en lecture seule</h1>

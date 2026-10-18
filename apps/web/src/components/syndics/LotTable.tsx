@@ -64,6 +64,8 @@ interface LotTableProps {
    * l'accès. Absent : la colonne « Portail » s'affiche sans lien.
    */
   portalManageHref?: string;
+  /** Lots visés par un paiement mobile money déclaré en attente (spec 047) : pastille à côté du numéro. */
+  declaredPendingLotIds?: ReadonlySet<string>;
   propertyLabelById?: Record<string, string>;
   ownerLabelById?: Record<string, string>;
   ownerLabelByEmail?: Record<string, string>;
@@ -79,6 +81,7 @@ export const LotTable: React.FC<LotTableProps> = ({
   loading = false,
   showMobileHint = false,
   portalManageHref,
+  declaredPendingLotIds,
   propertyLabelById,
   ownerLabelById,
   ownerLabelByEmail,
@@ -99,6 +102,7 @@ export const LotTable: React.FC<LotTableProps> = ({
         <Space size={6}>
           <Text strong>{value}</Text>
           {lot.generalShares === 0 ? <Tag>{t('Inactif')}</Tag> : null}
+          {declaredPendingLotIds?.has(lot.id) ? <Tag color="processing">{t('Paiement déclaré')}</Tag> : null}
         </Space>
       )
     },

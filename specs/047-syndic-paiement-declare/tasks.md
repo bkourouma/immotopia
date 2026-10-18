@@ -180,3 +180,18 @@ Agence — **L7** :
 - [ ] T068 Recette navigateur complète (plan, « Tests ») et anomalies au bus `.agent-bus/`
 - [ ] T069 Validation des comptes 5521x par le comptable (Q9, hypothèse H1) avant mise en production
 - [x] T070 `docs/workflows/HANDOFF.md` à chaque PR
+
+## Compléments après relecture (PR2)
+
+- [x] T071 **R23** `API/src/lib/syndics/online-payment/payout.ts` + contrôleur 1.9 : reversement depuis le compte 5525 **ou**
+      le sous-compte 5521x d'un numéro de réception de la copropriété (`treasuryAccountNumber`, vérifié) ;
+      `WEB/src/components/syndics/online-payment/PayoutsPanel.tsx` et `PayoutModal.tsx` : choix du compte, colonne « Compte »
+- [x] T072 Page publique « Payer cet appel » : message dédié sur 409 `CHARGE_CALL_DECLARATION_PENDING`
+- [x] T073 `declaration-queries.ts` : « doublon suspecté » inclut `REFERENCE_ON_EXISTING_PAYMENT` (drapeau, compteur, tri)
+- [x] T074 **R32/R14** compteur sur l'onglet « Paiements », carte « Appels de charges » du tableau de bord, pastille sur le lot
+- [x] T075 `contracts.md` : exercice clos = 409 (`ConflictError`)
+- [x] T076 Job horaire et quotidien : verrou consultatif + `NotificationMarker` (idempotence entre instances), test de rejeu
+- [x] T077 `ApproveModal.tsx` : `chargeCallIds` seulement si le gestionnaire les a choisis ; excédent mesuré contre le reste dû
+- [x] T078 `useDeclaredAvailabilities.ts` : copropriétés déduites des lots, un copropriétaire sans appel peut déclarer une avance
+- [x] T079 Libellé du sous-compte 5521x mis à jour quand le téléphone change ; notifications : oui/non, dates et nombres
+      selon la langue du destinataire

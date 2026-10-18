@@ -93,7 +93,7 @@ export const approveDeclarationBodySchema = z
             z
               .object({
                 lineId: uuid,
-                acceptedAmount: z.number().int().min(0),
+                acceptedAmount: z.number().int().safe().min(0),
                 chargeCallIds: z.array(uuid).max(24).optional()
               })
               .strict()

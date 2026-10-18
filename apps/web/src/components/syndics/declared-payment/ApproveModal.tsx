@@ -67,6 +67,9 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
   const [paidAt, setPaidAt] = useState<Dayjs | null>(null);
   const [amounts, setAmounts] = useState<Record<string, number | null>>({});
   const [calls, setCalls] = useState<Record<string, string[]>>({});
+  // Appels choisis PAR le gestionnaire : seuls ceux-là partent. Sans choix, la liste affichée n'est qu'indicative
+  // et la ligne garde son affectation (« plus anciens d'abord » si la déclaration n'en nommait aucun).
+  const [callsTouched, setCallsTouched] = useState<Record<string, boolean>>({});
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +82,7 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
     setPaidAt(declaration ? dayjs(declaration.paidAt) : null);
     setAmounts(Object.fromEntries((declaration?.lines ?? []).map(line => [line.id, line.amount])));
     setCalls(Object.fromEntries((declaration?.lines ?? []).map(line => [line.id, line.chargeCalls.map(c => c.id)])));
+    setCallsTouched({});
     setNote('');
     setError(null);
     setSubmitting(false);
@@ -91,16 +95,24 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
     const linesChanged = declaration.lines.some(
       line =>
         amounts[line.id] !== line.amount ||
-        !sameSet(
-          calls[line.id] ?? [],
-          line.chargeCalls.map(c => c.id)
-        )
+        (callsTouched[line.id] === true &&
+          !sameSet(
+            calls[line.id] ?? [],
+            line.chargeCalls.map(c => c.id)
+          ))
     );
     const accepted = declaration.lines.map(line => amounts[line.id]);
     const amountsValid = accepted.every(value => typeof value === 'number' && value >= 0);
     const total = accepted.reduce<number>((sum, value) => sum + (typeof value === 'number' ? value : 0), 0);
-    return { dateChanged, linesChanged, amountsValid, total, hasPositive: total > 0 };
-  }, [declaration, paidAt, amounts, calls]);
+    return {
+      dateChanged,
+      linesChanged,
+      amountsValid,
+      total,
+      hasPositive: total > 0,
+      overDeclared: total > declaration.amount
+    };
+  }, [declaration, paidAt, amounts, calls, callsTouched]);
 
   if (!declaration || !view) return null;
 
@@ -109,7 +121,7 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
   const noteLengthOk = noteTrimmed.length >= NOTE_MIN_LENGTH && noteTrimmed.length <= NOTE_MAX_LENGTH;
   const noteOk = realCorrection ? noteLengthOk : noteTrimmed.length === 0 || noteLengthOk;
   const dateOk = !yearClosed || (!!paidAt && view.dateChanged);
-  const linesOk = !correcting || (view.amountsValid && view.hasPositive);
+  const linesOk = !correcting || (view.amountsValid && view.hasPositive && !view.overDeclared);
   const canSubmit = noteOk && dateOk && linesOk;
 
   const buildBody = (): ApproveDeclarationBody => {
@@ -122,14 +134,12 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
           ...(view.dateChanged && paidAt ? { paidAt: paidAt.format() } : {}),
           ...(view.linesChanged
             ? {
-                lines: declaration.lines.map(line => {
-                  const chargeCallIds = calls[line.id] ?? [];
-                  return {
-                    lineId: line.id,
-                    acceptedAmount: amounts[line.id] ?? 0,
-                    ...(chargeCallIds.length > 0 ? { chargeCallIds } : {})
-                  };
-                })
+                lines: declaration.lines.map(line => ({
+                  lineId: line.id,
+                  acceptedAmount: amounts[line.id] ?? 0,
+                  // Choix explicite du gestionnaire seulement ([] = plus anciens d'abord) ; sinon l'affectation de la ligne reste.
+                  ...(callsTouched[line.id] ? { chargeCallIds: calls[line.id] ?? [] } : {})
+                }))
               }
             : {})
         };
@@ -164,7 +174,17 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
     }
   };
 
-  const showPartial = correcting && view.amountsValid && view.hasPositive && view.total < declaration.amount;
+  // Excédent ou solde restant d'une ligne, mesuré contre le reste dû des appels retenus (jamais contre le montant
+  // déclaré). Sans appel sélectionné (« plus anciens d'abord »), le reste dû n'est pas connu ici : aucun message.
+  const lineBalance = (line: SyndicDeclarationRow['lines'][number]) => {
+    const accepted = amounts[line.id];
+    const selected = calls[line.id] ?? [];
+    if (typeof accepted !== 'number' || accepted <= 0 || selected.length === 0) return null;
+    const due = line.chargeCalls.filter(call => selected.includes(call.id)).reduce((sum, c) => sum + c.remainingDue, 0);
+    if (accepted > due) return { kind: 'excess' as const, amount: accepted - due };
+    if (accepted < due) return { kind: 'partial' as const, amount: due - accepted };
+    return null;
+  };
 
   return (
     <Modal
@@ -268,7 +288,10 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
                     style={{ width: '100%', marginBlockStart: 4 }}
                     placeholder={t('Plus anciens d’abord')}
                     value={calls[line.id] ?? []}
-                    onChange={value => setCalls(prev => ({ ...prev, [line.id]: value }))}
+                    onChange={value => {
+                      setCalls(prev => ({ ...prev, [line.id]: value }));
+                      setCallsTouched(prev => ({ ...prev, [line.id]: true }));
+                    }}
                     options={line.chargeCalls.map(call => ({
                       value: call.id,
                       label: t('{{periode}} · reste dû {{montant}}', {
@@ -278,6 +301,23 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
                     }))}
                   />
                 </div>
+                {(() => {
+                  const balance = lineBalance(line);
+                  if (!balance) return null;
+                  return (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {balance.kind === 'excess'
+                        ? t('L’excédent de {{montant}} deviendra une avance du lot {{lot}}.', {
+                            montant: formatMoney(balance.amount),
+                            lot: line.lot.lotNumber
+                          })
+                        : t('Paiement partiel : il restera {{montant}} dû sur le lot {{lot}}.', {
+                            montant: formatMoney(balance.amount),
+                            lot: line.lot.lotNumber
+                          })}
+                    </Text>
+                  );
+                })()}
               </div>
             ))}
 
@@ -293,14 +333,9 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
                   <Text type="danger">{t('Au moins une ligne doit avoir un montant retenu supérieur à 0.')}</Text>
                 </div>
               ) : null}
-              {showPartial ? (
+              {view.overDeclared ? (
                 <div>
-                  <Text type="secondary">{t('Paiement partiel')}</Text>
-                </div>
-              ) : null}
-              {view.total > declaration.amount ? (
-                <div>
-                  <Text type="secondary">{t('L’excédent deviendra une avance')}</Text>
+                  <Text type="danger">{t('Le total retenu ne peut pas dépasser le montant déclaré.')}</Text>
                 </div>
               ) : null}
             </div>

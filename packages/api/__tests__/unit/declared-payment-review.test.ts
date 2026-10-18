@@ -435,6 +435,37 @@ describe('approveDeclaration : correction (R18)', () => {
     expect(lineOf(LOT_A)).toMatchObject({ amount: 20000, acceptedAmount: 12000 });
   });
 
+  it('refuse un total retenu supérieur au total déclaré : 400 DECLARATION_AMOUNT_TOO_HIGH, rien d’enregistré', async () => {
+    await expectAppError(
+      approve({ correction: { lines: allLines(20000, 10001) }, note: NOTE }),
+      400,
+      'DECLARATION_AMOUNT_TOO_HIGH'
+    );
+    expectNothingRecorded();
+  });
+
+  it('autorise la répartition entre lots (R18) tant que le total ne dépasse pas le déclaré', async () => {
+    await approve({ correction: { lines: allLines(25000, 5000) }, note: NOTE });
+    expect(lineOf(LOT_A)).toMatchObject({ amount: 20000, acceptedAmount: 25000 });
+    expect(declaration().acceptedAmount).toBe(30000);
+  });
+
+  it('refuse un montant retenu au-delà du plafond (5 000 000) : 400 DECLARATION_AMOUNT_TOO_HIGH', async () => {
+    await expectAppError(
+      approve({ correction: { lines: allLines(5_000_001, 0) }, note: NOTE }),
+      400,
+      'DECLARATION_AMOUNT_TOO_HIGH'
+    );
+    expectNothingRecorded();
+  });
+
+  it('refuse un entier non sûr, décimal, négatif ou infini : 400 VALIDATION_ERROR', async () => {
+    for (const bad of [2 ** 60, 12.5, -1, Number.POSITIVE_INFINITY, Number.NaN]) {
+      await expectAppError(approve({ correction: { lines: allLines(bad, 0) }, note: NOTE }), 400, 'VALIDATION_ERROR');
+    }
+    expectNothingRecorded();
+  });
+
   it('une ligne à 0 n’est pas encaissée : montant retenu 0, aucun paiement, aucun document', async () => {
     const result = await approve({ correction: { lines: allLines(20000, 0) }, note: NOTE });
     expect(mockRecordLotPaymentTx).toHaveBeenCalledTimes(1);

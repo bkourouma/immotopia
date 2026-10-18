@@ -1694,5 +1694,12 @@
   "Validées": "Validated",
   "Valider avec correction": "Validate with correction",
   "Valider la déclaration de paiement": "Validate the payment declaration",
-  "Valider telle que déclarée": "Validate as declared"
+  "Valider telle que déclarée": "Validate as declared",
+  "À saisir quand le fournisseur ou l’opérateur a versé l’argent sur le compte bancaire de la copropriété. Cet écran enregistre l’écriture comptable (compte de collecte vers 521) ; il ne déclenche aucun virement.": "To be entered when the provider or operator has paid the money into the co-ownership’s bank account. This screen records the accounting entry (collection account to 521); it triggers no transfer.",
+  "Compte à reverser": "Account to pay out",
+  "Le montant dépasse le solde du compte sélectionné.": "The amount exceeds the balance of the selected account.",
+  "Le total retenu ne peut pas dépasser le montant déclaré.": "The total accepted cannot exceed the declared amount.",
+  "PaySecureHub (5525)": "PaySecureHub (5525)",
+  "Reversement enregistré. Solde du compte {{account}} : {{amount}}": "Payout recorded. Balance of account {{account}}: {{amount}}",
+  "Solde du compte {{account}} : {{amount}}": "Balance of account {{account}}: {{amount}}"
 }

@@ -36,8 +36,18 @@ jest.mock('../../src/services/permission-service', () => ({
   hasAnyPermission: async (_userId: string, keys: string[]) => keys.some(key => permissions.has(key))
 }));
 
+const proofLimiterCalls: string[] = [];
 jest.mock('../../src/middleware/rate-limit-middleware', () => ({
-  syndicDeclaredWriteRateLimiter: (_req: any, _res: any, next: any) => next()
+  syndicDeclaredWriteRateLimiter: (_req: any, _res: any, next: any) => next(),
+  syndicDeclaredProofReadRateLimiter: (req: any, _res: any, next: any) => {
+    proofLimiterCalls.push(req.path);
+    next();
+  }
+}));
+
+const auditEvents: any[] = [];
+jest.mock('../../src/services/audit-service', () => ({
+  logAuditEvent: (entry: any) => auditEvents.push(entry)
 }));
 
 const listReceivingNumbers = jest.fn();
@@ -112,6 +122,8 @@ const row = { id: D, status: 'PENDING' };
 beforeEach(() => {
   jest.clearAllMocks();
   events.length = 0;
+  auditEvents.length = 0;
+  proofLimiterCalls.length = 0;
   permissions.clear();
   permissions.add('SYNDIC_VIEW');
   permissions.add('SYNDIC_EDIT');
@@ -269,12 +281,26 @@ describe('1.6 à 1.8 file, détail, capture', () => {
     expect(res.headers['content-disposition']).toMatch(/^inline;/);
     expect(res.headers['cache-control']).toBe('private, no-store');
     expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.headers['content-security-policy']).toBe("sandbox; default-src 'none'");
     expect(getProof).toHaveBeenCalledWith({ tenantId: T, syndicateId: S, declarationId: D });
+    // Limiteur par utilisateur posé sur la route, et trace de lecture sans contenu.
+    expect(proofLimiterCalls).toHaveLength(1);
+    expect(auditEvents).toEqual([
+      expect.objectContaining({
+        actorUserId: 'user-1',
+        tenantId: T,
+        actionKey: 'SYNDIC_PAYMENT_PROOF_VIEWED',
+        entityId: D,
+        payload: { declarationId: D, syndicateId: S }
+      })
+    ]);
   });
 
   it('répond 404 sans capture ou hors agence', async () => {
     getProof.mockRejectedValue(new NotFoundError('Capture introuvable.'));
     expect((await request(app).get(`${BASE}/paiements-declares/${D}/preuve`)).status).toBe(404);
+    // Rien n'a été lu : aucune trace de consultation.
+    expect(auditEvents).toEqual([]);
   });
 });
 
