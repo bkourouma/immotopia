@@ -538,6 +538,17 @@ function kindFilter(kinds: readonly string[] | undefined, kind?: SignatureDocume
   return kinds ? { in: [...kinds] as SignatureDocumentKind[] } : undefined;
 }
 
+/** Recherche libre (titre ou nom d'un signataire, insensible à la casse), commune à la liste et au résumé. */
+function searchFilter(q?: string): Prisma.SignatureRequestWhereInput {
+  if (!q) return {};
+  return {
+    OR: [
+      { title: { contains: q, mode: 'insensitive' } },
+      { signers: { some: { fullName: { contains: q, mode: 'insensitive' } } } }
+    ]
+  };
+}
+
 export async function listSignatureRequests(
   tenantId: string,
   filters: Partial<ListSignaturesFilters>,
@@ -555,14 +566,7 @@ export async function listSignatureRequests(
     ...(filters.targetType ? { targetType: filters.targetType } : {}),
     ...(filters.targetId ? { targetId: filters.targetId } : {}),
     ...(createdAt ? { createdAt } : {}),
-    ...(filters.q
-      ? {
-          OR: [
-            { title: { contains: filters.q, mode: 'insensitive' } },
-            { signers: { some: { fullName: { contains: filters.q, mode: 'insensitive' } } } }
-          ]
-        }
-      : {})
+    ...searchFilter(filters.q)
   };
   const sortBy = filters.sortBy ?? 'createdAt';
   const sortDir = filters.sortDir ?? 'desc';
@@ -591,7 +595,7 @@ export async function getSignatureSummary(
   const createdAt = createdAtRange(filters.from, filters.to);
   const groups = await prisma.signatureRequest.groupBy({
     by: ['status'],
-    where: { tenantId, ...(kind ? { kind } : {}), ...(createdAt ? { createdAt } : {}) },
+    where: { tenantId, ...(kind ? { kind } : {}), ...(createdAt ? { createdAt } : {}), ...searchFilter(filters.q) },
     _count: { _all: true }
   });
   const byStatus = Object.fromEntries(SUMMARY_STATUSES.map(status => [status, 0])) as Record<

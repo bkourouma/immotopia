@@ -49,6 +49,8 @@ export interface GatewayConfigCardProps {
   refreshToken?: number;
   /** Prévient la page du solde du 5525, utilisé pour borner un reversement. */
   onSettingsLoaded?: (settings: SyndicPaymentGatewaySettings) => void;
+  /** Droits `SYNDIC_EDIT` et `TENANT_SETTINGS_EDIT` : sans eux, la configuration reste en lecture seule. */
+  canEditSettings: boolean;
 }
 
 /**
@@ -64,7 +66,8 @@ export const GatewayConfigCard: React.FC<GatewayConfigCardProps> = ({
   tenantId,
   syndicId,
   refreshToken = 0,
-  onSettingsLoaded
+  onSettingsLoaded,
+  canEditSettings
 }) => {
   const { message } = App.useApp();
   const [form] = Form.useForm<FormValues>();
@@ -284,7 +287,13 @@ export const GatewayConfigCard: React.FC<GatewayConfigCardProps> = ({
         />
       ) : null}
 
-      <Form form={form} layout="vertical" onFinish={handleSubmit} onFinishFailed={onAntFormValidationFailed(form)}>
+      <Form
+        form={form}
+        layout="vertical"
+        disabled={!canEditSettings}
+        onFinish={handleSubmit}
+        onFinishFailed={onAntFormValidationFailed(form)}
+      >
         <Row gutter={16}>
           <Col xs={24} md={12}>
             <Form.Item label={t('Mode')} name="mode" rules={[{ required: true, message: t('Le mode est requis') }]}>
@@ -322,7 +331,7 @@ export const GatewayConfigCard: React.FC<GatewayConfigCardProps> = ({
                     iconRender={visible => (visible ? <CheckCircleOutlined /> : <KeyOutlined />)}
                   />
                 </Form.Item>
-                {settings.apiKeyConfigured && !editingApiKey ? (
+                {canEditSettings && settings.apiKeyConfigured && !editingApiKey ? (
                   <Button
                     disabled={!settings.encryptionAvailable}
                     onClick={() => {
@@ -341,14 +350,16 @@ export const GatewayConfigCard: React.FC<GatewayConfigCardProps> = ({
           </Col>
         </Row>
 
-        <Space wrap>
-          <Button type="primary" htmlType="submit" loading={saving}>
-            {t('Enregistrer')}
-          </Button>
-          <Button icon={<ReloadOutlined aria-hidden />} onClick={() => void handleTest()} loading={testing}>
-            {t('Tester la connexion')}
-          </Button>
-        </Space>
+        {canEditSettings ? (
+          <Space wrap>
+            <Button type="primary" htmlType="submit" loading={saving}>
+              {t('Enregistrer')}
+            </Button>
+            <Button icon={<ReloadOutlined aria-hidden />} onClick={() => void handleTest()} loading={testing}>
+              {t('Tester la connexion')}
+            </Button>
+          </Space>
+        ) : null}
       </Form>
 
       {testResult ? (

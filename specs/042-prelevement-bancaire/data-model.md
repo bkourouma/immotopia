@@ -1,4 +1,4 @@
-# 042 — Modèle de données et contrat d'API de P1
+# 042 — Modèle de données et contrat d'API (P1, P2)
 
 > Chemins relatifs à `packages/api/`. Ce document est le **contrat** entre
 > l'API et l'écran : l'un et l'autre s'y conforment à la lettre.
@@ -62,7 +62,8 @@ model DirectDebitMandate {
   debtorClientId       String                   @map("debtor_client_id")
   leaseId              String?                  @map("lease_id") @db.Uuid
   status               DirectDebitMandateStatus @default(DRAFT)
-  /// IBAN chiffré (lib/payment-gateway/crypto.ts, format pg1:…). Jamais renvoyé.
+  /// IBAN chiffré (lib/direct-debit/iban-crypto.ts, format ddk1:<id de clé>:…, clé DIRECT_DEBIT_IBAN_KEY ;
+  /// anciennes valeurs pg1:… lisibles en repli, jamais écrites). Jamais renvoyé.
   ibanEncrypted        String                   @map("iban_encrypted")
   ibanBankCode         String                   @map("iban_bank_code")
   ibanLast4            String                   @map("iban_last4")
@@ -257,3 +258,400 @@ dossier privé par défaut (`middleware/uploads-access-middleware.ts`), modèle
 de stockage et de remplacement : `lib/syndics/provider-invoice-files.ts` et
 `attachProviderInvoiceFile` (ancien fichier supprimé après validation de la
 transaction).
+
+## 7. P2 — Remises de loyers (contrat API ↔ écran)
+
+> Ajouté le 16/10/2026. Même règle que §1–§6 : l'API et l'écran s'y
+> conforment à la lettre. Chemins relatifs à `packages/api/`.
+
+### 7.1 Schéma Prisma (P2)
+
+```prisma
+// Ajout à l'énumération existante (migration à part de toute utilisation) :
+enum RentalPaymentMethod {
+  // … valeurs existantes
+  DIRECT_DEBIT
+}
+
+enum DirectDebitRemittanceStatus {
+  DRAFT      // brouillon : lignes modifiables, rien n'est parti
+  VALIDATED  // validée par un humain, prénotifications envoyées
+  EXPORTED   // fichier de remise produit au moins une fois
+  SUBMITTED  // marquée « déposée à la banque » par l'agence
+  CANCELED
+}
+
+enum DirectDebitRemittanceLineStatus {
+  PENDING
+  CANCELED
+  // P3 : SETTLED, REJECTED
+}
+
+enum DirectDebitPrenotificationStatus {
+  PENDING   // pas encore envoyée (brouillon)
+  SENT
+  NO_EMAIL  // le débiteur n'a pas d'adresse e-mail
+  DISABLED  // notification désactivée par l'agence (Notifications email)
+  FAILED
+}
+
+/// Remise de prélèvements d'un créancier pour une date de collecte (spec 042 P2).
+model DirectDebitRemittance {
+  id                    String                      @id @default(uuid()) @db.Uuid
+  tenantId              String                      @map("tenant_id")
+  /// Référence PRL-<year>-<sequence sur 4 chiffres>, par (agence, année).
+  year                  Int
+  sequence              Int
+  scope                 DirectDebitMandateScope     @default(RENTAL_LEASE)
+  creditorId            String                      @map("creditor_id") @db.Uuid
+  status                DirectDebitRemittanceStatus @default(DRAFT)
+  collectionDate        DateTime                    @map("collection_date") @db.Date
+  periodYear            Int                         @map("period_year")
+  periodMonth           Int                         @map("period_month")
+  /// Totaux des lignes PENDING, tenus à jour dans la même transaction que les lignes.
+  lineCount             Int                         @default(0) @map("line_count")
+  totalAmount           Decimal                     @default(0) @map("total_amount") @db.Decimal(12, 2)
+  /// Figés à la validation : le fichier reste identique à chaque téléchargement.
+  fileFormat            DirectDebitFileFormat?      @map("file_format")
+  creditorLabelSnapshot String?                     @map("creditor_label_snapshot")
+  creditorIdentifierSnapshot String?                @map("creditor_identifier_snapshot")
+  validatedAt           DateTime?                   @map("validated_at")
+  validatedByUserId     String?                     @map("validated_by_user_id")
+  firstExportedAt       DateTime?                   @map("first_exported_at")
+  lastExportedAt        DateTime?                   @map("last_exported_at")
+  exportCount           Int                         @default(0) @map("export_count")
+  /// HMAC-SHA-256 du dernier fichier produit, clé dérivée de DIRECT_DEBIT_IBAN_KEY
+  /// (traçabilité ; le fichier n'est jamais stocké). Pas un SHA-256 nu : le CSV
+  /// contient les IBAN, un condensat nu permettrait de retrouver celui d'une
+  /// remise à une seule ligne.
+  lastFileDigest        String?                     @map("last_file_digest")
+  /// Date limite de prénotification, recalculée tant que la remise est en
+  /// brouillon, figée à la validation.
+  prenotificationDeadline DateTime                  @map("prenotification_deadline") @db.Date
+  submittedAt           DateTime?                   @map("submitted_at")
+  submittedByUserId     String?                     @map("submitted_by_user_id")
+  canceledAt            DateTime?                   @map("canceled_at")
+  cancellationReason    String?                     @map("cancellation_reason")
+  notes                 String?                     @db.Text
+  createdByUserId       String?                     @map("created_by_user_id")
+  createdAt             DateTime                    @default(now()) @map("created_at")
+  updatedAt             DateTime                    @updatedAt @map("updated_at")
+
+  tenant   Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creditor DirectDebitCreditor         @relation(fields: [creditorId], references: [id], onDelete: Restrict)
+  lines    DirectDebitRemittanceLine[]
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, status])
+  @@index([creditorId])
+  @@map("direct_debit_remittances")
+}
+
+/// Une échéance à prélever dans une remise (spec 042 P2).
+model DirectDebitRemittanceLine {
+  id                      String                           @id @default(uuid()) @db.Uuid
+  tenantId                String                           @map("tenant_id")
+  remittanceId            String                           @map("remittance_id") @db.Uuid
+  /// Rang dans la remise (1, 2, …), jamais réutilisé : référence d'opération PRL-AAAA-NNNN-<rang sur 3 chiffres>.
+  lineNumber              Int                              @map("line_number")
+  mandateId               String                           @map("mandate_id") @db.Uuid
+  leaseId                 String                           @map("lease_id") @db.Uuid
+  installmentId           String                           @map("installment_id") @db.Uuid
+  debtorClientId          String                           @map("debtor_client_id")
+  status                  DirectDebitRemittanceLineStatus  @default(PENDING)
+  amount                  Decimal                          @db.Decimal(12, 2)
+  /// Reste dû (hors pénalités) au moment de la sélection, avant plafond.
+  remainingDueAtSelection Decimal                          @map("remaining_due_at_selection") @db.Decimal(12, 2)
+  capped                  Boolean                          @default(false)
+  /// ADR-007 §6 : `<installmentId>` tant que la ligne n'est pas annulée, nul
+  /// ensuite. L'unicité en base interdit deux lignes vivantes pour une même
+  /// échéance, quel que soit le mandat ou le créancier.
+  activeKey               String?                          @map("active_key")
+  canceledAt              DateTime?                        @map("canceled_at")
+  cancellationReason      String?                          @map("cancellation_reason")
+  prenotificationStatus   DirectDebitPrenotificationStatus @default(PENDING) @map("prenotification_status")
+  prenotifiedAt           DateTime?                        @map("prenotified_at")
+  createdAt               DateTime                         @default(now()) @map("created_at")
+  updatedAt               DateTime                         @updatedAt @map("updated_at")
+
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  remittance  DirectDebitRemittance @relation(fields: [remittanceId], references: [id], onDelete: Cascade)
+  mandate     DirectDebitMandate    @relation(fields: [mandateId], references: [id], onDelete: Restrict)
+  lease       RentalLease           @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  installment RentalInstallment     @relation(fields: [installmentId], references: [id], onDelete: Restrict)
+  debtor      TenantClient          @relation(fields: [debtorClientId], references: [id], onDelete: Restrict)
+
+  @@unique([remittanceId, lineNumber])
+  @@unique([tenantId, activeKey])
+  @@index([tenantId, status])
+  @@index([mandateId])
+  @@index([installmentId])
+  @@index([leaseId])
+  @@map("direct_debit_remittance_lines")
+}
+```
+
+Relations inverses : `Tenant`, `DirectDebitCreditor`, `DirectDebitMandate`,
+`RentalLease`, `RentalInstallment`, `TenantClient`. Les deux modèles portent
+`tenantId` : rien à déclarer dans `schema-tenant-coverage`.
+
+Migrations (P2), générées par `prisma migrate diff` (jamais `prisma format`,
+jamais `migrate dev`) :
+
+1. `20261017090000_prelevement_moyen_paiement` — `ALTER TYPE "RentalPaymentMethod" ADD VALUE 'DIRECT_DEBIT'`, seule.
+2. `20261017090100_prelevement_remises` — énumérations, tables, index, clés étrangères.
+
+Aucune permission nouvelle : `RENTAL_DIRECT_DEBIT_VIEW` (consulter) et
+`RENTAL_DIRECT_DEBIT_MANAGE` (tout le reste, dont le fichier à IBAN complet).
+
+### 7.2 Règles de calcul
+
+- **Période** : année et mois de `collectionDate`. Seule l'échéance de ce mois
+  est prélevée (D6) : jamais d'arriéré, jamais de pénalité.
+- **Jours ouvrés** : lundi à vendredi (les jours fériés ne sont pas gérés en
+  P2). `prenotificationDeadline` = `collectionDate` moins
+  `creditor.prenotificationBusinessDays` jours ouvrés (0 → la date de collecte
+  elle-même).
+- **Date de collecte acceptable** : strictement postérieure à aujourd'hui, et
+  aujourd'hui ≤ `prenotificationDeadline`. Sinon `BadRequestError` traduite qui
+  donne la première date possible (`JJ/MM/AAAA`).
+- **Mandats éligibles** : même agence, `creditorId` de la remise, statut
+  `ACTIVE`, `scope = RENTAL_LEASE`, bail `ACTIVE`, jour effectif de collecte
+  (`mandate.collectionDay ?? creditor.collectionDay`) ≤ jour de
+  `collectionDate`. Un mandat dont le jour est plus tard dans le mois attend
+  une remise datée plus tard.
+- **Échéance retenue** : celle du bail pour (`periodYear`, `periodMonth`), de
+  statut `DRAFT`, `DUE`, `OVERDUE` ou `PARTIAL`.
+- **Reste dû (hors pénalités)** = max(0, `amount_rent` + `amount_service` +
+  `amount_other_fees` − `amount_paid`). Montant de la ligne = min(reste dû,
+  `mandate.maxAmount` s'il existe) ; `capped = true` si le plafond a joué.
+- **Mandats non retenus** (renvoyés, jamais stockés), raison parmi :
+  `NO_INSTALLMENT` (pas d'échéance ce mois-là), `NOTHING_DUE` (reste dû nul ou
+  échéance payée/annulée), `ALREADY_IN_REMITTANCE` (échéance déjà dans une
+  ligne non annulée, quelle que soit la remise), `LEASE_NOT_ACTIVE`,
+  `COLLECTION_DAY_LATER`.
+- **Référence** : `PRL-${year}-${String(sequence).padStart(4, '0')}` (année de
+  création, `nextSequenceTx` dans la transaction, nouvel essai sur conflit
+  d'unicité comme les mandats) ; ligne : `${référence}-${String(lineNumber).padStart(3, '0')}`.
+- **Totaux** : `lineCount` et `totalAmount` = lignes `PENDING`, recalculés dans
+  la transaction de toute écriture de lignes.
+
+### 7.3 Transitions
+
+| Action                        | De                                   | Vers                                      | Contrôles                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------- | ------------------------------------ | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Créer                         | —                                    | `DRAFT`                                   | créancier actif de l'agence ; date acceptable ; au moins une ligne, sinon `BadRequestError` « Aucune échéance à prélever pour ce créancier à cette date. » (rien n'est écrit)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Actualiser                    | `DRAFT`                              | `DRAFT`                                   | recalcule chaque ligne `PENDING` : plus éligible ou reste dû nul → ligne `CANCELED` (motif automatique traduit) ; montant changé → mis à jour ; ajoute les mandats devenus éligibles                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Retirer une ligne             | `DRAFT`, `VALIDATED`                 | (inchangé)                                | ligne `PENDING` → `CANCELED`, `activeKey` nul, motif facultatif ; la dernière ligne ne se retire pas d'une remise validée (annuler la remise)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Valider                       | `DRAFT`                              | `VALIDATED`                               | au moins une ligne ; aujourd'hui strictement avant `collectionDate` ; créancier actif avec numéro d'émetteur (sinon `BadRequestError` « Renseignez le numéro d'émetteur du créancier avant de valider la remise. ») ; aujourd'hui ≤ `prenotificationDeadline` (sinon `ConflictError`) ; chaque ligne recalculée doit être identique, sinon `ConflictError` « Les montants ont changé depuis la préparation : actualisez la remise. » ; fige `fileFormat`, `creditorLabelSnapshot`, `creditorIdentifierSnapshot`, `prenotificationDeadline` ; mise à jour conditionnelle sur `status = DRAFT` (deux validations simultanées : une seule passe). Après la transaction : prénotifications en arrière-plan (§7.5). |
+| Renvoyer les prénotifications | `VALIDATED`, `EXPORTED`              | (inchangé)                                | avant `collectionDate` ; seulement les lignes `PENDING` dont la prénotification n'est pas `SENT`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Produire le fichier           | `VALIDATED`, `EXPORTED`, `SUBMITTED` | `EXPORTED` si `VALIDATED`, sinon inchangé | au premier export (`VALIDATED`) : aujourd'hui strictement avant `collectionDate` (sinon `ConflictError`), chaque mandat des lignes encore `ACTIVE` (sinon `ConflictError` qui cite les références), mise à jour conditionnelle sur `updatedAt` (une ligne retirée entre-temps invalide le fichier) ; un nouveau téléchargement (`EXPORTED`, `SUBMITTED`) rend le même fichier, l'écran signale les mandats devenus inactifs ; audit critique écrit AVANT l'envoi, son échec bloque l'envoi ; `exportCount + 1`, `lastExportedAt`, `lastFileDigest`                                                                                                                                                             |
+| Marquer déposée               | `EXPORTED`                           | `SUBMITTED`                               | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Annuler                       | `DRAFT`, `VALIDATED`, `EXPORTED`     | `CANCELED`                                | motif 1–500 obligatoire ; toutes les lignes `PENDING` → `CANCELED`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+Toute autre transition → `ConflictError` traduite. Une remise `SUBMITTED` ne
+s'annule pas en P2 (la banque l'a) : le retour banque (P3) traitera les rejets.
+
+### 7.4 Fichier `GENERIC_CSV` (adaptateur)
+
+`lib/direct-debit/file-formats/` : une interface
+`DirectDebitFileAdapter { format, fileExtension, contentType, build(input): Buffer }`
+et un registre `getFileAdapter(format)`. Seul `GENERIC_CSV` existe en P2 ; le
+format de la banque pilote viendra dans un autre adaptateur.
+
+`GENERIC_CSV` : `lib/csv.ts` (`toCsvString`, séparateur `;`, BOM UTF-8, CRLF,
+neutralisation des formules), une ligne d'en-tête puis une ligne par ligne
+`PENDING`, triées par `lineNumber` :
+
+| Colonne                 | Contenu                                                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------------------- |
+| `reference_remise`      | `PRL-2026-0001`                                                                                      |
+| `numero_emetteur`       | `creditorIdentifierSnapshot`                                                                         |
+| `creancier`             | `creditorLabelSnapshot`                                                                              |
+| `date_echeance`         | `collectionDate`, `AAAA-MM-JJ`                                                                       |
+| `reference_operation`   | `PRL-2026-0001-001`                                                                                  |
+| `reference_mandat`      | `MDT-2026-0001`                                                                                      |
+| `date_signature_mandat` | `AAAA-MM-JJ`                                                                                         |
+| `titulaire`             | `holderName` du mandat                                                                               |
+| `iban`                  | IBAN complet (déchiffré ici seulement, `decryptMandateIban`)                                         |
+| `montant`               | décimal à point, sans séparateur de milliers, sans décimales s'il est entier (`150000`, `150000.50`) |
+| `devise`                | `XOF`                                                                                                |
+| `libelle`               | `LOYER MM/AAAA <numéro de bail>` en majuscules ASCII                                                 |
+
+Nom du fichier : `PRL-2026-0001.csv`. Le fichier n'est jamais écrit sur disque
+ni journalisé ; seule son empreinte HMAC-SHA-256 (clé dérivée par HKDF de
+`DIRECT_DEBIT_IBAN_KEY`) est gardée. Les caractères de contrôle et séparateurs
+de ligne Unicode sont retirés du titulaire, du libellé et du nom du créancier.
+
+### 7.5 Prénotification (D7)
+
+- Nouvelle notification e-mail `DIRECT_DEBIT_PRENOTIFICATION` (destinataire :
+  le débiteur), dans le catalogue existant
+  (`constants/email-notification-keys.ts`, modèle par défaut dans
+  `constants/email-notification-default-templates.ts`), donc réglable et
+  désactivable dans « Notifications email ».
+- Contenu : agence, référence du mandat, numéro d'émetteur, IBAN **masqué**,
+  montant, date de prélèvement, période et bail. Jamais l'IBAN complet.
+- Envoi **en arrière-plan** après la validation (hors transaction) ou sur
+  « Renvoyer » : la route répond tout de suite, les lignes restent `PENDING`
+  le temps de l'envoi. Verrou exclusif par remise (deux déclenchements
+  n'envoient pas deux fois), cinq envois simultanés au plus, statut écrit
+  ligne par ligne : `SENT` + `prenotifiedAt`, `NO_EMAIL`, `DISABLED` ou
+  `FAILED`. L'écran relit la remise tant qu'il reste des lignes `PENDING`.
+  Les journaux masquent l'adresse du destinataire.
+- WhatsApp et SMS : hors P2 (P5).
+
+### 7.6 Routes (sous `/api/tenants/:tenantId/rental/direct-debit`)
+
+Mêmes gardes que §3. Réponses `{ success: true, data }`, `201` à la création.
+
+| Méthode | Chemin                                            | Permission | Corps / requête                                                                                            | `data`                                                                       |
+| ------- | ------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| GET     | `/remittances`                                    | VIEW       | `?creditorId&status&page&pageSize` (défaut 1 / 20, max 100), tri `collectionDate` desc puis référence desc | `{ items: RemittanceSummaryDto[], total, page, pageSize }`                   |
+| POST    | `/remittances`                                    | MANAGE     | `{ creditorId, collectionDate: 'AAAA-MM-JJ', notes? }`                                                     | `{ remittance: RemittanceDto, skipped: SkippedMandateDto[] }`                |
+| GET     | `/remittances/:remittanceId`                      | VIEW       | —                                                                                                          | `RemittanceDto`                                                              |
+| POST    | `/remittances/:remittanceId/refresh`              | MANAGE     | —                                                                                                          | `{ remittance: RemittanceDto, skipped: SkippedMandateDto[] }`                |
+| POST    | `/remittances/:remittanceId/lines/:lineId/cancel` | MANAGE     | `{ reason? }` (≤ 500)                                                                                      | `RemittanceDto`                                                              |
+| POST    | `/remittances/:remittanceId/validate`             | MANAGE     | —                                                                                                          | `{ remittance: RemittanceDto, prenotifications: PrenotificationSummaryDto }` |
+| POST    | `/remittances/:remittanceId/prenotifications`     | MANAGE     | —                                                                                                          | `{ remittance: RemittanceDto, prenotifications: PrenotificationSummaryDto }` |
+| POST    | `/remittances/:remittanceId/export`               | MANAGE     | —                                                                                                          | fichier (`text/csv; charset=utf-8`, `attachment`, `Cache-Control: no-store`) |
+| POST    | `/remittances/:remittanceId/submit`               | MANAGE     | —                                                                                                          | `RemittanceDto`                                                              |
+| POST    | `/remittances/:remittanceId/cancel`               | MANAGE     | `{ reason }` (1–500)                                                                                       | `RemittanceDto`                                                              |
+
+Erreurs : identifiant d'une autre agence ou inexistant (remise, ligne,
+créancier) → `404` ; validation → `400` ; transition interdite, conflit
+d'unicité, montants changés → `409`.
+
+### 7.7 Objets renvoyés
+
+```ts
+type RemittanceStatus =
+  "DRAFT" | "VALIDATED" | "EXPORTED" | "SUBMITTED" | "CANCELED";
+type RemittanceLineStatus = "PENDING" | "CANCELED";
+type PrenotificationStatus =
+  "PENDING" | "SENT" | "NO_EMAIL" | "DISABLED" | "FAILED";
+type SkipReason =
+  | "NO_INSTALLMENT"
+  | "NOTHING_DUE"
+  | "ALREADY_IN_REMITTANCE"
+  | "LEASE_NOT_ACTIVE"
+  | "COLLECTION_DAY_LATER";
+
+interface RemittanceSummaryDto {
+  id: string;
+  reference: string; // PRL-2026-0001
+  status: RemittanceStatus;
+  creditor: { id: string; label: string; creditorIdentifier: string | null }; // valeurs figées après validation
+  collectionDate: string; // AAAA-MM-JJ
+  periodYear: number;
+  periodMonth: number;
+  prenotificationDeadline: string; // AAAA-MM-JJ
+  fileFormat: "GENERIC_CSV"; // figé à la validation, celui du créancier avant
+  lineCount: number;
+  totalAmount: number;
+  validatedAt: string | null;
+  firstExportedAt: string | null;
+  lastExportedAt: string | null;
+  exportCount: number;
+  submittedAt: string | null;
+  canceledAt: string | null;
+  cancellationReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface RemittanceLineDto {
+  id: string;
+  lineNumber: number;
+  reference: string; // PRL-2026-0001-001
+  status: RemittanceLineStatus;
+  mandate: {
+    id: string;
+    reference: string;
+    status: "DRAFT" | "ACTIVE" | "SUSPENDED" | "REVOKED"; // statut COURANT du mandat
+    ibanMasked: string;
+    holderName: string;
+    maxAmount: number | null;
+  };
+  debtor: { id: string; displayName: string | null };
+  lease: { id: string; leaseNumber: string };
+  installment: {
+    id: string;
+    periodYear: number;
+    periodMonth: number;
+    dueDate: string;
+  };
+  amount: number;
+  remainingDueAtSelection: number;
+  capped: boolean;
+  prenotificationStatus: PrenotificationStatus;
+  prenotifiedAt: string | null;
+  canceledAt: string | null;
+  cancellationReason: string | null;
+}
+
+interface RemittanceDto extends RemittanceSummaryDto {
+  notes: string | null;
+  lines: RemittanceLineDto[]; // toutes, annulées comprises, par lineNumber
+  prenotificationSummary: PrenotificationSummaryDto; // lignes PENDING seulement
+}
+
+interface PrenotificationSummaryDto {
+  pending: number;
+  sent: number;
+  noEmail: number;
+  disabled: number;
+  failed: number;
+}
+
+interface SkippedMandateDto {
+  mandateId: string;
+  mandateReference: string;
+  leaseNumber: string | null;
+  debtorName: string | null;
+  reason: SkipReason;
+}
+```
+
+Aucun champ ne contient l'IBAN complet, le texte chiffré ou l'adresse e-mail
+du débiteur.
+
+### 7.8 Audit
+
+Nouvelles clés `AuditActionKey` (catalogue `tenant('BILLING')`) :
+`DIRECT_DEBIT_REMITTANCE_CREATED`, `DIRECT_DEBIT_REMITTANCE_REFRESHED`,
+`DIRECT_DEBIT_REMITTANCE_LINE_CANCELED`, `DIRECT_DEBIT_REMITTANCE_VALIDATED`
+(critique), `DIRECT_DEBIT_REMITTANCE_PRENOTIFIED`,
+`DIRECT_DEBIT_REMITTANCE_EXPORTED` (critique, écrite avant l'envoi du
+fichier), `DIRECT_DEBIT_REMITTANCE_SUBMITTED` (critique),
+`DIRECT_DEBIT_REMITTANCE_CANCELED` (critique). Charge utile : référence,
+nombre de lignes, total, date de collecte, empreinte HMAC du fichier (`fileDigest`) ; jamais
+d'IBAN ni d'adresse e-mail.
+
+### 7.9 `DIRECT_DEBIT` comme moyen de paiement
+
+Ajouté à `RentalPaymentMethod` pour P3 (le règlement constaté créera un
+`RentalPayment` `DIRECT_DEBIT`). En P2 : libellé « Prélèvement bancaire »
+partout où les moyens de paiement ont un libellé (API et écran), compte de
+trésorerie de nature `BANK` ; **pas** proposé dans les formulaires de saisie
+manuelle d'un paiement (les schémas `z.enum([...])` existants restent tels
+quels).
+
+### 7.10 Écrans
+
+- Location › Prélèvements : deux onglets reliés à des routes, « Mandats »
+  (`/tenant/:tenantId/rental/direct-debit`, existant) et « Remises »
+  (`/tenant/:tenantId/rental/direct-debit/remittances`). Pas d'entrée de menu
+  nouvelle.
+- Liste des remises : filtres créancier et statut ; colonnes référence,
+  statut, créancier, date de prélèvement, période, lignes, total,
+  prénotification au plus tard le ; bouton « Préparer une remise » (créancier
+  actif, date de prélèvement proposée = premier jour de collecte du créancier
+  encore possible compte tenu du délai de prénotification, notes).
+- Détail (`/tenant/:tenantId/rental/direct-debit/remittances/:remittanceId`) :
+  en-tête et faits, actions selon le statut (§7.3), table des lignes (référence
+  d'opération, débiteur, bail, mandat et IBAN masqué en `dir="ltr"`, période,
+  reste dû, montant prélevé et marque « Plafonné », prénotification, statut),
+  mandats non retenus après création ou actualisation avec leur raison.
+  Bandeau sur une remise `EXPORTED` : le fichier est produit mais la remise
+  n'est pas marquée déposée (ADR-007, risque d'oubli).

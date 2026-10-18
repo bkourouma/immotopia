@@ -28,7 +28,14 @@ vi.mock('@livekit/components-styles', () => ({}));
 vi.mock('livekit-client', () => ({
   Track: { Source: { Microphone: 'microphone', Camera: 'camera', ScreenShare: 'screen_share' } },
   RoomEvent: { Reconnected: 'reconnected' },
-  DisconnectReason: { CLIENT_INITIATED: 1, PARTICIPANT_REMOVED: 4, ROOM_DELETED: 5, ROOM_CLOSED: 10 },
+  DisconnectReason: {
+    CLIENT_INITIATED: 1,
+    DUPLICATE_IDENTITY: 2,
+    SERVER_SHUTDOWN: 3,
+    PARTICIPANT_REMOVED: 4,
+    ROOM_DELETED: 5,
+    ROOM_CLOSED: 10
+  },
   MediaDeviceFailure: {
     PermissionDenied: 'PermissionDenied',
     NotFound: 'NotFound',
@@ -204,14 +211,61 @@ describe('MeetingVisioRoom', () => {
     expect(onRefreshSignal).toHaveBeenCalledTimes(1);
   });
 
-  it('ne montre micro, caméra et partage que si le participant a le droit de publier', async () => {
-    await mount();
+  it('un modérateur sans droit de publier ne voit ni micro, ni caméra, ni partage', async () => {
+    await mount({ role: 'moderator' });
     expect(screen.queryByRole('button', { name: 'Activer le micro' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Activer la caméra' })).toBeNull();
     expect(screen.queryByRole('button', { name: "Partager l'écran" })).toBeNull();
   });
 
-  it('un copropriétaire à qui l’on a donné la parole publie sans partage d’écran, boutons nommés et traduits', async () => {
+  it('un copropriétaire voit micro et caméra dès l entrée, sans partage d écran', async () => {
+    lk.permissions = { canPublish: true };
+    await mount();
+    const mic = screen.getByRole('button', { name: 'Activer le micro' }) as HTMLButtonElement;
+    const camera = screen.getByRole('button', { name: 'Activer la caméra' }) as HTMLButtonElement;
+    expect(mic.disabled).toBe(false);
+    expect(camera.disabled).toBe(false);
+    expect(screen.queryByRole('button', { name: "Partager l'écran" })).toBeNull();
+    expect(screen.queryByText('Le gestionnaire a désactivé les micros')).toBeNull();
+  });
+
+  it('grise micro et caméra avec une explication quand le gestionnaire les a désactivés', async () => {
+    lk.permissions = { canPublish: false };
+    await mount({ mediaAllowed: false });
+    expect((screen.getByRole('button', { name: 'Activer le micro' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Activer la caméra' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('Le gestionnaire a désactivé les micros')).toBeTruthy();
+  });
+
+  it('garde la main levée disponible quand les micros sont désactivés', async () => {
+    await mount({ mediaAllowed: false, onRaiseHand: vi.fn() });
+    const hand = screen.getByRole('button', { name: /Lever la main/ }) as HTMLButtonElement;
+    expect(hand.disabled).toBe(false);
+  });
+
+  it('suit le droit du jeton quand l état de la page n est pas fourni', async () => {
+    const getToken = vi.fn().mockResolvedValue({ ...INFO, mediaAllowed: false });
+    render(<MeetingVisioRoom role="participant" getToken={getToken} />);
+    await screen.findByTestId('lk-room');
+    expect(screen.getByText('Le gestionnaire a désactivé les micros')).toBeTruthy();
+  });
+
+  it('redemande un jeton à chaque reconnexion complète, sans rejouer l ancien', async () => {
+    const getToken = vi
+      .fn()
+      .mockResolvedValueOnce({ ...INFO, token: 'jwt-1' })
+      .mockResolvedValueOnce({ ...INFO, token: 'jwt-2', mediaAllowed: false });
+    render(<MeetingVisioRoom role="participant" getToken={getToken} />);
+    await screen.findByTestId('lk-room');
+    act(() => (lk.roomProps?.onDisconnected as (reason?: number) => void)(undefined));
+    fireEvent.click(await screen.findByRole('button', { name: 'Se reconnecter' }));
+    await screen.findByTestId('lk-room');
+    expect(getToken).toHaveBeenCalledTimes(2);
+    expect(lk.roomProps?.token).toBe('jwt-2');
+    expect(screen.getByText('Le gestionnaire a désactivé les micros')).toBeTruthy();
+  });
+
+  it('un copropriétaire autorisé publie, boutons nommés et traduits', async () => {
     lk.permissions = { canPublish: true };
     await mount();
     const mic = screen.getByRole('button', { name: 'Activer le micro' });
@@ -254,6 +308,15 @@ describe('MeetingVisioRoom', () => {
     expect(await screen.findByText('La visio est terminée.')).toBeTruthy();
   });
 
+  it('propose de se reconnecter après une coupure inattendue (pas « vous avez quitté »)', async () => {
+    const { getToken } = await mount();
+    act(() => (lk.roomProps?.onDisconnected as (reason?: number) => void)(undefined));
+    expect(await screen.findByText('La connexion à la visio a été interrompue.')).toBeTruthy();
+    expect(screen.queryByText('Vous avez quitté la visio.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Se reconnecter' }));
+    await waitFor(() => expect(getToken).toHaveBeenCalledTimes(2));
+  });
+
   it('propose de revenir après un départ volontaire et redemande un jeton', async () => {
     const { getToken } = await mount();
     act(() => (lk.roomProps?.onDisconnected as (reason: number) => void)(DISCONNECT.CLIENT_INITIATED));
@@ -294,12 +357,20 @@ describe('MeetingVisioRoom', () => {
     async role => {
       lk.recording = true;
       await mount({ role });
-      expect(screen.getByText('Cette assemblée est enregistrée.')).toBeTruthy();
+      expect(
+        screen.getByText(
+          "Cette assemblée est enregistrée, y compris la voix et l'image des participants qui activent leur micro ou leur caméra."
+        )
+      ).toBeTruthy();
     }
   );
 
   it('n affiche pas le bandeau quand la salle n est pas enregistrée', async () => {
     await mount();
-    expect(screen.queryByText('Cette assemblée est enregistrée.')).toBeNull();
+    expect(
+      screen.queryByText(
+        "Cette assemblée est enregistrée, y compris la voix et l'image des participants qui activent leur micro ou leur caméra."
+      )
+    ).toBeNull();
   });
 });

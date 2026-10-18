@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import SignaturesPage from '../../pages/signatures/SignaturesPage';
+import { eventLabel } from '../../pages/signatures/signature-admin-labels';
 
 /** Page « Signatures » (suivi global des demandes). Le mock couvre CHAQUE export utilisé. */
 
@@ -38,6 +39,7 @@ function request(overrides: Record<string, any> = {}) {
     createdAt: '2026-10-01T00:00:00Z',
     completedAt: null,
     hasSignedFile: false,
+    canEdit: true,
     signers: [
       {
         id: 's1',
@@ -132,6 +134,52 @@ describe('SignaturesPage', () => {
     await waitFor(() => expect(fetchSignatureFile).toHaveBeenCalledWith('r2', 'signed'));
     expect(saveBlob).toHaveBeenCalledTimes(2);
   }, 120000);
+
+  it('sans droit d’écriture (canEdit faux ou absent) : ni Relancer ni Annuler, Télécharger reste', async () => {
+    listSignaturesPage.mockResolvedValue({
+      items: [request({ canEdit: false }), request({ id: 'r3', title: 'Bail sans champ', canEdit: undefined })],
+      total: 2
+    });
+    renderPage();
+    await screen.findByText('Bail Villa Cocody');
+    expect(screen.queryByRole('button', { name: 'Relancer' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Annuler' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Télécharger' })).toHaveLength(2);
+  });
+
+  it('la recherche est transmise au résumé comme à la liste', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Bail Villa Cocody');
+    await user.type(screen.getByLabelText('Rechercher'), 'Traoré{enter}');
+    await waitFor(() =>
+      expect(fetchSignatureSummary).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'Traoré' }))
+    );
+    expect(listSignaturesPage).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'Traoré' }));
+  });
+
+  it('chaque type d’événement de la piste de preuve a un libellé lisible', () => {
+    const types = [
+      'CREATED',
+      'INVITE_SENT',
+      'INVITE_FAILED',
+      'OPENED',
+      'OTP_SENT',
+      'OTP_FAILED',
+      'OTP_LOCKED',
+      'SIGNED',
+      'DECLINED',
+      'SEALED',
+      'EXPIRED',
+      'CANCELED',
+      'REMINDER_SENT',
+      'REMINDER_AUTO',
+      'IN_PERSON_TOKEN_ISSUED'
+    ];
+    for (const type of types) expect(eventLabel(type)).not.toBe(type);
+    expect(eventLabel('IN_PERSON_TOKEN_ISSUED')).toBe('Nouveau lien de signature sur place émis');
+    expect(eventLabel('NOUVEAU_TYPE')).toBe('NOUVEAU_TYPE');
+  });
 
   it('ouvre le tiroir de détail avec la piste de preuve et le lien vers le document', async () => {
     fetchSignatureDetail.mockResolvedValue({

@@ -12,6 +12,11 @@ export interface SignatureAdminRequestDto extends SignatureRequestDto {
   sequential?: boolean;
   hasSignedFile?: boolean;
   signedHash?: string | null;
+  /**
+   * Calculé par l'API : l'utilisateur peut-il relancer ou annuler cette demande
+   * (permission d'édition de son type de document) ? Seul `true` autorise les actions d'écriture.
+   */
+  canEdit?: boolean;
 }
 
 export interface SignatureEventDto {
@@ -77,7 +82,7 @@ export async function listSignaturesPage(filters: SignatureAdminFilters = {}): P
 }
 
 export async function fetchSignatureSummary(
-  filters: Pick<SignatureAdminFilters, 'kind' | 'targetType' | 'q' | 'from' | 'to'> = {}
+  filters: Pick<SignatureAdminFilters, 'kind' | 'q' | 'from' | 'to'> = {}
 ): Promise<SignatureSummary> {
   const response = await apiClient.get('/signatures/summary', { params: { ...tenantParams(), ...clean(filters) } });
   const body = unwrap<SignatureSummary | null>(response.data);

@@ -21,7 +21,8 @@ import { badRequest } from '../errors';
  * 5711 et 5211.
  */
 
-export type PaymentMethodLike = 'CASH' | 'BANK_TRANSFER' | 'MOBILE_MONEY' | 'CHECK' | 'CARD' | 'OTHER' | string;
+export type PaymentMethodLike =
+  'CASH' | 'BANK_TRANSFER' | 'MOBILE_MONEY' | 'CHECK' | 'CARD' | 'OTHER' | 'DIRECT_DEBIT' | string;
 
 export interface ResolvedTreasury {
   treasuryAccountId: string;
@@ -67,6 +68,7 @@ export function defaultKindForMethod(method: PaymentMethodLike): TreasuryAccount
       return 'CHECKS_TO_CASH';
     case 'CARD':
       return 'CARDS_TO_CASH';
+    case 'DIRECT_DEBIT':
     default:
       return 'BANK';
   }
@@ -81,6 +83,7 @@ export function allowedKindsForMethod(method: PaymentMethodLike): TreasuryAccoun
     case 'CASH':
       return ['CASH'];
     case 'BANK_TRANSFER':
+    case 'DIRECT_DEBIT':
       return ['BANK'];
     case 'MOBILE_MONEY':
       return ['MOBILE_MONEY'];

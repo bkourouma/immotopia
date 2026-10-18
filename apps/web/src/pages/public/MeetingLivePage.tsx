@@ -778,7 +778,13 @@ export const MeetingLivePage: React.FC = () => {
   // Avis R2 avant l'entrée en visio ; une fois dans la salle, son bandeau suffit (pas de doublon).
   const recordingNotice =
     view?.visio?.recording && status === 'IN_PROGRESS' && !showRoom ? (
-      <Alert type="warning" showIcon message={t('Cette assemblée est enregistrée.')} />
+      <Alert
+        type="warning"
+        showIcon
+        message={t(
+          "Cette assemblée est enregistrée, y compris la voix et l'image des participants qui activent leur micro ou leur caméra."
+        )}
+      />
     ) : null;
 
   const visioCard =
@@ -829,6 +835,7 @@ export const MeetingLivePage: React.FC = () => {
         onRaiseHand={raiseHand}
         onRefreshSignal={refresh}
         discussion={discussionAdapter}
+        mediaAllowed={view?.visio?.mediaAllowed}
         title={t("Visio de l'assemblée")}
       />
     </Suspense>

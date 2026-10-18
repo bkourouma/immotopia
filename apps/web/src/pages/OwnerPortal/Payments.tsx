@@ -58,6 +58,7 @@ const getStatusTag = (status: string) => {
 const getMethodLabel = (method: string) => {
   const methodLabels: Record<string, string> = {
     MOBILE_MONEY: t('Mobile Money'),
+    DIRECT_DEBIT: t('Prélèvement bancaire'),
     BANK_TRANSFER: t('Virement bancaire'),
     CASH: t('Espèces'),
     CHECK: t('Chèque'),
@@ -182,6 +183,7 @@ export default function Payments() {
       render: (method: string) => getMethodLabel(method),
       filters: [
         { text: t('Mobile Money'), value: 'MOBILE_MONEY' },
+        { text: t('Prélèvement bancaire'), value: 'DIRECT_DEBIT' },
         { text: t('Virement bancaire'), value: 'BANK_TRANSFER' },
         { text: t('Espèces'), value: 'CASH' },
         { text: t('Chèque'), value: 'CHECK' },
@@ -319,6 +321,7 @@ export default function Payments() {
               onChange={value => setMethodFilter(value)}
             >
               <Option value="MOBILE_MONEY">{t('Mobile Money')}</Option>
+              <Option value="DIRECT_DEBIT">{t('Prélèvement bancaire')}</Option>
               <Option value="BANK_TRANSFER">{t('Virement bancaire')}</Option>
               <Option value="CASH">{t('Espèces')}</Option>
               <Option value="CHECK">{t('Chèque')}</Option>

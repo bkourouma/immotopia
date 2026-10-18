@@ -375,6 +375,11 @@ describe('contextFromPath', () => {
     expect(contextFromPath(`/tenant/${TENANT}/properties`)).toEqual({ tenantId: TENANT });
     expect(contextFromPath('/dashboard')).toEqual({});
   });
+
+  it('ne prend pas « mandants » pour une copropriété', () => {
+    expect(contextFromPath(`/tenant/${TENANT}/syndics/mandants`)).toEqual({ tenantId: TENANT });
+    expect(contextFromPath(`/tenant/${TENANT}/syndics/mandants/assemblees`)).toEqual({ tenantId: TENANT });
+  });
 });
 
 describe('fil d’Ariane', () => {

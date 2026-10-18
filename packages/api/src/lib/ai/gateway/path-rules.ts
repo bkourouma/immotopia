@@ -42,6 +42,7 @@ const SENSITIVE_SEGMENT_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ['whatsapp', 'sessions'],
   ['visio', 'jeton'],
   ['visio', 'participants'],
+  ['visio', 'media'],
   ['visio', 'discussion'],
   ['visio', 'enregistrement'],
   ['enregistrements', ':recordingid']
