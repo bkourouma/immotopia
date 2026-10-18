@@ -162,15 +162,15 @@ Web :
       gardée
 - [ ] T073 `WEB/src/pages/public/ChargeCallPaymentStatusPage.tsx` : relance 3 s / ~2 min, `sessionStorage`, message neutre
 - [ ] T074 `WEB/src/App.tsx` : routes `/payer-charges` et `/payer-charges/statut` (zone publique)
-- [ ] T075 [P] `WEB/src/components/syndics/ChargeCallPaymentLinkButton.tsx` + `ChargeCallPaymentLinksPanel.tsx`, branchés
+- [x] T075 [P] `WEB/src/components/syndics/ChargeCallPaymentLinkButton.tsx` + `ChargeCallPaymentLinksPanel.tsx`, branchés
       dans `SyndicCharges.tsx`
 - [ ] T076 `WEB/src/__tests__/public/charge-call-payment-page.test.tsx` et `…-status-page.test.tsx`
-- [ ] T077 `npm run i18n:extract` (web et API)
+- [x] T077 `npm run i18n:extract` (web et API)
 
 ## Clôture (par le coordinateur)
 
 - [ ] T078 Compléter `docs/integrations/paysecurehub.md` (flux Syndic, un compte par copropriété, 5525, Q1 et Q6)
-- [ ] T079 Wiki : sous-fonctionnalités listées dans le plan, `npm run wiki:export`, `npm run wiki:check`
+- [x] T079 Wiki : sous-fonctionnalités listées dans le plan, `npm run wiki:export`, `npm run wiki:check`
 - [ ] T080 `npm run typecheck`, `npm run lint`, `npm run check:architecture`, `npm test`, `npm run test:web`
 - [ ] T081 Relecture `code-reviewer` + `security-auditor` (PR1 et PR3 en priorité)
 - [ ] T082 Recette navigateur en simulateur (parcours du plan, section « Tests »)
