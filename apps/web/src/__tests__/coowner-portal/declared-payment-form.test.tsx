@@ -242,6 +242,15 @@ describe('DeclarationForm — un seul lot', () => {
     expect(screen.getByText('Déjà déclaré, en vérification')).toBeInTheDocument();
   });
 
+  it.each(['IN_PROGRESS', 'REVIEW'] as const)(
+    'désactive un appel dont le paiement en ligne est %s et explique pourquoi',
+    status => {
+      mountForm({ calls: [call({ onlineCheckout: status, onlineCheckoutCode: 'PAY-1' })] });
+      expect(screen.getByRole('checkbox', { name: /2026-T1/ })).toBeDisabled();
+      expect(screen.getByText(/Paiement en ligne en cours ou en vérification/)).toBeInTheDocument();
+    }
+  );
+
   it('indique qu’un lot sans appel ouvert deviendra une avance', () => {
     mountForm({ calls: [] });
     expect(screen.getByText('Aucun appel ouvert sur ce lot : le paiement deviendra une avance.')).toBeInTheDocument();

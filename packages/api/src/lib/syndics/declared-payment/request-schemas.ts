@@ -25,7 +25,7 @@ const declarationFields = {
   receivingNumberId: uuid,
   payerPhone: z.string().trim().min(1).max(40),
   amount: z.number().int(),
-  paidAt: z.string().trim().min(10).max(40),
+  paidAt: z.string().trim().datetime({ offset: true }),
   transactionReference: z.string().trim().min(1).max(80),
   lines: z.array(lineSchema).min(1).max(10),
   comment: z.string().max(500).nullable().optional()
@@ -87,7 +87,7 @@ export const approveDeclarationBodySchema = z
   .object({
     correction: z
       .object({
-        paidAt: z.string().trim().min(10).max(40).optional(),
+        paidAt: z.string().trim().datetime({ offset: true }).optional(),
         lines: z
           .array(
             z

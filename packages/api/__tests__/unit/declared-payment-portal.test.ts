@@ -89,6 +89,24 @@ describe('getCoOwnerDeclaredAvailability', () => {
     expect(getAvailability).toHaveBeenCalledWith('tenant-A', SYNDIC);
   });
 
+  it('propose la lecture IA seulement si fournisseur, interrupteur et quota le permettent', async () => {
+    const ai = {
+      ...settings,
+      aiPrefillAvailable: true,
+      aiPrefillEnabled: true,
+      aiReadsThisMonth: 3,
+      aiReadsMonthlyQuota: 300
+    };
+    getAvailability.mockResolvedValue({ available: true, settings: ai, receivingNumbers: numbers });
+    await expect(getCoOwnerDeclaredAvailability(scope, SYNDIC)).resolves.toMatchObject({ aiPrefillAvailable: true });
+    for (const off of [{ aiPrefillAvailable: false }, { aiPrefillEnabled: false }, { aiReadsThisMonth: 300 }]) {
+      getAvailability.mockResolvedValue({ available: true, settings: { ...ai, ...off }, receivingNumbers: numbers });
+      await expect(getCoOwnerDeclaredAvailability(scope, SYNDIC)).resolves.toMatchObject({ aiPrefillAvailable: false });
+    }
+    getAvailability.mockResolvedValue({ available: false, settings: ai, receivingNumbers: numbers });
+    await expect(getCoOwnerDeclaredAvailability(scope, SYNDIC)).resolves.toMatchObject({ aiPrefillAvailable: false });
+  });
+
   it('ne livre ni numéro ni consigne quand la copropriété n’accepte pas les déclarations', async () => {
     getAvailability.mockResolvedValue({ available: false, settings, receivingNumbers: numbers });
     const result = await getCoOwnerDeclaredAvailability(scope, SYNDIC);

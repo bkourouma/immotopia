@@ -425,6 +425,45 @@ export const coOwnerDeclarationCreateLimiter = rateLimit({
   legacyHeaders: false
 });
 
+const proofReadMessage = () => ({
+  success: false,
+  code: 'RATE_LIMITED',
+  message: t('Trop de lectures automatiques. Réessayez plus tard ou saisissez les champs à la main.')
+});
+
+const coOwnerProofReadPerMinute = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  keyGenerator: req => `coowner-proof-read-min:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  handler: (_req, res) => {
+    res.status(429).json(proofReadMessage());
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const coOwnerProofReadPerDay = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 30,
+  keyGenerator: req => `coowner-proof-read-day:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  handler: (_req, res) => {
+    res.status(429).json(proofReadMessage());
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Lecture IA d'une capture depuis le portail copropriétaire (spec 047, contrat §2.3) : 5 par minute et
+ * 30 par jour par compte (repli sur l'IP), posés APRÈS `authenticate` et AVANT le parseur multipart.
+ */
+export const coOwnerProofReadLimiter = (req: Request, res: Response, next: NextFunction): void => {
+  coOwnerProofReadPerMinute(req, res, error => {
+    if (error) next(error);
+    else coOwnerProofReadPerDay(req, res, next);
+  });
+};
+
 /** Lien « Payer cet appel » (spec 042), consultation : 30 par minute et par IP, avant toute vérification du jeton. Mêmes en-têtes anti-cache que les liens sécurisés. */
 export const chargePaymentViewRateLimiter = rateLimit({
   windowMs: 60 * 1000,

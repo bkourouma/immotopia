@@ -153,22 +153,22 @@ Agence — **L7** :
 
 ## L8 — Pré-remplissage IA (PR3)
 
-- [ ] T059 `API/src/lib/ai/vision/` : déplacer `runVisionCall`, `imageToBase64`, `VisionCallError`,
+- [x] T059 `API/src/lib/ai/vision/` : déplacer `runVisionCall`, `imageToBase64`, `VisionCallError`,
       `buildGeminiRequest`, `extractGeminiText` et le transport OpenRouter, paramétrés par consigne et schéma ;
       réexports dans `API/src/lib/stock-whatsapp/vision/*` ; suite de tests 041 verte sans retouche
-- [ ] T060 `API/src/config/env.ts` + `API/env.example` : `PAYMENT_PROOF_VISION_PROVIDER`, `…_MODEL`,
+- [x] T060 `API/src/config/env.ts` + `API/env.example` : `PAYMENT_PROOF_VISION_PROVIDER`, `…_MODEL`,
       `…_TIMEOUT_MS` ; `fake` refusé en production ; test de configuration
-- [ ] T061 `API/src/lib/syndics/declared-payment/vision/` : `prompt.ts`, `schema.ts` (JSON Schema + Zod strict de
+- [x] T061 `API/src/lib/syndics/declared-payment/vision/` : `prompt.ts`, `schema.ts` (JSON Schema + Zod strict de
       `PaymentProofReading`), `index.ts`, `fake-provider.ts`, `gemini-provider.ts`, `openrouter-provider.ts` ;
       tests (sortie invalide abandonnée champ par champ, délai dépassé)
-- [ ] T062 `API/src/lib/syndics/declared-payment/proof-read.ts` : disponibilité, limiteurs, quota mensuel de 300 par
+- [x] T062 `API/src/lib/syndics/declared-payment/proof-read.ts` : disponibilité, limiteurs, quota mensuel de 300 par
       agence, stockage temporaire, contrôles croisés R28, journal, audit sans valeurs, panne → `UNREADABLE`
       sans exception ; tests
-- [ ] T063 Route 2.3 (contrôleur, route, `coOwnerProofReadLimiter`) ; `aiPrefillAvailable` dans 1.5 et 2.1 ;
+- [x] T063 Route 2.3 (contrôleur, route, `coOwnerProofReadLimiter`) ; `aiPrefillAvailable` dans 1.5 et 2.1 ;
       `routes-inventory.test.ts`
-- [ ] T064 `declaration-create.ts` : `proofReadId` (même contact, non consommé, non expiré), capture reprise,
+- [x] T064 `declaration-create.ts` : `proofReadId` (même contact, non consommé, non expiré), capture reprise,
       `aiPrefill` et `aiEditedFields` ; tests
-- [ ] T065 Web : `DeclarationForm.tsx` (capture d'abord, champs « Lu automatiquement, vérifiez », suivi des
+- [x] T065 Web : `DeclarationForm.tsx` (capture d'abord, champs « Lu automatiquement, vérifiez », suivi des
       retouches), `DeclarationDrawer.tsx` (témoins IA), `DeclaredSettingsCard.tsx` (interrupteur, compteur) ;
       tests Vitest
 - [ ] T066 `npm run i18n:extract` (deux paquets), vérifications, classeur (8) + `npm run wiki:export`,

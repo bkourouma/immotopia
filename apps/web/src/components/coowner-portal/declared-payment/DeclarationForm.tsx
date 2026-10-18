@@ -441,12 +441,20 @@ function CallOption(props: {
   disabled: boolean;
   onChange: (checked: boolean) => void;
 }): React.ReactElement {
-  const { call, checked, disabled, onChange } = props;
+  const { call, checked, onChange } = props;
+  // Paiement en ligne en cours ou à vérifier : l'appel ne se déclare pas en même temps (cas limite 9).
+  const onlineBlocked = call.onlineCheckout !== undefined && call.onlineCheckout !== 'NONE';
+  const disabled = props.disabled || (onlineBlocked && !checked);
   return (
     <div style={{ minHeight: TOUCH, display: 'flex', alignItems: 'center' }}>
       <Checkbox checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)}>
         {call.period} — {t('échéance')} {dayjs(call.dueDate).format('DD/MM/YYYY')} — {t('reste dû')}{' '}
         <MoneyValue value={call.outstanding} />
+        {onlineBlocked ? (
+          <Tag color="warning" style={{ marginInlineStart: 8 }}>
+            {t('Paiement en ligne en cours ou en vérification : attendez son issue avant de le déclarer')}
+          </Tag>
+        ) : null}
         {call.pendingDeclaration ? (
           <Tag color="warning" style={{ marginInlineStart: 8 }}>
             {t('Déjà déclaré, en vérification')}

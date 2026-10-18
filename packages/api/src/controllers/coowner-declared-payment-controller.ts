@@ -8,11 +8,13 @@ import {
   getCoOwnerDeclaredAvailability,
   listCoOwnerDeclarations
 } from '../lib/syndics/declared-payment/portal';
+import { readPaymentProof } from '../lib/syndics/declared-payment/proof-read';
 import {
   availabilityQuerySchema,
   coOwnerDeclarationPayloadSchema,
   parseMultipartPayload,
-  portalListQuerySchema
+  portalListQuerySchema,
+  syndicIdFieldSchema
 } from '../lib/syndics/declared-payment/request-schemas';
 
 /**
@@ -40,6 +42,13 @@ export const createCoOwnerDeclarationHandler = asyncHandler(async (req: Request,
   const payload = parseMultipartPayload(req.body?.payload, coOwnerDeclarationPayloadSchema);
   const data = await createCoOwnerDeclaration(scopeOf(req), payload, req.file ?? null);
   res.status(201).json({ success: true, data });
+});
+
+/** §2.3 : lecture IA de la capture. Le fichier `proof` et le champ texte `syndicId` viennent du multipart. */
+export const readCoOwnerPaymentProofHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { syndicId } = syndicIdFieldSchema.parse({ syndicId: req.body?.syndicId });
+  const data = await readPaymentProof({ scope: scopeOf(req), syndicateId: syndicId, file: req.file ?? null });
+  res.json({ success: true, data });
 });
 
 export const listCoOwnerDeclarationsHandler = asyncHandler(async (req: Request, res: Response) => {

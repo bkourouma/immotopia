@@ -191,6 +191,48 @@ describe('STOCK_VISION_PROVIDER=fake (W8-R9, écart E1)', () => {
   });
 });
 
+describe('PAYMENT_PROOF_VISION_PROVIDER (spec 047, T060)', () => {
+  const CLEAN = { ...WA_CLEAN, PAYMENT_PROOF_VISION_PROVIDER: undefined, GEMINI_API_KEY: undefined };
+
+  it('désactivé par défaut', () => {
+    const r = loadWith({ ...CLEAN, ...META_VARS, NODE_ENV: 'test' });
+    expect(r.exited).toBe(false);
+    expect(r.env?.PAYMENT_PROOF_VISION_PROVIDER).toBe('disabled');
+  });
+
+  it('fake est refusé en production et sans NODE_ENV', () => {
+    for (const nodeEnv of ['production', undefined]) {
+      const r = loadWith({ ...CLEAN, ...META_VARS, NODE_ENV: nodeEnv, PAYMENT_PROOF_VISION_PROVIDER: 'fake' });
+      expect(r.exited).toBe(true);
+      expect(r.errors).toContain('PAYMENT_PROOF_VISION_PROVIDER');
+    }
+  });
+
+  it('fake est accepté en test', () => {
+    const r = loadWith({ ...CLEAN, ...META_VARS, NODE_ENV: 'test', PAYMENT_PROOF_VISION_PROVIDER: 'fake' });
+    expect(r.exited).toBe(false);
+  });
+
+  it('gemini exige GEMINI_API_KEY', () => {
+    const r = loadWith({ ...CLEAN, ...META_VARS, NODE_ENV: 'test', PAYMENT_PROOF_VISION_PROVIDER: 'gemini' });
+    expect(r.exited).toBe(true);
+    expect(r.errors).toContain('GEMINI_API_KEY');
+  });
+
+  it('openrouter exige un modèle fournisseur/modèle', () => {
+    const r = loadWith({
+      ...CLEAN,
+      ...META_VARS,
+      NODE_ENV: 'test',
+      PAYMENT_PROOF_VISION_PROVIDER: 'openrouter',
+      OPENROUTER_API_KEY: 'cle-factice-openrouter',
+      PAYMENT_PROOF_VISION_MODEL: 'gemini-3.8-flash'
+    });
+    expect(r.exited).toBe(true);
+    expect(r.errors).toContain('PAYMENT_PROOF_VISION_MODEL');
+  });
+});
+
 describe('secrets Meta (lot 041)', () => {
   it.each([
     ['META_WA_APP_SECRET', 'cle-secrete-de-l-application-meta-32-caracteres-min'],

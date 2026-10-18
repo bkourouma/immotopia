@@ -5,6 +5,7 @@ import { cancelDeclaration } from './declaration-cancel';
 import { createDeclaration, type CreateDeclarationInput } from './declaration-create';
 import { getCoOwnerDeclaration, listCoOwnerDeclarations as listCoOwnerDeclarationsQuery } from './declaration-queries';
 import { notifyDeclarationReceived } from './notifications';
+import { isAiPrefillOfferedToCoOwner } from './proof-read';
 import { getDeclaredPaymentAvailability } from './settings';
 import {
   MAX_DECLARATION_AMOUNT,
@@ -43,8 +44,8 @@ export async function getCoOwnerDeclaredAvailability(
     receivingNumbers: available ? receivingNumbers : [],
     payerInstructions: available ? settings.payerInstructions : null,
     proofRequired: settings.proofRequired,
-    // PR3 : la lecture IA n'est pas encore branchée.
-    aiPrefillAvailable: false,
+    // Fournisseur configuré, interrupteur de la copropriété activé et quota mensuel non atteint.
+    aiPrefillAvailable: available && isAiPrefillOfferedToCoOwner(settings),
     maxAmount: MAX_DECLARATION_AMOUNT
   };
 }

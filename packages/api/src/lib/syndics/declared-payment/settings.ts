@@ -7,6 +7,7 @@ import { t } from '../../../i18n';
 import { assertSyndicateOfTenant } from '../charge-allocation';
 import { isSyndicOnlinePaymentAllowed } from '../online-payment/feature-gate';
 import { listActiveReceivingNumbersForPortal } from './receiving-numbers';
+import { isPaymentProofVisionConfigured } from './vision';
 import type { DeclaredPaymentSettings, ReceivingNumber } from './types';
 
 /**
@@ -77,8 +78,8 @@ async function buildSettings(
   return {
     syndicateId,
     ...rules,
-    // Le fournisseur de vision est branché en PR3.
-    aiPrefillAvailable: false,
+    // Un fournisseur de vision est configuré sur le serveur (`PAYMENT_PROOF_VISION_PROVIDER`).
+    aiPrefillAvailable: isPaymentProofVisionConfigured(),
     aiReadsThisMonth,
     aiReadsMonthlyQuota: AI_READS_MONTHLY_QUOTA,
     usable: rules.enabled && activeNumbers > 0

@@ -184,6 +184,8 @@ export async function promoteTempProofToDeclaration(params: {
   syndicateId: string;
   declarationId: string;
   tempFileUrl: string;
+  /** Conserve le temporaire (supprimé ensuite par `discardTempProof`) : la création peut encore échouer. */
+  keepSource?: boolean;
 }): Promise<StoredProofFile> {
   const relative = privateUploadPath(params.tempFileUrl, tempSegments(params.tenantId));
   const source = await readPrivateUpload(relative, null, t('Capture introuvable.'));
@@ -193,8 +195,20 @@ export async function promoteTempProofToDeclaration(params: {
     params.declarationId,
     prepared
   );
-  if (relative) await removeUpload(relative);
+  if (relative && !params.keepSource) await removeUpload(relative);
   return stored;
+}
+
+/** Supprime la capture temporaire d'une lecture, une fois la déclaration créée. Ne lève jamais. */
+export async function discardTempProof(tenantId: string, tempFileUrl: string): Promise<void> {
+  try {
+    const relative = privateUploadPath(tempFileUrl, tempSegments(tenantId));
+    if (relative) await removeUpload(relative);
+  } catch (error) {
+    logger.warn('[declared-payment] suppression de capture temporaire en échec', {
+      code: (error as NodeJS.ErrnoException)?.code
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
