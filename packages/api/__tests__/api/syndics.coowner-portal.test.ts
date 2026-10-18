@@ -1000,3 +1000,122 @@ describe('Gestionnaire — télécharger un document de copropriété (jamais en
     expect(res.body.message).toBe('Le fichier envoyé dépasse la taille maximale autorisée.');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Borne de visibilité : seulement si un AUTRE contact a eu le lot avant (lot P)
+// ---------------------------------------------------------------------------
+
+describe('Portail copropriétaire — borne de visibilité du lot (ancien propriétaire)', () => {
+  const profileOf = (profileId: string) => {
+    const row = mockPrisma.lotOwnerProfile.rows.find((candidate: any) => candidate.id === profileId);
+    if (!row) throw new Error(`profil ${profileId} absent`);
+    return row;
+  };
+  const account = () => mockPrisma.ownerAccount.rows.find((row: any) => row.id === ACCOUNT_L1) as any;
+
+  it('(A) propriétaire unique saisi aujourd’hui : tout l’historique du lot reste visible', async () => {
+    profileOf(PROFILE_AWA_L1).ownedSince = new Date();
+    mockPrisma.chargeCall.rows.push({
+      id: id(510),
+      syndicateId: S1,
+      lotId: L1,
+      period: '2026-T3',
+      periodStart: new Date('2026-07-01'),
+      amount: 50000,
+      currency: 'XOF',
+      dueDate: new Date('2026-07-31'),
+      status: 'PENDING',
+      createdAt: PAST
+    });
+
+    const lots = await request(app).get('/api/portal/copropriete/lots').set(as(USER_AWA));
+    expect(lots.body.data.find((lot: any) => lot.id === L1).balance).toMatchObject({ amount: 70000 });
+
+    const compte = await request(app).get(`/api/portal/copropriete/lots/${L1}/compte`).set(as(USER_AWA));
+    expect(compte.body.data.account).toMatchObject({ amount: 70000, direction: 'DEBITEUR' });
+    expect(compte.body.data.transactions.map((tx: any) => tx.id)).toEqual(['tx-2', 'tx-1']);
+    // Soldes cumulés du compte entier, comme avant.
+    expect(compte.body.data.transactions.map((tx: any) => tx.balanceAfter)).toEqual([70000, 100000]);
+
+    const appels = await request(app).get(`/api/portal/copropriete/appels?lotId=${L1}`).set(as(USER_AWA));
+    expect(appels.body.data.map((call: any) => call.id).sort()).toEqual([CALL_L1, id(510)].sort());
+  });
+
+  describe('(B) ancien propriétaire jusqu’au 30/06, nouveau depuis le 01/07', () => {
+    beforeEach(() => {
+      profileOf(PROFILE_AWA_L1).ownedSince = new Date('2026-07-01');
+      mockPrisma.lotOwnerProfile.rows.push({
+        id: id(390),
+        lotId: L1,
+        contactId: CONTACT_BAKARY,
+        ownershipPercentage: 100,
+        ownedSince: new Date('2020-01-01'),
+        ownedUntil: new Date('2026-06-30'),
+        portalAccessEnabled: false,
+        isActive: false,
+        createdAt: new Date('2020-01-01')
+      });
+      // Compte du lot : dette de l'ancien propriétaire (100000 - 30000 en janvier), puis 20000 en août.
+      account().balance = 90000;
+      mockPrisma.ownerAccountTransaction.rows.push({
+        id: 'tx-aout',
+        accountId: ACCOUNT_L1,
+        transactionDate: new Date('2026-08-01'),
+        createdAt: new Date('2026-08-01'),
+        type: 'CHARGE_CALL',
+        debit: 20000,
+        credit: null,
+        balanceAfter: 90000,
+        label: 'Appel T3',
+        reference: null
+      });
+      mockPrisma.chargeCall.rows.push({
+        id: id(511),
+        syndicateId: S1,
+        lotId: L1,
+        period: '2026-T3',
+        periodStart: new Date('2026-07-01'),
+        amount: 20000,
+        currency: 'XOF',
+        dueDate: new Date('2026-08-01'),
+        status: 'PENDING',
+        createdAt: PAST
+      });
+    });
+
+    it('appels : seulement depuis juillet', async () => {
+      const appels = await request(app).get(`/api/portal/copropriete/appels?lotId=${L1}`).set(as(USER_AWA));
+      expect(appels.body.data.map((call: any) => call.id)).toEqual([id(511)]);
+    });
+
+    it('compte : mouvements depuis juillet, soldes cumulés depuis zéro, sans la dette d’avant', async () => {
+      const compte = await request(app).get(`/api/portal/copropriete/lots/${L1}/compte`).set(as(USER_AWA));
+      expect(compte.status).toBe(200);
+      expect(compte.body.data.account).toMatchObject({ amount: 20000, direction: 'DEBITEUR', currency: 'XOF' });
+      expect(compte.body.data.transactions.map((tx: any) => tx.id)).toEqual(['tx-aout']);
+      expect(compte.body.data.transactions[0]).toMatchObject({
+        balanceAfter: 20000,
+        balanceAfterDirection: 'DEBITEUR'
+      });
+      expect(JSON.stringify(compte.body)).not.toContain('Appel T1');
+    });
+
+    it('« Mes lots » : solde du périmètre, pas celui du compte', async () => {
+      const lots = await request(app).get('/api/portal/copropriete/lots').set(as(USER_AWA));
+      expect(lots.body.data.find((lot: any) => lot.id === L1).balance).toMatchObject({
+        amount: 20000,
+        direction: 'DEBITEUR'
+      });
+    });
+
+    it('isolation : le lot de Bakary reste illisible pour Awa, et son solde n’est pas touché', async () => {
+      const compte = await request(app).get(`/api/portal/copropriete/lots/${L2}/compte`).set(as(USER_AWA));
+      expect(compte.status).toBe(404);
+      const lots = await request(app).get('/api/portal/copropriete/lots').set(as(USER_BAKARY));
+      expect(lots.body.data.find((lot: any) => lot.id === L2).balance).toMatchObject({
+        amount: 20000,
+        direction: 'CREDITEUR'
+      });
+    });
+  });
+});

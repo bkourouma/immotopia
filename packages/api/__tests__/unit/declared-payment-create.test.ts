@@ -24,6 +24,7 @@ const store = {
   ownerProfiles: [] as Row[],
   contacts: [] as Row[],
   visibleCalls: [] as string[],
+  callDates: {} as Record<string, Date>,
   openCalls: {} as Record<string, string[]>,
   foreignLots: new Set<string>(),
   proofReads: [] as Row[],
@@ -100,7 +101,12 @@ const mockPrisma: Row = {
   chargeCall: {
     findMany: jest.fn(async ({ where }: Row) => {
       const ids: string[] = where.AND[0].id.in;
-      return ids.filter(id => store.visibleCalls.includes(id)).map(id => ({ id }));
+      // Borne du périmètre (`visibleSince`) : nulle = aucun appel du lot masqué par la date.
+      const bound: Date | null = where.AND[1].visibleSinceByLot?.[where.AND[0].lotId] ?? null;
+      return ids
+        .filter(id => store.visibleCalls.includes(id))
+        .filter(id => !bound || (store.callDates[id] ?? new Date(0)).getTime() >= bound.getTime())
+        .map(id => ({ id }));
     })
   },
   crmContact: {
@@ -140,7 +146,10 @@ jest.mock('../../src/lib/syndics/charge-allocation', () => ({
 }));
 
 jest.mock('../../src/lib/syndics/coowner-portal', () => ({
-  ownedChargeCallsWhere: jest.fn(() => ({ marker: 'owned' }))
+  ownedChargeCallsWhere: jest.fn((scope: Row) => ({
+    marker: 'owned',
+    visibleSinceByLot: Object.fromEntries(scope.lots.map((lot: Row) => [lot.lotId, lot.visibleSince ?? null]))
+  }))
 }));
 
 const mockAssertFeature = jest.fn(async () => undefined);
@@ -182,14 +191,29 @@ const scope = (over: Row = {}) => ({
   tenantId: TENANT,
   contactIds: ['contact-1'],
   lots: [
-    { lotId: LOT_1, syndicateId: SYNDIC, contactId: 'contact-1', ownershipPercentage: 100, ownedSince: new Date(0) },
-    { lotId: LOT_2, syndicateId: SYNDIC, contactId: 'contact-1', ownershipPercentage: 100, ownedSince: new Date(0) },
+    {
+      lotId: LOT_1,
+      syndicateId: SYNDIC,
+      contactId: 'contact-1',
+      ownershipPercentage: 100,
+      ownedSince: new Date(0),
+      visibleSince: null
+    },
+    {
+      lotId: LOT_2,
+      syndicateId: SYNDIC,
+      contactId: 'contact-1',
+      ownershipPercentage: 100,
+      ownedSince: new Date(0),
+      visibleSince: null
+    },
     {
       lotId: 'lot-other-syndic',
       syndicateId: 'syndic-2',
       contactId: 'contact-1',
       ownershipPercentage: 100,
-      ownedSince: new Date(0)
+      ownedSince: new Date(0),
+      visibleSince: null
     }
   ],
   lotIds: [LOT_1, LOT_2, 'lot-other-syndic'],
@@ -271,6 +295,7 @@ beforeEach(() => {
   store.ownerProfiles = [];
   store.contacts = [];
   store.visibleCalls = [];
+  store.callDates = {};
   store.openCalls = {};
   store.foreignLots = new Set();
   store.proofReads = [];
@@ -603,6 +628,37 @@ describe('createDeclaration : périmètre (portail)', () => {
       ];
       await expect(run({ input: lineOn(['call-1']) })).resolves.toMatchObject({ declarationId: expect.any(String) });
     });
+  });
+
+  it('propriétaire unique saisi aujourd’hui (aucune borne) : un appel de janvier est déclarable', async () => {
+    const lots = scope().lots.map(lot => ({
+      ...lot,
+      ownedSince: new Date('2026-10-18T00:00:00.000Z'),
+      visibleSince: null
+    }));
+    store.visibleCalls = ['call-1'];
+    store.callDates['call-1'] = new Date('2026-01-10T00:00:00.000Z');
+    store.openCalls[LOT_1] = ['call-1'];
+    await run({
+      actor: coowner({ scope: scope({ lots }) }),
+      input: baseInput({ amount: 100, lines: [{ lotId: LOT_1, amount: 100, chargeCallIds: ['call-1'] }] })
+    });
+    expect(store.declarations[0].lines.create[0].chargeCallIds).toEqual(['call-1']);
+  });
+
+  it('changement de propriétaire (borne au 01/07) : appel de mai 404, appel de juillet accepté', async () => {
+    const since = new Date('2026-07-01T00:00:00.000Z');
+    const lots = scope().lots.map(lot => ({ ...lot, ownedSince: since, visibleSince: since }));
+    const actor = coowner({ scope: scope({ lots }) });
+    store.visibleCalls = ['call-mai', 'call-juillet'];
+    store.callDates['call-mai'] = new Date('2026-05-10T00:00:00.000Z');
+    store.callDates['call-juillet'] = new Date('2026-07-10T00:00:00.000Z');
+    store.openCalls[LOT_1] = ['call-mai', 'call-juillet'];
+    const line = (id: string) => [{ lotId: LOT_1, amount: 100, chargeCallIds: [id] }];
+
+    await expectError(run({ actor, input: baseInput({ amount: 100, lines: line('call-mai') }) }), 404);
+    await run({ actor, input: baseInput({ amount: 100, lines: line('call-juillet') }) });
+    expect(store.declarations).toHaveLength(1);
   });
 
   it('appel ouvert mais antérieur à l’acquisition (non visible) : 404', async () => {

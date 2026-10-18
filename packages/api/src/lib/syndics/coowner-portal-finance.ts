@@ -55,13 +55,14 @@ export function lotInScope(scope: CoOwnerPortalScope, lotId: string): CoOwnerLot
 /**
  * Documents visibles des lots `lotIds` du périmètre :
  *   - émis à l'une des fiches du copropriétaire : toujours ;
- *   - sans destinataire (`contactId` nul) : seulement s'ils sont postérieurs
- *     à l'acquisition du lot, c'est-à-dire émis à partir de `ownedSince` ET,
- *     s'ils portent une période, dont la période commence à partir de
- *     `ownedSince`. Les deux bornes à la fois : même critère que les appels
- *     (`ownedChargeCallsWhere`, début de période) et que les mouvements du
- *     compte de lot (date >= `ownedSince`). Un document sans destinataire
- *     antérieur porte sur les paiements de l'ancien propriétaire (audit S5).
+ *   - sans destinataire (`contactId` nul) : sans borne quand le lot n'a connu
+ *     aucun autre propriétaire (`visibleSince` nul) ; sinon seulement s'ils sont
+ *     postérieurs à l'arrivée du copropriétaire, c'est-à-dire émis à partir de
+ *     `visibleSince` ET, s'ils portent une période, dont la période commence à
+ *     partir de `visibleSince`. Les deux bornes à la fois : même critère que les
+ *     appels (`ownedChargeCallsWhere`, début de période) et que les mouvements du
+ *     compte de lot. Un document sans destinataire antérieur porte sur les
+ *     paiements de l'ancien propriétaire (audit S5).
  * Hors de ces cas, un document répond le même 404 qu'un document inexistant.
  */
 export function visibleReceiptsWhere(
@@ -75,12 +76,16 @@ export function visibleReceiptsWhere(
     lotId: { in: lotIds },
     OR: [
       { contactId: { in: scope.contactIds } },
-      ...owned.map(lot => ({
-        contactId: null,
-        lotId: lot.lotId,
-        issuedAt: { gte: lot.ownedSince },
-        OR: [{ periodStart: null }, { periodStart: { gte: lot.ownedSince } }]
-      }))
+      ...owned.map(lot =>
+        lot.visibleSince
+          ? {
+              contactId: null,
+              lotId: lot.lotId,
+              issuedAt: { gte: lot.visibleSince },
+              OR: [{ periodStart: null }, { periodStart: { gte: lot.visibleSince } }]
+            }
+          : { contactId: null, lotId: lot.lotId }
+      )
     ]
   };
 }
@@ -126,12 +131,19 @@ async function lotContext(scope: CoOwnerPortalScope, lotIds: string[]) {
 // ---------------------------------------------------------------------------
 
 /**
- * Paiements des lots `lotIds` versés depuis que le copropriétaire les détient
- * (`ownedSince`) : ceux de l'ancien propriétaire restent à la gestion (audit S5).
+ * Paiements des lots `lotIds` du périmètre. Sans ancien propriétaire
+ * (`visibleSince` nul) : tous ; sinon seulement ceux versés depuis son arrivée
+ * (`visibleSince`) : ceux de l'ancien propriétaire restent à la gestion (audit S5).
+ * Un lot hors périmètre ne produit aucune clause (`OR: []` ne renvoie rien) ;
+ * toute clause porte `lotId`.
  */
 export function ownedPaymentsWhere(scope: CoOwnerPortalScope, lotIds: string[]): Prisma.ChargePaymentWhereInput {
   const owned = scope.lots.filter(lot => lotIds.includes(lot.lotId));
-  return { OR: owned.map(lot => ({ lotId: lot.lotId, paidAt: { gte: lot.ownedSince } })) };
+  return {
+    OR: owned.map(lot =>
+      lot.visibleSince ? { lotId: lot.lotId, paidAt: { gte: lot.visibleSince } } : { lotId: lot.lotId }
+    )
+  };
 }
 
 function yearWhere(year?: number): Prisma.ChargePaymentWhereInput {
@@ -390,13 +402,15 @@ async function loadLotCallsOfYear(scope: CoOwnerPortalScope, lot: CoOwnerLotScop
 }
 
 /**
- * Cases antérieures à l'acquisition vidées (NONE, 0) : les mois de l'ancien
- * propriétaire ne sont pas ceux du copropriétaire connecté (audit S5).
+ * Cases antérieures à l'arrivée vidées (NONE, 0) : les mois de l'ancien
+ * propriétaire ne sont pas ceux du copropriétaire connecté (audit S5). Sans
+ * borne (`visibleSince` nul, aucun ancien propriétaire) rien n'est masqué.
  */
-export function hideMonthsBeforeOwnership(months: MonthCell[], year: number, ownedSince: Date): MonthCell[] {
-  const startYear = ownedSince.getUTCFullYear();
+export function hideMonthsBeforeOwnership(months: MonthCell[], year: number, visibleSince: Date | null): MonthCell[] {
+  if (!visibleSince) return months;
+  const startYear = visibleSince.getUTCFullYear();
   if (year > startYear) return months;
-  const firstMonth = year < startYear ? 13 : ownedSince.getUTCMonth() + 1;
+  const firstMonth = year < startYear ? 13 : visibleSince.getUTCMonth() + 1;
   return months.map(cell =>
     cell.month < firstMonth ? { month: cell.month, due: 0, paid: 0, status: 'NONE' as const } : cell
   );
@@ -405,8 +419,9 @@ export function hideMonthsBeforeOwnership(months: MonthCell[], year: number, own
 /** Ligne de la grille mensuelle (S2) pour CE lot seulement, depuis son acquisition. */
 export async function getCoOwnerLotMonthlyTracking(scope: CoOwnerPortalScope, lotId: string, year: number) {
   const lotScope = lotInScope(scope, lotId);
-  // Une année entièrement antérieure à l'acquisition : même 404 qu'un lot inconnu.
-  if (year < lotScope.ownedSince.getUTCFullYear()) throw new NotFoundError(LOT_NOT_FOUND);
+  // Année entièrement antérieure à l'arrivée du copropriétaire, quand un ancien
+  // propriétaire existe (borne non nulle) : même 404 qu'un lot inconnu.
+  if (lotScope.visibleSince && year < lotScope.visibleSince.getUTCFullYear()) throw new NotFoundError(LOT_NOT_FOUND);
   const { lots, viewOf } = await lotContext(scope, [lotScope.lotId]);
   if (lots.length === 0) throw new NotFoundError(LOT_NOT_FOUND);
 
@@ -430,7 +445,7 @@ export async function getCoOwnerLotMonthlyTracking(scope: CoOwnerPortalScope, lo
     periodStart: call.periodStart,
     periodEnd: call.periodEnd
   }));
-  const months = hideMonthsBeforeOwnership(buildLotMonthGrid(tracked, year), year, lotScope.ownedSince);
+  const months = hideMonthsBeforeOwnership(buildLotMonthGrid(tracked, year), year, lotScope.visibleSince);
   const dueCents = months.reduce((sum, cell) => sum + toCents(cell.due), 0);
   const paidCents = months.reduce((sum, cell) => sum + toCents(cell.paid), 0);
 
@@ -439,6 +454,7 @@ export async function getCoOwnerLotMonthlyTracking(scope: CoOwnerPortalScope, lo
     currency: calls[0]?.currency ?? DEFAULT_CURRENCY,
     ...viewOf(lotScope.lotId),
     ownedSince: isoDay(lotScope.ownedSince),
+    visibleSince: lotScope.visibleSince ? isoDay(lotScope.visibleSince) : null,
     advance: fromCents(advanceCents.get(lotScope.lotId) ?? 0),
     totals: { due: fromCents(dueCents), paid: fromCents(paidCents), outstanding: fromCents(dueCents - paidCents) },
     months

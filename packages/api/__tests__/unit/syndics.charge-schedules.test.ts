@@ -696,7 +696,16 @@ describe('avis d appel PDF : gestion et portail', () => {
     const scope: CoOwnerPortalScope = {
       tenantId: TENANT_A,
       contactIds: [AWA],
-      lots: [{ lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince: d('2026-01-01') }],
+      lots: [
+        {
+          lotId: L1,
+          syndicateId: S1,
+          contactId: AWA,
+          ownershipPercentage: 100,
+          ownedSince: d('2026-01-01'),
+          visibleSince: null
+        }
+      ],
       lotIds: [L1],
       syndicateIds: [S1]
     };
@@ -708,12 +717,14 @@ describe('avis d appel PDF : gestion et portail', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('portail : un appel anterieur a l acquisition du lot (ownedSince) repond 404, un appel posterieur sert le PDF', async () => {
+  it('portail : un appel anterieur a l acquisition d un lot au proprietaire precedent (visibleSince) repond 404, un appel posterieur sert le PDF', async () => {
     expect(callL1.periodStart).toEqual(d('2026-09-01'));
     const scopeSince = (ownedSince: Date): CoOwnerPortalScope => ({
       tenantId: TENANT_A,
       contactIds: [AWA],
-      lots: [{ lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince }],
+      lots: [
+        { lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince, visibleSince: ownedSince }
+      ],
       lotIds: [L1],
       syndicateIds: [S1]
     });
@@ -726,6 +737,11 @@ describe('avis d appel PDF : gestion et portail', () => {
     const file = await getChargeCallNoticeForCoOwner(scopeSince(d('2026-08-15')), callL1.id);
     expect(file.mimeType).toBe('application/pdf');
     expect(file.buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    // Aucun proprietaire precedent (visibleSince nul) : l'appel de septembre est servi meme pour un profil cree apres.
+    const unbounded = { ...scopeSince(d('2026-09-15')) };
+    unbounded.lots = [{ ...unbounded.lots[0], visibleSince: null }];
+    const open = await getChargeCallNoticeForCoOwner(unbounded, callL1.id);
+    expect(open.mimeType).toBe('application/pdf');
   });
 });
 
@@ -871,7 +887,16 @@ describe('destinataire de l avis', () => {
     const scope: CoOwnerPortalScope = {
       tenantId: TENANT_A,
       contactIds: [AWA],
-      lots: [{ lotId: L2, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince: d('2026-01-01') }],
+      lots: [
+        {
+          lotId: L2,
+          syndicateId: S1,
+          contactId: AWA,
+          ownershipPercentage: 100,
+          ownedSince: d('2026-01-01'),
+          visibleSince: null
+        }
+      ],
       lotIds: [L2],
       syndicateIds: [S1]
     };
@@ -1296,7 +1321,16 @@ describe('avis d appel : ni signature ni cachet', () => {
       {
         tenantId: TENANT_A,
         contactIds: [AWA],
-        lots: [{ lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince: d('2026-01-01') }],
+        lots: [
+          {
+            lotId: L1,
+            syndicateId: S1,
+            contactId: AWA,
+            ownershipPercentage: 100,
+            ownedSince: d('2026-01-01'),
+            visibleSince: null
+          }
+        ],
         lotIds: [L1],
         syndicateIds: [S1]
       },

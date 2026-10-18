@@ -104,10 +104,18 @@ let userCounter = 0;
 const as = (r: request.Test, profile: string) =>
   r.set('x-test-user', `user-${profile}-${++userCounter}`).set('x-test-scope', profile);
 
-const scopeOf = (tenantId: string, lots: Array<{ lotId: string; syndicateId: string; contactId: string }>) => ({
+/**
+ * `visibleSince` : par défaut `OWNED_SINCE` (un ancien propriétaire a précédé : l'historique d'avant est masqué) ;
+ * `null` = propriétaire unique, aucune borne (tout l'historique du lot est visible).
+ */
+const scopeOf = (
+  tenantId: string,
+  lots: Array<{ lotId: string; syndicateId: string; contactId: string }>,
+  visibleSince: Date | null = OWNED_SINCE
+) => ({
   tenantId,
   contactIds: Array.from(new Set(lots.map(lot => lot.contactId))),
-  lots: lots.map(lot => ({ ...lot, ownershipPercentage: 100, ownedSince: OWNED_SINCE })),
+  lots: lots.map(lot => ({ ...lot, ownershipPercentage: 100, ownedSince: OWNED_SINCE, visibleSince })),
   lotIds: lots.map(lot => lot.lotId),
   syndicateIds: Array.from(new Set(lots.map(lot => lot.syndicateId)))
 });
@@ -286,6 +294,52 @@ describe('POST /paiements-en-ligne — démarrage', () => {
     expect(foreignLot.status).toBe(404);
     expect(foreignAgency.status).toBe(404);
     expect(beforeAcquisition.status).toBe(404);
+    expect(db.store.checkouts).toHaveLength(0);
+  });
+
+  it('propriétaire unique saisi aujourd’hui (aucune borne) : un appel antérieur à ownedSince est payable', async () => {
+    // Profil créé « aujourd'hui » sur une copropriété existante : ownedSince récent, mais pas d'ancien propriétaire.
+    mockScopes.awa = scopeOf(
+      IDS.T1,
+      [
+        { lotId: IDS.L1, syndicateId: IDS.S1, contactId: IDS.AWA },
+        { lotId: IDS.L3, syndicateId: IDS.S2, contactId: IDS.AWA }
+      ],
+      null
+    );
+    db.store.calls.find(call => call.id === IDS.C1)!.dueDate = new Date('2024-06-01T00:00:00.000Z');
+
+    const res = await as(request(app).post(BASE).send(startBody()), 'awa');
+
+    expect(res.status).toBe(201);
+    expect(db.store.checkouts).toHaveLength(1);
+  });
+
+  it('sans borne, le lot reste borné au périmètre : appel d’un autre lot ou d’une autre agence introuvable', async () => {
+    mockScopes.awa = scopeOf(IDS.T1, [{ lotId: IDS.L1, syndicateId: IDS.S1, contactId: IDS.AWA }], null);
+
+    const foreignLot = await as(
+      request(app)
+        .post(BASE)
+        .send(startBody({ chargeCallIds: [IDS.C1, IDS.C3] })),
+      'awa'
+    );
+    const foreignAgency = await as(
+      request(app)
+        .post(BASE)
+        .send(startBody({ chargeCallIds: [IDS.CB] })),
+      'awa'
+    );
+    const outOfScopeLot = await as(
+      request(app)
+        .post(BASE)
+        .send(startBody({ lotId: IDS.L2 })),
+      'awa'
+    );
+
+    expect(foreignLot.status).toBe(404);
+    expect(foreignAgency.status).toBe(404);
+    expect(outOfScopeLot.status).toBe(404);
     expect(db.store.checkouts).toHaveLength(0);
   });
 
@@ -469,6 +523,15 @@ describe('GET /paiements-en-ligne/:codePaiement', () => {
     const res = await as(request(app).get(`${BASE}/${row.codePaiement}`), 'awa');
 
     expect(res.status).toBe(404);
+  });
+
+  it('paiement lancé avant l’acquisition, sans ancien propriétaire (aucune borne) : lisible', async () => {
+    mockScopes.awa = scopeOf(IDS.T1, [{ lotId: IDS.L1, syndicateId: IDS.S1, contactId: IDS.AWA }], null);
+    const row = db.addCheckout({ createdAt: new Date('2024-05-01T00:00:00.000Z'), tenantClientId: 'client-1' });
+
+    const res = await as(request(app).get(`${BASE}/${row.codePaiement}`), 'awa');
+
+    expect(res.status).toBe(200);
   });
 
   it('paiement d’un autre compte sur le même lot : lisible, mais jamais son URL de paiement', async () => {

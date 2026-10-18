@@ -78,6 +78,7 @@ describe('resolveChargeCallPaymentUrl', () => {
     db.engine.evaluateSchedulingGate.mockResolvedValue('DENIED');
     expect(await resolveChargeCallPaymentUrl(input())).toBeNull();
     db.engine.evaluateSchedulingGate.mockResolvedValue(null);
+    db.addOwnerProfile({ contactId: 'contact-ancien', ownedUntil: new Date('2026-06-30T00:00:00.000Z') });
     db.addOwnerProfile({ ownedSince: new Date('2026-07-01T00:00:00.000Z') });
     expect(await resolveChargeCallPaymentUrl(input())).toBeNull();
     expect(db.links).toHaveLength(0);
