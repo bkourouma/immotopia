@@ -47,7 +47,12 @@ export const listSignaturesHandler = asyncHandler(async (req: Request, res: Resp
   const { tenantId, userId } = ctxOf(req);
   // La liste ne montre que les types de document que l'utilisateur a le droit de lire.
   const data = await listSignatureRequests(tenantId, filters, await permittedSignatureKinds(userId, tenantId));
-  res.json({ success: true, data });
+  // `canEdit` : l'utilisateur peut-il relancer ou annuler cette demande (permission d'édition de son type) ?
+  const editable: readonly string[] = await permittedSignatureKinds(userId, tenantId, 'edit');
+  res.json({
+    success: true,
+    data: { ...data, items: data.items.map(item => ({ ...item, canEdit: editable.includes(item.kind) })) }
+  });
 });
 
 export const signatureSummaryHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -60,8 +65,10 @@ export const signatureSummaryHandler = asyncHandler(async (req: Request, res: Re
 });
 
 export const getSignatureHandler = asyncHandler(async (req: Request, res: Response) => {
-  const data = await getSignatureRequest(ctxOf(req).tenantId, idSchema.parse(req.params.id));
-  res.json({ success: true, data });
+  const { tenantId, userId } = ctxOf(req);
+  const data = await getSignatureRequest(tenantId, idSchema.parse(req.params.id));
+  const editable: readonly string[] = await permittedSignatureKinds(userId, tenantId, 'edit');
+  res.json({ success: true, data: { ...data, canEdit: editable.includes(data.kind) } });
 });
 
 export const cancelSignatureHandler = asyncHandler(async (req: Request, res: Response) => {

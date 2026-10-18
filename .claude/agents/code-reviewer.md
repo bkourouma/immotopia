@@ -64,8 +64,8 @@ revue en attendant qu'il apparaisse.
   `align: 'end'`), jamais `ml-4`/`mr-4`/`pl-4`/`pr-4`.
 - Si un texte francais existant a ete modifie plutot que remplace par un
   nouveau texte, signale-le : la cle change, donc la traduction existante
-  devient orpheline (`npm run i18n:extract` la deplace dans un
-  `*.orphans.json`, elle ne se reporte pas seule).
+  devient non referencee (`npm run i18n:extract` la conserve dans le
+  catalogue, elle ne se reporte pas seule sur la nouvelle cle).
 
 **Wiki des fonctionnalites**
 

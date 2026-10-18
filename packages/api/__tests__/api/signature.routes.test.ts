@@ -23,7 +23,7 @@ jest.mock('../../src/middleware/tenant-middleware', () => ({
   }
 }));
 // Permission et abonnement selon le TYPE de document : testés dans signature-access.test.ts.
-const permittedSignatureKinds = jest.fn(async () => ['LEASE_CONTRACT']);
+const permittedSignatureKinds = jest.fn(async (..._args: unknown[]): Promise<string[]> => ['LEASE_CONTRACT']);
 jest.mock('../../src/middleware/signature-access-middleware', () => ({
   requireSignatureKindAccess: () => (_req: any, _res: any, next: any) => next(),
   permittedSignatureKinds: (...a: unknown[]) => (permittedSignatureKinds as any)(...a)
@@ -192,7 +192,46 @@ describe('agence : /api/signatures', () => {
       'LEASE_CONTRACT'
     ]);
     expect(getSignatureRequest).not.toHaveBeenCalled();
-    expect((await request(app).get('/api/signatures/summary?q=abc')).status).toBe(400);
+    expect((await request(app).get('/api/signatures/summary?foo=abc')).status).toBe(400);
+    expect((await request(app).get('/api/signatures/summary?targetType=RentalLease')).status).toBe(400);
+    expect((await request(app).get('/api/signatures/summary?q=')).status).toBe(400);
+  });
+
+  it('GET summary accepte la recherche q (même règle que la liste) et la transmet au service', async () => {
+    getSignatureSummary.mockResolvedValue({ total: 1, byStatus: { SENT: 1 } });
+    const response = await request(app).get('/api/signatures/summary?q=%20Kone%20&kind=LEASE_CONTRACT');
+    expect(response.status).toBe(200);
+    expect(response.body.data.total).toBe(1);
+    expect(getSignatureSummary).toHaveBeenCalledWith('tenant-1', { q: 'Kone', kind: 'LEASE_CONTRACT' }, [
+      'LEASE_CONTRACT'
+    ]);
+    expect((await request(app).get(`/api/signatures/summary?q=${'a'.repeat(101)}`)).status).toBe(400);
+  });
+
+  it('GET liste et détail portent canEdit, calculé sur les types ÉDITABLES (jamais sur la seule lecture)', async () => {
+    permittedSignatureKinds.mockImplementation(async (...args: unknown[]) =>
+      args[2] === 'edit' ? ['LEASE_CONTRACT'] : ['LEASE_CONTRACT', 'SALE_AGREEMENT']
+    );
+    listSignatureRequests.mockResolvedValue({
+      items: [
+        { id: 'r1', kind: 'LEASE_CONTRACT' },
+        { id: 'r2', kind: 'SALE_AGREEMENT' }
+      ],
+      total: 2
+    });
+    const list = await request(app).get('/api/signatures');
+    expect(list.body.data.total).toBe(2);
+    expect(list.body.data.items).toEqual([
+      { id: 'r1', kind: 'LEASE_CONTRACT', canEdit: true },
+      { id: 'r2', kind: 'SALE_AGREEMENT', canEdit: false }
+    ]);
+    // La liste reste filtrée sur les types lisibles.
+    expect(listSignatureRequests.mock.calls[0][2]).toEqual(['LEASE_CONTRACT', 'SALE_AGREEMENT']);
+    getSignatureRequest.mockResolvedValueOnce({ id: 'r1', kind: 'LEASE_CONTRACT', events: [] });
+    getSignatureRequest.mockResolvedValueOnce({ id: 'r2', kind: 'SALE_AGREEMENT', events: [] });
+    expect((await request(app).get(`/api/signatures/${R1}`)).body.data.canEdit).toBe(true);
+    expect((await request(app).get(`/api/signatures/${R1}`)).body.data.canEdit).toBe(false);
+    permittedSignatureKinds.mockImplementation(async () => ['LEASE_CONTRACT']);
   });
 
   it('GET détail, annulation, relance et réémission du jeton sur place', async () => {
@@ -200,7 +239,7 @@ describe('agence : /api/signatures', () => {
     cancelSignatureRequest.mockResolvedValue({ id: 'r1', status: 'CANCELED' });
     remindSignatureRequest.mockResolvedValue({ reminded: 1, failed: 0 });
     reissueInPersonToken.mockResolvedValue({ inPersonUrlToken: 'jeton-sur-place' });
-    expect((await request(app).get(`/api/signatures/${R1}`)).body.data).toEqual({ id: 'r1' });
+    expect((await request(app).get(`/api/signatures/${R1}`)).body.data).toEqual({ id: 'r1', canEdit: false });
     expect((await request(app).post(`/api/signatures/${R1}/cancel`)).body.data.status).toBe('CANCELED');
     expect((await request(app).post(`/api/signatures/${R1}/remind`)).body.data).toEqual({ reminded: 1, failed: 0 });
     const reissued = await request(app).post(`/api/signatures/${R1}/signers/${S1}/in-person-token`);

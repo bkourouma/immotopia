@@ -618,5 +618,21 @@ describe('liste et synthèse', () => {
     expect(args.where.tenantId).toBe('t1');
     expect(args.where.kind).toEqual({ in: ['LEASE_CONTRACT'] });
     expect(args.where.createdAt.lte).toEqual(new Date('2026-01-31T23:59:59.999Z'));
+    expect(args.where.OR).toBeUndefined();
+  });
+
+  it('synthèse avec recherche : EXACTEMENT le même filtre que la liste (titre ou nom d’un signataire)', async () => {
+    await listSignatureRequests('t1', { q: 'kone' }, ['LEASE_CONTRACT']);
+    const listed = prismaMock.signatureRequest.findMany.mock.calls.at(-1)[0].where;
+    prismaMock.signatureRequest.groupBy.mockResolvedValueOnce([{ status: 'SENT', _count: { _all: 1 } }]);
+    const summary = await getSignatureSummary('t1', { q: 'kone' }, ['LEASE_CONTRACT']);
+    expect(summary.total).toBe(1);
+    const counted = prismaMock.signatureRequest.groupBy.mock.calls.at(-1)[0].where;
+    expect(counted.OR).toEqual(listed.OR);
+    expect(counted.OR).toEqual([
+      { title: { contains: 'kone', mode: 'insensitive' } },
+      { signers: { some: { fullName: { contains: 'kone', mode: 'insensitive' } } } }
+    ]);
+    expect(counted.tenantId).toBe('t1');
   });
 });

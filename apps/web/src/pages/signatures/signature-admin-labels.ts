@@ -75,6 +75,8 @@ export function eventLabel(type: string): string {
       return t('Rappel envoyé');
     case 'REMINDER_AUTO':
       return t('Rappel automatique envoyé');
+    case 'IN_PERSON_TOKEN_ISSUED':
+      return t('Nouveau lien de signature sur place émis');
     default:
       return type;
   }

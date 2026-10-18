@@ -632,6 +632,19 @@ describe('durcissements de l’audit', () => {
 
     expect(row(checkout.id)).toMatchObject({ status: 'REVIEW', reviewKind: 'CONTRARY_STATE' });
     expect(payments()).toHaveLength(0);
+    // Montant rapporté : la raison reste la raison générale.
+    expect(String(row(checkout.id).reviewReason)).not.toContain('sans en rapporter le montant');
+  });
+
+  it('succès tardif sur une tentative EXPIRED sans montant rapporté -> REVIEW CONTRARY_STATE, raison explicite, rien d’encaissé', async () => {
+    const checkout = db.addCheckout({ status: 'EXPIRED' });
+    db.engine.client.getStatus.mockResolvedValue(status({ amount: null }));
+
+    await reconcileSyndicCheckout(IDS.T1, checkout.id);
+
+    expect(row(checkout.id)).toMatchObject({ status: 'REVIEW', reviewKind: 'CONTRARY_STATE', receivedAmount: null });
+    expect(String(row(checkout.id).reviewReason)).toContain('sans en rapporter le montant');
+    expect(payments()).toHaveLength(0);
   });
 
   it('simulateur indisponible (production) -> findSyndicSimulatorCheckout renvoie null', async () => {

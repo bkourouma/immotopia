@@ -93,26 +93,26 @@ export interface SyndicOnlineCheckoutRow {
 
 ### 0.2 Codes d'erreur (ajouts à `ErrorCode`)
 
-| Code                                  | HTTP | Sens                                                                                           |
-| ------------------------------------- | ---- | ---------------------------------------------------------------------------------------------- |
-| `ONLINE_PAYMENT_UNAVAILABLE`          | 400  | Copropriété sans configuration active et utilisable (jamais de repli sur le compte du cabinet) |
-| `ONLINE_PAYMENT_NOTHING_DUE`          | 400  | Aucun appel sélectionné n'a de reste dû                                                        |
-| `CHARGE_CALL_ALREADY_SETTLED`         | 400  | Au moins un appel sélectionné est déjà soldé                                                   |
-| `ONLINE_PAYMENT_CURRENCY_UNSUPPORTED` | 400  | Devise autre que XOF/FCFA, ou devises mélangées                                                |
-| `ONLINE_PAYMENT_IN_PROGRESS`          | 409  | Un paiement `PENDING` récent couvre déjà un des appels (`data` : voir 3.1)                     |
-| `ONLINE_PAYMENT_UNDER_REVIEW`         | 409  | Un paiement `REVIEW` couvre un des appels : à trancher par le gestionnaire                     |
-| `ONLINE_PAYMENT_PROVIDER_UNREACHABLE` | 502  | PaySecureHub n'a pas répondu (`build-away` ou statut)                                          |
-| `SYNDIC_FEATURE_DENIED`               | 403  | Abonnement de l'agence sans droit sur le module SYNDIC (portail seulement)                     |
-| `GATEWAY_ENCRYPTION_UNAVAILABLE`      | 400  | `PAYMENT_SECRETS_KEY` absente : aucune clé enregistrable                                       |
-| `GATEWAY_SIMULATOR_UNAVAILABLE`       | 400  | Mode `SIMULATOR` demandé alors qu'il est interdit sur ce serveur                               |
-| `GATEWAY_CREDENTIALS_REQUIRED`        | 400  | Activation en `LIVE` sans identifiant marchand ou sans clé                                     |
-| `GATEWAY_CHECKOUTS_PENDING`           | 409  | Changement de mode, d'identifiant marchand ou de clé alors qu'un paiement est `PENDING`        |
-| `CHECKOUT_NOT_VERIFIABLE`             | 409  | Vérification demandée sur un paiement ni `PENDING` ni `REVIEW`                                 |
-| `CHECKOUT_NOT_IN_REVIEW`              | 409  | Décision demandée sur un paiement qui n'est pas (ou plus) `REVIEW`                             |
-| `REVIEW_NOT_REJECTABLE`               | 409  | Refus d'un `REVIEW` dont l'encaissement est déjà enregistré (`CONTRARY_STATE`)                 |
-| `REVIEW_NOT_ACCEPTABLE`               | 409  | Acceptation d'un `REVIEW` `DUPLICATE_TRANSACTION`                                              |
-| `PAYOUT_EXCEEDS_COLLECTED`            | 400  | Reversement supérieur au solde du compte 5525                                                  |
-| `PAYOUT_DUPLICATE`                    | 409  | Référence de reversement déjà utilisée dans cette copropriété                                  |
+| Code                                  | HTTP | Sens                                                                                                  |
+| ------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------- |
+| `ONLINE_PAYMENT_UNAVAILABLE`          | 400  | Copropriété sans configuration active et utilisable (jamais de repli sur le compte du cabinet)        |
+| `ONLINE_PAYMENT_NOTHING_DUE`          | 400  | Aucun appel sélectionné n'a de reste dû                                                               |
+| `CHARGE_CALL_ALREADY_SETTLED`         | 400  | Au moins un appel sélectionné est déjà soldé                                                          |
+| `ONLINE_PAYMENT_CURRENCY_UNSUPPORTED` | 400  | Devise autre que XOF/FCFA, ou devises mélangées                                                       |
+| `ONLINE_PAYMENT_IN_PROGRESS`          | 409  | Un paiement `PENDING` récent couvre déjà un des appels (`data` : voir 3.1)                            |
+| `ONLINE_PAYMENT_UNDER_REVIEW`         | 409  | Un paiement `REVIEW` couvre un des appels : à trancher par le gestionnaire                            |
+| `ONLINE_PAYMENT_PROVIDER_UNREACHABLE` | 502  | PaySecureHub n'a pas répondu (`build-away` ou statut)                                                 |
+| `SYNDIC_FEATURE_DENIED`               | 403  | Abonnement de l'agence sans droit sur le module SYNDIC (portail seulement)                            |
+| `GATEWAY_ENCRYPTION_UNAVAILABLE`      | 400  | `PAYMENT_SECRETS_KEY` absente : aucune clé enregistrable                                              |
+| `GATEWAY_SIMULATOR_UNAVAILABLE`       | 400  | Mode `SIMULATOR` demandé alors qu'il est interdit sur ce serveur                                      |
+| `GATEWAY_CREDENTIALS_REQUIRED`        | 400  | Activation en `LIVE` sans identifiant marchand ou sans clé                                            |
+| `GATEWAY_CHECKOUTS_PENDING`           | 409  | Changement de mode, d'identifiant marchand ou de clé alors qu'un paiement est `PENDING`               |
+| `CHECKOUT_NOT_VERIFIABLE`             | 409  | Vérification demandée sur un paiement ni `PENDING` ni `REVIEW`                                        |
+| `CHECKOUT_NOT_IN_REVIEW`              | 409  | Décision demandée sur un paiement qui n'est pas (ou plus) `REVIEW`                                    |
+| `REVIEW_NOT_REJECTABLE`               | 409  | Refus d'un `REVIEW` dont l'encaissement est déjà enregistré (`CONTRARY_STATE` avec `chargePaymentId`) |
+| `REVIEW_NOT_ACCEPTABLE`               | 409  | Acceptation d'un `REVIEW` `DUPLICATE_TRANSACTION`                                                     |
+| `PAYOUT_EXCEEDS_COLLECTED`            | 400  | Reversement supérieur au solde du compte 5525                                                         |
+| `PAYOUT_DUPLICATE`                    | 409  | Référence de reversement déjà utilisée dans cette copropriété                                         |
 
 Les erreurs génériques existantes restent : 400 `VALIDATION_ERROR`, 401, 403, 404 (`NotFoundError`),
 429 (limiteur). La clôture d'exercice lève la `BadRequestError` existante de
@@ -284,14 +284,16 @@ export interface DecideSyndicCheckoutResult {
 
 Règles (par `reviewKind`) :
 
-| `reviewKind`                                                 | ACCEPT                                                                                                                                                                                              | REJECT                                                                        |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `AMOUNT_MISMATCH`, `FISCAL_YEAR_CLOSED`, `CALLS_UNAVAILABLE` | enregistre l'encaissement du **montant reçu** (`receivedAmount`, à défaut le montant demandé) sur les appels visés encore ouverts, l'excédent devient une avance ; `SUCCESS`, `resolution=ACCEPTED` | aucun encaissement ; `FAILED`, `resolution=REJECTED`, `failureMessage` = note |
-| `DUPLICATE_TRANSACTION`                                      | 409 `REVIEW_NOT_ACCEPTABLE`                                                                                                                                                                         | `FAILED`, `REJECTED`                                                          |
-| `CONTRARY_STATE` (encaissement déjà enregistré)              | aucun nouvel encaissement ; `SUCCESS`, `resolution=ACCEPTED`                                                                                                                                        | 409 `REVIEW_NOT_REJECTABLE`                                                   |
+| `reviewKind`                                                       | ACCEPT                                                                                                                                                                                              | REJECT                                                                        |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `AMOUNT_MISMATCH`, `FISCAL_YEAR_CLOSED`, `CALLS_UNAVAILABLE`       | enregistre l'encaissement du **montant reçu** (`receivedAmount`, à défaut le montant demandé) sur les appels visés encore ouverts, l'excédent devient une avance ; `SUCCESS`, `resolution=ACCEPTED` | aucun encaissement ; `FAILED`, `resolution=REJECTED`, `failureMessage` = note |
+| `DUPLICATE_TRANSACTION`                                            | 409 `REVIEW_NOT_ACCEPTABLE`                                                                                                                                                                         | `FAILED`, `REJECTED`                                                          |
+| `CONTRARY_STATE` avec encaissement (`chargePaymentId`)             | aucun nouvel encaissement ; `SUCCESS`, `resolution=ACCEPTED`                                                                                                                                        | 409 `REVIEW_NOT_REJECTABLE`                                                   |
+| `CONTRARY_STATE` sans encaissement (succès tardif après `EXPIRED`) | enregistre l'encaissement du **montant reçu**, comme les autres motifs (appels soldés entre-temps : le reliquat devient une avance) ; `SUCCESS`, `resolution=ACCEPTED`                              | aucun encaissement ni remboursement ; `FAILED`, `resolution=REJECTED`         |
 
 - Une seule transaction : claim atomique (`status='REVIEW'` -> nouveau statut), encaissement
   éventuel (même fonction que le succès automatique), reçus/quittances ; envoi après commit.
+- `CONTRARY_STATE` se tranche selon `chargePaymentId`, pas selon le seul motif : renseigné, l'encaissement existe déjà (ACCEPT clôt, REJECT refusé) ; nul, c'est un succès tardif après expiration (ACCEPT encaisse, REJECT permis).
 - `DUPLICATE_TRANSACTION` : ACCEPT refusé (409 `REVIEW_NOT_ACCEPTABLE`), la transaction fournisseur étant déjà enregistrée sur un autre paiement ; seul REJECT est possible.
 - ACCEPT dans un exercice clos sans `paidAt` ouvert -> 400 (message de `assertFiscalYearOpenTx`).
 - 404 paiement inconnu ; 409 `CHECKOUT_NOT_IN_REVIEW` si le statut n'est pas `REVIEW` (y compris

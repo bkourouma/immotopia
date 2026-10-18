@@ -72,12 +72,22 @@ export function requireSignatureKindAccess(mode: KindAccessMode, origin: KindOri
   };
 }
 
-/** Types de document que l'utilisateur peut LIRE dans l'agence (filtre de la liste). */
-export async function permittedSignatureKinds(userId: string, tenantId: string): Promise<SignatureDocumentKind[]> {
+/**
+ * Types de document que l'utilisateur peut LIRE dans l'agence (filtre de la
+ * liste) ; en mode `'edit'`, ceux qu'il peut ÉDITER (relancer, annuler : champ
+ * `canEdit` des réponses).
+ */
+export async function permittedSignatureKinds(
+  userId: string,
+  tenantId: string,
+  mode: KindAccessMode = 'view'
+): Promise<SignatureDocumentKind[]> {
   const permitted: SignatureDocumentKind[] = [];
   for (const kind of registeredSignatureKinds()) {
     const source = findSignatureSource(kind);
-    if (source && (await hasPermission(userId, source.viewPermission, tenantId))) permitted.push(kind);
+    if (!source) continue;
+    const permission = mode === 'edit' ? source.editPermission : source.viewPermission;
+    if (await hasPermission(userId, permission, tenantId)) permitted.push(kind);
   }
   return permitted;
 }
