@@ -7,11 +7,12 @@ Une fiche recto-verso A4 par pack, à remettre ou envoyer à un prospect.
 - **Verso** : l'inventaire complet du pack, fonction par fonction, le tarif et
   l'appel à la démonstration.
 
-| Pack      | Source HTML                        | PDF à imprimer                   |
-| --------- | ---------------------------------- | -------------------------------- |
-| Syndic    | [syndic.html](./syndic.html)       | [syndic.pdf](./syndic.pdf)       |
-| Agence    | [agence.html](./agence.html)       | [agence.pdf](./agence.pdf)       |
-| Promoteur | [promoteur.html](./promoteur.html) | [promoteur.pdf](./promoteur.pdf) |
+| Pack              | Source HTML                        | PDF à imprimer                   |
+| ----------------- | ---------------------------------- | -------------------------------- |
+| Syndic            | [syndic.html](./syndic.html)       | [syndic.pdf](./syndic.pdf)       |
+| Agence            | [agence.html](./agence.html)       | [agence.pdf](./agence.pdf)       |
+| Promoteur         | [promoteur.html](./promoteur.html) | [promoteur.pdf](./promoteur.pdf) |
+| Opérateur intégré | [integre.html](./integre.html)     | [integre.pdf](./integre.pdf)     |
 
 ## Règles de contenu
 
@@ -22,7 +23,7 @@ Une fiche recto-verso A4 par pack, à remettre ou envoyer à un prospect.
 - Les tarifs viennent du catalogue d'abonnement
   (`packages/api/src/lib/subscription/catalog.ts`). Les reprendre à chaque
   changement de prix.
-- Les visuels chiffrés (grille lot × mois, quorum, relevé propriétaire, budget de chantier) sont des illustrations
+- Les visuels chiffrés (grille lot × mois, quorum, relevé propriétaire, budget de chantier, vie d'un logement, valeur nette) sont des illustrations
   marquées comme telles, jamais des données de client.
 - Le bloc « Votre conseiller » est laissé vierge pour être complété à la main
   ou au tampon.
@@ -46,6 +47,15 @@ du niveau 3 de la spec 040-controle-stock (§3.2, hors périmètre du lot livré
 comptages surprise planifiés, QR codes et codes-barres, transferts en transit
 avec accusé de réception, contrôle avancé des achats (doublon de facture,
 dérive de prix) ; plus l'export complet des données.
+
+La fiche Opérateur intégré résume les trois métiers et reprend l'union de
+leurs « Bientôt » ; le détail de chaque métier reste sur sa fiche dédiée.
+
+La fiche Patrimoine présente les quatre offres de la famille (Particulier
+Gratuit et Plus, Patrimoine Essentiel et Pro) ; ses « Bientôt » sont le
+prélèvement automatique, les relances automatiques des loyers et l'export
+complet. Le prix du Particulier Plus (2 900 FCFA) a été confirmé le 29/09/2026
+mais reste modifiable au catalogue.
 
 ## Régénérer le PDF
 
