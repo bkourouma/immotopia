@@ -1,0 +1,553 @@
+<title>ImmoTopia Syndic</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Prospectus A4 recto-verso. Recto : une bande marine qui porte la promesse et la grille
+   lot × mois, puis six preuves. Verso : l'inventaire complet en trois colonnes, le tarif,
+   l'appel à la démonstration. Une seule apparence « papier », identique à l'écran et à l'impression. */
+:root {
+  --navy: #00215f;        /* bleu nuit ImmoTopia : bandeau, titres */
+  --blue: #1b4db1;        /* bleu de marque : liens, puces, réglé */
+  --blue-soft: #e6eeff;   /* fond des pastilles bleues */
+  --orange: #fc5e00;      /* accent de marque, jamais en texte fin */
+  --orange-ink: #c94600;  /* orange qui porte du texte */
+  --orange-soft: #fff1e8;
+  --paper: #ffffff;
+  --desk: #e9edf5;        /* fond derrière les feuilles, à l'écran */
+  --ink: #0f1a33;
+  --muted: #4d5a75;
+  --rule: #d6ddea;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--desk);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.stack { display: grid; gap: 28px; justify-items: center; }
+.sheet {
+  width: 100%;
+  max-width: 794px;
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgba(0, 33, 95, .08), 0 12px 40px rgba(0, 33, 95, .10);
+  position: relative;
+  overflow: hidden;
+}
+h1, h2, h3 { font-family: var(--font-display); color: var(--navy); margin: 0; text-wrap: balance; }
+p { margin: 0; }
+ul { margin: 0; padding: 0; list-style: none; }
+.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+/* ---------- En-tête commun ---------- */
+.mast {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 18px 36px 14px;
+}
+.brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 800; font-size: 19px; color: var(--navy); letter-spacing: -.01em; }
+.brand-mark { width: 22px; height: 22px; flex: none; }
+.brand small { font-weight: 500; font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+.pack-tag {
+  font-family: var(--font-data); font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--orange-ink); border: 1.5px solid var(--orange); padding: 4px 9px; border-radius: 3px;
+}
+
+/* ---------- Recto : bandeau ---------- */
+.hero {
+  background: var(--navy);
+  color: #fff;
+  display: grid;
+  grid-template-columns: 1.08fr 1fr;
+  gap: 26px;
+  padding: 20px 36px 20px;
+  position: relative;
+  align-items: center;
+}
+.hero::after { /* filet orange : la seule touche vive du bandeau */
+  content: ""; position: absolute; left: 36px; bottom: 0; width: 120px; height: 4px; background: var(--orange);
+}
+.hero-copy { display: grid; align-content: start; gap: 10px; min-width: 0; }
+.eyebrow { font-family: var(--font-data); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: #a9bff0; }
+.hero h1 { color: #fff; font-size: 35px; line-height: 1.02; font-weight: 800; letter-spacing: -.025em; }
+.hero h1 em { font-style: normal; color: var(--orange); }
+.hero .lede { color: #d5e0fa; font-size: 12.5px; line-height: 1.45; max-width: 42ch; }
+.hero-points { display: grid; gap: 5px; margin-top: 2px; }
+.hero-points li { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: #fff; }
+.hero-points li::before { content: ""; width: 7px; height: 7px; background: var(--orange); flex: none; transform: translateY(-1px); }
+
+/* Grille lot × mois (illustration) */
+.ledger {
+  background: #fff; color: var(--ink); border-radius: 6px; padding: 12px 12px 10px;
+  display: grid; gap: 8px; min-width: 0; align-self: start;
+}
+.ledger-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ledger-title { font-family: var(--font-display); font-weight: 700; font-size: 12.5px; color: var(--navy); }
+.ledger-sub { font-size: 10px; color: var(--muted); }
+.grid-wrap { overflow-x: auto; }
+.lm { display: grid; grid-template-columns: 28px repeat(12, minmax(0, 1fr)) 50px; gap: 2px; font-size: 9px; }
+.lm .h { font-family: var(--font-data); color: var(--muted); text-align: center; font-size: 8.5px; padding-bottom: 1px; }
+.lm .h.l, .lm .lot { text-align: start; }
+.lm .lot { font-family: var(--font-data); font-weight: 600; color: var(--navy); font-size: 9px; align-self: center; }
+.lm .c { height: 15px; border-radius: 2px; }
+.c.ok { background: var(--blue); }
+.c.adv { background: repeating-linear-gradient(135deg, var(--blue) 0 3px, #5b82d6 3px 6px); }
+.c.part { background: var(--orange-soft); box-shadow: inset 0 0 0 1.5px var(--orange); }
+.c.late { background: var(--orange); }
+.c.due { background: #fff; box-shadow: inset 0 0 0 1px var(--rule); }
+.lm .bal { font-family: var(--font-data); font-variant-numeric: tabular-nums; text-align: end; font-size: 8.5px; align-self: center; color: var(--ink); }
+.lm .bal.neg { color: var(--orange-ink); font-weight: 600; }
+.lm .bal.pos { color: var(--blue); font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 9px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.illus { font-family: var(--font-data); font-size: 8.5px; color: var(--muted); letter-spacing: .04em; }
+
+/* ---------- Bande de chiffres ---------- */
+.proof {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--rule);
+}
+.proof div { padding: 10px 14px 9px 36px; display: grid; gap: 2px; min-width: 0; }
+.proof div + div { border-inline-start: 1px solid var(--rule); padding-inline-start: 16px; }
+.proof b { font-family: var(--font-display); font-weight: 800; font-size: 25px; line-height: 1; color: var(--navy); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.proof span { font-size: 10.5px; color: var(--muted); line-height: 1.3; }
+
+/* ---------- Six preuves ---------- */
+.features { display: grid; grid-template-columns: repeat(3, 1fr); padding: 0 36px; }
+.feat { padding: 12px 16px 11px 0; display: grid; gap: 5px; align-content: start; min-width: 0; border-bottom: 1px solid var(--rule); }
+.feat:nth-child(3n+2), .feat:nth-child(3n+3) { padding-inline-start: 16px; border-inline-start: 1px solid var(--rule); }
+.feat:nth-child(n+4) { border-bottom: 0; }
+.feat .k { font-family: var(--font-data); font-size: 10px; font-weight: 600; color: var(--orange-ink); letter-spacing: .06em; text-transform: uppercase; }
+.feat h3 { font-size: 16px; line-height: 1.12; font-weight: 700; letter-spacing: -.01em; }
+.feat p { font-size: 11.2px; color: var(--muted); }
+.feat ul { display: grid; gap: 3px; margin-top: 2px; }
+.feat li { font-size: 11px; padding-inline-start: 12px; position: relative; }
+.feat li::before { content: ""; position: absolute; inset-inline-start: 0; top: .55em; width: 5px; height: 5px; border-radius: 50%; background: var(--blue); }
+.quorum { display: grid; gap: 4px; margin-top: 4px; padding: 7px 8px; background: var(--blue-soft); border-radius: 4px; }
+.quorum-row { display: flex; justify-content: space-between; gap: 6px; font-size: 9.5px; color: var(--navy); }
+.bar { height: 7px; background: #fff; border-radius: 4px; overflow: hidden; display: flex; }
+.bar i { display: block; height: 100%; }
+
+/* ---------- Pourquoi plus loin ---------- */
+.edge { background: var(--blue-soft); padding: 12px 36px 13px; display: grid; gap: 8px; }
+.edge h2 { font-size: 15px; font-weight: 700; }
+.edge-list { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.edge-list li { display: grid; gap: 3px; align-content: start; min-width: 0; }
+.edge-list b { font-family: var(--font-display); font-size: 12.5px; color: var(--navy); line-height: 1.15; }
+.edge-list span { font-size: 10.3px; color: var(--muted); line-height: 1.35; }
+.foot {
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center;
+  padding: 10px 36px 12px; font-size: 10px; color: var(--muted);
+}
+.foot b { color: var(--navy); }
+
+/* ---------- Verso ---------- */
+.verso-head { padding: 4px 36px 12px; display: grid; gap: 6px; border-bottom: 2px solid var(--navy); margin: 0 36px; padding-inline: 0; }
+.verso-head h2 { font-size: 27px; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; }
+.verso-head p { font-size: 11.5px; color: var(--muted); max-width: 72ch; }
+.key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 10px; color: var(--muted); }
+.soon {
+  font-family: var(--font-data); font-size: 8.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--orange-ink); background: var(--orange-soft); border: 1px solid #ffc29b; border-radius: 3px; padding: 0 4px; white-space: nowrap;
+}
+.catalog { column-count: 3; column-gap: 22px; column-rule: 1px solid var(--rule); padding: 10px 36px 2px; }
+.group { break-inside: avoid; display: grid; gap: 3px; margin-bottom: 9px; }
+.group h3 { font-size: 13px; font-weight: 700; display: flex; align-items: baseline; gap: 6px; }
+.group h3 .n { font-family: var(--font-data); font-size: 9.5px; color: var(--orange-ink); font-weight: 600; }
+.group li { font-size: 10.3px; line-height: 1.33; padding-inline-start: 9px; position: relative; color: var(--ink); }
+.group li::before { content: ""; position: absolute; inset-inline-start: 0; top: .55em; width: 4px; height: 4px; background: var(--blue); }
+.group li.later::before { background: var(--orange); }
+
+.close { display: grid; grid-template-columns: 1.15fr 1fr; gap: 0; margin: 0 36px 0; border-top: 2px solid var(--navy); }
+.price { padding: 11px 18px 12px 0; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.price h3 { font-size: 13px; }
+.price-main { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.price-main b { font-family: var(--font-display); font-size: 30px; font-weight: 800; color: var(--navy); letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+.price-main span { font-size: 11px; color: var(--muted); }
+.price table { border-collapse: collapse; width: 100%; font-size: 10px; }
+.price td { padding: 3px 0; border-bottom: 1px dotted var(--rule); vertical-align: baseline; }
+.price td:last-child { text-align: end; font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; padding-inline-start: 8px; color: var(--navy); }
+.price .fine { font-size: 9px; color: var(--muted); }
+.cta { background: var(--navy); color: #fff; padding: 13px 18px 12px; display: grid; gap: 7px; align-content: start; min-width: 0; }
+.cta h3 { color: #fff; font-size: 18px; line-height: 1.1; font-weight: 800; }
+.cta h3 em { font-style: normal; color: var(--orange); }
+.cta p { font-size: 10.8px; color: #d5e0fa; }
+.cta ol { margin: 0; padding-inline-start: 16px; display: grid; gap: 2px; font-size: 10.5px; color: #fff; }
+.contact { margin-top: 2px; display: grid; gap: 6px; }
+.contact div { display: flex; gap: 8px; align-items: flex-end; font-size: 9.5px; color: #a9bff0; }
+.contact div::after { content: ""; flex: 1; border-bottom: 1px dotted #6d86c0; height: 1px; }
+
+/* ---------- Écran étroit ---------- */
+@media (max-width: 720px) {
+  body { padding-block: 16px; }
+  .mast, .features, .edge, .foot, .catalog { padding-left: 18px; padding-right: 18px; }
+  .hero { grid-template-columns: 1fr; padding: 22px 18px 24px; }
+  .hero::after { left: 18px; }
+  .hero h1 { font-size: 30px; }
+  .lm { min-width: 300px; }
+  .proof { grid-template-columns: repeat(2, 1fr); }
+  .proof div, .proof div + div { padding: 12px 18px; border-inline-start: 0; }
+  .proof div:nth-child(even) { border-inline-start: 1px solid var(--rule); }
+  .features { grid-template-columns: 1fr; }
+  .feat, .feat:nth-child(3n+2), .feat:nth-child(3n+3) { padding: 14px 0; border-inline-start: 0; border-bottom: 1px solid var(--rule); }
+  .feat:last-child { border-bottom: 0; }
+  .edge-list { grid-template-columns: 1fr 1fr; }
+  .verso-head, .close { margin-left: 18px; margin-right: 18px; }
+  .verso-head h2 { font-size: 23px; }
+  .catalog { column-count: 1; }
+  .close { grid-template-columns: 1fr; }
+  .price { padding-inline-end: 0; }
+}
+@media (max-width: 420px) { .edge-list { grid-template-columns: 1fr; } }
+
+/* ---------- Impression : deux pages A4 exactes ---------- */
+@page { size: A4; margin: 0; }
+@media print {
+  body { background: #fff; padding: 0; }
+  .stack { gap: 0; display: block; }
+  .sheet { box-shadow: none; max-width: none; width: 210mm; height: 297mm; break-after: page; }
+  .sheet:last-child { break-after: auto; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .c { transition: transform .15s ease; }
+  .c:hover { transform: scale(1.25); }
+}
+</style>
+
+<main class="stack">
+
+<!-- ======================= RECTO ======================= -->
+<article class="sheet" aria-label="Recto">
+  <header class="mast">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#00215f"/><path d="M5 12.2 12 6l7 6.2V18a1 1 0 0 1-1 1h-3.6v-4.4H9.6V19H6a1 1 0 0 1-1-1z" fill="#fff"/><rect x="15.6" y="4" width="3.4" height="3.4" fill="#fc5e00"/></svg>
+      ImmoTopia <small>· Syndic de copropriété</small>
+    </div>
+    <span class="pack-tag">Pack Syndic</span>
+  </header>
+
+  <section class="hero">
+    <div class="hero-copy">
+      <span class="eyebrow">Cabinets de syndic · gestionnaires de copropriété</span>
+      <h1>Votre copropriété en <em>pilote automatique.</em></h1>
+      <p class="lede">Les appels de charges partent seuls. Les copropriétaires paient par Mobile Money. Chaque paiement produit sa quittance. L'assemblée générale se vote et se filme en ligne. Vous gardez la main, depuis un seul écran.</p>
+      <ul class="hero-points">
+        <li>Fini les tableaux Excel et les reçus écrits à la main</li>
+        <li>Fini les relances au téléphone, une par une</li>
+        <li>Fini les AG sans quorum et les PV à rédiger le soir</li>
+      </ul>
+    </div>
+
+    <figure class="ledger" aria-label="Illustration du suivi mensuel des charges">
+      <div class="ledger-head">
+        <span class="ledger-title">Suivi mensuel · Résidence Les Flamboyants</span>
+        <span class="ledger-sub">Exercice 2026 · lot × mois</span>
+      </div>
+      <div class="grid-wrap"><div class="lm" id="lm"></div></div>
+      <div class="legend">
+        <span><i class="c ok"></i>Réglé</span>
+        <span><i class="c adv"></i>Couvert par l'avance</span>
+        <span><i class="c part"></i>Partiel</span>
+        <span><i class="c late"></i>En retard</span>
+        <span><i class="c due"></i>À venir</span>
+      </div>
+      <span class="illus">ILLUSTRATION · soldes en FCFA, + = avance disponible</span>
+    </figure>
+  </section>
+
+  <section class="proof" aria-label="Chiffres clés">
+    <div><b class="num">160+</b><span>actions métier couvertes, du lot à l'assemblée générale</span></div>
+    <div><b class="num">300</b><span>participants dans la visio intégrée de l'AG</span></div>
+    <div><b class="num">4</b><span>canaux de relance : e-mail, SMS, WhatsApp, notification</span></div>
+    <div><b class="num">3</b><span>langues : français, anglais, arabe</span></div>
+  </section>
+
+  <section class="features" aria-label="Fonctionnalités phares">
+    <div class="feat">
+      <span class="k">Appels de charges</span>
+      <h3>Ils partent tout seuls, chaque matin à 6 h</h3>
+      <p>Votez le budget, ImmoTopia fait le reste.</p>
+      <ul>
+        <li>Répartition par tantièmes et clés de répartition</li>
+        <li>Mensuel, trimestriel, semestriel ou annuel</li>
+        <li>Avis d'appel PDF envoyé à chaque copropriétaire</li>
+      </ul>
+    </div>
+    <div class="feat">
+      <span class="k">Encaissement</span>
+      <h3>Payé par Wave, Orange Money, MTN ou Moov</h3>
+      <p>Depuis le portail ou un simple lien, sans compte à créer.</p>
+      <ul>
+        <li>Chaque paiement affecté au bon mois, automatiquement</li>
+        <li>Les avances se déduisent seules des appels suivants</li>
+        <li>Grille lot × mois : qui est à jour, d'un coup d'œil</li>
+      </ul>
+    </div>
+    <div class="feat">
+      <span class="k">Quittances</span>
+      <h3>Une quittance à chaque paiement, sans y penser</h3>
+      <p>À votre logo, avec votre signature et votre cachet.</p>
+      <ul>
+        <li>PDF figé à l'émission, version Word modifiable</li>
+        <li>Envoi par e-mail, renvoi en un clic</li>
+        <li>Impression en série sur A4 pour toute la résidence</li>
+      </ul>
+    </div>
+    <div class="feat">
+      <span class="k">Recouvrement</span>
+      <h3>Les impayés se relancent sans vous</h3>
+      <p>Quatre niveaux de relance, sur le canal que lit le copropriétaire.</p>
+      <ul>
+        <li>Tableau des retards en temps réel</li>
+        <li>Pénalités de retard calculées au jour près</li>
+        <li>Échéanciers pour étaler une dette</li>
+      </ul>
+    </div>
+    <div class="feat">
+      <span class="k">Assemblée générale</span>
+      <h3>L'AG votée en ligne, quorum en direct</h3>
+      <p>Chaque copropriétaire reçoit son lien personnel et vote, en salle ou à distance.</p>
+      <div class="quorum" aria-label="Illustration d'un vote en tantièmes">
+        <div class="quorum-row"><span>Quorum</span><span class="num">642 / 1 000 tantièmes</span></div>
+        <div class="bar"><i style="width:64.2%;background:var(--blue)"></i></div>
+        <div class="quorum-row"><span>Résolution 4 · art. 25</span><span class="num">Adoptée</span></div>
+        <div class="bar"><i style="width:57.1%;background:var(--blue)"></i><i style="width:6.3%;background:var(--orange)"></i><i style="width:0.8%;background:#9aa6bf"></i></div>
+      </div>
+    </div>
+    <div class="feat">
+      <span class="k">Visio, PV, comptabilité</span>
+      <h3>La séance filmée, le PV écrit, les comptes justes</h3>
+      <ul>
+        <li>Visio intégrée : parole, mains levées, enregistrement</li>
+        <li>Procès-verbal Word généré avec les résultats</li>
+        <li>Comptabilité en partie double, balance et grand livre</li>
+        <li>Fonds de roulement et fonds travaux suivis à part</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="edge">
+    <h2>Ce que vous ne trouverez pas ailleurs</h2>
+    <ul class="edge-list">
+      <li><b>Un cabinet, plusieurs mandants</b><span>Chaque agence mandante a son logo, sa signature et son cachet sur ses documents.</span></li>
+      <li><b>Un espace pour chaque copropriétaire</b><span>Solde, appels, paiement, règlement, PV et AG en direct, sur son téléphone.</span></li>
+      <li><b>Un assistant IA intégré</b><span>Posez votre question en français, obtenez le tableau ou le graphique.</span></li>
+      <li><b>Des données étanches</b><span>Chaque cabinet est cloisonné. Chaque action sensible est tracée.</span></li>
+      <li><b>Pensé pour l'Afrique</b><span>FCFA, Mobile Money, WhatsApp, app installable, français, anglais et arabe.</span></li>
+    </ul>
+  </section>
+
+  <footer class="foot">
+    <span><b>ImmoTopia</b> · la plateforme immobilière tout-en-un : agence, syndic, promotion, patrimoine</span>
+    <span>Tout le détail au verso →</span>
+  </footer>
+</article>
+
+<!-- ======================= VERSO ======================= -->
+<article class="sheet" aria-label="Verso">
+  <header class="mast">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#00215f"/><path d="M5 12.2 12 6l7 6.2V18a1 1 0 0 1-1 1h-3.6v-4.4H9.6V19H6a1 1 0 0 1-1-1z" fill="#fff"/><rect x="15.6" y="4" width="3.4" height="3.4" fill="#fc5e00"/></svg>
+      ImmoTopia <small>· Syndic de copropriété</small>
+    </div>
+    <span class="pack-tag">Pack Syndic</span>
+  </header>
+
+  <div class="verso-head">
+    <h2>Tout le Pack Syndic, fonction par fonction</h2>
+    <p>Du premier lot saisi à l'approbation des comptes en assemblée, chaque geste du métier a sa fonction. Rien à installer, rien à paramétrer pendant des semaines.</p>
+    <div class="key"><span>■ Disponible</span><span><span class="soon">Bientôt</span> En cours de développement</span></div>
+  </div>
+
+  <div class="catalog">
+    <section class="group">
+      <h3><span class="n">01</span>Copropriétés et lots</h3>
+      <ul>
+        <li>Copropriété liée à son immeuble, statut actif, en liquidation ou en litige</li>
+        <li>Lots typés : appartement, parking, cave, bureau, commerce</li>
+        <li>Tantièmes par lot, import des lots depuis vos biens existants</li>
+        <li>Copropriétaires et quotes-parts, contrôle des 100 %</li>
+        <li>Occupants locataires, charges refacturées ou non</li>
+        <li>Passage d'une copropriété à l'autre depuis le bandeau</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">02</span>Budget et appels de charges</h3>
+      <ul>
+        <li>Budget prévisionnel par postes et clés de répartition</li>
+        <li>Cycle brouillon, approuvé, révisé, clos ; réalisé comparé au prévu</li>
+        <li>Répartition automatique du budget sur chaque lot</li>
+        <li>Appels ponctuels ou récurrents, un lot ou toute la résidence</li>
+        <li>Programmation mensuelle à annuelle, émission automatique quotidienne</li>
+        <li>Aperçu des trois prochaines périodes avant émission</li>
+        <li>Avis d'appel PDF et Word, envoyés par e-mail</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">03</span>Encaissements</h3>
+      <ul>
+        <li>Paiement en ligne Wave, Orange Money, MTN, Moov ou carte</li>
+        <li>Depuis le portail ou un lien sécurisé, sans compte</li>
+        <li>Affectation aux mois cochés, sinon du plus ancien au plus récent</li>
+        <li>Simulation de l'affectation avant d'enregistrer</li>
+        <li>Avance conservée et imputée sur chaque nouvel appel</li>
+        <li>Compte de chaque lot, relevé PDF, ajustements motivés</li>
+        <li>Caisse et trésorerie : sessions, billetage, écarts validés</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">04</span>Quittances et reçus</h3>
+      <ul>
+        <li>Reçu à chaque paiement, quittance à chaque appel soldé</li>
+        <li>PDF figé à l'émission, version Word modifiable</li>
+        <li>Renvoi par e-mail, impression en grille A4</li>
+        <li>Rattrapage des quittances manquantes en un clic</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">05</span>Recouvrement</h3>
+      <ul>
+        <li>Tableau de bord des retards</li>
+        <li>Relance ponctuelle ou en masse, quatre niveaux</li>
+        <li>E-mail, SMS, WhatsApp et notification</li>
+        <li>Pénalités au prorata des jours, plafonnées, remise motivée</li>
+        <li>Échéanciers de paiement suivis jusqu'au solde</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">06</span>Comptabilité et fonds</h3>
+      <ul>
+        <li>Plan comptable, journaux général, banque, caisse, charges</li>
+        <li>Écritures équilibrées et verrouillables</li>
+        <li>Balance générale et grand livre par période</li>
+        <li>Fonds de roulement, fonds travaux, appels de fonds dédiés</li>
+        <li>Factures et règlements des prestataires</li>
+        <li class="later">Clôture d'exercice en quelques minutes : arrêté des comptes, report à nouveau, régularisation après vote <span class="soon">Bientôt</span></li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">07</span>Assemblées générales</h3>
+      <ul>
+        <li>AG ordinaire ou extraordinaire, ordre du jour, résolutions</li>
+        <li>Majorités de l'article 24, 25, 26 ou unanimité</li>
+        <li>Convocation Word par lot, envoi et renvoi par e-mail</li>
+        <li>Pouvoirs, vote par lot en tantièmes, quorum recalculé</li>
+        <li>AG en direct : lien personnel sans mot de passe, émargement, votes ouverts et clos en séance</li>
+        <li>Projection plein écran en salle</li>
+        <li>Visio intégrée jusqu'à 300 participants : parole, mains levées, exclusion</li>
+        <li>Enregistrement vidéo en stockage privé, discussion écrite modérée</li>
+        <li>Procès-verbal Word généré avec les résultats</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">08</span>Prestataires et incidents</h3>
+      <ul>
+        <li>Annuaire des prestataires, contrats de maintenance</li>
+        <li>Incidents : panne, fuite, vandalisme, sécurité, du signalement à la clôture</li>
+        <li>Coût imputé au budget, à l'assurance, à un copropriétaire ou à un tiers</li>
+        <li class="later">Place de marché : devis, comparaison et notation des prestataires <span class="soon">Bientôt</span></li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">09</span>Documents et image de marque</h3>
+      <ul>
+        <li>Règlement, PV, diagnostics, assurance, avec date d'échéance</li>
+        <li>Fichiers privés, jamais accessibles par un lien public</li>
+        <li>Logo, signature et cachet par agence mandante</li>
+        <li>Logo de la copropriété sur ses propres documents</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">10</span>Portail copropriétaire</h3>
+      <ul>
+        <li>Ses lots, son solde, ses appels de charges</li>
+        <li>Paiement en ligne de ses appels</li>
+        <li>Règlement de copropriété et PV d'assemblée</li>
+        <li>Accès à l'AG en direct pour voter</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">11</span>Plateforme</h3>
+      <ul>
+        <li>Assistant IA ImmoCopilot : questions, tableaux, graphiques, dictée vocale ; aucune modification sans votre accord</li>
+        <li>Rôles et permissions par collaborateur</li>
+        <li>Journal d'audit des actions sensibles</li>
+        <li>Français, anglais, arabe ; application installable sur mobile</li>
+        <li class="later">Export complet de vos données <span class="soon">Bientôt</span></li>
+      </ul>
+    </section>
+  </div>
+
+  <div class="close">
+    <section class="price">
+      <h3>Tarif du Pack Syndic</h3>
+      <div class="price-main"><b class="num">49 900</b><span>FCFA HT par mois</span></div>
+      <table>
+        <tr><td>Inclus : copropriétés actives</td><td>2</td></tr>
+        <tr><td>Inclus : lots</td><td>100</td></tr>
+        <tr><td>Copropriété supplémentaire, par mois</td><td>10 000 FCFA</td></tr>
+        <tr><td>Bloc de 10 lots supplémentaires, par mois</td><td>1 500 FCFA</td></tr>
+        <tr><td>Mise en route, une fois</td><td>150 000 FCFA</td></tr>
+      </table>
+      <p class="fine">Vous construisez, vendez et louez aussi ? Le pack Opérateur intégré réunit Agence, Syndic et Promoteur. Prix HT, hors coût des SMS et des paiements en ligne.</p>
+    </section>
+    <section class="cta">
+      <h3>Voyez-la tourner sur <em>vos</em> copropriétés.</h3>
+      <p>Démonstration de 30 minutes, sur une résidence qui ressemble à la vôtre.</p>
+      <ol>
+        <li>Nous importons vos lots et vos tantièmes</li>
+        <li>Vous émettez votre premier appel de charges</li>
+        <li>Vos copropriétaires reçoivent leur avis et paient</li>
+      </ol>
+      <div class="contact">
+        <div>Votre conseiller</div>
+        <div>Téléphone / WhatsApp</div>
+        <div>E-mail</div>
+      </div>
+    </section>
+  </div>
+</article>
+
+</main>
+
+<script>
+/* Grille d'illustration lot × mois : données d'exemple, fixes. */
+(function () {
+  var months = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+  // ok = réglé, adv = couvert par l'avance, part = partiel, late = en retard, due = à venir (après octobre)
+  var rows = [
+    ['A01', 'ok ok ok ok ok ok ok ok ok ok adv adv', '+90 000'],
+    ['A02', 'ok ok ok ok ok ok ok ok ok ok due due', '0'],
+    ['A03', 'ok ok ok ok ok late late late late late due due', '-225 000'],
+    ['B01', 'ok ok ok ok ok ok ok ok ok part due due', '-20 000'],
+    ['B02', 'adv adv adv adv adv adv adv adv adv adv adv adv', '+90 000'],
+    ['B03', 'ok ok ok ok ok ok ok ok late late due due', '-90 000'],
+    ['P07', 'ok ok ok ok ok ok ok ok ok ok due due', '0']
+  ];
+  var g = document.getElementById('lm');
+  var html = '<span class="h l">Lot</span>';
+  months.forEach(function (m) { html += '<span class="h">' + m + '</span>'; });
+  html += '<span class="h" style="text-align:end">Solde</span>';
+  rows.forEach(function (r) {
+    html += '<span class="lot">' + r[0] + '</span>';
+    r[1].split(' ').forEach(function (s) { html += '<span class="c ' + s + '"></span>'; });
+    var cls = r[2].charAt(0) === '-' ? 'neg' : (r[2].charAt(0) === '+' ? 'pos' : '');
+    html += '<span class="bal ' + cls + '">' + r[2].replace('-', '−') + '</span>';
+  });
+  g.innerHTML = html;
+})();
+</script>
