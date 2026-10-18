@@ -79,15 +79,9 @@ export async function loadMandateSignatureData(
     debtorName = contactDisplayName(row.debtorContact);
   }
 
-  // Bail (locatif) ; en copropriété, le lot tient la place du bail et le syndicat celle du bien.
+  // Bail (locatif) ou, en copropriété, syndicat et lot : jamais un lot présenté comme un bail (spec 042 §9.3).
   const property = row.lease?.property;
   const syndicate = row.lot?.syndicate ?? row.syndicate;
-  const leaseNumber = row.lease?.lease_number ?? row.lot?.lotNumber ?? null;
-  const propertyLabel = property
-    ? [property.title, property.address].filter(Boolean).join(' - ')
-    : syndicate
-      ? [syndicate.name, syndicate.address].filter(Boolean).join(' - ')
-      : null;
 
   const data: AuthorizationPdfData = {
     reference,
@@ -98,8 +92,10 @@ export async function loadMandateSignatureData(
     holderName: row.holderName,
     iban,
     bankCode: row.ibanBankCode,
-    leaseNumber,
-    propertyLabel,
+    leaseNumber: row.lease?.lease_number ?? null,
+    propertyLabel: property ? [property.title, property.address].filter(Boolean).join(' - ') : null,
+    syndicateName: syndicate?.name ?? null,
+    lotNumber: row.lot?.lotNumber ?? null,
     maxAmount: row.maxAmount === null ? null : Number(row.maxAmount),
     collectionDay: row.collectionDay ?? row.creditor.collectionDay,
     currency: row.lease?.currency ?? 'FCFA'

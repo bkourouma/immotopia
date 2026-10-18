@@ -32,6 +32,9 @@ export interface MandateSnapshotInput {
   syndicateId: string | null;
   leaseNumber: string | null;
   propertyLabel: string | null;
+  /** Copropriété : syndicat et lot débités (nuls pour un bail). */
+  syndicateName?: string | null;
+  lotNumber?: string | null;
   maxAmount: number | null;
   collectionDay: number;
   currency: string;
@@ -65,6 +68,8 @@ export function computeMandateSignatureSnapshot(input: MandateSnapshotInput): st
     input.syndicateId,
     input.leaseNumber,
     input.propertyLabel,
+    input.syndicateName ?? null,
+    input.lotNumber ?? null,
     input.maxAmount,
     input.collectionDay,
     input.currency

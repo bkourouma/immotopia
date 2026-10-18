@@ -3,7 +3,7 @@
  * droits, assertTarget, titre sans IBAN, empreinte HMAC, scellement (onSealed),
  * signataire proposé et lecture du scan `signature:<id>`. La base est simulée.
  */
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFPage } from 'pdf-lib';
 
 type Row = Record<string, any>;
 
@@ -113,6 +113,22 @@ import {
 import { computeMandateSignatureSnapshot } from '../../src/lib/direct-debit/signature-snapshot';
 import { loadMandateSignatureData } from '../../src/lib/direct-debit/signature-pdf-data';
 import { readMandateScan } from '../../src/lib/direct-debit/mandate-files';
+
+/** Textes dessinés par le rendu du PDF d'autorisation (pdf-lib encode les glyphes : on écoute drawText). */
+async function renderedTexts(render: () => Promise<unknown>): Promise<string> {
+  const drawn: string[] = [];
+  const original = PDFPage.prototype.drawText;
+  const spy = jest.spyOn(PDFPage.prototype, 'drawText').mockImplementation(function (this: PDFPage, text, options) {
+    drawn.push(String(text));
+    return original.call(this, text, options);
+  });
+  try {
+    await render();
+  } finally {
+    spy.mockRestore();
+  }
+  return drawn.join('\n');
+}
 
 const ctx = { tenantId: TENANT, userId: 'caller-user' };
 const intruder = { tenantId: OTHER_TENANT, userId: 'caller-user' };
@@ -291,16 +307,42 @@ describe('direct-debit / sources de signature du mandat', () => {
       expect(JSON.stringify(loaded.documentHash)).not.toContain(IBAN);
     });
 
-    it('sert aussi un mandat de copropriété (lot et syndicat à la place du bail)', async () => {
-      const loaded = await syndicDirectDebitMandateSource.loadSource(ctx, SYNDIC_ID);
+    it('sert aussi un mandat de copropriété (syndicat et lot, jamais un bail)', async () => {
+      let loaded!: Awaited<ReturnType<typeof syndicDirectDebitMandateSource.loadSource>>;
+      const text = await renderedTexts(async () => {
+        loaded = await syndicDirectDebitMandateSource.loadSource(ctx, SYNDIC_ID);
+      });
       expect(loaded.title).toBe('Autorisation de prélèvement MDT-2026-0013');
       const data = await loadMandateSignatureData(TENANT, SYNDIC_ID);
       expect(data?.data).toMatchObject({
         debtorName: 'Koffi Yao',
-        leaseNumber: 'A12',
-        propertyLabel: 'Résidence Palmiers - Marcory',
+        syndicateName: 'Résidence Palmiers',
+        lotNumber: 'A12',
+        leaseNumber: null,
+        propertyLabel: null,
         collectionDay: 10
       });
+      // Le rendu reprend ces données : lignes « Copropriété » et « Lot », mention des appels de charges, pas de bail.
+      expect(text).toContain('Copropri');
+      expect(text).toContain('Résidence Palmiers');
+      expect(text).toContain('Lot');
+      expect(text).toContain('A12');
+      expect(text).toContain('appels de charges de copropri');
+      expect(text).not.toContain('Bien lou');
+      expect(text).not.toContain('loyer et des charges de mon bail');
+    });
+
+    it('un mandat locatif garde son bail et son bien, sans syndicat ni lot', async () => {
+      const text = await renderedTexts(() => directDebitMandateSource.loadSource(ctx, RENTAL_ID));
+      const data = await loadMandateSignatureData(TENANT, RENTAL_ID);
+      expect(data?.data).toMatchObject({
+        leaseNumber: 'BAIL-001',
+        propertyLabel: 'Villa - Cocody',
+        syndicateName: null
+      });
+      expect(text).toContain('BAIL-001');
+      expect(text).toContain('loyer et des charges de mon bail');
+      expect(text).not.toContain('appels de charges de copropri');
     });
 
     it("refuse un mandat qui n'est pas dans le périmètre de la source", async () => {
@@ -324,6 +366,8 @@ describe('direct-debit / sources de signature du mandat', () => {
         { maxAmount: 1 },
         { creditorId: 'creditor-2' },
         { leaseNumber: 'BAIL-002' },
+        { lotNumber: 'B03' },
+        { syndicateName: 'Autre résidence' },
         { collectionDay: 6 },
         { reference: 'MDT-2026-0099' }
       ];

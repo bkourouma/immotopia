@@ -244,7 +244,7 @@ describe('agence : /api/signatures', () => {
     expect(ok.status).toBe(200);
     expect(ok.headers['content-type']).toContain('application/pdf');
     expect(ok.headers['cache-control']).toContain('no-store');
-    expect(sendSignatureFile).toHaveBeenCalledWith('tenant-1', R1, 'signed', expect.anything());
+    expect(sendSignatureFile).toHaveBeenCalledWith('tenant-1', R1, 'signed', expect.anything(), 'user-1');
     expect((await request(app).get(`/api/signatures/${R1}/file?variant=../etc`)).status).toBe(400);
   });
 
@@ -323,7 +323,12 @@ describe('public : /api/public/signatures/:token', () => {
       .send({ code: '123456', consent: true, signature });
     expect(ok.status).toBe(200);
     expect(ok.body.data).toEqual({ status: 'SIGNED' });
-    expect(signPublic).toHaveBeenCalledWith(token, { code: '123456', consent: true, signature }, expect.any(Object));
+    expect(signPublic).toHaveBeenCalledWith(
+      token,
+      { code: '123456', consent: true, signature },
+      expect.any(Object),
+      undefined
+    );
   });
 
   it('POST /sign sans code est transmis (mode sur place), le service tranche', async () => {

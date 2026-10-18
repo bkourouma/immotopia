@@ -18,6 +18,28 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `feat/prelevement-signature-mandat` — 2026-10-18
+
+**État :** signature électronique du mandat de prélèvement (spec 042 §10) branchée côté copropriété et vérifiée côté API, empilée sur P4 (64456315). Rien n'est commité par l'agent : le pilote commite.
+**Worktree :** `.claude/worktrees/prelevement-p2`.
+
+Fait :
+
+- Écran : `MandateSignatureSection` (type `SYNDIC_DIRECT_DEBIT_MANDATE`) dans l'onglet Prélèvements de Syndic. Un bouton « Signature électronique » (actions d'un mandat en brouillon, `SyndicMandateActions`) déplie la section sous la ligne du mandat (`SyndicMandatesCard`, ligne extensible). Bouton et section réservés à `SYNDIC_DIRECT_DEBIT_MANAGE` (`useSyndicDirectDebitRights`).
+- API, §9.3 vérifié : l'activation sans `signedAt` d'un mandat déjà daté, et l'annulation des demandes ouvertes à la révocation et au dépôt d'un scan, sont dans les fonctions communes `lib/direct-debit/mandates.ts` (paramètre de périmètre) : les deux périmètres en bénéficient, rien à ajouter dans `syndic/mandates.ts`.
+- Défaut corrigé : `signature-pdf-data.ts` présentait le numéro de lot comme un « Bail » et le syndicat comme un « Bien loué » dans le PDF envoyé en signature. Il renseigne maintenant `syndicateName` et `lotNumber` (lignes « Copropriété » et « Lot », mention des appels de charges) ; l'empreinte HMAC (`signature-snapshot.ts`) les inclut, ce qui change l'empreinte des demandes en cours (aucune en production : branche non fusionnée).
+- Tests : jest `direct-debit.signature-source` (rendu du PDF de copropriété et du PDF locatif, empreinte sensible au lot et au syndicat), `direct-debit.syndic-mandates` (parcours signé puis activé avec date préremplie) ; vitest `syndics/syndic-direct-debit-signature` (5 tests).
+- Traductions en/ar de « Signature électronique » dans `syndic.json` ; classeur : 5 lignes ajoutées + 1 ligne locative modifiée (1086 lignes, `A1:O1087`).
+
+Reste à faire :
+
+- Recette navigateur du parcours complet (envoi, code, signature, activation) en copropriété ; Yousign non essayé pour ce type.
+- `npm run test:isolation` non lancé.
+
+Pièges :
+
+- La cible de signature est `DIRECT_DEBIT_MANDATE` pour les deux types ; seul `kind` distingue le périmètre.
+
 ## Branche `feat/prelevement-p4-copropriete` — 2026-10-18
 
 **État :** lot P4 terminé côté code et documentation, à relire (PR empilée sur P3 = #166). Rien n'est commité par l'agent : le pilote commite.

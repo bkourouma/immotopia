@@ -668,6 +668,30 @@ describe('syndic / activation et signature électronique (préparation)', () => 
     expect(lastCall(mockDb.directDebitMandate.updateMany)[0].data).not.toHaveProperty('signedAt');
   });
 
+  it('parcours signé puis activé : le scan signature:<id> posé au scellement s active avec la date préremplie, sans nouveau scan', async () => {
+    const mandate = await draft();
+    const ctx = syndicCtx(SYN);
+    // État laissé par onSealed (source de signature) : scan électronique, date de dernière signature, demande liée.
+    Object.assign(state.mandates[0], {
+      signedScanUrl: 'signature:33333333-3333-4333-8333-333333333333',
+      signedScanUploadedAt: new Date('2026-10-12T09:00:00Z'),
+      signedAt: new Date('2026-10-12T08:30:00Z'),
+      signatureRequestId: '33333333-3333-4333-8333-333333333333'
+    });
+
+    const body = activateSyndicMandateSchema.parse({});
+    const active = await activateMandate(TENANT, mandate.id, body, 'user-1', ctx);
+    expect(active).toMatchObject({ status: 'ACTIVE', signedAt: '2026-10-12T08:30:00.000Z' });
+    expect(lastCall(mockDb.directDebitMandate.updateMany)[0].data).not.toHaveProperty('signedAt');
+    expect(lastCall(mockAudit.record)[1].payload).toMatchObject({
+      scope: 'SYNDIC_LOT',
+      signedAt: '2026-10-12T08:30:00.000Z'
+    });
+    // Aucun fichier n'a été déposé à la main et aucune annulation de demande n'a eu lieu.
+    expect(mockFiles.store).not.toHaveBeenCalled();
+    expect(mockCancel).not.toHaveBeenCalled();
+  });
+
   it('le schéma d activation accepte l absence de signedAt, refuse une date future et un champ inconnu', () => {
     expect(activateSyndicMandateSchema.safeParse({}).success).toBe(true);
     expect(activateSyndicMandateSchema.safeParse({ signedAt: '2999-01-01' }).success).toBe(false);

@@ -22,6 +22,11 @@ interface SyndicMandateActionsProps {
   mandate: MandateDto;
   /** Reçoit le mandat à jour renvoyé par l'API. */
   onChanged: (mandate: MandateDto) => void;
+  /**
+   * Ouvre ou ferme la section « Signature électronique » du brouillon (spec 042 §10.6).
+   * Absent : le bouton n'est pas proposé (droit `SYNDIC_DIRECT_DEBIT_MANAGE` manquant).
+   */
+  onToggleSignature?: (mandate: MandateDto) => void;
 }
 
 type Dialog = 'activate' | 'suspend' | 'revoke' | 'edit' | null;
@@ -35,7 +40,8 @@ export const SyndicMandateActions: React.FC<SyndicMandateActionsProps> = ({
   tenantId,
   syndicId,
   mandate,
-  onChanged
+  onChanged,
+  onToggleSignature
 }) => {
   const { message } = App.useApp();
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -220,6 +226,11 @@ export const SyndicMandateActions: React.FC<SyndicMandateActionsProps> = ({
             <Button size="small" onClick={() => fileInput.current?.click()} disabled={busy}>
               {mandate.hasSignedScan ? t('Remplacer le scan signé') : t('Déposer le scan signé')}
             </Button>
+            {onToggleSignature && (
+              <Button size="small" onClick={() => onToggleSignature(mandate)} disabled={busy}>
+                {t('Signature électronique')}
+              </Button>
+            )}
           </>
         )}
         {mandate.hasSignedScan && (

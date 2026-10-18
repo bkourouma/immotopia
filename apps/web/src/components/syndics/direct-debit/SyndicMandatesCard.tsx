@@ -13,9 +13,11 @@ import {
   mandateStatusLabel,
   MandateStatusTag
 } from '../../rental/direct-debit/direct-debit-shared';
+import { MandateSignatureSection } from '../../direct-debit/MandateSignatureSection';
 import { SyndicMandateActions } from './SyndicMandateActions';
 import { SyndicMandateFormModal } from './SyndicMandateFormModal';
 import { SYNDIC_DD_KEYS } from './keys';
+import { useSyndicDirectDebitRights } from './useSyndicDirectDebitRights';
 import { STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
 
@@ -35,6 +37,13 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
   const [status, setStatus] = useState<MandateStatus | undefined>();
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
+  // Signature électronique : lancer, relancer, annuler et lire les PDF exigent SYNDIC_DIRECT_DEBIT_MANAGE (SIG-S5).
+  const { canManage } = useSyndicDirectDebitRights(tenantId);
+  const [signatureOpen, setSignatureOpen] = useState<string[]>([]);
+  const toggleSignature = (mandate: MandateDto) =>
+    setSignatureOpen(keys =>
+      keys.includes(mandate.id) ? keys.filter(key => key !== mandate.id) : [...keys, mandate.id]
+    );
 
   const { data: lots = [] } = useQuery({
     queryKey: SYNDIC_DD_KEYS.lots(tenantId, syndicId),
@@ -91,6 +100,7 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
           syndicId={syndicId}
           mandate={mandate}
           onChanged={() => void refresh()}
+          onToggleSignature={canManage ? toggleSignature : undefined}
         />
       )
     }
@@ -151,6 +161,22 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
           columns={columns}
           dataSource={data?.items ?? []}
           scroll={{ x: 'max-content' }}
+          expandable={{
+            showExpandColumn: false,
+            expandedRowKeys: signatureOpen,
+            rowExpandable: mandate => canManage && mandate.status === 'DRAFT',
+            expandedRowRender: mandate => (
+              <MandateSignatureSection
+                kind="SYNDIC_DIRECT_DEBIT_MANDATE"
+                mandateId={mandate.id}
+                status={mandate.status}
+                hasSignedScan={mandate.hasSignedScan}
+                signedAt={mandate.signedAt}
+                reference={mandate.reference}
+                onChanged={() => void refresh()}
+              />
+            )
+          }}
           pagination={{
             current: page,
             pageSize: PAGE_SIZE,
