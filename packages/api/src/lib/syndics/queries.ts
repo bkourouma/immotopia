@@ -2256,19 +2256,20 @@ export async function castVoteAndRecomputeResolutionCounters(
     });
 
     // Un lot qui vote est present : emargement cree s'il manque (jamais ecrase).
-    if (!attendance) {
-      await tx.gMAttendance.create({
-        data: {
-          tenantId,
-          meetingId: meeting.id,
-          lotId,
-          status: 'PRESENT',
-          mode: 'IN_PERSON',
-          recordedBy: 'MANAGER',
-          recordedByUserId: actor?.userId ?? null
-        }
-      });
-    }
+    // Upsert sur (meetingId, lotId) : deux votes simultanes ne se heurtent pas.
+    await tx.gMAttendance.upsert({
+      where: { meetingId_lotId: { meetingId: meeting.id, lotId } },
+      update: {},
+      create: {
+        tenantId,
+        meetingId: meeting.id,
+        lotId,
+        status: 'PRESENT',
+        mode: 'IN_PERSON',
+        recordedBy: 'MANAGER',
+        recordedByUserId: actor?.userId ?? null
+      }
+    });
 
     // Resultat recalcule a chaque vote, en tantiemes, selon la regle de la
     // resolution (voir meeting-majority.ts) ; quorum recalcule sur l'assemblee.
@@ -4996,6 +4997,59 @@ export async function listIncompleteOwnerSharesBySyndicate(tenantId: string, syn
     .sort((a, b) => a.lotNumber.localeCompare(b.lotNumber));
 }
 
+/**
+ * Revente ou indivision : un nouveau profil sur un lot qui a deja un autre
+ * proprietaire non clos exige un choix explicite (`previousOwnersHandling`).
+ * Sans lui, un acquereur serait pris pour un co-indivisaire et verrait
+ * l'historique du vendeur. `CLOSE` clot les profils concernes a la date
+ * d'acquisition ; `KEEP` les laisse (indivision, plafond des parts inchange).
+ * Appele sous le verrou du lot, dans la transaction d'ecriture. Retourne le
+ * nombre de profils clos.
+ */
+async function resolvePreviousOwnersTx(
+  tx: PrismaTransactionClient,
+  data: { lotId: string; contactId: string; ownedSince: Date },
+  handling: 'CLOSE' | 'KEEP' | undefined
+): Promise<number> {
+  if (handling === 'KEEP') return 0;
+  const others = await tx.lotOwnerProfile.findMany({
+    where: {
+      lotId: data.lotId,
+      contactId: { not: data.contactId },
+      isActive: true,
+      OR: [{ ownedUntil: null }, { ownedUntil: { gt: data.ownedSince } }]
+    },
+    select: {
+      id: true,
+      ownedSince: true,
+      contact: { select: { firstName: true, lastName: true, legalName: true } }
+    }
+  });
+  if (others.length === 0) return 0;
+  if (!handling) {
+    const message = t(
+      "Ce lot a déjà un propriétaire en cours. Indiquez s'il s'agit d'une revente ou d'une indivision."
+    );
+    const owners = others.map(other => ({
+      profileId: other.id,
+      contactName:
+        other.contact?.legalName?.trim() ||
+        [other.contact?.firstName, other.contact?.lastName].filter(Boolean).join(' ').trim()
+    }));
+    const error = new ConflictError(message, [
+      { field: 'previousOwnersHandling', message, reason: 'OPEN_OWNERS', owners } as any
+    ]);
+    error.data = { reason: 'OPEN_OWNERS', owners };
+    throw error;
+  }
+  for (const other of others) {
+    // Jamais de fin avant le debut du profil clos.
+    const endsAt = other.ownedSince > data.ownedSince ? other.ownedSince : data.ownedSince;
+    await tx.lotOwnerProfile.update({ where: { id: other.id }, data: { ownedUntil: endsAt } });
+  }
+  return others.length;
+}
+
 export async function createLotOwnerProfileBySyndicate(
   tenantId: string,
   syndicateId: string,
@@ -5008,6 +5062,7 @@ export async function createLotOwnerProfileBySyndicate(
     portalAccessEnabled?: boolean;
     notificationPrefs?: any;
     isActive?: boolean;
+    previousOwnersHandling?: 'CLOSE' | 'KEEP';
   }
 ) {
   logger.info('Audit: create owner profile requested', {
@@ -5027,6 +5082,15 @@ export async function createLotOwnerProfileBySyndicate(
     if (isCurrent) {
       await lockLotTx(tx, data.lotId);
       await assertNoOpenOwnerProfileForContact(tx, data.lotId, data.contactId);
+      const closed = await resolvePreviousOwnersTx(tx, data, data.previousOwnersHandling);
+      if (closed > 0) {
+        logger.info('Audit: previous owner profiles closed on resale', {
+          tenantId,
+          syndicateId,
+          lotId: data.lotId,
+          closedProfiles: closed
+        });
+      }
       await assertOwnerSharesWithinLimit(tx, data.lotId, toShareHundredths(ownershipPercentage), {
         ownedSince: data.ownedSince,
         ownedUntil: data.ownedUntil
