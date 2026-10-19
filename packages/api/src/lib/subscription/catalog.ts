@@ -358,18 +358,18 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
   {
     // Spec 044 (decision du 15/10) : a l'atteinte du quota mensuel de signatures de leur pack,
     // les agences achetent des blocs de 50 (cumulables par la quantite), jamais de depassement
-    // facture. PRIX A FIXER (decision fondateur) : 0 et non vendable en attendant ; le
-    // super-admin le renseigne et l'ouvre a la vente depuis le catalogue.
+    // facture. Prix fixe par decision utilisateur (19/10) : 5 000 XOF par mois et par bloc,
+    // vendable. La migration 20261015120000 l'a amorce a 0 : `npm run db:seed:catalog` aligne la base.
     code: EXTENSION.SIGNATURES_SUPPLEMENTAIRES,
     kind: 'EXTENSION',
     name: 'Signatures électroniques — bloc de 50',
     description: 'Signatures électroniques supplémentaires : 50 par mois et par bloc, cumulable',
-    monthlyPrice: 0,
+    monthlyPrice: 5_000,
     setupPrice: 0,
     modules: [],
     exclusiveGroup: null,
     rules: { requiresAnyOf: [PACK.AGENCE, PACK.SYNDIC, PACK.PROMOTEUR, PACK.INTEGRE] },
-    isSellable: false,
+    isSellable: true,
     sortOrder: 160,
     capacities: { SIGNATURES_MENSUELLES: 50 }
   },
