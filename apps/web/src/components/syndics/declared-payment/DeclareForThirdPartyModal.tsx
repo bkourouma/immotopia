@@ -1,5 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Typography, Upload } from 'antd';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Alert,
+  App,
+  Button,
+  DatePicker,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Select,
+  Space,
+  Typography,
+  Upload
+} from 'antd';
 import { DeleteOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { formatMoney } from '../../primitives';
@@ -8,6 +21,7 @@ import {
   ReceivingNumberAdmin,
   SyndicDeclarationRow,
   createSyndicDeclaration,
+  getSyndicDeclaredSettings,
   listSyndicReceivingNumbers
 } from '../../../services/syndic-declared-payment-service';
 import { listSyndicateLots } from '../../../services/syndic-service';
@@ -75,7 +89,11 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
   onClose,
   onCreated
 }) => {
+  const { message } = App.useApp();
   const [form] = Form.useForm<FormValues>();
+  const formErrorRef = useRef<HTMLDivElement>(null);
+  // `null` : réglages non lus (ou lecture échouée) ; le serveur tranche alors.
+  const [usable, setUsable] = useState<boolean | null>(null);
   const [numbers, setNumbers] = useState<ReceivingNumberAdmin[]>([]);
   const [lots, setLots] = useState<SyndicateLot[]>([]);
   const [loading, setLoading] = useState(false);
@@ -94,6 +112,11 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
+    // Réglages lus à part : un échec ne bloque ni les numéros ni les lots (le serveur tranche).
+    const settingsPromise = getSyndicDeclaredSettings(tenantId, syndicId).then(
+      settings => (typeof settings?.usable === 'boolean' ? settings.usable : null),
+      () => null
+    );
     try {
       const [allNumbers, allLots] = await Promise.all([
         listSyndicReceivingNumbers(tenantId, syndicId),
@@ -103,6 +126,9 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
       setLots(allLots);
     } catch (e) {
       setLoadError(apiErrorMessage(e, t('Impossible de charger les numéros de réception et les lots.')));
+    }
+    try {
+      setUsable(await settingsPromise);
     } finally {
       setLoading(false);
     }
@@ -197,14 +223,17 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
       onCreated(row);
     } catch (e) {
       const code = apiErrorCode(e);
-      const message = apiErrorMessage(e, t('La déclaration n’a pas pu être créée.'));
+      const errorText = apiErrorMessage(e, t('La déclaration n’a pas pu être créée.'));
       if (code && (FIELD_ERROR_CODES.transactionReference as readonly string[]).includes(code)) {
-        form.setFields([{ name: 'transactionReference', errors: [message] }]);
+        form.setFields([{ name: 'transactionReference', errors: [errorText] }]);
       } else if (code && (FIELD_ERROR_CODES.payerPhone as readonly string[]).includes(code)) {
-        form.setFields([{ name: 'payerPhone', errors: [message] }]);
+        form.setFields([{ name: 'payerPhone', errors: [errorText] }]);
       } else {
-        setFormError(message);
+        setFormError(errorText);
       }
+      // L'alerte de tête peut être hors de vue dans une modale haute : toast + défilement.
+      void message.error(errorText);
+      window.setTimeout(() => formErrorRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }), 0);
     } finally {
       setSubmitting(false);
     }
@@ -229,7 +258,7 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
       onOk={() => form.submit()}
       okText={t('Créer la déclaration')}
       cancelText={t('Annuler')}
-      okButtonProps={{ disabled: !hasForm || loading }}
+      okButtonProps={{ disabled: !hasForm || loading || usable === false }}
       confirmLoading={submitting}
       cancelButtonProps={{ disabled: submitting }}
       mask={{ closable: false }}
@@ -237,6 +266,16 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
       style={{ top: 24, maxWidth: 'calc(100vw - 16px)' }}
       forceRender
     >
+      {usable === false && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          title={t(
+            "Les paiements déclarés sont désactivés ou aucun numéro de réception n'est actif. Activez-les dans les réglages du paiement par transfert mobile money."
+          )}
+        />
+      )}
       <Alert
         type="info"
         showIcon
@@ -256,7 +295,11 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
           }
         />
       )}
-      {formError && <Alert type="error" showIcon style={{ marginBottom: 16 }} title={formError} />}
+      {formError && (
+        <div ref={formErrorRef}>
+          <Alert type="error" showIcon style={{ marginBottom: 16 }} title={formError} />
+        </div>
+      )}
       <Form<FormValues>
         form={form}
         layout="vertical"
