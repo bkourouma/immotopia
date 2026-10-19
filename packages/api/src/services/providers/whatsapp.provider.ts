@@ -6,6 +6,7 @@ import * as http from 'http';
 import * as https from 'https';
 import { URL } from 'url';
 import { logger } from '../../utils/logger';
+import { env } from '../../config/env';
 
 export interface WhatsAppSendOptions {
   to: string; // E.164
@@ -38,8 +39,8 @@ let twilioClient: { messages: { create: (opts: unknown) => Promise<{ sid: string
 
 function getTwilioClient(): typeof twilioClient {
   if (twilioClient) return twilioClient;
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const accountSid = env.TWILIO_ACCOUNT_SID;
+  const authToken = env.TWILIO_AUTH_TOKEN;
   if (!accountSid || !authToken) return null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -61,10 +62,10 @@ function isHttpUrl(value: string): boolean {
 }
 
 function getPreferredProvider(): WhatsAppProviderKind | null {
-  const preferred = process.env.WHATSAPP_PROVIDER?.trim().toLowerCase();
+  const preferred = env.WHATSAPP_PROVIDER?.trim().toLowerCase();
   if (!preferred) {
     // Auto mode: if WaSender key is present, prefer WaSender.
-    if (process.env.WASENDER_API_KEY?.trim()) return 'wasender';
+    if (env.WASENDER_API_KEY?.trim()) return 'wasender';
     return 'twilio';
   }
   if (preferred === 'wasender' || preferred === 'twilio') return preferred;
@@ -72,11 +73,11 @@ function getPreferredProvider(): WhatsAppProviderKind | null {
 }
 
 function getWasenderBaseUrl(): string {
-  return (process.env.WASENDER_API_BASE_URL?.trim() || 'https://wasenderapi.com/api').replace(/\/+$/, '');
+  return (env.WASENDER_API_BASE_URL?.trim() || 'https://wasenderapi.com/api').replace(/\/+$/, '');
 }
 
 function getWasenderTimeoutMs(): number {
-  const timeout = Number.parseInt(process.env.WASENDER_TIMEOUT_MS || '10000', 10);
+  const timeout = Number.parseInt(String(env.WASENDER_TIMEOUT_MS), 10);
   if (Number.isNaN(timeout) || timeout <= 0) return 10000;
   return timeout;
 }
@@ -286,14 +287,14 @@ function getJson(urlString: string, headers: Record<string, string>, timeoutMs: 
 }
 
 function shouldSkipWaSenderStatusCheck(): boolean {
-  const raw = process.env.WASENDER_SKIP_STATUS_CHECK?.trim().toLowerCase();
+  const raw = env.WASENDER_SKIP_STATUS_CHECK?.trim().toLowerCase();
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 }
 
 async function ensureWaSenderSessionConnected(): Promise<void> {
   if (shouldSkipWaSenderStatusCheck()) return;
 
-  const apiKey = process.env.WASENDER_API_KEY?.trim();
+  const apiKey = env.WASENDER_API_KEY?.trim();
   const baseUrl = getWasenderBaseUrl();
   if (!apiKey || !isHttpUrl(baseUrl)) {
     throw new Error('WaSender provider not configured');
@@ -314,7 +315,7 @@ async function ensureWaSenderSessionConnected(): Promise<void> {
 async function ensureWaSenderGroupParticipantsSynced(groupJid: string): Promise<void> {
   if (!groupJid.endsWith('@g.us')) return;
 
-  const apiKey = process.env.WASENDER_API_KEY?.trim();
+  const apiKey = env.WASENDER_API_KEY?.trim();
   const baseUrl = getWasenderBaseUrl();
   if (!apiKey || !isHttpUrl(baseUrl)) {
     throw new Error('WaSender provider not configured');
@@ -446,7 +447,7 @@ function extractPublicUrl(payload: unknown): string | undefined {
 }
 
 async function uploadBinaryToWaSender(mediaBuffer: Buffer, mediaMimeType: string): Promise<string> {
-  const apiKey = process.env.WASENDER_API_KEY?.trim();
+  const apiKey = env.WASENDER_API_KEY?.trim();
   const baseUrl = getWasenderBaseUrl();
   if (!apiKey || !isHttpUrl(baseUrl)) {
     throw new Error('WaSender provider not configured');
@@ -474,7 +475,7 @@ async function uploadBinaryToWaSender(mediaBuffer: Buffer, mediaMimeType: string
 }
 
 async function sendTextViaWaSender(options: WhatsAppSendOptions): Promise<{ messageId?: string }> {
-  const apiKey = process.env.WASENDER_API_KEY?.trim();
+  const apiKey = env.WASENDER_API_KEY?.trim();
   const baseUrl = getWasenderBaseUrl();
   if (!apiKey || !isHttpUrl(baseUrl)) {
     throw new Error('WaSender provider not configured');
@@ -488,8 +489,8 @@ async function sendTextViaWaSender(options: WhatsAppSendOptions): Promise<{ mess
   };
 
   // Optional session hint if your WaSender account uses named sessions.
-  const session = process.env.WASENDER_SESSION?.trim();
-  const sessionName = process.env.WASENDER_SESSION_NAME?.trim();
+  const session = env.WASENDER_SESSION?.trim();
+  const sessionName = env.WASENDER_SESSION_NAME?.trim();
   if (session) payload.session = session;
   if (sessionName) payload.sessionName = sessionName;
 
@@ -511,7 +512,7 @@ async function sendTextViaWaSender(options: WhatsAppSendOptions): Promise<{ mess
 }
 
 async function sendImageViaWaSender(options: WhatsAppImageOptions): Promise<{ messageId?: string }> {
-  const apiKey = process.env.WASENDER_API_KEY?.trim();
+  const apiKey = env.WASENDER_API_KEY?.trim();
   const baseUrl = getWasenderBaseUrl();
   if (!apiKey || !isHttpUrl(baseUrl)) {
     throw new Error('WaSender provider not configured');
@@ -532,8 +533,8 @@ async function sendImageViaWaSender(options: WhatsAppImageOptions): Promise<{ me
     imageUrl
   };
 
-  const session = process.env.WASENDER_SESSION?.trim();
-  const sessionName = process.env.WASENDER_SESSION_NAME?.trim();
+  const session = env.WASENDER_SESSION?.trim();
+  const sessionName = env.WASENDER_SESSION_NAME?.trim();
   if (session) payload.session = session;
   if (sessionName) payload.sessionName = sessionName;
 
@@ -556,7 +557,7 @@ async function sendImageViaWaSender(options: WhatsAppImageOptions): Promise<{ me
 
 async function sendTextViaTwilio(options: WhatsAppSendOptions): Promise<{ messageId?: string }> {
   const client = getTwilioClient();
-  const from = process.env.TWILIO_WHATSAPP_FROM;
+  const from = env.TWILIO_WHATSAPP_FROM;
   if (!client || !from) throw new Error('Twilio provider not configured');
   const to = options.to.startsWith('whatsapp:') ? options.to : `whatsapp:${options.to}`;
   const result = await client.messages.create({
@@ -569,7 +570,7 @@ async function sendTextViaTwilio(options: WhatsAppSendOptions): Promise<{ messag
 
 function sendTemplateViaTwilio(options: WhatsAppTemplateOptions): Promise<{ messageId?: string }> {
   const client = getTwilioClient();
-  const from = process.env.TWILIO_WHATSAPP_FROM;
+  const from = env.TWILIO_WHATSAPP_FROM;
   if (!client || !from) throw new Error('Twilio provider not configured');
   const to = options.to.startsWith('whatsapp:') ? options.to : `whatsapp:${options.to}`;
   const contentVariables = options.contentVariables ? JSON.stringify(options.contentVariables) : undefined;
@@ -585,7 +586,7 @@ function sendTemplateViaTwilio(options: WhatsAppTemplateOptions): Promise<{ mess
 
 function sendImageViaTwilio(options: WhatsAppImageOptions): Promise<{ messageId?: string }> {
   const client = getTwilioClient();
-  const from = process.env.TWILIO_WHATSAPP_FROM;
+  const from = env.TWILIO_WHATSAPP_FROM;
   if (!client || !from) throw new Error('Twilio provider not configured');
   if (!options.mediaUrl) throw new Error('Twilio image requires mediaUrl');
   const to = options.to.startsWith('whatsapp:') ? options.to : `whatsapp:${options.to}`;
@@ -604,14 +605,14 @@ export function getConfiguredWhatsAppProvider(): WhatsAppProviderKind | null {
   if (!provider) return null;
 
   if (provider === 'wasender') {
-    const apiKey = process.env.WASENDER_API_KEY?.trim();
+    const apiKey = env.WASENDER_API_KEY?.trim();
     const baseUrl = getWasenderBaseUrl();
     if (!apiKey || !isHttpUrl(baseUrl)) return null;
     return 'wasender';
   }
 
   const client = getTwilioClient();
-  return client && !!process.env.TWILIO_WHATSAPP_FROM ? 'twilio' : null;
+  return client && !!env.TWILIO_WHATSAPP_FROM ? 'twilio' : null;
 }
 
 export function configureWhatsAppProvider(): boolean {

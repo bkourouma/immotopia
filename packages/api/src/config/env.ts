@@ -449,6 +449,21 @@ const envSchema = z
       .default('false')
       .transform(value => value === 'true' || value === '1'),
 
+    // WhatsApp : fournisseur de messagerie (WaSender ou Twilio). Aucun secret n'a de valeur
+    // par defaut. WHATSAPP_PROVIDER vide : WaSender si WASENDER_API_KEY est presente, sinon Twilio.
+    // Une valeur inconnue desactive l'envoi (comportement historique), elle ne bloque pas le demarrage.
+    WHATSAPP_PROVIDER: emptyAsUndefined(z.string().optional()),
+    TWILIO_ACCOUNT_SID: emptyAsUndefined(z.string().min(1).optional()),
+    TWILIO_AUTH_TOKEN: emptyAsUndefined(z.string().min(1).optional()),
+    TWILIO_WHATSAPP_FROM: emptyAsUndefined(z.string().min(1).optional()),
+    WASENDER_API_BASE_URL: emptyAsUndefined(z.string().default('https://wasenderapi.com/api')),
+    WASENDER_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+    WASENDER_SESSION: emptyAsUndefined(z.string().min(1).optional()),
+    WASENDER_SESSION_NAME: emptyAsUndefined(z.string().min(1).optional()),
+    WASENDER_TIMEOUT_MS: emptyAsUndefined(z.coerce.number().int().default(10000)),
+    // '1', 'true', 'yes' ou 'on' : n'interroge pas l'etat de la session WaSender avant l'envoi.
+    WASENDER_SKIP_STATUS_CHECK: emptyAsUndefined(z.string().optional()),
+
     // Signature electronique (spec 044, SG-R13). `disabled` par defaut : toute
     // demande est refusee. `log` : rien ne part, seules des metadonnees sont
     // journalisees (jamais lien, jeton ni code). `internal` : jeton + code a
@@ -465,10 +480,11 @@ const envSchema = z
     YOUSIGN_ALLOW_SANDBOX: emptyAsUndefined(z.enum(['0', '1']).default('0')),
     YOUSIGN_WEBHOOK_SECRET: emptyAsUndefined(z.string().min(16).optional()),
     // Niveau de signature demande a Yousign. Seuls `advanced` et `qualified` rendent le
-    // fournisseur « qualifie » (SG-R1) ; le defaut (simple) ne leve donc pas l'exigence.
+    // fournisseur « qualifie » (SG-R1) ; le defaut est `advanced` (decision du 19/10) ;
+    // `electronic_signature` (simple) doit etre choisi explicitement et ne leve pas l'exigence.
     YOUSIGN_SIGNATURE_LEVEL: z
       .enum(['electronic_signature', 'advanced_electronic_signature', 'qualified_electronic_signature'])
-      .default('electronic_signature'),
+      .default('advanced_electronic_signature'),
     SIGNATURE_PROVIDER_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000),
 
     // Transport SMS (signature, lot S7). `disabled` par defaut ; `log` n'envoie
