@@ -2500,7 +2500,23 @@ export async function createMeetingProxyByTenant(
           select: { lotId: true }
         });
         const presentLotIds = new Set(present.map(row => row.lotId));
-        for (const lotId of lotIds.filter(id => !presentLotIds.has(id))) {
+        const lotIdsToRepresent = lotIds.filter(id => !presentLotIds.has(id));
+        // Meme regle que l'emargement (setLotAttendances) : un votant du lot ne peut pas
+        // en etre le mandataire. Appliquee a l'ecriture de l'emargement REPRESENTED, donc
+        // seance ouverte ; avant l'AG aucun emargement n'est ecrit (un pouvoir donne a un
+        // coindivisaire reste accepte et est tranche a l'ouverture).
+        if (lotIdsToRepresent.length > 0) {
+          const { lots: meetingLots } = await loadMeetingLots(tx, syndicateId, meeting.scheduledAt);
+          const representedLots = new Set(lotIdsToRepresent);
+          const representativeIsVoter = meetingLots.some(
+            lot =>
+              representedLots.has(lot.id) && lot.voters.some(voter => voter.contactId === data.representativeContactId)
+          );
+          if (representativeIsVoter) {
+            throw unprocessableEntity(t("Le mandataire ne peut pas être un propriétaire du lot qu'il représente."));
+          }
+        }
+        for (const lotId of lotIdsToRepresent) {
           const attendance = {
             status: 'REPRESENTED' as const,
             mode: 'IN_PERSON' as const,

@@ -160,6 +160,9 @@ export async function ensureSyndicChartTemplateTx(
   tenantId: string,
   syndicateId: string
 ): Promise<SyndicChartTemplateResult> {
+  // Verrou par copropriete, pris AVANT la lecture : deux chargements concurrents
+  // s'executent l'un apres l'autre et le second voit les comptes du premier.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`syndic-chart:${syndicateId}`}))`;
   const existing = await tx.chartOfAccount.findMany({
     where: { tenantId, syndicateId, scope: 'SYNDICATE' },
     select: { id: true, accountNumber: true }
