@@ -8,6 +8,7 @@ import {
 } from '../services/property-media-service';
 import { PropertyMediaType } from '@prisma/client';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
+import { parseEnumParam, parseIntParam } from '../utils/query-params';
 
 /**
  * Reference implementation of the target controller shape:
@@ -39,8 +40,8 @@ export const uploadMediaHandler = asyncHandler(async (req: Request, res: Respons
     throw new BadRequestError('Un fichier est requis.');
   }
 
-  const mediaType = (req.body.mediaType || PropertyMediaType.PHOTO) as PropertyMediaType;
-  const displayOrder = req.body.displayOrder ? parseInt(req.body.displayOrder, 10) : undefined;
+  const mediaType = parseEnumParam(req.body.mediaType, PropertyMediaType, 'mediaType') ?? PropertyMediaType.PHOTO;
+  const displayOrder = parseIntParam(req.body.displayOrder, 'displayOrder', { min: 0 });
   const isPrimary = req.body.isPrimary === 'true' || req.body.isPrimary === true;
 
   const media = await uploadMedia(propertyId, tenantId, req.file, mediaType, displayOrder, isPrimary, userId);

@@ -6,6 +6,7 @@
 import * as cron from 'node-cron';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { sendCampaign } from '../services/newsletter-campaign.service';
 import { runWithTenantContext } from '../utils/tenant-context';
 
@@ -71,8 +72,10 @@ export function startNewsletterCampaignSchedulerJob() {
   }
   job = cron.schedule('* * * * *', async () => {
     try {
-      const result = await runNewsletterCampaignScheduler();
-      if (result.sent > 0 || result.failed > 0) {
+      const result = await withJobLock('newsletter-campaign-scheduler-minute', 5 * 60 * 1000, () =>
+        runNewsletterCampaignScheduler()
+      );
+      if (result && (result.sent > 0 || result.failed > 0)) {
         logger.info('Newsletter campaign scheduler job completed', result);
       }
     } catch (error) {

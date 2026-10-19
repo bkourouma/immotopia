@@ -1,6 +1,7 @@
 import * as cron from 'node-cron';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { flushAuditEvents, logAuditEvent } from '../services/audit-service';
 import { getAuditChainHead, sealPendingPartitions, verifyAuditIntegrity } from '../services/audit-integrity-service';
 import { currentRetentionCutoffs, purgeExpiredAuditRows } from '../services/audit-retention-service';
@@ -89,7 +90,11 @@ export function startAuditMaintenanceJob(): void {
     logger.warn('Audit maintenance job is already running');
     return;
   }
-  job = cron.schedule('30 2 * * *', () => runAuditMaintenance(), { timezone: 'UTC' });
+  job = cron.schedule(
+    '30 2 * * *',
+    () => withJobLock('audit-maintenance-daily', 60 * 60 * 1000, () => runAuditMaintenance()),
+    { timezone: 'UTC' }
+  );
   logger.info(`Audit maintenance job started (daily, purge ${env.AUDIT_PURGE_ENABLED ? 'ON' : 'OFF'})`);
 }
 

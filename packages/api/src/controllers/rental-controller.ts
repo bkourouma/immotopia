@@ -15,6 +15,7 @@ import {
 import { RentalLeaseStatus } from '@prisma/client';
 import { asyncHandler, UnauthorizedError, NotFoundError, BadRequestError } from '../middleware/error-middleware';
 import { parsePagination } from '../utils/pagination-helper';
+import { parseEnumParam } from '../utils/query-params';
 import { createLeaseSchema, updateLeaseSchema } from '../lib/rental/schemas';
 
 const updateLeaseStatusSchema = z.object({
@@ -104,8 +105,9 @@ export const listLeasesHandler = asyncHandler(async (req: Request, res: Response
   const { status, propertyId, primaryRenterClientId, search } = req.query;
 
   const filters: any = {};
-  if (status) {
-    filters.status = status as RentalLeaseStatus;
+  const statusFilter = parseEnumParam(status, RentalLeaseStatus, 'status');
+  if (statusFilter) {
+    filters.status = statusFilter;
   }
   if (propertyId) {
     filters.propertyId = propertyId as string;

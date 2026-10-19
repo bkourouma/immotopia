@@ -9,6 +9,7 @@ import {
 } from '../services/rental-document-service';
 import { RentalDocumentType, RentalDocumentStatus } from '@prisma/client';
 import { parsePagination } from '../utils/pagination-helper';
+import { parseEnumParam } from '../utils/query-params';
 import { asyncHandler, NotFoundError, UnauthorizedError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
@@ -95,11 +96,13 @@ export const listDocumentsHandler = asyncHandler(async (req: Request, res: Respo
   const { type, status, leaseId, installmentId, paymentId } = req.query;
 
   const filters: any = {};
-  if (type) {
-    filters.type = type as RentalDocumentType;
+  const typeFilter = parseEnumParam(type, RentalDocumentType, 'type');
+  if (typeFilter) {
+    filters.type = typeFilter;
   }
-  if (status) {
-    filters.status = status as RentalDocumentStatus;
+  const statusFilter = parseEnumParam(status, RentalDocumentStatus, 'status');
+  if (statusFilter) {
+    filters.status = statusFilter;
   }
   if (leaseId) {
     filters.leaseId = leaseId as string;
