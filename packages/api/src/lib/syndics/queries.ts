@@ -297,6 +297,19 @@ export async function getSyndicateWithLotsAndStats(tenantId: string, syndicateId
               contact: true
             },
             orderBy: [{ createdAt: 'desc' }]
+          },
+          // Profils locataires actuels (QA2 lot 4) : select minimal, jamais le contact entier.
+          tenantProfiles: {
+            where: { isCurrent: true, OR: [{ tenantUntil: null }, { tenantUntil: { gt: new Date() } }] },
+            select: {
+              id: true,
+              contactId: true,
+              isCurrent: true,
+              tenantSince: true,
+              tenantUntil: true,
+              contact: { select: { id: true, firstName: true, lastName: true, legalName: true } }
+            },
+            orderBy: [{ tenantSince: 'desc' }]
           }
         }
       },
@@ -319,6 +332,7 @@ export async function createSyndicateWithDefaults(
     cadastralReference?: string | null;
     totalLots?: number;
     totalBuildings?: number;
+    totalGeneralShares?: number;
     mandatingAgencyId?: string | null;
   }
 ) {
@@ -385,6 +399,7 @@ export async function createSyndicateWithDefaults(
         cadastralReference: data.cadastralReference ?? undefined,
         totalLots: data.totalLots ?? 0,
         totalBuildings: data.totalBuildings ?? 1,
+        totalGeneralShares: data.totalGeneralShares ?? undefined,
         mandatingAgencyId: data.mandatingAgencyId ?? undefined,
         tenantId
       }
@@ -407,6 +422,7 @@ export async function updateSyndicateByTenant(
     totalBuildings?: number;
     status?: 'ACTIVE' | 'IN_LIQUIDATION' | 'IN_DISPUTE';
     regulationDocUrl?: string | null;
+    totalGeneralShares?: number | null;
     mandatingAgencyId?: string | null;
   }
 ) {
@@ -627,6 +643,33 @@ function resolveCreateSpecialShares(data: {
     return data.specialShares === null ? null : Math.round(data.specialShares);
   }
   return data.isParkingIncluded ? Math.round(data.tantiemes) : null;
+}
+
+/**
+ * Hypothese H7 : si la copropriete porte un total de reference des tantiemes
+ * (`totalGeneralShares`) et que la somme des tantiemes de TOUS ses lots en
+ * differe, renvoie une phrase d'avertissement (non bloquante). Sans total de
+ * reference ou somme egale : tableau vide.
+ */
+export async function computeLotSharesWarnings(tenantId: string, syndicateId: string): Promise<string[]> {
+  const syndicate = await prisma.syndicate.findFirst({
+    where: { id: syndicateId, tenantId },
+    select: { totalGeneralShares: true }
+  });
+  const reference = syndicate?.totalGeneralShares;
+  if (reference === null || reference === undefined) return [];
+  const aggregate = await prisma.syndicateLot.aggregate({
+    where: { syndicateId, syndicate: { tenantId } },
+    _sum: { generalShares: true }
+  });
+  const sum = aggregate._sum.generalShares ?? 0;
+  if (sum === reference) return [];
+  return [
+    t('Le total des tantièmes des lots ({{sum}}) diffère du total de référence de la copropriété ({{reference}}).', {
+      sum,
+      reference
+    })
+  ];
 }
 
 export async function createSyndicateLot(
@@ -1161,10 +1204,19 @@ export async function deleteSyndicateLotByTenant(tenantId: string, syndicateId: 
       tx.paymentReminder.count({ where: { lotId } }),
       tx.latePaymentPenalty.count({ where: { lotId } }),
       tx.paymentSchedule.count({ where: { lotId } }),
-      tx.ownerAccountTransaction.count({ where: { account: { lotId } } })
+      tx.ownerAccountTransaction.count({ where: { account: { lotId } } }),
+      // Relations Restrict : sans ce controle, la suppression finirait en P2003 generique.
+      tx.syndicOnlineCheckout.count({ where: { lotId } }),
+      tx.syndicPaymentDeclarationLine.count({ where: { lotId } }),
+      tx.directDebitMandate.count({ where: { lotId } }),
+      tx.directDebitRemittanceLine.count({ where: { lotId } }),
+      tx.gMAttendance.count({ where: { lotId } })
     ]);
     if (counts.some(count => count > 0)) {
-      const message = `Le lot ${existing.lotNumber} a des mouvements (appels de charges, paiements, reçus…) : il ne peut pas être supprimé. Désactivez-le pour l'exclure de la clé de répartition et des appels futurs.`;
+      const message = t(
+        "Le lot {{lot}} a des mouvements (appels de charges, paiements, reçus, mandats de prélèvement, déclarations de paiement, pointage…) : il ne peut pas être supprimé. Désactivez-le pour l'exclure de la clé de répartition et des appels futurs.",
+        { lot: existing.lotNumber }
+      );
       throw new ConflictError(message, [{ field: 'lotId', message }]);
     }
 
@@ -4964,8 +5016,14 @@ async function assertOwnerSharesWithinLimit(
   ]);
   const existing = others.reduce((sum, profile) => sum + toShareHundredths(profile.ownershipPercentage), 0);
   if (existing + addHundredths > OWNER_SHARE_TOTAL_HUNDREDTHS) {
-    const lotLabel = lot?.lotNumber ? `du lot ${lot.lotNumber}` : 'du lot';
-    const message = `Les parts ${lotLabel} dépassent 100 % (${formatShareHundredths(existing)} % déjà attribués, ${formatShareHundredths(addHundredths)} % demandés).`;
+    const message = t(
+      'Les parts du lot {{lot}} dépassent 100 % ({{existing}} % déjà attribués, {{requested}} % demandés).',
+      {
+        lot: lot?.lotNumber ?? '?',
+        existing: formatShareHundredths(existing),
+        requested: formatShareHundredths(addHundredths)
+      }
+    );
     throw new ConflictError(message, [{ field: 'ownershipPercentage', message }]);
   }
 }

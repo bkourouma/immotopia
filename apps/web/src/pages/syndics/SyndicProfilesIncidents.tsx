@@ -15,10 +15,11 @@ import {
   Tag,
   Typography
 } from 'antd';
-import { EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { EditOutlined, PlusOutlined, UserAddOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { MoneyValue, Table } from '../../components/primitives';
-import { listContacts } from '../../services/crm-service';
+import { ContactForm } from '../../components/crm/ContactForm';
+import { createContact, listContacts } from '../../services/crm-service';
 import { listProperties } from '../../services/property-service';
 import {
   createIncidentImputation,
@@ -26,32 +27,41 @@ import {
   createLotTenantProfile,
   createSyndicIncident,
   inviteCoOwnerToPortal,
+  listBudgets,
+  listContracts,
   listLotOwnerProfilesWithSummary,
   listLotTenantProfiles,
   listProvidersContracts,
   listSyndicateLots,
   listSyndicIncidents,
   revokeCoOwnerPortalAccess,
+  updateLotTenantProfile,
   updateSyndicIncident
 } from '../../services/syndic-service';
 import { CoOwnerInvitationResult } from '../../components/syndics/CoOwnerInvitationResult';
 import { LinkedProviderInvoices } from '../../components/syndics/LinkedProviderInvoices';
 import {
+  BudgetLineItem,
   CoOwnerPortalInvitation,
   IncompleteOwnerShares,
   LotOwnerProfile,
   LotTenantProfile,
+  MaintenanceContract,
   ServiceProvider,
+  SyndicateBudget,
   SyndicateIncident,
   SyndicateLot
 } from '../../types/syndic-types';
 import type { Property } from '../../types/property-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
-import { CrmContact } from '../../types/crm-types';
+import { CreateCrmContactRequest, CrmContact, UpdateCrmContactRequest } from '../../types/crm-types';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
+import { dateFormat } from '../../i18n/format';
 
 const { Paragraph, Title } = Typography;
+
+type ContactTarget = 'owner' | 'tenant' | 'incident';
 
 interface OpenOwner {
   profileId?: string;
@@ -71,28 +81,54 @@ function extractOpenOwners(err: any): OpenOwner[] | null {
   return null;
 }
 
-const incidentTypeLabels: Record<string, string> = {
-  BREAKDOWN: 'Panne',
-  LEAK: 'Fuite',
-  VANDALISM: 'Vandalisme',
-  SAFETY: t('Sécurité'),
-  OTHER: 'Autre'
-};
+function getIncidentTypeLabel(type: string): string {
+  switch (type) {
+    case 'BREAKDOWN':
+      return t('Panne');
+    case 'LEAK':
+      return t('Fuite');
+    case 'VANDALISM':
+      return t('Vandalisme');
+    case 'SAFETY':
+      return t('Sécurité');
+    case 'OTHER':
+      return t('Autre');
+    default:
+      return type;
+  }
+}
 
-const incidentUrgencyLabels: Record<string, string> = {
-  LOW: 'Basse',
-  MEDIUM: 'Moyenne',
-  HIGH: 'Haute',
-  CRITICAL: 'Critique'
-};
+function getIncidentUrgencyLabel(urgency: string): string {
+  switch (urgency) {
+    case 'LOW':
+      return t('Basse');
+    case 'MEDIUM':
+      return t('Moyenne');
+    case 'HIGH':
+      return t('Haute');
+    case 'CRITICAL':
+      return t('Critique');
+    default:
+      return urgency;
+  }
+}
 
-const incidentStatusLabels: Record<string, string> = {
-  REPORTED: t('Signalé'),
-  ASSIGNED: t('Assigné'),
-  IN_PROGRESS: t('En cours'),
-  RESOLVED: t('Résolu'),
-  CLOSED: t('Clôturé')
-};
+function getIncidentStatusLabel(status: string): string {
+  switch (status) {
+    case 'REPORTED':
+      return t('Signalé');
+    case 'ASSIGNED':
+      return t('Assigné');
+    case 'IN_PROGRESS':
+      return t('En cours');
+    case 'RESOLVED':
+      return t('Résolu');
+    case 'CLOSED':
+      return t('Clôturé');
+    default:
+      return status;
+  }
+}
 
 const incidentStatusColors: Record<string, string> = {
   REPORTED: 'default',
@@ -102,20 +138,40 @@ const incidentStatusColors: Record<string, string> = {
   CLOSED: 'default'
 };
 
-const incidentStatusOptions: Array<{ value: string; label: string }> = [
-  { value: 'REPORTED', label: incidentStatusLabels.REPORTED },
-  { value: 'ASSIGNED', label: incidentStatusLabels.ASSIGNED },
-  { value: 'IN_PROGRESS', label: incidentStatusLabels.IN_PROGRESS },
-  { value: 'RESOLVED', label: incidentStatusLabels.RESOLVED },
-  { value: 'CLOSED', label: incidentStatusLabels.CLOSED }
-];
+const INCIDENT_TYPES = ['BREAKDOWN', 'LEAK', 'VANDALISM', 'SAFETY', 'OTHER'];
+const INCIDENT_URGENCIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+const INCIDENT_STATUSES = ['REPORTED', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
+const IMPUTATION_TYPES = ['SYNDICATE_BUDGET', 'INSURANCE', 'LOT_OWNER', 'THIRD_PARTY'];
 
-const incidentImputationTypeLabels: Record<string, string> = {
-  SYNDICATE_BUDGET: t('Budget syndic'),
-  INSURANCE: 'Assurance',
-  LOT_OWNER: t('Lot propriétaire'),
-  THIRD_PARTY: 'Tiers'
-};
+function getImputationTypeLabel(type: string): string {
+  switch (type) {
+    case 'SYNDICATE_BUDGET':
+      return t('Budget syndic');
+    case 'INSURANCE':
+      return t('Assurance');
+    case 'LOT_OWNER':
+      return t('Lot propriétaire');
+    case 'THIRD_PARTY':
+      return t('Tiers');
+    default:
+      return type;
+  }
+}
+
+/** Délai de la recherche de contacts côté serveur (frappe au clavier). */
+const CONTACT_SEARCH_DEBOUNCE_MS = 300;
+
+function contactDisplayName(contact: CrmContact): string {
+  const name = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
+  const label = name || contact.legalName || contact.email || contact.id;
+  return contact.email ? `${label} (${contact.email})` : label;
+}
+
+/** Un profil locataire est « actuel » s'il est marqué ainsi et que sa fin est vide ou à venir. */
+function isTenantProfileCurrent(profile: LotTenantProfile): boolean {
+  if (!profile.isCurrent) return false;
+  return !profile.tenantUntil || dayjs(profile.tenantUntil).isAfter(dayjs());
+}
 
 /**
  * Libellé d'un lot pour les tableaux de profils/incidents.
@@ -189,6 +245,14 @@ export const SyndicProfilesIncidents: React.FC = () => {
   const [revokingProfileId, setRevokingProfileId] = useState<string | null>(null);
   const [invitation, setInvitation] = useState<CoOwnerPortalInvitation | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Création d'un contact depuis un formulaire : le champ d'origine reçoit le contact créé.
+  const [createContactFor, setCreateContactFor] = useState<ContactTarget | null>(null);
+  const contactSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tous les contacts déjà vus (liste initiale, recherches, créations) : la sélection courante reste affichable.
+  const knownContacts = useRef<Record<string, CrmContact>>({});
+  const [budgets, setBudgets] = useState<SyndicateBudget[]>([]);
+  const [contracts, setContracts] = useState<MaintenanceContract[]>([]);
+  const [endingTenantProfileId, setEndingTenantProfileId] = useState<string | null>(null);
 
   const [openOwner, setOpenOwner] = useState(false);
   const [openTenant, setOpenTenant] = useState(false);
@@ -254,6 +318,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
       setTenantProfiles(tenants);
       setIncidents(incidentsData);
       setLots(lotsData);
+      rememberContacts(contactsData.contacts || []);
       setContacts(contactsData.contacts || []);
       setProperties(propertiesData.properties || []);
       setProviders(providersData.providers || []);
@@ -263,6 +328,73 @@ export const SyndicProfilesIncidents: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const rememberContacts = (list: CrmContact[]) => {
+    for (const contact of list) knownContacts.current[contact.id] = contact;
+  };
+
+  const formForTarget = (target: ContactTarget) =>
+    target === 'owner' ? ownerForm : target === 'tenant' ? tenantForm : incidentForm;
+
+  /** Contacts actuellement sélectionnés dans les trois formulaires : à conserver dans les options. */
+  const selectedContacts = (): CrmContact[] => {
+    const ids = [
+      ownerForm.getFieldValue('contactId'),
+      tenantForm.getFieldValue('contactId'),
+      incidentForm.getFieldValue('reportedByContactId')
+    ];
+    return ids.map(id => (id ? knownContacts.current[id] : undefined)).filter((c): c is CrmContact => Boolean(c));
+  };
+
+  // Recherche côté serveur (au-delà des 200 premiers contacts), avec un délai après la frappe.
+  const handleContactSearch = (term: string) => {
+    if (contactSearchTimer.current) clearTimeout(contactSearchTimer.current);
+    if (!effectiveTenantId) return;
+    contactSearchTimer.current = setTimeout(() => {
+      const search = term.trim();
+      listContacts(effectiveTenantId, { page: 1, limit: 200, ...(search ? { search } : {}) })
+        .then(result => {
+          const found = result.contacts || [];
+          rememberContacts(found);
+          const merged = [...selectedContacts(), ...found];
+          setContacts(merged.filter((contact, index) => merged.findIndex(c => c.id === contact.id) === index));
+        })
+        .catch(() => message.error(t('Recherche de contacts impossible')));
+    }, CONTACT_SEARCH_DEBOUNCE_MS);
+  };
+
+  const handleCreateContact = async (data: CreateCrmContactRequest | UpdateCrmContactRequest) => {
+    if (!effectiveTenantId || !createContactFor) return;
+    const created = (await createContact(effectiveTenantId, data as CreateCrmContactRequest)).data;
+    rememberContacts([created]);
+    setContacts(previous => [created, ...previous.filter(contact => contact.id !== created.id)]);
+    formForTarget(createContactFor).setFieldsValue({
+      [createContactFor === 'incident' ? 'reportedByContactId' : 'contactId']: created.id
+    });
+    message.success(t('Contact créé'));
+    setCreateContactFor(null);
+  };
+
+  /** Champ contact : recherche serveur, création à la volée (bouton voisin et liste vide). */
+  const renderContactSelect = (target: ContactTarget) => (
+    <Space.Compact style={{ width: '100%' }}>
+      <Select
+        style={{ width: '100%' }}
+        showSearch
+        filterOption={false}
+        onSearch={handleContactSearch}
+        options={contacts.map(contact => ({ value: contact.id, label: contactDisplayName(contact) }))}
+        notFoundContent={
+          <Button type="link" icon={<UserAddOutlined />} onClick={() => setCreateContactFor(target)}>
+            {t('Créer un contact')}
+          </Button>
+        }
+      />
+      <Button icon={<UserAddOutlined />} onClick={() => setCreateContactFor(target)}>
+        {t('Créer un contact')}
+      </Button>
+    </Space.Compact>
+  );
 
   const handleCreateOwner = async () => {
     // Garde-fou anti double clic : la validation étant asynchrone, un second clic
@@ -373,6 +505,31 @@ export const SyndicProfilesIncidents: React.FC = () => {
     }
   };
 
+  // Postes de budget et contrats de la copropriété, chargés à l'ouverture de la modale d'imputation.
+  const loadImputationOptions = async () => {
+    if (!effectiveTenantId || !syndicId) return;
+    try {
+      const [budgetsData, contractsData] = await Promise.all([
+        listBudgets(effectiveTenantId, syndicId),
+        listContracts(effectiveTenantId, syndicId)
+      ]);
+      setBudgets(budgetsData);
+      setContracts(contractsData);
+    } catch {
+      message.error(t('Chargement des budgets et contrats impossible'));
+    }
+  };
+
+  const budgetLineOptions = budgets
+    .filter(budget => (budget.lines || []).length > 0)
+    .map(budget => ({
+      label: `${budget.label} (${budget.fiscalYear})`,
+      options: (budget.lines || []).map((line: BudgetLineItem) => ({
+        value: line.id,
+        label: line.description ? `${line.category} — ${line.description}` : line.category
+      }))
+    }));
+
   const handleCreateImputation = async () => {
     if (!effectiveTenantId || !syndicId || !selectedIncidentId) return;
     const values = await imputationForm.validateFields();
@@ -382,6 +539,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
         imputationType: values.imputationType,
         amount: values.amount,
         currency: values.currency || 'XOF',
+        budgetLineId: values.budgetLineId || undefined,
+        contractId: values.contractId || undefined,
         lotId: values.lotId || undefined,
         notes: values.notes || undefined
       });
@@ -506,6 +665,33 @@ export const SyndicProfilesIncidents: React.FC = () => {
     }
   };
 
+  // Fin d'un profil locataire : sortie à la date du jour, l'historique est conservé.
+  const handleEndTenantProfile = async (profile: LotTenantProfile) => {
+    if (!effectiveTenantId || !syndicId) return;
+    setEndingTenantProfileId(profile.id);
+    try {
+      await updateLotTenantProfile(effectiveTenantId, syndicId, profile.id, {
+        isCurrent: false,
+        tenantUntil: new Date().toISOString()
+      });
+      message.success(t('Profil locataire terminé'));
+      await loadData();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t('Fin du profil locataire impossible')));
+    } finally {
+      setEndingTenantProfileId(null);
+    }
+  };
+
+  const confirmEndTenantProfile = (profile: LotTenantProfile) => {
+    modal.confirm({
+      title: t("Mettre fin à ce profil locataire à la date d'aujourd'hui ?"),
+      okText: t('Terminer'),
+      cancelText: t('Annuler'),
+      onOk: () => handleEndTenantProfile(profile)
+    });
+  };
+
   const confirmRevoke = (profile: LotOwnerProfile) => {
     modal.confirm({
       title: t("Révoquer l'accès au portail ?"),
@@ -601,7 +787,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                   {
                     title: t('Depuis'),
                     dataIndex: 'ownedSince',
-                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+                    render: (value: string) => dayjs(value).format(dateFormat('short'))
                   },
                   {
                     title: t('Portail'),
@@ -670,11 +856,32 @@ export const SyndicProfilesIncidents: React.FC = () => {
                   {
                     title: t('Depuis'),
                     dataIndex: 'tenantSince',
-                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+                    render: (value: string) => dayjs(value).format(dateFormat('short'))
                   },
                   {
                     title: t('Facture au locataire'),
                     render: (_, row) => (row.chargesBilledToTenant ? t('Oui') : t('Non'))
+                  },
+                  {
+                    title: t('Statut'),
+                    key: 'status',
+                    render: (_, row) =>
+                      isTenantProfileCurrent(row) ? <Tag color="green">{t('Actuel')}</Tag> : <Tag>{t('Terminé')}</Tag>
+                  },
+                  {
+                    title: t('Actions'),
+                    key: 'tenant-actions',
+                    exportable: false,
+                    render: (_, row) =>
+                      isTenantProfileCurrent(row) ? (
+                        <Button
+                          size="small"
+                          loading={endingTenantProfileId === row.id}
+                          onClick={() => confirmEndTenantProfile(row)}
+                        >
+                          {t('Terminer')}
+                        </Button>
+                      ) : null
                   }
                 ]}
               />
@@ -703,7 +910,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                           {
                             title: t('Type'),
                             dataIndex: 'imputationType',
-                            render: (value: string) => incidentImputationTypeLabels[value] || value
+                            render: (value: string) => getImputationTypeLabel(value)
                           },
                           {
                             title: t('Montant'),
@@ -730,7 +937,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                           {
                             title: t('Cree le'),
                             dataIndex: 'createdAt',
-                            render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm')
+                            render: (value: string) => dayjs(value).format(dateFormat('dateTime'))
                           }
                         ]}
                       />
@@ -759,13 +966,13 @@ export const SyndicProfilesIncidents: React.FC = () => {
                     title: t('Type'),
                     dataIndex: 'incidentType',
                     width: 100,
-                    render: (value: string) => incidentTypeLabels[value] || value
+                    render: (value: string) => getIncidentTypeLabel(value)
                   },
                   {
                     title: t('Urgence'),
                     dataIndex: 'urgency',
                     width: 90,
-                    render: (value: string) => incidentUrgencyLabels[value] || value
+                    render: (value: string) => getIncidentUrgencyLabel(value)
                   },
                   {
                     title: t('Description'),
@@ -784,7 +991,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                     dataIndex: 'status',
                     width: 110,
                     render: (value: string) => (
-                      <Tag color={incidentStatusColors[value] || 'default'}>{incidentStatusLabels[value] || value}</Tag>
+                      <Tag color={incidentStatusColors[value] || 'default'}>{getIncidentStatusLabel(value)}</Tag>
                     )
                   },
                   {
@@ -838,6 +1045,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                             imputationForm.resetFields();
                             imputationForm.setFieldsValue({ lotId: row.lotId || undefined });
                             setOpenImputation(true);
+                            void loadImputationOptions();
                           }}
                         >
                           {t('Ajouter imputation')}
@@ -869,6 +1077,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
         title={t('Nouveau profil propriétaire')}
         open={openOwner}
         onCancel={() => setOpenOwner(false)}
+        afterClose={() => ownerForm.resetFields()}
         onOk={() => void handleCreateOwner()}
         confirmLoading={submitting}
       >
@@ -876,6 +1085,12 @@ export const SyndicProfilesIncidents: React.FC = () => {
           form={ownerForm}
           layout="vertical"
           initialValues={{ ownershipPercentage: 100, portalAccessEnabled: false }}
+          onValuesChange={changed => {
+            // L'erreur de dépassement posée par le serveur ne vaut que pour la valeur envoyée.
+            if (changed.ownershipPercentage !== undefined) {
+              ownerForm.setFields([{ name: 'ownershipPercentage', errors: [] }]);
+            }
+          }}
         >
           <Form.Item label={t('Lot')} name="lotId" rules={[{ required: true, message: t('Lot obligatoire') }]}>
             <Select
@@ -892,15 +1107,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
             name="contactId"
             rules={[{ required: true, message: t('Contact obligatoire') }]}
           >
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={contacts.map(contact => {
-                const name = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
-                const label = name || contact.legalName || contact.email || contact.id;
-                return { value: contact.id, label: contact.email ? `${label} (${contact.email})` : label };
-              })}
-            />
+            {renderContactSelect('owner')}
           </Form.Item>
           <Form.Item label={t('Part de propriete (%)')} name="ownershipPercentage" rules={[{ required: true }]}>
             <InputNumber min={0.01} max={100} step={0.01} style={{ width: '100%' }} />
@@ -949,9 +1156,21 @@ export const SyndicProfilesIncidents: React.FC = () => {
       </Modal>
 
       <Modal
+        title={t('Créer un contact')}
+        open={createContactFor !== null}
+        onCancel={() => setCreateContactFor(null)}
+        footer={null}
+        width={800}
+        destroyOnHidden
+      >
+        <ContactForm onSubmit={handleCreateContact} onCancel={() => setCreateContactFor(null)} />
+      </Modal>
+
+      <Modal
         title={t('Nouveau profil locataire')}
         open={openTenant}
         onCancel={() => setOpenTenant(false)}
+        afterClose={() => tenantForm.resetFields()}
         onOk={() => void handleCreateTenant()}
         confirmLoading={submitting}
       >
@@ -971,15 +1190,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
             name="contactId"
             rules={[{ required: true, message: t('Contact obligatoire') }]}
           >
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={contacts.map(contact => {
-                const name = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
-                const label = name || contact.legalName || contact.email || contact.id;
-                return { value: contact.id, label: contact.email ? `${label} (${contact.email})` : label };
-              })}
-            />
+            {renderContactSelect('tenant')}
           </Form.Item>
           <Form.Item label={t("Date d'entrée")} name="tenantSince" rules={[{ required: true }]}>
             <Input type="date" />
@@ -1001,6 +1212,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
         title={t('Nouvel incident')}
         open={openIncident}
         onCancel={() => setOpenIncident(false)}
+        afterClose={() => incidentForm.resetFields()}
         onOk={() => void handleCreateIncident()}
         confirmLoading={submitting}
       >
@@ -1010,15 +1222,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
             name="reportedByContactId"
             rules={[{ required: true, message: t('Contact obligatoire') }]}
           >
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={contacts.map(contact => {
-                const name = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
-                const label = name || contact.legalName || contact.email || contact.id;
-                return { value: contact.id, label: contact.email ? `${label} (${contact.email})` : label };
-              })}
-            />
+            {renderContactSelect('incident')}
           </Form.Item>
           <Form.Item label={t('Lot (optionnel)')} name="lotId">
             <Select
@@ -1035,25 +1239,14 @@ export const SyndicProfilesIncidents: React.FC = () => {
             <Select
               showSearch
               optionFilterProp="label"
-              options={[
-                { value: 'BREAKDOWN', label: t('Panne') },
-                { value: 'LEAK', label: t('Fuite') },
-                { value: 'VANDALISM', label: t('Vandalisme') },
-                { value: 'SAFETY', label: t('Sécurité') },
-                { value: 'OTHER', label: t('Autre') }
-              ]}
+              options={INCIDENT_TYPES.map(value => ({ value, label: getIncidentTypeLabel(value) }))}
             />
           </Form.Item>
           <Form.Item label={t('Urgence')} name="urgency" rules={[{ required: true }]}>
             <Select
               showSearch
               optionFilterProp="label"
-              options={[
-                { value: 'LOW', label: t('Basse') },
-                { value: 'MEDIUM', label: t('Moyenne') },
-                { value: 'HIGH', label: t('Haute') },
-                { value: 'CRITICAL', label: t('Critique') }
-              ]}
+              options={INCIDENT_URGENCIES.map(value => ({ value, label: getIncidentUrgencyLabel(value) }))}
             />
           </Form.Item>
           <Form.Item label={t('Description')} name="description" rules={[{ required: true }]}>
@@ -1082,7 +1275,11 @@ export const SyndicProfilesIncidents: React.FC = () => {
           }}
         >
           <Form.Item label={t('Statut')} name="status" rules={[{ required: true, message: t('Statut obligatoire') }]}>
-            <Select showSearch optionFilterProp="label" options={incidentStatusOptions} />
+            <Select
+              showSearch
+              optionFilterProp="label"
+              options={INCIDENT_STATUSES.map(value => ({ value, label: getIncidentStatusLabel(value) }))}
+            />
           </Form.Item>
           <Form.Item label={t('Prestataire')} name="providerId">
             <Select
@@ -1102,7 +1299,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
           </Form.Item>
           {editIncidentStatus === 'RESOLVED' || editIncidentStatus === 'CLOSED' ? (
             <Form.Item label={t('Date de résolution')} name="resolvedAt">
-              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+              <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
             </Form.Item>
           ) : null}
         </Form>
@@ -1112,6 +1309,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
         title={t('Imputation d incident')}
         open={openImputation}
         onCancel={() => setOpenImputation(false)}
+        afterClose={() => imputationForm.resetFields()}
         onOk={() => void handleCreateImputation()}
         confirmLoading={submitting}
       >
@@ -1124,19 +1322,36 @@ export const SyndicProfilesIncidents: React.FC = () => {
             <Select
               showSearch
               optionFilterProp="label"
-              options={[
-                { value: 'SYNDICATE_BUDGET', label: t('Budget syndic') },
-                { value: 'INSURANCE', label: t('Assurance') },
-                { value: 'LOT_OWNER', label: t('Lot propriétaire') },
-                { value: 'THIRD_PARTY', label: t('Tiers') }
-              ]}
+              options={IMPUTATION_TYPES.map(value => ({ value, label: getImputationTypeLabel(value) }))}
             />
           </Form.Item>
           <Form.Item label={t('Montant')} name="amount" rules={[{ required: true }]}>
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item label={t('Devise')} name="currency">
-            <Input />
+          {/* L'API attend le code ISO XOF ; l'écran affiche le libellé usuel FCFA. */}
+          <Form.Item label={t('Devise')}>
+            <Input value="FCFA" readOnly disabled />
+          </Form.Item>
+          <Form.Item label={t('Poste de budget (optionnel)')} name="budgetLineId">
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder={t('Aucun poste de budget')}
+              options={budgetLineOptions}
+            />
+          </Form.Item>
+          <Form.Item label={t('Contrat (optionnel)')} name="contractId">
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder={t('Aucun contrat')}
+              options={contracts.map(contract => ({
+                value: contract.id,
+                label: contract.provider?.name ? `${contract.nature} — ${contract.provider.name}` : contract.nature
+              }))}
+            />
           </Form.Item>
           <Form.Item label={t('Lot (optionnel)')} name="lotId">
             <Select

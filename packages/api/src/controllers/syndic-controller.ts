@@ -8,6 +8,7 @@ import {
   getSyndicateWithLotsAndStats,
   createSyndicateWithDefaults,
   createSyndicateLot,
+  computeLotSharesWarnings,
   importLotsFromPropertiesBySyndicate,
   updateSyndicateLotByTenant,
   deleteSyndicateLotByTenant,
@@ -299,10 +300,12 @@ export const createSyndicLotHandler = asyncHandler(async (req: Request, res: Res
   });
 
   const lot = await createSyndicateLot(tenantId, parsed);
+  const warnings = await computeLotSharesWarnings(tenantId, syndicateId);
 
   res.status(201).json({
     success: true,
-    data: lot
+    data: lot,
+    warnings
   });
 });
 
@@ -334,10 +337,12 @@ export const updateSyndicLotHandler = asyncHandler(async (req: Request, res: Res
 
   const parsed = updateLotSchema.parse(req.body);
   const lot = await updateSyndicateLotByTenant(tenantId, syndicateId, lotId, parsed);
+  const warnings = await computeLotSharesWarnings(tenantId, syndicateId);
 
   res.json({
     success: true,
-    data: lot
+    data: lot,
+    warnings
   });
 });
 

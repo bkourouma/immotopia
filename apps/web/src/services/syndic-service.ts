@@ -69,6 +69,7 @@ import {
   SyndicateDocument,
   Syndicate,
   SyndicateLot,
+  SyndicateLotWithWarnings,
   UpdateMeetingRequest,
   UpdateAgendaItemRequest,
   UpdateSyndicateLotRequest,
@@ -153,6 +154,7 @@ export async function updateSyndicate(
     fiscalYear: data.fiscalYear,
     syndicManagerId: data.syndicManagerId === '' ? null : data.syndicManagerId,
     status: data.status,
+    ...(data.totalGeneralShares !== undefined ? { totalGeneralShares: data.totalGeneralShares } : {}),
     ...(data.mandatingAgencyId !== undefined ? { mandatingAgencyId: data.mandatingAgencyId } : {})
   };
 
@@ -181,7 +183,7 @@ export async function createSyndicateLot(
   tenantId: string,
   syndicId: string,
   data: CreateSyndicateLotRequest
-): Promise<SyndicateLot> {
+): Promise<SyndicateLotWithWarnings> {
   const payload = {
     propertyId: data.propertyId || undefined,
     coownerId: data.ownerContactId || undefined,
@@ -193,11 +195,11 @@ export async function createSyndicateLot(
     ownerSince: data.ownerSince || undefined
   };
 
-  const response = await apiClient.post<{ success: boolean; data: SyndicateLot }>(
+  const response = await apiClient.post<{ success: boolean; data: SyndicateLot; warnings?: string[] }>(
     `/tenants/${tenantId}/syndics/${syndicId}/lots`,
     payload
   );
-  return response.data.data;
+  return { ...response.data.data, warnings: response.data.warnings };
 }
 
 export async function updateSyndicateLot(
@@ -205,7 +207,7 @@ export async function updateSyndicateLot(
   syndicId: string,
   lotId: string,
   data: UpdateSyndicateLotRequest
-): Promise<SyndicateLot> {
+): Promise<SyndicateLotWithWarnings> {
   const payload = {
     propertyId: data.propertyId === '' ? null : data.propertyId,
     coownerId: data.ownerContactId === '' ? null : data.ownerContactId,
@@ -217,11 +219,11 @@ export async function updateSyndicateLot(
     ownerSince: data.ownerSince
   };
 
-  const response = await apiClient.patch<{ success: boolean; data: SyndicateLot }>(
+  const response = await apiClient.patch<{ success: boolean; data: SyndicateLot; warnings?: string[] }>(
     `/tenants/${tenantId}/syndics/${syndicId}/lots/${lotId}`,
     payload
   );
-  return response.data.data;
+  return { ...response.data.data, warnings: response.data.warnings };
 }
 
 /**
@@ -255,6 +257,16 @@ export async function addLotTenantAssignment(
     data
   );
   return response.data.data;
+}
+
+/** Met fin à une affectation locataire (isActive false, date de fin = aujourd'hui) ; l'historique est conservé. */
+export async function deactivateLotTenantAssignment(
+  tenantId: string,
+  syndicId: string,
+  lotId: string,
+  assignmentId: string
+): Promise<void> {
+  await apiClient.delete(`/tenants/${tenantId}/syndics/${syndicId}/lots/${lotId}/tenants/${assignmentId}`);
 }
 
 export async function listChargeCalls(

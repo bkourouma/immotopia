@@ -103,7 +103,12 @@ vi.mock('antd', async () => {
     ) : null;
 
   const antdMock: Record<string, unknown> = {
-    Alert: passthrough(),
+    Alert: ({ message, description }: any) => (
+      <div>
+        {message}
+        {description}
+      </div>
+    ),
     Button: passthrough('button'),
     Card: passthrough(),
     Col: passthrough(),
@@ -115,6 +120,18 @@ vi.mock('antd', async () => {
     Row: passthrough(),
     Select: SelectComp,
     Space: passthrough(),
+    Switch: ({ checked, onChange, ...props }: any) => (
+      <input type="checkbox" role="switch" checked={checked} onChange={e => onChange?.(e.target.checked)} {...props} />
+    ),
+    // Affiche la confirmation comme un bouton « ok : titre » pour pouvoir la valider dans le test.
+    Popconfirm: ({ children, title, onConfirm }: any) => (
+      <span>
+        {children}
+        <button type="button" onClick={onConfirm}>
+          {`ok : ${title}`}
+        </button>
+      </span>
+    ),
     Spin: passthrough(),
     Table,
     Tag: passthrough('span'),
@@ -298,5 +315,176 @@ describe('SyndicLots — formulaire de lot', () => {
     expect(propertySelect).toBeTruthy();
     expect(propertySelect?.textContent).toContain('Villa Bel Air');
     expect(propertySelect?.textContent).not.toContain('Awa Traoré');
+  });
+});
+
+describe('LotTable — désactiver, réactiver, locataires', () => {
+  const baseLot = (overrides: Partial<SyndicateLot>): SyndicateLot =>
+    ({
+      id: 'lot-1',
+      syndicateId: 'syndic-1',
+      propertyId: null,
+      ownerContactId: null,
+      coowner: null,
+      lotNumber: 'A-101',
+      lotType: 'APARTMENT',
+      generalShares: 100,
+      specialShares: null,
+      ownerSince: null,
+      tenantAssignments: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ...overrides
+    }) as unknown as SyndicateLot;
+
+  it('propose « Désactiver » sur un lot actif et confirme avant d’appeler le rappel', () => {
+    const onDeactivate = vi.fn();
+    const onReactivate = vi.fn();
+    render(<LotTable lots={[baseLot({})]} onDeactivate={onDeactivate} onReactivate={onReactivate} />);
+
+    expect(screen.queryByText('Réactiver')).toBeNull();
+    fireEvent.click(screen.getByText('ok : Désactiver ce lot ?'));
+    expect(onDeactivate).toHaveBeenCalledTimes(1);
+    expect(onReactivate).not.toHaveBeenCalled();
+  });
+
+  it('propose « Réactiver » sur un lot inactif (tantièmes à 0), sans « Désactiver »', () => {
+    const onDeactivate = vi.fn();
+    const onReactivate = vi.fn();
+    const lot = baseLot({ generalShares: 0 });
+    render(<LotTable lots={[lot]} onDeactivate={onDeactivate} onReactivate={onReactivate} />);
+
+    expect(screen.queryByText('ok : Désactiver ce lot ?')).toBeNull();
+    fireEvent.click(screen.getByText('Réactiver'));
+    expect(onReactivate).toHaveBeenCalledWith(lot);
+  });
+
+  it('fusionne affectations et profils locataires sans doublon et permet de mettre fin à une affectation', () => {
+    const onEnd = vi.fn();
+    const assignment = {
+      id: 'ta-1',
+      tenantId: 'c-1',
+      startDate: '2026-01-01',
+      isActive: true,
+      contact: { id: 'c-1', firstName: 'Awa', lastName: 'Koné' }
+    };
+    const lot = baseLot({
+      tenantAssignments: [assignment],
+      tenantProfiles: [
+        {
+          id: 'tp-1',
+          contactId: 'c-1',
+          isCurrent: true,
+          tenantSince: '2026-01-01',
+          contact: { id: 'c-1', firstName: 'Awa', lastName: 'Koné' }
+        },
+        {
+          id: 'tp-2',
+          contactId: 'c-2',
+          isCurrent: true,
+          tenantSince: '2026-02-01',
+          contact: { id: 'c-2', firstName: 'Ibrahim', lastName: 'Sy' }
+        }
+      ]
+    });
+    render(<LotTable lots={[lot]} onEndTenantAssignment={onEnd} />);
+
+    expect(screen.getAllByText('Awa Koné')).toHaveLength(1);
+    expect(screen.getByText('Ibrahim Sy')).toBeTruthy();
+    // Un seul « Mettre fin » : l'affectation, pas le profil.
+    fireEvent.click(screen.getByText("ok : Mettre fin à l'affectation de ce locataire ?"));
+    expect(onEnd).toHaveBeenCalledWith(lot, assignment);
+  });
+
+  it('affiche « Non renseigné » dans la colonne Locataire sans affectation ni profil', () => {
+    render(<LotTable lots={[baseLot({})]} />);
+    expect(screen.getAllByText('Non renseigné').length).toBeGreaterThan(0);
+  });
+});
+
+describe('SyndicLots — total de référence des tantièmes', () => {
+  function mockApi(reference: number | null, shares: number[]) {
+    mockApiClient.get.mockImplementation((url: string) => {
+      if (url === '/tenants/tenant-1/syndics/syndic-1') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: {
+              id: 'syndic-1',
+              tenantId: 'tenant-1',
+              name: 'Résidence Les Palmiers',
+              status: 'ACTIVE',
+              totalLots: shares.length,
+              totalBuildings: 0,
+              totalGeneralShares: reference,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            }
+          }
+        });
+      }
+      if (url === '/tenants/tenant-1/syndics/syndic-1/lots') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: shares.map((generalShares, index) => ({
+              id: `lot-${index}`,
+              syndicateId: 'syndic-1',
+              lotNumber: `L${index}`,
+              lotType: 'APARTMENT',
+              generalShares,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            }))
+          }
+        });
+      }
+      if (url.startsWith('/tenants/tenant-1/properties')) {
+        return Promise.resolve({
+          data: { success: true, data: [], pagination: { page: 1, limit: 200, total: 0, totalPages: 0 } }
+        });
+      }
+      if (url.includes('/crm/contacts')) {
+        return Promise.resolve({
+          data: { success: true, contacts: [], pagination: { page: 1, limit: 200, total: 0, totalPages: 0 } }
+        });
+      }
+      return Promise.reject(new Error(`GET non prévu par le test : ${url}`));
+    });
+  }
+
+  function renderPage() {
+    return render(
+      <AuthContext.Provider value={authValue}>
+        <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/lots']}>
+          <Routes>
+            <Route path="/tenant/:tenantId/syndics/:syndicId/lots" element={<SyndicLots />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>
+    );
+  }
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('avertit, sans bloquer, quand la somme des tantièmes diffère du total de référence', async () => {
+    mockApi(1000, [400, 500]);
+    renderPage();
+    expect(await screen.findByText('La somme des tantièmes (900) diffère du total de référence (1000).')).toBeTruthy();
+    expect(screen.getByText('Total de référence des tantièmes')).toBeTruthy();
+  });
+
+  it("n'affiche aucune alerte sans total de référence ou quand la somme correspond", async () => {
+    mockApi(null, [400, 500]);
+    const first = renderPage();
+    await screen.findByText('Nombre de lots');
+    expect(screen.queryByText(/diffère du total de référence/)).toBeNull();
+    expect(screen.queryByText('Total de référence des tantièmes')).toBeNull();
+    first.unmount();
+
+    mockApi(900, [400, 500]);
+    renderPage();
+    await screen.findByText('Total de référence des tantièmes');
+    expect(screen.queryByText(/diffère du total de référence/)).toBeNull();
   });
 });

@@ -125,6 +125,7 @@ interface EditSyndicateFormValues {
   address: string;
   registrationNo?: string;
   cadastralReference?: string;
+  totalGeneralShares?: number | null;
   fiscalYear?: number;
   syndicManagerId?: string;
   status?: Syndicate['status'];
@@ -326,6 +327,7 @@ export const SyndicDetail: React.FC = () => {
       address: syndicate.address,
       registrationNo: syndicate.registrationNo ?? undefined,
       cadastralReference: syndicate.cadastralReference ?? undefined,
+      totalGeneralShares: syndicate.totalGeneralShares ?? undefined,
       fiscalYear: syndicate.fiscalYear ?? undefined,
       syndicManagerId: syndicate.syndicManagerId ?? undefined,
       status: syndicate.status,
@@ -353,6 +355,7 @@ export const SyndicDetail: React.FC = () => {
         address: values.address,
         registrationNo: values.registrationNo || null,
         cadastralReference: values.cadastralReference || null,
+        totalGeneralShares: values.totalGeneralShares ?? null,
         fiscalYear: values.fiscalYear,
         syndicManagerId: values.syndicManagerId || null,
         status: values.status,
@@ -537,6 +540,11 @@ export const SyndicDetail: React.FC = () => {
           <Descriptions.Item label={t('Référence cadastrale')}>
             {syndicate.cadastralReference || t('Non renseignée')}
           </Descriptions.Item>
+          {syndicate.totalGeneralShares != null ? (
+            <Descriptions.Item label={t('Total de référence des tantièmes')}>
+              {syndicate.totalGeneralShares}
+            </Descriptions.Item>
+          ) : null}
           <Descriptions.Item label={t('Exercice')}>{syndicate.fiscalYear ?? t('Non renseigné')}</Descriptions.Item>
           <Descriptions.Item label={t('Agence mandante')}>
             {syndicate.mandatingAgency?.name || t('Identité de l’agence')}
@@ -595,6 +603,13 @@ export const SyndicDetail: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Référence cadastrale')} name="cadastralReference">
             <Input />
+          </Form.Item>
+          <Form.Item
+            label={t('Total de référence des tantièmes')}
+            name="totalGeneralShares"
+            extra={t('Facultatif. Sert à avertir si la somme des tantièmes des lots diffère.')}
+          >
+            <InputNumber min={1} precision={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item label={t('Exercice')} name="fiscalYear">
             <InputNumber min={1} max={12} style={{ width: '100%' }} />
