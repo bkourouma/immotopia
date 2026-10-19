@@ -39,6 +39,7 @@ export async function sendSyndicDirectDebitRejectionNotice(
       where: { id: lineId, tenantId, remittance: { scope: 'SYNDIC_LOT' } },
       select: {
         amount: true,
+        debtorContactId: true,
         rejectionCode: true,
         rejectionReason: true,
         mandate: { select: { year: true, sequence: true, ibanLast4: true } },
@@ -88,7 +89,11 @@ export async function sendSyndicDirectDebitRejectionNotice(
         templateOverrides:
           config.subjectOverride || config.bodyHtmlOverride
             ? { subject: config.subjectOverride, bodyHtml: config.bodyHtmlOverride }
-            : undefined
+            : undefined,
+        journal: {
+          recipient: { email: to, ...(line.debtorContactId ? { contactId: line.debtorContactId } : {}) },
+          relatedEntity: { type: 'DirectDebit', id: lineId }
+        }
       }
     );
     return 'SENT';

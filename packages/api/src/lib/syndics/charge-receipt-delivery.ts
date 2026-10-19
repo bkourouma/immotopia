@@ -258,12 +258,20 @@ export async function sendReceiptEmail(
     const pdf = await ensureReceiptPdf(receipt, context);
     const vars = receiptTemplateVars(snapshotOf(receipt));
     const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[key];
+    const subject = applyReceiptTemplate(config.subjectOverride || defaults.subject, vars, false);
     await emailService.sendEmail({
       to,
       tenantId: receipt.tenantId,
-      subject: applyReceiptTemplate(config.subjectOverride || defaults.subject, vars, false),
+      subject,
       html: applyReceiptTemplate(config.bodyHtmlOverride || defaults.bodyHtml, vars, true),
-      attachments: [{ filename: receiptDownloadName(receipt), content: pdf, contentType: 'application/pdf' }]
+      attachments: [{ filename: receiptDownloadName(receipt), content: pdf, contentType: 'application/pdf' }],
+      journal: {
+        key,
+        title: subject,
+        body: subject,
+        recipient: { email: to, ...(receipt.contactId ? { contactId: receipt.contactId } : {}) },
+        relatedEntity: { type: 'ChargeReceipt', id: receipt.id }
+      }
     });
     await prisma.syndicChargeReceipt.updateMany({
       where: { id: receipt.id, tenantId: receipt.tenantId },

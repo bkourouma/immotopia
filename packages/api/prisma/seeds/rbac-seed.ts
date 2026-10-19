@@ -9,6 +9,7 @@ import { seedStockPermissions } from './stock-permissions-seed';
 import { seedSiteManagerRole } from './site-manager-role-seed';
 import { seedSyndicPermissions } from './syndic-permissions-seed';
 import { seedAuditPermissions } from './audit-permissions-seed';
+import { seedNotificationsPermissions } from './notifications-permissions-seed';
 
 const prisma = new PrismaClient();
 
@@ -137,6 +138,9 @@ async function seedRBAC() {
   // Journal d'activite de l'agence (ADR-006) : cree la permission AVANT que
   // TENANT_ADMIN ne recoive ses droits `TENANT_*` ci-dessous.
   await seedAuditPermissions();
+
+  // Menu lot 3 : journal des notifications de l'agence (admin et gestionnaire).
+  await seedNotificationsPermissions();
 
   // Assign all permissions to PLATFORM_SUPER_ADMIN
   console.log('  Assigning permissions to PLATFORM_SUPER_ADMIN...');
