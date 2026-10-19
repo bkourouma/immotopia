@@ -630,6 +630,9 @@ export interface PaymentReminder {
   sentAt: string;
   status: ReminderStatus;
   responseAction?: string | null;
+  /** Cause de l'échec d'envoi (statut Échec) : code technique et message brut. */
+  failureCode?: string | null;
+  failureMessage?: string | null;
   createdAt: string;
   updatedAt: string;
   chargeCall?: ChargeCall;
@@ -650,6 +653,40 @@ export interface ReminderBatchResult {
   createdReminderIds: string[];
   /** Relances enregistrées dont l'envoi a échoué (statut Échec). */
   notificationsFailed?: number;
+  /** Échecs d'envoi regroupés par code de cause. */
+  failuresByCause?: Record<string, number>;
+  /** Appels écartés du lot, avec leur motif. */
+  excluded?: ReminderBatchExcluded[];
+  excludedByReason?: Record<string, number>;
+}
+
+export type ReminderBatchExclusionReason = 'PAYMENT_PLAN_ACTIVE' | 'REMINDER_TOO_RECENT' | 'DECLARED_PAYMENT_PENDING';
+
+export interface ReminderBatchExcluded {
+  chargeCallId: string;
+  lotNumber: string;
+  period: string;
+  reason: ReminderBatchExclusionReason | string;
+  reasonLabel?: string;
+}
+
+export interface ReminderBatchEligible {
+  chargeCallId: string;
+  lotNumber: string;
+  period: string;
+  dueDate: string;
+  outstanding: number | string;
+  currency?: string;
+  currentLevel: number;
+  nextLevel: number;
+  lastReminderAt: string | null;
+}
+
+/** Aperçu des relances groupées : ce qui partirait, et ce qui est écarté. */
+export interface ReminderBatchPreview {
+  eligible: ReminderBatchEligible[];
+  excluded: ReminderBatchExcluded[];
+  totals: { eligible: number; excluded: number };
 }
 
 export interface LatePaymentPenalty {
@@ -1586,6 +1623,12 @@ export interface ChargeSchedulePreviewPeriod extends ChargeSchedulePeriodDates {
   budgetId: string | null;
   lots: ChargeSchedulePreviewLot[];
   error: string | null;
+  /** L'échéance théorique serait déjà passée à l'émission (additif, absent des anciennes réponses). */
+  dueDatePassed?: boolean;
+  /** Échéance effective ISO (AAAA-MM-JJ), seulement si elle est décalée. */
+  effectiveDueDate?: string | null;
+  /** Avertissements en français rédigés par le serveur : non affichés, le front reconstruit via t(). */
+  warnings?: string[];
 }
 
 export interface ChargeSchedulePreview {

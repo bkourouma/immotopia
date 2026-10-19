@@ -288,11 +288,13 @@ describe('Syndics recovery routes', () => {
     expect(response.status).toBe(201);
     expect(response.body.notificationFailed).toBe(true);
     expect(response.body.data.status).toBe('FAILED');
+    expect(response.body).toMatchObject({ failureCode: 'ERROR', failureMessage: "L'envoi de l'e-mail a échoué." });
+    expect(response.body.data.failureCode).toBe('ERROR');
     expect(JSON.stringify(response.body)).not.toContain('554');
     expect(updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ id: response.body.data.id }),
-        data: { status: 'FAILED' }
+        data: { status: 'FAILED', failureCode: 'ERROR', failureMessage: "L'envoi de l'e-mail a échoué." }
       })
     );
     updateMany.mockRestore();

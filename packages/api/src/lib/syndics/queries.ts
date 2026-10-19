@@ -3129,10 +3129,29 @@ export async function createManualReminderForChargeCall(
   };
 }
 
-export async function runReminderBatchForSyndicate(tenantId: string, syndicateId: string) {
-  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+export type ReminderBatchExclusionReason = 'PAYMENT_PLAN_ACTIVE' | 'REMINDER_TOO_RECENT' | 'DECLARED_PAYMENT_PENDING';
 
-  const now = new Date();
+/** Délai par défaut (jours) entre deux relances non échouées quand la copropriété n'a pas de ReminderConfig. */
+const DEFAULT_REMINDER_DELAY_DAYS = 7;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function reminderExclusionLabel(reason: ReminderBatchExclusionReason): string {
+  switch (reason) {
+    case 'PAYMENT_PLAN_ACTIVE':
+      return t('plan de paiement actif');
+    case 'REMINDER_TOO_RECENT':
+      return t('relance trop récente');
+    case 'DECLARED_PAYMENT_PENDING':
+      return t('paiement déclaré en cours de vérification');
+  }
+}
+
+/**
+ * Sélection commune de l'aperçu et de l'exécution des relances groupées : les deux
+ * donnent exactement les mêmes appels éligibles et les mêmes exclusions.
+ * Ne crée rien. Les appels déjà soldés sont ignorés sans motif (comme avant).
+ */
+async function selectReminderBatch(tenantId: string, syndicateId: string, now: Date) {
   const dueCalls = await prisma.chargeCall.findMany({
     where: {
       syndicateId,
@@ -3142,61 +3161,172 @@ export async function runReminderBatchForSyndicate(tenantId: string, syndicateId
       status: { in: ['PENDING', 'PARTIAL', 'OVERDUE'] }
     },
     include: {
-      allocations: { select: { amount: true } }
+      allocations: { select: { amount: true } },
+      lot: { select: { lotNumber: true } }
     }
   });
 
+  const callIds = dueCalls.map(call => call.id);
+  const lotIds = Array.from(new Set(dueCalls.map(call => call.lotId)));
+
   // Spec 047 (D7) : un appel visé par une déclaration de paiement mobile money en attente depuis
   // moins de N jours ouvrés n'est pas relancé (le copropriétaire a déjà payé, la vérification suit).
-  const declaredByCall = await pendingDeclarationsByCall(
-    tenantId,
-    Array.from(new Set(dueCalls.map(call => call.lotId)))
-  );
+  const declaredByCall = await pendingDeclarationsByCall(tenantId, lotIds);
   const reviewDays =
     declaredByCall.size > 0
       ? (await getDeclaredPaymentRules(prisma, tenantId, syndicateId)).reviewAlertBusinessDays
       : 0;
 
-  return prisma.$transaction(async tx => {
-    let created = 0;
-    const createdReminderIds: string[] = [];
+  const [reminders, activeSchedules, configs] =
+    dueCalls.length === 0
+      ? [[], [], []]
+      : await Promise.all([
+          prisma.paymentReminder.findMany({
+            where: { chargeCallId: { in: callIds } },
+            select: { chargeCallId: true, status: true, sentAt: true }
+          }),
+          prisma.paymentSchedule.findMany({
+            where: { lotId: { in: lotIds }, status: 'ACTIVE', lot: { syndicate: { tenantId } } },
+            select: { lotId: true }
+          }),
+          prisma.reminderConfig.findMany({
+            where: { syndicateId, syndicate: { tenantId } },
+            select: { level: true, delayDays: true }
+          })
+        ]);
 
-    for (const call of dueCalls) {
-      // Un appel entierement couvert (paiement ou avance imputee) n'est jamais relance.
-      const paid = paidFromAllocations(call.allocations);
-      const outstanding = computeOutstanding(Number(call.amount), paid);
-      if (outstanding <= 0) {
-        continue;
-      }
+  const lotsWithPlan = new Set(activeSchedules.map(schedule => schedule.lotId));
+  const delayByLevel = new Map(configs.map(config => [config.level, config.delayDays]));
+  const remindersByCall = new Map<string, Array<{ status: string; sentAt: Date }>>();
+  for (const reminder of reminders) {
+    const list = remindersByCall.get(reminder.chargeCallId) ?? [];
+    list.push({ status: reminder.status, sentAt: reminder.sentAt });
+    remindersByCall.set(reminder.chargeCallId, list);
+  }
 
-      const declared = declaredByCall.get(call.id);
-      if (declared && !isDeclarationReviewOverdue(declared.createdAt, reviewDays, now)) {
-        continue;
-      }
+  const eligible: Array<{
+    chargeCallId: string;
+    lotId: string;
+    lotNumber: string;
+    period: string;
+    dueDate: Date;
+    outstanding: number;
+    currency: string;
+    currentLevel: number;
+    nextLevel: number;
+    lastReminderAt: Date | null;
+  }> = [];
+  const excluded: Array<{
+    chargeCallId: string;
+    lotNumber: string;
+    period: string;
+    reason: ReminderBatchExclusionReason;
+    reasonLabel: string;
+  }> = [];
 
-      const existingCount = await tx.paymentReminder.count({
-        where: { chargeCallId: call.id }
+  for (const call of dueCalls) {
+    // Un appel entierement couvert (paiement ou avance imputee) n'est jamais relance.
+    const outstanding = computeOutstanding(Number(call.amount), paidFromAllocations(call.allocations));
+    if (outstanding <= 0) continue;
+
+    const exclude = (reason: ReminderBatchExclusionReason) =>
+      excluded.push({
+        chargeCallId: call.id,
+        lotNumber: call.lot.lotNumber,
+        period: call.period,
+        reason,
+        reasonLabel: reminderExclusionLabel(reason)
       });
 
+    if (lotsWithPlan.has(call.lotId)) {
+      exclude('PAYMENT_PLAN_ACTIVE');
+      continue;
+    }
+    const declared = declaredByCall.get(call.id);
+    if (declared && !isDeclarationReviewOverdue(declared.createdAt, reviewDays, now)) {
+      exclude('DECLARED_PAYMENT_PENDING');
+      continue;
+    }
+
+    const existing = remindersByCall.get(call.id) ?? [];
+    const nextLevel = Math.min(existing.length + 1, 4);
+    // Une relance FAILED n'est pas arrivée : elle ne retarde pas la suivante.
+    const delivered = existing.filter(reminder => reminder.status !== 'FAILED');
+    const lastReminderAt = delivered.reduce<Date | null>(
+      (latest, reminder) => (!latest || reminder.sentAt > latest ? reminder.sentAt : latest),
+      null
+    );
+    if (lastReminderAt) {
+      const delayDays = delayByLevel.get(nextLevel) ?? DEFAULT_REMINDER_DELAY_DAYS;
+      if (now.getTime() - lastReminderAt.getTime() < delayDays * MS_PER_DAY) {
+        exclude('REMINDER_TOO_RECENT');
+        continue;
+      }
+    }
+
+    eligible.push({
+      chargeCallId: call.id,
+      lotId: call.lotId,
+      lotNumber: call.lot.lotNumber,
+      period: call.period,
+      dueDate: call.dueDate,
+      outstanding,
+      currency: call.currency,
+      currentLevel: Math.min(existing.length, 4),
+      nextLevel,
+      lastReminderAt
+    });
+  }
+
+  return { processedCalls: dueCalls.length, eligible, excluded };
+}
+
+function countExclusionsByReason(excluded: Array<{ reason: ReminderBatchExclusionReason }>) {
+  const byReason: Record<string, number> = {};
+  for (const item of excluded) byReason[item.reason] = (byReason[item.reason] ?? 0) + 1;
+  return byReason;
+}
+
+/** Aperçu des relances groupées : mêmes règles que l'exécution, ne crée rien. */
+export async function previewReminderBatchForSyndicate(tenantId: string, syndicateId: string) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+  const { eligible, excluded } = await selectReminderBatch(tenantId, syndicateId, new Date());
+  return {
+    eligible: eligible.map(({ lotId: _lotId, ...item }) => item),
+    excluded,
+    totals: { eligible: eligible.length, excluded: excluded.length }
+  };
+}
+
+export async function runReminderBatchForSyndicate(tenantId: string, syndicateId: string) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+
+  const now = new Date();
+  const { processedCalls, eligible, excluded } = await selectReminderBatch(tenantId, syndicateId, now);
+
+  return prisma.$transaction(async tx => {
+    const createdReminderIds: string[] = [];
+
+    for (const item of eligible) {
       const reminder = await tx.paymentReminder.create({
         data: {
-          chargeCallId: call.id,
-          lotId: call.lotId,
-          reminderLevel: Math.min(existingCount + 1, 4),
+          chargeCallId: item.chargeCallId,
+          lotId: item.lotId,
+          reminderLevel: item.nextLevel,
           channel: 'EMAIL',
           sentAt: now,
           status: 'SENT'
         }
       });
-
-      created += 1;
       createdReminderIds.push(reminder.id);
     }
 
     return {
-      processedCalls: dueCalls.length,
-      remindersCreated: created,
-      createdReminderIds
+      processedCalls,
+      remindersCreated: createdReminderIds.length,
+      createdReminderIds,
+      excluded,
+      excludedByReason: countExclusionsByReason(excluded)
     };
   });
 }
