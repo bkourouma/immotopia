@@ -2,6 +2,9 @@ import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from 'pdf-lib';
 import { t, type Language } from '../../i18n';
 import { sha256Hex } from './evidence';
 import { signerChannelLabel, signerRoleLabel } from './labels';
+import { embedUnicodeFonts, isEncodable, safeText, TextFace } from './seal-text';
+
+export { safeText };
 
 /**
  * Scellement du PDF signé (spec 044, SG-R7). À partir du PDF source figé :
@@ -14,11 +17,14 @@ import { signerChannelLabel, signerRoleLabel } from './labels';
  *    `SignatureRequest.signedHash`, il ne peut pas figurer dans le fichier
  *    qu'il décrit).
  *
- * Polices standard (WinAnsi) : le français et l'anglais sont rendus
- * correctement ; l'arabe n'a pas de police embarquée dans cette version, le
- * certificat d'une demande `ar` est donc produit en français. Un caractère hors
- * WinAnsi (nom en alphabet non latin) est remplacé par `?` plutôt que de
- * faire échouer le scellement.
+ * Polices : le texte latin (WinAnsi) reste en Helvetica / Times, comme avant.
+ * Dès qu'un texte saisi (nom, titre…) sort de WinAnsi (arabe, lettres rares),
+ * une police Unicode est embarquée en sous-ensemble et ce texte est mis en forme
+ * (lettres liées, sens droite-à-gauche) : voir `seal-text.ts`. Les libellés du
+ * certificat restent en français ou en anglais (une demande `ar` produit un
+ * certificat français). Un caractère absent des deux polices est remplacé par
+ * `?` plutôt que de faire échouer le scellement ; si la police Unicode est
+ * illisible, le repli est l'ancien comportement (`?` pour le non-latin).
  */
 
 export type SealSigner = {
@@ -61,27 +67,13 @@ function formatUtc(date: Date): string {
   return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 }
 
-/** Remplace les caractères que la police ne sait pas écrire. */
-export function safeText(font: PDFFont, text: string): string {
-  let out = '';
-  for (const ch of text.replace(/[\r\n\t]+/g, ' ')) {
-    try {
-      font.widthOfTextAtSize(ch, 1);
-      out += ch;
-    } catch {
-      out += '?';
-    }
-  }
-  return out;
-}
-
 class Cursor {
   page: PDFPage;
   y: number;
   constructor(
     private doc: PDFDocument,
-    private regular: PDFFont,
-    private bold: PDFFont
+    private regular: TextFace,
+    private bold: TextFace
   ) {
     this.page = doc.addPage(A4);
     this.y = A4[1] - MARGIN;
@@ -96,7 +88,7 @@ class Cursor {
 
   heading(text: string, size = 18): void {
     this.ensure(size + 10);
-    this.page.drawText(safeText(this.bold, text), { x: MARGIN, y: this.y - size, size, font: this.bold, color: INK });
+    this.bold.draw(this.page, text, { x: MARGIN, y: this.y - size, size, color: INK });
     this.y -= size + 10;
   }
 
@@ -114,14 +106,14 @@ class Cursor {
   /** Paragraphe retourné à la ligne ; `label` en gras devant la valeur. */
   field(label: string, value: string, size = 9.5): void {
     const maxWidth = A4[0] - 2 * MARGIN;
-    const labelText = `${safeText(this.bold, label)} `;
-    const words = safeText(this.regular, value).split(' ');
+    const labelText = `${this.bold.clean(label)} `;
+    const words = this.regular.clean(value).split(' ');
     const lines: string[] = [];
     let current = '';
-    const labelWidth = this.bold.widthOfTextAtSize(labelText, size);
+    const labelWidth = this.bold.width(labelText, size);
     for (const word of words) {
       const candidate = current ? `${current} ${word}` : word;
-      const width = this.regular.widthOfTextAtSize(candidate, size) + (lines.length === 0 ? labelWidth : 0);
+      const width = this.regular.width(candidate, size) + (lines.length === 0 ? labelWidth : 0);
       if (width > maxWidth && current) {
         lines.push(current);
         current = word;
@@ -134,10 +126,10 @@ class Cursor {
     lines.forEach((line, index) => {
       let x = MARGIN;
       if (index === 0) {
-        this.page.drawText(labelText, { x, y: this.y - size, size, font: this.bold, color: MUTED });
+        this.bold.draw(this.page, labelText, { x, y: this.y - size, size, color: MUTED });
         x += labelWidth;
       }
-      this.page.drawText(line, { x, y: this.y - size, size, font: this.regular, color: INK });
+      this.regular.draw(this.page, line, { x, y: this.y - size, size, color: INK });
       this.y -= size + 3;
     });
     this.y -= 2;
@@ -154,7 +146,7 @@ class Cursor {
 
 async function drawSignaturesPage(
   doc: PDFDocument,
-  fonts: { regular: PDFFont; bold: PDFFont; script: PDFFont },
+  fonts: { regular: TextFace; bold: TextFace; script: TextFace },
   input: SealInput,
   lang: Language
 ): Promise<void> {
@@ -173,34 +165,23 @@ async function drawSignaturesPage(
       borderColor: RULE,
       borderWidth: 0.8
     });
-    cursor.page.drawText(safeText(fonts.bold, signer.fullName), {
+    fonts.bold.draw(cursor.page, signer.fullName, { x: MARGIN + 10, y: top - 18, size: 11, color: INK });
+    fonts.regular.draw(cursor.page, `${signerRoleLabel(signer.role, lang)} — ${formatUtc(signer.signedAt)}`, {
       x: MARGIN + 10,
-      y: top - 18,
-      size: 11,
-      font: fonts.bold,
-      color: INK
+      y: top - 32,
+      size: 9,
+      color: MUTED
     });
-    cursor.page.drawText(
-      safeText(fonts.regular, `${signerRoleLabel(signer.role, lang)} — ${formatUtc(signer.signedAt)}`),
-      {
-        x: MARGIN + 10,
-        y: top - 32,
-        size: 9,
-        font: fonts.regular,
-        color: MUTED
-      }
-    );
     // Un dessin illisible ne bloque jamais le scellement : repli sur le nom saisi.
     const image = signer.mode === 'DRAWN' && signer.png ? await doc.embedPng(signer.png).catch(() => null) : null;
     if (image) {
       const scaled = image.scaleToFit(220, 54);
       cursor.page.drawImage(image, { x: MARGIN + 10, y: top - 92 + (54 - scaled.height) / 2, ...scaled });
     } else {
-      cursor.page.drawText(safeText(fonts.script, signer.typed ?? signer.fullName), {
+      fonts.script.draw(cursor.page, signer.typed ?? signer.fullName, {
         x: MARGIN + 10,
         y: top - 76,
         size: 24,
-        font: fonts.script,
         color: rgb(0.05, 0.15, 0.45)
       });
     }
@@ -210,7 +191,7 @@ async function drawSignaturesPage(
 
 function drawCertificate(
   doc: PDFDocument,
-  fonts: { regular: PDFFont; bold: PDFFont },
+  fonts: { regular: TextFace; bold: TextFace },
   input: SealInput,
   lang: Language
 ): void {
@@ -260,15 +241,30 @@ function drawCertificate(
   );
 }
 
+/** Vrai si un texte venu de l'utilisateur (titre, signataires) ne tient pas en WinAnsi. */
+function needsUnicodeFont(standard: PDFFont, input: SealInput): boolean {
+  const texts = [input.title, input.requestId];
+  for (const signer of input.signers) {
+    texts.push(signer.fullName, signer.role, signer.channel, signer.typed ?? '', signer.ipTruncated ?? '');
+  }
+  return texts.some(text => !isEncodable(standard, text.replace(/[\r\n\t]+/g, ' ')));
+}
+
 /** Scelle le PDF source : pages « Signatures » et « Certificat » ajoutées, SHA-256 final calculé. */
 export async function sealSignedPdf(input: SealInput): Promise<SealResult> {
   const doc = await PDFDocument.load(input.sourcePdf, { ignoreEncryption: false });
   doc.setProducer('ImmoTopia');
   doc.setModificationDate(input.sealedAt);
+  const helvetica = await doc.embedFont(StandardFonts.Helvetica);
+  const helveticaBold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const timesItalic = await doc.embedFont(StandardFonts.TimesRomanItalic);
+  // La police Unicode n'est embarquée que si un texte saisi sort de WinAnsi :
+  // un PDF 100 % latin reste identique à avant (aucun octet de police en plus).
+  const unicode = needsUnicodeFont(helvetica, input) ? await embedUnicodeFonts(doc) : null;
   const fonts = {
-    regular: await doc.embedFont(StandardFonts.Helvetica),
-    bold: await doc.embedFont(StandardFonts.HelveticaBold),
-    script: await doc.embedFont(StandardFonts.TimesRomanItalic)
+    regular: new TextFace(helvetica, unicode?.regular ?? null),
+    bold: new TextFace(helveticaBold, unicode?.bold ?? null),
+    script: new TextFace(timesItalic, unicode?.regular ?? null)
   };
   const lang = certificateLanguage(input.language);
   await drawSignaturesPage(doc, fonts, input, lang);
