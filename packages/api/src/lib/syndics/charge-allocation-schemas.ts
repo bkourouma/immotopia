@@ -51,13 +51,22 @@ export function checkPeriodBounds(
   }
 }
 
+export const idempotencyKeySchema = z
+  .string()
+  .trim()
+  .min(8)
+  .max(100)
+  .regex(/^[A-Za-z0-9_.:-]+$/);
+
 export const lotPaymentSchema = z
   .object({
     amount: z.number().positive().max(9_999_999_999.99),
     paidAt: z.coerce.date(),
     method: z.string().trim().min(1).max(50),
     reference: z.string().trim().max(120).optional().nullable(),
-    chargeCallIds: z.array(z.string().uuid()).max(120).optional()
+    chargeCallIds: z.array(z.string().uuid()).max(120).optional(),
+    /** Cle d'idempotence du client (un rejeu renvoie le paiement deja enregistre). */
+    idempotencyKey: idempotencyKeySchema.optional()
   })
   .strict();
 
