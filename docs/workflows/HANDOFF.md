@@ -18,6 +18,17 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `fix/invitation-session-autre-compte` — 2026-10-19
+
+**État :** PR #175 ouverte vers main, CI en cours ; à fusionner par l’utilisateur, puis déployer staging puis production (workflow « Déploiement »).
+**Dernier commit :** `85fb27f0`.
+
+**Fait :** acceptation d’une invitation avec la session d’un autre compte : 409 `INVITATION_FOR_ANOTHER_ACCOUNT` (adresse masquée, avant toute écriture) ; page « Se déconnecter et continuer » ; `logout({ redirectTo })`. Relecture OK, audit sécurité sans point critique/élevé/moyen.
+
+**Reste à faire :** rejouer le parcours dans un navigateur après déploiement. Contournement en attendant : ouvrir le lien en navigation privée.
+
+**Pièges :** les `node_modules` du checkout principal n’ont pas les dépendances LiveKit de main (typecheck web et `routes-inventory` en échec en local, sans rapport) ; client Prisma régénéré le 2026-10-19 depuis le schéma de main.
+
 ## Recette Syndic du 18/10 — fusionnée et déployée (2026-10-18)
 
 **État :** correctifs de la recette Syndic du 18/10 fusionnés dans le tronc (PR #172, commit `0d918d30`) et déployés sur le staging le 2026-10-18 vers 23 h (workflow « Déploiement », run 39174199627, vérifié : `/health` OK et textes des correctifs présents dans les fichiers servis). Production non déployée.
