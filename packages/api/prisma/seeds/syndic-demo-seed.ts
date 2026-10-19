@@ -5652,6 +5652,28 @@ async function seedCopro(
   await prisma.$transaction(
     async tx => {
       await tx.maintenanceTicket.deleteMany({ where: { tenant_id: TENANT_ID, property_id: def.property.id } });
+      // Relations Restrict : enfants avant parents. Lignes de remise (elles pointent
+      // mandats, lots et paiements de charges), puis mandats, remises, imports de
+      // retours et créanciers ; déclarations de paiement (lignes puis déclarations),
+      // encaissements en ligne, paiements, appels et comptes propriétaires ; lignes
+      // d'écriture puis comptes de trésorerie adossés au plan comptable de la
+      // copropriété ; seulement ensuite les lots et la copropriété.
+      const duSyndic = { syndicate: { id: def.id, tenantId: TENANT_ID } };
+      await tx.directDebitRemittanceLine.deleteMany({
+        where: { OR: [{ mandate: duSyndic }, { lot: duSyndic }, { chargePayment: { lot: duSyndic } }] }
+      });
+      await tx.directDebitMandate.deleteMany({ where: duSyndic });
+      await tx.directDebitRemittance.deleteMany({ where: duSyndic });
+      await tx.directDebitReturnImport.deleteMany({ where: duSyndic });
+      await tx.directDebitCreditor.deleteMany({ where: duSyndic });
+      await tx.syndicPaymentDeclarationLine.deleteMany({ where: { lot: duSyndic } });
+      await tx.syndicPaymentDeclaration.deleteMany({ where: { syndicateId: def.id, tenantId: TENANT_ID } });
+      await tx.syndicOnlineCheckout.deleteMany({ where: { syndicateId: def.id, tenantId: TENANT_ID } });
+      await tx.chargePayment.deleteMany({ where: { lot: duSyndic } });
+      await tx.chargeCall.deleteMany({ where: duSyndic });
+      await tx.ownerAccount.deleteMany({ where: duSyndic });
+      await tx.journalEntryLine.deleteMany({ where: { account: { syndicateId: def.id, tenantId: TENANT_ID } } });
+      await tx.treasuryAccount.deleteMany({ where: { tenantId: TENANT_ID, chartOfAccount: { syndicateId: def.id } } });
       await tx.syndicate.deleteMany({ where: { id: def.id, tenantId: TENANT_ID } });
 
       await tx.syndicate.create({
