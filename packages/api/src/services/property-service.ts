@@ -298,7 +298,7 @@ export async function createProperty(
             transactionModes: data.transactionModes,
             price: data.price || null,
             fees: data.fees || null,
-            currency: data.currency || 'EUR',
+            currency: data.currency || 'XOF',
             surfaceArea: data.surfaceArea || null,
             surfaceUseful: data.surfaceUseful || null,
             surfaceTerrain: data.surfaceTerrain || null,
