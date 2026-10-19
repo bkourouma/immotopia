@@ -485,6 +485,8 @@ model User {
   // New relationships for multi-tenant RBAC
   memberships                 Membership[]
   userRoles                   UserRole[]
+  receivedNotifications       UserNotification[]    @relation("UserNotificationRecipient")
+  conversationParticipations  ConversationParticipant[]
   invitations                 Invitation[]          @relation("InvitedBy")
   acceptedInvitations         Invitation[]          @relation("AcceptedBy")
   createdSecureLinks          SecureLink[]          @relation("SecureLinkCreatedBy")
@@ -649,6 +651,13 @@ model Tenant {
   usageSnapshots      UsageSnapshot[]
   quotaAlerts         QuotaAlert[]
   notificationMarkers NotificationMarker[]
+
+  // Notifications persistantes et messagerie interne (lot 3)
+  userNotifications        UserNotification[]
+  notificationDeliveries   NotificationDelivery[]
+  conversations            Conversation[]
+  conversationParticipants ConversationParticipant[]
+  messages                 Message[]
 
   // CRM relationships
   crmContacts           CrmContact[]
@@ -11092,4 +11101,159 @@ model DirectDebitReturnImport {
   @@index([tenantId, createdAt])
   @@index([tenantId, fileDigest])
   @@map("direct_debit_return_imports")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications persistantes et messagerie interne (menu lot 3)
+// ---------------------------------------------------------------------------
+
+/// Canal d'une notification.
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  WHATSAPP
+  SMS
+}
+
+/// Etat d'une notification (agregat) ou d'un envoi par canal. La lecture n'est
+/// PAS un statut : elle vit dans `UserNotification.readAt`.
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  SKIPPED
+}
+
+enum ConversationKind {
+  DIRECT
+  GROUP
+}
+
+/// Notification adressee a une personne de l'agence (compte ou contact CRM sans
+/// compte). Ecrite AVANT tout envoi : un canal en echec ne l'efface jamais.
+model UserNotification {
+  id                 String             @id @default(uuid())
+  tenantId           String             @map("tenant_id")
+  /// Destinataire ayant un compte. SetNull : le libelle fige reste lisible.
+  recipientUserId    String?            @map("recipient_user_id")
+  /// Destinataire sans compte : identifiant CRM (CrmContact.id), sans relation.
+  recipientContactId String?            @map("recipient_contact_id")
+  /// Libelle du destinataire au moment de l'envoi.
+  recipientLabel     String             @map("recipient_label")
+  /// Cle metier (ex. MAINTENANCE_TICKET_CREATED_TENANT).
+  key                String
+  title              String
+  body               String             @db.Text
+  link               String?
+  /// Agregat des canaux (jamais READ).
+  status             NotificationStatus @default(PENDING)
+  failureReason      String?            @map("failure_reason")
+  readAt             DateTime?          @map("read_at")
+  sentAt             DateTime?          @map("sent_at")
+  /// Qui a declenche l'envoi (User.id, sans relation), pour « envoyees ».
+  senderUserId       String?            @map("sender_user_id")
+  relatedEntityType  String?            @map("related_entity_type")
+  relatedEntityId    String?            @map("related_entity_id")
+  metadata           Json?
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recipientUser User?                  @relation("UserNotificationRecipient", fields: [recipientUserId], references: [id], onDelete: SetNull)
+  deliveries    NotificationDelivery[]
+
+  @@index([tenantId, recipientUserId, readAt, createdAt(sort: Desc)], map: "user_notifications_inbox_idx")
+  @@index([tenantId, createdAt(sort: Desc)], map: "user_notifications_tenant_created_idx")
+  @@index([tenantId, status, createdAt(sort: Desc)], map: "user_notifications_tenant_status_idx")
+  @@index([tenantId, key], map: "user_notifications_tenant_key_idx")
+  @@index([relatedEntityType, relatedEntityId], map: "user_notifications_related_idx")
+  @@map("user_notifications")
+}
+
+/// Envoi d'une notification sur un canal. Une ligne par (notification, canal).
+model NotificationDelivery {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  notificationId    String              @map("notification_id")
+  channel           NotificationChannel
+  status            NotificationStatus  @default(PENDING)
+  /// Adresse e-mail ou numero vise.
+  target            String?
+  failureReason     String?             @map("failure_reason")
+  attempts          Int                 @default(0)
+  lastAttemptAt     DateTime?           @map("last_attempt_at")
+  sentAt            DateTime?           @map("sent_at")
+  deliveredAt       DateTime?           @map("delivered_at")
+  providerMessageId String?             @map("provider_message_id")
+  /// De quoi rejouer l'envoi (gabarit WhatsApp et variables, sujet e-mail...).
+  resendPayload     Json?               @map("resend_payload")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  notification UserNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, channel])
+  @@index([tenantId, status, createdAt(sort: Desc)], map: "notification_deliveries_tenant_status_idx")
+  @@map("notification_deliveries")
+}
+
+/// Fil de messagerie interne : 1-a-1 (deduplique par `directKey`) ou groupe.
+model Conversation {
+  id              String           @id @default(uuid())
+  tenantId        String           @map("tenant_id")
+  kind            ConversationKind
+  title           String?
+  /// Ids tries des deux participants d'un 1-a-1, joints par « : ».
+  directKey       String?          @map("direct_key")
+  createdByUserId String           @map("created_by_user_id")
+  lastMessageAt   DateTime?        @map("last_message_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@unique([tenantId, directKey])
+  @@index([tenantId, lastMessageAt(sort: Desc)], map: "conversations_tenant_last_message_idx")
+  @@map("conversations")
+}
+
+/// Participant : toujours un User de l'agence (membre actif ou client portail).
+model ConversationParticipant {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  conversationId String    @map("conversation_id")
+  userId         String    @map("user_id")
+  lastReadAt     DateTime? @map("last_read_at")
+  joinedAt       DateTime  @default(now()) @map("joined_at")
+  leftAt         DateTime? @map("left_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([tenantId, userId], map: "conversation_participants_tenant_user_idx")
+  @@map("conversation_participants")
+}
+
+/// Message texte d'une conversation (pas de piece jointe dans ce lot).
+model Message {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  conversationId String    @map("conversation_id")
+  /// Auteur (User.id, sans relation : le message survit au compte).
+  authorUserId   String    @map("author_user_id")
+  body           String    @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt(sort: Desc)], map: "messages_conversation_created_idx")
+  @@map("messages")
 }

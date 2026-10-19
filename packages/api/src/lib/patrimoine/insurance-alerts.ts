@@ -144,7 +144,12 @@ async function deliverItem(
         to: recipient.email,
         subject: applyTemplate(config.subjectOverride || defaults.subject, variables),
         html: applyTemplate(config.bodyHtmlOverride || defaults.bodyHtml, bodyVariables),
-        tenantId
+        tenantId,
+        journal: {
+          key: EVENT_KEY,
+          recipient: { email: recipient.email, label: recipient.fullName ?? undefined },
+          relatedEntity: { type: item.kind === 'POLICY' ? 'InsurancePolicy' : 'MaintenanceLogEntry', id: item.id }
+        }
       });
       delivered += 1;
     } catch (error) {

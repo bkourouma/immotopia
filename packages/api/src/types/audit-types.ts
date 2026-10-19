@@ -365,7 +365,10 @@ export enum AuditActionKey {
   ACCESS_DENIED = 'ACCESS_DENIED',
   TENANT_ACCESS_DENIED = 'TENANT_ACCESS_DENIED',
   DOCUMENT_DOWNLOADED = 'DOCUMENT_DOWNLOADED',
-  DATA_EXPORTED = 'DATA_EXPORTED'
+  DATA_EXPORTED = 'DATA_EXPORTED',
+
+  // Journal des notifications (menu lot 3) : relance d'un envoi en echec.
+  NOTIFICATION_RESENT = 'NOTIFICATION_RESENT'
 }
 
 // Audit log entry

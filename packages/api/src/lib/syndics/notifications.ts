@@ -256,6 +256,9 @@ export async function notifyChargeCall(
     ...paymentVars
   };
   const whatsappVars = whatsappPaymentVars(templateVars);
+  // Journal des notifications : corps sans lien de paiement (il porte un jeton).
+  const journalEntity = { type: 'ChargeCall', id: chargeCall.id };
+  const journalBody = `Appel de charges ${chargeCall.period} (${chargeCall.syndicate.name}, lot ${templateVars.lotNumber}) : ${amount} ${chargeCall.currency}, échéance le ${dueDate}.`;
 
   let emailSent = false;
   let whatsappSent = false;
@@ -281,11 +284,20 @@ export async function notifyChargeCall(
         const bodyTpl = emailConfig.bodyHtmlOverride || defaults.bodyHtml;
         const attachments = await resolveAttachments(chargeCallId, options);
         try {
+          const subject = applyTemplate(subjectTpl, templateVars);
           await emailService.sendEmail({
             to: recipient.email,
-            subject: applyTemplate(subjectTpl, templateVars),
+            subject,
             html: stripEmptyPaymentParagraph(applyTemplate(bodyTpl, templateVars, true), paymentVars, bodyTpl),
-            ...(attachments.length > 0 ? { attachments } : {})
+            ...(attachments.length > 0 ? { attachments } : {}),
+            journal: {
+              key: eventKeyEmail,
+              tenantId,
+              title: subject,
+              body: journalBody,
+              recipient: { contactId: recipient.id, email: recipient.email },
+              relatedEntity: journalEntity
+            }
           });
           emailSent = true;
         } catch (error) {
@@ -305,7 +317,8 @@ export async function notifyChargeCall(
     tenantId,
     notificationKey: eventKeyWhatsApp,
     variables: whatsappVars,
-    contactId: recipient.id
+    contactId: recipient.id,
+    journal: { relatedEntity: journalEntity }
   });
   if (!whatsappSent) {
     const directPhone = getOwnerWhatsappTarget(recipient);
@@ -314,7 +327,8 @@ export async function notifyChargeCall(
         tenantId,
         notificationKey: eventKeyWhatsApp,
         variables: whatsappVars,
-        to: directPhone
+        to: directPhone,
+        journal: { recipient: { contactId: recipient.id }, relatedEntity: journalEntity }
       });
     }
   }
@@ -752,6 +766,9 @@ export async function notifyChargeCallReminder(
     ...paymentVars
   };
   const whatsappVars = whatsappPaymentVars(templateVars);
+  // Journal des notifications : corps sans lien de paiement (il porte un jeton).
+  const journalEntity = { type: 'PaymentReminder', id: reminderId };
+  const journalBody = `Relance de niveau ${reminder.reminderLevel} : appel de charges ${call.period} (${call.syndicate.name}, lot ${templateVars.lotNumber}), reste dû ${templateVars.outstanding} ${call.currency}, échéance le ${templateVars.dueDate}.`;
 
   let emailSent = false;
   let whatsappSent = false;
@@ -764,10 +781,19 @@ export async function notifyChargeCallReminder(
       const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKeyEmail];
       const subjectTpl = emailConfig.subjectOverride || defaults.subject;
       const bodyTpl = emailConfig.bodyHtmlOverride || defaults.bodyHtml;
+      const subject = applyTemplate(subjectTpl, templateVars);
       await emailService.sendEmail({
         to: owner.email,
-        subject: applyTemplate(subjectTpl, templateVars),
-        html: stripEmptyPaymentParagraph(applyTemplate(bodyTpl, templateVars, true), paymentVars, bodyTpl)
+        subject,
+        html: stripEmptyPaymentParagraph(applyTemplate(bodyTpl, templateVars, true), paymentVars, bodyTpl),
+        journal: {
+          key: eventKeyEmail,
+          tenantId,
+          title: subject,
+          body: journalBody,
+          recipient: { contactId: owner.id, email: owner.email },
+          relatedEntity: journalEntity
+        }
       });
       emailSent = true;
     }
@@ -777,7 +803,8 @@ export async function notifyChargeCallReminder(
     tenantId,
     notificationKey: eventKeyWhatsApp,
     variables: whatsappVars,
-    contactId: owner.id
+    contactId: owner.id,
+    journal: { relatedEntity: journalEntity }
   });
   if (!whatsappSent) {
     const directPhone = getOwnerWhatsappTarget(owner);
@@ -786,7 +813,8 @@ export async function notifyChargeCallReminder(
         tenantId,
         notificationKey: eventKeyWhatsApp,
         variables: whatsappVars,
-        to: directPhone
+        to: directPhone,
+        journal: { recipient: { contactId: owner.id }, relatedEntity: journalEntity }
       });
     }
   }

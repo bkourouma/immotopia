@@ -336,7 +336,13 @@ export async function sendReviewSummary(params: {
               ...variables,
               syndicName: escapeHtml(syndicName),
               link: escapeHtml(variables.link)
-            })
+            }),
+            journal: {
+              key: REVIEW_KEY,
+              recipient: { userId: reviewer.userId, email: reviewer.email },
+              relatedEntity: { type: 'Syndicate', id: syndicateId },
+              link: variables.link
+            }
           })
         );
         delivered += 1;
@@ -405,7 +411,12 @@ export async function sendReceivingNumberChangedAlert(params: {
               actorName: escapeHtml(variables.actorName),
               previousPhone: escapeHtml(variables.previousPhone),
               newPhone: escapeHtml(variables.newPhone)
-            })
+            }),
+            journal: {
+              key: NUMBER_CHANGED_KEY,
+              recipient: { userId: reviewer.userId, email: reviewer.email },
+              relatedEntity: { type: 'Syndicate', id: syndicateId }
+            }
           })
         );
         delivered += 1;
