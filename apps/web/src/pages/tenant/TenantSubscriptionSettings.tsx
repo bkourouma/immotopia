@@ -39,7 +39,9 @@ import { t } from '../../i18n/t';
 
 const { Title, Text, Paragraph } = Typography;
 
-const CAPACITY_LABEL: Record<CapacityKeyCode, string> = {
+// Fonctions et non constantes (comme `phaseLabels`) : un `t()` évalué à l'import resterait
+// figé dans la langue active au chargement de la page (recette du 19/10 : anglais en arabe).
+const capacityLabels = (): Record<CapacityKeyCode, string> => ({
   LOTS: t('Lots'),
   COPROPRIETES: t('Copropriétés'),
   CHANTIERS: t('Chantiers'),
@@ -47,7 +49,7 @@ const CAPACITY_LABEL: Record<CapacityKeyCode, string> = {
   ACTIFS: t('Actifs'),
   PHOTOS_INVENTAIRE: t('Photos d’inventaire analysées (par mois)'),
   SIGNATURES_MENSUELLES: t('Signatures électroniques (par mois)')
-};
+});
 
 // Fonction et non constante : un `t()` évalué à l'import resterait figé dans la langue
 // active à ce moment-là (« Essai » restait en français après passage à l'anglais).
@@ -62,12 +64,12 @@ const phaseLabels = (): Record<
   READ_ONLY: { label: t('Lecture seule'), tone: 'danger' }
 });
 
-const MODULE_LABEL: Record<string, string> = {
+const moduleLabels = (): Record<string, string> => ({
   MODULE_AGENCY: t('Agence'),
   MODULE_SYNDIC: t('Syndic'),
   MODULE_PROMOTER: t('Promoteur'),
   MODULE_PATRIMOINE: t('Patrimoine')
-};
+});
 
 /** Packs de l'espace personnel : leur montée de palier revient sur cette page (`?paiement=`). */
 const PERSONAL_PACKS = ['PARTICULIER_GRATUIT', 'PARTICULIER_PLUS'];
@@ -83,14 +85,14 @@ function daysRemaining(value: string | null | undefined): number | null {
   return Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)));
 }
 
-const REQUEST_STATUS_LABEL: Record<
+const requestStatusLabels = (): Record<
   string,
   { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }
-> = {
+> => ({
   OPEN: { label: t('En attente'), tone: 'warning' },
   HANDLED: { label: t('Traitée'), tone: 'success' },
   DECLINED: { label: t('Refusée'), tone: 'neutral' }
-};
+});
 
 interface RequestValues {
   catalogCode?: string;
@@ -296,7 +298,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
                   : 0;
             return (
               <div key={key} style={{ width: 220 }}>
-                <Text strong>{CAPACITY_LABEL[key]}</Text>
+                <Text strong>{capacityLabels()[key]}</Text>
                 <Progress
                   percent={percent}
                   status={percent >= 100 ? 'exception' : 'normal'}
@@ -318,7 +320,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
       <Card title={t('Modules')}>
         <Space wrap>
           {entitlements.modules.length > 0 ? (
-            entitlements.modules.map(key => <StatusTag key={key} status="ACTIVE" label={MODULE_LABEL[key] ?? key} />)
+            entitlements.modules.map(key => <StatusTag key={key} status="ACTIVE" label={moduleLabels()[key] ?? key} />)
           ) : (
             <Text type="secondary">{t('Aucun module ouvert')}</Text>
           )}
@@ -388,7 +390,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
                 dataIndex: 'status',
                 key: 'status',
                 render: (status: string) => {
-                  const info = REQUEST_STATUS_LABEL[status];
+                  const info = requestStatusLabels()[status];
                   return <StatusTag status={status} tone={info?.tone} label={info?.label} />;
                 }
               }
