@@ -3,6 +3,7 @@ import { Card, Row, Col, Select, Space, Tooltip, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { formatMoney, MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 import {
   listMyLots,
   getCoOwnerLotMonthlyTracking,
@@ -34,25 +35,27 @@ const monthLabels = (): string[] => [
  * (`SyndicMonthlyTracking.tsx`, lot S2). Pas de composant partagé : celui-ci
  * ne rend qu'un seul lot à la fois, la grille de gestion en rend plusieurs.
  */
-const STATUS_CONFIG: Record<CoOwnerMonthStatus, { color: string; textColor: string; label: string }> = {
-  PAID: {
-    color: 'var(--color-success-bg, #e6f7e9)',
-    textColor: 'var(--color-success-text, #237a3f)',
-    label: t('Réglé')
-  },
-  PARTIAL: {
-    color: 'var(--color-warning-bg, #fff3e0)',
-    textColor: 'var(--color-warning-text, #ad6800)',
-    label: t('Partiel')
-  },
-  DUE: { color: 'var(--color-info-bg, #e6f0ff)', textColor: 'var(--color-info-text, #1d4ed8)', label: t('Dû') },
-  OVERDUE: {
-    color: 'var(--color-error-bg, #fde8e8)',
-    textColor: 'var(--color-error-text, #c0202c)',
-    label: t('En retard')
-  },
-  NONE: { color: 'transparent', textColor: 'var(--text-secondary, #999)', label: t('—') }
-};
+const STATUS_CONFIG: Record<CoOwnerMonthStatus, { color: string; textColor: string; label: string }> = localizedRecord(
+  () => ({
+    PAID: {
+      color: 'var(--color-success-bg, #e6f7e9)',
+      textColor: 'var(--color-success-text, #237a3f)',
+      label: t('Réglé')
+    },
+    PARTIAL: {
+      color: 'var(--color-warning-bg, #fff3e0)',
+      textColor: 'var(--color-warning-text, #ad6800)',
+      label: t('Partiel')
+    },
+    DUE: { color: 'var(--color-info-bg, #e6f0ff)', textColor: 'var(--color-info-text, #1d4ed8)', label: t('Dû') },
+    OVERDUE: {
+      color: 'var(--color-error-bg, #fde8e8)',
+      textColor: 'var(--color-error-text, #c0202c)',
+      label: t('En retard')
+    },
+    NONE: { color: 'transparent', textColor: 'var(--text-secondary, #999)', label: t('—') }
+  })
+);
 
 function yearRange(current: number, minYear?: number): number[] {
   const years: number[] = [];

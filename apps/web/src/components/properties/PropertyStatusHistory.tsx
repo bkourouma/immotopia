@@ -3,6 +3,7 @@ import { Loader2, Clock, User } from 'lucide-react';
 import { PropertyStatus } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 interface StatusHistoryEntry {
@@ -25,7 +26,7 @@ interface PropertyStatusHistoryProps {
   tenantId: string;
 }
 
-const statusLabels: Record<PropertyStatus, string> = {
+const statusLabels: Record<PropertyStatus, string> = localizedRecord(() => ({
   [PropertyStatus.DRAFT]: 'Brouillon',
   [PropertyStatus.UNDER_REVIEW]: t('En révision'),
   [PropertyStatus.AVAILABLE]: 'Disponible',
@@ -34,7 +35,7 @@ const statusLabels: Record<PropertyStatus, string> = {
   [PropertyStatus.RENTED]: t('Loué'),
   [PropertyStatus.SOLD]: 'Vendu',
   [PropertyStatus.ARCHIVED]: t('Archivé')
-};
+}));
 
 export const PropertyStatusHistory: React.FC<PropertyStatusHistoryProps> = ({ propertyId, tenantId }) => {
   const [history, setHistory] = useState<StatusHistoryEntry[]>([]);

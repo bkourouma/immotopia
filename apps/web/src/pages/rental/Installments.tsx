@@ -37,6 +37,7 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 /**
@@ -74,12 +75,12 @@ interface InstallmentsProps {
 type Filters = { status: string; overdue: string; renterClientId: string };
 const FILTER_KEYS = ['status', 'overdue', 'renterClientId'] as const;
 
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS = localizedList(() => [
   { value: 'DUE', label: t('À échoir') },
   { value: 'PARTIAL', label: t('Partiel') },
   { value: 'PAID', label: t('Payé') },
   { value: 'OVERDUE', label: t('En retard') }
-];
+]);
 
 /** Montant dû : loyer, charges, autres frais et pénalités. */
 function totalDu(echeance: RentalInstallment): number {

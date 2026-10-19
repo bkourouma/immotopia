@@ -25,24 +25,25 @@ import { useAuth } from '../../../hooks/useAuth';
 import { safeFormatDate } from '../../../utils/date-utils';
 import dayjs from 'dayjs';
 import { t } from '../../../i18n/t';
+import { localizedRecord } from '../../../i18n/localized';
 
 const { Title } = Typography;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 
-const categoryLabels: Record<string, string> = {
+const categoryLabels: Record<string, string> = localizedRecord(() => ({
   PLUMBING: 'Plomberie',
   ELECTRICITY: t('Électricité'),
   AC: 'Climatisation',
   OTHER: 'Autre'
-};
+}));
 
-const priorityLabels: Record<string, string> = {
+const priorityLabels: Record<string, string> = localizedRecord(() => ({
   LOW: 'Faible',
   MEDIUM: 'Moyenne',
   HIGH: t('Élevée'),
   URGENT: 'Urgente'
-};
+}));
 
 const priorityColors: Record<string, string> = {
   LOW: 'default',

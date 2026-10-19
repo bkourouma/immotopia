@@ -4,6 +4,7 @@ import { UserOutlined } from '@ant-design/icons';
 import { CrmContactRoleType } from '../../types/crm-types';
 import { t } from '../../i18n/t';
 
+import { localizedList } from '../../i18n/localized';
 const { Text } = Typography;
 
 interface ManageRolesDialogProps {
@@ -15,12 +16,12 @@ interface ManageRolesDialogProps {
   open?: boolean;
 }
 
-const roleOptions: { value: CrmContactRoleType; label: string }[] = [
+const roleOptions: { value: CrmContactRoleType; label: string }[] = localizedList(() => [
   { value: 'PROPRIETAIRE', label: t('Propriétaire (Owner)') },
   { value: 'LOCATAIRE', label: t('Locataire (Renter)') },
   { value: 'COPROPRIETAIRE', label: t('Copropriétaire (Co-owner)') },
   { value: 'ACQUEREUR', label: t('Acquéreur (Buyer)') }
-];
+]);
 
 export const ManageRolesDialog: React.FC<ManageRolesDialogProps> = ({
   contactName,

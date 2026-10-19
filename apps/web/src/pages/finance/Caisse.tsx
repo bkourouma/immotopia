@@ -33,6 +33,7 @@ import {
 import type { StatusTone } from '../../components/primitives';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
 import { useAuth } from '../../hooks/useAuth';
@@ -42,7 +43,7 @@ import { isPermissionDenied, writeErrorMessage } from '../../utils/error-handler
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-const messageSansDroitCaisse = t("Vous n'avez pas le droit de tenir une caisse.");
+const messageSansDroitCaisse = () => t("Vous n'avez pas le droit de tenir une caisse.");
 
 /**
  * Caisse d'agence — Lot 6 (scratchpad `lot6-contrat-api.md`).
@@ -71,11 +72,11 @@ const BILLETS: DenominationValue[] = ['10000', '5000', '2000', '1000', '500'];
 const PIECES: DenominationValue[] = ['250', '200', '100', '50', '25', '10', '5'];
 const TOUTES_DENOMINATIONS: DenominationValue[] = [...BILLETS, ...PIECES];
 
-const STATUS_LABEL: Record<CashSessionStatus, string> = {
+const STATUS_LABEL: Record<CashSessionStatus, string> = localizedRecord(() => ({
   OPEN: t('Ouverte'),
   CLOSED: t('À valider'),
   VALIDATED: t('Validée')
-};
+}));
 
 const STATUS_TONE: Record<CashSessionStatus, StatusTone> = {
   OPEN: 'info',
@@ -83,11 +84,11 @@ const STATUS_TONE: Record<CashSessionStatus, StatusTone> = {
   VALIDATED: 'success'
 };
 
-const KIND_LABEL: Record<ExpectedLine['kind'], string> = {
+const KIND_LABEL: Record<ExpectedLine['kind'], string> = localizedRecord(() => ({
   RENT_PAYMENT: t('Loyer encaissé'),
   OWNER_PAYOUT: t('Reversement propriétaire'),
   CASH_VOUCHER: t('Pièce de caisse')
-};
+}));
 
 function dateHeure(iso: string): string {
   return dayjs(iso).format(dateFormat('dateTime'));
@@ -196,7 +197,7 @@ export const Caisse: React.FC = () => {
       message.success(t('Caisse ouverte.'));
       queryClient.invalidateQueries({ queryKey: queryKey('cash-session-current', tenantId, {}) });
     } catch (err: any) {
-      message.error(writeErrorMessage(err, t("L'ouverture de la caisse a échoué."), messageSansDroitCaisse));
+      message.error(writeErrorMessage(err, t("L'ouverture de la caisse a échoué."), messageSansDroitCaisse()));
     } finally {
       setOuvertureEnCours(false);
     }
@@ -222,7 +223,7 @@ export const Caisse: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: queryKey('cash-session-current', tenantId, {}) });
       queryClient.invalidateQueries({ queryKey: queryKey('cash-sessions', tenantId, {}) });
     } catch (err: any) {
-      message.error(writeErrorMessage(err, t('La clôture a échoué.'), messageSansDroitCaisse));
+      message.error(writeErrorMessage(err, t('La clôture a échoué.'), messageSansDroitCaisse()));
     } finally {
       setClotureEnCours(false);
     }

@@ -48,15 +48,16 @@ import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
 import { SaleAgreementSignatures } from './SaleAgreementSignatures';
 
+import { localizedList } from '../../i18n/localized';
 const { Text, Title } = Typography;
 const { TextArea } = Input;
 
-const CONDITION_STATUS_OPTIONS: { value: SaleConditionStatus; label: string }[] = [
+const CONDITION_STATUS_OPTIONS: { value: SaleConditionStatus; label: string }[] = localizedList(() => [
   { value: 'PENDING', label: t('En attente') },
   { value: 'MET', label: t('Remplie') },
   { value: 'FAILED', label: t('Échouée') },
   { value: 'WAIVED', label: t('Levée') }
-];
+]);
 
 interface EditFormValues {
   price?: number | null;

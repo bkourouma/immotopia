@@ -31,6 +31,7 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 const { Title } = Typography;
@@ -75,7 +76,7 @@ function pourcentage(valeur: number): string {
   return `${valeur.toLocaleString(activeLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
 }
 
-const MOIS_FR = [
+const MOIS_FR = localizedList(() => [
   'janvier',
   t('février'),
   'mars',
@@ -88,7 +89,7 @@ const MOIS_FR = [
   'octobre',
   'novembre',
   t('décembre')
-];
+]);
 
 function libellePeriode(year: number, month: number): string {
   const nomMois = MOIS_FR[month - 1] ?? String(month);

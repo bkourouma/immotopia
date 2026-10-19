@@ -3,6 +3,7 @@ import { Timeline, Typography } from 'antd';
 import { StatusHistory } from '../../types/maintenance-types';
 import { formatTimelineDate } from '../../utils/date-utils';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 const { Text } = Typography;
 
@@ -10,13 +11,13 @@ interface TicketTimelineProps {
   statusHistory: StatusHistory[];
 }
 
-const statusLabels: Record<string, string> = {
+const statusLabels: Record<string, string> = localizedRecord(() => ({
   DECLARED: t('Déclaré'),
   IN_PROGRESS: t('En cours'),
   ASSIGNED: t('Assigné'),
   RESOLVED: t('Résolu'),
   CANCELED: t('Annulé')
-};
+}));
 
 export const TicketTimeline: React.FC<TicketTimelineProps> = ({ statusHistory }) => {
   if (statusHistory.length === 0) {

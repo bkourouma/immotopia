@@ -45,6 +45,7 @@ import {
   formatPeriod
 } from '../../subscription/platform-invoice-labels';
 import { t } from '../../../i18n/t';
+import { localizedList, localizedRecord } from '../../../i18n/localized';
 
 const { Text } = Typography;
 
@@ -55,21 +56,21 @@ const { Text } = Typography;
  * les tentatives de paiement en ligne.
  */
 
-const MANUAL_METHODS: Array<{ value: ManualPaymentMethod; label: string }> = [
+const MANUAL_METHODS: Array<{ value: ManualPaymentMethod; label: string }> = localizedList(() => [
   { value: 'BANK_TRANSFER', label: PAYMENT_METHOD_LABEL.BANK_TRANSFER },
   { value: 'MOBILE_MONEY', label: PAYMENT_METHOD_LABEL.MOBILE_MONEY },
   { value: 'CHECK', label: PAYMENT_METHOD_LABEL.CHECK },
   { value: 'CASH', label: PAYMENT_METHOD_LABEL.CASH }
-];
+]);
 
-const CHECKOUT_STATUS_LABEL: Record<string, string> = {
+const CHECKOUT_STATUS_LABEL: Record<string, string> = localizedRecord(() => ({
   PENDING: t('En attente'),
   SUCCESS: t('Réussi'),
   FAILED: t('Échoué'),
   CANCELED: t('Annulé'),
   EXPIRED: t('Expiré'),
   REVIEW: t('À vérifier')
-};
+}));
 
 interface GenerateValues {
   nature: 'PERIOD' | 'OVERAGE';
