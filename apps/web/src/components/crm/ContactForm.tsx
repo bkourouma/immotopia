@@ -152,9 +152,9 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
         score: contact.score || 0,
         priorityLevel: contact.priorityLevel || 'NORMAL',
         assignedToUserId: contact.assignedToUserId || undefined,
-        consentMarketing: contact.consentMarketing ?? true,
-        consentWhatsapp: contact.consentWhatsapp ?? true,
-        consentEmail: contact.consentEmail ?? true,
+        consentMarketing: contact.consentMarketing ?? false,
+        consentWhatsapp: contact.consentWhatsapp ?? false,
+        consentEmail: contact.consentEmail ?? false,
         consentSource: contact.consentSource || '',
         internalNotes: contact.internalNotes || ''
       });
@@ -378,9 +378,9 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
         maturityLevel: contact?.maturityLevel || 'COLD',
         score: contact?.score || 0,
         priorityLevel: contact?.priorityLevel || 'NORMAL',
-        consentMarketing: contact?.consentMarketing ?? true,
-        consentWhatsapp: contact?.consentWhatsapp ?? true,
-        consentEmail: contact?.consentEmail ?? true
+        consentMarketing: contact?.consentMarketing ?? false,
+        consentWhatsapp: contact?.consentWhatsapp ?? false,
+        consentEmail: contact?.consentEmail ?? false
       }}
     >
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
