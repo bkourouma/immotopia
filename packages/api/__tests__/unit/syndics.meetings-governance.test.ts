@@ -580,6 +580,40 @@ describe('AG en direct (spec 043) - ecritures du gestionnaire', () => {
     expect(mockWorld.attendances).toHaveLength(2);
   });
 
+  it('refuse un pouvoir dont le mandataire est votant d un lot du mandant, seance ouverte (422), sans emargement', async () => {
+    // A1 est en indivision c1 + c2 : c2 ne peut pas representer c1 sur ce lot (regle de l emargement).
+    mockWorld.lots[0].ownerProfiles = [
+      {
+        contactId: 'c1',
+        ownershipPercentage: 50,
+        ownedSince: new Date('2010-01-01T00:00:00Z'),
+        ownedUntil: null,
+        contact: { id: 'c1', firstName: 'Awa', lastName: 'Kone', legalName: null, email: null }
+      },
+      {
+        contactId: 'c2',
+        ownershipPercentage: 50,
+        ownedSince: new Date('2010-01-01T00:00:00Z'),
+        ownedUntil: null,
+        contact: { id: 'c2', firstName: 'Bakary', lastName: 'Diallo', legalName: null, email: null }
+      }
+    ];
+    await expectStatus(
+      createMeetingProxyByTenant(T1, S1, { meetingId: 'M1', grantorContactId: 'c1', representativeContactId: 'c2' }),
+      422,
+      /ne peut pas être un propriétaire du lot/
+    );
+    expect(mockWorld.attendances).toHaveLength(0);
+    mockWorld.proxies.length = 0; // le mock n'annule pas la transaction ; la vraie base si
+    // Un mandataire etranger au lot reste accepte.
+    await createMeetingProxyByTenant(T1, S1, {
+      meetingId: 'M1',
+      grantorContactId: 'c1',
+      representativeContactId: 'c5'
+    });
+    expect(mockWorld.attendances[0]).toMatchObject({ lotId: 'A1', status: 'REPRESENTED' });
+  });
+
   it('enregistre l URL de visioconference', async () => {
     const updated = await updateMeetingByTenant(T1, S1, 'M1', { videoConferenceUrl: 'https://visio.example.test/x' });
     expect(updated.videoConferenceUrl).toBe('https://visio.example.test/x');

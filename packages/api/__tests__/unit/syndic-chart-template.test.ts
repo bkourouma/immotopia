@@ -23,7 +23,25 @@ function makeTx(initial: Row[] = []) {
     rows.push(row);
     return { id: row.id };
   });
-  return { tx: { chartOfAccount: { findMany, create } } as any, rows, findMany, create };
+  const order: string[] = [];
+  const executeRaw = jest.fn(async (..._args: any[]) => {
+    order.push('lock');
+    return 1;
+  });
+  findMany.mockImplementationOnce(async ({ where }: any) => {
+    order.push('read');
+    return rows
+      .filter(r => r.tenantId === where.tenantId && r.syndicateId === where.syndicateId)
+      .map(r => ({ id: r.id, accountNumber: r.accountNumber }));
+  });
+  return {
+    tx: { chartOfAccount: { findMany, create }, $executeRaw: executeRaw } as any,
+    rows,
+    findMany,
+    create,
+    executeRaw,
+    order
+  };
 }
 
 describe('SYNDIC_CHART_TEMPLATE', () => {

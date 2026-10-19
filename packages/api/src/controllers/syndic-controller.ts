@@ -151,13 +151,14 @@ import {
 import { notifyChargeCall, notifyMeetingConvocation } from '../lib/syndics/notifications';
 import { hasMeetingConvocationBeenSent } from '../lib/syndics/meeting-convocation-status';
 import { deliverReminderNotification } from '../lib/syndics/reminder-delivery';
-import { badRequest, conflict, notFound } from '../lib/errors';
+import { badRequest, conflict, notFound, unprocessableEntity } from '../lib/errors';
 import { logger } from '../utils/logger';
 import { runWithTenantContext } from '../utils/tenant-context';
 import {
   IDEMPOTENCY_KEY_MAX_LENGTH,
   meetingCreationIdempotencyStore,
-  meetingResolutionIdempotencyStore
+  meetingResolutionIdempotencyStore,
+  fingerprintBody
 } from '../utils/idempotency';
 import { asyncHandler } from '../middleware/error-middleware';
 import { presentSyndicateLots } from '../lib/syndics/lot-owner';
@@ -989,15 +990,35 @@ export const addResolutionHandler = asyncHandler(async (req: Request, res: Respo
   } else {
     const actorId = req.user?.userId ?? 'anonymous';
     const storeKey = `${tenantId}:${syndicateId}:${meetingId}:${idempotencyKey}`;
+    const fingerprint = fingerprintBody({
+      title: parsed.title,
+      description: parsed.description,
+      majorityRule: parsed.majorityRule
+    });
     const existing = meetingResolutionIdempotencyStore.get(actorId, storeKey);
     if (existing) {
+      // Meme cle, autre corps : ce n'est pas un rejeu, on ne renvoie pas l'ancienne reponse.
+      if (existing.fingerprint !== fingerprint) {
+        throw unprocessableEntity(t("Cette clé d'idempotence a déjà servi pour une résolution différente."));
+      }
       replay = true;
-      resolution = (await existing) as typeof resolution;
+      resolution = (await existing.promise) as typeof resolution;
     } else {
       const pending = addResolutionToMeeting(tenantId, syndicateId, parsed);
-      meetingResolutionIdempotencyStore.set(actorId, storeKey, pending);
+      const entry = {
+        fingerprint,
+        meetingKey: `${tenantId}:${syndicateId}:${meetingId}`,
+        promise: pending as Promise<unknown>,
+        resolutionId: undefined as string | undefined
+      };
+      meetingResolutionIdempotencyStore.set(actorId, storeKey, entry);
       // Une creation echouee ne doit pas verrouiller la cle : le reessai recommence.
-      pending.catch(() => meetingResolutionIdempotencyStore.delete(actorId, storeKey));
+      pending.then(
+        created => {
+          entry.resolutionId = (created as { id?: string } | null)?.id;
+        },
+        () => meetingResolutionIdempotencyStore.delete(actorId, storeKey)
+      );
       resolution = await pending;
     }
   }
@@ -1020,6 +1041,12 @@ export const deleteResolutionHandler = asyncHandler(async (req: Request, res: Re
   }
 
   const deleted = await deleteResolutionFromMeeting(tenantId, syndicateId, meetingId, resolutionId);
+
+  // Un rejeu d'une cle d'idempotence ne doit pas renvoyer une resolution supprimee.
+  const meetingKey = `${tenantId}:${syndicateId}:${meetingId}`;
+  meetingResolutionIdempotencyStore.deleteWhere(
+    entry => entry.meetingKey === meetingKey && entry.resolutionId === deleted.id
+  );
 
   res.json({
     success: true,
