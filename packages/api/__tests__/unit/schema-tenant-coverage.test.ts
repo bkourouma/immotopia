@@ -96,7 +96,12 @@ const GLOBAL_MODELS = new Set([
   // Reçu avant toute résolution d'agence (elle se déduit de l'inscription) ;
   // sans numéro en clair (senderHash HMAC, payload effacé au traitement),
   // purgé à 30 jours.
-  'WhatsappCloudEvent'
+  'WhatsappCloudEvent',
+  // Audit 2026-10-19 : verrou des jobs cron (une ligne par nom de job, ecrite en SQL
+  // brut par le lot C). Plateforme par nature : un job planifie tourne pour toutes les
+  // agences, sans contexte d'agence ; ne porte aucune donnee d'agence (nom du job,
+  // identifiant du processus detenteur, echeance du verrou).
+  'JobLock'
 ]);
 
 /**

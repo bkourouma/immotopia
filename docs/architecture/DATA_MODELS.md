@@ -200,6 +200,33 @@ Jamais de `Float` pour un montant.
 décrites ci-dessus. Les dates métier (échéance, début/fin de bail...)
 suivent la même convention que le reste du modèle auquel elles appartiennent.
 
+### Migrations : horodatages dupliqués
+
+**Horodatages dupliqués actuels** (préfixe de 14 chiffres partagé par plusieurs dossiers de migration) :
+
+- `20260928120000` : `abonnements_paiement`, `charge_call_notice_sent_at`
+- `20261007090000` : `audit_deux_niveaux`, `patrimoine_hypotheses_projection`
+- `20261007100000` : `audit_tenant_permission`, `patrimoine_plan_tresorerie`
+- `20261007110000` : `audit_backfill_crm_deal_keys`, `secure_links`
+- `20261007120000` : `audit_platform_permissions`, `patrimoine_assurances_sinistres`
+- `20261007130000` : `notification_markers`, `patrimoine_regularisation_fonciere`
+- `20261007140000` : `audit_seals`, `patrimoine_acces_tiers`
+- `20261015100000` : `signature_enums`, `syndic_ag_en_direct`
+- `20261015120000` : `signatures_incluses_packs`, `syndic_paiement_mobile`
+- `20261017120000` : `signature_prelevement_types`, `syndic_ag_media_moderation`
+
+**Pourquoi ne pas les renommer :** Ces migrations ont déjà été appliquées en staging et en production. La table `_prisma_migrations` les indexe par nom de dossier ; renommer un dossier ferait rejouer `migrate deploy` sur ces migrations, ce qui causerait une duplication des changements ou des erreurs. Aucun renommage n'est acceptable après un déploiement.
+
+**Règle pour l'avenir :** Tout nouvel horodatage doit être unique au moment de la création. Avant de créer un dossier de migration, vérifier l'unicité du préfixe (14 chiffres) avec :
+
+```bash
+ls packages/api/prisma/migrations | cut -c1-14 | sort | uniq -d
+```
+
+Le résultat doit être vide pour le nouveau préfixe.
+
+**Localisation des scripts** : Les fichiers `.ts` ou `.js` n'habitent jamais dans `migrations/`. Les scripts seed vivent dans `seeds/` (ex. `seed_syndic_v2_migration.ts`), pas dans `migrations/`.
+
 ### Suppression logique
 
 **Aucun champ `deletedAt` dans le schéma** (0 occurrence, vérifié par
