@@ -1,7 +1,18 @@
 import React from 'react';
 import { Form, Input, InputNumber, Select } from 'antd';
 import type { FormInstance } from 'antd';
-import { ChargeSchedule, ChargeScheduleAmountSource, ChargeScheduleFrequency } from '../../../types/syndic-types';
+import {
+  ChargeAllocationMethod,
+  ChargeSchedule,
+  ChargeScheduleAmountSource,
+  ChargeScheduleFrequency
+} from '../../../types/syndic-types';
+import type { AllocationPreviewResult } from '../../../utils/charge-allocation-preview';
+import {
+  AllocationMethodRadio,
+  AllocationPreview,
+  type LotTypeRatesStatus
+} from '../charge-allocation/ChargeAllocationControls';
 import { t } from '../../../i18n/t';
 import { amountSourceLabels, frequencyLabels } from './chargeScheduleLabels';
 import { ScheduleFormValues } from './types';
@@ -11,7 +22,23 @@ export const ScheduleFormFields: React.FC<{
   editing: ChargeSchedule | null;
   approvedBudgetOptions: Array<{ value: string; label: string }>;
   watchedAmountSource?: ChargeScheduleAmountSource;
-}> = ({ form, editing, approvedBudgetOptions, watchedAmountSource }) => (
+  tenantId?: string | null;
+  syndicId?: string | null;
+  /** Mode de répartition en vigueur (source « Montant fixe » seulement), `null` pour un budget. */
+  allocationMethod?: ChargeAllocationMethod | null;
+  allocationPreview?: AllocationPreviewResult | null;
+  lotTypeRatesStatus?: LotTypeRatesStatus;
+}> = ({
+  form,
+  editing,
+  approvedBudgetOptions,
+  watchedAmountSource,
+  tenantId,
+  syndicId,
+  allocationMethod = null,
+  allocationPreview = null,
+  lotTypeRatesStatus = 'idle'
+}) => (
   <Form form={form} layout="vertical">
     <Form.Item label={t('Libellé')} name="label" rules={[{ required: true, message: t('Le libellé est obligatoire') }]}>
       <Input placeholder={t('Ex : Charges courantes trimestrielles')} />
@@ -83,16 +110,41 @@ export const ScheduleFormFields: React.FC<{
         />
       </Form.Item>
     ) : (
-      <Form.Item
-        label={t('Montant fixe')}
-        name="fixedAmount"
-        rules={[{ required: true, message: t('Le montant fixe est obligatoire') }]}
-        extra={t(
-          'Montant fixe réparti par tantièmes entre les lots principaux (appartements, bureaux, locaux commerciaux).'
+      <>
+        <Form.Item label={t('Répartition entre les lots')} name="allocationMethod">
+          <AllocationMethodRadio />
+        </Form.Item>
+
+        {allocationMethod === 'BY_LOT_TYPE' ? null : (
+          <Form.Item
+            label={t('Montant total par période')}
+            name="fixedAmount"
+            rules={[{ required: true, message: t('Le montant fixe est obligatoire') }]}
+            extra={
+              allocationMethod === 'EQUAL'
+                ? t('Montant fixe divisé à parts égales entre les lots actifs.')
+                : t(
+                    'Montant fixe réparti par tantièmes entre les lots principaux (appartements, bureaux, locaux commerciaux).'
+                  )
+            }
+          >
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
         )}
-      >
-        <InputNumber min={1} style={{ width: '100%' }} />
-      </Form.Item>
+
+        {allocationMethod ? (
+          <Form.Item>
+            <AllocationPreview
+              method={allocationMethod}
+              result={allocationPreview}
+              currency={form.getFieldValue('currency') || 'XOF'}
+              ratesStatus={lotTypeRatesStatus}
+              tenantId={tenantId}
+              syndicId={syndicId}
+            />
+          </Form.Item>
+        ) : null}
+      </>
     )}
 
     <Form.Item

@@ -3966,6 +3966,18 @@ enum DistributionKey {
   MANUAL
 }
 
+/// Menu lot 2 : mode de repartition du montant d'un appel de charges (ou d'un appel
+/// de fonds) entre les lots. Distinct de `DistributionKey`, qui est la cle d'un POSTE
+/// de budget ; ici on repartit le montant d'une programmation fixe ou d'un appel saisi.
+enum ChargeAllocationMethod {
+  /// Au prorata des tantiemes generaux (comportement historique, defaut).
+  SHARES
+  /// Un montant PAR LOT saisi pour chaque type de lot (`amountsByLotType`) ; le total en decoule.
+  BY_LOT_TYPE
+  /// Meme montant pour chaque lot concerne (total / nombre de lots).
+  EQUAL
+}
+
 enum TransactionType {
   CHARGE_CALL
   PAYMENT
@@ -4029,6 +4041,12 @@ model Syndicate {
   mandatingAgencyId  String?         @map("mandating_agency_id") @db.Uuid
   /// Lot S1 : cle de stockage PRIVEE du logo de la copropriete.
   logoPath           String?         @map("logo_path")
+  /// Menu lot 2 : bareme par type de lot, parametre UNE fois par l'administrateur (modifiable).
+  /// Montant PAR LOT et par type, ex. {"APARTMENT": 50000, "PARKING": 10000}. Nul : pas de bareme.
+  lotTypeRates          Json?            @map("lot_type_rates")
+  lotTypeRatesUpdatedAt DateTime?        @map("lot_type_rates_updated_at")
+  /// Auteur de la derniere modification du bareme (sans cle etrangere : trace d'audit).
+  lotTypeRatesUpdatedById String?        @map("lot_type_rates_updated_by_id")
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
@@ -4871,6 +4889,9 @@ model ChargeCallBatch {
   totalAmount Decimal     @map("total_amount") @db.Decimal(14, 2)
   currency    String      @default("XOF")
   status      BatchStatus @default(DRAFT)
+  /// Menu lot 2 : mode de repartition utilise pour ce lot d'appels (trace d'audit). SHARES
+  /// pour les lots issus d'un budget (cle des postes) et les lots historiques.
+  allocationMethod ChargeAllocationMethod @default(SHARES) @map("allocation_method")
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
@@ -4928,8 +4949,12 @@ model SyndicChargeSchedule {
   amountSource  SyndicChargeAmountSource @map("amount_source")
   /// Budget a utiliser ; nul avec BUDGET = budget approuve de l'exercice de la periode.
   budgetId      String?                  @map("budget_id") @db.Uuid
-  /// Montant total appele par periode (source FIXED).
+  /// Montant total appele par periode (source FIXED, modes SHARES et EQUAL ; nul en BY_LOT_TYPE).
   fixedAmount   Decimal?                 @map("fixed_amount") @db.Decimal(14, 2)
+  /// Menu lot 2 : repartition du montant fixe entre les lots. SHARES (defaut) = tantiemes,
+  /// comportement historique ; toujours SHARES pour la source BUDGET (cle des postes du budget).
+  /// BY_LOT_TYPE applique le bareme de la copropriete (`Syndicate.lotTypeRates`) a chaque periode.
+  allocationMethod ChargeAllocationMethod @default(SHARES) @map("allocation_method")
   currency      String                   @default("XOF")
   startDate     DateTime                 @map("start_date") @db.Date
   endDate       DateTime?                @map("end_date") @db.Date

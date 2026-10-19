@@ -273,6 +273,9 @@ export interface ImportLotsFromPropertiesResult {
   message?: string;
 }
 
+/** Répartition du montant d'un appel entre les lots (menu lot 2). */
+export type ChargeAllocationMethod = 'SHARES' | 'BY_LOT_TYPE' | 'EQUAL';
+
 export interface CreateChargeCallRequest {
   lotId?: string;
   lotIds?: string[];
@@ -281,7 +284,13 @@ export interface CreateChargeCallRequest {
   /** Lot S2 : facultatives, mais vont ensemble (les deux ou aucune). */
   periodStart?: string | null;
   periodEnd?: string | null;
-  amount: number;
+  /**
+   * Sans `allocationMethod` : montant PAR LOT (historique). Avec : TOTAL à
+   * répartir pour SHARES et EQUAL (obligatoire), omis pour BY_LOT_TYPE.
+   */
+  amount?: number;
+  /** Mode de répartition (plusieurs lots / tous les lots) ; absent = comportement historique. */
+  allocationMethod?: ChargeAllocationMethod;
   currency?: string;
   dueDate: string;
   /** Appel versé en entier à ce fonds (appel de fonds travaux). */
@@ -296,6 +305,9 @@ export interface CreateChargeCallResult {
   generatedLots: number;
   occurrences: number;
   totalCreated: number;
+  allocationMethod?: ChargeAllocationMethod;
+  /** Total réparti (somme des lots appelés) quand un mode de répartition est utilisé. */
+  totalAmount?: number;
 }
 
 export interface CreateChargePaymentRequest {
@@ -1451,6 +1463,8 @@ export interface ChargeSchedule {
   budgetId: string | null;
   budget: ChargeScheduleBudgetRef | null;
   fixedAmount: number | null;
+  /** Absent des anciennes réponses = SHARES. */
+  allocationMethod?: ChargeAllocationMethod;
   currency: string;
   startDate: string;
   endDate: string | null;
@@ -1617,6 +1631,8 @@ export interface CreateChargeScheduleRequest {
   amountSource: ChargeScheduleAmountSource;
   budgetId?: string | null;
   fixedAmount?: number | null;
+  /** Défaut SHARES ; BY_LOT_TYPE interdit `fixedAmount` (le total vient du barème). */
+  allocationMethod?: ChargeAllocationMethod;
   currency?: string;
   /** `AAAA-MM-JJ`. */
   startDate: string;
@@ -1672,6 +1688,7 @@ export interface ChargeSchedulePreviewPeriod extends ChargeSchedulePeriodDates {
   totalAmount: number | null;
   currency: string;
   budgetId: string | null;
+  allocationMethod?: ChargeAllocationMethod;
   lots: ChargeSchedulePreviewLot[];
   error: string | null;
   /** L'échéance théorique serait déjà passée à l'émission (additif, absent des anciennes réponses). */

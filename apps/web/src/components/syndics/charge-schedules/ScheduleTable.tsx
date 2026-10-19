@@ -14,6 +14,7 @@ import {
 } from './chargeScheduleLabels';
 import { ChargeScheduleRunNotices } from '../ChargeScheduleRunNotices';
 import { displayCurrency } from '../../../utils/syndic-currency';
+import { allocationMethodLabel } from '../charge-allocation/ChargeAllocationControls';
 
 const { Text } = Typography;
 
@@ -47,7 +48,11 @@ export const ScheduleTable: React.FC<{
       key: 'source',
       exportValue: schedule =>
         schedule.amountSource === 'FIXED'
-          ? `${amountSourceLabels.FIXED} — ${formatMoney(schedule.fixedAmount ?? 0, { currency: displayCurrency(schedule.currency) })}`
+          ? `${amountSourceLabels.FIXED} — ${
+              schedule.allocationMethod === 'BY_LOT_TYPE'
+                ? t('Barème par type de lot')
+                : formatMoney(schedule.fixedAmount ?? 0, { currency: displayCurrency(schedule.currency) })
+            } (${allocationMethodLabel(schedule.allocationMethod)})`
           : schedule.budget
             ? `${amountSourceLabels.BUDGET} — ${schedule.budget.label} (${schedule.budget.fiscalYear})`
             : amountSourceLabels.BUDGET,
@@ -56,7 +61,14 @@ export const ScheduleTable: React.FC<{
           <Space direction="vertical" size={0}>
             <Text>{amountSourceLabels.FIXED}</Text>
             <Text type="secondary">
-              <MoneyValue value={schedule.fixedAmount ?? 0} currency={displayCurrency(schedule.currency)} />
+              {schedule.allocationMethod === 'BY_LOT_TYPE' ? (
+                t('Barème par type de lot')
+              ) : (
+                <MoneyValue value={schedule.fixedAmount ?? 0} currency={displayCurrency(schedule.currency)} />
+              )}
+            </Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {allocationMethodLabel(schedule.allocationMethod)}
             </Text>
           </Space>
         ) : (

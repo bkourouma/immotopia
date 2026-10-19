@@ -18,6 +18,18 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `orch/2026-10-19-menu-messagerie-lot-2` — 2026-10-19
+
+**État :** lot 2 livré dans le worktree `menu-lot-2`, rien commité. Mode de répartition des appels de charges (tantièmes / par type de lot / équitable), appel manuel et programmation.
+**Dernier commit :** aucun sur cette branche à ce stade.
+
+**Fait :** enum `ChargeAllocationMethod` (SHARES, BY_LOT_TYPE, EQUAL), `allocationMethod` sur `SyndicChargeSchedule` et `ChargeCallBatch`, barème par type de lot en Json sur `Syndicate.lotTypeRates` (migration écrite à la main `20261019140000_syndic_mode_repartition_appels`, NON appliquée). Fonction pure `lib/syndics/charge-allocation-methods.ts` ; routes GET/PUT `.../bareme-types-lots` ; `POST .../charges` accepte `allocationMethod` ; programmation FIXED idem. Web : carte « Barème par type de lot » dans le détail de la copropriété, sélecteur de mode et aperçu par lot dans SyndicCharges et le tiroir des programmations.
+**Décisions métier validées :** le barème se paramètre une fois par copropriété (jamais à chaque appel) ; sans méthode, `POST .../charges` garde l'ancien sens de `amount` (montant par lot) ; pour un seul lot l'écran n'envoie pas de méthode.
+
+**Reste à faire :** appliquer la migration sur les bases ; faire relire les traductions en/ar des clés nouvelles (35 web, 9 API, rédigées par l'agent) par un locuteur arabe ; wiki des fonctionnalités (`npm run wiki:export`) ; recette navigateur.
+
+**Pièges :** `prisma generate` écrit dans le `node_modules` partagé (jonction) et échoue sur le moteur verrouillé (EPERM) mais les types sont bien régénérés ; `livekit-server-sdk` et `@aws-sdk/client-s3` manquent dans le `node_modules` partagé, donc Jest API échoue sans configuration de substitution ; l'aperçu web est un miroir de la fonction pure de l'API (garder les deux tests synchronisés).
+
 ## Recette Syndic du 18/10 — fusionnée, déployée staging et production (2026-10-19)
 
 **État :** correctifs de la recette Syndic du 18/10 fusionnés dans le tronc (PR #172, commit `0d918d30`) et déployés sur le staging le 2026-10-18 vers 23 h (workflow « Déploiement », run 39174199627, vérifié : `/health` OK et textes des correctifs présents dans les fichiers servis). **Production déployée le 2026-10-19 vers 6 h 25** (workflow « Déploiement », environnement prod, run 39208722562, commit `0d918d30`) : sauvegarde de la base et étiquettes `avant-*` faites par le workflow, migrations appliquées, `/health` OK et nouveaux écrans servis. Premier déploiement de la production par la CI : clé SSH dédiée `github-actions-immotopia-prod` posée le 2026-10-19 dans `authorized_keys` (préfixe `command=…ci-deploy.sh prod,restrict`), secrets `DEPLOY_SSH_KEY` et `DEPLOY_SSH_KNOWN_HOSTS` dans l'environnement GitHub `production` (approbation requise). Journal serveur : `~/ci-deploy-logs/20261019-061637-prod-0d918d30-3469452.log`.

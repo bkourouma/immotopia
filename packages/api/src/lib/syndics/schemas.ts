@@ -135,7 +135,11 @@ export const createChargeCallSchema = z
     period: z.string().min(1, 'La periode est obligatoire'),
     // Lot S2 : bornes facultatives ; deduites du libelle quand elles manquent.
     ...periodBoundsFields,
-    amount: z.number().positive(),
+    // Sans `allocationMethod` : montant PAR LOT (comportement historique).
+    // SHARES et EQUAL : TOTAL a repartir. BY_LOT_TYPE : ignore (le total vient du bareme).
+    amount: z.number().positive('Le montant doit etre strictement positif').optional(),
+    // Mode de repartition entre les lots (menu lot 2) ; absent = montant par lot identique.
+    allocationMethod: z.enum(['SHARES', 'BY_LOT_TYPE', 'EQUAL']).optional(),
     currency: z.string().default('XOF'),
     dueDate: z.coerce.date(),
     // Appel verse en entier a ce fonds (appel de fonds travaux).
@@ -146,6 +150,15 @@ export const createChargeCallSchema = z
   })
   .superRefine((value, ctx) => {
     checkPeriodBounds(value, ctx);
+    if (value.allocationMethod !== 'BY_LOT_TYPE' && value.amount === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: value.allocationMethod
+          ? 'Le montant total a repartir est obligatoire pour ce mode de repartition'
+          : 'Le montant est obligatoire',
+        path: ['amount']
+      });
+    }
     if (!value.applyToAllLots && !value.lotId && (!value.lotIds || value.lotIds.length === 0)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

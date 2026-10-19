@@ -42,9 +42,18 @@ vi.mock('../../services/syndic-charge-schedule-service', () => ({
 }));
 
 const listBudgets = vi.fn();
+const listSyndicateLots = vi.fn();
 
 vi.mock('../../services/syndic-service', () => ({
-  listBudgets: (...args: unknown[]) => listBudgets(...args)
+  listBudgets: (...args: unknown[]) => listBudgets(...args),
+  listSyndicateLots: (...args: unknown[]) => listSyndicateLots(...args)
+}));
+
+const getLotTypeRates = vi.fn();
+
+vi.mock('../../services/syndic-lot-type-rates-service', () => ({
+  getLotTypeRates: (...args: unknown[]) => getLotTypeRates(...args),
+  updateLotTypeRates: vi.fn()
 }));
 
 const authValue: AuthContextType = {
@@ -145,6 +154,17 @@ const SCHEDULE_MONTHLY = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  listSyndicateLots.mockResolvedValue([
+    { id: 'lot-1', syndicateId: 'syndic-1', lotNumber: 'A01', lotType: 'APARTMENT', generalShares: 100 },
+    { id: 'lot-2', syndicateId: 'syndic-1', lotNumber: 'A02', lotType: 'APARTMENT', generalShares: 300 }
+  ]);
+  getLotTypeRates.mockResolvedValue({
+    rates: { APARTMENT: 25000 },
+    lotTypesPresent: [{ lotType: 'APARTMENT', count: 2 }],
+    missingTypes: [],
+    isEmpty: false,
+    updatedAt: null
+  });
   listBudgets.mockResolvedValue([
     {
       id: 'budget-1',
@@ -534,6 +554,144 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
 
     await waitFor(() => expect(deleteChargeSchedule).toHaveBeenCalledWith('tenant-1', 'syndic-1', 'sched-1'), {
       timeout: 15000
+    });
+  });
+
+  describe('mode de répartition (menu lot 2)', () => {
+    async function openFixedDrawer(label: string) {
+      listChargeSchedules.mockResolvedValue([]);
+      createChargeSchedule.mockResolvedValue(SCHEDULE_MONTHLY);
+      mount();
+      fireEvent.click(await screen.findByText('Nouvelle programmation'));
+      fireEvent.change(await screen.findByLabelText('Libellé'), { target: { value: label } });
+      fireEvent.mouseDown(screen.getByLabelText('Source du montant'));
+      fireEvent.click(await screen.findByTitle('Montant fixe'));
+      return screen.findByText('Par type de lot');
+    }
+
+    it('montant fixe équitable : aperçu par lot et envoi de allocationMethod EQUAL', async () => {
+      await openFixedDrawer('Charges équitables');
+      fireEvent.click(screen.getByText('Équitablement'));
+      fireEvent.change(await screen.findByLabelText('Montant total par période'), { target: { value: '100000' } });
+
+      expect(await screen.findByText('A01')).toBeInTheDocument();
+      expect(screen.getByText('A02')).toBeInTheDocument();
+      expect(screen.getAllByText(/50\s000/).length).toBeGreaterThan(0);
+
+      fireEvent.click(screen.getByText('Créer'));
+      await waitFor(() =>
+        expect(createChargeSchedule).toHaveBeenCalledWith(
+          'tenant-1',
+          'syndic-1',
+          expect.objectContaining({ amountSource: 'FIXED', allocationMethod: 'EQUAL', fixedAmount: 100000 })
+        )
+      );
+    });
+
+    it('par tantièmes (défaut) : aperçu au prorata des tantièmes', async () => {
+      await openFixedDrawer('Charges tantièmes');
+      fireEvent.change(await screen.findByLabelText('Montant total par période'), { target: { value: '100000' } });
+
+      expect(await screen.findByText('A01')).toBeInTheDocument();
+      expect(screen.getAllByText(/25\s000/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/75\s000/).length).toBeGreaterThan(0);
+
+      fireEvent.click(screen.getByText('Créer'));
+      await waitFor(() =>
+        expect(createChargeSchedule).toHaveBeenCalledWith(
+          'tenant-1',
+          'syndic-1',
+          expect.objectContaining({ allocationMethod: 'SHARES', fixedAmount: 100000 })
+        )
+      );
+    });
+
+    it('par type de lot : aucun montant à saisir, aperçu du barème et fixedAmount null', async () => {
+      await openFixedDrawer('Charges barème');
+      fireEvent.click(screen.getByText('Par type de lot'));
+
+      await waitFor(() => expect(getLotTypeRates).toHaveBeenCalledWith('tenant-1', 'syndic-1'));
+      expect(await screen.findByText('A01')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Montant total par période')).toBeNull();
+      // 2 appartements à 25 000 : total 50 000.
+      expect(screen.getAllByText(/50\s000/).length).toBeGreaterThan(0);
+
+      fireEvent.click(screen.getByText('Créer'));
+      await waitFor(() =>
+        expect(createChargeSchedule).toHaveBeenCalledWith(
+          'tenant-1',
+          'syndic-1',
+          expect.objectContaining({ allocationMethod: 'BY_LOT_TYPE', fixedAmount: null })
+        )
+      );
+    });
+
+    it('par type de lot avec un barème vide : avertissement, lien vers la copropriété, création bloquée', async () => {
+      getLotTypeRates.mockResolvedValue({
+        rates: {},
+        lotTypesPresent: [{ lotType: 'APARTMENT', count: 2 }],
+        missingTypes: ['APARTMENT'],
+        isEmpty: true,
+        updatedAt: null
+      });
+      await openFixedDrawer('Charges barème vide');
+      fireEvent.click(screen.getByText('Par type de lot'));
+
+      expect(await screen.findByText(/Le barème par type de lot de cette copropriété est vide/)).toBeInTheDocument();
+      const link = screen.getByText('Paramétrer le barème de la copropriété').closest('a');
+      expect(link?.getAttribute('href')).toBe('/tenant/tenant-1/syndics/syndic-1');
+
+      fireEvent.click(screen.getByText('Créer'));
+      await new Promise(resolve => setTimeout(resolve, 50));
+      expect(createChargeSchedule).not.toHaveBeenCalled();
+    });
+
+    it('barème indisponible (échec de chargement) : avertissement, création refusée', async () => {
+      getLotTypeRates.mockRejectedValue(new Error('boom'));
+      await openFixedDrawer('Charges barème en panne');
+      fireEvent.click(screen.getByText('Par type de lot'));
+
+      expect(await screen.findByText(/barème par type de lot est indisponible/)).toBeInTheDocument();
+      fireEvent.click(screen.getByText('Créer'));
+      await new Promise(resolve => setTimeout(resolve, 50));
+      expect(createChargeSchedule).not.toHaveBeenCalled();
+    });
+
+    it('un budget n’affiche pas le sélecteur et envoie SHARES', async () => {
+      listChargeSchedules.mockResolvedValueOnce([]).mockResolvedValue([SCHEDULE_MONTHLY]);
+      createChargeSchedule.mockResolvedValue(SCHEDULE_MONTHLY);
+      mount();
+      fireEvent.click(await screen.findByText('Nouvelle programmation'));
+      fireEvent.change(await screen.findByLabelText('Libellé'), { target: { value: 'Budget' } });
+      expect(screen.queryByText('Par type de lot')).toBeNull();
+      fireEvent.mouseDown(await screen.findByLabelText('Budget'));
+      fireEvent.click(await screen.findByText('Budget 2026 (2026)'));
+      fireEvent.click(screen.getByText('Créer'));
+      await waitFor(() =>
+        expect(createChargeSchedule).toHaveBeenCalledWith(
+          'tenant-1',
+          'syndic-1',
+          expect.objectContaining({ amountSource: 'BUDGET', allocationMethod: 'SHARES', fixedAmount: null })
+        )
+      );
+    });
+
+    it('la liste affiche « Barème par type de lot » à la place du montant fixe', async () => {
+      listChargeSchedules.mockResolvedValue([
+        {
+          ...SCHEDULE_MONTHLY,
+          id: 'sched-2',
+          label: 'Charges au barème',
+          amountSource: 'FIXED',
+          budgetId: null,
+          budget: null,
+          fixedAmount: null,
+          allocationMethod: 'BY_LOT_TYPE'
+        }
+      ]);
+      mount();
+      expect(await screen.findByText('Charges au barème')).toBeInTheDocument();
+      expect(screen.getByText('Barème par type de lot')).toBeInTheDocument();
     });
   });
 });
