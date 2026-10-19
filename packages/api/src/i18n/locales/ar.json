@@ -504,6 +504,7 @@
   "Cette étape du ticket ne peut pas être atteinte depuis son statut actuel.": "لا يمكن الانتقال إلى هذه المرحلة من التذكرة انطلاقًا من حالتها الحالية.",
   "Cette exécution n'a émis aucun appel de charges : rien à renvoyer.": "لم يُصدر هذا التنفيذ أي نداء أعباء: لا شيء لإعادة إرساله.",
   "Cette extension exige un pack qui n'est pas souscrit.": "يتطلب هذا الامتداد باقة غير مشترك فيها.",
+  "Cette extension n'est pas proposée avec les packs de votre agence.": "هذا التوسيع غير متاح مع باقات وكالتكم.",
   "Cette facture a déjà été réceptionnée ({{slipNumber}} du {{date}}).": "سبق استلام هذه الفاتورة ({{slipNumber}} بتاريخ {{date}}).",
   "Cette facture a déjà été réceptionnée (le {{date}}).": "سبق استلام هذه الفاتورة (بتاريخ {{date}}).",
   "Cette facture a deja ete validee ou annulee — une piece validee ne se modifie plus": "اعتُمدت هذه الفاتورة أو أُلغيت بالفعل — والمستند المعتمَد لا يقبل التعديل",

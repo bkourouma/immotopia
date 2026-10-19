@@ -2751,6 +2751,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/subscription/extension-offers",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/subscription/extension-offers",
+      "pathParams": [],
+      "module": "subscription",
+      "summary": "subscription / extension-offers",
+      "permissions": ["TENANT_SETTINGS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/subscription/extension-requests",
       "method": "GET",
       "path": "/api/tenants/:tenantId/subscription/extension-requests",

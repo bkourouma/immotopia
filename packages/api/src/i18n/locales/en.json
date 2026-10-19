@@ -504,6 +504,7 @@
   "Cette étape du ticket ne peut pas être atteinte depuis son statut actuel.": "This ticket step cannot be reached from its current status.",
   "Cette exécution n'a émis aucun appel de charges : rien à renvoyer.": "This run issued no charge calls: nothing to resend.",
   "Cette extension exige un pack qui n'est pas souscrit.": "This extension requires a pack that is not subscribed.",
+  "Cette extension n'est pas proposée avec les packs de votre agence.": "This extension is not offered with your agency packs.",
   "Cette facture a déjà été réceptionnée ({{slipNumber}} du {{date}}).": "This invoice has already been received ({{slipNumber}} of {{date}}).",
   "Cette facture a déjà été réceptionnée (le {{date}}).": "This invoice has already been received (on {{date}}).",
   "Cette facture a deja ete validee ou annulee — une piece validee ne se modifie plus": "This invoice has already been approved or cancelled — an approved document can no longer be changed",
