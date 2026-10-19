@@ -361,7 +361,7 @@ describe('SyndicDirectDebit — mandats', () => {
     await waitFor(() => expect(modal.getByLabelText('IBAN ou RIB')).toBeEnabled());
     expect(modal.getByLabelText('Titulaire du compte')).toHaveValue('Awa Traoré');
 
-    await user.type(modal.getByLabelText('IBAN ou RIB'), 'CI93 CI000 01234 012345678901 23');
+    await user.type(modal.getByLabelText('IBAN ou RIB'), 'CI93 CI000 01234 012345678901 05');
     await waitFor(() => expect(checkSyndicIban).toHaveBeenCalled(), { timeout: 3000 });
     expect(await modal.findByText('Banque hors réseau')).toBeInTheDocument();
     expect(modal.getByText('CI•• •••• 5678').closest('bdi')).toHaveAttribute('dir', 'ltr');
@@ -371,7 +371,7 @@ describe('SyndicDirectDebit — mandats', () => {
     expect(createSyndicMandate).toHaveBeenCalledWith(TENANT, SYNDIC, {
       lotId: 'lot-1',
       debtorContactId: 'ct-1',
-      iban: 'CI93 CI000 01234 012345678901 23',
+      iban: 'CI93 CI000 01234 012345678901 05',
       holderName: 'Awa Traoré'
     });
     await waitFor(() => expect(listSyndicMandates.mock.calls.length).toBeGreaterThan(1));

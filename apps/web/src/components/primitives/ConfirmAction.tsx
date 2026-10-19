@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { App, Button, Drawer, Popconfirm, Space, Typography } from 'antd';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { t } from '../../i18n/t';
 
 const { Text, Title } = Typography;
 
@@ -41,8 +42,8 @@ export interface ConfirmActionProps {
 export const ConfirmAction: React.FC<ConfirmActionProps> = ({
   title,
   description,
-  okText = 'Confirmer',
-  cancelText = 'Annuler',
+  okText = t('Confirmer'),
+  cancelText = t('Annuler'),
   danger = false,
   onConfirm,
   onCancel,
@@ -157,7 +158,7 @@ export function useConfirmAction(): (options: ConfirmOptions) => void {
   const { modal } = App.useApp();
   const { isDesktop } = useBreakpoint();
 
-  return ({ title, description, okText = 'Confirmer', cancelText = 'Annuler', danger, onConfirm }) => {
+  return ({ title, description, okText = t('Confirmer'), cancelText = t('Annuler'), danger, onConfirm }) => {
     modal.confirm({
       title,
       content: description,
