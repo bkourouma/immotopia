@@ -2,6 +2,7 @@ import * as cron from 'node-cron';
 
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { withTransactionalAdvisoryLock } from '../lib/ai/advisory-lock';
 import { isOverdue } from '../lib/syndics/declared-payment/business-days';
@@ -203,8 +204,10 @@ export function startSyndicDeclaredPaymentJob(): void {
       if (hourlyRunning) return;
       hourlyRunning = true;
       try {
-        const report = await runHourlyDeclarationBatch();
-        if (report.syndicates > 0) logger.info('[declared-payment] passage horaire terminé', report);
+        const report = await withJobLock('syndic-declared-payment-hourly', 30 * 60 * 1000, () =>
+          runHourlyDeclarationBatch()
+        );
+        if (report && report.syndicates > 0) logger.info('[declared-payment] passage horaire terminé', report);
       } catch (error) {
         logger.error('Error in syndic declared payment hourly job', {
           error: error instanceof Error ? error.message : String(error)
@@ -221,8 +224,8 @@ export function startSyndicDeclaredPaymentJob(): void {
       if (dailyRunning) return;
       dailyRunning = true;
       try {
-        const report = await runDailyOverdueAlert();
-        if (report.summariesSent > 0 || report.failed > 0) {
+        const report = await withJobLock('syndic-declared-payment-daily', 60 * 60 * 1000, () => runDailyOverdueAlert());
+        if (report && (report.summariesSent > 0 || report.failed > 0)) {
           logger.info('[declared-payment] alerte quotidienne terminée', report);
         }
       } catch (error) {
