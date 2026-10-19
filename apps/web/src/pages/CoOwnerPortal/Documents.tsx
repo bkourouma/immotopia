@@ -30,6 +30,7 @@ export default function CoOwnerDocuments() {
     refetch
   } = useQuery({
     queryKey: ['coowner-portal', 'documents'],
+    staleTime: 30_000,
     queryFn: () => listMyDocuments()
   });
 

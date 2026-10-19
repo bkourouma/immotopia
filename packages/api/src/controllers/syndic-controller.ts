@@ -42,6 +42,7 @@ import {
   deleteMaintenanceContractByTenant,
   listDocumentsBySyndicate,
   createDocumentForSyndicate,
+  updateDocumentForSyndicate,
   getFinanceSummaryBySyndicate,
   listCommonAssetsBySyndicate,
   listOverdueDashboardBySyndicate,
@@ -126,6 +127,7 @@ import {
   updateServiceProviderSchema,
   createContractSchema,
   createDocumentSchema,
+  updateDocumentSchema,
   updateContractSchema,
   createManualReminderSchema,
   createPenaltyRequestSchema,
@@ -1408,6 +1410,25 @@ export const createDocumentHandler = asyncHandler(async (req: Request, res: Resp
   });
 
   res.status(201).json({
+    success: true,
+    data: document
+  });
+});
+
+/**
+ * Modification d'un document (titre, type, visibilite pour les copropietaires).
+ * Le document doit appartenir au syndicat de l'URL ET a l'agence ; sinon 404.
+ */
+export const updateDocumentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la modification de document');
+  }
+
+  const parsed = updateDocumentSchema.parse(req.body ?? {});
+  const document = await updateDocumentForSyndicate(tenantId, req.params.syndicId, req.params.documentId, parsed);
+
+  res.json({
     success: true,
     data: document
   });

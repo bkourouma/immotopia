@@ -95,6 +95,7 @@ import {
   deleteContractHandler,
   listDocumentsHandler,
   createDocumentHandler,
+  updateDocumentHandler,
   downloadDocumentHandler,
   getFinanceSummaryHandler,
   getOverdueDashboardHandler,
@@ -653,6 +654,11 @@ router.post(
   requirePropertyPermission('SYNDIC_EDIT'),
   uploadDocument.single('file'),
   createDocumentHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/documents/:documentId',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  updateDocumentHandler
 );
 // Fichier d'un document : jamais servi en statique (/uploads/syndics est
 // refuse), seulement ici, apres controle de l'agence. Voir

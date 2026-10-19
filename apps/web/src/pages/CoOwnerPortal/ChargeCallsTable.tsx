@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, Checkbox, Tag } from 'antd';
+import { Button, Checkbox, Space, Tag } from 'antd';
 import { FileTextOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -11,6 +11,7 @@ import {
   downloadCoOwnerChargeCallNotice,
   type CoOwnerChargeCall
 } from '../../services/coowner-portal-service';
+import { formatChargePeriod } from '../../utils/charge-period';
 import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { ChargeCallStatusTag } from './labels';
@@ -34,7 +35,7 @@ const NoticeButton: React.FC<{ call: CoOwnerChargeCall }> = ({ call }) => {
     try {
       const { blob, filename } = await downloadCoOwnerChargeCallNotice(
         call.id,
-        t("Avis d'appel {{period}}.pdf", { period: call.period })
+        t("Avis d'appel {{period}}.pdf", { period: formatChargePeriod(call) })
       );
       saveBlob(blob, filename);
       setState('idle');
@@ -132,7 +133,7 @@ export const ChargeCallsTable: React.FC<{
         checked={selectedCalls.some(other => other.id === call.id)}
         disabled={!isCallSelectable(call, selectedCalls)}
         onChange={event => toggle(call, event.target.checked)}
-        aria-label={t("Sélectionner l'appel {{period}}", { period: call.period })}
+        aria-label={t("Sélectionner l'appel {{period}}", { period: formatChargePeriod(call) })}
       />
     );
   };
@@ -148,7 +149,12 @@ export const ChargeCallsTable: React.FC<{
           }
         ]
       : []),
-    { title: t('Période'), dataIndex: 'period', key: 'period' },
+    {
+      title: t('Période'),
+      dataIndex: 'period',
+      key: 'period',
+      render: (_: unknown, call: CoOwnerChargeCall) => formatChargePeriod(call)
+    },
     ...(showLot
       ? [
           {
@@ -188,12 +194,13 @@ export const ChargeCallsTable: React.FC<{
     {
       title: t('Statut'),
       key: 'status',
+      width: 220,
       render: (_, call) => (
-        <>
+        <Space wrap size={[4, 4]}>
           <ChargeCallStatusTag status={call.status} />
           <OnlineCheckoutTag call={call} onResume={onResume} />
           <PendingDeclarationTag call={call} />
-        </>
+        </Space>
       )
     },
     // Bouton de téléchargement de l'avis : rien à exporter.
@@ -219,9 +226,10 @@ export const ChargeCallsTable: React.FC<{
       export={{ filename: t('Appels de charges') }}
       emptyDescription={t("Aucun appel de charges n'a été émis pour vos lots.")}
       columns={columns}
+      scrollX={1100}
       renderCard={call => (
         <DataCard
-          title={call.period}
+          title={formatChargePeriod(call)}
           subtitle={[
             call.lot ? t('Lot {{lotNumber}}', { lotNumber: call.lot.lotNumber }) : null,
             t('échéance le {{date}}', { date: dayjs(call.dueDate).format('DD/MM/YYYY') })

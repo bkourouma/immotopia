@@ -303,11 +303,11 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
     await waitFor(() => expect(listOpenLotCharges).toHaveBeenCalledWith('tenant-1', 'syndic-1', 'lot-1'));
 
     // Coche uniquement l'appel du deuxième trimestre (2026-Q2), pas le premier.
-    const row = (await screen.findByText('2026-Q2 (01/04/2026 – 30/06/2026)')).closest('tr');
+    const row = (await screen.findByText('T2 2026 (01/04/2026 – 30/06/2026)')).closest('tr');
     const checkbox = within(row as HTMLElement).getByRole('checkbox');
     // BUG-003 : statut traduit, cases et montant nommés en français.
     expect(within(row as HTMLElement).getByText('En attente')).toBeTruthy();
-    expect(checkbox.getAttribute('aria-label')).toBe("Sélectionner l'appel 2026-Q2");
+    expect(checkbox.getAttribute('aria-label')).toBe("Sélectionner l'appel T2 2026");
     expect(screen.getByRole('checkbox', { name: 'Sélectionner tous les appels' })).toBeTruthy();
     expect(screen.getAllByText('Période').length).toBeGreaterThan(0);
     fireEvent.click(checkbox);

@@ -32,6 +32,17 @@ vi.mock('@ant-design/icons', async () => {
   return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
 });
 
+// La page Documents lit les droits de l'utilisateur (action de visibilité) : pas d'appel réseau ici.
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ permissions: null, ready: true, disabled: new Set(), enabled: new Set() })
+}));
+
+// Confirmation (Popconfirm/Drawer) : hors périmètre du mock antd minimal ci-dessous.
+vi.mock('../../components/primitives/ConfirmAction', () => ({
+  ConfirmAction: ({ children }: any) => children,
+  useConfirmAction: () => () => undefined
+}));
+
 // Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
 vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
 
@@ -184,6 +195,12 @@ vi.mock('antd', async () => {
       </button>
     ),
     Card: passthrough(),
+    Checkbox: ({ children, checked, onChange }: any) => (
+      <label>
+        <input type="checkbox" checked={checked} onChange={onChange} />
+        {children}
+      </label>
+    ),
     Col: passthrough(),
     Segmented,
     Row: passthrough(),
@@ -408,8 +425,8 @@ describe('Providers/Documents pages', () => {
     // libellé traduit du type REGULATION) sont deux textes distincts : le mock
     // de `Table` rend chaque colonne, donc les deux sont présents.
     expect((await screen.findAllByText(/Reglement/)).length).toBeGreaterThan(0);
-    // « Règlement » figure aussi dans la liste des types du formulaire d'envoi : on compte les occurrences.
-    expect((await screen.findAllByText('Règlement')).length).toBeGreaterThan(1);
+    // « Règlement de copropriété » figure aussi dans la liste des types du formulaire d'envoi : on compte les occurrences.
+    expect((await screen.findAllByText('Règlement de copropriété')).length).toBeGreaterThan(1);
   });
 
   it('télécharge un fichier déposé par la route authentifiée, jamais par /uploads', async () => {

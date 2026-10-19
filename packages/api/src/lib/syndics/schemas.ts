@@ -272,13 +272,44 @@ export const createContractSchema = z.object({
   renewalAlertDays: z.number().int().nonnegative().default(30)
 });
 
+const documentTypeSchema = z.enum([
+  'REGULATION',
+  'GENERAL_MEETING_MINUTES',
+  'DIAGNOSTIC',
+  'INSURANCE',
+  'BUDGET',
+  'OTHER'
+]);
+
+/** Booléen venu d'un JSON ou d'un multipart/form-data ('true' / 'false'). */
+const formBooleanSchema = z.preprocess(value => {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1') return true;
+    if (normalized === 'false' || normalized === '0') return false;
+  }
+  return value;
+}, z.boolean());
+
 export const createDocumentSchema = z.object({
   syndicateId: z.string().uuid(),
   title: z.string().min(1, 'Le titre du document est obligatoire'),
-  type: z.enum(['REGULATION', 'GENERAL_MEETING_MINUTES', 'DIAGNOSTIC', 'INSURANCE', 'BUDGET', 'OTHER']),
+  type: documentTypeSchema,
   fileUrl: httpUrl('Le lien du document doit etre une URL valide').optional(),
-  expiresAt: z.coerce.date().optional()
+  expiresAt: z.coerce.date().optional(),
+  // Absent : le défaut dépend du type (règlement et PV d'AG visibles), voir queries.ts.
+  visibleToCoOwners: formBooleanSchema.optional()
 });
+
+export const updateDocumentSchema = z
+  .object({
+    title: z.string().trim().min(1, 'Le titre du document est obligatoire').optional(),
+    type: documentTypeSchema.optional(),
+    visibleToCoOwners: formBooleanSchema.optional()
+  })
+  .refine(value => Object.values(value).some(field => field !== undefined), {
+    message: 'Aucune modification fournie'
+  });
 
 export const createLotTenantAssignmentSchema = z.object({
   tenantId: uuidSchema,
@@ -686,6 +717,7 @@ export type CreateServiceProviderInput = z.infer<typeof createServiceProviderSch
 export type UpdateServiceProviderInput = z.infer<typeof updateServiceProviderSchema>;
 export type CreateContractInput = z.infer<typeof createContractSchema>;
 export type CreateDocumentInput = z.infer<typeof createDocumentSchema>;
+export type UpdateDocumentInput = z.infer<typeof updateDocumentSchema>;
 export type CreateLotTenantAssignmentInput = z.infer<typeof createLotTenantAssignmentSchema>;
 export type LinkMaintenanceRequestInput = z.infer<typeof linkMaintenanceRequestSchema>;
 export type LinkMaintenanceContractInput = z.infer<typeof linkMaintenanceContractSchema>;

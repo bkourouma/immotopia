@@ -68,12 +68,13 @@ export default function CoOwnerReceipts() {
   const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [page, setPage] = useState(1);
 
-  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], queryFn: () => listMyLots() });
+  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], staleTime: 30_000, queryFn: () => listMyLots() });
   const from = isoDayOf(range?.[0]);
   const to = isoDayOf(range?.[1]);
 
   const receipts = useQuery({
     queryKey: ['coowner-portal', 'receipts', lotId ?? null, kind ?? null, from ?? null, to ?? null, page],
+    staleTime: 30_000,
     queryFn: () => listMyReceipts({ lotId, kind, from, to, page, limit: PAGE_SIZE })
   });
 

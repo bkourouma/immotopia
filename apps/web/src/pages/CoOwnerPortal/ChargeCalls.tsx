@@ -95,11 +95,13 @@ export default function CoOwnerChargeCalls() {
     refetch
   } = useQuery({
     queryKey: ['coowner-portal', 'charge-calls', 'all'],
+    staleTime: 30_000,
     queryFn: () => listMyChargeCalls()
   });
 
   const availabilityQuery = useQuery({
     queryKey: ['coowner-portal', 'online-payment-availability'],
+    staleTime: 30_000,
     queryFn: () => getOnlinePaymentAvailability(),
     retry: false
   });

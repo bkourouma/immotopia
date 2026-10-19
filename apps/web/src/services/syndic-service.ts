@@ -38,6 +38,7 @@ import {
   CreatePaymentScheduleRequest,
   CreateResolutionRequest,
   CreateSyndicateDocumentRequest,
+  UpdateSyndicateDocumentRequest,
   FinanceSummary,
   CreateOwnerAccountAdjustmentRequest,
   CreateChargeCallRequest,
@@ -667,6 +668,9 @@ export async function createSyndicDocument(
   if (data.expiresAt) {
     formData.append('expiresAt', data.expiresAt);
   }
+  if (data.visibleToCoOwners !== undefined) {
+    formData.append('visibleToCoOwners', String(data.visibleToCoOwners));
+  }
 
   const response = await apiClient.post<{ success: boolean; data: SyndicateDocument }>(
     `/tenants/${tenantId}/syndics/${syndicId}/documents`,
@@ -676,6 +680,19 @@ export async function createSyndicDocument(
         'Content-Type': 'multipart/form-data'
       }
     }
+  );
+  return response.data.data;
+}
+
+export async function updateSyndicDocument(
+  tenantId: string,
+  syndicId: string,
+  documentId: string,
+  data: UpdateSyndicateDocumentRequest
+): Promise<SyndicateDocument> {
+  const response = await apiClient.patch<{ success: boolean; data: SyndicateDocument }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/documents/${documentId}`,
+    data
   );
   return response.data.data;
 }

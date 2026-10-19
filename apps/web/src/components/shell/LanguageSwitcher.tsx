@@ -4,6 +4,7 @@ import type { MenuProps } from 'antd';
 import { CheckOutlined, GlobalOutlined } from '@ant-design/icons';
 import { useLanguage } from '../../i18n/useLanguage';
 import { t } from '../../i18n/t';
+import { loadLanguage } from '../../i18n';
 import { LANGUAGE_CODES, LANGUAGES, type Language } from '../../i18n/config';
 
 export interface LanguageSwitcherProps {
@@ -28,6 +29,9 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = 'c
 
   const items: MenuProps['items'] = LANGUAGE_CODES.map(code => ({
     key: code,
+    // Pendant le chargement d'un catalogue, un second clic relancerait une
+    // bascule concurrente : le menu est figé jusqu'à son aboutissement.
+    disabled: isSwitching,
     // `lang` sur l'élément : le lecteur d'écran prononce « العربية » en arabe
     // au lieu de l'épeler avec la voix française.
     label: (
@@ -37,12 +41,24 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = 'c
       </span>
     ),
     onClick: () => {
-      if (code !== language) void setLanguage(code as Language);
+      if (code !== language) void setLanguage(code as Language, { explicit: true });
     }
   }));
 
   return (
-    <Dropdown menu={{ items, selectedKeys: [language] }} placement="bottomRight" trigger={['click']}>
+    <Dropdown
+      menu={{ items, selectedKeys: [language] }}
+      placement="bottomRight"
+      trigger={['click']}
+      // Précharge les catalogues à l'ouverture : `loadLanguage` est idempotent,
+      // le clic qui suit n'a plus à attendre le réseau.
+      onOpenChange={open => {
+        if (!open) return;
+        for (const code of LANGUAGE_CODES) {
+          if (code !== language) void loadLanguage(code as Language).catch(() => undefined);
+        }
+      }}
+    >
       <Button
         type="text"
         loading={isSwitching}

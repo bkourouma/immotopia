@@ -504,6 +504,20 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     expect(keys).toContain('SYNDIC_EDIT');
   });
 
+  it('declare la route de modification d’un document de copropriété derriere authentification, garde d’agence et SYNDIC_EDIT', () => {
+    const path = '/api/tenants/:tenantId/syndics/:syndicId/documents/:documentId';
+    const route = routes.find(r => r.method === 'PATCH' && r.path === path);
+    expect(route ? `PATCH ${path}` : `ABSENTE : PATCH ${path}`).toBe(`PATCH ${path}`);
+    expect(hasTenantOrPortalGuard(route!)).toBe(true);
+    expect(route!.middlewares).toContain(authenticate);
+    expect(isWhitelisted(route!)).toBeUndefined();
+    const keys = route!.middlewares.flatMap(mw => [
+      (mw as any)?.permissionKey,
+      ...((mw as any)?.anyPermissionKeys ?? [])
+    ]);
+    expect(keys).toContain('SYNDIC_EDIT');
+  });
+
   it('declare les 5 routes portail du paiement mobile money declare (spec 047) derriere la garde du portail copropriétaire', () => {
     const base = '/api/portal/copropriete/paiements-declares';
     const expected: Array<[string, string]> = [
