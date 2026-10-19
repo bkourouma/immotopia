@@ -30,7 +30,12 @@ import { isLanguage, LANGUAGE_STORAGE_KEY } from './config';
  */
 export function LanguagePreferenceSync(): null {
   const { user, isAuthenticated } = useAuth();
-  const { language, setLanguage, initialLanguageResolved } = useLanguage();
+  const { language, setLanguage, initialLanguageResolved, hasExplicitLanguageChoice } = useLanguage();
+
+  // Dernière langue affichée, lisible depuis une promesse sans la rendre
+  // dépendance d'un effet.
+  const languageRef = useRef(language);
+  languageRef.current = language;
 
   // La langue déjà connue du serveur pour ce compte. Sert à n'envoyer une
   // requête que lorsque le choix change réellement.
@@ -57,6 +62,15 @@ export function LanguagePreferenceSync(): null {
     if (isLanguage(user.preferredLanguage)) {
       appliedForUserId.current = user.id;
       const preferred = user.preferredLanguage;
+
+      // La personne a déjà choisi une langue dans le sélecteur pendant cette
+      // session : ce choix explicite prime sur la préférence du compte, qui ne
+      // doit pas le réannuler (bug « premier clic sur Arabic sans effet »). Le
+      // serveur connaît `preferred` : l'effet 2 remontera la langue choisie.
+      if (hasExplicitLanguageChoice?.()) {
+        savedLanguage.current = preferred;
+        return;
+      }
       // On appelle TOUJOURS `setLanguage(preferred)`, même si `language`
       // semble déjà égal à `preferred` : `language` peut encore valoir le
       // `'fr'` initial de `LanguageProvider` alors qu'une bascule de montage
@@ -87,6 +101,15 @@ export function LanguagePreferenceSync(): null {
         })
         .then(() => {
           savedLanguage.current = preferred;
+          // Choix explicite fait PENDANT cette bascule : l'effet 2 l'a ignoré
+          // (référence encore `undefined`) et ne se rejouera pas seul.
+          const current = languageRef.current;
+          if (hasExplicitLanguageChoice?.() && current !== preferred) {
+            savedLanguage.current = current;
+            updatePreferredLanguage(current).catch(() => {
+              savedLanguage.current = undefined;
+            });
+          }
         });
       return;
     }
@@ -135,7 +158,7 @@ export function LanguagePreferenceSync(): null {
     // pour relire `language` une fois stable plutôt que sur sa valeur
     // transitoire.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, user, setLanguage, initialLanguageResolved]);
+  }, [isAuthenticated, user, setLanguage, initialLanguageResolved, hasExplicitLanguageChoice]);
 
   // 2. Changement de langue en session : le remonter au compte, une fois.
   useEffect(() => {

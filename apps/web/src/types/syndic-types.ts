@@ -584,6 +584,8 @@ export interface SyndicateDocument {
   type: 'REGULATION' | 'GENERAL_MEETING_MINUTES' | 'DIAGNOSTIC' | 'INSURANCE' | 'BUDGET' | 'OTHER';
   fileUrl: string;
   expiresAt?: string | null;
+  /** Visible (et téléchargeable) des copropriétaires depuis leur portail. */
+  visibleToCoOwners: boolean;
   createdAt: string;
 }
 
@@ -592,6 +594,13 @@ export interface CreateSyndicateDocumentRequest {
   type: 'REGULATION' | 'GENERAL_MEETING_MINUTES' | 'DIAGNOSTIC' | 'INSURANCE' | 'BUDGET' | 'OTHER';
   file: File;
   expiresAt?: string;
+  visibleToCoOwners?: boolean;
+}
+
+export interface UpdateSyndicateDocumentRequest {
+  title?: string;
+  type?: SyndicateDocument['type'];
+  visibleToCoOwners?: boolean;
 }
 
 export interface FinanceSummary {

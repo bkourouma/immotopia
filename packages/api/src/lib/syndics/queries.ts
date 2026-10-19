@@ -3033,6 +3033,7 @@ export async function createDocumentForSyndicate(
     type: 'REGULATION' | 'GENERAL_MEETING_MINUTES' | 'DIAGNOSTIC' | 'INSURANCE' | 'BUDGET' | 'OTHER';
     fileUrl: string;
     expiresAt?: Date;
+    visibleToCoOwners?: boolean;
   }
 ) {
   const syndicate = await prisma.syndicate.findFirst({
@@ -3053,7 +3054,43 @@ export async function createDocumentForSyndicate(
       title: data.title,
       type: data.type,
       fileUrl: data.fileUrl,
-      expiresAt: data.expiresAt
+      expiresAt: data.expiresAt,
+      // Défaut fermé sauf règlement et PV d'AG (communicables à tout copropriétaire).
+      visibleToCoOwners:
+        data.visibleToCoOwners ?? (data.type === 'REGULATION' || data.type === 'GENERAL_MEETING_MINUTES')
+    }
+  });
+}
+
+export async function updateDocumentForSyndicate(
+  tenantId: string,
+  syndicateId: string,
+  documentId: string,
+  data: {
+    title?: string;
+    type?: 'REGULATION' | 'GENERAL_MEETING_MINUTES' | 'DIAGNOSTIC' | 'INSURANCE' | 'BUDGET' | 'OTHER';
+    visibleToCoOwners?: boolean;
+  }
+) {
+  // Le document doit appartenir au syndicat de l'URL ET à une copropriété de
+  // l'agence : sinon la même 404 qu'un document inexistant.
+  const syndicate = await prisma.syndicate.findFirst({ where: { id: syndicateId, tenantId }, select: { id: true } });
+  const existing = syndicate
+    ? await prisma.syndicateDocument.findFirst({
+        where: { id: documentId, syndicateId: syndicate.id },
+        select: { id: true }
+      })
+    : null;
+  if (!existing) {
+    throw notFound('Document introuvable ou inaccessible');
+  }
+
+  return prisma.syndicateDocument.update({
+    where: { id: existing.id },
+    data: {
+      ...(data.title !== undefined ? { title: data.title } : {}),
+      ...(data.type !== undefined ? { type: data.type } : {}),
+      ...(data.visibleToCoOwners !== undefined ? { visibleToCoOwners: data.visibleToCoOwners } : {})
     }
   });
 }

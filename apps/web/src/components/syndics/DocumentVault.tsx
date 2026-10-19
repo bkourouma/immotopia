@@ -5,7 +5,8 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { Table } from '../primitives';
 import { SyndicateDocument } from '../../types/syndic-types';
-import { downloadSyndicDocument } from '../../services/syndic-service';
+import { downloadSyndicDocument, updateSyndicDocument } from '../../services/syndic-service';
+import { ConfirmAction } from '../primitives/ConfirmAction';
 import { feedback } from '../../lib/feedback';
 import { saveBlob } from '../../utils/save-blob';
 import { t } from '../../i18n/t';
@@ -18,6 +19,10 @@ interface DocumentVaultProps {
   tenantId: string;
   syndicId: string;
   loading?: boolean;
+  /** Droit `SYNDIC_EDIT` : sans lui, l'action de visibilité est masquée (l'API répondrait 403). */
+  canEdit?: boolean;
+  /** Appelé après un changement de visibilité réussi : le parent recharge la liste. */
+  onChanged?: () => void;
 }
 
 function isExternalUrl(fileUrl: string | null | undefined): fileUrl is string {
@@ -27,7 +32,7 @@ function isExternalUrl(fileUrl: string | null | undefined): fileUrl is string {
 /** Libellés affichés, construits au rendu : `t()` doit être appelé après le chargement de la langue. */
 function documentTypeLabels(): Record<SyndicateDocument['type'], string> {
   return {
-    REGULATION: t('Règlement'),
+    REGULATION: t('Règlement de copropriété'),
     GENERAL_MEETING_MINUTES: t("Procès-verbal d'AG"),
     DIAGNOSTIC: t('Diagnostic'),
     INSURANCE: t('Assurance'),
@@ -45,7 +50,14 @@ function documentTypeLabels(): Record<SyndicateDocument['type'], string> {
  * `GET .../documents/:documentId/fichier`, qui vérifie l'agence. Un lien
  * externe saisi par le gestionnaire s'ouvre tel quel.
  */
-export const DocumentVault: React.FC<DocumentVaultProps> = ({ documents, tenantId, syndicId, loading = false }) => {
+export const DocumentVault: React.FC<DocumentVaultProps> = ({
+  documents,
+  tenantId,
+  syndicId,
+  loading = false,
+  canEdit = false,
+  onChanged
+}) => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const download = async (document: SyndicateDocument) => {
@@ -57,6 +69,20 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({ documents, tenantI
       feedback.error(t('Téléchargement impossible.'));
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  const toggleVisibility = async (document: SyndicateDocument) => {
+    try {
+      await updateSyndicDocument(tenantId, syndicId, document.id, { visibleToCoOwners: !document.visibleToCoOwners });
+      feedback.success(
+        document.visibleToCoOwners
+          ? t('Document retiré du portail des copropriétaires.')
+          : t('Document visible des copropriétaires.')
+      );
+      onChanged?.();
+    } catch {
+      feedback.error(t('Modification de la visibilité impossible.'));
     }
   };
 
@@ -80,6 +106,12 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({ documents, tenantI
       }
     },
     {
+      title: t('Visible au portail'),
+      dataIndex: 'visibleToCoOwners',
+      key: 'visibleToCoOwners',
+      render: (value?: boolean) => <Tag color={value ? 'green' : undefined}>{value ? t('Oui') : t('Non')}</Tag>
+    },
+    {
       title: t('Document'),
       key: 'fileUrl',
       // Bouton « Ouvrir » / « Télécharger » : rien à exporter.
@@ -99,7 +131,31 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({ documents, tenantI
             {t('Télécharger')}
           </Button>
         )
-    }
+    },
+    ...(canEdit
+      ? [
+          {
+            title: t('Portail'),
+            key: 'visibility',
+            // Bouton d'action : rien à exporter.
+            exportable: false,
+            render: (_: unknown, item: SyndicateDocument) => (
+              <ConfirmAction
+                title={
+                  item.visibleToCoOwners
+                    ? t('Retirer ce document du portail des copropriétaires ?')
+                    : t('Rendre ce document visible des copropriétaires ?')
+                }
+                okText={t('Confirmer')}
+                cancelText={t('Annuler')}
+                onConfirm={() => toggleVisibility(item)}
+              >
+                <Button size="small">{item.visibleToCoOwners ? t('Retirer du portail') : t('Rendre visible')}</Button>
+              </ConfirmAction>
+            )
+          }
+        ]
+      : [])
   ];
 
   return (
@@ -111,7 +167,7 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({ documents, tenantI
       columns={columns}
       loading={loading}
       pagination={{ pageSize: 8, hideOnSinglePage: true }}
-      locale={{ emptyText: 'Aucun document disponible' }}
+      locale={{ emptyText: t('Aucun document disponible') }}
     />
   );
 };

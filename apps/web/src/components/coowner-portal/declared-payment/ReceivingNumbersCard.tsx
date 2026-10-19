@@ -1,3 +1,4 @@
+import { PhoneNumber } from '../../primitives';
 import React from 'react';
 import { Button, Card, Space, Typography } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
@@ -69,7 +70,7 @@ export function ReceivingNumbersCard({
             <Typography.Text strong>{operatorLabel(n.operator)}</Typography.Text>
             {n.label ? <Typography.Text type="secondary"> · {n.label}</Typography.Text> : null}
             <div style={{ fontSize: 22, fontWeight: 600, margin: '4px 0', overflowWrap: 'anywhere' }}>
-              {formatPhoneForDisplay(n.phoneNumber)}
+              <PhoneNumber value={formatPhoneForDisplay(n.phoneNumber)} />
             </div>
             <div style={{ marginBottom: 8 }}>
               {t('Titulaire :')} {n.holderName}

@@ -13,7 +13,8 @@ import { portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
 
-const MONTH_LABELS = [
+/** Appelée au rendu : un tableau figé au chargement du module resterait dans la langue d'alors. */
+const monthLabels = (): string[] => [
   t('Janv.'),
   t('Févr.'),
   t('Mars'),
@@ -82,7 +83,7 @@ export default function CoOwnerMonthlyTracking() {
   const [lotId, setLotId] = useState<string | undefined>(undefined);
   const [year, setYear] = useState(() => new Date().getFullYear());
 
-  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], queryFn: () => listMyLots() });
+  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], staleTime: 30_000, queryFn: () => listMyLots() });
 
   useEffect(() => {
     if (!lotId && lots.data && lots.data.length > 0) setLotId(lots.data[0].id);
@@ -96,6 +97,7 @@ export default function CoOwnerMonthlyTracking() {
 
   const tracking = useQuery({
     queryKey: ['coowner-portal', 'monthly-tracking', lotId ?? null, year],
+    staleTime: 30_000,
     queryFn: () => getCoOwnerLotMonthlyTracking(lotId as string, year),
     enabled: Boolean(lotId)
   });
@@ -187,7 +189,7 @@ export default function CoOwnerMonthlyTracking() {
               <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
                 <thead>
                   <tr>
-                    {MONTH_LABELS.map(label => (
+                    {monthLabels().map(label => (
                       <th key={label} style={{ textAlign: 'center', padding: 8, minWidth: 60 }}>
                         {label}
                       </th>

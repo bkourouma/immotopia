@@ -44,6 +44,7 @@ export function useDeclaredAvailabilities(calls: CoOwnerChargeCall[]): DeclaredA
   // Même clé que la section « J'ai payé par mobile money » : une seule requête de lots pour les deux.
   const lotsQuery = useQuery({
     queryKey: ['coowner-portal', 'lots'],
+    staleTime: 30_000,
     queryFn: () => listMyLots(),
     retry: false
   });
