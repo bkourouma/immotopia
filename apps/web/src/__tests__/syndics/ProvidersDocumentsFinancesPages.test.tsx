@@ -63,34 +63,31 @@ vi.mock('antd', async () => {
   // seul stub statique partage), pour piloter `validateFields` independamment
   // dans un test qui cree/edite un prestataire depuis la modale de contrat.
   // `formInstances` est expose via `__mocks` et reinitialise a chaque test
-  // (voir `beforeEach` plus bas) : sans ca l'ordre des instances derive au fil
-  // des montages/demontages successifs des memes routes.
+  // (voir `beforeEach` plus bas).
+  //
+  // Comme le vrai `Form.useForm()` d'antd, l'instance est gardee dans un
+  // `useRef` : chaque appel de hook garde la MEME instance d'un rendu a
+  // l'autre, et les instances sont enregistrees dans l'ordre du premier
+  // montage (contractForm = 0, providerForm = 1 pour `<SyndicProviders>`).
+  // Une ancienne version retrouvait l'instance par un compteur d'appels remis
+  // a zero par microtache : deux rendus enchaines sans microtache entre eux
+  // (frequent sous charge en CI) creaient de nouvelles instances, le bouton
+  // « Créer » appelait alors un `validateFields` vide et le test echouait par
+  // intermittence avec un payload `{ name: undefined, … }`.
   let formInstances: any[] = [];
-  let formCallIndex = 0;
-  let formIndexResetScheduled = false;
   const Form: any = passthrough('form');
   Form.useForm = () => {
-    const index = formCallIndex++;
-    // Chaque rendu du composant appelle `Form.useForm()` dans le meme ordre
-    // (contractForm puis providerForm pour `<SyndicProviders>`) : l'index doit
-    // donc revenir a 0 apres chaque passe de rendu synchrone, sinon un second
-    // rendu (declenche par `loadData` qui resout) creerait de NOUVELLES
-    // instances au lieu de reutiliser celles deja capturees par le test.
-    if (!formIndexResetScheduled) {
-      formIndexResetScheduled = true;
-      queueMicrotask(() => {
-        formCallIndex = 0;
-        formIndexResetScheduled = false;
-      });
-    }
-    if (!formInstances[index]) {
-      formInstances[index] = {
+    const ref = React.useRef<any>(null);
+    if (!ref.current) {
+      ref.current = {
         resetFields: () => {},
         setFieldsValue: () => {},
+        setFields: () => {},
         validateFields: async () => ({})
       };
+      formInstances.push(ref.current);
     }
-    return [formInstances[index]];
+    return [ref.current];
   };
   Form.Item = ({ children, label, extra }: any) => (
     <div>
@@ -234,7 +231,6 @@ vi.mock('antd', async () => {
       },
       resetForms() {
         formInstances = [];
-        formCallIndex = 0;
       }
     }
   };
@@ -346,12 +342,15 @@ describe('Providers/Documents pages', () => {
     // Le formulaire de creation est la 2e instance montee (contractForm puis
     // providerForm, voir SyndicProviders.tsx) : on force ses valeurs pour ce
     // test, comme `SyndicDetailEdit.test.tsx` le fait pour son propre form.
-    __mocks.formInstances[1].validateFields = async () => ({
+    // Exactement deux formulaires montes : l'index 1 designe bien providerForm.
+    expect(__mocks.formInstances).toHaveLength(2);
+    const validateProvider = vi.fn(async () => ({
       name: 'Ascenseurs Pro',
       specialty: 'Ascenseur',
       email: 'contact@ascenseurspro.test',
       phone: undefined
-    });
+    }));
+    __mocks.formInstances[1].validateFields = validateProvider;
 
     fireEvent.click(screen.getByText('Créer'));
 
@@ -361,6 +360,8 @@ describe('Providers/Documents pages', () => {
         expect.objectContaining({ name: 'Ascenseurs Pro', specialty: 'Ascenseur', email: 'contact@ascenseurspro.test' })
       );
     });
+    expect(validateProvider).toHaveBeenCalledTimes(1);
+    expect(mockApiClient.post).toHaveBeenCalledTimes(1);
   });
 
   it('modifie un prestataire existant via l’action « Modifier » de la liste', async () => {
@@ -383,12 +384,14 @@ describe('Providers/Documents pages', () => {
 
     fireEvent.click(screen.getByText('Modifier'));
 
-    __mocks.formInstances[1].validateFields = async () => ({
+    expect(__mocks.formInstances).toHaveLength(2);
+    const validateProvider = vi.fn(async () => ({
       name: 'Nettoyage Plus SARL',
       specialty: 'Nettoyage',
       email: undefined,
       phone: undefined
-    });
+    }));
+    __mocks.formInstances[1].validateFields = validateProvider;
 
     fireEvent.click(screen.getByText('Enregistrer'));
 
@@ -398,6 +401,7 @@ describe('Providers/Documents pages', () => {
         expect.objectContaining({ name: 'Nettoyage Plus SARL' })
       );
     });
+    expect(validateProvider).toHaveBeenCalledTimes(1);
   });
 
   it('propose de creer un prestataire a la volee depuis la modale de nouveau contrat', async () => {
