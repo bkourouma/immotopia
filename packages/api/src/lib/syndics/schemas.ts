@@ -36,6 +36,8 @@ export const createSyndicateSchema = z.object({
   cadastralReference: z.string().max(100, 'La reference cadastrale ne doit pas depasser 100 caracteres').optional(),
   totalLots: z.number().int().nonnegative().default(0),
   totalBuildings: z.number().int().positive().default(1),
+  // H7 : total de reference des tantiemes (facultatif), compare a la somme des lots.
+  totalGeneralShares: z.number().int().positive().optional(),
   // Lot S1 : agence mandante (facultative) dont l'identite figure sur les documents.
   mandatingAgencyId: z.string().uuid().nullable().optional()
 });
@@ -67,6 +69,8 @@ export const updateSyndicateSchema = z
       .optional(),
     totalLots: z.number().int().nonnegative().optional(),
     totalBuildings: z.number().int().positive().optional(),
+    // H7 : null retire le total de reference.
+    totalGeneralShares: z.number().int().positive().nullable().optional(),
     status: z.enum(['ACTIVE', 'IN_LIQUIDATION', 'IN_DISPUTE']).optional(),
     regulationDocUrl: httpUrl('Le lien du reglement doit etre une URL valide').nullable().optional(),
     // Lot S1 : null detache la copropriete de son mandant.

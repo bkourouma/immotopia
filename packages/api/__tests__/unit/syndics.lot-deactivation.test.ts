@@ -21,6 +21,11 @@ jest.mock('@prisma/client', () => {
     latePaymentPenalty: { count: count('latePaymentPenalty') },
     paymentSchedule: { count: count('paymentSchedule') },
     ownerAccountTransaction: { count: count('ownerAccountTransaction') },
+    syndicOnlineCheckout: { count: count('syndicOnlineCheckout') },
+    syndicPaymentDeclarationLine: { count: count('syndicPaymentDeclarationLine') },
+    directDebitMandate: { count: count('directDebitMandate') },
+    directDebitRemittanceLine: { count: count('directDebitRemittanceLine') },
+    gMAttendance: { count: count('gMAttendance') },
     budgetAllocation: { deleteMany: jest.fn(), createMany: jest.fn() },
     lotOwnerProfile: { deleteMany: jest.fn() },
     lotTenantProfile: { deleteMany: jest.fn() },
@@ -31,7 +36,7 @@ jest.mock('@prisma/client', () => {
   };
   const prisma: any = {
     syndicate: { findFirst: jest.fn(async () => ({ id: 's1' })) },
-    syndicateLot: { findFirst: jest.fn(), findMany: jest.fn() },
+    syndicateLot: { findFirst: jest.fn(), findMany: jest.fn(), aggregate: jest.fn() },
     syndicateBudget: { findFirst: jest.fn(), findMany: jest.fn(async () => []) },
     budgetAllocation: { findMany: jest.fn(async () => []) },
     $transaction: jest.fn(async (cb: any) => cb(tx))
@@ -48,6 +53,8 @@ jest.mock('../../src/services/lot-registry-service', () => ({
 }));
 
 import {
+  computeLotSharesWarnings,
+  getSyndicateWithLotsAndStats,
   deleteSyndicateLotByTenant,
   recomputeBudgetAllocationsByBudget,
   updateSyndicateLotByTenant
@@ -78,17 +85,24 @@ describe("Suppression d'un lot (BUG-078)", () => {
     );
   });
 
-  it.each(['chargeCall', 'chargePayment', 'syndicChargeReceipt', 'ownerAccountTransaction'])(
-    'refuse (409) un lot qui a des mouvements : %s',
-    async movement => {
-      mockTx.__counts[movement] = 2;
-      const error = await deleteSyndicateLotByTenant('t1', 's1', 'lot-p01').catch(e => e);
-      expect(error).toBeInstanceOf(ConflictError);
-      expect(error.statusCode).toBe(409);
-      expect(error.message).toContain('Désactivez-le');
-      expect(mockTx.syndicateLot.delete).not.toHaveBeenCalled();
-    }
-  );
+  it.each([
+    'chargeCall',
+    'chargePayment',
+    'syndicChargeReceipt',
+    'ownerAccountTransaction',
+    'syndicOnlineCheckout',
+    'syndicPaymentDeclarationLine',
+    'directDebitMandate',
+    'directDebitRemittanceLine',
+    'gMAttendance'
+  ])('refuse (409) un lot qui a des mouvements : %s', async movement => {
+    mockTx.__counts[movement] = 2;
+    const error = await deleteSyndicateLotByTenant('t1', 's1', 'lot-p01').catch(e => e);
+    expect(error).toBeInstanceOf(ConflictError);
+    expect(error.statusCode).toBe(409);
+    expect(error.message).toContain('Désactivez-le');
+    expect(mockTx.syndicateLot.delete).not.toHaveBeenCalled();
+  });
 
   it("un lot d'une autre agence est introuvable", async () => {
     mockPrisma.syndicateLot.findFirst.mockResolvedValue(null);
@@ -212,5 +226,63 @@ describe('Desactivation / suppression d un lot : repartition des budgets ouverts
     await deleteSyndicateLotByTenant('t1', 's1', 'lot-p01');
     expect(mockPrisma.syndicateBudget.findMany).toHaveBeenCalled();
     expect(Object.values(recomputed()).reduce((sum, value) => sum + value, 0)).toBe(1060000);
+  });
+});
+
+describe('Avertissement sur le total de reference des tantiemes (H7)', () => {
+  beforeEach(() => jest.clearAllMocks());
+  const setup = (reference: number | null, sum: number) => {
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce({ totalGeneralShares: reference });
+    if (reference !== null) {
+      mockPrisma.syndicateLot.aggregate.mockResolvedValueOnce({ _sum: { generalShares: sum } });
+    }
+  };
+
+  it('somme differente du total de reference : un avertissement', async () => {
+    setup(1000, 1050);
+    const warnings = await computeLotSharesWarnings('t1', 's1');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('1050');
+    expect(warnings[0]).toContain('1000');
+  });
+
+  it('somme egale : aucun avertissement', async () => {
+    setup(1000, 1000);
+    expect(await computeLotSharesWarnings('t1', 's1')).toEqual([]);
+  });
+
+  it('sans total de reference : aucun avertissement', async () => {
+    setup(null, 1050);
+    expect(await computeLotSharesWarnings('t1', 's1')).toEqual([]);
+    expect(mockPrisma.syndicateLot.aggregate).not.toHaveBeenCalled();
+  });
+
+  it('filtre par agence', async () => {
+    setup(1000, 900);
+    await computeLotSharesWarnings('t9', 's1');
+    expect(mockPrisma.syndicate.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 's1', tenantId: 't9' } })
+    );
+  });
+});
+
+describe('Lots de la copropriete : profils locataires actuels', () => {
+  it('charge tenantProfiles actuels avec un select minimal sur le contact', async () => {
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce({ id: 's1', lots: [] });
+    await getSyndicateWithLotsAndStats('t1', 's1');
+    const args = mockPrisma.syndicate.findFirst.mock.calls.at(-1)[0];
+    const tenantProfiles = args.include.lots.include.tenantProfiles;
+    expect(tenantProfiles.where.isCurrent).toBe(true);
+    expect(tenantProfiles.where.OR).toEqual([{ tenantUntil: null }, { tenantUntil: { gt: expect.any(Date) } }]);
+    expect(tenantProfiles.select).toEqual(
+      expect.objectContaining({
+        id: true,
+        contactId: true,
+        isCurrent: true,
+        tenantSince: true,
+        tenantUntil: true,
+        contact: { select: { id: true, firstName: true, lastName: true, legalName: true } }
+      })
+    );
   });
 });

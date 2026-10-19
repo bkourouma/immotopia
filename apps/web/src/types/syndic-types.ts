@@ -83,9 +83,26 @@ export interface SyndicateLot {
       email?: string | null;
     } | null;
   }>;
+  /** Profils locataires actuels (isCurrent, fin nulle ou future) : fusionnés avec `tenantAssignments` pour la colonne Locataire. */
+  tenantProfiles?: Array<{
+    id: string;
+    contactId: string;
+    isCurrent: boolean;
+    tenantSince: string;
+    tenantUntil?: string | null;
+    contact?: {
+      id: string;
+      firstName?: string | null;
+      lastName?: string | null;
+      legalName?: string | null;
+    } | null;
+  }>;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Réponse de création/modification d'un lot : le lot plus d'éventuels avertissements non bloquants (total de référence des tantièmes). */
+export type SyndicateLotWithWarnings = SyndicateLot & { warnings?: string[] };
 
 export interface SyndicateCount {
   lots: number;
@@ -108,6 +125,8 @@ export interface Syndicate {
   cadastralReference?: string | null;
   totalLots: number;
   totalBuildings: number;
+  /** Hypothèse H7 : total de référence des tantièmes généraux (facultatif) ; sert à avertir si la somme des lots diffère. */
+  totalGeneralShares?: number | null;
   status: SyndicateStatus;
   regulationDocUrl?: string | null;
   /** Lot S1 (besoin 7) : agence mandante, sinon identité de l'agence elle-même. */
@@ -189,6 +208,8 @@ export interface CreateSyndicateRequest {
   cadastralReference?: string;
   totalLots?: number;
   totalBuildings?: number;
+  /** Hypothèse H7 : total de référence des tantièmes généraux (facultatif). */
+  totalGeneralShares?: number | null;
   /** Lot S1 : `null` détache (identité de l'agence), absent = pas de mandant à la création. */
   mandatingAgencyId?: string | null;
 }
@@ -201,6 +222,8 @@ export interface UpdateSyndicateRequest {
   fiscalYear?: number;
   syndicManagerId?: string | null;
   status?: SyndicateStatus;
+  /** Hypothèse H7 : total de référence des tantièmes généraux ; `null` l'efface. */
+  totalGeneralShares?: number | null;
   /** Lot S1 : `null` détache le mandant (identité de l'agence). */
   mandatingAgencyId?: string | null;
 }

@@ -8,6 +8,7 @@ import {
   Empty,
   Form,
   Input,
+  InputNumber,
   Modal,
   Pagination,
   Row,
@@ -265,6 +266,13 @@ export const SyndicsList: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Référence cadastrale')} name="cadastralReference">
             <Input />
+          </Form.Item>
+          <Form.Item
+            label={t('Total de référence des tantièmes')}
+            name="totalGeneralShares"
+            extra={t('Facultatif. Sert à avertir si la somme des tantièmes des lots diffère.')}
+          >
+            <InputNumber min={1} precision={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item label={t("N° d'immatriculation")} name="registrationNo">
             <Input />
