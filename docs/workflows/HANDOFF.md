@@ -36,6 +36,7 @@ Reste à faire :
 
 - Recette navigateur non jouée (pas de `.env` dans ce worktree, `packages/api/.env.demo` absent pour `demo:sync`).
 - Si les droits ne se lisent pas au retour de paiement d'une agence, la page Abonnement affiche l'erreur au lieu de rediriger.
+- CI : « Web — tests (lot 2/4) » a échoué sur `ProvidersDocumentsFinancesPages.test.tsx` (création de prestataire Syndic), test instable déjà en échec sur la PR #175 et vert en local ; sans lien avec ce diff. Correctif proposé en tâche séparée (branche `fix/test-prestataire-syndic-instable`). Correction automatique de la CI activée sur la PR #181.
 - Le classeur `.xlsx` est binaire : si `main` bouge avant la fusion, refaire la ligne ajoutée sur la version de `main` puis `wiki:export`.
 
 ## Recette Syndic du 18/10 — fusionnée, déployée staging et production (2026-10-19)
