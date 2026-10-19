@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import {
   Alert,
   App,
@@ -23,15 +23,17 @@ import {
 } from '../../services/subscription-v2-service';
 import {
   createExtensionRequest,
+  listExtensionOffers,
   listOwnExtensionRequests,
+  type ExtensionOffer,
   type ExtensionRequest
 } from '../../services/subscription-extras-service';
-import { TenantInvoicesSection } from '../../components/subscription/TenantInvoicesSection';
 import { PersonalTierCard } from '../../components/personal-space/PersonalTierCard';
+import { TenantInvoicesSection } from '../../components/subscription/TenantInvoicesSection';
 import { ASSET_USAGE_QUERY_KEY } from '../../services/personal-space-service';
 import { useQueryClient } from '@tanstack/react-query';
 import { StatusTag, Table } from '../../components/primitives';
-import { EXTENSION_REQUIRED_PACKS, isExtensionAllowed } from '../../utils/extension-rules';
+import { formatFcfa } from '../../utils/crm-utils';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
@@ -67,6 +69,9 @@ const MODULE_LABEL: Record<string, string> = {
   MODULE_PATRIMOINE: t('Patrimoine')
 };
 
+/** Packs de l'espace personnel : leur montée de palier revient sur cette page (`?paiement=`). */
+const PERSONAL_PACKS = ['PARTICULIER_GRATUIT', 'PARTICULIER_PLUS'];
+
 function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
   return new Date(value).toLocaleDateString(activeLocale(), { year: 'numeric', month: 'long', day: 'numeric' });
@@ -77,14 +82,6 @@ function daysRemaining(value: string | null | undefined): number | null {
   const diff = new Date(value).getTime() - Date.now();
   return Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)));
 }
-
-/** Offres d'extension proposées à la demande (codes du catalogue, PLAN-ABONNEMENTS.md §2). */
-const EXTENSION_OPTIONS = [
-  { value: 'EXT_LOTS_10', label: t('Bloc de 10 lots') },
-  { value: 'EXT_COPRO', label: t('Copropriété supplémentaire') },
-  { value: 'EXT_CHANTIER', label: t('Chantier supplémentaire') },
-  { value: 'EXT_BIENS_10', label: t('Bloc de 10 biens détenus') }
-];
 
 const REQUEST_STATUS_LABEL: Record<
   string,
@@ -101,30 +98,55 @@ interface RequestValues {
   message: string;
 }
 
+/** Aide sous le sélecteur : description de l'offre et prix d'une unité (ou tarif à confirmer). */
+function offerHelp(offer: ExtensionOffer | undefined): string | undefined {
+  if (!offer) return undefined;
+  const price = offer.isSellable
+    ? t('{{price}} HT par mois et par unité', { price: formatFcfa(offer.monthlyPrice) })
+    : t('Tarif à confirmer');
+  return offer.description ? `${offer.description} — ${price}` : price;
+}
+
 /**
  * `/tenant/:tenantId/settings/abonnement` — abonnement vu par l'agence.
  *
- * Formule et consommation en consultation (les modifications passent par le
- * super-admin) ; vague 3 : factures (PDF, paiement en ligne sur le compte
- * ImmoTopia, suivi du retour `?paiement=`) et demande d'extension envoyée à
- * ImmoTopia (`POST /api/tenants/:tenantId/subscription/extension-requests`,
- * notifiée par e-mail au super-admin et visible dans la fiche agence).
- * Toutes ces routes restent ouvertes à une agence en lecture seule.
+ * Menu « Mon compte › Abonnement ». Formule et consommation en consultation
+ * (les modifications passent par le super-admin) et demande d'extension
+ * envoyée à ImmoTopia (`POST /api/tenants/:tenantId/subscription/extension-requests`,
+ * notifiée par e-mail au super-admin et visible dans la fiche agence). Les
+ * extensions proposées viennent du catalogue en base
+ * (`GET …/subscription/extension-offers`). Les factures et le paiement en
+ * ligne sont sur `/settings/facturation`.
+ *
+ * Retour de paiement : la passerelle revient ici (`?paiement=<code>`, adresse
+ * commune à la montée de palier de l'espace personnel et aux factures
+ * d'agence). Le palier personnel est suivi par `PersonalTierCard` ; pour une
+ * agence, la page renvoie vers Facturation en gardant la requête.
+ * Routes ouvertes à une agence en lecture seule.
  */
 export const TenantSubscriptionSettings: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
+  const location = useLocation();
   const [entitlements, setEntitlements] = useState<TenantEntitlements | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { message } = App.useApp();
   const queryClient = useQueryClient();
+  const [offers, setOffers] = useState<ExtensionOffer[]>([]);
   const [requests, setRequests] = useState<ExtensionRequest[]>([]);
   const [sending, setSending] = useState(false);
   const [requestForm] = Form.useForm<RequestValues>();
-  // Seules les extensions vendables avec les packs détenus sont proposées (BUG-061).
-  const extensionOptions = EXTENSION_OPTIONS.filter(option =>
-    isExtensionAllowed(EXTENSION_REQUIRED_PACKS[option.value], entitlements?.packs ?? [])
-  );
+  const selectedCode = Form.useWatch('catalogCode', requestForm);
+  const selectedOffer = offers.find(offer => offer.code === selectedCode);
+
+  // Capacités sans rapport avec les packs (limite 0, aucune extension qui les ouvre) : masquées.
+  const extensibleCapacities = useMemo(() => {
+    const keys = new Set<string>();
+    for (const offer of offers) {
+      for (const [key, amount] of Object.entries(offer.capacities)) if ((amount ?? 0) > 0) keys.add(key);
+    }
+    return keys;
+  }, [offers]);
 
   const loadEntitlements = useCallback(
     (fresh = false) => {
@@ -141,10 +163,14 @@ export const TenantSubscriptionSettings: React.FC = () => {
 
   useEffect(() => {
     loadEntitlements();
-    if (tenantId)
+    if (tenantId) {
       listOwnExtensionRequests(tenantId)
         .then(setRequests)
         .catch(() => setRequests([]));
+      listExtensionOffers(tenantId)
+        .then(setOffers)
+        .catch(() => setOffers([]));
+    }
   }, [tenantId, loadEntitlements]);
 
   const handleRequestExtension = async (values: RequestValues) => {
@@ -178,6 +204,13 @@ export const TenantSubscriptionSettings: React.FC = () => {
     return <Alert type="error" showIcon message={error} />;
   }
 
+  // Retour de paiement d'une facture d'agence : suivi sur la page Facturation (requête conservée).
+  const returningFromPayment = new URLSearchParams(location.search).has('paiement');
+  const isPersonalSpace = (entitlements?.packs ?? []).some(pack => PERSONAL_PACKS.includes(pack));
+  if (tenantId && returningFromPayment && !isPersonalSpace) {
+    return <Navigate to={`/tenant/${tenantId}/settings/facturation${location.search}`} replace />;
+  }
+
   if (!entitlements || entitlements.phase === 'NONE') {
     return (
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -191,6 +224,9 @@ export const TenantSubscriptionSettings: React.FC = () => {
 
   const phaseInfo = phaseLabels()[entitlements.phase] ?? phaseLabels().NONE;
   const trialDays = entitlements.phase === 'TRIAL' ? daysRemaining(entitlements.trialEndsAt) : null;
+  const visibleCapacities = (Object.keys(entitlements.capacities) as CapacityKeyCode[]).filter(
+    key => entitlements.capacities[key].limit > 0 || extensibleCapacities.has(key)
+  );
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -214,7 +250,12 @@ export const TenantSubscriptionSettings: React.FC = () => {
             type="warning"
             showIcon
             message={t('Compte en lecture seule')}
-            description={t('Réglez la facture en attente ci-dessous pour retrouver l’accès complet.')}
+            description={
+              <>
+                {t('Réglez la facture en attente pour retrouver l’accès complet.')}{' '}
+                <Link to={`/tenant/${tenantId}/settings/facturation`}>{t('Aller à la facturation')}</Link>
+              </>
+            }
           />
         )
       )}
@@ -241,11 +282,11 @@ export const TenantSubscriptionSettings: React.FC = () => {
         </Descriptions>
       </Card>
 
-      {tenantId && <PersonalTierCard tenantId={tenantId} />}
+      {tenantId && <PersonalTierCard tenantId={tenantId} onConfirmed={() => loadEntitlements(true)} />}
 
       <Card title={t('Consommation')}>
         <Space size="large" wrap style={{ width: '100%' }}>
-          {(Object.keys(entitlements.capacities) as CapacityKeyCode[]).map(key => {
+          {visibleCapacities.map(key => {
             const capacity = entitlements.capacities[key];
             const percent =
               capacity.limit > 0
@@ -284,12 +325,13 @@ export const TenantSubscriptionSettings: React.FC = () => {
         </Space>
       </Card>
 
-      {tenantId && (
+      {/* Espace personnel : ses factures restent aussi ici, où revient la passerelle
+          (`?paiement=`) ; le statut d'une facture payée y est suivi comme avant. */}
+      {tenantId && isPersonalSpace && (
         <TenantInvoicesSection
           tenantId={tenantId}
           onPaid={() => {
             loadEntitlements(true);
-            // Montée de palier confirmée : l'usage et le plafond ont changé.
             queryClient.invalidateQueries({ queryKey: [ASSET_USAGE_QUERY_KEY] });
           }}
         />
@@ -297,11 +339,23 @@ export const TenantSubscriptionSettings: React.FC = () => {
 
       <Card title={t('Demander une extension')}>
         <Paragraph type="secondary">
-          {t("Besoin de plus de lots, de copropriétés ou de chantiers ? Envoyez une demande à l'équipe ImmoTopia.")}
+          {t("Besoin de plus de capacité ? Envoyez une demande à l'équipe ImmoTopia.")}
         </Paragraph>
         <Form form={requestForm} layout="vertical" onFinish={handleRequestExtension} style={{ maxWidth: 560 }}>
-          <Form.Item label={t('Offre souhaitée')} name="catalogCode">
-            <Select allowClear placeholder={t('Autre demande')} options={extensionOptions} />
+          <Form.Item
+            label={t('Offre souhaitée')}
+            name="catalogCode"
+            extra={
+              offers.length === 0
+                ? t('Aucune extension disponible pour vos packs, décrivez votre besoin')
+                : offerHelp(selectedOffer)
+            }
+          >
+            <Select
+              allowClear
+              placeholder={t('Autre demande')}
+              options={offers.map(offer => ({ value: offer.code, label: offer.name }))}
+            />
           </Form.Item>
           <Form.Item label={t('Quantité')} name="quantity">
             <InputNumber<number> min={1} max={1000} style={{ width: '100%' }} />

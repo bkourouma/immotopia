@@ -3,20 +3,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TenantSubscriptionSettings } from '../../pages/tenant/TenantSubscriptionSettings';
 
 /**
  * `/tenant/:tenantId/settings/abonnement` — abonnement vu par l'agence :
- * formule en consultation, factures et paiement en ligne, demande
- * d'extension (vague 3). Les deux services sont mockés en entier (chaque
- * export utilisé par la page et sa section Factures).
+ * formule en consultation, consommation, demande d'extension (offres lues
+ * dans le catalogue, vague 3). Les factures et le paiement en ligne vivent sur
+ * `/settings/facturation` (tenant-billing-settings.test.tsx). Les services
+ * sont mockés en entier (chaque export utilisé par la page).
  */
 
 const getOwnEntitlements = vi.fn();
 const createExtensionRequest = vi.fn();
 const listOwnExtensionRequests = vi.fn();
+const listExtensionOffers = vi.fn();
 
 vi.mock('../../services/subscription-v2-service', () => ({
   getOwnEntitlements: (...a: unknown[]) => getOwnEntitlements(...a)
@@ -24,21 +26,8 @@ vi.mock('../../services/subscription-v2-service', () => ({
 
 vi.mock('../../services/subscription-extras-service', () => ({
   createExtensionRequest: (...a: unknown[]) => createExtensionRequest(...a),
+  listExtensionOffers: (...a: unknown[]) => listExtensionOffers(...a),
   listOwnExtensionRequests: (...a: unknown[]) => listOwnExtensionRequests(...a)
-}));
-
-const listOwnPlatformInvoices = vi.fn();
-const downloadOwnInvoicePdf = vi.fn();
-const getPaymentAvailability = vi.fn();
-const startInvoiceCheckout = vi.fn();
-const getInvoiceCheckout = vi.fn();
-
-vi.mock('../../services/platform-billing-service', () => ({
-  listOwnPlatformInvoices: (...a: unknown[]) => listOwnPlatformInvoices(...a),
-  downloadOwnInvoicePdf: (...a: unknown[]) => downloadOwnInvoicePdf(...a),
-  getPaymentAvailability: (...a: unknown[]) => getPaymentAvailability(...a),
-  startInvoiceCheckout: (...a: unknown[]) => startInvoiceCheckout(...a),
-  getInvoiceCheckout: (...a: unknown[]) => getInvoiceCheckout(...a)
 }));
 
 // Carte du palier personnel : pour une agence, l'usage renvoie `AGENCY` et la carte disparaît.
@@ -74,38 +63,36 @@ const ENTITLEMENTS = {
   capacities: {
     LOTS: { included: 100, extensions: 0, overrides: 0, limit: 100, used: 42, remaining: 58, overBy: 0 },
     COPROPRIETES: { included: 0, extensions: 0, overrides: 0, limit: 0, used: 0, remaining: 0, overBy: 0 },
-    CHANTIERS: { included: 0, extensions: 0, overrides: 0, limit: 0, used: 0, remaining: 0, overBy: 0 }
+    CHANTIERS: { included: 0, extensions: 0, overrides: 0, limit: 0, used: 0, remaining: 0, overBy: 0 },
+    BIENS_DETENUS: { included: 0, extensions: 0, overrides: 0, limit: 0, used: 0, remaining: 0, overBy: 0 },
+    ACTIFS: { included: 0, extensions: 0, overrides: 0, limit: 0, used: 60, remaining: 0, overBy: 60 },
+    SIGNATURES_MENSUELLES: { included: 20, extensions: 0, overrides: 0, limit: 20, used: 3, remaining: 17, overBy: 0 }
   },
   quotaPolicy: 'BILL_OVERAGE',
   enforcement: 'enforce',
   computedAt: '2026-01-15T00:00:00.000Z'
 };
 
-const INVOICE = {
-  id: 'inv-1',
-  tenantId: 'tenant-1',
-  invoiceNumber: 'IMT-2026-00001',
-  nature: 'PERIOD',
-  status: 'OVERDUE',
-  issueDate: '2026-02-01T00:00:00.000Z',
-  issuedAt: '2026-02-01T00:00:00.000Z',
-  dueDate: '2026-02-08T00:00:00.000Z',
-  periodStart: '2026-02-01T00:00:00.000Z',
-  periodEnd: '2026-03-01T00:00:00.000Z',
-  currency: 'FCFA',
-  amountExclTax: 29_900,
-  taxRate: 18,
-  taxAmount: 5_382,
-  amountTotal: 35_282,
-  paidAt: null,
-  paymentMethod: null,
-  paymentReference: null,
-  canceledAt: null,
-  cancelReason: null,
-  creditedInvoice: null,
-  sentAt: null,
-  notes: null
-};
+const BillingProbe: React.FC = () => <div>Page Facturation {useLocation().search}</div>;
+
+const OFFERS = [
+  {
+    code: 'EXT_LOTS_10',
+    name: 'Bloc de 10 lots',
+    description: '150 FCFA le lot',
+    monthlyPrice: 1500,
+    capacities: { LOTS: 10 },
+    isSellable: true
+  },
+  {
+    code: 'EXT_SIGNATURES_SUPPLEMENTAIRES',
+    name: 'Signatures électroniques — bloc de 50',
+    description: null,
+    monthlyPrice: 0,
+    capacities: { SIGNATURES_MENSUELLES: 50 },
+    isSellable: false
+  }
+];
 
 function mount(url = '/tenant/tenant-1/settings/abonnement') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -115,6 +102,7 @@ function mount(url = '/tenant/tenant-1/settings/abonnement') {
         <MemoryRouter initialEntries={[url]}>
           <Routes>
             <Route path="/tenant/:tenantId/settings/abonnement" element={<TenantSubscriptionSettings />} />
+            <Route path="/tenant/:tenantId/settings/facturation" element={<BillingProbe />} />
           </Routes>
         </MemoryRouter>
       </AntApp>
@@ -126,11 +114,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   getOwnEntitlements.mockReset();
   listOwnExtensionRequests.mockResolvedValue([]);
-  listOwnPlatformInvoices.mockResolvedValue({
-    invoices: [INVOICE],
-    pagination: { page: 1, limit: 50, total: 1, totalPages: 1 }
-  });
-  getPaymentAvailability.mockResolvedValue({ available: true, mode: 'SIMULATOR' });
+  listExtensionOffers.mockResolvedValue(OFFERS);
 });
 
 describe('<TenantSubscriptionSettings> — formule', () => {
@@ -181,16 +165,51 @@ describe('<TenantSubscriptionSettings> — formule', () => {
     expect(await screen.findByRole('table', { name: 'Mes demandes' })).toBeInTheDocument();
   });
 
-  it('ne propose que les extensions vendables avec les packs détenus', async () => {
-    getOwnEntitlements.mockResolvedValue({ ...ENTITLEMENTS, packs: ['PATRIMOINE_PRO'] });
+  it("propose les extensions renvoyées par l'API, avec description et prix, ou « Tarif à confirmer »", async () => {
+    getOwnEntitlements.mockResolvedValue(ENTITLEMENTS);
     const user = userEvent.setup();
     mount();
 
     await screen.findByText('Formule');
+    expect(listExtensionOffers).toHaveBeenCalledWith('tenant-1');
     await user.click(screen.getByLabelText('Offre souhaitée'));
-    expect(screen.queryByText('Bloc de 10 biens détenus')).not.toBeInTheDocument();
-    expect(screen.queryByText('Copropriété supplémentaire')).not.toBeInTheDocument();
-    expect(screen.queryByText('Chantier supplémentaire')).not.toBeInTheDocument();
+    await user.click(await screen.findByText('Bloc de 10 lots'));
+    expect(await screen.findByText(/150 FCFA le lot — .*500 FCFA HT par mois et par unité/)).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Offre souhaitée'));
+    await user.click(await screen.findByText('Signatures électroniques — bloc de 50'));
+    expect(await screen.findByText('Tarif à confirmer')).toBeInTheDocument();
+  });
+
+  it('sans offre pour les packs, invite à décrire le besoin', async () => {
+    getOwnEntitlements.mockResolvedValue(ENTITLEMENTS);
+    listExtensionOffers.mockResolvedValue([]);
+    mount();
+
+    expect(
+      await screen.findByText('Aucune extension disponible pour vos packs, décrivez votre besoin')
+    ).toBeInTheDocument();
+  });
+
+  it("n'affiche que les capacités à limite positive ou ouvertes par une extension proposée", async () => {
+    getOwnEntitlements.mockResolvedValue(ENTITLEMENTS);
+    mount();
+
+    await screen.findByText('Formule');
+    expect(screen.getByText('Lots')).toBeInTheDocument();
+    expect(screen.getByText('Signatures électroniques (par mois)')).toBeInTheDocument();
+    expect(screen.queryByText('Copropriétés')).not.toBeInTheDocument();
+    expect(screen.queryByText('Chantiers')).not.toBeInTheDocument();
+    expect(screen.queryByText('Biens détenus')).not.toBeInTheDocument();
+    expect(screen.queryByText('60 / 0')).not.toBeInTheDocument();
+  });
+
+  it('ne montre plus les factures sur cette page', async () => {
+    getOwnEntitlements.mockResolvedValue(ENTITLEMENTS);
+    mount();
+
+    await screen.findByText('Formule');
+    expect(screen.queryByRole('button', { name: /Payer en ligne/ })).not.toBeInTheDocument();
   });
 
   it("indique l'absence d'abonnement", async () => {
@@ -216,64 +235,19 @@ describe('<TenantSubscriptionSettings> — formule', () => {
   });
 });
 
-describe('<TenantSubscriptionSettings> — factures et paiement en ligne', () => {
-  it('liste les factures et ouvre le paiement en ligne sur une facture en retard, même en lecture seule', async () => {
-    getOwnEntitlements.mockResolvedValue({ ...ENTITLEMENTS, phase: 'READ_ONLY', readOnly: true });
-    startInvoiceCheckout.mockResolvedValue({
-      checkoutUrl: 'http://localhost:8001/api/payment-gateway/simulator/IMP-abc'
-    });
-    const assign = vi.fn();
-    const original = window.location;
-    Object.defineProperty(window, 'location', { configurable: true, value: { ...original, assign } });
-    try {
-      mount();
-
-      expect(await screen.findByText('IMT-2026-00001', {}, { timeout: 5000 })).toBeInTheDocument();
-      expect(screen.getByText('En retard')).toBeInTheDocument();
-      expect(screen.getByText('Mode démonstration : aucun paiement réel.')).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: /Payer en ligne/ }));
-
-      await waitFor(() => expect(startInvoiceCheckout).toHaveBeenCalledWith('tenant-1', 'inv-1'));
-      await waitFor(() =>
-        expect(assign).toHaveBeenCalledWith('http://localhost:8001/api/payment-gateway/simulator/IMP-abc')
-      );
-    } finally {
-      Object.defineProperty(window, 'location', { configurable: true, value: original });
-    }
-  });
-
-  it('propose de reprendre un paiement déjà en cours (409)', async () => {
+describe('<TenantSubscriptionSettings> — retour de paiement (?paiement=)', () => {
+  it('renvoie une agence vers Facturation en gardant le code de paiement', async () => {
     getOwnEntitlements.mockResolvedValue(ENTITLEMENTS);
-    startInvoiceCheckout.mockRejectedValue({
-      response: {
-        status: 409,
-        data: { message: 'déjà en cours', data: { codePaiement: 'IMP-x', checkoutUrl: 'http://pay/IMP-x' } }
-      }
-    });
-    mount();
-
-    fireEvent.click(await screen.findByRole('button', { name: /Payer en ligne/ }, { timeout: 5000 }));
-    const dialogue = await screen.findByRole('dialog');
-    expect(within(dialogue).getAllByText('Un paiement est déjà en cours pour cette facture').length).toBeGreaterThan(0);
-    expect(within(dialogue).getByRole('button', { name: 'Reprendre le paiement' })).toBeInTheDocument();
-  });
-
-  it('au retour de paiement, affiche le succès et recharge les droits', async () => {
-    getOwnEntitlements.mockResolvedValue(ENTITLEMENTS);
-    getInvoiceCheckout.mockResolvedValue({ codePaiement: 'IMP-abc', status: 'SUCCESS', failureMessage: null });
     mount('/tenant/tenant-1/settings/abonnement?paiement=IMP-abc');
 
-    expect(await screen.findByText('Paiement reçu : la facture est réglée.')).toBeInTheDocument();
-    expect(getInvoiceCheckout).toHaveBeenCalledWith('tenant-1', 'IMP-abc');
-    await waitFor(() => expect(getOwnEntitlements.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(await screen.findByText('Page Facturation ?paiement=IMP-abc')).toBeInTheDocument();
   });
 
-  it("n'affiche pas « Payer en ligne » si le paiement en ligne est indisponible", async () => {
-    getOwnEntitlements.mockResolvedValue(ENTITLEMENTS);
-    getPaymentAvailability.mockResolvedValue({ available: false, mode: 'LIVE' });
-    mount();
+  it("garde l'espace personnel sur cette page : la carte du palier suit le paiement", async () => {
+    getOwnEntitlements.mockResolvedValue({ ...ENTITLEMENTS, packs: ['PARTICULIER_GRATUIT'] });
+    mount('/tenant/tenant-1/settings/abonnement?paiement=IMP-abc');
 
-    expect(await screen.findByText('IMT-2026-00001', {}, { timeout: 5000 })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Payer en ligne/ })).not.toBeInTheDocument();
+    expect(await screen.findByText('Formule')).toBeInTheDocument();
+    expect(screen.queryByText(/Page Facturation/)).not.toBeInTheDocument();
   });
 });
