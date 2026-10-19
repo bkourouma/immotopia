@@ -4,9 +4,13 @@
  */
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { logNotificationDelivery } from '../lib/notifications/log-delivery';
+import { describeFailure } from '../lib/notifications/describe-error';
+import { isReplayableVariables } from '../lib/notifications/replayable';
 import { getWhatsappNotificationConfig } from './whatsapp-notification-config-service';
 import { WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES } from '../constants/whatsapp-notification-default-templates';
-import type { WhatsappNotificationKey } from '../constants/whatsapp-notification-keys';
+import { WHATSAPP_NOTIFICATION_META, type WhatsappNotificationKey } from '../constants/whatsapp-notification-keys';
+import type { NotifyRecipient } from '../lib/notifications/types';
 import {
   configureWhatsAppProvider,
   getConfiguredWhatsAppProvider,
@@ -85,6 +89,19 @@ function getProviderConfigHint(): string {
   return 'Set WHATSAPP_PROVIDER to "wasender" or "twilio" and configure matching env vars.';
 }
 
+/** Corps journalise : jamais le message rendu (il peut porter un lien d'acces ou un jeton). */
+function whatsappJournalBody(key: WhatsappNotificationKey): string {
+  return `Message WhatsApp envoyé : ${WHATSAPP_NOTIFICATION_META[key]?.label ?? key}.`;
+}
+
+/**
+ * Les variables d'un message qui porte un lien, un jeton, un mot de passe ou un
+ * code ne sont pas conservees en base : l'envoi est journalise mais non rejouable.
+ * Le test porte sur le NOM (liste blanche du gabarit de la cle) et sur la VALEUR des variables (URL, jeton long) :
+ * voir `lib/notifications/replayable.ts`.
+ */
+const isReplayable = isReplayableVariables;
+
 export interface SendWhatsappOptions {
   tenantId: string;
   notificationKey: WhatsappNotificationKey;
@@ -95,6 +112,16 @@ export interface SendWhatsappOptions {
   contactId?: string;
   /** Variables facultatives : si l'une est vide, la phrase du gabarit qui la porte est retiree. */
   optionalVariables?: string[];
+  /** Precisions pour le journal des notifications (titre, destinataire, entite liee, lien). */
+  journal?: {
+    title?: string;
+    recipient?: NotifyRecipient;
+    relatedEntity?: { type: string; id: string };
+    link?: string;
+    senderUserId?: string;
+  };
+  /** Interne : l'appelant (service central `notify`) journalise deja cet envoi. */
+  skipJournal?: boolean;
 }
 
 /**
@@ -138,82 +165,125 @@ export async function sendWhatsappNotification(options: SendWhatsappOptions): Pr
     return false;
   }
 
-  try {
-    if (!configureWhatsAppProvider()) {
-      logger.warn(`WhatsApp skipped: provider not configured. ${getProviderConfigHint()}`);
-      return false;
-    }
+  const target: string = to;
 
-    const provider = getConfiguredWhatsAppProvider();
+  // Echec releve pour le journal ; le retour booleen de la fonction ne change pas.
+  let failure: { status: 'FAILED' | 'SKIPPED'; reason: string } | null = null;
 
-    // If template is configured and provider supports it, use provider template send.
-    const hasTemplateSid = Boolean(config.contentSid?.trim());
-    const templateSupported = supportsTemplateMessages();
-
-    if (hasTemplateSid && templateSupported) {
-      const contentVariables: Record<string, string> = {};
-      if (config.contentVariablesJson?.trim()) {
-        try {
-          const mapping = JSON.parse(config.contentVariablesJson) as Record<string, string>;
-          for (const [placeholder, ourKey] of Object.entries(mapping)) {
-            contentVariables[placeholder] = String(variables[ourKey] ?? '');
-          }
-        } catch (e) {
-          logger.warn('Invalid contentVariablesJson, using empty mapping', {
-            tenantId,
-            notificationKey,
-            error: e instanceof Error ? e.message : String(e)
-          });
-        }
+  const attempt = async (): Promise<boolean> => {
+    try {
+      if (!configureWhatsAppProvider()) {
+        logger.warn(`WhatsApp skipped: provider not configured. ${getProviderConfigHint()}`);
+        failure = { status: 'SKIPPED', reason: 'Fournisseur WhatsApp non configure.' };
+        return false;
       }
 
-      await sendTemplate({
-        to,
-        templateSid: String(config.contentSid).trim(),
-        contentVariables: Object.keys(contentVariables).length > 0 ? contentVariables : undefined
-      });
+      const provider = getConfiguredWhatsAppProvider();
 
-      logger.info('WhatsApp template notification sent', {
-        tenantId,
-        notificationKey,
-        provider,
-        to: to.slice(-4),
-        contentSid: config.contentSid
-      });
-      return true;
-    }
+      // If template is configured and provider supports it, use provider template send.
+      const hasTemplateSid = Boolean(config.contentSid?.trim());
+      const templateSupported = supportsTemplateMessages();
 
-    if (hasTemplateSid && !templateSupported) {
-      logger.warn(
-        'Template SID is configured but current provider does not support templates; falling back to text body',
-        {
+      if (hasTemplateSid && templateSupported) {
+        const contentVariables: Record<string, string> = {};
+        if (config.contentVariablesJson?.trim()) {
+          try {
+            const mapping = JSON.parse(config.contentVariablesJson) as Record<string, string>;
+            for (const [placeholder, ourKey] of Object.entries(mapping)) {
+              contentVariables[placeholder] = String(variables[ourKey] ?? '');
+            }
+          } catch (e) {
+            logger.warn('Invalid contentVariablesJson, using empty mapping', {
+              tenantId,
+              notificationKey,
+              error: e instanceof Error ? e.message : String(e)
+            });
+          }
+        }
+
+        await sendTemplate({
+          to: target,
+          templateSid: String(config.contentSid).trim(),
+          contentVariables: Object.keys(contentVariables).length > 0 ? contentVariables : undefined
+        });
+
+        logger.info('WhatsApp template notification sent', {
           tenantId,
           notificationKey,
-          provider
-        }
-      );
-    }
+          provider,
+          to: target.slice(-4),
+          contentSid: config.contentSid
+        });
+        return true;
+      }
 
-    const defaultBody = WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES[notificationKey];
-    const bodyTpl = config.bodyOverride ?? defaultBody ?? '';
-    const effectiveTpl = optionalVariables?.length
-      ? omitSentencesWithEmptyVariables(bodyTpl, variables, optionalVariables)
-      : bodyTpl;
-    const body = normalizeBodyForClickableLinks(applyTemplate(effectiveTpl, variables));
-    if (!body.trim()) {
-      logger.warn('WhatsApp body empty after template rendering', { tenantId, notificationKey, provider });
+      if (hasTemplateSid && !templateSupported) {
+        logger.warn(
+          'Template SID is configured but current provider does not support templates; falling back to text body',
+          {
+            tenantId,
+            notificationKey,
+            provider
+          }
+        );
+      }
+
+      const defaultBody = WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES[notificationKey];
+      const bodyTpl = config.bodyOverride ?? defaultBody ?? '';
+      const effectiveTpl = optionalVariables?.length
+        ? omitSentencesWithEmptyVariables(bodyTpl, variables, optionalVariables)
+        : bodyTpl;
+      const body = normalizeBodyForClickableLinks(applyTemplate(effectiveTpl, variables));
+      if (!body.trim()) {
+        logger.warn('WhatsApp body empty after template rendering', { tenantId, notificationKey, provider });
+        failure = { status: 'SKIPPED', reason: 'Message WhatsApp vide apres rendu du gabarit.' };
+        return false;
+      }
+
+      await sendText({ to: target, body });
+      logger.info('WhatsApp notification sent', { tenantId, notificationKey, provider, to: target.slice(-4) });
+      return true;
+    } catch (err) {
+      logger.error('WhatsApp send failed', {
+        tenantId,
+        notificationKey,
+        error: err instanceof Error ? err.message : String(err)
+      });
+      failure = { status: 'FAILED', reason: describeFailure(err) };
       return false;
     }
+  };
 
-    await sendText({ to, body });
-    logger.info('WhatsApp notification sent', { tenantId, notificationKey, provider, to: to.slice(-4) });
-    return true;
-  } catch (err) {
-    logger.error('WhatsApp send failed', {
+  if (options.skipJournal) return attempt();
+
+  // Journal (menu lot 3) : une ligne par envoi reel. Les cas ecartes plus haut
+  // (desactive, sans consentement, sans numero) n'ont rien tente : pas de ligne.
+  let sent = false;
+  const journal = options.journal;
+  try {
+    await logNotificationDelivery({
       tenantId,
-      notificationKey,
-      error: err instanceof Error ? err.message : String(err)
+      recipient: { ...(contactId ? { contactId } : {}), phone: target, ...journal?.recipient },
+      key: notificationKey,
+      title: journal?.title ?? WHATSAPP_NOTIFICATION_META[notificationKey]?.label ?? notificationKey,
+      body: whatsappJournalBody(notificationKey),
+      link: journal?.link,
+      channel: 'WHATSAPP',
+      target,
+      senderUserId: journal?.senderUserId,
+      relatedEntity: journal?.relatedEntity,
+      ...(isReplayable(variables, notificationKey)
+        ? { resendPayload: { whatsapp: { notificationKey, variables }, ...(contactId ? { contactId } : {}) } }
+        : { replayable: false }),
+      run: async () => {
+        sent = await attempt();
+        if (sent) return { status: 'SENT' };
+        const f = failure as { status: 'FAILED' | 'SKIPPED'; reason: string } | null;
+        return { status: f?.status ?? 'FAILED', failureReason: f?.reason ?? 'WhatsApp non envoye.' };
+      }
     });
-    return false;
+  } catch {
+    // run() ne leve jamais : toute erreur ici vient du journal, sans effet sur l'envoi.
   }
+  return sent;
 }

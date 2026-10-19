@@ -34,9 +34,11 @@ const { Text } = Typography;
 export interface AppHeaderProps {
   /** Ouvre le drawer de navigation ; absent quand le persona n'en a pas. */
   onOpenNavigation?: () => void;
+  /** Actions de la coquille (cloche, messagerie), placées avant le sélecteur d'agence. */
+  actions?: React.ReactNode;
 }
 
-export const AppHeader: React.FC<AppHeaderProps> = ({ onOpenNavigation }) => {
+export const AppHeader: React.FC<AppHeaderProps> = ({ onOpenNavigation, actions }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { isDesktop } = useBreakpoint();
@@ -121,6 +123,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onOpenNavigation }) => {
       </div>
 
       <Space size="middle" style={{ flexShrink: 0 }}>
+        {actions}
         <TenantSwitcher />
         <LanguageSwitcher />
         <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" trigger={['click']}>

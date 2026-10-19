@@ -3,7 +3,8 @@ import { logger } from '../../../utils/logger';
 import { emailService } from '../../../services/email-service';
 import { configureWhatsAppProvider, sendText } from '../../../services/providers/whatsapp.provider';
 import { normalizePhoneE164 } from '../../phone/e164';
-import { getSmsTransport } from '../../sms';
+import { getSmsTransport, type SmsSendResult } from '../../sms';
+import { logNotificationDelivery } from '../../notifications/log-delivery';
 import { contactOwnsPhone, hasSmsBudget, isAllowedSmsDialCode } from '../sms-guard';
 import type { DeliveryResult, OutboundSignatureMessage, SignatureProvider } from '../types';
 
@@ -23,13 +24,33 @@ async function hasWhatsappConsent(tenantId: string, contactId: string): Promise<
   return Boolean(contact?.consentWhatsapp);
 }
 
+/**
+ * Journal des notifications : titre et corps GENERIQUES. Le message remis porte
+ * un lien de signature ou un code a usage unique : rien de cela n'est ecrit en
+ * base de journal.
+ */
+const JOURNAL_KEY = 'SIGNATURE_MESSAGE';
+const JOURNAL_TITLE = 'Message de signature électronique';
+function journalBody(channel: 'EMAIL' | 'WHATSAPP' | 'SMS'): string {
+  const via = channel === 'EMAIL' ? 'par e-mail' : channel === 'SMS' ? 'par SMS' : 'par WhatsApp';
+  return `Lien ou code de signature envoyé ${via}.`;
+}
+
 async function deliverEmail(message: OutboundSignatureMessage): Promise<DeliveryResult> {
   await emailService.sendEmail({
     to: message.to,
     subject: message.subject,
     text: message.text,
     html: message.html,
-    tenantId: message.tenantId
+    tenantId: message.tenantId,
+    journal: {
+      key: JOURNAL_KEY,
+      title: JOURNAL_TITLE,
+      body: journalBody('EMAIL'),
+      // Corps generique : un renvoi enverrait un message vide de sens, et le vrai porte lien ou code.
+      replayable: false,
+      recipient: { email: message.to, ...(message.contactId ? { contactId: message.contactId } : {}) }
+    }
   });
   return { ok: true };
 }
@@ -44,7 +65,19 @@ async function deliverWhatsapp(message: OutboundSignatureMessage): Promise<Deliv
     logger.warn('Signature : fournisseur WhatsApp non configuré');
     return { ok: false, reason: 'SEND_FAILED' };
   }
-  await sendText({ to, body: message.text });
+  await logNotificationDelivery({
+    tenantId: message.tenantId,
+    recipient: { phone: to, ...(message.contactId ? { contactId: message.contactId } : {}) },
+    key: JOURNAL_KEY,
+    title: JOURNAL_TITLE,
+    body: journalBody('WHATSAPP'),
+    replayable: false,
+    channel: 'WHATSAPP',
+    target: to,
+    run: async () => {
+      await sendText({ to, body: message.text });
+    }
+  });
   return { ok: true };
 }
 
@@ -60,7 +93,24 @@ async function deliverSms(message: OutboundSignatureMessage): Promise<DeliveryRe
   // Le numéro doit être celui du contact CRM désigné (de l'agence) : jamais un numéro libre.
   if (!(await contactOwnsPhone(message.tenantId, message.contactId, to))) return { ok: false, reason: 'NO_CONSENT' };
   if (!(await hasSmsBudget(message.tenantId))) return { ok: false, reason: 'RATE_LIMITED' };
-  const result = await getSmsTransport().send({ to, text: message.text });
+  let result!: SmsSendResult;
+  await logNotificationDelivery({
+    tenantId: message.tenantId,
+    recipient: { phone: to, ...(message.contactId ? { contactId: message.contactId } : {}) },
+    key: JOURNAL_KEY,
+    title: JOURNAL_TITLE,
+    body: journalBody('SMS'),
+    replayable: false,
+    channel: 'SMS',
+    target: to,
+    run: async () => {
+      result = await getSmsTransport().send({ to, text: message.text });
+      if (result.ok) return { status: 'SENT' };
+      return result.reason === 'DISABLED'
+        ? { status: 'SKIPPED', failureReason: 'Canal SMS non activé.' }
+        : { status: 'FAILED', failureReason: "Échec d'envoi du SMS." };
+    }
+  });
   if (result.ok) return { ok: true };
   return { ok: false, reason: result.reason === 'DISABLED' ? 'DISABLED' : 'SEND_FAILED' };
 }

@@ -239,6 +239,12 @@ export async function sendTicketCreatedNotification(tenantId: string, ticketId: 
                   agencyName,
                   renterName,
                   ticketCreatedAt: ticketCreatedAtFormatted,
+                  journal: {
+                    tenantId,
+                    recipient: u.id ? { userId: u.id, email: u.email } : { email: u.email },
+                    relatedEntity: { type: 'MaintenanceTicket', id: ticketId },
+                    link: validationUrl
+                  },
                   templateOverrides:
                     configAgency.subjectOverride || configAgency.bodyHtmlOverride
                       ? {
@@ -288,7 +294,8 @@ export async function sendTicketCreatedNotification(tenantId: string, ticketId: 
             tenantId,
             notificationKey: 'MAINTENANCE_TICKET_CREATED_AGENCY',
             variables: agencyVars,
-            contactId: contactIdAgency
+            contactId: contactIdAgency,
+            journal: { relatedEntity: { type: 'MaintenanceTicket', id: ticketId } }
           });
         } else {
           logger.info('WhatsApp agency: no CRM contact with same email + consent + phone', {
@@ -324,6 +331,15 @@ export async function sendTicketCreatedNotification(tenantId: string, ticketId: 
             portalUrl,
             {
               agencyName,
+              journal: {
+                tenantId,
+                recipient: {
+                  email: tenantEmail,
+                  ...(ticket.tenantContact?.id ? { contactId: ticket.tenantContact.id } : {})
+                },
+                relatedEntity: { type: 'MaintenanceTicket', id: ticketId },
+                link: portalUrl
+              },
               templateOverrides:
                 configTenant.subjectOverride || configTenant.bodyHtmlOverride
                   ? {
@@ -368,7 +384,8 @@ export async function sendTicketCreatedNotification(tenantId: string, ticketId: 
               propertyReference,
               ticketCreatedAt: ticketCreatedAtFormatted
             },
-            contactId: contactIdTenant
+            contactId: contactIdTenant,
+            journal: { relatedEntity: { type: 'MaintenanceTicket', id: ticketId } }
           });
           if (!sent) {
             logger.info(
@@ -406,6 +423,11 @@ export async function sendTicketCreatedNotification(tenantId: string, ticketId: 
             {
               agencyName,
               renterName,
+              journal: {
+                tenantId,
+                recipient: { email: ownerUser.email },
+                relatedEntity: { type: 'MaintenanceTicket', id: ticketId }
+              },
               templateOverrides:
                 configOwner.subjectOverride || configOwner.bodyHtmlOverride
                   ? {
@@ -547,6 +569,15 @@ export async function sendStatusChangeNotification(
           agencyName,
           ticketCreatedAt: ticketCreatedAtFormatted,
           ticketUpdatedAt: ticketUpdatedAtFormatted,
+          journal: {
+            tenantId,
+            recipient: {
+              email: tenantEmail,
+              ...(ticket.tenantContact?.id ? { contactId: ticket.tenantContact.id } : {})
+            },
+            relatedEntity: { type: 'MaintenanceTicket', id: ticketId },
+            link: portalUrl
+          },
           templateOverrides:
             configTenant.subjectOverride || configTenant.bodyHtmlOverride
               ? {
@@ -578,7 +609,8 @@ export async function sendStatusChangeNotification(
           ticketCreatedAt: ticketCreatedAtFormatted,
           ticketUpdatedAt: ticketUpdatedAtFormatted
         },
-        contactId: ticket.tenantContact.id
+        contactId: ticket.tenantContact.id,
+        journal: { relatedEntity: { type: 'MaintenanceTicket', id: ticketId } }
       });
     }
 
@@ -596,6 +628,11 @@ export async function sendStatusChangeNotification(
           {
             ticketCreatedAt: ticketCreatedAtFormatted,
             ticketUpdatedAt: ticketUpdatedAtFormatted,
+            journal: {
+              tenantId,
+              recipient: { email: ownerUser.email },
+              relatedEntity: { type: 'MaintenanceTicket', id: ticketId }
+            },
             ...(configOwner.subjectOverride || configOwner.bodyHtmlOverride
               ? {
                   templateOverrides: {

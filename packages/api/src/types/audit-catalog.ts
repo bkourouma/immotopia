@@ -391,7 +391,10 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.ACCESS_DENIED]: tenant('SECURITY'),
   [AuditActionKey.TENANT_ACCESS_DENIED]: internal('SECURITY'),
   [AuditActionKey.DOCUMENT_DOWNLOADED]: tenant('EXPORT'),
-  [AuditActionKey.DATA_EXPORTED]: tenant('EXPORT')
+  [AuditActionKey.DATA_EXPORTED]: tenant('EXPORT'),
+
+  // Relance manuelle d'un envoi de notification en echec (admin d'agence ou plateforme).
+  [AuditActionKey.NOTIFICATION_RESENT]: tenant('ADMIN')
 };
 
 /** Entrée du catalogue pour une clé, ou `undefined` si la clé est libre (hors enum). */

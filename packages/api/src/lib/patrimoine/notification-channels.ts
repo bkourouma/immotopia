@@ -95,6 +95,13 @@ interface SendArgs {
   targets: ChannelTargets;
   /** Valeurs en texte brut : le canal e-mail les échappe pour le corps HTML. */
   variables: Record<string, string>;
+  /** Journal des notifications : entite liee et lien (facultatifs, jamais de jeton). */
+  journal?: ChannelJournal;
+}
+
+export interface ChannelJournal {
+  relatedEntity?: { type: string; id: string };
+  link?: string;
 }
 
 export interface ChannelSender {
@@ -134,18 +141,27 @@ const emailSender: ChannelSender = {
   hasTarget: targets => Boolean(targets.email),
   contactEligible: recipient => recipient.consentEmail === true && nonEmpty(recipient.email),
   isEnabled: configs => configs.EMAIL?.enabled === true,
-  async send({ tenantId, recipient, configs, targets, variables }) {
+  async send({ tenantId, recipient, configs, targets, variables, journal }) {
     const config = configs.EMAIL;
     if (!targets.email || !config || !recipient.email) return false;
     const defaults: DefaultEmailTemplate = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[targets.email];
     try {
+      // Le sujet part en texte brut, sans variable d'URL (jeton) : elle reste dans le corps.
+      const subject = applyTemplate(config.subjectOverride || defaults.subject, withoutUrlVariables(variables));
       await emailService.sendEmail({
         to: recipient.email.trim(),
-        // Le sujet part en texte brut, sans variable d'URL (jeton) : elle reste dans le corps.
-        subject: applyTemplate(config.subjectOverride || defaults.subject, withoutUrlVariables(variables)),
+        subject,
         // Le corps HTML reprend les valeurs échappées.
         html: applyTemplate(config.bodyHtmlOverride || defaults.bodyHtml, escapeVariables(variables)),
-        tenantId
+        tenantId,
+        // Corps journalise = le sujet : le corps HTML peut porter un lien a jeton.
+        journal: {
+          key: targets.email,
+          title: subject,
+          body: subject,
+          recipient: { contactId: recipient.contactId, email: recipient.email.trim() },
+          ...journal
+        }
       });
       return true;
     } catch (error) {
@@ -164,7 +180,7 @@ const whatsappSender: ChannelSender = {
   contactEligible: recipient =>
     recipient.consentWhatsapp === true && (nonEmpty(recipient.whatsappNumber) || nonEmpty(recipient.phonePrimary)),
   isEnabled: configs => configs.WHATSAPP?.enabled === true,
-  async send({ tenantId, recipient, targets, variables }) {
+  async send({ tenantId, recipient, targets, variables, journal }) {
     if (!targets.whatsapp) return false;
     // `contactId` (et non `to`) : le service revérifie le consentement et le
     // numéro du contact, il ne fait pas confiance à l'appelant.
@@ -172,7 +188,8 @@ const whatsappSender: ChannelSender = {
       tenantId,
       notificationKey: targets.whatsapp,
       contactId: recipient.contactId,
-      variables
+      variables,
+      ...(journal ? { journal } : {})
     });
   }
 };

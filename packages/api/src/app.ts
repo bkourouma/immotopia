@@ -71,6 +71,11 @@ import externalAccessRoutes from './routes/external-access-routes';
 import tenantPortalRoutes from './routes/tenant-portal-routes';
 import ownerPortalRoutes from './routes/owner-portal-routes';
 import coOwnerPortalRoutes from './routes/coowner-portal-routes';
+import {
+  coOwnerPortalInboxRouter,
+  tenantPortalInboxRouter,
+  ownerPortalInboxRouter
+} from './routes/portal-inbox-routes';
 import patrimoineRoutes from './routes/patrimoine-routes';
 import patrimoineEntitiesRoutes from './routes/patrimoine-entities-routes';
 import patrimoineLandRoutes from './routes/patrimoine-land-routes';
@@ -82,6 +87,10 @@ import patrimoineProjectionsRoutes from './routes/patrimoine-projections-routes'
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
 import tenantAuditRoutes from './routes/tenant-audit-routes';
+import notificationRoutes from './routes/notification-routes';
+import notificationAdminRoutes from './routes/notification-admin-routes';
+import platformNotificationRoutes from './routes/platform-notification-routes';
+import messagingRoutes from './routes/messaging-routes';
 import managementFeeRoutes from './routes/management-fee-routes';
 import ownerAccountRoutes, { ownerAccountPortalRouter } from './routes/owner-account-routes';
 import leaseLifecycleRoutes from './routes/lease-lifecycle-routes';
@@ -335,6 +344,9 @@ app.use('/api/portal/tenant', tenantPortalRoutes); // Tenant portal routes
 app.use('/api/portal/owner', ownerPortalRoutes); // Owner portal routes
 app.use('/api/portal/owner', ownerAccountPortalRouter); // Compte courant du proprietaire connecte
 app.use('/api/portal/copropriete', coOwnerPortalRoutes); // Portail coproprietaire (lecture seule)
+app.use('/api/portal/copropriete', coOwnerPortalInboxRouter); // Notifications + messagerie (portail)
+app.use('/api/portal/tenant', tenantPortalInboxRouter);
+app.use('/api/portal/owner', ownerPortalInboxRouter);
 
 // Public routes must be mounted before any broad /api router
 // that applies auth middleware globally (router.use(authenticate)).
@@ -361,6 +373,10 @@ app.use('/api', patrimoineProjectionsRoutes); // Patrimoine — projections et s
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)
 app.use('/api', tenantAuditRoutes); // Journal d'activite de l'agence (tenant-scoped, ADR-006)
+app.use('/api', notificationRoutes); // Notifications persistantes de l'utilisateur (tenant-scoped)
+app.use('/api', notificationAdminRoutes); // Journal des notifications de l'agence (TENANT_NOTIFICATIONS_ADMIN)
+app.use('/api', platformNotificationRoutes); // Journal des notifications, toutes agences (super-admin)
+app.use('/api', messagingRoutes); // Messagerie interne agence / clients portail (tenant-scoped)
 app.use('/api', managementFeeRoutes); // Honoraires de gestion : conditions, gestionnaires, commissions
 app.use('/api', ownerAccountRoutes); // Comptes proprietaires et reversements (agence et portail)
 app.use('/api', leaseLifecycleRoutes); // Vie du bail : revision, renouvellement, avenant, resiliation
