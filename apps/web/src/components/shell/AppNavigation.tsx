@@ -199,6 +199,10 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
       onOpenChange={keys => setOpenKeys(keys.slice(-1))}
       onClick={handleClick}
       inlineCollapsed={variant === 'rail'}
+      // Le popup du rail est rendu dans <body>, hors de la sidebar : sans
+      // cette classe, index.css ne peut ni lui donner le fond navy ni les
+      // couleurs de la navigation (blanc, gras en selection).
+      classNames={{ popup: { root: 'app-nav-popup' } }}
       style={{ background: 'transparent', borderInlineEnd: 'none' }}
     />
   );
