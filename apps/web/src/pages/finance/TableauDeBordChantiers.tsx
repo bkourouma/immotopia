@@ -19,6 +19,7 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 /**
  * Tableau de bord des chantiers — écran de pilotage du lot 3
@@ -64,7 +65,9 @@ import { t } from '../../i18n/t';
 type Filters = { status: string; onlyOverBudget: string };
 const FILTER_KEYS = ['status', 'onlyOverBudget'] as const;
 
-const OPTIONS_STATUT = Object.entries(SITE_STATUS_LABELS).map(([value, label]) => ({ value, label }));
+const OPTIONS_STATUT = localizedList(() =>
+  Object.entries(SITE_STATUS_LABELS).map(([value, label]) => ({ value, label }))
+);
 
 /** Lit le SIGNE d'un écart déjà calculé — ne recalcule jamais l'écart lui-même. */
 function toneEcart(variance: number | null): StatusTone {

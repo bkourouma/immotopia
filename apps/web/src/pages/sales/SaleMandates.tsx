@@ -20,11 +20,12 @@ import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
 
-const STATUS_OPTIONS: { value: SaleMandateStatus; label: string }[] = [
+import { localizedList } from '../../i18n/localized';
+const STATUS_OPTIONS: { value: SaleMandateStatus; label: string }[] = localizedList(() => [
   { value: 'ACTIVE', label: t('Actif') },
   { value: 'REVOKED', label: t('Révoqué') },
   { value: 'COMPLETED', label: t('Terminé') }
-];
+]);
 
 interface MandateFormValues {
   propertyId: string;

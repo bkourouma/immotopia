@@ -25,6 +25,7 @@ import {
 import type { StatusTone } from '../../components/primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { writeErrorMessage } from '../../utils/error-handler';
@@ -57,15 +58,15 @@ const { TextArea } = Input;
  * simple (§1, note sur `owner-statements`).
  */
 
-const METHOD_LABELS: Record<PayoutMethod, string> = {
+const METHOD_LABELS: Record<PayoutMethod, string> = localizedRecord(() => ({
   CASH: t('Espèces'),
   BANK_TRANSFER: t('Virement'),
   CHECK: t('Chèque'),
   MOBILE_MONEY: t('Mobile Money'),
   OTHER: t('Autre')
-};
+}));
 
-const MOVEMENT_LABELS: Record<OwnerMovementType, string> = {
+const MOVEMENT_LABELS: Record<OwnerMovementType, string> = localizedRecord(() => ({
   RENT_COLLECTED: t('Loyer encaissé'),
   MANAGEMENT_FEE: t('Honoraires'),
   MANAGEMENT_FEE_VAT: t('TVA sur honoraires'),
@@ -74,7 +75,7 @@ const MOVEMENT_LABELS: Record<OwnerMovementType, string> = {
   VOID: t('Annulation'),
   WITHHOLDING_TAX: t('Retenue à la source'),
   DEPOSIT_RETAINED: t('Dépôt de garantie conservé')
-};
+}));
 
 const MOVEMENT_TONE: Record<OwnerMovementType, StatusTone> = {
   RENT_COLLECTED: 'success',

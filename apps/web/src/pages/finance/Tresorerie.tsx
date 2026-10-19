@@ -49,6 +49,7 @@ import {
 } from '../../components/primitives';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { localizedList, localizedRecord } from '../../i18n/localized';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 
 const { Title, Text } = Typography;
@@ -71,18 +72,20 @@ const { TextArea } = Input;
 
 type Onglet = 'comptes' | 'virements' | 'retenues';
 
-const KIND_LABEL: Record<TreasuryAccountKind, string> = {
+const KIND_LABEL: Record<TreasuryAccountKind, string> = localizedRecord(() => ({
   CASH: t('Caisse'),
   BANK: t('Banque'),
   MOBILE_MONEY: t('Mobile Money'),
   CHECKS_TO_CASH: t('Chèques à encaisser'),
   CARDS_TO_CASH: t('Cartes à encaisser')
-};
-
-const OPTIONS_NATURE = (Object.keys(KIND_LABEL) as TreasuryAccountKind[]).map(kind => ({
-  value: kind,
-  label: KIND_LABEL[kind]
 }));
+
+const OPTIONS_NATURE = localizedList(() =>
+  (Object.keys(KIND_LABEL) as TreasuryAccountKind[]).map(kind => ({
+    value: kind,
+    label: KIND_LABEL[kind]
+  }))
+);
 
 /**
  * Opérateurs Mobile Money : les codes attendus par l'API (`MobileMoneyOperator`),
@@ -90,13 +93,13 @@ const OPTIONS_NATURE = (Object.keys(KIND_LABEL) as TreasuryAccountKind[]).map(ki
  * Money, MTN ») que l'API refusait en 400 : « Orange » ou « Orange Money » ne
  * passaient pas, seul « ORANGE » (BUG-2026-09-29-004).
  */
-const OPTIONS_OPERATEUR_MOBILE_MONEY = [
+const OPTIONS_OPERATEUR_MOBILE_MONEY = localizedList(() => [
   { value: 'ORANGE', label: t('Orange Money') },
   { value: 'MTN', label: t('MTN MoMo') },
   { value: 'MOOV', label: t('Moov Money') },
   { value: 'WAVE', label: t('Wave') },
   { value: 'OTHER', label: t('Autre') }
-];
+]);
 
 function libelleOperateur(code: string | null | undefined): string {
   if (!code) return '—';

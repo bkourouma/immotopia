@@ -4,6 +4,7 @@ import { Comment } from '../../types/maintenance-types';
 import { formatCompactDate } from '../../utils/date-utils';
 import { UserOutlined, CustomerServiceOutlined, RobotOutlined } from '@ant-design/icons';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 const { Text } = Typography;
 
@@ -17,11 +18,11 @@ const authorTypeIcons: Record<string, React.ReactNode> = {
   SYSTEM: <RobotOutlined />
 };
 
-const authorTypeLabels: Record<string, string> = {
+const authorTypeLabels: Record<string, string> = localizedRecord(() => ({
   TENANT: 'Locataire',
   MANAGER: 'Gestionnaire',
   SYSTEM: t('Système')
-};
+}));
 
 export const CommentThread: React.FC<CommentThreadProps> = ({ comments }) => {
   if (comments.length === 0) {

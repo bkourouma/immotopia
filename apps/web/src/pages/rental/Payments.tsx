@@ -36,6 +36,7 @@ import {
 } from '../../components/primitives';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
+import { localizedList, localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 /**
@@ -69,7 +70,7 @@ interface PaymentsProps {
 type Filters = { status: string; onglet: string; renterClientId: string };
 const FILTER_KEYS = ['status', 'onglet', 'renterClientId'] as const;
 
-const METHOD_LABELS: Record<string, string> = {
+const METHOD_LABELS: Record<string, string> = localizedRecord(() => ({
   CASH: t('Espèces'),
   BANK_TRANSFER: t('Virement bancaire'),
   CHECK: t('Chèque'),
@@ -77,14 +78,14 @@ const METHOD_LABELS: Record<string, string> = {
   DIRECT_DEBIT: t('Prélèvement bancaire'),
   CARD: t('Carte bancaire'),
   OTHER: 'Autre'
-};
+}));
 
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS = localizedList(() => [
   { value: 'PENDING', label: t('En attente') },
   { value: 'SUCCESS', label: t('Réussi') },
   { value: 'FAILED', label: t('Échoué') },
   { value: 'CANCELED', label: t('Annulé') }
-];
+]);
 
 /**
  * Montant déjà affecté d'un paiement.

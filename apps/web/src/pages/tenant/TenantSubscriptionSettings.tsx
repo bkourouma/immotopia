@@ -34,10 +34,11 @@ import { StatusTag, Table } from '../../components/primitives';
 import { EXTENSION_REQUIRED_PACKS, isExtensionAllowed } from '../../utils/extension-rules';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { localizedList, localizedRecord } from '../../i18n/localized';
 
 const { Title, Text, Paragraph } = Typography;
 
-const CAPACITY_LABEL: Record<CapacityKeyCode, string> = {
+const CAPACITY_LABEL: Record<CapacityKeyCode, string> = localizedRecord(() => ({
   LOTS: t('Lots'),
   COPROPRIETES: t('Copropriétés'),
   CHANTIERS: t('Chantiers'),
@@ -45,7 +46,7 @@ const CAPACITY_LABEL: Record<CapacityKeyCode, string> = {
   ACTIFS: t('Actifs'),
   PHOTOS_INVENTAIRE: t('Photos d’inventaire analysées (par mois)'),
   SIGNATURES_MENSUELLES: t('Signatures électroniques (par mois)')
-};
+}));
 
 // Fonction et non constante : un `t()` évalué à l'import resterait figé dans la langue
 // active à ce moment-là (« Essai » restait en français après passage à l'anglais).
@@ -60,12 +61,12 @@ const phaseLabels = (): Record<
   READ_ONLY: { label: t('Lecture seule'), tone: 'danger' }
 });
 
-const MODULE_LABEL: Record<string, string> = {
+const MODULE_LABEL: Record<string, string> = localizedRecord(() => ({
   MODULE_AGENCY: t('Agence'),
   MODULE_SYNDIC: t('Syndic'),
   MODULE_PROMOTER: t('Promoteur'),
   MODULE_PATRIMOINE: t('Patrimoine')
-};
+}));
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
@@ -79,21 +80,21 @@ function daysRemaining(value: string | null | undefined): number | null {
 }
 
 /** Offres d'extension proposées à la demande (codes du catalogue, PLAN-ABONNEMENTS.md §2). */
-const EXTENSION_OPTIONS = [
+const EXTENSION_OPTIONS = localizedList(() => [
   { value: 'EXT_LOTS_10', label: t('Bloc de 10 lots') },
   { value: 'EXT_COPRO', label: t('Copropriété supplémentaire') },
   { value: 'EXT_CHANTIER', label: t('Chantier supplémentaire') },
   { value: 'EXT_BIENS_10', label: t('Bloc de 10 biens détenus') }
-];
+]);
 
 const REQUEST_STATUS_LABEL: Record<
   string,
   { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }
-> = {
+> = localizedRecord(() => ({
   OPEN: { label: t('En attente'), tone: 'warning' },
   HANDLED: { label: t('Traitée'), tone: 'success' },
   DECLINED: { label: t('Refusée'), tone: 'neutral' }
-};
+}));
 
 interface RequestValues {
   catalogCode?: string;

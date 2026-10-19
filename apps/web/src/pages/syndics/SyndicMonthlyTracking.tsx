@@ -7,9 +7,10 @@ import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
 
+import { localizedList, localizedRecord } from '../../i18n/localized';
 const { Paragraph, Title, Text } = Typography;
 
-const MONTH_LABELS = [
+const MONTH_LABELS = localizedList(() => [
   t('Janv.'),
   t('Févr.'),
   t('Mars'),
@@ -22,32 +23,33 @@ const MONTH_LABELS = [
   t('Oct.'),
   t('Nov.'),
   t('Déc.')
-];
+]);
 
 /**
  * Couleurs et libellés d'un mois du suivi (lot S2, besoin 5). Le libellé
  * n'est jamais que décoratif : la légende et le texte de la cellule portent
  * l'information, la couleur seule ne suffit jamais (accessibilité).
  */
-const STATUS_CONFIG: Record<MonthlyTrackingStatus, { color: string; textColor: string; label: string }> = {
-  PAID: {
-    color: 'var(--color-success-bg, #e6f7e9)',
-    textColor: 'var(--color-success-text, #237a3f)',
-    label: t('Réglé')
-  },
-  PARTIAL: {
-    color: 'var(--color-warning-bg, #fff3e0)',
-    textColor: 'var(--color-warning-text, #ad6800)',
-    label: t('Partiel')
-  },
-  DUE: { color: 'var(--color-info-bg, #e6f0ff)', textColor: 'var(--color-info-text, #1d4ed8)', label: t('Dû') },
-  OVERDUE: {
-    color: 'var(--color-error-bg, #fde8e8)',
-    textColor: 'var(--color-error-text, #c0202c)',
-    label: t('En retard')
-  },
-  NONE: { color: 'transparent', textColor: 'var(--text-secondary, #999)', label: t('—') }
-};
+const STATUS_CONFIG: Record<MonthlyTrackingStatus, { color: string; textColor: string; label: string }> =
+  localizedRecord(() => ({
+    PAID: {
+      color: 'var(--color-success-bg, #e6f7e9)',
+      textColor: 'var(--color-success-text, #237a3f)',
+      label: t('Réglé')
+    },
+    PARTIAL: {
+      color: 'var(--color-warning-bg, #fff3e0)',
+      textColor: 'var(--color-warning-text, #ad6800)',
+      label: t('Partiel')
+    },
+    DUE: { color: 'var(--color-info-bg, #e6f0ff)', textColor: 'var(--color-info-text, #1d4ed8)', label: t('Dû') },
+    OVERDUE: {
+      color: 'var(--color-error-bg, #fde8e8)',
+      textColor: 'var(--color-error-text, #c0202c)',
+      label: t('En retard')
+    },
+    NONE: { color: 'transparent', textColor: 'var(--text-secondary, #999)', label: t('—') }
+  }));
 
 function yearRange(current: number): number[] {
   const years: number[] = [];
