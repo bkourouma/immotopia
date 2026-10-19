@@ -39,6 +39,9 @@ const mockPrisma: Record<string, any> = {
   serviceProvider: {
     findFirst: jest.fn(async () => ({ id: 'v1', name: 'Plomberie Koné' }))
   },
+  ownerAccount: { count: jest.fn(async () => 0) },
+  saleOffer: { count: jest.fn(async () => 0) },
+  thirdPartyAccount: { count: jest.fn(async () => 0) },
   maintenanceTicket: { count: jest.fn(async () => 0) },
   maintenanceContract: { count: jest.fn(async () => 0) },
   $transaction: jest.fn(async (arg: unknown) => {
