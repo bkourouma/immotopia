@@ -5,6 +5,7 @@ import { ChargeScheduleFrequency, ChargeSchedulePreview } from '../../../types/s
 import { t } from '../../../i18n/t';
 import { formatDay } from './chargeScheduleLabels';
 import { displayCurrency } from '../../../utils/syndic-currency';
+import { allocationMethodLabel } from '../charge-allocation/ChargeAllocationControls';
 
 const { Text } = Typography;
 
@@ -31,6 +32,11 @@ export const SchedulePreviewPanel: React.FC<{
           <Descriptions column={1} size="small">
             <Descriptions.Item label={t('Émission')}>{formatDay(period.issueDate)}</Descriptions.Item>
             <Descriptions.Item label={t('Échéance')}>{formatDay(period.dueDate)}</Descriptions.Item>
+            {period.allocationMethod ? (
+              <Descriptions.Item label={t('Répartition')}>
+                {allocationMethodLabel(period.allocationMethod)}
+              </Descriptions.Item>
+            ) : null}
             <Descriptions.Item label={t('Montant total')}>
               {period.error ? (
                 <Text type="danger">{period.error}</Text>

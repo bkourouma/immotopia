@@ -4,6 +4,14 @@ import { logger } from '../../utils/logger';
 import { runWithTenantContext } from '../../utils/tenant-context';
 import { AppError } from '../../middleware/error-middleware';
 import { fromCents, toCents } from './charge-allocation-plan';
+import {
+  allocateCharge,
+  allocationPrecisionFor,
+  ChargeAllocationError,
+  parseLotTypeRates,
+  type ChargeAllocationMethodKey,
+  type LotTypeRates
+} from './charge-allocation-methods';
 import { scheduleChargeDocumentDelivery } from './charge-receipt-delivery';
 import type { IssuedChargeDocument } from './charge-receipts';
 import { buildChargeCallNoticeAttachment, loadNoticeRenderContext } from './charge-call-notice';
@@ -119,27 +127,58 @@ export interface PeriodPlan {
   totalAmount: number;
   currency: string;
   budgetId: string | null;
+  allocationMethod: ChargeAllocationMethodKey;
 }
 
 type ScheduleForPlan = Pick<
   SyndicChargeSchedule,
   'tenantId' | 'syndicateId' | 'amountSource' | 'budgetId' | 'fixedAmount' | 'currency'
->;
+> & { allocationMethod?: ChargeAllocationMethodKey | null };
 
 async function loadSyndicateLots(schedule: ScheduleForPlan) {
   const syndicate = await prisma.syndicate.findFirst({
     where: { id: schedule.syndicateId, tenantId: schedule.tenantId },
-    select: { id: true, status: true }
+    select: { id: true, status: true, lotTypeRates: true }
   });
   if (!syndicate) throw new ScheduleRunError('Copropriété introuvable.');
   if (syndicate.status === 'IN_LIQUIDATION') {
     throw new ScheduleRunError('Copropriété en liquidation : aucun appel émis.');
   }
-  return prisma.syndicateLot.findMany({
+  const lots = await prisma.syndicateLot.findMany({
     where: { syndicateId: schedule.syndicateId },
     select: { id: true, lotNumber: true, lotType: true, generalShares: true },
     orderBy: { lotNumber: 'asc' }
   });
+  return { lots, lotTypeRates: parseLotTypeRates(syndicate.lotTypeRates) };
+}
+
+/** Lots appelables : ceux qui ont des tantièmes (tous si aucun n'en a). */
+function activeLotsOf<T extends { generalShares: number }>(lots: T[]): T[] {
+  const hasShares = lots.some(lot => lot.generalShares > 0);
+  return lots.filter(lot => !hasShares || lot.generalShares > 0);
+}
+
+/** Répartition EQUAL / BY_LOT_TYPE d'un montant fixe ; un refus métier devient un échec de période. */
+function allocateFixed(
+  method: 'EQUAL' | 'BY_LOT_TYPE',
+  fixedAmount: number,
+  currency: string,
+  lots: Array<{ id: string; lotNumber: string; lotType: string; generalShares: number }>,
+  lotTypeRates: LotTypeRates
+): Array<{ lotId: string; amount: number }> {
+  try {
+    const result = allocateCharge({
+      method,
+      lots: activeLotsOf(lots),
+      totalAmount: fixedAmount,
+      lotTypeRates,
+      precision: allocationPrecisionFor(currency)
+    });
+    return result.lots.map(line => ({ lotId: line.lotId, amount: line.amount }));
+  } catch (error) {
+    if (error instanceof ChargeAllocationError) throw new ScheduleRunError(error.message);
+    throw error;
+  }
 }
 
 /** Budget de la période : celui désigné, sinon le budget approuvé de l'exercice. */
@@ -178,14 +217,20 @@ export async function computePeriodPlan(
   period: SchedulePeriod,
   options: { allowRecompute: boolean }
 ): Promise<PeriodPlan> {
-  const lots = await loadSyndicateLots(schedule);
+  const { lots, lotTypeRates } = await loadSyndicateLots(schedule);
   const lotNumber = new Map(lots.map(lot => [lot.id, lot.lotNumber]));
 
   let amounts: Array<{ lotId: string; amount: number }>;
   let budgetId: string | null = null;
   let currency = schedule.currency || 'XOF';
+  // Source BUDGET : clé de répartition des postes du budget, donc toujours SHARES.
+  const allocationMethod: ChargeAllocationMethodKey =
+    schedule.amountSource === 'FIXED' ? (schedule.allocationMethod ?? 'SHARES') : 'SHARES';
   if (schedule.amountSource === 'FIXED') {
-    amounts = distributeFixedAmount(Number(schedule.fixedAmount ?? 0), lots);
+    amounts =
+      allocationMethod === 'SHARES'
+        ? distributeFixedAmount(Number(schedule.fixedAmount ?? 0), lots)
+        : allocateFixed(allocationMethod, Number(schedule.fixedAmount ?? 0), currency, lots, lotTypeRates);
   } else {
     const budget = await loadBudgetForPeriod(schedule, period);
     budgetId = budget.id;
@@ -215,7 +260,7 @@ export async function computePeriodPlan(
   if (amounts.length === 0) throw new ScheduleRunError('Aucun lot à appeler pour cette copropriété.');
   const planned = amounts.map(item => ({ ...item, lotNumber: lotNumber.get(item.lotId) ?? '' }));
   const totalAmount = fromCents(planned.reduce((sum, item) => sum + toCents(item.amount), 0));
-  return { lots: planned, totalAmount, currency, budgetId };
+  return { lots: planned, totalAmount, currency, budgetId, allocationMethod };
 }
 
 // ---------------------------------------------------------------- exécution
@@ -477,6 +522,7 @@ async function createRunTx(
           budgetId: plan.budgetId,
           totalAmount: plan.totalAmount,
           currency: plan.currency,
+          allocationMethod: plan.allocationMethod,
           lots: plan.lots
         },
         issued

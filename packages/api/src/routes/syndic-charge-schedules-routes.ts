@@ -18,6 +18,7 @@ import {
   resumeChargeScheduleHandler,
   updateChargeScheduleHandler
 } from '../controllers/syndic-charge-schedules-controller';
+import { getLotTypeRatesHandler, updateLotTypeRatesHandler } from '../controllers/syndic-lot-type-rates-controller';
 import { downloadChargeCallNoticeDocxHandler } from '../controllers/syndic-word-documents-controller';
 
 /**
@@ -74,5 +75,9 @@ router.get(
   chargeCallNoticeRateLimiter,
   downloadChargeCallNoticeDocxHandler
 );
+
+// Barème par type de lot (menu lot 2) : paramètre de la copropriété, mêmes permissions que les appels de charges.
+router.get(`${SYNDIC}/bareme-types-lots`, ...guards, canView, getLotTypeRatesHandler);
+router.put(`${SYNDIC}/bareme-types-lots`, ...guards, canEdit, updateLotTypeRatesHandler);
 
 export default router;

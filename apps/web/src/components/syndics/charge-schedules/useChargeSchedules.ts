@@ -15,6 +15,7 @@ export function useChargeSchedules(tenantId: string | undefined, syndicId: strin
   const data = useScheduleData(tenantId, syndicId);
 
   const drawer = useScheduleDrawer(tenantId, syndicId, {
+    lots: data.lots,
     loadData: data.loadData,
     preview: data.preview,
     loadPreview: data.loadPreview,
@@ -54,6 +55,9 @@ export function useChargeSchedules(tenantId: string | undefined, syndicId: strin
     form: drawer.form,
     watchedAmountSource: drawer.watchedAmountSource,
     watchedFrequency: drawer.watchedFrequency,
+    allocationMethod: drawer.allocationMethod,
+    allocationPreview: drawer.allocationPreview,
+    lotTypeRatesStatus: drawer.lotTypeRatesStatus,
     openCreateDrawer: drawer.openCreateDrawer,
     openEditDrawer: drawer.openEditDrawer,
     closeDrawer: drawer.closeDrawer,
