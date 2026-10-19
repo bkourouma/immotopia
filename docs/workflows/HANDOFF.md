@@ -30,29 +30,25 @@ Modèle de section :
 
 **Pièges :** la machine sature en mémoire quand plusieurs agents lancent leurs tests en parallèle (0,6 Go libres observés, sessions coupées) : une vérification à la fois, `jest --runInBand`, `vitest --maxWorkers=2`. Le checkout principal (`feat/signature-s5-s7`) a un schéma Prisma différent de `main` : les worktrees de ce chantier utilisaient les `node_modules` de `.claude/worktrees/qa-syndic-base` (npm ci sur `main`). Retirer les jonctions `node_modules` (`rmdir`) AVANT `git worktree remove`. `ai.write-plan.test.ts` échoue sous Windows (fichiers CRLF, `'\n}\n'` cherché), hors de ce diff.
 
-## Branche `fix/referentiels-prod` — 2026-10-19
+## Production — référentiels posés le 2026-10-19
 
-**État :** prêt à relire — rien n'est lancé en production (attend le « go » de l'utilisateur)
-**Dernier commit :** `4a2ba51b` modèles de documents par défaut semables en production (+ ce commit de passation)
-**Worktree :** `.claude/worktrees/referentiels`, jonctions `node_modules` vers le checkout principal.
+**État :** fait — PR #176 fusionnée (`99de2298`), déployée en prod par `deploy.sh prod` (fumée 200).
 
 Fait :
 
-- Diagnostic prod (lecture seule, 2026-10-19) : `countries`/`regions`/`communes` = 0/0/0, `document_templates` = 0 ; permissions (87), rôles (7), catalogue, gabarits (12), paramètres fiscaux (34) présents. Cause : `bootstrap.sh` ne lançait pas le seed géographique, dont le jeu de données vivait dans `docs/` (absent de l'image `migrate`) ; aucun moyen de semer les modèles de documents dans un conteneur.
-- Seed géographique insert-only (`prisma/seeds/geographic-seed.ts`, données `prisma/seeds/data/ci-geographie.json`) + étape dans `bootstrap.sh`.
-- Seed des modèles par défaut compilé (`dist/scripts/seed-default-document-templates.js`), insert-only, sans création d'utilisateur.
-- Validé sur une base locale jetable `immotopia_geo_scratch` (migrée, laissée en place) : 198 insérées puis 0/198 ignorées ; modèles 4 créés puis 4 ignorés ; recherche « Cocody » OK ; contact créé avec Cocody en dev (API, 201).
+- Sauvegardes avant intervention : `db-2026-10-19-0720.sql.gz` et dump ciblé `referentiels-avant-2026-10-19-0720.sql.gz` (countries, regions, communes, document_templates) dans `/home/deployer/backups/immotopia-prod`.
+- `bootstrap.sh prod` : géographie posée (1 pays, 33 régions, 164 communes) ; rejeu du seed : 0 inséré, 198 ignorés.
+- `docker exec immotopia-prod-api node dist/scripts/seed-default-document-templates.js` : 4 modèles globaux créés (fichiers sous `/data/uploads/modeles_documents/default/`) ; rejeu : 4 ignorés.
+- `GET /api/geographic/search?q=Cocody` en prod renvoie Cocody.
 
 Reste à faire :
 
-- Après fusion et `deploy.sh prod` : sauvegarde, `bootstrap.sh prod --dry-run`, `bootstrap.sh prod`, puis `docker exec immotopia-prod-api node dist/scripts/seed-default-document-templates.js` (détail dans la PR).
-- Non vérifié : `bootstrap.sh` contre Docker, la commande `docker exec` réelle, la sélection d'une commune à la souris dans l'écran (le panneau navigateur perdait le focus et refermait la liste).
+- Création réelle d'un contact et génération d'un bail dans l'écran de prod : non faites (aucune donnée créée chez le client).
+- Base locale jetable `immotopia_geo_scratch` laissée sur le Postgres de dev.
 
-Pièges et décisions :
+Pièges :
 
-- Champ « District » de l'interface anglaise = `Commune` (Country > Region > Commune) ; référentiel global, sans `tenantId`.
-- Aucune commune ajoutée à la main : le jeu du dépôt contient déjà les 14 communes du Grand Abidjan et les chefs-lieux des 14 districts.
-- En local, `/api/tenants/:id/entitlements` répond 500 sur la branche `feat/signature-s5-s7` (sans lien avec ce travail).
+- Lancer un seed à la main dans l'image `migrate` exige `infra/environments/prod.conf` chargé (`STACK_NAME`, `PG_PORT`…) et `IMMOTOPIA_ENV_FILE`.
 
 ## Branche `chore/skill-chef-orchestre` — 2026-10-18
 
