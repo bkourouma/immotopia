@@ -170,6 +170,33 @@ function normaliser(texte: string): string {
   return texte.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
+const COMPTES_TRESORERIE = [
+  {
+    id: 'compte-caisse',
+    kind: 'CASH',
+    label: 'Caisse principale',
+    accountNumber: '571',
+    mmOperator: null,
+    bankName: null,
+    bankAccountRef: null,
+    isDefault: true,
+    isActive: true,
+    balance: 0
+  },
+  {
+    id: 'compte-banque',
+    kind: 'BANK',
+    label: 'Banque Atlantique',
+    accountNumber: '521',
+    mmOperator: null,
+    bankName: 'Banque Atlantique',
+    bankAccountRef: null,
+    isDefault: false,
+    isActive: true,
+    balance: 0
+  }
+];
+
 /** Route les GET par motif d'URL, comme le ferait le vrai serveur. */
 function configurerGet(
   options: {
@@ -202,6 +229,9 @@ function configurerGet(
     }
     if (/\/finance\/cost-categories(\?|$)/.test(url)) {
       return { data: { data: POSTES } };
+    }
+    if (/\/treasury\/accounts(\?|$)/.test(url)) {
+      return { data: { data: COMPTES_TRESORERIE } };
     }
     return { data: { data: [] } };
   });
@@ -637,6 +667,44 @@ describe('Fiche du salarié — régler', () => {
       expect(adresse).toBe(`/tenants/${TENANT}/finance/employees/${SALARIE}/salary-payments`);
       expect(Object.keys(corps).sort()).toEqual(['amount', 'paymentDate']);
       expect(corps.amount).toBe(275_000);
+    });
+  }, 20000);
+
+  it('propose un compte de trésorerie facultatif ; sans choix, la clé `treasuryAccountId` est absente', async () => {
+    const user = userEvent.setup({ delay: null });
+    post.mockResolvedValue({ data: { data: reglement() } });
+    mountFiche();
+
+    await screen.findByText('Enregistrer un règlement', {}, { timeout: 8000 });
+    expect(screen.getByLabelText('Compte de trésorerie')).toBeInTheDocument();
+    const montant = screen.getByLabelText('Montant versé');
+    await user.clear(montant);
+    await user.type(montant, '50000');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le règlement' }));
+
+    await waitFor(() => {
+      const { corps } = dernierAppel(post);
+      expect(Object.keys(corps).sort()).toEqual(['amount', 'paymentDate']);
+    });
+  }, 20000);
+
+  it('transmet le compte de trésorerie choisi sous `treasuryAccountId`', async () => {
+    const user = userEvent.setup({ delay: null });
+    post.mockResolvedValue({ data: { data: reglement() } });
+    mountFiche();
+
+    await screen.findByText('Enregistrer un règlement', {}, { timeout: 8000 });
+    await choisirDansSelect('Compte de trésorerie', 'Banque Atlantique · 521');
+    const montant = screen.getByLabelText('Montant versé');
+    await user.clear(montant);
+    await user.type(montant, '50000');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le règlement' }));
+
+    await waitFor(() => {
+      const { adresse, corps } = dernierAppel(post);
+      expect(adresse).toBe(`/tenants/${TENANT}/finance/employees/${SALARIE}/salary-payments`);
+      expect(corps.treasuryAccountId).toBe('compte-banque');
+      expect(corps.amount).toBe(50_000);
     });
   }, 20000);
 

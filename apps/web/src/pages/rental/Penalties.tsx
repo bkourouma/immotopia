@@ -93,10 +93,22 @@ function montantRetenu(penalite: RentalPenalty): number {
   return penalite.adjusted_amount ?? penalite.amount;
 }
 
-/** Montant calculé d'origine ; null quand un ajustement ancien l'a perdu. */
+/**
+ * Montant calculé d'origine : `calculated_amount` quand l'API le donne (même
+ * pour une pénalité jamais ajustée), sinon `amount` si elle n'a pas été ajustée,
+ * sinon null (un ajustement ancien l'a perdu). `??` partout : 0 est une valeur.
+ */
 function montantCalcule(penalite: RentalPenalty): number | null {
+  if (penalite.calculated_amount != null) return penalite.calculated_amount;
   if (penalite.adjusted_amount == null) return penalite.amount;
-  return penalite.calculated_amount ?? null;
+  return null;
+}
+
+/** Ajustée à la main, ou montant retenu différent du calcul initial. */
+function estAjustee(penalite: RentalPenalty): boolean {
+  if (penalite.adjusted_amount != null) return true;
+  const calcule = montantCalcule(penalite);
+  return calcule != null && calcule !== montantRetenu(penalite);
 }
 
 function dateCourte(iso: string): string {
@@ -263,7 +275,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
           <MoneyValue value={montantRetenu(p)} currency={p.currency} />
           {/* La raison n'a plus sa colonne : elle tient sous le montant, là où
               elle se lit, et ne prend de place que lorsqu'elle existe. */}
-          {p.adjusted_amount != null && raisonAjustement(p) && (
+          {estAjustee(p) && raisonAjustement(p) && (
             <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>{raisonAjustement(p)}</div>
           )}
         </>
@@ -453,7 +465,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
               subtitle={t('Calculée le {{value}}', { value: dateCourte(p.calculated_at) })}
               highlight={<MoneyValue value={montantRetenu(p)} currency={p.currency} />}
               fields={[
-                ...(p.adjusted_amount != null
+                ...(estAjustee(p)
                   ? [
                       {
                         label: t('Montant calculé'),

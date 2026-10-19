@@ -57,11 +57,14 @@ import { t } from '../i18n/t';
  */
 export type SalaryDocumentStatus = 'DRAFT' | 'VALIDATED' | 'VOIDED';
 
-export const SALARY_STATUS_LABELS: Record<SalaryDocumentStatus, string> = {
-  DRAFT: 'Brouillon',
-  VALIDATED: t('Validé'),
-  VOIDED: t('Annulé')
-};
+/** Évalué à l'appel (et non au chargement du module) : la langue active peut changer. */
+export function salaryStatusLabels(): Record<SalaryDocumentStatus, string> {
+  return {
+    DRAFT: t('Brouillon'),
+    VALIDATED: t('Validé'),
+    VOIDED: t('Annulé')
+  };
+}
 
 // ---------------------------------------------------------------------------
 // L'employé
@@ -176,6 +179,8 @@ export interface SalaryPayment {
   createdByLabel: string;
   /** Chaîne ISO. Nulle tant que le règlement est un brouillon. */
   validatedAt: string | null;
+  /** Compte de trésorerie débité ; nul = caisse par défaut. */
+  treasuryAccountId?: string | null;
 }
 
 /**
@@ -195,4 +200,6 @@ export interface CreateSalaryPaymentInput {
   /** `YYYY-MM-DD`. Le serveur la reçoit en `z.coerce.date()`. */
   paymentDate: string;
   amount: number;
+  /** Facultatif ; la clé n'est envoyée que si un compte est choisi (schéma serveur `.strict()`). */
+  treasuryAccountId?: string | null;
 }
