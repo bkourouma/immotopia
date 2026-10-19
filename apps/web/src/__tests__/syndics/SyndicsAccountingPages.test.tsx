@@ -6,6 +6,8 @@ import { AuthContextType } from '../../types/auth-types';
 import { SyndicAccounting } from '../../pages/syndics/SyndicAccounting';
 import apiClient from '../../utils/api-client';
 
+const { confirmSpy } = vi.hoisted(() => ({ confirmSpy: vi.fn() }));
+
 vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {
@@ -96,7 +98,7 @@ vi.mock('antd', async () => {
   };
   const appApi = {
     message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
-    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
+    modal: { confirm: confirmSpy, info() {}, warning() {}, error() {}, success() {} },
     notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
   };
   return {
@@ -267,5 +269,70 @@ describe('Syndics accounting page', () => {
         { lock: true }
       );
     });
+  });
+
+  const chartUrl = '/tenants/tenant-1/syndics/syndic-1/comptabilite/comptes/charger-plan-syscohada';
+
+  it('loads the SYSCOHADA chart directly when the chart is empty', async () => {
+    const defaultGet = mockApiClient.get.getMockImplementation();
+    let loaded = false;
+    mockApiClient.get.mockImplementation((url: string) => {
+      if (url.endsWith('/comptabilite/comptes')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: loaded
+              ? [
+                  {
+                    id: 'a',
+                    accountNumber: '101',
+                    accountName: 'Capital',
+                    accountClass: 1,
+                    accountType: 'EQUITY',
+                    isActive: true
+                  }
+                ]
+              : []
+          }
+        });
+      }
+      return defaultGet!(url);
+    });
+    mockApiClient.post.mockImplementation(() => {
+      loaded = true;
+      return Promise.resolve({ data: { success: true, data: { created: 12, skipped: 0, total: 12 } } });
+    });
+
+    renderWithRoute();
+    expect(await screen.findByText(/plan comptable de cette copropriété est vide/)).toBeTruthy();
+    fireEvent.click(await screen.findByText('Charger le plan SYSCOHADA'));
+
+    await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledWith(chartUrl));
+    await waitFor(() => expect(screen.queryByText(/plan comptable de cette copropriété est vide/)).toBeNull());
+    const accountCalls = mockApiClient.get.mock.calls.filter(([url]: [string]) =>
+      url.endsWith('/comptabilite/comptes')
+    );
+    expect(accountCalls.length).toBe(2);
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it('asks for confirmation before loading the chart when it is not empty', async () => {
+    mockApiClient.post.mockResolvedValue({ data: { success: true, data: { created: 3, skipped: 9, total: 12 } } });
+    confirmSpy.mockImplementation((opts: any) => opts.onOk);
+
+    renderWithRoute();
+    await screen.findByText('401 - Fournisseurs');
+    fireEvent.click(await screen.findByText('Charger le plan SYSCOHADA'));
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(mockApiClient.post).not.toHaveBeenCalled();
+
+    await confirmSpy.mock.calls[0][0].onOk();
+    expect(mockApiClient.post).toHaveBeenCalledWith(chartUrl);
+  });
+
+  it('renders account types through t()', async () => {
+    renderWithRoute();
+    expect(await screen.findByText('Passif')).toBeTruthy();
   });
 });

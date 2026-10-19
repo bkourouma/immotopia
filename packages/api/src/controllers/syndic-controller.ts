@@ -59,6 +59,7 @@ import {
   listOwnerAccountTransactionsByLot,
   listChartOfAccountsBySyndicate,
   createChartOfAccountBySyndicate,
+  loadSyndicChartTemplateBySyndicate,
   listAccountingJournalsBySyndicate,
   createAccountingJournalBySyndicate,
   listJournalEntriesBySyndicate,
@@ -1930,6 +1931,17 @@ export const createChartOfAccountHandler = asyncHandler(async (req: Request, res
   const parsed = createChartOfAccountSchema.parse(req.body ?? {});
   const account = await createChartOfAccountBySyndicate(tenantId, syndicateId, parsed);
   res.status(201).json({ success: true, data: account });
+});
+
+export const loadSyndicChartTemplateHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour le chargement du plan comptable');
+  }
+
+  const data = await loadSyndicChartTemplateBySyndicate(tenantId, syndicateId);
+  res.json({ success: true, data });
 });
 
 export const listAccountingJournalsHandler = asyncHandler(async (req: Request, res: Response) => {

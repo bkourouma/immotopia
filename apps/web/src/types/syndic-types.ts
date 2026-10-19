@@ -915,6 +915,10 @@ export interface BudgetLineItem {
   description: string;
   amountForecast: number | string;
   amountActual: number | string;
+  /** Coût d'incidents imputé au poste (en plus des factures prestataires de `amountActual`). */
+  actualIncidents?: number;
+  /** Réalisé complet du poste : `amountActual` + `actualIncidents`. */
+  actualTotal?: number;
   distributionKey: DistributionKey;
   accountId?: string | null;
   /** Fonds alimenté par ce poste, au prorata de chaque paiement de charges. */
@@ -939,6 +943,14 @@ export interface BudgetAllocation {
   lot?: SyndicateLot;
 }
 
+/** Factures et imputations d'incident de l'exercice non rattachées à un poste du budget. */
+export interface BudgetUnattached {
+  invoicesCount: number;
+  invoicesAmount: number;
+  imputationsCount: number;
+  imputationsAmount: number;
+}
+
 export interface SyndicateBudget {
   id: string;
   syndicateId: string;
@@ -948,6 +960,9 @@ export interface SyndicateBudget {
   approvedAt?: string | null;
   approvedByResolutionId?: string | null;
   totalAmount: number | string;
+  /** Réalisé complet de l'exercice (somme des `actualTotal` des postes). */
+  actualTotal?: number;
+  unattached?: BudgetUnattached;
   currency: string;
   createdAt: string;
   updatedAt: string;

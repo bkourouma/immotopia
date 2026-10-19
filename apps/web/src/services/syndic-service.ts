@@ -882,6 +882,22 @@ export async function createChartOfAccount(
   return response.data.data;
 }
 
+export interface LoadSyndicChartTemplateResult {
+  created: number;
+  skipped: number;
+  total: number;
+}
+
+export async function loadSyndicChartTemplate(
+  tenantId: string,
+  syndicId: string
+): Promise<LoadSyndicChartTemplateResult> {
+  const response = await apiClient.post<{ success: boolean; data: LoadSyndicChartTemplateResult }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/comptabilite/comptes/charger-plan-syscohada`
+  );
+  return response.data.data;
+}
+
 export async function listAccountingJournals(
   tenantId: string,
   syndicId: string,

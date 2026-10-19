@@ -123,6 +123,7 @@ import {
   addIncidentImputationHandler,
   listChartOfAccountsHandler,
   createChartOfAccountHandler,
+  loadSyndicChartTemplateHandler,
   listAccountingJournalsHandler,
   createAccountingJournalHandler,
   listAccountingEntriesHandler,
@@ -675,6 +676,11 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes',
   requirePropertyPermission('SYNDIC_EDIT'),
   createChartOfAccountHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes/charger-plan-syscohada',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  loadSyndicChartTemplateHandler
 );
 router.get(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/journaux',

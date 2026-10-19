@@ -418,6 +418,13 @@ export const generateBudgetChargeCallsSchema = z
   })
   .superRefine((value, ctx) => {
     checkPeriodBounds(value, ctx);
+    if (value.periodsPerYear === 1 && /^\d{4}-\d{2}$/.test(value.period.trim())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Pour un appel annuel (1 période par an), la période doit être l'année (AAAA), pas un mois (AAAA-MM).",
+        path: ['period']
+      });
+    }
     if (value.periodIndex !== undefined && value.periodIndex > value.periodsPerYear) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
