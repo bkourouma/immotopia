@@ -20,6 +20,7 @@ import { toMajorityLotsAt, votersAt, type LotOwnerProfileForVoters } from './mee
 import {
   LOT_OWNER_PROFILE_SELECT_FOR_VOTERS,
   MEETING_CONTACT_SELECT,
+  loadMeetingLots,
   normalizeOwnerProfilesForVoters
 } from './meeting-lots';
 import { lockMeetingTx, recomputeMeetingResultsTx } from './meeting-results';
@@ -1919,7 +1920,8 @@ export async function getMeetingByTenant(tenantId: string, syndicateId: string, 
         include: {
           lots: {
             include: {
-              owner: true,
+              // Champs de contact minimaux : le detail n'a besoin que du nom et de l'e-mail du proprietaire.
+              owner: { select: MEETING_CONTACT_SELECT },
               ownerProfiles: { select: LOT_OWNER_PROFILE_SELECT_FOR_VOTERS }
             }
           }
@@ -1931,15 +1933,9 @@ export async function getMeetingByTenant(tenantId: string, syndicateId: string, 
       resolutions: {
         orderBy: { createdAt: 'asc' },
         include: {
-          votes: {
-            include: {
-              lot: {
-                include: {
-                  owner: true
-                }
-              }
-            }
-          }
+          // Aucun lot ni proprietaire joint aux votes : l'ecran les retrouve par `lotId`
+          // dans `syndicate.lots` (le detail relisait chaque lot et son contact complet).
+          votes: true
         }
       },
       proxies: {
@@ -2199,23 +2195,98 @@ export async function deleteAgendaItemByTenant(tenantId: string, syndicateId: st
   });
 }
 
+/** Fenetre dans laquelle deux resolutions identiques (titre + description) sont prises pour un doublon. */
+const RESOLUTION_DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
+
+function normalizeResolutionText(value: string | null | undefined): string {
+  return (value ?? '').trim();
+}
+
 export async function addResolutionToMeeting(
   tenantId: string,
   syndicateId: string,
   data: { meetingId: string; title: string; description?: string | null; majorityRule?: string | null }
 ) {
-  const meeting = await findMeetingForTenant(prisma, tenantId, syndicateId, data.meetingId);
-  assertMeetingOpenForChanges(meeting.status, {
-    COMPLETED: "Assemblee cloturee : impossible d'ajouter une resolution",
-    CANCELLED: "Assemblee annulee : impossible d'ajouter une resolution"
-  });
+  return prisma.$transaction(async tx => {
+    const found = await findMeetingForTenant(tx, tenantId, syndicateId, data.meetingId);
+    // Verrou d'AG puis statut relu sous le verrou : deux ajouts simultanes se
+    // serialisent et voient la resolution de l'autre (anti-doublon ci-dessous).
+    await lockMeetingTx(tx, found.id);
+    const meeting = (await tx.generalMeeting.findFirst({ where: { id: found.id }, select: { status: true } })) ?? found;
+    assertMeetingOpenForChanges(meeting.status, {
+      COMPLETED: "Assemblee cloturee : impossible d'ajouter une resolution",
+      CANCELLED: "Assemblee annulee : impossible d'ajouter une resolution"
+    });
 
-  return prisma.gMResolution.create({
-    data: {
-      ...data,
-      // Code de regle stable (ARTICLE_24…) ; un texte libre reste accepte et vaut l'article 24.
-      majorityRule: data.majorityRule?.trim() || DEFAULT_MAJORITY_RULE
+    // Anti-doublon (double clic, reessai sans cle d'idempotence) : meme titre et
+    // meme description creees il y a moins de 2 minutes -> la resolution existante.
+    const title = normalizeResolutionText(data.title);
+    const description = normalizeResolutionText(data.description);
+    const recent = await tx.gMResolution.findMany({
+      where: { meetingId: found.id, createdAt: { gte: new Date(Date.now() - RESOLUTION_DUPLICATE_WINDOW_MS) } },
+      orderBy: { createdAt: 'asc' }
+    });
+    const duplicate = recent.find(
+      resolution =>
+        normalizeResolutionText(resolution.title) === title &&
+        normalizeResolutionText(resolution.description) === description
+    );
+    if (duplicate) {
+      return duplicate;
     }
+
+    return tx.gMResolution.create({
+      data: {
+        ...data,
+        // Code de regle stable (ARTICLE_24…) ; un texte libre reste accepte et vaut l'article 24.
+        majorityRule: data.majorityRule?.trim() || DEFAULT_MAJORITY_RULE
+      }
+    });
+  });
+}
+
+/**
+ * Supprime une resolution d'une AG encore modifiable. Refus (409) si l'AG est
+ * cloturee ou annulee, si le vote de la resolution n'est plus PENDING ou si des
+ * votes existent deja. Transaction sous verrou d'AG, resultats recalcules.
+ */
+export async function deleteResolutionFromMeeting(
+  tenantId: string,
+  syndicateId: string,
+  meetingId: string,
+  resolutionId: string
+) {
+  return prisma.$transaction(async tx => {
+    const found = await findMeetingForTenant(tx, tenantId, syndicateId, meetingId);
+    await lockMeetingTx(tx, found.id);
+    const meeting =
+      (await tx.generalMeeting.findFirst({
+        where: { id: found.id },
+        select: { id: true, status: true, scheduledAt: true }
+      })) ?? found;
+    assertMeetingOpenForChanges(meeting.status, {
+      COMPLETED: 'Assemblee cloturee : impossible de supprimer une resolution',
+      CANCELLED: 'Assemblee annulee : impossible de supprimer une resolution'
+    });
+
+    const resolution = await tx.gMResolution.findFirst({
+      where: { id: resolutionId, meetingId: found.id },
+      select: { id: true, voteStatus: true }
+    });
+    if (!resolution) {
+      throw notFound('Resolution introuvable ou inaccessible');
+    }
+    if (resolution.voteStatus !== 'PENDING') {
+      throw conflict(t('Le vote de cette résolution est déjà ouvert ou clos : elle ne peut plus être supprimée.'));
+    }
+    const voteCount = await tx.gMVote.count({ where: { resolutionId: resolution.id } });
+    if (voteCount > 0) {
+      throw conflict(t('Des votes ont été enregistrés pour cette résolution : elle ne peut plus être supprimée.'));
+    }
+
+    await tx.gMResolution.delete({ where: { id: resolution.id } });
+    await recomputeMeetingResultsTx(tx, syndicateId, found.id, meeting.scheduledAt);
+    return { id: resolution.id };
   });
 }
 
@@ -2365,7 +2436,11 @@ export async function createMeetingProxyByTenant(
   data: { meetingId: string; grantorContactId: string; representativeContactId: string }
 ) {
   return prisma.$transaction(async tx => {
-    const meeting = await findMeetingForTenant(tx, tenantId, syndicateId, data.meetingId);
+    const found = await findMeetingForTenant(tx, tenantId, syndicateId, data.meetingId);
+    // Verrou d'AG, statut relu sous le verrou : le pouvoir et l'emargement qu'il
+    // entraine restent coherents avec une ouverture ou une cloture simultanee.
+    await lockMeetingTx(tx, found.id);
+    const meeting = (await findMeetingForTenant(tx, tenantId, syndicateId, data.meetingId)) ?? found;
     assertMeetingOpenForChanges(meeting.status, {
       COMPLETED: 'Assemblee cloturee : les pouvoirs ne peuvent plus etre modifies',
       CANCELLED: 'Assemblee annulee : les pouvoirs ne peuvent plus etre modifies'
@@ -2403,7 +2478,7 @@ export async function createMeetingProxyByTenant(
       throw conflict('Ce coproprietaire a deja donne un pouvoir pour cette assemblee');
     }
 
-    return tx.gMProxy.create({
+    const proxy = await tx.gMProxy.create({
       data: {
         meetingId: data.meetingId,
         grantorContactId: data.grantorContactId,
@@ -2414,7 +2489,48 @@ export async function createMeetingProxyByTenant(
         representative: { select: MEETING_CONTACT_SELECT }
       }
     });
+
+    // Seance ouverte : les lots du mandant sont emarges REPRESENTES par le
+    // mandataire (jamais par-dessus un emargement PRESENT), quorum recalcule.
+    if (meeting.status === 'IN_PROGRESS') {
+      const lotIds = await grantorLotIdsAtMeeting(tx, syndicateId, meeting.scheduledAt, data.grantorContactId);
+      if (lotIds.length > 0) {
+        const present = await tx.gMAttendance.findMany({
+          where: { meetingId: meeting.id, lotId: { in: lotIds }, status: 'PRESENT' },
+          select: { lotId: true }
+        });
+        const presentLotIds = new Set(present.map(row => row.lotId));
+        for (const lotId of lotIds.filter(id => !presentLotIds.has(id))) {
+          const attendance = {
+            status: 'REPRESENTED' as const,
+            mode: 'IN_PERSON' as const,
+            attendeeContactId: data.representativeContactId,
+            representedByContactId: data.representativeContactId,
+            recordedBy: 'MANAGER' as const
+          };
+          await tx.gMAttendance.upsert({
+            where: { meetingId_lotId: { meetingId: meeting.id, lotId } },
+            update: attendance,
+            create: { tenantId, meetingId: meeting.id, lotId, ...attendance }
+          });
+        }
+        await recomputeMeetingResultsTx(tx, syndicateId, meeting.id, meeting.scheduledAt);
+      }
+    }
+
+    return proxy;
   });
+}
+
+/** Lots dont le contact est votant a la date de l'AG (propriete a cette date, repli sur le proprietaire actuel). */
+async function grantorLotIdsAtMeeting(
+  tx: PrismaTransactionClient,
+  syndicateId: string,
+  scheduledAt: Date,
+  contactId: string
+): Promise<string[]> {
+  const { lots } = await loadMeetingLots(tx, syndicateId, scheduledAt);
+  return lots.filter(lot => lot.voters.some(voter => voter.contactId === contactId)).map(lot => lot.id);
 }
 
 export async function deleteMeetingProxyByTenant(
@@ -2423,22 +2539,45 @@ export async function deleteMeetingProxyByTenant(
   meetingId: string,
   proxyId: string
 ) {
-  const meeting = await findMeetingForTenant(prisma, tenantId, syndicateId, meetingId);
+  return prisma.$transaction(async tx => {
+    const found = await findMeetingForTenant(tx, tenantId, syndicateId, meetingId);
+    await lockMeetingTx(tx, found.id);
+    const meeting = (await findMeetingForTenant(tx, tenantId, syndicateId, meetingId)) ?? found;
 
-  const proxy = await prisma.gMProxy.findFirst({
-    where: { id: proxyId, meetingId: meeting.id },
-    select: { id: true }
+    const proxy = await tx.gMProxy.findFirst({
+      where: { id: proxyId, meetingId: meeting.id },
+      select: { id: true, grantorContactId: true, representativeContactId: true }
+    });
+    if (!proxy) {
+      throw notFound('Pouvoir introuvable ou inaccessible');
+    }
+
+    assertMeetingOpenForChanges(meeting.status, {
+      COMPLETED: 'Assemblee cloturee : les pouvoirs ne peuvent plus etre modifies',
+      CANCELLED: 'Assemblee annulee : les pouvoirs ne peuvent plus etre modifies'
+    });
+
+    const deleted = await tx.gMProxy.delete({ where: { id: proxy.id } });
+
+    // Seance ouverte : les lots du mandant representes par ce mandataire repassent absents.
+    if (meeting.status === 'IN_PROGRESS') {
+      const lotIds = await grantorLotIdsAtMeeting(tx, syndicateId, meeting.scheduledAt, proxy.grantorContactId);
+      if (lotIds.length > 0) {
+        await tx.gMAttendance.updateMany({
+          where: {
+            meetingId: meeting.id,
+            lotId: { in: lotIds },
+            status: 'REPRESENTED',
+            representedByContactId: proxy.representativeContactId
+          },
+          data: { status: 'ABSENT', representedByContactId: null, attendeeContactId: null }
+        });
+        await recomputeMeetingResultsTx(tx, syndicateId, meeting.id, meeting.scheduledAt);
+      }
+    }
+
+    return deleted;
   });
-  if (!proxy) {
-    throw notFound('Pouvoir introuvable ou inaccessible');
-  }
-
-  assertMeetingOpenForChanges(meeting.status, {
-    COMPLETED: 'Assemblee cloturee : les pouvoirs ne peuvent plus etre modifies',
-    CANCELLED: 'Assemblee annulee : les pouvoirs ne peuvent plus etre modifies'
-  });
-
-  return prisma.gMProxy.delete({ where: { id: proxy.id } });
 }
 
 export async function linkMaintenanceRequestBySyndicate(

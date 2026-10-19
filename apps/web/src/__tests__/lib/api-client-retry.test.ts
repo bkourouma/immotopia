@@ -210,6 +210,28 @@ describe('apiClient — nouvelles tentatives', () => {
     expect(attempts).toHaveLength(2);
   });
 
+  it('ne rejoue pas un GET marqué noRetry (polling) sur 503', async () => {
+    apiClient.defaults.adapter = adapterFailing(1, httpError(503));
+
+    const promise = apiClient.get('/direct', { noRetry: true });
+    const assertion = expect(promise).rejects.toBeDefined();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await assertion;
+
+    expect(attempts).toHaveLength(1);
+  });
+
+  it('ne rejoue pas un GET noRetry sur panne réseau', async () => {
+    apiClient.defaults.adapter = adapterFailing(1, networkError);
+
+    const promise = apiClient.get('/direct', { noRetry: true });
+    const assertion = expect(promise).rejects.toBeDefined();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await assertion;
+
+    expect(attempts).toHaveLength(1);
+  });
+
   it('NE rejoue JAMAIS une mutation, même sur panne réseau', async () => {
     // Le test le plus important du fichier. Un POST d'encaissement rejoué
     // crée un second paiement : le rejeu sûr des mutations passe par la file

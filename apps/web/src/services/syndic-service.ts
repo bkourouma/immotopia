@@ -404,22 +404,32 @@ export async function createMeetingWithConvocation(
   syndicId: string,
   data: CreateMeetingRequest,
   idempotencyKey?: string
-): Promise<{ meeting: GeneralMeeting; convocation: MeetingConvocationResult | null; convocationPending: boolean }> {
+): Promise<{
+  meeting: GeneralMeeting;
+  convocation: MeetingConvocationResult | null;
+  convocationPending: boolean;
+  /** Aucune convocation n'est partie à la création (`sendConvocation` absent ou faux). */
+  convocationNotSent: boolean;
+}> {
   const response = await apiClient.post<{
     success: boolean;
     data: GeneralMeeting;
-    convocation?: MeetingConvocationResult | { status: 'SENDING' };
+    convocation?: MeetingConvocationResult | { status: 'SENDING' | 'NOT_SENT' };
   }>(
     `/tenants/${tenantId}/syndics/${syndicId}/assemblees`,
     data,
     idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined
   );
   const raw = response.data.convocation;
-  const convocationPending = !!raw && 'status' in raw && raw.status === 'SENDING';
+  const convocationStatus = raw && 'status' in raw ? raw.status : undefined;
+  const convocationPending = convocationStatus === 'SENDING';
+  const convocationNotSent = convocationStatus === 'NOT_SENT';
   return {
     meeting: response.data.data,
-    convocation: convocationPending ? null : ((raw as MeetingConvocationResult | undefined) ?? null),
-    convocationPending
+    convocation:
+      convocationPending || convocationNotSent ? null : ((raw as MeetingConvocationResult | undefined) ?? null),
+    convocationPending,
+    convocationNotSent
   };
 }
 
@@ -494,15 +504,31 @@ export async function deleteMeetingProxy(
   return response.data.data;
 }
 
+/** `idempotencyKey` : un réessai après coupure ou 5xx rejoue la même création (pas de doublon). */
 export async function addMeetingResolution(
   tenantId: string,
   syndicId: string,
   meetingId: string,
-  data: CreateResolutionRequest
+  data: CreateResolutionRequest,
+  idempotencyKey?: string
 ) {
   const response = await apiClient.post(
     `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/resolutions`,
-    data
+    data,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined
+  );
+  return response.data.data;
+}
+
+/** Supprime une résolution sans vote (409 si AG figée, vote ouvert ou votes déjà saisis). */
+export async function deleteMeetingResolution(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  resolutionId: string
+): Promise<{ id: string }> {
+  const response = await apiClient.delete<{ success: boolean; data: { id: string } }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/resolutions/${resolutionId}`
   );
   return response.data.data;
 }
@@ -1368,7 +1394,8 @@ export async function getLiveMeeting(
   meetingId: string
 ): Promise<LiveMeetingAdminView> {
   const response = await apiClient.get<{ success: boolean; data: LiveMeetingAdminView }>(
-    `${liveBase(tenantId, syndicId, meetingId)}/direct`
+    `${liveBase(tenantId, syndicId, meetingId)}/direct`,
+    { noRetry: true }
   );
   return response.data.data;
 }
@@ -1432,7 +1459,8 @@ export async function listMeetingParticipants(
   meetingId: string
 ): Promise<MeetingParticipantView[]> {
   const response = await apiClient.get<{ success: boolean; data: MeetingParticipantView[] }>(
-    `${liveBase(tenantId, syndicId, meetingId)}/participants`
+    `${liveBase(tenantId, syndicId, meetingId)}/participants`,
+    { noRetry: true }
   );
   return response.data.data;
 }
@@ -1471,7 +1499,8 @@ export async function getMeetingVisio(
   meetingId: string
 ): Promise<MeetingVisioAdminView> {
   const response = await apiClient.get<{ success: boolean; data: MeetingVisioAdminView }>(
-    `${liveBase(tenantId, syndicId, meetingId)}/visio`
+    `${liveBase(tenantId, syndicId, meetingId)}/visio`,
+    { noRetry: true }
   );
   return response.data.data;
 }
@@ -1561,7 +1590,8 @@ export async function getMeetingDiscussion(
   meetingId: string
 ): Promise<ManagerDiscussionView> {
   const response = await apiClient.get<{ success: boolean; data: ManagerDiscussionView }>(
-    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion`
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion`,
+    { noRetry: true }
   );
   return response.data.data;
 }
@@ -1657,7 +1687,8 @@ export async function getMeetingRecordings(
   meetingId: string
 ): Promise<MeetingRecordingView[]> {
   const response = await apiClient.get<{ success: boolean; data: MeetingRecordingView[] }>(
-    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements`
+    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements`,
+    { noRetry: true }
   );
   return response.data.data;
 }

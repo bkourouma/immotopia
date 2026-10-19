@@ -82,6 +82,7 @@ import {
   listMeetingProxiesHandler,
   createMeetingProxyHandler,
   deleteMeetingProxyHandler,
+  deleteResolutionHandler,
   generateMeetingMinutesHandler,
   listProvidersHandler,
   createProviderHandler,
@@ -427,6 +428,11 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions',
   requirePropertyPermission('SYNDIC_EDIT'),
   addResolutionHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  deleteResolutionHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/ordre-du-jour',

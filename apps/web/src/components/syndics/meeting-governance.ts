@@ -138,7 +138,9 @@ export function describeConvocation(result: MeetingConvocationResult | null | un
   if (result.error) {
     return {
       type: 'warning',
-      text: t("L'envoi de la convocation a échoué : réessayez avec « Renvoyer la convocation »."),
+      text: t(
+        "L'envoi de la convocation a échoué : réessayez depuis l'assemblée (« Envoyer les convocations » ou « Renvoyer la convocation »)."
+      ),
       failed: true
     };
   }

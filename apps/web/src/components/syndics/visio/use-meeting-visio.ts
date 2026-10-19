@@ -23,7 +23,7 @@ import type {
   VisioJoinInfo
 } from '../../../types/syndic-live-types';
 import type { MeetingStatus } from '../../../types/syndic-types';
-import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
+import { liveBackoffDelay, useVisiblePolling } from '../../../hooks/useVisiblePolling';
 import { t } from '../../../i18n/t';
 import { saveBlob } from '../../../utils/save-blob';
 import { describeDownloadError } from '../../../utils/download-error';
@@ -57,7 +57,7 @@ interface UseMeetingVisioOptions extends MeetingScope {
 
 /**
  * Visio intégrée de l'AG (spec 045) côté gestionnaire : lecture de `/visio` toutes les
- * 3 s pendant la séance, jeton du modérateur, parole et exclusion.
+ * 5 s pendant la séance, jeton du modérateur, parole et exclusion.
  */
 export function useMeetingVisio({
   tenantId,
@@ -78,12 +78,15 @@ export function useMeetingVisio({
   const refreshRef = useRef<() => void>(() => undefined);
 
   const visioRef = useRef<MeetingVisioAdminView | null>(null);
+  // Échecs consécutifs de la lecture : attente croissante plutôt que 503 en rafale.
+  const visioFailuresRef = useRef(0);
   const [visioError, setVisioError] = useState(false);
 
   const loadVisio = useCallback(async (): Promise<number | false | void> => {
     const seq = writeSeqRef.current;
     try {
       const view = await getMeetingVisio(tenantId, syndicId, meetingId);
+      visioFailuresRef.current = 0;
       if (seq !== writeSeqRef.current) {
         // Une action est passée entre-temps : cette lecture est relue plutôt qu'appliquée.
         refreshRef.current();
@@ -113,6 +116,8 @@ export function useMeetingVisio({
       }
       // Échec passager : on garde les dernières données, on le signale et on réessaie.
       setVisioError(inProgress);
+      visioFailuresRef.current += 1;
+      return inProgress ? liveBackoffDelay(visioFailuresRef.current) : false;
     }
     return inProgress ? undefined : false;
   }, [tenantId, syndicId, meetingId, inProgress]);

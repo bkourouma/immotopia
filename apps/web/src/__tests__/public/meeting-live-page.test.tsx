@@ -21,7 +21,7 @@ vi.mock('../../services/public-meeting-live-service', async () => {
 });
 
 const TOKEN = 'tok-abcdefghijklmnopqrstuvwxyz0123456789';
-const POLL = 3000;
+const POLL = 5000;
 
 type ResolutionOverride = Partial<LiveMeetingPublicView['resolutions'][number]>;
 

@@ -26,6 +26,7 @@ import {
   getMeetingByTenant,
   updateMeetingByTenant,
   addResolutionToMeeting,
+  deleteResolutionFromMeeting,
   castVoteAndRecomputeResolutionCounters,
   listMeetingProxiesByTenant,
   createMeetingProxyByTenant,
@@ -146,11 +147,16 @@ import {
   adjustSyndicateFundBalanceSchema
 } from '../lib/syndics/schemas';
 import { notifyChargeCall, notifyMeetingConvocation } from '../lib/syndics/notifications';
+import { hasMeetingConvocationBeenSent } from '../lib/syndics/meeting-convocation-status';
 import { deliverReminderNotification } from '../lib/syndics/reminder-delivery';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { logger } from '../utils/logger';
 import { runWithTenantContext } from '../utils/tenant-context';
-import { IDEMPOTENCY_KEY_MAX_LENGTH, meetingCreationIdempotencyStore } from '../utils/idempotency';
+import {
+  IDEMPOTENCY_KEY_MAX_LENGTH,
+  meetingCreationIdempotencyStore,
+  meetingResolutionIdempotencyStore
+} from '../utils/idempotency';
 import { asyncHandler } from '../middleware/error-middleware';
 import { presentSyndicateLots } from '../lib/syndics/lot-owner';
 import { buildMeetingMinutesDocx } from '../lib/syndics/minutes-generator';
@@ -740,7 +746,7 @@ export const createMeetingHandler = asyncHandler(async (req: Request, res: Respo
     throw badRequest('TenantId manquant pour la creation d assemblee');
   }
 
-  const meetingBase = createMeetingSchema.parse({
+  const { sendConvocation, ...meetingBase } = createMeetingSchema.parse({
     ...req.body,
     syndicateId
   });
@@ -759,7 +765,9 @@ export const createMeetingHandler = asyncHandler(async (req: Request, res: Respo
   // etait creee, puis un doublon au reessai).
   const create = async () => {
     const meeting = await createMeetingForTenant(tenantId, { ...meetingBase, resolutions });
-    scheduleMeetingConvocation(tenantId, meeting.id, req.user?.userId);
+    if (sendConvocation) {
+      scheduleMeetingConvocation(tenantId, meeting.id, req.user?.userId);
+    }
     return meeting;
   };
 
@@ -786,9 +794,10 @@ export const createMeetingHandler = asyncHandler(async (req: Request, res: Respo
   res.status(replay ? 200 : 201).json({
     success: true,
     data: meeting,
-    // Etat d'envoi : les convocations partent apres la reponse (journal par
-    // copropriétaire consultable, renvoi possible via .../convocation).
-    convocation: { status: 'SENDING' as const },
+    // Etat d'envoi : les convocations ne partent que sur demande (`sendConvocation`),
+    // apres la reponse (journal par copropriétaire consultable, envoi ou renvoi
+    // possible via .../convocation).
+    convocation: { status: sendConvocation ? ('SENDING' as const) : ('NOT_SENT' as const) },
     ...(replay ? { replay: true } : {})
   });
 });
@@ -944,9 +953,11 @@ export const getMeetingHandler = asyncHandler(async (req: Request, res: Response
     throw notFound('Assemblee generale introuvable ou inaccessible');
   }
 
+  const convocationSent = await hasMeetingConvocationBeenSent(tenantId, meeting.id);
+
   res.json({
     success: true,
-    data: meeting
+    data: { ...meeting, convocationSent }
   });
 });
 
@@ -964,11 +975,53 @@ export const addResolutionHandler = asyncHandler(async (req: Request, res: Respo
     meetingId
   });
 
-  const resolution = await addResolutionToMeeting(tenantId, syndicateId, parsed);
+  const idempotencyKey = req.header('Idempotency-Key')?.trim() || undefined;
+  if (idempotencyKey && idempotencyKey.length > IDEMPOTENCY_KEY_MAX_LENGTH) {
+    throw badRequest(`L'en-tête Idempotency-Key ne doit pas dépasser ${IDEMPOTENCY_KEY_MAX_LENGTH} caractères.`);
+  }
 
-  res.status(201).json({
+  let resolution: Awaited<ReturnType<typeof addResolutionToMeeting>>;
+  let replay = false;
+  if (!idempotencyKey) {
+    resolution = await addResolutionToMeeting(tenantId, syndicateId, parsed);
+  } else {
+    const actorId = req.user?.userId ?? 'anonymous';
+    const storeKey = `${tenantId}:${syndicateId}:${meetingId}:${idempotencyKey}`;
+    const existing = meetingResolutionIdempotencyStore.get(actorId, storeKey);
+    if (existing) {
+      replay = true;
+      resolution = (await existing) as typeof resolution;
+    } else {
+      const pending = addResolutionToMeeting(tenantId, syndicateId, parsed);
+      meetingResolutionIdempotencyStore.set(actorId, storeKey, pending);
+      // Une creation echouee ne doit pas verrouiller la cle : le reessai recommence.
+      pending.catch(() => meetingResolutionIdempotencyStore.delete(actorId, storeKey));
+      resolution = await pending;
+    }
+  }
+
+  res.status(replay ? 200 : 201).json({
     success: true,
-    data: resolution
+    data: resolution,
+    ...(replay ? { replay: true } : {})
+  });
+});
+
+export const deleteResolutionHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  const meetingId = req.params.meetingId;
+  const resolutionId = req.params.resolutionId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la suppression de resolution');
+  }
+
+  const deleted = await deleteResolutionFromMeeting(tenantId, syndicateId, meetingId, resolutionId);
+
+  res.json({
+    success: true,
+    data: { id: deleted.id }
   });
 });
 
