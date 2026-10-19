@@ -25,6 +25,8 @@ import {
 import { lockMeetingTx, recomputeMeetingResultsTx } from './meeting-results';
 import { assertBelongsToTenant } from '../../utils/tenant-ownership';
 import { logger } from '../../utils/logger';
+import { ensureSyndicChartTemplateTx } from './syndic-chart-template';
+import { attachBudgetActuals } from './budget-actuals';
 // Lot S2 (audit S1) : le logo prive de la copropriete est supprime avec elle.
 import { deleteBrandingImage } from '../documents/branding-storage';
 // Spec 045 (R12) : les MP4 des AG partent avec la copropriete supprimee.
@@ -3860,6 +3862,15 @@ export async function createChartOfAccountBySyndicate(
   }
 }
 
+/** Charge le plan comptable modele SYSCOHADA de la copropriete (idempotent : ne cree que les comptes manquants). */
+export async function loadSyndicChartTemplateBySyndicate(tenantId: string, syndicateId: string) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+
+  const result = await prisma.$transaction(tx => ensureSyndicChartTemplateTx(tx, tenantId, syndicateId));
+  logger.info('Audit: syndic chart template loaded', { tenantId, syndicateId, ...result });
+  return result;
+}
+
 export async function listAccountingJournalsBySyndicate(tenantId: string, syndicateId: string, fiscalYear?: number) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
 
@@ -4235,7 +4246,7 @@ export async function listBudgetsBySyndicate(
   filters?: { fiscalYear?: number; status?: 'DRAFT' | 'APPROVED' | 'REVISED' | 'CLOSED' }
 ) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
-  return prisma.syndicateBudget.findMany({
+  const budgets = await prisma.syndicateBudget.findMany({
     where: {
       syndicateId,
       ...(filters?.fiscalYear ? { fiscalYear: filters.fiscalYear } : {}),
@@ -4247,6 +4258,9 @@ export async function listBudgetsBySyndicate(
     },
     orderBy: [{ fiscalYear: 'desc' }, { createdAt: 'desc' }]
   });
+  // Realise a la lecture : factures prestataires (amountActual) + imputations
+  // d'incident rattachees a un poste ; voir lib/syndics/budget-actuals.ts.
+  return attachBudgetActuals(tenantId, syndicateId, budgets);
 }
 
 export async function createBudgetBySyndicate(
