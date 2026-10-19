@@ -206,6 +206,30 @@ describe('acceptInvitation — administrateur provisionne par le super-admin', (
   });
 });
 
+describe("acceptInvitation — session d'un autre compte sur un administrateur provisionne", () => {
+  it('INVITATION_FOR_ANOTHER_ACCOUNT, mot de passe et invitation intacts', async () => {
+    seedProvisioned();
+    mockPrisma.user.rows.push({
+      id: 'session-a',
+      email: 'a@example.com',
+      passwordHash: 'x',
+      isActive: true,
+      emailVerified: true,
+      globalRole: 'USER'
+    });
+
+    await expect(
+      acceptInvitation({ token: PLAIN_TOKEN, requestingUserId: 'session-a', password: NEW_PASSWORD })
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'INVITATION_FOR_ANOTHER_ACCOUNT',
+      data: { maskedEmail: 'a•••@agence.example' }
+    });
+    expect(mockPrisma.user.rows.find((r: any) => r.id === 'admin-1')!.passwordHash).toBe(originalHash);
+    expect(mockPrisma.invitation.rows[0].status).toBe(InvitationStatus.PENDING);
+  });
+});
+
 describe('acceptInvitation — non-regression securite (INVITATION_REQUIRES_LOGIN)', () => {
   it("compte dont l'e-mail est verifie (emailVerified vrai)", async () => {
     seedUser({ emailVerified: true });

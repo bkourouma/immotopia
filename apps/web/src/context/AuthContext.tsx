@@ -301,7 +301,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const logout = async (): Promise<void> => {
+  const logout = async (options?: { redirectTo?: string }): Promise<void> => {
     setIsLoading(true);
     setError(null);
 
@@ -325,7 +325,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } catch {
         // Stockage refusé : rien à nettoyer.
       }
-      window.location.href = '/login';
+      window.location.href = options?.redirectTo || '/login';
     }
   };
 
