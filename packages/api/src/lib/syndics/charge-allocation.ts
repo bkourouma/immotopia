@@ -28,7 +28,7 @@
 import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
-import { NotFoundError, ValidationError } from '../../middleware/error-middleware';
+import { ConflictError, NotFoundError, ValidationError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
 import { appendOwnerAccountTransactionTx } from '../finance/ledger';
 import { deriveChargeCallStatus, type ChargeCallStatusValue } from './finance-utils';
@@ -83,6 +83,12 @@ export interface LotPaymentInput {
   actorUserId?: string | null;
   /** Spec 042 : cle d'idempotence (unique en base). Une seconde ecriture leve P2002. */
   idempotencyKey?: string | null;
+  /**
+   * Audit 2026-10 : cle d'idempotence fournie par le client d'un paiement manuel,
+   * stockee sous `${tenantId}:${cle}` (colonne unique globale). Meme lot : rejeu ;
+   * autre lot : 409.
+   */
+  clientIdempotencyKey?: string | null;
   /** Spec 042 : identifiant de transaction du fournisseur (unique en base). */
   providerTransactionId?: string | null;
   /** Spec 042 / 047 : provenance ; `MANUAL` par defaut (`DECLARED` = paiement mobile money declare). */
@@ -635,24 +641,129 @@ export type RecordedLotPayment = LotPaymentResult & {
   documents: Array<Pick<IssuedChargeDocument, 'id' | 'kind' | 'number'>>;
 };
 
-export async function recordLotPayment(input: LotPaymentInput): Promise<RecordedLotPayment> {
-  await assertLotOfSyndicate(prisma, input.tenantId, input.syndicateId, input.lotId);
-  const { result, documents } = await prisma.$transaction(async tx => {
-    const recorded = await recordLotPaymentTx(tx, input);
-    // Lot S3 : recu et quittances, numerotes dans la transaction du paiement.
-    const issued = await issueReceiptsForPaymentTx(tx, {
-      tenantId: input.tenantId,
-      syndicateId: input.syndicateId,
-      lotId: input.lotId,
-      paymentId: recorded.record.id,
-      result: recorded.result,
-      actorUserId: input.actorUserId ?? null
-    });
-    return { result: recorded.result, documents: issued };
+/** Reponse d'un paiement ; `replayed` n'est present (a `true`) que pour un rejeu idempotent. */
+export type RecordedLotPaymentOutcome = RecordedLotPayment & { replayed?: true };
+
+/** Cle stockee d'un paiement manuel : scopee par agence (la colonne est unique pour toutes les agences). */
+export const scopedPaymentIdempotencyKey = (tenantId: string, clientKey: string) => `${tenantId}:${clientKey}`;
+
+function isIdempotencyKeyCollision(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || (error as { code?: unknown }).code !== 'P2002') return false;
+  const target = (error as { meta?: { target?: unknown } }).meta?.target;
+  if (target === undefined || target === null) return true;
+  return String(Array.isArray(target) ? target.join(',') : target).includes('idempotency');
+}
+
+/**
+ * Reconstruit la reponse d'un paiement deja enregistre : imputations lues en
+ * base, etat actuel des appels, recu et quittances emis. Ecart assume : les
+ * avances d'AUTRES paiements imputees lors de l'enregistrement initial ne sont
+ * pas rejouees, et `callStatusAfter` reflete l'etat courant des appels.
+ */
+async function rebuildRecordedPayment(
+  client: Client,
+  input: LotPaymentInput,
+  existing: { id: string; lotId: string }
+): Promise<RecordedLotPayment> {
+  const payment = await client.chargePayment.findFirst({ where: { id: existing.id, lotId: input.lotId } });
+  if (!payment) throw new NotFoundError(t('Paiement introuvable.'));
+  const stored = await client.chargePaymentAllocation.findMany({
+    where: { paymentId: payment.id },
+    orderBy: { createdAt: 'asc' }
   });
+  const toPlanned = (item: (typeof stored)[number]): PlannedImputation => ({
+    paymentId: payment.id,
+    chargeCallId: item.chargeCallId,
+    amountCents: toCents(item.amount)
+  });
+  const paymentAllocations = stored.filter(item => item.source !== 'ADVANCE').map(toPlanned);
+  const imputations = stored.filter(item => item.source === 'ADVANCE').map(toPlanned);
+  const calls = await loadCallBalances(client, input.lotId);
+  const callIds = Array.from(new Set(stored.map(item => item.chargeCallId)));
+  const receipts = await client.syndicChargeReceipt.findMany({
+    where: {
+      tenantId: input.tenantId,
+      lotId: input.lotId,
+      OR: [
+        { chargePaymentId: payment.id },
+        ...(callIds.length > 0 ? [{ kind: 'QUITTANCE' as const, chargeCallId: { in: callIds } }] : [])
+      ]
+    },
+    select: { id: true, kind: true, number: true },
+    orderBy: { issuedAt: 'asc' }
+  });
+  const result = buildResult({
+    input: { ...input, paidAt: payment.paidAt, method: payment.method, reference: payment.reference },
+    paymentId: payment.id,
+    amountCents: toCents(payment.amount),
+    paymentAllocations,
+    imputations,
+    calls,
+    unallocatedCents: toCents(payment.unallocatedAmount),
+    lotAdvanceCents: await lotAdvanceCents(client, input.lotId)
+  });
+  return { ...result, documents: toDocumentRefs(receipts as IssuedChargeDocument[]) };
+}
+
+/** Meme cle, meme lot : rejeu ; cle deja prise par un autre lot : 409. */
+async function replayOrConflict(
+  client: Client,
+  input: LotPaymentInput,
+  existing: { id: string; lotId: string }
+): Promise<RecordedLotPaymentOutcome> {
+  if (existing.lotId !== input.lotId) {
+    throw new ConflictError(t('Cette clé d’idempotence a déjà servi pour un autre lot.'));
+  }
+  return { ...(await rebuildRecordedPayment(client, input, existing)), replayed: true };
+}
+
+type RecordOutcome =
+  { replay: RecordedLotPaymentOutcome } | { result: LotPaymentResult; documents: IssuedChargeDocument[] };
+
+export async function recordLotPayment(input: LotPaymentInput): Promise<RecordedLotPaymentOutcome> {
+  await assertLotOfSyndicate(prisma, input.tenantId, input.syndicateId, input.lotId);
+  const scopedKey = input.clientIdempotencyKey
+    ? scopedPaymentIdempotencyKey(input.tenantId, input.clientIdempotencyKey)
+    : null;
+  const effective: LotPaymentInput = scopedKey ? { ...input, idempotencyKey: scopedKey } : input;
+  let outcome: RecordOutcome;
+  try {
+    outcome = await prisma.$transaction(async (tx): Promise<RecordOutcome> => {
+      if (scopedKey) {
+        // Sous le verrou du lot : deux requetes de meme cle sur le meme lot s'enchainent.
+        await lockLotTx(tx, input.lotId);
+        const existing = await tx.chargePayment.findFirst({
+          where: { idempotencyKey: scopedKey },
+          select: { id: true, lotId: true }
+        });
+        if (existing) return { replay: await replayOrConflict(tx, input, existing) };
+      }
+      const recorded = await recordLotPaymentTx(tx, effective);
+      // Lot S3 : recu et quittances, numerotes dans la transaction du paiement.
+      const issued = await issueReceiptsForPaymentTx(tx, {
+        tenantId: input.tenantId,
+        syndicateId: input.syndicateId,
+        lotId: input.lotId,
+        paymentId: recorded.record.id,
+        result: recorded.result,
+        actorUserId: input.actorUserId ?? null
+      });
+      return { result: recorded.result, documents: issued };
+    });
+  } catch (error) {
+    if (!scopedKey || !isIdempotencyKeyCollision(error)) throw error;
+    // Course : l'autre requete a valide entre notre lecture et notre ecriture.
+    const existing = await prisma.chargePayment.findFirst({
+      where: { idempotencyKey: scopedKey },
+      select: { id: true, lotId: true }
+    });
+    if (!existing) throw error;
+    return replayOrConflict(prisma, input, existing);
+  }
+  if ('replay' in outcome) return outcome.replay;
   // PDF et e-mail apres le commit : leur echec n'annule jamais le paiement.
-  scheduleChargeDocumentDelivery(input.tenantId, documents);
-  return { ...result, documents: toDocumentRefs(documents) };
+  scheduleChargeDocumentDelivery(input.tenantId, outcome.documents);
+  return { ...outcome.result, documents: toDocumentRefs(outcome.documents) };
 }
 
 export async function previewLotPaymentForTenant(input: LotPaymentInput): Promise<LotPaymentResult> {

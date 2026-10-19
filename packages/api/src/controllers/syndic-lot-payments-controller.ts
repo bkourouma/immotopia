@@ -9,7 +9,11 @@ import {
   recordLotPayment,
   type LotPaymentInput
 } from '../lib/syndics/charge-allocation';
-import { lotPaymentSchema, monthlyTrackingQuerySchema } from '../lib/syndics/charge-allocation-schemas';
+import {
+  idempotencyKeySchema,
+  lotPaymentSchema,
+  monthlyTrackingQuerySchema
+} from '../lib/syndics/charge-allocation-schemas';
 import { getMonthlyTrackingBySyndicate } from '../lib/syndics/charge-monthly-tracking';
 
 /**
@@ -30,6 +34,11 @@ const syndicIdOf = (req: Request) =>
 const lotIdOf = (req: Request) =>
   assertUuidOrNotFound(req.params.lotId, t('Lot introuvable ou inaccessible pour cette copropriété.'));
 
+function headerIdempotencyKey(req: Request): string | undefined {
+  const header = req.header('Idempotency-Key');
+  return header === undefined ? undefined : idempotencyKeySchema.parse(header);
+}
+
 function lotPaymentInput(req: Request): LotPaymentInput {
   const body = lotPaymentSchema.parse(req.body ?? {});
   return {
@@ -41,13 +50,16 @@ function lotPaymentInput(req: Request): LotPaymentInput {
     method: body.method,
     reference: body.reference ?? null,
     chargeCallIds: body.chargeCallIds ? Array.from(new Set(body.chargeCallIds)) : undefined,
-    actorUserId: req.user?.userId ?? null
+    actorUserId: req.user?.userId ?? null,
+    // Le corps l'emporte sur l'en-tete ; un en-tete invalide est refuse (422).
+    clientIdempotencyKey: body.idempotencyKey ?? headerIdempotencyKey(req)
   };
 }
 
 export const recordLotPaymentHandler = asyncHandler(async (req: Request, res: Response) => {
   const result = await recordLotPayment(lotPaymentInput(req));
-  res.status(201).json({ success: true, data: result });
+  // 200 : rejeu d'une cle deja enregistree (aucun second paiement) ; 201 : paiement cree.
+  res.status(result.replayed ? 200 : 201).json({ success: true, data: result });
 });
 
 export const previewLotPaymentHandler = asyncHandler(async (req: Request, res: Response) => {
