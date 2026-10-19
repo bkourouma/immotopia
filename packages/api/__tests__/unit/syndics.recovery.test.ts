@@ -29,9 +29,15 @@ jest.mock('@prisma/client', () => {
     syndicPaymentDeclaration: {
       findMany: jest.fn(async () => [])
     },
+    // Relances groupées (recette QA2) : relances existantes, plans de paiement actifs et
+    // délais par niveau, lus d'un bloc pour décider quels appels relancer.
     paymentReminder: {
       count: jest.fn(),
-      create: jest.fn()
+      create: jest.fn(),
+      findMany: jest.fn(async () => [])
+    },
+    reminderConfig: {
+      findMany: jest.fn(async () => [])
     },
     latePaymentPenalty: {
       create: jest.fn(),
@@ -40,7 +46,8 @@ jest.mock('@prisma/client', () => {
     },
     paymentSchedule: {
       create: jest.fn(),
-      findUnique: jest.fn()
+      findUnique: jest.fn(),
+      findMany: jest.fn(async () => [])
     },
     paymentScheduleInstalment: {
       createMany: jest.fn()
@@ -127,12 +134,18 @@ describe('Syndics recovery queries - US1', () => {
         id: 'charge-1',
         lotId: 'lot-1',
         amount: 100000,
+        period: 'T1 2026',
+        dueDate: new Date('2026-01-01T00:00:00.000Z'),
+        lot: { lotNumber: 'A1' },
         allocations: [{ amount: 0 }]
       },
       {
         id: 'charge-2',
         lotId: 'lot-2',
         amount: 100000,
+        period: 'T1 2026',
+        dueDate: new Date('2026-01-01T00:00:00.000Z'),
+        lot: { lotNumber: 'A2' },
         allocations: [{ amount: 100000 }]
       }
     ]);

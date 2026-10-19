@@ -35,9 +35,16 @@ export interface LanguageContextValue {
    * session (`setLanguage(code, { explicit: true })`, posé par le sélecteur de
    * langue). `LanguagePreferenceSync` le lit pour ne plus réappliquer la
    * préférence du compte par-dessus ce choix. Drapeau en mémoire (ref) : il
-   * vaut pour la session de l'onglet, et n'est jamais lu par un rendu.
+   * vaut pour la session de l'onglet, et n'est jamais lu par un rendu. Remis à
+   * zéro par `resetExplicitLanguageChoice` quand la personne connectée change.
    */
   hasExplicitLanguageChoice: () => boolean;
+  /**
+   * Remet à zéro le drapeau de choix explicite. Appelé par
+   * `LanguagePreferenceSync` à la déconnexion ou au changement de compte, pour
+   * que le choix d'une personne ne masque pas la préférence de la suivante.
+   */
+  resetExplicitLanguageChoice: () => void;
   /** Vrai pendant le chargement d'un catalogue. */
   isSwitching: boolean;
   /**
@@ -143,6 +150,9 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
   // `hasExplicitLanguageChoice`. Posé de façon synchrone, avant tout `await`.
   const explicitChoice = useRef(false);
   const hasExplicitLanguageChoice = useCallback(() => explicitChoice.current, []);
+  const resetExplicitLanguageChoice = useCallback(() => {
+    explicitChoice.current = false;
+  }, []);
 
   const setLanguage = useCallback(async (next: Language, options?: { persist?: boolean; explicit?: boolean }) => {
     const persist = options?.persist ?? true;
@@ -245,11 +255,20 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
       locale: LANGUAGES[language].locale,
       setLanguage,
       hasExplicitLanguageChoice,
+      resetExplicitLanguageChoice,
       isSwitching,
       initialLanguageResolved,
       antdLocale
     }),
-    [language, setLanguage, hasExplicitLanguageChoice, isSwitching, initialLanguageResolved, antdLocale]
+    [
+      language,
+      setLanguage,
+      hasExplicitLanguageChoice,
+      resetExplicitLanguageChoice,
+      isSwitching,
+      initialLanguageResolved,
+      antdLocale
+    ]
   );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
