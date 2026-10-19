@@ -21,7 +21,7 @@ Modèle de section :
 ## Branche `feat/mon-compte-abonnement` — 2026-10-19
 
 **État :** prêt à relire — PR ouverte (base `main`), à fusionner par l'utilisateur
-**Dernier commit :** `da932d32` feat(web): menu « Mon compte » avec Abonnement et Facturation (+ ce commit de passation)
+**Dernier commit :** `de8b80cc` fix(web): libellés de l'abonnement relus à chaque rendu (+ ce commit de passation)
 **Worktree :** `.claude/worktrees/mon-compte`, `node_modules` PROPRE (`npm ci`, pas de jonction : le checkout principal est sur `feat/signature-s5-s7`, schéma et dépendances différents de `main`).
 
 Fait :
@@ -34,7 +34,9 @@ Fait :
 
 Reste à faire :
 
-- Recette navigateur non jouée (pas de `.env` dans ce worktree, `packages/api/.env.demo` absent pour `demo:sync`).
+- Recette navigateur JOUÉE le 2026-10-19 sur une instance à part (API 8820, web 3320, worktree mon-compte, base de démo dédiée ; la démo 3300/8800 était prise par la session `orch/2026-10-19-menu-messagerie`). Les 12 agences de test par pack ont été créées dans `immotopia_demo` (`seed-pack-test-tenants.ts`, sans historique) ; une demande d'extension « Recette Mon compte » y reste. Scénarios OK : menu, pages, offres par pack (Agence, Promoteur, Patrimoine Essentiel), envoi 201, redirection `?paiement=`, comptable sans menu, RTL. Corrigé après recette (`de8b80cc`) : libellés figés dans la langue du chargement.
+- Points ouverts de la recette, non corrigés (hors périmètre ou préexistants) : l'URL directe de Facturation s'affiche pour un comptable (« Aucune facture » + 2 refus API ; aucun écran du web ne contrôle les permissions lui-même, Paramètres de l'agence fait pareil) ; code `?paiement=` inconnu : « Paiement en cours de confirmation » reste affiché malgré le 404 ; noms et descriptions des offres en français (viennent du catalogue en base) ; packs affichés en code brut (`AGENCE`) ; `GET …/patrimoine/usage` en 403 sur la page Abonnement (carte du palier personnel) ; « Mes demandes » n'affiche ni l'offre ni la quantité.
+- Les copies `packages/api/.env` et `apps/web/.env` du worktree mon-compte (faites avec l'accord de l'utilisateur pour la recette) n'ont pas pu être supprimées (règle de refus sur `rm .env`) : à retirer à la main, ou avec le worktree.
 - Si les droits ne se lisent pas au retour de paiement d'une agence, la page Abonnement affiche l'erreur au lieu de rediriger.
 - CI : « Web — tests (lot 2/4) » a échoué sur `ProvidersDocumentsFinancesPages.test.tsx` (création de prestataire Syndic), test instable déjà en échec sur la PR #175 et vert en local ; sans lien avec ce diff. Correctif proposé en tâche séparée (branche `fix/test-prestataire-syndic-instable`). Correction automatique de la CI activée sur la PR #181.
 - Le classeur `.xlsx` est binaire : si `main` bouge avant la fusion, refaire la ligne ajoutée sur la version de `main` puis `wiki:export`.
