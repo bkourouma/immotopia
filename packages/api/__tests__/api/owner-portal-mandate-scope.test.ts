@@ -74,6 +74,8 @@ function clientProperty(id: string, ownerUserId = AWA) {
 
 beforeEach(() => {
   mockPrisma.reset();
+  // Les portails relisent `User.isActive` (middleware/owner-portal-access.ts).
+  mockPrisma.user.rows.push({ id: AWA, isActive: true });
   mockPrisma.tenant.rows.push({ id: TENANT_A, status: 'ACTIVE' }, { id: TENANT_B, status: 'ACTIVE' });
   mockPrisma.tenantClient.rows.push({
     id: 'tc-awa-a',

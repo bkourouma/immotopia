@@ -48,6 +48,9 @@ export const PARTICULIER_ROUTE_RULES: readonly ParticulierRouteRule[] = [
   { prefix: '/crm/contacts', allow: true, note: 'Contacts (locataires) des baux, du socle.' },
   { prefix: '/crm/contacts-search', allow: true },
 
+  // /signatures (routeur plat /api/signatures, hors /api/tenants/:tenantId) : absent de la liste donc REFUSE
+  // pour un PARTICULIER, par `requireTenantTypeGuard('/signatures')` (subscription-feature-middleware.ts).
+
   // Exceptions sous /properties : mise en marche et mandats d'agence.
   { prefix: '/properties/:propertyId/mandates', allow: false, note: "Mandats d'agence." },
   { prefix: '/properties/:propertyId/publish', allow: false, note: 'Publication en vitrine.' },

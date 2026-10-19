@@ -289,12 +289,6 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
     reason: "Liste des agences de l'utilisateur courant, resolue depuis req.user."
   },
   {
-    method: 'POST',
-    test: exact('/api/tenants/:tenantId/register'),
-    reason:
-      "S'enregistrer comme client d'une agence : c'est cette action qui CREE l'acces, elle ne peut pas le presupposer."
-  },
-  {
     method: 'DELETE',
     test: exact('/api/tenants/:tenantId/unregister'),
     reason:
