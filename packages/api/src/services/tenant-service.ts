@@ -4,7 +4,7 @@ import { logger } from '../utils/logger';
 import { UpdateTenantRequest, TenantFilters, TenantStats } from '../types/tenant-types';
 import { revokeTenantSessions } from '../middleware/session-invalidation';
 import { logAuditEvent, recordAuditEvent, AuditActionKey } from './audit-service';
-import { BadRequestError, NotFoundError, ValidationError } from '../middleware/error-middleware';
+import { BadRequestError, ConflictError, NotFoundError, ValidationError } from '../middleware/error-middleware';
 import { isValidUemoaPhone, normalizeUemoaPhone } from './personal-space/schemas';
 import { getUploadsRoot } from '../utils/project-root';
 import { env, frontendUrl } from '../config/env';
@@ -12,16 +12,6 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import crypto from 'crypto';
 import { t } from '../i18n';
-
-/**
- * Interface for registering a tenant client
- */
-export interface RegisterTenantClientRequest {
-  userId: string;
-  tenantId: string;
-  clientType: ClientType;
-  details?: Prisma.InputJsonValue;
-}
 
 /** Champs d'une agence exposables sans authentification. */
 const PUBLIC_TENANT_SELECT = {
@@ -35,6 +25,32 @@ const PUBLIC_TENANT_SELECT = {
   city: true,
   country: true
 } satisfies Prisma.TenantSelect;
+
+/**
+ * Fiche reduite d'une agence pour un utilisateur authentifie rattache a elle
+ * (client de portail compris) : la vitrine plus les coordonnees de contact.
+ * Distinct de PUBLIC_TENANT_SELECT, utilise sans authentification.
+ */
+const TENANT_PUBLIC_PROFILE_SELECT = {
+  ...PUBLIC_TENANT_SELECT,
+  contactEmail: true,
+  contactPhone: true
+} satisfies Prisma.TenantSelect;
+
+/**
+ * Fiche publique reduite d'une agence (ni clients, ni collaborateurs, ni
+ * abonnement, ni factures).
+ */
+export async function getTenantPublicProfile(tenantId: string) {
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: TENANT_PUBLIC_PROFILE_SELECT
+  });
+  if (!tenant) {
+    throw new NotFoundError(t('Agence introuvable.'));
+  }
+  return tenant;
+}
 
 /**
  * Get tenant by ID (extended with new relationships)
@@ -425,86 +441,6 @@ export async function getTenantStats(tenantId: string): Promise<TenantStats> {
 }
 
 /**
- * Register a user as a client of a tenant (T019)
- * This links an existing user to a tenant as a client (owner, renter, or buyer)
- * @param data - Registration data
- * @returns Created TenantClient
- */
-export async function registerTenantClient(data: RegisterTenantClientRequest) {
-  // Verify tenant exists and is active
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: data.tenantId }
-  });
-
-  if (!tenant) {
-    throw new Error('Tenant introuvable.');
-  }
-
-  if (!tenant.isActive) {
-    throw new Error("Ce tenant n'est plus actif.");
-  }
-
-  // Verify user exists
-  const user = await prisma.user.findUnique({
-    where: { id: data.userId }
-  });
-
-  if (!user) {
-    throw new Error('Utilisateur introuvable.');
-  }
-
-  // Check if user is already a client of this tenant
-  const existingClient = await prisma.tenantClient.findUnique({
-    where: {
-      userId_tenantId: {
-        userId: data.userId,
-        tenantId: data.tenantId
-      }
-    }
-  });
-
-  if (existingClient) {
-    throw new Error('Vous êtes déjà enregistré comme client de ce tenant.');
-  }
-
-  // Create tenant client relationship
-  const tenantClient = await prisma.tenantClient.create({
-    data: {
-      userId: data.userId,
-      tenantId: data.tenantId,
-      clientType: data.clientType,
-      details: data.details || {}
-    },
-    include: {
-      user: {
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          avatarUrl: true
-        }
-      },
-      tenant: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          type: true
-        }
-      }
-    }
-  });
-
-  logger.info('Tenant client registered', {
-    userId: data.userId,
-    tenantId: data.tenantId,
-    clientType: data.clientType
-  });
-
-  return tenantClient;
-}
-
-/**
  * Get all clients for a tenant
  * @param tenantId - Tenant ID
  * @returns List of tenant clients
@@ -719,13 +655,45 @@ export async function updateTenantClientDetails(userId: string, tenantId: string
  * @param tenantId - Tenant ID
  */
 export async function removeTenantClient(userId: string, tenantId: string) {
-  await prisma.tenantClient.delete({
-    where: {
-      userId_tenantId: {
-        userId,
-        tenantId
-      }
+  const client = await prisma.tenantClient.findUnique({
+    where: { userId_tenantId: { userId, tenantId } },
+    select: {
+      id: true,
+      _count: {
+        select: {
+          primaryLeases: true,
+          ownerLeases: true,
+          coRenterLeases: true,
+          directDebitMandates: true,
+          rentalPayments: true,
+          paymentDeclarations: true,
+          thirdPartyAccounts: true,
+          ownerPayouts: true,
+          ownershipShares: true,
+          saleMandatesAsSeller: true
+        }
+      },
+      managementTerms: { select: { id: true } }
     }
+  });
+
+  if (!client) {
+    throw new NotFoundError(t('Compte client introuvable pour cette agence.'));
+  }
+
+  // Le retrait supprime la ligne TenantClient et, en cascade, son historique
+  // (baux, paiements, comptes tiers, reversements...) : refus des qu'il existe.
+  const hasHistory = Object.values(client._count).some(count => count > 0) || client.managementTerms !== null;
+  if (hasHistory) {
+    throw new ConflictError(
+      t(
+        "Impossible de vous retirer de cette agence : un historique financier ou locatif est rattaché à votre compte client. Contactez l'agence."
+      )
+    );
+  }
+
+  await prisma.tenantClient.delete({
+    where: { userId_tenantId: { userId, tenantId } }
   });
 
   logger.info('Tenant client removed', { userId, tenantId });

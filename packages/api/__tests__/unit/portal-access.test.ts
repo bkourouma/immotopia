@@ -14,10 +14,12 @@ const rentalLeaseFindFirst = jest.fn();
 const rentalLeaseFindMany = jest.fn();
 const propertyFindMany = jest.fn();
 const propertyMandateFindMany = jest.fn();
+const userFindUnique = jest.fn();
 const executeRaw = jest.fn(async (..._args: any[]) => undefined);
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
+    user: { findUnique: (...a: any[]) => userFindUnique(...a) },
     tenantClient: { findMany: (...a: any[]) => tenantClientFindMany(...a) },
     rentalLease: {
       findFirst: (...a: any[]) => rentalLeaseFindFirst(...a),
@@ -70,6 +72,7 @@ function nextQuiLitLeContexteApresAwait() {
 beforeEach(() => {
   jest.clearAllMocks();
   executeRaw.mockResolvedValue(undefined);
+  userFindUnique.mockResolvedValue({ isActive: true });
 });
 
 describe('requireTenantPortalAccess — résolution du TenantClient (B3)', () => {
@@ -305,5 +308,58 @@ describe('requireOwnerPortalAccess — résolution + filtre des biens par agence
     expect(next).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'TENANT_SUSPENDED' }));
     expect(propertyFindMany).not.toHaveBeenCalled();
+  });
+});
+
+describe.each([
+  ['locataire', requireTenantPortalAccess, 'Accès portail locataire refusé.'],
+  ['propriétaire', requireOwnerPortalAccess, 'Accès portail propriétaire refusé.']
+])('portail %s — compte désactivé (audit 2026-10-19)', (_nom, garde, message) => {
+  const client = {
+    id: 'client-1',
+    userId: 'user-1',
+    tenantId: 'tenant-1',
+    createdAt: new Date('2025-01-01'),
+    tenant: { status: 'ACTIVE' }
+  };
+
+  it('isActive false : 403, aucune lecture des clients', async () => {
+    userFindUnique.mockResolvedValue({ isActive: false });
+    const res = reponseFactice();
+    const next = jest.fn();
+
+    await garde(requeteAvecEnTete('user-1') as any, res as any, next);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ success: false, message });
+    expect(next).not.toHaveBeenCalled();
+    expect(tenantClientFindMany).not.toHaveBeenCalled();
+    expect(userFindUnique).toHaveBeenCalledWith({ where: { id: 'user-1' }, select: { isActive: true } });
+  });
+
+  it('compte introuvable : même refus', async () => {
+    userFindUnique.mockResolvedValue(null);
+    const res = reponseFactice();
+    const next = jest.fn();
+
+    await garde(requeteAvecEnTete('user-1') as any, res as any, next);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('isActive true : le contrôle se poursuit normalement', async () => {
+    userFindUnique.mockResolvedValue({ isActive: true });
+    tenantClientFindMany.mockResolvedValue([client]);
+    rentalLeaseFindFirst.mockResolvedValue({ id: 'lease-1' });
+    propertyFindMany.mockResolvedValue([]);
+    rentalLeaseFindMany.mockResolvedValue([]);
+    propertyMandateFindMany.mockResolvedValue([]);
+    const { next, fini } = nextQuiLitLeContexteApresAwait();
+
+    await garde(requeteAvecEnTete('user-1') as any, reponseFactice() as any, next);
+    await fini;
+
+    expect(next).toHaveBeenCalled();
   });
 });

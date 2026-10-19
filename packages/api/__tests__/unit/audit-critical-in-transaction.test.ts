@@ -16,7 +16,8 @@ const tx: any = {
   capacityOverride: { create: jest.fn(), update: jest.fn() }
 };
 const prismaMock: any = {
-  membership: { findUnique: jest.fn() },
+  // `count` : autres appartenances actives (compte partagé entre agences, resetMemberPassword).
+  membership: { findUnique: jest.fn(), count: jest.fn() },
   // Garde-fou « dernier administrateur » : par défaut la cible n'est pas administrateur.
   userRole: { count: jest.fn() },
   role: { findMany: jest.fn() },
@@ -70,6 +71,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockRecordAudit.mockResolvedValue(undefined);
   prismaMock.userRole.count.mockResolvedValue(0);
+  prismaMock.membership.count.mockResolvedValue(0);
   tx.refreshToken.updateMany.mockResolvedValue({ count: 2 });
   prismaMock.membership.findUnique.mockResolvedValue({
     id: 'm1',

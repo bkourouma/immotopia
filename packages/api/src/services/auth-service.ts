@@ -1,4 +1,4 @@
-import { GlobalRole } from '@prisma/client';
+import { GlobalRole, MembershipStatus, TenantStatus } from '@prisma/client';
 import crypto from 'crypto';
 import { hashPassword, validatePasswordStrength, comparePassword } from '../utils/password-utils';
 import { emailService, isEmailDeliveryConfigured } from './email-service';
@@ -10,6 +10,8 @@ import { logAuthEvent, recordAuthEvent } from './audit-auth-events';
 import { frontendUrl, isProduction } from '../config/env';
 import { AppError, BadRequestError } from '../middleware/error-middleware';
 import { AuditActionKey } from '../types/audit-types';
+import { legacySanitizedPassword } from '../middleware/validation-middleware';
+import { getUserPermissions } from './permission-service';
 import type { Language } from '../i18n';
 
 /** Entity type used for every authentication event. */
@@ -318,6 +320,33 @@ export async function recordLastLogin(userId: string): Promise<void> {
   }
 }
 
+/**
+ * Compare le mot de passe saisi au hash du compte.
+ *
+ * Jusqu'au 2026-10-19, `sanitizeBody` retirait des mots de passe `<`, `>`, les
+ * espaces de bord, `javascript:` et les motifs `onxxx=` : un compte inscrit ou
+ * réinitialisé avant cette date a un hash calculé sur cette forme altérée.
+ * Quand la saisie brute ne correspond pas et que sa forme altérée diffère, on
+ * compare donc aussi cette dernière — exactement ce que faisait la connexion
+ * jusqu'ici, rien de plus permissif. Sans compte (ou sans mot de passe), le
+ * même nombre de comparaisons est fait sur un hash factice pour que le temps
+ * de réponse ne dise rien de l'existence du compte.
+ */
+async function verifyLoginPassword(password: string, passwordHash: string | null): Promise<boolean> {
+  const legacy = legacySanitizedPassword(password);
+  const hasLegacyForm = legacy !== password && legacy.length > 0;
+
+  if (!passwordHash) {
+    await comparePassword(password, DUMMY_PASSWORD_HASH);
+    if (hasLegacyForm) await comparePassword(legacy, DUMMY_PASSWORD_HASH);
+    return false;
+  }
+  if (await comparePassword(password, passwordHash)) {
+    return true;
+  }
+  return hasLegacyForm ? comparePassword(legacy, passwordHash) : false;
+}
+
 export async function loginUser(data: LoginRequest) {
   // Find user by email
   const user = await prisma.user.findUnique({
@@ -327,9 +356,7 @@ export async function loginUser(data: LoginRequest) {
   // Le mot de passe est vérifié AVANT de révéler quoi que ce soit de l'état du compte : e-mail
   // inconnu, compte OAuth sans mot de passe, mot de passe faux répondent pareil, et un `comparePassword`
   // factice égalise le temps de réponse quand il n'y a rien à comparer.
-  const isPasswordValid = user?.passwordHash
-    ? await comparePassword(data.password, user.passwordHash)
-    : await comparePassword(data.password, DUMMY_PASSWORD_HASH).then(() => false);
+  const isPasswordValid = await verifyLoginPassword(data.password, user?.passwordHash ?? null);
 
   if (!user || !isPasswordValid) {
     if (user) {
@@ -428,6 +455,51 @@ export async function loginUser(data: LoginRequest) {
     accessToken,
     refreshToken: refreshTokenValue
   };
+}
+
+/**
+ * Ouvre la session d'un compte authentifié par Google (callback OAuth) :
+ * jeton de rafraîchissement haché en base, dernière connexion, trace
+ * `AUTH_GOOGLE_LOGIN`. Le compte a déjà été contrôlé par `resolveGoogleUser`
+ * (`config/passport.ts` : actif, adresse vérifiée par Google).
+ */
+export async function issueGoogleSession(
+  user: { id: string; email: string; globalRole: GlobalRole },
+  deviceInfo?: string
+): Promise<{ accessToken: string; refreshToken: string }> {
+  const refreshToken = generateRefreshToken();
+  const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7);
+
+  await prisma.refreshToken.create({
+    data: {
+      token: refreshTokenHash,
+      userId: user.id,
+      expiresAt,
+      deviceInfo: deviceInfo || 'Google Login'
+    }
+  });
+
+  await recordLastLogin(user.id);
+
+  const accessToken = generateAccessToken({
+    userId: user.id,
+    email: user.email,
+    globalRole: user.globalRole
+  });
+
+  logger.info('User logged in with Google', { userId: user.id, role: user.globalRole });
+  void logAuthEvent({
+    actorUserId: user.id,
+    actorLabel: user.email,
+    actionKey: AuditActionKey.AUTH_GOOGLE_LOGIN,
+    entityType: AUTH_ENTITY,
+    entityId: user.id,
+    payload: { method: 'google' }
+  });
+
+  return { accessToken, refreshToken };
 }
 
 /**
@@ -531,10 +603,117 @@ export async function refreshAccessToken(refreshToken: string, deviceInfo?: stri
   return { accessToken, refreshToken: newRefreshToken };
 }
 
+/** Appartenance active exposée par `/api/auth/me`, avec les droits effectifs du membre. */
+export interface CurrentUserMembership {
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string | null;
+  tenantType: string;
+  membershipId: string;
+  /** Clés des rôles d'agence du membre dans ce tenant, triées. */
+  roleKeys: string[];
+  /**
+   * Permissions effectives, calculées par `getUserPermissions` — le service
+   * des gardes serveur (`requirePermission`). Triées, sans doublon. Un tableau
+   * vide peut aussi signifier « calcul impossible » : il n'autorise jamais rien.
+   */
+  permissions: string[];
+}
+
+/** Plafond d'appartenances renvoyées par `/me` (au-delà : journalisé). */
+const MAX_ME_MEMBERSHIPS = 50;
+/** Calculs de permissions menés en parallèle (chacun fait jusqu'à deux requêtes). */
+const PERMISSION_CONCURRENCY = 5;
+
+/**
+ * Appartenances ACTIVE de l'utilisateur dans une agence ni suspendue ni
+ * désactivée, avec rôles et permissions effectives.
+ *
+ * Une requête pour les appartenances (`select`, jamais l'objet User), une pour
+ * les rôles, puis `getUserPermissions` par agence (cache de 5 minutes partagé
+ * avec les gardes), par lots de `PERMISSION_CONCURRENCY`. L'échec du calcul
+ * pour une agence donne `permissions: []` pour elle seule, sans faire échouer
+ * la réponse.
+ *
+ * « Agence active » suit `requireTenantAccess` (une agence PENDING est
+ * accessible, une SUSPENDED non) et `suspendTenant`, qui pose aussi
+ * `isActive: false`.
+ */
+export async function getActiveMembershipsWithPermissions(userId: string): Promise<CurrentUserMembership[]> {
+  const memberships = await prisma.membership.findMany({
+    where: {
+      userId,
+      status: MembershipStatus.ACTIVE,
+      tenant: { isActive: true, status: { not: TenantStatus.SUSPENDED } }
+    },
+    select: {
+      id: true,
+      tenantId: true,
+      tenant: { select: { name: true, slug: true, type: true } }
+    },
+    orderBy: { createdAt: 'asc' },
+    take: MAX_ME_MEMBERSHIPS + 1
+  });
+
+  if (memberships.length > MAX_ME_MEMBERSHIPS) {
+    logger.warn('/auth/me : appartenances tronquées au plafond', { userId, max: MAX_ME_MEMBERSHIPS });
+    memberships.length = MAX_ME_MEMBERSHIPS;
+  }
+  if (memberships.length === 0) {
+    return [];
+  }
+
+  const tenantIds = memberships.map(m => m.tenantId);
+  const userRoles = await prisma.userRole.findMany({
+    where: { userId, tenantId: { in: tenantIds } },
+    select: { tenantId: true, role: { select: { key: true, scope: true } } }
+  });
+  const roleKeysByTenant = new Map<string, Set<string>>();
+  for (const userRole of userRoles) {
+    // Même règle que `getUserPermissions` : un rôle de plateforme ne vaut rien dans une agence.
+    if (!userRole.tenantId || userRole.role.scope !== 'TENANT') continue;
+    const keys = roleKeysByTenant.get(userRole.tenantId) ?? new Set<string>();
+    keys.add(userRole.role.key);
+    roleKeysByTenant.set(userRole.tenantId, keys);
+  }
+
+  const permissionsByTenant = new Map<string, string[]>();
+  for (let i = 0; i < tenantIds.length; i += PERMISSION_CONCURRENCY) {
+    const batch = tenantIds.slice(i, i + PERMISSION_CONCURRENCY);
+    await Promise.all(
+      batch.map(async tenantId => {
+        try {
+          // Copie avant tri : le tableau renvoyé est celui du cache partagé.
+          const permissions = await getUserPermissions(userId, tenantId);
+          permissionsByTenant.set(tenantId, [...new Set(permissions)].sort());
+        } catch (error) {
+          logger.warn('/auth/me : permissions indisponibles pour une agence, renvoyées vides', {
+            userId,
+            tenantId,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          permissionsByTenant.set(tenantId, []);
+        }
+      })
+    );
+  }
+
+  return memberships.map(m => ({
+    tenantId: m.tenantId,
+    tenantName: m.tenant.name,
+    tenantSlug: m.tenant.slug ?? null,
+    tenantType: String(m.tenant.type),
+    membershipId: m.id,
+    roleKeys: [...(roleKeysByTenant.get(m.tenantId) ?? [])].sort(),
+    permissions: permissionsByTenant.get(m.tenantId) ?? []
+  }));
+}
+
 /**
  * Get current user from token
  * @param userId - User ID from token
- * @returns User public data
+ * @returns User public data (sans `passwordHash`) et ses appartenances actives
+ *   avec leurs permissions effectives (`memberships`, voir `getActiveMembershipsWithPermissions`).
  */
 export async function getCurrentUser(userId: string) {
   const user = await prisma.user.findUnique({
@@ -547,7 +726,8 @@ export async function getCurrentUser(userId: string) {
 
   const { passwordHash: removedPasswordHash, ...userPublic } = user;
   void removedPasswordHash;
-  return userPublic;
+  const memberships = await getActiveMembershipsWithPermissions(user.id);
+  return { ...userPublic, memberships };
 }
 
 /**
@@ -679,9 +859,8 @@ export async function resetPassword(data: PasswordResetRequest) {
         gt: new Date()
       }
     },
-    include: {
-      user: true
-    }
+    // Jamais l'objet User complet : il porte `passwordHash`.
+    select: { id: true, userId: true, user: { select: { id: true, email: true } } }
   });
 
   if (!resetToken) {
@@ -711,6 +890,16 @@ export async function resetPassword(data: PasswordResetRequest) {
     await tx.passwordResetToken.update({
       where: { id: resetToken.id },
       data: { used: true }
+    });
+
+    // Toute session ouverte avec l'ancien mot de passe (éventuellement par la
+    // personne dont on se protège en le changeant) est révoquée avec lui, comme
+    // `resetMemberPassword` (services/membership-service.ts). Les jetons d'accès
+    // déjà émis expirent d'eux-mêmes : aucun mécanisme de liste de révocation
+    // n'existe pour eux dans le dépôt.
+    await tx.refreshToken.updateMany({
+      where: { userId: resetToken.userId, revoked: false },
+      data: { revoked: true, revokedAt: new Date() }
     });
 
     // Événement critique : le nouveau mot de passe et sa trace sont écrits
