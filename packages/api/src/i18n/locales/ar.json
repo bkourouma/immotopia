@@ -478,6 +478,7 @@
   "Cette caisse est déjà clôturée.": "هذا الصندوق مُقفل بالفعل.",
   "Cette caisse est désactivée": "هذا الصندوق معطّل",
   "Cette campagne ne peut pas être envoyée.": "لا يمكن إرسال هذه الحملة.",
+  "Cette clé d'idempotence a déjà servi pour une résolution différente.": "تم استخدام مفتاح عدم التكرار هذا مسبقًا لقرار مختلف.",
   "Cette commission est annulée : elle ne reçoit plus de règlement.": "تم إلغاء هذه العمولة: لم تعد تقبل أي دفعات.",
   "Cette consultation n'existe pas dans le catalogue. Utilisez list_capabilities.": "هذا الاستعلام غير موجود في الفهرس. استخدم list_capabilities.",
   "Cette copropriete a des lots, des appels de charges, des assemblees ou des documents : elle ne peut pas etre supprimee.": "لهذه الملكية المشتركة وحدات أو استدعاءات رسوم أو اجتماعات عامة أو مستندات: لا يمكن حذفها.",

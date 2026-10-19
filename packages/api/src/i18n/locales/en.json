@@ -478,6 +478,7 @@
   "Cette caisse est déjà clôturée.": "This cash session is already closed.",
   "Cette caisse est désactivée": "This cash desk is disabled",
   "Cette campagne ne peut pas être envoyée.": "This campaign cannot be sent.",
+  "Cette clé d'idempotence a déjà servi pour une résolution différente.": "This idempotency key was already used for a different resolution.",
   "Cette commission est annulée : elle ne reçoit plus de règlement.": "This commission is cancelled: it no longer accepts payments.",
   "Cette consultation n'existe pas dans le catalogue. Utilisez list_capabilities.": "This lookup does not exist in the catalog. Use list_capabilities.",
   "Cette copropriete a des lots, des appels de charges, des assemblees ou des documents : elle ne peut pas etre supprimee.": "This co-ownership has units, charge calls, general meetings or documents: it cannot be deleted.",
