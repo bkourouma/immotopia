@@ -18,6 +18,26 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `feat/mon-compte-abonnement` — 2026-10-19
+
+**État :** prêt à relire — PR ouverte (base `main`), à fusionner par l'utilisateur
+**Dernier commit :** `da932d32` feat(web): menu « Mon compte » avec Abonnement et Facturation (+ ce commit de passation)
+**Worktree :** `.claude/worktrees/mon-compte`, `node_modules` PROPRE (`npm ci`, pas de jonction : le checkout principal est sur `feat/signature-s5-s7`, schéma et dépendances différents de `main`).
+
+Fait :
+
+- API : `GET /api/tenants/:tenantId/subscription/extension-offers` (TENANT_SETTINGS_VIEW), extensions du catalogue en base ouvertes par les packs (non vendables incluses, `isSellable:false`) ; `createExtensionRequest` refuse un code non extension (404) ou non ouvert par les packs (400). Lien de l'e-mail de facture vers `/settings/facturation`.
+- Web : groupe de menu « Mon compte » (clés `mon-compte*`, PAS `compte` : déjà prise par le portail propriétaire et `MENU_REQUIREMENTS` est indexé par clé), pages Abonnement et Facturation (`TenantBillingSettings`), carte « Voir mon abonnement » retirée des Paramètres de l'agence, consommation limitée aux capacités utiles, « Facturation » dans l'espace personnel.
+- Retour de paiement : la passerelle revient toujours sur `/settings/abonnement?paiement=` ; une agence est redirigée vers Facturation avec la requête ; un espace personnel reste sur Abonnement, qui garde pour lui la section factures (suivi du statut comme avant).
+- Classeur des fonctionnalités : 1 ligne (extension-offers), menus revus ; `wiki:export` et `wiki:check` verts (1122 lignes).
+- Vérifié : typecheck, lint (0 erreur), check:architecture, 29 fichiers de test web (301 tests) + 45 fichiers voisins par l'agent, 3 suites API (50 tests), budget du chunk d'entrée (228 708 / 229 376 o). Audit de sécurité : 0 critique, 0 élevé, 3 mineurs non corrigés (404/400 distinguables, description d'une offre non vendable exposée, `particulier-facturation` sans exigence de menu comme `particulier-abonnement`).
+
+Reste à faire :
+
+- Recette navigateur non jouée (pas de `.env` dans ce worktree, `packages/api/.env.demo` absent pour `demo:sync`).
+- Si les droits ne se lisent pas au retour de paiement d'une agence, la page Abonnement affiche l'erreur au lieu de rediriger.
+- Le classeur `.xlsx` est binaire : si `main` bouge avant la fusion, refaire la ligne ajoutée sur la version de `main` puis `wiki:export`.
+
 ## Recette Syndic du 18/10 — fusionnée, déployée staging et production (2026-10-19)
 
 **État :** correctifs de la recette Syndic du 18/10 fusionnés dans le tronc (PR #172, commit `0d918d30`) et déployés sur le staging le 2026-10-18 vers 23 h (workflow « Déploiement », run 39174199627, vérifié : `/health` OK et textes des correctifs présents dans les fichiers servis). **Production déployée le 2026-10-19 vers 6 h 25** (workflow « Déploiement », environnement prod, run 39208722562, commit `0d918d30`) : sauvegarde de la base et étiquettes `avant-*` faites par le workflow, migrations appliquées, `/health` OK et nouveaux écrans servis. Premier déploiement de la production par la CI : clé SSH dédiée `github-actions-immotopia-prod` posée le 2026-10-19 dans `authorized_keys` (préfixe `command=…ci-deploy.sh prod,restrict`), secrets `DEPLOY_SSH_KEY` et `DEPLOY_SSH_KNOWN_HOSTS` dans l'environnement GitHub `production` (approbation requise). Journal serveur : `~/ci-deploy-logs/20261019-061637-prod-0d918d30-3469452.log`.
