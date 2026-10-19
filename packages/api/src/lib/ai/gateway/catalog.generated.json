@@ -2245,6 +2245,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/public-profile",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/public-profile",
+      "pathParams": [],
+      "module": "public-profile",
+      "summary": "public-profile",
+      "permissions": null,
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/rental/deposits/:depositId/movements",
       "method": "GET",
       "path": "/api/tenants/:tenantId/rental/deposits/:depositId/movements",
@@ -8093,7 +8104,7 @@
       "path": "/api/tenants/:tenantId/users/:userId/reset-password",
       "pathParams": ["userId"],
       "module": "users",
-      "summary": "reset password (users / {userId} / reset-password)",
+      "summary": "users / {userId} / reset-password",
       "permissions": ["USERS_EDIT"],
       "anyOfPermissions": null,
       "sensitive": true
