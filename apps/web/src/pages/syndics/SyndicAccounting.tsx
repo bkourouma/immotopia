@@ -47,7 +47,7 @@ const sourceTypeOptions = (): Array<{ value: SourceType; label: string }> => [
 const accountTypeLabel = (type: ChartOfAccount['accountType']): string => {
   switch (type) {
     case 'ASSET':
-      return t('Actif');
+      return t('Actif (bilan)');
     case 'LIABILITY':
       return t('Passif');
     case 'EQUITY':

@@ -340,4 +340,69 @@ describe('LanguagePreferenceSync — relie la langue affichée au compte connect
     await new Promise(resolve => setTimeout(resolve, 50));
     await expectLanguage('ar');
   });
+  it('(j) un choix explicite fait par le compte A ne masque pas la préférence du compte B après déconnexion', async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'fr');
+    setNavigatorLanguages(['fr-FR']);
+    useAuthMock.mockReturnValue({ isAuthenticated: true, user: { id: 'user-a', preferredLanguage: 'fr' } });
+
+    const { rerender } = renderHarness();
+    await expectLanguage('fr');
+
+    // Le compte A choisit « ar » lui-même.
+    screen.getByText('ar-explicit').click();
+    await expectLanguage('ar');
+
+    // Déconnexion, puis connexion du compte B dont la préférence est « en ».
+    useAuthMock.mockReturnValue({ isAuthenticated: false, user: null });
+    rerender(
+      <LanguageProvider>
+        <LanguagePreferenceSync />
+        <LanguageProbe />
+      </LanguageProvider>
+    );
+    useAuthMock.mockReturnValue({ isAuthenticated: true, user: { id: 'user-b', preferredLanguage: 'en' } });
+    rerender(
+      <LanguageProvider>
+        <LanguagePreferenceSync />
+        <LanguageProbe />
+      </LanguageProvider>
+    );
+
+    await expectLanguage('en');
+  });
+
+  it('(k) un choix explicite fait sur la page de connexion, avant le login suivant, reste prioritaire sur la préférence du compte', async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'fr');
+    setNavigatorLanguages(['fr-FR']);
+    useAuthMock.mockReturnValue({ isAuthenticated: true, user: { id: 'user-a', preferredLanguage: 'fr' } });
+
+    const { rerender } = renderHarness();
+    await expectLanguage('fr');
+
+    // Déconnexion du compte A.
+    useAuthMock.mockReturnValue({ isAuthenticated: false, user: null });
+    rerender(
+      <LanguageProvider>
+        <LanguagePreferenceSync />
+        <LanguageProbe />
+      </LanguageProvider>
+    );
+
+    // Choix explicite sur la page de connexion, hors session.
+    screen.getByText('ar-explicit').click();
+    await expectLanguage('ar');
+
+    // Le compte B se connecte avec une préférence « en » : le choix prime.
+    useAuthMock.mockReturnValue({ isAuthenticated: true, user: { id: 'user-b', preferredLanguage: 'en' } });
+    rerender(
+      <LanguageProvider>
+        <LanguagePreferenceSync />
+        <LanguageProbe />
+      </LanguageProvider>
+    );
+
+    await waitFor(() => expect(updatePreferredLanguageMock).toHaveBeenCalledWith('ar'), { timeout: 8000 });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    await expectLanguage('ar');
+  });
 });

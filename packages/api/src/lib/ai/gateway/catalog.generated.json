@@ -3686,6 +3686,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/relances/batch/preview",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/relances/batch/preview",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / relances / batch / preview",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/retards",
       "method": "GET",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/retards",
@@ -4429,6 +4440,17 @@
       "pathParams": ["syndicId", "contractId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / contrats / {contractId}",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "PATCH /api/tenants/:tenantId/syndics/:syndicId/documents/:documentId",
+      "method": "PATCH",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/documents/:documentId",
+      "pathParams": ["syndicId", "documentId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / documents / {documentId}",
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -7302,6 +7324,17 @@
       "pathParams": ["syndicId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / comptabilite / comptes",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes/charger-plan-syscohada",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes/charger-plan-syscohada",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / comptabilite / comptes / charger-plan-syscohada",
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false

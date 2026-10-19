@@ -544,7 +544,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
         lotId: values.lotId || undefined,
         notes: values.notes || undefined
       });
-      message.success(t('Imputation enregistree'));
+      message.success(t('Imputation enregistrée'));
       setOpenImputation(false);
       setSelectedIncidentId(null);
       imputationForm.resetFields();
@@ -935,7 +935,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                             render: (value: string | undefined | null) => value || '-'
                           },
                           {
-                            title: t('Cree le'),
+                            title: t('Créé le'),
                             dataIndex: 'createdAt',
                             render: (value: string) => dayjs(value).format(dateFormat('dateTime'))
                           }
@@ -1109,10 +1109,10 @@ export const SyndicProfilesIncidents: React.FC = () => {
           >
             {renderContactSelect('owner')}
           </Form.Item>
-          <Form.Item label={t('Part de propriete (%)')} name="ownershipPercentage" rules={[{ required: true }]}>
+          <Form.Item label={t('Part de propriété (%)')} name="ownershipPercentage" rules={[{ required: true }]}>
             <InputNumber min={0.01} max={100} step={0.01} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item label={t('Date de debut')} name="ownedSince" rules={[{ required: true }]}>
+          <Form.Item label={t('Date de début')} name="ownedSince" rules={[{ required: true }]}>
             <Input type="date" />
           </Form.Item>
           <Form.Item label={t('Activer accès portail')} name="portalAccessEnabled">
@@ -1195,7 +1195,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
           <Form.Item label={t("Date d'entrée")} name="tenantSince" rules={[{ required: true }]}>
             <Input type="date" />
           </Form.Item>
-          <Form.Item label={t('Charges facturees au locataire')} name="chargesBilledToTenant">
+          <Form.Item label={t('Charges facturées au locataire')} name="chargesBilledToTenant">
             <Select
               showSearch
               optionFilterProp="label"
@@ -1218,7 +1218,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
       >
         <Form form={incidentForm} layout="vertical" initialValues={{ incidentType: 'OTHER', urgency: 'MEDIUM' }}>
           <Form.Item
-            label={t('Contact declarant')}
+            label={t('Contact déclarant')}
             name="reportedByContactId"
             rules={[{ required: true, message: t('Contact obligatoire') }]}
           >
@@ -1306,7 +1306,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
       </Modal>
 
       <Modal
-        title={t('Imputation d incident')}
+        title={t("Imputation d'incident")}
         open={openImputation}
         onCancel={() => setOpenImputation(false)}
         afterClose={() => imputationForm.resetFields()}
