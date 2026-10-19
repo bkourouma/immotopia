@@ -14,6 +14,17 @@ describe('isExtensionAllowed', () => {
     expect(isExtensionAllowed(EXTENSION_REQUIRED_PACKS.EXT_COPRO, ['PROMOTEUR'])).toBe(false);
     expect(isExtensionAllowed(EXTENSION_REQUIRED_PACKS.EXT_CHANTIER, ['PROMOTEUR'])).toBe(true);
   });
+
+  it('EXT_SIGNATURES_SUPPLEMENTAIRES nécessite un pack d’agence', () => {
+    expect(isExtensionAllowed(EXTENSION_REQUIRED_PACKS.EXT_SIGNATURES_SUPPLEMENTAIRES, ['AGENCE'])).toBe(true);
+    expect(isExtensionAllowed(EXTENSION_REQUIRED_PACKS.EXT_SIGNATURES_SUPPLEMENTAIRES, ['SYNDIC'])).toBe(true);
+    expect(isExtensionAllowed(EXTENSION_REQUIRED_PACKS.EXT_SIGNATURES_SUPPLEMENTAIRES, ['PROMOTEUR'])).toBe(true);
+    expect(isExtensionAllowed(EXTENSION_REQUIRED_PACKS.EXT_SIGNATURES_SUPPLEMENTAIRES, ['INTEGRE'])).toBe(true);
+    expect(isExtensionAllowed(EXTENSION_REQUIRED_PACKS.EXT_SIGNATURES_SUPPLEMENTAIRES, ['PATRIMOINE_ESSENTIEL'])).toBe(
+      false
+    );
+    expect(isExtensionAllowed(EXTENSION_REQUIRED_PACKS.EXT_SIGNATURES_SUPPLEMENTAIRES, [])).toBe(false);
+  });
 });
 
 describe('quotaExceededDenialText — extension ou non', () => {

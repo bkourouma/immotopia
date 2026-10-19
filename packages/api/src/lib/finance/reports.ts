@@ -225,6 +225,28 @@ function toUtcMidnight(date: Date): number {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
+/** Ligne de balance âgée : tranches + total des tranches + solde comptable + écart. */
+export type ClientsAgingBalanceLineWithGap = ClientsAgingBalanceLine & {
+  agedTotal: number;
+  ledgerBalance: number;
+  gap: number;
+};
+
+export interface ClientsAgingBalanceWithGap {
+  lines: ClientsAgingBalanceLineWithGap[];
+  /** Somme des tranches (échéances non soldées). */
+  totalBalance: number;
+  currency: string;
+  /** Solde comptable (grand livre) total. */
+  ledgerTotalBalance: number;
+  /** ledgerTotalBalance - totalBalance. */
+  gap: number;
+}
+
+export type GetClientsAgingBalanceWithGap = (
+  ...args: Parameters<GetClientsAgingBalance>
+) => Promise<ClientsAgingBalanceWithGap>;
+
 /**
  * Voir `GetClientsAgingBalance` dans `./types.ts`.
  *
@@ -237,12 +259,12 @@ function toUtcMidnight(date: Date): number {
  *   - 60-90 jours  : 60 <= retard < 90
  *   - plus de 90   : retard >= 90
  */
-export const getClientsAgingBalance: GetClientsAgingBalance = async (tenantId, filters) => {
+export const getClientsAgingBalance: GetClientsAgingBalanceWithGap = async (tenantId, filters) => {
   const asOf = filters?.asOf ?? new Date();
 
   const base = await getClientsBalance(tenantId, { range: filters?.range, propertyId: filters?.propertyId });
   if (base.lines.length === 0) {
-    return { lines: [], totalBalance: 0, currency: base.currency };
+    return { lines: [], totalBalance: 0, currency: base.currency, ledgerTotalBalance: 0, gap: 0 };
   }
 
   let leaseIdFilter: string[] | undefined;
@@ -306,12 +328,35 @@ export const getClientsAgingBalance: GetClientsAgingBalance = async (tenantId, f
     bucketsByClient.set(clientId, bucket);
   }
 
-  const lines: ClientsAgingBalanceLine[] = base.lines.map(line => ({
-    ...line,
-    ...(bucketsByClient.get(line.tenantClientId) ?? emptyBuckets())
-  }));
+  // Une seule source pour le total : les échéances non soldées. Le total est
+  // la somme des tranches, donc il se lit avec les colonnes qui le composent.
+  // Le solde comptable (grand livre `ThirdPartyMovement`) reste disponible à
+  // part : `ledgerBalance` par ligne et `ledgerTotalBalance` au global. `gap`
+  // = solde comptable - total des tranches ; non nul quand le grand livre
+  // porte autre chose que des échéances impayées (avance, régularisation,
+  // mouvement hors échéancier). `balance` (hérité) garde le solde comptable.
+  const lines = base.lines.map(line => {
+    const buckets = bucketsByClient.get(line.tenantClientId) ?? emptyBuckets();
+    const agedTotal = roundMoney(
+      buckets.notYetDue + buckets.days0To30 + buckets.days30To60 + buckets.days60To90 + buckets.daysOver90
+    );
+    return {
+      ...line,
+      ...buckets,
+      agedTotal,
+      ledgerBalance: line.balance,
+      gap: roundMoney(line.balance - agedTotal)
+    };
+  });
 
-  return { lines, totalBalance: base.totalBalance, currency: base.currency };
+  const totalBalance = roundMoney(lines.reduce((sum, line) => sum + line.agedTotal, 0));
+  return {
+    lines,
+    totalBalance,
+    currency: base.currency,
+    ledgerTotalBalance: base.totalBalance,
+    gap: roundMoney(base.totalBalance - totalBalance)
+  };
 };
 
 // ---------------------------------------------------------------------------

@@ -130,7 +130,7 @@ export interface TenantDashboard {
     syndicates: number;
     lots: number;
     chargeCallsByStatus: DashboardBucket[];
-    /** Part des appels de charges soldés, sur le montant appelé. */
+    /** Part encaissée (appels soldés + part payée des appels partiels), sur le montant appelé. */
     recoveryRate: number | null;
     /** Paiements mobile money déclarés par les copropriétaires, en attente de vérification (spec 047, R32). */
     pendingDeclarations: number;
@@ -866,7 +866,8 @@ async function getMaintenance(tenantId: string, base: string): Promise<TenantDas
  * la relation — l'oublier ferait fuir les chiffres d'une agence vers l'autre.
  */
 async function getSyndic(tenantId: string, base: string): Promise<TenantDashboard['syndic']> {
-  const [syndicates, lots, chargeGroups, pendingDeclarations] = await Promise.all([
+  const now = new Date();
+  const [syndicates, lots, chargeGroups, overdueGroups, partialPaid, pendingDeclarations] = await Promise.all([
     prisma.syndicate.count({ where: { tenantId } }),
     prisma.syndicateLot.count({ where: { syndicate: { tenantId } } }),
     prisma.chargeCall.groupBy({
@@ -875,22 +876,66 @@ async function getSyndic(tenantId: string, base: string): Promise<TenantDashboar
       _count: { _all: true },
       _sum: { amount: true }
     }),
+    // Le statut OVERDUE n'est JAMAIS stocké (voir `deriveChargeCallStatus`) : un
+    // appel non soldé dont l'échéance est passée est en retard. Un appel de
+    // montant nul n'est ni dû ni en retard.
+    prisma.chargeCall.groupBy({
+      by: ['status'],
+      where: {
+        syndicate: { tenantId },
+        status: { in: ['PENDING', 'PARTIAL'] },
+        dueDate: { lt: now },
+        amount: { gt: 0 }
+      },
+      _count: { _all: true },
+      _sum: { amount: true }
+    }),
+    // Encaissé réel des appels partiels : le réglé d'un appel se lit dans ses
+    // affectations (lot S2), jamais dans son statut.
+    prisma.chargePaymentAllocation.aggregate({
+      where: { chargeCall: { syndicate: { tenantId }, status: 'PARTIAL' } },
+      _sum: { amount: true }
+    }),
     prisma.syndicPaymentDeclaration.count({ where: { tenantId, status: 'PENDING' } })
   ]);
 
-  const chargeCallsByStatus = chargeGroups
-    .map(group => ({
-      key: group.status as string,
-      count: group._count._all,
-      amount: toNumber(group._sum.amount),
-      href: `${base}/syndics`
-    }))
+  const buckets = new Map<string, { count: number; amount: number }>();
+  for (const group of chargeGroups) {
+    buckets.set(group.status as string, { count: group._count._all, amount: toNumber(group._sum.amount) });
+  }
+  // Les retards sortent de PENDING/PARTIAL pour former le seau OVERDUE dérivé.
+  let overdueCount = 0;
+  let overdueAmount = 0;
+  for (const group of overdueGroups) {
+    const bucket = buckets.get(group.status as string);
+    const count = group._count._all;
+    const amount = toNumber(group._sum.amount);
+    if (bucket) {
+      bucket.count -= count;
+      bucket.amount -= amount;
+    }
+    overdueCount += count;
+    overdueAmount += amount;
+  }
+  if (overdueCount > 0) {
+    const existing = buckets.get('OVERDUE');
+    buckets.set('OVERDUE', {
+      count: (existing?.count ?? 0) + overdueCount,
+      amount: (existing?.amount ?? 0) + overdueAmount
+    });
+  }
+
+  const chargeCallsByStatus = [...buckets.entries()]
+    .filter(([, bucket]) => bucket.count > 0)
+    .map(([key, bucket]) => ({ key, count: bucket.count, amount: bucket.amount, href: `${base}/syndics` }))
     .sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0));
 
   const appele = chargeCallsByStatus.reduce((somme, bucket) => somme + (bucket.amount ?? 0), 0);
-  const solde = chargeCallsByStatus
-    .filter(bucket => bucket.key === 'PAID')
-    .reduce((somme, bucket) => somme + (bucket.amount ?? 0), 0);
+  // Encaissé = appels PAID + part réellement payée des appels PARTIAL (jamais leur montant entier).
+  const solde =
+    chargeCallsByStatus
+      .filter(bucket => bucket.key === 'PAID')
+      .reduce((somme, bucket) => somme + (bucket.amount ?? 0), 0) + toNumber(partialPaid?._sum?.amount);
 
   return { syndicates, lots, chargeCallsByStatus, recoveryRate: part(solde, appele), pendingDeclarations };
 }

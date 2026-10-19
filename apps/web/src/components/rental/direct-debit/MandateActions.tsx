@@ -204,15 +204,16 @@ export const MandateActions: React.FC<MandateActionsProps> = ({ tenantId, mandat
   return (
     <>
       <Space wrap size={[8, 8]}>
+        {/* Le PDF reste disponible après activation (ACTIVE, SUSPENDED) ; non proposé pour un mandat révoqué. */}
+        {!isRevoked && (
+          <Button size="small" onClick={() => void handleAuthorizationPdf()} disabled={busy}>
+            {t("Télécharger l'autorisation (PDF)")}
+          </Button>
+        )}
         {mandate.status === 'DRAFT' && (
-          <>
-            <Button size="small" onClick={() => void handleAuthorizationPdf()} disabled={busy}>
-              {t("Télécharger l'autorisation (PDF)")}
-            </Button>
-            <Button size="small" onClick={() => fileInput.current?.click()} disabled={busy}>
-              {mandate.hasSignedScan ? t('Remplacer le scan signé') : t('Déposer le scan signé')}
-            </Button>
-          </>
+          <Button size="small" onClick={() => fileInput.current?.click()} disabled={busy}>
+            {mandate.hasSignedScan ? t('Remplacer le scan signé') : t('Déposer le scan signé')}
+          </Button>
         )}
         {mandate.hasSignedScan && (
           <Button size="small" onClick={() => void handleViewScan()} disabled={busy}>
