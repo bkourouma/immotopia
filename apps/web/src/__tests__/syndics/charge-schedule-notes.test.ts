@@ -13,4 +13,14 @@ describe("stripRawMailDetail — notes d'anciennes exécutions", () => {
     expect(stripRawMailDetail('A-01 (550 boîte pleine)')).toBe('A-01');
     expect(stripRawMailDetail("Lots non notifiés : échec de l'envoi")).toBe("Lots non notifiés : échec de l'envoi");
   });
+
+  it("ne masque pas les causes explicites d'un avis non envoyé", () => {
+    const lines = [
+      "Avis non envoyé (le serveur de messagerie a refusé l'e-mail) : A-01, A-02",
+      "Avis non envoyé (délai dépassé : le serveur de messagerie n'a pas répondu à temps) : A-03",
+      "Avis non envoyé (erreur d'envoi) : A-04",
+      'Échéance décalée au 03/11/2026'
+    ];
+    for (const line of lines) expect(stripRawMailDetail(line)).toBe(line);
+  });
 });

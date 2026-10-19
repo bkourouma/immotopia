@@ -101,6 +101,7 @@ import {
   listRemindersHandler,
   createManualReminderHandler,
   runReminderBatchHandler,
+  previewReminderBatchHandler,
   listPenaltiesHandler,
   listPaymentSchedulesHandler,
   createPenaltyHandler,
@@ -268,6 +269,11 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/relance',
   requirePropertyPermission('SYNDIC_EDIT'),
   createManualReminderHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/relances/batch/preview',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  previewReminderBatchHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/relances/batch',

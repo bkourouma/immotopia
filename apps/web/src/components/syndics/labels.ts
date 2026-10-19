@@ -8,7 +8,7 @@ import {
 import { t } from '../../i18n/t';
 
 export const contractStatusLabels: Record<MaintenanceContract['status'], string> = {
-  ACTIVE: 'Actif',
+  ACTIVE: t('Actif'),
   EXPIRED: t('Expiré'),
   TERMINATED: t('Résilié')
 };
@@ -39,8 +39,8 @@ export const providerPaymentMethodLabels: Record<ProviderPaymentMethod, string> 
 };
 
 export const meetingTypeLabels: Record<MeetingType, string> = {
-  ORDINARY: 'Ordinaire',
-  EXTRAORDINARY: 'Extraordinaire'
+  ORDINARY: t('Ordinaire'),
+  EXTRAORDINARY: t('Extraordinaire')
 };
 
 export const meetingStatusLabels: Record<MeetingStatus, string> = {
@@ -49,3 +49,56 @@ export const meetingStatusLabels: Record<MeetingStatus, string> = {
   COMPLETED: t('Clôturée'),
   CANCELLED: t('Annulée')
 };
+
+/** Mode de paiement d'une affectation de paiement à un appel (lot S2). */
+export function paymentMethodLabel(method: string | null | undefined): string {
+  if (!method) return '';
+  const upper = method.toUpperCase();
+  const methodMap: Record<string, string> = {
+    CASH: t('Espèces'),
+    ESPECES: t('Espèces'),
+    BANK_TRANSFER: t('Virement bancaire'),
+    VIREMENT: t('Virement bancaire'),
+    CHECK: t('Chèque'),
+    CHEQUE: t('Chèque'),
+    MOBILE_MONEY: t('Mobile money'),
+    DIRECT_DEBIT: t('Prélèvement'),
+    PREVEMENT: t('Prélèvement'),
+    CARD: t('Carte'),
+    CARTE: t('Carte'),
+    ONLINE: t('Paiement en ligne'),
+    OTHER: t('Autre'),
+    AUTRE: t('Autre')
+  };
+  return methodMap[upper] || method;
+}
+
+/** Canal d'une relance de paiement (lot S5). */
+export function reminderChannelLabel(channel: string | null | undefined): string {
+  if (!channel) return '';
+  const upper = channel.toUpperCase();
+  const channelMap: Record<string, string> = {
+    EMAIL: t('E-mail'),
+    SMS: t('SMS'),
+    WHATSAPP: t('WhatsApp'),
+    LETTER: t('Courrier'),
+    COURRIER: t('Courrier'),
+    CALL: t('Appel téléphonique'),
+    PHONE: t('Appel téléphonique'),
+    PUSH: t('Notification')
+  };
+  return channelMap[upper] || channel;
+}
+
+/** Statut d'un plan de paiement (lot S2). */
+export function paymentScheduleStatusLabel(status: string | null | undefined): string {
+  if (!status) return '';
+  const upper = status.toUpperCase();
+  const statusMap: Record<string, string> = {
+    ACTIVE: t('Actif'),
+    COMPLETED: t('Terminé'),
+    CANCELLED: t('Annulé'),
+    DEFAULTED: t('En défaut')
+  };
+  return statusMap[upper] || status;
+}

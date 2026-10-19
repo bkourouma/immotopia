@@ -53,6 +53,7 @@ import {
   OverdueDashboard,
   PaymentReminder,
   PaymentSchedule,
+  ReminderBatchPreview,
   ReminderBatchResult,
   CreateServiceProviderRequest,
   UpdateServiceProviderRequest,
@@ -711,13 +712,28 @@ export async function createManualReminder(
   syndicId: string,
   chargeId: string,
   data: CreateManualReminderRequest
-): Promise<PaymentReminder & { notificationFailed: boolean }> {
-  const response = await apiClient.post<{ success: boolean; data: PaymentReminder; notificationFailed?: boolean }>(
-    `/tenants/${tenantId}/syndics/${syndicId}/charges/${chargeId}/relance`,
-    data
-  );
+): Promise<PaymentReminder & { notificationFailed: boolean; failureCode?: string; failureMessage?: string }> {
+  const response = await apiClient.post<{
+    success: boolean;
+    data: PaymentReminder;
+    notificationFailed?: boolean;
+    failureCode?: string;
+    failureMessage?: string;
+  }>(`/tenants/${tenantId}/syndics/${syndicId}/charges/${chargeId}/relance`, data);
   // La relance est enregistrée même si l'envoi échoue : l'API le signale à part.
-  return { ...response.data.data, notificationFailed: response.data.notificationFailed === true };
+  return {
+    ...response.data.data,
+    notificationFailed: response.data.notificationFailed === true,
+    failureCode: response.data.failureCode ?? response.data.data.failureCode ?? undefined,
+    failureMessage: response.data.failureMessage ?? response.data.data.failureMessage ?? undefined
+  };
+}
+
+export async function getReminderBatchPreview(tenantId: string, syndicId: string): Promise<ReminderBatchPreview> {
+  const response = await apiClient.get<{ success: boolean; data: ReminderBatchPreview }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/relances/batch/preview`
+  );
+  return response.data.data;
 }
 
 export async function runReminderBatch(tenantId: string, syndicId: string): Promise<ReminderBatchResult> {

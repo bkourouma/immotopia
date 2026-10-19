@@ -408,6 +408,80 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
     expect(await screen.findByText(/2 avis envoyé\(s\)\./)).toBeInTheDocument();
   });
 
+  it("renvoi partiel : affiche la cause de ce qui reste non envoyé et l'échéance décalée", async () => {
+    listChargeSchedules.mockResolvedValue([SCHEDULE_MONTHLY]);
+    const run5 = {
+      id: 'run-5',
+      scheduleId: 'sched-1',
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-31',
+      periodLabel: 'Août 2026',
+      status: 'SUCCESS',
+      trigger: 'CRON',
+      batchId: 'batch-5',
+      callsCreated: 6,
+      callsCovered: 1,
+      notificationsSent: 3,
+      notificationsSkipped: 2,
+      notes:
+        "Échéance décalée au 03/11/2026\nAvis non envoyé (le serveur de messagerie a refusé l'e-mail) : A-01, A-02",
+      error: null,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      finishedAt: '2026-08-01T00:01:00.000Z'
+    };
+    listChargeScheduleRuns.mockResolvedValue([run5]);
+    resendChargeScheduleRunNotices.mockResolvedValue({ resent: 0, stillSkipped: 2, run: { ...run5 } });
+    mount();
+
+    fireEvent.click(await screen.findByText('Ouvrir'));
+    fireEvent.click(await screen.findByText('Historique'));
+    await waitFor(() => expect(listChargeScheduleRuns).toHaveBeenCalled());
+
+    expect(await screen.findByText('Échéance décalée au 03/11/2026')).toBeInTheDocument();
+    fireEvent.click(await screen.findByText('Renvoyer les avis non envoyés'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Renvoyer' }));
+
+    expect(await screen.findByText(/0 avis envoyé\(s\), 2 toujours non envoyé\(s\)\./)).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Avis non envoyé (le serveur de messagerie a refusé l'e-mail) : A-01, A-02").length
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("l'aperçu avertit quand l'échéance serait déjà passée à l'émission", async () => {
+    listChargeSchedules.mockResolvedValue([SCHEDULE_MONTHLY]);
+    previewChargeSchedule.mockResolvedValue({
+      scheduleId: 'sched-1',
+      active: true,
+      periods: [
+        {
+          label: 'Octobre 2026',
+          periodStart: '2026-10-01',
+          periodEnd: '2026-10-31',
+          issueDate: '2026-11-01',
+          dueDate: '2026-10-16',
+          totalAmount: 1_000_000,
+          currency: 'XOF',
+          budgetId: 'budget-1',
+          lots: [{ lotId: 'lot-1', lotNumber: 'A01', amount: 500_000 }],
+          error: null,
+          dueDatePassed: true,
+          effectiveDueDate: '2026-11-03',
+          warnings: ["L'échéance du 16/10/2026 serait déjà passée à l'émission : elle sera décalée au 03/11/2026."]
+        }
+      ]
+    });
+    mount();
+
+    fireEvent.click(await screen.findByText('Ouvrir'));
+    fireEvent.click(await screen.findByText('Aperçu'));
+
+    expect(
+      await screen.findByText(
+        'L’échéance du 16/10/2026 serait déjà passée à l’émission : elle sera décalée au 03/11/2026.'
+      )
+    ).toBeInTheDocument();
+  });
+
   it('met en pause puis reprend une programmation', async () => {
     listChargeSchedules
       .mockResolvedValueOnce([SCHEDULE_MONTHLY])

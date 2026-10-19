@@ -48,6 +48,7 @@ import {
   listPaymentRemindersBySyndicate,
   createManualReminderForChargeCall,
   runReminderBatchForSyndicate,
+  previewReminderBatchForSyndicate,
   listLatePaymentPenaltiesBySyndicate,
   listPaymentSchedulesBySyndicate,
   createLatePaymentPenaltyForChargeCall,
@@ -1495,13 +1496,26 @@ export const createManualReminderHandler = asyncHandler(async (req: Request, res
   const parsed = createManualReminderSchema.parse(req.body ?? {});
   const reminder = await createManualReminderForChargeCall(tenantId, syndicateId, chargeCallId, parsed);
   // Un échec d'envoi n'annule pas la relance : elle passe à FAILED et la réponse le dit.
-  const { notificationFailed } = await deliverReminderNotification(reminder.id, tenantId);
+  const { notificationFailed, failureCode, failureMessage } = await deliverReminderNotification(reminder.id, tenantId);
 
   res.status(201).json({
     success: true,
-    data: notificationFailed ? { ...reminder, status: 'FAILED' } : reminder,
-    notificationFailed
+    data: notificationFailed ? { ...reminder, status: 'FAILED', failureCode, failureMessage } : reminder,
+    notificationFailed,
+    ...(notificationFailed ? { failureCode, failureMessage } : {})
   });
+});
+
+export const previewReminderBatchHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+
+  if (!tenantId) {
+    throw badRequest("TenantId manquant pour l'apercu des relances");
+  }
+
+  const preview = await previewReminderBatchForSyndicate(tenantId, syndicateId);
+  res.json({ success: true, data: preview });
 });
 
 export const runReminderBatchHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -1521,14 +1535,19 @@ export const runReminderBatchHandler = asyncHandler(async (req: Request, res: Re
     actorUserId: req.user?.userId
   });
   let notificationsFailed = 0;
+  const failuresByCause: Record<string, number> = {};
   for (const reminderId of result.createdReminderIds) {
-    const { notificationFailed } = await deliverReminderNotification(reminderId, tenantId);
-    if (notificationFailed) notificationsFailed += 1;
+    const { notificationFailed, failureCode } = await deliverReminderNotification(reminderId, tenantId);
+    if (notificationFailed) {
+      notificationsFailed += 1;
+      const cause = failureCode ?? 'ERROR';
+      failuresByCause[cause] = (failuresByCause[cause] ?? 0) + 1;
+    }
   }
 
   res.json({
     success: true,
-    data: { ...result, notificationsFailed }
+    data: { ...result, notificationsFailed, failuresByCause }
   });
 });
 

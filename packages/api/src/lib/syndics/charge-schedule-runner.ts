@@ -12,6 +12,7 @@ import {
   annualShareForPeriod,
   distributeFixedAmount,
   followingPeriod,
+  effectiveDueDate,
   periodContaining,
   type ScheduleTiming,
   type SchedulePeriod
@@ -289,7 +290,11 @@ export interface NotificationSummary {
  * `NotifyChargeCallSkipReason` (moins `CHARGE_CALL_NOT_FOUND`/`ALREADY_PAID`,
  * deja filtres avant d'arriver ici).
  */
-type SkipReason = Exclude<NotifyChargeCallSkipReason, 'CHARGE_CALL_NOT_FOUND' | 'ALREADY_PAID'>;
+type SkipReason =
+  | Exclude<NotifyChargeCallSkipReason, 'CHARGE_CALL_NOT_FOUND' | 'ALREADY_PAID' | 'SEND_FAILED'>
+  | 'SEND_SMTP_REJECTED'
+  | 'SEND_TIMEOUT'
+  | 'SEND_ERROR';
 
 const SKIP_REASON_LABELS: Record<SkipReason, string> = {
   OWNER_NOT_CURRENT: 'propriétaire du lot différent du copropriétaire actuel',
@@ -297,8 +302,17 @@ const SKIP_REASON_LABELS: Record<SkipReason, string> = {
   NO_EMAIL: 'copropriétaire sans e-mail ni WhatsApp exploitable',
   NOTIFICATION_DISABLED: "notification e-mail désactivée pour l'agence",
   EMAIL_NOT_CONFIGURED: "envoi d'e-mails non configuré sur le serveur",
-  SEND_FAILED: "échec de l'envoi"
+  SEND_SMTP_REJECTED: "le serveur de messagerie a refusé l'e-mail",
+  SEND_TIMEOUT: "délai dépassé : le serveur de messagerie n'a pas répondu à temps",
+  SEND_ERROR: "erreur d'envoi"
 };
+
+/** Cause d'un échec d'envoi (`skipCode` de `notifyChargeCall`) -> raison de note. */
+function sendFailureReason(code: NotifyChargeCallResult['skipCode']): SkipReason {
+  if (code === 'SMTP_REJECTED') return 'SEND_SMTP_REJECTED';
+  if (code === 'TIMEOUT') return 'SEND_TIMEOUT';
+  return 'SEND_ERROR';
+}
 
 /** Classe le résultat d'un `notifyChargeCall` réussi : `null` si un avis est bien parti. */
 function classifySkip(result: NotifyChargeCallResult): SkipReason | null {
@@ -309,11 +323,12 @@ function classifySkip(result: NotifyChargeCallResult): SkipReason | null {
     case 'NO_EMAIL':
     case 'NOTIFICATION_DISABLED':
     case 'EMAIL_NOT_CONFIGURED':
-    case 'SEND_FAILED':
       return result.skipped;
+    case 'SEND_FAILED':
+      return sendFailureReason(result.skipCode);
     default:
       // `notifyChargeCall` n'a pas classe ce cas (defensif) : traite comme un echec d'envoi.
-      return 'SEND_FAILED';
+      return 'SEND_ERROR';
   }
 }
 
@@ -346,7 +361,9 @@ export async function notifyUncoveredCalls(
     NO_EMAIL: [],
     NOTIFICATION_DISABLED: [],
     EMAIL_NOT_CONFIGURED: [],
-    SEND_FAILED: []
+    SEND_SMTP_REJECTED: [],
+    SEND_TIMEOUT: [],
+    SEND_ERROR: []
   };
   for (const call of calls) {
     try {
@@ -358,9 +375,9 @@ export async function notifyUncoveredCalls(
       const reason = classifySkip(result);
       if (!reason) {
         sent += 1;
-      } else if (reason === 'SEND_FAILED' && result.skipDetail) {
+      } else if (result.skipDetail && reason.startsWith('SEND_')) {
         // Le motif technique du serveur mail (ex. « 554 … ») va aux journaux, pas
-        // à l'utilisateur : les notes affichées disent seulement « échec de l'envoi ».
+        // aux notes : celles-ci n'affichent que la cause classée.
         logger.warn('Scheduled charge call notice send failed', {
           chargeCallId: call.id,
           detail: result.skipDetail
@@ -377,10 +394,34 @@ export async function notifyUncoveredCalls(
         chargeCallId: call.id,
         error: error instanceof Error ? error.message : String(error)
       });
-      byReason.SEND_FAILED.push(call.lotNumber);
+      byReason.SEND_ERROR.push(call.lotNumber);
     }
   }
   return { sent, skipped: calls.length - sent, notes: buildSkipNotes(byReason) };
+}
+
+const DUE_SHIFTED_PREFIX = 'Échéance décalée au ';
+
+export function formatFrenchDay(date: Date): string {
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${day}/${month}/${date.getUTCFullYear()}`;
+}
+
+/** Ligne de note d'une échéance décalée (H6), date au format français. */
+export function dueShiftedNote(dueDate: Date): string {
+  return `${DUE_SHIFTED_PREFIX}${formatFrenchDay(dueDate)}`;
+}
+
+/** Ligne « Échéance décalée… » d'une note existante, si présente (conservée au renvoi des avis). */
+export function extractDueShiftedNote(notes: string | null | undefined): string | null {
+  return (notes ?? '').split('\n').find(line => line.startsWith(DUE_SHIFTED_PREFIX)) ?? null;
+}
+
+/** Assemble les lignes de note non vides, sans jamais écraser l'une par l'autre. */
+export function joinRunNotes(...parts: Array<string | null | undefined>): string | null {
+  const lines = parts.filter((part): part is string => Boolean(part));
+  return lines.length ? lines.join('\n') : null;
 }
 
 interface CreatedRun {
@@ -397,7 +438,8 @@ async function createRunTx(
   plan: PeriodPlan,
   trigger: RunTrigger,
   now: Date,
-  issued: IssuedChargeDocument[]
+  issued: IssuedChargeDocument[],
+  dueDate: Date
 ): Promise<CreatedRun> {
   return prisma.$transaction(
     async tx => {
@@ -430,7 +472,7 @@ async function createRunTx(
           label: `${schedule.label} - ${period.label}`,
           period: period.label,
           bounds: { start: period.periodStart, end: period.periodEnd },
-          dueDate: period.dueDate,
+          dueDate,
           batchType: 'REGULAR',
           budgetId: plan.budgetId,
           totalAmount: plan.totalAmount,
@@ -490,10 +532,12 @@ export async function executeSchedulePeriod(
     return recordFailure(schedule, period, trigger, message, now);
   }
 
+  // H6 : échéance déjà passée à l'émission réelle -> décalée (jour d'émission + délai).
+  const due = effectiveDueDate(period, now, schedule.dueOffsetDays);
   const issued: IssuedChargeDocument[] = [];
   let created: CreatedRun;
   try {
-    created = await createRunTx(schedule, period, plan, trigger, now, issued);
+    created = await createRunTx(schedule, period, plan, trigger, now, issued, due.dueDate);
   } catch (error) {
     if (isPeriodReservationConflict(error)) return outcome(period, { status: 'SKIPPED', alreadyProcessed: true });
     const message = publicErrorMessage(error, { scheduleId: schedule.id, step: 'issue' });
@@ -507,7 +551,7 @@ export async function executeSchedulePeriod(
     data: {
       notificationsSent: notifications.sent,
       notificationsSkipped: notifications.skipped,
-      notes: notifications.notes,
+      notes: joinRunNotes(due.shifted ? dueShiftedNote(due.dueDate) : null, notifications.notes),
       // Coherent avec `createdAt: now` ci-dessus (et avec la garde anti-rafale
       // du renvoi, qui compare `finishedAt` a son propre `now`) : un rattrapage
       // dont `now` est fourni par l'appelant ne doit pas dater sa fin du vrai
