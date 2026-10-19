@@ -119,6 +119,40 @@ describe('Pénalités — montant retenu', () => {
   });
 });
 
+describe('Pénalités — montant calculé et montant retenu', () => {
+  const normaliser = (els: HTMLElement[]) => els.map(c => c.textContent?.replace(/\s/g, ' ').trim());
+
+  it('affiche le calcul initial d’une pénalité non ajustée quand calculated_amount est renseigné', async () => {
+    mount([penalite({ amount: 8_000, calculated_amount: 8_000 })]);
+    const textes = normaliser(await screen.findAllByText(/8\s000\sXOF/, {}, { timeout: 8000 }));
+    // Une fois en « calculé », une fois en « retenu ».
+    expect(textes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('montre le calculé (8 000) ET le retenu (4 000) d’une pénalité ajustée', async () => {
+    mount([
+      penalite({
+        amount: 4_000,
+        calculated_amount: 8_000,
+        adjusted_amount: 4_000,
+        adjustment_reason: 'Geste commercial'
+      })
+    ]);
+    const calcule = normaliser(await screen.findAllByText(/8\s000\sXOF/, {}, { timeout: 8000 }));
+    const retenu = normaliser(await screen.findAllByText(/4\s000\sXOF/, {}, { timeout: 8000 }));
+    expect(calcule.length).toBeGreaterThanOrEqual(1);
+    expect(retenu.length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText('Geste commercial')).toBeInTheDocument();
+  });
+
+  it('affiche 0 pour une pénalité ramenée à zéro, calcul initial conservé', async () => {
+    mount([penalite({ amount: 0, calculated_amount: 8_000, adjusted_amount: 0, adjustment_reason: 'Annulée' })]);
+    const textes = normaliser(await screen.findAllByText(/XOF/, {}, { timeout: 8000 }));
+    expect(textes.some(t => t === '0 XOF')).toBe(true);
+    expect(textes.some(t => t?.includes('8 000'))).toBe(true);
+  });
+});
+
 describe('Pénalités — lecture du champ « raison »', () => {
   it('lit une raison sérialisée en JSON', async () => {
     mount([

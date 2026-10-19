@@ -68,6 +68,7 @@ const store = {
   movements: [] as Row[],
   allocations: [] as Row[],
   users: [] as Row[],
+  treasuryAccounts: [] as Row[],
   seq: 0
 };
 
@@ -121,6 +122,13 @@ const mockPrisma: Row = {
       const row = store.accounts.find(a => a.id === where.id)!;
       Object.assign(row, data);
       return row;
+    })
+  },
+
+  treasuryAccount: {
+    findFirst: jest.fn(async ({ where }: Row) => {
+      const row = store.treasuryAccounts.find(a => a.id === where.id && a.tenantId === where.tenantId);
+      return row ? { ...row } : null;
     })
   },
 
@@ -334,6 +342,7 @@ import {
 // fichier) : c'est lui qui prouve que la validation d'une note a bien fait
 // monter le coût du chantier, pas une doublure qui l'affirmerait à sa place.
 import { sumSiteActualCost } from '../../src/lib/finance/site-cost';
+import { createSalaryPaymentSchema } from '../../src/lib/finance/schemas-salaries';
 
 const TENANT_ID = 'tenant-1';
 const GESTIONNAIRE_ID = 'user-gestionnaire';
@@ -384,6 +393,7 @@ beforeEach(() => {
   store.categories = [];
   store.movements = [];
   store.allocations = [];
+  store.treasuryAccounts = [];
   store.users = [
     { id: GESTIONNAIRE_ID, fullName: 'Fatoumata Camara', email: 'f.camara@example.gn' },
     { id: DIRIGEANT_ID, fullName: 'Ibrahima Sory', email: 'i.sory@example.gn' }
@@ -857,6 +867,92 @@ describe('createSalaryPaymentTx — brouillon', () => {
         })
       )
     ).rejects.toThrow(/introuvable/i);
+  });
+});
+
+describe('compte de trésorerie désigné sur le règlement', () => {
+  const TRESORERIE_ID = '11111111-1111-4111-8111-111111111111';
+
+  function seedTreasury(overrides: Partial<Row> = {}): Row {
+    const row = {
+      id: TRESORERIE_ID,
+      tenantId: TENANT_ID,
+      isActive: true,
+      chartOfAccountId: 'compte-521-banque',
+      ...overrides
+    };
+    store.treasuryAccounts.push(row);
+    return row;
+  }
+
+  function saisir(employee: Row, treasuryAccountId?: string | null) {
+    return runTransaction((tx: any) =>
+      createSalaryPaymentTx(tx, TENANT_ID, {
+        employeeId: employee.id,
+        paymentDate: new Date('2026-03-05T00:00:00.000Z'),
+        amount: 100_000,
+        createdByUserId: GESTIONNAIRE_ID,
+        treasuryAccountId
+      })
+    );
+  }
+
+  it('un compte d’une AUTRE agence est introuvable (404) à la saisie', async () => {
+    const employee = await seedEmployee();
+    seedTreasury({ tenantId: 'autre-agence' });
+    await expect(saisir(employee, TRESORERIE_ID)).rejects.toMatchObject({ status: 404 });
+    expect(store.salaryPayments).toHaveLength(0);
+  });
+
+  it('un compte inactif est refusé (400)', async () => {
+    const employee = await seedEmployee();
+    seedTreasury({ isActive: false });
+    await expect(saisir(employee, TRESORERIE_ID)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('un compte valide est enregistré et exposé, et la validation le crédite (pas la caisse)', async () => {
+    const employee = await seedEmployee();
+    seedTreasury();
+    const draft = await saisir(employee, TRESORERIE_ID);
+    expect(draft.treasuryAccountId).toBe(TRESORERIE_ID);
+
+    await runTransaction((tx: any) => validateSalaryPaymentTx(tx, TENANT_ID, draft.id, DIRIGEANT_ID));
+    const [, params] = postDocumentEntryTx.mock.calls[0];
+    expect(params.lines).toEqual([
+      expect.objectContaining({ accountId: 'compte-422', debit: 100_000 }),
+      expect.objectContaining({ accountId: 'compte-521-banque', credit: 100_000 })
+    ]);
+    expect(params.lines.some((l: Row) => l.accountId === 'compte-571')).toBe(false);
+  });
+
+  it('sans compte : caisse par défaut, treasuryAccountId nul', async () => {
+    const employee = await seedEmployee();
+    const draft = await saisir(employee);
+    expect(draft.treasuryAccountId).toBeNull();
+    await runTransaction((tx: any) => validateSalaryPaymentTx(tx, TENANT_ID, draft.id, DIRIGEANT_ID));
+    const [, params] = postDocumentEntryTx.mock.calls[0];
+    expect(params.lines[1]).toEqual(expect.objectContaining({ accountId: 'compte-571', credit: 100_000 }));
+  });
+
+  it('un compte disparu au moment de valider : introuvable (404)', async () => {
+    const employee = await seedEmployee();
+    seedTreasury();
+    const draft = await saisir(employee, TRESORERIE_ID);
+    store.treasuryAccounts = [];
+    await expect(
+      runTransaction((tx: any) => validateSalaryPaymentTx(tx, TENANT_ID, draft.id, DIRIGEANT_ID))
+    ).rejects.toMatchObject({ status: 404 });
+    expect(postDocumentEntryTx).not.toHaveBeenCalled();
+  });
+
+  it('le schéma refuse un treasuryAccountId qui n’est pas un uuid', () => {
+    const base = { paymentDate: '2026-03-05', amount: 1000 };
+    expect(() => createSalaryPaymentSchema.parse({ ...base, treasuryAccountId: 'pas-un-uuid' })).toThrow();
+    expect(createSalaryPaymentSchema.parse({ ...base, treasuryAccountId: TRESORERIE_ID }).treasuryAccountId).toBe(
+      TRESORERIE_ID
+    );
+    expect(createSalaryPaymentSchema.parse({ ...base, treasuryAccountId: null }).treasuryAccountId).toBeNull();
+    expect(createSalaryPaymentSchema.parse(base).treasuryAccountId).toBeUndefined();
   });
 });
 
