@@ -83,9 +83,26 @@ export interface SyndicateLot {
       email?: string | null;
     } | null;
   }>;
+  /** Profils locataires actuels (isCurrent, fin nulle ou future) : fusionnés avec `tenantAssignments` pour la colonne Locataire. */
+  tenantProfiles?: Array<{
+    id: string;
+    contactId: string;
+    isCurrent: boolean;
+    tenantSince: string;
+    tenantUntil?: string | null;
+    contact?: {
+      id: string;
+      firstName?: string | null;
+      lastName?: string | null;
+      legalName?: string | null;
+    } | null;
+  }>;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Réponse de création/modification d'un lot : le lot plus d'éventuels avertissements non bloquants (total de référence des tantièmes). */
+export type SyndicateLotWithWarnings = SyndicateLot & { warnings?: string[] };
 
 export interface SyndicateCount {
   lots: number;
@@ -108,6 +125,8 @@ export interface Syndicate {
   cadastralReference?: string | null;
   totalLots: number;
   totalBuildings: number;
+  /** Hypothèse H7 : total de référence des tantièmes généraux (facultatif) ; sert à avertir si la somme des lots diffère. */
+  totalGeneralShares?: number | null;
   status: SyndicateStatus;
   regulationDocUrl?: string | null;
   /** Lot S1 (besoin 7) : agence mandante, sinon identité de l'agence elle-même. */
@@ -189,6 +208,8 @@ export interface CreateSyndicateRequest {
   cadastralReference?: string;
   totalLots?: number;
   totalBuildings?: number;
+  /** Hypothèse H7 : total de référence des tantièmes généraux (facultatif). */
+  totalGeneralShares?: number | null;
   /** Lot S1 : `null` détache (identité de l'agence), absent = pas de mandant à la création. */
   mandatingAgencyId?: string | null;
 }
@@ -201,6 +222,8 @@ export interface UpdateSyndicateRequest {
   fiscalYear?: number;
   syndicManagerId?: string | null;
   status?: SyndicateStatus;
+  /** Hypothèse H7 : total de référence des tantièmes généraux ; `null` l'efface. */
+  totalGeneralShares?: number | null;
   /** Lot S1 : `null` détache le mandant (identité de l'agence). */
   mandatingAgencyId?: string | null;
 }
@@ -445,6 +468,8 @@ export interface GeneralMeeting {
   proxies?: MeetingProxy[];
   attendance?: MeetingAttendance;
   syndicate?: Syndicate;
+  /** La convocation est déjà partie. Absent (API plus ancienne) : considéré envoyé. */
+  convocationSent?: boolean;
 }
 
 export interface CreateMeetingRequest {
@@ -454,6 +479,8 @@ export interface CreateMeetingRequest {
   endTime?: string;
   location?: string;
   resolutions?: Array<{ title: string; description?: string; majorityRule?: string }>;
+  /** Envoie les convocations dès la création (défaut serveur : non). */
+  sendConvocation?: boolean;
 }
 
 export interface UpdateMeetingRequest {
@@ -557,6 +584,8 @@ export interface SyndicateDocument {
   type: 'REGULATION' | 'GENERAL_MEETING_MINUTES' | 'DIAGNOSTIC' | 'INSURANCE' | 'BUDGET' | 'OTHER';
   fileUrl: string;
   expiresAt?: string | null;
+  /** Visible (et téléchargeable) des copropriétaires depuis leur portail. */
+  visibleToCoOwners: boolean;
   createdAt: string;
 }
 
@@ -565,6 +594,13 @@ export interface CreateSyndicateDocumentRequest {
   type: 'REGULATION' | 'GENERAL_MEETING_MINUTES' | 'DIAGNOSTIC' | 'INSURANCE' | 'BUDGET' | 'OTHER';
   file: File;
   expiresAt?: string;
+  visibleToCoOwners?: boolean;
+}
+
+export interface UpdateSyndicateDocumentRequest {
+  title?: string;
+  type?: SyndicateDocument['type'];
+  visibleToCoOwners?: boolean;
 }
 
 export interface FinanceSummary {
@@ -630,6 +666,9 @@ export interface PaymentReminder {
   sentAt: string;
   status: ReminderStatus;
   responseAction?: string | null;
+  /** Cause de l'échec d'envoi (statut Échec) : code technique et message brut. */
+  failureCode?: string | null;
+  failureMessage?: string | null;
   createdAt: string;
   updatedAt: string;
   chargeCall?: ChargeCall;
@@ -650,6 +689,40 @@ export interface ReminderBatchResult {
   createdReminderIds: string[];
   /** Relances enregistrées dont l'envoi a échoué (statut Échec). */
   notificationsFailed?: number;
+  /** Échecs d'envoi regroupés par code de cause. */
+  failuresByCause?: Record<string, number>;
+  /** Appels écartés du lot, avec leur motif. */
+  excluded?: ReminderBatchExcluded[];
+  excludedByReason?: Record<string, number>;
+}
+
+export type ReminderBatchExclusionReason = 'PAYMENT_PLAN_ACTIVE' | 'REMINDER_TOO_RECENT' | 'DECLARED_PAYMENT_PENDING';
+
+export interface ReminderBatchExcluded {
+  chargeCallId: string;
+  lotNumber: string;
+  period: string;
+  reason: ReminderBatchExclusionReason | string;
+  reasonLabel?: string;
+}
+
+export interface ReminderBatchEligible {
+  chargeCallId: string;
+  lotNumber: string;
+  period: string;
+  dueDate: string;
+  outstanding: number | string;
+  currency?: string;
+  currentLevel: number;
+  nextLevel: number;
+  lastReminderAt: string | null;
+}
+
+/** Aperçu des relances groupées : ce qui partirait, et ce qui est écarté. */
+export interface ReminderBatchPreview {
+  eligible: ReminderBatchEligible[];
+  excluded: ReminderBatchExcluded[];
+  totals: { eligible: number; excluded: number };
 }
 
 export interface LatePaymentPenalty {
@@ -915,6 +988,10 @@ export interface BudgetLineItem {
   description: string;
   amountForecast: number | string;
   amountActual: number | string;
+  /** Coût d'incidents imputé au poste (en plus des factures prestataires de `amountActual`). */
+  actualIncidents?: number;
+  /** Réalisé complet du poste : `amountActual` + `actualIncidents`. */
+  actualTotal?: number;
   distributionKey: DistributionKey;
   accountId?: string | null;
   /** Fonds alimenté par ce poste, au prorata de chaque paiement de charges. */
@@ -939,6 +1016,14 @@ export interface BudgetAllocation {
   lot?: SyndicateLot;
 }
 
+/** Factures et imputations d'incident de l'exercice non rattachées à un poste du budget. */
+export interface BudgetUnattached {
+  invoicesCount: number;
+  invoicesAmount: number;
+  imputationsCount: number;
+  imputationsAmount: number;
+}
+
 export interface SyndicateBudget {
   id: string;
   syndicateId: string;
@@ -948,6 +1033,9 @@ export interface SyndicateBudget {
   approvedAt?: string | null;
   approvedByResolutionId?: string | null;
   totalAmount: number | string;
+  /** Réalisé complet de l'exercice (somme des `actualTotal` des postes). */
+  actualTotal?: number;
+  unattached?: BudgetUnattached;
   currency: string;
   createdAt: string;
   updatedAt: string;
@@ -1586,6 +1674,12 @@ export interface ChargeSchedulePreviewPeriod extends ChargeSchedulePeriodDates {
   budgetId: string | null;
   lots: ChargeSchedulePreviewLot[];
   error: string | null;
+  /** L'échéance théorique serait déjà passée à l'émission (additif, absent des anciennes réponses). */
+  dueDatePassed?: boolean;
+  /** Échéance effective ISO (AAAA-MM-JJ), seulement si elle est décalée. */
+  effectiveDueDate?: string | null;
+  /** Avertissements en français rédigés par le serveur : non affichés, le front reconstruit via t(). */
+  warnings?: string[];
 }
 
 export interface ChargeSchedulePreview {

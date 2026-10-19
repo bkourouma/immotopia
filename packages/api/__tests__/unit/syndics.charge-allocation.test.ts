@@ -18,6 +18,9 @@ jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 const mockDeclarations: any[] = [];
 const mockDeclaredSettings: { current: any } = { current: null };
 (mockPrisma as any).syndicPaymentDeclaration = { findMany: jest.fn(async () => mockDeclarations) };
+// Relances groupées : plans de paiement et délais configurés (aucun dans ces scénarios).
+(mockPrisma as any).paymentSchedule = { findMany: jest.fn(async () => []) };
+(mockPrisma as any).reminderConfig = { findMany: jest.fn(async () => []) };
 (mockPrisma as any).syndicDeclaredPaymentSettings = { findFirst: jest.fn(async () => mockDeclaredSettings.current) };
 
 const mockSendEmail = jest.fn(async (_params: any) => undefined);

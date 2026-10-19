@@ -997,3 +997,208 @@ describe('Routes publiques : voter', () => {
     for (const resolution of res.body.data.resolutions) expect(resolution.result).not.toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// QA2 lot 3 : resolutions (doublons, suppression), ordre du jour, pouvoirs
+// ---------------------------------------------------------------------------
+
+describe('Resolutions : ajout sans doublon et suppression', () => {
+  const resolutionsOf = (meetingId: string) =>
+    mockPrisma.gMResolution.rows.filter((row: any) => row.meetingId === meetingId);
+
+  it('deux ajouts identiques rapproches (sans cle) ne creent qu une resolution', async () => {
+    const body = { title: '  Ravalement de facade ', description: 'Devis 2026' };
+    const first = await request(app).post(url(M1, '/resolutions')).send(body);
+    const second = await request(app)
+      .post(url(M1, '/resolutions'))
+      .send({ title: 'Ravalement de facade', description: ' Devis 2026 ' });
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.data.id).toBe(first.body.data.id);
+    expect(resolutionsOf(M1)).toHaveLength(3); // R1, R2 + une seule nouvelle
+  });
+
+  it('description absente et description vide sont equivalentes ; un autre texte cree une resolution', async () => {
+    const a = await request(app).post(url(M1, '/resolutions')).send({ title: 'Assurance' });
+    const b = await request(app).post(url(M1, '/resolutions')).send({ title: 'Assurance', description: '' });
+    expect(b.body.data.id).toBe(a.body.data.id);
+    const c = await request(app).post(url(M1, '/resolutions')).send({ title: 'Assurance', description: 'Autre' });
+    expect(c.body.data.id).not.toBe(a.body.data.id);
+    expect(resolutionsOf(M1)).toHaveLength(4);
+  });
+
+  it('une resolution de meme titre creee il y a plus de 2 minutes n est pas un doublon', async () => {
+    const first = await request(app).post(url(M1, '/resolutions')).send({ title: 'Gardiennage' });
+    const row = mockPrisma.gMResolution.rows.find((entry: any) => entry.id === first.body.data.id);
+    row!.createdAt = new Date(Date.now() - 3 * 60 * 1000);
+    const second = await request(app).post(url(M1, '/resolutions')).send({ title: 'Gardiennage' });
+    expect(second.body.data.id).not.toBe(first.body.data.id);
+    expect(resolutionsOf(M1)).toHaveLength(4);
+  });
+
+  it('la meme cle d idempotence rejoue la reponse : 201 puis 200 + replay, une seule resolution', async () => {
+    const first = await request(app)
+      .post(url(M1, '/resolutions'))
+      .set('Idempotency-Key', 'k1')
+      .send({ title: 'Elagage' });
+    const retry = await request(app)
+      .post(url(M1, '/resolutions'))
+      .set('Idempotency-Key', 'k1')
+      .send({ title: 'Elagage' });
+    expect(first.status).toBe(201);
+    expect(retry.status).toBe(200);
+    expect(retry.body.replay).toBe(true);
+    expect(retry.body.data.id).toBe(first.body.data.id);
+    expect(resolutionsOf(M1)).toHaveLength(3);
+  });
+
+  it('ajout refuse (409) sur une AG cloturee', async () => {
+    const res = await request(app).post(url(M_DONE, '/resolutions')).send({ title: 'Trop tard' });
+    expect(res.status).toBe(409);
+  });
+
+  it('supprime une resolution sans vote : 200 { id }, ligne retiree', async () => {
+    const res = await request(app).delete(url(M1, `/resolutions/${R2}`));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true, data: { id: R2 } });
+    expect(resolutionsOf(M1).map((row: any) => row.id)).toEqual([R1]);
+  });
+
+  it('409 sur une AG cloturee', async () => {
+    const res = await request(app).delete(url(M_DONE, `/resolutions/${R_DONE}`));
+    expect(res.status).toBe(409);
+    expect(resolutionsOf(M_DONE)).toHaveLength(1);
+  });
+
+  it('409 quand le vote de la resolution n est plus PENDING', async () => {
+    mockPrisma.gMResolution.rows.find((row: any) => row.id === R2)!.voteStatus = 'OPEN';
+    const res = await request(app).delete(url(M1, `/resolutions/${R2}`));
+    expect(res.status).toBe(409);
+    expect(resolutionsOf(M1)).toHaveLength(2);
+  });
+
+  it('409 quand des votes existent deja', async () => {
+    mockPrisma.gMVote.rows.push({ id: id(701), resolutionId: R1, lotId: L1, vote: 'FOR', source: 'MANAGER' });
+    const res = await request(app).delete(url(M1, `/resolutions/${R1}`));
+    expect(res.status).toBe(409);
+    expect(resolutionsOf(M1)).toHaveLength(2);
+  });
+
+  it('404 pour une resolution d une autre agence ou d une autre AG', async () => {
+    const other = await request(app).delete(
+      `/api/tenants/${TENANT_A}/syndics/${S1}/assemblees/${MB}/resolutions/${R_B}`
+    );
+    expect(other.status).toBe(404);
+    const crossMeeting = await request(app).delete(url(M1, `/resolutions/${R_B}`));
+    expect(crossMeeting.status).toBe(404);
+    const unknown = await request(app).delete(url(M1, `/resolutions/${id(999)}`));
+    expect(unknown.status).toBe(404);
+    expect(mockPrisma.gMResolution.rows.some((row: any) => row.id === R_B)).toBe(true);
+  });
+});
+
+describe('Ordre du jour : ajout et suppression', () => {
+  it('ajoute puis supprime un point ; 409 sur une AG cloturee ; 404 inconnu', async () => {
+    const created = await request(app)
+      .post(url(M1, '/ordre-du-jour'))
+      .send({ meetingId: M1, title: 'Questions diverses' });
+    expect(created.status).toBe(201);
+    const itemId = created.body.data.id;
+    // La base en memoire ne resout pas la relation `meeting` d'un point : on la pose comme Prisma la rendrait.
+    mockPrisma.gMAgendaItem.rows.find((row: any) => row.id === itemId)!.meeting = {
+      syndicateId: S1,
+      status: 'IN_PROGRESS',
+      syndicate: { tenantId: TENANT_A }
+    };
+
+    const removed = await request(app).delete(url(M1, `/ordre-du-jour/${itemId}`));
+    expect(removed.status).toBe(200);
+    expect(mockPrisma.gMAgendaItem.rows.some((row: any) => row.id === itemId)).toBe(false);
+
+    const missing = await request(app).delete(url(M1, `/ordre-du-jour/${itemId}`));
+    expect(missing.status).toBe(404);
+
+    mockPrisma.gMAgendaItem.rows.push({
+      id: id(801),
+      meetingId: M_DONE,
+      title: 'Point fige',
+      meeting: { syndicateId: S1, status: 'COMPLETED', syndicate: { tenantId: TENANT_A } }
+    });
+    const frozen = await request(app).delete(url(M_DONE, `/ordre-du-jour/${id(801)}`));
+    expect(frozen.status).toBe(409);
+  });
+});
+
+describe('Pouvoirs pendant la seance', () => {
+  const proxiesUrl = (meetingId: string, suffix = '') => url(meetingId, `/pouvoirs${suffix}`);
+
+  it('pouvoir cree pendant l AG : les lots du mandant sont representes et le quorum recalcule', async () => {
+    const res = await request(app).post(proxiesUrl(M1)).send({ grantorContactId: AWA, representativeContactId: ERIC });
+    expect(res.status).toBe(201);
+    // Awa vote L1 (100) et L3 (300, indivision) : 400 / 1 000 tantiemes.
+    for (const lotId of [L1, L3]) {
+      expect(attendanceOf(lotId)).toMatchObject({
+        status: 'REPRESENTED',
+        representedByContactId: ERIC,
+        recordedBy: 'MANAGER',
+        tenantId: TENANT_A
+      });
+    }
+    expect(attendanceOf(L2)).toBeUndefined();
+    expect(mockPrisma.generalMeeting.rows[0].quorum).toBe(40);
+  });
+
+  it('un lot deja PRESENT n est pas ecrase', async () => {
+    await request(app)
+      .put(url(M1, `/presences/${L1}`))
+      .send({ status: 'PRESENT' });
+    await request(app).post(proxiesUrl(M1)).send({ grantorContactId: AWA, representativeContactId: ERIC });
+    expect(attendanceOf(L1)).toMatchObject({ status: 'PRESENT', representedByContactId: null });
+    expect(attendanceOf(L3)).toMatchObject({ status: 'REPRESENTED', representedByContactId: ERIC });
+    expect(mockPrisma.generalMeeting.rows[0].quorum).toBe(40);
+  });
+
+  it('pouvoir supprime : les lots representes par ce mandataire repassent ABSENT', async () => {
+    const created = await request(app)
+      .post(proxiesUrl(M1))
+      .send({ grantorContactId: AWA, representativeContactId: ERIC });
+    await request(app)
+      .put(url(M1, `/presences/${L2}`))
+      .send({ status: 'REPRESENTED', representedByContactId: ERIC });
+    const removed = await request(app).delete(proxiesUrl(M1, `/${created.body.data.id}`));
+    expect(removed.status).toBe(200);
+    expect(attendanceOf(L1)).toMatchObject({ status: 'ABSENT', representedByContactId: null });
+    expect(attendanceOf(L3)).toMatchObject({ status: 'ABSENT', representedByContactId: null });
+    // Le lot L2 (autre mandant) reste represente par Eric.
+    expect(attendanceOf(L2)).toMatchObject({ status: 'REPRESENTED', representedByContactId: ERIC });
+    expect(mockPrisma.generalMeeting.rows[0].quorum).toBe(20);
+  });
+
+  it('pouvoir cree sur une AG planifiee : aucune presence creee', async () => {
+    const res = await request(app)
+      .post(proxiesUrl(M_PLANNED))
+      .send({ grantorContactId: AWA, representativeContactId: ERIC });
+    expect(res.status).toBe(201);
+    expect(mockPrisma.gMAttendance.rows).toHaveLength(0);
+    const removed = await request(app).delete(proxiesUrl(M_PLANNED, `/${res.body.data.id}`));
+    expect(removed.status).toBe(200);
+    expect(mockPrisma.gMAttendance.rows).toHaveLength(0);
+  });
+
+  it('422 quand le mandataire est un votant du lot (emargement manuel)', async () => {
+    const own = await request(app)
+      .put(url(M1, `/presences/${L1}`))
+      .send({ status: 'REPRESENTED', representedByContactId: AWA });
+    expect(own.status).toBe(422);
+    // Indivisaire du meme lot.
+    const coowner = await request(app)
+      .put(url(M1, `/presences/${L3}`))
+      .send({ status: 'REPRESENTED', representedByContactId: CHEICK });
+    expect(coowner.status).toBe(422);
+    expect(mockPrisma.gMAttendance.rows).toHaveLength(0);
+    const ok = await request(app)
+      .put(url(M1, `/presences/${L3}`))
+      .send({ status: 'REPRESENTED', representedByContactId: ERIC });
+    expect(ok.status).toBe(200);
+  });
+});

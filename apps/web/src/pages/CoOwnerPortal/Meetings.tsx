@@ -156,6 +156,7 @@ export default function CoOwnerMeetings() {
     refetch
   } = useQuery({
     queryKey: ['coowner-portal', 'meetings'],
+    staleTime: 30_000,
     queryFn: () => listMyMeetings()
   });
 

@@ -1,6 +1,7 @@
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
+import { unprocessableEntity } from '../errors';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { assertBelongsToTenant } from '../../utils/tenant-ownership';
@@ -274,6 +275,10 @@ export async function setLotAttendances(
         input.status === 'REPRESENTED'
           ? (explicitRepresentedBy ?? proxyHolderForLot(ctx.proxies, votersByLot.get(lotId) ?? []))
           : null;
+      // Un votant du lot ne peut pas etre son propre mandataire.
+      if (representedBy && (votersByLot.get(lotId) ?? []).some(voter => voter.contactId === representedBy)) {
+        throw unprocessableEntity(t("Le mandataire ne peut pas être un propriétaire du lot qu'il représente."));
+      }
       const attendeeContactId =
         input.status === 'ABSENT'
           ? null

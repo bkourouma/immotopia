@@ -25,6 +25,7 @@ import {
   createManualReminder,
   createPaymentSchedule,
   getOverdueDashboard,
+  getReminderBatchPreview,
   listLatePaymentPenalties,
   listPaymentSchedules,
   listPaymentReminders,
@@ -37,6 +38,8 @@ import {
   OverdueDashboardItem,
   PaymentReminder,
   PaymentSchedule,
+  ReminderBatchPreview as ReminderBatchPreviewData,
+  ReminderBatchResult,
   ReminderChannel,
   ReminderStatus
 } from '../../types/syndic-types';
@@ -44,6 +47,10 @@ import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { computeLatePenaltyPreview, MAX_MONTHLY_PENALTY_RATE } from '../../utils/syndic-penalty';
 import { t } from '../../i18n/t';
+import { dateFormat } from '../../i18n/format';
+import { paymentScheduleStatusLabel, reminderChannelLabel } from '../../components/syndics/labels';
+import { reminderExclusionLabel, reminderFailureLabel } from '../../components/syndics/reminder-failure';
+import { ReminderBatchPreview } from '../../components/syndics/ReminderBatchPreview';
 
 const { Paragraph, Title, Text } = Typography;
 
@@ -66,12 +73,12 @@ function ownerLabel(owner?: { firstName?: string | null; lastName?: string | nul
   return name || owner.email || t('Propriétaire');
 }
 
-function propertyLabel(item: OverdueDashboardItem): string {
+function lotLabel(item: OverdueDashboardItem): string {
   return formatLotLabel({ lotNumber: item.lotNumber, property: item.property }, item.lotNumber);
 }
 
 export const SyndicRecovery: React.FC = () => {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
 
@@ -89,6 +96,8 @@ export const SyndicRecovery: React.FC = () => {
   const [manualOpen, setManualOpen] = useState(false);
   const [penaltyOpen, setPenaltyOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [batchPreview, setBatchPreview] = useState<ReminderBatchPreviewData | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [waiveOpen, setWaiveOpen] = useState(false);
   const [selectedPenalty, setSelectedPenalty] = useState<LatePaymentPenalty | null>(null);
 
@@ -124,7 +133,7 @@ export const SyndicRecovery: React.FC = () => {
       dashboard.items.map(item => ({
         value: item.chargeCallId,
         label: t('{{value}} - {{value2}} - reste {{value3}}', {
-          value: propertyLabel(item),
+          value: lotLabel(item),
           value2: ownerLabel(item.owner),
           value3: formatMoney(item.outstanding)
         })
@@ -154,26 +163,67 @@ export const SyndicRecovery: React.FC = () => {
     }
   };
 
+  const handleOpenBatchPreview = async () => {
+    if (!effectiveTenantId || !syndicId) return;
+    setPreviewLoading(true);
+    try {
+      setBatchPreview(await getReminderBatchPreview(effectiveTenantId, syndicId));
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Aperçu des relances groupées impossible'));
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const showBatchSummary = (result: ReminderBatchResult) => {
+    const failed = result.notificationsFailed ?? 0;
+    const sent = Math.max(result.remindersCreated - failed, 0);
+    const failures = Object.entries(result.failuresByCause ?? {});
+    const exclusions = Object.entries(result.excludedByReason ?? {});
+    const summary = t('{{sent}} relance(s) envoyée(s), {{failed}} échec(s) d’envoi', { sent, failed });
+    if (failed > 0) {
+      message.warning(summary);
+    } else {
+      message.success(summary);
+    }
+    if (failures.length === 0 && exclusions.length === 0) return;
+    modal.info({
+      title: t('Résumé des relances groupées'),
+      content: (
+        <Space direction="vertical" size={8}>
+          <Text>{summary}</Text>
+          {failures.length > 0 ? (
+            <div>
+              <Text strong>{t('Échecs par cause')}</Text>
+              <ul style={{ margin: 0, paddingInlineStart: 20 }}>
+                {failures.map(([code, count]) => (
+                  <li key={code}>{`${reminderFailureLabel(code)} : ${count}`}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {exclusions.length > 0 ? (
+            <div>
+              <Text strong>{t('Appels écartés par motif')}</Text>
+              <ul style={{ margin: 0, paddingInlineStart: 20 }}>
+                {exclusions.map(([reason, count]) => (
+                  <li key={reason}>{`${reminderExclusionLabel(reason)} : ${count}`}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </Space>
+      )
+    });
+  };
+
   const handleRunBatch = async () => {
     if (!effectiveTenantId || !syndicId) return;
     setSubmitting(true);
     try {
       const result = await runReminderBatch(effectiveTenantId, syndicId);
-      const failed = result.notificationsFailed ?? 0;
-      if (failed > 0) {
-        message.warning(
-          t('Relances enregistrées : {{remindersCreated}} créée(s), dont {{failed}} dont l’envoi a échoué', {
-            remindersCreated: result.remindersCreated,
-            failed
-          })
-        );
-      } else {
-        message.success(
-          t('Relances groupées envoyées : {{remindersCreated}} relance(s) créée(s)', {
-            remindersCreated: result.remindersCreated
-          })
-        );
-      }
+      setBatchPreview(null);
+      showBatchSummary(result);
       await loadData();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Envoi des relances groupées impossible'));
@@ -193,7 +243,11 @@ export const SyndicRecovery: React.FC = () => {
         status: 'SENT'
       });
       if (reminder.notificationFailed) {
-        message.warning(t('Relance enregistrée, envoi échoué'));
+        message.warning(
+          t('Relance enregistrée, envoi échoué : {{cause}}', {
+            cause: reminderFailureLabel(reminder.failureCode, reminder.failureMessage)
+          })
+        );
       } else {
         message.success(t('Relance créée'));
       }
@@ -301,7 +355,7 @@ export const SyndicRecovery: React.FC = () => {
             >
               {t('Créer échéancier')}
             </Button>
-            <Button type="primary" onClick={() => void handleRunBatch()} loading={submitting}>
+            <Button type="primary" onClick={() => void handleOpenBatchPreview()} loading={previewLoading}>
               {t('Lancer les relances groupées')}
             </Button>
           </Space>
@@ -341,8 +395,8 @@ export const SyndicRecovery: React.FC = () => {
                 pagination={{ pageSize: 10 }}
                 columns={[
                   {
-                    title: t('Propriété'),
-                    render: (_, item) => propertyLabel(item)
+                    title: t('Lot'),
+                    render: (_, item) => lotLabel(item)
                   },
                   {
                     title: t('Propriétaire'),
@@ -351,7 +405,7 @@ export const SyndicRecovery: React.FC = () => {
                   {
                     title: t('Échéance'),
                     dataIndex: 'dueDate',
-                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+                    render: (value: string) => dayjs(value).format(dateFormat('short'))
                   },
                   { title: t('Jours retard'), dataIndex: 'daysLate' },
                   {
@@ -385,7 +439,7 @@ export const SyndicRecovery: React.FC = () => {
                 pagination={{ pageSize: 10 }}
                 columns={[
                   { title: t('Niveau'), dataIndex: 'reminderLevel' },
-                  { title: t('Canal'), dataIndex: 'channel' },
+                  { title: t('Canal'), dataIndex: 'channel', render: (value: string) => reminderChannelLabel(value) },
                   {
                     title: t('Statut'),
                     dataIndex: 'status',
@@ -396,7 +450,14 @@ export const SyndicRecovery: React.FC = () => {
                   {
                     title: t('Envoyé le'),
                     dataIndex: 'sentAt',
-                    render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm')
+                    render: (value: string) => dayjs(value).format(dateFormat('dateTime'))
+                  },
+                  {
+                    title: t('Cause'),
+                    render: (_, item) =>
+                      item.status === 'FAILED'
+                        ? reminderFailureLabel(item.failureCode, item.failureMessage) || '-'
+                        : '-'
                   }
                 ]}
               />
@@ -422,7 +483,8 @@ export const SyndicRecovery: React.FC = () => {
                   },
                   {
                     title: t('Statut'),
-                    render: (_, item) => (item.waived ? <Tag color="orange">REMIS</Tag> : <Tag color="red">ACTIF</Tag>)
+                    render: (_, item) =>
+                      item.waived ? <Tag color="orange">{t('Remise')}</Tag> : <Tag color="red">{t('Active')}</Tag>
                   },
                   {
                     title: t('Action'),
@@ -466,22 +528,34 @@ export const SyndicRecovery: React.FC = () => {
                   {
                     title: t('Accord'),
                     dataIndex: 'agreedAt',
-                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+                    render: (value: string) => dayjs(value).format(dateFormat('short'))
                   },
                   {
                     title: t('Échéances'),
                     render: (_, item) =>
                       (item.instalments || [])
-                        .map(inst => `${dayjs(inst.dueDate).format('DD/MM/YYYY')} (${formatMoney(inst.amount)})`)
+                        .map(inst => `${dayjs(inst.dueDate).format(dateFormat('short'))} (${formatMoney(inst.amount)})`)
                         .join(' | ') || '-'
                   },
-                  { title: t('Statut'), dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> }
+                  {
+                    title: t('Statut'),
+                    dataIndex: 'status',
+                    render: (value: string) => <Tag>{paymentScheduleStatusLabel(value)}</Tag>
+                  }
                 ]}
               />
             </Card>
           </>
         )}
       </Space>
+
+      <ReminderBatchPreview
+        open={batchPreview !== null}
+        preview={batchPreview}
+        confirming={submitting}
+        onConfirm={() => void handleRunBatch()}
+        onCancel={() => setBatchPreview(null)}
+      />
 
       <Modal
         title={t('Créer une relance manuelle')}
@@ -615,7 +689,7 @@ export const SyndicRecovery: React.FC = () => {
             </Col>
             <Col xs={24} md={12}>
               <Form.Item label={t('Date accord (optionnel)')} name="agreedAt">
-                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+                <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
               </Form.Item>
             </Col>
           </Row>
@@ -632,7 +706,7 @@ export const SyndicRecovery: React.FC = () => {
                         name={[field.name, 'dueDate']}
                         rules={[{ required: true, message: t('Date requise') }]}
                       >
-                        <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+                        <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
                       </Form.Item>
                     </Col>
                     <Col xs={24} md={10}>

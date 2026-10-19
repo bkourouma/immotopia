@@ -58,9 +58,6 @@ export { hasPreviousOtherOwner, resolveVisibleSince } from './lot-owner-history'
 /** Clé de `TenantClient.details` : contacts CRM ouverts au portail copropriétaire. */
 export const COOWNER_CONTACT_IDS_KEY = 'syndicCoOwnerContactIds';
 
-/** Types de documents de copropriété visibles des copropriétaires (voir `listCoOwnerDocuments`). */
-export const COOWNER_VISIBLE_DOCUMENT_TYPES = ['REGULATION', 'GENERAL_MEETING_MINUTES'] as const;
-
 /** Lit, sans jamais lever, la liste des contacts ouverts au portail dans `details`. */
 export function readCoOwnerContactIds(details: unknown): string[] {
   if (!details || typeof details !== 'object' || Array.isArray(details)) return [];
@@ -552,7 +549,9 @@ export async function listCoOwnerChargeCalls(
       amount: true,
       currency: true,
       dueDate: true,
-      status: true
+      status: true,
+      periodStart: true,
+      periodEnd: true
     }
   });
   // Lot S2 : regle d'un appel = somme de ses affectations (paiements et avances).
@@ -578,6 +577,8 @@ export async function listCoOwnerChargeCalls(
       id: call.id,
       syndicateId: call.syndicateId,
       period: call.period,
+      periodStart: call.periodStart ?? null,
+      periodEnd: call.periodEnd ?? null,
       amount,
       paid,
       outstanding,
@@ -613,20 +614,16 @@ export async function listCoOwnerChargeCalls(
 /**
  * Documents de copropriété visibles d'un copropriétaire.
  *
- * `SyndicateDocument` ne porte AUCUN drapeau « visible par les
- * copropriétaires » : ajouter une colonne demanderait une migration, et un
- * document déjà versé serait par défaut soit exposé sans décision de
- * l'agence, soit caché partout. On retient donc une règle fermée, sur le
- * type : le règlement de copropriété et les procès-verbaux d'assemblée
- * générale — les deux documents dont la loi prévoit la communication à tout
- * copropriétaire. Les diagnostics, contrats d'assurance, budgets et « autres »
- * (qui peuvent contenir des données de tiers) restent réservés à la gestion.
+ * Chaque document porte un drapeau `visibleToCoOwners`, décidé par l'agence à
+ * l'ajout (coché par défaut pour le règlement et les procès-verbaux d'AG,
+ * décoché pour le reste) et modifiable ensuite. Seuls les documents cochés,
+ * d'une copropriété du périmètre, sont listés et téléchargeables.
  */
 export async function listCoOwnerDocuments(scope: CoOwnerPortalScope) {
   if (scope.syndicateIds.length === 0) return [];
   const syndicates = await loadSyndicates(scope);
   const documents = await prisma.syndicateDocument.findMany({
-    where: { syndicateId: { in: scope.syndicateIds }, type: { in: [...COOWNER_VISIBLE_DOCUMENT_TYPES] } },
+    where: { syndicateId: { in: scope.syndicateIds }, visibleToCoOwners: true },
     orderBy: { createdAt: 'desc' },
     select: { id: true, syndicateId: true, title: true, type: true, fileUrl: true, createdAt: true }
   });
@@ -650,7 +647,7 @@ export async function getCoOwnerDocumentFile(scope: CoOwnerPortalScope, document
     where: {
       id: documentId,
       syndicateId: { in: scope.syndicateIds },
-      type: { in: [...COOWNER_VISIBLE_DOCUMENT_TYPES] }
+      visibleToCoOwners: true
     },
     select: { id: true, syndicateId: true, title: true, fileUrl: true }
   });

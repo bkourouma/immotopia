@@ -65,6 +65,7 @@ vi.mock('antd', async () => {
     Alert: passthrough(),
     Button: passthrough('button'),
     Card: passthrough(),
+    Checkbox: passthrough('span'),
     Col: passthrough(),
     DatePicker: passthrough('input'),
     TimePicker: passthrough('input'),
@@ -334,6 +335,44 @@ describe('Meetings pages', () => {
     expect(mockApiClient.post.mock.calls[1][2].headers['Idempotency-Key']).not.toBe(
       mockApiClient.post.mock.calls[0][2].headers['Idempotency-Key']
     );
+  });
+
+  it('ne demande pas l envoi des convocations par défaut (sendConvocation=false) et n ouvre aucun suivi si NOT_SENT', async () => {
+    mockApiClient.get.mockResolvedValue({ data: { success: true, data: [] } } as never);
+    mockApiClient.post.mockResolvedValueOnce({
+      data: { success: true, data: { id: 'meeting-5' }, convocation: { status: 'NOT_SENT' } }
+    } as never);
+
+    renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
+    fireEvent.click(await screen.findByText('Nouvelle assemblée'));
+    mockValidateFields.mockResolvedValue(formValues());
+    fireEvent.click(await screen.findByText('Créer'));
+
+    await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledTimes(1));
+    expect(mockApiClient.post.mock.calls[0][1].sendConvocation).toBe(false);
+    await waitFor(() =>
+      expect(mockMessage.success).toHaveBeenCalledWith(
+        "Assemblée créée. Les convocations n'ont pas été envoyées : envoyez-les depuis l'assemblée."
+      )
+    );
+    // L'alerte de suivi est un passe-plat dans ce test : son texte passe par l'attribut `message`.
+    expect(document.querySelector('[message]')).toBeNull();
+  });
+
+  it('transmet sendConvocation=true quand la case est cochée et suit l envoi (SENDING)', async () => {
+    mockApiClient.get.mockResolvedValue({ data: { success: true, data: [] } } as never);
+    mockApiClient.post.mockResolvedValueOnce({
+      data: { success: true, data: { id: 'meeting-6' }, convocation: { status: 'SENDING' } }
+    } as never);
+
+    renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
+    fireEvent.click(await screen.findByText('Nouvelle assemblée'));
+    mockValidateFields.mockResolvedValue({ ...formValues(), sendConvocation: true });
+    fireEvent.click(await screen.findByText('Créer'));
+
+    await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledTimes(1));
+    expect(mockApiClient.post.mock.calls[0][1].sendConvocation).toBe(true);
+    await waitFor(() => expect(mockMessage.success).toHaveBeenCalledWith('Assemblée créée'));
   });
 
   it("refuse une heure de fin antérieure ou égale à l'heure de début", async () => {

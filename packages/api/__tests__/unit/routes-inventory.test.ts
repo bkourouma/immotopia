@@ -454,6 +454,26 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     expect(routes.filter(r => r.path.startsWith(base))).toHaveLength(expected.length);
   });
 
+  it('declare l’aperçu des relances groupées en lecture (SYNDIC_VIEW) et le lancement en SYNDIC_EDIT', () => {
+    const base = '/api/tenants/:tenantId/syndics/:syndicId/relances/batch';
+    const expected: Array<[string, string, 'SYNDIC_VIEW' | 'SYNDIC_EDIT']> = [
+      ['GET', `${base}/preview`, 'SYNDIC_VIEW'],
+      ['POST', base, 'SYNDIC_EDIT']
+    ];
+    for (const [method, path, permission] of expected) {
+      const route = routes.find(r => r.method === method && r.path === path);
+      expect(route ? `${method} ${path}` : `ABSENTE : ${method} ${path}`).toBe(`${method} ${path}`);
+      expect(hasTenantOrPortalGuard(route!)).toBe(true);
+      expect(route!.middlewares).toContain(authenticate);
+      expect(isWhitelisted(route!)).toBeUndefined();
+      const keys = route!.middlewares.flatMap(mw => [
+        (mw as any)?.permissionKey,
+        ...((mw as any)?.anyPermissionKeys ?? [])
+      ]);
+      expect(keys).toContain(permission);
+    }
+  });
+
   it('declare les 12 routes agence du paiement mobile money declare (spec 047) avec authentification, garde d’agence et droit SYNDIC', () => {
     const base = '/api/tenants/:tenantId/syndics/:syndicId';
     const expected: Array<[string, string, 'SYNDIC_VIEW' | 'SYNDIC_EDIT']> = [
@@ -488,6 +508,34 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       .filter(r => r.method === 'GET' && r.path.startsWith(`${base}/paiements-declares/`))
       .map(r => r.path.slice(`${base}/paiements-declares/`.length));
     expect(order.indexOf('reglages')).toBeLessThan(order.indexOf(':declarationId'));
+  });
+
+  it('declare la route de chargement du plan comptable SYSCOHADA derriere authentification, garde d’agence et SYNDIC_EDIT', () => {
+    const path = '/api/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes/charger-plan-syscohada';
+    const route = routes.find(r => r.method === 'POST' && r.path === path);
+    expect(route ? `POST ${path}` : `ABSENTE : POST ${path}`).toBe(`POST ${path}`);
+    expect(hasTenantOrPortalGuard(route!)).toBe(true);
+    expect(route!.middlewares).toContain(authenticate);
+    expect(isWhitelisted(route!)).toBeUndefined();
+    const keys = route!.middlewares.flatMap(mw => [
+      (mw as any)?.permissionKey,
+      ...((mw as any)?.anyPermissionKeys ?? [])
+    ]);
+    expect(keys).toContain('SYNDIC_EDIT');
+  });
+
+  it('declare la route de modification d’un document de copropriété derriere authentification, garde d’agence et SYNDIC_EDIT', () => {
+    const path = '/api/tenants/:tenantId/syndics/:syndicId/documents/:documentId';
+    const route = routes.find(r => r.method === 'PATCH' && r.path === path);
+    expect(route ? `PATCH ${path}` : `ABSENTE : PATCH ${path}`).toBe(`PATCH ${path}`);
+    expect(hasTenantOrPortalGuard(route!)).toBe(true);
+    expect(route!.middlewares).toContain(authenticate);
+    expect(isWhitelisted(route!)).toBeUndefined();
+    const keys = route!.middlewares.flatMap(mw => [
+      (mw as any)?.permissionKey,
+      ...((mw as any)?.anyPermissionKeys ?? [])
+    ]);
+    expect(keys).toContain('SYNDIC_EDIT');
   });
 
   it('declare les 5 routes portail du paiement mobile money declare (spec 047) derriere la garde du portail copropriétaire', () => {

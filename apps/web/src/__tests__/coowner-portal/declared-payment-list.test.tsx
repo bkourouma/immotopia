@@ -90,7 +90,8 @@ describe('DeclarationsList', () => {
     await user.click(await screen.findByRole('button', { name: /Oui, l'annuler/ }));
     await waitFor(() => expect(cancelDeclaration).toHaveBeenCalledWith('decl-1'));
     await waitFor(() => expect(feedbackSuccess).toHaveBeenCalledWith('Déclaration annulée.'));
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['coowner-portal'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['coowner-portal', 'declarations'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['coowner-portal', 'charge-calls'] });
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
@@ -142,7 +143,8 @@ describe('DeclarationsList', () => {
     await user.click(await screen.findByRole('button', { name: /Oui, l'annuler/ }));
     await waitFor(() => expect(feedbackError).toHaveBeenCalledWith('Déjà traitée.'));
     expect(feedbackSuccess).not.toHaveBeenCalled();
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['coowner-portal'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['coowner-portal', 'declarations'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['coowner-portal', 'charge-calls'] });
   });
 
   it("affiche l'état vide", () => {

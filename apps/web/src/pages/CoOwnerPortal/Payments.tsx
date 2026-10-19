@@ -129,15 +129,17 @@ export default function CoOwnerPayments() {
   const [year, setYear] = useState<number | undefined>(undefined);
   const [detail, setDetail] = useState<CoOwnerPayment | null>(null);
 
-  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], queryFn: () => listMyLots() });
+  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], staleTime: 30_000, queryFn: () => listMyLots() });
   const payments = useQuery({
     queryKey: ['coowner-portal', 'payments', lotId ?? null, year ?? null],
+    staleTime: 30_000,
     queryFn: () => listMyPayments({ lotId, year })
   });
 
   // Section facultative : toute erreur (API absente, droit refusé) la masque sans casser la page.
   const declarations = useQuery({
     queryKey: ['coowner-portal', 'declarations'],
+    staleTime: 30_000,
     queryFn: () => listMyDeclarations({ status: 'ALL', limit: 50 }),
     retry: false
   });

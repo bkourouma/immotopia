@@ -18,6 +18,7 @@ import {
   LotPaymentResult,
   SyndicateLot
 } from '../../types/syndic-types';
+import { formatChargePeriod } from '../../utils/charge-period';
 import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
@@ -59,8 +60,9 @@ export interface LotPaymentModalProps {
 }
 
 function formatPeriodRange(call: LotOpenChargeCall): string {
-  if (!call.periodStart || !call.periodEnd) return call.period;
-  return `${call.period} (${dayjs(call.periodStart).format('DD/MM/YYYY')} – ${dayjs(call.periodEnd).format('DD/MM/YYYY')})`;
+  const period = formatChargePeriod(call);
+  if (!call.periodStart || !call.periodEnd) return period;
+  return `${period} (${dayjs(call.periodStart).format('DD/MM/YYYY')} – ${dayjs(call.periodEnd).format('DD/MM/YYYY')})`;
 }
 
 /** Statut d'appel traduit, avec la même couleur que la liste des appels. */
@@ -214,7 +216,12 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
   ];
 
   const allocationColumns: ColumnsType<LotPaymentAllocationView> = [
-    { title: t('Période'), dataIndex: 'period', key: 'period' },
+    {
+      title: t('Période'),
+      dataIndex: 'period',
+      key: 'period',
+      render: (value: string) => formatChargePeriod({ period: value })
+    },
     {
       title: t('Montant affecté'),
       key: 'amount',
@@ -474,7 +481,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
             // Antd écrit en dur « Select all » / « Select row N » : libellés accessibles fournis ici.
             getTitleCheckboxProps: () => ({ 'aria-label': t('Sélectionner tous les appels') }),
             getCheckboxProps: call => ({
-              'aria-label': t("Sélectionner l'appel {{period}}", { period: call.period })
+              'aria-label': t("Sélectionner l'appel {{period}}", { period: formatChargePeriod(call) })
             })
           }}
         />

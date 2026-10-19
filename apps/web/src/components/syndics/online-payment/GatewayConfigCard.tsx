@@ -32,6 +32,7 @@ import { formatMoney } from '../../primitives';
 import { onAntFormValidationFailed } from '../../../lib/antFormFailure';
 import { t } from '../../../i18n/t';
 import { apiErrorCode, apiErrorMessage, formatDateTime } from './helpers';
+import { displayCurrency } from '../../../utils/syndic-currency';
 
 const { Text, Paragraph } = Typography;
 
@@ -228,7 +229,9 @@ export const GatewayConfigCard: React.FC<GatewayConfigCardProps> = ({
     if (balanceLoading && !providerBalance) return t('Chargement…');
     if (!providerBalance) return '—';
     if (providerBalance.balance) {
-      return formatMoney(providerBalance.balance.amount, { currency: providerBalance.balance.currency });
+      return formatMoney(providerBalance.balance.amount, {
+        currency: displayCurrency(providerBalance.balance.currency)
+      });
     }
     return providerBalance.message || t('Indisponible');
   })();
@@ -373,7 +376,9 @@ export const GatewayConfigCard: React.FC<GatewayConfigCardProps> = ({
             testResult.balance ? (
               <Text>
                 {t('Solde : {{amount}}', {
-                  amount: formatMoney(testResult.balance.amount, { currency: testResult.balance.currency })
+                  amount: formatMoney(testResult.balance.amount, {
+                    currency: displayCurrency(testResult.balance.currency)
+                  })
                 })}
               </Text>
             ) : null

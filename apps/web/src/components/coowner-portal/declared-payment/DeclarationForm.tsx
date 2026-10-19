@@ -16,7 +16,8 @@ import {
   type PaymentProofReading,
   type ReceivingNumber
 } from '../../../services/coowner-portal-service';
-import { MoneyValue } from '../../primitives';
+import { MoneyValue, PhoneNumber } from '../../primitives';
+import { formatChargePeriod } from '../../../utils/charge-period';
 import {
   aiFieldHint,
   aiReadFailedMessage,
@@ -326,7 +327,8 @@ function ReceivingNumberField(
           <Space orientation="vertical">
             {numbers.map(n => (
               <Radio key={n.id} value={n.id} style={{ minHeight: TOUCH, alignItems: 'center' }}>
-                {operatorLabel(n.operator)} — {formatPhoneForDisplay(n.phoneNumber)} — {n.holderName}
+                {operatorLabel(n.operator)} — <PhoneNumber value={formatPhoneForDisplay(n.phoneNumber)} /> —{' '}
+                {n.holderName}
               </Radio>
             ))}
           </Space>
@@ -448,7 +450,7 @@ function CallOption(props: {
   return (
     <div style={{ minHeight: TOUCH, display: 'flex', alignItems: 'center' }}>
       <Checkbox checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)}>
-        {call.period} — {t('échéance')} {dayjs(call.dueDate).format('DD/MM/YYYY')} — {t('reste dû')}{' '}
+        {formatChargePeriod(call)} — {t('échéance')} {dayjs(call.dueDate).format('DD/MM/YYYY')} — {t('reste dû')}{' '}
         <MoneyValue value={call.outstanding} />
         {onlineBlocked ? (
           <Tag color="warning" style={{ marginInlineStart: 8 }}>

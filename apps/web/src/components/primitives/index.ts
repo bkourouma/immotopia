@@ -49,3 +49,6 @@ export type { StatCardProps } from './StatCard';
 
 export { StepRail } from './StepRail';
 export type { StepRailProps, StepRailItem } from './StepRail';
+
+export { PhoneNumber } from './PhoneNumber';
+export type { PhoneNumberProps } from './PhoneNumber';

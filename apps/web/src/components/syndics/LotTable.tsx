@@ -5,17 +5,55 @@ import type { ColumnsType } from 'antd/es/table';
 import { Table } from '../primitives';
 import { SyndicateLot } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
+import { getLotTypeLabel } from '../../utils/syndic-lot-label';
 
 const { Text } = Typography;
 
-const lotTypeLabels: Record<SyndicateLot['lotType'], string> = {
-  APARTMENT: 'Appartement',
-  PARKING: 'Parking',
-  CELLAR: 'Cave',
-  OFFICE: 'Bureau',
-  COMMERCIAL: 'Commerce',
-  OTHER: 'Autre'
-};
+type TenantAssignment = NonNullable<SyndicateLot['tenantAssignments']>[number];
+
+interface TenantEntry {
+  key: string;
+  name: string;
+  /** Affectation à laquelle on peut mettre fin ; absente pour un profil locataire. */
+  assignment?: TenantAssignment;
+}
+
+function contactName(
+  contact?: {
+    firstName?: string | null;
+    lastName?: string | null;
+    legalName?: string | null;
+    email?: string | null;
+  } | null
+): string {
+  if (!contact) return '';
+  const fullName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
+  return fullName || contact.legalName || contact.email || '';
+}
+
+/**
+ * Locataires d'un lot : affectations actives et profils locataires actuels,
+ * dédoublonnés par contact (sinon par nom). L'affectation prime sur le profil
+ * car c'est elle qu'on peut terminer depuis cet écran.
+ */
+function mergeTenants(lot: SyndicateLot): TenantEntry[] {
+  const entries = new Map<string, TenantEntry>();
+  for (const assignment of (lot.tenantAssignments || []).filter(item => item.isActive)) {
+    const name = contactName(assignment.contact) || assignment.tenantId;
+    const key = assignment.contact?.id || assignment.tenantId || name.toLowerCase();
+    if (!entries.has(key)) entries.set(key, { key, name, assignment });
+  }
+  for (const profile of lot.tenantProfiles || []) {
+    const name = contactName(profile.contact);
+    const key = profile.contactId || profile.contact?.id || name.toLowerCase();
+    if (!name && !key) continue;
+    const existing = [...entries.values()].find(
+      entry => entry.key === key || (name && entry.name.toLowerCase() === name.toLowerCase())
+    );
+    if (!existing) entries.set(key, { key, name: name || key });
+  }
+  return [...entries.values()];
+}
 
 // Le bien seul : la colonne « Propriétaire » affiche déjà son propriétaire.
 function buildPropertyLabel(property: NonNullable<SyndicateLot['property']>): string {
@@ -74,6 +112,12 @@ interface LotTableProps {
   onDelete?: (lot: SyndicateLot) => void;
   onViewAccount?: (lot: SyndicateLot) => void;
   onAssignTenant?: (lot: SyndicateLot) => void;
+  /** Désactivation directe (tantièmes à 0), après confirmation dans la table. */
+  onDeactivate?: (lot: SyndicateLot) => void;
+  /** Réactivation : l'écran ouvre la modification du lot pour ressaisir les tantièmes. */
+  onReactivate?: (lot: SyndicateLot) => void;
+  /** Fin d'une affectation locataire (après confirmation dans la table). */
+  onEndTenantAssignment?: (lot: SyndicateLot, assignment: TenantAssignment) => void;
 }
 
 export const LotTable: React.FC<LotTableProps> = ({
@@ -88,7 +132,10 @@ export const LotTable: React.FC<LotTableProps> = ({
   onEdit,
   onDelete,
   onViewAccount,
-  onAssignTenant
+  onAssignTenant,
+  onDeactivate,
+  onReactivate,
+  onEndTenantAssignment
 }) => {
   const columns: ColumnsType<SyndicateLot> = [
     {
@@ -111,7 +158,7 @@ export const LotTable: React.FC<LotTableProps> = ({
       dataIndex: 'lotType',
       key: 'lotType',
       width: 140,
-      render: (value: SyndicateLot['lotType']) => <Tag>{lotTypeLabels[value]}</Tag>
+      render: (value: SyndicateLot['lotType']) => <Tag>{getLotTypeLabel(value) ?? value}</Tag>
     },
     {
       title: t('Tantièmes généraux'),
@@ -203,24 +250,47 @@ export const LotTable: React.FC<LotTableProps> = ({
       title: t('Locataire'),
       key: 'tenant',
       width: 250,
-      ellipsis: true,
       responsive: ['md'],
+      // Le rendu accole des boutons « Mettre fin » : on n'exporte que les noms.
+      exportValue: (lot: SyndicateLot) =>
+        mergeTenants(lot)
+          .map(entry => entry.name)
+          .join(', '),
       render: (_value: string | null | undefined, lot: SyndicateLot) => {
-        const activeAssignments = (lot.tenantAssignments || []).filter(assignment => assignment.isActive);
-        if (activeAssignments.length === 0) {
+        const tenants = mergeTenants(lot);
+        if (tenants.length === 0) {
           return t('Non renseigné');
         }
 
-        return activeAssignments
-          .map(assignment => {
-            const contact = assignment.contact;
-            if (!contact) {
-              return assignment.tenantId;
-            }
-            const fullName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
-            return fullName || contact.legalName || contact.email || assignment.tenantId;
-          })
-          .join(', ');
+        return (
+          <Space direction="vertical" size={2}>
+            {tenants.map(entry => (
+              <Space key={entry.key} size={4} wrap>
+                <span>{entry.name}</span>
+                {entry.assignment && onEndTenantAssignment ? (
+                  <Popconfirm
+                    title={t("Mettre fin à l'affectation de ce locataire ?")}
+                    description={t("Le locataire ne sera plus rattaché à ce lot. L'historique est conservé.")}
+                    okText={t('Mettre fin')}
+                    cancelText={t('Annuler')}
+                    onConfirm={() => onEndTenantAssignment(lot, entry.assignment as TenantAssignment)}
+                  >
+                    <Button
+                      type="link"
+                      size="small"
+                      aria-label={t("Mettre fin à l'affectation de {{name}} sur le lot {{lot}}", {
+                        name: entry.name,
+                        lot: lot.lotNumber
+                      })}
+                    >
+                      {t('Mettre fin')}
+                    </Button>
+                  </Popconfirm>
+                ) : null}
+              </Space>
+            ))}
+          </Space>
+        );
       }
     },
     {
@@ -246,12 +316,12 @@ export const LotTable: React.FC<LotTableProps> = ({
         return lot.propertyId;
       }
     },
-    ...(onEdit || onDelete || onViewAccount || onAssignTenant
+    ...(onEdit || onDelete || onViewAccount || onAssignTenant || onDeactivate || onReactivate
       ? [
           {
             title: t('Actions'),
             key: 'actions',
-            width: 240,
+            width: 340,
             render: (_: unknown, lot: SyndicateLot) => (
               <Space>
                 {onEdit ? (
@@ -267,6 +337,24 @@ export const LotTable: React.FC<LotTableProps> = ({
                 {onAssignTenant ? (
                   <Button size="small" onClick={() => onAssignTenant(lot)}>
                     {t('Locataire')}
+                  </Button>
+                ) : null}
+                {onDeactivate && lot.generalShares > 0 ? (
+                  <Popconfirm
+                    title={t('Désactiver ce lot ?')}
+                    description={t(
+                      'Le lot ne participera plus aux répartitions de charges ni aux votes. Ses données sont conservées et vous pourrez le réactiver.'
+                    )}
+                    okText={t('Désactiver')}
+                    cancelText={t('Annuler')}
+                    onConfirm={() => onDeactivate(lot)}
+                  >
+                    <Button size="small">{t('Désactiver')}</Button>
+                  </Popconfirm>
+                ) : null}
+                {onReactivate && lot.generalShares === 0 ? (
+                  <Button size="small" onClick={() => onReactivate(lot)}>
+                    {t('Réactiver')}
                   </Button>
                 ) : null}
                 {onDelete ? (
@@ -300,7 +388,7 @@ export const LotTable: React.FC<LotTableProps> = ({
         dataSource={lots}
         loading={loading}
         pagination={{ pageSize: 8, hideOnSinglePage: true }}
-        locale={{ emptyText: 'Aucun lot enregistré' }}
+        locale={{ emptyText: t('Aucun lot enregistré') }}
         scroll={{ x: 1400 }}
         sticky
       />

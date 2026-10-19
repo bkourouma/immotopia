@@ -21,6 +21,7 @@ import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
+import { dateFormat } from '../../i18n/format';
 
 const { Paragraph, Text, Title } = Typography;
 
@@ -61,7 +62,7 @@ function ownerLabelOf(lot: SyndicateLot): string {
 function periodLabelOf(receipt: ReceiptView): string {
   if (receipt.periodLabel) return receipt.periodLabel;
   if (receipt.periodStart && receipt.periodEnd) {
-    return `${dayjs(receipt.periodStart).format('DD/MM/YYYY')} – ${dayjs(receipt.periodEnd).format('DD/MM/YYYY')}`;
+    return `${dayjs(receipt.periodStart).format(dateFormat('short'))} – ${dayjs(receipt.periodEnd).format(dateFormat('short'))}`;
   }
   return '—';
 }
@@ -266,7 +267,7 @@ export const SyndicReceipts: React.FC = () => {
       return <Tag color="red">{t('Erreur : {{error}}', { error: receipt.emailError })}</Tag>;
     }
     if (receipt.emailedAt) {
-      return <Tag color="green">{dayjs(receipt.emailedAt).format('DD/MM/YYYY HH:mm')}</Tag>;
+      return <Tag color="green">{dayjs(receipt.emailedAt).format(dateFormat('dateTime'))}</Tag>;
     }
     return <Tag>{t('Non envoyé')}</Tag>;
   };
@@ -298,7 +299,7 @@ export const SyndicReceipts: React.FC = () => {
       title: t('Émis le'),
       dataIndex: 'issuedAt',
       key: 'issuedAt',
-      render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+      render: (value: string) => dayjs(value).format(dateFormat('short'))
     },
     { title: t('E-mail'), key: 'email', render: (_: unknown, row) => emailColumn(row) },
     {
@@ -362,6 +363,18 @@ export const SyndicReceipts: React.FC = () => {
             </Button>
           </Space>
         </div>
+
+        <Alert
+          type="info"
+          showIcon={false}
+          message={
+            <Typography.Text type="secondary">
+              {t(
+                'Un reçu (R-) est émis pour un paiement partiel ou qui laisse une avance ; un paiement qui solde exactement ses appels ne reçoit que leurs quittances (Q-).'
+              )}
+            </Typography.Text>
+          }
+        />
 
         <Card size="small">
           <Space wrap size={16}>

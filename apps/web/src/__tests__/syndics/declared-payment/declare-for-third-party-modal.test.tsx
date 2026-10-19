@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { App } from 'antd';
 import dayjs from 'dayjs';
 import { DeclareForThirdPartyModal } from '../../../components/syndics/declared-payment/DeclareForThirdPartyModal';
 
@@ -12,9 +13,11 @@ const createSyndicDeclaration = vi.fn();
 const listSyndicReceivingNumbers = vi.fn();
 const listSyndicateLots = vi.fn();
 const listOpenLotCharges = vi.fn();
+const getSyndicDeclaredSettings = vi.fn();
 
 vi.mock('../../../services/syndic-declared-payment-service', () => ({
   createSyndicDeclaration: (...args: unknown[]) => createSyndicDeclaration(...args),
+  getSyndicDeclaredSettings: (...args: unknown[]) => getSyndicDeclaredSettings(...args),
   listSyndicReceivingNumbers: (...args: unknown[]) => listSyndicReceivingNumbers(...args)
 }));
 
@@ -72,7 +75,11 @@ const createdRow = { id: 'decl-1', status: 'PENDING' };
 function setup() {
   const onClose = vi.fn();
   const onCreated = vi.fn();
-  render(<DeclareForThirdPartyModal tenantId="t-1" syndicId="s-1" open onClose={onClose} onCreated={onCreated} />);
+  render(
+    <App>
+      <DeclareForThirdPartyModal tenantId="t-1" syndicId="s-1" open onClose={onClose} onCreated={onCreated} />
+    </App>
+  );
   return { onClose, onCreated };
 }
 
@@ -147,6 +154,7 @@ beforeEach(() => {
   ]);
   listOpenLotCharges.mockResolvedValue([openCall]);
   createSyndicDeclaration.mockResolvedValue(createdRow);
+  getSyndicDeclaredSettings.mockResolvedValue({ enabled: true, usable: true });
 });
 
 /** Remplit numéro de réception, payeur, date et référence. */
@@ -276,11 +284,52 @@ describe('DeclareForThirdPartyModal', () => {
     type('Part du lot (FCFA)', '10000');
     await fillCommon();
     fireEvent.click(screen.getByRole('button', { name: 'Créer la déclaration' }));
-    const message = await screen.findByText('Cette référence a déjà été déclarée.', {}, { timeout: 10000 });
+    await waitFor(
+      () =>
+        expect(document.querySelector('.ant-form-item-explain-error')?.textContent).toBe(
+          'Cette référence a déjà été déclarée.'
+        ),
+      { timeout: 10000 }
+    );
+    const message = document.querySelector('.ant-form-item-explain-error') as HTMLElement;
     const item = message.closest('.ant-form-item') as HTMLElement;
     expect(within(item).getByLabelText('Référence de transaction')).toHaveValue('om 2024.ab-12');
     expect(onCreated).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Numéro du payeur')).toHaveValue('07 11 22 33 44');
+  }, 60000);
+
+  it('réglage désactivé : alerte persistante dès l’ouverture et bouton de soumission désactivé', async () => {
+    getSyndicDeclaredSettings.mockResolvedValue({ enabled: false, usable: false });
+    setup();
+    await ready();
+    expect(await screen.findByText(/Les paiements déclarés sont désactivés/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Créer la déclaration' })).toBeDisabled();
+  });
+
+  it('lecture des réglages en échec : ne bloque pas le formulaire', async () => {
+    getSyndicDeclaredSettings.mockRejectedValue(new Error('boom'));
+    setup();
+    await ready();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Créer la déclaration' })).toBeEnabled());
+    expect(screen.queryByText(/Les paiements déclarés sont désactivés/)).not.toBeInTheDocument();
+  });
+
+  it('réglage actif et erreur serveur : message d’erreur affiché en toast et dans l’alerte', async () => {
+    createSyndicDeclaration.mockRejectedValue({
+      response: { data: { code: 'DECLARED_PAYMENT_UNAVAILABLE', message: 'Paiements déclarés indisponibles.' } }
+    });
+    setup();
+    await ready();
+    await pick(screen.getByLabelText('Copropriétaire'), 'Awa Koné');
+    await pick(screen.getAllByLabelText('Lot')[0], 'A12');
+    type('Part du lot (FCFA)', '10000');
+    await fillCommon();
+    fireEvent.click(screen.getByRole('button', { name: 'Créer la déclaration' }));
+    await waitFor(() => expect(document.querySelector('.ant-message .ant-message-notice')).not.toBeNull(), {
+      timeout: 10000
+    });
+    expect(document.querySelector('.ant-message')?.textContent).toContain('Paiements déclarés indisponibles.');
+    expect(screen.getAllByText('Paiements déclarés indisponibles.').length).toBeGreaterThanOrEqual(2);
   }, 60000);
 });

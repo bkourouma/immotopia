@@ -80,6 +80,7 @@ vi.mock('antd', async () => {
         {children}
       </section>
     ),
+    Checkbox: ({ children }: any) => <label>{children}</label>,
     Col: Wrap(),
     DatePicker: () => <input />,
     TimePicker: () => <input />,
@@ -418,10 +419,11 @@ describe('AG - statut, majorité et pouvoirs', () => {
     const dialog = screen.getByRole('dialog', { name: 'Ajouter une résolution' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Ajouter' }));
     await waitFor(() =>
-      expect(mockApi.post).toHaveBeenCalledWith(`${DETAIL_URL}/resolutions`, {
-        title: 'Ravalement',
-        majorityRule: 'ARTICLE_25'
-      })
+      expect(mockApi.post).toHaveBeenCalledWith(
+        `${DETAIL_URL}/resolutions`,
+        { title: 'Ravalement', majorityRule: 'ARTICLE_25' },
+        { headers: { 'Idempotency-Key': expect.any(String) } }
+      )
     );
   });
 

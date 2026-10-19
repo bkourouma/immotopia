@@ -1,9 +1,21 @@
 import { useEffect, useRef } from 'react';
 
 /** Intervalle de l'interrogation de l'AG en direct (spec 043, D12). */
-export const LIVE_POLL_INTERVAL_MS = 3000;
-/** Délai de reprise après un 429 ou une panne passagère. */
-export const LIVE_POLL_RETRY_INTERVAL_MS = 6000;
+export const LIVE_POLL_INTERVAL_MS = 5000;
+/** Premier délai de reprise après un 429 ou une panne passagère (puis 15 s au plus, voir `liveBackoffDelay`). */
+export const LIVE_POLL_RETRY_INTERVAL_MS = 10000;
+/** Plafond de l'attente croissante après des échecs consécutifs. */
+export const LIVE_POLL_BACKOFF_MAX_MS = 15000;
+
+/**
+ * Délai avant la prochaine lecture après `failures` échecs consécutifs (5xx, 429, réseau) :
+ * 10 s, puis 15 s (plafond). Zéro échec : `undefined`, la tâche garde l'intervalle normal
+ * (retour à 5 s au premier succès).
+ */
+export function liveBackoffDelay(failures: number, baseMs: number = LIVE_POLL_INTERVAL_MS): number | undefined {
+  if (failures <= 0) return undefined;
+  return Math.min(LIVE_POLL_BACKOFF_MAX_MS, baseMs * (failures + 1));
+}
 
 interface VisiblePollingOptions {
   enabled?: boolean;

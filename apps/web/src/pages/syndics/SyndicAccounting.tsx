@@ -16,7 +16,7 @@ import {
   Tag,
   Typography
 } from 'antd';
-import { LockOutlined, PlusOutlined } from '@ant-design/icons';
+import { DownloadOutlined, LockOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { MoneyValue, StatCard, Table } from '../../components/primitives';
 import {
@@ -28,6 +28,7 @@ import {
   listAccountingEntries,
   listAccountingJournals,
   listChartOfAccounts,
+  loadSyndicChartTemplate,
   lockAccountingEntry
 } from '../../services/syndic-service';
 import { AccountingJournal, ChartOfAccount, JournalEntry, SourceType, TrialBalance } from '../../types/syndic-types';
@@ -36,23 +37,34 @@ import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
 
-const sourceTypeOptions: Array<{ value: SourceType; label: string }> = [
-  { value: 'MANUAL', label: 'MANUEL' },
+const sourceTypeOptions = (): Array<{ value: SourceType; label: string }> => [
+  { value: 'MANUAL', label: t('MANUEL') },
   { value: 'CHARGE_PAYMENT', label: t('PAIEMENT CHARGE') },
   { value: 'PENALTY', label: t('PÉNALITÉ') },
-  { value: 'FUND', label: 'FONDS' }
+  { value: 'FUND', label: t('FONDS') }
 ];
 
-const accountTypeLabels: Record<ChartOfAccount['accountType'], string> = {
-  ASSET: 'Actif',
-  LIABILITY: 'Passif',
-  EQUITY: t('Capitaux propres'),
-  INCOME: 'Produit',
-  EXPENSE: 'Charge'
+const accountTypeLabel = (type: ChartOfAccount['accountType']): string => {
+  switch (type) {
+    case 'ASSET':
+      return t('Actif (bilan)');
+    case 'LIABILITY':
+      return t('Passif');
+    case 'EQUITY':
+      return t('Capitaux propres');
+    case 'INCOME':
+      return t('Produit');
+    case 'EXPENSE':
+      return t('Charge');
+    default:
+      return type;
+  }
 };
 
+const accountTypeValues: Array<ChartOfAccount['accountType']> = ['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE'];
+
 export const SyndicAccounting: React.FC = () => {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
 
@@ -154,6 +166,39 @@ export const SyndicAccounting: React.FC = () => {
     }
   };
 
+  const runLoadChartTemplate = async () => {
+    if (!effectiveTenantId || !syndicId) return;
+    setSubmitting(true);
+    try {
+      const result = await loadSyndicChartTemplate(effectiveTenantId, syndicId);
+      message.success(
+        t('{{created}} compte(s) ajouté(s), {{skipped}} déjà présent(s).', {
+          created: result.created,
+          skipped: result.skipped
+        })
+      );
+      await loadData();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Chargement du plan comptable impossible'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleLoadChartTemplate = () => {
+    if (accounts.length === 0) {
+      void runLoadChartTemplate();
+      return;
+    }
+    modal.confirm({
+      title: t('Charger le plan SYSCOHADA ?'),
+      content: t('Seuls les comptes manquants seront ajoutés, les comptes existants ne sont pas modifiés.'),
+      okText: t('Charger le plan SYSCOHADA'),
+      cancelText: t('Annuler'),
+      onOk: runLoadChartTemplate
+    });
+  };
+
   const handleCreateJournal = async () => {
     if (!effectiveTenantId || !syndicId) return;
     const values = await journalForm.validateFields();
@@ -233,6 +278,11 @@ export const SyndicAccounting: React.FC = () => {
             <Button icon={<PlusOutlined />} onClick={() => setOpenAccount(true)}>
               {t('Nouveau compte')}
             </Button>
+            {accounts.length > 0 ? (
+              <Button icon={<DownloadOutlined />} onClick={handleLoadChartTemplate} loading={submitting}>
+                {t('Charger le plan SYSCOHADA')}
+              </Button>
+            ) : null}
             <Button icon={<PlusOutlined />} onClick={() => setOpenJournal(true)}>
               {t('Nouveau journal')}
             </Button>
@@ -272,28 +322,46 @@ export const SyndicAccounting: React.FC = () => {
             </Row>
 
             <Card title={t('Plan comptable')}>
-              <Table
-                exportFilename={t('Plan comptable')}
-                scroll={{ x: 'max-content' }}
-                rowKey="id"
-                dataSource={accounts}
-                pagination={{ pageSize: 10 }}
-                columns={[
-                  { title: t('Numéro'), dataIndex: 'accountNumber' },
-                  { title: t('Intitulé'), dataIndex: 'accountName' },
-                  { title: t('Classe'), dataIndex: 'accountClass' },
-                  {
-                    title: t('Type'),
-                    dataIndex: 'accountType',
-                    render: (value: ChartOfAccount['accountType']) => accountTypeLabels[value] || value
-                  },
-                  {
-                    title: t('Actif'),
-                    render: (_, account) =>
-                      account.isActive ? <Tag color="green">OUI</Tag> : <Tag color="red">NON</Tag>
-                  }
-                ]}
-              />
+              {accounts.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                  <Paragraph type="secondary">
+                    {t(
+                      'Le plan comptable de cette copropriété est vide. Chargez le plan SYSCOHADA de copropriété pour démarrer.'
+                    )}
+                  </Paragraph>
+                  <Button
+                    type="primary"
+                    icon={<DownloadOutlined />}
+                    onClick={handleLoadChartTemplate}
+                    loading={submitting}
+                  >
+                    {t('Charger le plan SYSCOHADA')}
+                  </Button>
+                </div>
+              ) : (
+                <Table
+                  exportFilename={t('Plan comptable')}
+                  scroll={{ x: 'max-content' }}
+                  rowKey="id"
+                  dataSource={accounts}
+                  pagination={{ pageSize: 10 }}
+                  columns={[
+                    { title: t('Numéro'), dataIndex: 'accountNumber' },
+                    { title: t('Intitulé'), dataIndex: 'accountName' },
+                    { title: t('Classe'), dataIndex: 'accountClass' },
+                    {
+                      title: t('Type'),
+                      dataIndex: 'accountType',
+                      render: (value: ChartOfAccount['accountType']) => accountTypeLabel(value)
+                    },
+                    {
+                      title: t('Actif'),
+                      render: (_, account) =>
+                        account.isActive ? <Tag color="green">OUI</Tag> : <Tag color="red">NON</Tag>
+                    }
+                  ]}
+                />
+              )}
             </Card>
 
             <Card title={t('Journaux comptables')}>
@@ -473,13 +541,7 @@ export const SyndicAccounting: React.FC = () => {
             <Select
               showSearch
               optionFilterProp="label"
-              options={[
-                { value: 'ASSET', label: 'ACTIF' },
-                { value: 'LIABILITY', label: 'PASSIF' },
-                { value: 'EQUITY', label: t('CAPITAUX PROPRES') },
-                { value: 'INCOME', label: 'PRODUIT' },
-                { value: 'EXPENSE', label: 'CHARGE' }
-              ]}
+              options={accountTypeValues.map(value => ({ value, label: accountTypeLabel(value).toUpperCase() }))}
             />
           </Form.Item>
         </Form>
@@ -590,7 +652,7 @@ export const SyndicAccounting: React.FC = () => {
                 name="sourceType"
                 rules={[{ required: true, message: t('Source obligatoire') }]}
               >
-                <Select showSearch optionFilterProp="label" options={sourceTypeOptions} />
+                <Select showSearch optionFilterProp="label" options={sourceTypeOptions()} />
               </Form.Item>
             </Col>
           </Row>

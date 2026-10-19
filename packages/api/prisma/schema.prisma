@@ -4021,6 +4021,8 @@ model Syndicate {
   cadastralReference String?         @map("cadastral_reference")
   totalLots          Int             @default(0) @map("total_lots")
   totalBuildings     Int             @default(1) @map("total_buildings")
+  /// Total de reference des tantiemes generaux (ex. 1000), facultatif.
+  totalGeneralShares Int?            @map("total_general_shares")
   status             SyndicateStatus @default(ACTIVE)
   regulationDocUrl   String?         @map("regulation_doc_url")
   /// Lot S1 : agence mandante dont l'identite figure sur les documents.
@@ -4777,6 +4779,8 @@ model SyndicateDocument {
   type        SyndicateDocType
   fileUrl     String           @map("file_url")
   expiresAt   DateTime?        @map("expires_at")
+  /// Visible au portail des coproprietaires (regle explicite, plus deduite du type).
+  visibleToCoOwners Boolean    @default(false) @map("visible_to_co_owners")
   createdAt   DateTime         @default(now()) @map("created_at")
 
   syndicate Syndicate @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
@@ -5011,6 +5015,9 @@ model PaymentReminder {
   channel        ReminderChannel
   status         ReminderStatus
   responseAction String?         @map("response_action")
+  /// Cause d'echec d'envoi (code technique et message).
+  failureCode    String?         @map("failure_code")
+  failureMessage String?         @map("failure_message")
   createdAt      DateTime        @default(now()) @map("created_at")
 
   chargeCall ChargeCall   @relation(fields: [chargeCallId], references: [id], onDelete: Cascade)
