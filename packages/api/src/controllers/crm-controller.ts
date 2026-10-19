@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import type { CrmActivityType, CrmContactStatus, CrmDealStage } from '@prisma/client';
+import { CrmActivityType, CrmContactStatus, CrmDealStage, CrmDealType } from '@prisma/client';
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
 import {
   createContactSchema,
@@ -31,6 +31,7 @@ import { createActivity, listActivities } from '../services/crm-activity-service
 import { getDashboard } from '../services/crm-dashboard-service';
 import { respondWithAppError } from '../utils/app-error-response';
 import { parsePagination } from '../utils/pagination-helper';
+import { parseEnumParam } from '../utils/query-params';
 
 /**
  * Create a new contact
@@ -124,8 +125,7 @@ export async function listContactsHandler(req: Request, res: Response): Promise<
     const tenantId = getTenantIdFromRequest(req);
 
     const filters = {
-      // Casts ciblés : valeurs de la query string, supposées issues des enums Prisma (comme avant).
-      status: req.query.status as CrmContactStatus | undefined,
+      status: parseEnumParam(req.query.status, CrmContactStatus, 'status'),
       source: req.query.source as string | undefined,
       assignedTo: req.query.assignedTo as string | undefined,
       tag: req.query.tag as string | undefined,
@@ -498,8 +498,8 @@ export async function listDealsHandler(req: Request, res: Response): Promise<voi
     const tenantId = getTenantIdFromRequest(req);
 
     const filters = {
-      type: req.query.type as 'ACHAT' | 'LOCATION' | undefined,
-      stage: req.query.stage as CrmDealStage | undefined,
+      type: parseEnumParam(req.query.type, CrmDealType, 'type'),
+      stage: parseEnumParam(req.query.stage, CrmDealStage, 'stage'),
       assignedTo: req.query.assignedTo as string | undefined,
       contactId: req.query.contactId as string | undefined,
       ...parsePagination(req.query)
@@ -635,7 +635,7 @@ export async function listActivitiesHandler(req: Request, res: Response): Promis
     const filters = {
       contactId: req.query.contactId as string | undefined,
       dealId: req.query.dealId as string | undefined,
-      type: req.query.type as CrmActivityType | undefined,
+      type: parseEnumParam(req.query.type, CrmActivityType, 'type'),
       createdBy: req.query.createdBy as string | undefined,
       startDate: req.query.startDate as string | undefined,
       endDate: req.query.endDate as string | undefined,

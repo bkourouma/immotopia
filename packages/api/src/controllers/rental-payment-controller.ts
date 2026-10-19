@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { asyncHandler, NotFoundError, UnauthorizedError } from '../middleware/error-middleware';
 import { getCheckoutForPayment, reconcileCheckout, toOnlineCheckoutSummaryDto } from '../lib/payment-gateway/checkout';
 import { parsePagination } from '../utils/pagination-helper';
+import { parseEnumParam } from '../utils/query-params';
 
 /**
  * Lot 7 : `onlineCheckout` sort en `OnlineCheckoutSummary` (contrat §3.2),
@@ -181,11 +182,13 @@ export const listPaymentsHandler = asyncHandler(async (req: Request, res: Respon
   if (renterClientId) {
     filters.renterClientId = renterClientId as string;
   }
-  if (status) {
-    filters.status = status as RentalPaymentStatus;
+  const statusFilter = parseEnumParam(status, RentalPaymentStatus, 'status');
+  if (statusFilter) {
+    filters.status = statusFilter;
   }
-  if (method) {
-    filters.method = method as RentalPaymentMethod;
+  const methodFilter = parseEnumParam(method, RentalPaymentMethod, 'method');
+  if (methodFilter) {
+    filters.method = methodFilter;
   }
   if (startDate) {
     filters.startDate = new Date(startDate as string);

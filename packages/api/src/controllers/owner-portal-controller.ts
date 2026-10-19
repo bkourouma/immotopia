@@ -6,6 +6,8 @@
 import { Request, Response } from 'express';
 import { OwnerPortalService } from '../services/owner-portal-service';
 import { logger } from '../utils/logger';
+import { parseIntParam } from '../utils/query-params';
+import { respondWithAppError } from '../utils/app-error-response';
 
 export class OwnerPortalController {
   private service: OwnerPortalService;
@@ -325,7 +327,7 @@ export class OwnerPortalController {
       }
 
       const { propertyIds, tenantId } = req.ownerPortal;
-      const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+      const year = parseIntParam(req.query.year, 'year', { min: 1900, max: 2200 }) ?? new Date().getFullYear();
 
       const revenuesByMonth = await this.service.getRevenuesByMonth(propertyIds, tenantId, year);
 
@@ -334,6 +336,7 @@ export class OwnerPortalController {
         data: revenuesByMonth
       });
     } catch (error) {
+      if (respondWithAppError(res, error)) return;
       logger.error('Error getting revenues by month:', error);
       res.status(500).json({
         success: false,
