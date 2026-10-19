@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { App, Alert, Button, Card, Col, Input, Modal, Progress, Row, Space, Statistic, Typography } from 'antd';
 import {
   closeResolutionVote,
@@ -15,7 +15,7 @@ import {
 import { isSafeVideoUrl } from '../../services/public-meeting-live-service';
 import type { LiveMeetingAdminView, MeetingParticipantView } from '../../types/syndic-live-types';
 import type { MeetingProxy, MeetingStatus } from '../../types/syndic-types';
-import { useVisiblePolling } from '../../hooks/useVisiblePolling';
+import { liveBackoffDelay, useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { LiveLotsTable, type ContactOption, type LotAttendanceChange } from './live/LiveLotsTable';
 import { apiErrorText as errorText, useMeetingRecordings, useMeetingVisio } from './visio/use-meeting-visio';
 import { LiveParticipantsTable } from './live/LiveParticipantsTable';
@@ -65,6 +65,17 @@ function liveSignature(view: LiveMeetingAdminView): string {
     .join('|');
   const { attendance } = view;
   return `${view.meeting.status}#${attendance.quorumPercent}:${attendance.representedShares}:${attendance.representedLots}#${resolutions}`;
+}
+
+/** Les compteurs de participants sont déjà dans `/direct` : la liste détaillée n'est relue qu'un cycle sur trois. */
+export const PARTICIPANTS_POLL_EVERY = 3;
+
+/** Empreinte stable d'une réponse : l'horloge serveur change à chaque lecture sans rien changer à l'écran. */
+function fingerprint(value: unknown): string {
+  if (value && typeof value === 'object' && 'serverTime' in value) {
+    return JSON.stringify({ ...(value as object), serverTime: null });
+  }
+  return JSON.stringify(value);
 }
 
 const CLIPBOARD_TIMEOUT_MS = 2000;
@@ -138,7 +149,7 @@ const QuorumPanel: React.FC<{ live: LiveMeetingAdminView }> = ({ live }) => {
 /**
  * Console « En direct » du détail d'une AG (spec 043) : quorum, émargement des
  * lots, ouverture et clôture des votes, participants et liens personnels.
- * Interrogation toutes les 3 s pendant la séance, en pause onglet masqué.
+ * Interrogation toutes les 5 s pendant la séance, en pause onglet masqué ou menu d'émargement ouvert.
  */
 export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   tenantId,
@@ -155,7 +166,10 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   const [live, setLive] = useState<LiveMeetingAdminView | null>(null);
   const [participants, setParticipants] = useState<MeetingParticipantView[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Lots dont un émargement est en cours : seule leur ligne est désactivée.
+  const [busyLotIds, setBusyLotIds] = useState<ReadonlySet<string>>(() => new Set());
+  // Un menu déroulant de la table est ouvert : le rafraîchissement est suspendu pour ne pas absorber le clic.
+  const [lotMenuOpen, setLotMenuOpen] = useState(false);
   const [busyResolutionId, setBusyResolutionId] = useState<string | null>(null);
   const [busyContactId, setBusyContactId] = useState<string | null>(null);
   const [shownLink, setShownLink] = useState<{ name: string; url: string } | null>(null);
@@ -171,33 +185,67 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   // Garde de séquence : chaque mutation (début et fin) incrémente le compteur ; une lecture lancée
   // avant la dernière mutation appliquée est périmée et ne doit pas écraser la vue.
   const mutationSeq = useRef(0);
+  // Empreintes de ce qui est à l'écran : une lecture identique ne déclenche aucun rendu.
+  const liveFingerprint = useRef<string | null>(null);
+  const participantsFingerprint = useRef<string | null>(null);
+  // Cycles de lecture écoulés et échecs consécutifs (attente croissante au-delà du premier).
+  const cycleRef = useRef(0);
+  const failuresRef = useRef(0);
+  // La liste des participants se relit tout de suite au premier chargement, au changement d'AG/de statut
+  // et après une action qui la modifie (lien délivré ou révoqué).
+  const forceParticipants = useRef(true);
+  const resetToken = `${tenantId}|${syndicId}|${meetingId}|${meetingStatus}|${refreshKey ?? ''}`;
+  useEffect(() => {
+    forceParticipants.current = true;
+  }, [resetToken]);
+
+  /** Applique une vue en direct (lecture ou réponse d'une action) ; ne touche l'état que si elle diffère. */
+  const applyLive = useCallback((view: LiveMeetingAdminView) => {
+    const next = fingerprint(view);
+    if (liveFingerprint.current !== next) {
+      liveFingerprint.current = next;
+      setLive(view);
+    }
+    const signature = liveSignature(view);
+    if (lastSignature.current !== null && lastSignature.current !== signature) {
+      void onLiveChangedRef.current?.();
+    }
+    lastSignature.current = signature;
+  }, []);
 
   const load = useCallback(async (): Promise<number | false | void> => {
     const seqAtStart = mutationSeq.current;
+    const withParticipants = forceParticipants.current || cycleRef.current % PARTICIPANTS_POLL_EVERY === 0;
+    cycleRef.current += 1;
     try {
       const [view, list] = await Promise.all([
         getLiveMeeting(tenantId, syndicId, meetingId),
-        listMeetingParticipants(tenantId, syndicId, meetingId)
+        withParticipants ? listMeetingParticipants(tenantId, syndicId, meetingId) : Promise.resolve(null)
       ]);
-      // Une mutation a eu lieu pendant la lecture : cette vue est périmée, la relance déjà demandée la remplacera.
+      // Une mutation a eu lieu pendant la lecture : cette vue est périmée, la prochaine lecture la remplacera.
       if (mutationSeq.current !== seqAtStart) return frozen ? false : undefined;
-      setLive(view);
-      setParticipants(list);
-      setError(null);
-      const signature = liveSignature(view);
-      if (lastSignature.current !== null && lastSignature.current !== signature) {
-        void onLiveChangedRef.current?.();
+      if (withParticipants) forceParticipants.current = false;
+      applyLive(view);
+      if (list) {
+        const next = fingerprint(list);
+        if (participantsFingerprint.current !== next) {
+          participantsFingerprint.current = next;
+          setParticipants(list);
+        }
       }
-      lastSignature.current = signature;
+      setError(null);
+      failuresRef.current = 0;
     } catch (err) {
-      // Un échec passager garde les dernières données à l'écran.
+      // Un échec passager garde les dernières données à l'écran ; attente croissante (10 s, puis 15 s).
       setError(errorText(err, t('Impossible de charger la séance en direct')));
+      failuresRef.current += 1;
+      return frozen ? false : liveBackoffDelay(failuresRef.current);
     }
     // Interrogation tant que l'AG n'est ni terminée ni annulée (les copropriétaires rejoignent avant l'ouverture).
     return frozen ? false : undefined;
-  }, [tenantId, syndicId, meetingId, frozen]);
+  }, [tenantId, syndicId, meetingId, frozen, applyLive]);
 
-  const { refresh } = useVisiblePolling(load, { resetKey: `${meetingStatus}|${refreshKey ?? ''}` });
+  const { refresh } = useVisiblePolling(load, { enabled: !lotMenuOpen, resetKey: resetToken });
 
   // Visio intégrée et enregistrement (spec 045) : lectures et actions dans leurs hooks.
   const visioState = useMeetingVisio({
@@ -243,35 +291,54 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
     return merged.sort((a, b) => a.name.localeCompare(b.name));
   }, [live, participants, proxyHolders]);
 
-  const runAction = async (action: () => Promise<LiveMeetingAdminView>, okText: string, failText: string) => {
-    setBusy(true);
-    mutationSeq.current += 1;
-    try {
-      const view = await action();
+  const setLotsBusy = useCallback((lotIds: string[], busy: boolean) => {
+    setBusyLotIds(previous => {
+      const next = new Set(previous);
+      lotIds.forEach(id => (busy ? next.add(id) : next.delete(id)));
+      return next;
+    });
+  }, []);
+
+  // La réponse d'un émargement porte déjà la vue complète : pas de relecture redondante derrière.
+  const runAction = useCallback(
+    async (lotIds: string[], action: () => Promise<LiveMeetingAdminView>, okText: string, failText: string) => {
+      setLotsBusy(lotIds, true);
       mutationSeq.current += 1;
-      setLive(view);
-      message.success(okText);
-      refresh();
-    } catch (err) {
-      message.error(errorText(err, failText));
-    } finally {
-      setBusy(false);
-    }
-  };
+      try {
+        const view = await action();
+        mutationSeq.current += 1;
+        applyLive(view);
+        message.success(okText);
+      } catch (err) {
+        message.error(errorText(err, failText));
+      } finally {
+        setLotsBusy(lotIds, false);
+      }
+    },
+    [applyLive, message, setLotsBusy]
+  );
 
-  const handleSetLot = (lotId: string, data: LotAttendanceChange) =>
-    void runAction(
-      () => setLotAttendance(tenantId, syndicId, meetingId, lotId, data),
-      t('Émargement enregistré'),
-      t('Émargement impossible')
-    );
+  const handleSetLot = useCallback(
+    (lotId: string, data: LotAttendanceChange) =>
+      void runAction(
+        [lotId],
+        () => setLotAttendance(tenantId, syndicId, meetingId, lotId, data),
+        t('Émargement enregistré'),
+        t('Émargement impossible')
+      ),
+    [runAction, tenantId, syndicId, meetingId]
+  );
 
-  const handleBulk = (lotIds: string[], status: 'PRESENT' | 'ABSENT') =>
-    void runAction(
-      () => setBulkAttendance(tenantId, syndicId, meetingId, { lotIds, status, mode: 'IN_PERSON' }),
-      t('Émargement enregistré'),
-      t('Émargement impossible')
-    );
+  const handleBulk = useCallback(
+    (lotIds: string[], status: 'PRESENT' | 'ABSENT') =>
+      void runAction(
+        lotIds,
+        () => setBulkAttendance(tenantId, syndicId, meetingId, { lotIds, status, mode: 'IN_PERSON' }),
+        t('Émargement enregistré'),
+        t('Émargement impossible')
+      ),
+    [runAction, tenantId, syndicId, meetingId]
+  );
 
   const handleVote = async (resolutionId: string, open: boolean) => {
     setBusyResolutionId(resolutionId);
@@ -280,9 +347,8 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
       const call = open ? openResolutionVote : closeResolutionVote;
       const view = await call(tenantId, syndicId, meetingId, resolutionId);
       mutationSeq.current += 1;
-      setLive(view);
+      applyLive(view);
       message.success(open ? t('Vote ouvert') : t('Vote clos'));
-      refresh();
     } catch (err) {
       message.error(errorText(err, open ? t('Ouverture du vote impossible') : t('Clôture du vote impossible')));
     } finally {
@@ -301,6 +367,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
         // Presse-papiers indisponible, refusé ou muet : on affiche le lien à copier à la main.
         setShownLink({ name: participant.name, url });
       }
+      forceParticipants.current = true;
       refresh();
     } catch (err) {
       message.error(errorText(err, t('Génération du lien impossible')));
@@ -325,6 +392,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
       const { revoked } = await revokeParticipantLinks(tenantId, syndicId, meetingId, participant.contactId);
       setShownLink(null);
       message.success(t('{{count}} lien(s) révoqué(s)', { count: revoked }));
+      forceParticipants.current = true;
       refresh();
     } catch (err) {
       message.error(errorText(err, t('Révocation impossible')));
@@ -383,7 +451,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
           showIcon
           message={t('Préparation de la séance')}
           description={t(
-            'Vérifiez les participants et leurs liens personnels, puis ouvrez la séance : le quorum et les votes se mettent à jour ici toutes les 3 secondes.'
+            'Vérifiez les participants et leurs liens personnels, puis ouvrez la séance : le quorum et les votes se mettent à jour ici toutes les 5 secondes.'
           )}
         />
       ) : null}
@@ -392,7 +460,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
         <Button href={projectionPath} target="_blank" rel="noopener noreferrer">
           {t('Projeter')}
         </Button>
-        {!frozen ? <Text type="secondary">{t('Mise à jour automatique toutes les 3 secondes')}</Text> : null}
+        {!frozen ? <Text type="secondary">{t('Mise à jour automatique toutes les 5 secondes')}</Text> : null}
       </Space>
 
       {live ? <QuorumPanel live={live} /> : null}
@@ -498,7 +566,8 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
           contacts={contacts}
           proxyHolders={proxyHolders}
           readOnly={frozen}
-          busy={busy}
+          busyLotIds={busyLotIds}
+          onMenuOpenChange={setLotMenuOpen}
           onSetLot={handleSetLot}
           onBulk={handleBulk}
         />

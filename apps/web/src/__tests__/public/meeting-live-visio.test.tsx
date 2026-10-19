@@ -92,7 +92,7 @@ vi.mock('../../components/syndics/visio/MeetingVisioRoom', () => ({
 }));
 
 const TOKEN = 'tok-abcdefghijklmnopqrstuvwxyz0123456789';
-const POLL = 3000;
+const POLL = 5000;
 const JOIN_INFO = {
   serverUrl: 'wss://lk.example.com',
   token: 'jwt',

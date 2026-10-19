@@ -445,6 +445,8 @@ export interface GeneralMeeting {
   proxies?: MeetingProxy[];
   attendance?: MeetingAttendance;
   syndicate?: Syndicate;
+  /** La convocation est déjà partie. Absent (API plus ancienne) : considéré envoyé. */
+  convocationSent?: boolean;
 }
 
 export interface CreateMeetingRequest {
@@ -454,6 +456,8 @@ export interface CreateMeetingRequest {
   endTime?: string;
   location?: string;
   resolutions?: Array<{ title: string; description?: string; majorityRule?: string }>;
+  /** Envoie les convocations dès la création (défaut serveur : non). */
+  sendConvocation?: boolean;
 }
 
 export interface UpdateMeetingRequest {

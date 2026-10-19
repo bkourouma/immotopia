@@ -173,7 +173,9 @@ export const createMeetingSchema = z.object({
   scheduledAt: z.coerce.date(),
   startTime: z.coerce.date().optional(),
   endTime: z.coerce.date().optional(),
-  location: z.string().optional()
+  location: z.string().optional(),
+  /** Envoi de la convocation a la creation : non par defaut (decision metier QA2). */
+  sendConvocation: z.boolean().default(false)
 });
 
 export const meetingStatusSchema = z.enum(['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']);

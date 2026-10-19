@@ -80,5 +80,8 @@ export const tenantProvisioningIdempotencyStore = new IdempotencyStore<unknown>(
  */
 export const meetingCreationIdempotencyStore = new IdempotencyStore<Promise<unknown>>();
 
+/** Magasin de l'ajout de resolution a une assemblee (POST .../resolutions) : meme principe que ci-dessus. */
+export const meetingResolutionIdempotencyStore = new IdempotencyStore<Promise<unknown>>();
+
 /** Longueur max de l'en-tete `Idempotency-Key` accepte (voir F2). */
 export const IDEMPOTENCY_KEY_MAX_LENGTH = 100;

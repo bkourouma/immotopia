@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   App,
@@ -40,6 +40,7 @@ import {
   addMeetingResolution,
   castResolutionVote,
   deleteMeetingAgendaItem,
+  deleteMeetingResolution,
   generateMeetingMinutesDocx,
   getMeeting,
   resendMeetingConvocation,
@@ -62,6 +63,15 @@ import { describeDownloadError } from '../../utils/download-error';
 
 const { Paragraph, Title, Text } = Typography;
 
+function newIdempotencyKey(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  } catch {
+    // contexte non sécurisé : repli ci-dessous
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
 export const SyndicMeetingDetail: React.FC = () => {
   const { message } = App.useApp();
 
@@ -80,6 +90,12 @@ export const SyndicMeetingDetail: React.FC = () => {
   const [savingAgenda, setSavingAgenda] = useState(false);
   const [savingMeetingMeta, setSavingMeetingMeta] = useState(false);
   const [deletingAgendaId, setDeletingAgendaId] = useState<string | null>(null);
+  const [deletingResolutionId, setDeletingResolutionId] = useState<string | null>(null);
+  // Clé d'idempotence de l'ajout de résolution : conservée tant que le serveur n'a pas répondu
+  // définitivement (un réessai après 5xx/coupure rejoue la même création), renouvelée sinon.
+  const resolutionKeyRef = useRef<string>(newIdempotencyKey());
+  const resolutionFingerprintRef = useRef<string | null>(null);
+  const submittingResolutionRef = useRef(false);
   const [generatingMinutes, setGeneratingMinutes] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
   const [selectedMajorityRule, setSelectedMajorityRule] = useState<MajorityRule>(DEFAULT_MAJORITY_RULE);
@@ -144,7 +160,7 @@ export const SyndicMeetingDetail: React.FC = () => {
     try {
       await castResolutionVote(effectiveTenantId, syndicId, meetingId, resolutionId, { lotId, vote });
       message.success(t('Vote enregistré'));
-      await loadMeeting();
+      await refreshMeetingSilently();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Vote impossible'));
     } finally {
@@ -163,7 +179,7 @@ export const SyndicMeetingDetail: React.FC = () => {
         CANCELLED: t('Assemblée annulée')
       };
       message.success(successMessages[status] || t('Statut mis à jour'));
-      await loadMeeting();
+      await refreshMeetingSilently();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Changement de statut impossible'));
     } finally {
@@ -173,19 +189,64 @@ export const SyndicMeetingDetail: React.FC = () => {
 
   const handleAddResolution = async () => {
     if (!effectiveTenantId || !syndicId || !meetingId) return;
-    const values = await resolutionForm.validateFields();
+    // Anti-réentrance synchrone : un double clic ne lance qu'un seul envoi.
+    if (submittingResolutionRef.current) return;
+    submittingResolutionRef.current = true;
     setSubmittingResolution(true);
     try {
-      await addMeetingResolution(effectiveTenantId, syndicId, meetingId, values);
-      message.success(t('Résolution ajoutée'));
-      setOpenResolution(false);
-      resolutionForm.resetFields();
-      setSelectedMajorityRule(DEFAULT_MAJORITY_RULE);
-      await loadMeeting();
-    } catch (err: any) {
-      message.error(err.response?.data?.error || t('Ajout impossible'));
+      let values;
+      try {
+        values = await resolutionForm.validateFields();
+      } catch {
+        return; // saisie invalide : les messages sont affichés dans le formulaire
+      }
+      // La clé suit le contenu : une saisie modifiée après un échec est une nouvelle résolution.
+      const fingerprint = JSON.stringify(values);
+      if (resolutionFingerprintRef.current !== fingerprint) {
+        resolutionKeyRef.current = newIdempotencyKey();
+        resolutionFingerprintRef.current = fingerprint;
+      }
+      try {
+        await addMeetingResolution(effectiveTenantId, syndicId, meetingId, values, resolutionKeyRef.current);
+        resolutionKeyRef.current = newIdempotencyKey();
+        resolutionFingerprintRef.current = null;
+        message.success(t('Résolution ajoutée'));
+        setOpenResolution(false);
+        resolutionForm.resetFields();
+        setSelectedMajorityRule(DEFAULT_MAJORITY_RULE);
+        await refreshMeetingSilently();
+      } catch (err: any) {
+        const status = err.response?.status as number | undefined;
+        if (status && status >= 400 && status < 500) {
+          // Refus définitif du serveur : rien n'a été créé, un nouvel essai est une nouvelle création.
+          resolutionKeyRef.current = newIdempotencyKey();
+          resolutionFingerprintRef.current = null;
+          message.error(err.response?.data?.error || t('Ajout impossible'));
+        } else {
+          // Coupure, délai dépassé ou 5xx : la résolution a pu être créée. La clé est conservée,
+          // un nouveau clic rejoue la même création au lieu d'en ajouter une.
+          message.warning(t('La résolution a peut-être été enregistrée, vérifiez la liste.'), 8);
+          await refreshMeetingSilently();
+        }
+      }
     } finally {
+      submittingResolutionRef.current = false;
       setSubmittingResolution(false);
+    }
+  };
+
+  const handleDeleteResolution = async (resolutionId: string) => {
+    if (!effectiveTenantId || !syndicId || !meetingId) return;
+    setDeletingResolutionId(resolutionId);
+    try {
+      await deleteMeetingResolution(effectiveTenantId, syndicId, meetingId, resolutionId);
+      message.success(t('Résolution supprimée'));
+      await refreshMeetingSilently();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Suppression impossible'));
+      if (err.response?.status === 409) await refreshMeetingSilently();
+    } finally {
+      setDeletingResolutionId(null);
     }
   };
 
@@ -235,7 +296,7 @@ export const SyndicMeetingDetail: React.FC = () => {
       message.success(t("Point d'ordre du jour enregistré"));
       setOpenAgenda(false);
       agendaForm.resetFields();
-      await loadMeeting();
+      await refreshMeetingSilently();
     } catch (err: any) {
       message.error(err.response?.data?.error || t("Échec de l'enregistrement du point"));
     } finally {
@@ -249,7 +310,7 @@ export const SyndicMeetingDetail: React.FC = () => {
     try {
       await deleteMeetingAgendaItem(effectiveTenantId, syndicId, meetingId, agendaItemId);
       message.success(t("Point d'ordre du jour supprimé"));
-      await loadMeeting();
+      await refreshMeetingSilently();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Suppression impossible'));
     } finally {
@@ -259,14 +320,20 @@ export const SyndicMeetingDetail: React.FC = () => {
 
   const handleResendConvocation = async () => {
     if (!effectiveTenantId || !syndicId || !meetingId) return;
+    // Absent (API plus ancienne) : la convocation est considérée comme déjà envoyée.
+    const firstSend = meeting?.convocationSent === false;
     setResendingConvocation(true);
     try {
       const result = await resendMeetingConvocation(effectiveTenantId, syndicId, meetingId);
       const summary = describeConvocation(result);
       if (summary.type === 'warning') message.warning(summary.text);
       else message.success(summary.text);
+      await refreshMeetingSilently();
     } catch (err: any) {
-      message.error(err.response?.data?.error || t('Renvoi de la convocation impossible'));
+      message.error(
+        err.response?.data?.error ||
+          (firstSend ? t('Envoi des convocations impossible') : t('Renvoi de la convocation impossible'))
+      );
     } finally {
       setResendingConvocation(false);
     }
@@ -311,7 +378,7 @@ export const SyndicMeetingDetail: React.FC = () => {
         location: values.location?.trim() ? values.location.trim() : null
       });
       message.success(t('Informations de réunion mises à jour'));
-      await loadMeeting();
+      await refreshMeetingSilently();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Mise à jour impossible'));
     } finally {
@@ -339,6 +406,8 @@ export const SyndicMeetingDetail: React.FC = () => {
 
   const frozen = isMeetingFrozen(meeting.status);
   const meetingLots = (meeting.syndicate?.lots || []) as MeetingLot[];
+  const convocationSent = meeting.convocationSent !== false;
+  const agendaCount = (meeting.agendaItems || []).length;
 
   return (
     <>
@@ -359,7 +428,7 @@ export const SyndicMeetingDetail: React.FC = () => {
             </Space>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
               Date: {dayjs(meeting.scheduledAt).format('DD/MM/YYYY HH:mm')} {t('| Type:')}{' '}
-              {meetingTypeLabels[meeting.type]}
+              {t(meetingTypeLabels[meeting.type] ?? meeting.type)}
             </Paragraph>
             <Form form={meetingMetaForm} layout="inline" disabled={frozen}>
               <Form.Item label={t('Heure début')} name="startTime">
@@ -400,12 +469,31 @@ export const SyndicMeetingDetail: React.FC = () => {
               lots={meetingLots}
             />
             {meeting.status === 'PLANNED' ? (
-              <Button loading={resendingConvocation} onClick={() => void handleResendConvocation()}>
-                {t('Renvoyer la convocation')}
-              </Button>
+              <Popconfirm
+                title={convocationSent ? t('Renvoyer la convocation ?') : t('Envoyer les convocations ?')}
+                description={
+                  agendaCount > 0
+                    ? t("{{count}} point(s) à l'ordre du jour sera/seront envoyé(s) dans la convocation.", {
+                        count: agendaCount
+                      })
+                    : t("Aucun point n'est inscrit à l'ordre du jour : les convocations partiront sans ordre du jour.")
+                }
+                okText={convocationSent ? t('Renvoyer') : t('Envoyer')}
+                cancelText={t('Annuler')}
+                onConfirm={() => handleResendConvocation()}
+              >
+                <Button loading={resendingConvocation}>
+                  {convocationSent ? t('Renvoyer la convocation') : t('Envoyer les convocations')}
+                </Button>
+              </Popconfirm>
             ) : null}
             {frozen ? null : (
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenResolution(true)}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                disabled={submittingResolution}
+                onClick={() => setOpenResolution(true)}
+              >
                 {t('Ajouter une résolution')}
               </Button>
             )}
@@ -422,7 +510,7 @@ export const SyndicMeetingDetail: React.FC = () => {
               videoConferenceUrl={meeting.videoConferenceUrl}
               refreshKey={meeting.updatedAt}
               proxies={meeting.proxies}
-              onMeetingChanged={loadMeeting}
+              onMeetingChanged={refreshMeetingSilently}
               onLiveChanged={refreshMeetingSilently}
             />
           </Card>
@@ -433,6 +521,8 @@ export const SyndicMeetingDetail: React.FC = () => {
           resolutions={meeting.resolutions || []}
           attendance={meeting.attendance}
           frozen={frozen}
+          onDeleteResolution={frozen ? undefined : handleDeleteResolution}
+          deletingResolutionId={deletingResolutionId}
         />
 
         <MeetingProxies
@@ -442,7 +532,7 @@ export const SyndicMeetingDetail: React.FC = () => {
           proxies={meeting.proxies || []}
           lots={meetingLots}
           readOnly={frozen}
-          onChanged={loadMeeting}
+          onChanged={refreshMeetingSilently}
         />
 
         <Card
@@ -548,11 +638,18 @@ export const SyndicMeetingDetail: React.FC = () => {
       <Modal
         title={t('Ajouter une résolution')}
         open={openResolution}
-        onCancel={() => setOpenResolution(false)}
+        onCancel={() => {
+          if (!submittingResolution) setOpenResolution(false);
+        }}
         onOk={() => void handleAddResolution()}
         okText={t('Ajouter')}
         cancelText={t('Annuler')}
         confirmLoading={submittingResolution}
+        okButtonProps={{ disabled: submittingResolution }}
+        cancelButtonProps={{ disabled: submittingResolution }}
+        maskClosable={!submittingResolution}
+        closable={!submittingResolution}
+        keyboard={!submittingResolution}
       >
         <Form form={resolutionForm} layout="vertical">
           <Form.Item
