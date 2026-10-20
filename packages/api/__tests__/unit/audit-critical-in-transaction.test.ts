@@ -20,6 +20,8 @@ const prismaMock: any = {
   membership: { findUnique: jest.fn(), count: jest.fn() },
   // Garde-fou « dernier administrateur » : par défaut la cible n'est pas administrateur.
   userRole: { count: jest.fn() },
+  tenantClient: { count: jest.fn() },
+  user: { findUnique: jest.fn() },
   role: { findMany: jest.fn() },
   tenant: { findUnique: jest.fn() },
   subscription: { findUnique: jest.fn() },
@@ -72,6 +74,8 @@ beforeEach(() => {
   mockRecordAudit.mockResolvedValue(undefined);
   prismaMock.userRole.count.mockResolvedValue(0);
   prismaMock.membership.count.mockResolvedValue(0);
+  prismaMock.tenantClient.count.mockResolvedValue(0);
+  prismaMock.user.findUnique.mockResolvedValue({ globalRole: 'USER' });
   tx.refreshToken.updateMany.mockResolvedValue({ count: 2 });
   prismaMock.membership.findUnique.mockResolvedValue({
     id: 'm1',

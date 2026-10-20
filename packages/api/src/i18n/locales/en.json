@@ -322,6 +322,7 @@
   "Ce compte de trésorerie ne peut pas recevoir les paiements en ligne.": "This treasury account cannot receive online payments.",
   "Ce compte est désactivé : il n'accepte plus de nouveaux mouvements.": "This account is disabled: it accepts no further movements.",
   "Ce compte est partagé avec d'autres agences ou la plateforme : un mot de passe ne peut pas être imposé. Envoyez un lien de réinitialisation.": "This account is shared with other agencies or the platform: a password cannot be set for it. Send a reset link instead.",
+  "Seul un administrateur de l'agence peut imposer un mot de passe à un administrateur. Envoyez un lien de réinitialisation.": "Only an agency administrator can set a password for an administrator. Send a reset link instead.",
   "Ce contact a un compte propriétaire, un compte de tiers ou un historique financier : il ne peut pas être supprimé.": "This contact has an owner account, a third-party account or a financial history: it cannot be deleted.",
   "Ce contact est déjà propriétaire de ce lot : modifiez son profil existant au lieu d'en créer un second.": "This contact is already an owner of this unit: edit their existing profile instead of creating a second one.",
   "Ce contact n'a pas consenti à recevoir des messages WhatsApp ({{name}}).": "This contact has not consented to receive WhatsApp messages ({{name}}).",

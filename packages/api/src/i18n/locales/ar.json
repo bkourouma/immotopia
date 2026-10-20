@@ -322,6 +322,7 @@
   "Ce compte de trésorerie ne peut pas recevoir les paiements en ligne.": "لا يمكن لحساب الخزينة هذا استقبال المدفوعات عبر الإنترنت.",
   "Ce compte est désactivé : il n'accepte plus de nouveaux mouvements.": "هذا الحساب مُعطَّل: ولا يقبل حركات جديدة.",
   "Ce compte est partagé avec d'autres agences ou la plateforme : un mot de passe ne peut pas être imposé. Envoyez un lien de réinitialisation.": "هذا الحساب مشترك مع وكالات أخرى أو مع المنصة: لا يمكن فرض كلمة مرور عليه. أرسل رابط إعادة التعيين بدلاً من ذلك.",
+  "Seul un administrateur de l'agence peut imposer un mot de passe à un administrateur. Envoyez un lien de réinitialisation.": "لا يمكن إلا لمدير الوكالة فرض كلمة مرور على مدير. أرسل رابط إعادة التعيين بدلاً من ذلك.",
   "Ce contact a un compte propriétaire, un compte de tiers ou un historique financier : il ne peut pas être supprimé.": "لدى جهة الاتصال هذه حساب مالك أو حساب طرف ثالث أو سجل مالي: لا يمكن حذفها.",
   "Ce contact est déjà propriétaire de ce lot : modifiez son profil existant au lieu d'en créer un second.": "جهة الاتصال هذه مالكة بالفعل لهذه الوحدة: عدّل ملفها الحالي بدلًا من إنشاء ملف ثانٍ.",
   "Ce contact n'a pas consenti à recevoir des messages WhatsApp ({{name}}).": "لم يوافق جهة الاتصال هذه على تلقي رسائل واتساب ({{name}}).",

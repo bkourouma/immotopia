@@ -71,7 +71,10 @@ export function isGoogleEmailVerified(profile: GoogleProfileLike): boolean {
   return values.length > 0 && values.every(v => v === true || v === 'true');
 }
 
-function auditGoogleRefusal(user: GoogleUser, reason: 'account_disabled' | 'email_not_verified'): void {
+function auditGoogleRefusal(
+  user: GoogleUser,
+  reason: 'account_disabled' | 'email_not_verified' | 'google_id_mismatch'
+): void {
   void logAuthEvent({
     actorUserId: user.id,
     actorLabel: user.email,
@@ -92,7 +95,7 @@ function auditGoogleRefusal(user: GoogleUser, reason: 'account_disabled' | 'emai
  * (`services/invitation-service.ts`) : un compte enregistré avant la
  * normalisation des adresses est retrouvé au lieu d'être doublé.
  *
- * Un `googleId` déjà posé n'est jamais écrasé. Rattacher Google à un compte
+ * Un `googleId` déjà posé n'est jamais écrasé, et un profil Google d'identifiant différent est refusé (`google_id_mismatch`). Rattacher Google à un compte
  * dont l'adresse n'avait jamais été vérifiée le reprend comme le fait une
  * nouvelle inscription (`takeOverUnverifiedAccount`) : le mot de passe posé par
  * un tiers qui aurait pré-inscrit l'adresse est effacé et ses sessions révoquées.
@@ -134,10 +137,14 @@ export async function resolveGoogleUser(profile: GoogleProfileLike): Promise<Goo
     }
     if (existing.googleId) {
       if (existing.googleId !== profile.id) {
-        // Conservé tel quel (jamais écrasé) ; l'adresse est vérifiée par Google.
-        logger.warn('Connexion Google : identifiant Google différent de celui rattaché au compte', {
+        // Un autre compte Google (même adresse reprise, recyclée ou usurpée) :
+        // refus, sans jamais écraser le googleId rattaché. Même réponse
+        // (auth_failed) que les autres refus.
+        logger.warn('Connexion Google refusée : identifiant Google différent de celui rattaché au compte', {
           userId: existing.id
         });
+        auditGoogleRefusal(existing, 'google_id_mismatch');
+        return null;
       }
       return existing;
     }

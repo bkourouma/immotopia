@@ -145,11 +145,27 @@ describe('resolveGoogleUser', () => {
     expectNoPasswordHashSelected(call);
   });
 
-  it("n'écrase jamais un googleId déjà rattaché", async () => {
+  it('refuse un googleId différent de celui rattaché, sans rien écrire, et audite le refus', async () => {
     mockPrisma.user.findMany.mockResolvedValue([{ ...activeUser, googleId: 'autre-google' }]);
-    const user = await resolveGoogleUser(profile());
-    expect(user?.googleId).toBe('autre-google');
+    await expect(resolveGoogleUser(profile())).resolves.toBeNull();
     expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    expect(mockPrisma.user.create).not.toHaveBeenCalled();
+    expect(logAuthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: 'u1',
+        actionKey: 'AUTH_LOGIN_FAILED',
+        outcome: 'DENIED',
+        payload: { method: 'google', reason: 'google_id_mismatch' }
+      })
+    );
+  });
+
+  it('renvoie le compte quand le googleId rattaché est identique', async () => {
+    mockPrisma.user.findMany.mockResolvedValue([{ ...activeUser, googleId: 'google-123' }]);
+    const user = await resolveGoogleUser(profile());
+    expect(user?.id).toBe('u1');
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    expect(logAuthEvent).not.toHaveBeenCalled();
   });
 
   it('rattache Google à un compte vérifié sans toucher au mot de passe', async () => {
