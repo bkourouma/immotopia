@@ -98,8 +98,10 @@ export async function getTenantById(tenantId: string) {
 export async function getTenantBySlug(slug: string) {
   // Route publique (vitrine, inscription d'un client) : uniquement ce qu'une
   // agence affiche d'elle-meme. Ni membres, ni clients, ni abonnement.
-  return prisma.tenant.findUnique({
-    where: { slug },
+  // Une agence suspendue, en attente ou desactivee repond comme un slug
+  // inconnu : la route ne doit pas reveler son existence.
+  return prisma.tenant.findFirst({
+    where: { slug, isActive: true, status: 'ACTIVE' },
     select: PUBLIC_TENANT_SELECT
   });
 }

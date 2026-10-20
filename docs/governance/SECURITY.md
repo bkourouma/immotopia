@@ -85,10 +85,10 @@ Trois lignes de défense, dans l'ordre où une requête les traverse :
    `GeneralMeeting`, lignes d'écriture comptable…) : cette extension ne
    peut pas les couvrir directement, il faut vérifier le parent d'abord.
 
-Un middleware plus ancien, `middleware/property-ownership-middleware.ts`,
-n'est monté sur aucune route à ce jour : ne pas s'y fier comme garde
-active, le contrôle réel pour les biens passe par
-`enforcePropertyTenantIsolation` + `getPropertyForTenant`.
+Le contrôle des biens passe par `enforcePropertyTenantIsolation` +
+`getPropertyForTenant` (l'ancien `property-ownership-middleware.ts`, monté
+nulle part et qui répondait 403 ou 404 selon l'existence du bien, a été
+supprimé).
 
 **Filet en sortie** : `middleware/response-sanitizer-middleware.ts`
 retire récursivement `passwordHash`/`password_hash`/`tokenHash`/`token_hash`

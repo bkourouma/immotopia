@@ -721,13 +721,14 @@ describe("motif d'echec : generique pour l'utilisateur, detaille pour le journal
   it('journal admin et plateforme : motif detaille conserve', async () => {
     (prisma.userNotification.findMany as jest.Mock).mockResolvedValueOnce([row]);
     const admin = await listAdminNotifications(TENANT);
-    expect(admin.items[0].failureReason).toBe('EMAIL : 535 auth failed smtp.interne.local');
+    // Canal traduit, motif inconnu (deja lisible) conserve tel quel.
+    expect(admin.items[0].failureReason).toBe('E-mail : 535 auth failed smtp.interne.local');
     expect(admin.items[0].deliveries[0].failureReason).toBe('535 auth failed smtp.interne.local');
     (prisma.userNotification.findMany as jest.Mock).mockResolvedValueOnce([
       { ...row, tenant: { id: TENANT, name: 'Agence A' } }
     ]);
     const platform = await listPlatformNotifications();
-    expect(platform.items[0].failureReason).toBe('EMAIL : 535 auth failed smtp.interne.local');
+    expect(platform.items[0].failureReason).toBe('E-mail : 535 auth failed smtp.interne.local');
   });
 });
 

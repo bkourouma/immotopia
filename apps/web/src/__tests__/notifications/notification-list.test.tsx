@@ -27,16 +27,17 @@ describe('NotificationList', () => {
     expect(screen.getByText('Aucune notification')).toBeInTheDocument();
   });
 
-  it('montre un canal en échec avec son motif', () => {
+  it('montre un canal en échec, avec une seule mention de l’échec', () => {
     render(
       <NotificationList
         items={[
           item({
             status: 'FAILED',
-            failureReason: 'Numéro WhatsApp invalide',
+            // Motif tel que l'API le donne à un utilisateur : toujours générique.
+            failureReason: "L'envoi a échoué.",
             deliveries: [
               { channel: 'IN_APP', status: 'SENT', failureReason: null },
-              { channel: 'WHATSAPP', status: 'FAILED', failureReason: 'Numéro WhatsApp invalide' }
+              { channel: 'WHATSAPP', status: 'FAILED', failureReason: "L'envoi a échoué." }
             ]
           })
         ]}
@@ -44,8 +45,8 @@ describe('NotificationList', () => {
       />
     );
 
-    expect(screen.getByText('Un envoi a échoué')).toBeInTheDocument();
-    expect(screen.getByText('Numéro WhatsApp invalide')).toBeInTheDocument();
+    expect(screen.getAllByText('Un envoi a échoué')).toHaveLength(1);
+    expect(screen.queryByText("L'envoi a échoué.")).not.toBeInTheDocument();
     expect(screen.getByText(/WhatsApp · Échec/)).toBeInTheDocument();
   });
 

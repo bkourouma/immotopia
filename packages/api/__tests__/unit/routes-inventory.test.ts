@@ -346,6 +346,13 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     expect(routes.length).toBeGreaterThan(50);
   });
 
+  it("l'auto-inscription d'un client a une agence reste fermee (pas d'oracle d'existence)", () => {
+    // POST /api/tenants/:tenantId/register repondait differemment selon que
+    // l'agence existait, etait inactive ou deja rejointe : la route est retiree.
+    const register = routes.filter(r => /^\/api\/tenants\/:tenantId\/register$/.test(r.path));
+    expect(register).toEqual([]);
+  });
+
   it('ne recense aucune route dupliquee anormalement dans la liste blanche', () => {
     // Garde-fou sur la liste blanche elle-meme : une entree qui ne matche plus
     // aucune route reelle signale un chemin renomme/deplace, a corriger ici.
