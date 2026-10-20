@@ -31,30 +31,31 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 ## Branche `orch/2026-10-19-menu-messagerie` — 2026-10-20
 
-**État :** prêt à relire — PR vers `main`, à fusionner par l'utilisateur
-**Dernier commit :** fusion `760b1a6b` (correctifs de recette), après le lot 4 (classeur, 1146 lignes).
+**État :** prêt à relire — PR #183 vers `main`, à fusionner par l'utilisateur ; PR #185 séparée (anomalie 009, branche `fix/isolation-acces-agence`, CI verte).
+**Dernier commit :** `4f89951c` fusion de `origin/main` (PR #184), après `72066cee` (anomalie 004) et `d7fe20b5` (CI + anomalie 008).
 
 Fait :
 
-- Lot 1 : sous-menu sélectionné en blanc et gras (sidebar, tiroir, popup du rail replié ; `index.css`, `AppNavigation.tsx`).
-- Lot 2 : répartition des appels de charges par tantièmes, type de lot ou équitable (appel manuel et programmation source FIXED) ; barème par type de lot paramétré une fois par copropriété (`Syndicate.lotTypeRates`, routes `bareme-types-lots`). Migrations `20261019140000_*` et `20261019190000_*`.
-- Lot 3 : notifications persistantes écrites avant envoi (`lib/notifications/`), messagerie interne (`lib/messaging/`), cloche, pages, journal admin d'agence, vue plateforme, portails. Migration `20261019180000_notifications_messagerie`. Messages privés exclus du journal.
-- Recette navigateur sur la démo (3b162b32) : menu, messagerie, isolation OK ; 9 anomalies au bus `.agent-bus/bugs/BUG-2026-10-19-*`, 001, 002, 003, 005, 006, 007 corrigées.
+- Lot 1 : sous-menu sélectionné en blanc et gras (sidebar, tiroir, popup du rail replié).
+- Lot 2 : répartition des appels de charges par tantièmes, type de lot ou équitable ; barème par type de lot par copropriété (`bareme-types-lots`). Migrations `20261019140000_*`, `20261019190000_*`.
+- Lot 3 : notifications persistantes écrites avant envoi, messagerie interne, cloche, journal admin, vue plateforme, portails. Migration `20261019180000_*`. Messagerie exclue du catalogue IA.
+- Recette du 19/10 : 9 anomalies (`.agent-bus/bugs/BUG-2026-10-19-*`) toutes traitées : 001-003, 005-007 (correctifs de recette), 004 (interrupteur `includeAnnexLots`, migration `20261020090000_*`, nouvelles programmations avec lots annexes, existantes historiques — décision du fondateur), 008 (groupe actif ouvert après changement de langue), 009 (PR #185).
+- CI : routes notifications/messagerie classées CORE, catalogue IA régénéré ; suite API complète verte en local hors `ai.write-plan` (CRLF Windows).
+- Recette de reprise sur la démo (72066cee) le 2026-10-20 : 001, 002, 003, 004, 007, 008 passés ; migration `20261020090000` appliquée sans erreur sur `immotopia_demo` (les 4 migrations y sont).
 
 Reste à faire :
 
-- Les 3 migrations ne sont appliquées que sur `immotopia_demo` ; `prisma migrate deploy` ailleurs seulement après accord.
-- Non rejoué : journal admin sur un échec d'envoi réel (démo sans SMTP), pagination.
-- Anomalies laissées : 004 (programmation par tantièmes exclut les parkings, règle `MAIN_LOT_TYPES` historique), 008 (groupe CRM du menu replié au changement de langue, préexistant ?), 009 (403/404 sur identifiant d'agence, préexistant ?).
-- À valider : corps des e-mails d'appel de charges et de relance journalisé avec montant et lot ; `amount` devient un total à répartir pour plusieurs lots dans `SyndicCharges` ; traductions arabes à faire relire (terme « barème »).
-- Limiteurs de messagerie en mémoire (par instance d'API).
+- Recette bloquée faute de connexion (le classificateur refuse la saisie du mot de passe par l'agent) : 005 (cloche du copropriétaire a2), 006, journal pour un utilisateur sans permission, isolation avec b1 et PR #185. L'utilisateur doit se connecter lui-même (a2, b1) sur web-demo 3300.
+- Nouvelle anomalie mineure BUG-2026-10-20-001 : le journal affiche « Error EAUTH » brut. La démo a un SMTP qui refuse l'authentification : les e-mails sont en échec (pas « ignorés »).
+- Autres oracles d'existence relevés (PR #185) : `POST /:tenantId/register`, `property-ownership-middleware.ts` inutilisé, `GET /tenants/slug/:slug`, `DELETE /:tenantId/unregister`.
+- Migrations appliquées seulement sur `immotopia_demo` ; ailleurs seulement après accord.
+- À valider : montants en clair dans le journal des e-mails d'appel de charges ; `amount` = total à répartir ; relecture de l'arabe.
 
 Pièges et décisions :
 
-- Jest API exige `livekit-server-sdk` et `@aws-sdk/client-s3`, absents du `node_modules` partagé : `npm install` à la racine du checkout principal, sinon config Jest temporaire.
-- `packages/api/.env.demo` recréé (base `immotopia_demo` seule, ignoré par git) ; démo figée sur 3b162b32, à resynchroniser pour les autres sessions.
-- Comptes jetables de recette `recette.mm.*@immotopia.test` dans la base de démo (mots de passe hors dépôt).
-- Retirer les jonctions `node_modules` d'un worktree avec `rmdir` AVANT `git worktree remove`.
+- Copies de travail sous `D:\APP\Immobillier-worktrees\` : `menu-ci` (branche d'intégration, `node_modules` propre) ; `menu-lot-6`, `menu-lot-7`, `isolation-agence` (jonctions vers le checkout principal : `rmdir` des jonctions AVANT `git worktree remove`).
+- Configs Jest temporaires hors dépôt dans le scratchpad de la session (stubs livekit/aws pour le `node_modules` partagé, auquel ces paquets manquent).
+- Comptes jetables `recette.mm.*@immotopia.test` et données de recette dans la base de démo ; démo laissée sur 72066cee, serveurs arrêtés.
 - Fusion de `origin/main` (0839b2ca9, PR #184 correctifs de l'audit du 19/10) résolue le 2026-10-20 en gardant les deux côtés : catalogues `common.json`, `menu-catalog.ts` (`agence-notifications` + `mon-compte*`), limiteurs (messagerie, renvoi, envoi de test WhatsApp), `schema.prisma` (modèles de messagerie + `JobLock`), classeur des fonctionnalités (main + 25 lignes de la branche = 1150 lignes). Migrations de la branche toutes postérieures à `20261019130000_audit_integrite_schema` (main), sans collision. Après cette fusion, relancer `npm ci` à la racine (nouvelle dépendance `@pdf-lib/fontkit`).
 - Deux tests web corrigés : l'ouverture d'emblée du groupe de la page courante (anomalie 008) ajoute un sous-menu `role="menu"` dans `particulier-navigation.test.tsx` ; un `reduce` de `syndics.charge-schedules.test.ts` ne compilait pas sous ts-jest (`as number[]`).
 
