@@ -93,8 +93,6 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [openKeys, setOpenKeys] = useState<string[]>([]);
-
   const tree = useMemo(
     () => (onlyMore ? persona.tree.filter(g => g.zone === 'more') : persona.tree),
     [persona.tree, onlyMore]
@@ -114,6 +112,28 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
     }
     return best?.key;
   }, [flat, location.pathname]);
+
+  /** Groupe qui contient la destination active (absent pour une entrée de premier niveau). */
+  const activeGroupKey = useMemo(
+    () => tree.find(g => g.children?.some(c => c.key === selectedKey))?.key,
+    [tree, selectedKey]
+  );
+
+  // Le groupe de la page courante est ouvert d'emblée : `<LocalizedScreens>`
+  // (App.tsx) remonte tout l'écran à chaque changement de langue ou de
+  // direction, et un état initial vide refermait le groupe (BUG-2026-10-19-008).
+  // Le rail n'ouvre rien : ses sous-menus sont des popups.
+  const [openKeys, setOpenKeys] = useState<string[]>(() =>
+    variant !== 'rail' && activeGroupKey ? [activeGroupKey] : []
+  );
+  // Une navigation vers un autre groupe l'ouvre (et ferme l'ancien : un seul
+  // groupe ouvert). Tant que la destination ne change pas, le choix manuel de
+  // l'utilisateur (ouvrir ou fermer) n'est pas écrasé.
+  const [syncedKey, setSyncedKey] = useState(selectedKey);
+  if (syncedKey !== selectedKey) {
+    setSyncedKey(selectedKey);
+    if (variant !== 'rail' && activeGroupKey) setOpenKeys([activeGroupKey]);
+  }
 
   const items: MenuProps['items'] = useMemo(() => {
     const entries = tree
