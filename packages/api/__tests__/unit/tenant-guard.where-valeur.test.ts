@@ -8,6 +8,8 @@
  * modules rechargés dans un registre isolé pour faire varier le mode.
  */
 
+export {};
+
 type DmmfModel = { name: string; fields: Array<{ name: string }> };
 
 const FAKE_SCHEMA: DmmfModel[] = [{ name: 'Property', fields: [{ name: 'id' }, { name: 'tenantId' }] }];
