@@ -39,7 +39,8 @@ import {
   paymentAvailabilityHandler,
   startCheckoutHandler,
   tenantGetInvoicePaymentHandler,
-  tenantListExtensionRequestsHandler
+  tenantListExtensionRequestsHandler,
+  tenantListExtensionOffersHandler
 } from '../controllers/platform-billing-controller';
 import { startUpgradeHandler } from '../controllers/subscription-upgrade-controller';
 import { platformInvoiceTenantRouter } from './platform-invoice-routes';
@@ -138,6 +139,13 @@ router.get(
   requireTenantAccess,
   requirePermission('TENANT_SETTINGS_VIEW'),
   getCheckoutHandler
+);
+router.get(
+  '/:tenantId/subscription/extension-offers',
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_VIEW'),
+  tenantListExtensionOffersHandler
 );
 router.get(
   '/:tenantId/subscription/extension-requests',

@@ -29,6 +29,29 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Pièges :** les dossiers `D:\APP\Immobillier-worktrees\audit-lot-{S,T,C}` restent sur disque (fichiers verrouillés, désenregistrés de git) : vérifier qu'ils ne contiennent aucune jonction avant de les supprimer. Le checkout principal est sur `feat/signature-s5-s7`, loin derrière `main` : les copies du chantier utilisaient les `node_modules` de `audit-integ` (npm ci). Budget d'entrée web : 228 974 o pour 229 376 o (marge ≈ 400 o). `ai.write-plan.test.ts` échoue sous Windows (préexistant).
 
+````markdown
+## Branche `feat/mon-compte-abonnement` — 2026-10-19
+
+**État :** prêt à relire — PR ouverte (base `main`), à fusionner par l'utilisateur
+**Dernier commit :** `de8b80cc` fix(web): libellés de l'abonnement relus à chaque rendu (+ ce commit de passation)
+**Worktree :** `.claude/worktrees/mon-compte`, `node_modules` PROPRE (`npm ci`, pas de jonction : le checkout principal est sur `feat/signature-s5-s7`, schéma et dépendances différents de `main`).
+
+Fait :
+
+- API : `GET /api/tenants/:tenantId/subscription/extension-offers` (TENANT_SETTINGS_VIEW), extensions du catalogue en base ouvertes par les packs (non vendables incluses, `isSellable:false`) ; `createExtensionRequest` refuse un code non extension (404) ou non ouvert par les packs (400). Lien de l'e-mail de facture vers `/settings/facturation`.
+- Web : groupe de menu « Mon compte » (clés `mon-compte*`, PAS `compte` : déjà prise par le portail propriétaire et `MENU_REQUIREMENTS` est indexé par clé), pages Abonnement et Facturation (`TenantBillingSettings`), carte « Voir mon abonnement » retirée des Paramètres de l'agence, consommation limitée aux capacités utiles, « Facturation » dans l'espace personnel.
+- Retour de paiement : la passerelle revient toujours sur `/settings/abonnement?paiement=` ; une agence est redirigée vers Facturation avec la requête ; un espace personnel reste sur Abonnement, qui garde pour lui la section factures (suivi du statut comme avant).
+- Classeur des fonctionnalités : 1 ligne (extension-offers), menus revus ; `wiki:export` et `wiki:check` verts (1122 lignes).
+- Vérifié : typecheck, lint (0 erreur), check:architecture, 29 fichiers de test web (301 tests) + 45 fichiers voisins par l'agent, 3 suites API (50 tests), budget du chunk d'entrée (228 708 / 229 376 o). Audit de sécurité : 0 critique, 0 élevé, 3 mineurs non corrigés (404/400 distinguables, description d'une offre non vendable exposée, `particulier-facturation` sans exigence de menu comme `particulier-abonnement`).
+
+Reste à faire :
+
+- Recette navigateur JOUÉE le 2026-10-19 sur une instance à part (API 8820, web 3320, worktree mon-compte, base de démo dédiée ; la démo 3300/8800 était prise par la session `orch/2026-10-19-menu-messagerie`). Les 12 agences de test par pack ont été créées dans `immotopia_demo` (`seed-pack-test-tenants.ts`, sans historique) ; une demande d'extension « Recette Mon compte » y reste. Scénarios OK : menu, pages, offres par pack (Agence, Promoteur, Patrimoine Essentiel), envoi 201, redirection `?paiement=`, comptable sans menu, RTL. Corrigé après recette (`de8b80cc`) : libellés figés dans la langue du chargement.
+- Points ouverts de la recette CORRIGÉS le 2026-10-20 et revérifiés dans le navigateur (instance à part 8820/3320) : « Accès réservé » sur Abonnement et Facturation sans TENANT_SETTINGS_VIEW (`useMenuEntryAccess`, même source que la navigation ; permissions `null` pour un administrateur d'agence = accès), « Paiement introuvable » sur un code inconnu (suivi arrêté sur 4xx définitive), offres traduites côté API, libellés de packs (`components/subscription/pack-labels.ts`), carte du palier personnel montée seulement pour un espace personnel (plus de 403 `patrimoine/usage`), colonnes Offre et Quantité dans « Mes demandes », redirection vers Facturation même si les droits ne se lisent pas. Traductions arabes à relire par un locuteur.
+- Les copies `packages/api/.env` et `apps/web/.env` du worktree mon-compte (faites avec l'accord de l'utilisateur pour la recette) n'ont pas pu être supprimées (règle de refus sur `rm .env`) : à retirer à la main, ou avec le worktree.
+- CI : « Web — tests (lot 2/4) » a échoué sur `ProvidersDocumentsFinancesPages.test.tsx` (création de prestataire Syndic), test instable déjà en échec sur la PR #175 et vert en local ; sans lien avec ce diff. Correctif proposé en tâche séparée (branche `fix/test-prestataire-syndic-instable`). Correction automatique de la CI activée sur la PR #181.
+- Le classeur `.xlsx` est binaire : si `main` bouge avant la fusion, refaire la ligne ajoutée sur la version de `main` puis `wiki:export`.
+
 ## Recette Syndic du 18/10 — fusionnée, déployée staging et production (2026-10-19)
 
 **État :** correctifs de la recette Syndic du 18/10 fusionnés dans le tronc (PR #172, commit `0d918d30`) et déployés sur le staging le 2026-10-18 vers 23 h (workflow « Déploiement », run 39174199627, vérifié : `/health` OK et textes des correctifs présents dans les fichiers servis). **Production déployée le 2026-10-19 vers 6 h 25** (workflow « Déploiement », environnement prod, run 39208722562, commit `0d918d30`) : sauvegarde de la base et étiquettes `avant-*` faites par le workflow, migrations appliquées, `/health` OK et nouveaux écrans servis. Premier déploiement de la production par la CI : clé SSH dédiée `github-actions-immotopia-prod` posée le 2026-10-19 dans `authorized_keys` (préfixe `command=…ci-deploy.sh prod,restrict`), secrets `DEPLOY_SSH_KEY` et `DEPLOY_SSH_KNOWN_HOSTS` dans l'environnement GitHub `production` (approbation requise). Journal serveur : `~/ci-deploy-logs/20261019-061637-prod-0d918d30-3469452.log`.
@@ -228,6 +251,18 @@ Pièges et décisions :
 
 - …
 ```
+````
+
+## Branche `fix/test-prestataire-syndic-instable` — 2026-10-19
+
+**État :** prêt à relire — PR vers `main` (fusion par l'utilisateur).
+**Dernier commit :** voir `git log` (correctif du test, puis cette passation).
+
+**Fait :** test web instable `syndics/ProvidersDocumentsFinancesPages.test.tsx` › « cree un prestataire… » (échecs CI runs 39213150820 et 39333433719, payload `{ name: undefined, … }`). Cause : le mock d'antd retrouvait l'instance de `Form.useForm()` par un compteur d'appels remis à zéro par microtâche ; deux rendus enchaînés sans microtâche créaient de nouvelles instances, le bouton « Créer » appelait un `validateFields` vide. Correctif : instance gardée dans un `useRef` (comme antd), enregistrée à l'ordre du premier montage ; les tests « créer » et « modifier » vérifient qu'il y a exactement deux formulaires et que le `validateFields` espionné est appelé. Le composant `SyndicProviders.tsx` lit bien ses valeurs via `providerForm.validateFields()` (aucun état local) : non modifié.
+
+**Reste à faire :** suivre la CI de la PR (lot 2/4) sur plusieurs runs.
+
+**Pièges :** l'échec n'a jamais été reproduit en local (le fichier passait seul avant correctif) : la cause est déduite du payload, qui ne peut venir que du `validateFields` par défaut d'une instance neuve. Le worktree utilise la jonction `node_modules` vers `.claude/worktrees/qa-syndic-base` (le checkout principal est sur `feat/signature-s5-s7`).
 
 ## Pilote — finalisation des chantiers ouverts — 2026-10-18
 

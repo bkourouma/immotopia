@@ -143,6 +143,9 @@ export interface CatalogItemDef {
   capacities: Partial<Record<CapacityKeyCode, number>>;
 }
 
+// Noms et descriptions du catalogue : traduits a l'affichage (`listTenantExtensionOffers`) avec
+// repli sur le texte en base (le super-admin peut l'editer). Le texte francais est la cle.
+// @i18n-keys name description
 export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
   {
     code: PACK.AGENCE,

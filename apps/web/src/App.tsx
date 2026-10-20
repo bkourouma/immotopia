@@ -514,6 +514,11 @@ const TenantSubscriptionSettings = lazy(() =>
     default: m.TenantSubscriptionSettings
   }))
 );
+const TenantBillingSettings = lazy(() =>
+  import(/* webpackChunkName: "tenant" */ './pages/tenant/TenantBillingSettings').then(m => ({
+    default: m.TenantBillingSettings
+  }))
+);
 // CRM pages
 const Contacts = lazy(() =>
   import(/* webpackChunkName: "crm" */ './pages/crm/Contacts').then(m => ({ default: m.Contacts }))
@@ -1066,6 +1071,7 @@ function App() {
                             path="/tenant/:tenantId/settings/abonnement"
                             element={<TenantSubscriptionSettings />}
                           />
+                          <Route path="/tenant/:tenantId/settings/facturation" element={<TenantBillingSettings />} />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
                           <Route path="/tenant/:tenantId/signatures" element={<SignaturesPage />} />
                           <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />

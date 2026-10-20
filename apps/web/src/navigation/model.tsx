@@ -5,6 +5,7 @@ import {
   BankOutlined,
   BuildOutlined,
   ContactsOutlined,
+  CreditCardOutlined,
   DashboardOutlined,
   DollarOutlined,
   EllipsisOutlined,
@@ -699,6 +700,19 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
               href: '/tenant/:tenantId/settings/finance'
             },
             { key: 'agence-activity', label: t("Journal d'activité"), href: '/tenant/:tenantId/activity' }
+          ]
+        },
+        {
+          // L'abonnement et les factures de la plateforme : jusque-là cachés derrière un bouton des paramètres.
+          key: 'mon-compte',
+          label: t('Mon compte'),
+          icon: <CreditCardOutlined />,
+          zone: 'more',
+          section: 'parametrage',
+          href: '/tenant/:tenantId/settings/abonnement',
+          children: [
+            { key: 'mon-compte-abonnement', label: t('Abonnement'), href: '/tenant/:tenantId/settings/abonnement' },
+            { key: 'mon-compte-facturation', label: t('Facturation'), href: '/tenant/:tenantId/settings/facturation' }
           ]
         }
       ]

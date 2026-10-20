@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import {
   Alert,
   App,
@@ -23,22 +23,28 @@ import {
 } from '../../services/subscription-v2-service';
 import {
   createExtensionRequest,
+  listExtensionOffers,
   listOwnExtensionRequests,
+  type ExtensionOffer,
   type ExtensionRequest
 } from '../../services/subscription-extras-service';
-import { TenantInvoicesSection } from '../../components/subscription/TenantInvoicesSection';
 import { PersonalTierCard } from '../../components/personal-space/PersonalTierCard';
+import { TenantInvoicesSection } from '../../components/subscription/TenantInvoicesSection';
+import { AccountAccessReserved } from '../../components/subscription/AccountAccessReserved';
+import { packLabel } from '../../components/subscription/pack-labels';
+import { useMenuEntryAccess } from '../../hooks/useMenuAccess';
 import { ASSET_USAGE_QUERY_KEY } from '../../services/personal-space-service';
 import { useQueryClient } from '@tanstack/react-query';
 import { StatusTag, Table } from '../../components/primitives';
-import { EXTENSION_REQUIRED_PACKS, isExtensionAllowed } from '../../utils/extension-rules';
+import { formatFcfa } from '../../utils/crm-utils';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
-import { localizedList, localizedRecord } from '../../i18n/localized';
 
 const { Title, Text, Paragraph } = Typography;
 
-const CAPACITY_LABEL: Record<CapacityKeyCode, string> = localizedRecord(() => ({
+// Fonctions et non constantes (comme `phaseLabels`) : un `t()` évalué à l'import resterait
+// figé dans la langue active au chargement de la page (recette du 19/10 : anglais en arabe).
+const capacityLabels = (): Record<CapacityKeyCode, string> => ({
   LOTS: t('Lots'),
   COPROPRIETES: t('Copropriétés'),
   CHANTIERS: t('Chantiers'),
@@ -46,7 +52,7 @@ const CAPACITY_LABEL: Record<CapacityKeyCode, string> = localizedRecord(() => ({
   ACTIFS: t('Actifs'),
   PHOTOS_INVENTAIRE: t('Photos d’inventaire analysées (par mois)'),
   SIGNATURES_MENSUELLES: t('Signatures électroniques (par mois)')
-}));
+});
 
 // Fonction et non constante : un `t()` évalué à l'import resterait figé dans la langue
 // active à ce moment-là (« Essai » restait en français après passage à l'anglais).
@@ -61,12 +67,15 @@ const phaseLabels = (): Record<
   READ_ONLY: { label: t('Lecture seule'), tone: 'danger' }
 });
 
-const MODULE_LABEL: Record<string, string> = localizedRecord(() => ({
+const moduleLabels = (): Record<string, string> => ({
   MODULE_AGENCY: t('Agence'),
   MODULE_SYNDIC: t('Syndic'),
   MODULE_PROMOTER: t('Promoteur'),
   MODULE_PATRIMOINE: t('Patrimoine')
-}));
+});
+
+/** Packs de l'espace personnel : leur montée de palier revient sur cette page (`?paiement=`). */
+const PERSONAL_PACKS = ['PARTICULIER_GRATUIT', 'PARTICULIER_PLUS'];
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
@@ -79,22 +88,23 @@ function daysRemaining(value: string | null | undefined): number | null {
   return Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)));
 }
 
-/** Offres d'extension proposées à la demande (codes du catalogue, PLAN-ABONNEMENTS.md §2). */
-const EXTENSION_OPTIONS = localizedList(() => [
-  { value: 'EXT_LOTS_10', label: t('Bloc de 10 lots') },
-  { value: 'EXT_COPRO', label: t('Copropriété supplémentaire') },
-  { value: 'EXT_CHANTIER', label: t('Chantier supplémentaire') },
-  { value: 'EXT_BIENS_10', label: t('Bloc de 10 biens détenus') }
-]);
-
-const REQUEST_STATUS_LABEL: Record<
+const requestStatusLabels = (): Record<
   string,
   { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }
-> = localizedRecord(() => ({
+> => ({
   OPEN: { label: t('En attente'), tone: 'warning' },
   HANDLED: { label: t('Traitée'), tone: 'success' },
   DECLINED: { label: t('Refusée'), tone: 'neutral' }
-}));
+});
+
+/**
+ * Offre d'une demande : nom traduit lu dans les offres chargées (l'API les traduit), sinon le
+ * nom du catalogue renvoyé avec la demande, sinon le code ; « Autre demande » sans offre.
+ */
+function requestOfferName(request: ExtensionRequest, offers: ExtensionOffer[]): string {
+  if (!request.catalogCode) return t('Autre demande');
+  return offers.find(offer => offer.code === request.catalogCode)?.name ?? request.catalogName ?? request.catalogCode;
+}
 
 interface RequestValues {
   catalogCode?: string;
@@ -102,30 +112,58 @@ interface RequestValues {
   message: string;
 }
 
+/** Aide sous le sélecteur : description de l'offre et prix d'une unité (ou tarif à confirmer). */
+function offerHelp(offer: ExtensionOffer | undefined): string | undefined {
+  if (!offer) return undefined;
+  const price = offer.isSellable
+    ? t('{{price}} HT par mois et par unité', { price: formatFcfa(offer.monthlyPrice) })
+    : t('Tarif à confirmer');
+  return offer.description ? `${offer.description} — ${price}` : price;
+}
+
 /**
  * `/tenant/:tenantId/settings/abonnement` — abonnement vu par l'agence.
  *
- * Formule et consommation en consultation (les modifications passent par le
- * super-admin) ; vague 3 : factures (PDF, paiement en ligne sur le compte
- * ImmoTopia, suivi du retour `?paiement=`) et demande d'extension envoyée à
- * ImmoTopia (`POST /api/tenants/:tenantId/subscription/extension-requests`,
- * notifiée par e-mail au super-admin et visible dans la fiche agence).
- * Toutes ces routes restent ouvertes à une agence en lecture seule.
+ * Menu « Mon compte › Abonnement ». Formule et consommation en consultation
+ * (les modifications passent par le super-admin) et demande d'extension
+ * envoyée à ImmoTopia (`POST /api/tenants/:tenantId/subscription/extension-requests`,
+ * notifiée par e-mail au super-admin et visible dans la fiche agence). Les
+ * extensions proposées viennent du catalogue en base
+ * (`GET …/subscription/extension-offers`). Les factures et le paiement en
+ * ligne sont sur `/settings/facturation`.
+ *
+ * Retour de paiement : la passerelle revient ici (`?paiement=<code>`, adresse
+ * commune à la montée de palier de l'espace personnel et aux factures
+ * d'agence). Le palier personnel est suivi par `PersonalTierCard` ; pour une
+ * agence, la page renvoie vers Facturation en gardant la requête.
+ * Routes ouvertes à une agence en lecture seule.
  */
 export const TenantSubscriptionSettings: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
+  const location = useLocation();
+  // Mêmes droits que l'API (TENANT_SETTINGS_VIEW) : sans eux, aucun appel et un état « Accès réservé ».
+  const access = useMenuEntryAccess(tenantId, 'mon-compte-abonnement');
+  const canView = access.ready && access.allowed;
   const [entitlements, setEntitlements] = useState<TenantEntitlements | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { message } = App.useApp();
   const queryClient = useQueryClient();
+  const [offers, setOffers] = useState<ExtensionOffer[]>([]);
   const [requests, setRequests] = useState<ExtensionRequest[]>([]);
   const [sending, setSending] = useState(false);
   const [requestForm] = Form.useForm<RequestValues>();
-  // Seules les extensions vendables avec les packs détenus sont proposées (BUG-061).
-  const extensionOptions = EXTENSION_OPTIONS.filter(option =>
-    isExtensionAllowed(EXTENSION_REQUIRED_PACKS[option.value], entitlements?.packs ?? [])
-  );
+  const selectedCode = Form.useWatch('catalogCode', requestForm);
+  const selectedOffer = offers.find(offer => offer.code === selectedCode);
+
+  // Capacités sans rapport avec les packs (limite 0, aucune extension qui les ouvre) : masquées.
+  const extensibleCapacities = useMemo(() => {
+    const keys = new Set<string>();
+    for (const offer of offers) {
+      for (const [key, amount] of Object.entries(offer.capacities)) if ((amount ?? 0) > 0) keys.add(key);
+    }
+    return keys;
+  }, [offers]);
 
   const loadEntitlements = useCallback(
     (fresh = false) => {
@@ -141,12 +179,17 @@ export const TenantSubscriptionSettings: React.FC = () => {
   );
 
   useEffect(() => {
+    if (!canView) return;
     loadEntitlements();
-    if (tenantId)
+    if (tenantId) {
       listOwnExtensionRequests(tenantId)
         .then(setRequests)
         .catch(() => setRequests([]));
-  }, [tenantId, loadEntitlements]);
+      listExtensionOffers(tenantId)
+        .then(setOffers)
+        .catch(() => setOffers([]));
+    }
+  }, [tenantId, loadEntitlements, canView]);
 
   const handleRequestExtension = async (values: RequestValues) => {
     if (!tenantId) return;
@@ -167,12 +210,31 @@ export const TenantSubscriptionSettings: React.FC = () => {
     }
   };
 
+  if (access.ready && !access.allowed) {
+    return (
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <Title level={2} style={{ margin: 0 }}>
+          {t('Abonnement')}
+        </Title>
+        <AccountAccessReserved />
+      </Space>
+    );
+  }
+
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-8) 0' }}>
         <Spin size="large" />
       </div>
     );
+  }
+
+  // Retour de paiement d'une facture d'agence : suivi sur la page Facturation (requête conservée),
+  // même si la lecture des droits a échoué (la page Facturation sait suivre une facture seule).
+  const returningFromPayment = new URLSearchParams(location.search).has('paiement');
+  const isPersonalSpace = (entitlements?.packs ?? []).some(pack => PERSONAL_PACKS.includes(pack));
+  if (tenantId && returningFromPayment && !isPersonalSpace) {
+    return <Navigate to={`/tenant/${tenantId}/settings/facturation${location.search}`} replace />;
   }
 
   if (error) {
@@ -192,6 +254,9 @@ export const TenantSubscriptionSettings: React.FC = () => {
 
   const phaseInfo = phaseLabels()[entitlements.phase] ?? phaseLabels().NONE;
   const trialDays = entitlements.phase === 'TRIAL' ? daysRemaining(entitlements.trialEndsAt) : null;
+  const visibleCapacities = (Object.keys(entitlements.capacities) as CapacityKeyCode[]).filter(
+    key => entitlements.capacities[key].limit > 0 || extensibleCapacities.has(key)
+  );
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -215,7 +280,12 @@ export const TenantSubscriptionSettings: React.FC = () => {
             type="warning"
             showIcon
             message={t('Compte en lecture seule')}
-            description={t('Réglez la facture en attente ci-dessous pour retrouver l’accès complet.')}
+            description={
+              <>
+                {t('Réglez la facture en attente pour retrouver l’accès complet.')}{' '}
+                <Link to={`/tenant/${tenantId}/settings/facturation`}>{t('Aller à la facturation')}</Link>
+              </>
+            }
           />
         )
       )}
@@ -229,7 +299,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
             {entitlements.billingCycle === 'ANNUAL' ? t('Annuel (11 mois facturés)') : t('Mensuel')}
           </Descriptions.Item>
           <Descriptions.Item label={t('Packs')}>
-            {entitlements.packs.length > 0 ? entitlements.packs.join(', ') : t('Aucun')}
+            {entitlements.packs.length > 0 ? entitlements.packs.map(packLabel).join(', ') : t('Aucun')}
           </Descriptions.Item>
           <Descriptions.Item label={t('Période en cours')}>
             {formatDate(entitlements.currentPeriodStart)} — {formatDate(entitlements.currentPeriodEnd)}
@@ -242,11 +312,14 @@ export const TenantSubscriptionSettings: React.FC = () => {
         </Descriptions>
       </Card>
 
-      {tenantId && <PersonalTierCard tenantId={tenantId} />}
+      {/* Palier de l'espace personnel seulement : pour une agence, la route d'usage répond 403. */}
+      {tenantId && isPersonalSpace && (
+        <PersonalTierCard tenantId={tenantId} onConfirmed={() => loadEntitlements(true)} />
+      )}
 
       <Card title={t('Consommation')}>
         <Space size="large" wrap style={{ width: '100%' }}>
-          {(Object.keys(entitlements.capacities) as CapacityKeyCode[]).map(key => {
+          {visibleCapacities.map(key => {
             const capacity = entitlements.capacities[key];
             const percent =
               capacity.limit > 0
@@ -256,7 +329,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
                   : 0;
             return (
               <div key={key} style={{ width: 220 }}>
-                <Text strong>{CAPACITY_LABEL[key]}</Text>
+                <Text strong>{capacityLabels()[key]}</Text>
                 <Progress
                   percent={percent}
                   status={percent >= 100 ? 'exception' : 'normal'}
@@ -278,19 +351,20 @@ export const TenantSubscriptionSettings: React.FC = () => {
       <Card title={t('Modules')}>
         <Space wrap>
           {entitlements.modules.length > 0 ? (
-            entitlements.modules.map(key => <StatusTag key={key} status="ACTIVE" label={MODULE_LABEL[key] ?? key} />)
+            entitlements.modules.map(key => <StatusTag key={key} status="ACTIVE" label={moduleLabels()[key] ?? key} />)
           ) : (
             <Text type="secondary">{t('Aucun module ouvert')}</Text>
           )}
         </Space>
       </Card>
 
-      {tenantId && (
+      {/* Espace personnel : ses factures restent aussi ici, où revient la passerelle
+          (`?paiement=`) ; le statut d'une facture payée y est suivi comme avant. */}
+      {tenantId && isPersonalSpace && (
         <TenantInvoicesSection
           tenantId={tenantId}
           onPaid={() => {
             loadEntitlements(true);
-            // Montée de palier confirmée : l'usage et le plafond ont changé.
             queryClient.invalidateQueries({ queryKey: [ASSET_USAGE_QUERY_KEY] });
           }}
         />
@@ -298,11 +372,23 @@ export const TenantSubscriptionSettings: React.FC = () => {
 
       <Card title={t('Demander une extension')}>
         <Paragraph type="secondary">
-          {t("Besoin de plus de lots, de copropriétés ou de chantiers ? Envoyez une demande à l'équipe ImmoTopia.")}
+          {t("Besoin de plus de capacité ? Envoyez une demande à l'équipe ImmoTopia.")}
         </Paragraph>
         <Form form={requestForm} layout="vertical" onFinish={handleRequestExtension} style={{ maxWidth: 560 }}>
-          <Form.Item label={t('Offre souhaitée')} name="catalogCode">
-            <Select allowClear placeholder={t('Autre demande')} options={extensionOptions} />
+          <Form.Item
+            label={t('Offre souhaitée')}
+            name="catalogCode"
+            extra={
+              offers.length === 0
+                ? t('Aucune extension disponible pour vos packs, décrivez votre besoin')
+                : offerHelp(selectedOffer)
+            }
+          >
+            <Select
+              allowClear
+              placeholder={t('Autre demande')}
+              options={offers.map(offer => ({ value: offer.code, label: offer.name }))}
+            />
           </Form.Item>
           <Form.Item label={t('Quantité')} name="quantity">
             <InputNumber<number> min={1} max={1000} style={{ width: '100%' }} />
@@ -329,13 +415,25 @@ export const TenantSubscriptionSettings: React.FC = () => {
             aria-label={t('Mes demandes')}
             columns={[
               { title: t('Date'), dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => formatDate(v) },
+              {
+                title: t('Offre'),
+                key: 'offer',
+                render: (_: unknown, request: ExtensionRequest) => requestOfferName(request, offers)
+              },
+              {
+                title: t('Quantité'),
+                dataIndex: 'quantity',
+                key: 'quantity',
+                align: 'end',
+                render: (quantity: number | null) => quantity ?? '—'
+              },
               { title: t('Demande'), dataIndex: 'message', key: 'message' },
               {
                 title: t('Statut'),
                 dataIndex: 'status',
                 key: 'status',
                 render: (status: string) => {
-                  const info = REQUEST_STATUS_LABEL[status];
+                  const info = requestStatusLabels()[status];
                   return <StatusTag status={status} tone={info?.tone} label={info?.label} />;
                 }
               }

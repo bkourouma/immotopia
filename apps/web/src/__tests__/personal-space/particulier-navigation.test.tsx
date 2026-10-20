@@ -118,6 +118,15 @@ describe('particulierNavigation (modèle)', () => {
     }
   });
 
+  it('garde Facturation à côté d’Abonnement pour atteindre les factures', () => {
+    const parametres = nav.tree.find(group => group.key === 'particulier-parametres');
+    expect(parametres?.children?.map(leaf => leaf.key)).toEqual([
+      'particulier-abonnement',
+      'particulier-facturation',
+      'particulier-settings'
+    ]);
+  });
+
   it('limite le patrimoine à la valeur nette, aux actifs et aux projections', () => {
     const patrimoine = nav.tree.find(group => group.key === 'patrimoine');
     expect(patrimoine?.children?.map(leaf => leaf.key)).toEqual([
