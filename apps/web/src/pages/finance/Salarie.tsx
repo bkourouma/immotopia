@@ -15,7 +15,7 @@ import {
 } from '../../services/finance-salaries-service';
 import { listConstructionSites, listCostCategories } from '../../services/finance-lot2-service';
 import type { SalaryNote, SalaryPayment } from '../../types/finance-salaries-types';
-import { SALARY_STATUS_LABELS } from '../../types/finance-salaries-types';
+import { salaryStatusLabels } from '../../types/finance-salaries-types';
 import type { SalaryDocumentStatus } from '../../types/finance-salaries-types';
 import { detailKey, entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { montantSaisiProps } from '../../utils/montant-saisi';
@@ -32,6 +32,7 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -104,30 +105,34 @@ const TONE_STATUT: Record<SalaryDocumentStatus, StatusTone> = {
   VOIDED: 'danger'
 };
 
-const MOIS_FR = [
-  'janvier',
-  t('février'),
-  'mars',
-  'avril',
-  'mai',
-  'juin',
-  'juillet',
-  t('août'),
-  'septembre',
-  'octobre',
-  'novembre',
-  t('décembre')
-];
+function moisFr(): string[] {
+  return [
+    t('janvier'),
+    t('février'),
+    t('mars'),
+    t('avril'),
+    t('mai'),
+    t('juin'),
+    t('juillet'),
+    t('août'),
+    t('septembre'),
+    t('octobre'),
+    t('novembre'),
+    t('décembre')
+  ];
+}
 
 function libellePeriode(year: number, month: number): string {
-  const nomMois = MOIS_FR[month - 1] ?? String(month);
+  const nomMois = moisFr()[month - 1] ?? String(month);
   return `${nomMois.charAt(0).toUpperCase()}${nomMois.slice(1)} ${year}`;
 }
 
-const OPTIONS_MOIS = MOIS_FR.map((nom, index) => ({
-  value: index + 1,
-  label: `${nom.charAt(0).toUpperCase()}${nom.slice(1)}`
-}));
+function optionsMois() {
+  return moisFr().map((nom, index) => ({
+    value: index + 1,
+    label: `${nom.charAt(0).toUpperCase()}${nom.slice(1)}`
+  }));
+}
 
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
@@ -322,6 +327,7 @@ export const Salarie: React.FC = () => {
 
   const [dateReglement, setDateReglement] = useState<Dayjs>(() => dayjs());
   const [montantReglement, setMontantReglement] = useState<number | null>(null);
+  const [compteReglement, setCompteReglement] = useState<string | null>(null);
   const [reglementEnCours, setReglementEnCours] = useState(false);
 
   const peutEnregistrerReglement = Boolean(montantReglement && montantReglement > 0) && Boolean(dateReglement);
@@ -343,11 +349,13 @@ export const Salarie: React.FC = () => {
     try {
       await createSalaryPayment(tenantId, employeeId, {
         paymentDate: dateReglement.format('YYYY-MM-DD'),
-        amount: montantReglement
+        amount: montantReglement,
+        ...(compteReglement ? { treasuryAccountId: compteReglement } : {})
       });
       await queryClient.invalidateQueries({ queryKey: detailKey('salary-payments', tenantId, employeeId) });
       message.success(t('Règlement enregistré en brouillon.'));
       setMontantReglement(null);
+      setCompteReglement(null);
       setDateReglement(dayjs());
     } catch (err: any) {
       message.error(err?.response?.data?.message || t("L'enregistrement du règlement a échoué."));
@@ -425,7 +433,7 @@ export const Salarie: React.FC = () => {
       title: t('Statut'),
       key: 'statut',
       render: (_, n) => (
-        <StatusTag status={n.status} tone={TONE_STATUT[n.status]} label={SALARY_STATUS_LABELS[n.status]} />
+        <StatusTag status={n.status} tone={TONE_STATUT[n.status]} label={salaryStatusLabels()[n.status]} />
       )
     },
     {
@@ -463,7 +471,7 @@ export const Salarie: React.FC = () => {
       title: t('Statut'),
       key: 'statut',
       render: (_, r) => (
-        <StatusTag status={r.status} tone={TONE_STATUT[r.status]} label={SALARY_STATUS_LABELS[r.status]} />
+        <StatusTag status={r.status} tone={TONE_STATUT[r.status]} label={salaryStatusLabels()[r.status]} />
       )
     },
     {
@@ -551,7 +559,7 @@ export const Salarie: React.FC = () => {
             title={libellePeriode(n.periodYear, n.periodMonth)}
             aria-label={libellePeriode(n.periodYear, n.periodMonth)}
             subtitle={n.siteLabel ?? t('Aucun chantier')}
-            status={<StatusTag status={n.status} tone={TONE_STATUT[n.status]} label={SALARY_STATUS_LABELS[n.status]} />}
+            status={<StatusTag status={n.status} tone={TONE_STATUT[n.status]} label={salaryStatusLabels()[n.status]} />}
             highlight={<MoneyValue value={n.amount} />}
             fields={[
               { label: t('Poste de dépense'), value: n.costCategoryLabel ?? '—' },
@@ -629,7 +637,7 @@ export const Salarie: React.FC = () => {
           <DataCard
             title={dateCourte(r.paymentDate)}
             aria-label={t('Règlement du {{value}}', { value: dateCourte(r.paymentDate) })}
-            status={<StatusTag status={r.status} tone={TONE_STATUT[r.status]} label={SALARY_STATUS_LABELS[r.status]} />}
+            status={<StatusTag status={r.status} tone={TONE_STATUT[r.status]} label={salaryStatusLabels()[r.status]} />}
             highlight={<MoneyValue value={r.amount} />}
             fields={[{ label: t('Saisi par'), value: r.createdByLabel }]}
             secondaryActions={
@@ -656,6 +664,9 @@ export const Salarie: React.FC = () => {
       />
 
       <Carte_EnregistrerReglement
+        tenantId={tenantId}
+        compte={compteReglement}
+        setCompte={setCompteReglement}
         date={dateReglement}
         setDate={setDateReglement}
         montant={montantReglement}
@@ -740,7 +751,7 @@ function Carte_SaisirNote(props: {
               style={{ width: 160 }}
               value={props.mois ?? undefined}
               onChange={value => props.setMois((value as number | undefined) ?? null)}
-              options={OPTIONS_MOIS}
+              options={optionsMois()}
             />
           </div>
           <div>
@@ -833,6 +844,9 @@ function Carte_SaisirNote(props: {
 
 /** Même remarque que `Carte_SaisirNote` : un bloc de saisie, extrait par lisibilité. */
 function Carte_EnregistrerReglement(props: {
+  tenantId: string;
+  compte: string | null;
+  setCompte: (v: string | null) => void;
   date: Dayjs;
   setDate: (v: Dayjs) => void;
   montant: number | null;
@@ -883,6 +897,20 @@ function Carte_EnregistrerReglement(props: {
               value={props.montant ?? undefined}
               onChange={value => props.setMontant((value as number | null) ?? null)}
               {...montantSaisiProps}
+            />
+          </div>
+          <div style={{ minWidth: 240 }}>
+            <div>
+              <label htmlFor="reglement-compte">{t('Compte de trésorerie')}</label>
+            </div>
+            <TreasuryAccountSelector
+              id="reglement-compte"
+              tenantId={props.tenantId}
+              paymentMethod={null}
+              direction="out"
+              value={props.compte}
+              onChange={props.setCompte}
+              placeholder={t('Par défaut : la caisse')}
             />
           </div>
           <Button

@@ -30,7 +30,7 @@ jest.mock('@prisma/client', () => {
     lotOwnerProfile: { deleteMany: jest.fn() },
     lotTenantProfile: { deleteMany: jest.fn() },
     lotTenantAssignment: { deleteMany: jest.fn() },
-    ownerAccount: { deleteMany: jest.fn() },
+    ownerAccount: { deleteMany: jest.fn(), count: count('ownerAccount') },
     syndicateLot: { delete: jest.fn(), count: jest.fn(async () => 6), update: jest.fn() },
     syndicate: { update: jest.fn() }
   };
@@ -77,6 +77,8 @@ describe("Suppression d'un lot (BUG-078)", () => {
 
     expect(mockTx.budgetAllocation.deleteMany).toHaveBeenCalledWith({ where: { lotId: 'lot-p01' } });
     expect(mockTx.syndicateLot.delete).toHaveBeenCalledWith({ where: { id: 'lot-p01' } });
+    // Seul un compte coproprietaire au solde non nul bloque la suppression.
+    expect(mockTx.ownerAccount.count).toHaveBeenCalledWith({ where: { lotId: 'lot-p01', NOT: { balance: 0 } } });
     expect(registry.syncLotActivationsTx).toHaveBeenCalledWith(
       mockTx,
       't1',
@@ -94,7 +96,9 @@ describe("Suppression d'un lot (BUG-078)", () => {
     'syndicPaymentDeclarationLine',
     'directDebitMandate',
     'directDebitRemittanceLine',
-    'gMAttendance'
+    'gMAttendance',
+    // Audit 2026-10 : compte coproprietaire au solde non nul.
+    'ownerAccount'
   ])('refuse (409) un lot qui a des mouvements : %s', async movement => {
     mockTx.__counts[movement] = 2;
     const error = await deleteSyndicateLotByTenant('t1', 's1', 'lot-p01').catch(e => e);

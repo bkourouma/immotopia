@@ -23,12 +23,13 @@ import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
 import { dateFormat } from '../../i18n/format';
 
+import { localizedRecord } from '../../i18n/localized';
 const { Paragraph, Text, Title } = Typography;
 
-const kindLabel: Record<ReceiptKind, string> = {
+const kindLabel: Record<ReceiptKind, string> = localizedRecord(() => ({
   RECEIPT: t('Reçu'),
   QUITTANCE: t('Quittance')
-};
+}));
 
 const kindColor: Record<ReceiptKind, string> = {
   RECEIPT: 'blue',
@@ -41,11 +42,11 @@ const kindColor: Record<ReceiptKind, string> = {
  * côté serveur). Mêmes libellés que `RECEIPT_EMAIL_ERROR_MESSAGES`
  * (`packages/api/src/lib/syndics/charge-receipt-delivery.ts`), traduits ici.
  */
-const emailErrorLabel: Record<NonNullable<ReceiptView['emailErrorCode']>, string> = {
+const emailErrorLabel: Record<NonNullable<ReceiptView['emailErrorCode']>, string> = localizedRecord(() => ({
   SMTP_REJECTED: t("Le serveur de messagerie a refusé l'e-mail."),
   TIMEOUT: t("Le serveur de messagerie n'a pas répondu à temps."),
   ERROR: t("L'envoi de l'e-mail a échoué.")
-};
+}));
 
 /** Délai entre deux passages de rattrapage automatique, pour ne pas marteler l'API. */
 const BACKFILL_CONTINUE_DELAY_MS = 300;

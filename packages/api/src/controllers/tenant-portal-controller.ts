@@ -13,6 +13,8 @@ import {
   validatePaymentProofFile
 } from '../utils/tenant-portal-validators';
 import { handleTenantPortalFinanceStatement } from './finance-controller';
+import { parseNumberParam } from '../utils/query-params';
+import { parsePagination } from '../utils/pagination-helper';
 
 /**
  * Message a montrer au locataire.
@@ -139,12 +141,13 @@ export class TenantPortalController {
         filters.endDate = req.query.endDate as string;
       }
 
+      const { page, limit } = parsePagination(req.query);
       const pagination: any = {};
-      if (req.query.page) {
-        pagination.page = parseInt(req.query.page as string, 10);
+      if (page !== undefined) {
+        pagination.page = page;
       }
-      if (req.query.limit) {
-        pagination.limit = parseInt(req.query.limit as string, 10);
+      if (limit !== undefined) {
+        pagination.limit = limit;
       }
 
       const installmentsData = await this.service.getInstallments(
@@ -242,7 +245,7 @@ export class TenantPortalController {
 
       // Validate request body
       const validationResult = declarePaymentSchema.safeParse({
-        amount: parseFloat(req.body.amount),
+        amount: parseNumberParam(req.body.amount, 'amount', { min: 0.01 }),
         paymentDate: req.body.paymentDate,
         paymentMethod: req.body.paymentMethod,
         transactionPhone: req.body.transactionPhone,
@@ -328,12 +331,13 @@ export class TenantPortalController {
         filters.method = req.query.method as string;
       }
 
+      const { page, limit } = parsePagination(req.query);
       const pagination: any = {};
-      if (req.query.page) {
-        pagination.page = parseInt(req.query.page as string, 10);
+      if (page !== undefined) {
+        pagination.page = page;
       }
-      if (req.query.limit) {
-        pagination.limit = parseInt(req.query.limit as string, 10);
+      if (limit !== undefined) {
+        pagination.limit = limit;
       }
 
       const paymentHistoryData = await this.service.getPaymentHistory(
@@ -495,12 +499,13 @@ export class TenantPortalController {
         filters.status = req.query.status as string;
       }
 
+      const { page, limit } = parsePagination(req.query);
       const pagination: any = {};
-      if (req.query.page) {
-        pagination.page = parseInt(req.query.page as string, 10);
+      if (page !== undefined) {
+        pagination.page = page;
       }
-      if (req.query.limit) {
-        pagination.limit = parseInt(req.query.limit as string, 10);
+      if (limit !== undefined) {
+        pagination.limit = limit;
       }
 
       const ticketsData = await this.service.getMaintenanceTickets(

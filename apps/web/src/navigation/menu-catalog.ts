@@ -245,7 +245,11 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'agence-settings': ['TENANT_SETTINGS_VIEW'],
   'agence-finance-settings': ['TENANT_SETTINGS_VIEW'],
   'agence-activity': ['TENANT_AUDIT_VIEW'],
-  'agence-notifications': ['TENANT_NOTIFICATIONS_ADMIN']
+  'agence-notifications': ['TENANT_NOTIFICATIONS_ADMIN'],
+  // Mon compte : mêmes routes `/subscription` que l'écran d'abonnement, ouvertes par TENANT_SETTINGS_VIEW.
+  'mon-compte': ['TENANT_SETTINGS_VIEW'],
+  'mon-compte-abonnement': ['TENANT_SETTINGS_VIEW'],
+  'mon-compte-facturation': ['TENANT_SETTINGS_VIEW']
 };
 
 /** Permissions ouvrant une entrée de navigation (`[]` : ouverte à tous). */

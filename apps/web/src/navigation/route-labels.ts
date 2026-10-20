@@ -20,6 +20,7 @@ function buildRouteLabels(): Record<string, string> {
     // Racines
     dashboard: t('Tableau de bord'),
     settings: t('Paramètres'),
+    abonnement: t('Abonnement'),
     profile: t('Profil'),
 
     assistant: t('Assistant'),

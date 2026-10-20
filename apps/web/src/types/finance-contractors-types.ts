@@ -1,4 +1,5 @@
 import { t } from '../i18n/t';
+import { localizedRecord } from '../i18n/localized';
 /**
  * Contrat gelé de la frontière réseau — lot 4, quatrième sous-lot : les
  * tâcherons (PRD E8, besoin P10).
@@ -59,11 +60,11 @@ import { t } from '../i18n/t';
 /** Cycle d'une pièce de tâcheron. Le serveur réutilise `SupplierInvoiceStatus`. */
 export type ContractorDocumentStatus = 'DRAFT' | 'VALIDATED' | 'VOIDED';
 
-export const CONTRACTOR_DOCUMENT_STATUS_LABELS: Record<ContractorDocumentStatus, string> = {
+export const CONTRACTOR_DOCUMENT_STATUS_LABELS: Record<ContractorDocumentStatus, string> = localizedRecord(() => ({
   DRAFT: 'Brouillon',
   VALIDATED: t('Validée'),
   VOIDED: t('Annulée')
-};
+}));
 
 // ---------------------------------------------------------------------------
 // Le tâcheron

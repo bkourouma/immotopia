@@ -1342,6 +1342,8 @@ export interface RecordLotPaymentRequest {
   reference?: string | null;
   /** Appels cochés par le gestionnaire ; absent ou vide = automatique (plus anciens d'abord). */
   chargeCallIds?: string[];
+  /** Clé d'idempotence : le serveur déduplique un rejeu (double-clic, retry réseau). */
+  idempotencyKey?: string;
 }
 
 /** Une ligne d'affectation, telle que rendue par l'enregistrement ou l'aperçu d'un paiement de lot. */

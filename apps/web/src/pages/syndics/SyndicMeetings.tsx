@@ -33,6 +33,7 @@ import { GeneralMeeting, MeetingConvocationResult, MeetingStatus, MeetingType } 
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
+import { localizedList } from '../../i18n/localized';
 const { Paragraph, Title } = Typography;
 
 function newIdempotencyKey(): string {
@@ -44,10 +45,10 @@ function newIdempotencyKey(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 }
 
-const meetingTypeOptions: Array<{ label: string; value: MeetingType }> = [
+const meetingTypeOptions: Array<{ label: string; value: MeetingType }> = localizedList(() => [
   { label: t('Ordinaire'), value: 'ORDINARY' },
   { label: t('Extraordinaire'), value: 'EXTRAORDINARY' }
-];
+]);
 
 export const SyndicMeetings: React.FC = () => {
   const { message } = App.useApp();

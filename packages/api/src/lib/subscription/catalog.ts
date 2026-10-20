@@ -17,8 +17,9 @@
  * le pack (VALEURS PROVISOIRES, a valider : AGENCE 20, SYNDIC 50, PROMOTEUR 20,
  * INTEGRE 100) et se complete par l'extension EXT_SIGNATURES_SUPPLEMENTAIRES (bloc de
  * 50, cumulable). Les deux sont posees sur le catalogue par la migration
- * 20261015120000_signatures_incluses_packs. Le TARIF de l'extension n'est pas decide
- * (decision fondateur) : prix 0 et isSellable false tant qu'il ne l'est pas.
+ * 20261015120000_signatures_incluses_packs (qui l'amorce a 0). L'extension est vendable
+ * a 5 000 XOF par mois et par bloc (decision du 19/10) : une base existante garde l'ancien
+ * prix tant que `npm run db:seed:catalog` n'est pas relance.
  *
  * Voir docs/architecture/PLAN-ABONNEMENTS.md.
  */
@@ -142,6 +143,9 @@ export interface CatalogItemDef {
   capacities: Partial<Record<CapacityKeyCode, number>>;
 }
 
+// Noms et descriptions du catalogue : traduits a l'affichage (`listTenantExtensionOffers`) avec
+// repli sur le texte en base (le super-admin peut l'editer). Le texte francais est la cle.
+// @i18n-keys name description
 export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
   {
     code: PACK.AGENCE,
@@ -358,18 +362,18 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
   {
     // Spec 044 (decision du 15/10) : a l'atteinte du quota mensuel de signatures de leur pack,
     // les agences achetent des blocs de 50 (cumulables par la quantite), jamais de depassement
-    // facture. PRIX A FIXER (decision fondateur) : 0 et non vendable en attendant ; le
-    // super-admin le renseigne et l'ouvre a la vente depuis le catalogue.
+    // facture. Prix fixe par decision utilisateur (19/10) : 5 000 XOF par mois et par bloc,
+    // vendable. La migration 20261015120000 l'a amorce a 0 : `npm run db:seed:catalog` aligne la base.
     code: EXTENSION.SIGNATURES_SUPPLEMENTAIRES,
     kind: 'EXTENSION',
     name: 'Signatures électroniques — bloc de 50',
     description: 'Signatures électroniques supplémentaires : 50 par mois et par bloc, cumulable',
-    monthlyPrice: 0,
+    monthlyPrice: 5_000,
     setupPrice: 0,
     modules: [],
     exclusiveGroup: null,
     rules: { requiresAnyOf: [PACK.AGENCE, PACK.SYNDIC, PACK.PROMOTEUR, PACK.INTEGRE] },
-    isSellable: false,
+    isSellable: true,
     sortOrder: 160,
     capacities: { SIGNATURES_MENSUELLES: 50 }
   },

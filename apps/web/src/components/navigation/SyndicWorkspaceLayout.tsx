@@ -24,6 +24,7 @@ import { listSyndicDeclarations } from '../../services/syndic-declared-payment-s
 import type { Syndicate } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
 
+import { localizedRecord } from '../../i18n/localized';
 /**
  * `<SyndicWorkspaceLayout>` — en-tête + barre d'onglets communs aux trois
  * familles d'écrans Syndic (Copropriété, Finances, Assemblées et documents).
@@ -42,11 +43,11 @@ import { t } from '../../i18n/t';
 
 type SyndicWorkspaceFamily = 'copropriete' | 'finances' | 'assemblees-documents';
 
-const FAMILY_LABELS: Record<SyndicWorkspaceFamily, string> = {
+const FAMILY_LABELS: Record<SyndicWorkspaceFamily, string> = localizedRecord(() => ({
   copropriete: t('Copropriété'),
   finances: t('Finances'),
   'assemblees-documents': t('Assemblées et documents')
-};
+}));
 
 /** Événement émis par l'onglet « Paiements » quand la file des déclarations change (le compteur se relit). */
 export const DECLARATIONS_CHANGED_EVENT = 'syndic-declarations-changed';

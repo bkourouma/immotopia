@@ -21,6 +21,7 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 import { CLE_DUPLICATION_BON, copieDuBon } from '../../utils/duplication-piece';
 import type { DuplicationBonDeCommande } from '../../utils/duplication-piece';
 
@@ -66,7 +67,9 @@ import { activeLocale } from '../../i18n/format';
 type Filters = { siteId: string; supplierId: string; status: string };
 const FILTER_KEYS = ['siteId', 'supplierId', 'status'] as const;
 
-const OPTIONS_STATUT = Object.entries(PURCHASE_ORDER_STATUS_LABELS).map(([value, label]) => ({ value, label }));
+const OPTIONS_STATUT = localizedList(() =>
+  Object.entries(PURCHASE_ORDER_STATUS_LABELS).map(([value, label]) => ({ value, label }))
+);
 
 const TONE_STATUT: Record<PurchaseOrderStatus, StatusTone> = {
   DRAFT: 'neutral',
@@ -275,6 +278,7 @@ export const BonsDeCommande: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les bons de commande.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={() => list.setFilters({ siteId: undefined, supplierId: undefined, status: undefined })}

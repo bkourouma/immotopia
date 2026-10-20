@@ -1,4 +1,5 @@
 import { t } from '../i18n/t';
+import { localizedRecord, localizedList } from '../i18n/localized';
 /**
  * Variables disponibles pour les templates de communication (email / WhatsApp).
  * Utiliser la syntaxe {{nomVariable}} dans le corps ou le sujet du template.
@@ -13,7 +14,7 @@ export interface TemplateVariable {
   category: 'common' | 'payment' | 'lease' | 'property' | 'ticket' | 'crm';
 }
 
-export const TEMPLATE_VARIABLES: TemplateVariable[] = [
+export const TEMPLATE_VARIABLES: TemplateVariable[] = localizedList(() => [
   // Contexte commun
   {
     name: 'contactName',
@@ -164,17 +165,17 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { name: 'dealValue', label: t('Valeur du deal'), description: t('Montant ou valeur du deal'), category: 'crm' },
   { name: 'appointmentDate', label: t('Date du rendez-vous'), description: t('Date du RDV'), category: 'crm' },
   { name: 'appointmentTime', label: t('Heure du rendez-vous'), description: t('Heure du RDV'), category: 'crm' }
-];
+]);
 
 /** Libellé court des catégories pour l'affichage */
-export const VARIABLE_CATEGORY_LABELS: Record<TemplateVariable['category'], string> = {
+export const VARIABLE_CATEGORY_LABELS: Record<TemplateVariable['category'], string> = localizedRecord(() => ({
   common: 'Commun',
   payment: t('Paiements & échéances'),
   lease: 'Baux',
   property: t('Propriétés'),
   ticket: 'Maintenance',
   crm: t('CRM & rendez-vous')
-};
+}));
 
 /** Retourne la syntaxe à insérer dans le template : {{nomVariable}} */
 export function getVariablePlaceholder(name: string): string {

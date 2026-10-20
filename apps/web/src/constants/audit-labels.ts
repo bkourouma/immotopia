@@ -1,10 +1,11 @@
 import { t } from '../i18n/t';
+import { localizedRecord } from '../i18n/localized';
 /**
  * Libellés en français pour la page Audit (actions et types de ressources).
  */
 
 /** Libellé français détaillé pour chaque clé d'action d'audit (description explicite de l'action) */
-export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
+export const AUDIT_ACTION_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   // Tenant
   TENANT_CREATED: t("Création d'un nouveau tenant (agence ou opérateur) sur la plateforme"),
   TENANT_UPDATED: t('Modification des paramètres ou informations du tenant'),
@@ -252,10 +253,10 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   TENANT_ACCESS_DENIED: t("Tentative d'accès à une agence dont l'utilisateur n'est pas membre"),
   DOCUMENT_DOWNLOADED: t("Téléchargement ou ouverture d'un document"),
   DATA_EXPORTED: t('Export de données (tableur ou archive)')
-};
+}));
 
 /** Libellé français pour chaque type d'entité (ressource) */
-export const AUDIT_ENTITY_TYPE_LABELS_FR: Record<string, string> = {
+export const AUDIT_ENTITY_TYPE_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   PROPERTY: t('Bien immobilier'),
   PROPERTY_MEDIA: t('Média (bien)'),
   PROPERTY_DOCUMENT: t('Document (bien)'),
@@ -315,10 +316,10 @@ export const AUDIT_ENTITY_TYPE_LABELS_FR: Record<string, string> = {
   StockWhatsappRegistration: t('Inscription WhatsApp d’un chef de chantier'),
   StockFieldCapture: t('Comptage par photo WhatsApp'),
   StockWhatsappUsage: t('Quota de photos du mois')
-};
+}));
 
 /** Libellé français de chaque catégorie du journal d'audit. */
-export const AUDIT_CATEGORY_LABELS_FR: Record<string, string> = {
+export const AUDIT_CATEGORY_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   AUTH: t('Authentification'),
   DATA: t('Données'),
   ADMIN: t('Administration'),
@@ -327,29 +328,29 @@ export const AUDIT_CATEGORY_LABELS_FR: Record<string, string> = {
   EXPORT: t('Export'),
   AI: t('Assistant IA'),
   SYSTEM: t('Système')
-};
+}));
 
 /** Libellé français du résultat d'une action auditée. */
-export const AUDIT_OUTCOME_LABELS_FR: Record<string, string> = {
+export const AUDIT_OUTCOME_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   SUCCESS: t('Réussie'),
   FAILURE: t('Échouée'),
   DENIED: t('Refusée')
-};
+}));
 
 /** Libellé français du type d'acteur d'une ligne du journal. */
-export const AUDIT_ACTOR_TYPE_LABELS_FR: Record<string, string> = {
+export const AUDIT_ACTOR_TYPE_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   USER: t('Utilisateur'),
   SUPER_ADMIN: t('Support ImmoTopia'),
   PORTAL: t('Portail'),
   SYSTEM: t('Système'),
   AI: t('Assistant IA')
-};
+}));
 
 /** Libellé français de la visibilité d'une ligne (qui peut la lire). */
-export const AUDIT_VISIBILITY_LABELS_FR: Record<string, string> = {
+export const AUDIT_VISIBILITY_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   TENANT: t("Visible de l'agence"),
   PLATFORM_ONLY: t('Réservée à la plateforme')
-};
+}));
 
 export function getAuditActionLabelFr(actionKey: string): string {
   return AUDIT_ACTION_LABELS_FR[actionKey] ?? actionKey;

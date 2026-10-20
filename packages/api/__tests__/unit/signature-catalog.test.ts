@@ -62,9 +62,10 @@ describe('extension « Signatures électroniques — bloc de 50 »', () => {
     });
   });
 
-  it('prix 0 et non vendable tant que le tarif n’est pas décidé (décision fondateur)', () => {
-    expect(extension?.monthlyPrice).toBe(0);
-    expect(extension?.isSellable).toBe(false);
+  it('vendable à 5 000 XOF par mois et par bloc, sans frais de mise en route', () => {
+    expect(extension?.monthlyPrice).toBe(5_000);
+    expect(extension?.setupPrice).toBe(0);
+    expect(extension?.isSellable).toBe(true);
   });
 
   it('le calcul des droits additionne le pack et la quantité d’extensions', () => {

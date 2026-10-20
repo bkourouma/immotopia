@@ -4,6 +4,8 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
 import { enforceTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { BadRequestError } from '../middleware/error-middleware';
+import { requireCommunicationByMethod } from '../middleware/communication-rbac-middleware';
+import { whatsappTestSendRateLimiter } from '../middleware/rate-limit-middleware';
 import { requireNotificationKeyFeature } from '../lib/subscription/notification-feature-gate';
 import { requireFeature } from '../middleware/subscription-feature-middleware';
 import {
@@ -38,9 +40,12 @@ router.use(requireTenantAccess);
 // /group-invite/send-all and /group-broadcast/send.
 router.use(requireTenantCollaborator);
 router.use(enforceTenantIsolation);
+// GET : lecture ; POST/PATCH/PUT/DELETE (dont /test-send) : garde d'écriture.
+router.use(requireCommunicationByMethod);
 
 router.get('/', listHandler);
-router.post('/test-send', testSendHandler);
+// Envoi réel et facturable : plafonné par utilisateur et par agence.
+router.post('/test-send', ...whatsappTestSendRateLimiter, testSendHandler);
 router.post('/group-invite/send-all', requireFeature('CRM'), sendGroupInviteToAllHandler);
 router.post(
   '/group-broadcast/send',

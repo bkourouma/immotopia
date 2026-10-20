@@ -73,6 +73,21 @@ describe('navigation filtrée par permission', () => {
     expect(leafKeys(tree)).toEqual(expect.arrayContaining(['agence-collaborators', 'agence-settings']));
   });
 
+  it('« Mon compte » (Abonnement, Facturation) suit TENANT_SETTINGS_VIEW, comme l’écran d’abonnement', () => {
+    const group = nav.tree.find(g => g.key === 'mon-compte');
+    expect(group?.children?.map(c => [c.key, c.href])).toEqual([
+      ['mon-compte-abonnement', '/tenant/:tenantId/settings/abonnement'],
+      ['mon-compte-facturation', '/tenant/:tenantId/settings/facturation']
+    ]);
+    expect(group?.section).toBe('parametrage');
+    // Droit présent (Gestionnaire) : visible ; absent (Comptable) : retiré.
+    expect(keys(visible(MANAGER))).toContain('mon-compte');
+    expect(leafKeys(visible(MANAGER))).toEqual(
+      expect.arrayContaining(['mon-compte-abonnement', 'mon-compte-facturation'])
+    );
+    expect(keys(visible(ACCOUNTANT))).not.toContain('mon-compte');
+  });
+
   it('Agent : les onglets du bas suivent (Baux et Encaisser retirés)', () => {
     const { result } = renderHook(() => useFilteredNavigation(nav, new Set(), null, false, AGENT));
     const tabs = result.current!.tabs.map(t => t.key);

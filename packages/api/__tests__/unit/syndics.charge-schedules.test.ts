@@ -427,7 +427,7 @@ describe('execution et idempotence', () => {
       NOW
     );
     await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
-    const amounts = Object.values(amountsByLot(calls()));
+    const amounts = Object.values(amountsByLot(calls())) as number[];
     expect(amounts.length).toBeGreaterThan(2);
     expect(Math.round(amounts.reduce((sum, amount) => sum + amount, 0) * 100) / 100).toBe(1000);
     expect(batches()[0].budgetId).toBeUndefined();

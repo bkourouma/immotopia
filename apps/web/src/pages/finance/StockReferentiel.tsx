@@ -157,13 +157,15 @@ function dateCourte(iso: string): string {
  * la même question : la formuler deux fois laisserait les deux versions
  * diverger, et l'une des deux finirait par laisser croire qu'on supprime.
  */
-const AVERTISSEMENT_DESACTIVATION_ARTICLE = t(
-  "Désactiver n'est pas supprimer : l'article garde son stock et son historique, il cesse simplement d'être proposé à la saisie."
-);
+const AVERTISSEMENT_DESACTIVATION_ARTICLE = () =>
+  t(
+    "Désactiver n'est pas supprimer : l'article garde son stock et son historique, il cesse simplement d'être proposé à la saisie."
+  );
 
-const AVERTISSEMENT_DESACTIVATION_LIEU = t(
-  "Désactiver n'est pas supprimer : le lieu garde son stock et son historique, il cesse simplement d'être proposé à la saisie."
-);
+const AVERTISSEMENT_DESACTIVATION_LIEU = () =>
+  t(
+    "Désactiver n'est pas supprimer : le lieu garde son stock et son historique, il cesse simplement d'être proposé à la saisie."
+  );
 
 /**
  * Le statut d'un lieu, et la pastille de l'inventaire qui le vise (lot 040,
@@ -631,7 +633,7 @@ export const StockReferentiel: React.FC = () => {
           {a.isActive ? (
             <ConfirmAction
               title={t("Désactiver l'article « {{reference}} » ?", { reference: a.reference })}
-              description={AVERTISSEMENT_DESACTIVATION_ARTICLE}
+              description={AVERTISSEMENT_DESACTIVATION_ARTICLE()}
               okText={t('Confirmer la désactivation')}
               onConfirm={() => basculerArticle(a, false)}
             >
@@ -678,7 +680,7 @@ export const StockReferentiel: React.FC = () => {
           {l.isActive ? (
             <ConfirmAction
               title={t('Désactiver le lieu « {{label}} » ?', { label: l.label })}
-              description={AVERTISSEMENT_DESACTIVATION_LIEU}
+              description={AVERTISSEMENT_DESACTIVATION_LIEU()}
               okText={t('Confirmer la désactivation')}
               onConfirm={() => basculerLieu(l, false)}
             >
@@ -745,6 +747,7 @@ export const StockReferentiel: React.FC = () => {
         loading={articlesEnAttente || contexteEnAttente}
         isReloading={articlesEnRechargement && !articlesEnAttente}
         error={erreurArticles ? t('Impossible de charger les articles.') : null}
+        errorCause={erreurArticles}
         onRetry={() => refetchArticles()}
         isFiltered={articlesActifsSeulement || Boolean(recherche.trim())}
         onClearFilters={() => {
@@ -784,7 +787,7 @@ export const StockReferentiel: React.FC = () => {
                           onClick: () =>
                             confirmerAction({
                               title: t("Désactiver l'article « {{reference}} » ?", { reference: a.reference }),
-                              description: AVERTISSEMENT_DESACTIVATION_ARTICLE,
+                              description: AVERTISSEMENT_DESACTIVATION_ARTICLE(),
                               okText: t('Confirmer la désactivation'),
                               onConfirm: () => basculerArticle(a, false)
                             })
@@ -851,6 +854,7 @@ export const StockReferentiel: React.FC = () => {
         onPageChange={() => {}}
         loading={lieuxEnAttente || contexteEnAttente}
         error={erreurLieux ? t('Impossible de charger les lieux de stockage.') : null}
+        errorCause={erreurLieux}
         onRetry={() => refetchLieux()}
         isFiltered={lieuxActifsSeulement || Boolean(natureFiltre)}
         onClearFilters={() => {
@@ -882,7 +886,7 @@ export const StockReferentiel: React.FC = () => {
                           onClick: () =>
                             confirmerAction({
                               title: t('Désactiver le lieu « {{label}} » ?', { label: l.label }),
-                              description: AVERTISSEMENT_DESACTIVATION_LIEU,
+                              description: AVERTISSEMENT_DESACTIVATION_LIEU(),
                               okText: t('Confirmer la désactivation'),
                               onConfirm: () => basculerLieu(l, false)
                             })

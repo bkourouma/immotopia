@@ -389,6 +389,19 @@ describe('fil d’Ariane', () => {
     expect(buildCrumbs(`/tenant/${TENANT}/rental/leases`).map(c => c.label)).toEqual(['Gestion locative', 'Baux']);
   });
 
+  it('range abonnement et facturation sous « Mon compte »', () => {
+    expect(buildCrumbs(`/tenant/${TENANT}/settings/abonnement`).map(c => c.label)).toEqual([
+      'Mon compte',
+      'Abonnement'
+    ]);
+    expect(buildCrumbs(`/tenant/${TENANT}/settings/facturation`).map(c => c.label)).toEqual([
+      'Mon compte',
+      'Facturation'
+    ]);
+    // Les autres écrans de paramètres gardent « Paramètres ».
+    expect(buildCrumbs(`/tenant/${TENANT}/settings/finance`).map(c => c.label)).toEqual(['Paramètres', 'Finance']);
+  });
+
   it('ne dit jamais « Agence » à un locataire', () => {
     // Le segment `tenant` recouvre le préfixe d'agence ET la racine du portail
     // locataire : sans distinction, on lit « Agence › Mon bail ».

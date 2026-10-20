@@ -2,7 +2,13 @@
  * BUG-2026-09-30-060 : les événements de notification (e-mail, WhatsApp) des
  * fonctionnalités non souscrites ne sont ni listés ni modifiables en `enforce`.
  */
+let mode: 'off' | 'warn' | 'enforce' = 'enforce';
 const getEntitlements = jest.fn();
+const loggerWarn = jest.fn();
+jest.mock('../../src/lib/subscription/enforcement', () => ({ getSubscriptionEnforcement: () => mode }));
+jest.mock('../../src/utils/logger', () => ({
+  logger: { warn: (...a: any[]) => loggerWarn(...a), error: jest.fn(), info: jest.fn(), debug: jest.fn() }
+}));
 jest.mock('../../src/services/subscription-v2-service', () => ({
   getEntitlements: (...args: any[]) => getEntitlements(...args)
 }));
@@ -42,6 +48,8 @@ const items = (keys: readonly string[]) => keys.map(key => ({ key }));
 
 beforeEach(() => {
   getEntitlements.mockReset();
+  loggerWarn.mockClear();
+  mode = 'enforce';
   for (const k of Object.keys(counts)) (counts as any)[k] = 0;
 });
 
@@ -84,19 +92,55 @@ describe('filterNotificationItems', () => {
     expect(email).not.toContain('LEASE_ACTIVATED');
   });
 
-  it('hors enforce, ou si les droits sont indisponibles, rien n’est filtré', async () => {
+  it('hors enforce, rien n’est filtré', async () => {
     getEntitlements.mockResolvedValue({ ...proPatrimoine, enforcement: 'warn' });
     expect(await filterNotificationItems('t1', items(EMAIL_NOTIFICATION_KEYS))).toHaveLength(
       EMAIL_NOTIFICATION_KEYS.length
     );
+  });
+
+  it('droits indisponibles en warn : rien n’est filtré et la panne est journalisée', async () => {
+    mode = 'warn';
     getEntitlements.mockRejectedValue(new Error('down'));
     expect(await filterNotificationItems('t1', items(EMAIL_NOTIFICATION_KEYS))).toHaveLength(
       EMAIL_NOTIFICATION_KEYS.length
     );
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.stringContaining('entitlements unavailable'),
+      expect.objectContaining({ tenantId: 't1', error: 'down' })
+    );
+  });
+
+  it('droits indisponibles en enforce : la liste est refusée (503 ENTITLEMENTS_UNAVAILABLE)', async () => {
+    getEntitlements.mockRejectedValue(new Error('down'));
+    await expect(filterNotificationItems('t1', items(EMAIL_NOTIFICATION_KEYS))).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'ENTITLEMENTS_UNAVAILABLE'
+    });
   });
 });
 
 describe('requireNotificationKeyFeature', () => {
+  it('droits indisponibles : enforce refuse en 503, warn laisse passer', async () => {
+    getEntitlements.mockRejectedValue(new Error('down'));
+    const next = jest.fn();
+    await requireNotificationKeyFeature(
+      { params: { tenantId: 't1', key: 'CHARGE_CALL_ISSUED' } } as any,
+      {} as any,
+      next
+    );
+    expect(next.mock.calls[0][0]).toMatchObject({ statusCode: 503, code: 'ENTITLEMENTS_UNAVAILABLE' });
+
+    mode = 'warn';
+    const next2 = jest.fn();
+    await requireNotificationKeyFeature(
+      { params: { tenantId: 't1', key: 'CHARGE_CALL_ISSUED' } } as any,
+      {} as any,
+      next2
+    );
+    expect(next2).toHaveBeenCalledWith();
+  });
+
   const run = async (key: string) => {
     const next = jest.fn();
     await requireNotificationKeyFeature({ params: { tenantId: 't1', key } } as any, {} as any, next);

@@ -27,6 +27,7 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 /**
@@ -53,7 +54,7 @@ import { activeLocale } from '../../i18n/format';
  * et le retour depuis une fiche retrouve la page et les filtres.
  */
 
-const PROPERTY_TYPE_LABELS: Record<string, string> = {
+const PROPERTY_TYPE_LABELS: Record<string, string> = localizedRecord(() => ({
   APPARTEMENT: 'Appartement',
   MAISON_VILLA: t('Maison / Villa'),
   STUDIO: 'Studio',
@@ -66,7 +67,7 @@ const PROPERTY_TYPE_LABELS: Record<string, string> = {
   IMMEUBLE: 'Immeuble',
   PARKING_BOX: t('Parking / Box'),
   LOT_PROGRAMME_NEUF: t('Lot programme neuf')
-};
+}));
 
 /**
  * Types retirés du filtre, sans être retirés de `PROPERTY_TYPE_LABELS`.
@@ -77,11 +78,11 @@ const PROPERTY_TYPE_LABELS: Record<string, string> = {
  */
 const TYPES_RETIRES: string[] = ['CHAMBRE_COLOCATION', 'LOT_PROGRAMME_NEUF'];
 
-const TRANSACTION_MODE_LABELS: Record<string, string> = {
+const TRANSACTION_MODE_LABELS: Record<string, string> = localizedRecord(() => ({
   SALE: 'Vente',
   RENTAL: 'Location',
   SHORT_TERM: t('Location courte durée')
-};
+}));
 
 /**
  * Les deux seuls statuts proposés au filtre.
@@ -91,10 +92,10 @@ const TRANSACTION_MODE_LABELS: Record<string, string> = {
  * qu'on pose à un portefeuille locatif. Ils restent lisibles sur la fiche de
  * chaque bien, par `<StatusTag>` ; ils ne sont simplement plus offerts ici.
  */
-const STATUS_LABELS: Record<string, string> = {
+const STATUS_LABELS: Record<string, string> = localizedRecord(() => ({
   AVAILABLE: 'Disponible',
   RENTED: t('Loué')
-};
+}));
 
 /**
  * Colonnes de l'export : la liste est en cartes, sans colonnes à elle. Texte pur,
@@ -707,6 +708,7 @@ export const Properties: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={queryError ? t('Impossible de charger le portefeuille.') : null}
+        errorCause={queryError}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}

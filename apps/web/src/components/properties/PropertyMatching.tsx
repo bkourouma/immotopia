@@ -33,7 +33,7 @@ interface PropertyMatchingProps {
 
 function formatPrice(price?: number, currency?: string, propertyType?: string): string {
   if (!price) return propertyType === 'IMMEUBLE' ? '' : t('Prix sur demande');
-  return `${new Intl.NumberFormat(activeLocale()).format(price)} ${currency || 'EUR'}`;
+  return `${new Intl.NumberFormat(activeLocale()).format(price)} ${currency || 'XOF'}`;
 }
 
 function getScoreTagColor(score: number): string {

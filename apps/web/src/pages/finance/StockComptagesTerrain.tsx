@@ -415,6 +415,7 @@ export function StockComptagesTerrain(): React.ReactElement {
           onPageChange={() => undefined}
           isReloading={liste.isFetching && !liste.isFetchingNextPage}
           error={liste.error ? handleApiError(liste.error) : null}
+          errorCause={liste.error}
           onRetry={() => void liste.refetch()}
           emptyDescription={t('Aucun comptage pour ces filtres.')}
           emptyAction={emptyAction}

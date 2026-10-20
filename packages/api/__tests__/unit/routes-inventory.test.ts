@@ -289,12 +289,6 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
     reason: "Liste des agences de l'utilisateur courant, resolue depuis req.user."
   },
   {
-    method: 'POST',
-    test: exact('/api/tenants/:tenantId/register'),
-    reason:
-      "S'enregistrer comme client d'une agence : c'est cette action qui CREE l'acces, elle ne peut pas le presupposer."
-  },
-  {
     method: 'DELETE',
     test: exact('/api/tenants/:tenantId/unregister'),
     reason:
@@ -381,7 +375,8 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       ['POST', '/api/admin/tenants/:tenantId/platform-invoices/:invoiceId/credit-note', 'PLATFORM_INVOICES_EDIT'],
       ['GET', '/api/tenants/:tenantId/subscription/invoices', 'TENANT'],
       ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId', 'TENANT'],
-      ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId/pdf', 'TENANT']
+      ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId/pdf', 'TENANT'],
+      ['GET', '/api/tenants/:tenantId/subscription/extension-offers', 'TENANT']
     ];
     for (const [method, path, guard] of expected) {
       const route = routes.find(r => r.method === method && r.path === path);

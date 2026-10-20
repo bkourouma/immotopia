@@ -13,6 +13,7 @@ import {
 import { StatusTag, Table, useConfirmAction, type StatusTone } from '../../primitives';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { localizedRecord } from '../../../i18n/localized';
 
 const { Text } = Typography;
 
@@ -26,13 +27,13 @@ const { Text } = Typography;
 
 const POLL_INTERVAL_MS = 5000;
 
-const STATUS_LABEL: Record<TenantDataExportStatus, { tone: StatusTone; label: string }> = {
+const STATUS_LABEL: Record<TenantDataExportStatus, { tone: StatusTone; label: string }> = localizedRecord(() => ({
   QUEUED: { tone: 'neutral', label: t('En attente') },
   RUNNING: { tone: 'info', label: t('En cours') },
   READY: { tone: 'success', label: t('Prêt') },
   FAILED: { tone: 'danger', label: t('Échoué') },
   EXPIRED: { tone: 'neutral', label: t('Expiré') }
-};
+}));
 
 const ACTIVE_STATUSES: TenantDataExportStatus[] = ['QUEUED', 'RUNNING'];
 

@@ -218,11 +218,13 @@ export const SyndicMandateActions: React.FC<SyndicMandateActionsProps> = ({
   return (
     <>
       <Space wrap size={[8, 8]}>
+        {!isRevoked && (
+          <Button size="small" onClick={() => void handleAuthorizationPdf()} disabled={busy}>
+            {t("Télécharger l'autorisation (PDF)")}
+          </Button>
+        )}
         {mandate.status === 'DRAFT' && (
           <>
-            <Button size="small" onClick={() => void handleAuthorizationPdf()} disabled={busy}>
-              {t("Télécharger l'autorisation (PDF)")}
-            </Button>
             <Button size="small" onClick={() => fileInput.current?.click()} disabled={busy}>
               {mandate.hasSignedScan ? t('Remplacer le scan signé') : t('Déposer le scan signé')}
             </Button>

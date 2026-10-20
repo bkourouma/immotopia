@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
-import { requireTenantAccess } from '../middleware/tenant-middleware';
+import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
+import { requireTenantTypeGuard } from '../middleware/subscription-feature-middleware';
 import { requireSignatureKindAccess } from '../middleware/signature-access-middleware';
 import { resolveSignatureTenant } from '../middleware/signature-tenant-middleware';
 import {
@@ -18,7 +19,8 @@ import {
 /**
  * Signature électronique, routes « agence » (spec 044), montées sur
  * `/api/signatures`. Toutes passent par `authenticate`, `resolveSignatureTenant`
- * puis `requireTenantAccess` (agence). Le droit RBAC et la fonctionnalité
+ * puis `requireTenantAccess` (agence), `requireTenantCollaborator` (pas de client) et la garde de
+ * type d'espace (PARTICULIER refusé). Le droit RBAC et la fonctionnalité
  * d'abonnement dépendent du TYPE de document, déclarés par sa source
  * (`lib/signature/sources`) : `requireSignatureKindAccess` lit le type dans le
  * corps (création), dans la demande `:id` lue en base dans l'agence, ou dans
@@ -27,7 +29,15 @@ import {
  */
 const router = Router();
 
-const tenantScoped = [authenticate, resolveSignatureTenant, requireTenantAccess];
+// Collaborateurs seulement (un locataire ou propriétaire client n'a pas accès à la signature d'agence) ;
+// espace PARTICULIER refusé (liste blanche de lib/subscription/particulier-routes.ts, défaut refusé).
+const tenantScoped = [
+  authenticate,
+  resolveSignatureTenant,
+  requireTenantAccess,
+  requireTenantCollaborator,
+  requireTenantTypeGuard('/signatures')
+];
 const edit = (origin: 'body' | 'request' | 'param') => [...tenantScoped, requireSignatureKindAccess('edit', origin)];
 const view = (origin: 'request') => [...tenantScoped, requireSignatureKindAccess('view', origin)];
 

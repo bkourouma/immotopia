@@ -6,8 +6,9 @@ import { hashPassword, validatePasswordStrength } from '../utils/password-utils'
 import { recordAuditEvent, AuditActionKey } from './audit-service';
 import { invalidateAllUserPermissionCache } from './permission-service';
 import { emailService } from './email-service';
-import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../middleware/error-middleware';
 import crypto from 'crypto';
+import { t } from '../i18n';
 
 /** Rôle d'administrateur d'agence (voir `types/rbac-types.ts`). */
 const TENANT_ADMIN_ROLE_KEY = 'TENANT_ADMIN';
@@ -495,13 +496,76 @@ export async function resetMemberPassword(
         tenantId
       }
     },
-    include: {
-      user: true
+    select: {
+      id: true,
+      status: true,
+      user: { select: { email: true, fullName: true, preferredLanguage: true, globalRole: true } }
     }
   });
 
   if (!membership) {
-    throw new Error('Membre introuvable.');
+    throw new NotFoundError('Membre introuvable.');
+  }
+
+  // Un membre désactivé ou en attente n'a pas à recevoir de lien ni de mot de
+  // passe : on ne rouvre pas un accès par la voie de la réinitialisation.
+  if (membership.status !== MembershipStatus.ACTIVE) {
+    throw new ConflictError(t('Seul un membre actif peut voir son mot de passe réinitialisé.'));
+  }
+
+  // Le mot de passe est GLOBAL (table User) : l'écraser depuis une agence
+  // toucherait aussi les autres agences du compte, ou un super-admin. Pour ces
+  // comptes protégés, seul le lien à usage unique est émis ; le hash n'est pas
+  // modifié et les sessions ne sont pas révoquées (elles sont communes à toutes
+  // les agences du compte).
+  // Est aussi protégé : un compte portant un rôle de portée plateforme ou d'une
+  // autre agence, un profil client dans une autre agence, ou une appartenance
+  // (même non active : invitation, désactivée) ailleurs.
+  const [otherMemberships, foreignRoles, foreignClients] = await Promise.all([
+    prisma.membership.count({ where: { userId, tenantId: { not: tenantId } } }),
+    prisma.userRole.count({
+      where: { userId, OR: [{ tenantId: null }, { tenantId: { not: tenantId } }] }
+    }),
+    prisma.tenantClient.count({ where: { userId, tenantId: { not: tenantId } } })
+  ]);
+  const protectedAccount =
+    membership.user.globalRole === 'SUPER_ADMIN' || otherMemberships > 0 || foreignRoles > 0 || foreignClients > 0;
+
+  if (protectedAccount && newPassword) {
+    throw new ForbiddenError(
+      t(
+        "Ce compte est partagé avec d'autres agences ou la plateforme : un mot de passe ne peut pas être imposé. Envoyez un lien de réinitialisation."
+      )
+    );
+  }
+
+  // Un administrateur d'agence ne peut être touché que par le super-admin ou un
+  // administrateur de la même agence : sinon (gestionnaire), le compte est traité
+  // comme protégé. Pas de mot de passe imposé (on se connecterait à sa place),
+  // et ni écrasement du hash ni révocation de ses sessions : seul le lien de
+  // réinitialisation, envoyé à son adresse, est émis.
+  let adminShielded = false;
+  const targetIsAdmin = await prisma.userRole.count({
+    where: { userId, tenantId, role: { key: TENANT_ADMIN_ROLE_KEY } }
+  });
+  if (targetIsAdmin > 0) {
+    let actorMayTouchAdmin = false;
+    if (actorUserId) {
+      const actor = await prisma.user.findUnique({ where: { id: actorUserId }, select: { globalRole: true } });
+      actorMayTouchAdmin =
+        actor?.globalRole === 'SUPER_ADMIN' ||
+        (await prisma.userRole.count({
+          where: { userId: actorUserId, tenantId, role: { key: TENANT_ADMIN_ROLE_KEY } }
+        })) > 0;
+    }
+    adminShielded = !actorMayTouchAdmin;
+  }
+  if (adminShielded && newPassword) {
+    throw new ForbiddenError(
+      t(
+        "Seul un administrateur de l'agence peut imposer un mot de passe à un administrateur. Envoyez un lien de réinitialisation."
+      )
+    );
   }
 
   // When the admin does not supply a password, set an unguessable one so the
@@ -517,12 +581,12 @@ export async function resetMemberPassword(
   if (!generated) {
     const passwordValidation = validatePasswordStrength(password);
     if (!passwordValidation.isValid) {
-      throw new Error(passwordValidation.error);
+      throw new BadRequestError(passwordValidation.error ?? t('Mot de passe invalide.'));
     }
   }
 
-  // Hash and update password
-  const passwordHash = await hashPassword(password);
+  // Hash and update password (jamais pour un compte protégé)
+  const passwordHash = protectedAccount || adminShielded ? null : await hashPassword(password);
 
   // Issue a single-use reset link instead of e-mailing the password in clear
   // text (e-mail is not a confidential channel and the message is archived).
@@ -533,13 +597,15 @@ export async function resetMemberPassword(
   // Critical action: password change, session revocation, reset token and
   // audit trace commit together or not at all.
   await prisma.$transaction(async tx => {
-    await tx.user.update({
-      where: { id: userId },
-      data: { passwordHash }
-    });
+    if (passwordHash) {
+      await tx.user.update({
+        where: { id: userId },
+        data: { passwordHash }
+      });
 
-    // Revoke all sessions
-    await revokeUserSessionsInTx(tx, userId);
+      // Revoke all sessions
+      await revokeUserSessionsInTx(tx, userId);
+    }
 
     await tx.passwordResetToken.updateMany({
       where: { userId, used: false },
@@ -578,7 +644,11 @@ export async function resetMemberPassword(
   // A generated password is deliberately never returned: the member sets their
   // own through the reset link. Only an admin-chosen password is echoed back,
   // since the admin already knows it.
-  return { password: generated ? undefined : password, resetLinkSent: true };
+  return {
+    password: generated ? undefined : password,
+    resetLinkSent: true,
+    sessionsRevoked: !(protectedAccount || adminShielded)
+  };
 }
 
 /**

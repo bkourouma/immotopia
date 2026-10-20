@@ -16,6 +16,7 @@
  */
 import * as cron from 'node-cron';
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { sendDueSignatureReminders } from '../lib/signature/reminders';
 import { expireDueSignatureRequests, sealPendingSignatureRequests } from '../services/signature-service';
 
@@ -57,7 +58,8 @@ export function startSignatureJob(): void {
     if (running) return;
     running = true;
     try {
-      await runSignatureMaintenance();
+      // Période de 15 min : TTL de 10 min, le verrou expire avant le passage suivant.
+      await withJobLock('signature-maintenance', 10 * 60 * 1000, () => runSignatureMaintenance());
     } finally {
       running = false;
     }

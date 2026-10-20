@@ -11,6 +11,7 @@ import {
 import apiClient, { refreshSession } from '../utils/api-client';
 import { getStoredActiveTenantId, setStoredActiveTenantId } from '../utils/active-tenant';
 import { isPublicTokenPath } from '../utils/public-routes';
+import { userHasPermission } from '../utils/permissions';
 import { t } from '../i18n/t';
 import { LANGUAGE_STORAGE_KEY } from '../i18n/config';
 
@@ -285,7 +286,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const response = await loginApi(credentials);
       if (response.success && response.user) {
-        setUser(response.user);
+        // La réponse de connexion ne porte pas les appartenances ni leurs
+        // droits : on les lit sur `/auth/me`, en UN seul `setUser`, pour ne pas
+        // relancer deux fois le chargement des agences. Un échec ici n'empêche
+        // pas la connexion : sans droits connus, les gardes d'écran refusent
+        // de conclure à l'accès et le serveur tranche.
+        let loggedUser: User = response.user;
+        try {
+          const me = await getMe();
+          if (me?.success && me.user) loggedUser = me.user;
+        } catch {
+          // Repli sur la réponse de connexion.
+        }
+        setUser(loggedUser);
         setIsAuthenticated(true);
       } else {
         throw new Error(response.message || t('Erreur de connexion'));
@@ -356,6 +369,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isLoadingMembership: isLoadingMembership || membershipPending,
     availableTenants,
     activeTenantId: tenantMembership?.tenantId ?? tenantClient?.tenantId ?? null,
+    memberships: user?.memberships ?? [],
+    hasPermission: (tenantId, permission) => isAuthenticated && userHasPermission(user, tenantId, permission),
     login,
     logout,
     register: async () => {

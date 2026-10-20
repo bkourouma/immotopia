@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { searchProperties } from '../services/property-search-service';
 import { PropertySearchRequest } from '../types/property-types';
+import { parseIntParam } from '../utils/query-params';
+import { respondWithAppError } from '../utils/app-error-response';
 
 /**
  * Search properties handler
@@ -28,8 +30,8 @@ export async function searchPropertiesHandler(req: Request, res: Response): Prom
       latitude: req.body.latitude,
       longitude: req.body.longitude,
       radius: req.body.radius,
-      page: req.body.page || req.query.page ? parseInt(req.query.page as string, 10) : 1,
-      limit: req.body.limit || req.query.limit ? parseInt(req.query.limit as string, 10) : 20
+      page: parseIntParam(req.query.page ?? req.body.page, 'page', { min: 1 }) ?? 1,
+      limit: parseIntParam(req.query.limit ?? req.body.limit, 'limit', { min: 1 }) ?? 20
     };
 
     const result = await searchProperties(searchRequest, tenantId, userId);
@@ -40,6 +42,7 @@ export async function searchPropertiesHandler(req: Request, res: Response): Prom
       pagination: result.pagination
     });
   } catch (error: any) {
+    if (respondWithAppError(res, error)) return;
     logger.error('Error searching properties', { error });
     res.status(500).json({
       success: false,

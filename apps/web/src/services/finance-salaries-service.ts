@@ -199,7 +199,11 @@ export async function createSalaryPayment(
 ): Promise<SalaryPayment> {
   const response = await apiClient.post<ApiResponse<SalaryPayment>>(
     `${base(tenantId)}/employees/${employeeId}/salary-payments`,
-    { paymentDate: params.paymentDate, amount: params.amount }
+    {
+      paymentDate: params.paymentDate,
+      amount: params.amount,
+      ...(params.treasuryAccountId ? { treasuryAccountId: params.treasuryAccountId } : {})
+    }
   );
   return response.data.data;
 }

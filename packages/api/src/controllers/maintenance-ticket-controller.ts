@@ -26,6 +26,7 @@ import {
   MaintenanceTicketCategory
 } from '@prisma/client';
 import { parsePagination } from '../utils/pagination-helper';
+import { parseEnumParam } from '../utils/query-params';
 
 /**
  * Repond directement quand l'erreur porte deja son statut HTTP.
@@ -121,8 +122,9 @@ export async function listTenantTicketsHandler(req: Request, res: Response): Pro
     const actorContactId = req.query.tenantContactId as string | undefined;
 
     const filters: any = {};
-    if (req.query.status) {
-      filters.status = req.query.status;
+    const status = parseEnumParam(req.query.status, MaintenanceTicketStatus, 'status');
+    if (status) {
+      filters.status = status;
     }
     if (req.query.propertyId) {
       filters.propertyId = req.query.propertyId as string;
@@ -610,11 +612,13 @@ export async function listAllTicketsHandler(req: Request, res: Response): Promis
     if (req.query.propertyId) {
       filters.propertyId = req.query.propertyId as string;
     }
-    if (req.query.status) {
-      filters.status = req.query.status as MaintenanceTicketStatus;
+    const status = parseEnumParam(req.query.status, MaintenanceTicketStatus, 'status');
+    if (status) {
+      filters.status = status;
     }
-    if (req.query.priority) {
-      filters.priority = req.query.priority as MaintenanceTicketPriority;
+    const priority = parseEnumParam(req.query.priority, MaintenanceTicketPriority, 'priority');
+    if (priority) {
+      filters.priority = priority;
     }
     if (req.query.assignedVendorId) {
       filters.assignedVendorId = req.query.assignedVendorId as string;
@@ -833,11 +837,13 @@ export async function getPropertyMaintenanceHistoryHandler(req: Request, res: Re
     const { propertyId } = req.params;
 
     const filters: any = {};
-    if (req.query.status) {
-      filters.status = req.query.status as MaintenanceTicketStatus;
+    const status = parseEnumParam(req.query.status, MaintenanceTicketStatus, 'status');
+    if (status) {
+      filters.status = status;
     }
-    if (req.query.category) {
-      filters.category = req.query.category as MaintenanceTicketCategory;
+    const category = parseEnumParam(req.query.category, MaintenanceTicketCategory, 'category');
+    if (category) {
+      filters.category = category;
     }
 
     const tickets = await getPropertyMaintenanceHistory(tenantId, propertyId, filters);

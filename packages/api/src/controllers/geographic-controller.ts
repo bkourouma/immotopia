@@ -7,6 +7,7 @@ import {
   getAllCommunes
 } from '../services/geographic-service';
 import { asyncHandler, NotFoundError } from '../middleware/error-middleware';
+import { parseIntParam } from '../utils/query-params';
 
 /**
  * Routes publiques : aucune erreur brute ne sort (asyncHandler + errorHandler).
@@ -18,7 +19,7 @@ import { asyncHandler, NotFoundError } from '../middleware/error-middleware';
  */
 export const searchLocationsHandler = asyncHandler(async (req: Request, res: Response) => {
   const query = (req.query.q as string) || '';
-  const parsedLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+  const parsedLimit = parseIntParam(req.query.limit, 'limit') ?? 50;
   const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 200) : 50;
 
   const locations = await searchLocations(query, limit);

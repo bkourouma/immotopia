@@ -701,6 +701,7 @@ const OngletAlertes: React.FC<OngletAlertesProps> = ({ tenantId, champ, alerteId
           loading={liste.isLoading}
           isReloading={liste.isFetching && !liste.isLoading}
           error={erreurListe ? erreurListe.message || t('Les alertes n’ont pas pu être chargées.') : null}
+          errorCause={liste.error}
           onRetry={() => void liste.refetch()}
           rowKey={alerte => alerte.id}
           columns={columns}

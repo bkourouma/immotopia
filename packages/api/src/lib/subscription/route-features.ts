@@ -50,7 +50,11 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
     feature: 'EXEMPT',
     note: 'Factures PLATFORM (vague 3) : une agence en lecture seule doit voir, telecharger et payer ses factures.'
   },
-  { prefix: '/register', feature: 'EXEMPT', note: "Auto-inscription d'un client, pas une action de l'agence." },
+  {
+    prefix: '/public-profile',
+    feature: 'EXEMPT',
+    note: "Fiche publique reduite de l'agence, lue par un client (nom, logo, coordonnees) : jamais bloquee."
+  },
   { prefix: '/unregister', feature: 'EXEMPT', note: "Desinscription d'un client." },
   { prefix: '/client-details', feature: 'EXEMPT', note: 'Un client met a jour sa propre fiche.' },
   {

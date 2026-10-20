@@ -21,6 +21,7 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 /**
@@ -50,13 +51,13 @@ import { activeLocale } from '../../i18n/format';
 type Filtres = { q: string; status: string; primaryRenterClientId: string };
 const FILTER_KEYS = ['q', 'status', 'primaryRenterClientId'] as const;
 
-const STATUTS = [
+const STATUTS = localizedList(() => [
   { value: 'DRAFT', label: t('Brouillon') },
   { value: 'ACTIVE', label: t('Actif') },
   { value: 'SUSPENDED', label: t('Suspendu') },
   { value: 'ENDED', label: t('Terminé') },
   { value: 'CANCELED', label: t('Annulé') }
-];
+]);
 
 function dateCourte(iso?: string | null): string {
   if (!iso) return '—';
@@ -338,6 +339,7 @@ export const Leases: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreur ? t('Impossible de charger les baux.') : null}
+        errorCause={erreur}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}

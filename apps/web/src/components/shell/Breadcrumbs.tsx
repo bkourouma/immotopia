@@ -77,6 +77,18 @@ export function buildCrumbs(pathname: string): Crumb[] {
     // rien et ne doit pas apparaître.
     if (segment === 'admin' && segments[index + 1] === 'maintenance') return;
 
+    // Abonnement et factures de la plateforme : « Mon compte › Abonnement » (le menu les range sous « Mon compte »),
+    // et non « Paramètres › … » ; « facturation » désigne ailleurs la facturation du mois (finance).
+    const next = segments[index + 1];
+    if (segment === 'settings' && (next === 'abonnement' || next === 'facturation')) {
+      crumbs.push({ label: t('Mon compte'), to: `${acc}/abonnement` });
+      return;
+    }
+    if (segment === 'facturation' && segments[index - 1] === 'settings') {
+      crumbs.push({ label: t('Facturation'), to: isLast ? undefined : acc });
+      return;
+    }
+
     if (isIdSegment(segment)) return;
 
     // « commissions » désigne déjà les commissions des agents

@@ -196,7 +196,8 @@ export const createSalaryPaymentHandler = asyncHandler(async (req: Request, res:
       employeeId,
       paymentDate: body.paymentDate,
       amount: body.amount,
-      createdByUserId: actorUserId
+      createdByUserId: actorUserId,
+      treasuryAccountId: body.treasuryAccountId ?? null
     })
   );
 

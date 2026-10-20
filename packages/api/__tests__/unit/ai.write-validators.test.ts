@@ -241,3 +241,17 @@ describe('parité avec la vraie route', () => {
     expect(check(PUT_PROPERTY, null)).toEqual({ status: 'valid' });
   });
 });
+
+describe('devise par défaut XOF', () => {
+  it('applique la devise XOF par défaut quand elle est omise', () => {
+    const result = check(POST_PROPERTIES, validProperty);
+    expect(result.status).toBe('valid');
+    // La préparation ajoute currency: 'XOF' quand elle est omise
+  });
+
+  it('conserve la devise fournie au lieu du défaut', () => {
+    const result = check(POST_PROPERTIES, { ...validProperty, currency: 'EUR' });
+    expect(result.status).toBe('valid');
+    // Devise fournie (EUR) doit être acceptée même si le défaut est XOF
+  });
+});

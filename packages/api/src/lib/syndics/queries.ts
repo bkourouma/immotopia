@@ -531,19 +531,26 @@ export async function deleteEmptySyndicateByTenant(
     throw notFound('Copropriété introuvable ou inaccessible');
   }
 
-  const [lots, budgets, chargeCalls, meetings, documents, contracts, incidents] = await Promise.all([
-    prisma.syndicateLot.count({ where: { syndicateId } }),
-    prisma.syndicateBudget.count({ where: { syndicateId } }),
-    prisma.chargeCall.count({ where: { syndicateId } }),
-    prisma.generalMeeting.count({ where: { syndicateId } }),
-    prisma.syndicateDocument.count({ where: { syndicateId } }),
-    prisma.maintenanceContract.count({ where: { syndicateId } }),
-    prisma.syndicateIncident.count({ where: { syndicateId } })
-  ]);
+  const [lots, budgets, chargeCalls, meetings, documents, contracts, incidents, ownerAccounts, chargePayments] =
+    await Promise.all([
+      prisma.syndicateLot.count({ where: { syndicateId } }),
+      prisma.syndicateBudget.count({ where: { syndicateId } }),
+      prisma.chargeCall.count({ where: { syndicateId } }),
+      prisma.generalMeeting.count({ where: { syndicateId } }),
+      prisma.syndicateDocument.count({ where: { syndicateId } }),
+      prisma.maintenanceContract.count({ where: { syndicateId } }),
+      prisma.syndicateIncident.count({ where: { syndicateId } }),
+      // Relations Restrict (audit 2026-10) : comptes coproprietaires et paiements encaisses.
+      prisma.ownerAccount.count({ where: { syndicateId } }),
+      prisma.chargePayment.count({ where: { lot: { syndicateId } } })
+    ]);
 
-  if (lots + budgets + chargeCalls + meetings + documents + contracts + incidents > 0) {
+  if (
+    lots + budgets + chargeCalls + meetings + documents + contracts + incidents + ownerAccounts + chargePayments >
+    0
+  ) {
     throw conflict(
-      'Cette copropriete a des lots, des appels de charges, des assemblees ou des documents : elle ne peut pas etre supprimee.'
+      'Cette copropriete a des lots, des appels de charges, des paiements, des comptes coproprietaires, des assemblees ou des documents : elle ne peut pas etre supprimee.'
     );
   }
 
@@ -1221,7 +1228,9 @@ export async function deleteSyndicateLotByTenant(tenantId: string, syndicateId: 
       tx.syndicPaymentDeclarationLine.count({ where: { lotId } }),
       tx.directDebitMandate.count({ where: { lotId } }),
       tx.directDebitRemittanceLine.count({ where: { lotId } }),
-      tx.gMAttendance.count({ where: { lotId } })
+      tx.gMAttendance.count({ where: { lotId } }),
+      // Compte coproprietaire au solde non nul : l'argent du lot ne disparait pas avec lui.
+      tx.ownerAccount.count({ where: { lotId, NOT: { balance: 0 } } })
     ]);
     if (counts.some(count => count > 0)) {
       const message = t(

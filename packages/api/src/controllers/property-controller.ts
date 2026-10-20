@@ -13,10 +13,11 @@ import { getLatestQualityScore, calculateQualityScore } from '../services/proper
 import { getTemplateByType, getAllTemplates } from '../services/property-template-service';
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
 import { CreatePropertyRequest, UpdatePropertyRequest } from '../types/property-types';
-import { PropertyOwnershipType, PropertyType } from '@prisma/client';
+import { PropertyOwnershipType, PropertyStatus, PropertyTransactionMode, PropertyType } from '@prisma/client';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import { parsePagination } from '../utils/pagination-helper';
+import { parseEnumParam } from '../utils/query-params';
 
 /**
  * Propriétaire par défaut d'un bien créé sans propriétaire désigné.
@@ -59,7 +60,7 @@ export const createPropertyHandler = asyncHandler(async (req: Request, res: Resp
     transactionModes: req.body.transactionModes,
     price: req.body.price,
     fees: req.body.fees,
-    currency: req.body.currency || 'EUR',
+    currency: req.body.currency || 'XOF',
     surfaceArea: req.body.surfaceArea,
     surfaceUseful: req.body.surfaceUseful,
     surfaceTerrain: req.body.surfaceTerrain,
@@ -165,10 +166,10 @@ export const listPropertiesHandler = asyncHandler(async (req: Request, res: Resp
   };
 
   const filters = {
-    propertyType: req.query.propertyType as PropertyType | undefined,
-    ownershipType: req.query.ownershipType as any,
-    status: req.query.status as any,
-    transactionMode: req.query.transactionMode as any,
+    propertyType: parseEnumParam(req.query.propertyType, PropertyType, 'propertyType'),
+    ownershipType: parseEnumParam(req.query.ownershipType, PropertyOwnershipType, 'ownershipType'),
+    status: parseEnumParam(req.query.status, PropertyStatus, 'status'),
+    transactionMode: parseEnumParam(req.query.transactionMode, PropertyTransactionMode, 'transactionMode'),
     // Filtres deplaces du navigateur vers le serveur (§8.4) : ils etaient
     // appliques sur la page deja recue, donc sur 20 biens et non sur le
     // portefeuille, et le compteur affiche mentait.
@@ -381,7 +382,7 @@ export const createSubPropertyHandler = asyncHandler(async (req: Request, res: R
     transactionModes: req.body.transactionModes || parent.transactionModes,
     price: req.body.price,
     fees: req.body.fees,
-    currency: req.body.currency || parent.currency || 'EUR',
+    currency: req.body.currency || parent.currency || 'XOF',
     surfaceArea: req.body.surfaceArea,
     surfaceUseful: req.body.surfaceUseful,
     surfaceTerrain: req.body.surfaceTerrain,

@@ -32,6 +32,7 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -97,7 +98,7 @@ const { Title, Text } = Typography;
 
 const TONE_PAIEMENT: Record<string, StatusTone> = { DRAFT: 'neutral', VALIDATED: 'success' };
 
-const MOIS_FR = [
+const MOIS_FR = localizedList(() => [
   'janvier',
   t('février'),
   'mars',
@@ -110,12 +111,14 @@ const MOIS_FR = [
   'octobre',
   'novembre',
   t('décembre')
-];
+]);
 
-const OPTIONS_MOIS = MOIS_FR.map((libelle, index) => ({
-  value: index + 1,
-  label: libelle.charAt(0).toUpperCase() + libelle.slice(1)
-}));
+const OPTIONS_MOIS = localizedList(() =>
+  MOIS_FR.map((libelle, index) => ({
+    value: index + 1,
+    label: libelle.charAt(0).toUpperCase() + libelle.slice(1)
+  }))
+);
 
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
@@ -569,6 +572,7 @@ export const BailDeTerrain: React.FC = () => {
         onPageChange={() => {}}
         loading={paiementsEnAttente}
         error={erreurPaiements ? t('Impossible de charger les paiements de ce bail.') : null}
+        errorCause={erreurPaiements}
         onRetry={() => refetchPaiements()}
         emptyDescription={t("Aucun paiement n'a encore été saisi pour ce bail.")}
         columns={colonnesPaiements}
@@ -676,6 +680,7 @@ export const BailDeTerrain: React.FC = () => {
         onPageChange={() => {}}
         loading={constatationsEnAttente}
         error={erreurConstatations ? t('Impossible de charger les constatations de ce bail.') : null}
+        errorCause={erreurConstatations}
         onRetry={() => refetchConstatations()}
         emptyDescription={t("Aucun mois n'a encore été constaté pour ce bail.")}
         columns={colonnesConstatations}
