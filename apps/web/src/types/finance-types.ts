@@ -64,12 +64,23 @@ export interface ClientsAgingBalanceLine extends ClientsBalanceLine {
   days30To60: number;
   days60To90: number;
   daysOver90: number;
+  /** Somme des cinq tranches : le solde de ligne affiché, cohérent avec le total. Absent d'un vieux cache. */
+  agedTotal?: number;
+  /** Solde comptable (grand livre) du compte, en FCFA entiers. */
+  ledgerBalance?: number;
+  /** Écart comptable de la ligne : `ledgerBalance - agedTotal`. 0 ou absent : aucun écart. */
+  gap?: number;
 }
 
 export interface ClientsAgingBalance {
   lines: ClientsAgingBalanceLine[];
+  /** Somme des tranches (et non le solde comptable). */
   totalBalance: number;
   currency: string;
+  /** Solde comptable total, en FCFA entiers. */
+  ledgerTotalBalance?: number;
+  /** Écart comptable global : `ledgerTotalBalance - totalBalance`. 0 ou absent : aucun écart. */
+  gap?: number;
 }
 
 /** Une ligne de relevé de compte. */
