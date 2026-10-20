@@ -553,7 +553,12 @@ describe('resendNotification', () => {
     });
 
     it('variables WhatsApp sensibles (lien, jeton long) : notify() ne les garde pas, non rejouable', async () => {
-      for (const variables of [{ nom: 'https://acces.test/x' }, { ref: 'a'.repeat(30) }, { lien: 'ok' }]) {
+      const cas: Array<Record<string, string>> = [
+        { nom: 'https://acces.test/x' },
+        { ref: 'a'.repeat(30) },
+        { lien: 'ok' }
+      ];
+      for (const variables of cas) {
         mockStore.notifs = [];
         mockSendWhatsapp.mockRejectedValueOnce(new Error('WA down'));
         await notify({

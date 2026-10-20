@@ -14,6 +14,7 @@ installMountPathRecorder();
 
 import app from '../../src/app';
 import { buildCatalog, COMMUNICATION_PERMISSION_FLOOR } from '../../src/lib/ai/gateway/catalog-builder';
+import { writeSensitivity } from '../../src/lib/ai/gateway/path-rules';
 import {
   findWritableEntry,
   getCatalogEntries,
@@ -79,9 +80,33 @@ describe('catalogue IA — gardes de routeur', () => {
     expect(findWritableEntry('PATCH /api/tenants/:tenantId/client-details')).toBeUndefined();
   });
 
-  it('le générateur écarte PATCH client-details (libre-service portail, aucune permission) et ne laisse aucune écriture sans info', () => {
+  it('le générateur écarte PATCH client-details et les deux écritures de la boîte de notifications (libre-service, aucune permission) et ne laisse aucune écriture sans info', () => {
     const built = buildCatalog(collectRoutes(app));
-    expect(built.excludedUnguardedWrites.map(e => e.id)).toEqual(['PATCH /api/tenants/:tenantId/client-details']);
+    // client-details : libre-service du portail. `notifications/:id/read` et `notifications/read-all` : simple
+    // appartenance (l'utilisateur marque SES notifications lues), aucune permission : fail closed.
+    expect(built.excludedUnguardedWrites.map(e => e.id).sort()).toEqual(
+      [
+        'PATCH /api/tenants/:tenantId/client-details',
+        'POST /api/tenants/:tenantId/notifications/:id/read',
+        'POST /api/tenants/:tenantId/notifications/read-all'
+      ].sort()
+    );
     expect(built.entries.filter(e => e.method !== 'GET' && !e.permissions && !e.anyOfPermissions)).toEqual([]);
+  });
+
+  it('la messagerie privée sort entièrement du catalogue (lecture comme écriture)', () => {
+    // Messages privés : contenu rédigé par des clients (vecteur d'injection) et envoi au nom de l'utilisateur
+    // interdit à l'assistant.
+    const built = buildCatalog(collectRoutes(app));
+    const isMessaging = (e: { path: string }) => e.path.startsWith('/api/tenants/:tenantId/messages');
+    expect(built.entries.filter(isMessaging)).toEqual([]);
+    expect(getCatalogEntries().filter(isMessaging)).toEqual([]);
+    expect(findWritableEntry('POST /api/tenants/:tenantId/messages/conversations/:id/messages')).toBeUndefined();
+  });
+
+  it('le renvoi d’une notification (envoi sortant vers des clients) est une écriture sensible : mot de confirmation exigé', () => {
+    const resend = 'POST /api/tenants/:tenantId/admin/notifications/:id/resend';
+    expect(findWritableEntry(resend)).toBeDefined();
+    expect(writeSensitivity('/api/tenants/:tenantId/admin/notifications/:id/resend')?.category).toBe('sending');
   });
 });

@@ -13,6 +13,39 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/admin/notifications",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/admin/notifications",
+      "pathParams": [],
+      "module": "admin",
+      "summary": "admin / notifications",
+      "permissions": ["TENANT_NOTIFICATIONS_ADMIN"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/admin/notifications/:id",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/admin/notifications/:id",
+      "pathParams": ["id"],
+      "module": "admin",
+      "summary": "admin / notifications / {id}",
+      "permissions": ["TENANT_NOTIFICATIONS_ADMIN"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/admin/notifications/recipients",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/admin/notifications/recipients",
+      "pathParams": [],
+      "module": "admin",
+      "summary": "admin / notifications / recipients",
+      "permissions": ["TENANT_NOTIFICATIONS_ADMIN"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/audit",
       "method": "GET",
       "path": "/api/tenants/:tenantId/audit",
@@ -1530,6 +1563,28 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/notifications",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/notifications",
+      "pathParams": [],
+      "module": "notifications",
+      "summary": "notifications",
+      "permissions": null,
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/notifications/unread-count",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/notifications/unread-count",
+      "pathParams": [],
+      "module": "notifications",
+      "summary": "notifications / unread-count",
+      "permissions": null,
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/owner-accounts",
       "method": "GET",
       "path": "/api/tenants/:tenantId/owner-accounts",
@@ -2980,6 +3035,17 @@
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_VIEW"]],
       "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/bareme-types-lots",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/bareme-types-lots",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / bareme-types-lots",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
     },
     {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/budgets",
@@ -4606,6 +4672,17 @@
       "module": "whatsapp-notifications",
       "summary": "whatsapp-notifications / {key}",
       "permissions": ["COMMUNICATION_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/admin/notifications/:id/resend",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/admin/notifications/:id/resend",
+      "pathParams": ["id"],
+      "module": "admin",
+      "summary": "admin / notifications / {id} / resend",
+      "permissions": ["TENANT_NOTIFICATIONS_ADMIN"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -8457,6 +8534,17 @@
       "pathParams": ["syndicId", "meetingId", "lotId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / assemblees / {meetingId} / presences / {lotId}",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "PUT /api/tenants/:tenantId/syndics/:syndicId/bareme-types-lots",
+      "method": "PUT",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/bareme-types-lots",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / bareme-types-lots",
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false

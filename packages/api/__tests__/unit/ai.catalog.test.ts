@@ -174,6 +174,8 @@ describe('catalogue de la passerelle IA', () => {
       if (!['GET', 'POST', 'PUT', 'PATCH'].includes(route.method)) continue;
       if (/webhook/i.test(route.path) || route.path.startsWith('/api/tenants/:tenantId/ai')) continue;
       if (route.path.split('/').includes('simulator')) continue;
+      // Messagerie privée : exclue du catalogue (voir ai.catalog-guards.test.ts).
+      if (route.path.startsWith('/api/tenants/:tenantId/messages')) continue;
       if (unguarded.has(`${route.method} ${route.path}`)) continue;
       if (!ids.has(`${route.method} ${route.path}`)) missing.push(`${route.method} ${route.path}`);
     }
