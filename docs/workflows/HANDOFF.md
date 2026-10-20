@@ -237,6 +237,17 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `fix/test-prestataire-syndic-instable` — 2026-10-19
+
+**État :** prêt à relire — PR vers `main` (fusion par l'utilisateur).
+**Dernier commit :** voir `git log` (correctif du test, puis cette passation).
+
+**Fait :** test web instable `syndics/ProvidersDocumentsFinancesPages.test.tsx` › « cree un prestataire… » (échecs CI runs 39213150820 et 39333433719, payload `{ name: undefined, … }`). Cause : le mock d'antd retrouvait l'instance de `Form.useForm()` par un compteur d'appels remis à zéro par microtâche ; deux rendus enchaînés sans microtâche créaient de nouvelles instances, le bouton « Créer » appelait un `validateFields` vide. Correctif : instance gardée dans un `useRef` (comme antd), enregistrée à l'ordre du premier montage ; les tests « créer » et « modifier » vérifient qu'il y a exactement deux formulaires et que le `validateFields` espionné est appelé. Le composant `SyndicProviders.tsx` lit bien ses valeurs via `providerForm.validateFields()` (aucun état local) : non modifié.
+
+**Reste à faire :** suivre la CI de la PR (lot 2/4) sur plusieurs runs.
+
+**Pièges :** l'échec n'a jamais été reproduit en local (le fichier passait seul avant correctif) : la cause est déduite du payload, qui ne peut venir que du `validateFields` par défaut d'une instance neuve. Le worktree utilise la jonction `node_modules` vers `.claude/worktrees/qa-syndic-base` (le checkout principal est sur `feat/signature-s5-s7`).
+
 ## Pilote — finalisation des chantiers ouverts — 2026-10-18
 
 **État :** tout est fusionné dans `main` (`7f1c6e55`, CI verte). Rien n'est déployé. Le workflow « Déploiement » se termine en `skipped` après chaque fusion, sans doute parce que la variable `AUTO_DEPLOY_STAGING` n'est pas à `true`. Le staging est donc resté à `0469fdf7`, et la production n'a rien reçu.
