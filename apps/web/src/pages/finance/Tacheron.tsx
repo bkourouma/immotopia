@@ -617,6 +617,7 @@ export const Tacheron: React.FC = () => {
         onPageChange={() => {}}
         loading={marchesEnAttente}
         error={erreurMarches ? t('Impossible de charger les marchés de ce tâcheron.') : null}
+        errorCause={erreurMarches}
         onRetry={() => refetchMarches()}
         emptyDescription={t("Aucun marché n'a encore été convenu avec ce tâcheron.")}
         columns={colonnesMarches}
@@ -757,6 +758,7 @@ export const Tacheron: React.FC = () => {
               onPageChange={() => {}}
               loading={situationsEnAttente}
               error={erreurSituations ? t('Impossible de charger les situations de ce marché.') : null}
+              errorCause={erreurSituations}
               onRetry={() => refetchSituations()}
               emptyDescription={t("Aucune situation n'a encore été saisie sur ce marché.")}
               columns={colonnesSituations}
@@ -896,6 +898,7 @@ export const Tacheron: React.FC = () => {
         onPageChange={() => {}}
         loading={reglementsEnAttente}
         error={erreurReglements ? t('Impossible de charger les règlements de ce tâcheron.') : null}
+        errorCause={erreurReglements}
         onRetry={() => refetchReglements()}
         emptyDescription={t("Aucun règlement n'a encore été enregistré pour ce tâcheron.")}
         columns={colonnesReglements}

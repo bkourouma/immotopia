@@ -278,6 +278,7 @@ export const BonsDeCommande: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les bons de commande.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={() => list.setFilters({ siteId: undefined, supplierId: undefined, status: undefined })}

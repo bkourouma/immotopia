@@ -232,6 +232,7 @@ export const BauxDeTerrain: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les baux de terrain.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         emptyDescription={t("Aucun bail de terrain n'est encore enregistré.")}
         emptyAction={{ label: t('Nouveau bail'), onClick: ouvrirCreation }}

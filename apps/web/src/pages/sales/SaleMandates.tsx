@@ -210,6 +210,7 @@ export const SaleMandates: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les mandats de vente.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={estFiltre}
         onClearFilters={() => {

@@ -572,6 +572,7 @@ export const BailDeTerrain: React.FC = () => {
         onPageChange={() => {}}
         loading={paiementsEnAttente}
         error={erreurPaiements ? t('Impossible de charger les paiements de ce bail.') : null}
+        errorCause={erreurPaiements}
         onRetry={() => refetchPaiements()}
         emptyDescription={t("Aucun paiement n'a encore été saisi pour ce bail.")}
         columns={colonnesPaiements}
@@ -679,6 +680,7 @@ export const BailDeTerrain: React.FC = () => {
         onPageChange={() => {}}
         loading={constatationsEnAttente}
         error={erreurConstatations ? t('Impossible de charger les constatations de ce bail.') : null}
+        errorCause={erreurConstatations}
         onRetry={() => refetchConstatations()}
         emptyDescription={t("Aucun mois n'a encore été constaté pour ce bail.")}
         columns={colonnesConstatations}

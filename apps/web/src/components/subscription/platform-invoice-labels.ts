@@ -1,10 +1,9 @@
 import type { StatusTone } from '../primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
-
 import { localizedRecord } from '../../i18n/localized';
-/** Libellés communs des factures d'abonnement (super-admin et agence). */
 
+/** Libellés communs des factures d'abonnement (super-admin et agence). */
 export const INVOICE_STATUS_LABEL: Record<string, { label: string; tone: StatusTone }> = localizedRecord(() => ({
   DRAFT: { label: t('Brouillon'), tone: 'neutral' },
   ISSUED: { label: t('Émise'), tone: 'info' },

@@ -357,6 +357,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les paiements.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={Boolean(list.filters.status)}
         onClearFilters={() => list.setFilters({ status: undefined })}

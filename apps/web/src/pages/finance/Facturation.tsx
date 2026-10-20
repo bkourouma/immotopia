@@ -571,6 +571,7 @@ export const Facturation: React.FC = () => {
         loading={historiqueEnAttente}
         isReloading={historiqueEnCours && !historiqueEnAttente}
         error={erreurHistorique ? t("Impossible de charger l'historique des campagnes.") : null}
+        errorCause={erreurHistorique}
         onRetry={() => refetchHistorique()}
         emptyDescription={t("Aucune campagne n'a encore été exécutée.")}
         columns={colonnesHistorique}

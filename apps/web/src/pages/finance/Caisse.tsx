@@ -500,6 +500,7 @@ export const Caisse: React.FC = () => {
         onPageChange={() => undefined}
         loading={historiqueQuery.isPending}
         error={historiqueQuery.error ? t('Impossible de charger les sessions de caisse.') : null}
+        errorCause={historiqueQuery.error}
         onRetry={() => historiqueQuery.refetch()}
         emptyDescription={t('Aucune session de caisse.')}
         rowKey={s => s.id}

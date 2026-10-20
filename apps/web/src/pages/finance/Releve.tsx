@@ -243,6 +243,7 @@ export const Releve: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger le relevé.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={() => list.setFilters({ from: undefined, to: undefined })}

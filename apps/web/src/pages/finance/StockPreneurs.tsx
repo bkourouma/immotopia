@@ -479,6 +479,7 @@ const CarnetDesPreneurs: React.FC<CarnetProps> = ({ tenantId, canManage, people 
         loading={liste.isLoading}
         isReloading={liste.isFetching && !liste.isLoading}
         error={liste.error ? lireErreur(liste.error).message || t('Le carnet n’a pas pu être chargé.') : null}
+        errorCause={liste.error}
         onRetry={() => void liste.refetch()}
         isFiltered={filtre}
         onClearFilters={() => {

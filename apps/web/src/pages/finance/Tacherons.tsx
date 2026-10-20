@@ -209,6 +209,7 @@ export const Tacherons: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? translate('Impossible de charger les tâcherons.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={actifsSeulement}
         onClearFilters={() => setActifsSeulement(false)}
