@@ -1,5 +1,6 @@
 import * as cron from 'node-cron';
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import {
   STALE_RUNNING_AGE_MS,
   expireOldExports,
@@ -34,7 +35,11 @@ export function startTenantDataExportExpiryJob(): void {
     logger.warn('Tenant data export expiry job is already running');
     return;
   }
-  job = cron.schedule('40 * * * *', () => runTenantDataExportMaintenance(), { timezone: 'UTC' });
+  job = cron.schedule(
+    '40 * * * *',
+    () => withJobLock('tenant-data-export-expiry-hourly', 30 * 60 * 1000, () => runTenantDataExportMaintenance()),
+    { timezone: 'UTC' }
+  );
   logger.info('Tenant data export expiry job started (hourly)');
 }
 

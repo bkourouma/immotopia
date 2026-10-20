@@ -22,12 +22,12 @@ const { Text } = Typography;
 const EMAIL_NOT_CONFIGURED_MARKER = "envoi d'e-mails non configuré sur le serveur";
 const NOTIFICATION_DISABLED_MARKER = 'notification e-mail désactivée';
 
-const EMAIL_NOT_CONFIGURED_HINT = t(
-  "L'envoi d'e-mails n'est pas configuré sur le serveur : contactez l'administrateur de la plateforme."
-);
-const NOTIFICATION_DISABLED_HINT = t(
-  'La notification « Appel de charges émis » est désactivée pour cette agence : activez-la dans Communication > Notifications e-mail.'
-);
+const emailNotConfiguredHint = () =>
+  t("L'envoi d'e-mails n'est pas configuré sur le serveur : contactez l'administrateur de la plateforme.");
+const notificationDisabledHint = () =>
+  t(
+    'La notification « Appel de charges émis » est désactivée pour cette agence : activez-la dans Communication > Notifications e-mail.'
+  );
 
 const DUE_DATE_SHIFTED_PREFIX = 'Échéance décalée au';
 
@@ -139,12 +139,12 @@ export const ChargeScheduleRunNotices: React.FC<ChargeScheduleRunNoticesProps> =
       ) : null}
       {hasEmailNotConfigured ? (
         <Text type="danger" style={{ fontSize: 12 }}>
-          {EMAIL_NOT_CONFIGURED_HINT}
+          {emailNotConfiguredHint()}
         </Text>
       ) : null}
       {hasNotificationDisabled ? (
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {NOTIFICATION_DISABLED_HINT}
+          {notificationDisabledHint()}
         </Text>
       ) : null}
       {canResend ? (

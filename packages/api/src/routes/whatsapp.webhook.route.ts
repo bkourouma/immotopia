@@ -33,7 +33,7 @@ function verifyTwilioSignature(req: Request, res: Response, next: NextFunction):
     return;
   }
 
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const authToken = env.TWILIO_AUTH_TOKEN;
   const signature = req.get('X-Twilio-Signature');
 
   if (!authToken) {

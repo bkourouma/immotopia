@@ -38,6 +38,7 @@ import { t } from '../../i18n/t';
 import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
 
 import { activeLocale } from '../../i18n/format';
+import { localizedRecord } from '../../i18n/localized';
 const { Title, Text } = Typography;
 
 interface DealDetailProps {
@@ -51,11 +52,11 @@ const STAGE_CODES: CrmDealStage[] = ['NEW', 'QUALIFIED', 'VISIT', 'NEGOTIATION',
 const stageOptions = (): Array<{ value: CrmDealStage; label: string }> =>
   STAGE_CODES.map(value => ({ value, label: dealStageLabel(value) }));
 
-const FURNISHING_LABELS: Record<string, string> = {
+const FURNISHING_LABELS: Record<string, string> = localizedRecord(() => ({
   MEUBLE: 'Meuble',
   SEMI_MEUBLE: 'Semi-meuble',
   NON_MEUBLE: t('Non meuble')
-};
+}));
 
 function getStageLabel(stage: string): string {
   return dealStageLabel(stage);

@@ -20,6 +20,7 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList, localizedRecord } from '../../i18n/localized';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded';
 
@@ -67,7 +68,7 @@ const { Text, Title } = Typography;
  * doit rester lisible des mois plus tard, même si le bail a été clos depuis.
  */
 
-const MOIS_FR = [
+const MOIS_FR = localizedList(() => [
   'janvier',
   t('février'),
   'mars',
@@ -80,7 +81,7 @@ const MOIS_FR = [
   'octobre',
   'novembre',
   t('décembre')
-];
+]);
 
 function capitaliser(mot: string): string {
   return mot.charAt(0).toUpperCase() + mot.slice(1);
@@ -134,19 +135,19 @@ function libelleMotif(reason: BillingExclusionReason): string {
   return BILLING_EXCLUSION_LABELS[reason] ?? t('Motif non précisé');
 }
 
-const OPTIONS_MOIS = MOIS_FR.map((nom, index) => ({ value: index + 1, label: capitaliser(nom) }));
+const OPTIONS_MOIS = localizedList(() => MOIS_FR.map((nom, index) => ({ value: index + 1, label: capitaliser(nom) })));
 
-const STATUT_CAMPAGNE: Record<BillingRun['status'], { tone: StatusTone; label: string }> = {
+const STATUT_CAMPAGNE: Record<BillingRun['status'], { tone: StatusTone; label: string }> = localizedRecord(() => ({
   RUNNING: { tone: 'info', label: t('En cours') },
   DONE: { tone: 'success', label: t('Exécutée') },
   FAILED: { tone: 'danger', label: t('Échouée') }
-};
+}));
 
 type LigneFacturee = BillingRunSummary['billed'][number];
 type LigneExclue = BillingRunSummary['excluded'][number];
 type LigneAvance = BillingRunSummary['advancesApplied'][number];
 
-const COLONNES_FACTUREES: ColumnsType<LigneFacturee> = [
+const COLONNES_FACTUREES: ColumnsType<LigneFacturee> = localizedList(() => [
   { title: t('Bail'), dataIndex: 'leaseLabel', key: 'bail' },
   {
     title: t('Montant facturé'),
@@ -155,14 +156,14 @@ const COLONNES_FACTUREES: ColumnsType<LigneFacturee> = [
     exportValue: ligne => ligne.amount,
     render: (_, ligne) => <MoneyValue value={ligne.amount} />
   }
-];
+]);
 
-const COLONNES_EXCLUES: ColumnsType<LigneExclue> = [
+const COLONNES_EXCLUES: ColumnsType<LigneExclue> = localizedList(() => [
   { title: t('Bail'), dataIndex: 'leaseLabel', key: 'bail' },
   { title: t('Motif'), key: 'motif', render: (_, ligne) => libelleMotif(ligne.reason) }
-];
+]);
 
-const COLONNES_AVANCES: ColumnsType<LigneAvance> = [
+const COLONNES_AVANCES: ColumnsType<LigneAvance> = localizedList(() => [
   { title: t('Client'), dataIndex: 'tenantLabel', key: 'client' },
   {
     title: t('Montant imputé'),
@@ -171,7 +172,7 @@ const COLONNES_AVANCES: ColumnsType<LigneAvance> = [
     exportValue: ligne => ligne.amount,
     render: (_, ligne) => <MoneyValue value={ligne.amount} />
   }
-];
+]);
 
 interface CompteRenduProps {
   run: BillingRun | null;
@@ -570,6 +571,7 @@ export const Facturation: React.FC = () => {
         loading={historiqueEnAttente}
         isReloading={historiqueEnCours && !historiqueEnAttente}
         error={erreurHistorique ? t("Impossible de charger l'historique des campagnes.") : null}
+        errorCause={erreurHistorique}
         onRetry={() => refetchHistorique()}
         emptyDescription={t("Aucune campagne n'a encore été exécutée.")}
         columns={colonnesHistorique}

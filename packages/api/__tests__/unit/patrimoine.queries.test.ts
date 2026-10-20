@@ -378,3 +378,22 @@ describe('actif REAL_ESTATE créé à la volée (lot 1 multi-actifs)', () => {
     expect(assetUpsert).not.toHaveBeenCalled();
   });
 });
+
+describe('getPatrimoineOverview — patrimoine PROPRE de l agence uniquement', () => {
+  it('restreint baux, valorisations, prets et charges aux biens ownershipType TENANT', async () => {
+    propertyFindMany.mockResolvedValue([]);
+    assetValuationFindMany.mockResolvedValue([]);
+    propertyLoanFindMany.mockResolvedValue([]);
+    propertyExpenseFindMany.mockResolvedValue([]);
+    rentalLeaseFindMany.mockResolvedValue([]);
+
+    await getPatrimoineOverview(TENANT);
+
+    const own = { ownershipType: 'TENANT' };
+    expect(propertyFindMany.mock.calls.at(-1)[0].where).toEqual(expect.objectContaining(own));
+    expect(assetValuationFindMany.mock.calls.at(-1)[0].where.property).toEqual(own);
+    expect(propertyLoanFindMany.mock.calls.at(-1)[0].where.property).toEqual(own);
+    expect(propertyExpenseFindMany.mock.calls.at(-1)[0].where.property).toEqual(own);
+    expect(rentalLeaseFindMany.mock.calls.at(-1)[0].where.property).toEqual(own);
+  });
+});

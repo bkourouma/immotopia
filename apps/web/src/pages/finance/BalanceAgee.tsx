@@ -23,6 +23,7 @@ import {
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
+import { formatMoney } from '../../components/primitives/MoneyValue';
 import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded';
 
 /**
@@ -58,6 +59,17 @@ function trierLignes(lignes: ClientsAgingBalanceLine[], sort: Sort | null): Clie
   const sens = sort.order === 'asc' ? 1 : -1;
   return [...lignes].sort((a, b) => (Number(a[champ]) - Number(b[champ])) * sens);
 }
+
+/** Solde affiché d'une ligne : la somme des tranches, repli sur le solde comptable. */
+const soldeLigne = (l: ClientsAgingBalanceLine): number => l.agedTotal ?? l.balance;
+
+/** Mention discrète de l'écart avec la comptabilité ; rien quand il est nul ou absent. */
+const MentionEcart: React.FC<{ gap?: number }> = ({ gap }) =>
+  gap ? (
+    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+      {t('Écart avec la comptabilité : {{montant}}', { montant: formatMoney(gap) })}
+    </div>
+  ) : null;
 
 export const BalanceAgee: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -114,7 +126,8 @@ export const BalanceAgee: React.FC = () => {
         Biens: l.propertyLabels.join(' · '),
         Facturé: l.totalBilled,
         Réglé: l.totalSettled,
-        Solde: l.balance,
+        Solde: soldeLigne(l),
+        'Écart comptable': l.gap ?? 0,
         'À échoir': l.notYetDue,
         '< 30 jours': l.days0To30,
         '30 à 60 jours': l.days30To60,
@@ -165,8 +178,13 @@ export const BalanceAgee: React.FC = () => {
       title: t('Solde'),
       key: 'solde',
       align: 'end',
-      exportValue: l => l.balance,
-      render: (_, l) => <MoneyValue value={l.balance} signed />
+      exportValue: l => soldeLigne(l),
+      render: (_, l) => (
+        <>
+          <MoneyValue value={soldeLigne(l)} signed />
+          <MentionEcart gap={l.gap} />
+        </>
+      )
     },
     colonneTranche(t('À échoir'), 'notYetDue'),
     colonneTranche('< 30 jours', 'days0To30'),
@@ -242,6 +260,7 @@ export const BalanceAgee: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger la balance âgée.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}
@@ -261,7 +280,12 @@ export const BalanceAgee: React.FC = () => {
             title={l.label}
             aria-label={l.label}
             subtitle={l.propertyLabels.length > 0 ? l.propertyLabels.join(' · ') : undefined}
-            highlight={<MoneyValue value={l.balance} signed />}
+            highlight={
+              <>
+                <MoneyValue value={soldeLigne(l)} signed />
+                <MentionEcart gap={l.gap} />
+              </>
+            }
             fields={[
               { label: t('À échoir'), value: <MoneyValue value={l.notYetDue} /> },
               { label: '< 30 jours', value: <MoneyValue value={l.days0To30} /> },
@@ -277,6 +301,7 @@ export const BalanceAgee: React.FC = () => {
       {data && lignes.length > 0 && (
         <div style={{ marginTop: 'var(--space-4)', maxWidth: 320 }}>
           <StatCard label={t('Total de contrôle')} value={<MoneyValue value={data.totalBalance} signed />} />
+          <MentionEcart gap={data.gap} />
         </div>
       )}
     </>

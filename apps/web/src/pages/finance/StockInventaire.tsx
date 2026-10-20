@@ -2132,6 +2132,7 @@ const OngletInventaire: React.FC<{
         loading={liste.isPending}
         isReloading={liste.isFetching && !liste.isPending}
         error={liste.isError ? t('Impossible de charger les inventaires.') : null}
+        errorCause={liste.error}
         onRetry={() => void liste.refetch()}
         isFiltered={Boolean(lieuFiltre || statutFiltre || natureFiltre)}
         onClearFilters={() => {

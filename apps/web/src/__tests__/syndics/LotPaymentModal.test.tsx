@@ -5,6 +5,7 @@ import { App as AntApp } from 'antd';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
 import { SyndicCharges } from '../../pages/syndics/SyndicCharges';
+import { LotPaymentModal } from '../../components/syndics/LotPaymentModal';
 
 /**
  * Lot S2 (besoins 4 et 5) : la modale « Enregistrer un paiement » travaille
@@ -412,5 +413,105 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
     await waitFor(() => expect(listChargeCalls.mock.calls.length).toBeGreaterThan(callsBeforeClose));
     // BUG-003 : avance formatée comme les autres montants, avec la devise.
     expect(await screen.findByText('Paiement enregistré : 1 appel(s) soldé(s), avance de 0 FCFA')).toBeTruthy();
+  });
+});
+
+describe('LotPaymentModal — idempotence et double-clic (audit lot B)', () => {
+  const lot = {
+    id: 'lot-1',
+    syndicateId: 'syndic-1',
+    lotNumber: 'A-01',
+    lotType: 'APARTMENT',
+    generalShares: 100,
+    createdAt: '',
+    updatedAt: ''
+  } as any;
+
+  const result = {
+    payment: { id: 'payment-1', lotId: 'lot-1', chargeCallId: 'charge-1', amount: 1000, unallocatedAmount: 0 },
+    allocations: [],
+    advance: 0,
+    lotAdvanceBalance: 0,
+    currency: 'XOF'
+  };
+
+  function renderModal(open: boolean) {
+    const element = (isOpen: boolean) => (
+      <AntApp>
+        <LotPaymentModal
+          open={isOpen}
+          tenantId="tenant-1"
+          syndicId="syndic-1"
+          lots={[lot]}
+          initialLotId="lot-1"
+          onClose={vi.fn()}
+          onRecorded={vi.fn()}
+        />
+      </AntApp>
+    );
+    const view = render(element(open));
+    return { rerenderOpen: (isOpen: boolean) => view.rerender(element(isOpen)) };
+  }
+
+  async function fillAmount() {
+    await waitFor(() => expect(listOpenLotCharges).toHaveBeenCalled());
+    const amountInput = document.getElementById('lot-payment-amount') as HTMLInputElement;
+    fireEvent.change(amountInput, { target: { value: '1000' } });
+    fireEvent.blur(amountInput);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listOpenLotCharges.mockResolvedValue([]);
+    getLotAdvance.mockResolvedValue({ advance: 0, currency: 'XOF' });
+    previewLotPayment.mockResolvedValue(result);
+  });
+
+  it('deux clics rapides sur « Enregistrer » : un seul appel recordLotPayment', async () => {
+    let release: (value: unknown) => void = () => undefined;
+    recordLotPayment.mockReturnValue(new Promise(resolve => (release = resolve)));
+
+    renderModal(true);
+    await fillAmount();
+
+    const button = (await screen.findByText('Enregistrer')).closest('button') as HTMLElement;
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(recordLotPayment).toHaveBeenCalledTimes(1);
+    release(result);
+    await waitFor(() => expect(screen.queryByText('Enregistrement du paiement impossible')).toBeNull());
+  });
+
+  it('envoie la même clé à chaque tentative après échec, et une autre après réouverture', async () => {
+    recordLotPayment.mockRejectedValue({ response: { data: { error: 'Réseau coupé' } } });
+
+    const { rerenderOpen } = renderModal(true);
+    await fillAmount();
+
+    const submit = async () => {
+      const button = (await screen.findByText('Enregistrer')).closest('button') as HTMLElement;
+      fireEvent.click(button);
+      await waitFor(() => expect(button.className).not.toContain('ant-btn-loading'));
+    };
+
+    await submit();
+    await waitFor(() => expect(recordLotPayment).toHaveBeenCalledTimes(1));
+    await submit();
+    await waitFor(() => expect(recordLotPayment).toHaveBeenCalledTimes(2));
+
+    const keyOf = (call: number) =>
+      (recordLotPayment.mock.calls[call][3] as { idempotencyKey?: string }).idempotencyKey;
+    expect(typeof keyOf(0)).toBe('string');
+    expect(keyOf(0)).toBeTruthy();
+    expect(keyOf(1)).toBe(keyOf(0));
+
+    rerenderOpen(false);
+    rerenderOpen(true);
+    await fillAmount();
+    await submit();
+    await waitFor(() => expect(recordLotPayment).toHaveBeenCalledTimes(3));
+    expect(keyOf(2)).toBeTruthy();
+    expect(keyOf(2)).not.toBe(keyOf(0));
   });
 });

@@ -149,6 +149,7 @@ export const ComptesProprietaires: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les comptes propriétaires.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         emptyDescription={t('Aucun compte propriétaire enregistré.')}
         columns={colonnes}

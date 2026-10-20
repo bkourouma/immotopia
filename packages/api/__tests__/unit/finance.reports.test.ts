@@ -588,7 +588,16 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
       // Les champs herites de la balance simple restent presents.
       expect(line.balance).toBe(40000);
       expect(line.totalBilled).toBe(40000);
-      expect(result.totalBalance).toBe(line.balance);
+      // Total = somme des tranches (une seule source : les echeances), meme si le solde comptable (40000) differe (36000 d echeances).
+      const bucketsSum = line.notYetDue + line.days0To30 + line.days30To60 + line.days60To90 + line.daysOver90;
+      expect(bucketsSum).toBe(36000);
+      expect(result.totalBalance).toBe(bucketsSum);
+      expect(result.lines.reduce((sum, l) => sum + l.agedTotal, 0)).toBe(result.totalBalance);
+      // Le solde comptable reste disponible a part, avec l ecart.
+      expect(line.ledgerBalance).toBe(40000);
+      expect(result.ledgerTotalBalance).toBe(40000);
+      expect(line.gap).toBe(4000);
+      expect(result.gap).toBe(4000);
     });
 
     it('ne compte que les echeances non soldees, et ignore les autres locataires', async () => {

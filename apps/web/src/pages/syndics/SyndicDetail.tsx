@@ -46,25 +46,26 @@ import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
+import { localizedRecord } from '../../i18n/localized';
 const { Paragraph, Title } = Typography;
 
-const statusConfig: Record<Syndicate['status'], { color: string; label: string }> = {
+const statusConfig: Record<Syndicate['status'], { color: string; label: string }> = localizedRecord(() => ({
   ACTIVE: { color: 'green', label: t('Active') },
   IN_LIQUIDATION: { color: 'orange', label: t('En liquidation') },
   IN_DISPUTE: { color: 'red', label: t('En litige') }
-};
+}));
 
 /**
  * Étiquettes de statut d'un appel de charges — mêmes clés que
  * `<SyndicFinances>`, pour ne pas dupliquer la traduction sous une forme
  * légèrement différente.
  */
-const chargeStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
+const chargeStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = localizedRecord(() => ({
   PENDING: { color: 'gold', label: t('En attente') },
   PARTIAL: { color: 'blue', label: t('Partiel') },
   PAID: { color: 'green', label: t('Payé') },
   OVERDUE: { color: 'red', label: t('En retard') }
-};
+}));
 
 /**
  * La réponse réelle de `GET .../syndics/:id` porte le bien IMMEUBLE lié au

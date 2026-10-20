@@ -156,6 +156,7 @@ export const WorkProgramsPage: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreur ? t('Impossible de charger les programmes de travaux.') : null}
+        errorCause={erreur}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}

@@ -15,9 +15,21 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
   sections de branche, elles sont indépendantes.
 - Pas de secret, pas de donnée personnelle, pas de contenu de `.env`.
 
-Modèle de section :
+Modèle de section : voir le bloc « Modèle de section » plus bas.
 
-```markdown
+## Branche `orch/2026-10-19-audit-correctifs` — 2026-10-20
+
+**État :** prêt à relire — PR vers `main` (fusion par l'utilisateur). Correctifs de l'audit vérifié `docs/audits/AUDIT_2026-10-19_VERIFICATION_ET_PLAN.md` (lots 1 à 5), orchestration chef-orchestre : lots S, A, B, C, E1, F, G, T, P, R, Z1, Z2, chacun relu par un vérificateur ; audit de sécurité du diff (0 critique ; 2 élevées préexistantes dans `resetMemberPassword`, 1 moyenne et 3 faibles, toutes corrigées au lot R).
+**Dernier commit :** voir `git log` (fusion du lot Z2, puis cette passation).
+
+**Fait :** migration `20261019130000_audit_integrite_schema` (Restrict sur les relations financières, index unique partiel des mandats actifs, 26 index de FK, `SalaryPayment.treasuryAccountId`, `RentalPenalty.calculatedAmount`, consentements CRM à false, table `job_locks`), jamais appliquée sur une base ; CI : typecheck/lint bloquants, job `test-isolation` non bloquant ; isolation des agences et authentification (fiche d'agence, entitlements, prestataires réservés aux collaborateurs, `/public-profile`, `/register` supprimé, reset de mot de passe, Google OAuth, newsletter/WhatsApp sous permission, `/api/signatures`, portails, `/auth/me` avec permissions) ; finance (déclaration atomique, reversement FOR UPDATE, statut du bien dans la transaction du bail, paiement de lot idempotent, gardes de suppression) ; erreurs 400/404 au lieu de 500, verrou des jobs, env Twilio/Wasender, Yousign avancé par défaut, garde tenant par valeur ; métier (qualité terrain, patrimoine, XOF, dashboard syndic, balance âgée, newsletter dynamique, PDF de mandat, extension signatures vendable à 5 000) ; police arabe du PDF scellé ; front (t() figés → `i18n/localized.ts`, AccessDenied sur 403 via `errorCause`, permissions dans AuthContext/ProtectedRoute) ; traductions, catalogue IA, classeur (1124 lignes).
+**Décisions métier (utilisateur, 2026-10-19) :** auto-inscription client fermée ; consentements CRM « non » par défaut ; Yousign `advanced_electronic_signature` par défaut ; permission de communication en lecture suffit pour envoyer ; retrait d'un client bloqué par tout lien ; extension signatures 5 000 XOF/mois.
+
+**Reste à faire :** appliquer la migration (staging puis prod) et relancer `npm run db:seed:catalog` pour le prix de l'extension ; `npm run test:isolation` et `signature.db.test.ts` jamais lancés (pas de base dédiée) ; aucune recette navigateur (calendrier CRM avec le proxy de libellés, changement de langue, AccessDenied, balance âgée, PDF arabe dans Docker) ; Yousign avancé : `yousign.ts` envoie toujours `otp_email` (à vérifier avant production) ; rôles personnalisés sans `COMMUNICATION_VIEW` perdent la newsletter ; rec040-01 partiel (boutons d'écriture en lecture seule, export CSV du journal d'audit) ; hors périmètre : renommage des migrations aux horodatages dupliqués (documenté dans DATA_MODELS.md, volontairement non fait), découpage de `lib/syndics/queries.ts` et `Stock.tsx`, production en `enforce`, `router.param` UUID sur `:syndicId`, `parseDateParam`.
+
+**Pièges :** les dossiers `D:\APP\Immobillier-worktrees\audit-lot-{S,T,C}` restent sur disque (fichiers verrouillés, désenregistrés de git) : vérifier qu'ils ne contiennent aucune jonction avant de les supprimer. Le checkout principal est sur `feat/signature-s5-s7`, loin derrière `main` : les copies du chantier utilisaient les `node_modules` de `audit-integ` (npm ci). Budget d'entrée web : 228 974 o pour 229 376 o (marge ≈ 400 o). `ai.write-plan.test.ts` échoue sous Windows (préexistant).
+
+````markdown
 ## Branche `feat/mon-compte-abonnement` — 2026-10-19
 
 **État :** prêt à relire — PR ouverte (base `main`), à fusionner par l'utilisateur
@@ -219,6 +231,9 @@ Pièges et décisions :
 
 **Pièges :** `node_modules` des worktrees = jonction vers le checkout principal, ne jamais la supprimer avec `rm -rf` ; en CI, deux tests sans `import` se partagent le portée globale TS (`export {}` en tête). Le worktree `port-oi` garde du travail finance non commité déjà repris ici.
 
+Modèle de section :
+
+```markdown
 ## Branche `type/sujet` — AAAA-MM-JJ
 
 **État :** en cours | prêt à relire | bloqué
@@ -236,6 +251,7 @@ Pièges et décisions :
 
 - …
 ```
+````
 
 ## Branche `fix/test-prestataire-syndic-instable` — 2026-10-19
 

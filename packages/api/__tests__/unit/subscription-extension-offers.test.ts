@@ -81,8 +81,21 @@ describe('listTenantExtensionOffers', () => {
     expect(await codes()).toEqual([EXTENSION.BIENS_10]);
   });
 
-  it("marque l'offre non commercialisee et renvoie le prix applicable aux packs detenus", async () => {
+  it('renvoie le prix applicable : le bloc de signatures se vend 5 000 XOF par mois (décision du 19/10)', async () => {
+    holdPacks([PACK.AGENCE]);
+    const offers = await listTenantExtensionOffers('t1');
+    expect(offers.find(o => o.code === EXTENSION.SIGNATURES_SUPPLEMENTAIRES)).toMatchObject({
+      monthlyPrice: 5_000,
+      isSellable: true
+    });
+  });
+
+  it("marque l'offre non commercialisee en base et renvoie le prix applicable aux packs detenus", async () => {
     holdPacks([PACK.PROMOTEUR]);
+    // Base amorcée avant l'alignement du catalogue : l'extension y est encore non vendable.
+    mockPrisma.catalogItem.findMany.mockResolvedValue(
+      rows.map(r => (r.code === EXTENSION.SIGNATURES_SUPPLEMENTAIRES ? { ...r, isSellable: false } : r))
+    );
     const offers = await listTenantExtensionOffers('t1');
     expect(offers.find(o => o.code === EXTENSION.LOTS_10)).toMatchObject({ monthlyPrice: 1_000, isSellable: true });
     expect(offers.find(o => o.code === EXTENSION.SIGNATURES_SUPPLEMENTAIRES)).toMatchObject({ isSellable: false });

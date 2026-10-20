@@ -1150,8 +1150,22 @@ function App() {
                           <Route path="/tenant/:tenantId/finance/comptabilite" element={<Comptabilite />} />
                           <Route element={<FinanceWorkspaceLayout family="facturation-balances" />}>
                             <Route path="/tenant/:tenantId/finance/facturation" element={<Facturation />} />
-                            <Route path="/tenant/:tenantId/finance/balance-clients" element={<BalanceClients />} />
-                            <Route path="/tenant/:tenantId/finance/balance-agee" element={<BalanceAgee />} />
+                            <Route
+                              path="/tenant/:tenantId/finance/balance-clients"
+                              element={
+                                <ProtectedRoute requiredPermissions="FINANCE_REPORTS_READ">
+                                  <BalanceClients />
+                                </ProtectedRoute>
+                              }
+                            />
+                            <Route
+                              path="/tenant/:tenantId/finance/balance-agee"
+                              element={
+                                <ProtectedRoute requiredPermissions="FINANCE_REPORTS_READ">
+                                  <BalanceAgee />
+                                </ProtectedRoute>
+                              }
+                            />
                           </Route>
                           <Route element={<FinanceWorkspaceLayout family="reversements-commissions" />}>
                             <Route path="/tenant/:tenantId/finance/owner-accounts" element={<ComptesProprietaires />} />
@@ -1169,7 +1183,14 @@ function App() {
                           {/* Relevé d'un compte de tiers : ouvert depuis la balance
                         clients, la balance âgée ET la balance fournisseurs, il
                         n'appartient à aucune famille et reste hors onglets. */}
-                          <Route path="/tenant/:tenantId/finance/comptes/:accountId" element={<Releve />} />
+                          <Route
+                            path="/tenant/:tenantId/finance/comptes/:accountId"
+                            element={
+                              <ProtectedRoute requiredPermissions="FINANCE_ACCOUNTS_READ">
+                                <Releve />
+                              </ProtectedRoute>
+                            }
+                          />
                           <Route element={<FinanceWorkspaceLayout family="fournisseurs-commandes" />}>
                             <Route path="/tenant/:tenantId/finance/fournisseurs" element={<Fournisseurs />} />
                             {/*

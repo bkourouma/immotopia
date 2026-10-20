@@ -73,15 +73,15 @@ describe('SIGNATURE_PROVIDER=yousign', () => {
     expect(env?.SIGNATURE_PROVIDER).toBe('yousign');
     expect(env?.YOUSIGN_API_BASE_URL).toBe('https://api-sandbox.yousign.app/v3');
     expect(env?.SIGNATURE_PROVIDER_TIMEOUT_MS).toBe(20000);
-    expect(env?.YOUSIGN_SIGNATURE_LEVEL).toBe('electronic_signature');
+    expect(env?.YOUSIGN_SIGNATURE_LEVEL).toBe('advanced_electronic_signature');
     expect(env?.SIGNATURE_SMS_DAILY_LIMIT).toBe(200);
     expect(env?.SMS_ALLOWED_DIAL_CODES).toContain('224');
   });
 
-  it('accepte un niveau avancé, refuse un niveau inconnu', () => {
-    expect(
-      loadWith({ ...VALID, YOUSIGN_SIGNATURE_LEVEL: 'advanced_electronic_signature' }).env?.YOUSIGN_SIGNATURE_LEVEL
-    ).toBe('advanced_electronic_signature');
+  it('accepte le niveau simple explicite, refuse un niveau inconnu', () => {
+    expect(loadWith({ ...VALID, YOUSIGN_SIGNATURE_LEVEL: 'electronic_signature' }).env?.YOUSIGN_SIGNATURE_LEVEL).toBe(
+      'electronic_signature'
+    );
     expect(loadWith({ ...VALID, YOUSIGN_SIGNATURE_LEVEL: 'qualifiee' }).exited).toBe(true);
   });
 

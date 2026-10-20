@@ -11,6 +11,7 @@ import { useListParams } from '../../hooks/useListParams';
 import { queryKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, StatusTag, DataView, DataCard, FilterSheet } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 /**
  * Fournisseurs — liste et création, récit 2 du lot 2
@@ -36,10 +37,12 @@ import { t } from '../../i18n/t';
 type Filters = { q: string };
 const FILTER_KEYS = ['q'] as const;
 
-const OPTIONS_NATURE = (Object.keys(SUPPLIER_KIND_LABELS) as SupplierKind[]).map(kind => ({
-  value: kind,
-  label: SUPPLIER_KIND_LABELS[kind]
-}));
+const OPTIONS_NATURE = localizedList(() =>
+  (Object.keys(SUPPLIER_KIND_LABELS) as SupplierKind[]).map(kind => ({
+    value: kind,
+    label: SUPPLIER_KIND_LABELS[kind]
+  }))
+);
 
 interface FormulaireFournisseur {
   name: string;
@@ -186,6 +189,7 @@ export const Fournisseurs: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les fournisseurs.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}

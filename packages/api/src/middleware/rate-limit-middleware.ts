@@ -924,3 +924,40 @@ export const signatureExternalLinkRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+/**
+ * Envoi de test WhatsApp (`POST .../whatsapp-notification-config/test-send`) :
+ * chaque appel déclenche un vrai message facturable. Deux limiteurs chaînés,
+ * l'un par utilisateur, l'autre par agence (un seul collaborateur ne peut pas
+ * épuiser le quota des autres, et plusieurs ne peuvent pas contourner le
+ * plafond d'agence). Magasin en mémoire de processus, comme les autres
+ * limiteurs de ce fichier. À placer APRÈS `authenticate` et `requireTenantAccess`.
+ */
+export const WHATSAPP_TEST_SEND_USER_LIMIT = { windowMs: 60 * 1000, max: 5 };
+export const WHATSAPP_TEST_SEND_TENANT_LIMIT = { windowMs: 60 * 60 * 1000, max: 20 };
+
+const testSendLimitedHandler = (_req: Request, res: Response): void => {
+  res.status(429).json({
+    success: false,
+    error: 'Too Many Requests',
+    message: t("Trop d'envois de test. Veuillez réessayer dans quelques instants.")
+  });
+};
+
+export const whatsappTestSendUserRateLimiter = rateLimit({
+  ...WHATSAPP_TEST_SEND_USER_LIMIT,
+  keyGenerator: req => `wa-test-user:${req.user?.userId ?? 'anonyme'}`,
+  handler: testSendLimitedHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+export const whatsappTestSendTenantRateLimiter = rateLimit({
+  ...WHATSAPP_TEST_SEND_TENANT_LIMIT,
+  keyGenerator: req => `wa-test-tenant:${req.tenantContext?.tenantId ?? 'inconnue'}`,
+  handler: testSendLimitedHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+export const whatsappTestSendRateLimiter = [whatsappTestSendUserRateLimiter, whatsappTestSendTenantRateLimiter];

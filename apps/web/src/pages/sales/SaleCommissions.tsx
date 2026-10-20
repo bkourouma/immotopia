@@ -25,15 +25,16 @@ import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
 
+import { localizedList } from '../../i18n/localized';
 const { Text } = Typography;
 const { TextArea } = Input;
 
-const STATUS_OPTIONS: { value: SaleCommissionStatus; label: string }[] = [
+const STATUS_OPTIONS: { value: SaleCommissionStatus; label: string }[] = localizedList(() => [
   { value: 'DUE', label: t('À encaisser') },
   { value: 'PARTIALLY_PAID', label: t('Partiellement réglée') },
   { value: 'PAID', label: t('Réglée') },
   { value: 'CANCELLED', label: t('Annulée') }
-];
+]);
 
 interface PaymentFormValues {
   amount: number;
@@ -43,7 +44,9 @@ interface PaymentFormValues {
   reference?: string;
 }
 
-const MOYENS_PAIEMENT = Object.entries(SALE_PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }));
+const MOYENS_PAIEMENT = localizedList(() =>
+  Object.entries(SALE_PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }))
+);
 
 /**
  * Fenêtre d'encaissement. Composant à part : son `useForm` naît avec le

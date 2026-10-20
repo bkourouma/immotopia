@@ -998,6 +998,7 @@ export const FactureFournisseur: React.FC = () => {
             loading={facturesEnAttente}
             isReloading={facturesEnCours && !facturesEnAttente}
             error={erreurFactures ? t('Impossible de charger les factures de ce fournisseur.') : null}
+            errorCause={erreurFactures}
             onRetry={() => refetchFactures()}
             emptyDescription={t('Aucune facture enregistrée pour ce fournisseur.')}
             columns={colonnesFactures}
@@ -1194,6 +1195,7 @@ export const FactureFournisseur: React.FC = () => {
                 onPageChange={() => {}}
                 loading={reglementsEnAttente}
                 error={erreurReglements ? t('Impossible de charger les règlements de ce fournisseur.') : null}
+                errorCause={erreurReglements}
                 onRetry={() => refetchReglements()}
                 emptyDescription={t('Aucun règlement enregistré pour ce fournisseur.')}
                 columns={[

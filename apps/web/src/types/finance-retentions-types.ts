@@ -1,4 +1,5 @@
 import { t } from '../i18n/t';
+import { localizedRecord } from '../i18n/localized';
 /**
  * Contrat gelé de la frontière réseau — lot 4, cinquième sous-lot : la retenue
  * de garantie (PRD E6, besoin P15).
@@ -45,10 +46,10 @@ import { t } from '../i18n/t';
 /** Les deux natures de pièce sur lesquelles une retenue peut se poser. */
 export type RetentionSourceType = 'SUPPLIER_INVOICE' | 'PROGRESS_STATEMENT';
 
-export const RETENTION_SOURCE_TYPE_LABELS: Record<RetentionSourceType, string> = {
+export const RETENTION_SOURCE_TYPE_LABELS: Record<RetentionSourceType, string> = localizedRecord(() => ({
   SUPPLIER_INVOICE: t('Facture fournisseur'),
   PROGRESS_STATEMENT: t('Situation de tâcheron')
-};
+}));
 
 export type RetentionStatus = 'HELD' | 'RELEASED';
 
@@ -64,10 +65,10 @@ export type RetentionStatus = 'HELD' | 'RELEASED';
  * « Libérée » et non « Réglée » : l'argent est redevenu exigible, il n'est pas
  * sorti.
  */
-export const RETENTION_STATUS_LABELS: Record<RetentionStatus, string> = {
+export const RETENTION_STATUS_LABELS: Record<RetentionStatus, string> = localizedRecord(() => ({
   HELD: t('Détenue'),
   RELEASED: t('Libérée')
-};
+}));
 
 // ---------------------------------------------------------------------------
 // La retenue

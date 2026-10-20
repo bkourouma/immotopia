@@ -35,10 +35,11 @@ import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
 
-const receiptKindLabel: Record<ReceiptKind, string> = {
+import { localizedRecord } from '../../i18n/localized';
+const receiptKindLabel: Record<ReceiptKind, string> = localizedRecord(() => ({
   RECEIPT: t('Reçu'),
   QUITTANCE: t('Quittance')
-};
+}));
 
 const { Paragraph, Title } = Typography;
 
@@ -79,17 +80,17 @@ function describeOwnerBalance(rawBalance: number | string | null | undefined): {
   return { amount: 0, tone: 'settled' };
 }
 
-const balanceToneLabel: Record<BalanceTone, string> = {
+const balanceToneLabel: Record<BalanceTone, string> = localizedRecord(() => ({
   debtor: t('Débiteur'),
   creditor: t('Créditeur'),
   settled: t('Soldé')
-};
+}));
 
-const balanceToneHint: Record<BalanceTone, string> = {
+const balanceToneHint: Record<BalanceTone, string> = localizedRecord(() => ({
   debtor: t('Le copropriétaire doit ce montant'),
   creditor: t('Le copropriétaire a une avance'),
   settled: t('Compte à jour')
-};
+}));
 
 const balanceToneStatCardTone: Record<BalanceTone, 'warning' | 'positive' | 'neutral'> = {
   debtor: 'warning',

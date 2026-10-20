@@ -11,23 +11,24 @@ import { TicketDetail as TicketDetailType, MaintenanceTicketStatus } from '../..
 import { useAuth } from '../../../hooks/useAuth';
 import { formatTicketDate } from '../../../utils/date-utils';
 import { t } from '../../../i18n/t';
+import { localizedRecord } from '../../../i18n/localized';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
-const categoryLabels: Record<string, string> = {
+const categoryLabels: Record<string, string> = localizedRecord(() => ({
   PLUMBING: 'Plomberie',
   ELECTRICITY: t('Électricité'),
   AC: 'Climatisation',
   OTHER: 'Autre'
-};
+}));
 
-const priorityLabels: Record<string, string> = {
+const priorityLabels: Record<string, string> = localizedRecord(() => ({
   LOW: 'Faible',
   MEDIUM: 'Moyenne',
   HIGH: t('Élevée'),
   URGENT: 'Urgente'
-};
+}));
 
 export const TicketDetail: React.FC = () => {
   const { message } = App.useApp();

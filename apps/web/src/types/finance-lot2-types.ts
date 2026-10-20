@@ -1,4 +1,5 @@
 import { t } from '../i18n/t';
+import { localizedRecord, localizedList } from '../i18n/localized';
 /**
  * Contrat gelé de la frontière réseau — module financier, lot 2.
  *
@@ -23,28 +24,28 @@ import { t } from '../i18n/t';
 /** Nature d'un fournisseur. Décide si le rattachement à un chantier est exigé. */
 export type SupplierKind = 'MATERIALS' | 'SERVICES' | 'MIXED';
 
-export const SUPPLIER_KIND_LABELS: Record<SupplierKind, string> = {
+export const SUPPLIER_KIND_LABELS: Record<SupplierKind, string> = localizedRecord(() => ({
   MATERIALS: t('Matériaux'),
   SERVICES: 'Prestation',
   MIXED: t('Matériaux et prestation')
-};
+}));
 
 /** Cycle de vie d'une pièce : brouillon, validée, annulée. */
 export type DocumentStatus = 'DRAFT' | 'VALIDATED' | 'VOIDED';
 
-export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = {
+export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = localizedRecord(() => ({
   DRAFT: 'Brouillon',
   VALIDATED: t('Validée'),
   VOIDED: t('Annulée')
-};
+}));
 
 export type VoidableDocumentType = 'SUPPLIER_INVOICE' | 'SUPPLIER_PAYMENT' | 'CASH_VOUCHER';
 
-export const DOCUMENT_TYPE_LABELS: Record<VoidableDocumentType, string> = {
+export const DOCUMENT_TYPE_LABELS: Record<VoidableDocumentType, string> = localizedRecord(() => ({
   SUPPLIER_INVOICE: t('Facture fournisseur'),
   SUPPLIER_PAYMENT: t('Règlement fournisseur'),
   CASH_VOUCHER: t('Pièce de caisse')
-};
+}));
 
 export type ConstructionSiteStatus = 'PLANNED' | 'IN_PROGRESS' | 'SUSPENDED' | 'CLOSED';
 
@@ -57,12 +58,12 @@ export type ConstructionSiteStatus = 'PLANNED' | 'IN_PROGRESS' | 'SUSPENDED' | '
  * bord. Arbitre par le proprietaire du produit le 20 septembre 2026 en faveur
  * de « Planifie ».
  */
-export const SITE_STATUS_LABELS: Record<ConstructionSiteStatus, string> = {
+export const SITE_STATUS_LABELS: Record<ConstructionSiteStatus, string> = localizedRecord(() => ({
   PLANNED: t('Planifié'),
   IN_PROGRESS: t('En cours'),
   SUSPENDED: t('Suspendu'),
   CLOSED: t('Clôturé')
-};
+}));
 
 // ---------------------------------------------------------------------------
 // Fournisseurs
@@ -370,14 +371,14 @@ export interface CreateSupplierInvoiceInput {
 }
 
 /** Les modes de règlement, les mêmes que ceux des encaissements locatifs. */
-export const SUPPLIER_PAYMENT_METHODS = [
+export const SUPPLIER_PAYMENT_METHODS = localizedList(() => [
   { value: 'CASH', label: t('Espèces') },
   { value: 'BANK_TRANSFER', label: t('Virement bancaire') },
   { value: 'CHECK', label: t('Chèque') },
   { value: 'MOBILE_MONEY', label: t('Mobile Money') },
   { value: 'CARD', label: t('Carte bancaire') },
   { value: 'OTHER', label: t('Autre') }
-];
+]);
 
 export interface CreateSupplierPaymentInput {
   supplierId: string;

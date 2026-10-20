@@ -628,6 +628,7 @@ export const RetenuesDeGarantie: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les retenues de garantie.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={nbFiltres > 0}
         onClearFilters={effacerFiltres}

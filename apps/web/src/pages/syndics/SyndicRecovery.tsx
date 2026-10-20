@@ -52,20 +52,21 @@ import { paymentScheduleStatusLabel, reminderChannelLabel } from '../../componen
 import { reminderExclusionLabel, reminderFailureLabel } from '../../components/syndics/reminder-failure';
 import { ReminderBatchPreview } from '../../components/syndics/ReminderBatchPreview';
 
+import { localizedList, localizedRecord } from '../../i18n/localized';
 const { Paragraph, Title, Text } = Typography;
 
-const reminderChannelOptions: Array<{ label: string; value: ReminderChannel }> = [
+const reminderChannelOptions: Array<{ label: string; value: ReminderChannel }> = localizedList(() => [
   { label: t('Email'), value: 'EMAIL' },
   { label: 'SMS', value: 'SMS' },
   { label: 'WhatsApp', value: 'WHATSAPP' },
   { label: t('Push'), value: 'PUSH' }
-];
+]);
 
-const reminderStatusLabels: Record<ReminderStatus, string> = {
+const reminderStatusLabels: Record<ReminderStatus, string> = localizedRecord(() => ({
   SENT: t('Envoyé'),
   DELIVERED: t('Distribué'),
   FAILED: t('Échec')
-};
+}));
 
 function ownerLabel(owner?: { firstName?: string | null; lastName?: string | null; email?: string | null } | null) {
   if (!owner) return t('Sans propriétaire');

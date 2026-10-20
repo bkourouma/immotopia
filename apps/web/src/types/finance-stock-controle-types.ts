@@ -1,4 +1,5 @@
 import { t } from '../i18n/t';
+import { localizedRecord } from '../i18n/localized';
 import type { StockMovementType } from './finance-stock-mouvements-types';
 
 /**
@@ -885,7 +886,7 @@ export interface StockMovementAuthor {
 // ---------------------------------------------------------------------------
 
 /** Motifs : libellés de spec §4, à l'identique. */
-export const STOCK_REASON_LABELS: Record<StockReasonCode, string> = {
+export const STOCK_REASON_LABELS: Record<StockReasonCode, string> = localizedRecord(() => ({
   BREAKAGE: t('Casse'),
   DETERIORATION: t('Détérioration (humidité, péremption)'),
   COUNTING_ERROR: t('Erreur du comptage précédent'),
@@ -903,10 +904,10 @@ export const STOCK_REASON_LABELS: Record<StockReasonCode, string> = {
   SITE_EVACUATION: t('Évacuation d’un chantier'),
   REBALANCING: t('Rééquilibrage entre lieux'),
   OTHER: t('Autre (précision obligatoire)')
-};
+}));
 
 /** Aide affichée sous l'option, quand elle existe. */
-export const STOCK_REASON_HELP: Partial<Record<StockReasonCode, string>> = {
+export const STOCK_REASON_HELP: Partial<Record<StockReasonCode, string>> = localizedRecord(() => ({
   BREAKAGE: t('Matière brisée ou endommagée sur place.'),
   DETERIORATION: t('Matière devenue inutilisable avec le temps.'),
   COUNTING_ERROR: t('Le dernier inventaire avait mal compté.'),
@@ -915,7 +916,7 @@ export const STOCK_REASON_HELP: Partial<Record<StockReasonCode, string>> = {
   UNRECORDED_ISSUE: t('De la matière est partie sans sortie saisie.'),
   UNRECORDED_RECEIPT: t('De la matière est arrivée sans réception saisie.'),
   UNEXPLAINED_DISAPPEARANCE: t('Il manque de la matière et personne n’en connaît la cause. C’est une constatation.')
-};
+}));
 
 /** Le libellé d'un motif, ou « Motif libre : … » pour une ligne d'avant le lot. */
 export function stockReasonDisplay(reasonCode: StockReasonCode | null, reason: string | null): string | null {
@@ -927,48 +928,52 @@ export function stockReasonDisplay(reasonCode: StockReasonCode | null, reason: s
 type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 
 /** Statut d'inventaire : toujours passé en `label` à `<StatusTag>` (son « DRAFT » dit « Brouillon »). */
-export const STOCK_COUNT_STATUS_DISPLAY: Record<StockCountStatus, { label: string; tone: Tone }> = {
-  DRAFT: { label: t('Comptage en cours'), tone: 'info' },
-  COUNTED: { label: t('Comptage clos'), tone: 'warning' },
-  VALIDATED: { label: t('Validé'), tone: 'success' },
-  CANCELLED: { label: t('Abandonné'), tone: 'neutral' }
-};
+export const STOCK_COUNT_STATUS_DISPLAY: Record<StockCountStatus, { label: string; tone: Tone }> = localizedRecord(
+  () => ({
+    DRAFT: { label: t('Comptage en cours'), tone: 'info' },
+    COUNTED: { label: t('Comptage clos'), tone: 'warning' },
+    VALIDATED: { label: t('Validé'), tone: 'success' },
+    CANCELLED: { label: t('Abandonné'), tone: 'neutral' }
+  })
+);
 
-export const STOCK_COUNT_KIND_LABELS: Record<StockCountKind, string> = {
+export const STOCK_COUNT_KIND_LABELS: Record<StockCountKind, string> = localizedRecord(() => ({
   REGULAR: t('Inventaire courant'),
   OPENING: t('Inventaire d’ouverture'),
   CLOSING: t('Inventaire de clôture')
-};
+}));
 
-export const STOCK_SLIP_KIND_LABELS: Record<StockSlipKind, string> = {
+export const STOCK_SLIP_KIND_LABELS: Record<StockSlipKind, string> = localizedRecord(() => ({
   RECEIPT: t('Bon de réception'),
   ISSUE: t('Bon de sortie'),
   COUNT_REPORT: t('Procès-verbal d’inventaire')
-};
+}));
 
-export const STOCK_ATTACHMENT_PURPOSE_LABELS: Record<StockAttachmentPurpose, string> = {
+export const STOCK_ATTACHMENT_PURPOSE_LABELS: Record<StockAttachmentPurpose, string> = localizedRecord(() => ({
   GOODS_PHOTO: t('Photo de la marchandise'),
   DELIVERY_NOTE: t('Bon de livraison du fournisseur'),
   SIGNED_SLIP: t('Bon signé'),
   OTHER: t('Autre document')
-};
+}));
 
 /** Source du prix : affichée avec les valeurs seulement. */
-export const STOCK_VALUATION_SOURCE_LABELS: Record<StockValuationSource, string> = {
+export const STOCK_VALUATION_SOURCE_LABELS: Record<StockValuationSource, string> = localizedRecord(() => ({
   DECLARED: t('Prix saisi'),
   INVOICE_LINE: t('Prix de la ligne de facture'),
   AVERAGE_COST: t('Coût moyen du lieu'),
   LAST_RECEIPT: t('Dernier prix reçu'),
   NONE: t('Aucun prix connu')
-};
+}));
 
-export const STOCK_ALERT_SEVERITY_DISPLAY: Record<StockAlertSeverity, { label: string; tone: Tone }> = {
-  WARNING: { label: t('À regarder'), tone: 'warning' },
-  INFO: { label: t('Information'), tone: 'info' }
-};
+export const STOCK_ALERT_SEVERITY_DISPLAY: Record<StockAlertSeverity, { label: string; tone: Tone }> = localizedRecord(
+  () => ({
+    WARNING: { label: t('À regarder'), tone: 'warning' },
+    INFO: { label: t('Information'), tone: 'info' }
+  })
+);
 
 /** Natures d'alerte (filtre). Le titre d'une alerte vient du serveur. */
-export const STOCK_ALERT_KIND_LABELS: Record<StockAlertKind, string> = {
+export const STOCK_ALERT_KIND_LABELS: Record<StockAlertKind, string> = localizedRecord(() => ({
   COUNT_VARIANCE: t('Écart d’inventaire au-dessus du seuil'),
   COUNT_LINE_SET_ASIDE: t('Lignes d’inventaire écartées'),
   COUNT_CANCELLED: t('Inventaire abandonné'),
@@ -980,4 +985,4 @@ export const STOCK_ALERT_KIND_LABELS: Record<StockAlertKind, string> = {
   CASH_MATERIAL_PURCHASE: t('Achat de matériaux en espèces'),
   COUNT_SELF_VALIDATED: t('Inventaire validé par son compteur'),
   FIELD_COUNT_CLOSED: t('Inventaire de chantier clos par WhatsApp')
-};
+}));

@@ -13,6 +13,11 @@ jest.mock('../../src/services/tenant-data-export/export-service', () => ({
   failStaleRunningExports: (...a: any[]) => staleMock(...a)
 }));
 
+const lockMock = jest.fn((_name: string, _ttl: number, fn: () => Promise<unknown>) => fn());
+jest.mock('../../src/utils/job-lock', () => ({
+  withJobLock: (...a: [string, number, () => Promise<unknown>]) => lockMock(...a)
+}));
+
 const scheduleMock = jest.fn(() => ({ stop: jest.fn() }));
 jest.mock('node-cron', () => ({ schedule: (...a: any[]) => (scheduleMock as any)(...a) }));
 
@@ -39,6 +44,15 @@ describe('Tache d’expiration des exports', () => {
   it('avale une erreur plutot que de casser le planificateur', async () => {
     expireMock.mockRejectedValue(new Error('base indisponible'));
     await expect(runTenantDataExportMaintenance()).resolves.toBeUndefined();
+  });
+
+  it('enveloppe chaque passage planifié dans le verrou distribué', async () => {
+    startTenantDataExportExpiryJob();
+    const run = (scheduleMock.mock.calls[0] as any[])[1] as () => Promise<unknown>;
+    await run();
+    expect(lockMock).toHaveBeenCalledWith('tenant-data-export-expiry-hourly', 30 * 60 * 1000, expect.any(Function));
+    expect(expireMock).toHaveBeenCalled();
+    stopTenantDataExportExpiryJob();
   });
 
   it('se planifie une fois par heure, une seule fois', () => {

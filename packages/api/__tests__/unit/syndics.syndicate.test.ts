@@ -35,6 +35,8 @@ jest.mock('@prisma/client', () => {
     syndicateDocument: { count: jest.fn(async () => 0) },
     maintenanceContract: { count: jest.fn(async () => 0) },
     syndicateIncident: { count: jest.fn(async () => 0) },
+    ownerAccount: { count: jest.fn(async () => 0) },
+    chargePayment: { count: jest.fn(async () => 0) },
     serviceProvider: {
       create: jest.fn(),
       findFirst: jest.fn(),
@@ -132,6 +134,8 @@ const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as {
     syndicateDocument: { count: jest.Mock };
     maintenanceContract: { count: jest.Mock };
     syndicateIncident: { count: jest.Mock };
+    ownerAccount: { count: jest.Mock };
+    chargePayment: { count: jest.Mock };
     serviceProvider: {
       create: jest.Mock;
       findFirst: jest.Mock;
@@ -505,6 +509,24 @@ describe('Suppression d une copropriete vide uniquement (ecart recette #8)', () 
     mockPrisma.chargeCall.count.mockResolvedValueOnce(1);
 
     await expect(deleteEmptySyndicateByTenant('tenant-a', 'syn-1')).rejects.toMatchObject({ status: 409 });
+    expect(mockPrisma.syndicate.delete).not.toHaveBeenCalled();
+  });
+
+  it('refuse (409) si la copropriete a un compte coproprietaire, meme sans lot (audit 2026-10)', async () => {
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce({ id: 'syn-1' });
+    mockPrisma.ownerAccount.count.mockResolvedValueOnce(1);
+
+    await expect(deleteEmptySyndicateByTenant('tenant-a', 'syn-1')).rejects.toMatchObject({ status: 409 });
+    expect(mockPrisma.ownerAccount.count).toHaveBeenCalledWith({ where: { syndicateId: 'syn-1' } });
+    expect(mockPrisma.syndicate.delete).not.toHaveBeenCalled();
+  });
+
+  it('refuse (409) si un paiement de charges a ete encaisse sur la copropriete', async () => {
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce({ id: 'syn-1' });
+    mockPrisma.chargePayment.count.mockResolvedValueOnce(1);
+
+    await expect(deleteEmptySyndicateByTenant('tenant-a', 'syn-1')).rejects.toMatchObject({ status: 409 });
+    expect(mockPrisma.chargePayment.count).toHaveBeenCalledWith({ where: { lot: { syndicateId: 'syn-1' } } });
     expect(mockPrisma.syndicate.delete).not.toHaveBeenCalled();
   });
 

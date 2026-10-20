@@ -801,6 +801,14 @@ export const OCCUPANCY_EXCLUDED_STATUSES: PropertyStatus[] = [
 ];
 
 /**
+ * Filtre relationnel du patrimoine PROPRE de l'agence : seuls les biens qu'elle
+ * detient (`ownershipType: 'TENANT'`) comptent, jamais les biens geres pour un
+ * proprietaire (CLIENT). Applique aux baux, valorisations, prets et charges
+ * comme aux biens eux-memes (spec 015).
+ */
+const OWN_PROPERTY = { ownershipType: 'TENANT' } as const;
+
+/**
  * Apercu portefeuille de l'agence (US Patrimoine).
  *
  * `totalProperties`/`occupiedProperties`/`occupancyRate` partagent UN SEUL
@@ -827,13 +835,16 @@ export async function getPatrimoineOverview(tenantId: string) {
     // valorisation ou un prêt portant `assetId` (actif non immobilier) ou sans
     // bien (dette personnelle) relève de la valeur nette, pas de cette synthèse.
     prisma.assetValuation.findMany({
-      where: { tenantId, propertyId: { not: null } },
+      where: { tenantId, propertyId: { not: null }, property: OWN_PROPERTY },
       orderBy: [{ propertyId: 'asc' }, ...VALUATION_ORDER_BY]
     }),
-    prisma.propertyLoan.findMany({ where: { tenantId, status: 'ACTIVE', propertyId: { not: null } } }),
+    prisma.propertyLoan.findMany({
+      where: { tenantId, status: 'ACTIVE', propertyId: { not: null }, property: OWN_PROPERTY }
+    }),
     prisma.propertyExpense.findMany({
       where: {
         tenantId,
+        property: OWN_PROPERTY,
         // Charges COURANTES : une depense capitalisee (renovation lourde) releve du cout de revient,
         // comme dans le rendement (`buildPropertyYieldInput`) -- BUG-2026-10-01-010.
         isCapitalized: false,
@@ -841,7 +852,7 @@ export async function getPatrimoineOverview(tenantId: string) {
       }
     }),
     prisma.rentalLease.findMany({
-      where: { tenant_id: tenantId, status: 'ACTIVE' },
+      where: { tenant_id: tenantId, status: 'ACTIVE', property: OWN_PROPERTY },
       select: { property_id: true, rent_amount: true, billing_frequency: true }
     })
   ]);

@@ -5,13 +5,14 @@ import { Link } from 'react-router-dom';
 import { Syndicate } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
 
+import { localizedRecord } from '../../i18n/localized';
 const { Paragraph, Text, Title } = Typography;
 
-const statusConfig: Record<Syndicate['status'], { color: string; label: string }> = {
+const statusConfig: Record<Syndicate['status'], { color: string; label: string }> = localizedRecord(() => ({
   ACTIVE: { color: 'green', label: t('Active') },
   IN_LIQUIDATION: { color: 'orange', label: t('En liquidation') },
   IN_DISPUTE: { color: 'red', label: t('En litige') }
-};
+}));
 
 interface SyndicateCardProps {
   syndicate: Syndicate;

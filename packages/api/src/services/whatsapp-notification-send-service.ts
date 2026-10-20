@@ -4,6 +4,7 @@
  */
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { env } from '../config/env';
 import { getWhatsappNotificationConfig } from './whatsapp-notification-config-service';
 import { WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES } from '../constants/whatsapp-notification-default-templates';
 import type { WhatsappNotificationKey } from '../constants/whatsapp-notification-keys';
@@ -75,8 +76,8 @@ function getDefaultCountryCode(): string {
 }
 
 function getProviderConfigHint(): string {
-  const configured = process.env.WHATSAPP_PROVIDER?.trim().toLowerCase();
-  if (configured === 'wasender' || (!configured && process.env.WASENDER_API_KEY?.trim())) {
+  const configured = env.WHATSAPP_PROVIDER?.trim().toLowerCase();
+  if (configured === 'wasender' || (!configured && env.WASENDER_API_KEY?.trim())) {
     return 'Set WASENDER_API_KEY (and optional WASENDER_API_BASE_URL).';
   }
   if (configured === 'twilio' || !configured) {

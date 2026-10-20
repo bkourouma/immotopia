@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
-import { requireTenantAccess } from '../middleware/tenant-middleware';
+import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
 import { enforceTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import {
   requireMaintenanceTenantPermission,
@@ -110,7 +110,14 @@ adminRouter.post('/vendors/:vendorId/delete', deleteVendorHandler);
 router.use('/admin', adminRouter);
 
 // Vendor routes (shared, requires authentication and tenant access)
-router.get('/vendors/active', authenticate, requireTenantAccess, enforceTenantIsolation, getActiveVendorsHandler);
+router.get(
+  '/vendors/active',
+  authenticate,
+  requireTenantAccess,
+  requireTenantCollaborator,
+  enforceTenantIsolation,
+  getActiveVendorsHandler
+);
 
 // Téléchargement d'une pièce jointe, côté agence : les deux écrans qui la
 // montrent (routeurs `tenant` et `admin` ci-dessus) exigent l'une des deux

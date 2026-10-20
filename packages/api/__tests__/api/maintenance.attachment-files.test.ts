@@ -143,6 +143,10 @@ function role(permissions: string[]) {
 
 function seed() {
   mockPrisma.reset();
+  // Les portails relisent `User.isActive` (tenant-portal-access.ts, owner-portal-access.ts).
+  mockPrisma.user.rows.push(
+    ...[USER_AWA, USER_BAKARY, USER_OUMAR, USER_MARIAM, USER_IBRAHIM, USER_FANTA].map(id => ({ id, isActive: true }))
+  );
   clearPermissionCache();
 
   const ACTIVE = { status: 'ACTIVE' };
@@ -279,14 +283,10 @@ afterAll(async () => {
 beforeEach(seed);
 
 const tenantPortalFile = (userId: string, ticketId: string, attachmentId: string) =>
-  request(app)
-    .get(`/api/portal/tenant/maintenance/${ticketId}/attachments/${attachmentId}`)
-    .set('x-test-user', userId);
+  request(app).get(`/api/portal/tenant/maintenance/${ticketId}/attachments/${attachmentId}`).set('x-test-user', userId);
 
 const ownerPortalFile = (userId: string, ticketId: string, attachmentId: string) =>
-  request(app)
-    .get(`/api/portal/owner/maintenance/${ticketId}/attachments/${attachmentId}`)
-    .set('x-test-user', userId);
+  request(app).get(`/api/portal/owner/maintenance/${ticketId}/attachments/${attachmentId}`).set('x-test-user', userId);
 
 const agencyFile = (userId: string, tenantId: string, attachmentId: string) =>
   request(app).get(`/api/tenants/${tenantId}/maintenance/files/${attachmentId}`).set('x-test-user', userId);
