@@ -30,6 +30,7 @@ export interface WhatsappRegistrationsTabProps {
   registrations: RegistrationView[];
   loading: boolean;
   error: string | null;
+  errorCause?: unknown;
   onRetry: () => void;
   /** Numéro du bot de la vue d'ensemble (repli de la fenêtre du code). */
   botNumber?: string | null;
@@ -86,6 +87,7 @@ export const WhatsappRegistrationsTab: React.FC<WhatsappRegistrationsTabProps> =
   registrations,
   loading,
   error,
+  errorCause,
   onRetry,
   botNumber
 }) => {
@@ -191,6 +193,7 @@ export const WhatsappRegistrationsTab: React.FC<WhatsappRegistrationsTabProps> =
         onPageChange={() => undefined}
         loading={loading}
         error={error}
+        errorCause={errorCause}
         onRetry={onRetry}
         emptyDescription={t('Aucun chef de chantier inscrit.')}
         rowKey={r => r.id}

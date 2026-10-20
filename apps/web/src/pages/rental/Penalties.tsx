@@ -447,6 +447,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les pénalités.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         emptyDescription={
           leaseId

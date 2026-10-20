@@ -180,6 +180,7 @@ export const LandRegularizationListPage: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={error ? t('Impossible de charger les dossiers de régularisation.') : null}
+        errorCause={error}
         onRetry={() => refetch()}
         isFiltered={isFiltered}
         onClearFilters={clearFilters}

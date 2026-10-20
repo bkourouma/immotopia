@@ -747,6 +747,7 @@ export const StockReferentiel: React.FC = () => {
         loading={articlesEnAttente || contexteEnAttente}
         isReloading={articlesEnRechargement && !articlesEnAttente}
         error={erreurArticles ? t('Impossible de charger les articles.') : null}
+        errorCause={erreurArticles}
         onRetry={() => refetchArticles()}
         isFiltered={articlesActifsSeulement || Boolean(recherche.trim())}
         onClearFilters={() => {
@@ -853,6 +854,7 @@ export const StockReferentiel: React.FC = () => {
         onPageChange={() => {}}
         loading={lieuxEnAttente || contexteEnAttente}
         error={erreurLieux ? t('Impossible de charger les lieux de stockage.') : null}
+        errorCause={erreurLieux}
         onRetry={() => refetchLieux()}
         isFiltered={lieuxActifsSeulement || Boolean(natureFiltre)}
         onClearFilters={() => {

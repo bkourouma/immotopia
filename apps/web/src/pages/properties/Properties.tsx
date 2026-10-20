@@ -708,6 +708,7 @@ export const Properties: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={queryError ? t('Impossible de charger le portefeuille.') : null}
+        errorCause={queryError}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}

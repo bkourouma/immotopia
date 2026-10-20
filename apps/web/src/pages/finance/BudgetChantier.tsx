@@ -650,6 +650,7 @@ export const BudgetChantier: React.FC = () => {
             onPageChange={() => {}}
             loading={avenantsEnAttente}
             error={erreurAvenants ? t('Impossible de charger les avenants de ce budget.') : null}
+            errorCause={erreurAvenants}
             onRetry={() => refetchAvenants()}
             emptyDescription={t("Aucun avenant n'a encore été saisi sur ce budget.")}
             columns={colonnesAvenants}

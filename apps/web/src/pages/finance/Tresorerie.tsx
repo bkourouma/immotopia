@@ -376,6 +376,7 @@ export const Tresorerie: React.FC = () => {
         loading={comptesQuery.isPending}
         isReloading={comptesQuery.isFetching && !comptesQuery.isPending}
         error={comptesQuery.error ? t('Impossible de charger les comptes de trésorerie.') : null}
+        errorCause={comptesQuery.error}
         onRetry={() => comptesQuery.refetch()}
         emptyDescription={t('Aucun compte de trésorerie.')}
         emptyAction={{ label: t('Nouveau compte'), onClick: ouvrirCreationCompte }}
@@ -524,6 +525,7 @@ export const Tresorerie: React.FC = () => {
         loading={virementsQuery.isPending}
         isReloading={virementsQuery.isFetching && !virementsQuery.isPending}
         error={virementsQuery.error ? t('Impossible de charger les virements internes.') : null}
+        errorCause={virementsQuery.error}
         onRetry={() => virementsQuery.refetch()}
         emptyDescription={t('Aucun virement interne.')}
         emptyAction={{ label: t('Nouveau virement'), onClick: ouvrirCreationVirement }}
@@ -706,6 +708,7 @@ export const Tresorerie: React.FC = () => {
             loading={versementsQuery.isPending}
             isReloading={versementsQuery.isFetching && !versementsQuery.isPending}
             error={versementsQuery.error ? t('Impossible de charger les versements à la DGI.') : null}
+            errorCause={versementsQuery.error}
             onRetry={() => versementsQuery.refetch()}
             emptyDescription={t('Aucun versement à la DGI.')}
             emptyAction={

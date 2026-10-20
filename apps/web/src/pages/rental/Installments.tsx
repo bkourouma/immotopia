@@ -549,6 +549,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les échéances.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}

@@ -200,6 +200,7 @@ export const Salaires: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les salariés.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={actifsSeulement}
         onClearFilters={() => setActifsSeulement(false)}

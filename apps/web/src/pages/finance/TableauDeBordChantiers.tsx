@@ -273,6 +273,7 @@ export const TableauDeBordChantiers: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger le tableau de bord des chantiers.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={() => list.setFilters({ status: undefined, onlyOverBudget: undefined })}

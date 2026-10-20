@@ -339,6 +339,7 @@ export const Leases: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreur ? t('Impossible de charger les baux.') : null}
+        errorCause={erreur}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}
