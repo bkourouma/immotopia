@@ -6,6 +6,7 @@ import { App as AntApp } from 'antd';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TenantSubscriptionSettings } from '../../pages/tenant/TenantSubscriptionSettings';
+import { getAssetUsage } from '../../services/personal-space-service';
 
 /**
  * `/tenant/:tenantId/settings/abonnement` — abonnement vu par l'agence :
@@ -16,9 +17,15 @@ import { TenantSubscriptionSettings } from '../../pages/tenant/TenantSubscriptio
  */
 
 const getOwnEntitlements = vi.fn();
+const useMenuEntryAccess = vi.fn();
 const createExtensionRequest = vi.fn();
 const listOwnExtensionRequests = vi.fn();
 const listExtensionOffers = vi.fn();
+
+// Droits de la personne dans l'agence (même source que le menu) : mockés, sans appel réseau.
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMenuEntryAccess: (...a: unknown[]) => useMenuEntryAccess(...a)
+}));
 
 vi.mock('../../services/subscription-v2-service', () => ({
   getOwnEntitlements: (...a: unknown[]) => getOwnEntitlements(...a)
@@ -113,6 +120,7 @@ function mount(url = '/tenant/tenant-1/settings/abonnement') {
 beforeEach(() => {
   vi.clearAllMocks();
   getOwnEntitlements.mockReset();
+  useMenuEntryAccess.mockReturnValue({ ready: true, allowed: true });
   listOwnExtensionRequests.mockResolvedValue([]);
   listExtensionOffers.mockResolvedValue(OFFERS);
 });
@@ -123,7 +131,8 @@ describe('<TenantSubscriptionSettings> — formule', () => {
     mount();
 
     expect(await screen.findByText('Formule')).toBeInTheDocument();
-    expect(screen.getByText('AGENCE')).toBeInTheDocument();
+    expect(screen.getAllByText('Agence').length).toBeGreaterThan(0);
+    expect(screen.queryByText('AGENCE')).not.toBeInTheDocument();
     expect(screen.getByText('42 / 100')).toBeInTheDocument();
     expect(getOwnEntitlements).toHaveBeenCalledWith('tenant-1');
 
@@ -235,9 +244,102 @@ describe('<TenantSubscriptionSettings> — formule', () => {
   });
 });
 
+describe('<TenantSubscriptionSettings> — droits, packs et demandes', () => {
+  it('sans TENANT_SETTINGS_VIEW : « Accès réservé », sans aucun appel à l’API d’abonnement', async () => {
+    useMenuEntryAccess.mockReturnValue({ ready: true, allowed: false });
+    mount();
+
+    expect(await screen.findByText('Accès réservé')).toBeInTheDocument();
+    expect(useMenuEntryAccess).toHaveBeenCalledWith('tenant-1', 'mon-compte-abonnement');
+    expect(getOwnEntitlements).not.toHaveBeenCalled();
+    expect(listExtensionOffers).not.toHaveBeenCalled();
+    expect(listOwnExtensionRequests).not.toHaveBeenCalled();
+  });
+
+  it('attend la lecture des droits avant d’appeler l’API', async () => {
+    useMenuEntryAccess.mockReturnValue({ ready: false, allowed: true });
+    mount();
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(screen.queryByText('Accès réservé')).not.toBeInTheDocument();
+    expect(getOwnEntitlements).not.toHaveBeenCalled();
+  });
+
+  it('affiche les libellés des packs, avec repli sur le code', async () => {
+    getOwnEntitlements.mockResolvedValue({
+      ...ENTITLEMENTS,
+      packs: ['PATRIMOINE_ESSENTIEL', 'INTEGRE', 'NOUVEAU_PACK']
+    });
+    mount();
+
+    expect(await screen.findByText('Patrimoine Essentiel, Opérateur intégré, NOUVEAU_PACK')).toBeInTheDocument();
+  });
+
+  it("ne lit pas l'usage des actifs pour une agence (route patrimoine/usage en 403)", async () => {
+    getOwnEntitlements.mockResolvedValue(ENTITLEMENTS);
+    mount();
+
+    await screen.findByText('Formule');
+    expect(getAssetUsage).not.toHaveBeenCalled();
+  });
+
+  it("lit l'usage des actifs pour un espace personnel", async () => {
+    getOwnEntitlements.mockResolvedValue({ ...ENTITLEMENTS, packs: ['PARTICULIER_GRATUIT'] });
+    mount();
+
+    await screen.findByText('Formule');
+    await waitFor(() => expect(getAssetUsage).toHaveBeenCalledWith('tenant-1'));
+  });
+
+  it('« Mes demandes » : colonnes Offre (traduite) et Quantité', async () => {
+    getOwnEntitlements.mockResolvedValue(ENTITLEMENTS);
+    const base = {
+      tenantId: 'tenant-1',
+      requestedByUserId: 'u-1',
+      requestedByName: 'Awa',
+      handledAt: null,
+      handledByUserId: null,
+      handledNote: null,
+      status: 'OPEN',
+      createdAt: '2026-02-02T00:00:00.000Z'
+    };
+    listOwnExtensionRequests.mockResolvedValue([
+      {
+        ...base,
+        id: 'r1',
+        catalogCode: 'EXT_LOTS_10',
+        catalogName: 'Nom français',
+        quantity: 3,
+        message: 'Trois blocs'
+      },
+      { ...base, id: 'r2', catalogCode: null, catalogName: null, quantity: null, message: 'Autre besoin' },
+      { ...base, id: 'r3', catalogCode: 'EXT_RETIREE', catalogName: 'Ancienne offre', quantity: 1, message: 'Retirée' }
+    ]);
+    mount();
+
+    const table = await screen.findByRole('table', { name: 'Mes demandes' });
+    const rows = within(table).getAllByRole('row');
+    expect(within(table).getByRole('columnheader', { name: 'Offre' })).toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: 'Quantité' })).toBeInTheDocument();
+    // Nom lu dans les offres chargées (traduites par l'API), pas dans la demande.
+    expect(within(rows[1]).getByText('Bloc de 10 lots')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('3')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('Autre demande')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('—')).toBeInTheDocument();
+    expect(within(rows[3]).getByText('Ancienne offre')).toBeInTheDocument();
+  });
+});
+
 describe('<TenantSubscriptionSettings> — retour de paiement (?paiement=)', () => {
   it('renvoie une agence vers Facturation en gardant le code de paiement', async () => {
     getOwnEntitlements.mockResolvedValue(ENTITLEMENTS);
+    mount('/tenant/tenant-1/settings/abonnement?paiement=IMP-abc');
+
+    expect(await screen.findByText('Page Facturation ?paiement=IMP-abc')).toBeInTheDocument();
+  });
+
+  it('renvoie quand même vers Facturation si la lecture des droits échoue', async () => {
+    getOwnEntitlements.mockRejectedValue({ response: { status: 500, data: { message: 'Erreur' } } });
     mount('/tenant/tenant-1/settings/abonnement?paiement=IMP-abc');
 
     expect(await screen.findByText('Page Facturation ?paiement=IMP-abc')).toBeInTheDocument();

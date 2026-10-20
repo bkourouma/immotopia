@@ -4,6 +4,8 @@ import { Alert, Space, Typography } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { getOwnEntitlements, type TenantEntitlements } from '../../services/subscription-v2-service';
 import { TenantInvoicesSection } from '../../components/subscription/TenantInvoicesSection';
+import { AccountAccessReserved } from '../../components/subscription/AccountAccessReserved';
+import { useMenuEntryAccess } from '../../hooks/useMenuAccess';
 import { ASSET_USAGE_QUERY_KEY } from '../../services/personal-space-service';
 import { t } from '../../i18n/t';
 
@@ -19,15 +21,18 @@ const { Title, Text } = Typography;
 export const TenantBillingSettings: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const queryClient = useQueryClient();
+  // Mêmes droits que l'API (TENANT_SETTINGS_VIEW) : sans eux, aucun appel et un état « Accès réservé ».
+  const access = useMenuEntryAccess(tenantId, 'mon-compte-facturation');
+  const canView = access.ready && access.allowed;
   const [entitlements, setEntitlements] = useState<TenantEntitlements | null>(null);
 
   const loadEntitlements = useCallback(() => {
-    if (!tenantId) return Promise.resolve();
+    if (!tenantId || !canView) return Promise.resolve();
     // Les factures se paient même quand les droits ne se lisent pas : l'alerte est facultative.
     return getOwnEntitlements(tenantId)
       .then(setEntitlements)
       .catch(() => setEntitlements(null));
-  }, [tenantId]);
+  }, [tenantId, canView]);
 
   useEffect(() => {
     loadEntitlements();
@@ -41,6 +46,8 @@ export const TenantBillingSettings: React.FC = () => {
         </Title>
         <Text type="secondary">{t('Vos factures ImmoTopia : consultation, PDF et paiement en ligne.')}</Text>
       </div>
+
+      {access.ready && !access.allowed && <AccountAccessReserved />}
 
       {entitlements?.manualReadOnlyReason ? (
         <Alert
@@ -60,7 +67,7 @@ export const TenantBillingSettings: React.FC = () => {
         )
       )}
 
-      {tenantId && (
+      {tenantId && canView && (
         <TenantInvoicesSection
           tenantId={tenantId}
           onPaid={() => {

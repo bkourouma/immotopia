@@ -30,6 +30,9 @@ import {
 } from '../../services/subscription-extras-service';
 import { PersonalTierCard } from '../../components/personal-space/PersonalTierCard';
 import { TenantInvoicesSection } from '../../components/subscription/TenantInvoicesSection';
+import { AccountAccessReserved } from '../../components/subscription/AccountAccessReserved';
+import { packLabel } from '../../components/subscription/pack-labels';
+import { useMenuEntryAccess } from '../../hooks/useMenuAccess';
 import { ASSET_USAGE_QUERY_KEY } from '../../services/personal-space-service';
 import { useQueryClient } from '@tanstack/react-query';
 import { StatusTag, Table } from '../../components/primitives';
@@ -94,6 +97,15 @@ const requestStatusLabels = (): Record<
   DECLINED: { label: t('Refusée'), tone: 'neutral' }
 });
 
+/**
+ * Offre d'une demande : nom traduit lu dans les offres chargées (l'API les traduit), sinon le
+ * nom du catalogue renvoyé avec la demande, sinon le code ; « Autre demande » sans offre.
+ */
+function requestOfferName(request: ExtensionRequest, offers: ExtensionOffer[]): string {
+  if (!request.catalogCode) return t('Autre demande');
+  return offers.find(offer => offer.code === request.catalogCode)?.name ?? request.catalogName ?? request.catalogCode;
+}
+
 interface RequestValues {
   catalogCode?: string;
   quantity?: number;
@@ -129,6 +141,9 @@ function offerHelp(offer: ExtensionOffer | undefined): string | undefined {
 export const TenantSubscriptionSettings: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const location = useLocation();
+  // Mêmes droits que l'API (TENANT_SETTINGS_VIEW) : sans eux, aucun appel et un état « Accès réservé ».
+  const access = useMenuEntryAccess(tenantId, 'mon-compte-abonnement');
+  const canView = access.ready && access.allowed;
   const [entitlements, setEntitlements] = useState<TenantEntitlements | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -164,6 +179,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
   );
 
   useEffect(() => {
+    if (!canView) return;
     loadEntitlements();
     if (tenantId) {
       listOwnExtensionRequests(tenantId)
@@ -173,7 +189,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
         .then(setOffers)
         .catch(() => setOffers([]));
     }
-  }, [tenantId, loadEntitlements]);
+  }, [tenantId, loadEntitlements, canView]);
 
   const handleRequestExtension = async (values: RequestValues) => {
     if (!tenantId) return;
@@ -194,6 +210,17 @@ export const TenantSubscriptionSettings: React.FC = () => {
     }
   };
 
+  if (access.ready && !access.allowed) {
+    return (
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <Title level={2} style={{ margin: 0 }}>
+          {t('Abonnement')}
+        </Title>
+        <AccountAccessReserved />
+      </Space>
+    );
+  }
+
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-8) 0' }}>
@@ -202,15 +229,16 @@ export const TenantSubscriptionSettings: React.FC = () => {
     );
   }
 
-  if (error) {
-    return <Alert type="error" showIcon message={error} />;
-  }
-
-  // Retour de paiement d'une facture d'agence : suivi sur la page Facturation (requête conservée).
+  // Retour de paiement d'une facture d'agence : suivi sur la page Facturation (requête conservée),
+  // même si la lecture des droits a échoué (la page Facturation sait suivre une facture seule).
   const returningFromPayment = new URLSearchParams(location.search).has('paiement');
   const isPersonalSpace = (entitlements?.packs ?? []).some(pack => PERSONAL_PACKS.includes(pack));
   if (tenantId && returningFromPayment && !isPersonalSpace) {
     return <Navigate to={`/tenant/${tenantId}/settings/facturation${location.search}`} replace />;
+  }
+
+  if (error) {
+    return <Alert type="error" showIcon message={error} />;
   }
 
   if (!entitlements || entitlements.phase === 'NONE') {
@@ -271,7 +299,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
             {entitlements.billingCycle === 'ANNUAL' ? t('Annuel (11 mois facturés)') : t('Mensuel')}
           </Descriptions.Item>
           <Descriptions.Item label={t('Packs')}>
-            {entitlements.packs.length > 0 ? entitlements.packs.join(', ') : t('Aucun')}
+            {entitlements.packs.length > 0 ? entitlements.packs.map(packLabel).join(', ') : t('Aucun')}
           </Descriptions.Item>
           <Descriptions.Item label={t('Période en cours')}>
             {formatDate(entitlements.currentPeriodStart)} — {formatDate(entitlements.currentPeriodEnd)}
@@ -284,7 +312,10 @@ export const TenantSubscriptionSettings: React.FC = () => {
         </Descriptions>
       </Card>
 
-      {tenantId && <PersonalTierCard tenantId={tenantId} onConfirmed={() => loadEntitlements(true)} />}
+      {/* Palier de l'espace personnel seulement : pour une agence, la route d'usage répond 403. */}
+      {tenantId && isPersonalSpace && (
+        <PersonalTierCard tenantId={tenantId} onConfirmed={() => loadEntitlements(true)} />
+      )}
 
       <Card title={t('Consommation')}>
         <Space size="large" wrap style={{ width: '100%' }}>
@@ -384,6 +415,18 @@ export const TenantSubscriptionSettings: React.FC = () => {
             aria-label={t('Mes demandes')}
             columns={[
               { title: t('Date'), dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => formatDate(v) },
+              {
+                title: t('Offre'),
+                key: 'offer',
+                render: (_: unknown, request: ExtensionRequest) => requestOfferName(request, offers)
+              },
+              {
+                title: t('Quantité'),
+                dataIndex: 'quantity',
+                key: 'quantity',
+                align: 'end',
+                render: (quantity: number | null) => quantity ?? '—'
+              },
               { title: t('Demande'), dataIndex: 'message', key: 'message' },
               {
                 title: t('Statut'),
