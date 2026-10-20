@@ -49,6 +49,7 @@ export function useScheduleDrawer(
   const watchedSource = Form.useWatch('amountSource', form);
   const watchedMethod = Form.useWatch('allocationMethod', form);
   const watchedTotal = Form.useWatch('fixedAmount', form);
+  const watchedAnnex = Form.useWatch('includeAnnexLots', form);
   const watchedMoney = Form.useWatch('currency', form);
 
   // Seule la source « Montant fixe » choisit un mode ; un budget garde la clé de répartition de ses postes.
@@ -65,6 +66,7 @@ export function useScheduleDrawer(
     lots,
     totalAmount: total,
     lotTypeRates,
+    includeAnnexLots: form.getFieldValue('includeAnnexLots') ?? true,
     currency: form.getFieldValue('currency') || 'XOF'
   });
   const allocationPreview = useMemo(
@@ -75,10 +77,11 @@ export function useScheduleDrawer(
             lots,
             totalAmount: watchedTotal,
             lotTypeRates,
+            includeAnnexLots: watchedAnnex ?? true,
             currency: watchedMoney || 'XOF'
           })
         : null,
-    [allocationMethod, lots, watchedTotal, lotTypeRates, watchedMoney]
+    [allocationMethod, lots, watchedTotal, lotTypeRates, watchedAnnex, watchedMoney]
   );
 
   const openCreateDrawer = () => {
@@ -93,6 +96,7 @@ export function useScheduleDrawer(
       dueOffsetDays: 15,
       amountSource: 'BUDGET',
       allocationMethod: 'SHARES',
+      includeAnnexLots: true,
       currency: 'XOF',
       startDate: dayjs().format('YYYY-MM-DD'),
       active: true
@@ -115,6 +119,8 @@ export function useScheduleDrawer(
       budgetId: schedule.budgetId ?? undefined,
       fixedAmount: schedule.fixedAmount ?? undefined,
       allocationMethod: schedule.allocationMethod ?? 'SHARES',
+      // Absent des anciennes réponses = calcul historique (lots principaux).
+      includeAnnexLots: schedule.includeAnnexLots ?? false,
       currency: schedule.currency,
       startDate: schedule.startDate,
       endDate: schedule.endDate ?? undefined,
@@ -171,6 +177,7 @@ export function useScheduleDrawer(
       budgetId: values.amountSource === 'BUDGET' ? values.budgetId || null : null,
       fixedAmount: isFixed && method !== 'BY_LOT_TYPE' ? (values.fixedAmount ?? null) : null,
       allocationMethod: method,
+      ...(isFixed && method === 'SHARES' ? { includeAnnexLots: values.includeAnnexLots ?? true } : {}),
       currency: values.currency || 'XOF',
       startDate: values.startDate,
       endDate: values.endDate || null,
@@ -216,6 +223,7 @@ export function useScheduleDrawer(
     watchedAmountSource,
     watchedFrequency,
     allocationMethod,
+    includeAnnexLots: watchedAnnex ?? true,
     allocationPreview,
     lotTypeRatesStatus,
     openCreateDrawer,

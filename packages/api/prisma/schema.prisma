@@ -4964,6 +4964,10 @@ model SyndicChargeSchedule {
   /// comportement historique ; toujours SHARES pour la source BUDGET (cle des postes du budget).
   /// BY_LOT_TYPE applique le bareme de la copropriete (`Syndicate.lotTypeRates`) a chaque periode.
   allocationMethod ChargeAllocationMethod @default(SHARES) @map("allocation_method")
+  /// BUG-2026-10-19-004 : avec SHARES + FIXED, inclut tous les lots actifs (parkings, caves...) comme
+  /// l'appel direct « Tous les lots ». Faux = calcul historique (lots principaux seulement, avec repli).
+  /// Les programmations anterieures a la migration sont mises a faux ; ignore dans les autres modes.
+  includeAnnexLots Boolean               @default(true) @map("include_annex_lots")
   currency      String                   @default("XOF")
   startDate     DateTime                 @map("start_date") @db.Date
   endDate       DateTime?                @map("end_date") @db.Date

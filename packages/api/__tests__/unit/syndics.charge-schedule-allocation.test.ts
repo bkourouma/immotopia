@@ -161,7 +161,8 @@ beforeEach(() => seed(FULL_RATES));
 
 describe('SHARES (défaut) : comportement historique inchangé', () => {
   it('corps sans allocationMethod : tantièmes, lots principaux seulement', async () => {
-    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    // includeAnnexLots: false = calcul historique (BUG-2026-10-19-004 : vrai par défaut pour les nouvelles).
+    const schedule = await createChargeSchedule(TENANT_A, S1, input({ includeAnnexLots: false }), null, NOW);
     expect(schedule.allocationMethod).toBe('SHARES');
     expect(scheduleRow(schedule.id).allocationMethod).toBe('SHARES');
     await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);

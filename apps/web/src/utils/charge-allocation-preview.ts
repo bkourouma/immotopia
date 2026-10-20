@@ -299,12 +299,17 @@ export function distributeFixedAmount(
 
 /**
  * Aperçu par lot d'une programmation à montant fixe (`FIXED`) : SHARES suit la
- * règle historique, EQUAL et BY_LOT_TYPE répartissent entre les lots actifs.
+ * règle historique (lots principaux) ou, avec `includeAnnexLots: true`, celle de
+ * l'appel direct (tous les lots avec tantièmes, parkings compris) ; EQUAL et
+ * BY_LOT_TYPE répartissent entre les lots actifs.
  */
-export function previewScheduleAllocation(input: PreviewAllocationInput): AllocationPreviewResult {
+export function previewScheduleAllocation(
+  input: PreviewAllocationInput & { includeAnnexLots?: boolean }
+): AllocationPreviewResult {
   if (input.method !== 'SHARES') {
     return previewAllocation({ ...input, lots: scheduleActiveLots(input.lots) });
   }
+  if (input.includeAnnexLots === true) return previewAllocation(input);
   const total = Number(input.totalAmount);
   if (!Number.isFinite(total) || total <= 0) {
     return { lines: [], totalAmount: 0, error: t('Le montant total à répartir doit être strictement positif') };

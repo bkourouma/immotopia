@@ -13,6 +13,7 @@ export interface ScheduleFormValues {
   budgetId?: string;
   fixedAmount?: number;
   allocationMethod?: ChargeAllocationMethod;
+  includeAnnexLots?: boolean;
   currency: string;
   startDate: string;
   endDate?: string;

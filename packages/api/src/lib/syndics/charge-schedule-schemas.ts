@@ -22,6 +22,8 @@ const scheduleFields = {
   dueOffsetDays: z.number().int().min(0).max(365),
   amountSource: amountSourceSchema,
   allocationMethod: allocationMethodSchema.optional(),
+  /** Absent = vrai (service). Sans effet hors SHARES + montant fixe. */
+  includeAnnexLots: z.boolean().optional(),
   budgetId: z.string().uuid().nullable().optional(),
   fixedAmount: z.number().positive().max(9_999_999_999.99).nullable().optional(),
   currency: z
@@ -86,6 +88,7 @@ export const updateChargeScheduleSchema = z
     dueOffsetDays: scheduleFields.dueOffsetDays.optional(),
     amountSource: amountSourceSchema.optional(),
     allocationMethod: allocationMethodSchema.optional(),
+    includeAnnexLots: z.boolean().optional(),
     budgetId: scheduleFields.budgetId,
     fixedAmount: scheduleFields.fixedAmount,
     currency: scheduleFields.currency,

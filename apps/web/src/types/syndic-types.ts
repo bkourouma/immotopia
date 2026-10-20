@@ -1465,6 +1465,12 @@ export interface ChargeSchedule {
   fixedAmount: number | null;
   /** Absent des anciennes réponses = SHARES. */
   allocationMethod?: ChargeAllocationMethod;
+  /**
+   * Source « Montant fixe » + mode « Par tantièmes » seulement : `true` appelle tous les lots
+   * avec tantièmes (parkings et lots annexes compris), `false` les seuls lots principaux
+   * (calcul historique). Absent des anciennes réponses = `false`.
+   */
+  includeAnnexLots?: boolean;
   currency: string;
   startDate: string;
   endDate: string | null;
@@ -1633,6 +1639,8 @@ export interface CreateChargeScheduleRequest {
   fixedAmount?: number | null;
   /** Défaut SHARES ; BY_LOT_TYPE interdit `fixedAmount` (le total vient du barème). */
   allocationMethod?: ChargeAllocationMethod;
+  /** Montant fixe + par tantièmes seulement. Défaut côté API : `true`. */
+  includeAnnexLots?: boolean;
   currency?: string;
   /** `AAAA-MM-JJ`. */
   startDate: string;
