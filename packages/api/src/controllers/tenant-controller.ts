@@ -26,7 +26,7 @@ import { z } from 'zod';
 import { getTenantModules, updateTenantModules } from '../services/module-service';
 import { provisionTenant } from '../services/tenant-provisioning-service';
 import { IDEMPOTENCY_KEY_MAX_LENGTH } from '../utils/idempotency';
-import { AppError, asyncHandler, BadRequestError } from '../middleware/error-middleware';
+import { AppError, asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import { httpUrl } from '../lib/safe-url';
 import { parsePagination } from '../utils/pagination-helper';
@@ -67,22 +67,13 @@ export async function getTenant(req: Request, res: Response): Promise<void> {
  * Get tenant by slug
  * GET /api/tenants/slug/:slug
  */
-export async function getTenantBySlugHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const { slug } = req.params;
-    const tenant = await getTenantBySlug(slug);
-
-    if (!tenant) {
-      res.status(404).json({ success: false, message: 'Tenant introuvable.' });
-      return;
-    }
-
-    res.status(200).json({ success: true, data: tenant });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
-  }
-}
+export const getTenantBySlugHandler = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  // Route publique : agence inconnue, suspendue ou inactive -> meme 404, et
+  // jamais de message technique (erreurs typees via asyncHandler).
+  const tenant = await getTenantBySlug(req.params.slug);
+  if (!tenant) throw new NotFoundError(t('Agence introuvable.'));
+  res.status(200).json({ success: true, data: tenant });
+});
 
 /**
  * List all active tenants

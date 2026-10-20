@@ -17,6 +17,13 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## Branche `fix/oracles-et-finitions` — 2026-10-20
+
+**État :** PR vers `main` (fusion par l'utilisateur). Oracles d'existence d'agence restants après la PR #185 et deux finitions de la recette des notifications.
+**Fait :** `GET /tenants/slug/:slug` ne renvoie qu'une agence `isActive` + `ACTIVE` (même 404 sinon, contrôleur en `asyncHandler`) ; `property-ownership-middleware.ts` supprimé (aucun importeur) ; `POST /:tenantId/register` déjà retiré, verrouillé par `routes-inventory` ; `DELETE /:tenantId/unregister` déjà neutre (`NotFoundError`), couvert par `tenant-existence-oracles.test.ts`. Journal des notifications : motif traduit à la lecture (`lib/notifications/readable-failure.ts`, lignes anciennes comprises ; « Error EAUTH » → « Le serveur de messagerie a refusé l'e-mail. ») — BUG-2026-10-20-001 ; cloche : plus de motif répété sous « Un envoi a échoué ». Audit security-auditor : 0 critique/important.
+**Reste à faire :** retester BUG-2026-10-20-001 sur la démo ; `routes-inventory` non exécuté localement (le `node_modules` du checkout principal n'a ni `livekit-server-sdk` ni `@aws-sdk/client-s3`) : la CI le joue.
+**Pièges :** le motif inconnu reste affiché tel quel dans le journal admin (comme avant). Le `node_modules` partagé du checkout principal est en retard sur `main` (erreurs tsc livekit/Prisma qui ne viennent pas du diff).
+
 ## Branche `chore/script-fournisseur-ia` — 2026-10-20
 
 **État :** PR vers `main` (fusion par l'utilisateur). Script `npm run ops:set-ai-provider` (paquet api) qui écrit la ligne `platform_ai_settings` quand ImmoCopilot est indisponible en production.
@@ -53,7 +60,7 @@ Reste à faire :
 
 - Recette finie le 2026-10-20 avec les sessions a2 et b1 ouvertes par l'utilisateur : 005 réussi (cloche de a2 : 2 appels de charges) ; 006 réussi en partie (badge messagerie immédiat ; baisse de la cloche non observée, notifications de message déjà lues) ; isolation OK pour b1 ; oracle 403/404 confirmé sur la démo sans le correctif (PR #185). Non testé : refus du journal pour un utilisateur sans permission (tous les comptes de recette sont administrateurs). Défaut mineur : « Un envoi a échoué » affiché deux fois dans la cloche.
 - Nouvelle anomalie mineure BUG-2026-10-20-001 : le journal affiche « Error EAUTH » brut. La démo a un SMTP qui refuse l'authentification : les e-mails sont en échec (pas « ignorés »).
-- Autres oracles d'existence relevés (PR #185) : `POST /:tenantId/register`, `property-ownership-middleware.ts` inutilisé, `GET /tenants/slug/:slug`, `DELETE /:tenantId/unregister`.
+- Autres oracles d'existence relevés (PR #185) : traités sur `fix/oracles-et-finitions`, ainsi que BUG-2026-10-20-001 et le double « Un envoi a échoué ».
 - Migrations appliquées seulement sur `immotopia_demo` ; ailleurs seulement après accord.
 - À valider : montants en clair dans le journal des e-mails d'appel de charges ; `amount` = total à répartir ; relecture de l'arabe.
 

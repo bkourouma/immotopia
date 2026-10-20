@@ -10,6 +10,7 @@ import { NotFoundError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
 import { MESSAGE_NOTIFICATION_KEY } from './keys';
 import { userLabel } from './recipient';
+import { readableFailureReason } from './readable-failure';
 import type {
   AdminNotificationDetail,
   AdminNotificationFilters,
@@ -186,8 +187,9 @@ function toAdminItem(row: AdminRow, senders: Map<string, string>): AdminNotifica
   const base = toItem({ ...row, deliveries: [] });
   return {
     ...base,
-    // Journal : motif detaille (reserve a l'admin d'agence et a la plateforme).
-    failureReason: row.failureReason,
+    // Journal : motif detaille (reserve a l'admin d'agence et a la plateforme),
+    // traduit en clair (« Error EAUTH » -> refus du serveur de messagerie).
+    failureReason: readableFailureReason(row.failureReason),
     recipient: { userId: row.recipientUserId, label: row.recipientLabel },
     sender: row.senderUserId
       ? { userId: row.senderUserId, label: senders.get(row.senderUserId) ?? t('Utilisateur supprimé') }
@@ -198,7 +200,7 @@ function toAdminItem(row: AdminRow, senders: Map<string, string>): AdminNotifica
       channel: d.channel as NotificationChannelKey,
       status: d.status as NotificationStatusKey,
       target: d.target,
-      failureReason: d.failureReason,
+      failureReason: readableFailureReason(d.failureReason),
       attempts: d.attempts,
       lastAttemptAt: iso(d.lastAttemptAt),
       sentAt: iso(d.sentAt)

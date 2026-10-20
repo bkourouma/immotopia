@@ -20,8 +20,10 @@ export interface NotificationListProps {
 
 /**
  * Liste de notifications, partagée par le tiroir de la cloche et la page du
- * centre de notifications. Un canal en échec est montré en rouge avec son
- * motif : l'utilisateur doit voir qu'un message n'est pas parti.
+ * centre de notifications. Un canal en échec est montré en rouge et signalé par
+ * une alerte : l'utilisateur doit voir qu'un message n'est pas parti. Le motif
+ * reçu par un utilisateur est toujours générique (« L'envoi a échoué. ») : le
+ * répéter sous le titre de l'alerte le dupliquait ; le détail reste au journal.
  */
 export const NotificationList: React.FC<NotificationListProps> = ({
   items,
@@ -45,7 +47,6 @@ export const NotificationList: React.FC<NotificationListProps> = ({
         const unread = item.readAt === null;
         const failed = item.deliveries.filter(delivery => delivery.status === 'FAILED');
         const hasFailure = failed.length > 0 || item.status === 'FAILED';
-        const failureReason = item.failureReason ?? failed.find(delivery => delivery.failureReason)?.failureReason;
         return (
           <List.Item
             key={item.id}
@@ -101,7 +102,6 @@ export const NotificationList: React.FC<NotificationListProps> = ({
                       showIcon
                       icon={<ExclamationCircleOutlined />}
                       message={t('Un envoi a échoué')}
-                      description={failureReason ?? undefined}
                     />
                   )}
                 </Space>
