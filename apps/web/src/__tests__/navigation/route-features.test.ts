@@ -35,6 +35,7 @@ describe('featureForAgencyPath', () => {
       `${T}/finance/comptabilite`,
       `${T}/finance/chantiersX`,
       `${T}/settings/abonnement`,
+      `${T}/settings/facturation`,
       '/tenant',
       '/tenant/payments',
       '/owner/revenues',

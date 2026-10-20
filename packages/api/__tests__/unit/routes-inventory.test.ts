@@ -381,7 +381,8 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       ['POST', '/api/admin/tenants/:tenantId/platform-invoices/:invoiceId/credit-note', 'PLATFORM_INVOICES_EDIT'],
       ['GET', '/api/tenants/:tenantId/subscription/invoices', 'TENANT'],
       ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId', 'TENANT'],
-      ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId/pdf', 'TENANT']
+      ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId/pdf', 'TENANT'],
+      ['GET', '/api/tenants/:tenantId/subscription/extension-offers', 'TENANT']
     ];
     for (const [method, path, guard] of expected) {
       const route = routes.find(r => r.method === method && r.path === path);

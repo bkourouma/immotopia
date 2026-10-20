@@ -26,6 +26,12 @@ import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
+/** Erreur HTTP 4xx qui ne passera pas en réessayant (hors délai d'attente et limitation de débit). */
+function isDefinitiveError(err: any): boolean {
+  const status = err?.response?.status;
+  return typeof status === 'number' && status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
 /** Suivi du retour de paiement : toutes les 3 s, 60 s au plus (comme le portail locataire du lot 7). */
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_MS = 60_000;
@@ -51,8 +57,12 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
   const [paying, setPaying] = useState<string | null>(null);
   const [returned, setReturned] = useState<PlatformCheckout | null>(null);
   const [stillPending, setStillPending] = useState(false);
+  const [unknownPayment, setUnknownPayment] = useState(false);
   const onPaidRef = useRef(onPaid);
   onPaidRef.current = onPaid;
+  // Référence stable : `setSearchParams` change avec l'adresse et relancerait le suivi.
+  const setSearchParamsRef = useRef(setSearchParams);
+  setSearchParamsRef.current = setSearchParams;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,8 +106,25 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
           await load();
           onPaidRef.current?.();
         }
-      } catch {
-        if (!cancelled) setStillPending(true);
+      } catch (err: any) {
+        if (cancelled) return;
+        // Code inconnu (404) ou refus définitif : inutile de réinterroger, et le paramètre
+        // `paiement` est retiré de l'adresse (rechargement sans boucle).
+        if (isDefinitiveError(err)) {
+          setStillPending(false);
+          setReturned(null);
+          setUnknownPayment(true);
+          setSearchParamsRef.current(
+            previous => {
+              const next = new URLSearchParams(previous);
+              next.delete('paiement');
+              return next;
+            },
+            { replace: true }
+          );
+          return;
+        }
+        setStillPending(true);
       }
     };
     poll();
@@ -225,6 +252,16 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
               description={returned.failureMessage ?? undefined}
             />
           )}
+        {unknownPayment && (
+          <Alert
+            type="error"
+            showIcon
+            closable
+            onClose={() => setUnknownPayment(false)}
+            message={t('Paiement introuvable')}
+            description={t('Ce code de paiement ne correspond à aucun paiement de votre agence.')}
+          />
+        )}
         {returned && returned.status === 'REVIEW' && (
           <Alert
             type="warning"
