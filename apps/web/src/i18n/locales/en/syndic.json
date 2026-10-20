@@ -1969,6 +1969,7 @@
   "Un copropriétaire a déclaré un paiement mobile money, en attente de votre validation.": "A co-owner has declared a mobile money payment, awaiting your validation.",
   "Un copropriétaire ou un lot": "A co-owner or a unit",
   "Un lot": "One unit",
+  "Un montant ne peut pas être négatif.": "An amount cannot be negative.",
   "Un poste affecté à un fonds lui verse sa part de chaque paiement de charges enregistré ensuite, au prorata de la répartition du lot.": "An item assigned to a fund pays it its share of every charge payment recorded from then on, in proportion to the lot's allocation.",
   "Un reçu (R-) est émis pour un paiement partiel ou qui laisse une avance ; un paiement qui solde exactement ses appels ne reçoit que leurs quittances (Q-).": "A receipt (R-) is issued for a partial payment or one that leaves an advance; a payment that exactly settles its calls only receives their quittances (Q-).",
   "Unanimité": "Unanimity",

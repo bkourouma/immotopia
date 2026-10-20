@@ -10,6 +10,8 @@ import type { EmailNotificationKey } from '../../constants/email-notification-ke
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../constants/email-notification-default-templates';
 import { getEmailNotificationConfig } from '../../services/email-notification-config-service';
 import { emailService } from '../../services/email-service';
+import { journalSkippedNotice } from './notice-journal';
+import { t } from '../../i18n';
 import { classifyEmailError, RECEIPT_EMAIL_ERROR_MESSAGES, type ReceiptEmailErrorCode } from './email-error';
 import { AGENCY_ISSUER_KEY, type ChargeReceiptKind } from './charge-receipt-numbering';
 import { renderChargeReceiptPdf, formatAmount } from './charge-receipt-pdf';
@@ -244,7 +246,25 @@ export async function sendReceiptEmail(
   const key = RECEIPT_EMAIL_KEYS[receipt.kind];
   try {
     const config = await getEmailNotificationConfig(receipt.tenantId, key);
-    if (!config.enabled && !options.ignoreDisabled) return { sent: false, reason: 'DISABLED' };
+    // Aucune notification ne se perd : un reçu non envoyé laisse une ligne SKIPPED (contact connu).
+    const journalSkip = async (cause: 'NOTIFICATION_DISABLED' | 'NO_EMAIL', email?: string | null) => {
+      if (!receipt.contactId) return;
+      const title = t('Reçu ou quittance de charges');
+      await journalSkippedNotice({
+        tenantId: receipt.tenantId,
+        key,
+        title,
+        body: title,
+        contactId: receipt.contactId,
+        email,
+        relatedEntity: { type: 'ChargeReceipt', id: receipt.id },
+        cause
+      });
+    };
+    if (!config.enabled && !options.ignoreDisabled) {
+      await journalSkip('NOTIFICATION_DISABLED');
+      return { sent: false, reason: 'DISABLED' };
+    }
 
     const contact = receipt.contactId
       ? await prisma.crmContact.findFirst({
@@ -253,7 +273,10 @@ export async function sendReceiptEmail(
         })
       : null;
     const to = contact?.email?.trim();
-    if (!to) return { sent: false, reason: 'NO_EMAIL' };
+    if (!to) {
+      await journalSkip('NO_EMAIL');
+      return { sent: false, reason: 'NO_EMAIL' };
+    }
 
     const pdf = await ensureReceiptPdf(receipt, context);
     const vars = receiptTemplateVars(snapshotOf(receipt));

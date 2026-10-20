@@ -13,6 +13,7 @@ import {
 } from '../../services/notifications-service';
 import { NotificationList } from './NotificationList';
 import { safeInternalLink } from './notification-labels';
+import { UNREAD_COUNTS_CHANGED_EVENT } from '../../utils/unread-counts-event';
 import { t } from '../../i18n/t';
 
 /** Délai entre deux lectures du compteur (suspendu quand l'onglet est masqué). */
@@ -49,6 +50,12 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ scope, allHr
     },
     { intervalMs: NOTIFICATION_POLL_MS, resetKey: scope.kind === 'agency' ? scope.tenantId : scope.portal }
   );
+
+  useEffect(() => {
+    const onChanged = () => refresh();
+    window.addEventListener(UNREAD_COUNTS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(UNREAD_COUNTS_CHANGED_EVENT, onChanged);
+  }, [refresh]);
 
   const loadItems = useCallback(async () => {
     setLoading(true);

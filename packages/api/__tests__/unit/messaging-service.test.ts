@@ -482,6 +482,33 @@ describe('non-lus', () => {
     expect(await unreadCount(staff('bob'))).toEqual({ count: 2 });
   });
 
+  it('markRead lit aussi la notification de message de cette conversation, pour ce destinataire seulement', async () => {
+    const c1 = await createConversation(staff('alice'), { participantUserIds: ['bob'] });
+    const c2 = await createConversation(staff('carol'), { participantUserIds: ['bob'] });
+    await sendMessage(staff('alice'), c1.id, 'a');
+    await sendMessage(staff('carol'), c2.id, 'c');
+    await flush();
+    const forBob = tables.userNotification.filter(n => n.recipientUserId === 'bob');
+    expect(forBob).toHaveLength(2);
+    // une notification d'une autre agence, meme destinataire et meme conversation : intouchable
+    tables.userNotification.push({
+      id: 'n-autre-agence',
+      tenantId: T2,
+      recipientUserId: 'bob',
+      key: forBob[0].key,
+      readAt: null,
+      relatedEntityType: 'Conversation',
+      relatedEntityId: c1.id
+    });
+
+    await markRead(staff('bob'), c1.id);
+
+    const byConv = (id: string) => forBob.find(n => n.relatedEntityId === id)!;
+    expect(byConv(c1.id).readAt).toBeInstanceOf(Date);
+    expect(byConv(c2.id).readAt).toBeNull();
+    expect(tables.userNotification.find(n => n.id === 'n-autre-agence')!.readAt).toBeNull();
+  });
+
   it('une conversation quittee ne compte plus', async () => {
     const c = await createConversation(staff('alice'), { participantUserIds: ['bob'] });
     await new Promise(resolve => setTimeout(resolve, 3));

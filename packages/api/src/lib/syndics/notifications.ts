@@ -24,6 +24,7 @@ import {
   type ChargeCallPaymentUrlResolver
 } from './charge-call-payment-url';
 import { createConvocationLink } from './meeting-participants';
+import { journalSkippedNotice, type NoticeSkipCause } from './notice-journal';
 
 /** Sujet (texte brut) ou corps HTML d'un e-mail : valeurs échappées dans le HTML. */
 function applyTemplate(template: string, vars: Record<string, string>, html = false): string {
@@ -331,6 +332,26 @@ export async function notifyChargeCall(
         journal: { recipient: { contactId: recipient.id }, relatedEntity: journalEntity }
       });
     }
+  }
+
+  // Aucune notification ne se perd : sans envoi tenté (ni e-mail, ni WhatsApp),
+  // le copropriétaire garde une ligne persistante SKIPPED avec sa raison.
+  const emailAttempted = emailSent || emailBlockReason === 'SEND_FAILED';
+  if (!emailAttempted && !whatsappSent) {
+    const cause: NoticeSkipCause =
+      emailBlockReason === 'EMAIL_NOT_CONFIGURED' || emailBlockReason === 'NOTIFICATION_DISABLED'
+        ? emailBlockReason
+        : 'NO_EMAIL';
+    await journalSkippedNotice({
+      tenantId,
+      key: eventKeyEmail,
+      title: t('Appel de charges émis'),
+      body: journalBody,
+      contactId: recipient.id,
+      email: recipient.email,
+      relatedEntity: journalEntity,
+      cause
+    });
   }
 
   logger.info('notifyChargeCall completed', {
@@ -817,6 +838,20 @@ export async function notifyChargeCallReminder(
         journal: { recipient: { contactId: owner.id }, relatedEntity: journalEntity }
       });
     }
+  }
+
+  // Aucune notification ne se perd (voir notifyChargeCall).
+  if (!emailSent && !whatsappSent) {
+    await journalSkippedNotice({
+      tenantId,
+      key: eventKeyEmail,
+      title: t('Relance d’appel de charges'),
+      body: journalBody,
+      contactId: owner.id,
+      email: owner.email,
+      relatedEntity: journalEntity,
+      cause: emailBlockReason
+    });
   }
 
   logger.info('notifyChargeCallReminder completed', {

@@ -265,7 +265,7 @@ describe('SyndicCharges — mode de répartition (menu lot 2)', () => {
     await chooseTarget(dialog, 'Tous les lots');
     fireEvent.click(await within(dialog).findByText('Par type de lot'));
 
-    expect(await within(dialog).findByText(/aucun montant pour PARKING/)).toBeTruthy();
+    expect(await within(dialog).findByText(/aucun montant pour Parking/)).toBeTruthy();
     const link = within(dialog).getByText('Paramétrer le barème de la copropriété').closest('a');
     expect(link?.getAttribute('href')).toBe('/tenant/tenant-1/syndics/syndic-1');
 

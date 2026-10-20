@@ -321,6 +321,7 @@
   "Informations": "Information",
   "Intégrité du journal": "Audit log integrity",
   "Intégrité du journal compromise": "Audit log integrity compromised",
+  "Invitation créée, mais l'e-mail n'a pas pu être envoyé. Utilisez « Renvoyer » pour réessayer.": "Invitation created, but the email could not be sent. Use “Resend” to try again.",
   "Invitation en attente": "Invitation pending",
   "Invitation envoyée avec succès": "Invitation sent",
   "Invitation renvoyée.": "Invitation resent.",

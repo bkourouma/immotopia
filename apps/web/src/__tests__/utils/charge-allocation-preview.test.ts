@@ -156,7 +156,7 @@ describe('previewAllocation - par type de lot (BY_LOT_TYPE)', () => {
   it('refuse un type absent du barème en nommant le type', () => {
     const result = previewAllocation({ method: 'BY_LOT_TYPE', lots, lotTypeRates: { APARTMENT: 100 } });
     expect(result.error).toBe(
-      'Le barème par type de lot est incomplet : aucun montant pour PARKING. Complétez-le dans les paramètres de la copropriété.'
+      'Le barème par type de lot est incomplet : aucun montant pour Parking. Complétez-le dans les paramètres de la copropriété.'
     );
     expect(result.errorKind).toBe('LOT_TYPE_RATES');
   });

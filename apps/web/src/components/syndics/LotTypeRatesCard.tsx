@@ -38,7 +38,19 @@ export interface LotTypeRatesCardProps {
 
 const formatAmount = (value: number | string | undefined): string =>
   `${value ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-const parseAmount = (value: string | undefined): number => Number((value ?? '').replace(/\s/g, ''));
+// Champ vide = « non renseigné » : le parseur ne doit jamais le convertir en 0
+// (Number('') vaut 0), sinon le simple passage dans le champ appellerait le type.
+const parseAmount = (value: string | undefined): number | string => {
+  const cleaned = (value ?? '').replace(/\s/g, '');
+  if (cleaned === '') return '';
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : '';
+};
+
+/** Types dont le montant saisi est négatif (refusés à l'enregistrement). */
+export function negativeRateTypes(draft: Record<LotType, number | null>): LotType[] {
+  return LOT_TYPES.filter(type => typeof draft[type] === 'number' && (draft[type] as number) < 0);
+}
 
 export const LotTypeRatesCard: React.FC<LotTypeRatesCardProps> = ({ tenantId, syndicId, canEdit }) => {
   const { message } = App.useApp();
@@ -70,9 +82,14 @@ export const LotTypeRatesCard: React.FC<LotTypeRatesCardProps> = ({ tenantId, sy
   };
 
   const handleSave = async () => {
+    if (negativeRateTypes(draft).length > 0) {
+      message.error(t('Un montant ne peut pas être négatif.'));
+      return;
+    }
     const rates: LotTypeRates = {};
     for (const type of LOT_TYPES) {
       const value = draft[type];
+      // Seuls les types renseignés partent : un champ vide reste absent du barème.
       if (typeof value === 'number' && Number.isFinite(value)) rates[type] = value;
     }
     if (Object.keys(rates).length === 0) {
@@ -187,7 +204,7 @@ export const LotTypeRatesCard: React.FC<LotTypeRatesCardProps> = ({ tenantId, sy
               <span style={{ flex: '0 0 140px' }}>{getLotTypeLabel(type)}</span>
               <InputNumber
                 aria-label={getLotTypeLabel(type)}
-                min={0}
+                status={negativeRateTypes(draft).includes(type) ? 'error' : undefined}
                 style={{ flex: 1 }}
                 value={draft[type]}
                 formatter={formatAmount}
@@ -196,6 +213,11 @@ export const LotTypeRatesCard: React.FC<LotTypeRatesCardProps> = ({ tenantId, sy
               />
             </div>
           ))}
+          {negativeRateTypes(draft).length > 0 ? (
+            <Typography.Text type="danger" role="alert">
+              {t('Un montant ne peut pas être négatif.')}
+            </Typography.Text>
+          ) : null}
         </Modal>
       ) : null}
     </Card>

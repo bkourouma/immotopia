@@ -1,4 +1,5 @@
 import apiClient from '../utils/api-client';
+import { announceUnreadCountsChanged } from '../utils/unread-counts-event';
 
 /**
  * Messagerie interne (lot 3). Mêmes formes JSON pour l'agence
@@ -117,6 +118,8 @@ export async function markConversationRead(
   conversationId: string
 ): Promise<{ lastReadAt: string }> {
   const response = await apiClient.post(`${basePath(scope)}/conversations/${conversationId}/read`);
+  // Le serveur lit aussi la notification de message : la cloche doit se mettre a jour.
+  announceUnreadCountsChanged();
   return unwrap<{ lastReadAt: string }>(response.data);
 }
 

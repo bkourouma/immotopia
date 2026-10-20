@@ -98,6 +98,39 @@ describe('LotTypeRatesCard', () => {
     expect(await screen.findByText('Barème enregistré')).toBeInTheDocument();
   });
 
+  it('un champ vide quitté reste vide et n’est pas envoyé ; 0 saisi reste envoyé', async () => {
+    getLotTypeRates.mockResolvedValue(makeView({ rates: { APARTMENT: 50000 }, isEmpty: false }));
+    updateLotTypeRates.mockResolvedValue(makeView());
+    renderCard();
+    fireEvent.click(await screen.findByRole('button', { name: /Modifier le barème/ }));
+    const dialog = await screen.findByRole('dialog');
+    const parking = within(dialog).getByLabelText('Parking') as HTMLInputElement;
+    fireEvent.focus(parking);
+    fireEvent.blur(parking);
+    expect(parking.value).toBe('');
+    // Revenir à « Non renseigné » : effacer un montant déjà saisi.
+    const apartment = within(dialog).getByLabelText('Appartement') as HTMLInputElement;
+    fireEvent.change(apartment, { target: { value: '' } });
+    fireEvent.blur(apartment);
+    expect(apartment.value).toBe('');
+    fireEvent.change(within(dialog).getByLabelText('Cave'), { target: { value: '0' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() => expect(updateLotTypeRates).toHaveBeenCalledWith('tenant-1', 'syndic-1', { CELLAR: 0 }));
+  });
+
+  it('refuse un montant négatif avec un message', async () => {
+    getLotTypeRates.mockResolvedValue(makeView());
+    renderCard();
+    fireEvent.click(await screen.findByRole('button', { name: /Modifier le barème/ }));
+    const dialog = await screen.findByRole('dialog');
+    const apartment = within(dialog).getByLabelText('Appartement') as HTMLInputElement;
+    fireEvent.change(apartment, { target: { value: '-5' } });
+    fireEvent.blur(apartment);
+    expect(await within(dialog).findByText('Un montant ne peut pas être négatif.')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
+    expect(updateLotTypeRates).not.toHaveBeenCalled();
+  });
+
   it('refuse l’enregistrement sans aucun montant', async () => {
     getLotTypeRates.mockResolvedValue(makeView());
     renderCard();

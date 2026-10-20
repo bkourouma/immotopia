@@ -1,5 +1,6 @@
 import type { ChargeAllocationMethod, LotType } from '../types/syndic-types';
 import { t } from '../i18n/t';
+import { getLotTypeLabel } from './syndic-lot-label';
 
 /**
  * Aperçu côté client de la répartition d'un appel de charges (menu lot 2).
@@ -185,7 +186,7 @@ function allocateByLotType(
     throw new AllocationError(
       t(
         'Le barème par type de lot est incomplet : aucun montant pour {{types}}. Complétez-le dans les paramètres de la copropriété.',
-        { types: missing.join(', ') }
+        { types: missing.map(type => getLotTypeLabel(type) ?? type).join(', ') }
       ),
       'LOT_TYPE_RATES'
     );

@@ -212,6 +212,20 @@ export async function markRead(actor: MessagingActor, conversationId: string): P
     where: { conversationId, tenantId: actor.tenantId, userId: actor.userId, leftAt: null },
     data: { lastReadAt: now }
   });
+  // Ouvrir la conversation lit aussi sa notification de message (cloche) : meme
+  // destinataire, meme agence, meme conversation. Sans cela la cloche reste a N
+  // pendant que la messagerie est a zero.
+  await prisma.userNotification.updateMany({
+    where: {
+      tenantId: actor.tenantId,
+      recipientUserId: actor.userId,
+      key: MESSAGE_NOTIFICATION_KEY,
+      relatedEntityType: 'Conversation',
+      relatedEntityId: conversationId,
+      readAt: null
+    },
+    data: { readAt: now }
+  });
   return { lastReadAt: now.toISOString() };
 }
 
