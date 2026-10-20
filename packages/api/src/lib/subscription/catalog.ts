@@ -17,8 +17,9 @@
  * le pack (VALEURS PROVISOIRES, a valider : AGENCE 20, SYNDIC 50, PROMOTEUR 20,
  * INTEGRE 100) et se complete par l'extension EXT_SIGNATURES_SUPPLEMENTAIRES (bloc de
  * 50, cumulable). Les deux sont posees sur le catalogue par la migration
- * 20261015120000_signatures_incluses_packs. Le TARIF de l'extension n'est pas decide
- * (decision fondateur) : prix 0 et isSellable false tant qu'il ne l'est pas.
+ * 20261015120000_signatures_incluses_packs (qui l'amorce a 0). L'extension est vendable
+ * a 5 000 XOF par mois et par bloc (decision du 19/10) : une base existante garde l'ancien
+ * prix tant que `npm run db:seed:catalog` n'est pas relance.
  *
  * Voir docs/architecture/PLAN-ABONNEMENTS.md.
  */
