@@ -45,7 +45,7 @@ Fait :
 
 Reste à faire :
 
-- Recette bloquée faute de connexion (le classificateur refuse la saisie du mot de passe par l'agent) : 005 (cloche du copropriétaire a2), 006, journal pour un utilisateur sans permission, isolation avec b1 et PR #185. L'utilisateur doit se connecter lui-même (a2, b1) sur web-demo 3300.
+- Recette finie le 2026-10-20 avec les sessions a2 et b1 ouvertes par l'utilisateur : 005 réussi (cloche de a2 : 2 appels de charges) ; 006 réussi en partie (badge messagerie immédiat ; baisse de la cloche non observée, notifications de message déjà lues) ; isolation OK pour b1 ; oracle 403/404 confirmé sur la démo sans le correctif (PR #185). Non testé : refus du journal pour un utilisateur sans permission (tous les comptes de recette sont administrateurs). Défaut mineur : « Un envoi a échoué » affiché deux fois dans la cloche.
 - Nouvelle anomalie mineure BUG-2026-10-20-001 : le journal affiche « Error EAUTH » brut. La démo a un SMTP qui refuse l'authentification : les e-mails sont en échec (pas « ignorés »).
 - Autres oracles d'existence relevés (PR #185) : `POST /:tenantId/register`, `property-ownership-middleware.ts` inutilisé, `GET /tenants/slug/:slug`, `DELETE /:tenantId/unregister`.
 - Migrations appliquées seulement sur `immotopia_demo` ; ailleurs seulement après accord.
