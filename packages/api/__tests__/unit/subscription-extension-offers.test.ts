@@ -5,6 +5,7 @@
  */
 
 import { DEFAULT_CATALOG, EXTENSION, PACK } from '../../src/lib/subscription';
+import { runWithLanguage, t } from '../../src/i18n';
 
 const mockGetEntitlements = jest.fn();
 const mockPrisma = {
@@ -88,6 +89,39 @@ describe('listTenantExtensionOffers', () => {
     expect(mockPrisma.catalogItem.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { kind: 'EXTENSION' }, orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }] })
     );
+  });
+});
+
+describe('listTenantExtensionOffers : langue de la requête', () => {
+  it('traduit le nom et la description du catalogue en anglais et en arabe', async () => {
+    holdPacks([PACK.PATRIMOINE_ESSENTIEL]);
+    const en = await runWithLanguage('en', () => listTenantExtensionOffers('t1'));
+    expect(en[0]).toMatchObject({ code: EXTENSION.BIENS_10, name: 'Block of 10 owned properties' });
+    expect(en[0].description).toContain('per property');
+    const ar = await runWithLanguage('ar', () => listTenantExtensionOffers('t1'));
+    expect(ar[0].name).toBe('حزمة من 10 عقارات مملوكة');
+  });
+
+  it('garde le français par défaut', async () => {
+    holdPacks([PACK.PATRIMOINE_ESSENTIEL]);
+    const fr = await listTenantExtensionOffers('t1');
+    expect(fr[0].name).toBe('Bloc de 10 biens détenus');
+  });
+
+  it('repli sur le texte en base quand le super-admin a édité le catalogue (aucune traduction)', async () => {
+    holdPacks([PACK.PATRIMOINE_ESSENTIEL]);
+    mockPrisma.catalogItem.findMany.mockResolvedValue(
+      rows.map(r => (r.code === EXTENSION.BIENS_10 ? { ...r, name: 'Bloc sur mesure', description: null } : r))
+    );
+    const en = await runWithLanguage('en', () => listTenantExtensionOffers('t1'));
+    expect(en[0]).toMatchObject({ name: 'Bloc sur mesure', description: null });
+  });
+
+  it.each(['en', 'ar'] as const)('chaque extension amorcée est traduite (%s)', language => {
+    for (const item of DEFAULT_CATALOG.filter(i => i.kind === 'EXTENSION')) {
+      expect(t(item.name, undefined, language)).not.toBe(item.name);
+      if (item.description) expect(t(item.description, undefined, language)).not.toBe(item.description);
+    }
   });
 });
 

@@ -319,8 +319,9 @@ export async function listTenantExtensionOffers(tenantId: string): Promise<Exten
     .filter(entry => isExtensionAllowed(entry, held))
     .map(entry => ({
       code: entry.code,
-      name: entry.name,
-      description: entry.description,
+      // Texte de la base = cle de traduction ; sans traduction, il sort tel quel (catalogue edite).
+      name: t(entry.name),
+      description: entry.description ? t(entry.description) : entry.description,
       monthlyPrice: planExtensionUnits(entry, held, 1, lotsBefore)[0]?.unitMonthlyPrice ?? entry.monthlyPrice,
       capacities: entry.capacities,
       isSellable: entry.isSellable
