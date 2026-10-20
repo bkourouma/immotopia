@@ -7,6 +7,18 @@ import { getMyDisabledMenus } from '../services/role-menu-service';
 import { getMenuEntitlements } from '../services/entitlements-service';
 import { applyFeatureAccess, applyOwnAssetsOnly, featureAccessFromModules } from '../navigation/feature-access';
 import type { FeatureAccessMap } from '../navigation/feature-access';
+import { ENTITLEMENTS_CHANGED_EVENT } from '../utils/tenant-events';
+
+/** Change quand l'agence a ajouté ou retiré un élément d'abonnement : les droits sont à relire. */
+function useEntitlementsVersion(): number {
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const bump = () => setVersion(v => v + 1);
+    window.addEventListener(ENTITLEMENTS_CHANGED_EVENT, bump);
+    return () => window.removeEventListener(ENTITLEMENTS_CHANGED_EVENT, bump);
+  }, []);
+  return version;
+}
 
 /**
  * Menus coupés pour la personne connectée, et navigation filtrée.
@@ -89,6 +101,7 @@ export function useFeatureAccessState(
   enabled: boolean
 ): { access: FeatureAccessMap | null; loading: boolean } {
   const [result, setResult] = useState<{ tenantId: string; access: FeatureAccessMap | null } | null>(null);
+  const version = useEntitlementsVersion();
 
   useEffect(() => {
     if (!enabled || !tenantId) return;
@@ -109,7 +122,7 @@ export function useFeatureAccessState(
     return () => {
       cancelled = true;
     };
-  }, [tenantId, enabled]);
+  }, [tenantId, enabled, version]);
 
   const active = enabled && Boolean(tenantId);
   const current = active && result?.tenantId === tenantId ? result : null;
@@ -125,6 +138,7 @@ export function useFeatureAccessState(
  */
 export function useOwnAssetsOnly(tenantId: string | null | undefined, enabled: boolean): boolean {
   const [ownAssetsOnly, setOwnAssetsOnly] = useState(false);
+  const version = useEntitlementsVersion();
 
   useEffect(() => {
     setOwnAssetsOnly(false);
@@ -143,7 +157,7 @@ export function useOwnAssetsOnly(tenantId: string | null | undefined, enabled: b
     return () => {
       cancelled = true;
     };
-  }, [tenantId, enabled]);
+  }, [tenantId, enabled, version]);
 
   return ownAssetsOnly;
 }

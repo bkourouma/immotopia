@@ -88,6 +88,7 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SUBSCRIPTION_CANCELED]: tenant('BILLING', { critical: true }),
   [AuditActionKey.SUBSCRIPTION_ITEM_ADDED]: tenant('BILLING'),
   [AuditActionKey.SUBSCRIPTION_ITEM_REMOVED]: tenant('BILLING'),
+  [AuditActionKey.SUBSCRIPTION_ITEM_REMOVAL_CANCELED]: tenant('BILLING'),
   [AuditActionKey.SUBSCRIPTION_PACK_CHANGED]: tenant('BILLING'),
   [AuditActionKey.SUBSCRIPTION_SETTINGS_UPDATED]: internal('BILLING'),
   [AuditActionKey.SUBSCRIPTION_MIGRATED_TO_PACKS]: internal('BILLING'),

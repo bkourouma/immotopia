@@ -41,6 +41,11 @@ async function seedRBAC() {
     // Tenant permissions
     { key: 'TENANT_SETTINGS_VIEW', description: 'View tenant settings' },
     { key: 'TENANT_SETTINGS_EDIT', description: 'Edit tenant settings' },
+    // Spec 045 : ajout/retrait de packs et d'extensions par l'agence (TENANT_ADMIN seul : prefixe TENANT_).
+    {
+      key: 'TENANT_SUBSCRIPTION_MANAGE',
+      description: 'Manage the agency subscription (add packs and extensions, schedule removals)'
+    },
     { key: 'USERS_VIEW', description: 'View collaborators' },
     { key: 'USERS_CREATE', description: 'Create collaborators' },
     { key: 'USERS_EDIT', description: 'Edit collaborators' },

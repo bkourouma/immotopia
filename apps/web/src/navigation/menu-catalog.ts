@@ -226,6 +226,7 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'agence-invitations': ['USERS_CREATE'],
   'agence-settings': ['TENANT_SETTINGS_VIEW'],
   'agence-finance-settings': ['TENANT_SETTINGS_VIEW'],
+  'agence-abonnement': ['TENANT_SETTINGS_VIEW'],
   'agence-activity': ['TENANT_AUDIT_VIEW']
 };
 

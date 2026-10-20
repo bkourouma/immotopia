@@ -11,6 +11,14 @@
  */
 export const TENANT_SUSPENDED_EVENT = 'immotopia:tenant-suspended';
 
+/**
+ * Évènement DOM émis après un ajout ou un retrait d'élément d'abonnement
+ * (page « Abonnement et factures ») : les droits de l'agence ont pu changer
+ * (nouveau module). `hooks/useMenuAccess.ts` relit alors les droits pour que
+ * le menu reflète le changement sans recharger la page.
+ */
+export const ENTITLEMENTS_CHANGED_EVENT = 'immotopia:entitlements-changed';
+
 export interface TenantSuspendedEventDetail {
   tenantId: string | null;
 }
