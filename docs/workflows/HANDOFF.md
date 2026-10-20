@@ -17,6 +17,12 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## Branche `chore/script-fournisseur-ia` — 2026-10-20
+
+**État :** PR vers `main` (fusion par l'utilisateur). Script `npm run ops:set-ai-provider` (paquet api) qui écrit la ligne `platform_ai_settings` quand ImmoCopilot est indisponible en production.
+**Fait :** `packages/api/scripts/set-ai-provider.ts` (openrouter/anthropic/disabled, `--dry-run`, refuse `fake`, vérifie seulement la présence des clés). Testé en dry-run.
+**Reste à faire :** l'exécuter sur la production (clé `OPENROUTER_API_KEY` ou `ANTHROPIC_API_KEY` à poser dans l'environnement du serveur au préalable). Pas d'événement d'audit écrit par le script.
+
 ## Branche `orch/2026-10-19-audit-correctifs` — 2026-10-20
 
 **État :** prêt à relire — PR vers `main` (fusion par l'utilisateur). Correctifs de l'audit vérifié `docs/audits/AUDIT_2026-10-19_VERIFICATION_ET_PLAN.md` (lots 1 à 5), orchestration chef-orchestre : lots S, A, B, C, E1, F, G, T, P, R, Z1, Z2, chacun relu par un vérificateur ; audit de sécurité du diff (0 critique ; 2 élevées préexistantes dans `resetMemberPassword`, 1 moyenne et 3 faibles, toutes corrigées au lot R).
