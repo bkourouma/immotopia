@@ -36,6 +36,28 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/abonnement-libre-service` — 2026-10-20
+
+**État :** bloqué (travail inachevé, sauvegardé ; ne pas fusionner tel quel)
+**Dernier commit :** `b651eef1` sauvegarde du travail inachevé de la spec 045
+
+Fait :
+
+- Spec `specs/045-abonnement-libre-service/spec.md` (décisions AL-D1 à AL-D3, choix AL-C1 à AL-C6, contrat d'API agence).
+- Écrans et service web (onglets compte, packs, utilisation, factures, relevé ; fenêtres d'ajout et de retrait), permission `TENANT_SUBSCRIPTION_MANAGE` et sa migration.
+- La session d'origine (« Module facture utilisateur », 16/10) a été coupée avec ses deux agents en cours ; le Pilote a commité et poussé l'état tel quel le 2026-10-20, puis archivé la session.
+
+Reste à faire :
+
+- Écrire les routes `/api/tenants/:tenantId/subscription/*` du contrat (aucune n'existe), les tests et l'étanchéité.
+- Rebaser l'idée sur `main` après la PR #181 (« Mon compte ») : la branche part de `68f2699e` et recoupe `TenantSubscriptionSettings.tsx`, `useMenuAccess.ts`, `navigation/model.tsx` et `menu-catalog.ts`. Repartir d'une branche neuve plutôt que fusionner celle-ci.
+- Traductions en/ar, classeur des fonctionnalités, recette.
+
+Pièges :
+
+- Le code n'a jamais été vérifié (ni typecheck complet, ni tests, ni navigateur) ; seul le hook lint-staged est passé.
+- Le worktree `.claude/worktrees/abonnement-libre-service` a des jonctions `node_modules` : les retirer avec `rmdir` avant tout `git worktree remove`.
+
 ## Branche `ci/deploiement-continu-staging` — 2026-10-16
 
 **État :** prêt à relire — PR ouverte vers `main`, à fusionner par l'utilisateur ; rien n'agit avant la mise en service par le propriétaire
