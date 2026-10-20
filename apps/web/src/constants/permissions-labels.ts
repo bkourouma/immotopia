@@ -76,6 +76,11 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = localized
     description: t("Consulter le journal d'activité de l'agence (qui a fait quoi, quand).")
   },
 
+  TENANT_NOTIFICATIONS_ADMIN: {
+    label: t('Voir le journal des notifications'),
+    description: t("Consulter le journal des notifications de l'agence et renvoyer les envois en échec.")
+  },
+
   // --- Utilisateurs / collaborateurs ---
   USERS_VIEW: {
     label: t('Voir les collaborateurs'),

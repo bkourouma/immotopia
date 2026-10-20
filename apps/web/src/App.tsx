@@ -680,6 +680,17 @@ const DocumentTemplates = lazy(() =>
   }))
 );
 const SignaturesPage = lazy(() => import(/* webpackChunkName: "signatures" */ './pages/signatures/SignaturesPage'));
+// Notifications persistantes et messagerie interne (lot 3).
+const NotificationsPage = lazy(
+  () => import(/* webpackChunkName: "notifications" */ './pages/notifications/NotificationsPage')
+);
+const NotificationJournalPage = lazy(
+  () => import(/* webpackChunkName: "notifications" */ './pages/notifications/NotificationJournalPage')
+);
+const PlatformNotificationJournalPage = lazy(
+  () => import(/* webpackChunkName: "notifications" */ './pages/notifications/PlatformNotificationJournalPage')
+);
+const MessagesRoute = lazy(() => import(/* webpackChunkName: "messages" */ './pages/messages/MessagesRoute'));
 // Transactions page
 // Reports page
 // Tenant Portal pages
@@ -910,6 +921,11 @@ function App() {
                           }
                         >
                           <Route path="/dashboard" element={<Dashboard />} />
+                          {/* Notifications et messagerie : ouvertes aussi aux clients des portails
+                        (scope décidé par useNotificationScope) ; l'API filtre chaque accès. */}
+                          <Route path="/notifications" element={<NotificationsPage />} />
+                          <Route path="/messages" element={<MessagesRoute />} />
+                          <Route path="/messages/:conversationId" element={<MessagesRoute />} />
                           <Route path="/properties" element={<Properties />} />
                           {/* Fusions du §4.3. Les ecrans disparaissent, les URL en
                         circulation sont redirigees et non cassees.
@@ -1074,6 +1090,7 @@ function App() {
                           <Route path="/tenant/:tenantId/settings/facturation" element={<TenantBillingSettings />} />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
                           <Route path="/tenant/:tenantId/signatures" element={<SignaturesPage />} />
+                          <Route path="/tenant/:tenantId/notifications-journal" element={<NotificationJournalPage />} />
                           <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
                           <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />
                           <Route path="/tenant/:tenantId/crm/contacts/:contactId" element={<ContactDetailPage />} />
@@ -1337,6 +1354,7 @@ function App() {
                           />
                           <Route path="/admin/statistics" element={<Statistics />} />
                           <Route path="/admin/audit" element={<AuditLogs />} />
+                          <Route path="/admin/notifications" element={<PlatformNotificationJournalPage />} />
                           <Route path="/admin/ai-settings" element={<AiSettingsPage />} />
                           <Route path="/admin/roles-permissions" element={<RolesPermissions />} />
                         </Route>

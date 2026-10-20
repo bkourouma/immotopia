@@ -485,6 +485,8 @@ model User {
   // New relationships for multi-tenant RBAC
   memberships                 Membership[]
   userRoles                   UserRole[]
+  receivedNotifications       UserNotification[]    @relation("UserNotificationRecipient")
+  conversationParticipations  ConversationParticipant[]
   invitations                 Invitation[]          @relation("InvitedBy")
   acceptedInvitations         Invitation[]          @relation("AcceptedBy")
   createdSecureLinks          SecureLink[]          @relation("SecureLinkCreatedBy")
@@ -649,6 +651,13 @@ model Tenant {
   usageSnapshots      UsageSnapshot[]
   quotaAlerts         QuotaAlert[]
   notificationMarkers NotificationMarker[]
+
+  // Notifications persistantes et messagerie interne (lot 3)
+  userNotifications        UserNotification[]
+  notificationDeliveries   NotificationDelivery[]
+  conversations            Conversation[]
+  conversationParticipants ConversationParticipant[]
+  messages                 Message[]
 
   // CRM relationships
   crmContacts           CrmContact[]
@@ -3986,6 +3995,18 @@ enum DistributionKey {
   MANUAL
 }
 
+/// Menu lot 2 : mode de repartition du montant d'un appel de charges (ou d'un appel
+/// de fonds) entre les lots. Distinct de `DistributionKey`, qui est la cle d'un POSTE
+/// de budget ; ici on repartit le montant d'une programmation fixe ou d'un appel saisi.
+enum ChargeAllocationMethod {
+  /// Au prorata des tantiemes generaux (comportement historique, defaut).
+  SHARES
+  /// Un montant PAR LOT saisi pour chaque type de lot (`amountsByLotType`) ; le total en decoule.
+  BY_LOT_TYPE
+  /// Meme montant pour chaque lot concerne (total / nombre de lots).
+  EQUAL
+}
+
 enum TransactionType {
   CHARGE_CALL
   PAYMENT
@@ -4049,6 +4070,12 @@ model Syndicate {
   mandatingAgencyId  String?         @map("mandating_agency_id") @db.Uuid
   /// Lot S1 : cle de stockage PRIVEE du logo de la copropriete.
   logoPath           String?         @map("logo_path")
+  /// Menu lot 2 : bareme par type de lot, parametre UNE fois par l'administrateur (modifiable).
+  /// Montant PAR LOT et par type, ex. {"APARTMENT": 50000, "PARKING": 10000}. Nul : pas de bareme.
+  lotTypeRates          Json?            @map("lot_type_rates")
+  lotTypeRatesUpdatedAt DateTime?        @map("lot_type_rates_updated_at")
+  /// Auteur de la derniere modification du bareme (sans cle etrangere : trace d'audit).
+  lotTypeRatesUpdatedById String?        @map("lot_type_rates_updated_by_id")
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
@@ -4894,6 +4921,9 @@ model ChargeCallBatch {
   totalAmount Decimal     @map("total_amount") @db.Decimal(14, 2)
   currency    String      @default("XOF")
   status      BatchStatus @default(DRAFT)
+  /// Menu lot 2 : mode de repartition utilise pour ce lot d'appels (trace d'audit). SHARES
+  /// pour les lots issus d'un budget (cle des postes) et les lots historiques.
+  allocationMethod ChargeAllocationMethod @default(SHARES) @map("allocation_method")
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
@@ -4951,8 +4981,16 @@ model SyndicChargeSchedule {
   amountSource  SyndicChargeAmountSource @map("amount_source")
   /// Budget a utiliser ; nul avec BUDGET = budget approuve de l'exercice de la periode.
   budgetId      String?                  @map("budget_id") @db.Uuid
-  /// Montant total appele par periode (source FIXED).
+  /// Montant total appele par periode (source FIXED, modes SHARES et EQUAL ; nul en BY_LOT_TYPE).
   fixedAmount   Decimal?                 @map("fixed_amount") @db.Decimal(14, 2)
+  /// Menu lot 2 : repartition du montant fixe entre les lots. SHARES (defaut) = tantiemes,
+  /// comportement historique ; toujours SHARES pour la source BUDGET (cle des postes du budget).
+  /// BY_LOT_TYPE applique le bareme de la copropriete (`Syndicate.lotTypeRates`) a chaque periode.
+  allocationMethod ChargeAllocationMethod @default(SHARES) @map("allocation_method")
+  /// BUG-2026-10-19-004 : avec SHARES + FIXED, inclut tous les lots actifs (parkings, caves...) comme
+  /// l'appel direct « Tous les lots ». Faux = calcul historique (lots principaux seulement, avec repli).
+  /// Les programmations anterieures a la migration sont mises a faux ; ignore dans les autres modes.
+  includeAnnexLots Boolean               @default(true) @map("include_annex_lots")
   currency      String                   @default("XOF")
   startDate     DateTime                 @map("start_date") @db.Date
   endDate       DateTime?                @map("end_date") @db.Date
@@ -11119,6 +11157,161 @@ model DirectDebitReturnImport {
   @@index([tenantId, createdAt])
   @@index([tenantId, fileDigest])
   @@map("direct_debit_return_imports")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications persistantes et messagerie interne (menu lot 3)
+// ---------------------------------------------------------------------------
+
+/// Canal d'une notification.
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  WHATSAPP
+  SMS
+}
+
+/// Etat d'une notification (agregat) ou d'un envoi par canal. La lecture n'est
+/// PAS un statut : elle vit dans `UserNotification.readAt`.
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  SKIPPED
+}
+
+enum ConversationKind {
+  DIRECT
+  GROUP
+}
+
+/// Notification adressee a une personne de l'agence (compte ou contact CRM sans
+/// compte). Ecrite AVANT tout envoi : un canal en echec ne l'efface jamais.
+model UserNotification {
+  id                 String             @id @default(uuid())
+  tenantId           String             @map("tenant_id")
+  /// Destinataire ayant un compte. SetNull : le libelle fige reste lisible.
+  recipientUserId    String?            @map("recipient_user_id")
+  /// Destinataire sans compte : identifiant CRM (CrmContact.id), sans relation.
+  recipientContactId String?            @map("recipient_contact_id")
+  /// Libelle du destinataire au moment de l'envoi.
+  recipientLabel     String             @map("recipient_label")
+  /// Cle metier (ex. MAINTENANCE_TICKET_CREATED_TENANT).
+  key                String
+  title              String
+  body               String             @db.Text
+  link               String?
+  /// Agregat des canaux (jamais READ).
+  status             NotificationStatus @default(PENDING)
+  failureReason      String?            @map("failure_reason")
+  readAt             DateTime?          @map("read_at")
+  sentAt             DateTime?          @map("sent_at")
+  /// Qui a declenche l'envoi (User.id, sans relation), pour « envoyees ».
+  senderUserId       String?            @map("sender_user_id")
+  relatedEntityType  String?            @map("related_entity_type")
+  relatedEntityId    String?            @map("related_entity_id")
+  metadata           Json?
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recipientUser User?                  @relation("UserNotificationRecipient", fields: [recipientUserId], references: [id], onDelete: SetNull)
+  deliveries    NotificationDelivery[]
+
+  @@index([tenantId, recipientUserId, readAt, createdAt(sort: Desc)], map: "user_notifications_inbox_idx")
+  @@index([tenantId, createdAt(sort: Desc)], map: "user_notifications_tenant_created_idx")
+  @@index([tenantId, status, createdAt(sort: Desc)], map: "user_notifications_tenant_status_idx")
+  @@index([tenantId, key], map: "user_notifications_tenant_key_idx")
+  @@index([relatedEntityType, relatedEntityId], map: "user_notifications_related_idx")
+  @@map("user_notifications")
+}
+
+/// Envoi d'une notification sur un canal. Une ligne par (notification, canal).
+model NotificationDelivery {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  notificationId    String              @map("notification_id")
+  channel           NotificationChannel
+  status            NotificationStatus  @default(PENDING)
+  /// Adresse e-mail ou numero vise.
+  target            String?
+  failureReason     String?             @map("failure_reason")
+  attempts          Int                 @default(0)
+  lastAttemptAt     DateTime?           @map("last_attempt_at")
+  sentAt            DateTime?           @map("sent_at")
+  deliveredAt       DateTime?           @map("delivered_at")
+  providerMessageId String?             @map("provider_message_id")
+  /// De quoi rejouer l'envoi (gabarit WhatsApp et variables, sujet e-mail...).
+  resendPayload     Json?               @map("resend_payload")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  notification UserNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, channel])
+  @@index([tenantId, status, createdAt(sort: Desc)], map: "notification_deliveries_tenant_status_idx")
+  @@map("notification_deliveries")
+}
+
+/// Fil de messagerie interne : 1-a-1 (deduplique par `directKey`) ou groupe.
+model Conversation {
+  id              String           @id @default(uuid())
+  tenantId        String           @map("tenant_id")
+  kind            ConversationKind
+  title           String?
+  /// Ids tries des deux participants d'un 1-a-1, joints par « : ».
+  directKey       String?          @map("direct_key")
+  createdByUserId String           @map("created_by_user_id")
+  lastMessageAt   DateTime?        @map("last_message_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@unique([tenantId, directKey])
+  @@index([tenantId, lastMessageAt(sort: Desc)], map: "conversations_tenant_last_message_idx")
+  @@map("conversations")
+}
+
+/// Participant : toujours un User de l'agence (membre actif ou client portail).
+model ConversationParticipant {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  conversationId String    @map("conversation_id")
+  userId         String    @map("user_id")
+  lastReadAt     DateTime? @map("last_read_at")
+  joinedAt       DateTime  @default(now()) @map("joined_at")
+  leftAt         DateTime? @map("left_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([tenantId, userId], map: "conversation_participants_tenant_user_idx")
+  @@map("conversation_participants")
+}
+
+/// Message texte d'une conversation (pas de piece jointe dans ce lot).
+model Message {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  conversationId String    @map("conversation_id")
+  /// Auteur (User.id, sans relation : le message survit au compte).
+  authorUserId   String    @map("author_user_id")
+  body           String    @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt(sort: Desc)], map: "messages_conversation_created_idx")
+  @@map("messages")
 }
 
 /// Audit 2026-10-19 : verrou des jobs cron entre instances de l'API. Une ligne par

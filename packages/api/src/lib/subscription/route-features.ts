@@ -87,6 +87,9 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
       'réellement appelée (même chaîne, même abonnement).'
   },
   { prefix: '/maintenance', feature: 'CORE' },
+  { prefix: '/notifications', feature: 'CORE', note: "Boîte de notifications de l'utilisateur." },
+  { prefix: '/admin/notifications', feature: 'CORE', note: "Journal des notifications de l'agence." },
+  { prefix: '/messages', feature: 'CORE', note: 'Messagerie interne.' },
   { prefix: '/email-notifications', feature: 'CORE' },
   { prefix: '/whatsapp-notifications', feature: 'CORE' },
   { prefix: '/newsletter', feature: 'CORE' },

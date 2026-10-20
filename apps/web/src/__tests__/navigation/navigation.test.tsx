@@ -63,7 +63,9 @@ describe('modèle de navigation — intégrité', () => {
       '/copropriete/paiements',
       '/copropriete/quittances',
       '/copropriete/suivi-mensuel',
-      '/copropriete/ma-copropriete'
+      '/copropriete/ma-copropriete',
+      '/notifications',
+      '/messages'
     ]);
 
     const plus = NAVIGATION.proprietaire.tree.find(g => g.key === 'plus');

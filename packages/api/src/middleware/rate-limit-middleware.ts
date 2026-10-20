@@ -926,6 +926,34 @@ export const signatureExternalLinkRateLimiter = rateLimit({
 });
 
 /**
+ * Envoi de messages (messagerie interne, agence et portails) : 30 par minute et par utilisateur
+ * (clé agence + utilisateur, repli sur l'IP). Posé APRÈS `authenticate` et la garde (pour
+ * disposer de l'utilisateur et de l'agence) et AVANT le contrôleur.
+ */
+export const messagingSendRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: req => {
+    const tenantId =
+      req.tenantContext?.tenantId ??
+      req.coOwnerPortal?.scope?.tenantId ??
+      req.tenantPortal?.tenantId ??
+      req.ownerPortal?.tenantId ??
+      'sans-agence';
+    return `messaging-send:${tenantId}:${req.user?.userId ?? req.ip ?? 'anonyme'}`;
+  },
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
  * Envoi de test WhatsApp (`POST .../whatsapp-notification-config/test-send`) :
  * chaque appel déclenche un vrai message facturable. Deux limiteurs chaînés,
  * l'un par utilisateur, l'autre par agence (un seul collaborateur ne peut pas
@@ -948,6 +976,25 @@ export const whatsappTestSendUserRateLimiter = rateLimit({
   ...WHATSAPP_TEST_SEND_USER_LIMIT,
   keyGenerator: req => `wa-test-user:${req.user?.userId ?? 'anonyme'}`,
   handler: testSendLimitedHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Renvoi d'une notification depuis le journal (agence ou plateforme) : 10 renvois par
+ * minute et par utilisateur. Pose APRES les gardes, AVANT le controleur.
+ */
+export const notificationResendRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `notification-resend:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
   standardHeaders: true,
   legacyHeaders: false
 });

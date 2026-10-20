@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { inviteCollaborator, InviteCollaboratorRequest } from '../../services/invitation-service';
+import {
+  inviteCollaborator,
+  InviteCollaboratorRequest,
+  isInvitationEmailNotSent
+} from '../../services/invitation-service';
 import { getTenant, Tenant } from '../../services/tenant-service';
 import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
@@ -75,7 +79,15 @@ export const AdminInviteCollaborator: React.FC = () => {
     try {
       const response = await inviteCollaborator(tenantId, formData);
       if (response.success) {
-        message.success(t('Invitation envoyée avec succès'));
+        const warning = t(
+          "Invitation créée, mais l'e-mail n'a pas pu être envoyé. Utilisez « Renvoyer » pour réessayer."
+        );
+        if (isInvitationEmailNotSent(response, warning)) {
+          // Invitation créée mais e-mail non parti : ne pas annoncer un succès.
+          message.warning(response.message || warning);
+        } else {
+          message.success(t('Invitation envoyée avec succès'));
+        }
         navigate(`/admin/tenants/${tenantId}`);
       } else {
         setError(response.message || t("Erreur lors de l'invitation"));

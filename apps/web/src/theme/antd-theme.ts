@@ -182,8 +182,14 @@ export function buildAntdTheme(): ThemeConfig {
       /**
        * `<Menu>` — GLOBAL, donc hors sidebar/drawer : ceux-ci imposent déjà
        * leurs propres couleurs par sélecteur CSS scopé dans `index.css`
-       * (`.ant-layout-sider .ant-menu-item-selected`, etc.), qui l'emporte
-       * sur ce token de composant. Cette entrée cible les menus « position »
+       * (`.ant-layout-sider .ant-menu.ant-menu-light .ant-menu-item-selected`,
+       * etc.), qui l'emporte sur ce token de composant — sidebar, drawer ET
+       * popup du rail (classe `app-nav-popup`, posée par `AppNavigation`
+       * puisque ce popup est rendu dans <body>) : destination courante et
+       * titre du groupe parent y sont blancs et semi-gras, jamais en
+       * `itemSelectedColor`. Ne pas changer ce token pour « corriger » la
+       * sidebar : il repeindrait aussi les menus ci-dessous. Cette entrée
+       * cible les menus « position »
        * restants, par ex. la langue active dans `LanguageSwitcher`
        * (`Dropdown` s'appuie sur `Menu` en interne). Le survol n'est PAS
        * touché : il reste la couleur d'action par défaut, un menu déroulant

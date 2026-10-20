@@ -40,6 +40,8 @@ import { installSubscriptionDenialInterceptor } from '../../utils/subscription-d
 
 // Assistant ImmoCopilot : chargé à part, hors du bundle d'entrée.
 const CopilotRoot = lazy(() => import('../copilot/CopilotRoot'));
+// Cloche de notifications et icône Messagerie : chargées à part, hors du bundle d'entrée.
+const HeaderActions = lazy(() => import('../notifications/HeaderActions'));
 
 /**
  * `<AppShell>` — coquille unique, montée AU NIVEAU ROUTE (REFONTE_UI_UX.md §4.1).
@@ -300,6 +302,16 @@ export const AppShell: React.FC = () => {
       >
         <TenantSuspendedBanner />
         <AppHeader
+          actions={
+            (persona === 'collaborateur' && navContext.tenantId) ||
+            persona === 'proprietaire' ||
+            persona === 'locataire' ||
+            persona === 'coproprietaire' ? (
+              <Suspense fallback={null}>
+                <HeaderActions />
+              </Suspense>
+            ) : null
+          }
           onOpenNavigation={
             canOpenDrawer
               ? () => {

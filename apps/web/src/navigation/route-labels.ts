@@ -152,6 +152,8 @@ function buildRouteLabels(): Record<string, string> {
     tenants: t('Agences'),
     statistics: t('Statistiques'),
     audit: t("Journaux d'audit"),
+    notifications: t('Notifications'),
+    messages: t('Messagerie'),
     'roles-permissions': t('Rôles et permissions'),
     'ai-settings': t('Assistant IA'),
 
@@ -161,6 +163,7 @@ function buildRouteLabels(): Record<string, string> {
     invite: t('Inviter'),
     invitations: t('Invitations'),
     activity: t("Journal d'activité"),
+    'notifications-journal': t('Journal des notifications'),
 
     // Portails
     owner: t('Portail propriétaire'),

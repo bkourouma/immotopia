@@ -21,6 +21,8 @@ import type { ColumnsType } from 'antd/es/table';
 import { ApartmentOutlined, BankOutlined, EditOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { LotTable } from '../../components/syndics/LotTable';
+import { LotTypeRatesCard } from '../../components/syndics/LotTypeRatesCard';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { BrandingImageField } from '../../components/documents/BrandingImageField';
 import { DataCard, DataView, MoneyValue, StatCard } from '../../components/primitives';
 import { listContacts } from '../../services/crm-service';
@@ -247,6 +249,9 @@ function buildChargeRows(charges: ChargeCall[]): ChargeRow[] {
 export const SyndicDetail: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
+  // Même logique que SyndicCharges : l'API reste l'autorité (SYNDIC_EDIT pour modifier le barème).
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const canEditSyndic = permissionsReady && (permissions === null || permissions.has('SYNDIC_EDIT'));
 
   const [syndicate, setSyndicate] = useState<SyndicateWithProperty | null>(null);
   const [charges, setCharges] = useState<ChargeCall[]>([]);
@@ -578,6 +583,10 @@ export const SyndicDetail: React.FC = () => {
           }}
         />
       </Card>
+
+      {effectiveTenantId && syndicId ? (
+        <LotTypeRatesCard tenantId={effectiveTenantId} syndicId={syndicId} canEdit={canEditSyndic} />
+      ) : null}
 
       <Modal
         title={t('Modifier la copropriété')}

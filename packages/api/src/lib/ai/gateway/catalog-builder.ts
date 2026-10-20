@@ -51,8 +51,12 @@ const KEPT_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH']);
 
 /** Préfixes (chemin absolu) hors périmètre, par défense en profondeur : aucune route d'agence n'y vit. */
 export const EXCLUDED_ABSOLUTE_PREFIXES = ['/api/auth', '/api/admin', '/api/platform', '/api/portal'] as const;
-/** Segments d'agence hors périmètre : l'assistant lui-même. */
-const EXCLUDED_TENANT_SEGMENTS = new Set(['ai']);
+/**
+ * Segments d'agence hors périmètre : l'assistant lui-même et la messagerie privée
+ * (`messages` : messages privés, contenu rédigé par des clients, vecteur d'injection,
+ * et envoi au nom de l'utilisateur interdit à l'assistant), en lecture comme en écriture.
+ */
+const EXCLUDED_TENANT_SEGMENTS = new Set(['ai', 'messages']);
 /**
  * Segments exclus où qu'ils se trouvent dans le chemin : le simulateur de
  * l'inventaire par WhatsApp (lot 041, W13-R6) parle AU NOM d'un chef de
