@@ -138,6 +138,38 @@ describe('AuthContext : memberships et hasPermission', () => {
     });
     await waitFor(() => expect(screen.getByText('autorisé:1')).toBeInTheDocument());
   });
+
+  it('à la connexion, retombe sur la réponse de login quand /auth/me échoue : la connexion aboutit', async () => {
+    getMe.mockRejectedValueOnce(Object.assign(new Error('non'), { response: { status: 500 } }));
+    loginApi.mockResolvedValueOnce({ success: true, user: user({ email: 'repli@example.com' }) });
+    getMe.mockRejectedValueOnce(Object.assign(new Error('indisponible'), { response: { status: 500 } }));
+    let seConnecter: () => Promise<void> = async () => {};
+    const Declencheur: React.FC = () => {
+      const auth = useContext(AuthContext as React.Context<any>);
+      seConnecter = () => auth.login({ email: 'repli@example.com', password: 'x' });
+      return (
+        <span>
+          {auth.isLoading ? 'chargement' : auth.isAuthenticated ? `connecté:${auth.user?.email}` : 'anonyme'}
+          {auth.error ? `:erreur ${auth.error}` : ''}
+        </span>
+      );
+    };
+    render(
+      <AuthProvider>
+        <Declencheur />
+        <Temoin tenantId="t1" keys="FINANCE_REPORTS_READ" />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByText('anonyme')).toBeInTheDocument());
+    await act(async () => {
+      await expect(seConnecter()).resolves.toBeUndefined();
+    });
+    // Connexion réussie sur la réponse de login (sans appartenances) : pas d'erreur,
+    // et aucun droit connu (« refusé:0 »).
+    await waitFor(() => expect(screen.getByText('connecté:repli@example.com')).toBeInTheDocument());
+    expect(screen.getByText('refusé:0')).toBeInTheDocument();
+    expect(getMe).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('ProtectedRoute : requiredPermissions', () => {
@@ -169,8 +201,11 @@ describe('ProtectedRoute : requiredPermissions', () => {
   });
 
   it('affiche le refus d’accès quand la permission manque', async () => {
+    // Pré-charge le chunk lazy d'AccessDenied : sa première transformation (~6 s à
+    // froid) ne compte alors pas dans l'attente du `findBy` sous charge.
+    await import('../../components/primitives/AccessDenied');
     monter(user({ memberships: [membership('t1', ['STOCK_VIEW'])] }));
-    expect(await screen.findByText('Accès non autorisé')).toBeInTheDocument();
+    expect(await screen.findByText('Accès non autorisé', undefined, { timeout: 15000 })).toBeInTheDocument();
     expect(screen.queryByText('écran financier')).not.toBeInTheDocument();
   });
 
