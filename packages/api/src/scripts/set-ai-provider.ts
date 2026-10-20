@@ -7,11 +7,10 @@
  * l'environnement du serveur (`OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY`).
  * Le script vérifie seulement leur présence et n'en affiche aucun fragment.
  *
- * Utilisation (depuis packages/api, avec le `.env` du serveur cible) :
- *   npm run ops:set-ai-provider -- --provider openrouter --model anthropic/claude-sonnet-4.5
- *   npm run ops:set-ai-provider -- --provider anthropic --model claude-opus-5-5 --effort medium
- *   npm run ops:set-ai-provider -- --provider disabled
- *   npm run ops:set-ai-provider -- --provider openrouter --dry-run
+ * Utilisation, dans le conteneur de l'API (production : immotopia-prod-api) :
+ *   docker exec immotopia-prod-api node dist/scripts/set-ai-provider.js --provider openrouter --model anthropic/claude-sonnet-4.5
+ *   docker exec immotopia-prod-api node dist/scripts/set-ai-provider.js --provider openrouter --dry-run
+ * En développement : npm run ops:set-ai-provider -- --provider disabled
  *
  * Options :
  *   --provider  openrouter | anthropic | disabled   (défaut : openrouter)
@@ -24,8 +23,7 @@
  * Le service met sa configuration en cache 30 s : aucun redémarrage requis.
  * `fake` est refusé : interdit en production.
  */
-import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+import { disconnectDatabase, prisma } from '../utils/database';
 
 const PROVIDERS = ['disabled', 'anthropic', 'openrouter'] as const;
 const EFFORTS = ['low', 'medium', 'high'] as const;
@@ -94,7 +92,6 @@ async function main() {
     return;
   }
 
-  const prisma = new PrismaClient();
   try {
     const before = await prisma.platformAiSettings.findUnique({ where: { id: SETTINGS_ID } });
     await prisma.platformAiSettings.upsert({
@@ -105,7 +102,7 @@ async function main() {
     console.log(before ? `✔ Réglage mis à jour (avant : ${before.provider} / ${before.model}).` : '✔ Réglage créé.');
     console.log('Pris en compte sous 30 s, sans redémarrage.');
   } finally {
-    await prisma.$disconnect();
+    await disconnectDatabase();
   }
 }
 
