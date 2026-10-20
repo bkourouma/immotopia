@@ -15,6 +15,16 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
   sections de branche, elles sont indépendantes.
 - Pas de secret, pas de donnée personnelle, pas de contenu de `.env`.
 
+## Branche `fix/invitation-session-autre-compte` — 2026-10-20
+
+**État :** PR #175 ouverte vers main, conflits avec main résolus le 2026-10-20 (fusion de `origin/main` : classeur et HANDOFF seulement) ; à fusionner par l’utilisateur, puis déployer staging puis production (workflow « Déploiement »).
+
+**Fait :** acceptation d’une invitation avec la session d’un autre compte : 409 `INVITATION_FOR_ANOTHER_ACCOUNT` (adresse masquée, avant toute écriture) ; page « Se déconnecter et continuer » ; `logout({ redirectTo })`. Relecture OK, audit sécurité sans point critique/élevé/moyen.
+
+**Reste à faire :** rejouer le parcours dans un navigateur après déploiement. Contournement en attendant : ouvrir le lien en navigation privée.
+
+**Pièges :** le classeur de fonctionnalités est un binaire : en cas de conflit, reprendre la version de main puis rejouer la modification (texte dans `xl/worksheets/sheet2.xml`, entités XML) et `npm run wiki:export`. Worktree : jonctions `node_modules` vers `qa-syndic-base` (à retirer avec `rmdir` avant `git worktree remove`).
+
 Modèle de section :
 
 ```markdown

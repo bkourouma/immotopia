@@ -9,6 +9,7 @@ import {
   BadRequestError,
   ConflictError,
   InvitationRequiresLoginError,
+  InvitationForAnotherAccountError,
   NotFoundError
 } from '../middleware/error-middleware';
 import { assertBelongsToTenant } from '../utils/tenant-ownership';
@@ -396,6 +397,13 @@ async function isNeverActivatedProvisionedAdmin(
   return inviter?.globalRole === 'SUPER_ADMIN' && inviter.isActive !== false;
 }
 
+/** `b•••@gmail.com` : premiere lettre + domaine, jamais l'adresse complete. */
+function maskInvitedEmail(email: string): string {
+  const at = email.lastIndexOf('@');
+  if (at < 1) return '•••';
+  return `${email.slice(0, 1)}•••${email.slice(at)}`;
+}
+
 /**
  * Accept an invitation
  * @param data - Acceptance data
@@ -457,6 +465,20 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
       isActive: true
     }
   });
+
+  // Session ouverte avec un AUTRE compte que celui de l'adresse invitee (ou
+  // adresse sans compte) : controle avant toute creation ou mise a jour, pour
+  // que l'invitation reste intacte. Le meme refus couvre les deux cas : il ne
+  // revele rien sur l'existence d'un compte.
+  if (data.requestingUserId && (!user || user.id !== data.requestingUserId)) {
+    const maskedEmail = maskInvitedEmail(invitation.email);
+    throw new InvitationForAnotherAccountError(
+      t("Cette invitation est destinée à une autre adresse ({{email}}). Déconnectez-vous pour l'accepter.", {
+        email: maskedEmail
+      }),
+      maskedEmail
+    );
+  }
 
   const isNewUser = !user;
   // Vrai seulement pour l'administrateur d'une agence fraichement creee par

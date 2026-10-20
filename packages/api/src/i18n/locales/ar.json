@@ -526,6 +526,7 @@
   "Cette invitation a déjà été acceptée.": "تم قبول هذه الدعوة من قبل.",
   "Cette invitation a été révoquée.": "تم إلغاء هذه الدعوة.",
   "Cette invitation a expiré.": "انتهت صلاحية هذه الدعوة.",
+  "Cette invitation est destinée à une autre adresse ({{email}}). Déconnectez-vous pour l'accepter.": "هذه الدعوة موجّهة إلى عنوان آخر ({{email}}). سجّل الخروج لقبولها.",
   "Cette invitation expire le {{expiry}}.": "تنتهي صلاحية هذه الدعوة في {{expiry}}.",
   "Cette lecture automatique n'est plus valable. Envoyez de nouveau la capture.": "هذه القراءة التلقائية لم تعد صالحة. أعد إرسال لقطة الشاشة.",
   "Cette ligne de remise n'est liée à aucune échéance de loyer.": "لا يرتبط سطر الدفعة هذا بأي قسط إيجار.",
