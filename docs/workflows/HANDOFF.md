@@ -42,37 +42,22 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Pièges :** les dossiers `D:\APP\Immobillier-worktrees\audit-lot-{S,T,C}` restent sur disque (fichiers verrouillés, désenregistrés de git) : vérifier qu'ils ne contiennent aucune jonction avant de les supprimer. Le checkout principal est sur `feat/signature-s5-s7`, loin derrière `main` : les copies du chantier utilisaient les `node_modules` de `audit-integ` (npm ci). Budget d'entrée web : 228 974 o pour 229 376 o (marge ≈ 400 o). `ai.write-plan.test.ts` échoue sous Windows (préexistant).
 
-## Branche `orch/2026-10-19-menu-messagerie` — 2026-10-20
+## Menu, répartition des charges, notifications et messagerie — fusionnés, NON déployés (2026-10-20)
 
-**État :** prêt à relire — PR #183 vers `main`, à fusionner par l'utilisateur ; PR #185 séparée (anomalie 009, branche `fix/isolation-acces-agence`, CI verte).
-**Dernier commit :** `4f89951c` fusion de `origin/main` (PR #184), après `72066cee` (anomalie 004) et `d7fe20b5` (CI + anomalie 008).
+**État :** PR #183, #185 et #188 fusionnées dans `main` le 2026-10-20 ; rien n'est déployé.
 
-Fait :
+À faire au prochain déploiement (staging puis production, sur accord de l'utilisateur) :
 
-- Lot 1 : sous-menu sélectionné en blanc et gras (sidebar, tiroir, popup du rail replié).
-- Lot 2 : répartition des appels de charges par tantièmes, type de lot ou équitable ; barème par type de lot par copropriété (`bareme-types-lots`). Migrations `20261019140000_*`, `20261019190000_*`.
-- Lot 3 : notifications persistantes écrites avant envoi, messagerie interne, cloche, journal admin, vue plateforme, portails. Migration `20261019180000_*`. Messagerie exclue du catalogue IA.
-- Recette du 19/10 : 9 anomalies (`.agent-bus/bugs/BUG-2026-10-19-*`) toutes traitées : 001-003, 005-007 (correctifs de recette), 004 (interrupteur `includeAnnexLots`, migration `20261020090000_*`, nouvelles programmations avec lots annexes, existantes historiques — décision du fondateur), 008 (groupe actif ouvert après changement de langue), 009 (PR #185).
-- CI : routes notifications/messagerie classées CORE, catalogue IA régénéré ; suite API complète verte en local hors `ai.write-plan` (CRLF Windows).
-- Recette de reprise sur la démo (72066cee) le 2026-10-20 : 001, 002, 003, 004, 007, 008 passés ; migration `20261020090000` appliquée sans erreur sur `immotopia_demo` (les 4 migrations y sont).
+- Migrations à appliquer : `20261019140000_syndic_mode_repartition_appels`, `20261019180000_notifications_messagerie` (permission `TENANT_NOTIFICATIONS_ADMIN` accordée à TENANT_ADMIN et TENANT_MANAGER), `20261019190000_syndic_programmation_montant_bareme`, `20261020090000_syndic_programmation_lots_annexes` (met toutes les programmations existantes à `include_annex_lots = false`, calcul historique conservé). Déjà appliquées sur `immotopia_demo` seulement.
+- Recette faite sur la démo : menu, barème et trois modes de répartition, lots annexes, notifications persistantes, messagerie, isolation entre agences. Non testé : refus du journal pour un utilisateur sans permission (comptes de recette tous administrateurs) ; baisse de la cloche à l'ouverture d'une conversation (notifications déjà lues).
+- À valider par le fondateur : montants en clair dans le journal des e-mails d'appel de charges ; `amount` devient un total à répartir pour plusieurs lots ; relecture des traductions arabes (« barème »).
+- Limiteurs de messagerie en mémoire (par instance d'API).
 
-Reste à faire :
+Pièges :
 
-- Recette finie le 2026-10-20 avec les sessions a2 et b1 ouvertes par l'utilisateur : 005 réussi (cloche de a2 : 2 appels de charges) ; 006 réussi en partie (badge messagerie immédiat ; baisse de la cloche non observée, notifications de message déjà lues) ; isolation OK pour b1 ; oracle 403/404 confirmé sur la démo sans le correctif (PR #185). Non testé : refus du journal pour un utilisateur sans permission (tous les comptes de recette sont administrateurs). Défaut mineur : « Un envoi a échoué » affiché deux fois dans la cloche.
-- Nouvelle anomalie mineure BUG-2026-10-20-001 : le journal affiche « Error EAUTH » brut. La démo a un SMTP qui refuse l'authentification : les e-mails sont en échec (pas « ignorés »).
-- Autres oracles d'existence relevés (PR #185) : traités sur `fix/oracles-et-finitions`, ainsi que BUG-2026-10-20-001 et le double « Un envoi a échoué ».
-- Migrations appliquées seulement sur `immotopia_demo` ; ailleurs seulement après accord.
-- À valider : montants en clair dans le journal des e-mails d'appel de charges ; `amount` = total à répartir ; relecture de l'arabe.
+- Démo laissée sur 72066cee avec `AI_PROVIDER=fake` passé en variable au lancement (onglet de terminal), comptes jetables `recette.mm.*@immotopia.test` et données de recette dans `immotopia_demo`.
+- Dossier résiduel `D:\APP\Immobillier-worktrees\menu-ci` (retiré de git, non vide) : à effacer à la main.
 
-Pièges et décisions :
-
-- Copies de travail sous `D:\APP\Immobillier-worktrees\` : `menu-ci` (branche d'intégration, `node_modules` propre) ; `menu-lot-6`, `menu-lot-7`, `isolation-agence` (jonctions vers le checkout principal : `rmdir` des jonctions AVANT `git worktree remove`).
-- Configs Jest temporaires hors dépôt dans le scratchpad de la session (stubs livekit/aws pour le `node_modules` partagé, auquel ces paquets manquent).
-- Comptes jetables `recette.mm.*@immotopia.test` et données de recette dans la base de démo ; démo laissée sur 72066cee, serveurs arrêtés.
-- Fusion de `origin/main` (0839b2ca9, PR #184 correctifs de l'audit du 19/10) résolue le 2026-10-20 en gardant les deux côtés : catalogues `common.json`, `menu-catalog.ts` (`agence-notifications` + `mon-compte*`), limiteurs (messagerie, renvoi, envoi de test WhatsApp), `schema.prisma` (modèles de messagerie + `JobLock`), classeur des fonctionnalités (main + 25 lignes de la branche = 1150 lignes). Migrations de la branche toutes postérieures à `20261019130000_audit_integrite_schema` (main), sans collision. Après cette fusion, relancer `npm ci` à la racine (nouvelle dépendance `@pdf-lib/fontkit`).
-- Deux tests web corrigés : l'ouverture d'emblée du groupe de la page courante (anomalie 008) ajoute un sous-menu `role="menu"` dans `particulier-navigation.test.tsx` ; un `reduce` de `syndics.charge-schedules.test.ts` ne compilait pas sous ts-jest (`as number[]`).
-
-````markdown
 ## Branche `feat/mon-compte-abonnement` — 2026-10-19
 
 **État :** prêt à relire — PR ouverte (base `main`), à fusionner par l'utilisateur
@@ -304,7 +289,8 @@ Pièges et décisions :
 
 - …
 ```
-````
+
+```
 
 ## Branche `fix/test-prestataire-syndic-instable` — 2026-10-19
 
@@ -844,3 +830,4 @@ Application et données :
 - Recette locale : le navigateur intégré refuse les pages servies par adresse IP (utiliser `*.localhost`) et ses captures échouent panneau masqué (preuves par DOM et réseau) ; `preview_start` est limité à 5 serveurs. Les testeurs n'ont pas les mots de passe de recette : les consigner dans les scénarios.
 - Ports : API 8001, web 3000 (3002 sur ce poste), démo 8800/3300 ; sur ce poste le port 3301 est pris par un autre projet (Docker).
 - Les marques anti-doublon des notifications vivent dans la table `notification_markers`, jamais dans `AuditLog`.
+```
