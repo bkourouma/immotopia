@@ -108,3 +108,56 @@ describe('garde Prisma : valeur du tenantId dans le where', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('sans filtre'), expect.anything());
   });
 });
+
+describe('garde Prisma : écritures en masse (mode strict)', () => {
+  it.each([
+    ['not', { tenantId: { not: 'autre' } }],
+    ['notIn', { tenantId: { notIn: ['t2'] } }],
+    ['NOT seul', { NOT: { tenantId: 't2' } }],
+    ['NOT avec la bonne agence', { NOT: { tenantId: 't1' } }]
+  ])('%s : signalé comme filtre absent en updateMany et deleteMany', async (_label, where) => {
+    for (const operation of ['updateMany', 'deleteMany']) {
+      const loaded = load('warn');
+      const warn = jest.spyOn(loaded.logger, 'warn').mockImplementation(() => loaded.logger);
+      const { outcome } = await run(loaded, where, operation);
+      await outcome;
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('sans filtre tenantId'), expect.anything());
+      warn.mockRestore();
+    }
+  });
+
+  it('enforce : updateMany avec not est refusé', async () => {
+    const loaded = load('enforce');
+    jest.spyOn(loaded.logger, 'error').mockImplementation(() => loaded.logger);
+    const { outcome, query } = await run(loaded, { tenantId: { not: 'autre' } }, 'updateMany');
+    await expect(outcome).rejects.toBeInstanceOf(loaded.AppError);
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['not', { tenantId: { not: 'autre' } }],
+    ['notIn', { tenantId: { notIn: ['t2'] } }],
+    ['NOT', { NOT: { tenantId: 't2' } }]
+  ])('%s en lecture (findMany) : comportement historique, non signalé', async (_label, where) => {
+    const loaded = load('warn');
+    const warn = jest.spyOn(loaded.logger, 'warn').mockImplementation(() => loaded.logger);
+    const { outcome } = await run(loaded, where, 'findMany');
+    await outcome;
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('sans filtre tenantId'), expect.anything());
+  });
+
+  it.each([
+    ['chaîne', { tenantId: 't1' }],
+    ['equals', { tenantId: { equals: 't1' } }],
+    ['in', { tenantId: { in: ['t1'] } }],
+    ['AND', { AND: [{ status: 'x' }, { tenantId: 't1' }] }],
+    ['OR', { OR: [{ tenantId: 't1' }, { tenantId: { in: ['t1'] } }] }],
+    ['chaîne + NOT', { tenantId: 't1', NOT: { status: 'x' } }]
+  ])('updateMany avec %s du contexte : non signalé', async (_label, where) => {
+    const loaded = load('warn');
+    const warn = jest.spyOn(loaded.logger, 'warn').mockImplementation(() => loaded.logger);
+    const { outcome } = await run(loaded, where, 'updateMany');
+    await outcome;
+    expect(warn).not.toHaveBeenCalled();
+  });
+});

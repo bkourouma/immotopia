@@ -54,7 +54,8 @@ export function startOnlinePaymentReconciliationJob() {
 
   onlinePaymentReconciliationJob = cron.schedule(
     '*/5 * * * *',
-    // TTL 4 min, sous la période de 5 min : un passage resté bloqué n'empêche pas le suivant.
+    // TTL 4 min, sous la période de 5 min : le verrou est prolongé tant que le passage tourne
+    // (withJobLock) ; si l'instance meurt, il expire seul et le passage suivant reprend.
     () => withJobLock('online-payment-reconciliation', 4 * 60 * 1000, reconcileAllPending),
     {
       timezone: 'UTC'

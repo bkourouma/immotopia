@@ -10,6 +10,9 @@ const tx: any = {
 };
 const prismaMock: any = {
   membership: { findUnique: jest.fn(), count: jest.fn() },
+  userRole: { count: jest.fn() },
+  tenantClient: { count: jest.fn() },
+  user: { findUnique: jest.fn() },
   $transaction: jest.fn(async (cb: (client: unknown) => Promise<unknown>) => cb(tx))
 };
 const sendPasswordResetEmail = jest.fn();
@@ -41,6 +44,9 @@ function member(status: MembershipStatus, globalRole = 'USER') {
 beforeEach(() => {
   jest.clearAllMocks();
   prismaMock.membership.count.mockResolvedValue(0);
+  prismaMock.userRole.count.mockReset().mockResolvedValue(0);
+  prismaMock.tenantClient.count.mockResolvedValue(0);
+  prismaMock.user.findUnique.mockResolvedValue({ globalRole: 'USER' });
   tx.refreshToken.updateMany.mockResolvedValue({ count: 1 });
 });
 
@@ -79,7 +85,7 @@ describe('resetMemberPassword', () => {
     prismaMock.membership.count.mockResolvedValue(1);
     const res = await resetMemberPassword('u2', 't1', undefined, 'admin');
     expect(prismaMock.membership.count).toHaveBeenCalledWith({
-      where: { userId: 'u2', tenantId: { not: 't1' }, status: MembershipStatus.ACTIVE }
+      where: { userId: 'u2', tenantId: { not: 't1' } }
     });
     expect(tx.user.update).not.toHaveBeenCalled();
     expect(res.sessionsRevoked).toBe(false);
@@ -102,5 +108,113 @@ describe('resetMemberPassword', () => {
     const arg = prismaMock.membership.findUnique.mock.calls[0][0];
     expect(arg.include).toBeUndefined();
     expect(arg.select.user.select.passwordHash).toBeUndefined();
+  });
+
+  describe('compte protégé étendu', () => {
+    const PW = 'Abcdef1!xyz';
+
+    it('rôle de portée plateforme ou autre agence : protégé', async () => {
+      member(MembershipStatus.ACTIVE);
+      prismaMock.userRole.count.mockResolvedValue(1);
+      const res = await resetMemberPassword('u2', 't1', undefined, 'admin');
+      expect(prismaMock.userRole.count).toHaveBeenCalledWith({
+        where: { userId: 'u2', OR: [{ tenantId: null }, { tenantId: { not: 't1' } }] }
+      });
+      expect(tx.user.update).not.toHaveBeenCalled();
+      expect(res.sessionsRevoked).toBe(false);
+      await expect(resetMemberPassword('u2', 't1', PW, 'admin')).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('profil client dans une autre agence : protégé', async () => {
+      member(MembershipStatus.ACTIVE);
+      prismaMock.tenantClient.count.mockResolvedValue(1);
+      const res = await resetMemberPassword('u2', 't1', undefined, 'admin');
+      expect(prismaMock.tenantClient.count).toHaveBeenCalledWith({
+        where: { userId: 'u2', tenantId: { not: 't1' } }
+      });
+      expect(tx.user.update).not.toHaveBeenCalled();
+      expect(res.sessionsRevoked).toBe(false);
+      await expect(resetMemberPassword('u2', 't1', PW, 'admin')).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('appartenance non active (en attente) ailleurs : protégé', async () => {
+      member(MembershipStatus.ACTIVE);
+      prismaMock.membership.count.mockResolvedValue(1); // la requête ne filtre plus sur le statut
+      await expect(resetMemberPassword('u2', 't1', PW, 'admin')).rejects.toMatchObject({ statusCode: 403 });
+      expect(tx.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('mot de passe imposé à un administrateur', () => {
+    const PW = 'Abcdef1!xyz';
+    // userRole.count : 1er appel = cible admin ? (protégé étendu : appel avec OR, séparé)
+    function roles(opts: { targetAdmin: boolean; actorAdmin?: boolean }) {
+      prismaMock.userRole.count.mockImplementation(async ({ where }: any) => {
+        if (where.OR) return 0;
+        if (where.userId === 'u2') return opts.targetAdmin ? 1 : 0;
+        if (where.userId === 'actor') return opts.actorAdmin ? 1 : 0;
+        return 0;
+      });
+    }
+
+    it('gestionnaire -> administrateur avec mot de passe : refusé (403), aucun update', async () => {
+      member(MembershipStatus.ACTIVE);
+      roles({ targetAdmin: true, actorAdmin: false });
+      await expect(resetMemberPassword('u2', 't1', PW, 'actor')).rejects.toMatchObject({ statusCode: 403 });
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+      expect(tx.user.update).not.toHaveBeenCalled();
+      expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('acteur absent : traité en non-administrateur', async () => {
+      member(MembershipStatus.ACTIVE);
+      roles({ targetAdmin: true });
+      await expect(resetMemberPassword('u2', 't1', PW)).rejects.toMatchObject({ statusCode: 403 });
+      expect(tx.user.update).not.toHaveBeenCalled();
+    });
+
+    it('gestionnaire -> administrateur sans mot de passe : hash intact, sessions conservées, lien envoyé', async () => {
+      member(MembershipStatus.ACTIVE);
+      roles({ targetAdmin: true, actorAdmin: false });
+      const res = await resetMemberPassword('u2', 't1', undefined, 'actor');
+      expect(tx.user.update).not.toHaveBeenCalled();
+      expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(tx.passwordResetToken.create).toHaveBeenCalledTimes(1);
+      expect(sendPasswordResetEmail).toHaveBeenCalledTimes(1);
+      expect(res).toMatchObject({ resetLinkSent: true, sessionsRevoked: false });
+    });
+
+    it('administrateur -> administrateur sans mot de passe : hash remplacé comme avant', async () => {
+      member(MembershipStatus.ACTIVE);
+      roles({ targetAdmin: true, actorAdmin: true });
+      const res = await resetMemberPassword('u2', 't1', undefined, 'actor');
+      expect(tx.user.update).toHaveBeenCalledTimes(1);
+      expect(res.sessionsRevoked).toBe(true);
+    });
+
+    it('administrateur -> administrateur avec mot de passe : accepté', async () => {
+      member(MembershipStatus.ACTIVE);
+      roles({ targetAdmin: true, actorAdmin: true });
+      const res = await resetMemberPassword('u2', 't1', PW, 'actor');
+      expect(tx.user.update).toHaveBeenCalledTimes(1);
+      expect(res).toMatchObject({ password: PW, sessionsRevoked: true });
+    });
+
+    it('super-admin acteur -> administrateur avec mot de passe : accepté', async () => {
+      member(MembershipStatus.ACTIVE);
+      roles({ targetAdmin: true, actorAdmin: false });
+      prismaMock.user.findUnique.mockResolvedValue({ globalRole: 'SUPER_ADMIN' });
+      const res = await resetMemberPassword('u2', 't1', PW, 'actor');
+      expect(tx.user.update).toHaveBeenCalledTimes(1);
+      expect(res.sessionsRevoked).toBe(true);
+    });
+
+    it('cible non administrateur : mot de passe imposé accepté pour un gestionnaire', async () => {
+      member(MembershipStatus.ACTIVE);
+      roles({ targetAdmin: false });
+      await resetMemberPassword('u2', 't1', PW, 'actor');
+      expect(tx.user.update).toHaveBeenCalledTimes(1);
+      expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+    });
   });
 });

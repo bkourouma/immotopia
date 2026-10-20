@@ -241,13 +241,18 @@ function currentMode(): Mode {
  */
 type TenantClause = 'missing' | 'matches' | 'foreign';
 
+/** Bulk writes: a filter that does not positively pin the tenant counts as absent. */
+const STRICT_WHERE_OPERATIONS = new Set(['updateMany', 'deleteMany']);
+
 /**
  * Compare the VALUE of a tenant filter with the context tenant. Recognised
  * shapes: a plain string, `{ equals }` and `{ in: [...] }` (every element must
- * be the context tenant). Anything else (`null`, `not`, relation filters)
- * keeps the historical behaviour: the field is mentioned, not judged.
+ * be the context tenant). Anything else (`null`, `not`, `notIn`, relation
+ * filters) keeps the historical behaviour (the field is mentioned, not judged)
+ * unless `strict` (bulk writes): such a shape does not pin the tenant, so it
+ * counts as `missing`.
  */
-function tenantValueState(value: unknown, tenantId: string): 'matches' | 'foreign' {
+function tenantValueState(value: unknown, tenantId: string, strict = false): TenantClause {
   if (typeof value === 'string') {
     return value === tenantId ? 'matches' : 'foreign';
   }
@@ -260,15 +265,17 @@ function tenantValueState(value: unknown, tenantId: string): 'matches' | 'foreig
       return filter.in.every(item => item === tenantId) ? 'matches' : 'foreign';
     }
   }
-  return 'matches';
+  return strict ? 'missing' : 'matches';
 }
 
 /**
  * Whether a `where` clause constrains the tenant field to the context tenant,
  * including through the AND / OR / NOT combinators services use. A clause whose
- * value names another tenant is `foreign`, whatever else it says.
+ * value names another tenant is `foreign`, whatever else it says. In `strict`
+ * mode (bulk writes) unrecognised filter shapes are `missing` and a NOT branch
+ * never counts as a constraint.
  */
-function tenantClause(where: unknown, field: string, tenantId: string, depth = 0): TenantClause {
+function tenantClause(where: unknown, field: string, tenantId: string, depth = 0, strict = false): TenantClause {
   if (!where || typeof where !== 'object' || depth > 5) {
     return 'missing';
   }
@@ -277,7 +284,7 @@ function tenantClause(where: unknown, field: string, tenantId: string, depth = 0
   let state: TenantClause = 'missing';
 
   if (clause[field] !== undefined) {
-    state = tenantValueState(clause[field], tenantId);
+    state = tenantValueState(clause[field], tenantId, strict);
     if (state === 'foreign') {
       return 'foreign';
     }
@@ -289,7 +296,7 @@ function tenantClause(where: unknown, field: string, tenantId: string, depth = 0
       continue;
     }
     const branches: unknown[] = Array.isArray(branch) ? branch : [branch];
-    const states = branches.map(b => tenantClause(b, field, tenantId, depth + 1));
+    const states = branches.map(b => tenantClause(b, field, tenantId, depth + 1, strict));
 
     // A foreign tenant named anywhere in AND / OR is a violation. Under NOT it
     // only excludes rows, so it never counts as one.
@@ -298,7 +305,9 @@ function tenantClause(where: unknown, field: string, tenantId: string, depth = 0
     }
     // OR only constrains the tenant if *every* branch does.
     const constrains =
-      states.length > 0 && (key === 'OR' ? states.every(s => s !== 'missing') : states.some(s => s !== 'missing'));
+      !(strict && key === 'NOT') &&
+      states.length > 0 &&
+      (key === 'OR' ? states.every(s => s !== 'missing') : states.some(s => s !== 'missing'));
     if (constrains) {
       state = 'matches';
     }
@@ -397,7 +406,7 @@ export const tenantGuardExtension = {
 
         if (WHERE_GUARDED_OPERATIONS.has(operation)) {
           const where = (args as { where?: unknown })?.where;
-          const clauseState = tenantClause(where, field, tenantId);
+          const clauseState = tenantClause(where, field, tenantId, 0, STRICT_WHERE_OPERATIONS.has(operation));
           if (clauseState === 'missing') {
             report(`requête ${model}.${operation} sans filtre ${field}`);
           } else if (clauseState === 'foreign') {
