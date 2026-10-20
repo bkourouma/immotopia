@@ -20,11 +20,14 @@ import { toMajorityLotsAt, votersAt, type LotOwnerProfileForVoters } from './mee
 import {
   LOT_OWNER_PROFILE_SELECT_FOR_VOTERS,
   MEETING_CONTACT_SELECT,
+  loadMeetingLots,
   normalizeOwnerProfilesForVoters
 } from './meeting-lots';
 import { lockMeetingTx, recomputeMeetingResultsTx } from './meeting-results';
 import { assertBelongsToTenant } from '../../utils/tenant-ownership';
 import { logger } from '../../utils/logger';
+import { ensureSyndicChartTemplateTx } from './syndic-chart-template';
+import { attachBudgetActuals } from './budget-actuals';
 // Lot S2 (audit S1) : le logo prive de la copropriete est supprime avec elle.
 import { deleteBrandingImage } from '../documents/branding-storage';
 // Spec 045 (R12) : les MP4 des AG partent avec la copropriete supprimee.
@@ -297,6 +300,19 @@ export async function getSyndicateWithLotsAndStats(tenantId: string, syndicateId
               contact: true
             },
             orderBy: [{ createdAt: 'desc' }]
+          },
+          // Profils locataires actuels (QA2 lot 4) : select minimal, jamais le contact entier.
+          tenantProfiles: {
+            where: { isCurrent: true, OR: [{ tenantUntil: null }, { tenantUntil: { gt: new Date() } }] },
+            select: {
+              id: true,
+              contactId: true,
+              isCurrent: true,
+              tenantSince: true,
+              tenantUntil: true,
+              contact: { select: { id: true, firstName: true, lastName: true, legalName: true } }
+            },
+            orderBy: [{ tenantSince: 'desc' }]
           }
         }
       },
@@ -319,6 +335,7 @@ export async function createSyndicateWithDefaults(
     cadastralReference?: string | null;
     totalLots?: number;
     totalBuildings?: number;
+    totalGeneralShares?: number;
     mandatingAgencyId?: string | null;
   }
 ) {
@@ -385,6 +402,7 @@ export async function createSyndicateWithDefaults(
         cadastralReference: data.cadastralReference ?? undefined,
         totalLots: data.totalLots ?? 0,
         totalBuildings: data.totalBuildings ?? 1,
+        totalGeneralShares: data.totalGeneralShares ?? undefined,
         mandatingAgencyId: data.mandatingAgencyId ?? undefined,
         tenantId
       }
@@ -407,6 +425,7 @@ export async function updateSyndicateByTenant(
     totalBuildings?: number;
     status?: 'ACTIVE' | 'IN_LIQUIDATION' | 'IN_DISPUTE';
     regulationDocUrl?: string | null;
+    totalGeneralShares?: number | null;
     mandatingAgencyId?: string | null;
   }
 ) {
@@ -627,6 +646,33 @@ function resolveCreateSpecialShares(data: {
     return data.specialShares === null ? null : Math.round(data.specialShares);
   }
   return data.isParkingIncluded ? Math.round(data.tantiemes) : null;
+}
+
+/**
+ * Hypothese H7 : si la copropriete porte un total de reference des tantiemes
+ * (`totalGeneralShares`) et que la somme des tantiemes de TOUS ses lots en
+ * differe, renvoie une phrase d'avertissement (non bloquante). Sans total de
+ * reference ou somme egale : tableau vide.
+ */
+export async function computeLotSharesWarnings(tenantId: string, syndicateId: string): Promise<string[]> {
+  const syndicate = await prisma.syndicate.findFirst({
+    where: { id: syndicateId, tenantId },
+    select: { totalGeneralShares: true }
+  });
+  const reference = syndicate?.totalGeneralShares;
+  if (reference === null || reference === undefined) return [];
+  const aggregate = await prisma.syndicateLot.aggregate({
+    where: { syndicateId, syndicate: { tenantId } },
+    _sum: { generalShares: true }
+  });
+  const sum = aggregate._sum.generalShares ?? 0;
+  if (sum === reference) return [];
+  return [
+    t('Le total des tantièmes des lots ({{sum}}) diffère du total de référence de la copropriété ({{reference}}).', {
+      sum,
+      reference
+    })
+  ];
 }
 
 export async function createSyndicateLot(
@@ -1161,10 +1207,19 @@ export async function deleteSyndicateLotByTenant(tenantId: string, syndicateId: 
       tx.paymentReminder.count({ where: { lotId } }),
       tx.latePaymentPenalty.count({ where: { lotId } }),
       tx.paymentSchedule.count({ where: { lotId } }),
-      tx.ownerAccountTransaction.count({ where: { account: { lotId } } })
+      tx.ownerAccountTransaction.count({ where: { account: { lotId } } }),
+      // Relations Restrict : sans ce controle, la suppression finirait en P2003 generique.
+      tx.syndicOnlineCheckout.count({ where: { lotId } }),
+      tx.syndicPaymentDeclarationLine.count({ where: { lotId } }),
+      tx.directDebitMandate.count({ where: { lotId } }),
+      tx.directDebitRemittanceLine.count({ where: { lotId } }),
+      tx.gMAttendance.count({ where: { lotId } })
     ]);
     if (counts.some(count => count > 0)) {
-      const message = `Le lot ${existing.lotNumber} a des mouvements (appels de charges, paiements, reçus…) : il ne peut pas être supprimé. Désactivez-le pour l'exclure de la clé de répartition et des appels futurs.`;
+      const message = t(
+        "Le lot {{lot}} a des mouvements (appels de charges, paiements, reçus, mandats de prélèvement, déclarations de paiement, pointage…) : il ne peut pas être supprimé. Désactivez-le pour l'exclure de la clé de répartition et des appels futurs.",
+        { lot: existing.lotNumber }
+      );
       throw new ConflictError(message, [{ field: 'lotId', message }]);
     }
 
@@ -1865,7 +1920,8 @@ export async function getMeetingByTenant(tenantId: string, syndicateId: string, 
         include: {
           lots: {
             include: {
-              owner: true,
+              // Champs de contact minimaux : le detail n'a besoin que du nom et de l'e-mail du proprietaire.
+              owner: { select: MEETING_CONTACT_SELECT },
               ownerProfiles: { select: LOT_OWNER_PROFILE_SELECT_FOR_VOTERS }
             }
           }
@@ -1877,15 +1933,9 @@ export async function getMeetingByTenant(tenantId: string, syndicateId: string, 
       resolutions: {
         orderBy: { createdAt: 'asc' },
         include: {
-          votes: {
-            include: {
-              lot: {
-                include: {
-                  owner: true
-                }
-              }
-            }
-          }
+          // Aucun lot ni proprietaire joint aux votes : l'ecran les retrouve par `lotId`
+          // dans `syndicate.lots` (le detail relisait chaque lot et son contact complet).
+          votes: true
         }
       },
       proxies: {
@@ -2145,23 +2195,98 @@ export async function deleteAgendaItemByTenant(tenantId: string, syndicateId: st
   });
 }
 
+/** Fenetre dans laquelle deux resolutions identiques (titre + description) sont prises pour un doublon. */
+const RESOLUTION_DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
+
+function normalizeResolutionText(value: string | null | undefined): string {
+  return (value ?? '').trim();
+}
+
 export async function addResolutionToMeeting(
   tenantId: string,
   syndicateId: string,
   data: { meetingId: string; title: string; description?: string | null; majorityRule?: string | null }
 ) {
-  const meeting = await findMeetingForTenant(prisma, tenantId, syndicateId, data.meetingId);
-  assertMeetingOpenForChanges(meeting.status, {
-    COMPLETED: "Assemblee cloturee : impossible d'ajouter une resolution",
-    CANCELLED: "Assemblee annulee : impossible d'ajouter une resolution"
-  });
+  return prisma.$transaction(async tx => {
+    const found = await findMeetingForTenant(tx, tenantId, syndicateId, data.meetingId);
+    // Verrou d'AG puis statut relu sous le verrou : deux ajouts simultanes se
+    // serialisent et voient la resolution de l'autre (anti-doublon ci-dessous).
+    await lockMeetingTx(tx, found.id);
+    const meeting = (await tx.generalMeeting.findFirst({ where: { id: found.id }, select: { status: true } })) ?? found;
+    assertMeetingOpenForChanges(meeting.status, {
+      COMPLETED: "Assemblee cloturee : impossible d'ajouter une resolution",
+      CANCELLED: "Assemblee annulee : impossible d'ajouter une resolution"
+    });
 
-  return prisma.gMResolution.create({
-    data: {
-      ...data,
-      // Code de regle stable (ARTICLE_24…) ; un texte libre reste accepte et vaut l'article 24.
-      majorityRule: data.majorityRule?.trim() || DEFAULT_MAJORITY_RULE
+    // Anti-doublon (double clic, reessai sans cle d'idempotence) : meme titre et
+    // meme description creees il y a moins de 2 minutes -> la resolution existante.
+    const title = normalizeResolutionText(data.title);
+    const description = normalizeResolutionText(data.description);
+    const recent = await tx.gMResolution.findMany({
+      where: { meetingId: found.id, createdAt: { gte: new Date(Date.now() - RESOLUTION_DUPLICATE_WINDOW_MS) } },
+      orderBy: { createdAt: 'asc' }
+    });
+    const duplicate = recent.find(
+      resolution =>
+        normalizeResolutionText(resolution.title) === title &&
+        normalizeResolutionText(resolution.description) === description
+    );
+    if (duplicate) {
+      return duplicate;
     }
+
+    return tx.gMResolution.create({
+      data: {
+        ...data,
+        // Code de regle stable (ARTICLE_24…) ; un texte libre reste accepte et vaut l'article 24.
+        majorityRule: data.majorityRule?.trim() || DEFAULT_MAJORITY_RULE
+      }
+    });
+  });
+}
+
+/**
+ * Supprime une resolution d'une AG encore modifiable. Refus (409) si l'AG est
+ * cloturee ou annulee, si le vote de la resolution n'est plus PENDING ou si des
+ * votes existent deja. Transaction sous verrou d'AG, resultats recalcules.
+ */
+export async function deleteResolutionFromMeeting(
+  tenantId: string,
+  syndicateId: string,
+  meetingId: string,
+  resolutionId: string
+) {
+  return prisma.$transaction(async tx => {
+    const found = await findMeetingForTenant(tx, tenantId, syndicateId, meetingId);
+    await lockMeetingTx(tx, found.id);
+    const meeting =
+      (await tx.generalMeeting.findFirst({
+        where: { id: found.id },
+        select: { id: true, status: true, scheduledAt: true }
+      })) ?? found;
+    assertMeetingOpenForChanges(meeting.status, {
+      COMPLETED: 'Assemblee cloturee : impossible de supprimer une resolution',
+      CANCELLED: 'Assemblee annulee : impossible de supprimer une resolution'
+    });
+
+    const resolution = await tx.gMResolution.findFirst({
+      where: { id: resolutionId, meetingId: found.id },
+      select: { id: true, voteStatus: true }
+    });
+    if (!resolution) {
+      throw notFound('Resolution introuvable ou inaccessible');
+    }
+    if (resolution.voteStatus !== 'PENDING') {
+      throw conflict(t('Le vote de cette résolution est déjà ouvert ou clos : elle ne peut plus être supprimée.'));
+    }
+    const voteCount = await tx.gMVote.count({ where: { resolutionId: resolution.id } });
+    if (voteCount > 0) {
+      throw conflict(t('Des votes ont été enregistrés pour cette résolution : elle ne peut plus être supprimée.'));
+    }
+
+    await tx.gMResolution.delete({ where: { id: resolution.id } });
+    await recomputeMeetingResultsTx(tx, syndicateId, found.id, meeting.scheduledAt);
+    return { id: resolution.id };
   });
 }
 
@@ -2311,7 +2436,11 @@ export async function createMeetingProxyByTenant(
   data: { meetingId: string; grantorContactId: string; representativeContactId: string }
 ) {
   return prisma.$transaction(async tx => {
-    const meeting = await findMeetingForTenant(tx, tenantId, syndicateId, data.meetingId);
+    const found = await findMeetingForTenant(tx, tenantId, syndicateId, data.meetingId);
+    // Verrou d'AG, statut relu sous le verrou : le pouvoir et l'emargement qu'il
+    // entraine restent coherents avec une ouverture ou une cloture simultanee.
+    await lockMeetingTx(tx, found.id);
+    const meeting = (await findMeetingForTenant(tx, tenantId, syndicateId, data.meetingId)) ?? found;
     assertMeetingOpenForChanges(meeting.status, {
       COMPLETED: 'Assemblee cloturee : les pouvoirs ne peuvent plus etre modifies',
       CANCELLED: 'Assemblee annulee : les pouvoirs ne peuvent plus etre modifies'
@@ -2349,7 +2478,7 @@ export async function createMeetingProxyByTenant(
       throw conflict('Ce coproprietaire a deja donne un pouvoir pour cette assemblee');
     }
 
-    return tx.gMProxy.create({
+    const proxy = await tx.gMProxy.create({
       data: {
         meetingId: data.meetingId,
         grantorContactId: data.grantorContactId,
@@ -2360,7 +2489,64 @@ export async function createMeetingProxyByTenant(
         representative: { select: MEETING_CONTACT_SELECT }
       }
     });
+
+    // Seance ouverte : les lots du mandant sont emarges REPRESENTES par le
+    // mandataire (jamais par-dessus un emargement PRESENT), quorum recalcule.
+    if (meeting.status === 'IN_PROGRESS') {
+      const lotIds = await grantorLotIdsAtMeeting(tx, syndicateId, meeting.scheduledAt, data.grantorContactId);
+      if (lotIds.length > 0) {
+        const present = await tx.gMAttendance.findMany({
+          where: { meetingId: meeting.id, lotId: { in: lotIds }, status: 'PRESENT' },
+          select: { lotId: true }
+        });
+        const presentLotIds = new Set(present.map(row => row.lotId));
+        const lotIdsToRepresent = lotIds.filter(id => !presentLotIds.has(id));
+        // Meme regle que l'emargement (setLotAttendances) : un votant du lot ne peut pas
+        // en etre le mandataire. Appliquee a l'ecriture de l'emargement REPRESENTED, donc
+        // seance ouverte ; avant l'AG aucun emargement n'est ecrit (un pouvoir donne a un
+        // coindivisaire reste accepte et est tranche a l'ouverture).
+        if (lotIdsToRepresent.length > 0) {
+          const { lots: meetingLots } = await loadMeetingLots(tx, syndicateId, meeting.scheduledAt);
+          const representedLots = new Set(lotIdsToRepresent);
+          const representativeIsVoter = meetingLots.some(
+            lot =>
+              representedLots.has(lot.id) && lot.voters.some(voter => voter.contactId === data.representativeContactId)
+          );
+          if (representativeIsVoter) {
+            throw unprocessableEntity(t("Le mandataire ne peut pas être un propriétaire du lot qu'il représente."));
+          }
+        }
+        for (const lotId of lotIdsToRepresent) {
+          const attendance = {
+            status: 'REPRESENTED' as const,
+            mode: 'IN_PERSON' as const,
+            attendeeContactId: data.representativeContactId,
+            representedByContactId: data.representativeContactId,
+            recordedBy: 'MANAGER' as const
+          };
+          await tx.gMAttendance.upsert({
+            where: { meetingId_lotId: { meetingId: meeting.id, lotId } },
+            update: attendance,
+            create: { tenantId, meetingId: meeting.id, lotId, ...attendance }
+          });
+        }
+        await recomputeMeetingResultsTx(tx, syndicateId, meeting.id, meeting.scheduledAt);
+      }
+    }
+
+    return proxy;
   });
+}
+
+/** Lots dont le contact est votant a la date de l'AG (propriete a cette date, repli sur le proprietaire actuel). */
+async function grantorLotIdsAtMeeting(
+  tx: PrismaTransactionClient,
+  syndicateId: string,
+  scheduledAt: Date,
+  contactId: string
+): Promise<string[]> {
+  const { lots } = await loadMeetingLots(tx, syndicateId, scheduledAt);
+  return lots.filter(lot => lot.voters.some(voter => voter.contactId === contactId)).map(lot => lot.id);
 }
 
 export async function deleteMeetingProxyByTenant(
@@ -2369,22 +2555,45 @@ export async function deleteMeetingProxyByTenant(
   meetingId: string,
   proxyId: string
 ) {
-  const meeting = await findMeetingForTenant(prisma, tenantId, syndicateId, meetingId);
+  return prisma.$transaction(async tx => {
+    const found = await findMeetingForTenant(tx, tenantId, syndicateId, meetingId);
+    await lockMeetingTx(tx, found.id);
+    const meeting = (await findMeetingForTenant(tx, tenantId, syndicateId, meetingId)) ?? found;
 
-  const proxy = await prisma.gMProxy.findFirst({
-    where: { id: proxyId, meetingId: meeting.id },
-    select: { id: true }
+    const proxy = await tx.gMProxy.findFirst({
+      where: { id: proxyId, meetingId: meeting.id },
+      select: { id: true, grantorContactId: true, representativeContactId: true }
+    });
+    if (!proxy) {
+      throw notFound('Pouvoir introuvable ou inaccessible');
+    }
+
+    assertMeetingOpenForChanges(meeting.status, {
+      COMPLETED: 'Assemblee cloturee : les pouvoirs ne peuvent plus etre modifies',
+      CANCELLED: 'Assemblee annulee : les pouvoirs ne peuvent plus etre modifies'
+    });
+
+    const deleted = await tx.gMProxy.delete({ where: { id: proxy.id } });
+
+    // Seance ouverte : les lots du mandant representes par ce mandataire repassent absents.
+    if (meeting.status === 'IN_PROGRESS') {
+      const lotIds = await grantorLotIdsAtMeeting(tx, syndicateId, meeting.scheduledAt, proxy.grantorContactId);
+      if (lotIds.length > 0) {
+        await tx.gMAttendance.updateMany({
+          where: {
+            meetingId: meeting.id,
+            lotId: { in: lotIds },
+            status: 'REPRESENTED',
+            representedByContactId: proxy.representativeContactId
+          },
+          data: { status: 'ABSENT', representedByContactId: null, attendeeContactId: null }
+        });
+        await recomputeMeetingResultsTx(tx, syndicateId, meeting.id, meeting.scheduledAt);
+      }
+    }
+
+    return deleted;
   });
-  if (!proxy) {
-    throw notFound('Pouvoir introuvable ou inaccessible');
-  }
-
-  assertMeetingOpenForChanges(meeting.status, {
-    COMPLETED: 'Assemblee cloturee : les pouvoirs ne peuvent plus etre modifies',
-    CANCELLED: 'Assemblee annulee : les pouvoirs ne peuvent plus etre modifies'
-  });
-
-  return prisma.gMProxy.delete({ where: { id: proxy.id } });
 }
 
 export async function linkMaintenanceRequestBySyndicate(
@@ -2840,6 +3049,7 @@ export async function createDocumentForSyndicate(
     type: 'REGULATION' | 'GENERAL_MEETING_MINUTES' | 'DIAGNOSTIC' | 'INSURANCE' | 'BUDGET' | 'OTHER';
     fileUrl: string;
     expiresAt?: Date;
+    visibleToCoOwners?: boolean;
   }
 ) {
   const syndicate = await prisma.syndicate.findFirst({
@@ -2860,7 +3070,43 @@ export async function createDocumentForSyndicate(
       title: data.title,
       type: data.type,
       fileUrl: data.fileUrl,
-      expiresAt: data.expiresAt
+      expiresAt: data.expiresAt,
+      // Défaut fermé sauf règlement et PV d'AG (communicables à tout copropriétaire).
+      visibleToCoOwners:
+        data.visibleToCoOwners ?? (data.type === 'REGULATION' || data.type === 'GENERAL_MEETING_MINUTES')
+    }
+  });
+}
+
+export async function updateDocumentForSyndicate(
+  tenantId: string,
+  syndicateId: string,
+  documentId: string,
+  data: {
+    title?: string;
+    type?: 'REGULATION' | 'GENERAL_MEETING_MINUTES' | 'DIAGNOSTIC' | 'INSURANCE' | 'BUDGET' | 'OTHER';
+    visibleToCoOwners?: boolean;
+  }
+) {
+  // Le document doit appartenir au syndicat de l'URL ET à une copropriété de
+  // l'agence : sinon la même 404 qu'un document inexistant.
+  const syndicate = await prisma.syndicate.findFirst({ where: { id: syndicateId, tenantId }, select: { id: true } });
+  const existing = syndicate
+    ? await prisma.syndicateDocument.findFirst({
+        where: { id: documentId, syndicateId: syndicate.id },
+        select: { id: true }
+      })
+    : null;
+  if (!existing) {
+    throw notFound('Document introuvable ou inaccessible');
+  }
+
+  return prisma.syndicateDocument.update({
+    where: { id: existing.id },
+    data: {
+      ...(data.title !== undefined ? { title: data.title } : {}),
+      ...(data.type !== undefined ? { type: data.type } : {}),
+      ...(data.visibleToCoOwners !== undefined ? { visibleToCoOwners: data.visibleToCoOwners } : {})
     }
   });
 }
@@ -3129,10 +3375,29 @@ export async function createManualReminderForChargeCall(
   };
 }
 
-export async function runReminderBatchForSyndicate(tenantId: string, syndicateId: string) {
-  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+export type ReminderBatchExclusionReason = 'PAYMENT_PLAN_ACTIVE' | 'REMINDER_TOO_RECENT' | 'DECLARED_PAYMENT_PENDING';
 
-  const now = new Date();
+/** Délai par défaut (jours) entre deux relances non échouées quand la copropriété n'a pas de ReminderConfig. */
+const DEFAULT_REMINDER_DELAY_DAYS = 7;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function reminderExclusionLabel(reason: ReminderBatchExclusionReason): string {
+  switch (reason) {
+    case 'PAYMENT_PLAN_ACTIVE':
+      return t('plan de paiement actif');
+    case 'REMINDER_TOO_RECENT':
+      return t('relance trop récente');
+    case 'DECLARED_PAYMENT_PENDING':
+      return t('paiement déclaré en cours de vérification');
+  }
+}
+
+/**
+ * Sélection commune de l'aperçu et de l'exécution des relances groupées : les deux
+ * donnent exactement les mêmes appels éligibles et les mêmes exclusions.
+ * Ne crée rien. Les appels déjà soldés sont ignorés sans motif (comme avant).
+ */
+async function selectReminderBatch(tenantId: string, syndicateId: string, now: Date) {
   const dueCalls = await prisma.chargeCall.findMany({
     where: {
       syndicateId,
@@ -3142,61 +3407,172 @@ export async function runReminderBatchForSyndicate(tenantId: string, syndicateId
       status: { in: ['PENDING', 'PARTIAL', 'OVERDUE'] }
     },
     include: {
-      allocations: { select: { amount: true } }
+      allocations: { select: { amount: true } },
+      lot: { select: { lotNumber: true } }
     }
   });
 
+  const callIds = dueCalls.map(call => call.id);
+  const lotIds = Array.from(new Set(dueCalls.map(call => call.lotId)));
+
   // Spec 047 (D7) : un appel visé par une déclaration de paiement mobile money en attente depuis
   // moins de N jours ouvrés n'est pas relancé (le copropriétaire a déjà payé, la vérification suit).
-  const declaredByCall = await pendingDeclarationsByCall(
-    tenantId,
-    Array.from(new Set(dueCalls.map(call => call.lotId)))
-  );
+  const declaredByCall = await pendingDeclarationsByCall(tenantId, lotIds);
   const reviewDays =
     declaredByCall.size > 0
       ? (await getDeclaredPaymentRules(prisma, tenantId, syndicateId)).reviewAlertBusinessDays
       : 0;
 
-  return prisma.$transaction(async tx => {
-    let created = 0;
-    const createdReminderIds: string[] = [];
+  const [reminders, activeSchedules, configs] =
+    dueCalls.length === 0
+      ? [[], [], []]
+      : await Promise.all([
+          prisma.paymentReminder.findMany({
+            where: { chargeCallId: { in: callIds } },
+            select: { chargeCallId: true, status: true, sentAt: true }
+          }),
+          prisma.paymentSchedule.findMany({
+            where: { lotId: { in: lotIds }, status: 'ACTIVE', lot: { syndicate: { tenantId } } },
+            select: { lotId: true }
+          }),
+          prisma.reminderConfig.findMany({
+            where: { syndicateId, syndicate: { tenantId } },
+            select: { level: true, delayDays: true }
+          })
+        ]);
 
-    for (const call of dueCalls) {
-      // Un appel entierement couvert (paiement ou avance imputee) n'est jamais relance.
-      const paid = paidFromAllocations(call.allocations);
-      const outstanding = computeOutstanding(Number(call.amount), paid);
-      if (outstanding <= 0) {
-        continue;
-      }
+  const lotsWithPlan = new Set(activeSchedules.map(schedule => schedule.lotId));
+  const delayByLevel = new Map(configs.map(config => [config.level, config.delayDays]));
+  const remindersByCall = new Map<string, Array<{ status: string; sentAt: Date }>>();
+  for (const reminder of reminders) {
+    const list = remindersByCall.get(reminder.chargeCallId) ?? [];
+    list.push({ status: reminder.status, sentAt: reminder.sentAt });
+    remindersByCall.set(reminder.chargeCallId, list);
+  }
 
-      const declared = declaredByCall.get(call.id);
-      if (declared && !isDeclarationReviewOverdue(declared.createdAt, reviewDays, now)) {
-        continue;
-      }
+  const eligible: Array<{
+    chargeCallId: string;
+    lotId: string;
+    lotNumber: string;
+    period: string;
+    dueDate: Date;
+    outstanding: number;
+    currency: string;
+    currentLevel: number;
+    nextLevel: number;
+    lastReminderAt: Date | null;
+  }> = [];
+  const excluded: Array<{
+    chargeCallId: string;
+    lotNumber: string;
+    period: string;
+    reason: ReminderBatchExclusionReason;
+    reasonLabel: string;
+  }> = [];
 
-      const existingCount = await tx.paymentReminder.count({
-        where: { chargeCallId: call.id }
+  for (const call of dueCalls) {
+    // Un appel entierement couvert (paiement ou avance imputee) n'est jamais relance.
+    const outstanding = computeOutstanding(Number(call.amount), paidFromAllocations(call.allocations));
+    if (outstanding <= 0) continue;
+
+    const exclude = (reason: ReminderBatchExclusionReason) =>
+      excluded.push({
+        chargeCallId: call.id,
+        lotNumber: call.lot.lotNumber,
+        period: call.period,
+        reason,
+        reasonLabel: reminderExclusionLabel(reason)
       });
 
+    if (lotsWithPlan.has(call.lotId)) {
+      exclude('PAYMENT_PLAN_ACTIVE');
+      continue;
+    }
+    const declared = declaredByCall.get(call.id);
+    if (declared && !isDeclarationReviewOverdue(declared.createdAt, reviewDays, now)) {
+      exclude('DECLARED_PAYMENT_PENDING');
+      continue;
+    }
+
+    const existing = remindersByCall.get(call.id) ?? [];
+    const nextLevel = Math.min(existing.length + 1, 4);
+    // Une relance FAILED n'est pas arrivée : elle ne retarde pas la suivante.
+    const delivered = existing.filter(reminder => reminder.status !== 'FAILED');
+    const lastReminderAt = delivered.reduce<Date | null>(
+      (latest, reminder) => (!latest || reminder.sentAt > latest ? reminder.sentAt : latest),
+      null
+    );
+    if (lastReminderAt) {
+      const delayDays = delayByLevel.get(nextLevel) ?? DEFAULT_REMINDER_DELAY_DAYS;
+      if (now.getTime() - lastReminderAt.getTime() < delayDays * MS_PER_DAY) {
+        exclude('REMINDER_TOO_RECENT');
+        continue;
+      }
+    }
+
+    eligible.push({
+      chargeCallId: call.id,
+      lotId: call.lotId,
+      lotNumber: call.lot.lotNumber,
+      period: call.period,
+      dueDate: call.dueDate,
+      outstanding,
+      currency: call.currency,
+      currentLevel: Math.min(existing.length, 4),
+      nextLevel,
+      lastReminderAt
+    });
+  }
+
+  return { processedCalls: dueCalls.length, eligible, excluded };
+}
+
+function countExclusionsByReason(excluded: Array<{ reason: ReminderBatchExclusionReason }>) {
+  const byReason: Record<string, number> = {};
+  for (const item of excluded) byReason[item.reason] = (byReason[item.reason] ?? 0) + 1;
+  return byReason;
+}
+
+/** Aperçu des relances groupées : mêmes règles que l'exécution, ne crée rien. */
+export async function previewReminderBatchForSyndicate(tenantId: string, syndicateId: string) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+  const { eligible, excluded } = await selectReminderBatch(tenantId, syndicateId, new Date());
+  return {
+    eligible: eligible.map(({ lotId: _lotId, ...item }) => item),
+    excluded,
+    totals: { eligible: eligible.length, excluded: excluded.length }
+  };
+}
+
+export async function runReminderBatchForSyndicate(tenantId: string, syndicateId: string) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+
+  const now = new Date();
+  const { processedCalls, eligible, excluded } = await selectReminderBatch(tenantId, syndicateId, now);
+
+  return prisma.$transaction(async tx => {
+    const createdReminderIds: string[] = [];
+
+    for (const item of eligible) {
       const reminder = await tx.paymentReminder.create({
         data: {
-          chargeCallId: call.id,
-          lotId: call.lotId,
-          reminderLevel: Math.min(existingCount + 1, 4),
+          chargeCallId: item.chargeCallId,
+          lotId: item.lotId,
+          reminderLevel: item.nextLevel,
           channel: 'EMAIL',
           sentAt: now,
           status: 'SENT'
         }
       });
-
-      created += 1;
       createdReminderIds.push(reminder.id);
     }
 
     return {
-      processedCalls: dueCalls.length,
-      remindersCreated: created,
-      createdReminderIds
+      processedCalls,
+      remindersCreated: createdReminderIds.length,
+      createdReminderIds,
+      excluded,
+      excludedByReason: countExclusionsByReason(excluded)
     };
   });
 }
@@ -3860,6 +4236,15 @@ export async function createChartOfAccountBySyndicate(
   }
 }
 
+/** Charge le plan comptable modele SYSCOHADA de la copropriete (idempotent : ne cree que les comptes manquants). */
+export async function loadSyndicChartTemplateBySyndicate(tenantId: string, syndicateId: string) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+
+  const result = await prisma.$transaction(tx => ensureSyndicChartTemplateTx(tx, tenantId, syndicateId));
+  logger.info('Audit: syndic chart template loaded', { tenantId, syndicateId, ...result });
+  return result;
+}
+
 export async function listAccountingJournalsBySyndicate(tenantId: string, syndicateId: string, fiscalYear?: number) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
 
@@ -4235,7 +4620,7 @@ export async function listBudgetsBySyndicate(
   filters?: { fiscalYear?: number; status?: 'DRAFT' | 'APPROVED' | 'REVISED' | 'CLOSED' }
 ) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
-  return prisma.syndicateBudget.findMany({
+  const budgets = await prisma.syndicateBudget.findMany({
     where: {
       syndicateId,
       ...(filters?.fiscalYear ? { fiscalYear: filters.fiscalYear } : {}),
@@ -4247,6 +4632,9 @@ export async function listBudgetsBySyndicate(
     },
     orderBy: [{ fiscalYear: 'desc' }, { createdAt: 'desc' }]
   });
+  // Realise a la lecture : factures prestataires (amountActual) + imputations
+  // d'incident rattachees a un poste ; voir lib/syndics/budget-actuals.ts.
+  return attachBudgetActuals(tenantId, syndicateId, budgets);
 }
 
 export async function createBudgetBySyndicate(
@@ -4964,8 +5352,14 @@ async function assertOwnerSharesWithinLimit(
   ]);
   const existing = others.reduce((sum, profile) => sum + toShareHundredths(profile.ownershipPercentage), 0);
   if (existing + addHundredths > OWNER_SHARE_TOTAL_HUNDREDTHS) {
-    const lotLabel = lot?.lotNumber ? `du lot ${lot.lotNumber}` : 'du lot';
-    const message = `Les parts ${lotLabel} dépassent 100 % (${formatShareHundredths(existing)} % déjà attribués, ${formatShareHundredths(addHundredths)} % demandés).`;
+    const message = t(
+      'Les parts du lot {{lot}} dépassent 100 % ({{existing}} % déjà attribués, {{requested}} % demandés).',
+      {
+        lot: lot?.lotNumber ?? '?',
+        existing: formatShareHundredths(existing),
+        requested: formatShareHundredths(addHundredths)
+      }
+    );
     throw new ConflictError(message, [{ field: 'ownershipPercentage', message }]);
   }
 }

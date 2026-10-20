@@ -8,6 +8,7 @@ import { Table } from '../primitives';
 import { ChargeCall, ChargeCallStatus } from '../../types/syndic-types';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
+import { dateFormat } from '../../i18n/format';
 
 const { Text } = Typography;
 
@@ -24,14 +25,14 @@ function buildLotLabel(item: ChargeCall): string {
 }
 
 function recurrenceLabel(item: ChargeCall): string {
-  if (!item.isRecurring) return 'Non';
+  if (!item.isRecurring) return t('Non');
 
   const frequencyMap: Record<'MONTHLY' | 'QUARTERLY' | 'ANNUAL', string> = {
-    MONTHLY: 'Mensuelle',
-    QUARTERLY: 'Trimestrielle',
-    ANNUAL: 'Annuelle'
+    MONTHLY: t('Mensuelle'),
+    QUARTERLY: t('Trimestrielle'),
+    ANNUAL: t('Annuelle')
   };
-  const frequency = item.recurrenceFrequency ? frequencyMap[item.recurrenceFrequency] : 'Recurrente';
+  const frequency = item.recurrenceFrequency ? frequencyMap[item.recurrenceFrequency] : t('Récurrente');
   const occurrences = item.recurrenceCount ? ` (${item.recurrenceCount} occ.)` : '';
   return t('Oui - {{frequency}}{{occurrences}}', { frequency: frequency, occurrences: occurrences });
 }
@@ -133,7 +134,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
       key: 'dueDate',
       render: (value: string, item: ChargeCall) => {
         const isLate = dayjs(value).isBefore(dayjs(), 'day') && item.status !== 'PAID';
-        return <Text type={isLate ? 'danger' : undefined}>{dayjs(value).format('DD/MM/YYYY')}</Text>;
+        return <Text type={isLate ? 'danger' : undefined}>{dayjs(value).format(dateFormat('short'))}</Text>;
       }
     },
     {
@@ -233,7 +234,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
       dataSource={items}
       loading={loading}
       pagination={{ pageSize: 10, hideOnSinglePage: true }}
-      locale={{ emptyText: 'Aucun appel de charges' }}
+      locale={{ emptyText: t('Aucun appel de charges') }}
       scroll={{ x: 1200 }}
     />
   );

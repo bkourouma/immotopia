@@ -253,9 +253,12 @@ describe('SyndicFinances — indicateurs et tableaux de détail', () => {
     expect(screen.getAllByText('Payé').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Partiel').length).toBeGreaterThan(0);
 
-    // Tableau « Détail des paiements reçus » : mode de paiement affiché tel quel.
-    expect(screen.getAllByText('MOBILE_MONEY').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('VIREMENT').length).toBeGreaterThan(0);
+    // Tableau « Détail des paiements reçus » : mode de paiement en français
+    // (paymentMethodLabel), jamais le code brut.
+    expect(screen.getAllByText('Mobile money').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Virement bancaire').length).toBeGreaterThan(0);
+    expect(screen.queryByText('MOBILE_MONEY')).not.toBeInTheDocument();
+    expect(screen.queryByText('VIREMENT')).not.toBeInTheDocument();
 
     // Tableau « Détail des impayés et retards » : jours de retard et nombre
     // de relances.

@@ -82,6 +82,7 @@ import {
   listMeetingProxiesHandler,
   createMeetingProxyHandler,
   deleteMeetingProxyHandler,
+  deleteResolutionHandler,
   generateMeetingMinutesHandler,
   listProvidersHandler,
   createProviderHandler,
@@ -95,12 +96,14 @@ import {
   deleteContractHandler,
   listDocumentsHandler,
   createDocumentHandler,
+  updateDocumentHandler,
   downloadDocumentHandler,
   getFinanceSummaryHandler,
   getOverdueDashboardHandler,
   listRemindersHandler,
   createManualReminderHandler,
   runReminderBatchHandler,
+  previewReminderBatchHandler,
   listPenaltiesHandler,
   listPaymentSchedulesHandler,
   createPenaltyHandler,
@@ -123,6 +126,7 @@ import {
   addIncidentImputationHandler,
   listChartOfAccountsHandler,
   createChartOfAccountHandler,
+  loadSyndicChartTemplateHandler,
   listAccountingJournalsHandler,
   createAccountingJournalHandler,
   listAccountingEntriesHandler,
@@ -267,6 +271,11 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/relance',
   requirePropertyPermission('SYNDIC_EDIT'),
   createManualReminderHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/relances/batch/preview',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  previewReminderBatchHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/relances/batch',
@@ -420,6 +429,11 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions',
   requirePropertyPermission('SYNDIC_EDIT'),
   addResolutionHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  deleteResolutionHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/ordre-du-jour',
@@ -653,6 +667,11 @@ router.post(
   uploadDocument.single('file'),
   createDocumentHandler
 );
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/documents/:documentId',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  updateDocumentHandler
+);
 // Fichier d'un document : jamais servi en statique (/uploads/syndics est
 // refuse), seulement ici, apres controle de l'agence. Voir
 // lib/syndics/document-files.ts.
@@ -675,6 +694,11 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes',
   requirePropertyPermission('SYNDIC_EDIT'),
   createChartOfAccountHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes/charger-plan-syscohada',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  loadSyndicChartTemplateHandler
 );
 router.get(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/journaux',

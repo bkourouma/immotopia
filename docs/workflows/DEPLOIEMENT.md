@@ -213,7 +213,7 @@ de paiement) : un essai y enverrait de vrais messages à de vrais clients.
 | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `make-env.sh <staging\|prod> [fichier]`                   | Crée le fichier de secrets (mode 600, secrets neufs). Refuse d'écraser un fichier existant.                                                                                                                                         |
 | `deploy.sh <staging\|prod> [--no-build]`                  | Contrôles, construction, migrations, démarrage, tests de fumée, empreinte des voisins. Idempotent, ne supprime jamais de volume. Un seul à la fois (verrou).                                                                        |
-| `bootstrap.sh <staging\|prod> [--dry-run]`                | Amorce une base vierge : RBAC, gabarits de biens, premier SUPER_ADMIN saisi au terminal (toutes les saisies avant la première écriture).                                                                                            |
+| `bootstrap.sh <staging\|prod> [--dry-run]`                | Amorce une base vierge : RBAC, gabarits de biens, référentiel géographique, premier SUPER_ADMIN saisi au terminal (toutes les saisies avant la première écriture).                                                                  |
 | `set-google-oauth.sh <staging\|prod> [fich.]`             | Écrit `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` dans le fichier de secrets, sans jamais afficher le secret.                                                                                                                      |
 | `set-email-smtp.sh <staging\|prod> [fich.]`               | Écrit la configuration SMTP (serveur, port, utilisateur, expéditeur, mot de passe saisi deux fois sans écho et protégé par des apostrophes pour Docker Compose) dans le fichier de secrets.                                         |
 | `backup.sh <staging\|prod>`                               | Sauvegarde la base et le volume des documents, avec rotation et copie hors serveur facultative.                                                                                                                                     |
@@ -227,7 +227,9 @@ Les scripts doivent porter le **mode 100755 dans le dépôt** (voir le piège
 
 `migrate deploy` (lancé par `deploy.sh`) ne pose que le schéma, le catalogue
 d'abonnements et les paramètres fiscaux. Les rôles, les permissions, les
-gabarits de biens et le premier super-admin viennent de `bootstrap.sh`. Le seed
+gabarits de biens, le référentiel géographique (Côte d'Ivoire : 33 régions,
+164 communes, qui alimente le champ « Commune » des contacts) et le premier
+super-admin viennent de `bootstrap.sh`. Le seed
 de démonstration (`npm run db:seed`) n'est pas une option : il efface la base et
 refuse de tourner en production.
 
@@ -608,8 +610,10 @@ sur `127.0.0.1:3020->80`) et `200`.
 ### Étape 5 — Amorcer la base
 
 `bootstrap.sh` lit l'état de la base, pose ce qui manque (RBAC, 12 gabarits de
-type de bien, premier compte SUPER_ADMIN) et ne relance pas une étape terminée :
-il est idempotent. Les gabarits sont posés si leur table est vide, le compte s'il
+type de bien, référentiel géographique, premier compte SUPER_ADMIN) et ne relance pas une étape terminée :
+il est idempotent. Les gabarits sont posés si leur table est vide, le référentiel
+géographique si la table `communes` est vide (`geographic-seed.ts` n'insère que
+les lignes absentes et ne modifie jamais une ligne existante), le compte s'il
 n'existe aucun SUPER_ADMIN. Le RBAC, lui, n'est pas jugé sur « zéro permission »
 mais sur trois états :
 
@@ -698,6 +702,26 @@ et des gabarits. Un refus (`Refus : …`, puis « la creation du super-admin a
 echoue ») ne crée aucun compte mais laisse le RBAC et les gabarits en place, ce
 qui est sans danger : relancer `./infra/scripts/bootstrap.sh prod` ne redemande
 que les saisies et la création du compte.
+
+### Modèles de documents par défaut
+
+Sans modèle global (`document_templates` avec `tenant_id` NULL), la génération
+d'un bail, d'un reçu de loyer ou d'un relevé échoue pour toute agence (« aucun
+modèle »). Les semer depuis le conteneur de l'API, qui porte `assets/`, le volume
+`/data/uploads` et le JS compilé :
+
+```bash
+docker exec immotopia-prod-api node dist/scripts/seed-default-document-templates.js
+```
+
+La commande est rejouable et **insert-only** : un modèle global par défaut actif
+déjà présent est ignoré sans être modifié. Le créateur est le plus ancien
+SUPER_ADMIN ; s'il n'en existe aucun, elle échoue sans créer d'utilisateur
+(créer d'abord le super-administrateur). Le bilan est affiché en français
+(créés / ignorés / rafraîchis / en erreur), code de sortie non nul si une erreur.
+Ajouter `--refresh` pour remplacer le fichier d'un ancien modèle livré non
+personnalisé (`--refresh --force` remplace aussi un global d'empreinte inconnue ;
+`--force` seul est refusé). Un modèle d'agence n'est jamais touché.
 
 ### Étape 6 — Première connexion et première agence
 

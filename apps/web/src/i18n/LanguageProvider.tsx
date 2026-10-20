@@ -29,7 +29,22 @@ export interface LanguageContextValue {
    * doit pas être prise pour un choix — voir `LanguagePreferenceSync`, qui
    * remonte un changement explicite au profil quand la personne est connectée).
    */
-  setLanguage: (language: Language, options?: { persist?: boolean }) => Promise<void>;
+  setLanguage: (language: Language, options?: { persist?: boolean; explicit?: boolean }) => Promise<void>;
+  /**
+   * Vrai dès que la personne a choisi une langue elle-même pendant cette
+   * session (`setLanguage(code, { explicit: true })`, posé par le sélecteur de
+   * langue). `LanguagePreferenceSync` le lit pour ne plus réappliquer la
+   * préférence du compte par-dessus ce choix. Drapeau en mémoire (ref) : il
+   * vaut pour la session de l'onglet, et n'est jamais lu par un rendu. Remis à
+   * zéro par `resetExplicitLanguageChoice` quand la personne connectée change.
+   */
+  hasExplicitLanguageChoice: () => boolean;
+  /**
+   * Remet à zéro le drapeau de choix explicite. Appelé par
+   * `LanguagePreferenceSync` à la déconnexion ou au changement de compte, pour
+   * que le choix d'une personne ne masque pas la préférence de la suivante.
+   */
+  resetExplicitLanguageChoice: () => void;
   /** Vrai pendant le chargement d'un catalogue. */
   isSwitching: boolean;
   /**
@@ -131,8 +146,17 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
    */
   const languageRequestId = useRef(0);
 
-  const setLanguage = useCallback(async (next: Language, options?: { persist?: boolean }) => {
+  // Choix explicite de la personne dans cette session — voir
+  // `hasExplicitLanguageChoice`. Posé de façon synchrone, avant tout `await`.
+  const explicitChoice = useRef(false);
+  const hasExplicitLanguageChoice = useCallback(() => explicitChoice.current, []);
+  const resetExplicitLanguageChoice = useCallback(() => {
+    explicitChoice.current = false;
+  }, []);
+
+  const setLanguage = useCallback(async (next: Language, options?: { persist?: boolean; explicit?: boolean }) => {
     const persist = options?.persist ?? true;
+    if (options?.explicit) explicitChoice.current = true;
     const requestId = ++languageRequestId.current;
     setIsSwitching(true);
     try {
@@ -230,11 +254,21 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
       rtl: isRtl(language),
       locale: LANGUAGES[language].locale,
       setLanguage,
+      hasExplicitLanguageChoice,
+      resetExplicitLanguageChoice,
       isSwitching,
       initialLanguageResolved,
       antdLocale
     }),
-    [language, setLanguage, isSwitching, initialLanguageResolved, antdLocale]
+    [
+      language,
+      setLanguage,
+      hasExplicitLanguageChoice,
+      resetExplicitLanguageChoice,
+      isSwitching,
+      initialLanguageResolved,
+      antdLocale
+    ]
   );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

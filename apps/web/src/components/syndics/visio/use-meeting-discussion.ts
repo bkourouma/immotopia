@@ -8,7 +8,7 @@ import {
 } from '../../../services/syndic-service';
 import type { ManagerDiscussionMessageView, ManagerDiscussionView } from '../../../types/syndic-live-types';
 import type { MeetingStatus } from '../../../types/syndic-types';
-import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
+import { liveBackoffDelay, useVisiblePolling } from '../../../hooks/useVisiblePolling';
 import { t } from '../../../i18n/t';
 import { apiErrorText } from './use-meeting-visio';
 import type { VisioDiscussionAdapter } from './use-visio-discussion';
@@ -52,11 +52,14 @@ export function useMeetingDiscussion({ tenantId, syndicId, meetingId, meetingSta
   // Compte les actions du gestionnaire : une lecture partie avant l'une d'elles est périmée et ne l'écrase pas.
   const writeSeqRef = useRef(0);
   const refreshRef = useRef<() => void>(() => undefined);
+  // Échecs consécutifs de la lecture : attente croissante plutôt que 503 en rafale.
+  const failuresRef = useRef(0);
 
   const loadDiscussion = useCallback(async (): Promise<number | false | void> => {
     const seq = writeSeqRef.current;
     try {
       const view = await getMeetingDiscussion(tenantId, syndicId, meetingId);
+      failuresRef.current = 0;
       if (seq !== writeSeqRef.current) {
         // Une action est passée entre-temps : cette lecture est relue plutôt qu'appliquée.
         refreshRef.current();
@@ -69,7 +72,9 @@ export function useMeetingDiscussion({ tenantId, syndicId, meetingId, meetingSta
       const status = (err as { response?: { status?: number } })?.response?.status;
       // Droit manquant ou API plus ancienne : rien à surveiller.
       if (status === 403 || status === 404) return false;
-      // Échec passager : on garde la dernière lecture et on réessaie.
+      // Échec passager : on garde la dernière lecture et on réessaie, avec une attente croissante.
+      failuresRef.current += 1;
+      return inProgress ? liveBackoffDelay(failuresRef.current, DISCUSSION_POLL_INTERVAL_MS) : false;
     }
     return inProgress ? DISCUSSION_POLL_INTERVAL_MS : false;
   }, [tenantId, syndicId, meetingId, inProgress]);

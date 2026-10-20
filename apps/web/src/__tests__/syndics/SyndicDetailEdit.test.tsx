@@ -317,12 +317,36 @@ describe('SyndicDetail — modification de la copropriété', () => {
         address: 'Dakar',
         registrationNo: 'RC-2024-002',
         cadastralReference: null,
+        totalGeneralShares: null,
         fiscalYear: 4,
         syndicManagerId: 'contact-1',
         mandatingAgencyId: null
       });
     });
     expect(mockMessageSuccess).toHaveBeenCalled();
+  });
+
+  it('transmet le total de référence des tantièmes saisi (hypothèse H7)', async () => {
+    mockGetHandlers();
+    mockApiClient.patch.mockResolvedValue({ data: { success: true, data: baseSyndicate } } as never);
+    mockValidateFields.mockResolvedValue({
+      name: 'Résidence Test',
+      address: 'Dakar',
+      fiscalYear: 3,
+      totalGeneralShares: 1200
+    });
+
+    renderWithRoute();
+
+    fireEvent.click(await screen.findByText('Modifier'));
+    fireEvent.click(await screen.findByText('Enregistrer'));
+
+    await waitFor(() => {
+      expect(mockApiClient.patch).toHaveBeenCalledWith(
+        '/tenants/tenant-1/syndics/syndic-1',
+        expect.objectContaining({ totalGeneralShares: 1200 })
+      );
+    });
   });
 
   it('pré-remplit le statut et envoie sa modification (écart recette #8 : alternative à la suppression)', async () => {

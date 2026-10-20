@@ -393,7 +393,7 @@ describe('MeetingLiveConsole', () => {
       await screen.findByRole('combobox', { name: 'Émargement du lot B2' });
       api.getLiveMeeting.mockRejectedValue(new Error('réseau'));
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(3100);
+        await vi.advanceTimersByTimeAsync(5100);
       });
       expect(screen.getByRole('combobox', { name: 'Émargement du lot B2' })).toBeTruthy();
       expect(screen.getByText('Impossible de charger la séance en direct')).toBeTruthy();
@@ -410,7 +410,7 @@ describe('MeetingLiveConsole', () => {
       await screen.findByRole('combobox', { name: 'Émargement du lot B2' });
       expect(api.getLiveMeeting).toHaveBeenCalledTimes(1);
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(3100);
+        await vi.advanceTimersByTimeAsync(5100);
       });
       expect(api.getLiveMeeting).toHaveBeenCalledTimes(2);
 
@@ -442,7 +442,7 @@ describe('MeetingLiveConsole', () => {
       expect(onLiveChanged).not.toHaveBeenCalled();
 
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(3100);
+        await vi.advanceTimersByTimeAsync(5100);
       });
       expect(onLiveChanged).not.toHaveBeenCalled();
 
@@ -450,11 +450,11 @@ describe('MeetingLiveConsole', () => {
       changed.resolutions[1] = { ...changed.resolutions[1], ballotCount: 2 };
       api.getLiveMeeting.mockResolvedValue(changed);
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(3100);
+        await vi.advanceTimersByTimeAsync(5100);
       });
       expect(onLiveChanged).toHaveBeenCalledTimes(1);
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(3100);
+        await vi.advanceTimersByTimeAsync(5100);
       });
       expect(onLiveChanged).toHaveBeenCalledTimes(1);
     } finally {
@@ -883,7 +883,7 @@ describe('MeetingLiveConsole : enregistrement', () => {
     api.getMeetingRecordings.mockResolvedValue([]);
     mount();
     expect(await screen.findByText('Visio intégrée')).toBeTruthy();
-    // La relecture suivante (3 s) échoue : la carte reste, avec l'alerte et « Réessayer ».
+    // La relecture suivante (5 s) échoue : la carte reste, avec l'alerte et « Réessayer ».
     expect(
       await screen.findByText('Visio intégrée : état indisponible pour le moment', {}, { timeout: 20000 })
     ).toBeTruthy();
@@ -1229,7 +1229,7 @@ describe('MeetingLiveConsole - lectures périmées', () => {
       const confirm = (await screen.findAllByRole('button', { name: 'Clore le vote' })).pop() as HTMLElement;
       // Le sondage périodique lance une lecture (2e appel) qui reste en vol.
       await act(async () => {
-        vi.advanceTimersByTime(3100);
+        vi.advanceTimersByTime(5100);
       });
       await waitFor(() => expect(calls).toBe(2));
       fireEvent.click(confirm);
@@ -1244,5 +1244,101 @@ describe('MeetingLiveConsole - lectures périmées', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('MeetingLiveConsole : cadence, empreinte et ligne occupée', () => {
+  const tick = async (ms: number) => {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  };
+
+  it('relit la liste des participants un cycle sur trois seulement (compteurs déjà dans /direct)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mount();
+      await screen.findByRole('combobox', { name: 'Émargement du lot B2' });
+      expect(api.getLiveMeeting).toHaveBeenCalledTimes(1);
+      expect(api.listMeetingParticipants).toHaveBeenCalledTimes(1);
+      await tick(5100);
+      await tick(5100);
+      expect(api.getLiveMeeting).toHaveBeenCalledTimes(3);
+      expect(api.listMeetingParticipants).toHaveBeenCalledTimes(1);
+      await tick(5100);
+      expect(api.getLiveMeeting).toHaveBeenCalledTimes(4);
+      expect(api.listMeetingParticipants).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ne rend rien de nouveau quand une lecture rend les mêmes données (seule l’horloge serveur change)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const onRender = vi.fn();
+      render(
+        <App>
+          <React.Profiler id="console" onRender={onRender}>
+            <MeetingLiveConsole tenantId="t1" syndicId="s1" meetingId="m1" meetingStatus="IN_PROGRESS" />
+          </React.Profiler>
+        </App>
+      );
+      await screen.findByRole('combobox', { name: 'Émargement du lot B2' });
+      await tick(100);
+      const commits = onRender.mock.calls.length;
+      let n = 0;
+      api.getLiveMeeting.mockImplementation(() =>
+        Promise.resolve(live({ serverTime: `2026-10-20T10:03:0${(n += 1)}.000Z` }))
+      );
+      await tick(5100);
+      await tick(5100);
+      expect(api.getLiveMeeting.mock.calls.length).toBeGreaterThanOrEqual(3);
+      expect(onRender.mock.calls.length).toBe(commits);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('suspend le rafraîchissement tant qu’un menu d’émargement est ouvert, puis relit aussitôt', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      api.setLotAttendance.mockResolvedValue(live());
+      mount();
+      const select = await screen.findByRole('combobox', { name: 'Émargement du lot B2' });
+      const before = api.getLiveMeeting.mock.calls.length;
+      fireEvent.mouseDown(select);
+      const option = await screen.findByTitle('Présent en salle');
+      await tick(20000);
+      expect(api.getLiveMeeting.mock.calls.length).toBe(before);
+      fireEvent.click(option);
+      await waitFor(() => expect(api.setLotAttendance).toHaveBeenCalled());
+      await tick(100);
+      expect(api.getLiveMeeting.mock.calls.length).toBeGreaterThan(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ne désactive que la ligne en cours d’émargement et ne relit pas derrière la réponse', async () => {
+    let release: (view: LiveMeetingAdminView) => void = () => undefined;
+    api.setLotAttendance.mockImplementation(() => new Promise<LiveMeetingAdminView>(resolve => (release = resolve)));
+    mount();
+    const select = await screen.findByRole('combobox', { name: 'Émargement du lot B2' });
+    const reads = api.getLiveMeeting.mock.calls.length;
+    fireEvent.mouseDown(select);
+    fireEvent.click(await screen.findByTitle('Présent en salle'));
+    await waitFor(() => expect(api.setLotAttendance).toHaveBeenCalled());
+    await waitFor(() =>
+      expect((screen.getByRole('combobox', { name: 'Émargement du lot B2' }) as HTMLInputElement).disabled).toBe(true)
+    );
+    expect((screen.getByRole('combobox', { name: 'Émargement du lot C3' }) as HTMLInputElement).disabled).toBe(false);
+    await act(async () => {
+      release(live());
+    });
+    await waitFor(() =>
+      expect((screen.getByRole('combobox', { name: 'Émargement du lot B2' }) as HTMLInputElement).disabled).toBe(false)
+    );
+    expect(api.getLiveMeeting.mock.calls.length).toBe(reads);
   });
 });

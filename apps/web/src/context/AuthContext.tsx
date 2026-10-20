@@ -325,7 +325,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } catch {
         // Stockage refusé : rien à nettoyer.
       }
-      window.location.href = options?.redirectTo || '/login';
+      // Chemin interne uniquement : jamais d'URL absolue ni de "//" (redirection ouverte).
+      const target = options?.redirectTo;
+      window.location.href = target && /^\/(?![/\\])/.test(target) ? target : '/login';
     }
   };
 

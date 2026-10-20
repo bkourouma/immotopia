@@ -1,9 +1,10 @@
+import { invalidateAfterDeclaration } from './invalidate';
 import React from 'react';
 import { Button, Space, Tag, Typography } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { DataCard, DataView, MoneyValue } from '../../primitives';
+import { DataCard, DataView, MoneyValue, PhoneNumber } from '../../primitives';
 import { ConfirmAction } from '../../primitives/ConfirmAction';
 import { feedback } from '../../../lib/feedback';
 import { t } from '../../../i18n/t';
@@ -36,9 +37,13 @@ function lotsLabel(declaration: CoOwnerDeclaration): string {
   return declaration.lines.map(line => t('Lot {{lotNumber}}', { lotNumber: line.lot.lotNumber })).join(', ');
 }
 
-function receivingLabel(declaration: CoOwnerDeclaration): string {
+function receivingLabel(declaration: CoOwnerDeclaration): React.ReactNode {
   const { operator, phoneNumber } = declaration.receivingNumber;
-  return `${operatorLabel(operator)} ${formatPhoneForDisplay(phoneNumber)}`;
+  return (
+    <>
+      {operatorLabel(operator)} <PhoneNumber value={formatPhoneForDisplay(phoneNumber)} />
+    </>
+  );
 }
 
 function hasCorrectedAmount(declaration: CoOwnerDeclaration): boolean {
@@ -76,7 +81,7 @@ function StatusCell({ declaration, onChanged }: { declaration: CoOwnerDeclaratio
       inFlight.current = false;
       setCancelling(false);
       // Succès ou 409 DECLARATION_NOT_PENDING : la liste doit se rafraîchir dans tous les cas.
-      void queryClient.invalidateQueries({ queryKey: ['coowner-portal'] });
+      invalidateAfterDeclaration(queryClient);
       onChanged?.();
     }
   };

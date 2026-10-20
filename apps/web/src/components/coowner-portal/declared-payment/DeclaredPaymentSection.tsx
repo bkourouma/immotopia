@@ -1,3 +1,4 @@
+import { invalidateAfterDeclaration } from './invalidate';
 import React, { useState } from 'react';
 import { Button, Space } from 'antd';
 import { MobileOutlined } from '@ant-design/icons';
@@ -47,6 +48,7 @@ export function DeclaredPaymentSection({ calls, entries }: DeclaredPaymentSectio
 
   const lotsQuery = useQuery({
     queryKey: ['coowner-portal', 'lots'],
+    staleTime: 30_000,
     queryFn: () => listMyLots(),
     enabled: entries.length > 0,
     retry: false
@@ -58,7 +60,7 @@ export function DeclaredPaymentSection({ calls, entries }: DeclaredPaymentSectio
     writePayerPhone(declaration.payerPhone);
     if (declaration.payerPhone) setPayerPhone(declaration.payerPhone);
     setOpenSyndicateId(null);
-    void queryClient.invalidateQueries({ queryKey: ['coowner-portal'] });
+    invalidateAfterDeclaration(queryClient);
   };
 
   return (

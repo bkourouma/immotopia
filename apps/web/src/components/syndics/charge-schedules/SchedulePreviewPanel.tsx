@@ -39,6 +39,17 @@ export const SchedulePreviewPanel: React.FC<{
               )}
             </Descriptions.Item>
           </Descriptions>
+          {period.dueDatePassed && period.effectiveDueDate ? (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginTop: 12 }}
+              message={t('L’échéance du {{due}} serait déjà passée à l’émission : elle sera décalée au {{shifted}}.', {
+                due: formatDay(period.dueDate),
+                shifted: formatDay(period.effectiveDueDate)
+              })}
+            />
+          ) : null}
           {!period.error && period.lots.length > 0 ? (
             <Table
               // Aperçu de périodes à venir, rien d'émis : pas d'export.

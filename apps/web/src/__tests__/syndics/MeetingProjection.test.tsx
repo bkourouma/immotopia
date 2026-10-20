@@ -102,7 +102,7 @@ function mount() {
 
 async function tick() {
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(5000);
   });
 }
 

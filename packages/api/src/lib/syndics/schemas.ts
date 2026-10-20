@@ -36,6 +36,8 @@ export const createSyndicateSchema = z.object({
   cadastralReference: z.string().max(100, 'La reference cadastrale ne doit pas depasser 100 caracteres').optional(),
   totalLots: z.number().int().nonnegative().default(0),
   totalBuildings: z.number().int().positive().default(1),
+  // H7 : total de reference des tantiemes (facultatif), compare a la somme des lots.
+  totalGeneralShares: z.number().int().positive().optional(),
   // Lot S1 : agence mandante (facultative) dont l'identite figure sur les documents.
   mandatingAgencyId: z.string().uuid().nullable().optional()
 });
@@ -67,6 +69,8 @@ export const updateSyndicateSchema = z
       .optional(),
     totalLots: z.number().int().nonnegative().optional(),
     totalBuildings: z.number().int().positive().optional(),
+    // H7 : null retire le total de reference.
+    totalGeneralShares: z.number().int().positive().nullable().optional(),
     status: z.enum(['ACTIVE', 'IN_LIQUIDATION', 'IN_DISPUTE']).optional(),
     regulationDocUrl: httpUrl('Le lien du reglement doit etre une URL valide').nullable().optional(),
     // Lot S1 : null detache la copropriete de son mandant.
@@ -173,7 +177,9 @@ export const createMeetingSchema = z.object({
   scheduledAt: z.coerce.date(),
   startTime: z.coerce.date().optional(),
   endTime: z.coerce.date().optional(),
-  location: z.string().optional()
+  location: z.string().optional(),
+  /** Envoi de la convocation a la creation : non par defaut (decision metier QA2). */
+  sendConvocation: z.boolean().default(false)
 });
 
 export const meetingStatusSchema = z.enum(['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']);
@@ -272,13 +278,44 @@ export const createContractSchema = z.object({
   renewalAlertDays: z.number().int().nonnegative().default(30)
 });
 
+const documentTypeSchema = z.enum([
+  'REGULATION',
+  'GENERAL_MEETING_MINUTES',
+  'DIAGNOSTIC',
+  'INSURANCE',
+  'BUDGET',
+  'OTHER'
+]);
+
+/** Booléen venu d'un JSON ou d'un multipart/form-data ('true' / 'false'). */
+const formBooleanSchema = z.preprocess(value => {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1') return true;
+    if (normalized === 'false' || normalized === '0') return false;
+  }
+  return value;
+}, z.boolean());
+
 export const createDocumentSchema = z.object({
   syndicateId: z.string().uuid(),
   title: z.string().min(1, 'Le titre du document est obligatoire'),
-  type: z.enum(['REGULATION', 'GENERAL_MEETING_MINUTES', 'DIAGNOSTIC', 'INSURANCE', 'BUDGET', 'OTHER']),
+  type: documentTypeSchema,
   fileUrl: httpUrl('Le lien du document doit etre une URL valide').optional(),
-  expiresAt: z.coerce.date().optional()
+  expiresAt: z.coerce.date().optional(),
+  // Absent : le défaut dépend du type (règlement et PV d'AG visibles), voir queries.ts.
+  visibleToCoOwners: formBooleanSchema.optional()
 });
+
+export const updateDocumentSchema = z
+  .object({
+    title: z.string().trim().min(1, 'Le titre du document est obligatoire').optional(),
+    type: documentTypeSchema.optional(),
+    visibleToCoOwners: formBooleanSchema.optional()
+  })
+  .refine(value => Object.values(value).some(field => field !== undefined), {
+    message: 'Aucune modification fournie'
+  });
 
 export const createLotTenantAssignmentSchema = z.object({
   tenantId: uuidSchema,
@@ -418,6 +455,13 @@ export const generateBudgetChargeCallsSchema = z
   })
   .superRefine((value, ctx) => {
     checkPeriodBounds(value, ctx);
+    if (value.periodsPerYear === 1 && /^\d{4}-\d{2}$/.test(value.period.trim())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Pour un appel annuel (1 période par an), la période doit être l'année (AAAA), pas un mois (AAAA-MM).",
+        path: ['period']
+      });
+    }
     if (value.periodIndex !== undefined && value.periodIndex > value.periodsPerYear) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -679,6 +723,7 @@ export type CreateServiceProviderInput = z.infer<typeof createServiceProviderSch
 export type UpdateServiceProviderInput = z.infer<typeof updateServiceProviderSchema>;
 export type CreateContractInput = z.infer<typeof createContractSchema>;
 export type CreateDocumentInput = z.infer<typeof createDocumentSchema>;
+export type UpdateDocumentInput = z.infer<typeof updateDocumentSchema>;
 export type CreateLotTenantAssignmentInput = z.infer<typeof createLotTenantAssignmentSchema>;
 export type LinkMaintenanceRequestInput = z.infer<typeof linkMaintenanceRequestSchema>;
 export type LinkMaintenanceContractInput = z.infer<typeof linkMaintenanceContractSchema>;

@@ -38,6 +38,7 @@ import {
   CreatePaymentScheduleRequest,
   CreateResolutionRequest,
   CreateSyndicateDocumentRequest,
+  UpdateSyndicateDocumentRequest,
   FinanceSummary,
   CreateOwnerAccountAdjustmentRequest,
   CreateChargeCallRequest,
@@ -53,6 +54,7 @@ import {
   OverdueDashboard,
   PaymentReminder,
   PaymentSchedule,
+  ReminderBatchPreview,
   ReminderBatchResult,
   CreateServiceProviderRequest,
   UpdateServiceProviderRequest,
@@ -69,6 +71,7 @@ import {
   SyndicateDocument,
   Syndicate,
   SyndicateLot,
+  SyndicateLotWithWarnings,
   UpdateMeetingRequest,
   UpdateAgendaItemRequest,
   UpdateSyndicateLotRequest,
@@ -153,6 +156,7 @@ export async function updateSyndicate(
     fiscalYear: data.fiscalYear,
     syndicManagerId: data.syndicManagerId === '' ? null : data.syndicManagerId,
     status: data.status,
+    ...(data.totalGeneralShares !== undefined ? { totalGeneralShares: data.totalGeneralShares } : {}),
     ...(data.mandatingAgencyId !== undefined ? { mandatingAgencyId: data.mandatingAgencyId } : {})
   };
 
@@ -181,7 +185,7 @@ export async function createSyndicateLot(
   tenantId: string,
   syndicId: string,
   data: CreateSyndicateLotRequest
-): Promise<SyndicateLot> {
+): Promise<SyndicateLotWithWarnings> {
   const payload = {
     propertyId: data.propertyId || undefined,
     coownerId: data.ownerContactId || undefined,
@@ -193,11 +197,11 @@ export async function createSyndicateLot(
     ownerSince: data.ownerSince || undefined
   };
 
-  const response = await apiClient.post<{ success: boolean; data: SyndicateLot }>(
+  const response = await apiClient.post<{ success: boolean; data: SyndicateLot; warnings?: string[] }>(
     `/tenants/${tenantId}/syndics/${syndicId}/lots`,
     payload
   );
-  return response.data.data;
+  return { ...response.data.data, warnings: response.data.warnings };
 }
 
 export async function updateSyndicateLot(
@@ -205,7 +209,7 @@ export async function updateSyndicateLot(
   syndicId: string,
   lotId: string,
   data: UpdateSyndicateLotRequest
-): Promise<SyndicateLot> {
+): Promise<SyndicateLotWithWarnings> {
   const payload = {
     propertyId: data.propertyId === '' ? null : data.propertyId,
     coownerId: data.ownerContactId === '' ? null : data.ownerContactId,
@@ -217,11 +221,11 @@ export async function updateSyndicateLot(
     ownerSince: data.ownerSince
   };
 
-  const response = await apiClient.patch<{ success: boolean; data: SyndicateLot }>(
+  const response = await apiClient.patch<{ success: boolean; data: SyndicateLot; warnings?: string[] }>(
     `/tenants/${tenantId}/syndics/${syndicId}/lots/${lotId}`,
     payload
   );
-  return response.data.data;
+  return { ...response.data.data, warnings: response.data.warnings };
 }
 
 /**
@@ -255,6 +259,16 @@ export async function addLotTenantAssignment(
     data
   );
   return response.data.data;
+}
+
+/** Met fin à une affectation locataire (isActive false, date de fin = aujourd'hui) ; l'historique est conservé. */
+export async function deactivateLotTenantAssignment(
+  tenantId: string,
+  syndicId: string,
+  lotId: string,
+  assignmentId: string
+): Promise<void> {
+  await apiClient.delete(`/tenants/${tenantId}/syndics/${syndicId}/lots/${lotId}/tenants/${assignmentId}`);
 }
 
 export async function listChargeCalls(
@@ -391,22 +405,32 @@ export async function createMeetingWithConvocation(
   syndicId: string,
   data: CreateMeetingRequest,
   idempotencyKey?: string
-): Promise<{ meeting: GeneralMeeting; convocation: MeetingConvocationResult | null; convocationPending: boolean }> {
+): Promise<{
+  meeting: GeneralMeeting;
+  convocation: MeetingConvocationResult | null;
+  convocationPending: boolean;
+  /** Aucune convocation n'est partie à la création (`sendConvocation` absent ou faux). */
+  convocationNotSent: boolean;
+}> {
   const response = await apiClient.post<{
     success: boolean;
     data: GeneralMeeting;
-    convocation?: MeetingConvocationResult | { status: 'SENDING' };
+    convocation?: MeetingConvocationResult | { status: 'SENDING' | 'NOT_SENT' };
   }>(
     `/tenants/${tenantId}/syndics/${syndicId}/assemblees`,
     data,
     idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined
   );
   const raw = response.data.convocation;
-  const convocationPending = !!raw && 'status' in raw && raw.status === 'SENDING';
+  const convocationStatus = raw && 'status' in raw ? raw.status : undefined;
+  const convocationPending = convocationStatus === 'SENDING';
+  const convocationNotSent = convocationStatus === 'NOT_SENT';
   return {
     meeting: response.data.data,
-    convocation: convocationPending ? null : ((raw as MeetingConvocationResult | undefined) ?? null),
-    convocationPending
+    convocation:
+      convocationPending || convocationNotSent ? null : ((raw as MeetingConvocationResult | undefined) ?? null),
+    convocationPending,
+    convocationNotSent
   };
 }
 
@@ -481,15 +505,31 @@ export async function deleteMeetingProxy(
   return response.data.data;
 }
 
+/** `idempotencyKey` : un réessai après coupure ou 5xx rejoue la même création (pas de doublon). */
 export async function addMeetingResolution(
   tenantId: string,
   syndicId: string,
   meetingId: string,
-  data: CreateResolutionRequest
+  data: CreateResolutionRequest,
+  idempotencyKey?: string
 ) {
   const response = await apiClient.post(
     `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/resolutions`,
-    data
+    data,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined
+  );
+  return response.data.data;
+}
+
+/** Supprime une résolution sans vote (409 si AG figée, vote ouvert ou votes déjà saisis). */
+export async function deleteMeetingResolution(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  resolutionId: string
+): Promise<{ id: string }> {
+  const response = await apiClient.delete<{ success: boolean; data: { id: string } }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/resolutions/${resolutionId}`
   );
   return response.data.data;
 }
@@ -667,6 +707,9 @@ export async function createSyndicDocument(
   if (data.expiresAt) {
     formData.append('expiresAt', data.expiresAt);
   }
+  if (data.visibleToCoOwners !== undefined) {
+    formData.append('visibleToCoOwners', String(data.visibleToCoOwners));
+  }
 
   const response = await apiClient.post<{ success: boolean; data: SyndicateDocument }>(
     `/tenants/${tenantId}/syndics/${syndicId}/documents`,
@@ -676,6 +719,19 @@ export async function createSyndicDocument(
         'Content-Type': 'multipart/form-data'
       }
     }
+  );
+  return response.data.data;
+}
+
+export async function updateSyndicDocument(
+  tenantId: string,
+  syndicId: string,
+  documentId: string,
+  data: UpdateSyndicateDocumentRequest
+): Promise<SyndicateDocument> {
+  const response = await apiClient.patch<{ success: boolean; data: SyndicateDocument }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/documents/${documentId}`,
+    data
   );
   return response.data.data;
 }
@@ -711,13 +767,28 @@ export async function createManualReminder(
   syndicId: string,
   chargeId: string,
   data: CreateManualReminderRequest
-): Promise<PaymentReminder & { notificationFailed: boolean }> {
-  const response = await apiClient.post<{ success: boolean; data: PaymentReminder; notificationFailed?: boolean }>(
-    `/tenants/${tenantId}/syndics/${syndicId}/charges/${chargeId}/relance`,
-    data
-  );
+): Promise<PaymentReminder & { notificationFailed: boolean; failureCode?: string; failureMessage?: string }> {
+  const response = await apiClient.post<{
+    success: boolean;
+    data: PaymentReminder;
+    notificationFailed?: boolean;
+    failureCode?: string;
+    failureMessage?: string;
+  }>(`/tenants/${tenantId}/syndics/${syndicId}/charges/${chargeId}/relance`, data);
   // La relance est enregistrée même si l'envoi échoue : l'API le signale à part.
-  return { ...response.data.data, notificationFailed: response.data.notificationFailed === true };
+  return {
+    ...response.data.data,
+    notificationFailed: response.data.notificationFailed === true,
+    failureCode: response.data.failureCode ?? response.data.data.failureCode ?? undefined,
+    failureMessage: response.data.failureMessage ?? response.data.data.failureMessage ?? undefined
+  };
+}
+
+export async function getReminderBatchPreview(tenantId: string, syndicId: string): Promise<ReminderBatchPreview> {
+  const response = await apiClient.get<{ success: boolean; data: ReminderBatchPreview }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/relances/batch/preview`
+  );
+  return response.data.data;
 }
 
 export async function runReminderBatch(tenantId: string, syndicId: string): Promise<ReminderBatchResult> {
@@ -878,6 +949,22 @@ export async function createChartOfAccount(
   const response = await apiClient.post<{ success: boolean; data: ChartOfAccount }>(
     `/tenants/${tenantId}/syndics/${syndicId}/comptabilite/comptes`,
     data
+  );
+  return response.data.data;
+}
+
+export interface LoadSyndicChartTemplateResult {
+  created: number;
+  skipped: number;
+  total: number;
+}
+
+export async function loadSyndicChartTemplate(
+  tenantId: string,
+  syndicId: string
+): Promise<LoadSyndicChartTemplateResult> {
+  const response = await apiClient.post<{ success: boolean; data: LoadSyndicChartTemplateResult }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/comptabilite/comptes/charger-plan-syscohada`
   );
   return response.data.data;
 }
@@ -1324,7 +1411,8 @@ export async function getLiveMeeting(
   meetingId: string
 ): Promise<LiveMeetingAdminView> {
   const response = await apiClient.get<{ success: boolean; data: LiveMeetingAdminView }>(
-    `${liveBase(tenantId, syndicId, meetingId)}/direct`
+    `${liveBase(tenantId, syndicId, meetingId)}/direct`,
+    { noRetry: true }
   );
   return response.data.data;
 }
@@ -1388,7 +1476,8 @@ export async function listMeetingParticipants(
   meetingId: string
 ): Promise<MeetingParticipantView[]> {
   const response = await apiClient.get<{ success: boolean; data: MeetingParticipantView[] }>(
-    `${liveBase(tenantId, syndicId, meetingId)}/participants`
+    `${liveBase(tenantId, syndicId, meetingId)}/participants`,
+    { noRetry: true }
   );
   return response.data.data;
 }
@@ -1427,7 +1516,8 @@ export async function getMeetingVisio(
   meetingId: string
 ): Promise<MeetingVisioAdminView> {
   const response = await apiClient.get<{ success: boolean; data: MeetingVisioAdminView }>(
-    `${liveBase(tenantId, syndicId, meetingId)}/visio`
+    `${liveBase(tenantId, syndicId, meetingId)}/visio`,
+    { noRetry: true }
   );
   return response.data.data;
 }
@@ -1517,7 +1607,8 @@ export async function getMeetingDiscussion(
   meetingId: string
 ): Promise<ManagerDiscussionView> {
   const response = await apiClient.get<{ success: boolean; data: ManagerDiscussionView }>(
-    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion`
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion`,
+    { noRetry: true }
   );
   return response.data.data;
 }
@@ -1613,7 +1704,8 @@ export async function getMeetingRecordings(
   meetingId: string
 ): Promise<MeetingRecordingView[]> {
   const response = await apiClient.get<{ success: boolean; data: MeetingRecordingView[] }>(
-    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements`
+    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements`,
+    { noRetry: true }
   );
   return response.data.data;
 }

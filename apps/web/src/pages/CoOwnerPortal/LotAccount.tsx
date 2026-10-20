@@ -97,12 +97,14 @@ export default function CoOwnerLotAccount() {
 
   const account = useQuery({
     queryKey: ['coowner-portal', 'lot-account', lotId],
+    staleTime: 30_000,
     queryFn: () => getMyLotAccount(lotId),
     enabled: Boolean(lotId),
     retry: false
   });
   const calls = useQuery({
     queryKey: ['coowner-portal', 'charge-calls', lotId],
+    staleTime: 30_000,
     queryFn: () => listMyChargeCalls(lotId),
     enabled: Boolean(lotId) && account.isSuccess,
     retry: false

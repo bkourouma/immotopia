@@ -260,7 +260,7 @@ export const SyndicMandateFormModal: React.FC<SyndicMandateFormModalProps> = ({
             spellCheck={false}
             inputMode="text"
             onChange={handleIbanChange}
-            placeholder={t('CI93 CI000 01234 012345678901 23')}
+            placeholder={t('CI93 CI000 01234 012345678901 05')}
           />
         </Form.Item>
         <Form.Item

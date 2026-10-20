@@ -15,23 +15,22 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
   sections de branche, elles sont indépendantes.
 - Pas de secret, pas de donnée personnelle, pas de contenu de `.env`.
 
-Modèle de section :
+## Branche `fix/invitation-session-autre-compte` — 2026-10-20
 
-```markdown
-## Branche `fix/invitation-session-autre-compte` — 2026-10-19
-
-**État :** PR #175 ouverte vers main, CI en cours ; à fusionner par l’utilisateur, puis déployer staging puis production (workflow « Déploiement »).
-**Dernier commit :** `85fb27f0`.
+**État :** PR #175 ouverte vers main, conflits avec main résolus le 2026-10-20 (fusion de `origin/main` : classeur et HANDOFF seulement) ; à fusionner par l’utilisateur, puis déployer staging puis production (workflow « Déploiement »).
 
 **Fait :** acceptation d’une invitation avec la session d’un autre compte : 409 `INVITATION_FOR_ANOTHER_ACCOUNT` (adresse masquée, avant toute écriture) ; page « Se déconnecter et continuer » ; `logout({ redirectTo })`. Relecture OK, audit sécurité sans point critique/élevé/moyen.
 
 **Reste à faire :** rejouer le parcours dans un navigateur après déploiement. Contournement en attendant : ouvrir le lien en navigation privée.
 
-**Pièges :** les `node_modules` du checkout principal n’ont pas les dépendances LiveKit de main (typecheck web et `routes-inventory` en échec en local, sans rapport) ; client Prisma régénéré le 2026-10-19 depuis le schéma de main.
+**Pièges :** le classeur de fonctionnalités est un binaire : en cas de conflit, reprendre la version de main puis rejouer la modification (texte dans `xl/worksheets/sheet2.xml`, entités XML) et `npm run wiki:export`. Worktree : jonctions `node_modules` vers `qa-syndic-base` (à retirer avec `rmdir` avant `git worktree remove`).
 
-## Recette Syndic du 18/10 — fusionnée et déployée (2026-10-18)
+Modèle de section :
 
-**État :** correctifs de la recette Syndic du 18/10 fusionnés dans le tronc (PR #172, commit `0d918d30`) et déployés sur le staging le 2026-10-18 vers 23 h (workflow « Déploiement », run 39174199627, vérifié : `/health` OK et textes des correctifs présents dans les fichiers servis). Production non déployée.
+```markdown
+## Recette Syndic du 18/10 — fusionnée, déployée staging et production (2026-10-19)
+
+**État :** correctifs de la recette Syndic du 18/10 fusionnés dans le tronc (PR #172, commit `0d918d30`) et déployés sur le staging le 2026-10-18 vers 23 h (workflow « Déploiement », run 39174199627, vérifié : `/health` OK et textes des correctifs présents dans les fichiers servis). **Production déployée le 2026-10-19 vers 6 h 25** (workflow « Déploiement », environnement prod, run 39208722562, commit `0d918d30`) : sauvegarde de la base et étiquettes `avant-*` faites par le workflow, migrations appliquées, `/health` OK et nouveaux écrans servis. Premier déploiement de la production par la CI : clé SSH dédiée `github-actions-immotopia-prod` posée le 2026-10-19 dans `authorized_keys` (préfixe `command=…ci-deploy.sh prod,restrict`), secrets `DEPLOY_SSH_KEY` et `DEPLOY_SSH_KNOWN_HOSTS` dans l'environnement GitHub `production` (approbation requise). Journal serveur : `~/ci-deploy-logs/20261019-061637-prod-0d918d30-3469452.log`.
 **Dernier commit :** `0d918d30`. Branche `orch/2026-10-18-recette-syndic` gardée sur le dépôt distant.
 
 **Fait :** portail copropriétaire (historique masqué seulement après un ancien propriétaire, `lib/syndics/lot-owner-history.ts`) ; revente/indivision demandée à la création d'un profil (409 `OPEN_OWNERS`, `previousOwnersHandling` CLOSE/KEEP) ; doublon de profil refusé ; ajustement débit qui consomme l'avance ; validation d'une déclaration sur tout appel ouvert ; déclarations de l'ancien propriétaire invisibles ; budget à plusieurs postes ; signature/cachet sur l'avis d'appel PDF/Word (marqueurs DOCX `SIGNATURE_EMETTEUR`, `CACHET_EMETTEUR`, modèles régénérés) ; documents d'AG toujours en français (`runInFrench`) ; lot absent hors de tous les décomptes ; procuration reprise à l'émargement ; FCFA au portail ; traductions en/ar (43 valeurs arabes retirées des catalogues anglais) ; wiki (33 lignes) et README du wiki rétabli (vidé par `d3f2fd44`).
@@ -40,6 +39,38 @@ Modèle de section :
 **Reste à faire :** recette navigateur sur le staging après déploiement (rejouer le scénario Syndic) ; tests d'API à base dédiée et `npm run test:isolation` non lancés ; ouvrir les Word régénérés dans Word ; décisions ouvertes : relevé du portail sans signature/cachet, « Total réalisé » du budget, profil désactivé compté comme ancien propriétaire.
 
 **Pièges :** la machine sature en mémoire quand plusieurs agents lancent leurs tests en parallèle (0,6 Go libres observés, sessions coupées) : une vérification à la fois, `jest --runInBand`, `vitest --maxWorkers=2`. Le checkout principal (`feat/signature-s5-s7`) a un schéma Prisma différent de `main` : les worktrees de ce chantier utilisaient les `node_modules` de `.claude/worktrees/qa-syndic-base` (npm ci sur `main`). Retirer les jonctions `node_modules` (`rmdir`) AVANT `git worktree remove`. `ai.write-plan.test.ts` échoue sous Windows (fichiers CRLF, `'\n}\n'` cherché), hors de ce diff.
+
+## Branche `orch/2026-10-19-qa2-syndic` — 2026-10-19
+
+**État :** prêt à relire — PR vers `main` (fusion par l'utilisateur). Correctifs de la recette QA2 du module Syndic (`QA2-Rapport-Recette-Syndic-ImmoTopia.xlsx`, 19/10/2026 : 1 critique, 9 majeures, 11 mineures).
+**Dernier commit :** voir `git log` (correctif du test des quotas, puis cette passation).
+
+**Fait :** orchestration chef-orchestre (lots 0 à 6, F, S ; chaque lot relu par un vérificateur, audit de sécurité sur l'ensemble : 0 critique, 0 élevé, 0 moyen, 4 faibles corrigés). Migration additive `20261019120000_syndic_recette_qa2` (`SyndicateDocument.visibleToCoOwners` avec rattrapage Règlement/PV, `Syndicate.totalGeneralShares`, `PaymentReminder.failureCode/failureMessage`), jamais appliquée sur une vraie base. C1 réalisé du budget (factures + coûts d'incident rattachés), M1/M9/m2 AG (idempotence, suppression de résolution, convocations à la demande, pouvoirs en séance), M2 polling 5 s sans rejeu, M5, M6 visibilité par document, M7 aide R-/Q-, M8 causes d'échec d'envoi, m1 relances groupées avec aperçu, m3–m11, A3c, A4a/c/d, A6a plan SYSCOHADA, A6c, B8 périodes localisées. 3 routes nouvelles (aperçu des relances, plan SYSCOHADA, PATCH document) + DELETE résolution ; catalogue IA régénéré ; classeur 1121 lignes ; ~130 clés traduites en/ar.
+**Décisions métier validées (19/10) :** réalisé = factures + imputations d'incident rattachées non facturées ; visibilité case par document ; plus d'envoi automatique des convocations ; relances groupées : aperçu, exclusion des plans actifs, 7 jours entre niveaux. **À valider :** H5 (pas de reçu R- pour un paiement qui solde exactement : règle gardée), H6 (échéance décalée à émission + délai quand l'appel part en retard), H7 (total de référence des tantièmes facultatif, avertissement non bloquant).
+
+**Reste à faire :** recette navigateur (impossible ici : `packages/api/.env.demo` absent, `demo:sync` refuse de tourner) ; `npm run test:isolation` non lancé ; appliquer la migration au déploiement ; relire l'arabe des nouvelles clés ; exploitation hors code de la recette : `DIRECT_DEBIT_IBAN_KEY` absente sur clients.immotopia.cloud (M3), simulateur de paiement absent (M4, normal en production), serveur mail qui rejette les adresses fictives, latences/503 (M2 : vérifier le pool Prisma et le proxy). Non traités : infobulle d'indisponibilité sur le bouton « Déclarer » (l'alerte est dans la modale), réactivation de lot qui oblige à ressaisir les tantièmes, mentions « PR n°71/72 non fusionnée » dans le classeur, `public-meeting-live-service.ts` sans `noRetry`.
+
+**Pièges :** les branches de lot ne peuvent pas s'appeler `orch/…-qa2-syndic/lot-N` à côté de `orch/…-qa2-syndic` (conflit de réf git) : `…-lot-N`. Un chef de lot qui lance ses exécutants en arrière-plan doit rendre la main avant eux et leurs rapports remontent au superviseur : les lancer au premier plan. `git worktree remove --force` est refusé par le hook (motif `--force`). Mesure d'entrée web : 228 628 o pour 229 376 o (marge 748 o). `jest syndic` capte 622 suites et prend ~35 min ; `ai.write-plan.test.ts` échoue sous Windows (préexistant).
+
+## Production — référentiels posés le 2026-10-19
+
+**État :** fait — PR #176 fusionnée (`99de2298`), déployée en prod par `deploy.sh prod` (fumée 200).
+
+Fait :
+
+- Sauvegardes avant intervention : `db-2026-10-19-0720.sql.gz` et dump ciblé `referentiels-avant-2026-10-19-0720.sql.gz` (countries, regions, communes, document_templates) dans `/home/deployer/backups/immotopia-prod`.
+- `bootstrap.sh prod` : géographie posée (1 pays, 33 régions, 164 communes) ; rejeu du seed : 0 inséré, 198 ignorés.
+- `docker exec immotopia-prod-api node dist/scripts/seed-default-document-templates.js` : 4 modèles globaux créés (fichiers sous `/data/uploads/modeles_documents/default/`) ; rejeu : 4 ignorés.
+- `GET /api/geographic/search?q=Cocody` en prod renvoie Cocody.
+
+Reste à faire :
+
+- Création réelle d'un contact et génération d'un bail dans l'écran de prod : non faites (aucune donnée créée chez le client).
+- Base locale jetable `immotopia_geo_scratch` laissée sur le Postgres de dev.
+
+Pièges :
+
+- Lancer un seed à la main dans l'image `migrate` exige `infra/environments/prod.conf` chargé (`STACK_NAME`, `PG_PORT`…) et `IMMOTOPIA_ENV_FILE`.
 
 ## Branche `chore/skill-chef-orchestre` — 2026-10-18
 
@@ -622,7 +653,7 @@ qui reste vrai et ouvert.
 - `main` = `7effd904` (PR #121, #124 et #125 fusionnées les 2026-10-13 et 14). PR ouverte : #126 (brouillon), voir ci-dessous.
 - Staging (app.immotopia.cloud) : code identique à `main`. Le serveur est sur `90de4895` ou plus récent ; depuis, seuls des tests et des docs ont changé, exclus des images par `.dockerignore`. Seed « 3 ans » passé le 2026-10-11. `/health` OK vérifié le 2026-10-13.
 - Déploiements : la protection automatique de l'outil refuse aux agents toute commande SSH sur ce serveur (il héberge aussi la production). Ils sont lancés par l'utilisateur : `git fetch && git merge --ff-only origin/main && ./infra/scripts/deploy.sh staging` dans le checkout du serveur.
-- Production (clients.immotopia.cloud) : n'a pas reçu les lots 040/041 ni les correctifs postérieurs. Ne pas déployer sans décision. Cycle : `backup.sh prod`, étiquette `avant-AAAAMMJJ`, `deploy.sh prod` sur le même commit que le staging ([DEPLOIEMENT.md](DEPLOIEMENT.md)). Relire avant la prod les migrations d'audit, de patrimoine et de réécriture des paiements Syndic (sauvegarde de base avant).
+- Production (clients.immotopia.cloud) : à jour de `0d918d30` depuis le 2026-10-19 (lots 040/041 et suivants compris). Ne pas déployer sans décision ; voie normale : workflow « Déploiement », environnement prod, approbation du propriétaire. Cycle : `backup.sh prod`, étiquette `avant-AAAAMMJJ`, `deploy.sh prod` sur le même commit que le staging ([DEPLOIEMENT.md](DEPLOIEMENT.md)). Relire avant la prod les migrations d'audit, de patrimoine et de réécriture des paiements Syndic (sauvegarde de base avant).
 - PR #126 `fix/recette-operateur-integre` (brouillon), poussée le 2026-10-14 : 9 commits de la recette Opérateur intégré (2026-10-03 ; invitations, admin, navigation par permissions, biens, propriétaires, CRM, locatif), fusion de `main` (`d21a7145`, 16 conflits résolus : catalogues par union des clés, StatusTag, permissions-labels, menu-catalog, role-controller), puis correctifs des relectures (`32d1e156`). Travaillée dans le worktree `.claude/worktrees/oi-integration` (branche locale `integ/recette-oi`, jonctions `node_modules`). **Décisions produit en attente avant fusion :** (1) `useMenuAccess` masque côté web tout menu sans permission, même si l'agence l'a ouvert explicitement dans « Rôles et menus » (contredit Q14 du lot 040 et le commentaire de `PERMISSION_GATED_GROUPS`) ; (2) `MENU_REQUIREMENTS` Finance retire par défaut « Caisse et trésorerie » et « Reversements » aux rôles sans droit financier ; (3) `feeTermsApplyToAllocation` : les encaissements antérieurs aux conditions d'honoraires n'en reçoivent plus jamais (rattrapage `freezeManagementFees` à prévoir). Migration `20261014090000_comptable_lecture_locatif` à appliquer au déploiement. Sauvegarde brute du travail finance non commité de `port-oi` : branche distante `wip/port-oi-finance` (30 fichiers, non vérifiée). Distincte de `origin/test/recette-operateur-integre` (17 commits hors `main`, non fusionnée).
 - Autre branche non intégrée : `origin/feat/sms-lot-1` (fondations SMS, fournisseur Orange CI, sans PR). À reprendre ou archiver.
 - Worktrees restants sous `.claude/worktrees/` : `oi-integration` (PR #126), `port-oi` (ancien emplacement de la branche, travail finance non commité sauvegardé dans `wip/port-oi-finance`), `recette-packs` (354 fichiers de recette hors dépôt, ne pas le supprimer avec `--force`), `w4-recette`, `w5-recette` (recettes, modifications non commitées), `wiki-patrimoine` (modifications locales du classeur). Les autres ont été supprimés les 2026-10-13 et 14.

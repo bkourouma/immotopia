@@ -10,6 +10,7 @@ import type { EmailNotificationKey } from '../../constants/email-notification-ke
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../constants/email-notification-default-templates';
 import { getEmailNotificationConfig } from '../../services/email-notification-config-service';
 import { emailService } from '../../services/email-service';
+import { classifyEmailError, RECEIPT_EMAIL_ERROR_MESSAGES, type ReceiptEmailErrorCode } from './email-error';
 import { AGENCY_ISSUER_KEY, type ChargeReceiptKind } from './charge-receipt-numbering';
 import { renderChargeReceiptPdf, formatAmount } from './charge-receipt-pdf';
 import { frenchDay, periodText, type ChargeReceiptSnapshot } from './charge-receipt-snapshot';
@@ -222,24 +223,7 @@ export function receiptTemplateVars(snapshot: ChargeReceiptSnapshot): Record<str
   };
 }
 
-export type ReceiptEmailErrorCode = 'SMTP_REJECTED' | 'TIMEOUT' | 'ERROR';
-
-/** Message générique stocké et affiché ; l'erreur brute ne va qu'aux journaux. */
-export const RECEIPT_EMAIL_ERROR_MESSAGES: Record<ReceiptEmailErrorCode, string> = {
-  SMTP_REJECTED: "Le serveur de messagerie a refusé l'e-mail.",
-  TIMEOUT: "Le serveur de messagerie n'a pas répondu à temps.",
-  ERROR: "L'envoi de l'e-mail a échoué."
-};
-
-/** Classe une erreur d'envoi (nodemailer) sans en conserver le texte. */
-export function classifyEmailError(error: unknown): ReceiptEmailErrorCode {
-  const detail = (error ?? {}) as { code?: unknown; responseCode?: unknown };
-  const code = typeof detail.code === 'string' ? detail.code : '';
-  const responseCode = typeof detail.responseCode === 'number' ? detail.responseCode : 0;
-  if (['ETIMEDOUT', 'ETIMEOUT', 'ESOCKETTIMEDOUT', 'ECONNRESET', 'ECONNECTION'].includes(code)) return 'TIMEOUT';
-  if (responseCode >= 500 || ['EENVELOPE', 'EMESSAGE', 'EAUTH'].includes(code)) return 'SMTP_REJECTED';
-  return 'ERROR';
-}
+export { classifyEmailError, RECEIPT_EMAIL_ERROR_MESSAGES, type ReceiptEmailErrorCode } from './email-error';
 
 export type ReceiptEmailOutcome =
   | { sent: true }

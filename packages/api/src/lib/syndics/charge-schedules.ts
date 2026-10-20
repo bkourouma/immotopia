@@ -7,6 +7,7 @@ import { formatIsoDay } from './period';
 import {
   firstPeriodIssuedOnOrAfter,
   periodStartContaining,
+  effectiveDueDate,
   followingPeriod,
   periodContaining,
   type SchedulePeriod
@@ -15,6 +16,9 @@ import {
   advanceSchedule,
   computePeriodPlan,
   executeSchedulePeriod,
+  extractDueShiftedNote,
+  formatFrenchDay,
+  joinRunNotes,
   notifyUncoveredCalls,
   publicErrorMessage,
   timingOf,
@@ -506,9 +510,11 @@ export async function resendChargeScheduleRunNotices(
   const previouslySent = uncovered.length - stillUnsent.length;
   const totalSent = previouslySent + summary.sent;
   const totalSkipped = uncovered.length - totalSent;
+  // La note d'échéance décalée (H6) de l'émission initiale survit au renvoi.
+  const notes = joinRunNotes(extractDueShiftedNote(run.notes), summary.notes);
   await prisma.syndicChargeScheduleRun.updateMany({
     where: { id: run.id, tenantId },
-    data: { notificationsSent: totalSent, notificationsSkipped: totalSkipped, notes: summary.notes, finishedAt: now }
+    data: { notificationsSent: totalSent, notificationsSkipped: totalSkipped, notes, finishedAt: now }
   });
 
   return {
@@ -518,7 +524,7 @@ export async function resendChargeScheduleRunNotices(
       ...run,
       notificationsSent: totalSent,
       notificationsSkipped: totalSkipped,
-      notes: summary.notes,
+      notes,
       finishedAt: now
     })
   };
@@ -545,14 +551,26 @@ export async function previewChargeSchedule(
     : firstPeriodIssuedOnOrAfter(timing, now);
   const periods = [];
   for (let index = 0; period && index < count; index += 1) {
-    periods.push(await previewPeriod(schedule, period));
+    periods.push(await previewPeriod(schedule, period, now));
     period = followingPeriod(timing, period);
   }
   return { scheduleId, active: schedule.active, periods };
 }
 
-async function previewPeriod(schedule: SyndicChargeSchedule, period: SchedulePeriod) {
-  const base = periodDates(period);
+async function previewPeriod(schedule: SyndicChargeSchedule, period: SchedulePeriod, now: Date) {
+  // Émission réelle : à la date prévue, ou dès maintenant si elle est déjà passée.
+  const issuedAt = period.issueDate.getTime() > now.getTime() ? period.issueDate : now;
+  const due = effectiveDueDate(period, issuedAt, schedule.dueOffsetDays);
+  const base = {
+    ...periodDates(period),
+    dueDatePassed: due.shifted,
+    effectiveDueDate: due.shifted ? formatIsoDay(due.dueDate) : null,
+    warnings: due.shifted
+      ? [
+          `L'échéance du ${formatFrenchDay(period.dueDate)} serait déjà passée à l'émission : elle sera décalée au ${formatFrenchDay(due.dueDate)}.`
+        ]
+      : ([] as string[])
+  };
   try {
     const plan = await computePeriodPlan(schedule, period, { allowRecompute: false });
     return {

@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { DataCard, DataView, MoneyValue, StatCard } from '../../components/primitives';
 import { FundMovementsDrawer } from '../../components/syndics/FundMovementsDrawer';
+import { paymentMethodLabel } from '../../components/syndics/labels';
 import type { Sort } from '../../hooks/useListParams';
 import {
   adjustSyndicateFundBalance,
@@ -27,6 +28,7 @@ import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Paragraph, Title } = Typography;
 
@@ -469,7 +471,12 @@ export const SyndicFinances: React.FC = () => {
       sorter: true,
       render: (_: number, row) => <MoneyValue value={row.amount} />
     },
-    { title: t('Mode'), dataIndex: 'method', key: 'method' }
+    {
+      title: t('Mode'),
+      dataIndex: 'method',
+      key: 'method',
+      render: (value: string) => paymentMethodLabel(value)
+    }
   ];
 
   const overdueColumns: ColumnsType<OverdueRow> = [
@@ -574,34 +581,41 @@ export const SyndicFinances: React.FC = () => {
               aria-label={t('Détail des fonds')}
               export={{ filename: t('Détail des fonds'), fetchAll: async () => fundsTable.allItems }}
               renderCard={row => (
-                <DataCard
-                  title={row.name}
-                  aria-label={row.name}
-                  highlight={<MoneyValue value={row.balance} />}
-                  primaryAction={{
-                    label: t('Ajuster le solde'),
-                    onClick: () => {
-                      setAdjustTarget(row);
-                      adjustForm.resetFields();
-                      adjustForm.setFieldsValue({ kind: 'ADJUSTMENT', direction: 'CREDIT' });
-                    }
-                  }}
-                  secondaryActions={[
-                    {
-                      key: 'renommer',
-                      label: t('Renommer'),
-                      onClick: () => {
-                        setRenameTarget(row);
-                        renameForm.setFieldsValue({ name: row.name });
-                      }
-                    },
-                    {
-                      key: 'mouvements',
-                      label: t('Historique des mouvements'),
-                      onClick: () => setMovementsTarget(row)
-                    }
-                  ]}
-                />
+                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <DataCard
+                      title={row.name}
+                      aria-label={row.name}
+                      highlight={<MoneyValue value={row.balance} />}
+                      primaryAction={{
+                        label: t('Ajuster le solde'),
+                        onClick: () => {
+                          setAdjustTarget(row);
+                          adjustForm.resetFields();
+                          adjustForm.setFieldsValue({ kind: 'ADJUSTMENT', direction: 'CREDIT' });
+                        }
+                      }}
+                      secondaryActions={[
+                        {
+                          key: 'mouvements',
+                          label: t('Historique des mouvements'),
+                          onClick: () => setMovementsTarget(row)
+                        }
+                      ]}
+                    />
+                  </div>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => {
+                      setRenameTarget(row);
+                      renameForm.setFieldsValue({ name: row.name });
+                    }}
+                    style={{ marginTop: 'var(--space-2)' }}
+                  >
+                    {t('Renommer')}
+                  </Button>
+                </div>
               )}
             />
           </Card>
@@ -741,7 +755,7 @@ export const SyndicFinances: React.FC = () => {
                 name="currency"
                 rules={[{ required: true, message: t('La devise est obligatoire') }]}
               >
-                <Input />
+                <Select options={[{ label: displayCurrency('XOF'), value: 'XOF' }]} />
               </Form.Item>
             </Col>
           </Row>

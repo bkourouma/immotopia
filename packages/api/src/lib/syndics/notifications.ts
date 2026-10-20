@@ -14,6 +14,7 @@ import { currentOwnerProfilesSorted } from './lot-owner';
 // Même substitution que les reçus S3 : les valeurs injectées dans le HTML
 // (noms, libellés saisis librement) y sont échappées.
 import { applyReceiptTemplate } from './charge-receipt-delivery';
+import { classifyEmailError, type ReceiptEmailErrorCode } from './email-error';
 import { MARKER_KIND } from '../notification-markers';
 import {
   buildPaymentTemplateVars,
@@ -140,6 +141,8 @@ export interface NotifyChargeCallResult {
   skipped?: NotifyChargeCallSkipReason;
   /** `SEND_FAILED` seulement : motif court et non sensible (code/réponse SMTP), jamais d'identifiants. */
   skipDetail?: string;
+  /** `SEND_FAILED` seulement : classe de l'erreur (refus SMTP, délai dépassé, autre), sans texte brut. */
+  skipCode?: ReceiptEmailErrorCode;
 }
 
 /** Motif court, non sensible, tiré d'une erreur d'envoi (jamais `command` : peut porter les identifiants SMTP en base64). */
@@ -258,6 +261,7 @@ export async function notifyChargeCall(
   let whatsappSent = false;
   let emailBlockReason: NotifyChargeCallSkipReason | undefined;
   let emailBlockDetail: string | undefined;
+  let emailBlockCode: ReceiptEmailErrorCode | undefined;
 
   if (recipient.email?.trim()) {
     if (!isEmailDeliveryConfigured()) {
@@ -287,6 +291,7 @@ export async function notifyChargeCall(
         } catch (error) {
           emailBlockReason = 'SEND_FAILED';
           emailBlockDetail = emailFailureDetail(error);
+          emailBlockCode = classifyEmailError(error);
           logger.warn('notifyChargeCall: email send failed', {
             chargeCallId,
             error: error instanceof Error ? error.message : String(error)
@@ -338,7 +343,8 @@ export async function notifyChargeCall(
     emailSent,
     whatsappSent,
     skipped,
-    ...(skipped === 'SEND_FAILED' && emailBlockDetail ? { skipDetail: emailBlockDetail } : {})
+    ...(skipped === 'SEND_FAILED' && emailBlockDetail ? { skipDetail: emailBlockDetail } : {}),
+    ...(skipped === 'SEND_FAILED' && emailBlockCode ? { skipCode: emailBlockCode } : {})
   };
 }
 
@@ -749,9 +755,11 @@ export async function notifyChargeCallReminder(
 
   let emailSent = false;
   let whatsappSent = false;
+  let emailBlockReason: 'NO_EMAIL' | 'NOTIFICATION_DISABLED' = 'NO_EMAIL';
 
   if (owner.email?.trim()) {
     const emailConfig = await getEmailNotificationConfig(tenantId, eventKeyEmail);
+    if (!emailConfig.enabled) emailBlockReason = 'NOTIFICATION_DISABLED';
     if (emailConfig.enabled) {
       const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKeyEmail];
       const subjectTpl = emailConfig.subjectOverride || defaults.subject;
@@ -792,5 +800,8 @@ export async function notifyChargeCallReminder(
     whatsappSent
   });
 
+  // Rien n'est parti (ni e-mail ni WhatsApp) sans exception : la cause est rendue à l'appelant,
+  // qui marque la relance FAILED au lieu de la laisser passer pour envoyée.
+  if (!emailSent && !whatsappSent) return { emailSent, whatsappSent, skipped: emailBlockReason };
   return { emailSent, whatsappSent };
 }

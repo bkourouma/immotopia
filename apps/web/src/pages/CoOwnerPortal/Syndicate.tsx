@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Card, Col, Descriptions, Row, Select, Space, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { SkeletonList, StateBlock } from '../../components/primitives';
+import { PhoneNumber, SkeletonList, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import {
   fetchCoOwnerIssuerLogo,
@@ -61,7 +61,11 @@ function ContactDetails({
     <Descriptions column={1} size="small">
       <Descriptions.Item label={t('Nom')}>{name ?? '—'}</Descriptions.Item>
       {address ? <Descriptions.Item label={t('Adresse')}>{address}</Descriptions.Item> : null}
-      {phone ? <Descriptions.Item label={t('Téléphone')}>{phone}</Descriptions.Item> : null}
+      {phone ? (
+        <Descriptions.Item label={t('Téléphone')}>
+          <PhoneNumber value={phone} />
+        </Descriptions.Item>
+      ) : null}
       {email ? <Descriptions.Item label={t('E-mail')}>{email}</Descriptions.Item> : null}
     </Descriptions>
   );
@@ -148,7 +152,7 @@ function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
 export default function CoOwnerSyndicateSheet() {
   const [syndicId, setSyndicId] = useState<string | undefined>(undefined);
 
-  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], queryFn: () => listMyLots() });
+  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], staleTime: 30_000, queryFn: () => listMyLots() });
 
   const syndicateOptions = useMemo(() => {
     const seen = new Map<string, string>();
@@ -164,6 +168,7 @@ export default function CoOwnerSyndicateSheet() {
 
   const syndicate = useQuery({
     queryKey: ['coowner-portal', 'syndicate', syndicId ?? null],
+    staleTime: 30_000,
     queryFn: () => getCoOwnerSyndicate(syndicId as string),
     enabled: Boolean(syndicId)
   });

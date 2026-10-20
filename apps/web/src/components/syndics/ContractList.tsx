@@ -79,7 +79,7 @@ export const ContractList: React.FC<ContractListProps> = ({ contracts, loading =
       columns={columns}
       loading={loading}
       pagination={{ pageSize: 8, hideOnSinglePage: true }}
-      locale={{ emptyText: 'Aucun contrat de maintenance' }}
+      locale={{ emptyText: t('Aucun contrat de maintenance') }}
       expandable={
         showLinkedInvoices
           ? {

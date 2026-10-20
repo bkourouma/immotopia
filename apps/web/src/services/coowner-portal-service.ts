@@ -68,6 +68,9 @@ export interface CoOwnerLotAccount {
 export interface CoOwnerChargeCall {
   id: string;
   period: string;
+  /** Bornes ISO de la période (absentes d'un serveur plus ancien) : servent à localiser le libellé. */
+  periodStart?: string | null;
+  periodEnd?: string | null;
   amount: number;
   paid: number;
   outstanding: number;
