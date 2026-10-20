@@ -18,17 +18,32 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
-## Branche `orch/2026-10-19-menu-messagerie-lot-2` — 2026-10-19
+## Branche `orch/2026-10-19-menu-messagerie` — 2026-10-20
 
-**État :** lot 2 livré dans le worktree `menu-lot-2`, rien commité. Mode de répartition des appels de charges (tantièmes / par type de lot / équitable), appel manuel et programmation.
-**Dernier commit :** aucun sur cette branche à ce stade.
+**État :** prêt à relire — PR vers `main`, à fusionner par l'utilisateur
+**Dernier commit :** fusion `760b1a6b` (correctifs de recette), après le lot 4 (classeur, 1146 lignes).
 
-**Fait :** enum `ChargeAllocationMethod` (SHARES, BY_LOT_TYPE, EQUAL), `allocationMethod` sur `SyndicChargeSchedule` et `ChargeCallBatch`, barème par type de lot en Json sur `Syndicate.lotTypeRates` (migration écrite à la main `20261019140000_syndic_mode_repartition_appels`, NON appliquée). Fonction pure `lib/syndics/charge-allocation-methods.ts` ; routes GET/PUT `.../bareme-types-lots` ; `POST .../charges` accepte `allocationMethod` ; programmation FIXED idem. Web : carte « Barème par type de lot » dans le détail de la copropriété, sélecteur de mode et aperçu par lot dans SyndicCharges et le tiroir des programmations.
-**Décisions métier validées :** le barème se paramètre une fois par copropriété (jamais à chaque appel) ; sans méthode, `POST .../charges` garde l'ancien sens de `amount` (montant par lot) ; pour un seul lot l'écran n'envoie pas de méthode.
+Fait :
 
-**Reste à faire :** appliquer la migration sur les bases ; faire relire les traductions en/ar des clés nouvelles (35 web, 9 API, rédigées par l'agent) par un locuteur arabe ; wiki des fonctionnalités (`npm run wiki:export`) ; recette navigateur.
+- Lot 1 : sous-menu sélectionné en blanc et gras (sidebar, tiroir, popup du rail replié ; `index.css`, `AppNavigation.tsx`).
+- Lot 2 : répartition des appels de charges par tantièmes, type de lot ou équitable (appel manuel et programmation source FIXED) ; barème par type de lot paramétré une fois par copropriété (`Syndicate.lotTypeRates`, routes `bareme-types-lots`). Migrations `20261019140000_*` et `20261019190000_*`.
+- Lot 3 : notifications persistantes écrites avant envoi (`lib/notifications/`), messagerie interne (`lib/messaging/`), cloche, pages, journal admin d'agence, vue plateforme, portails. Migration `20261019180000_notifications_messagerie`. Messages privés exclus du journal.
+- Recette navigateur sur la démo (3b162b32) : menu, messagerie, isolation OK ; 9 anomalies au bus `.agent-bus/bugs/BUG-2026-10-19-*`, 001, 002, 003, 005, 006, 007 corrigées.
 
-**Pièges :** `prisma generate` écrit dans le `node_modules` partagé (jonction) et échoue sur le moteur verrouillé (EPERM) mais les types sont bien régénérés ; `livekit-server-sdk` et `@aws-sdk/client-s3` manquent dans le `node_modules` partagé, donc Jest API échoue sans configuration de substitution ; l'aperçu web est un miroir de la fonction pure de l'API (garder les deux tests synchronisés).
+Reste à faire :
+
+- Les 3 migrations ne sont appliquées que sur `immotopia_demo` ; `prisma migrate deploy` ailleurs seulement après accord.
+- Non rejoué : journal admin sur un échec d'envoi réel (démo sans SMTP), pagination.
+- Anomalies laissées : 004 (programmation par tantièmes exclut les parkings, règle `MAIN_LOT_TYPES` historique), 008 (groupe CRM du menu replié au changement de langue, préexistant ?), 009 (403/404 sur identifiant d'agence, préexistant ?).
+- À valider : corps des e-mails d'appel de charges et de relance journalisé avec montant et lot ; `amount` devient un total à répartir pour plusieurs lots dans `SyndicCharges` ; traductions arabes à faire relire (terme « barème »).
+- Limiteurs de messagerie en mémoire (par instance d'API).
+
+Pièges et décisions :
+
+- Jest API exige `livekit-server-sdk` et `@aws-sdk/client-s3`, absents du `node_modules` partagé : `npm install` à la racine du checkout principal, sinon config Jest temporaire.
+- `packages/api/.env.demo` recréé (base `immotopia_demo` seule, ignoré par git) ; démo figée sur 3b162b32, à resynchroniser pour les autres sessions.
+- Comptes jetables de recette `recette.mm.*@immotopia.test` dans la base de démo (mots de passe hors dépôt).
+- Retirer les jonctions `node_modules` d'un worktree avec `rmdir` AVANT `git worktree remove`.
 
 ## Recette Syndic du 18/10 — fusionnée, déployée staging et production (2026-10-19)
 
