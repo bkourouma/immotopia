@@ -56,6 +56,7 @@ export function useChargeSchedules(tenantId: string | undefined, syndicId: strin
     watchedAmountSource: drawer.watchedAmountSource,
     watchedFrequency: drawer.watchedFrequency,
     allocationMethod: drawer.allocationMethod,
+    includeAnnexLots: drawer.includeAnnexLots,
     allocationPreview: drawer.allocationPreview,
     lotTypeRatesStatus: drawer.lotTypeRatesStatus,
     openCreateDrawer: drawer.openCreateDrawer,

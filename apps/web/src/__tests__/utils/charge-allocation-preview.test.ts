@@ -268,6 +268,29 @@ describe('programmation FIXED', () => {
     expect(distributeFixedAmount(1000, parkings).map(l => l.lotId)).toEqual(['p1', 'p2']);
   });
 
+  it('SHARES avec lots annexes : parking inclus comme l’appel direct (A1 100, A2 200, C1 300, P1 400)', () => {
+    const lots = [
+      lot('a1', 'A1', 'APARTMENT', 100),
+      lot('a2', 'A2', 'APARTMENT', 200),
+      lot('c1', 'C1', 'COMMERCIAL', 300),
+      lot('p1', 'P1', 'PARKING', 400)
+    ];
+    const withAnnex = previewScheduleAllocation({
+      method: 'SHARES',
+      totalAmount: 1000000,
+      lots,
+      includeAnnexLots: true
+    });
+    expect(amounts(withAnnex)).toEqual([100000, 200000, 300000, 400000]);
+    const mainOnly = previewScheduleAllocation({
+      method: 'SHARES',
+      totalAmount: 1000000,
+      lots,
+      includeAnnexLots: false
+    });
+    expect(mainOnly.lines.map(l => l.lotId)).toEqual(['a1', 'a2', 'c1']);
+  });
+
   it('SHARES : parts égales si personne n’a de tantièmes', () => {
     const lots = [lot('a', '1', 'APARTMENT', 0), lot('b', '2', 'APARTMENT', 0)];
     const result = previewScheduleAllocation({ method: 'SHARES', totalAmount: 100, lots });

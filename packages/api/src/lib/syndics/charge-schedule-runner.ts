@@ -133,7 +133,7 @@ export interface PeriodPlan {
 type ScheduleForPlan = Pick<
   SyndicChargeSchedule,
   'tenantId' | 'syndicateId' | 'amountSource' | 'budgetId' | 'fixedAmount' | 'currency'
-> & { allocationMethod?: ChargeAllocationMethodKey | null };
+> & { allocationMethod?: ChargeAllocationMethodKey | null; includeAnnexLots?: boolean | null };
 
 async function loadSyndicateLots(schedule: ScheduleForPlan) {
   const syndicate = await prisma.syndicate.findFirst({
@@ -160,7 +160,7 @@ function activeLotsOf<T extends { generalShares: number }>(lots: T[]): T[] {
 
 /** Répartition EQUAL / BY_LOT_TYPE d'un montant fixe ; un refus métier devient un échec de période. */
 function allocateFixed(
-  method: 'EQUAL' | 'BY_LOT_TYPE',
+  method: 'SHARES' | 'EQUAL' | 'BY_LOT_TYPE',
   fixedAmount: number,
   currency: string,
   lots: Array<{ id: string; lotNumber: string; lotType: string; generalShares: number }>,
@@ -227,10 +227,15 @@ export async function computePeriodPlan(
   const allocationMethod: ChargeAllocationMethodKey =
     schedule.amountSource === 'FIXED' ? (schedule.allocationMethod ?? 'SHARES') : 'SHARES';
   if (schedule.amountSource === 'FIXED') {
+    // SHARES + lots annexes (défaut des nouvelles programmations) : même règle que l'appel
+    // direct « Tous les lots » ; sinon calcul historique (lots principaux, avec repli).
+    const fixedAmount = Number(schedule.fixedAmount ?? 0);
     amounts =
       allocationMethod === 'SHARES'
-        ? distributeFixedAmount(Number(schedule.fixedAmount ?? 0), lots)
-        : allocateFixed(allocationMethod, Number(schedule.fixedAmount ?? 0), currency, lots, lotTypeRates);
+        ? schedule.includeAnnexLots === false
+          ? distributeFixedAmount(fixedAmount, lots)
+          : allocateFixed('SHARES', fixedAmount, currency, lots, lotTypeRates)
+        : allocateFixed(allocationMethod, fixedAmount, currency, lots, lotTypeRates);
   } else {
     const budget = await loadBudgetForPeriod(schedule, period);
     budgetId = budget.id;

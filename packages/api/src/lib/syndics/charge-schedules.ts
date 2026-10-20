@@ -96,6 +96,7 @@ function toScheduleView(
     dueOffsetDays: schedule.dueOffsetDays,
     amountSource: schedule.amountSource,
     allocationMethod: (schedule.allocationMethod ?? 'SHARES') as ChargeAllocationMethodKey,
+    includeAnnexLots: schedule.includeAnnexLots ?? true,
     budgetId: schedule.budgetId,
     budget: schedule.budget
       ? {
@@ -302,6 +303,7 @@ export async function createChargeSchedule(
     dueOffsetDays: input.dueOffsetDays,
     amountSource: input.amountSource,
     allocationMethod,
+    includeAnnexLots: input.includeAnnexLots ?? true,
     budgetId: input.amountSource === 'BUDGET' ? (input.budgetId ?? null) : null,
     fixedAmount:
       input.amountSource === 'FIXED' && allocationMethod !== 'BY_LOT_TYPE' ? (input.fixedAmount ?? null) : null,
@@ -369,6 +371,7 @@ export async function updateChargeSchedule(
     dueOffsetDays: merged.dueOffsetDays,
     amountSource: merged.amountSource,
     allocationMethod: merged.allocationMethod,
+    includeAnnexLots: input.includeAnnexLots ?? schedule.includeAnnexLots ?? true,
     budgetId: merged.budgetId,
     fixedAmount: merged.fixedAmount,
     currency: merged.currency,

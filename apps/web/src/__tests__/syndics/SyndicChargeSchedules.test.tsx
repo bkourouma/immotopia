@@ -676,6 +676,81 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
       );
     });
 
+    describe('lots annexes (BUG-2026-10-19-004)', () => {
+      const ANNEX_LABEL = 'Inclure les lots annexes (parkings, caves, locaux…)';
+
+      it("l'interrupteur n'apparaît qu'en montant fixe + par tantièmes", async () => {
+        listChargeSchedules.mockResolvedValue([]);
+        mount();
+        fireEvent.click(await screen.findByText('Nouvelle programmation'));
+        await screen.findByLabelText('Libellé');
+        // Source budget : pas d'interrupteur.
+        expect(screen.queryByText(ANNEX_LABEL)).not.toBeInTheDocument();
+
+        fireEvent.mouseDown(screen.getByLabelText('Source du montant'));
+        fireEvent.click(await screen.findByTitle('Montant fixe'));
+        expect(await screen.findByText(ANNEX_LABEL)).toBeInTheDocument();
+        expect(
+          screen.getByText('Décoché, seuls les appartements, bureaux et commerces sont appelés.')
+        ).toBeInTheDocument();
+
+        fireEvent.click(screen.getByText('Équitablement'));
+        await waitFor(() => expect(screen.queryByText(ANNEX_LABEL)).not.toBeInTheDocument());
+        fireEvent.click(screen.getByText('Par tantièmes'));
+        expect(await screen.findByText(ANNEX_LABEL)).toBeInTheDocument();
+      });
+
+      it('est coché par défaut et envoyé à la création', async () => {
+        await openFixedDrawer('Charges annexes');
+        expect(await screen.findByRole('switch')).toBeChecked();
+        fireEvent.change(await screen.findByLabelText('Montant total par période'), { target: { value: '100000' } });
+        fireEvent.click(screen.getByText('Créer'));
+        await waitFor(() =>
+          expect(createChargeSchedule).toHaveBeenCalledWith(
+            'tenant-1',
+            'syndic-1',
+            expect.objectContaining({ allocationMethod: 'SHARES', includeAnnexLots: true })
+          )
+        );
+      });
+
+      it('décoché, envoie includeAnnexLots false', async () => {
+        await openFixedDrawer('Charges principales');
+        fireEvent.click(await screen.findByRole('switch'));
+        fireEvent.change(await screen.findByLabelText('Montant total par période'), { target: { value: '100000' } });
+        fireEvent.click(screen.getByText('Créer'));
+        await waitFor(() =>
+          expect(createChargeSchedule).toHaveBeenCalledWith(
+            'tenant-1',
+            'syndic-1',
+            expect.objectContaining({ includeAnnexLots: false })
+          )
+        );
+      });
+
+      it('charge la valeur de la programmation en modification', async () => {
+        listChargeSchedules.mockResolvedValue([
+          {
+            ...SCHEDULE_MONTHLY,
+            amountSource: 'FIXED',
+            budgetId: null,
+            budget: null,
+            fixedAmount: 100000,
+            allocationMethod: 'SHARES',
+            includeAnnexLots: false
+          }
+        ]);
+        previewChargeSchedule.mockResolvedValue({ scheduleId: 'sched-1', active: true, periods: [] });
+        updateChargeSchedule.mockResolvedValue(SCHEDULE_MONTHLY);
+        mount();
+        fireEvent.click(await screen.findByText('Ouvrir'));
+        expect(await screen.findByRole('switch')).not.toBeChecked();
+        fireEvent.click(screen.getByText('Enregistrer'));
+        await waitFor(() => expect(updateChargeSchedule).toHaveBeenCalled());
+        expect(updateChargeSchedule.mock.calls[0][3]).toMatchObject({ includeAnnexLots: false });
+      });
+    });
+
     it('la liste affiche « Barème par type de lot » à la place du montant fixe', async () => {
       listChargeSchedules.mockResolvedValue([
         {

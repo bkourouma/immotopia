@@ -18,6 +18,15 @@ import { allocationMethodLabel } from '../charge-allocation/ChargeAllocationCont
 
 const { Text } = Typography;
 
+/** Libellé de répartition d'une programmation : précise le périmètre des tantièmes (montant fixe). */
+function scheduleAllocationLabel(schedule: ChargeSchedule): string {
+  const isShares = !schedule.allocationMethod || schedule.allocationMethod === 'SHARES';
+  if (schedule.amountSource === 'FIXED' && isShares && schedule.includeAnnexLots !== undefined) {
+    return schedule.includeAnnexLots ? t('Tantièmes (tous les lots)') : t('Tantièmes (lots principaux)');
+  }
+  return allocationMethodLabel(schedule.allocationMethod);
+}
+
 export const ScheduleTable: React.FC<{
   tenantId: string | null | undefined;
   syndicId: string | null | undefined;
@@ -52,7 +61,7 @@ export const ScheduleTable: React.FC<{
               schedule.allocationMethod === 'BY_LOT_TYPE'
                 ? t('Barème par type de lot')
                 : formatMoney(schedule.fixedAmount ?? 0, { currency: displayCurrency(schedule.currency) })
-            } (${allocationMethodLabel(schedule.allocationMethod)})`
+            } (${scheduleAllocationLabel(schedule)})`
           : schedule.budget
             ? `${amountSourceLabels.BUDGET} — ${schedule.budget.label} (${schedule.budget.fiscalYear})`
             : amountSourceLabels.BUDGET,
@@ -68,7 +77,7 @@ export const ScheduleTable: React.FC<{
               )}
             </Text>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {allocationMethodLabel(schedule.allocationMethod)}
+              {scheduleAllocationLabel(schedule)}
             </Text>
           </Space>
         ) : (

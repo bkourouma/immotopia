@@ -1,5 +1,5 @@
 import React from 'react';
-import { Form, Input, InputNumber, Select } from 'antd';
+import { Form, Input, InputNumber, Select, Switch } from 'antd';
 import type { FormInstance } from 'antd';
 import {
   ChargeAllocationMethod,
@@ -26,6 +26,8 @@ export const ScheduleFormFields: React.FC<{
   syndicId?: string | null;
   /** Mode de répartition en vigueur (source « Montant fixe » seulement), `null` pour un budget. */
   allocationMethod?: ChargeAllocationMethod | null;
+  /** Valeur courante de l'interrupteur « lots annexes » (par tantièmes seulement). */
+  includeAnnexLots?: boolean;
   allocationPreview?: AllocationPreviewResult | null;
   lotTypeRatesStatus?: LotTypeRatesStatus;
 }> = ({
@@ -36,6 +38,7 @@ export const ScheduleFormFields: React.FC<{
   tenantId,
   syndicId,
   allocationMethod = null,
+  includeAnnexLots = true,
   allocationPreview = null,
   lotTypeRatesStatus = 'idle'
 }) => (
@@ -123,14 +126,29 @@ export const ScheduleFormFields: React.FC<{
             extra={
               allocationMethod === 'EQUAL'
                 ? t('Montant fixe divisé à parts égales entre les lots actifs.')
-                : t(
-                    'Montant fixe réparti par tantièmes entre les lots principaux (appartements, bureaux, locaux commerciaux).'
-                  )
+                : includeAnnexLots
+                  ? t(
+                      'Montant fixe réparti par tantièmes entre tous les lots ayant des tantièmes (parkings et lots annexes compris).'
+                    )
+                  : t(
+                      'Montant fixe réparti par tantièmes entre les lots principaux (appartements, bureaux, locaux commerciaux).'
+                    )
             }
           >
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
         )}
+
+        {allocationMethod === 'SHARES' ? (
+          <Form.Item
+            label={t('Inclure les lots annexes (parkings, caves, locaux…)')}
+            name="includeAnnexLots"
+            valuePropName="checked"
+            extra={t('Décoché, seuls les appartements, bureaux et commerces sont appelés.')}
+          >
+            <Switch />
+          </Form.Item>
+        ) : null}
 
         {allocationMethod ? (
           <Form.Item>

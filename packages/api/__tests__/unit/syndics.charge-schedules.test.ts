@@ -405,7 +405,20 @@ describe('execution et idempotence', () => {
     expect(runs().map(run => [run.status, run.trigger])).toEqual([['SUCCESS', 'CRON']]);
   });
 
-  it('montant fixe : reparti par tantiemes entre les lots principaux', async () => {
+  it('montant fixe : reparti par tantiemes entre les lots principaux (includeAnnexLots faux, historique)', async () => {
+    const schedule = await createChargeSchedule(
+      TENANT_A,
+      S1,
+      input({ amountSource: 'FIXED', budgetId: null, fixedAmount: 1000, includeAnnexLots: false }),
+      null,
+      NOW
+    );
+    await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(amountsByLot(calls())).toEqual({ [L1]: 600, [L2]: 400 });
+    expect(batches()[0].budgetId).toBeUndefined();
+  });
+
+  it('montant fixe : par defaut (includeAnnexLots vrai), tous les lots avec tantiemes comme l appel direct', async () => {
     const schedule = await createChargeSchedule(
       TENANT_A,
       S1,
@@ -414,7 +427,9 @@ describe('execution et idempotence', () => {
       NOW
     );
     await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
-    expect(amountsByLot(calls())).toEqual({ [L1]: 600, [L2]: 400 });
+    const amounts = Object.values(amountsByLot(calls()));
+    expect(amounts.length).toBeGreaterThan(2);
+    expect(Math.round(amounts.reduce((sum, amount) => sum + amount, 0) * 100) / 100).toBe(1000);
     expect(batches()[0].budgetId).toBeUndefined();
   });
 
