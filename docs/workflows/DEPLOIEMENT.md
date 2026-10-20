@@ -221,6 +221,7 @@ de paiement) : un essai y enverrait de vrais messages à de vrais clients.
 | `seed-pack-tests.sh staging [--dry-run] [--repair-files]` | Crée ou resynchronise 12 agences de test (deux par pack, avec 6 mois ou 3 ans de données) à mot de passe public ; `--repair-files` répare les fichiers déjà semés hors du volume. Refuse `prod`. Voir « Comptes de test par pack ». |
 | `ci-deploy.sh <staging\|prod> [sha]`                      | Entrée imposée aux clés SSH de la CI (`command=`, `restrict`) : contrôles git, sauvegarde (prod), `deploy.sh`, détaché de SSH. **Non éprouvé.** Voir « Déploiement continu ».                                                       |
 | `check-infra.sh`                                          | Contrôle statique sans secret (syntaxe, rendu Compose, ports, modes 100755), lancé par la CI (`bash infra/scripts/check-infra.sh` aussi en local).                                                                                  |
+| `exploitation-syndic.ps1` (poste Windows)                 | Diagnostic puis correction de la clé IBAN, du simulateur, du SMTP, du pool Prisma et du proxy, par ssh. Voir « Script d'exploitation Windows ».                                                                                     |
 
 Les scripts doivent porter le **mode 100755 dans le dépôt** (voir le piège
 « Modes des scripts »).
@@ -1432,6 +1433,65 @@ seul le journal dit ce qui aurait été refusé. `make-env.sh` livre `warn` dans
 deux environnements : tant que la bascule n'est pas faite, le filet
 multi-tenant et les quotas d'abonnement de la production ne bloquent rien (voir
 les [points ouverts](#points-ouverts)).
+
+### Script d'exploitation Windows
+
+`infra/scripts/exploitation-syndic.ps1` se lance depuis le **poste Windows**
+(PowerShell 5.1 ou 7, client OpenSSH, agent SSH chargé : `ssh-add -l`) et agit
+sur le serveur par `ssh` avec les réglages de ce document (hôte `147.93.44.169`,
+port `2222`, utilisateur `deployer`, paramètres `-Hote`, `-Port`,
+`-Utilisateur`). Aucune clé ni aucun mot de passe n'est dans le script.
+
+| Action        | Diagnostic (sans `-Appliquer`)                                                                            | Avec `-Appliquer`                                                                                                                  |
+| ------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `-CleIban`    | `DIRECT_DEBIT_IBAN_KEY` absente, vide, valide ou non conforme ; différente de `PAYMENT_SECRETS_KEY`       | Absente ou vide seulement : clé générée localement, écrite, copiée dans le presse-papiers. Une clé valide n'est **jamais** changée |
+| `-Simulateur` | Valeur de `PAYMENT_GATEWAY_SIMULATOR`                                                                     | Pose `1` (`-Desactiver` : `0`) ; sur prod, il faut taper `prod`                                                                    |
+| `-Mail`       | Variables `EMAIL_*` (mot de passe masqué), connexion TCP/TLS et authentification depuis le conteneur API  | Délègue à `set-email-smtp.sh` en terminal interactif (mot de passe saisi sur le serveur)                                           |
+| `-Pool`       | `connection_limit` et `pool_timeout` de `DATABASE_URL`, `max_connections` de postgres, CPU et mémoire     | Ajoute ou remplace les deux paramètres (défauts `-ConnectionLimit 20`, `-PoolTimeout 20`)                                          |
+| `-Proxy`      | `limit_req`, `limit_conn`, timeouts nginx, 503 des dernières 24 h par URL, erreurs de pool Prisma (P2024) | Rien : le dépôt ne contient aucun `limit_req`, nginx n'est pas modifié                                                             |
+| `-Tout`       | `-CleIban -Mail -Pool -Proxy` et l'état du simulateur                                                     | N'active **jamais** le simulateur ni ne réécrit le SMTP (commutateurs explicites)                                                  |
+
+```powershell
+# 1. Diagnostic d'abord : lecture seule, rien n'est modifié.
+.\infra\scripts\exploitation-syndic.ps1 -Environnement prod -Tout
+# 2. Application ciblée, après lecture du diagnostic.
+.\infra\scripts\exploitation-syndic.ps1 -Environnement prod -CleIban -Pool -Appliquer
+# Simulateur pour une recette sur prod, puis retrait.
+.\infra\scripts\exploitation-syndic.ps1 -Environnement prod -Simulateur -Appliquer
+.\infra\scripts\exploitation-syndic.ps1 -Environnement prod -Simulateur -Desactiver -Appliquer
+# E-mail : diagnostic avec un envoi de test réel.
+.\infra\scripts\exploitation-syndic.ps1 -Environnement prod -Mail -EmailTest moi@exemple.com
+```
+
+Garde-fous :
+
+- **Diagnostic par défaut.** Sans `-Appliquer`, rien n'est écrit (seul
+  `-EmailTest` envoie un message réel). Sur prod, `-Appliquer` demande de taper
+  `prod`.
+- **Une variable à la fois, sauvegardée avant.** Le fichier d'environnement est
+  copié en `<fichier>.avant-<action>-<horodatage>` (mode 600), puis une seule
+  ligne est remplacée ou ajoutée, par écriture atomique en mode 600. Ces copies
+  contiennent les secrets en clair : les supprimer une fois la modification
+  validée.
+- **Aucun secret affiché ni passé en argument.** Seuls le nom, la présence, la
+  longueur ou une empreinte tronquée apparaissent ; la clé IBAN transite par
+  l'entrée standard de `ssh`.
+- **Clé IBAN jamais remplacée si elle est valide** : les IBAN déjà chiffrés
+  deviendraient illisibles. La rotation suit « Clé dédiée aux IBAN ».
+- **Simulateur sur prod** : paiements simulés acceptés dans une base de vrais
+  clients. Confirmation par saisie de `prod`, à désactiver après la recette.
+  `deploy.sh prod` refuse de déployer tant que `PAYMENT_GATEWAY_SIMULATOR=1`.
+- **Prise en compte** : l'API (seule) est recréée par `docker compose up -d
+--no-deps --force-recreate api` avec les réglages du dépôt, sans
+  reconstruction ni migration, sous le verrou de `deploy.sh`, puis `/health` est
+  contrôlé. En cas d'échec, le script affiche la commande de restauration de la
+  sauvegarde.
+- **`connection_limit`** : l'API est un seul processus par pile, Prisma retient
+  sinon `2 × CPU + 1`, et PostgreSQL accepte 100 connexions par défaut. Le
+  serveur refuse une valeur supérieure à `max_connections - 20`.
+
+Code de sortie : `0` sans échec (des points « À FAIRE » peuvent subsister), `1` au
+moins un échec, `2` emploi incorrect.
 
 ### Rattrapage des honoraires de gestion (PR « Opérateur intégré »)
 

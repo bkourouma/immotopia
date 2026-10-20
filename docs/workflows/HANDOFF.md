@@ -100,6 +100,16 @@ Reste à faire :
 
 **Pièges :** la machine sature en mémoire quand plusieurs agents lancent leurs tests en parallèle (0,6 Go libres observés, sessions coupées) : une vérification à la fois, `jest --runInBand`, `vitest --maxWorkers=2`. Le checkout principal (`feat/signature-s5-s7`) a un schéma Prisma différent de `main` : les worktrees de ce chantier utilisaient les `node_modules` de `.claude/worktrees/qa-syndic-base` (npm ci sur `main`). Retirer les jonctions `node_modules` (`rmdir`) AVANT `git worktree remove`. `ai.write-plan.test.ts` échoue sous Windows (fichiers CRLF, `'\n}\n'` cherché), hors de ce diff.
 
+## Branche `chore/script-exploitation-syndic` — 2026-10-19
+
+**État :** prêt à relire (PR #180 vers `main`). Exécuté en production le 2026-10-19 par l'utilisateur : diagnostic `-Tout`, puis `-CleIban -Pool -Appliquer` (clé IBAN écrite, `connection_limit=20`, `pool_timeout=20`, API recréée, `/health` 200).
+
+**Fait :** `infra/scripts/exploitation-syndic.ps1` (Windows, agit par ssh ; diagnostic seul sans `-Appliquer`) pour les points d'exploitation de la recette QA2 : `-CleIban` (génère `DIRECT_DEBIT_IBAN_KEY` si absente, jamais de remplacement), `-Simulateur` (`PAYMENT_GATEWAY_SIMULATOR`, double confirmation en prod, `-Desactiver`), `-Mail` (diagnostic SMTP, test TLS + `verify()`, `-EmailTest`, application via `set-email-smtp.sh` en `ssh -t`), `-Pool` (`connection_limit`/`pool_timeout` dans `DATABASE_URL`, défaut 20/20), `-Proxy` (diagnostic nginx et 503, aucune modification : aucun `limit_req` dans le dépôt), `-Tout`. Section « Script d'exploitation Windows » dans DEPLOIEMENT.md.
+
+**Reste à faire :** diagnostic de contrôle fait (clé IBAN et pool en OK) et sauvegardes `*.avant-*` supprimées du serveur ; vérifier la création d'un mandat de prélèvement dans l'application (M3) ; e-mail OK (rejets = adresses fictives) ; 0 réponse 503 sur 24 h côté serveur (relancer `-Proxy` le jour d'une nouvelle recette) ; simulateur laissé inactif en prod (à activer plutôt sur le staging) ; `PLATFORM_PAYSECUREHUB_MODE=SIMULATOR` en prod (paiements d'abonnement simulés). Supprimer ensuite sur le serveur les sauvegardes `*.avant-*` (secrets en clair). Si le simulateur est activé en prod, `deploy.sh prod` refuse de déployer tant qu'il n'est pas remis à 0.
+
+**Pièges :** l'API répond elle-même 503 au-delà de 2 conversions DOCX→PDF simultanées (`packages/api/src/lib/pdf-convert/index.ts:34`) ; le diagnostic `-Proxy` recoupe les URL en 503. Le redémarrage de l'API passe par `docker compose up -d --no-deps --force-recreate api` (pas `deploy.sh --no-build`, qui refuse le simulateur en prod).
+
 ## Branche `orch/2026-10-19-qa2-syndic` — 2026-10-19
 
 **État :** prêt à relire — PR vers `main` (fusion par l'utilisateur). Correctifs de la recette QA2 du module Syndic (`QA2-Rapport-Recette-Syndic-ImmoTopia.xlsx`, 19/10/2026 : 1 critique, 9 majeures, 11 mineures).
