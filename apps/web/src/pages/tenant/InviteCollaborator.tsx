@@ -2,7 +2,11 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { App, Alert, Button, Card, Checkbox, Form, Input, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
-import { InviteCollaboratorRequest, inviteCollaborator } from '../../services/invitation-service';
+import {
+  InviteCollaboratorRequest,
+  inviteCollaborator,
+  isInvitationEmailNotSent
+} from '../../services/invitation-service';
 import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
 import { t } from '../../i18n/t';
@@ -83,7 +87,15 @@ export const InviteCollaborator: React.FC = () => {
 
       const response = await inviteCollaborator(tenantId, formData);
       if (response.success) {
-        message.success(t('Invitation envoyée avec succès'));
+        const warning = t(
+          "Invitation créée, mais l'e-mail n'a pas pu être envoyé. Utilisez « Renvoyer » pour réessayer."
+        );
+        if (isInvitationEmailNotSent(response, warning)) {
+          // Invitation créée mais e-mail non parti : ne pas annoncer un succès.
+          message.warning(response.message || warning);
+        } else {
+          message.success(t('Invitation envoyée avec succès'));
+        }
         navigate(`/tenant/${tenantId}/invitations`);
       } else {
         setError(response.message || t("Erreur lors de l'invitation"));

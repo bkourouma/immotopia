@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { NotificationBell } from '../../components/notifications/NotificationBell';
+import { UNREAD_COUNTS_CHANGED_EVENT } from '../../utils/unread-counts-event';
 import type { NotificationItem, NotificationScope } from '../../services/notifications-service';
 
 const service = vi.hoisted(() => ({
@@ -56,6 +57,14 @@ describe('NotificationBell', () => {
 
     expect(await screen.findByRole('button', { name: /3 non lues/ })).toBeInTheDocument();
     expect(service.getUnreadCount).toHaveBeenCalledWith(scope);
+  });
+
+  it('relit le compteur dès que la messagerie signale une lecture (BUG-006)', async () => {
+    renderBell();
+    expect(await screen.findByRole('button', { name: /3 non lues/ })).toBeInTheDocument();
+    service.getUnreadCount.mockResolvedValue(2);
+    window.dispatchEvent(new Event(UNREAD_COUNTS_CHANGED_EVENT));
+    expect(await screen.findByRole('button', { name: /2 non lues/ })).toBeInTheDocument();
   });
 
   it('ouvre le tiroir au clic et liste les notifications', async () => {

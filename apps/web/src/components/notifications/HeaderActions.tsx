@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Badge, Button } from 'antd';
 import { MessageOutlined } from '@ant-design/icons';
@@ -6,6 +6,7 @@ import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { getMessagingUnreadCount } from '../../services/messaging-service';
 import { NotificationBell, NOTIFICATION_POLL_MS } from './NotificationBell';
 import { useNotificationScope } from './useNotificationScope';
+import { UNREAD_COUNTS_CHANGED_EVENT } from '../../utils/unread-counts-event';
 import { t } from '../../i18n/t';
 
 /**
@@ -19,7 +20,7 @@ const HeaderActions: React.FC = () => {
   const navigate = useNavigate();
   const [unread, setUnread] = useState(0);
 
-  useVisiblePolling(
+  const { refresh } = useVisiblePolling(
     async () => {
       if (!scope) return false;
       try {
@@ -35,6 +36,11 @@ const HeaderActions: React.FC = () => {
       resetKey: scope ? (scope.kind === 'agency' ? scope.tenantId : scope.portal) : null
     }
   );
+
+  useEffect(() => {
+    window.addEventListener(UNREAD_COUNTS_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(UNREAD_COUNTS_CHANGED_EVENT, refresh);
+  }, [refresh]);
 
   if (!scope) return null;
 
