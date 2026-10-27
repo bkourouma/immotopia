@@ -95,6 +95,65 @@ describe('requireCoOwnerPortalAccess', () => {
     expect(req.coOwnerPortal.scope.lots[0].ownedSince).toEqual(new Date('2025-06-01'));
   });
 
+  it('propriétaire unique : aucune borne de visibilité, même saisi aujourd’hui', async () => {
+    mockPrisma.lotOwnerProfile.rows[0].ownedSince = new Date();
+    const req: any = { user: { userId: 'user-1' }, headers: {} };
+    await requireCoOwnerPortalAccess(req, {} as any, jest.fn());
+    expect(req.coOwnerPortal.scope.lots[0].visibleSince).toBeNull();
+  });
+
+  it('un ancien propriétaire (profil désactivé compris) borne la visibilité à ownedSince', async () => {
+    mockPrisma.lotOwnerProfile.rows.push({
+      id: 'p-old',
+      lotId: 'lot-1',
+      contactId: 'contact-old',
+      ownershipPercentage: 50,
+      ownedSince: new Date('2020-01-01'),
+      ownedUntil: new Date('2025-05-31'),
+      isActive: false,
+      portalAccessEnabled: false,
+      createdAt: new Date('2020-01-01')
+    });
+    const req: any = { user: { userId: 'user-1' }, headers: {} };
+    await requireCoOwnerPortalAccess(req, {} as any, jest.fn());
+    expect(req.coOwnerPortal.scope.lots[0].visibleSince).toEqual(new Date('2025-06-01'));
+  });
+
+  it('indivision : co-indivisaire encore propriétaire depuis 2020, nouveau depuis aujourd’hui : aucune borne', async () => {
+    mockPrisma.lotOwnerProfile.rows[0].ownedSince = new Date();
+    mockPrisma.lotOwnerProfile.rows.push({
+      id: 'p-coindivisaire',
+      lotId: 'lot-1',
+      contactId: 'contact-coindivisaire',
+      ownershipPercentage: 50,
+      ownedSince: new Date('2020-01-01'),
+      ownedUntil: null,
+      isActive: true,
+      portalAccessEnabled: false,
+      createdAt: new Date('2020-01-01')
+    });
+    const req: any = { user: { userId: 'user-1' }, headers: {} };
+    await requireCoOwnerPortalAccess(req, {} as any, jest.fn());
+    expect(req.coOwnerPortal.scope.lots[0].visibleSince).toBeNull();
+  });
+
+  it('un autre propriétaire plus récent ne borne rien', async () => {
+    mockPrisma.lotOwnerProfile.rows.push({
+      id: 'p-new',
+      lotId: 'lot-1',
+      contactId: 'contact-new',
+      ownershipPercentage: 50,
+      ownedSince: new Date('2026-03-01'),
+      ownedUntil: null,
+      isActive: true,
+      portalAccessEnabled: false,
+      createdAt: new Date('2026-03-01')
+    });
+    const req: any = { user: { userId: 'user-1' }, headers: {} };
+    await requireCoOwnerPortalAccess(req, {} as any, jest.fn());
+    expect(req.coOwnerPortal.scope.lots[0].visibleSince).toBeNull();
+  });
+
   it("une détention qui n'a pas encore commencé n'ouvre rien", async () => {
     mockPrisma.lotOwnerProfile.rows[0].ownedSince = new Date('2099-01-01');
     const next = jest.fn();

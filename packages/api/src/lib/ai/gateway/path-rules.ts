@@ -18,9 +18,21 @@ const DESTRUCTIVE_SUFFIX = /\/(delete|remove|destroy|purge)(?:[-_][A-Za-z0-9]+)*
  * segment : « cash-sessions » (caisse, donnée métier) n'est PAS une session de
  * connexion, seul le segment `session(s)` seul l'est.
  */
+// `direct-debit` (spec 042) : mandats de prélèvement ; l'autorisation PDF porte l'IBAN complet.
 const SENSITIVE_SEGMENT =
-  /(secret|token|credential|password|passwd|api-?key|webhook|jwt|invitation|payment-gateway|payment-link|secure-link|private-key|otp)/i;
-const SENSITIVE_EXACT_SEGMENTS = new Set(['session', 'sessions', 'login', 'sso', 'oauth']);
+  /(secret|token|credential|password|passwd|api-?key|webhook|jwt|invitation|payment-gateway|payment-link|secure-link|private-key|otp|direct-debit|prelevement)/i;
+// Spec 047 : `numeros-reception` désigne les numéros mobile money qui REÇOIVENT l'argent d'une copropriété
+// (changer l'un détourne les paiements) et `preuve` la capture privée d'un paiement déclaré : jamais
+// proposés à l'assistant comme actions ou lectures ordinaires.
+const SENSITIVE_EXACT_SEGMENTS = new Set([
+  'session',
+  'sessions',
+  'login',
+  'sso',
+  'oauth',
+  'numeros-reception',
+  'preuve'
+]);
 
 /**
  * Suites de segments sensibles (lot 041, inventaire par WhatsApp) :
@@ -29,10 +41,22 @@ const SENSITIVE_EXACT_SEGMENTS = new Set(['session', 'sessions', 'login', 'sso',
  * - `whatsapp/sessions` : sessions et conversations du bot, avec le numéro et les messages du
  *   chef de chantier. Le mot générique `sessions` (`SENSITIVE_EXACT_SEGMENTS`) les couvre
  *   déjà ; la paire les garde sensibles s'il quitte un jour cette liste.
+ * - `visio/jeton` et `visio/participants` (spec 045) : délivrance d'un jeton de salle, parole donnée ou
+ *   retirée, exclusion d'un participant ; `visio/enregistrement` (démarrer, arrêter) et le fichier d'un
+ *   enregistrement (`enregistrements/:id/...`, flux vidéo de l'assemblée). Jamais proposés à l'assistant
+ *   comme actions ordinaires.
+ * - `visio/discussion` (spec 046) : messages saisis par des copropriétaires (risque d'injection d'instructions
+ *   pour l'assistant qui les lirait) ; et l'assistant n'écrit jamais dans une salle en direct.
  */
 const SENSITIVE_SEGMENT_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ['whatsapp', 'registrations'],
-  ['whatsapp', 'sessions']
+  ['whatsapp', 'sessions'],
+  ['visio', 'jeton'],
+  ['visio', 'participants'],
+  ['visio', 'media'],
+  ['visio', 'discussion'],
+  ['visio', 'enregistrement'],
+  ['enregistrements', ':recordingid']
 ];
 
 export function isSensitivePath(path: string): boolean {

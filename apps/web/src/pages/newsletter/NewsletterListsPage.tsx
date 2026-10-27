@@ -11,6 +11,7 @@ import { AdvancedContactSearch } from '../../components/crm/AdvancedContactSearc
 import { newsletterService, type NewsletterList, type NewsletterSubscriber } from '../../services/newsletter.service';
 import type { ContactSearchResultItem } from '../../services/contact-search.service';
 import { t } from '../../i18n/t';
+import { collectAllPages } from '../../utils/table-export/collect';
 
 export function NewsletterListsPage() {
   const { message } = App.useApp();
@@ -244,6 +245,15 @@ export function NewsletterListsPage() {
                     onRemove={handleRemoveSubscriber}
                     onImport={() => setImportModalOpen(true)}
                     onExport={handleExport}
+                    exportFetchAll={() =>
+                      collectAllPages<NewsletterSubscriber>(async (page, limit) => {
+                        const data = await newsletterService.listSubscribers(tenantId!, selectedList.id, {
+                          page,
+                          limit
+                        });
+                        return { items: data.subscribers, total: data.pagination.total };
+                      })
+                    }
                     canEdit={true}
                   />
                 </>

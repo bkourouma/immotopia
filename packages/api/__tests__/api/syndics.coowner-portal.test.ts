@@ -35,6 +35,17 @@ const mockPrisma = createFakePrisma();
 
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
+// Paiement en ligne (spec 042) : la liste des appels interroge la disponibilité et les tentatives ouvertes.
+// Ces tables ne sont pas dans la base en mémoire ; ici aucune copropriété n'est configurée.
+(mockPrisma as any).syndicPaymentGatewayConfig = { findMany: jest.fn(async () => []) };
+(mockPrisma as any).paymentGatewayConfig = { findFirst: jest.fn(async () => null) };
+(mockPrisma as any).syndicOnlineCheckout = { findMany: jest.fn(async () => []) };
+// Paiement mobile money déclaré (spec 047) : aucune déclaration en attente dans ces scénarios.
+(mockPrisma as any).syndicPaymentDeclaration = { findMany: jest.fn(async () => []) };
+jest.mock('../../src/lib/syndics/charge-schedule-tenant-gate', () => ({
+  evaluateSchedulingGate: async () => null
+}));
+
 jest.mock('../../src/middleware/auth-middleware', () => ({
   authenticate: (req: any, res: any, next: any) => {
     const userId = req.headers['x-test-user'];
@@ -134,7 +145,11 @@ const CALL_L2 = id(502);
 const DOC_REGULATION = id(601);
 const DOC_INSURANCE = id(602);
 const DOC_MINUTES = id(603);
+const S_OUT = id(199);
 const DOC_SB = id(604);
+const DOC_OTHER_VISIBLE = id(605);
+const DOC_REGULATION_HIDDEN = id(606);
+const DOC_S2_VISIBLE = id(607);
 const MEETING_DONE = id(701);
 const MEETING_PLANNED = id(702);
 const RESOLUTION = id(801);
@@ -390,6 +405,8 @@ function seed() {
       syndicateId: S1,
       lotId: L1,
       period: '2026-T1',
+      periodStart: new Date('2026-01-01'),
+      periodEnd: new Date('2026-03-31'),
       amount: 100000,
       currency: 'XOF',
       dueDate: PAST,
@@ -424,6 +441,7 @@ function seed() {
       syndicateId: S1,
       title: 'Reglement',
       type: 'REGULATION',
+      visibleToCoOwners: true,
       fileUrl: `/uploads/syndics/${S1}/documents/reglement.pdf`,
       createdAt: PAST
     },
@@ -432,6 +450,7 @@ function seed() {
       syndicateId: S1,
       title: 'Assurance',
       type: 'INSURANCE',
+      visibleToCoOwners: false,
       fileUrl: `/uploads/syndics/${S1}/documents/assurance.pdf`,
       createdAt: PAST
     },
@@ -440,6 +459,7 @@ function seed() {
       syndicateId: S1,
       title: 'PV AG 2025',
       type: 'GENERAL_MEETING_MINUTES',
+      visibleToCoOwners: true,
       fileUrl: 'https://docs.example.com/pv.pdf',
       createdAt: PAST
     },
@@ -448,7 +468,35 @@ function seed() {
       syndicateId: SB,
       title: 'Reglement Cocody',
       type: 'REGULATION',
+      visibleToCoOwners: true,
       fileUrl: `/uploads/syndics/${SB}/documents/reglement.pdf`,
+      createdAt: PAST
+    },
+    {
+      id: DOC_OTHER_VISIBLE,
+      syndicateId: S1,
+      title: 'Carnet entretien',
+      type: 'OTHER',
+      visibleToCoOwners: true,
+      fileUrl: `/uploads/syndics/${S1}/documents/carnet.pdf`,
+      createdAt: PAST
+    },
+    {
+      id: DOC_REGULATION_HIDDEN,
+      syndicateId: S1,
+      title: 'Reglement provisoire',
+      type: 'REGULATION',
+      visibleToCoOwners: false,
+      fileUrl: `/uploads/syndics/${S1}/documents/reglement.pdf`,
+      createdAt: PAST
+    },
+    {
+      id: DOC_S2_VISIBLE,
+      syndicateId: S_OUT,
+      title: 'Reglement autre copropriete',
+      type: 'REGULATION',
+      visibleToCoOwners: true,
+      fileUrl: `/uploads/syndics/${S_OUT}/documents/reglement.pdf`,
       createdAt: PAST
     }
   );
@@ -511,6 +559,7 @@ const as = (userId: string) => ({ 'x-test-user': userId });
 beforeAll(async () => {
   await fs.mkdir(path.join(UPLOADS_ROOT, 'syndics', S1, 'documents'), { recursive: true });
   await fs.writeFile(path.join(UPLOADS_ROOT, 'syndics', S1, 'documents', 'reglement.pdf'), 'PDF-REGLEMENT');
+  await fs.writeFile(path.join(UPLOADS_ROOT, 'syndics', S1, 'documents', 'carnet.pdf'), 'PDF-CARNET-VISIBLE');
   await fs.mkdir(path.join(UPLOADS_ROOT, 'syndics', SB, 'documents'), { recursive: true });
   await fs.writeFile(path.join(UPLOADS_ROOT, 'syndics', SB, 'documents', 'reglement.pdf'), 'PDF-B');
 });
@@ -580,6 +629,9 @@ describe('Portail copropriétaire — ce que voit chaque copropriétaire', () =>
       status: 'OVERDUE',
       lot: { lotNumber: 'A1' }
     });
+    // B8 : bornes structurées de la période.
+    expect(res.body.data[0].periodStart).toBe(new Date('2026-01-01').toISOString());
+    expect(res.body.data[0].periodEnd).toBe(new Date('2026-03-31').toISOString());
   });
 
   it('A ne voit pas les appels du lot de B, ni en les filtrant par son identifiant', async () => {
@@ -590,12 +642,16 @@ describe('Portail copropriétaire — ce que voit chaque copropriétaire', () =>
     expect(filtered.status).toBe(404);
   });
 
-  it('documents : règlement et procès-verbaux de SES copropriétés, jamais les autres types', async () => {
+  it('documents : seulement ceux cochés « visible », de SES copropriétés, quel que soit le type', async () => {
     const res = await request(app).get('/api/portal/copropriete/documents').set(as(USER_AWA));
 
     expect(res.status).toBe(200);
     const ids = res.body.data.map((doc: any) => doc.id).sort();
-    expect(ids).toEqual([DOC_REGULATION, DOC_MINUTES].sort());
+    expect(ids).toEqual([DOC_REGULATION, DOC_MINUTES, DOC_OTHER_VISIBLE].sort());
+    // Règlement décoché, assurance non cochée, document visible d'une autre copropriété : cachés.
+    expect(ids).not.toContain(DOC_REGULATION_HIDDEN);
+    expect(ids).not.toContain(DOC_INSURANCE);
+    expect(ids).not.toContain(DOC_S2_VISIBLE);
     expect(res.body.data.find((doc: any) => doc.id === DOC_REGULATION)).toMatchObject({
       downloadable: true,
       externalUrl: null
@@ -625,6 +681,25 @@ describe('Portail copropriétaire — ce que voit chaque copropriétaire', () =>
     expect(own.headers['content-disposition']).toContain('Reglement.pdf');
     expect(insurance.status).toBe(404);
     expect(otherAgency.status).toBe(404);
+  });
+
+  it('téléchargement : un document de type OTHER coché visible se télécharge ; un règlement décoché, 404', async () => {
+    const visible = await request(app)
+      .get(`/api/portal/copropriete/documents/${DOC_OTHER_VISIBLE}/fichier`)
+      .set(as(USER_AWA))
+      .buffer(true)
+      .parse(binary);
+    const hidden = await request(app)
+      .get(`/api/portal/copropriete/documents/${DOC_REGULATION_HIDDEN}/fichier`)
+      .set(as(USER_AWA));
+    const otherSyndicate = await request(app)
+      .get(`/api/portal/copropriete/documents/${DOC_S2_VISIBLE}/fichier`)
+      .set(as(USER_AWA));
+
+    expect(visible.status).toBe(200);
+    expect((visible.body as Buffer).toString()).toBe('PDF-CARNET-VISIBLE');
+    expect(hidden.status).toBe(404);
+    expect(otherSyndicate.status).toBe(404);
   });
 
   it('assemblées : date, lieu, ordre du jour ; résultats seulement après clôture, sans le vote des autres lots', async () => {
@@ -1052,6 +1127,25 @@ describe('Gestionnaire — télécharger un document de copropriété (jamais en
     expect((downloaded.body as Buffer).toString()).toBe('PDF-CARNET');
   });
 
+  it('création : la visibilité par défaut dépend du type, une valeur explicite est respectée', async () => {
+    const post = (type: string, visible?: string) => {
+      const req = request(app)
+        .post(`/api/tenants/${TENANT_A}/syndics/${S1}/documents`)
+        .set(as(USER_MANAGER))
+        .field('title', `Doc ${type}`)
+        .field('type', type);
+      if (visible !== undefined) req.field('visibleToCoOwners', visible);
+      return req.attach('file', Buffer.from('PDF-X'), { filename: 'x.pdf', contentType: 'application/pdf' });
+    };
+
+    expect((await post('REGULATION')).body.data.visibleToCoOwners).toBe(true);
+    expect((await post('GENERAL_MEETING_MINUTES')).body.data.visibleToCoOwners).toBe(true);
+    expect((await post('INSURANCE')).body.data.visibleToCoOwners).toBe(false);
+    expect((await post('OTHER')).body.data.visibleToCoOwners).toBe(false);
+    expect((await post('OTHER', 'true')).body.data.visibleToCoOwners).toBe(true);
+    expect((await post('REGULATION', 'false')).body.data.visibleToCoOwners).toBe(false);
+  });
+
   it('un fichier .txt dans le coffre documentaire : 400, jamais 500', async () => {
     const res = await request(app)
       .post(`/api/tenants/${TENANT_A}/syndics/${S1}/documents`)
@@ -1078,5 +1172,183 @@ describe('Gestionnaire — télécharger un document de copropriété (jamais en
 
     expect(res.status).toBe(413);
     expect(res.body.message).toBe('Le fichier envoyé dépasse la taille maximale autorisée.');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Borne de visibilité : seulement si un AUTRE contact a eu le lot avant (lot P)
+// ---------------------------------------------------------------------------
+
+describe('Portail copropriétaire — borne de visibilité du lot (ancien propriétaire)', () => {
+  const profileOf = (profileId: string) => {
+    const row = mockPrisma.lotOwnerProfile.rows.find((candidate: any) => candidate.id === profileId);
+    if (!row) throw new Error(`profil ${profileId} absent`);
+    return row;
+  };
+  const account = () => mockPrisma.ownerAccount.rows.find((row: any) => row.id === ACCOUNT_L1) as any;
+
+  it('(A) propriétaire unique saisi aujourd’hui : tout l’historique du lot reste visible', async () => {
+    profileOf(PROFILE_AWA_L1).ownedSince = new Date();
+    mockPrisma.chargeCall.rows.push({
+      id: id(510),
+      syndicateId: S1,
+      lotId: L1,
+      period: '2026-T3',
+      periodStart: new Date('2026-07-01'),
+      amount: 50000,
+      currency: 'XOF',
+      dueDate: new Date('2026-07-31'),
+      status: 'PENDING',
+      createdAt: PAST
+    });
+
+    const lots = await request(app).get('/api/portal/copropriete/lots').set(as(USER_AWA));
+    expect(lots.body.data.find((lot: any) => lot.id === L1).balance).toMatchObject({ amount: 70000 });
+
+    const compte = await request(app).get(`/api/portal/copropriete/lots/${L1}/compte`).set(as(USER_AWA));
+    expect(compte.body.data.account).toMatchObject({ amount: 70000, direction: 'DEBITEUR' });
+    expect(compte.body.data.transactions.map((tx: any) => tx.id)).toEqual(['tx-2', 'tx-1']);
+    // Soldes cumulés du compte entier, comme avant.
+    expect(compte.body.data.transactions.map((tx: any) => tx.balanceAfter)).toEqual([70000, 100000]);
+
+    const appels = await request(app).get(`/api/portal/copropriete/appels?lotId=${L1}`).set(as(USER_AWA));
+    expect(appels.body.data.map((call: any) => call.id).sort()).toEqual([CALL_L1, id(510)].sort());
+  });
+
+  describe('(B) ancien propriétaire jusqu’au 30/06, nouveau depuis le 01/07', () => {
+    beforeEach(() => {
+      profileOf(PROFILE_AWA_L1).ownedSince = new Date('2026-07-01');
+      mockPrisma.lotOwnerProfile.rows.push({
+        id: id(390),
+        lotId: L1,
+        contactId: CONTACT_BAKARY,
+        ownershipPercentage: 100,
+        ownedSince: new Date('2020-01-01'),
+        ownedUntil: new Date('2026-06-30'),
+        portalAccessEnabled: false,
+        isActive: false,
+        createdAt: new Date('2020-01-01')
+      });
+      // Compte du lot : dette de l'ancien propriétaire (100000 - 30000 en janvier), puis 20000 en août.
+      account().balance = 90000;
+      mockPrisma.ownerAccountTransaction.rows.push({
+        id: 'tx-aout',
+        accountId: ACCOUNT_L1,
+        transactionDate: new Date('2026-08-01'),
+        createdAt: new Date('2026-08-01'),
+        type: 'CHARGE_CALL',
+        debit: 20000,
+        credit: null,
+        balanceAfter: 90000,
+        label: 'Appel T3',
+        reference: null
+      });
+      mockPrisma.chargeCall.rows.push({
+        id: id(511),
+        syndicateId: S1,
+        lotId: L1,
+        period: '2026-T3',
+        periodStart: new Date('2026-07-01'),
+        amount: 20000,
+        currency: 'XOF',
+        dueDate: new Date('2026-08-01'),
+        status: 'PENDING',
+        createdAt: PAST
+      });
+    });
+
+    it('appels : seulement depuis juillet', async () => {
+      const appels = await request(app).get(`/api/portal/copropriete/appels?lotId=${L1}`).set(as(USER_AWA));
+      expect(appels.body.data.map((call: any) => call.id)).toEqual([id(511)]);
+    });
+
+    it('compte : mouvements depuis juillet, soldes cumulés depuis zéro, sans la dette d’avant', async () => {
+      const compte = await request(app).get(`/api/portal/copropriete/lots/${L1}/compte`).set(as(USER_AWA));
+      expect(compte.status).toBe(200);
+      expect(compte.body.data.account).toMatchObject({ amount: 20000, direction: 'DEBITEUR', currency: 'XOF' });
+      expect(compte.body.data.transactions.map((tx: any) => tx.id)).toEqual(['tx-aout']);
+      expect(compte.body.data.transactions[0]).toMatchObject({
+        balanceAfter: 20000,
+        balanceAfterDirection: 'DEBITEUR'
+      });
+      expect(JSON.stringify(compte.body)).not.toContain('Appel T1');
+    });
+
+    it('« Mes lots » : solde du périmètre, pas celui du compte', async () => {
+      const lots = await request(app).get('/api/portal/copropriete/lots').set(as(USER_AWA));
+      expect(lots.body.data.find((lot: any) => lot.id === L1).balance).toMatchObject({
+        amount: 20000,
+        direction: 'DEBITEUR'
+      });
+    });
+
+    it('isolation : le lot de Bakary reste illisible pour Awa, et son solde n’est pas touché', async () => {
+      const compte = await request(app).get(`/api/portal/copropriete/lots/${L2}/compte`).set(as(USER_AWA));
+      expect(compte.status).toBe(404);
+      const lots = await request(app).get('/api/portal/copropriete/lots').set(as(USER_BAKARY));
+      expect(lots.body.data.find((lot: any) => lot.id === L2).balance).toMatchObject({
+        amount: 20000,
+        direction: 'CREDITEUR'
+      });
+    });
+  });
+});
+
+describe('Gestionnaire — modifier un document de copropriété (visibilité pour les copropriétaires)', () => {
+  const patchUrl = (syndicateId: string, documentId: string, tenantId = TENANT_A) =>
+    `/api/tenants/${tenantId}/syndics/${syndicateId}/documents/${documentId}`;
+
+  it('bascule la visibilité, le titre et le type ; la liste de gestion expose le champ', async () => {
+    const res = await request(app)
+      .patch(patchUrl(S1, DOC_INSURANCE))
+      .set(as(USER_MANAGER))
+      .send({ visibleToCoOwners: true, title: 'Assurance 2026' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      data: { id: DOC_INSURANCE, visibleToCoOwners: true, title: 'Assurance 2026' }
+    });
+
+    const portal = await request(app).get('/api/portal/copropriete/documents').set(as(USER_AWA));
+    expect(portal.body.data.map((doc: any) => doc.id)).toContain(DOC_INSURANCE);
+
+    const list = await request(app).get(`/api/tenants/${TENANT_A}/syndics/${S1}/documents`).set(as(USER_MANAGER));
+    expect(list.status).toBe(200);
+    const listed = (list.body.data?.items ?? list.body.data).find((doc: any) => doc.id === DOC_INSURANCE);
+    expect(listed.visibleToCoOwners).toBe(true);
+
+    const off = await request(app)
+      .patch(patchUrl(S1, DOC_REGULATION))
+      .set(as(USER_MANAGER))
+      .send({ visibleToCoOwners: false });
+    expect(off.body.data.visibleToCoOwners).toBe(false);
+    const download = await request(app)
+      .get(`/api/portal/copropriete/documents/${DOC_REGULATION}/fichier`)
+      .set(as(USER_AWA));
+    expect(download.status).toBe(404);
+  });
+
+  it("un document d'une autre agence ou d'un autre syndicat : 404, et rien n'est modifié", async () => {
+    const send = (syndicateId: string, documentId: string) =>
+      request(app).patch(patchUrl(syndicateId, documentId)).set(as(USER_MANAGER)).send({ visibleToCoOwners: false });
+
+    expect((await send(S1, DOC_SB)).status).toBe(404);
+    expect((await send(SB, DOC_SB)).status).toBe(404);
+    expect((await send(S2, DOC_REGULATION)).status).toBe(404);
+    const flag = (documentId: string) =>
+      mockPrisma.syndicateDocument.rows.find((row: any) => row.id === documentId)?.visibleToCoOwners;
+    expect(flag(DOC_SB)).toBe(true);
+    expect(flag(DOC_REGULATION)).toBe(true);
+  });
+
+  it('corps vide : 400 ; un client du portail : 403', async () => {
+    const empty = await request(app).patch(patchUrl(S1, DOC_REGULATION)).set(as(USER_MANAGER)).send({});
+    const portal = await request(app)
+      .patch(patchUrl(S1, DOC_REGULATION))
+      .set(as(USER_AWA))
+      .send({ visibleToCoOwners: true });
+    expect(empty.status).toBe(400);
+    expect(portal.status).toBe(403);
   });
 });

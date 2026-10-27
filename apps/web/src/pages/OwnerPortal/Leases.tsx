@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -27,13 +28,13 @@ interface LeasesData {
   };
 }
 
-const statusOptions = [
+const statusOptions = localizedList(() => [
   { value: '', label: t('Tous les statuts') },
   { value: 'ACTIVE', label: t('Actif') },
   { value: 'ENDED', label: t('Terminé') },
   { value: 'SUSPENDED', label: t('Suspendu') },
   { value: 'CANCELED', label: t('Annulé') }
-];
+]);
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat(activeLocale(), {

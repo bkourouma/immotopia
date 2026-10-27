@@ -20,10 +20,12 @@ import request from 'supertest';
 
 const createSyndicateWithDefaults = jest.fn();
 const createSyndicateLot = jest.fn();
+const computeLotSharesWarnings = jest.fn().mockResolvedValue([]);
 
 jest.mock('../../src/lib/syndics/queries', () => ({
   createSyndicateWithDefaults: (...a: any[]) => createSyndicateWithDefaults(...a),
-  createSyndicateLot: (...a: any[]) => createSyndicateLot(...a)
+  createSyndicateLot: (...a: any[]) => createSyndicateLot(...a),
+  computeLotSharesWarnings: (...a: any[]) => computeLotSharesWarnings(...a)
 }));
 
 const createProperty = jest.fn();

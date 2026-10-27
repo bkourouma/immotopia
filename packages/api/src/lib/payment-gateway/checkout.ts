@@ -14,8 +14,20 @@ import { updatePaymentStatusTx, allocatePaymentTx } from '../../services/rental-
 import { credentialsFrom, ensureCollectionAccountTx, isConfigUsable, loadConfig } from './config';
 import { gatewayClientForMode } from './paysecurehub';
 import { GatewayError } from './types';
-import { operatorFromServiceName } from './status-mapping';
-import type { ProviderStatus } from './types';
+import {
+  contraryAfterSuccessReviewReason,
+  decideCheckoutTransition,
+  fetchNormalizedProviderStatus,
+  isCheckoutExpired,
+  isDueForRecheck,
+  normalizeProviderCheckoutUrl,
+  reconcileCutoff,
+  requestProviderCheckoutRedirect
+} from './checkout-core';
+import type { NormalizedProviderStatus } from './checkout-core';
+
+// Réexport : `normalizeProviderCheckoutUrl` vivait ici avant le lot M2 (lien de paiement, tests).
+export { normalizeProviderCheckoutUrl };
 
 /**
  * Démarrage et rapprochement des paiements en ligne — contrat §2 et §3.3.
@@ -253,33 +265,6 @@ async function prepareCheckout(
   return { config, uniqueIds, amount };
 }
 
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
-
-/** Hôte de boucle locale : `localhost`, 127.0.0.1, [::1] ou `*.localhost` (RFC 6761). */
-function isLoopbackHost(hostname: string): boolean {
-  return LOCAL_HOSTS.has(hostname) || hostname.endsWith('.localhost');
-}
-
-/**
- * URL de paiement fournie par l'agrégateur, acceptée pour une redirection
- * publique : forme normalisée (`href`) ou `null`. https obligatoire ; http
- * seulement en simulateur ET sur l'hôte local ; pas d'identifiants dans
- * l'URL, ni espace autour. Même esprit que `isSafeCheckoutUrl` côté web.
- */
-export function normalizeProviderCheckoutUrl(raw: unknown, mode: 'SIMULATOR' | 'LIVE'): string | null {
-  if (typeof raw !== 'string' || raw === '' || raw !== raw.trim()) return null;
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return null;
-  }
-  if (url.username || url.password) return null;
-  if (url.protocol === 'https:') return url.href;
-  if (url.protocol === 'http:' && mode === 'SIMULATOR' && isLoopbackHost(url.hostname)) return url.href;
-  return null;
-}
-
 interface CheckoutCreationInput {
   tenantId: string;
   leaseId: string;
@@ -357,32 +342,25 @@ async function requestProviderCheckout(
     const renter = await renterContactInfo(tenantId, renterClientId);
     const client = gatewayClientForMode(config.mode);
     const credentials = credentialsFrom(config);
-    const result = await client.buildAway(credentials, {
+    // Chemin « lien » (`validateUrl`) : une URL refusée n'est jamais stockée
+    // (chemin FAILED + 502 ci-dessous). Le message d'erreur ne contient jamais l'URL.
+    const result = await requestProviderCheckoutRedirect({
+      client,
+      credentials,
+      mode: config.mode,
       codePaiement,
-      nomUsager: renter.nom,
-      prenomUsager: renter.prenom,
-      telephone: renter.telephone,
-      email: renter.email,
+      payer: { nom: renter.nom, prenom: renter.prenom, telephone: renter.telephone, email: renter.email },
       libelleArticle: 'Loyer',
-      quantite: 1,
-      montant: amount,
+      amount,
       libOrder: `Paiement loyer ${codePaiement}`,
-      urlRetour: returnUrl,
-      urlCallback: `${env.BACKEND_URL.replace(/\/$/, '')}/api/payment-gateway/paysecurehub/ipn`
+      returnUrl,
+      validateUrl
     });
-
-    // Chemin « lien » : une URL refusée n'est jamais stockée (chemin FAILED + 502 ci-dessous).
-    // Le message d'erreur ne contient jamais l'URL.
-    let checkoutUrl = result.url;
-    if (validateUrl) {
-      const safe = normalizeProviderCheckoutUrl(result.url, config.mode);
-      if (!safe) throw new Error('Unsafe provider checkout URL');
-      checkoutUrl = safe;
-    }
+    const checkoutUrl = result.url;
 
     const updated = await prisma.onlinePaymentCheckout.update({
       where: { id: checkout.id, tenantId: checkout.tenantId },
-      data: { checkoutUrl, providerToken: result.tokens }
+      data: { checkoutUrl, providerToken: result.token }
     });
     return toOnlineCheckoutDto(updated);
   } catch (error) {
@@ -597,8 +575,7 @@ export async function getCheckoutForPortal(
     throw new NotFoundError('Paiement en ligne introuvable.');
   }
 
-  const staleAfter = Date.now() - 10 * 1000;
-  if (checkout.status === 'PENDING' && (!checkout.lastCheckedAt || checkout.lastCheckedAt.getTime() < staleAfter)) {
+  if (checkout.status === 'PENDING' && isDueForRecheck(checkout.lastCheckedAt)) {
     return reconcileCheckout(tenantId, checkout.id);
   }
   return checkout;
@@ -620,9 +597,9 @@ async function reconcileCheckoutRow(checkout: CheckoutRow): Promise<CheckoutRow>
   const credentials = credentialsFrom(config);
   const client = gatewayClientForMode(checkout.mode);
 
-  let providerStatus: ProviderStatus;
+  let providerStatus: NormalizedProviderStatus;
   try {
-    providerStatus = await client.getStatus(credentials, checkout.codePaiement);
+    providerStatus = await fetchNormalizedProviderStatus(client, credentials, checkout.codePaiement);
   } catch (error) {
     await prisma.onlinePaymentCheckout.update({
       where: { id: checkout.id, tenantId: checkout.tenantId },
@@ -644,7 +621,7 @@ async function reconcileCheckoutRow(checkout: CheckoutRow): Promise<CheckoutRow>
  * annulation) passe par `updatePaymentStatusTx`/`allocatePaymentTx` dans LA
  * MÊME transaction que le changement de statut du checkout.
  */
-async function applyProviderStatus(checkout: CheckoutRow, ps: ProviderStatus): Promise<CheckoutRow> {
+async function applyProviderStatus(checkout: CheckoutRow, ps: NormalizedProviderStatus): Promise<CheckoutRow> {
   const tenantId = checkout.tenantId;
 
   const bookkeeping: Prisma.OnlinePaymentCheckoutUpdateInput = {
@@ -652,42 +629,35 @@ async function applyProviderStatus(checkout: CheckoutRow, ps: ProviderStatus): P
     lastProviderPayload: ps.raw === null || ps.raw === undefined ? Prisma.JsonNull : (ps.raw as Prisma.InputJsonValue),
     lastCheckedAt: new Date(),
     checkAttempts: { increment: 1 },
-    ...(ps.transactionId ? { providerTransactionId: ps.transactionId } : {}),
+    ...(ps.providerTransactionId ? { providerTransactionId: ps.providerTransactionId } : {}),
     ...(ps.serviceName ? { providerServiceName: ps.serviceName } : {}),
-    ...(ps.fees !== null ? { providerFees: new Decimal(ps.fees) } : {})
+    ...(ps.providerFees !== null ? { providerFees: new Decimal(ps.providerFees) } : {})
   };
 
-  const target: 'SUCCESS' | 'FAILED' | 'CANCELED' | null = ps.mappedState === 'PENDING' ? null : ps.mappedState;
+  // La décision est pure (checkout-core) ; le claim atomique et les écritures
+  // métier restent ici, dans la transaction.
+  const decision = decideCheckoutTransition({
+    currentStatus: checkout.status,
+    expectedAmount: Number(checkout.amount),
+    provider: ps
+  });
 
-  if (target === null || checkout.status === target) {
+  if (decision.action === 'NOOP') return checkout;
+
+  if (decision.action === 'TOUCH') {
     // En attente, ou conclusion déjà écrite (rejeu idempotent — contrat règle 6).
     return prisma.onlinePaymentCheckout.update({ where: { id: checkout.id, tenantId }, data: bookkeeping });
   }
 
-  if (checkout.status === 'SUCCESS') {
-    // Règle 5 : un succès déjà conclu ne redescend jamais — l'état contraire va en REVIEW.
+  if (decision.action === 'REVIEW') {
+    // Règle 5 (un succès conclu ne redescend jamais) ou écart de montant.
     return prisma.onlinePaymentCheckout.update({
       where: { id: checkout.id, tenantId },
-      data: {
-        ...bookkeeping,
-        status: 'REVIEW',
-        reviewReason: `PaySecureHub rapporte maintenant « ${ps.rawState ?? ''} » pour un paiement déjà réussi.`
-      }
+      data: { ...bookkeeping, status: 'REVIEW', reviewReason: decision.reviewReason }
     });
   }
 
-  if (target === 'SUCCESS') {
-    if (ps.amount !== null && Math.round(ps.amount) !== Math.round(Number(checkout.amount))) {
-      return prisma.onlinePaymentCheckout.update({
-        where: { id: checkout.id, tenantId },
-        data: {
-          ...bookkeeping,
-          status: 'REVIEW',
-          reviewReason: `Montant reçu (${ps.amount}) différent du montant attendu (${Number(checkout.amount)}).`
-        }
-      });
-    }
-
+  if (decision.action === 'SUCCEED') {
     return prisma.$transaction(async tx => {
       const claim = await tx.onlinePaymentCheckout.updateMany({
         where: { id: checkout.id, tenantId, status: { not: 'SUCCESS' } },
@@ -708,8 +678,8 @@ async function applyProviderStatus(checkout: CheckoutRow, ps: ProviderStatus): P
         await tx.rentalPayment.update({
           where: { id: checkout.paymentId, tenant_id: tenantId },
           data: {
-            mm_operator: operatorFromServiceName(ps.serviceName),
-            ...(ps.transactionId ? { psp_transaction_id: ps.transactionId } : {})
+            mm_operator: ps.operator,
+            ...(ps.providerTransactionId ? { psp_transaction_id: ps.providerTransactionId } : {})
           }
         });
         await updatePaymentStatusTx(tx, tenantId, checkout.paymentId, RentalPaymentStatus.SUCCESS);
@@ -736,7 +706,7 @@ async function applyProviderStatus(checkout: CheckoutRow, ps: ProviderStatus): P
     });
   }
 
-  // target === 'FAILED' | 'CANCELED'
+  const target: 'FAILED' | 'CANCELED' = decision.action === 'FAIL' ? 'FAILED' : 'CANCELED';
   return prisma.$transaction(async tx => {
     // Règle 5, suite : un checkout passé en REVIEW alors que son paiement est
     // déjà encaissé ne doit jamais défaire cet encaissement sur un nouvel
@@ -751,7 +721,7 @@ async function applyProviderStatus(checkout: CheckoutRow, ps: ProviderStatus): P
         data: {
           ...bookkeeping,
           status: 'REVIEW',
-          reviewReason: `PaySecureHub rapporte maintenant « ${ps.rawState ?? ''} » pour un paiement déjà réussi.`
+          reviewReason: contraryAfterSuccessReviewReason(ps.rawState)
         }
       });
       return tx.onlinePaymentCheckout.findFirstOrThrow({ where: { id: checkout.id, tenantId } });
@@ -855,11 +825,11 @@ async function expireCheckout(checkout: { id: string; tenantId: string; paymentI
  * vérification) ceux de plus de 48 heures.
  */
 export async function reconcilePendingCheckouts(): Promise<{ reconciled: number; expired: number; errors: number }> {
-  const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
-  const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const now = Date.now();
+  const minAgeCutoff = reconcileCutoff(now);
 
   const pending = await prisma.onlinePaymentCheckout.findMany({
-    where: { status: 'PENDING', createdAt: { lte: twoMinutesAgo } },
+    where: { status: 'PENDING', createdAt: { lte: minAgeCutoff } },
     select: { id: true, tenantId: true, paymentId: true, createdAt: true }
   });
 
@@ -885,7 +855,7 @@ export async function reconcilePendingCheckouts(): Promise<{ reconciled: number;
       });
     }
 
-    if (stillPending && row.createdAt <= fortyEightHoursAgo) {
+    if (stillPending && isCheckoutExpired(row.createdAt, now)) {
       try {
         if (await runWithTenantContext({ tenantId: row.tenantId }, () => expireCheckout(row))) expired++;
       } catch (error) {

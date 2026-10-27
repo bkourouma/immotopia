@@ -33,13 +33,11 @@ import {
 } from '../middleware/rate-limit-middleware';
 import { authenticate, optionalAuthenticate } from '../middleware/auth-middleware';
 import { asyncHandler } from '../middleware/error-middleware';
-import { generateAccessToken, generateRefreshToken } from '../utils/jwt-utils';
-import { prisma } from '../utils/database';
 import { setAuthCookies } from '../utils/auth-cookies';
 import { frontendUrl, isProduction } from '../config/env';
-import { isGoogleOAuthEnabled } from '../config/passport';
+import { isGoogleOAuthEnabled, GoogleUser } from '../config/passport';
 import { logger } from '../utils/logger';
-import { recordLastLogin } from '../services/auth-service';
+import { issueGoogleSession } from '../services/auth-service';
 
 const router = Router();
 
@@ -176,29 +174,9 @@ router.get(
   },
   async (req: Request, res: Response) => {
     try {
-      const user = req.user as any;
-
-      const accessToken = generateAccessToken({
-        userId: user.id,
-        email: user.email,
-        globalRole: user.globalRole
-      });
-
-      const refreshToken = generateRefreshToken();
-      const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7);
-
-      await prisma.refreshToken.create({
-        data: {
-          token: refreshTokenHash,
-          userId: user.id,
-          expiresAt,
-          deviceInfo: req.headers['user-agent'] || 'Google Login'
-        }
-      });
-
-      await recordLastLogin(user.id);
+      // Compte déjà contrôlé par `resolveGoogleUser` (actif, adresse vérifiée par Google).
+      const user = req.user as unknown as GoogleUser;
+      const { accessToken, refreshToken } = await issueGoogleSession(user, req.headers['user-agent']);
 
       setAuthCookies(res, accessToken, refreshToken);
 

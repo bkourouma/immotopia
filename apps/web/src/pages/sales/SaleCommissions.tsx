@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { App, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Table, Typography } from 'antd';
+import { App, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useQuery } from '@tanstack/react-query';
@@ -17,7 +17,7 @@ import type {
   SaleCommissionStatus
 } from '../../services/sales-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { MoneyValue, PageHeader, StateBlock, StatCard, StatusTag } from '../../components/primitives';
+import { MoneyValue, PageHeader, StateBlock, StatCard, StatusTag, Table } from '../../components/primitives';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { TreasuryAccountSelector, type TreasuryPaymentMethod } from '../../components/finance/TreasuryAccountSelector';
 import { SALE_PAYMENT_METHOD_LABELS, dateCourte } from './helpers';
@@ -25,15 +25,16 @@ import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
 
+import { localizedList } from '../../i18n/localized';
 const { Text } = Typography;
 const { TextArea } = Input;
 
-const STATUS_OPTIONS: { value: SaleCommissionStatus; label: string }[] = [
+const STATUS_OPTIONS: { value: SaleCommissionStatus; label: string }[] = localizedList(() => [
   { value: 'DUE', label: t('À encaisser') },
   { value: 'PARTIALLY_PAID', label: t('Partiellement réglée') },
   { value: 'PAID', label: t('Réglée') },
   { value: 'CANCELLED', label: t('Annulée') }
-];
+]);
 
 interface PaymentFormValues {
   amount: number;
@@ -43,7 +44,9 @@ interface PaymentFormValues {
   reference?: string;
 }
 
-const MOYENS_PAIEMENT = Object.entries(SALE_PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }));
+const MOYENS_PAIEMENT = localizedList(() =>
+  Object.entries(SALE_PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }))
+);
 
 /**
  * Fenêtre d'encaissement. Composant à part : son `useForm` naît avec le
@@ -225,14 +228,33 @@ export const SaleCommissions: React.FC = () => {
     },
     { title: t('Bien'), key: 'bien', render: (_, c) => c.propertyLabel },
     { title: t('Payeur'), key: 'payeur', render: (_, c) => c.payerName },
-    { title: t('Montant TTC'), key: 'ttc', align: 'end', render: (_, c) => <MoneyValue value={c.amountInclTax} /> },
-    { title: t('Encaissé'), key: 'paye', align: 'end', render: (_, c) => <MoneyValue value={c.paidAmount} /> },
-    { title: t('Reste dû'), key: 'reste', align: 'end', render: (_, c) => <MoneyValue value={c.remainingAmount} /> },
+    {
+      title: t('Montant TTC'),
+      key: 'ttc',
+      align: 'end',
+      exportValue: c => c.amountInclTax,
+      render: (_, c) => <MoneyValue value={c.amountInclTax} />
+    },
+    {
+      title: t('Encaissé'),
+      key: 'paye',
+      align: 'end',
+      exportValue: c => c.paidAmount,
+      render: (_, c) => <MoneyValue value={c.paidAmount} />
+    },
+    {
+      title: t('Reste dû'),
+      key: 'reste',
+      align: 'end',
+      exportValue: c => c.remainingAmount,
+      render: (_, c) => <MoneyValue value={c.remainingAmount} />
+    },
     { title: t('Négociateur'), key: 'negociateur', render: (_, c) => c.agentName ?? '—' },
     {
       title: t('Part du négociateur'),
       key: 'part-negociateur',
       align: 'end',
+      exportValue: c => c.agentShareEarned,
       render: (_, c) => <MoneyValue value={c.agentShareEarned} />
     },
     { title: t('Statut'), key: 'statut', render: (_, c) => <SaleStatusTag kind="commission" status={c.status} /> },
@@ -334,6 +356,7 @@ export const SaleCommissions: React.FC = () => {
         />
       ) : (
         <Table<SaleCommissionDto>
+          exportFilename={t('Commissions de vente')}
           dataSource={items}
           loading={isPending}
           columns={colonnes}
@@ -348,6 +371,8 @@ export const SaleCommissions: React.FC = () => {
                 <Text type="secondary">{t('Chargement des règlements…')}</Text>
               ) : (
                 <Table<SaleCommissionPaymentDto>
+                  // Sous-tableau d'une ligne dépliée : il n'a pas son propre export.
+                  exportable={false}
                   size="small"
                   dataSource={detail?.payments ?? []}
                   columns={colonnesPaiements}

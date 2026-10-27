@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Spin, Alert, Table, Tag, Space, Select, DatePicker, Button, Empty } from 'antd';
+import { Card, Row, Col, Typography, Spin, Alert, Tag, Space, Select, DatePicker, Button, Empty } from 'antd';
 import { DollarOutlined, FilterOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { PaymentDetailsModal } from '../../components/OwnerPortal/PaymentDetailsModal';
+import { Table } from '../../components/primitives';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
@@ -57,6 +58,7 @@ const getStatusTag = (status: string) => {
 const getMethodLabel = (method: string) => {
   const methodLabels: Record<string, string> = {
     MOBILE_MONEY: t('Mobile Money'),
+    DIRECT_DEBIT: t('Prélèvement bancaire'),
     BANK_TRANSFER: t('Virement bancaire'),
     CASH: t('Espèces'),
     CHECK: t('Chèque'),
@@ -181,6 +183,7 @@ export default function Payments() {
       render: (method: string) => getMethodLabel(method),
       filters: [
         { text: t('Mobile Money'), value: 'MOBILE_MONEY' },
+        { text: t('Prélèvement bancaire'), value: 'DIRECT_DEBIT' },
         { text: t('Virement bancaire'), value: 'BANK_TRANSFER' },
         { text: t('Espèces'), value: 'CASH' },
         { text: t('Chèque'), value: 'CHECK' },
@@ -318,6 +321,7 @@ export default function Payments() {
               onChange={value => setMethodFilter(value)}
             >
               <Option value="MOBILE_MONEY">{t('Mobile Money')}</Option>
+              <Option value="DIRECT_DEBIT">{t('Prélèvement bancaire')}</Option>
               <Option value="BANK_TRANSFER">{t('Virement bancaire')}</Option>
               <Option value="CASH">{t('Espèces')}</Option>
               <Option value="CHECK">{t('Chèque')}</Option>
@@ -339,6 +343,7 @@ export default function Payments() {
       <Card title={t('Historique des paiements')}>
         {data && data.payments.length > 0 ? (
           <Table
+            exportFilename={t('Historique des paiements')}
             scroll={{ x: 'max-content' }}
             columns={columns}
             dataSource={data.payments}

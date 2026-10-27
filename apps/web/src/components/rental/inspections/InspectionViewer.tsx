@@ -1,9 +1,10 @@
 import React from 'react';
 import { Button, Card, Space, Switch, Typography } from 'antd';
-import { PrinterOutlined } from '@ant-design/icons';
+import { EditOutlined, PrinterOutlined } from '@ant-design/icons';
 import { InspectionRoom, LeaseInspection } from '../../../services/lease-inspections-service';
 import { RoomsAccordion } from './RoomsAccordion';
 import { DeductionsSection } from './DeductionsSection';
+import { InspectionSignaturesModal } from './InspectionSignaturesModal';
 import { itemKind } from './inspection-constants';
 import { formatNumberWithSpaces } from '../../../lib/utils';
 import { activeLocale } from '../../../i18n/format';
@@ -65,6 +66,8 @@ export const InspectionViewer: React.FC<InspectionViewerProps> = ({
   onBack
 }) => {
   const isExit = inspection.type === 'EXIT';
+  const [signaturesOpen, setSignaturesOpen] = React.useState(false);
+  const canSign = inspection.status === 'FINALIZED';
 
   const entryItemsById = React.useMemo(() => {
     if (!isExit || !entryInspection) return undefined;
@@ -93,6 +96,11 @@ export const InspectionViewer: React.FC<InspectionViewerProps> = ({
         <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
           {t('Imprimer')}
         </Button>
+        {canSign && (
+          <Button type="primary" icon={<EditOutlined />} onClick={() => setSignaturesOpen(true)}>
+            {t('Signatures')}
+          </Button>
+        )}
       </Space>
 
       <Card>
@@ -169,6 +177,16 @@ export const InspectionViewer: React.FC<InspectionViewerProps> = ({
           <Text>{t('Agent : {{nom}}', { nom: inspection.agentSignatoryName || '—' })}</Text>
         </Space>
       </Card>
+
+      {canSign && (
+        <InspectionSignaturesModal
+          open={signaturesOpen}
+          inspectionId={inspection.id}
+          type={inspection.type}
+          tenantPresent={inspection.tenantPresent}
+          onClose={() => setSignaturesOpen(false)}
+        />
+      )}
     </Space>
   );
 };

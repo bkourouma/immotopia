@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { DataCard, DataView, MoneyValue, StatCard } from '../../components/primitives';
 import { FundMovementsDrawer } from '../../components/syndics/FundMovementsDrawer';
+import { paymentMethodLabel } from '../../components/syndics/labels';
 import type { Sort } from '../../hooks/useListParams';
 import {
   adjustSyndicateFundBalance,
@@ -27,6 +28,7 @@ import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Paragraph, Title } = Typography;
 
@@ -106,6 +108,8 @@ function useLocalTable<T>(items: T[], pageSize: number) {
 
   return {
     pageItems,
+    // Toutes les lignes, triées comme à l'écran : c'est ce que l'export emporte.
+    allItems: sorted,
     total,
     page,
     pageSize,
@@ -240,6 +244,7 @@ export const SyndicFinances: React.FC = () => {
   const [reminders, setReminders] = useState<PaymentReminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorCause, setErrorCause] = useState<unknown>(null);
 
   const [fundModalOpen, setFundModalOpen] = useState(false);
   const [fundSubmitting, setFundSubmitting] = useState(false);
@@ -268,6 +273,7 @@ export const SyndicFinances: React.FC = () => {
     if (!effectiveTenantId || !syndicId) return;
     setLoading(true);
     setError(null);
+    setErrorCause(null);
     try {
       const [summaryData, chargesData, dashboardData, remindersData] = await Promise.all([
         getSyndicFinanceSummary(effectiveTenantId, syndicId),
@@ -280,6 +286,7 @@ export const SyndicFinances: React.FC = () => {
       setDashboard(dashboardData);
       setReminders(remindersData);
     } catch (err: any) {
+      setErrorCause(err);
       setError(err.response?.data?.error || t('Impossible de charger la synthèse financière'));
     } finally {
       setLoading(false);
@@ -467,7 +474,12 @@ export const SyndicFinances: React.FC = () => {
       sorter: true,
       render: (_: number, row) => <MoneyValue value={row.amount} />
     },
-    { title: t('Mode'), dataIndex: 'method', key: 'method' }
+    {
+      title: t('Mode'),
+      dataIndex: 'method',
+      key: 'method',
+      render: (value: string) => paymentMethodLabel(value)
+    }
   ];
 
   const overdueColumns: ColumnsType<OverdueRow> = [
@@ -565,40 +577,49 @@ export const SyndicFinances: React.FC = () => {
               onSortChange={fundsTable.onSortChange}
               loading={loading}
               error={error}
+              errorCause={errorCause}
               onRetry={() => void loadAll()}
               emptyDescription={t('Aucun fonds enregistré pour cette copropriété.')}
               columns={fundColumns}
               rowKey={row => row.id}
               aria-label={t('Détail des fonds')}
+              export={{ filename: t('Détail des fonds'), fetchAll: async () => fundsTable.allItems }}
               renderCard={row => (
-                <DataCard
-                  title={row.name}
-                  aria-label={row.name}
-                  highlight={<MoneyValue value={row.balance} />}
-                  primaryAction={{
-                    label: t('Ajuster le solde'),
-                    onClick: () => {
-                      setAdjustTarget(row);
-                      adjustForm.resetFields();
-                      adjustForm.setFieldsValue({ kind: 'ADJUSTMENT', direction: 'CREDIT' });
-                    }
-                  }}
-                  secondaryActions={[
-                    {
-                      key: 'renommer',
-                      label: t('Renommer'),
-                      onClick: () => {
-                        setRenameTarget(row);
-                        renameForm.setFieldsValue({ name: row.name });
-                      }
-                    },
-                    {
-                      key: 'mouvements',
-                      label: t('Historique des mouvements'),
-                      onClick: () => setMovementsTarget(row)
-                    }
-                  ]}
-                />
+                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <DataCard
+                      title={row.name}
+                      aria-label={row.name}
+                      highlight={<MoneyValue value={row.balance} />}
+                      primaryAction={{
+                        label: t('Ajuster le solde'),
+                        onClick: () => {
+                          setAdjustTarget(row);
+                          adjustForm.resetFields();
+                          adjustForm.setFieldsValue({ kind: 'ADJUSTMENT', direction: 'CREDIT' });
+                        }
+                      }}
+                      secondaryActions={[
+                        {
+                          key: 'mouvements',
+                          label: t('Historique des mouvements'),
+                          onClick: () => setMovementsTarget(row)
+                        }
+                      ]}
+                    />
+                  </div>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => {
+                      setRenameTarget(row);
+                      renameForm.setFieldsValue({ name: row.name });
+                    }}
+                    style={{ marginTop: 'var(--space-2)' }}
+                  >
+                    {t('Renommer')}
+                  </Button>
+                </div>
               )}
             />
           </Card>
@@ -616,11 +637,13 @@ export const SyndicFinances: React.FC = () => {
               onSortChange={chargesTable.onSortChange}
               loading={loading}
               error={error}
+              errorCause={errorCause}
               onRetry={() => void loadAll()}
               emptyDescription={t('Aucun appel de charges enregistré pour cette copropriété.')}
               columns={chargeColumns}
               rowKey={row => row.id}
               aria-label={t('Détail des appels de fonds')}
+              export={{ filename: t('Détail des appels de fonds'), fetchAll: async () => chargesTable.allItems }}
               scrollX={1100}
               renderCard={row => (
                 <DataCard
@@ -654,11 +677,13 @@ export const SyndicFinances: React.FC = () => {
               onSortChange={paymentsTable.onSortChange}
               loading={loading}
               error={error}
+              errorCause={errorCause}
               onRetry={() => void loadAll()}
               emptyDescription={t('Aucun paiement enregistré pour cette copropriété.')}
               columns={paymentColumns}
               rowKey={row => row.id}
               aria-label={t('Détail des paiements reçus')}
+              export={{ filename: t('Détail des paiements reçus'), fetchAll: async () => paymentsTable.allItems }}
               scrollX={1000}
               renderCard={row => (
                 <DataCard
@@ -685,11 +710,13 @@ export const SyndicFinances: React.FC = () => {
               onSortChange={overdueTable.onSortChange}
               loading={loading}
               error={error}
+              errorCause={errorCause}
               onRetry={() => void loadAll()}
               emptyDescription={t('Aucun dossier en retard pour cette copropriété.')}
               columns={overdueColumns}
               rowKey={row => row.chargeCallId}
               aria-label={t('Détail des impayés et retards')}
+              export={{ filename: t('Détail des impayés et retards'), fetchAll: async () => overdueTable.allItems }}
               renderCard={row => (
                 <DataCard
                   title={`${row.lotLabel} — ${row.ownerLabel}`}
@@ -735,7 +762,7 @@ export const SyndicFinances: React.FC = () => {
                 name="currency"
                 rules={[{ required: true, message: t('La devise est obligatoire') }]}
               >
-                <Input />
+                <Select options={[{ label: displayCurrency('XOF'), value: 'XOF' }]} />
               </Form.Item>
             </Col>
           </Row>

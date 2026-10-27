@@ -68,6 +68,7 @@ export function particulierNavigation(base: PersonaNav): PersonaNav {
     href: '/tenant/:tenantId/settings/abonnement',
     children: [
       { key: 'particulier-abonnement', label: t('Abonnement'), href: '/tenant/:tenantId/settings/abonnement' },
+      { key: 'particulier-facturation', label: t('Facturation'), href: '/tenant/:tenantId/settings/facturation' },
       { key: 'particulier-settings', label: t("Paramètres de l'espace"), href: '/tenant/:tenantId/settings' }
     ]
   });

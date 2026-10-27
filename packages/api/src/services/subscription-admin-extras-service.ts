@@ -25,9 +25,11 @@ import {
   CapacityKeyCode,
   buildEntitlements,
   featuresForModules,
-  getSubscriptionEnforcement
+  getSubscriptionEnforcement,
+  isExtensionAllowed,
+  planExtensionUnits
 } from '../lib/subscription';
-import { invalidateEntitlements, toCatalogEntry } from './subscription-v2-service';
+import { getEntitlements, invalidateEntitlements, toCatalogEntry } from './subscription-v2-service';
 import { ACTIVE_SITE_STATUSES, ACTIVE_SYNDICATE_STATUSES } from './lot-registry-service';
 
 const toNumber = (value: unknown): number => (value === null || value === undefined ? 0 : Number(String(value)));
@@ -223,11 +225,17 @@ export async function createExtensionRequest(
   if (message.length < 3) throw new BadRequestError('Décrivez votre demande.');
   let catalogName: string | null = null;
   if (input.catalogCode) {
+    // Une extension du catalogue autorisee par les packs detenus ; une offre
+    // non commercialisee (tarif a decider) reste demandable : traitee a la main.
     const item = await prisma.catalogItem.findUnique({
       where: { code: input.catalogCode },
-      select: { name: true, isSellable: true }
+      include: { capacities: { select: { capacityKey: true, amount: true } } }
     });
-    if (!item || !item.isSellable) throw new NotFoundError('Offre introuvable dans le catalogue.');
+    if (!item || item.kind !== 'EXTENSION') throw new NotFoundError('Offre introuvable dans le catalogue.');
+    const { packs } = await getEntitlements(tenantId);
+    if (!isExtensionAllowed(toCatalogEntry(item), packs)) {
+      throw new BadRequestError("Cette extension n'est pas proposée avec les packs de votre agence.");
+    }
     catalogName = item.name;
   }
 
@@ -276,6 +284,48 @@ export async function createExtensionRequest(
 
   const [dto] = await toRequestDtos([row]);
   return dto;
+}
+
+export interface ExtensionOfferDto {
+  code: string;
+  name: string;
+  description: string | null;
+  /** Prix mensuel HT (FCFA) d'une unite, applicable aux packs detenus par l'agence. */
+  monthlyPrice: number;
+  /** Capacites apportees par UNE unite. */
+  capacities: Partial<Record<CapacityKeyCode, number>>;
+  /** Faux : tarif pas encore decide, la demande est traitee a la main. */
+  isSellable: boolean;
+}
+
+/**
+ * Extensions que le catalogue (base) ouvre aux packs detenus par l'agence, pour
+ * le formulaire de demande d'extension. Les offres non commercialisees
+ * (`isSellable` faux) autorisees par les packs sont incluses, marquees.
+ */
+export async function listTenantExtensionOffers(tenantId: string): Promise<ExtensionOfferDto[]> {
+  const [rows, entitlements] = await Promise.all([
+    prisma.catalogItem.findMany({
+      where: { kind: 'EXTENSION' },
+      include: { capacities: { select: { capacityKey: true, amount: true } } },
+      orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }]
+    }),
+    getEntitlements(tenantId)
+  ]);
+  const held = entitlements.packs;
+  const lotsBefore = entitlements.capacities.LOTS?.limit ?? 0;
+  return rows
+    .map(toCatalogEntry)
+    .filter(entry => isExtensionAllowed(entry, held))
+    .map(entry => ({
+      code: entry.code,
+      // Texte de la base = cle de traduction ; sans traduction, il sort tel quel (catalogue edite).
+      name: t(entry.name),
+      description: entry.description ? t(entry.description) : entry.description,
+      monthlyPrice: planExtensionUnits(entry, held, 1, lotsBefore)[0]?.unitMonthlyPrice ?? entry.monthlyPrice,
+      capacities: entry.capacities,
+      isSellable: entry.isSellable
+    }));
 }
 
 export async function listExtensionRequests(tenantId: string): Promise<ExtensionRequestDto[]> {

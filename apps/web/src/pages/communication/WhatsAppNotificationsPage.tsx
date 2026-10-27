@@ -1,22 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  App,
-  Card,
-  Table,
-  Switch,
-  Button,
-  Form,
-  Input,
-  Spin,
-  Tag,
-  Space,
-  Typography,
-  Tooltip,
-  Collapse,
-  Alert
-} from 'antd';
+import { App, Card, Switch, Button, Form, Input, Spin, Tag, Space, Typography, Tooltip, Collapse, Alert } from 'antd';
 import { EditOutlined, MessageOutlined } from '@ant-design/icons';
+import { Table } from '../../components/primitives';
 import {
   whatsappNotificationConfigService,
   type WhatsappNotificationConfigItem,
@@ -126,6 +112,7 @@ export function WhatsAppNotificationsPage() {
     {
       title: t('Événement déclencheur'),
       key: 'label',
+      exportValue: (r: WhatsappNotificationConfigItem) => (r.description ? `${r.label} — ${r.description}` : r.label),
       render: (_: unknown, r: WhatsappNotificationConfigItem) => (
         <div>
           <Text strong>{r.label}</Text>
@@ -148,6 +135,7 @@ export function WhatsAppNotificationsPage() {
       dataIndex: 'enabled',
       key: 'enabled',
       width: 90,
+      exportValue: (record: WhatsappNotificationConfigItem) => record.enabled,
       render: (enabled: boolean, record: WhatsappNotificationConfigItem) => (
         <Switch checked={enabled} onChange={checked => handleToggleEnabled(record.key, checked)} />
       )
@@ -311,6 +299,7 @@ export function WhatsAppNotificationsPage() {
       <Card title={t('Liste des notifications WhatsApp')}>
         <Spin spinning={loading}>
           <Table
+            exportFilename={t('Liste des notifications WhatsApp')}
             scroll={{ x: 'max-content' }}
             rowKey="key"
             columns={columns}

@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { inviteCollaborator, InviteCollaboratorRequest } from '../../services/invitation-service';
+import {
+  inviteCollaborator,
+  InviteCollaboratorRequest,
+  isInvitationEmailNotSent
+} from '../../services/invitation-service';
 import { getTenant, Tenant } from '../../services/tenant-service';
 import apiClient from '../../utils/api-client';
+import { getRoleLabelFr } from '../../constants/permissions-labels';
 import { ArrowLeft, Mail, Users } from 'lucide-react';
 import { App } from 'antd';
 import { t } from '../../i18n/t';
@@ -64,7 +69,7 @@ export const AdminInviteCollaborator: React.FC = () => {
     if (!tenantId) return;
 
     if (formData.roleIds.length === 0) {
-      setError(t('Veuillez selectionner au moins un role'));
+      setError(t('Veuillez sélectionner au moins un rôle'));
       return;
     }
 
@@ -74,7 +79,15 @@ export const AdminInviteCollaborator: React.FC = () => {
     try {
       const response = await inviteCollaborator(tenantId, formData);
       if (response.success) {
-        message.success(t('Invitation envoyée avec succès'));
+        const warning = t(
+          "Invitation créée, mais l'e-mail n'a pas pu être envoyé. Utilisez « Renvoyer » pour réessayer."
+        );
+        if (isInvitationEmailNotSent(response, warning)) {
+          // Invitation créée mais e-mail non parti : ne pas annoncer un succès.
+          message.warning(response.message || warning);
+        } else {
+          message.success(t('Invitation envoyée avec succès'));
+        }
         navigate(`/admin/tenants/${tenantId}`);
       } else {
         setError(response.message || t("Erreur lors de l'invitation"));
@@ -103,7 +116,9 @@ export const AdminInviteCollaborator: React.FC = () => {
           </button>
           <div>
             <h1 className="text-3xl font-bold text-slate-900">{t('Inviter un collaborateur')}</h1>
-            <p className="mt-2 text-sm text-slate-600">{tenant ? `Tenant: ${tenant.name}` : 'Chargement...'}</p>
+            <p className="mt-2 text-sm text-slate-600">
+              {tenant ? t('Agence : {{value}}', { value: tenant.name }) : t('Chargement...')}
+            </p>
           </div>
         </div>
 
@@ -118,7 +133,9 @@ export const AdminInviteCollaborator: React.FC = () => {
           <div className="bg-primary-bg border border-primary-border rounded-md p-4">
             <div className="flex items-center gap-2">
               <Mail className="h-5 w-5 text-primary" />
-              <p className="text-sm text-primary-active">{t('Une invitation sera envoyee par email au collaborateur.')}</p>
+              <p className="text-sm text-primary-active">
+                {t('Une invitation sera envoyée par e-mail au collaborateur.')}
+              </p>
             </div>
           </div>
 
@@ -140,36 +157,39 @@ export const AdminInviteCollaborator: React.FC = () => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              {t('Roles')} <span className="text-red-500">*</span>
+              {t('Rôles')} <span className="text-red-500">*</span>
             </label>
             {roles.length === 0 ? (
               <div className="text-center py-4">
                 <Users className="h-8 w-8 mx-auto text-gray-400" />
-                <p className="mt-2 text-sm text-gray-500">{t('Chargement des roles...')}</p>
+                <p className="mt-2 text-sm text-gray-500">{t('Chargement des rôles...')}</p>
               </div>
             ) : (
               <div className="space-y-2">
-                {roles.map(role => (
-                  <label
-                    key={role.id}
-                    className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${
-                      formData.roleIds.includes(role.id)
-                        ? 'border-primary bg-primary-bg'
-                        : 'border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={formData.roleIds.includes(role.id)}
-                      onChange={() => handleRoleToggle(role.id)}
-                      className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
-                    />
-                    <div className="ms-3">
-                      <div className="text-sm font-medium text-gray-900">{role.name}</div>
-                      {role.description && <div className="text-sm text-gray-500">{role.description}</div>}
-                    </div>
-                  </label>
-                ))}
+                {roles.map(role => {
+                  const { name: labelFr, description: descFr } = getRoleLabelFr(role.key, role.name, role.description);
+                  return (
+                    <label
+                      key={role.id}
+                      className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${
+                        formData.roleIds.includes(role.id)
+                          ? 'border-primary bg-primary-bg'
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.roleIds.includes(role.id)}
+                        onChange={() => handleRoleToggle(role.id)}
+                        className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
+                      />
+                      <div className="ms-3">
+                        <div className="text-sm font-medium text-gray-900">{labelFr}</div>
+                        {descFr && <div className="text-sm text-gray-500">{descFr}</div>}
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             )}
           </div>

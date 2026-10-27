@@ -33,7 +33,13 @@ function run(handler: any, query: Record<string, string>) {
     res.body = body;
     return res;
   };
-  return handler(req, res).then(() => res);
+  // Les handlers en `asyncHandler` confient l'erreur typée au middleware : `next`
+  // applique ici son statut, comme `toErrorResponse`.
+  const next = (err: any) => {
+    res.statusCode = err?.statusCode ?? 500;
+    res.body = { success: false, message: err?.message };
+  };
+  return Promise.resolve(handler(req, res, next)).then(() => res);
 }
 
 describe.each([

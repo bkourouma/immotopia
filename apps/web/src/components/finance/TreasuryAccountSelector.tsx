@@ -20,7 +20,33 @@ import { t } from '../../i18n/t';
  * `listTreasuryAccounts` : ce composant le réutilise sans dupliquer le
  * service réseau.
  */
-export type TreasuryPaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'MOBILE_MONEY' | 'CHECK' | 'CARD' | 'OTHER';
+export type TreasuryPaymentMethod =
+  'CASH' | 'BANK_TRANSFER' | 'MOBILE_MONEY' | 'DIRECT_DEBIT' | 'CHECK' | 'CARD' | 'OTHER';
+
+/**
+ * Sens du mouvement. `in` (défaut) : un encaissement, où un chèque ou une carte
+ * reçus attendent en « à encaisser ». `out` : un règlement sortant, qui sort de
+ * la caisse (espèces), d'un portefeuille (Mobile Money) ou de la banque (virement,
+ * chèque émis, carte) — jamais d'un compte « à encaisser ». Miroir de
+ * `outflowKindsForMethod` côté API.
+ */
+export type TreasuryDirection = 'in' | 'out';
+
+function outflowKindsFor(method: TreasuryPaymentMethod | null | undefined): TreasuryAccountKind[] {
+  switch (method) {
+    case 'CASH':
+      return ['CASH'];
+    case 'MOBILE_MONEY':
+      return ['MOBILE_MONEY'];
+    case 'BANK_TRANSFER':
+    case 'DIRECT_DEBIT':
+    case 'CHECK':
+    case 'CARD':
+      return ['BANK'];
+    default:
+      return ['CASH', 'BANK', 'MOBILE_MONEY'];
+  }
+}
 
 /** Natures de compte acceptées pour un moyen de paiement. `null` = toutes. */
 function kindsAcceptedFor(method: TreasuryPaymentMethod | null | undefined): TreasuryAccountKind[] | null {
@@ -28,6 +54,7 @@ function kindsAcceptedFor(method: TreasuryPaymentMethod | null | undefined): Tre
     case 'CASH':
       return ['CASH'];
     case 'BANK_TRANSFER':
+    case 'DIRECT_DEBIT':
       return ['BANK'];
     case 'MOBILE_MONEY':
       return ['MOBILE_MONEY'];
@@ -51,6 +78,8 @@ function libelleCompte(compte: TreasuryAccountDto): string {
 interface TreasuryAccountSelectorProps {
   tenantId: string;
   paymentMethod: TreasuryPaymentMethod | null | undefined;
+  /** `out` pour un règlement sortant (fournisseur…). Défaut : `in`. */
+  direction?: TreasuryDirection;
   /**
    * Facultatifs : dans un `<Form.Item name="…">`, Ant Design les injecte lui-même
    * (dépense d'un bien, mouvement de dépôt). Hors formulaire, les passer.
@@ -67,6 +96,7 @@ interface TreasuryAccountSelectorProps {
 export const TreasuryAccountSelector: React.FC<TreasuryAccountSelectorProps> = ({
   tenantId,
   paymentMethod,
+  direction = 'in',
   value,
   onChange,
   disabled,
@@ -83,12 +113,12 @@ export const TreasuryAccountSelector: React.FC<TreasuryAccountSelectorProps> = (
   });
 
   const options = useMemo(() => {
-    const naturesAcceptees = kindsAcceptedFor(paymentMethod);
+    const naturesAcceptees = direction === 'out' ? outflowKindsFor(paymentMethod) : kindsAcceptedFor(paymentMethod);
     return comptes
       .filter(compte => compte.isActive)
       .filter(compte => !naturesAcceptees || naturesAcceptees.includes(compte.kind))
       .map(compte => ({ value: compte.id, label: libelleCompte(compte) }));
-  }, [comptes, paymentMethod]);
+  }, [comptes, paymentMethod, direction]);
 
   return (
     <Select

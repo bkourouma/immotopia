@@ -1,8 +1,10 @@
 /**
  * Événements de notification et abonnement : liste filtrée et garde d'écriture.
  *
- * Même règle que les autres gardes : rien ne change hors mode `enforce`, et une
- * panne du calcul des droits laisse tout passer. Un événement d'une
+ * Même règle que les autres gardes : rien ne change hors mode `enforce`. Une
+ * panne du calcul des droits : en `enforce`, 503 ENTITLEMENTS_UNAVAILABLE (la
+ * liste comme la modification sont refusées, aucun filtrage deviné) ; en
+ * `warn` ou `off`, tout passe et la panne est journalisée. Un événement d'une
  * fonctionnalité non comprise (NONE) n'est pas listé et ne se modifie pas
  * (403 `MODULE_NOT_INCLUDED`) ; un module retiré (READ_ONLY, D11) reste listé
  * pour consultation mais ne se modifie plus (403 `MODULE_READ_ONLY`).
@@ -13,6 +15,8 @@ import { ModuleNotIncludedError, ModuleReadOnlyError } from '../../middleware/er
 import { getEntitlements } from '../../services/subscription-v2-service';
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
+import { EntitlementsUnavailableError } from '../../middleware/subscription-feature-middleware';
+import { getSubscriptionEnforcement } from './enforcement';
 import { evaluateFeatureAccess } from './feature-access';
 import type { Feature } from './features';
 
@@ -28,10 +32,13 @@ async function denialFor(tenantId: string, feature: Feature, write: boolean): Pr
     if (decision.allowed || decision.code === 'SUBSCRIPTION_READ_ONLY') return null;
     return { code: decision.code, moduleKey: decision.moduleKey };
   } catch (error) {
-    logger.error('Notification gate: entitlements unavailable, not filtered', {
-      tenantId,
-      error: error instanceof Error ? error.message : String(error)
-    });
+    const mode = getSubscriptionEnforcement();
+    const details = { tenantId, feature, mode, error: error instanceof Error ? error.message : String(error) };
+    if (mode === 'enforce') {
+      logger.error('Notification gate: entitlements unavailable, refused', details);
+      throw new EntitlementsUnavailableError();
+    }
+    logger.warn('Notification gate: entitlements unavailable, not filtered', details);
     return null;
   }
 }

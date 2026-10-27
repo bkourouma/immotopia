@@ -49,6 +49,7 @@ import {
 } from '../../components/primitives';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { localizedList, localizedRecord } from '../../i18n/localized';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 
 const { Title, Text } = Typography;
@@ -71,18 +72,48 @@ const { TextArea } = Input;
 
 type Onglet = 'comptes' | 'virements' | 'retenues';
 
-const KIND_LABEL: Record<TreasuryAccountKind, string> = {
+const KIND_LABEL: Record<TreasuryAccountKind, string> = localizedRecord(() => ({
   CASH: t('Caisse'),
   BANK: t('Banque'),
   MOBILE_MONEY: t('Mobile Money'),
   CHECKS_TO_CASH: t('Chèques à encaisser'),
   CARDS_TO_CASH: t('Cartes à encaisser')
-};
-
-const OPTIONS_NATURE = (Object.keys(KIND_LABEL) as TreasuryAccountKind[]).map(kind => ({
-  value: kind,
-  label: KIND_LABEL[kind]
 }));
+
+const OPTIONS_NATURE = localizedList(() =>
+  (Object.keys(KIND_LABEL) as TreasuryAccountKind[]).map(kind => ({
+    value: kind,
+    label: KIND_LABEL[kind]
+  }))
+);
+
+/**
+ * Opérateurs Mobile Money : les codes attendus par l'API (`MobileMoneyOperator`),
+ * avec des libellés français. Le champ était une saisie libre (« Ex. Wave, Orange
+ * Money, MTN ») que l'API refusait en 400 : « Orange » ou « Orange Money » ne
+ * passaient pas, seul « ORANGE » (BUG-2026-09-29-004).
+ */
+const OPTIONS_OPERATEUR_MOBILE_MONEY = localizedList(() => [
+  { value: 'ORANGE', label: t('Orange Money') },
+  { value: 'MTN', label: t('MTN MoMo') },
+  { value: 'MOOV', label: t('Moov Money') },
+  { value: 'WAVE', label: t('Wave') },
+  { value: 'OTHER', label: t('Autre') }
+]);
+
+function libelleOperateur(code: string | null | undefined): string {
+  if (!code) return '—';
+  return OPTIONS_OPERATEUR_MOBILE_MONEY.find(o => o.value === code)?.label ?? code;
+}
+
+/** Numéro d'exemple selon la nature choisie (SYSCOHADA) : « 5711 » ne vaut que pour une caisse. */
+const EXEMPLE_NUMERO_COMPTE: Record<TreasuryAccountKind, string> = {
+  CASH: '5711',
+  BANK: '5211',
+  MOBILE_MONEY: '5522',
+  CHECKS_TO_CASH: '513',
+  CARDS_TO_CASH: '515'
+};
 
 function dateHeure(iso: string): string {
   return dayjs(iso).format(dateFormat('dateTime'));
@@ -280,7 +311,7 @@ export const Tresorerie: React.FC = () => {
       key: 'detail',
       render: (_, c) =>
         c.kind === 'MOBILE_MONEY'
-          ? c.mmOperator || '—'
+          ? libelleOperateur(c.mmOperator)
           : c.kind === 'BANK'
             ? [c.bankName, c.bankAccountRef].filter(Boolean).join(' · ') || '—'
             : '—'
@@ -293,7 +324,13 @@ export const Tresorerie: React.FC = () => {
         <StatusTag status={c.isActive ? 'ACTIVE' : 'INACTIVE'} tone={c.isActive ? 'success' : 'neutral'} />
       )
     },
-    { title: t('Solde'), key: 'solde', align: 'end', render: (_, c) => <MoneyValue value={c.balance} /> },
+    {
+      title: t('Solde'),
+      key: 'solde',
+      align: 'end',
+      render: (_, c) => <MoneyValue value={c.balance} />,
+      exportValue: c => c.balance
+    },
     {
       title: t('Actions'),
       key: 'actions',
@@ -329,6 +366,7 @@ export const Tresorerie: React.FC = () => {
       </div>
 
       <DataView<TreasuryAccountDto>
+        export={{ filename: t('Comptes de trésorerie') }}
         paginated={false}
         items={comptes}
         total={comptes.length}
@@ -338,6 +376,7 @@ export const Tresorerie: React.FC = () => {
         loading={comptesQuery.isPending}
         isReloading={comptesQuery.isFetching && !comptesQuery.isPending}
         error={comptesQuery.error ? t('Impossible de charger les comptes de trésorerie.') : null}
+        errorCause={comptesQuery.error}
         onRetry={() => comptesQuery.refetch()}
         emptyDescription={t('Aucun compte de trésorerie.')}
         emptyAction={{ label: t('Nouveau compte'), onClick: ouvrirCreationCompte }}
@@ -427,7 +466,13 @@ export const Tresorerie: React.FC = () => {
     { title: t('Numéro'), key: 'numero', render: (_, v) => v.number },
     { title: t('De'), key: 'de', render: (_, v) => v.fromLabel },
     { title: t('Vers'), key: 'vers', render: (_, v) => v.toLabel },
-    { title: t('Montant'), key: 'montant', align: 'end', render: (_, v) => <MoneyValue value={v.amount} /> },
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      render: (_, v) => <MoneyValue value={v.amount} />,
+      exportValue: v => v.amount
+    },
     { title: t('Date'), key: 'date', render: (_, v) => dateJour(v.transferredAt) },
     {
       title: t('Statut'),
@@ -470,6 +515,7 @@ export const Tresorerie: React.FC = () => {
       </div>
 
       <DataView<TreasuryTransferDto>
+        export={{ filename: t('Virements internes') }}
         paginated={false}
         items={virements}
         total={virements.length}
@@ -479,6 +525,7 @@ export const Tresorerie: React.FC = () => {
         loading={virementsQuery.isPending}
         isReloading={virementsQuery.isFetching && !virementsQuery.isPending}
         error={virementsQuery.error ? t('Impossible de charger les virements internes.') : null}
+        errorCause={virementsQuery.error}
         onRetry={() => virementsQuery.refetch()}
         emptyDescription={t('Aucun virement interne.')}
         emptyAction={{ label: t('Nouveau virement'), onClick: ouvrirCreationVirement }}
@@ -567,7 +614,13 @@ export const Tresorerie: React.FC = () => {
   const colonnesVersements: ColumnsType<TaxRemittanceDto> = [
     { title: t('Numéro'), key: 'numero', render: (_, v) => v.number },
     { title: t('Période'), key: 'periode', render: (_, v) => v.periodLabel },
-    { title: t('Montant'), key: 'montant', align: 'end', render: (_, v) => <MoneyValue value={v.amount} /> },
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      render: (_, v) => <MoneyValue value={v.amount} />,
+      exportValue: v => v.amount
+    },
     { title: t('Date'), key: 'date', render: (_, v) => dateJour(v.paidAt) },
     { title: t('Compte'), key: 'compte', render: (_, v) => v.treasuryLabel },
     {
@@ -645,6 +698,7 @@ export const Tresorerie: React.FC = () => {
           </div>
 
           <DataView<TaxRemittanceDto>
+            export={{ filename: t('Versements à la DGI') }}
             paginated={false}
             items={versements}
             total={versements.length}
@@ -654,6 +708,7 @@ export const Tresorerie: React.FC = () => {
             loading={versementsQuery.isPending}
             isReloading={versementsQuery.isFetching && !versementsQuery.isPending}
             error={versementsQuery.error ? t('Impossible de charger les versements à la DGI.') : null}
+            errorCause={versementsQuery.error}
             onRetry={() => versementsQuery.refetch()}
             emptyDescription={t('Aucun versement à la DGI.')}
             emptyAction={
@@ -739,7 +794,7 @@ export const Tresorerie: React.FC = () => {
             )}
             rules={[{ required: true, message: t('Le numéro de compte est obligatoire.') }]}
           >
-            <Input placeholder="5711" />
+            <Input placeholder={natureChoisie ? EXEMPLE_NUMERO_COMPTE[natureChoisie] : '5711'} />
           </Form.Item>
           {natureChoisie === 'MOBILE_MONEY' && (
             <Form.Item
@@ -747,7 +802,7 @@ export const Tresorerie: React.FC = () => {
               label={t('Opérateur Mobile Money')}
               rules={[{ required: true, message: t("L'opérateur est obligatoire.") }]}
             >
-              <Input placeholder={t('Ex. Wave, Orange Money, MTN')} />
+              <Select options={OPTIONS_OPERATEUR_MOBILE_MONEY} placeholder={t("Choisir l'opérateur")} />
             </Form.Item>
           )}
           {natureChoisie === 'BANK' && (

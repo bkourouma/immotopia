@@ -1,7 +1,8 @@
 import React from 'react';
-import { Button, Popconfirm, Space, Table, Tag } from 'antd';
+import { Button, Popconfirm, Space, Tag } from 'antd';
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import type { InsurancePolicyDto } from '../../types/insurance-types';
+import { Table } from '../primitives';
 import { t } from '../../i18n/t';
 import {
   coverageLabel,
@@ -27,6 +28,7 @@ export const PolicyList: React.FC<Props> = ({ policies, canEdit, deletingId, onE
     size="small"
     pagination={false}
     dataSource={policies}
+    exportFilename={t("Polices d'assurance")}
     scroll={{ x: 'max-content' }}
     columns={[
       { title: t('Assureur'), dataIndex: 'insurer' },

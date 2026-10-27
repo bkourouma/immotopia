@@ -32,7 +32,11 @@ export interface UpdateItemInput {
 }
 
 /** `PATCH /api/admin/tenants/:tenantId/subscription/items/:itemId` — remise ou prix figé (audit). */
-export async function updateSubscriptionItem(tenantId: string, itemId: string, input: UpdateItemInput): Promise<SubscriptionItemDTO> {
+export async function updateSubscriptionItem(
+  tenantId: string,
+  itemId: string,
+  input: UpdateItemInput
+): Promise<SubscriptionItemDTO> {
   const response = await apiClient.patch<Envelope<SubscriptionItemDTO>>(
     `/admin/tenants/${tenantId}/subscription/items/${itemId}`,
     input
@@ -57,9 +61,12 @@ export interface SubscriptionSummary {
 /** `GET /api/admin/subscriptions/summaries?tenantIds=` — une requête pour toute la page. */
 export async function getSubscriptionSummaries(tenantIds: string[]): Promise<Record<string, SubscriptionSummary>> {
   if (tenantIds.length === 0) return {};
-  const response = await apiClient.get<Envelope<Record<string, SubscriptionSummary>>>('/admin/subscriptions/summaries', {
-    params: { tenantIds: tenantIds.join(',') }
-  });
+  const response = await apiClient.get<Envelope<Record<string, SubscriptionSummary>>>(
+    '/admin/subscriptions/summaries',
+    {
+      params: { tenantIds: tenantIds.join(',') }
+    }
+  );
   return response.data.data;
 }
 
@@ -89,20 +96,30 @@ export interface ExtensionRequestInput {
 }
 
 /** Agence : `POST /api/tenants/:tenantId/subscription/extension-requests`. */
-export async function createExtensionRequest(tenantId: string, input: ExtensionRequestInput): Promise<ExtensionRequest> {
-  const response = await apiClient.post<Envelope<ExtensionRequest>>(`/tenants/${tenantId}/subscription/extension-requests`, input);
+export async function createExtensionRequest(
+  tenantId: string,
+  input: ExtensionRequestInput
+): Promise<ExtensionRequest> {
+  const response = await apiClient.post<Envelope<ExtensionRequest>>(
+    `/tenants/${tenantId}/subscription/extension-requests`,
+    input
+  );
   return response.data.data;
 }
 
 /** Agence : ses propres demandes. */
 export async function listOwnExtensionRequests(tenantId: string): Promise<ExtensionRequest[]> {
-  const response = await apiClient.get<Envelope<ExtensionRequest[]>>(`/tenants/${tenantId}/subscription/extension-requests`);
+  const response = await apiClient.get<Envelope<ExtensionRequest[]>>(
+    `/tenants/${tenantId}/subscription/extension-requests`
+  );
   return response.data.data;
 }
 
 /** Super-admin : demandes d'une agence (fiche agence). */
 export async function listExtensionRequests(tenantId: string): Promise<ExtensionRequest[]> {
-  const response = await apiClient.get<Envelope<ExtensionRequest[]>>(`/admin/tenants/${tenantId}/subscription/extension-requests`);
+  const response = await apiClient.get<Envelope<ExtensionRequest[]>>(
+    `/admin/tenants/${tenantId}/subscription/extension-requests`
+  );
   return response.data.data;
 }
 
@@ -114,6 +131,28 @@ export async function handleExtensionRequest(
   const response = await apiClient.patch<Envelope<ExtensionRequest>>(
     `/admin/tenants/${tenantId}/subscription/extension-requests/${requestId}`,
     input
+  );
+  return response.data.data;
+}
+
+/**
+ * `ExtensionOfferDto` : extension du catalogue ouverte par les packs de l'agence.
+ * `monthlyPrice` : une unité, HT, au tarif applicable aux packs détenus.
+ * `isSellable` faux : tarif pas encore décidé, la demande est traitée à la main.
+ */
+export interface ExtensionOffer {
+  code: string;
+  name: string;
+  description: string | null;
+  monthlyPrice: number;
+  capacities: Partial<Record<CapacityKeyCode, number>>;
+  isSellable: boolean;
+}
+
+/** Agence : `GET /api/tenants/:tenantId/subscription/extension-offers`. */
+export async function listExtensionOffers(tenantId: string): Promise<ExtensionOffer[]> {
+  const response = await apiClient.get<Envelope<ExtensionOffer[]>>(
+    `/tenants/${tenantId}/subscription/extension-offers`
   );
   return response.data.data;
 }

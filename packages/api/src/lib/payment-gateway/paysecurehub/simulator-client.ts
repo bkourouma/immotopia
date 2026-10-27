@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { prisma } from '../../../utils/database';
 import { env } from '../../../config/env';
 import { mapProviderState } from '../status-mapping';
-import { isPlatformCodePaiement } from '../codes';
+import { isPlatformCodePaiement, isSyndicCodePaiement } from '../codes';
 import type {
   BalanceResult,
   BuildAwayRequest,
@@ -31,16 +31,16 @@ export const simulatorClient: GatewayClient = {
   },
 
   async getStatus(credentials: GatewayCredentials, codePaiement: string): Promise<ProviderStatus> {
-    // Facture d'abonnement (compte ImmoTopia, code « IMP- ») ou loyer (lot 7).
+    // Facture d'abonnement (compte ImmoTopia, code « IMP- »), appels de charges
+    // d'une copropriété (code « IMS- », spec 042) ou loyer (lot 7). Toujours
+    // filtré par l'agence des identifiants fournis.
+    const select = { simulatedOutcome: true, amount: true } as const;
+    const where = { codePaiement, tenantId: credentials.tenantId };
     const checkout = isPlatformCodePaiement(codePaiement)
-      ? await prisma.platformPaymentCheckout.findFirst({
-          where: { codePaiement, tenantId: credentials.tenantId },
-          select: { simulatedOutcome: true, amount: true }
-        })
-      : await prisma.onlinePaymentCheckout.findFirst({
-          where: { codePaiement, tenantId: credentials.tenantId },
-          select: { simulatedOutcome: true, amount: true }
-        });
+      ? await prisma.platformPaymentCheckout.findFirst({ where, select })
+      : isSyndicCodePaiement(codePaiement)
+        ? await prisma.syndicOnlineCheckout.findFirst({ where, select })
+        : await prisma.onlinePaymentCheckout.findFirst({ where, select });
 
     // Absence de choix du locataire : « en attente », comme un agrégateur
     // réel qui n'a encore rien à rapporter.

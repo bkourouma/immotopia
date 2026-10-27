@@ -32,7 +32,7 @@ const transactionModeLabels: Record<string, string> = {
 
 function formatPrice(price?: number, currency?: string): string {
   if (!price) return translate('Prix sur demande');
-  return new Intl.NumberFormat(activeLocale()).format(price) + ' ' + (currency || 'EUR');
+  return new Intl.NumberFormat(activeLocale()).format(price) + ' ' + (currency || 'XOF');
 }
 
 function buildPropertyHtmlBody(property: Property, imageUrls: string[]): string {

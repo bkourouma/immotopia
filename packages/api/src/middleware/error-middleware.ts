@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import multer from 'multer';
 import { logger } from '../utils/logger';
+import { maskSensitivePath } from '../utils/sensitive-path';
 import { t } from '../i18n';
 // Effet de bord : bascule le message par défaut de Zod en français (voir
 // `lib/zod-error-map.ts`). Importé ici — le point d'entrée le plus
@@ -50,6 +51,8 @@ export const ErrorCode = {
   CONFLICT: 'CONFLICT',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   INTERNAL: 'INTERNAL',
+  // Trop de requêtes en peu de temps (429), ex. plafond de la discussion de l'AG (spec 046).
+  TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',
   // Abonnements par packs (docs/architecture/PLAN-ABONNEMENTS.md).
   MODULE_NOT_INCLUDED: 'MODULE_NOT_INCLUDED',
   MODULE_READ_ONLY: 'MODULE_READ_ONLY',
@@ -111,7 +114,50 @@ export const ErrorCode = {
   STOCK_WHATSAPP_SIMULATOR_UNAVAILABLE: 'STOCK_WHATSAPP_SIMULATOR_UNAVAILABLE',
   STOCK_WHATSAPP_SIMULATOR_FILE_TYPE: 'STOCK_WHATSAPP_SIMULATOR_FILE_TYPE',
   STOCK_WHATSAPP_FILE_TOO_LARGE: 'STOCK_WHATSAPP_FILE_TOO_LARGE',
-  STOCK_WHATSAPP_CONVERSATION_FORBIDDEN: 'STOCK_WHATSAPP_CONVERSATION_FORBIDDEN'
+  STOCK_WHATSAPP_CONVERSATION_FORBIDDEN: 'STOCK_WHATSAPP_CONVERSATION_FORBIDDEN',
+  // Visio integree a l'AG en direct (spec 045) : LiveKit injoignable ou en erreur.
+  VISIO_UNAVAILABLE: 'VISIO_UNAVAILABLE',
+  // Paiement mobile des copropriétaires (spec 042, contracts §0.2).
+  ONLINE_PAYMENT_UNAVAILABLE: 'ONLINE_PAYMENT_UNAVAILABLE',
+  ONLINE_PAYMENT_NOTHING_DUE: 'ONLINE_PAYMENT_NOTHING_DUE',
+  CHARGE_CALL_ALREADY_SETTLED: 'CHARGE_CALL_ALREADY_SETTLED',
+  ONLINE_PAYMENT_CURRENCY_UNSUPPORTED: 'ONLINE_PAYMENT_CURRENCY_UNSUPPORTED',
+  ONLINE_PAYMENT_IN_PROGRESS: 'ONLINE_PAYMENT_IN_PROGRESS',
+  ONLINE_PAYMENT_UNDER_REVIEW: 'ONLINE_PAYMENT_UNDER_REVIEW',
+  ONLINE_PAYMENT_PROVIDER_UNREACHABLE: 'ONLINE_PAYMENT_PROVIDER_UNREACHABLE',
+  SYNDIC_FEATURE_DENIED: 'SYNDIC_FEATURE_DENIED',
+  GATEWAY_ENCRYPTION_UNAVAILABLE: 'GATEWAY_ENCRYPTION_UNAVAILABLE',
+  GATEWAY_SIMULATOR_UNAVAILABLE: 'GATEWAY_SIMULATOR_UNAVAILABLE',
+  GATEWAY_CREDENTIALS_REQUIRED: 'GATEWAY_CREDENTIALS_REQUIRED',
+  GATEWAY_CHECKOUTS_PENDING: 'GATEWAY_CHECKOUTS_PENDING',
+  CHECKOUT_NOT_VERIFIABLE: 'CHECKOUT_NOT_VERIFIABLE',
+  CHECKOUT_NOT_IN_REVIEW: 'CHECKOUT_NOT_IN_REVIEW',
+  REVIEW_NOT_REJECTABLE: 'REVIEW_NOT_REJECTABLE',
+  REVIEW_NOT_ACCEPTABLE: 'REVIEW_NOT_ACCEPTABLE',
+  PAYOUT_EXCEEDS_COLLECTED: 'PAYOUT_EXCEEDS_COLLECTED',
+  PAYOUT_DUPLICATE: 'PAYOUT_DUPLICATE',
+  // Paiement mobile money déclaré (spec 047, contracts §0.2). Levés en `AppError`
+  // avec le statut du tableau : 400, 409, 413 (preuve trop lourde) ou 429 (quota).
+  DECLARED_PAYMENT_UNAVAILABLE: 'DECLARED_PAYMENT_UNAVAILABLE',
+  RECEIVING_NUMBER_INACTIVE: 'RECEIVING_NUMBER_INACTIVE',
+  RECEIVING_NUMBER_DUPLICATE: 'RECEIVING_NUMBER_DUPLICATE',
+  INVALID_PHONE: 'INVALID_PHONE',
+  INVALID_TRANSACTION_REFERENCE: 'INVALID_TRANSACTION_REFERENCE',
+  DECLARATION_AMOUNT_MISMATCH: 'DECLARATION_AMOUNT_MISMATCH',
+  DECLARATION_AMOUNT_TOO_HIGH: 'DECLARATION_AMOUNT_TOO_HIGH',
+  DECLARATION_DATE_OUT_OF_RANGE: 'DECLARATION_DATE_OUT_OF_RANGE',
+  DECLARATION_PROOF_REQUIRED: 'DECLARATION_PROOF_REQUIRED',
+  DECLARATION_PROOF_INVALID: 'DECLARATION_PROOF_INVALID',
+  DECLARATION_PROOF_TOO_LARGE: 'DECLARATION_PROOF_TOO_LARGE',
+  DECLARATION_REFERENCE_USED: 'DECLARATION_REFERENCE_USED',
+  DECLARATION_PENDING_LIMIT: 'DECLARATION_PENDING_LIMIT',
+  DECLARATION_NOT_PENDING: 'DECLARATION_NOT_PENDING',
+  CHARGE_CALL_DECLARATION_PENDING: 'CHARGE_CALL_DECLARATION_PENDING',
+  CHARGE_CALL_ONLINE_PAYMENT_PENDING: 'CHARGE_CALL_ONLINE_PAYMENT_PENDING',
+  RECEIVING_NUMBER_IN_USE: 'RECEIVING_NUMBER_IN_USE',
+  PROOF_READ_UNAVAILABLE: 'PROOF_READ_UNAVAILABLE',
+  PROOF_READ_QUOTA_EXCEEDED: 'PROOF_READ_QUOTA_EXCEEDED',
+  PROOF_READ_INVALID: 'PROOF_READ_INVALID'
 } as const;
 
 type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -185,6 +231,13 @@ export class ConflictError extends AppError {
   }
 }
 
+/** Trop de requetes en peu de temps (429). */
+export class TooManyRequestsError extends AppError {
+  constructor(message = 'Trop de requêtes, réessayez dans un instant.') {
+    super(message, 429, ErrorCode.TOO_MANY_REQUESTS);
+  }
+}
+
 export class ValidationError extends AppError {
   constructor(message = 'Les données fournies sont invalides.', errors?: Array<{ field: string; message: string }>) {
     super(message, 422, ErrorCode.VALIDATION_ERROR, errors);
@@ -239,6 +292,8 @@ export class SubscriptionReadOnlyError extends AppError {
 export type ThirdPartyAction =
   'MANDATE' | 'THIRD_PARTY_OWNER' | 'OWNER_STATEMENT' | 'OWNER_ACCOUNT' | 'OWNER_FEE_TERMS' | 'AGENT_COMMISSION';
 
+// Cles dynamiques : ces messages sont traduits ailleurs par `t(variable)` (docs/architecture/i18n.md).
+// @i18n-keys
 const OWN_ASSETS_ONLY_MESSAGES: Record<ThirdPartyAction, string> = {
   MANDATE: 'Le pack Patrimoine couvre les biens détenus en propre : la création d’un mandat exige le pack Agence.',
   THIRD_PARTY_OWNER:
@@ -389,9 +444,32 @@ function toErrorResponse(err: unknown): { status: number; body: ErrorResponse } 
             code: ErrorCode.CONFLICT
           }
         };
+      case 'P2023':
+        // Valeur d'identifiant illisible pour la colonne (UUID mal formé dans
+        // l'URL : `/syndics/mandants`) : aucune ligne ne peut correspondre.
+        // Même réponse qu'un objet inexistant.
+        return {
+          status: 404,
+          body: { success: false, message: 'Ressource introuvable.', code: ErrorCode.NOT_FOUND }
+        };
       default:
         break;
     }
+  }
+
+  // Requête Prisma rejetée avant l'envoi (type de filtre ou d'enum invalide,
+  // argument manquant) : l'appelant a fourni une entrée inexploitable. Le
+  // message d'origine porte le chemin du source, le code et les noms de
+  // colonnes : il reste dans les journaux, jamais dans la réponse.
+  if (anyErr?.name === 'PrismaClientValidationError') {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: 'Les données fournies sont invalides.',
+        code: ErrorCode.VALIDATION_ERROR
+      }
+    };
   }
 
   // Une erreur Prisma non reconnue ci-dessus ne sort jamais telle quelle, meme
@@ -461,7 +539,7 @@ export function errorHandler(err: Error | AppError, req: Request, res: Response,
     method: req.method,
     // Avoid the query string: it carries one-time tokens (verify-email,
     // newsletter confirm/unsubscribe).
-    path: req.path,
+    path: maskSensitivePath(req.path),
     ip: req.ip,
     ...(status >= 500 ? { stack: (err as Error)?.stack } : {})
   });

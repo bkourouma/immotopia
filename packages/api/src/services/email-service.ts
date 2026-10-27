@@ -1,6 +1,10 @@
 import nodemailer, { Transporter } from 'nodemailer';
 import { getCurrentTenantId } from '../utils/tenant-context';
 import { currentLanguage, isLanguage, t, type Language } from '../i18n';
+import type { NotifyRecipient } from '../lib/notifications/types';
+import { redactEmailAddress } from '../lib/notifications/redact';
+
+export { redactEmailAddress };
 
 interface EmailOptions {
   to: string;
@@ -21,6 +25,60 @@ interface EmailOptions {
   asPlatform?: boolean;
   /** Pieces jointes (facture PDF). */
   attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
+  /**
+   * Masque l'adresse du destinataire dans les journaux (`j***@domaine`), n'y
+   * met pas l'objet et ne journalise d'une erreur de transport que son nom et
+   * son code. Les autres e-mails gardent leur journalisation actuelle.
+   */
+  redactRecipient?: boolean;
+  /**
+   * Journal des notifications de l'agence (menu lot 3). Absent : aucun
+   * changement. Present : l'envoi est enveloppe par `logNotificationDelivery`
+   * (ligne ecrite avant, statut mis a jour apres) sans jamais modifier
+   * l'exception ni le retour. A NE PAS renseigner pour les e-mails qui portent
+   * un jeton ou un lien secret (verification, mot de passe oublie, invitations,
+   * acces externe, factures plateforme, newsletters).
+   */
+  journal?: EmailJournal;
+}
+
+export interface EmailJournal {
+  /** Cle metier (notification_key de EmailNotificationConfig quand elle existe). */
+  key: string;
+  /**
+   * Agence du journal quand l'e-mail part sans `tenantId` (identite d'expediteur
+   * inchangee) : evite de changer l'expediteur juste pour journaliser.
+   */
+  tenantId?: string;
+  title?: string;
+  /**
+   * Corps COURT et non sensible journalise (et rejoue). Absent : corps generique
+   * (sujet + « Message envoye par e-mail. ») et livraison non rejouable.
+   */
+  body?: string;
+  recipient?: NotifyRecipient;
+  relatedEntity?: { type: string; id: string };
+  link?: string;
+  senderUserId?: string;
+  /** `false` : cet e-mail ne doit jamais etre rejoue depuis le journal (corps generique, lien ou code). */
+  replayable?: boolean;
+}
+
+/** Precisions facultatives qu'un appelant ajoute au journal d'un e-mail metier. */
+export type EmailJournalExtras = Partial<Omit<EmailJournal, 'key'>>;
+
+function journalOf(
+  key: string,
+  extras: EmailJournalExtras | undefined,
+  relatedEntity?: { type: string; id: string }
+): EmailJournal {
+  return { key, ...(relatedEntity ? { relatedEntity } : {}), ...extras };
+}
+
+/** Corps journalise par defaut : le sujet et une mention fixe, jamais le contenu de l'e-mail. */
+export function genericJournalBody(title: string): string {
+  return `${title}
+${t('Message envoyé par e-mail.')}`.slice(0, 2000);
 }
 
 /** Nom d'expediteur + Reply-To resolus pour une agence. */
@@ -140,10 +198,53 @@ export class EmailService {
   }
 
   async sendEmail(options: EmailOptions): Promise<void> {
+    if (!options.journal) return this.deliverEmail(options);
+
+    // Rien n'est tente en test (sauf ENABLE_EMAILS) : rien a journaliser.
+    const forceSend = ['1', 'true'].includes(String(process.env.ENABLE_EMAILS || '').toLowerCase());
+    const journalTenantId =
+      options.journal.tenantId ?? (options.asPlatform ? undefined : (options.tenantId ?? getCurrentTenantId()));
+    if (!journalTenantId || (process.env.NODE_ENV === 'test' && !forceSend)) return this.deliverEmail(options);
+
+    let logDelivery: typeof import('../lib/notifications/log-delivery').logNotificationDelivery;
+    try {
+      ({ logNotificationDelivery: logDelivery } = await import('../lib/notifications/log-delivery'));
+    } catch (error) {
+      console.error('Journal de notification indisponible, e-mail envoye sans journal', error);
+      return this.deliverEmail(options);
+    }
+    const journal = options.journal;
+    await logDelivery({
+      tenantId: journalTenantId,
+      recipient: { ...journal.recipient, email: journal.recipient?.email ?? options.to },
+      key: journal.key,
+      title: journal.title ?? options.subject,
+      // Defaut inverse : sans `journal.body` explicite, AUCUNE copie du texte ni du HTML.
+      body: journal.body ?? genericJournalBody(journal.title ?? options.subject),
+      link: journal.link,
+      channel: 'EMAIL',
+      target: options.to,
+      // Prelevements : adresse masquee dans le journal, donc livraison non rejouable.
+      ...(options.redactRecipient ? { redactTarget: true } : {}),
+      ...(journal.replayable !== true ? { replayable: false } : {}),
+      senderUserId: journal.senderUserId,
+      relatedEntity: journal.relatedEntity,
+      run: async () => {
+        await this.deliverEmail(options);
+      }
+    });
+  }
+
+  /** Envoi SMTP proprement dit (comportement historique de `sendEmail`). */
+  private async deliverEmail(options: EmailOptions): Promise<void> {
     // Skip during Jest/automated tests unless ENABLE_EMAILS=1 (for manual testing)
     const forceSend = ['1', 'true'].includes(String(process.env.ENABLE_EMAILS || '').toLowerCase());
     if (process.env.NODE_ENV === 'test' && !forceSend) {
-      console.log('[EmailService] Skipped (NODE_ENV=test):', options.subject, '→', options.to);
+      if (options.redactRecipient) {
+        console.log('[EmailService] Skipped (NODE_ENV=test):', redactEmailAddress(options.to));
+      } else {
+        console.log('[EmailService] Skipped (NODE_ENV=test):', options.subject, '→', options.to);
+      }
       return;
     }
 
@@ -170,13 +271,27 @@ export class EmailService {
         ...(options.attachments?.length ? { attachments: options.attachments } : {}),
         ...(identity?.contactEmail ? { replyTo: identity.contactEmail } : {})
       });
-      console.log('Email sent successfully:', {
-        messageId: info.messageId,
-        to: options.to,
-        subject: options.subject
-      });
+      if (options.redactRecipient) {
+        console.log('Email sent successfully:', { messageId: info.messageId, to: redactEmailAddress(options.to) });
+      } else {
+        console.log('Email sent successfully:', {
+          messageId: info.messageId,
+          to: options.to,
+          subject: options.subject
+        });
+      }
     } catch (error) {
-      console.error('Error sending email:', error);
+      if (options.redactRecipient) {
+        // Ni l'adresse ni le texte brut du transport (qui peut la reprendre).
+        const failure = error as { name?: unknown; code?: unknown } | null;
+        console.error('Error sending email:', {
+          errorName: typeof failure?.name === 'string' ? failure.name : 'UnknownError',
+          code: typeof failure?.code === 'string' ? failure.code : undefined,
+          to: redactEmailAddress(options.to)
+        });
+      } else {
+        console.error('Error sending email:', error);
+      }
       // Re-throw error so calling code can handle it appropriately
       throw error;
     }
@@ -312,6 +427,7 @@ export class EmailService {
     leaseNumber: string,
     details: import('../utils/payment-email-templates').PaymentDeclarationEmailData,
     options?: {
+      journal?: EmailJournalExtras;
       leaseLabel?: string;
       validationUrl?: string;
       agencyName?: string;
@@ -361,7 +477,13 @@ export class EmailService {
     }
     const amountStr = new Intl.NumberFormat('fr-FR', { style: 'decimal' }).format(details.amount);
     const text = `Bonjour ${agencyUserName},\n\nUn locataire (${declarerName}) a déclaré un paiement de ${amountStr} FCFA pour le bail ${leaseNumber} (date: ${details.paymentDate}). Connectez-vous pour valider ou rejeter.`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({
+      to,
+      subject,
+      text,
+      html,
+      journal: journalOf('PAYMENT_DECLARATION_AGENCY', options?.journal)
+    });
   }
 
   /**
@@ -374,6 +496,7 @@ export class EmailService {
     leaseNumber: string,
     details: import('../utils/payment-email-templates').PaymentDeclarationEmailData,
     options?: {
+      journal?: EmailJournalExtras;
       leaseLabel?: string;
       portalUrl?: string;
       allocatedInstallmentPeriod?: string;
@@ -426,7 +549,7 @@ export class EmailService {
     const amountStr = new Intl.NumberFormat('fr-FR', { style: 'decimal' }).format(details.amount);
     const agencyText = options?.agencyName || "l'agence";
     const text = `Bonjour ${tenantName},\n\nVotre déclaration de paiement de ${amountStr} FCFA pour le bail ${leaseNumber} a été approuvée par ${agencyText}.`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({ to, subject, text, html, journal: journalOf('PAYMENT_APPROVED_TENANT', options?.journal) });
   }
 
   /**
@@ -439,7 +562,13 @@ export class EmailService {
     leaseNumber: string,
     details: import('../utils/payment-email-templates').PaymentDeclarationEmailData,
     reviewNotes: string | null,
-    options?: { leaseLabel?: string; portalUrl?: string; agencyName?: string; templateOverrides?: TemplateOverrides }
+    options?: {
+      journal?: EmailJournalExtras;
+      leaseLabel?: string;
+      portalUrl?: string;
+      agencyName?: string;
+      templateOverrides?: TemplateOverrides;
+    }
   ): Promise<void> {
     const { buildPaymentDetailsCard, emailWrapper } = await import('../utils/payment-email-templates');
     const portalUrl = options?.portalUrl || getBaseUrl();
@@ -483,7 +612,7 @@ export class EmailService {
     const amountStr = new Intl.NumberFormat('fr-FR', { style: 'decimal' }).format(details.amount);
     const agencyText = options?.agencyName || "l'agence";
     const text = `Bonjour ${tenantName},\n\nVotre déclaration de paiement de ${amountStr} FCFA pour le bail ${leaseNumber} a été rejetée par ${agencyText}.${reviewNotes ? '\nCommentaire: ' + reviewNotes : ''}`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({ to, subject, text, html, journal: journalOf('PAYMENT_REJECTED_TENANT', options?.journal) });
   }
 
   /**
@@ -496,7 +625,13 @@ export class EmailService {
     leaseNumber: string,
     amountAllocated: number,
     installmentPeriods: string[],
-    options?: { leaseLabel?: string; portalUrl?: string; agencyName?: string; templateOverrides?: TemplateOverrides }
+    options?: {
+      journal?: EmailJournalExtras;
+      leaseLabel?: string;
+      portalUrl?: string;
+      agencyName?: string;
+      templateOverrides?: TemplateOverrides;
+    }
   ): Promise<void> {
     const { emailWrapper } = await import('../utils/payment-email-templates');
     const portalUrl = options?.portalUrl || getBaseUrl();
@@ -538,7 +673,167 @@ export class EmailService {
     }
     const agencyText = options?.agencyName || "l'agence";
     const text = `Bonjour ${tenantName},\n\n${agencyText} a alloué ${amountStr} FCFA de votre paiement aux échéances : ${installmentPeriods.join(', ')}. Bail : ${leaseNumber}.`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({ to, subject, text, html, journal: journalOf('PAYMENT_ALLOCATED_TENANT', options?.journal) });
+  }
+
+  /**
+   * Prénotification d'un prélèvement bancaire (spec 042, P2). Ne contient jamais l'IBAN complet : `ibanMasked` seulement.
+   * Placeholders: debtorName, agencyName, amount, collectionDate, period, leaseNumber, ibanMasked, mandateReference, creditorIdentifier.
+   */
+  async sendDirectDebitPrenotification(
+    to: string,
+    vars: {
+      debtorName: string;
+      agencyName: string;
+      amount: string;
+      collectionDate: string;
+      period: string;
+      leaseNumber: string;
+      ibanMasked: string;
+      mandateReference: string;
+      creditorIdentifier: string;
+    },
+    options?: { journal?: EmailJournalExtras; tenantId?: string; templateOverrides?: TemplateOverrides }
+  ): Promise<void> {
+    const { emailWrapper } = await import('../utils/payment-email-templates');
+    const { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } = await import('../constants/email-notification-default-templates');
+    const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES.DIRECT_DEBIT_PRENOTIFICATION;
+    const subject = applyTemplate(options?.templateOverrides?.subject || defaults.subject, vars);
+    const html = emailWrapper(applyTemplate(options?.templateOverrides?.bodyHtml || defaults.bodyHtml, vars, true));
+    const text = `Bonjour ${vars.debtorName},
+
+${vars.agencyName} prélèvera ${vars.amount} sur votre compte ${vars.ibanMasked} le ${vars.collectionDate} (loyer ${vars.period}, bail ${vars.leaseNumber}, mandat ${vars.mandateReference}).`;
+    // Adresse d'un débiteur : masquée dans les journaux.
+    await this.sendEmail({
+      to,
+      subject,
+      text,
+      html,
+      tenantId: options?.tenantId,
+      redactRecipient: true,
+      journal: journalOf('DIRECT_DEBIT_PRENOTIFICATION', options?.journal)
+    });
+  }
+
+  /**
+   * Rejet d'un prélèvement bancaire (spec 042, P3). Ne contient jamais l'IBAN complet : `ibanMasked` seulement.
+   * Placeholders: debtorName, agencyName, mandateReference, ibanMasked, amount, collectionDate, reason,
+   * rejectFee (texte vide si aucun frais), suspensionNotice (texte vide si le mandat n'est pas suspendu).
+   */
+  async sendDirectDebitRejected(
+    to: string,
+    vars: {
+      debtorName: string;
+      agencyName: string;
+      mandateReference: string;
+      ibanMasked: string;
+      amount: string;
+      collectionDate: string;
+      reason: string;
+      rejectFee: string;
+      suspensionNotice: string;
+    },
+    options?: { journal?: EmailJournalExtras; tenantId?: string; templateOverrides?: TemplateOverrides }
+  ): Promise<void> {
+    const { emailWrapper } = await import('../utils/payment-email-templates');
+    const { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } = await import('../constants/email-notification-default-templates');
+    const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES.DIRECT_DEBIT_REJECTED;
+    const subject = applyTemplate(options?.templateOverrides?.subject || defaults.subject, vars);
+    const html = emailWrapper(applyTemplate(options?.templateOverrides?.bodyHtml || defaults.bodyHtml, vars, true));
+    const text = `Bonjour ${vars.debtorName},
+
+Le prélèvement de ${vars.amount} prévu le ${vars.collectionDate} par ${vars.agencyName} sur votre compte ${vars.ibanMasked} (mandat ${vars.mandateReference}) a été rejeté. Motif : ${vars.reason}. ${vars.rejectFee} ${vars.suspensionNotice}`.trim();
+    // Adresse d'un débiteur : masquée dans les journaux.
+    await this.sendEmail({
+      to,
+      subject,
+      text,
+      html,
+      tenantId: options?.tenantId,
+      redactRecipient: true,
+      journal: journalOf('DIRECT_DEBIT_REJECTED', options?.journal)
+    });
+  }
+
+  /**
+   * Prénotification d'un prélèvement d'appels de charges (spec 042, P4). Ne contient jamais l'IBAN complet : `ibanMasked` seulement.
+   * Placeholders: debtorName, agencyName, syndicateName, lotNumber, amount, collectionDate, ibanMasked, mandateReference, creditorIdentifier.
+   */
+  async sendSyndicDirectDebitPrenotification(
+    to: string,
+    vars: {
+      debtorName: string;
+      agencyName: string;
+      syndicateName: string;
+      lotNumber: string;
+      amount: string;
+      collectionDate: string;
+      ibanMasked: string;
+      mandateReference: string;
+      creditorIdentifier: string;
+    },
+    options?: { journal?: EmailJournalExtras; tenantId?: string; templateOverrides?: TemplateOverrides }
+  ): Promise<void> {
+    const { emailWrapper } = await import('../utils/payment-email-templates');
+    const { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } = await import('../constants/email-notification-default-templates');
+    const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES.SYNDIC_DIRECT_DEBIT_PRENOTIFICATION;
+    const subject = applyTemplate(options?.templateOverrides?.subject || defaults.subject, vars);
+    const html = emailWrapper(applyTemplate(options?.templateOverrides?.bodyHtml || defaults.bodyHtml, vars, true));
+    const text = `Bonjour ${vars.debtorName},
+
+${vars.agencyName} prélèvera ${vars.amount} sur votre compte ${vars.ibanMasked} le ${vars.collectionDate} (charges du lot ${vars.lotNumber}, copropriété ${vars.syndicateName}, mandat ${vars.mandateReference}).`;
+    // Adresse d'un débiteur : masquée dans les journaux.
+    await this.sendEmail({
+      to,
+      subject,
+      text,
+      html,
+      tenantId: options?.tenantId,
+      redactRecipient: true,
+      journal: journalOf('SYNDIC_DIRECT_DEBIT_PRENOTIFICATION', options?.journal)
+    });
+  }
+
+  /**
+   * Rejet d'un prélèvement d'appels de charges (spec 042, P4). Ne contient jamais l'IBAN complet : `ibanMasked` seulement.
+   * Placeholders: debtorName, agencyName, syndicateName, lotNumber, mandateReference, ibanMasked, amount, collectionDate, reason,
+   * rejectFee (texte vide : aucun frais en copropriété), suspensionNotice (texte vide si le mandat n'est pas suspendu).
+   */
+  async sendSyndicDirectDebitRejected(
+    to: string,
+    vars: {
+      debtorName: string;
+      agencyName: string;
+      syndicateName: string;
+      lotNumber: string;
+      mandateReference: string;
+      ibanMasked: string;
+      amount: string;
+      collectionDate: string;
+      reason: string;
+      rejectFee: string;
+      suspensionNotice: string;
+    },
+    options?: { journal?: EmailJournalExtras; tenantId?: string; templateOverrides?: TemplateOverrides }
+  ): Promise<void> {
+    const { emailWrapper } = await import('../utils/payment-email-templates');
+    const { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } = await import('../constants/email-notification-default-templates');
+    const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES.SYNDIC_DIRECT_DEBIT_REJECTED;
+    const subject = applyTemplate(options?.templateOverrides?.subject || defaults.subject, vars);
+    const html = emailWrapper(applyTemplate(options?.templateOverrides?.bodyHtml || defaults.bodyHtml, vars, true));
+    const text = `Bonjour ${vars.debtorName},
+
+Le prélèvement de ${vars.amount} prévu le ${vars.collectionDate} par ${vars.agencyName} sur votre compte ${vars.ibanMasked} (charges du lot ${vars.lotNumber}, mandat ${vars.mandateReference}) a été rejeté. Motif : ${vars.reason}. ${vars.rejectFee} ${vars.suspensionNotice}`.trim();
+    // Adresse d'un débiteur : masquée dans les journaux.
+    await this.sendEmail({
+      to,
+      subject,
+      text,
+      html,
+      tenantId: options?.tenantId,
+      redactRecipient: true,
+      journal: journalOf('SYNDIC_DIRECT_DEBIT_REJECTED', options?.journal)
+    });
   }
 
   /**
@@ -553,6 +848,7 @@ export class EmailService {
     propertyReference: string,
     validationUrl: string,
     options?: {
+      journal?: EmailJournalExtras;
       agencyName?: string;
       renterName?: string;
       ticketCreatedAt?: string;
@@ -595,7 +891,16 @@ export class EmailService {
     }
     const renterLabel = options?.renterName || 'Un locataire';
     const text = `Bonjour ${agencyUserName},\n\n${renterLabel} a créé un ticket de maintenance : ${ticketTitle}. Connectez-vous pour le consulter.`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({
+      to,
+      subject,
+      text,
+      html,
+      journal: journalOf('MAINTENANCE_TICKET_CREATED_AGENCY', options?.journal, {
+        type: 'MaintenanceTicket',
+        id: ticketId
+      })
+    });
   }
 
   /**
@@ -609,7 +914,7 @@ export class EmailService {
     propertyReference: string,
     ticketCreatedAt: string,
     portalUrl: string,
-    options?: { agencyName?: string; templateOverrides?: TemplateOverrides }
+    options?: { journal?: EmailJournalExtras; agencyName?: string; templateOverrides?: TemplateOverrides }
   ): Promise<void> {
     const { emailWrapper } = await import('../utils/payment-email-templates');
     const vars = {
@@ -643,7 +948,13 @@ export class EmailService {
       html = emailWrapper(content);
     }
     const text = `Bonjour ${tenantName},\n\nVotre demande de maintenance "${ticketTitle}" a bien été enregistrée. Suivez votre ticket dans le portail locataire.`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({
+      to,
+      subject,
+      text,
+      html,
+      journal: journalOf('MAINTENANCE_TICKET_CREATED_TENANT', options?.journal)
+    });
   }
 
   /**
@@ -656,7 +967,12 @@ export class EmailService {
     ticketTitle: string,
     propertyReference: string,
     ticketCreatedAt: string,
-    options?: { agencyName?: string; renterName?: string; templateOverrides?: TemplateOverrides }
+    options?: {
+      journal?: EmailJournalExtras;
+      agencyName?: string;
+      renterName?: string;
+      templateOverrides?: TemplateOverrides;
+    }
   ): Promise<void> {
     const { emailWrapper } = await import('../utils/payment-email-templates');
     const vars = {
@@ -690,7 +1006,13 @@ export class EmailService {
       html = emailWrapper(content);
     }
     const text = `Bonjour ${ownerName},\n\nUn ticket de maintenance a été créé par ${vars.renterName} pour votre bien. Sujet : ${ticketTitle}.`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({
+      to,
+      subject,
+      text,
+      html,
+      journal: journalOf('MAINTENANCE_TICKET_CREATED_OWNER', options?.journal)
+    });
   }
 
   /**
@@ -705,6 +1027,7 @@ export class EmailService {
     newStatusLabel: string,
     portalUrl: string,
     options?: {
+      journal?: EmailJournalExtras;
       agencyName?: string;
       ticketCreatedAt?: string;
       ticketUpdatedAt?: string;
@@ -747,7 +1070,13 @@ export class EmailService {
     }
     const agencyLabel = options?.agencyName ? escapeHtml(options.agencyName) : "l'agence";
     const text = `Bonjour ${tenantName},\n\n${agencyLabel} a mis à jour le statut de votre ticket "${ticketTitle}" : ${newStatusLabel}.`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({
+      to,
+      subject,
+      text,
+      html,
+      journal: journalOf('MAINTENANCE_TICKET_STATUS_CHANGED_TENANT', options?.journal)
+    });
   }
 
   /**
@@ -760,7 +1089,12 @@ export class EmailService {
     renterName: string,
     leaseNumber: string,
     details: import('../utils/payment-email-templates').PaymentDeclarationEmailData,
-    options?: { leaseLabel?: string; agencyName?: string; templateOverrides?: TemplateOverrides }
+    options?: {
+      journal?: EmailJournalExtras;
+      leaseLabel?: string;
+      agencyName?: string;
+      templateOverrides?: TemplateOverrides;
+    }
   ): Promise<void> {
     const { buildPaymentDetailsCard, emailWrapper } = await import('../utils/payment-email-templates');
     const agencyNameVal = options?.agencyName || "l'agence";
@@ -799,7 +1133,7 @@ export class EmailService {
     const amountStr = new Intl.NumberFormat('fr-FR', { style: 'decimal' }).format(details.amount);
     const agencyText = options?.agencyName || "l'agence";
     const text = `Bonjour ${ownerName},\n\nLa déclaration de paiement de ${renterName} (${amountStr} FCFA) pour le bail ${leaseNumber} a été approuvée par ${agencyText}.`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({ to, subject, text, html, journal: journalOf('PAYMENT_APPROVED_OWNER', options?.journal) });
   }
 
   /**
@@ -813,7 +1147,12 @@ export class EmailService {
     leaseNumber: string,
     details: import('../utils/payment-email-templates').PaymentDeclarationEmailData,
     reviewNotes: string | null,
-    options?: { leaseLabel?: string; agencyName?: string; templateOverrides?: TemplateOverrides }
+    options?: {
+      journal?: EmailJournalExtras;
+      leaseLabel?: string;
+      agencyName?: string;
+      templateOverrides?: TemplateOverrides;
+    }
   ): Promise<void> {
     const { buildPaymentDetailsCard, emailWrapper } = await import('../utils/payment-email-templates');
     const agencyNameVal = options?.agencyName || "l'agence";
@@ -855,7 +1194,7 @@ export class EmailService {
     const amountStr = new Intl.NumberFormat('fr-FR', { style: 'decimal' }).format(details.amount);
     const agencyText = options?.agencyName || "l'agence";
     const text = `Bonjour ${ownerName},\n\nLa déclaration de paiement de ${renterName} (${amountStr} FCFA) pour le bail ${leaseNumber} a été rejetée par ${agencyText}.${reviewNotes ? '\nCommentaire: ' + reviewNotes : ''}`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({ to, subject, text, html, journal: journalOf('PAYMENT_REJECTED_OWNER', options?.journal) });
   }
 
   /**
@@ -869,7 +1208,12 @@ export class EmailService {
     leaseNumber: string,
     amountAllocated: number,
     installmentPeriods: string[],
-    options?: { leaseLabel?: string; agencyName?: string; templateOverrides?: TemplateOverrides }
+    options?: {
+      journal?: EmailJournalExtras;
+      leaseLabel?: string;
+      agencyName?: string;
+      templateOverrides?: TemplateOverrides;
+    }
   ): Promise<void> {
     const { emailWrapper } = await import('../utils/payment-email-templates');
     const agencyNameVal = options?.agencyName || "l'agence";
@@ -908,7 +1252,7 @@ export class EmailService {
     }
     const agencyText = options?.agencyName || "l'agence";
     const text = `Bonjour ${ownerName},\n\n${agencyText} a alloué ${amountStr} FCFA du paiement de ${renterName} aux échéances : ${installmentPeriods.join(', ')}. Bail : ${leaseNumber}.`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({ to, subject, text, html, journal: journalOf('PAYMENT_ALLOCATED_OWNER', options?.journal) });
   }
 
   /**
@@ -922,7 +1266,12 @@ export class EmailService {
     oldStatusLabel: string,
     newStatusLabel: string,
     agencyName: string,
-    options?: { ticketCreatedAt?: string; ticketUpdatedAt?: string; templateOverrides?: TemplateOverrides }
+    options?: {
+      journal?: EmailJournalExtras;
+      ticketCreatedAt?: string;
+      ticketUpdatedAt?: string;
+      templateOverrides?: TemplateOverrides;
+    }
   ): Promise<void> {
     const { emailWrapper } = await import('../utils/payment-email-templates');
     const vars = {
@@ -958,7 +1307,13 @@ export class EmailService {
       html = emailWrapper(content);
     }
     const text = `Bonjour ${ownerName},\n\n${agencyName} a mis à jour le statut du ticket de maintenance "${ticketTitle}" concernant votre bien : ${newStatusLabel}.`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({
+      to,
+      subject,
+      text,
+      html,
+      journal: journalOf('MAINTENANCE_TICKET_STATUS_CHANGED_OWNER', options?.journal)
+    });
   }
 
   /**
@@ -972,7 +1327,13 @@ export class EmailService {
     amount: string,
     currency: string,
     leaseNumber: string,
-    options?: { leaseLabel?: string; agencyName?: string; portalUrl?: string; templateOverrides?: TemplateOverrides }
+    options?: {
+      journal?: EmailJournalExtras;
+      leaseLabel?: string;
+      agencyName?: string;
+      portalUrl?: string;
+      templateOverrides?: TemplateOverrides;
+    }
   ): Promise<void> {
     const { emailWrapper } = await import('../utils/payment-email-templates');
     const vars = {
@@ -1010,7 +1371,7 @@ export class EmailService {
       html = emailWrapper(content);
     }
     const text = `Bonjour ${tenantName},\n\n${options?.agencyName || "L'agence"} a enregistré un mouvement sur votre dépôt de garantie : ${movementTypeLabel}, ${amount} ${currency}. Bail : ${leaseNumber}.`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({ to, subject, text, html, journal: journalOf('DEPOSIT_MOVEMENT_TENANT', options?.journal) });
   }
 
   /**
@@ -1025,7 +1386,12 @@ export class EmailService {
     amount: string,
     currency: string,
     leaseNumber: string,
-    options?: { leaseLabel?: string; agencyName?: string; templateOverrides?: TemplateOverrides }
+    options?: {
+      journal?: EmailJournalExtras;
+      leaseLabel?: string;
+      agencyName?: string;
+      templateOverrides?: TemplateOverrides;
+    }
   ): Promise<void> {
     const { emailWrapper } = await import('../utils/payment-email-templates');
     const vars = {
@@ -1059,7 +1425,7 @@ export class EmailService {
       html = emailWrapper(content);
     }
     const text = `Bonjour ${ownerName},\n\n${options?.agencyName || "L'agence"} a enregistré un mouvement sur le dépôt de garantie du bail de ${renterName} : ${movementTypeLabel}, ${amount} ${currency}. Bail : ${leaseNumber}.`;
-    await this.sendEmail({ to, subject, text, html });
+    await this.sendEmail({ to, subject, text, html, journal: journalOf('DEPOSIT_MOVEMENT_OWNER', options?.journal) });
   }
 }
 

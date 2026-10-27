@@ -35,7 +35,10 @@ interface DashboardData {
     id: string;
     period: string;
     dueDate: string;
+    /** Reste dû. */
     amount: number;
+    totalAmount?: number;
+    amountPaid?: number;
     status: string;
   } | null;
   recentPayments: Array<{
@@ -117,6 +120,7 @@ export default function TenantDashboard() {
       BANK_TRANSFER: t('Virement bancaire'),
       CHECK: t('Chèque'),
       MOBILE_MONEY: t('Mobile Money'),
+      DIRECT_DEBIT: t('Prélèvement bancaire'),
       CARD: 'Carte',
       OTHER: 'Autre'
     };
@@ -253,6 +257,16 @@ export default function TenantDashboard() {
                     {formatDate(data.nextInstallment.dueDate)} ({data.nextInstallment.period})
                   </Text>
                 </div>
+                {(data.nextInstallment.amountPaid ?? 0) > 0 && (
+                  <div>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {t('Reste dû : {{paid}} déjà réglés sur {{total}}', {
+                        paid: formatCurrency(data.nextInstallment.amountPaid ?? 0),
+                        total: formatCurrency(data.nextInstallment.totalAmount ?? data.nextInstallment.amount)
+                      })}
+                    </Text>
+                  </div>
+                )}
               </>
             ) : (
               <>

@@ -147,7 +147,12 @@ async function sendToRecipients(
         to: recipient.email,
         subject: applyTemplate(config.subjectOverride || defaults.subject, variables),
         html: applyTemplate(config.bodyHtmlOverride || defaults.bodyHtml, bodyVariables),
-        tenantId
+        tenantId,
+        journal: {
+          key: EVENT_KEY,
+          recipient: { email: recipient.email, label: recipient.fullName ?? undefined },
+          relatedEntity: { type: 'LandRegularizationStep', id: stepId }
+        }
       });
       delivered += 1;
     } catch (error) {

@@ -89,3 +89,13 @@ export const requireDocumentsGenerate = requirePermission('RENTAL_DOCUMENTS_GENE
  * Middleware to require RENTAL_DOCUMENTS_EDIT permission
  */
 export const requireDocumentsEdit = requirePermission('RENTAL_DOCUMENTS_EDIT');
+
+/**
+ * Middleware to require RENTAL_DIRECT_DEBIT_VIEW permission
+ */
+export const requireDirectDebitView = requirePermission('RENTAL_DIRECT_DEBIT_VIEW');
+
+/**
+ * Middleware to require RENTAL_DIRECT_DEBIT_MANAGE permission
+ */
+export const requireDirectDebitManage = requirePermission('RENTAL_DIRECT_DEBIT_MANAGE');

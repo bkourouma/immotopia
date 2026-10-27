@@ -14,6 +14,8 @@ import {
 } from '../services/rental-payment-declaration-service';
 import { PaymentDeclarationStatus } from '@prisma/client';
 import { parsePagination } from '../utils/pagination-helper';
+import { parseEnumParam } from '../utils/query-params';
+import { respondWithAppError } from '../utils/app-error-response';
 
 // Validation schemas
 const approvePaymentDeclarationSchema = z.object({
@@ -169,8 +171,9 @@ export async function listPaymentDeclarationsHandler(req: Request, res: Response
 
     // Parse filters from query params
     const filters: any = {};
-    if (req.query.status) {
-      filters.status = req.query.status as PaymentDeclarationStatus;
+    const statusFilter = parseEnumParam(req.query.status, PaymentDeclarationStatus, 'status');
+    if (statusFilter) {
+      filters.status = statusFilter;
     }
     if (req.query.leaseId) {
       filters.leaseId = req.query.leaseId as string;
@@ -197,6 +200,7 @@ export async function listPaymentDeclarationsHandler(req: Request, res: Response
       pagination: result.pagination
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error) {
       res.status(400).json({
         success: false,

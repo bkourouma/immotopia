@@ -3,8 +3,27 @@ export type ChargeCallStatus = 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE';
 export type MeetingStatus = 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 export type MeetingType = 'ORDINARY' | 'EXTRAORDINARY';
 export type VoteChoice = 'FOR' | 'AGAINST' | 'ABSTAIN';
+/** État du vote d'une résolution en AG en direct (spec 043). */
+export type ResolutionVoteStatus = 'PENDING' | 'OPEN' | 'CLOSED';
+/** Origine d'un vote : gestionnaire, copropriétaire connecté ou mandataire. */
+export type VoteSource = 'MANAGER' | 'CO_OWNER' | 'PROXY_HOLDER';
 
 export type LotType = 'APARTMENT' | 'PARKING' | 'CELLAR' | 'OFFICE' | 'COMMERCIAL' | 'OTHER';
+
+/**
+ * Accès au portail copropriétaire d'un lot, calculé par l'API sur ses
+ * propriétaires actuels : `NONE` sans profil propriétaire, `ACTIVE` quand
+ * tous y ont accès, `INACTIVE` quand aucun, `PARTIAL` en indivision.
+ */
+export type LotPortalAccessStatus = 'NONE' | 'INACTIVE' | 'PARTIAL' | 'ACTIVE';
+
+export interface LotPortalAccess {
+  status: LotPortalAccessStatus;
+  /** Propriétaires actuels dont l'accès au portail est ouvert. */
+  activeCount: number;
+  /** Propriétaires actuels du lot. */
+  ownerCount: number;
+}
 
 export interface SyndicateLot {
   id: string;
@@ -36,9 +55,18 @@ export interface SyndicateLot {
   specialShares?: number | null;
   ownerSince?: string | null;
   /** Propriétaires actuels (profils actifs, indivision incluse), calculés par l'API. */
-  owners?: Array<{ contactId: string; name: string; percentage: number; ownedSince: string }>;
+  owners?: Array<{
+    contactId: string;
+    name: string;
+    percentage: number;
+    ownedSince: string;
+    /** Accès au portail copropriétaire ouvert pour ce propriétaire (lots de la fiche et de la page « Lots »). */
+    portalAccessEnabled?: boolean;
+  }>;
   /** « Nom » ou « Nom 1 (50 %), Nom 2 (50 %) » ; vide sans profil propriétaire. */
   ownersLabel?: string;
+  /** Accès au portail copropriétaire des propriétaires actuels (absent des lectures qui ne le chargent pas). */
+  portalAccess?: LotPortalAccess;
   tenantAssignments?: Array<{
     id: string;
     tenantId: string;
@@ -55,9 +83,26 @@ export interface SyndicateLot {
       email?: string | null;
     } | null;
   }>;
+  /** Profils locataires actuels (isCurrent, fin nulle ou future) : fusionnés avec `tenantAssignments` pour la colonne Locataire. */
+  tenantProfiles?: Array<{
+    id: string;
+    contactId: string;
+    isCurrent: boolean;
+    tenantSince: string;
+    tenantUntil?: string | null;
+    contact?: {
+      id: string;
+      firstName?: string | null;
+      lastName?: string | null;
+      legalName?: string | null;
+    } | null;
+  }>;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Réponse de création/modification d'un lot : le lot plus d'éventuels avertissements non bloquants (total de référence des tantièmes). */
+export type SyndicateLotWithWarnings = SyndicateLot & { warnings?: string[] };
 
 export interface SyndicateCount {
   lots: number;
@@ -80,6 +125,8 @@ export interface Syndicate {
   cadastralReference?: string | null;
   totalLots: number;
   totalBuildings: number;
+  /** Hypothèse H7 : total de référence des tantièmes généraux (facultatif) ; sert à avertir si la somme des lots diffère. */
+  totalGeneralShares?: number | null;
   status: SyndicateStatus;
   regulationDocUrl?: string | null;
   /** Lot S1 (besoin 7) : agence mandante, sinon identité de l'agence elle-même. */
@@ -161,6 +208,8 @@ export interface CreateSyndicateRequest {
   cadastralReference?: string;
   totalLots?: number;
   totalBuildings?: number;
+  /** Hypothèse H7 : total de référence des tantièmes généraux (facultatif). */
+  totalGeneralShares?: number | null;
   /** Lot S1 : `null` détache (identité de l'agence), absent = pas de mandant à la création. */
   mandatingAgencyId?: string | null;
 }
@@ -173,6 +222,8 @@ export interface UpdateSyndicateRequest {
   fiscalYear?: number;
   syndicManagerId?: string | null;
   status?: SyndicateStatus;
+  /** Hypothèse H7 : total de référence des tantièmes généraux ; `null` l'efface. */
+  totalGeneralShares?: number | null;
   /** Lot S1 : `null` détache le mandant (identité de l'agence). */
   mandatingAgencyId?: string | null;
 }
@@ -222,6 +273,9 @@ export interface ImportLotsFromPropertiesResult {
   message?: string;
 }
 
+/** Répartition du montant d'un appel entre les lots (menu lot 2). */
+export type ChargeAllocationMethod = 'SHARES' | 'BY_LOT_TYPE' | 'EQUAL';
+
 export interface CreateChargeCallRequest {
   lotId?: string;
   lotIds?: string[];
@@ -230,7 +284,13 @@ export interface CreateChargeCallRequest {
   /** Lot S2 : facultatives, mais vont ensemble (les deux ou aucune). */
   periodStart?: string | null;
   periodEnd?: string | null;
-  amount: number;
+  /**
+   * Sans `allocationMethod` : montant PAR LOT (historique). Avec : TOTAL à
+   * répartir pour SHARES et EQUAL (obligatoire), omis pour BY_LOT_TYPE.
+   */
+  amount?: number;
+  /** Mode de répartition (plusieurs lots / tous les lots) ; absent = comportement historique. */
+  allocationMethod?: ChargeAllocationMethod;
   currency?: string;
   dueDate: string;
   /** Appel versé en entier à ce fonds (appel de fonds travaux). */
@@ -245,6 +305,9 @@ export interface CreateChargeCallResult {
   generatedLots: number;
   occurrences: number;
   totalCreated: number;
+  allocationMethod?: ChargeAllocationMethod;
+  /** Total réparti (somme des lots appelés) quand un mode de répartition est utilisé. */
+  totalAmount?: number;
 }
 
 export interface CreateChargePaymentRequest {
@@ -296,8 +359,20 @@ export interface MeetingResolution {
   result: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DEFERRED' | null;
   createdAt: string;
   updatedAt: string;
-  votes?: Array<{ id: string; lotId: string; vote: VoteChoice }>;
+  votes?: Array<{
+    id: string;
+    lotId: string;
+    vote: VoteChoice;
+    /** Origine du vote (spec 043) ; absente sur une API plus ancienne. */
+    source?: VoteSource;
+    castByContactId?: string | null;
+    updatedAt?: string;
+  }>;
   tally?: ResolutionTally;
+  /** État du vote en direct (spec 043) ; absent sur une API plus ancienne. */
+  voteStatus?: ResolutionVoteStatus;
+  voteOpenedAt?: string | null;
+  voteClosedAt?: string | null;
 }
 
 /** Contact CRM tel que l'API l'expose dans une assemblee. */
@@ -354,6 +429,12 @@ export interface MeetingAttendance {
   totalLots: number;
   totalShares: number;
   quorumPercent: number;
+  /** Détail présents / représentés / en ligne (spec 043) ; absent sur une API plus ancienne. */
+  presentLots?: number;
+  presentShares?: number;
+  representedOnlyLots?: number;
+  representedOnlyShares?: number;
+  onlineLots?: number;
 }
 
 export interface MeetingAgendaItem {
@@ -388,6 +469,8 @@ export interface GeneralMeeting {
   startTime?: string | null;
   endTime?: string | null;
   location?: string | null;
+  /** Lien de visioconférence externe (https), facultatif. */
+  videoConferenceUrl?: string | null;
   status: MeetingStatus;
   quorum: number;
   createdAt: string;
@@ -397,6 +480,8 @@ export interface GeneralMeeting {
   proxies?: MeetingProxy[];
   attendance?: MeetingAttendance;
   syndicate?: Syndicate;
+  /** La convocation est déjà partie. Absent (API plus ancienne) : considéré envoyé. */
+  convocationSent?: boolean;
 }
 
 export interface CreateMeetingRequest {
@@ -406,12 +491,16 @@ export interface CreateMeetingRequest {
   endTime?: string;
   location?: string;
   resolutions?: Array<{ title: string; description?: string; majorityRule?: string }>;
+  /** Envoie les convocations dès la création (défaut serveur : non). */
+  sendConvocation?: boolean;
 }
 
 export interface UpdateMeetingRequest {
   startTime?: string | null;
   endTime?: string | null;
   location?: string | null;
+  /** `null` efface le lien ; https uniquement, 2 000 caractères au plus. */
+  videoConferenceUrl?: string | null;
   status?: MeetingStatus;
 }
 
@@ -507,6 +596,8 @@ export interface SyndicateDocument {
   type: 'REGULATION' | 'GENERAL_MEETING_MINUTES' | 'DIAGNOSTIC' | 'INSURANCE' | 'BUDGET' | 'OTHER';
   fileUrl: string;
   expiresAt?: string | null;
+  /** Visible (et téléchargeable) des copropriétaires depuis leur portail. */
+  visibleToCoOwners: boolean;
   createdAt: string;
 }
 
@@ -515,6 +606,13 @@ export interface CreateSyndicateDocumentRequest {
   type: 'REGULATION' | 'GENERAL_MEETING_MINUTES' | 'DIAGNOSTIC' | 'INSURANCE' | 'BUDGET' | 'OTHER';
   file: File;
   expiresAt?: string;
+  visibleToCoOwners?: boolean;
+}
+
+export interface UpdateSyndicateDocumentRequest {
+  title?: string;
+  type?: SyndicateDocument['type'];
+  visibleToCoOwners?: boolean;
 }
 
 export interface FinanceSummary {
@@ -580,6 +678,9 @@ export interface PaymentReminder {
   sentAt: string;
   status: ReminderStatus;
   responseAction?: string | null;
+  /** Cause de l'échec d'envoi (statut Échec) : code technique et message brut. */
+  failureCode?: string | null;
+  failureMessage?: string | null;
   createdAt: string;
   updatedAt: string;
   chargeCall?: ChargeCall;
@@ -600,6 +701,40 @@ export interface ReminderBatchResult {
   createdReminderIds: string[];
   /** Relances enregistrées dont l'envoi a échoué (statut Échec). */
   notificationsFailed?: number;
+  /** Échecs d'envoi regroupés par code de cause. */
+  failuresByCause?: Record<string, number>;
+  /** Appels écartés du lot, avec leur motif. */
+  excluded?: ReminderBatchExcluded[];
+  excludedByReason?: Record<string, number>;
+}
+
+export type ReminderBatchExclusionReason = 'PAYMENT_PLAN_ACTIVE' | 'REMINDER_TOO_RECENT' | 'DECLARED_PAYMENT_PENDING';
+
+export interface ReminderBatchExcluded {
+  chargeCallId: string;
+  lotNumber: string;
+  period: string;
+  reason: ReminderBatchExclusionReason | string;
+  reasonLabel?: string;
+}
+
+export interface ReminderBatchEligible {
+  chargeCallId: string;
+  lotNumber: string;
+  period: string;
+  dueDate: string;
+  outstanding: number | string;
+  currency?: string;
+  currentLevel: number;
+  nextLevel: number;
+  lastReminderAt: string | null;
+}
+
+/** Aperçu des relances groupées : ce qui partirait, et ce qui est écarté. */
+export interface ReminderBatchPreview {
+  eligible: ReminderBatchEligible[];
+  excluded: ReminderBatchExcluded[];
+  totals: { eligible: number; excluded: number };
 }
 
 export interface LatePaymentPenalty {
@@ -865,6 +1000,10 @@ export interface BudgetLineItem {
   description: string;
   amountForecast: number | string;
   amountActual: number | string;
+  /** Coût d'incidents imputé au poste (en plus des factures prestataires de `amountActual`). */
+  actualIncidents?: number;
+  /** Réalisé complet du poste : `amountActual` + `actualIncidents`. */
+  actualTotal?: number;
   distributionKey: DistributionKey;
   accountId?: string | null;
   /** Fonds alimenté par ce poste, au prorata de chaque paiement de charges. */
@@ -889,6 +1028,14 @@ export interface BudgetAllocation {
   lot?: SyndicateLot;
 }
 
+/** Factures et imputations d'incident de l'exercice non rattachées à un poste du budget. */
+export interface BudgetUnattached {
+  invoicesCount: number;
+  invoicesAmount: number;
+  imputationsCount: number;
+  imputationsAmount: number;
+}
+
 export interface SyndicateBudget {
   id: string;
   syndicateId: string;
@@ -898,6 +1045,9 @@ export interface SyndicateBudget {
   approvedAt?: string | null;
   approvedByResolutionId?: string | null;
   totalAmount: number | string;
+  /** Réalisé complet de l'exercice (somme des `actualTotal` des postes). */
+  actualTotal?: number;
+  unattached?: BudgetUnattached;
   currency: string;
   createdAt: string;
   updatedAt: string;
@@ -1093,6 +1243,8 @@ export interface CreateLotOwnerProfileRequest {
   portalAccessEnabled?: boolean;
   notificationPrefs?: any;
   isActive?: boolean;
+  /** Lot déjà détenu par un autre contact : CLOSE (revente) clôture l'ancien, KEEP (indivision) le conserve. */
+  previousOwnersHandling?: 'CLOSE' | 'KEEP';
 }
 
 export interface CreateLotTenantProfileRequest {
@@ -1190,6 +1342,8 @@ export interface RecordLotPaymentRequest {
   reference?: string | null;
   /** Appels cochés par le gestionnaire ; absent ou vide = automatique (plus anciens d'abord). */
   chargeCallIds?: string[];
+  /** Clé d'idempotence : le serveur déduplique un rejeu (double-clic, retry réseau). */
+  idempotencyKey?: string;
 }
 
 /** Une ligne d'affectation, telle que rendue par l'enregistrement ou l'aperçu d'un paiement de lot. */
@@ -1311,6 +1465,14 @@ export interface ChargeSchedule {
   budgetId: string | null;
   budget: ChargeScheduleBudgetRef | null;
   fixedAmount: number | null;
+  /** Absent des anciennes réponses = SHARES. */
+  allocationMethod?: ChargeAllocationMethod;
+  /**
+   * Source « Montant fixe » + mode « Par tantièmes » seulement : `true` appelle tous les lots
+   * avec tantièmes (parkings et lots annexes compris), `false` les seuls lots principaux
+   * (calcul historique). Absent des anciennes réponses = `false`.
+   */
+  includeAnnexLots?: boolean;
   currency: string;
   startDate: string;
   endDate: string | null;
@@ -1477,6 +1639,10 @@ export interface CreateChargeScheduleRequest {
   amountSource: ChargeScheduleAmountSource;
   budgetId?: string | null;
   fixedAmount?: number | null;
+  /** Défaut SHARES ; BY_LOT_TYPE interdit `fixedAmount` (le total vient du barème). */
+  allocationMethod?: ChargeAllocationMethod;
+  /** Montant fixe + par tantièmes seulement. Défaut côté API : `true`. */
+  includeAnnexLots?: boolean;
   currency?: string;
   /** `AAAA-MM-JJ`. */
   startDate: string;
@@ -1532,8 +1698,15 @@ export interface ChargeSchedulePreviewPeriod extends ChargeSchedulePeriodDates {
   totalAmount: number | null;
   currency: string;
   budgetId: string | null;
+  allocationMethod?: ChargeAllocationMethod;
   lots: ChargeSchedulePreviewLot[];
   error: string | null;
+  /** L'échéance théorique serait déjà passée à l'émission (additif, absent des anciennes réponses). */
+  dueDatePassed?: boolean;
+  /** Échéance effective ISO (AAAA-MM-JJ), seulement si elle est décalée. */
+  effectiveDueDate?: string | null;
+  /** Avertissements en français rédigés par le serveur : non affichés, le front reconstruit via t(). */
+  warnings?: string[];
 }
 
 export interface ChargeSchedulePreview {

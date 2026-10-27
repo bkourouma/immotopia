@@ -67,6 +67,8 @@ const DISK = 'D:\\APP\\Immobillier\\uploads';
 
 function seed() {
   mockPrisma.reset();
+  // Les portails relisent `User.isActive` (tenant-portal-access.ts, owner-portal-access.ts).
+  mockPrisma.user.rows.push({ id: USER_AWA, isActive: true }, { id: USER_OUMAR, isActive: true });
   const ACTIVE = { status: 'ACTIVE' };
   mockPrisma.tenant.rows.push({ id: TENANT_A, status: 'ACTIVE' });
   mockPrisma.tenantClient.rows.push(

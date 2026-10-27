@@ -6,6 +6,9 @@ import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
+/** Minuscules sans accents ni espaces de bord, pour comparer la saisie aux communes. */
+const normalizeText = (text: string): string => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
 interface LocationSelectorProps {
   value?: string; // communeId
   onChange: (location: GeographicLocation | null) => void;
@@ -25,6 +28,13 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
 }) => {
   const [communes, setCommunes] = useState<GeographicLocation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [unresolved, setUnresolved] = useState(false);
+
+  // Un changement de valeur (sélection, effacement, remise à zéro) lève l'erreur locale.
+  useEffect(() => {
+    setUnresolved(false);
+  }, [value]);
 
   useEffect(() => {
     const loadCommunes = async () => {
@@ -77,6 +87,8 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
   );
 
   const handleSelect = (communeId?: string) => {
+    setSearchText('');
+    setUnresolved(false);
     if (!communeId) {
       onChange(null);
       return;
@@ -85,6 +97,34 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
     const selected = communes.find(item => item.communeId === communeId) || null;
     onChange(selected);
   };
+
+  const handleSearch = (text: string) => {
+    setSearchText(text);
+    if (!normalizeText(text)) setUnresolved(false);
+  };
+
+  // Résout le texte saisi : correspondance exacte, sinon résultat unique du filtre.
+  const resolveTypedText = () => {
+    const needle = normalizeText(searchText);
+    if (!needle) {
+      setSearchText('');
+      return;
+    }
+    const exact = communes.find(c => normalizeText(c.commune) === needle);
+    if (exact) {
+      handleSelect(exact.communeId);
+      return;
+    }
+    const matches = communes.filter(c => normalizeText(c.commune).includes(needle));
+    if (matches.length === 1) {
+      handleSelect(matches[0].communeId);
+      return;
+    }
+    setUnresolved(true);
+  };
+
+  const unresolvedMessage = !error && unresolved ? t('Choisissez une commune dans la liste') : undefined;
+  const hasError = Boolean(error || unresolvedMessage);
 
   return (
     <div className={className}>
@@ -97,18 +137,28 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
         loading={loading}
         allowClear
         onChange={selectedValue => handleSelect(selectedValue)}
+        onSearch={handleSearch}
+        onBlur={resolveTypedText}
+        onInputKeyDown={event => {
+          if (event.key === 'Enter') resolveTypedText();
+        }}
         filterOption={(input, option) => {
-          const label = String(option?.label || '').toLowerCase();
-          return label.includes(input.toLowerCase());
+          const label = normalizeText(String(option?.label || ''));
+          return label.includes(normalizeText(input));
         }}
         optionFilterProp="label"
         notFoundContent={loading ? t('Chargement des communes...') : t('Aucune commune trouvee')}
         style={{ width: '100%' }}
-        status={error ? 'error' : undefined}
+        status={hasError ? 'error' : undefined}
       />
       {error && (
         <Text type="danger" style={{ fontSize: '12px' }}>
           {error}
+        </Text>
+      )}
+      {unresolvedMessage && (
+        <Text type="danger" style={{ fontSize: '12px' }}>
+          {unresolvedMessage}
         </Text>
       )}
     </div>

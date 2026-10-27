@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Table,
   Card,
   Select,
   Button,
@@ -17,6 +16,8 @@ import {
   Col
 } from 'antd';
 import { EyeOutlined, FilterOutlined } from '@ant-design/icons';
+import { Table } from '../../../components/primitives';
+import { collectAllPages } from '../../../utils/table-export/collect';
 import { TicketStatusBadge } from '../../../components/maintenance/TicketStatusBadge';
 import { managerMaintenanceService } from '../../../services/maintenance-service';
 import { Ticket, MaintenanceTicketStatus, MaintenanceTicketPriority } from '../../../types/maintenance-types';
@@ -24,24 +25,25 @@ import { useAuth } from '../../../hooks/useAuth';
 import { safeFormatDate } from '../../../utils/date-utils';
 import dayjs from 'dayjs';
 import { t } from '../../../i18n/t';
+import { localizedRecord } from '../../../i18n/localized';
 
 const { Title } = Typography;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 
-const categoryLabels: Record<string, string> = {
+const categoryLabels: Record<string, string> = localizedRecord(() => ({
   PLUMBING: 'Plomberie',
   ELECTRICITY: t('Électricité'),
   AC: 'Climatisation',
   OTHER: 'Autre'
-};
+}));
 
-const priorityLabels: Record<string, string> = {
+const priorityLabels: Record<string, string> = localizedRecord(() => ({
   LOW: 'Faible',
   MEDIUM: 'Moyenne',
   HIGH: t('Élevée'),
   URGENT: 'Urgente'
-};
+}));
 
 const priorityColors: Record<string, string> = {
   LOW: 'default',
@@ -334,6 +336,17 @@ export const Tickets: React.FC = () => {
           ) : (
             <>
               <Table
+                exportFilename={t('Gestion des tickets de maintenance')}
+                exportFetchAll={() =>
+                  collectAllPages<Ticket>(async (page, limit) => {
+                    const reponse = await managerMaintenanceService.listTickets(effectiveTenantId as string, {
+                      ...filtresAppliques,
+                      page,
+                      limit
+                    });
+                    return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
+                  })
+                }
                 columns={columns}
                 dataSource={tickets}
                 rowKey="id"

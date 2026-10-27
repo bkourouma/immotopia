@@ -1,4 +1,5 @@
 import { t } from '../i18n/t';
+import { localizedRecord } from '../i18n/localized';
 /**
  * Contrat gelé de la frontière réseau — lot 5, deuxième sous-lot : réceptions,
  * sorties et valorisation (PRD E9, besoins S2, S3, S4).
@@ -54,7 +55,7 @@ import { t } from '../i18n/t';
 /** Les quatre natures du schéma serveur (`StockMovementType`). */
 export type StockMovementType = 'RECEIPT' | 'ISSUE' | 'TRANSFER' | 'ADJUSTMENT' | 'SUPPLIER_RETURN' | 'SCRAP';
 
-export const STOCK_MOVEMENT_TYPE_LABELS: Record<StockMovementType, string> = {
+export const STOCK_MOVEMENT_TYPE_LABELS: Record<StockMovementType, string> = localizedRecord(() => ({
   RECEIPT: t('Réception'),
   ISSUE: t('Sortie vers un chantier'),
   TRANSFER: t('Transfert entre lieux'),
@@ -62,7 +63,7 @@ export const STOCK_MOVEMENT_TYPE_LABELS: Record<StockMovementType, string> = {
   // Lot 040 (A6) : retour au fournisseur et rebut.
   SUPPLIER_RETURN: t('Retour au fournisseur'),
   SCRAP: t('Rebut')
-};
+}));
 
 /**
  * Le ton de chaque nature.
@@ -278,10 +279,10 @@ export interface StockItemRef {
 
 export type StockLocationKind = 'WAREHOUSE' | 'SITE';
 
-export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = {
+export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = localizedRecord(() => ({
   WAREHOUSE: 'Magasin',
   SITE: t('Lieu de chantier')
-};
+}));
 
 export interface StockLocationRef {
   id: string;

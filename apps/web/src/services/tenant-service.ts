@@ -32,12 +32,26 @@ export interface TenantFilters {
   limit?: number;
 }
 
+/**
+ * Contrat exact de `GET /api/admin/tenants/:id/stats`
+ * (packages/api/src/services/tenant-service.ts, `getTenantStats`) : cette
+ * interface décrivait un contrat imaginé (totalProperties/totalClients/…) qui
+ * ne correspondait à aucun champ réellement renvoyé — l'onglet Statistiques
+ * de la fiche agence affichait quatre valeurs vides (BUG-2026-09-28-001).
+ */
 export interface TenantStats {
-  totalProperties: number;
-  totalClients: number;
-  totalCollaborators: number;
-  activeModules: number;
-  lastActivity: string;
+  collaboratorCount: number;
+  activeCollaborators: number;
+  disabledCollaborators: number;
+  /** Codes bruts (`MODULE_AGENCY`, …) : passer par un libellé métier à l'affichage. */
+  enabledModules: TenantModuleKey[];
+  subscription: {
+    /** `null` pour une agence créée avec des packs (planKey déprécié). */
+    plan: TenantPlanKey | null;
+    status: string;
+    billingCycle: TenantBillingCycle;
+  } | null;
+  lastLoginAt: string | null;
 }
 
 /** Offre d'abonnement proposée à la création d'une agence. */
@@ -275,4 +289,30 @@ export interface TenantClientsResponse {
 export async function getTenantClients(tenantId: string): Promise<TenantClientsResponse> {
   const response = await apiClient.get(`/tenants/${tenantId}/clients`);
   return response.data;
+}
+
+/**
+ * Rattrape les propriétaires : crée le client Propriétaire de chaque contact
+ * CRM au rôle Propriétaire qui n'en a pas encore (idempotent). Écriture, donc
+ * POST explicite — jamais dans la lecture de la liste.
+ */
+export async function syncOwnerClients(tenantId: string): Promise<{ examined: number; created: number }> {
+  const response = await apiClient.post(`/tenants/${tenantId}/clients/sync-owners`);
+  return response.data.data;
+}
+
+/**
+ * Propriétaires de l'agence (clients de type OWNER), rattrapage compris : une
+ * seule source pour le vendeur d'un mandat, le propriétaire d'un bien (création
+ * et modification) et l'indivision. Un échec du rattrapage ne masque pas la
+ * liste : on lit alors ce qui existe.
+ */
+export async function getOwnerClients(tenantId: string): Promise<TenantClient[]> {
+  try {
+    await syncOwnerClients(tenantId);
+  } catch (error) {
+    console.error('Owner clients sync failed:', error);
+  }
+  const response = await getTenantClients(tenantId);
+  return (response.data ?? []).filter(client => client.clientType === 'OWNER');
 }

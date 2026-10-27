@@ -1,12 +1,15 @@
 import type { PrismaTransactionClient } from '../../utils/database';
+import { NotFoundError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
 import { roundMoney } from './finance-utils';
 import {
   assertFiscalYearOpenTx,
   ensureSyndicAccountsTx,
   ensureSyndicJournalTx,
+  isReceivingAccountNumber,
   postSyndicEntryTx,
-  reverseSyndicEntryTx
+  reverseSyndicEntryTx,
+  type ReceivingAccountNumber
 } from './provider-invoice-accounting';
 
 /**
@@ -49,16 +52,44 @@ export interface ChargePaymentEntryInput {
   paidAt: Date;
   method?: string | null;
   reference?: string | null;
+  /**
+   * Compte de tresorerie debite (spec 042). Absent : deduit de `method` comme
+   * avant (571 caisse pour des especes, sinon 521 banque). `5525` = compte de
+   * collecte du paiement en ligne (journal banque). `5521x` = sous-compte d'un
+   * numero de reception mobile money declare (spec 047, journal banque).
+   */
+  treasuryAccountNumber?: CollectionTreasuryAccount;
 }
+
+/** Comptes de tresorerie qu'un encaissement peut debiter. */
+export type CollectionTreasuryAccount = '521' | '571' | '5525' | ReceivingAccountNumber;
 
 /** Reference de l'ecriture : \`EC-\` puis le debut de l'identifiant du paiement. */
 export function chargePaymentEntryReference(paymentId: string): string {
   return `EC-${paymentId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
 }
 
+/** Compte 5521x de la copropriete ; absent = erreur typee (404), jamais cree a la volee. */
+async function findReceivingAccountIdTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  syndicateId: string,
+  accountNumber: ReceivingAccountNumber
+): Promise<string> {
+  const account = await tx.chartOfAccount.findFirst({
+    where: { tenantId, syndicateId, scope: 'SYNDICATE', accountNumber },
+    select: { id: true }
+  });
+  if (!account) {
+    throw new NotFoundError(t('Compte de réception mobile money introuvable dans la comptabilité de la copropriété'));
+  }
+  return account.id;
+}
+
 /**
  * Passe l'ecriture d'un encaissement (ou renvoie celle qui existe deja).
- * Refuse un exercice clos ; cree les comptes et le journal manquants.
+ * Refuse un exercice clos par une `ConflictError` (409) de
+ * `assertFiscalYearOpenTx`, reconnaissable par `instanceof ConflictError` ; cree les comptes et le journal manquants.
  */
 export async function postChargePaymentEntryTx(
   tx: PrismaTransactionClient,
@@ -73,9 +104,20 @@ export async function postChargePaymentEntryTx(
   const amount = roundMoney(input.amount);
   await assertFiscalYearOpenTx(tx, input.syndicateId, input.paidAt);
 
-  const cash = isCashMethod(input.method);
-  const treasuryNumber = cash ? '571' : '521';
-  const accounts = await ensureSyndicAccountsTx(tx, input.tenantId, input.syndicateId, ['450', treasuryNumber]);
+  const treasuryNumber: CollectionTreasuryAccount =
+    input.treasuryAccountNumber ?? (isCashMethod(input.method) ? '571' : '521');
+  const cash = treasuryNumber === '571';
+  // Un sous-compte 5521x n'est pas dans les graines : il se retrouve, il ne se cree pas ici.
+  const receiving = isReceivingAccountNumber(treasuryNumber);
+  const accounts = await ensureSyndicAccountsTx(
+    tx,
+    input.tenantId,
+    input.syndicateId,
+    receiving ? ['450'] : ['450', treasuryNumber as '521' | '571' | '5525']
+  );
+  const treasuryAccountId = receiving
+    ? await findReceivingAccountIdTx(tx, input.tenantId, input.syndicateId, treasuryNumber)
+    : accounts.get(treasuryNumber as '521' | '571' | '5525')!;
   const journalId = await ensureSyndicJournalTx(
     tx,
     input.tenantId,
@@ -89,7 +131,11 @@ export async function postChargePaymentEntryTx(
     select: { lotNumber: true }
   });
   const lotText = lot?.lotNumber ? ` - lot ${lot.lotNumber}` : '';
-  const referenceText = input.reference ? ` (${input.reference})` : '';
+  const referenceText = receiving
+    ? ` (${t('mobile money')}${input.reference ? ` ${input.reference}` : ''})`
+    : input.reference
+      ? ` (${input.reference})`
+      : '';
   const label = `${t('Encaissement appel de charges')}${lotText}${referenceText}`.slice(0, 250);
 
   return postSyndicEntryTx(tx, {
@@ -102,7 +148,7 @@ export async function postChargePaymentEntryTx(
     sourceId: input.paymentId,
     documentType: CHARGE_PAYMENT_DOCUMENT_TYPE,
     lines: [
-      { accountId: accounts.get(treasuryNumber)!, debit: amount, credit: 0, label },
+      { accountId: treasuryAccountId, debit: amount, credit: 0, label },
       { accountId: accounts.get('450')!, lotId: input.lotId, debit: 0, credit: amount, label }
     ]
   });

@@ -131,7 +131,7 @@ async function getRequiredFieldsCompletion(property: any, template: any): Promis
   let completedFields = 0;
 
   for (const field of requiredFields) {
-    const fieldPath = field.name.split('.');
+    const fieldPath = String(field.key || field.name || '').split('.');
     let value = property;
 
     // Navigate nested path
@@ -244,7 +244,7 @@ async function generateSuggestions(
     const missingFields: string[] = [];
 
     for (const field of requiredFields) {
-      const fieldPath = (field.key || field.name).split('.');
+      const fieldPath = String(field.key || field.name || '').split('.');
       let value = property;
 
       for (const segment of fieldPath) {

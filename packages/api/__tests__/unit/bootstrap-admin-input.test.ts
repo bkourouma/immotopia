@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { loginSchema, validate } from '../../src/middleware/validation-middleware';
+import { legacySanitizedPassword, loginSchema, validate } from '../../src/middleware/validation-middleware';
 import {
   BootstrapInputError,
   DEFAULT_ADMIN_NAME,
@@ -164,12 +164,20 @@ describe('synchronisation avec le vrai middleware de connexion', () => {
     expect(raw2.body.email).toBe(email);
   });
 
-  it.each(sanitizedPasswords)('mot de passe refusé %j : le middleware le modifie effectivement', pwd => {
-    expect(() => validateBootstrapPassword(pwd)).toThrow(BootstrapInputError);
-    const { body } = runLoginMiddleware({ email: 'admin@exemple.com', password: pwd });
-    expect(body.password).not.toBe(pwd);
-    expect(body.password).toBe(sanitizeLikeLogin(pwd));
-  });
+  // Depuis l'audit du 2026-10-19, le middleware ne touche plus aux mots de passe :
+  // le refus du bootstrap reste (plus strict que nécessaire, sans danger), et la
+  // forme altérée d'avant le correctif — celle que `loginUser` compare encore en
+  // second recours pour les anciens comptes — reste identique à `sanitizeLikeLogin`.
+  it.each(sanitizedPasswords)(
+    'mot de passe refusé par le bootstrap %j : le middleware le laisse intact, la forme héritée reste alignée',
+    pwd => {
+      expect(() => validateBootstrapPassword(pwd)).toThrow(BootstrapInputError);
+      const { body } = runLoginMiddleware({ email: 'admin@exemple.com', password: pwd });
+      expect(body.password).toBe(pwd);
+      expect(legacySanitizedPassword(pwd)).toBe(sanitizeLikeLogin(pwd));
+      expect(legacySanitizedPassword(pwd)).not.toBe(pwd);
+    }
+  );
 
   it.each(sanitizedEmails)('e-mail refusé par sanitation %j : le middleware le modifie effectivement', raw => {
     expect(() => normalizeAdminEmail(raw)).toThrow(BootstrapInputError);

@@ -1,5 +1,18 @@
 import apiClient from '../utils/api-client';
 import { filenameFromDisposition } from '../utils/save-blob';
+import { API_URL } from '../config/api';
+import type {
+  LiveMeetingAdminView,
+  ManagerDiscussionMessageView,
+  ManagerDiscussionView,
+  MeetingParticipantView,
+  MeetingRecordingView,
+  MeetingVisioAdminView,
+  ParticipantLink,
+  SetBulkAttendanceRequest,
+  SetLotAttendanceRequest,
+  VisioJoinInfo
+} from '../types/syndic-live-types';
 import {
   CreateAgendaItemRequest,
   ChargeCall,
@@ -25,6 +38,7 @@ import {
   CreatePaymentScheduleRequest,
   CreateResolutionRequest,
   CreateSyndicateDocumentRequest,
+  UpdateSyndicateDocumentRequest,
   FinanceSummary,
   CreateOwnerAccountAdjustmentRequest,
   CreateChargeCallRequest,
@@ -40,6 +54,7 @@ import {
   OverdueDashboard,
   PaymentReminder,
   PaymentSchedule,
+  ReminderBatchPreview,
   ReminderBatchResult,
   CreateServiceProviderRequest,
   UpdateServiceProviderRequest,
@@ -56,6 +71,7 @@ import {
   SyndicateDocument,
   Syndicate,
   SyndicateLot,
+  SyndicateLotWithWarnings,
   UpdateMeetingRequest,
   UpdateAgendaItemRequest,
   UpdateSyndicateLotRequest,
@@ -140,6 +156,7 @@ export async function updateSyndicate(
     fiscalYear: data.fiscalYear,
     syndicManagerId: data.syndicManagerId === '' ? null : data.syndicManagerId,
     status: data.status,
+    ...(data.totalGeneralShares !== undefined ? { totalGeneralShares: data.totalGeneralShares } : {}),
     ...(data.mandatingAgencyId !== undefined ? { mandatingAgencyId: data.mandatingAgencyId } : {})
   };
 
@@ -168,7 +185,7 @@ export async function createSyndicateLot(
   tenantId: string,
   syndicId: string,
   data: CreateSyndicateLotRequest
-): Promise<SyndicateLot> {
+): Promise<SyndicateLotWithWarnings> {
   const payload = {
     propertyId: data.propertyId || undefined,
     coownerId: data.ownerContactId || undefined,
@@ -180,11 +197,11 @@ export async function createSyndicateLot(
     ownerSince: data.ownerSince || undefined
   };
 
-  const response = await apiClient.post<{ success: boolean; data: SyndicateLot }>(
+  const response = await apiClient.post<{ success: boolean; data: SyndicateLot; warnings?: string[] }>(
     `/tenants/${tenantId}/syndics/${syndicId}/lots`,
     payload
   );
-  return response.data.data;
+  return { ...response.data.data, warnings: response.data.warnings };
 }
 
 export async function updateSyndicateLot(
@@ -192,7 +209,7 @@ export async function updateSyndicateLot(
   syndicId: string,
   lotId: string,
   data: UpdateSyndicateLotRequest
-): Promise<SyndicateLot> {
+): Promise<SyndicateLotWithWarnings> {
   const payload = {
     propertyId: data.propertyId === '' ? null : data.propertyId,
     coownerId: data.ownerContactId === '' ? null : data.ownerContactId,
@@ -204,11 +221,11 @@ export async function updateSyndicateLot(
     ownerSince: data.ownerSince
   };
 
-  const response = await apiClient.patch<{ success: boolean; data: SyndicateLot }>(
+  const response = await apiClient.patch<{ success: boolean; data: SyndicateLot; warnings?: string[] }>(
     `/tenants/${tenantId}/syndics/${syndicId}/lots/${lotId}`,
     payload
   );
-  return response.data.data;
+  return { ...response.data.data, warnings: response.data.warnings };
 }
 
 /**
@@ -242,6 +259,16 @@ export async function addLotTenantAssignment(
     data
   );
   return response.data.data;
+}
+
+/** Met fin à une affectation locataire (isActive false, date de fin = aujourd'hui) ; l'historique est conservé. */
+export async function deactivateLotTenantAssignment(
+  tenantId: string,
+  syndicId: string,
+  lotId: string,
+  assignmentId: string
+): Promise<void> {
+  await apiClient.delete(`/tenants/${tenantId}/syndics/${syndicId}/lots/${lotId}/tenants/${assignmentId}`);
 }
 
 export async function listChargeCalls(
@@ -369,18 +396,42 @@ export async function createMeeting(
   return response.data.data;
 }
 
-/** Crée l'assemblée et rend aussi le décompte d'envoi de la convocation. */
+/**
+ * Crée l'assemblée. Les convocations partent APRÈS la réponse (`convocationPending`) ;
+ * `idempotencyKey` rejoue la même création en cas de réessai (pas de doublon).
+ */
 export async function createMeetingWithConvocation(
   tenantId: string,
   syndicId: string,
-  data: CreateMeetingRequest
-): Promise<{ meeting: GeneralMeeting; convocation: MeetingConvocationResult | null }> {
+  data: CreateMeetingRequest,
+  idempotencyKey?: string
+): Promise<{
+  meeting: GeneralMeeting;
+  convocation: MeetingConvocationResult | null;
+  convocationPending: boolean;
+  /** Aucune convocation n'est partie à la création (`sendConvocation` absent ou faux). */
+  convocationNotSent: boolean;
+}> {
   const response = await apiClient.post<{
     success: boolean;
     data: GeneralMeeting;
-    convocation?: MeetingConvocationResult;
-  }>(`/tenants/${tenantId}/syndics/${syndicId}/assemblees`, data);
-  return { meeting: response.data.data, convocation: response.data.convocation ?? null };
+    convocation?: MeetingConvocationResult | { status: 'SENDING' | 'NOT_SENT' };
+  }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees`,
+    data,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined
+  );
+  const raw = response.data.convocation;
+  const convocationStatus = raw && 'status' in raw ? raw.status : undefined;
+  const convocationPending = convocationStatus === 'SENDING';
+  const convocationNotSent = convocationStatus === 'NOT_SENT';
+  return {
+    meeting: response.data.data,
+    convocation:
+      convocationPending || convocationNotSent ? null : ((raw as MeetingConvocationResult | undefined) ?? null),
+    convocationPending,
+    convocationNotSent
+  };
 }
 
 /** Renvoie la convocation d'une assemblée planifiée. */
@@ -454,15 +505,31 @@ export async function deleteMeetingProxy(
   return response.data.data;
 }
 
+/** `idempotencyKey` : un réessai après coupure ou 5xx rejoue la même création (pas de doublon). */
 export async function addMeetingResolution(
   tenantId: string,
   syndicId: string,
   meetingId: string,
-  data: CreateResolutionRequest
+  data: CreateResolutionRequest,
+  idempotencyKey?: string
 ) {
   const response = await apiClient.post(
     `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/resolutions`,
-    data
+    data,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined
+  );
+  return response.data.data;
+}
+
+/** Supprime une résolution sans vote (409 si AG figée, vote ouvert ou votes déjà saisis). */
+export async function deleteMeetingResolution(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  resolutionId: string
+): Promise<{ id: string }> {
+  const response = await apiClient.delete<{ success: boolean; data: { id: string } }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/resolutions/${resolutionId}`
   );
   return response.data.data;
 }
@@ -520,13 +587,40 @@ export async function deleteMeetingAgendaItem(
   return response.data.data;
 }
 
-export async function generateMeetingMinutesDocx(tenantId: string, syndicId: string, meetingId: string): Promise<Blob> {
-  const response = await apiClient.post(
+/** Convocation Word d'un lot à l'assemblée (`GET .../assemblees/:meetingId/lots/:lotId/convocation.docx`). */
+export async function downloadMeetingConvocationWord(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  lotId: string,
+  fallbackName = 'convocation.docx'
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${encodeURIComponent(meetingId)}/lots/${encodeURIComponent(lotId)}/convocation.docx`,
+    { responseType: 'blob' }
+  );
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
+}
+
+/** Compte rendu Word de l'AG ; le nom vient de `Content-Disposition`, sinon `fallbackName`. */
+export async function generateMeetingMinutesDocx(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  fallbackName = 'compte-rendu.docx'
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.post<Blob>(
     `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/compte-rendu`,
     {},
     { responseType: 'blob' }
   );
-  return response.data;
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
 }
 
 export async function listProvidersContracts(tenantId: string, syndicId: string): Promise<SyndicProvidersPayload> {
@@ -613,6 +707,9 @@ export async function createSyndicDocument(
   if (data.expiresAt) {
     formData.append('expiresAt', data.expiresAt);
   }
+  if (data.visibleToCoOwners !== undefined) {
+    formData.append('visibleToCoOwners', String(data.visibleToCoOwners));
+  }
 
   const response = await apiClient.post<{ success: boolean; data: SyndicateDocument }>(
     `/tenants/${tenantId}/syndics/${syndicId}/documents`,
@@ -622,6 +719,19 @@ export async function createSyndicDocument(
         'Content-Type': 'multipart/form-data'
       }
     }
+  );
+  return response.data.data;
+}
+
+export async function updateSyndicDocument(
+  tenantId: string,
+  syndicId: string,
+  documentId: string,
+  data: UpdateSyndicateDocumentRequest
+): Promise<SyndicateDocument> {
+  const response = await apiClient.patch<{ success: boolean; data: SyndicateDocument }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/documents/${documentId}`,
+    data
   );
   return response.data.data;
 }
@@ -657,13 +767,28 @@ export async function createManualReminder(
   syndicId: string,
   chargeId: string,
   data: CreateManualReminderRequest
-): Promise<PaymentReminder & { notificationFailed: boolean }> {
-  const response = await apiClient.post<{ success: boolean; data: PaymentReminder; notificationFailed?: boolean }>(
-    `/tenants/${tenantId}/syndics/${syndicId}/charges/${chargeId}/relance`,
-    data
-  );
+): Promise<PaymentReminder & { notificationFailed: boolean; failureCode?: string; failureMessage?: string }> {
+  const response = await apiClient.post<{
+    success: boolean;
+    data: PaymentReminder;
+    notificationFailed?: boolean;
+    failureCode?: string;
+    failureMessage?: string;
+  }>(`/tenants/${tenantId}/syndics/${syndicId}/charges/${chargeId}/relance`, data);
   // La relance est enregistrée même si l'envoi échoue : l'API le signale à part.
-  return { ...response.data.data, notificationFailed: response.data.notificationFailed === true };
+  return {
+    ...response.data.data,
+    notificationFailed: response.data.notificationFailed === true,
+    failureCode: response.data.failureCode ?? response.data.data.failureCode ?? undefined,
+    failureMessage: response.data.failureMessage ?? response.data.data.failureMessage ?? undefined
+  };
+}
+
+export async function getReminderBatchPreview(tenantId: string, syndicId: string): Promise<ReminderBatchPreview> {
+  const response = await apiClient.get<{ success: boolean; data: ReminderBatchPreview }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/relances/batch/preview`
+  );
+  return response.data.data;
 }
 
 export async function runReminderBatch(tenantId: string, syndicId: string): Promise<ReminderBatchResult> {
@@ -824,6 +949,22 @@ export async function createChartOfAccount(
   const response = await apiClient.post<{ success: boolean; data: ChartOfAccount }>(
     `/tenants/${tenantId}/syndics/${syndicId}/comptabilite/comptes`,
     data
+  );
+  return response.data.data;
+}
+
+export interface LoadSyndicChartTemplateResult {
+  created: number;
+  skipped: number;
+  total: number;
+}
+
+export async function loadSyndicChartTemplate(
+  tenantId: string,
+  syndicId: string
+): Promise<LoadSyndicChartTemplateResult> {
+  const response = await apiClient.post<{ success: boolean; data: LoadSyndicChartTemplateResult }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/comptabilite/comptes/charger-plan-syscohada`
   );
   return response.data.data;
 }
@@ -1256,4 +1397,380 @@ export async function assignBudgetLineFund(
     data
   );
   return response.data.data;
+}
+
+/* ---------------------------------------------------------------- AG en direct (spec 043) */
+
+const liveBase = (tenantId: string, syndicId: string, meetingId: string) =>
+  `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}`;
+
+/** Photographie de la séance : quorum, lots émargés, résolutions, participation. */
+export async function getLiveMeeting(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<LiveMeetingAdminView> {
+  const response = await apiClient.get<{ success: boolean; data: LiveMeetingAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/direct`,
+    { noRetry: true }
+  );
+  return response.data.data;
+}
+
+/** Émarge un lot : présent, représenté (par un contact) ou absent. */
+export async function setLotAttendance(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  lotId: string,
+  data: SetLotAttendanceRequest
+): Promise<LiveMeetingAdminView> {
+  const response = await apiClient.put<{ success: boolean; data: LiveMeetingAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/presences/${lotId}`,
+    data
+  );
+  return response.data.data;
+}
+
+/** Émargement en masse (500 lots au plus). */
+export async function setBulkAttendance(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  data: SetBulkAttendanceRequest
+): Promise<LiveMeetingAdminView> {
+  const response = await apiClient.post<{ success: boolean; data: LiveMeetingAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/presences`,
+    data
+  );
+  return response.data.data;
+}
+
+export async function openResolutionVote(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  resolutionId: string
+): Promise<LiveMeetingAdminView> {
+  const response = await apiClient.post<{ success: boolean; data: LiveMeetingAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/resolutions/${resolutionId}/ouvrir-vote`
+  );
+  return response.data.data;
+}
+
+export async function closeResolutionVote(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  resolutionId: string
+): Promise<LiveMeetingAdminView> {
+  const response = await apiClient.post<{ success: boolean; data: LiveMeetingAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/resolutions/${resolutionId}/clore-vote`
+  );
+  return response.data.data;
+}
+
+export async function listMeetingParticipants(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingParticipantView[]> {
+  const response = await apiClient.get<{ success: boolean; data: MeetingParticipantView[] }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/participants`,
+    { noRetry: true }
+  );
+  return response.data.data;
+}
+
+/** Délivre un lien personnel (le jeton n'est remis qu'une fois, dans l'URL). */
+export async function issueParticipantLink(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  contactId: string
+): Promise<ParticipantLink> {
+  const response = await apiClient.post<{ success: boolean; data: ParticipantLink }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/participants/${contactId}/lien`
+  );
+  return response.data.data;
+}
+
+export async function revokeParticipantLinks(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  contactId: string
+): Promise<{ revoked: number }> {
+  const response = await apiClient.delete<{ success: boolean; data: { revoked: number } }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/participants/${contactId}/liens`
+  );
+  return response.data.data;
+}
+
+/* ---------------------------------------------------------------- visio de l'AG (spec 045) */
+
+/** Participants en visio (mains levées, droit de parole) ; `enabled: false` si la visio n'est pas configurée. */
+export async function getMeetingVisio(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingVisioAdminView> {
+  const response = await apiClient.get<{ success: boolean; data: MeetingVisioAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio`,
+    { noRetry: true }
+  );
+  return response.data.data;
+}
+
+/** Jeton de connexion du gestionnaire (modérateur) à la salle. */
+export async function issueMeetingVisioToken(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<VisioJoinInfo> {
+  const response = await apiClient.post<{ success: boolean; data: VisioJoinInfo }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/jeton`
+  );
+  return response.data.data;
+}
+
+/** Autorise (`true`) ou interdit (`false`) micro et caméra à un copropriétaire, présent ou non (V16b). */
+export async function setVisioParticipantSpeaking(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  participantId: string,
+  allowed: boolean
+): Promise<MeetingVisioAdminView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingVisioAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/parole`,
+    { allowed }
+  );
+  return response.data.data;
+}
+
+export type VisioMuteSource = 'MICROPHONE' | 'CAMERA';
+
+/** Coupe les pistes micro et/ou caméra publiées d'un participant (il peut les rouvrir : V16c). */
+export async function muteVisioParticipant(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  participantId: string,
+  sources?: VisioMuteSource[]
+): Promise<MeetingVisioAdminView & { mutedTracks: number }> {
+  const response = await apiClient.post<{
+    success: boolean;
+    data: MeetingVisioAdminView & { mutedTracks: number };
+  }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/couper`,
+    sources ? { sources } : {}
+  );
+  return response.data.data;
+}
+
+/** Interdit (`locked: true`) ou rend (`false`) micro et caméra à tous les copropriétaires (V16d). */
+export async function setVisioMediaLock(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  locked: boolean
+): Promise<MeetingVisioAdminView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingVisioAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/media/verrou`,
+    { locked }
+  );
+  return response.data.data;
+}
+
+/** Exclut un participant de la salle, avec option de révoquer ses liens personnels. */
+export async function removeVisioParticipant(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  participantId: string,
+  revokeLinks: boolean
+): Promise<MeetingVisioAdminView & { revokedLinks: number }> {
+  const response = await apiClient.post<{
+    success: boolean;
+    data: MeetingVisioAdminView & { revokedLinks: number };
+  }>(`${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/exclure`, { revokeLinks });
+  return response.data.data;
+}
+
+/* ---------------------------------------------------------------- discussion de la visio (spec 046) */
+
+/** Toute la discussion (masqués compris), lisible à tout moment pour une AG de l'agence. */
+export async function getMeetingDiscussion(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<ManagerDiscussionView> {
+  const response = await apiClient.get<{ success: boolean; data: ManagerDiscussionView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion`,
+    { noRetry: true }
+  );
+  return response.data.data;
+}
+
+/** Message du gestionnaire (annonce, réponse) : diffusé à la salle par le serveur. */
+export async function postMeetingDiscussionMessage(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  body: string
+): Promise<ManagerDiscussionMessageView> {
+  const response = await apiClient.post<{ success: boolean; data: ManagerDiscussionMessageView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion/messages`,
+    { body }
+  );
+  return response.data.data;
+}
+
+/** Masque ou rétablit un message (idempotent). */
+export async function setMeetingDiscussionMessageHidden(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  messageId: string,
+  hidden: boolean
+): Promise<ManagerDiscussionMessageView> {
+  const response = await apiClient.post<{ success: boolean; data: ManagerDiscussionMessageView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion/messages/${messageId}/masquer`,
+    { hidden }
+  );
+  return response.data.data;
+}
+
+/** Ferme ou rouvre la discussion pour les copropriétaires (idempotent). */
+export async function setMeetingDiscussionOpen(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  open: boolean
+): Promise<{ open: boolean }> {
+  const response = await apiClient.post<{ success: boolean; data: { open: boolean } }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion/etat`,
+    { open }
+  );
+  return response.data.data;
+}
+
+/** Coupe ou rétablit l'écriture d'un participant dans la discussion (idempotent). */
+export async function setVisioParticipantWriting(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  participantId: string,
+  allowed: boolean
+): Promise<{ participantId: string; muted: boolean }> {
+  const response = await apiClient.post<{ success: boolean; data: { participantId: string; muted: boolean } }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/ecriture`,
+    { allowed }
+  );
+  return response.data.data;
+}
+
+/* ---------------------------------------------------------------- enregistrement (spec 045, R1-R10) */
+
+/** Démarre l'enregistrement de la séance (un seul actif par AG). */
+export async function startMeetingRecording(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingRecordingView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingRecordingView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/enregistrement/demarrer`
+  );
+  return response.data.data;
+}
+
+/** Arrête l'enregistrement en cours ; le fichier est ensuite traité côté serveur. */
+export async function stopMeetingRecording(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingRecordingView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingRecordingView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/enregistrement/arreter`
+  );
+  return response.data.data;
+}
+
+/** Enregistrements de l'AG, le plus récent d'abord. */
+export async function getMeetingRecordings(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingRecordingView[]> {
+  const response = await apiClient.get<{ success: boolean; data: MeetingRecordingView[] }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements`,
+    { noRetry: true }
+  );
+  return response.data.data;
+}
+
+/** Efface le fichier ; la ligne reste en `DELETED` (trace). */
+export async function deleteMeetingRecording(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  recordingId: string
+): Promise<MeetingRecordingView> {
+  const response = await apiClient.delete<{ success: boolean; data: MeetingRecordingView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements/${recordingId}`
+  );
+  return response.data.data;
+}
+
+/** Relance le rapatriement d'un enregistrement en échec (409 si ce n'est pas possible). */
+export async function retryMeetingRecording(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  recordingId: string
+): Promise<MeetingRecordingView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingRecordingView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements/${recordingId}/reessayer`
+  );
+  return response.data.data;
+}
+
+/**
+ * URL du flux vidéo (lecteur) ou du téléchargement. La route est authentifiée par
+ * le cookie de session : jamais de jeton dans l'adresse, jamais de chemin disque.
+ */
+export function meetingRecordingFileUrl(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  recordingId: string,
+  download = false
+): string {
+  const base = `${API_URL}${liveBase(tenantId, syndicId, meetingId)}/enregistrements/${recordingId}/fichier`;
+  return download ? `${base}?telecharger=1` : base;
+}
+
+/** Délai d'un téléchargement d'enregistrement : un MP4 de séance est volumineux (15 min). */
+const RECORDING_DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000;
+
+/**
+ * Télécharge le MP4 par l'API authentifiée (blob) pour pouvoir annoncer le nom du fichier et
+ * l'échec éventuel ; le nom vient de `Content-Disposition`, sinon `fallbackName`.
+ */
+export async function downloadMeetingRecordingFile(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  recordingId: string,
+  fallbackName = 'enregistrement.mp4'
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(
+    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements/${recordingId}/fichier`,
+    { params: { telecharger: 1 }, responseType: 'blob', timeout: RECORDING_DOWNLOAD_TIMEOUT_MS }
+  );
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
 }

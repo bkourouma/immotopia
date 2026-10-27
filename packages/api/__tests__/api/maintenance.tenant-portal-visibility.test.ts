@@ -88,6 +88,8 @@ const ATT_BAKARY = id(32);
 
 function seed() {
   mockPrisma.reset();
+  // Les portails relisent `User.isActive` (middleware/tenant-portal-access.ts).
+  mockPrisma.user.rows.push({ id: USER_AWA, isActive: true }, { id: USER_BAKARY, isActive: true });
   const ACTIVE = { status: 'ACTIVE' };
   mockPrisma.tenant.rows.push({ id: TENANT_A, status: 'ACTIVE' }, { id: TENANT_B, status: 'ACTIVE' });
 
@@ -158,7 +160,13 @@ function seed() {
     ...row
   });
   mockPrisma.maintenanceTicket.rows.push(
-    ticket({ id: T_AGENCY_LEASE_AWA, tenant_id: TENANT_A, property_id: P1, lease_id: L_AWA, created_by_user_id: 'u-staff' }),
+    ticket({
+      id: T_AGENCY_LEASE_AWA,
+      tenant_id: TENANT_A,
+      property_id: P1,
+      lease_id: L_AWA,
+      created_by_user_id: 'u-staff'
+    }),
     ticket({
       id: T_AGENCY_CONTACT_AWA,
       tenant_id: TENANT_A,

@@ -7,8 +7,10 @@
 type Profile = {
   id: string;
   lotId: string;
+  contactId: string;
   ownershipPercentage: number;
   isActive: boolean;
+  ownedSince: Date;
   ownedUntil: Date | null;
   portalAccessToken: string | null;
 };
@@ -20,11 +22,21 @@ jest.mock('@prisma/client', () => {
     { id: 'lot-b1', lotNumber: 'B1', syndicateId: 's1' }
   ];
   let seq = 0;
-  const currentOnly = (p: Profile, where: any) =>
-    p.lotId === where.lotId &&
-    (where.isActive === undefined || p.isActive === where.isActive) &&
-    (!where.id?.not || p.id !== where.id.not) &&
-    (!where.OR || p.ownedUntil === null || p.ownedUntil > where.OR[1].ownedUntil.gt);
+  // Evaluateur minimal du `where` Prisma : AND, OR, id { not }, dates { gt, lt }, egalite.
+  const matches = (p: any, where: any): boolean =>
+    Object.entries(where).every(([key, cond]: [string, any]) => {
+      if (key === 'AND') return (cond as any[]).every(c => matches(p, c));
+      if (key === 'OR') return (cond as any[]).some(c => matches(p, c));
+      const value = p[key];
+      if (cond === null) return value === null;
+      if (cond instanceof Date || typeof cond !== 'object') return value === cond;
+      return Object.entries(cond).every(([op, bound]: [string, any]) => {
+        if (op === 'not') return value !== bound;
+        if (op === 'gt') return value !== null && value > bound;
+        if (op === 'lt') return value !== null && value < bound;
+        return true;
+      });
+    });
 
   const prisma: any = {
     __profiles: profiles,
@@ -41,9 +53,11 @@ jest.mock('@prisma/client', () => {
             .filter(p => p.isActive && (p.ownedUntil === null || p.ownedUntil > new Date()))
             .map(p => ({ ...p, lot: { lotNumber: lots.find(l => l.id === p.lotId)!.lotNumber } }));
         }
-        return profiles.filter(p => currentOnly(p, where));
+        return profiles
+          .filter(p => matches(p, where))
+          .map(p => ({ ...p, contact: { firstName: p.contactId, lastName: 'Nom', legalName: null } }));
       }),
-      findFirst: jest.fn(async ({ where }: any) => profiles.find(p => p.id === where.id) ?? null),
+      findFirst: jest.fn(async ({ where }: any) => profiles.find(p => matches(p, where)) ?? null),
       create: jest.fn(async ({ data }: any) => {
         const profile = {
           id: `op${++seq}`,
@@ -72,17 +86,20 @@ import {
   listIncompleteOwnerSharesBySyndicate,
   updateLotOwnerProfileBySyndicate
 } from '../../src/lib/syndics/queries';
-import { ConflictError } from '../../src/middleware/error-middleware';
+import { ConflictError, errorHandler } from '../../src/middleware/error-middleware';
 import { createLotOwnerProfileSchema } from '../../src/lib/syndics/schemas';
 
 const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as { __mockPrisma: any };
 
+let contactSeq = 0;
+// Un contact distinct par appel : un meme contact ne detient qu'un profil non clos par lot.
 const create = (lotId: string, pct: number, extra: Record<string, unknown> = {}) =>
   createLotOwnerProfileBySyndicate('t1', 's1', {
     lotId,
-    contactId: 'c1',
+    contactId: `c${++contactSeq}`,
     ownershipPercentage: pct,
     ownedSince: new Date('2021-07-02T00:00:00.000Z'),
+    previousOwnersHandling: 'KEEP',
     ...extra
   });
 
@@ -140,6 +157,48 @@ describe("Parts des proprietaires d'un lot (BUG-069)", () => {
     expect(third).toBeTruthy();
   });
 
+  it('refuse un second profil non clos du meme contact sur le lot (actif ou futur), pas sur un autre lot', async () => {
+    const first = await create('lot-a201', 30, { contactId: 'dup' });
+    const error = await create('lot-a201', 30, { contactId: 'dup' }).catch(e => e);
+    expect(error).toBeInstanceOf(ConflictError);
+    expect(error.message).toBe(
+      "Ce contact est déjà propriétaire de ce lot : modifiez son profil existant au lieu d'en créer un second."
+    );
+    expect(error.errors).toEqual([{ field: 'contactId', message: error.message }]);
+    // Profil futur du meme contact : refuse aussi.
+    const future = new Date(Date.now() + 365 * 24 * 3600 * 1000);
+    await expect(create('lot-a201', 10, { contactId: 'dup', ownedSince: future })).rejects.toBeInstanceOf(
+      ConflictError
+    );
+    await expect(create('lot-b1', 30, { contactId: 'dup' })).resolves.toBeTruthy();
+    // Apres cloture du profil, le contact peut redevenir proprietaire.
+    await updateLotOwnerProfileBySyndicate('t1', 's1', first.id, { ownedUntil: new Date('2022-01-01T00:00:00.000Z') });
+    await expect(create('lot-a201', 30, { contactId: 'dup' })).resolves.toBeTruthy();
+  });
+
+  it('modification : un profil ne se compare pas a lui-meme, mais reactiver un doublon est refuse', async () => {
+    const first = await create('lot-a201', 20, { contactId: 'dup' });
+    await expect(
+      updateLotOwnerProfileBySyndicate('t1', 's1', first.id, { ownershipPercentage: 25 })
+    ).resolves.toBeTruthy();
+    await updateLotOwnerProfileBySyndicate('t1', 's1', first.id, { isActive: false });
+    await create('lot-a201', 20, { contactId: 'dup' });
+    await expect(updateLotOwnerProfileBySyndicate('t1', 's1', first.id, { isActive: true })).rejects.toMatchObject({
+      errors: [{ field: 'contactId' }]
+    });
+  });
+
+  it('compte les profils futurs qui se chevauchent, mais pas ceux d une autre periode', async () => {
+    const future = new Date(Date.now() + 365 * 24 * 3600 * 1000);
+    await create('lot-a201', 60, { ownedSince: future });
+    // Meme periode future : 60 + 50 > 100.
+    await expect(create('lot-a201', 50, { ownedSince: future })).rejects.toBeInstanceOf(ConflictError);
+    // Profil actuel sans fin : il recoupe la periode future du profil de 60 %.
+    await expect(create('lot-a201', 50)).rejects.toBeInstanceOf(ConflictError);
+    // Profil actuel qui se termine avant le debut du futur : pas de chevauchement.
+    await expect(create('lot-a201', 50, { ownedUntil: new Date(future.getTime() - 1000) })).resolves.toBeTruthy();
+  });
+
   it('bloque les parts nulles, negatives ou superieures a 100 % a la validation', () => {
     const base = {
       lotId: '11111111-1111-4111-8111-111111111111',
@@ -158,5 +217,105 @@ describe("Parts des proprietaires d'un lot (BUG-069)", () => {
     await create('lot-b1', 100);
     const incomplete = await listIncompleteOwnerSharesBySyndicate('t1', 's1');
     expect(incomplete).toEqual([{ lotId: 'lot-a201', lotNumber: 'A201', totalPercentage: 70 }]);
+  });
+
+  describe('revente ou indivision (previousOwnersHandling)', () => {
+    const sale = new Date('2024-03-01T00:00:00.000Z');
+    // Sans le choix explicite : `create` impose KEEP par defaut, ici on l'ecarte.
+    const createRaw = (lotId: string, contactId: string, pct: number, extra: Record<string, unknown> = {}) =>
+      createLotOwnerProfileBySyndicate('t1', 's1', {
+        lotId,
+        contactId,
+        ownershipPercentage: pct,
+        ownedSince: sale,
+        ...extra
+      });
+
+    it('refuse sans choix quand un autre contact est proprietaire en cours (409 OPEN_OWNERS)', async () => {
+      const seller = await create('lot-a201', 100, { contactId: 'vendeur' });
+      const error = await createRaw('lot-a201', 'acquereur', 100).catch(e => e);
+      expect(error).toBeInstanceOf(ConflictError);
+      expect(error.statusCode).toBe(409);
+      expect(error.message).toBe(
+        "Ce lot a déjà un propriétaire en cours. Indiquez s'il s'agit d'une revente ou d'une indivision."
+      );
+      expect(error.errors).toEqual([
+        {
+          field: 'previousOwnersHandling',
+          message: error.message,
+          reason: 'OPEN_OWNERS',
+          owners: [{ profileId: seller.id, contactName: 'vendeur Nom' }]
+        }
+      ]);
+      expect(error.data).toEqual({ reason: 'OPEN_OWNERS', owners: error.errors[0].owners });
+      expect(mockPrisma.__profiles).toHaveLength(1);
+    });
+
+    it('CLOSE : clot le vendeur a la date d acquisition puis cree l acquereur, sans plafond des parts', async () => {
+      const seller = await create('lot-a201', 100, { contactId: 'vendeur' });
+      const buyer = await createRaw('lot-a201', 'acquereur', 100, { previousOwnersHandling: 'CLOSE' });
+      expect(buyer.contactId).toBe('acquereur');
+      const closed = mockPrisma.__profiles.find((p: Profile) => p.id === seller.id);
+      expect(closed.ownedUntil).toEqual(sale);
+      expect(mockPrisma.__profiles).toHaveLength(2);
+    });
+
+    it('KEEP : indivision, le plafond de 100 % reste controle', async () => {
+      await create('lot-a201', 60, { contactId: 'a' });
+      await expect(createRaw('lot-a201', 'b', 40, { previousOwnersHandling: 'KEEP' })).resolves.toBeTruthy();
+      await expect(createRaw('lot-a201', 'c', 10, { previousOwnersHandling: 'KEEP' })).rejects.toMatchObject({
+        errors: [{ field: 'ownershipPercentage' }]
+      });
+      expect(mockPrisma.__profiles).toHaveLength(2);
+    });
+
+    it('aucun autre proprietaire ouvert : pas de refus (lot vide, ou ancien profil deja termine)', async () => {
+      await expect(createRaw('lot-b1', 'premier', 100)).resolves.toBeTruthy();
+      await create('lot-a201', 100, { contactId: 'ancien', ownedUntil: new Date('2022-01-01T00:00:00.000Z') });
+      await expect(createRaw('lot-a201', 'nouveau', 100)).resolves.toBeTruthy();
+    });
+
+    it('meme contact : le refus de doublon existant est inchange', async () => {
+      await create('lot-a201', 50, { contactId: 'dup' });
+      const error = await createRaw('lot-a201', 'dup', 50).catch(e => e);
+      expect(error.errors).toEqual([{ field: 'contactId', message: error.message }]);
+    });
+
+    it('le schema accepte CLOSE et KEEP, refuse toute autre valeur', () => {
+      const base = {
+        lotId: '11111111-1111-4111-8111-111111111111',
+        contactId: '22222222-2222-4222-8222-222222222222',
+        ownedSince: '2024-03-01',
+        ownershipPercentage: 100
+      };
+      for (const ok of ['CLOSE', 'KEEP']) {
+        expect(createLotOwnerProfileSchema.safeParse({ ...base, previousOwnersHandling: ok }).success).toBe(true);
+      }
+      expect(createLotOwnerProfileSchema.safeParse({ ...base, previousOwnersHandling: 'AUTRE' }).success).toBe(false);
+      expect(createLotOwnerProfileSchema.safeParse(base).success).toBe(true);
+    });
+
+    it('le corps JSON renvoye par errorHandler porte errors[0].reason et owners', async () => {
+      const seller = await create('lot-a201', 100, { contactId: 'vendeur' });
+      const error = await createRaw('lot-a201', 'acquereur', 100).catch(e => e);
+      const res: any = { headersSent: false, status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
+      errorHandler(
+        error,
+        { headers: {}, method: 'POST', originalUrl: '/x', url: '/x', path: '/x' } as any,
+        res,
+        jest.fn()
+      );
+      expect(res.status).toHaveBeenCalledWith(409);
+      const body = res.json.mock.calls[0][0];
+      expect(body).toMatchObject({ success: false, code: 'CONFLICT' });
+      expect(body.errors).toEqual([
+        {
+          field: 'previousOwnersHandling',
+          message: body.message,
+          reason: 'OPEN_OWNERS',
+          owners: [{ profileId: seller.id, contactName: 'vendeur Nom' }]
+        }
+      ]);
+    });
   });
 });

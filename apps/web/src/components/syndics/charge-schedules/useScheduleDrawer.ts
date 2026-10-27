@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { App, Form } from 'antd';
 import dayjs from 'dayjs';
 import {
@@ -8,15 +8,21 @@ import {
   updateChargeSchedule
 } from '../../../services/syndic-charge-schedule-service';
 import {
+  ChargeAllocationMethod,
   ChargeSchedule,
   ChargeSchedulePreview,
   ChargeScheduleRun,
-  CreateChargeScheduleRequest
+  CreateChargeScheduleRequest,
+  SyndicateLot
 } from '../../../types/syndic-types';
 import { t } from '../../../i18n/t';
+import { previewScheduleAllocation } from '../../../utils/charge-allocation-preview';
+import { ratesUnavailableMessage, useLotTypeRatesForAllocation } from '../charge-allocation/ChargeAllocationControls';
 import { ScheduleFormValues } from './types';
 
 interface UseScheduleDrawerArgs {
+  /** Lots de la copropriété (aperçu par lot avant enregistrement). */
+  lots: SyndicateLot[];
   loadData: () => Promise<void>;
   preview: ChargeSchedulePreview | null;
   loadPreview: (scheduleId: string) => Promise<void>;
@@ -33,13 +39,50 @@ export function useScheduleDrawer(
   args: UseScheduleDrawerArgs
 ) {
   const { message } = App.useApp();
-  const { loadData, preview, loadPreview, resetPreview, runs, loadRuns, resetRuns } = args;
+  const { lots, loadData, preview, loadPreview, resetPreview, runs, loadRuns, resetRuns } = args;
 
   const [submitting, setSubmitting] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<ChargeSchedule | null>(null);
   const [drawerTab, setDrawerTab] = useState('form');
   const [form] = Form.useForm<ScheduleFormValues>();
+  const watchedSource = Form.useWatch('amountSource', form);
+  const watchedMethod = Form.useWatch('allocationMethod', form);
+  const watchedTotal = Form.useWatch('fixedAmount', form);
+  const watchedAnnex = Form.useWatch('includeAnnexLots', form);
+  const watchedMoney = Form.useWatch('currency', form);
+
+  // Seule la source « Montant fixe » choisit un mode ; un budget garde la clé de répartition de ses postes.
+  const allocationMethod: ChargeAllocationMethod | null =
+    watchedSource === 'FIXED' ? (watchedMethod ?? 'SHARES') : null;
+  // Barème chargé seulement quand le tiroir est ouvert sur « Par type de lot ».
+  const { rates: lotTypeRates, status: lotTypeRatesStatus } = useLotTypeRatesForAllocation(
+    tenantId,
+    syndicId,
+    drawerOpen && allocationMethod === 'BY_LOT_TYPE'
+  );
+  const inputFor = (method: ChargeAllocationMethod, total: number | null | undefined) => ({
+    method,
+    lots,
+    totalAmount: total,
+    lotTypeRates,
+    includeAnnexLots: form.getFieldValue('includeAnnexLots') ?? true,
+    currency: form.getFieldValue('currency') || 'XOF'
+  });
+  const allocationPreview = useMemo(
+    () =>
+      allocationMethod && lots.length > 0 && (allocationMethod === 'BY_LOT_TYPE' || Number(watchedTotal) > 0)
+        ? previewScheduleAllocation({
+            method: allocationMethod,
+            lots,
+            totalAmount: watchedTotal,
+            lotTypeRates,
+            includeAnnexLots: watchedAnnex ?? true,
+            currency: watchedMoney || 'XOF'
+          })
+        : null,
+    [allocationMethod, lots, watchedTotal, lotTypeRates, watchedAnnex, watchedMoney]
+  );
 
   const openCreateDrawer = () => {
     setEditing(null);
@@ -52,6 +95,8 @@ export function useScheduleDrawer(
       issueDay: 1,
       dueOffsetDays: 15,
       amountSource: 'BUDGET',
+      allocationMethod: 'SHARES',
+      includeAnnexLots: true,
       currency: 'XOF',
       startDate: dayjs().format('YYYY-MM-DD'),
       active: true
@@ -73,6 +118,9 @@ export function useScheduleDrawer(
       amountSource: schedule.amountSource,
       budgetId: schedule.budgetId ?? undefined,
       fixedAmount: schedule.fixedAmount ?? undefined,
+      allocationMethod: schedule.allocationMethod ?? 'SHARES',
+      // Absent des anciennes réponses = calcul historique (lots principaux).
+      includeAnnexLots: schedule.includeAnnexLots ?? false,
       currency: schedule.currency,
       startDate: schedule.startDate,
       endDate: schedule.endDate ?? undefined,
@@ -104,6 +152,20 @@ export function useScheduleDrawer(
     } catch {
       return;
     }
+    const isFixed = values.amountSource === 'FIXED';
+    const method: ChargeAllocationMethod = isFixed ? (values.allocationMethod ?? 'SHARES') : 'SHARES';
+    if (isFixed) {
+      // Même contrôle que l'API (messages identiques) : on bloque d'avance une saisie qu'elle refuserait.
+      if (method === 'BY_LOT_TYPE' && lotTypeRates === null) {
+        message.error(ratesUnavailableMessage());
+        return;
+      }
+      const check = lots.length > 0 ? previewScheduleAllocation(inputFor(method, values.fixedAmount)) : null;
+      if (check?.error) {
+        message.error(check.error);
+        return;
+      }
+    }
     // `active` n'appartient pas au PATCH (schéma strict côté API) : l'état actif/en
     // pause passe par les routes dédiées `pause` et `reprise`.
     const { active, ...payload }: CreateChargeScheduleRequest = {
@@ -113,7 +175,9 @@ export function useScheduleDrawer(
       dueOffsetDays: values.dueOffsetDays,
       amountSource: values.amountSource,
       budgetId: values.amountSource === 'BUDGET' ? values.budgetId || null : null,
-      fixedAmount: values.amountSource === 'FIXED' ? (values.fixedAmount ?? null) : null,
+      fixedAmount: isFixed && method !== 'BY_LOT_TYPE' ? (values.fixedAmount ?? null) : null,
+      allocationMethod: method,
+      ...(isFixed && method === 'SHARES' ? { includeAnnexLots: values.includeAnnexLots ?? true } : {}),
       currency: values.currency || 'XOF',
       startDate: values.startDate,
       endDate: values.endDate || null,
@@ -158,6 +222,10 @@ export function useScheduleDrawer(
     form,
     watchedAmountSource,
     watchedFrequency,
+    allocationMethod,
+    includeAnnexLots: watchedAnnex ?? true,
+    allocationPreview,
+    lotTypeRatesStatus,
     openCreateDrawer,
     openEditDrawer,
     closeDrawer,

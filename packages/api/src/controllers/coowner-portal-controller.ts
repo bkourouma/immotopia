@@ -11,6 +11,7 @@ import {
   listCoOwnerMeetings,
   type CoOwnerPortalScope
 } from '../lib/syndics/coowner-portal';
+import { issueCoOwnerPortalMeetingLink } from '../lib/syndics/meeting-participants';
 
 /**
  * Portail copropriétaire — lecture seule (`/api/portal/copropriete/*`).
@@ -22,8 +23,8 @@ import {
  * L'INTÉRIEUR de ce périmètre ; hors de lui, 404 comme pour un objet
  * inexistant.
  *
- * Aucune route d'écriture, et en particulier aucun paiement en ligne : le
- * paiement des charges de copropriété n'existe pas (hors périmètre de ce lot).
+ * Lecture seule. Le paiement en ligne des charges a son propre contrôleur
+ * (`coowner-online-payment-controller.ts`).
  */
 
 function scopeOf(req: Request): CoOwnerPortalScope {
@@ -34,6 +35,7 @@ function scopeOf(req: Request): CoOwnerPortalScope {
 }
 
 const lotParamsSchema = z.object({ lotId: z.string().uuid() });
+const meetingParamsSchema = z.object({ meetingId: z.string().uuid() });
 const documentParamsSchema = z.object({ documentId: z.string().uuid() });
 const chargeCallsQuerySchema = z.object({ lotId: z.string().uuid().optional() });
 
@@ -50,7 +52,10 @@ export const getCoOwnerLotAccountHandler = asyncHandler(async (req: Request, res
 
 export const listCoOwnerChargeCallsHandler = asyncHandler(async (req: Request, res: Response) => {
   const { lotId } = chargeCallsQuerySchema.parse(req.query);
-  const calls = await listCoOwnerChargeCalls(scopeOf(req), { lotId });
+  const calls = await listCoOwnerChargeCalls(scopeOf(req), {
+    lotId,
+    tenantClientId: req.coOwnerPortal?.tenantClientId ?? null
+  });
   res.json({ success: true, data: calls });
 });
 
@@ -82,4 +87,17 @@ export const castCoOwnerVoteHandler = asyncHandler(async (req: Request, res: Res
   const { lotId, vote } = castVoteBodySchema.parse(req.body ?? {});
   const result = await castCoOwnerVote(scopeOf(req), resolutionId, lotId, vote);
   res.json({ success: true, data: result });
+});
+
+/**
+ * Spec 043 : lien personnel d'AG en direct pour le contact du portail. Seule
+ * ecriture du portail : elle ne touche ni lot ni vote, elle delivre un acces
+ * (jeton remis une fois, jamais mis en cache).
+ */
+export const issueCoOwnerMeetingAccessHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { meetingId } = meetingParamsSchema.parse(req.params);
+  const data = await issueCoOwnerPortalMeetingLink(scopeOf(req), meetingId, req.user?.userId ?? null);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  res.json({ success: true, data });
 });

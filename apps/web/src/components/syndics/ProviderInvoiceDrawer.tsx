@@ -13,7 +13,6 @@ import {
   Select,
   Space,
   Spin,
-  Table,
   Tag,
   Typography,
   Upload
@@ -22,7 +21,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
-import { useConfirmAction } from '../primitives';
+import { Table, useConfirmAction } from '../primitives';
 import {
   cancelProviderInvoice,
   cancelProviderPayment,
@@ -284,6 +283,7 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
       dataIndex: 'amount',
       key: 'amount',
       align: 'end',
+      exportValue: row => Number(row.amount),
       render: (_: number, row) => <MoneyValue value={row.amount} currency={displayCurrency(invoice?.currency)} />
     },
     {
@@ -433,6 +433,7 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
               )}
             </div>
             <Table
+              exportFilename={t('Paiements')}
               style={{ marginTop: 12 }}
               rowKey="id"
               size="small"

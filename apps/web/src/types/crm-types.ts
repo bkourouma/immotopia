@@ -5,7 +5,8 @@ export type CrmContactStatus = 'LEAD' | 'ACTIVE_CLIENT' | 'ARCHIVED';
 export type CrmContactRoleType = 'PROPRIETAIRE' | 'LOCATAIRE' | 'COPROPRIETAIRE' | 'ACQUEREUR';
 export type CrmDealType = 'ACHAT' | 'LOCATION' | 'VENTE' | 'GESTION' | 'MANDAT';
 export type CrmDealStage = 'NEW' | 'QUALIFIED' | 'VISIT' | 'NEGOTIATION' | 'WON' | 'LOST';
-export type CrmActivityType = 'CALL' | 'EMAIL' | 'SMS' | 'WHATSAPP' | 'VISIT' | 'MEETING' | 'NOTE' | 'TASK' | 'CORRECTION';
+export type CrmActivityType =
+  'CALL' | 'EMAIL' | 'SMS' | 'WHATSAPP' | 'VISIT' | 'MEETING' | 'NOTE' | 'TASK' | 'CORRECTION';
 export type CrmActivityDirection = 'IN' | 'OUT' | 'INTERNAL';
 export type CrmDealPropertyStatus = 'SHORTLISTED' | 'PROPOSED' | 'VISITED' | 'REJECTED' | 'SELECTED';
 
@@ -27,6 +28,8 @@ export interface ProjectIntent {
 export interface Contact {
   id: string;
   tenantId: string;
+  /** Réponse de détail seulement : adresse masquée du compte portail si elle diffère de la fiche. */
+  portalAccountEmailNotice?: { maskedEmail: string } | null;
   // Contact Type
   contactType?: 'PERSON' | 'COMPANY';
   // Person Identification
@@ -342,7 +345,8 @@ export interface UpdateContactRequest {
   jobStability?: 'CDI' | 'CDD' | 'FREELANCE' | 'INFORMAL' | 'RETIRED' | 'STUDENT' | 'UNEMPLOYED' | 'OTHER' | null;
   borrowingCapacity?: 'YES' | 'NO' | 'UNKNOWN' | null;
   source?: string | null;
-  leadSource?: 'WEBSITE' | 'SOCIAL_MEDIA' | 'REFERRAL' | 'CAMPAIGN' | 'AGENCY' | 'WALK_IN' | 'PHONE_CALL' | 'OTHER' | null;
+  leadSource?:
+    'WEBSITE' | 'SOCIAL_MEDIA' | 'REFERRAL' | 'CAMPAIGN' | 'AGENCY' | 'WALK_IN' | 'PHONE_CALL' | 'OTHER' | null;
   maturityLevel?: 'COLD' | 'WARM' | 'HOT' | null;
   score?: number | null;
   priorityLevel?: 'LOW' | 'NORMAL' | 'HIGH' | null;
@@ -480,4 +484,3 @@ export type UpdateCrmContactRequest = UpdateContactRequest;
 export type CreateCrmDealRequest = CreateDealRequest;
 export type UpdateCrmDealRequest = UpdateDealRequest;
 export type CreateCrmActivityRequest = CreateActivityRequest;
-

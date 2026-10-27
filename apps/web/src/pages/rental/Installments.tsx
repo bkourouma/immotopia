@@ -18,6 +18,7 @@ import {
   RentalPaymentMethod,
   CreatePaymentRequest
 } from '../../services/rental-service';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { PaymentForm } from '../../components/rental/PaymentForm';
 import { InstallmentPaymentLinkModal, canOfferPaymentLink } from '../../components/rental/InstallmentPaymentLinkButton';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
@@ -36,6 +37,7 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 /**
@@ -73,12 +75,12 @@ interface InstallmentsProps {
 type Filters = { status: string; overdue: string; renterClientId: string };
 const FILTER_KEYS = ['status', 'overdue', 'renterClientId'] as const;
 
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS = localizedList(() => [
   { value: 'DUE', label: t('À échoir') },
   { value: 'PARTIAL', label: t('Partiel') },
   { value: 'PAID', label: t('Payé') },
   { value: 'OVERDUE', label: t('En retard') }
-];
+]);
 
 /** Montant dû : loyer, charges, autres frais et pénalités. */
 function totalDu(echeance: RentalInstallment): number {
@@ -351,6 +353,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
             title: t('Bail'),
             key: 'bail',
             width: 260,
+            exportValue: (e: RentalInstallment) => `${e.lease?.lease_number || '—'} — ${nomDuBien(e.lease?.property)}`,
             render: (_: unknown, e: RentalInstallment) => (
               <>
                 <div style={{ fontWeight: 600 }}>{e.lease?.lease_number || '—'}</div>
@@ -376,12 +379,14 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       title: t('Montant dû'),
       key: 'du',
       align: 'end',
+      exportValue: e => totalDu(e),
       render: (_, e) => <MoneyValue value={totalDu(e)} currency={e.currency} />
     },
     {
       title: t('Reste à payer'),
       key: 'reste',
       align: 'end',
+      exportValue: e => resteAPayer(e),
       render: (_, e) => <MoneyValue value={resteAPayer(e)} currency={e.currency} />
     },
     { title: t('Statut'), key: 'statut', render: (_, e) => <StatusTag status={e.status} /> },
@@ -521,6 +526,15 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       </FilterSheet>
 
       <DataView<RentalInstallment>
+        // Export de TOUTES les échéances, avec les mêmes filtres que la liste affichée.
+        export={{
+          filename: t('Échéances'),
+          fetchAll: () =>
+            collectAllPages<RentalInstallment>(async (page, limit) => {
+              const reponse = await listInstallments(tenantId, { ...filtresApi, page, limit });
+              return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
+            })
+        }}
         // Huit colonnes hors onglet de bail — le bail, le locataire, la
         // période, l'échéance, deux montants, le statut et les actions. Elles
         // ne tiennent pas dans les ~690 px utiles au plancher du desktop :
@@ -535,6 +549,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les échéances.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}

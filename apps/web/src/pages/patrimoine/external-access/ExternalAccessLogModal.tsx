@@ -1,9 +1,9 @@
 import React from 'react';
-import { Modal, Table, Tag, Typography } from 'antd';
+import { Modal, Tag, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { listExternalAccessLog } from '../../../services/external-access-service';
 import type { ExternalAccessGrantSummary, ExternalAccessLogEntry } from '../../../types/external-access';
-import { StateBlock, SkeletonList } from '../../../components/primitives';
+import { StateBlock, SkeletonList, Table } from '../../../components/primitives';
 import { activeLocale } from '../../../i18n/format';
 import { queryKey } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
@@ -48,6 +48,7 @@ export const ExternalAccessLogModal: React.FC<Props> = ({ tenantId, grant, onClo
         <StateBlock variant="empty" description={t('Aucune consultation pour le moment.')} />
       ) : (
         <Table<ExternalAccessLogEntry>
+          exportFilename={t('Journal — {{name}}', { name: grant?.recipientName ?? '' })}
           size="small"
           rowKey="id"
           pagination={false}

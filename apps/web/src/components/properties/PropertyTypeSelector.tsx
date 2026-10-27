@@ -3,6 +3,7 @@ import { PropertyType } from '../../types/property-types';
 import { Building2, Home, Box, Store, Factory, MapPin, Building, Car } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 interface PropertyTypeSelectorProps {
   selectedType?: PropertyType;
@@ -10,7 +11,7 @@ interface PropertyTypeSelectorProps {
   disabled?: boolean;
 }
 
-const propertyTypeConfig: Record<PropertyType, { label: string; icon: React.ReactNode }> = {
+const propertyTypeConfig: Record<PropertyType, { label: string; icon: React.ReactNode }> = localizedRecord(() => ({
   APPARTEMENT: { label: t('Appartement'), icon: <Building2 className="h-5 w-5" /> },
   MAISON_VILLA: { label: 'Maison/Villa', icon: <Home className="h-5 w-5" /> },
   STUDIO: { label: t('Studio'), icon: <Box className="h-5 w-5" /> },
@@ -23,7 +24,7 @@ const propertyTypeConfig: Record<PropertyType, { label: string; icon: React.Reac
   IMMEUBLE: { label: t('Immeuble'), icon: <Building className="h-5 w-5" /> },
   PARKING_BOX: { label: 'Parking/Box', icon: <Car className="h-5 w-5" /> },
   LOT_PROGRAMME_NEUF: { label: t('Lot (Programme neuf)'), icon: <Building className="h-5 w-5" /> }
-};
+}));
 
 /**
  * Types retirés du choix, sans être retirés du modèle.

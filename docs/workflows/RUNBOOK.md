@@ -260,19 +260,37 @@ i18n (voir aussi [docs/architecture/i18n.md](../architecture/i18n.md)) :
 ```bash
 npm run i18n:extract -w @immotopia/api   # scripts/i18n-extract.mjs
 npm run i18n:extract -w @immotopia/web   # scripts/i18n-migrate.mjs
+npm run i18n:check -w @immotopia/api     # vérifie sans rien écrire
+npm run i18n:check -w @immotopia/web
+# une option se passe après « -- », par exemple le nettoyage volontaire :
+npm run i18n:extract -w @immotopia/web -- --prune
 ```
 
 Le texte français **est** la clé de traduction (`t('Ajouter un bien')`).
-Retoucher un texte français casse sa traduction existante ;
-`i18n:extract` déplace alors la traduction devenue orpheline dans un
-`*.orphans.json` au lieu de la perdre silencieusement — la reporter à la
-main sur la nouvelle clé.
+Retoucher un texte français casse sa traduction existante : l'ancienne reste
+dans le catalogue, non référencée (le bilan imprime « N traduction(s) non
+référencée(s) conservée(s) »). La reporter à la main sur la nouvelle clé,
+puis la retirer avec l'option `--prune`, qui la déplace dans un
+`*.orphans.json`.
 
-**Piège connu (API).** `npm run i18n:extract -w @immotopia/api` déplace en
-`*.orphans.json` les deux clés « Le pack Patrimoine… » de
-`middleware/error-middleware.ts` : elles passent par `t(variable)`, que
-l'extracteur ne voit pas. Après l'extraction, les restaurer à la main dans
-les catalogues (`en.json`, `ar.json`) et vider l'orphelin correspondant.
+- Un passage normal de `i18n:extract` ne supprime jamais une traduction non
+  vide et ne crée aucun `*.orphans.json`. L'option `--unreferenced` liste les
+  traductions non référencées ; `--dry` n'écrit rien.
+- `i18n:check` (mode `--check`) n'écrit rien et sort en code 1 s'il manque une
+  clé recensée, si une source web serait réécrite par l'enveloppement
+  automatique, ou si un `*.orphans.json` traîne. Il n'est pas branché dans la
+  CI (les catalogues dérivent d'une PR à l'autre) : à lancer en local avant
+  une PR.
+- Les catalogues existants gardent leurs fins de ligne et ne sont pas réécrits
+  à contenu identique (fin du bruit « tous les catalogues modifiés » sous
+  Windows).
+- Les clés passées à `t(variable)` sont recensées si la constante est déclarée
+  dans le même fichier, ou si un commentaire `@i18n-keys` les déclare ; sinon
+  elles restent conservées mais ne sont pas créées dans un nouveau catalogue.
+
+Options (`--dry`, `--check`, `--prune`, `--unreferenced`, `--root=`), clés
+dynamiques et marqueur `@i18n-keys` : voir
+[docs/architecture/i18n.md](../architecture/i18n.md).
 
 ## Worktrees git (`.claude/worktrees/*`)
 

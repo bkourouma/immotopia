@@ -113,6 +113,16 @@ describe('notifyMeetingConvocation : destinataires et renvoi (M3)', () => {
     expect(result).toMatchObject({ owners: 3, emailSent: 3 });
   });
 
+  it('un copropriétaire qui possède plusieurs lots reçoit UN seul message (pas un par lot)', async () => {
+    const m = meeting();
+    const e = owner('e', 'e@x.ci');
+    m.syndicate.lots = [1, 2, 3].map(() => ({ generalShares: 100, owner: e, ownerProfiles: [profile('e', e, 100)] }));
+    mockPrisma.generalMeeting.findUnique.mockResolvedValue(m);
+    const result = await notifyMeetingConvocation('m1');
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ owners: 1, emailSent: 1 });
+  });
+
   it('le renvoi ne relance que les destinataires en échec ou jamais servis', async () => {
     mockPrisma.generalMeeting.findUnique.mockResolvedValue(meeting());
     mockPrisma.notificationMarker.findMany.mockResolvedValue([

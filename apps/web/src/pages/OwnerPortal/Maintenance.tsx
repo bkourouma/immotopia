@@ -6,7 +6,6 @@ import {
   Typography,
   Spin,
   Alert,
-  Table,
   Tag,
   Space,
   Button,
@@ -28,6 +27,7 @@ import {
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
+import { Table } from '../../components/primitives';
 import {
   AttachmentList,
   fromPortalAttachment,
@@ -459,6 +459,7 @@ export default function Maintenance() {
       <Card title={t('Liste des tickets')}>
         {data && data.tickets.length > 0 ? (
           <Table
+            exportFilename={t('Liste des tickets')}
             scroll={{ x: 'max-content' }}
             columns={columns}
             dataSource={data.tickets}

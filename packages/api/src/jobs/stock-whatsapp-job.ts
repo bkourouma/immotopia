@@ -29,6 +29,7 @@ import * as cron from 'node-cron';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { runSessionTimers } from '../lib/stock-whatsapp/engine/timers';
 import { processWebhookEvent } from '../lib/stock-whatsapp/webhook/process-event';
 
@@ -161,7 +162,7 @@ export function startStockWhatsappJob(options: StockWhatsappJobOptions): void {
     if (minuteRunning) return;
     minuteRunning = true;
     try {
-      await runStockWhatsappMinute(new Date(), options);
+      await withJobLock('stock-whatsapp-minute', 5 * 60 * 1000, () => runStockWhatsappMinute(new Date(), options));
     } finally {
       minuteRunning = false;
     }
@@ -170,8 +171,8 @@ export function startStockWhatsappJob(options: StockWhatsappJobOptions): void {
     '30 3 * * *',
     async () => {
       try {
-        const purged = await purgeStockWhatsappHistory();
-        logger.info('Inventaire WhatsApp : purge nocturne', purged);
+        const purged = await withJobLock('stock-whatsapp-nightly', 60 * 60 * 1000, () => purgeStockWhatsappHistory());
+        if (purged) logger.info('Inventaire WhatsApp : purge nocturne', purged);
       } catch (error) {
         logger.error('Inventaire WhatsApp : purge nocturne en échec', {
           error: error instanceof Error ? error.name : 'inconnue'

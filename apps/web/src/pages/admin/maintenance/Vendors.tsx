@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   App,
-  Table,
   Card,
   Button,
   Space,
@@ -18,6 +17,8 @@ import {
   Pagination
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
+import { Table } from '../../../components/primitives';
+import { collectAllPages } from '../../../utils/table-export/collect';
 import { vendorMaintenanceService } from '../../../services/maintenance-service';
 import { useAuth } from '../../../hooks/useAuth';
 import { t } from '../../../i18n/t';
@@ -178,6 +179,7 @@ export const Vendors: React.FC = () => {
       title: t('Spécialités'),
       dataIndex: 'specialties',
       key: 'specialties',
+      exportValue: (record: Vendor) => (record.specialties ?? []).join(', '),
       render: (specialties: string[]) =>
         specialties && specialties.length > 0 ? (
           <Space wrap>
@@ -264,6 +266,18 @@ export const Vendors: React.FC = () => {
           ) : (
             <>
               <Table
+                exportFilename={t('Gestion des prestataires')}
+                exportFetchAll={() =>
+                  collectAllPages<Vendor>(async (page, limit) => {
+                    const reponse = await vendorMaintenanceService.listVendors(effectiveTenantId as string, {
+                      search: searchTerm || undefined,
+                      isActive: isActiveFilter,
+                      page,
+                      limit
+                    });
+                    return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
+                  })
+                }
                 scroll={{ x: 'max-content' }}
                 columns={columns}
                 dataSource={vendors}

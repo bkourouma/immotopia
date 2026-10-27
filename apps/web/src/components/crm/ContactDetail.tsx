@@ -56,7 +56,9 @@ import { TagManager } from './TagManager';
 import { AddDealDialog } from './AddDealDialog';
 import { ActivityForm } from './ActivityForm';
 import { t } from '../../i18n/t';
+import { PortalEmailNotice } from './PortalEmailNotice';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
+import { getContactRoleLabel } from '../../utils/crm-utils';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -280,6 +282,11 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
               }
             >
               {contact.email || <Text type="secondary">{t('Aucun email')}</Text>}
+              {contact.portalAccountEmailNotice && (
+                <div>
+                  <PortalEmailNotice notice={contact.portalAccountEmailNotice} />
+                </div>
+              )}
             </Descriptions.Item>
             <Descriptions.Item
               label={
@@ -378,7 +385,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
                       <Card key={role.id} size="small" style={{ border: '1px solid #f0f0f0' }}>
                         <div className="it-toolbar">
                           <Space>
-                            <Text strong>{role.role}</Text>
+                            <Text strong>{getContactRoleLabel(role.role)}</Text>
                             <Tag color="success" icon={<CheckCircleOutlined />}>
                               {t('Actif')}
                             </Tag>
@@ -418,7 +425,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
               title={
                 <Space>
                   <TagOutlined />
-                  {t('Groupes')} {contact.tags && contact.tags.length > 0 && `(${contact.tags.length})`}
+                  {t('Tags')} {contact.tags && contact.tags.length > 0 && `(${contact.tags.length})`}
                 </Space>
               }
               extra={
@@ -436,7 +443,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
                   ))}
                 </Space>
               ) : (
-                <Empty description={t('Aucun groupe')} image={false} style={{ padding: '24px 0' }}>
+                <Empty description={t('Aucun tag')} image={false} style={{ padding: '24px 0' }}>
                   <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowTagManager(true)}>
                     {t('Ajouter')}
                   </Button>

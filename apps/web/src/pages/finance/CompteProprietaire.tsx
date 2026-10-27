@@ -25,7 +25,10 @@ import {
 import type { StatusTone } from '../../components/primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { writeErrorMessage } from '../../utils/error-handler';
 import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
 
 const { Title, Text } = Typography;
@@ -55,15 +58,15 @@ const { TextArea } = Input;
  * simple (§1, note sur `owner-statements`).
  */
 
-const METHOD_LABELS: Record<PayoutMethod, string> = {
+const METHOD_LABELS: Record<PayoutMethod, string> = localizedRecord(() => ({
   CASH: t('Espèces'),
   BANK_TRANSFER: t('Virement'),
   CHECK: t('Chèque'),
   MOBILE_MONEY: t('Mobile Money'),
   OTHER: t('Autre')
-};
+}));
 
-const MOVEMENT_LABELS: Record<OwnerMovementType, string> = {
+const MOVEMENT_LABELS: Record<OwnerMovementType, string> = localizedRecord(() => ({
   RENT_COLLECTED: t('Loyer encaissé'),
   MANAGEMENT_FEE: t('Honoraires'),
   MANAGEMENT_FEE_VAT: t('TVA sur honoraires'),
@@ -72,7 +75,7 @@ const MOVEMENT_LABELS: Record<OwnerMovementType, string> = {
   VOID: t('Annulation'),
   WITHHOLDING_TAX: t('Retenue à la source'),
   DEPOSIT_RETAINED: t('Dépôt de garantie conservé')
-};
+}));
 
 const MOVEMENT_TONE: Record<OwnerMovementType, StatusTone> = {
   RENT_COLLECTED: 'success',
@@ -97,6 +100,12 @@ function bienOuBail(m: OwnerMovement): string {
 export const CompteProprietaire: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId, ownerClientId } = useParams<{ tenantId: string; ownerClientId: string }>();
+
+  // Annuler un reversement exige FINANCE_DOCUMENTS_VALIDATE (l'API répond 403
+  // sinon, après saisie du motif). `permissions` nul = aucune restriction
+  // (administrateur d'agence) ou permissions pas encore connues.
+  const { permissions } = useMyMenuAccess(tenantId);
+  const peutAnnuler = permissions === null || permissions.has('FINANCE_DOCUMENTS_VALIDATE');
 
   const {
     data,
@@ -175,7 +184,13 @@ export const CompteProprietaire: React.FC = () => {
       setMotifAnnulation('');
       refetch();
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t("L'annulation a échoué."));
+      message.error(
+        writeErrorMessage(
+          err,
+          t("L'annulation a échoué."),
+          t("Vous n'avez pas le droit d'annuler un reversement. Demandez à un responsable de le faire.")
+        )
+      );
     } finally {
       setAnnulationEnCours(false);
     }
@@ -219,12 +234,25 @@ export const CompteProprietaire: React.FC = () => {
     },
     { title: t('Libellé'), key: 'libelle', render: (_, m) => m.label },
     { title: t('Bien ou bail'), key: 'bien-bail', render: (_, m) => bienOuBail(m) },
-    { title: t('Débit'), key: 'debit', align: 'end', render: (_, m) => <MoneyValue value={m.debit} /> },
-    { title: t('Crédit'), key: 'credit', align: 'end', render: (_, m) => <MoneyValue value={m.credit} /> },
+    {
+      title: t('Débit'),
+      key: 'debit',
+      align: 'end',
+      exportValue: m => m.debit,
+      render: (_, m) => <MoneyValue value={m.debit} />
+    },
+    {
+      title: t('Crédit'),
+      key: 'credit',
+      align: 'end',
+      exportValue: m => m.credit,
+      render: (_, m) => <MoneyValue value={m.credit} />
+    },
     {
       title: t('Solde dû après'),
       key: 'solde',
       align: 'end',
+      exportValue: m => m.balanceAfter,
       render: (_, m) => (
         <strong>
           <MoneyValue value={m.balanceAfter} />
@@ -242,6 +270,7 @@ export const CompteProprietaire: React.FC = () => {
       title: t('Montant'),
       key: 'montant',
       align: 'end',
+      exportValue: p => p.amount,
       render: (_, p) => (
         <span
           style={{
@@ -256,6 +285,8 @@ export const CompteProprietaire: React.FC = () => {
     {
       title: t('Statut'),
       key: 'statut',
+      exportValue: p =>
+        p.status === 'VOIDED' ? (p.voidReason ? `${t('Annulé')} — ${p.voidReason}` : t('Annulé')) : t('Validé'),
       render: (_, p) =>
         p.status === 'VOIDED' ? (
           <span>
@@ -275,7 +306,7 @@ export const CompteProprietaire: React.FC = () => {
       key: 'actions',
       align: 'end',
       render: (_, p) =>
-        p.status === 'VALIDATED' ? (
+        p.status === 'VALIDATED' && peutAnnuler ? (
           <Button
             danger
             size="small"
@@ -345,6 +376,7 @@ export const CompteProprietaire: React.FC = () => {
         columns={colonnesMouvements}
         rowKey={m => m.id}
         aria-label={t('Mouvements du compte')}
+        export={{ filename: t('Mouvements du compte') }}
         renderCard={m => (
           <DataCard
             title={MOVEMENT_LABELS[m.type]}
@@ -375,6 +407,7 @@ export const CompteProprietaire: React.FC = () => {
         columns={colonnesReversements}
         rowKey={p => p.id}
         aria-label={t('Reversements')}
+        export={{ filename: t('Reversements') }}
         renderCard={p => (
           <DataCard
             title={p.number}
@@ -389,7 +422,7 @@ export const CompteProprietaire: React.FC = () => {
             }
             fields={[{ label: t('Référence'), value: p.reference ?? '—' }]}
             primaryAction={
-              p.status === 'VALIDATED'
+              p.status === 'VALIDATED' && peutAnnuler
                 ? {
                     label: t('Annuler'),
                     onClick: () => {

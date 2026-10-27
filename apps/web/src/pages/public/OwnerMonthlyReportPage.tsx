@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Card, Descriptions, Result, Space, Spin, Table, Tag, Typography } from 'antd';
+import { Button, Card, Descriptions, Result, Space, Spin, Tag, Typography } from 'antd';
 import { fetchPublicOwnerMonthlyReport } from '../../services/patrimoine-service';
 import type { OwnerMonthlyReportDto } from '../../types/patrimoine-types';
-import { MoneyValue } from '../../components/primitives';
+import { MoneyValue, Table } from '../../components/primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
@@ -64,6 +64,8 @@ function periodLabel(period: string): string {
 const PRINT_CSS = `
 @media print {
   .owner-report-no-print { display: none !important; }
+  .owner-report-page div:has(> button[aria-haspopup="menu"]) { display: none !important; }
+  .owner-report-page button[aria-haspopup="menu"] { display: none !important; }
   .owner-report-page { padding: 0 !important; background: #fff !important; }
   .owner-report-page .ant-card { box-shadow: none !important; border: 1px solid #ddd !important; break-inside: avoid; }
 }
@@ -130,6 +132,7 @@ const ReportView: React.FC<{ report: OwnerMonthlyReportDto }> = ({ report }) => 
       {report.properties.map(property => (
         <Card key={`${property.reference}-${property.title}`} title={`${property.reference} — ${property.title}`}>
           <Table
+            exportFilename={`${property.reference} — ${property.title}`}
             scroll={{ x: 'max-content' }}
             rowKey="key"
             size="small"

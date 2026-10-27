@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { DataCard, DataView, MoneyValue, StateBlock } from '../../components/primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
 import {
@@ -16,6 +17,7 @@ import {
   type CoOwnerReceipt
 } from '../../services/coowner-portal-service';
 import { saveBlob } from '../../utils/save-blob';
+import { displayCurrency } from '../../utils/syndic-currency';
 import { blobErrorMessage, portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
@@ -66,12 +68,13 @@ export default function CoOwnerReceipts() {
   const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [page, setPage] = useState(1);
 
-  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], queryFn: () => listMyLots() });
+  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], staleTime: 30_000, queryFn: () => listMyLots() });
   const from = isoDayOf(range?.[0]);
   const to = isoDayOf(range?.[1]);
 
   const receipts = useQuery({
     queryKey: ['coowner-portal', 'receipts', lotId ?? null, kind ?? null, from ?? null, to ?? null, page],
+    staleTime: 30_000,
     queryFn: () => listMyReceipts({ lotId, kind, from, to, page, limit: PAGE_SIZE })
   });
 
@@ -90,7 +93,8 @@ export default function CoOwnerReceipts() {
       title: t('Montant'),
       key: 'amount',
       align: 'end',
-      render: (_, row) => <MoneyValue value={row.amount} currency={row.currency} />
+      exportValue: row => Number(row.amount),
+      render: (_, row) => <MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />
     },
     { title: t('Émise le'), key: 'issuedAt', render: (_, row) => dayjs(row.issuedAt).format('DD/MM/YYYY') },
     { title: t('Action'), key: 'action', align: 'end', render: (_, row) => <DownloadButton receipt={row} /> }
@@ -167,6 +171,15 @@ export default function CoOwnerReceipts() {
             isReloading={receipts.isFetching && !receipts.isPending}
             rowKey={row => row.id}
             aria-label={t('Mes quittances')}
+            // Toutes les quittances, avec les mêmes filtres que la liste affichée.
+            export={{
+              filename: t('Mes quittances'),
+              fetchAll: () =>
+                collectAllPages<CoOwnerReceipt>(async (exportPage, limit) => {
+                  const result = await listMyReceipts({ lotId, kind, from, to, page: exportPage, limit });
+                  return { items: result.items, total: result.pagination.total };
+                })
+            }}
             emptyDescription={t("Aucun document n'a encore été émis pour vos lots.")}
             columns={columns}
             renderCard={row => (
@@ -175,7 +188,7 @@ export default function CoOwnerReceipts() {
                 subtitle={[t('Lot {{lotNumber}}', { lotNumber: row.lot.lotNumber }), row.periodLabel]
                   .filter(Boolean)
                   .join(' · ')}
-                highlight={<MoneyValue value={row.amount} currency={row.currency} />}
+                highlight={<MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />}
                 fields={[
                   { label: t('Émise le'), value: dayjs(row.issuedAt).format('DD/MM/YYYY') },
                   { label: t('Téléchargement'), value: <DownloadButton receipt={row} /> }

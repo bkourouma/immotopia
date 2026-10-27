@@ -1,6 +1,7 @@
 import React from 'react';
-import { Table, Tag, Typography } from 'antd';
+import { Tag, Typography } from 'antd';
 import dayjs from 'dayjs';
+import { Table } from '../../primitives';
 import { ChargeScheduleRun } from '../../../types/syndic-types';
 import { dateFormat } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
@@ -18,6 +19,7 @@ export const ScheduleRunsPanel: React.FC<{
   onResent: () => void;
 }> = ({ runs, loading, tenantId, syndicId, scheduleId, onResent }) => (
   <Table
+    exportFilename={t('Exécutions de la programmation')}
     rowKey="id"
     loading={loading}
     dataSource={runs}
@@ -42,6 +44,8 @@ export const ScheduleRunsPanel: React.FC<{
       {
         title: t('Avis'),
         key: 'notices',
+        // Boutons d'envoi des avis : rien à exporter.
+        exportable: false,
         render: (_, run) =>
           run.status === 'SUCCESS' ? (
             <ChargeScheduleRunNotices

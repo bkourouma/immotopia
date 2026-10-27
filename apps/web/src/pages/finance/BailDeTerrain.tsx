@@ -22,6 +22,7 @@ import {
   PageHeader,
   StateBlock,
   MoneyValue,
+  formatMoney,
   DataView,
   DataCard,
   StatCard,
@@ -31,6 +32,7 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -96,7 +98,7 @@ const { Title, Text } = Typography;
 
 const TONE_PAIEMENT: Record<string, StatusTone> = { DRAFT: 'neutral', VALIDATED: 'success' };
 
-const MOIS_FR = [
+const MOIS_FR = localizedList(() => [
   'janvier',
   t('février'),
   'mars',
@@ -109,12 +111,14 @@ const MOIS_FR = [
   'octobre',
   'novembre',
   t('décembre')
-];
+]);
 
-const OPTIONS_MOIS = MOIS_FR.map((libelle, index) => ({
-  value: index + 1,
-  label: libelle.charAt(0).toUpperCase() + libelle.slice(1)
-}));
+const OPTIONS_MOIS = localizedList(() =>
+  MOIS_FR.map((libelle, index) => ({
+    value: index + 1,
+    label: libelle.charAt(0).toUpperCase() + libelle.slice(1)
+  }))
+);
 
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
@@ -359,7 +363,13 @@ export const BailDeTerrain: React.FC = () => {
       key: 'periode',
       render: (_, p) => `${dateCourte(p.coverageStartDate)} – ${dateCourte(p.coverageEndDate)}`
     },
-    { title: t('Montant'), key: 'montant', align: 'end', render: (_, p) => <MoneyValue value={p.amount} /> },
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      exportValue: p => p.amount,
+      render: (_, p) => <MoneyValue value={p.amount} />
+    },
     { title: t('Saisi par'), key: 'saisi', render: (_, p) => p.createdByLabel },
     {
       title: t('Statut'),
@@ -394,11 +404,16 @@ export const BailDeTerrain: React.FC = () => {
       title: t('Montant constaté'),
       key: 'montant',
       align: 'end',
+      exportValue: c => c.amount,
       render: (_, c) => <MoneyValue value={c.amount} />
     },
     {
       title: t('Imputations'),
       key: 'imputations',
+      exportValue: c =>
+        c.allocations.length > 0
+          ? c.allocations.map(a => `${a.siteLabel} — ${formatMoney(a.amount, { currency: null })}`).join(' ; ')
+          : t('Aucun chantier actif sur ce bail à cette date'),
       render: (_, c) =>
         c.allocations.length > 0 ? (
           <Space orientation="vertical" size={0}>
@@ -498,6 +513,7 @@ export const BailDeTerrain: React.FC = () => {
         columns={colonnesSites}
         rowKey={s => s.siteId}
         aria-label={t('Chantiers rattachés au bail')}
+        export={{ filename: t('Chantiers rattachés') }}
         renderCard={s => (
           <DataCard
             title={s.siteLabel}
@@ -556,11 +572,13 @@ export const BailDeTerrain: React.FC = () => {
         onPageChange={() => {}}
         loading={paiementsEnAttente}
         error={erreurPaiements ? t('Impossible de charger les paiements de ce bail.') : null}
+        errorCause={erreurPaiements}
         onRetry={() => refetchPaiements()}
         emptyDescription={t("Aucun paiement n'a encore été saisi pour ce bail.")}
         columns={colonnesPaiements}
         rowKey={p => p.id}
         aria-label={t('Paiements annuels du bail')}
+        export={{ filename: t('Paiements annuels') }}
         renderCard={p => (
           <DataCard
             title={dateCourte(p.paymentDate)}
@@ -662,11 +680,13 @@ export const BailDeTerrain: React.FC = () => {
         onPageChange={() => {}}
         loading={constatationsEnAttente}
         error={erreurConstatations ? t('Impossible de charger les constatations de ce bail.') : null}
+        errorCause={erreurConstatations}
         onRetry={() => refetchConstatations()}
         emptyDescription={t("Aucun mois n'a encore été constaté pour ce bail.")}
         columns={colonnesConstatations}
         rowKey={c => c.id}
         aria-label={t('Constatations mensuelles du bail')}
+        export={{ filename: t('Constatations mensuelles') }}
         renderCard={c => (
           <DataCard
             title={libellePeriode(c.periodYear, c.periodMonth)}

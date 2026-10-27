@@ -3,9 +3,11 @@ import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { diffForAudit } from '../lib/audit/changes';
 import { CRM_ENTITY_TYPES } from '../types/audit-types';
+import { getPortalAccountEmailNotice } from '../lib/crm/portal-email-notice';
 import { CreateContactRequest, UpdateContactRequest, ContactFilters, ContactDetail } from '../types/crm-types';
 import { CrmContactStatus, MembershipStatus, Prisma } from '@prisma/client';
 import { autoInviteContactToWhatsappGroup } from './whatsapp-group-automation-service';
+import { ensureOwnerClientIfOwnerRole } from './owner-client-service';
 import { t } from '../i18n';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 
@@ -131,10 +133,10 @@ export async function createContact(tenantId: string, data: CreateContactRequest
       priorityLevel: data.priorityLevel || 'NORMAL',
       status: CrmContactStatus.LEAD, // Default to LEAD
       assignedToUserId: data.assignedToUserId || null,
-      // Consents & Compliance (default true: tout coché par défaut)
-      consentMarketing: data.consentMarketing ?? true,
-      consentWhatsapp: data.consentWhatsapp ?? true,
-      consentEmail: data.consentEmail ?? true,
+      // Consents & Compliance : false par défaut, un consentement se donne explicitement
+      consentMarketing: data.consentMarketing ?? false,
+      consentWhatsapp: data.consentWhatsapp ?? false,
+      consentEmail: data.consentEmail ?? false,
       consentDate: data.consentMarketing || data.consentWhatsapp || data.consentEmail ? new Date() : null,
       consentSource: data.consentSource || null,
       // Internal Notes
@@ -297,6 +299,14 @@ export async function getContactById(tenantId: string, contactId: string): Promi
       CrmContactTag: ct
     }))
   } as ContactDetail;
+
+  // Détail seulement (pas les listes) : prévient si les avis partent ailleurs que sur la fiche.
+  transformedContact.portalAccountEmailNotice = await getPortalAccountEmailNotice(
+    prisma as never,
+    tenantId,
+    contactId,
+    contact.email
+  );
 
   return transformedContact;
 }
@@ -809,6 +819,31 @@ export async function deleteContact(tenantId: string, contactId: string, actorUs
     throw new NotFoundError(t('Contact introuvable'));
   }
 
+  // Un contact porteur d'un compte propriétaire, d'un compte de tiers ou d'une
+  // offre d'achat ne se supprime pas : ces liens sont en `Restrict` en base
+  // (sinon P2003 en 500) et portent un historique financier à conserver.
+  const [ownerAccounts, saleOffers, thirdPartyAccounts] = await Promise.all([
+    prisma.ownerAccount.count({ where: { contactId, syndicate: { tenantId } } }),
+    prisma.saleOffer.count({ where: { buyerContactId: contactId, tenantId } }),
+    // Le compte de tiers se rattache au contact par le client de l'agence
+    // (TenantClient -> User), qui partage l'e-mail du contact.
+    existingContact.email
+      ? prisma.thirdPartyAccount.count({
+          where: {
+            tenantId,
+            tenantClient: { tenantId, user: { email: { equals: existingContact.email, mode: 'insensitive' } } }
+          }
+        })
+      : Promise.resolve(0)
+  ]);
+  if (ownerAccounts > 0 || saleOffers > 0 || thirdPartyAccounts > 0) {
+    throw new ConflictError(
+      t(
+        'Ce contact a un compte propriétaire, un compte de tiers ou un historique financier : il ne peut pas être supprimé.'
+      )
+    );
+  }
+
   // Delete related CRM data with explicit cascades where needed. The audit
   // event (critical action) is written in the same transaction.
   await prisma.$transaction(
@@ -947,6 +982,10 @@ export async function convertLeadToClient(tenantId: string, contactId: string, r
     roles
   });
 
+  // Rôle Propriétaire : le contact devient proposable comme propriétaire
+  // (TenantClient OWNER), sans passer par un bail. BUG-2026-09-28-019.
+  await ensureOwnerClientIfOwnerRole(tenantId, contactId, roles);
+
   // Audit log
   if (actorUserId) {
     logAuditEvent({
@@ -1006,6 +1045,8 @@ export async function addContactRole(tenantId: string, contactId: string, roleTy
     tenantId,
     roleType
   });
+
+  await ensureOwnerClientIfOwnerRole(tenantId, contactId, [roleType]);
 
   return role;
 }
@@ -1221,6 +1262,8 @@ export async function updateContactRoles(
     });
     statusUpdated = true;
   }
+
+  await ensureOwnerClientIfOwnerRole(tenantId, contactId, desiredRoles);
 
   logger.info('Contact roles updated', {
     contactId,

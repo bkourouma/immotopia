@@ -1,4 +1,5 @@
 import { t } from '../i18n/t';
+import { localizedRecord } from '../i18n/localized';
 /**
  * Libellés et descriptions en français des permissions et rôles RBAC.
  * Utilisé sur la page Admin > Rôles et permissions pour clarifier les fonctionnalités.
@@ -10,7 +11,7 @@ export interface PermissionLabelFr {
 }
 
 /** Libellé court + description en français par clé de permission */
-export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
+export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = localizedRecord(() => ({
   // --- Plateforme (administration centrale) ---
   PLATFORM_TENANTS_VIEW: {
     label: t('Voir les tenants'),
@@ -73,6 +74,11 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
   TENANT_AUDIT_VIEW: {
     label: t("Voir le journal d'activité"),
     description: t("Consulter le journal d'activité de l'agence (qui a fait quoi, quand).")
+  },
+
+  TENANT_NOTIFICATIONS_ADMIN: {
+    label: t('Voir le journal des notifications'),
+    description: t("Consulter le journal des notifications de l'agence et renvoyer les envois en échec.")
   },
 
   // --- Utilisateurs / collaborateurs ---
@@ -234,6 +240,24 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
     label: t('Allouer les paiements'),
     description: t('Allouer les paiements aux échéances (rattacher un paiement à une échéance).')
   },
+  RENTAL_DIRECT_DEBIT_VIEW: {
+    label: t('Voir les prélèvements bancaires'),
+    description: t('Consulter les créanciers et les mandats de prélèvement bancaire.')
+  },
+  RENTAL_DIRECT_DEBIT_MANAGE: {
+    label: t('Gérer les prélèvements bancaires'),
+    description: t('Créer et modifier les créanciers et les mandats de prélèvement, déposer les scans signés.')
+  },
+  SYNDIC_DIRECT_DEBIT_VIEW: {
+    label: t('Prélèvements de copropriété : consulter'),
+    description: t('Consulter le compte de prélèvement du syndicat, les mandats et les remises (IBAN masqué).')
+  },
+  SYNDIC_DIRECT_DEBIT_MANAGE: {
+    label: t('Prélèvements de copropriété : gérer, IBAN complet'),
+    description: t(
+      'Créer et modifier le compte, les mandats et les remises de copropriété, déposer les scans signés et produire le fichier à IBAN complet.'
+    )
+  },
   RENTAL_PENALTIES_VIEW: {
     label: t('Voir les pénalités'),
     description: t('Consulter les pénalités de retard.')
@@ -287,6 +311,37 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
     description: t('Voir et gérer la communication : modèles, règles, historique, préférences, analytiques.')
   },
 
+  // --- Finance (module financier opérationnel, lots 2 à 4) ---
+  //
+  // Descriptions reprises du seed (packages/api/prisma/seeds/finance-permissions-seed.ts),
+  // sans accents côté API — hors territoire de cet agent, non modifié. Les
+  // entrées ci-dessous priment sur la description API dans getPermissionLabelFr
+  // et corrigent l'affichage (BUG-2026-09-28-003) sans toucher au seed.
+  FINANCE_ACCOUNTS_READ: {
+    label: t('Voir les comptes de tiers'),
+    description: t('Lire les comptes de tiers et leurs relevés.')
+  },
+  FINANCE_REPORTS_READ: {
+    label: t('Voir les rapports financiers'),
+    description: t('Lire les balances et les comptes rendus de campagne.')
+  },
+  FINANCE_DOCUMENTS_CREATE: {
+    label: t('Créer des pièces financières'),
+    description: t('Créer une pièce financière (campagne de facturation).')
+  },
+  FINANCE_DOCUMENTS_VALIDATE: {
+    label: t('Valider des pièces financières'),
+    description: t('Valider une pièce financière.')
+  },
+  FINANCE_SITES_MANAGE: {
+    label: t('Gérer les chantiers'),
+    description: t('Gérer les chantiers (module financier).')
+  },
+  FINANCE_SETTINGS_MANAGE: {
+    label: t('Paramétrer le module financier'),
+    description: t('Paramétrer le module financier : plan de comptes, postes de dépense.')
+  },
+
   // --- Stock de chantier (lot 040, ecrans §10.5) ---
   STOCK_VIEW: {
     label: t('Consulter le stock'),
@@ -328,10 +383,10 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
     label: t('Alertes de stock'),
     description: t('Consulter et traiter les alertes, et les recevoir par e-mail.')
   }
-};
+}));
 
 /** Libellés des groupes de permissions (préfixes) pour l’affichage en sections */
-export const PERMISSION_GROUP_LABELS_FR: Record<string, string> = {
+export const PERMISSION_GROUP_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   PLATFORM: t('Plateforme (administration centrale)'),
   TENANT: t('Paramètres du tenant'),
   USERS: 'Collaborateurs',
@@ -341,11 +396,12 @@ export const PERMISSION_GROUP_LABELS_FR: Record<string, string> = {
   RENTAL: t('Location (baux, loyers, documents)'),
   MAINTENANCE: 'Maintenance',
   COMMUNICATION: 'Communication',
+  FINANCE: t('Finance'),
   STOCK: t('Stock de chantier')
-};
+}));
 
 /** Noms et descriptions en français des rôles (clé technique → libellé) */
-export const ROLE_LABELS_FR: Record<string, { name: string; description: string }> = {
+export const ROLE_LABELS_FR: Record<string, { name: string; description: string }> = localizedRecord(() => ({
   PLATFORM_SUPER_ADMIN: {
     name: 'Super administrateur plateforme',
     description: t('Accès complet à la plateforme : tous les tenants, modules, abonnements et factures.')
@@ -385,7 +441,7 @@ export const ROLE_LABELS_FR: Record<string, { name: string; description: string 
       'Compte le stock de ses chantiers, notamment par WhatsApp, sans valider l’inventaire ni voir les valeurs.'
     )
   }
-};
+}));
 
 /**
  * Retourne le libellé et la description en français pour une permission (clé).

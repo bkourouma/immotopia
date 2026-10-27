@@ -434,13 +434,15 @@ export const Tacheron: React.FC = () => {
       title: t('Montant convenu'),
       key: 'convenu',
       align: 'end',
-      render: (_, m) => <MoneyValue value={m.agreedAmount} />
+      render: (_, m) => <MoneyValue value={m.agreedAmount} />,
+      exportValue: m => m.agreedAmount
     },
     {
       title: t('Situations validées'),
       key: 'situe',
       align: 'end',
-      render: (_, m) => <MoneyValue value={m.statementedAmount} />
+      render: (_, m) => <MoneyValue value={m.statementedAmount} />,
+      exportValue: m => m.statementedAmount
     },
     {
       // « Marché restant », jamais « solde » : ce qui reste à EXÉCUTER, à ne
@@ -453,7 +455,9 @@ export const Tacheron: React.FC = () => {
           <MoneyValue value={m.remainingAmount} signed />
           {m.isOverrun && <StatusTag status="OVERRUN" tone="warning" label={t('Dépassement')} />}
         </Space>
-      )
+      ),
+      // Nombre signé : négatif quand les situations dépassent le marché.
+      exportValue: m => m.remainingAmount
     },
     {
       title: t('Actions'),
@@ -470,7 +474,13 @@ export const Tacheron: React.FC = () => {
   const colonnesSituations: ColumnsType<ProgressStatement> = [
     { title: t('Date'), key: 'date', width: 120, render: (_, s) => dateCourte(s.statementDate) },
     { title: t('Description'), key: 'description', render: (_, s) => s.description },
-    { title: t('Montant'), key: 'montant', align: 'end', render: (_, s) => <MoneyValue value={s.amount} /> },
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      render: (_, s) => <MoneyValue value={s.amount} />,
+      exportValue: s => s.amount
+    },
     { title: t('Saisie par'), key: 'saisie', render: (_, s) => s.createdByLabel },
     {
       title: t('Statut'),
@@ -501,7 +511,13 @@ export const Tacheron: React.FC = () => {
 
   const colonnesReglements: ColumnsType<ContractorPayment> = [
     { title: t('Date'), key: 'date', width: 120, render: (_, r) => dateCourte(r.paymentDate) },
-    { title: t('Montant'), key: 'montant', align: 'end', render: (_, r) => <MoneyValue value={r.amount} /> },
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      render: (_, r) => <MoneyValue value={r.amount} />,
+      exportValue: r => r.amount
+    },
     { title: t('Saisi par'), key: 'saisi', render: (_, r) => r.createdByLabel },
     {
       title: t('Statut'),
@@ -590,6 +606,7 @@ export const Tacheron: React.FC = () => {
 
       <Title level={4}>{t('Marchés')}</Title>
       <DataView<ContractorContract>
+        export={{ filename: t('Marchés') }}
         // Le contrat de `listContractorContracts` ne pagine pas.
         paginated={false}
         scrollX={1400}
@@ -600,6 +617,7 @@ export const Tacheron: React.FC = () => {
         onPageChange={() => {}}
         loading={marchesEnAttente}
         error={erreurMarches ? t('Impossible de charger les marchés de ce tâcheron.') : null}
+        errorCause={erreurMarches}
         onRetry={() => refetchMarches()}
         emptyDescription={t("Aucun marché n'a encore été convenu avec ce tâcheron.")}
         columns={colonnesMarches}
@@ -730,6 +748,7 @@ export const Tacheron: React.FC = () => {
 
           <div style={{ marginTop: 'var(--space-3)' }}>
             <DataView<ProgressStatement>
+              export={{ filename: t("Situations d'avancement du marché") }}
               paginated={false}
               scrollX={1000}
               items={situations ?? []}
@@ -739,6 +758,7 @@ export const Tacheron: React.FC = () => {
               onPageChange={() => {}}
               loading={situationsEnAttente}
               error={erreurSituations ? t('Impossible de charger les situations de ce marché.') : null}
+              errorCause={erreurSituations}
               onRetry={() => refetchSituations()}
               emptyDescription={t("Aucune situation n'a encore été saisie sur ce marché.")}
               columns={colonnesSituations}
@@ -868,6 +888,7 @@ export const Tacheron: React.FC = () => {
         {t('Règlements')}
       </Title>
       <DataView<ContractorPayment>
+        export={{ filename: t('Règlements') }}
         paginated={false}
         scrollX={900}
         items={reglements ?? []}
@@ -877,6 +898,7 @@ export const Tacheron: React.FC = () => {
         onPageChange={() => {}}
         loading={reglementsEnAttente}
         error={erreurReglements ? t('Impossible de charger les règlements de ce tâcheron.') : null}
+        errorCause={erreurReglements}
         onRetry={() => refetchReglements()}
         emptyDescription={t("Aucun règlement n'a encore été enregistré pour ce tâcheron.")}
         columns={colonnesReglements}

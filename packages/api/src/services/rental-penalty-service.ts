@@ -232,7 +232,8 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
           mode: mode,
           rate: mode !== RentalPenaltyMode.FIXED_AMOUNT ? rate : null,
           fixed_amount: mode === RentalPenaltyMode.FIXED_AMOUNT ? fixedAmount : null,
-          amount: penaltyAmount
+          amount: penaltyAmount,
+          calculatedAmount: penaltyAmount
         }
       });
     } else {
@@ -247,6 +248,7 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
           rate: mode !== RentalPenaltyMode.FIXED_AMOUNT ? rate : null,
           fixed_amount: mode === RentalPenaltyMode.FIXED_AMOUNT ? fixedAmount : null,
           amount: penaltyAmount,
+          calculatedAmount: penaltyAmount,
           currency: installment.currency,
           is_manual_override: false,
           created_by_user_id: actorUserId || null
@@ -418,6 +420,69 @@ export async function calculatePenaltiesForOverdueInstallments(tenantId?: string
 }
 
 /**
+ * Le champ `override_reason` porte, en JSON, la raison de l'ajustement, le
+ * montant calculé d'origine (`calculatedAmount`) et le justificatif éventuel.
+ * Il peut aussi contenir du texte brut, écrit avant ce format.
+ */
+function lireAjustement(brut: string | null | undefined): {
+  reason: string | null;
+  calculatedAmount: number | null;
+  raw: Record<string, unknown>;
+} {
+  if (!brut) return { reason: null, calculatedAmount: null, raw: {} };
+  try {
+    const parsed = JSON.parse(brut);
+    if (parsed && typeof parsed === 'object') {
+      const calc = parsed.calculatedAmount;
+      return {
+        reason: typeof parsed.reason === 'string' ? parsed.reason : null,
+        calculatedAmount: typeof calc === 'number' ? calc : null,
+        raw: parsed
+      };
+    }
+  } catch {
+    // texte brut
+  }
+  return { reason: brut, calculatedAmount: null, raw: { reason: brut } };
+}
+
+/**
+ * Expose l'ajustement : `amount` reste le montant retenu (celui du compte du
+ * locataire) ; une pénalité ajustée porte en plus `calculated_amount` (montant
+ * calculé d'origine, quand il est connu), `adjusted_amount` et
+ * `adjustment_reason` (BUG-2026-09-28-024).
+ */
+export function presenterPenalite<
+  T extends {
+    amount: unknown;
+    is_manual_override: boolean;
+    override_reason: string | null;
+    calculatedAmount?: unknown;
+  }
+>(penalty: T) {
+  // Le montant calculé vient de la colonne `calculatedAmount` quand elle est
+  // renseignée (toute pénalité, ajustée ou non) ; sinon, du JSON d'ajustement
+  // écrit avant la colonne (rétrocompatibilité).
+  const colonne =
+    penalty.calculatedAmount !== null && penalty.calculatedAmount !== undefined
+      ? Number(penalty.calculatedAmount)
+      : null;
+  if (!penalty.is_manual_override) {
+    return { ...penalty, calculated_amount: colonne, adjusted_amount: null, adjustment_reason: null };
+  }
+  const ajustement = lireAjustement(penalty.override_reason);
+  return {
+    ...penalty,
+    // Pour une pénalité ajustée, le JSON d'ajustement prime : la migration a
+    // rempli la colonne avec `amount` pour l'existant, donc avec le montant déjà
+    // ajusté, alors que le JSON a gardé le calcul d'origine.
+    calculated_amount: ajustement.calculatedAmount ?? colonne,
+    adjusted_amount: Number(penalty.amount),
+    adjustment_reason: ajustement.reason
+  };
+}
+
+/**
  * Update penalty manually (override)
  * @param tenantId - Tenant ID
  * @param penaltyId - Penalty ID
@@ -447,6 +512,8 @@ export async function updatePenalty(
     throw new NotFoundError(t('Pénalité introuvable'));
   }
 
+  const ancienAjustement = lireAjustement(penalty.is_manual_override ? penalty.override_reason : null);
+
   // Le geste commercial de la gestionnaire et sa trace au compte du locataire
   // sont indivisibles : une pénalité ramenée à zéro dont le compte garderait le
   // débit laisserait le locataire débiteur d'une pénalité qu'on lui a remise.
@@ -459,8 +526,21 @@ export async function updatePenalty(
       },
       data: {
         amount: amount,
+        // Un ajustement ne touche JAMAIS au montant calculé : on ne le renseigne
+        // que s'il est nul (pénalité antérieure à la colonne), sans écraser.
+        calculatedAmount:
+          penalty.calculatedAmount !== null && penalty.calculatedAmount !== undefined
+            ? undefined
+            : (ancienAjustement.calculatedAmount ?? (penalty.is_manual_override ? undefined : Number(penalty.amount))),
         is_manual_override: true,
-        override_reason: reason,
+        // Le montant calculé d'origine survit à l'ajustement (et aux suivants) ;
+        // le justificatif déjà joint aussi.
+        override_reason: JSON.stringify({
+          ...ancienAjustement.raw,
+          reason,
+          calculatedAmount:
+            ancienAjustement.calculatedAmount ?? (penalty.is_manual_override ? null : Number(penalty.amount))
+        }),
         created_by_user_id: actorUserId
       }
     });
@@ -525,7 +605,7 @@ export async function updatePenalty(
     })
   });
 
-  return updatedPenalty;
+  return presenterPenalite(updatedPenalty);
 }
 
 /**
@@ -561,7 +641,7 @@ export async function getPenaltyById(tenantId: string, penaltyId: string) {
     }
   });
 
-  return penalty;
+  return penalty ? presenterPenalite(penalty) : penalty;
 }
 
 /**
@@ -617,7 +697,7 @@ export async function listPenalties(
     }
   });
 
-  return penalties;
+  return penalties.map(presenterPenalite);
 }
 
 /**

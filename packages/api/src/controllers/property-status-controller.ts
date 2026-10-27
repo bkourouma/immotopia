@@ -3,6 +3,7 @@ import { AppError } from '../middleware/error-middleware';
 import { logger } from '../utils/logger';
 import { updatePropertyStatus, getStatusHistory } from '../services/property-status-service';
 import { PropertyStatus } from '@prisma/client';
+import { parseEnumParam, parseIntParam } from '../utils/query-params';
 
 /**
  * Update property status handler
@@ -14,7 +15,7 @@ export async function updateStatusHandler(req: Request, res: Response, next: Nex
     const userId = req.user?.userId;
     const actorUserId = userId;
 
-    const newStatus = req.body.status as PropertyStatus;
+    const newStatus = parseEnumParam(req.body.status, PropertyStatus, 'status');
     const notes = req.body.notes as string | undefined;
 
     if (!newStatus) {
@@ -52,7 +53,7 @@ export async function getStatusHistoryHandler(req: Request, res: Response): Prom
   try {
     const propertyId = req.params.id;
     const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+    const limit = parseIntParam(req.query.limit, 'limit', { min: 1 }) ?? 50;
 
     if (!tenantId) {
       res.status(400).json({

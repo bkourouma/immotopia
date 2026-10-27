@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Card, Table, Button, Modal, Form, Input, Space, Typography } from 'antd';
+import { App, Card, Button, Modal, Form, Input, Space, Typography } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { HtmlCodeEditor } from '../../components/HtmlCodeEditor';
 import { newsletterService, type NewsletterTemplate } from '../../services/newsletter.service';
-import { useConfirmAction } from '../../components/primitives';
+import { Table, useConfirmAction } from '../../components/primitives';
 import { t } from '../../i18n/t';
 
 const HELP_TEXT = 'Variables disponibles : {{contenu}}, {{prenom}}, {{nom}}, {{email}}, {{lien_desinscription}}';
@@ -135,6 +135,7 @@ export function NewsletterTemplatesPage() {
 
         <Card>
           <Table
+            exportFilename={t('Templates newsletter')}
             scroll={{ x: 'max-content' }}
             loading={loading}
             columns={columns}

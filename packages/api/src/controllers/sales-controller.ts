@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
+import { SaleMandateStatus, SaleAgreementStatus, SaleCommissionStatus } from '@prisma/client';
 import { createMandate, getMandateDetail, listMandates, revokeMandate, updateMandate } from '../lib/sales/mandates';
+import { parseEnumParam } from '../utils/query-params';
 import { createOffer, decideOffer } from '../lib/sales/offers';
 import {
   addCondition,
@@ -43,7 +45,8 @@ function context(req: Request) {
 
 export const listMandatesHandler = asyncHandler(async (req: Request, res: Response) => {
   const { tenantId } = context(req);
-  const { status, propertyId, search } = req.query as Record<string, string | undefined>;
+  const status = parseEnumParam(req.query.status, SaleMandateStatus, 'status');
+  const { propertyId, search } = req.query as Record<string, string | undefined>;
   res.json({ success: true, data: await listMandates(tenantId, { status, propertyId, search }) });
 });
 
@@ -58,8 +61,8 @@ export const getMandateHandler = asyncHandler(async (req: Request, res: Response
 });
 
 export const updateMandateHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { tenantId } = context(req);
-  res.json({ success: true, data: await updateMandate(tenantId, req.params.id, req.body) });
+  const { tenantId, userId } = context(req);
+  res.json({ success: true, data: await updateMandate(tenantId, req.params.id, req.body, userId) });
 });
 
 export const revokeMandateHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -94,7 +97,7 @@ export const createAgreementHandler = asyncHandler(async (req: Request, res: Res
 
 export const listAgreementsHandler = asyncHandler(async (req: Request, res: Response) => {
   const { tenantId } = context(req);
-  const { status } = req.query as Record<string, string | undefined>;
+  const status = parseEnumParam(req.query.status, SaleAgreementStatus, 'status');
   res.json({ success: true, data: await listAgreements(tenantId, { status }) });
 });
 
@@ -104,8 +107,8 @@ export const getAgreementHandler = asyncHandler(async (req: Request, res: Respon
 });
 
 export const updateAgreementHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { tenantId } = context(req);
-  res.json({ success: true, data: await updateAgreement(tenantId, req.params.id, req.body) });
+  const { tenantId, userId } = context(req);
+  res.json({ success: true, data: await updateAgreement(tenantId, req.params.id, req.body, userId) });
 });
 
 export const signAgreementHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -124,24 +127,24 @@ export const cancelAgreementHandler = asyncHandler(async (req: Request, res: Res
 });
 
 export const addConditionHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { tenantId } = context(req);
-  res.status(201).json({ success: true, data: await addCondition(tenantId, req.params.id, req.body) });
+  const { tenantId, userId } = context(req);
+  res.status(201).json({ success: true, data: await addCondition(tenantId, req.params.id, req.body, userId) });
 });
 
 export const patchConditionHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { tenantId } = context(req);
-  res.json({ success: true, data: await patchCondition(tenantId, req.params.id, req.body) });
+  const { tenantId, userId } = context(req);
+  res.json({ success: true, data: await patchCondition(tenantId, req.params.id, req.body, userId) });
 });
 
 export const deleteConditionHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { tenantId } = context(req);
-  await deleteCondition(tenantId, req.params.id);
+  const { tenantId, userId } = context(req);
+  await deleteCondition(tenantId, req.params.id, userId);
   res.json({ success: true });
 });
 
 export const replaceMilestonesHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { tenantId } = context(req);
-  res.json({ success: true, data: await replaceMilestones(tenantId, req.params.id, req.body) });
+  const { tenantId, userId } = context(req);
+  res.json({ success: true, data: await replaceMilestones(tenantId, req.params.id, req.body, userId) });
 });
 
 // ---------------------------------------------------------------------------
@@ -150,7 +153,7 @@ export const replaceMilestonesHandler = asyncHandler(async (req: Request, res: R
 
 export const listCommissionsHandler = asyncHandler(async (req: Request, res: Response) => {
   const { tenantId } = context(req);
-  const { status } = req.query as Record<string, string | undefined>;
+  const status = parseEnumParam(req.query.status, SaleCommissionStatus, 'status');
   res.json({ success: true, data: await listCommissions(tenantId, { status }) });
 });
 

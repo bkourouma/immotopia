@@ -46,12 +46,20 @@ export const WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES: Record<WhatsappNotificatio
     'Bonjour {{ownerName}}, votre rapport mensuel {{agencyName}} pour la période {{period}} est disponible : {{reportUrl}} (lien personnel en lecture seule, valable jusqu’au {{expiresAt}}).',
   RENTER_PAYMENT_LINK_SENT:
     'Bonjour {{renterName}}, votre loyer {{agencyName}} pour la période {{period}} est à régler : {{amountDue}}. Payez en ligne par Mobile Money : {{paymentUrl}} (lien personnel, valable jusqu’au {{expiresAt}}).',
+  CHARGE_CALL_PAYMENT_LINK_SENT:
+    'Bonjour {{ownerName}}, l’appel de charges {{period}} de votre lot {{lotLabel}} ({{syndicateName}}) est à régler : {{amountDue}}, échéance le {{dueDate}}. Payez en ligne par Mobile Money : {{paymentUrl}} (lien personnel, valable jusqu’au {{expiresAt}}).',
+  SYNDIC_PAYMENT_DECLARATION_RECEIVED:
+    'Bonjour {{ownerName}}, nous avons bien reçu votre déclaration de paiement mobile money de {{amount}} (référence {{transactionReference}}) pour la copropriété {{syndicName}}. Elle est en cours de vérification : votre compte sera crédité après validation.',
+  SYNDIC_PAYMENT_DECLARATION_APPROVED:
+    'Bonjour {{ownerName}}, votre paiement mobile money (référence {{transactionReference}}) pour la copropriété {{syndicName}} a été validé : {{acceptedAmount}} enregistrés sur votre compte. Montant corrigé : {{corrected}}. {{reviewNote}} Votre reçu ou quittance vous est envoyé séparément.',
+  SYNDIC_PAYMENT_DECLARATION_REJECTED:
+    'Bonjour {{ownerName}}, votre déclaration de paiement mobile money de {{amount}} (référence {{transactionReference}}) pour la copropriété {{syndicName}} n’a pas été retenue. Motif : {{rejectReasonLabel}}. {{reviewNote}} Aucun montant n’a été enregistré.',
   CHARGE_CALL_ISSUED:
-    'Bonjour {{ownerName}}, un nouvel appel de charges a été émis pour votre lot {{lotLabel}} dans la copropriété {{syndicateName}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.',
+    'Bonjour {{ownerName}}, un nouvel appel de charges a été émis pour votre lot {{lotLabel}} dans la copropriété {{syndicateName}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.{{paymentBlock}}',
   CHARGE_CALL_REMINDER:
-    'Bonjour {{ownerName}}, rappel pour l’appel de charges de la période {{period}} concernant le lot {{lotLabel}}. Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.',
+    'Bonjour {{ownerName}}, rappel pour l’appel de charges de la période {{period}} concernant le lot {{lotLabel}}. Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.{{paymentBlock}}',
   GENERAL_MEETING_CONVOCATION:
-    'Bonjour {{ownerName}}, vous êtes convoqué(e) à l’assemblée générale de la copropriété {{syndicateName}} le {{meetingDate}} à {{meetingTime}}, lieu : {{meetingLocation}}.',
+    'Bonjour {{ownerName}}, vous êtes convoqué(e) à l’assemblée générale de la copropriété {{syndicateName}} le {{meetingDate}} à {{meetingTime}}, lieu : {{meetingLocation}}. Suivez l’assemblée et votez en ligne : {{meetingLink}}\n{{recordingNotice}}',
   GENERAL_MEETING_MINUTES:
     'Bonjour {{ownerName}}, le procès-verbal de l’assemblée générale de la copropriété {{syndicateName}} est disponible ici : {{minutesUrl}}',
   CONTRACT_RENEWAL_ALERT:

@@ -34,6 +34,19 @@ function proceedWithTenantContext(req: Request, next: NextFunction): void {
 }
 
 /**
+ * Reponse unique de refus d'acces a une agence : meme statut, meme corps pour
+ * un non-membre, une agence inexistante ou une agence qui a disparu. Ne jamais
+ * y ajouter de `code` ni de variante : la difference serait un oracle
+ * d'existence d'identifiant d'agence.
+ */
+function denyTenantAccess(res: Response): void {
+  res.status(403).json({
+    success: false,
+    message: t("Vous n'avez pas accès à ce tenant.")
+  });
+}
+
+/**
  * Middleware to require tenant access (T029)
  * Verifies that the authenticated user has access to the specified tenant
  * via Membership (RBAC system) or legacy TenantClient model
@@ -106,23 +119,19 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
       return;
     }
 
-    // Une agence suspendue n'est plus accessible, meme apres reconnexion : la
-    // suspension revoque les sessions, mais sans ce controle un simple nouveau
-    // login rouvrait l'acces. Le super-admin, lui, passe (bloc ci-dessus) pour
-    // pouvoir la consulter et la reactiver.
-    const tenantInfo = await getTenantAccessInfo(tenantId as string);
-    const tenantStatus = tenantInfo?.status ?? null;
-    const tenantType = tenantInfo?.type;
-    if (tenantStatus === null) {
-      res.status(404).json({ success: false, message: t('Agence introuvable.') });
-      return;
-    }
-    if (tenantStatus === TenantStatus.SUSPENDED) {
-      res.status(403).json({ success: false, code: 'TENANT_SUSPENDED', message: t('Cette agence est suspendue.') });
+    // Identifiant non textuel (tableau ou objet venu de la query ou du body) :
+    // refus uniforme tout de suite, sans lecture en base (Prisma lèverait une
+    // erreur de validation, donc un 500 avec son message hors production).
+    if (typeof tenantId !== 'string') {
+      denyTenantAccess(res);
       return;
     }
 
-    // Check Membership (RBAC system) - primary check
+    // Appartenance d'abord (Membership actif, puis TenantClient historique) :
+    // un non-membre recoit TOUJOURS la meme reponse, que l'agence existe,
+    // n'existe pas ou soit suspendue. Verifier l'existence ou la suspension
+    // avant l'appartenance revelerait a un tiers qu'un identifiant d'agence est
+    // valide (BUG-2026-10-19-009).
     const membership = await prisma.membership.findUnique({
       where: {
         userId_tenantId: {
@@ -131,8 +140,42 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
         }
       }
     });
+    const hasActiveMembership = Boolean(membership && membership.status === MembershipStatus.ACTIVE);
 
-    if (membership && membership.status === MembershipStatus.ACTIVE) {
+    // Legacy Collaborator model has been removed - use Membership only.
+    // Fallback: legacy TenantClient model (for backward compatibility).
+    const client = hasActiveMembership
+      ? null
+      : await prisma.tenantClient.findUnique({
+          where: {
+            userId_tenantId: {
+              userId: req.user.userId,
+              tenantId: tenantId as string
+            }
+          }
+        });
+
+    if (!hasActiveMembership && !client) {
+      denyTenantAccess(res);
+      return;
+    }
+
+    // Ici l'appelant a un acces : on peut lui dire que l'agence est suspendue.
+    // La suspension revoque les sessions, mais sans ce controle un simple
+    // nouveau login rouvrirait l'acces. Le super-admin passe (bloc ci-dessus).
+    const tenantInfo = await getTenantAccessInfo(tenantId as string);
+    if (!tenantInfo) {
+      // Agence disparue entre-temps : meme reponse que l'absence d'acces.
+      denyTenantAccess(res);
+      return;
+    }
+    if (tenantInfo.status === TenantStatus.SUSPENDED) {
+      res.status(403).json({ success: false, code: 'TENANT_SUSPENDED', message: t('Cette agence est suspendue.') });
+      return;
+    }
+    const tenantType = tenantInfo.type;
+
+    if (hasActiveMembership) {
       // User has active membership, check if user has any tenant roles
       const userRoles = await prisma.userRole.findMany({
         where: {
@@ -157,36 +200,15 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
       return;
     }
 
-    // Legacy Collaborator model has been removed - use Membership only
-
-    // Fallback: Check legacy TenantClient model (for backward compatibility)
-    const client = await prisma.tenantClient.findUnique({
-      where: {
-        userId_tenantId: {
-          userId: req.user.userId,
-          tenantId: tenantId as string
-        }
-      }
-    });
-
-    if (client) {
-      req.tenantContext = {
-        tenantId: tenantId as string,
-        role: null,
-        isCollaborator: false,
-        isClient: true,
-        clientType: client.clientType,
-        tenantType
-      };
-      proceedWithTenantContext(req, next);
-      return;
-    }
-
-    // No access
-    res.status(403).json({
-      success: false,
-      message: "Vous n'avez pas accès à ce tenant."
-    });
+    req.tenantContext = {
+      tenantId: tenantId as string,
+      role: null,
+      isCollaborator: false,
+      isClient: true,
+      clientType: client?.clientType,
+      tenantType
+    };
+    proceedWithTenantContext(req, next);
   } catch (error) {
     console.error('Tenant access check error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

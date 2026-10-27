@@ -1,20 +1,23 @@
 import React, { useMemo, useState } from 'react';
-import { Button, Card, Col, Modal, Row, Select, Space, Table, Typography } from 'antd';
+import { Button, Card, Col, Modal, Row, Select, Space, Typography } from 'antd';
 import { DownloadOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { DataCard, DataView, MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
+import { DataCard, DataView, MoneyValue, SkeletonList, StateBlock, Table } from '../../components/primitives';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
+import { DeclarationsList } from '../../components/coowner-portal/declared-payment/DeclarationsList';
 import {
   downloadCoOwnerReceiptFile,
+  listMyDeclarations,
   listMyLots,
   listMyPayments,
   type CoOwnerPayment,
   type CoOwnerPaymentDocument
 } from '../../services/coowner-portal-service';
 import { saveBlob } from '../../utils/save-blob';
+import { displayCurrency } from '../../utils/syndic-currency';
 import { blobErrorMessage, portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
@@ -64,7 +67,13 @@ function PaymentDetail({ payment }: { payment: CoOwnerPayment }) {
   const columns: ColumnsType<CoOwnerPayment['allocations'][number]> = [
     { title: t('Période'), dataIndex: 'period', key: 'period' },
     { title: t('Échéance'), key: 'dueDate', render: (_, row) => dayjs(row.dueDate).format('DD/MM/YYYY') },
-    { title: t('Montant'), key: 'amount', align: 'end', render: (_, row) => <MoneyValue value={row.amount} /> },
+    {
+      title: t('Montant'),
+      key: 'amount',
+      align: 'end',
+      exportValue: row => Number(row.amount),
+      render: (_, row) => <MoneyValue value={row.amount} />
+    },
     {
       title: t('Origine'),
       key: 'source',
@@ -81,6 +90,8 @@ function PaymentDetail({ payment }: { payment: CoOwnerPayment }) {
           </div>
         ) : (
           <Table
+            // Détail d'un paiement ouvert dans une fenêtre : la ligne est déjà exportée par la liste.
+            exportable={false}
             size="small"
             columns={columns}
             dataSource={payment.allocations}
@@ -92,7 +103,7 @@ function PaymentDetail({ payment }: { payment: CoOwnerPayment }) {
       {payment.remainingAdvance > 0 ? (
         <Space size={4}>
           <Text>{t('Avance restante après affectation :')}</Text>
-          <MoneyValue value={payment.remainingAdvance} currency={payment.currency} />
+          <MoneyValue value={payment.remainingAdvance} currency={displayCurrency(payment.currency)} />
         </Space>
       ) : null}
       <div>
@@ -118,11 +129,26 @@ export default function CoOwnerPayments() {
   const [year, setYear] = useState<number | undefined>(undefined);
   const [detail, setDetail] = useState<CoOwnerPayment | null>(null);
 
-  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], queryFn: () => listMyLots() });
+  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], staleTime: 30_000, queryFn: () => listMyLots() });
   const payments = useQuery({
     queryKey: ['coowner-portal', 'payments', lotId ?? null, year ?? null],
+    staleTime: 30_000,
     queryFn: () => listMyPayments({ lotId, year })
   });
+
+  // Section facultative : toute erreur (API absente, droit refusé) la masque sans casser la page.
+  const declarations = useQuery({
+    queryKey: ['coowner-portal', 'declarations'],
+    staleTime: 30_000,
+    queryFn: () => listMyDeclarations({ status: 'ALL', limit: 50 }),
+    retry: false
+  });
+  const declarationItems = declarations.isError ? [] : (declarations.data?.items ?? []);
+
+  const refreshAll = () => {
+    void payments.refetch();
+    void declarations.refetch();
+  };
 
   const lotOptions = useMemo(
     () =>
@@ -137,7 +163,8 @@ export default function CoOwnerPayments() {
       title: t('Montant'),
       key: 'amount',
       align: 'end',
-      render: (_, row) => <MoneyValue value={row.amount} currency={row.currency} />
+      exportValue: row => Number(row.amount),
+      render: (_, row) => <MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />
     },
     { title: t('Mode'), key: 'method', render: (_, row) => row.methodLabel ?? '—' },
     { title: t('Référence'), key: 'reference', render: (_, row) => row.reference ?? '—' },
@@ -145,12 +172,14 @@ export default function CoOwnerPayments() {
       title: t('Avance restante'),
       key: 'remainingAdvance',
       align: 'end',
-      render: (_, row) => <MoneyValue value={row.remainingAdvance} currency={row.currency} />
+      exportValue: row => Number(row.remainingAdvance),
+      render: (_, row) => <MoneyValue value={row.remainingAdvance} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Détail'),
       key: 'detail',
       align: 'end',
+      exportable: false,
       render: (_, row) => (
         <Button icon={<EyeOutlined />} onClick={() => setDetail(row)}>
           {t('Détail')}
@@ -166,7 +195,7 @@ export default function CoOwnerPayments() {
           <Title level={2}>{t('Mes paiements')}</Title>
           <Text type="secondary">{t('Vos règlements de charges, leur affectation et les documents associés.')}</Text>
         </div>
-        <Button icon={<SyncOutlined />} onClick={() => void payments.refetch()} loading={payments.isFetching}>
+        <Button icon={<SyncOutlined />} onClick={refreshAll} loading={payments.isFetching}>
           {t('Actualiser')}
         </Button>
       </div>
@@ -203,7 +232,7 @@ export default function CoOwnerPayments() {
                     {t('Avance disponible — lot {{lotNumber}}', { lotNumber: advance.lot.lotNumber })}
                   </Text>
                   <div style={{ marginTop: 4 }}>
-                    <MoneyValue value={advance.advance} currency={advance.currency} />
+                    <MoneyValue value={advance.advance} currency={displayCurrency(advance.currency)} />
                   </div>
                 </Card>
               </Col>
@@ -230,6 +259,7 @@ export default function CoOwnerPayments() {
             onPageChange={() => {}}
             rowKey={row => row.id}
             aria-label={t('Mes paiements')}
+            export={{ filename: t('Mes paiements') }}
             emptyDescription={t("Aucun paiement n'a encore été enregistré pour vos lots.")}
             columns={columns}
             renderCard={row => (
@@ -238,12 +268,12 @@ export default function CoOwnerPayments() {
                 subtitle={[t('Lot {{lotNumber}}', { lotNumber: row.lot.lotNumber }), row.methodLabel]
                   .filter(Boolean)
                   .join(' · ')}
-                highlight={<MoneyValue value={row.amount} currency={row.currency} />}
+                highlight={<MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />}
                 fields={[
                   { label: t('Référence'), value: row.reference ?? '—' },
                   {
                     label: t('Avance restante'),
-                    value: <MoneyValue value={row.remainingAdvance} currency={row.currency} />
+                    value: <MoneyValue value={row.remainingAdvance} currency={displayCurrency(row.currency)} />
                   }
                 ]}
                 primaryAction={{ label: t('Détail'), icon: <EyeOutlined />, onClick: () => setDetail(row) }}
@@ -252,6 +282,22 @@ export default function CoOwnerPayments() {
           />
         </Card>
       )}
+
+      {declarationItems.length > 0 ? (
+        <Card>
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <div>
+              <Title level={3}>{t('Mes déclarations')}</Title>
+              <Text type="secondary">
+                {t(
+                  'Paiements mobile money que vous avez déclarés au syndic. Rien n’est porté à votre compte avant validation.'
+                )}
+              </Text>
+            </div>
+            <DeclarationsList items={declarationItems} />
+          </Space>
+        </Card>
+      ) : null}
 
       <Modal
         open={Boolean(detail)}

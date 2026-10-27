@@ -177,6 +177,17 @@ const mockPrisma: Row = {
     })
   },
   journalEntryLine: {
+    // Solde d'un compte du plan : même calcul que `groupBy`, pour UN compte
+    // (contrôle de solde avant une sortie, `lib/treasury/balance.ts`).
+    aggregate: jest.fn(async ({ where }: Row) => {
+      const lines = store.journalEntryLines.filter(l => l.accountId === where.accountId);
+      return {
+        _sum: {
+          debit: lines.reduce((s, l) => s + Number(l.debit ?? 0), 0),
+          credit: lines.reduce((s, l) => s + Number(l.credit ?? 0), 0)
+        }
+      };
+    }),
     groupBy: jest.fn(async ({ where }: Row) => {
       const accountIds: string[] = where.accountId?.in ?? [];
       return accountIds.map(accountId => {
@@ -194,6 +205,9 @@ const mockPrisma: Row = {
   user: {
     findMany: jest.fn(async ({ where }: Row) => store.users.filter(u => matchesFlat(u, where)))
   },
+  // Verrou consultatif du contrôle de solde : sans objet en mémoire, mais son
+  // appel est vérifié (il doit précéder la lecture du solde).
+  $executeRaw: jest.fn(async () => 1),
   $transaction: jest.fn(async (fn: (tx: Row) => Promise<any>) => fn(mockPrisma))
 };
 
@@ -238,6 +252,11 @@ function addAccount(overrides: Row = {}) {
   return account;
 }
 
+/** Approvisionne un compte : une ligne au débit de son compte du plan. */
+function fund(account: Row, amount: number) {
+  store.journalEntryLines.push({ accountId: account.chartOfAccountId, debit: amount, credit: 0 });
+}
+
 describe('listAccounts — solde et création à la volée', () => {
   it('crée les comptes CASH et BANK par défaut quand l’agence n’en a aucun', async () => {
     const accounts = await service.listAccounts(TENANT);
@@ -276,6 +295,7 @@ describe('Virements — numérotation VIR-AAAA-NNNN et équilibre', () => {
   it('numérote séquentiellement par année et poste une écriture équilibrée', async () => {
     const from = addAccount({ accountNumber: '5711', kind: 'CASH', label: 'Caisse' });
     const to = addAccount({ accountNumber: '5211', kind: 'BANK', label: 'Banque' });
+    fund(from, 100_000);
 
     const first = await service.createTransfer(TENANT, 'user-1', {
       fromTreasuryAccountId: from.id,
@@ -315,6 +335,7 @@ describe('Virements — numérotation VIR-AAAA-NNNN et équilibre', () => {
   it('contre-passe l’écriture à l’annulation', async () => {
     const from = addAccount({ accountNumber: '5711', kind: 'CASH' });
     const to = addAccount({ accountNumber: '5211', kind: 'BANK' });
+    fund(from, 5_000);
     const transfer = await service.createTransfer(TENANT, 'user-1', {
       fromTreasuryAccountId: from.id,
       toTreasuryAccountId: to.id,
@@ -348,6 +369,7 @@ describe('Versements DGI — refus au-delà du dû', () => {
 
   it('accepte un versement dans la limite du dû et numérote DGI-AAAA-NNNN', async () => {
     const treasury = addAccount({ accountNumber: '5711', kind: 'CASH' });
+    fund(treasury, 50_000);
     store.rentWithholdings.push({ tenantId: TENANT, amount: 10_000 });
 
     const remittance = await service.createTaxRemittance(TENANT, 'user-1', {
@@ -366,6 +388,7 @@ describe('Versements DGI — refus au-delà du dû', () => {
 
   it('calcule un résumé de retenue cohérent', async () => {
     const treasury = addAccount({ accountNumber: '5711', kind: 'CASH' });
+    fund(treasury, 50_000);
     store.rentWithholdings.push({ tenantId: TENANT, amount: 10_000 });
     await service.createTaxRemittance(TENANT, 'user-1', {
       amount: 4_000,
@@ -379,6 +402,87 @@ describe('Versements DGI — refus au-delà du dû', () => {
     expect(summary.remitted).toBe(4_000);
     expect(summary.due).toBe(6_000);
     expect(summary.accountNumber).toBe('4478');
+  });
+});
+
+describe('Sorties de trésorerie — jamais de solde négatif (BUG-2026-09-29-003)', () => {
+  const transferBody = (from: Row, to: Row, amount: number) => ({
+    fromTreasuryAccountId: from.id,
+    toTreasuryAccountId: to.id,
+    amount,
+    transferredAt: '2026-01-15'
+  });
+  const spaces = (text: string) => text.replace(/[\s\u00a0\u202f]/g, ' ');
+
+  it('refuse un virement depuis un compte vide, sans rien écrire', async () => {
+    const from = addAccount({ accountNumber: '55221', kind: 'MOBILE_MONEY', label: 'Orange Money OI Agence' });
+    const to = addAccount({ accountNumber: '5711', kind: 'CASH', label: 'Caisse principale' });
+
+    await expect(service.createTransfer(TENANT, 'user-1', transferBody(from, to, 20_000))).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining('Solde insuffisant')
+    });
+    expect(store.treasuryTransfers).toHaveLength(0);
+    expect(postDocumentEntryTx).not.toHaveBeenCalled();
+  });
+
+  it('le message nomme le compte, le solde disponible et le montant demandé', async () => {
+    const from = addAccount({ accountNumber: '5711', kind: 'CASH', label: 'Caisse principale' });
+    const to = addAccount({ accountNumber: '5211', kind: 'BANK', label: 'Banque' });
+    fund(from, 6_000);
+
+    const erreur = await service
+      .createTransfer(TENANT, 'user-1', transferBody(from, to, 20_000))
+      .catch((e: Error) => e);
+    expect(erreur.message).toContain('Caisse principale');
+    expect(spaces(erreur.message)).toContain('6 000 FCFA disponibles');
+    expect(spaces(erreur.message)).toContain('20 000 FCFA demandés');
+  });
+
+  it('refuse un virement depuis un compte déjà négatif', async () => {
+    const from = addAccount({ accountNumber: '5711', kind: 'CASH' });
+    const to = addAccount({ accountNumber: '5211', kind: 'BANK' });
+    store.journalEntryLines.push({ accountId: from.chartOfAccountId, debit: 0, credit: 6_000 });
+    await expect(service.createTransfer(TENANT, 'user-1', transferBody(from, to, 1))).rejects.toMatchObject({
+      status: 400
+    });
+  });
+
+  it('accepte un virement qui vide exactement le compte (solde final nul)', async () => {
+    const from = addAccount({ accountNumber: '5711', kind: 'CASH' });
+    const to = addAccount({ accountNumber: '5211', kind: 'BANK' });
+    fund(from, 20_000);
+    await expect(service.createTransfer(TENANT, 'user-1', transferBody(from, to, 20_000))).resolves.toMatchObject({
+      amount: 20_000
+    });
+  });
+
+  it('prend le verrou du compte AVANT de lire le solde, dans la même transaction', async () => {
+    const from = addAccount({ accountNumber: '5711', kind: 'CASH' });
+    const to = addAccount({ accountNumber: '5211', kind: 'BANK' });
+    fund(from, 20_000);
+    mockPrisma.$executeRaw.mockClear();
+    mockPrisma.journalEntryLine.aggregate.mockClear();
+    await service.createTransfer(TENANT, 'user-1', transferBody(from, to, 5_000));
+    expect(mockPrisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      mockPrisma.journalEntryLine.aggregate.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('refuse un versement DGI que la caisse ne peut pas couvrir', async () => {
+    const treasury = addAccount({ accountNumber: '5711', kind: 'CASH', label: 'Caisse principale' });
+    fund(treasury, 2_000);
+    store.rentWithholdings.push({ tenantId: TENANT, amount: 10_000 });
+    await expect(
+      service.createTaxRemittance(TENANT, 'user-1', {
+        amount: 6_000,
+        paidAt: '2026-01-31',
+        periodLabel: 'Janvier 2026',
+        treasuryAccountId: treasury.id
+      })
+    ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('Solde insuffisant') });
+    expect(store.taxRemittances).toHaveLength(0);
   });
 });
 

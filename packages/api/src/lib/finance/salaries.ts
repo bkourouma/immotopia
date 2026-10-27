@@ -172,7 +172,8 @@ function toSalaryPaymentRecord(row: any): SalaryPaymentRecord {
     currency: row.currency,
     status: row.status,
     createdByLabel: toCreatedByLabel(row.createdBy),
-    validatedAt: row.validatedAt ?? null
+    validatedAt: row.validatedAt ?? null,
+    treasuryAccountId: row.treasuryAccountId ?? null
   };
 }
 
@@ -526,6 +527,23 @@ export const createSalaryPaymentTx: CreateSalaryPaymentTx = async (tx, tenantId,
     throw badRequest('Le montant du règlement doit être strictement positif');
   }
 
+  // Compte de trésorerie désigné (optionnel) : il doit appartenir à l'agence —
+  // même 404 qu'un objet inexistant, pour ne rien révéler d'une autre agence —
+  // et être actif. Sans valeur, la validation sortira de la caisse par défaut.
+  const treasuryAccountId = params.treasuryAccountId ?? null;
+  if (treasuryAccountId) {
+    const treasury = await tx.treasuryAccount.findFirst({
+      where: { id: treasuryAccountId, tenantId },
+      select: { id: true, isActive: true }
+    });
+    if (!treasury) {
+      throw notFound('Compte de trésorerie introuvable');
+    }
+    if (!treasury.isActive) {
+      throw badRequest("Ce compte de trésorerie n'est plus actif");
+    }
+  }
+
   // BROUILLON. Ni écriture, ni mouvement de compte : un règlement saisi n'a
   // encore rien réglé. Tout naît à la validation (`validateSalaryPaymentTx`),
   // comme toute pièce depuis le lot 2. Sans affectation à des notes précises,
@@ -539,7 +557,8 @@ export const createSalaryPaymentTx: CreateSalaryPaymentTx = async (tx, tenantId,
       amount,
       currency: DEFAULT_CURRENCY,
       status: 'DRAFT' as any,
-      createdByUserId: params.createdByUserId
+      createdByUserId: params.createdByUserId,
+      treasuryAccountId
     },
     include: { createdBy: { select: { fullName: true, email: true } } }
   });
@@ -577,7 +596,21 @@ export const validateSalaryPaymentTx: ValidateSalaryPaymentTx = async (
   const amount = roundMoneyXof(toAmountOrZero(payment.amount));
   const accounts = await resolveOperationalAccounts(tx, tenantId, payment.paymentDate);
 
-  // Journal : débit des rémunérations dues (422), crédit de la caisse (571) —
+  // D'où sort l'argent : le compte de trésorerie désigné à la saisie, sinon la
+  // caisse par défaut. Un compte disparu ou d'une autre agence : introuvable.
+  let creditAccountId = accounts.cashAccountId;
+  if (payment.treasuryAccountId) {
+    const treasury = await tx.treasuryAccount.findFirst({
+      where: { id: payment.treasuryAccountId, tenantId },
+      select: { id: true, chartOfAccountId: true }
+    });
+    if (!treasury) {
+      throw notFound('Compte de trésorerie introuvable');
+    }
+    creditAccountId = treasury.chartOfAccountId;
+  }
+
+  // Journal : débit des rémunérations dues (422), crédit du compte de trésorerie (571 par défaut) —
   // la dette envers l'employé s'éteint, la trésorerie sort.
   const entry = await postDocumentEntryTx(tx, {
     tenantId,
@@ -589,7 +622,7 @@ export const validateSalaryPaymentTx: ValidateSalaryPaymentTx = async (
     documentId: payment.id,
     lines: [
       { accountId: accounts.personnelPayableAccountId, debit: amount, label: `Règlement — ${employee.fullName}` },
-      { accountId: accounts.cashAccountId, credit: amount, label: `Règlement — ${employee.fullName}` }
+      { accountId: creditAccountId, credit: amount, label: `Règlement — ${employee.fullName}` }
     ]
   });
 

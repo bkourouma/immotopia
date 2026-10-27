@@ -85,9 +85,30 @@ function justificatif(penalite: RentalPenalty): Justificatif | null {
   }
 }
 
-/** Montant réellement retenu : l'ajustement s'il existe, le calcul sinon. */
+/**
+ * Montant réellement retenu : `amount` côté API (l'ajustement s'il existe, le
+ * calcul sinon).
+ */
 function montantRetenu(penalite: RentalPenalty): number {
   return penalite.adjusted_amount ?? penalite.amount;
+}
+
+/**
+ * Montant calculé d'origine : `calculated_amount` quand l'API le donne (même
+ * pour une pénalité jamais ajustée), sinon `amount` si elle n'a pas été ajustée,
+ * sinon null (un ajustement ancien l'a perdu). `??` partout : 0 est une valeur.
+ */
+function montantCalcule(penalite: RentalPenalty): number | null {
+  if (penalite.calculated_amount != null) return penalite.calculated_amount;
+  if (penalite.adjusted_amount == null) return penalite.amount;
+  return null;
+}
+
+/** Ajustée à la main, ou montant retenu différent du calcul initial. */
+function estAjustee(penalite: RentalPenalty): boolean {
+  if (penalite.adjusted_amount != null) return true;
+  const calcule = montantCalcule(penalite);
+  return calcule != null && calcule !== montantRetenu(penalite);
 }
 
 function dateCourte(iso: string): string {
@@ -240,18 +261,21 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       title: t('Montant calculé'),
       key: 'montant',
       align: 'end',
-      render: (_, p) => <MoneyValue value={p.amount} currency={p.currency} />
+      exportValue: p => Number(montantCalcule(p) || 0),
+      render: (_, p) =>
+        montantCalcule(p) == null ? '—' : <MoneyValue value={montantCalcule(p) as number} currency={p.currency} />
     },
     {
       title: t('Montant retenu'),
       key: 'retenu',
       align: 'end',
+      exportValue: p => Number(montantRetenu(p) || 0),
       render: (_, p) => (
         <>
           <MoneyValue value={montantRetenu(p)} currency={p.currency} />
           {/* La raison n'a plus sa colonne : elle tient sous le montant, là où
               elle se lit, et ne prend de place que lorsqu'elle existe. */}
-          {p.adjusted_amount != null && raisonAjustement(p) && (
+          {estAjustee(p) && raisonAjustement(p) && (
             <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>{raisonAjustement(p)}</div>
           )}
         </>
@@ -290,7 +314,8 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
     <Form form={form} layout="vertical" onFinish={handleAdjust}>
       {ajustePour && (
         <Text type="secondary">
-          {t('Montant calculé :')} <MoneyValue value={ajustePour.amount} currency={ajustePour.currency} /> ·{' '}
+          {t('Montant calculé :')}{' '}
+          <MoneyValue value={montantCalcule(ajustePour) ?? ajustePour.amount} currency={ajustePour.currency} /> ·{' '}
           {ajustePour.days_late} jour{ajustePour.days_late > 1 ? 's' : ''} de retard
         </Text>
       )}
@@ -406,6 +431,8 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       />
 
       <DataView<RentalPenalty>
+        // L'API ne pagine pas : tout est déjà chargé, la page courante est l'ensemble.
+        export={{ filename: t('Pénalités de retard') }}
         items={penalites}
         // L'API ne pagine pas les pénalités : elle renvoie tout. Annoncer
         // `items.length` n'est donc pas un raccourci, c'est le total réel de ce
@@ -420,6 +447,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les pénalités.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         emptyDescription={
           leaseId
@@ -438,9 +466,17 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
               subtitle={t('Calculée le {{value}}', { value: dateCourte(p.calculated_at) })}
               highlight={<MoneyValue value={montantRetenu(p)} currency={p.currency} />}
               fields={[
-                ...(p.adjusted_amount != null
+                ...(estAjustee(p)
                   ? [
-                      { label: t('Montant calculé'), value: <MoneyValue value={p.amount} currency={p.currency} /> },
+                      {
+                        label: t('Montant calculé'),
+                        value:
+                          montantCalcule(p) == null ? (
+                            '—'
+                          ) : (
+                            <MoneyValue value={montantCalcule(p) as number} currency={p.currency} />
+                          )
+                      },
                       { label: t('Raison'), value: raisonAjustement(p) || '—' }
                     ]
                   : []),

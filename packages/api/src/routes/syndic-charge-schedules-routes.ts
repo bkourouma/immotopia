@@ -18,6 +18,8 @@ import {
   resumeChargeScheduleHandler,
   updateChargeScheduleHandler
 } from '../controllers/syndic-charge-schedules-controller';
+import { getLotTypeRatesHandler, updateLotTypeRatesHandler } from '../controllers/syndic-lot-type-rates-controller';
+import { downloadChargeCallNoticeDocxHandler } from '../controllers/syndic-word-documents-controller';
 
 /**
  * Programmations des appels de charges automatiques et avis d'appel PDF
@@ -65,5 +67,17 @@ router.get(
   chargeCallNoticeRateLimiter,
   downloadChargeCallNoticeHandler
 );
+// Avis d'appel en Word : mêmes gardes et même limiteur que l'avis PDF.
+router.get(
+  `${SYNDIC}/charges/:chargeId/avis.docx`,
+  ...guards,
+  canView,
+  chargeCallNoticeRateLimiter,
+  downloadChargeCallNoticeDocxHandler
+);
+
+// Barème par type de lot (menu lot 2) : paramètre de la copropriété, mêmes permissions que les appels de charges.
+router.get(`${SYNDIC}/bareme-types-lots`, ...guards, canView, getLotTypeRatesHandler);
+router.put(`${SYNDIC}/bareme-types-lots`, ...guards, canEdit, updateLotTypeRatesHandler);
 
 export default router;

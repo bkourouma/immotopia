@@ -8,8 +8,10 @@ import {
   BankOutlined,
   CalendarOutlined,
   ClockCircleOutlined,
+  CreditCardOutlined,
   FolderOutlined,
   IdcardOutlined,
+  MobileOutlined,
   SendOutlined,
   TeamOutlined,
   ToolOutlined,
@@ -18,9 +20,11 @@ import {
 import { WorkspaceLayout } from './WorkspaceLayout';
 import type { WorkspaceTabItem } from './WorkspaceTabs';
 import { getSyndicate, listSyndicates } from '../../services/syndic-service';
+import { listSyndicDeclarations } from '../../services/syndic-declared-payment-service';
 import type { Syndicate } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
 
+import { localizedRecord } from '../../i18n/localized';
 /**
  * `<SyndicWorkspaceLayout>` — en-tête + barre d'onglets communs aux trois
  * familles d'écrans Syndic (Copropriété, Finances, Assemblées et documents).
@@ -39,13 +43,21 @@ import { t } from '../../i18n/t';
 
 type SyndicWorkspaceFamily = 'copropriete' | 'finances' | 'assemblees-documents';
 
-const FAMILY_LABELS: Record<SyndicWorkspaceFamily, string> = {
+const FAMILY_LABELS: Record<SyndicWorkspaceFamily, string> = localizedRecord(() => ({
   copropriete: t('Copropriété'),
   finances: t('Finances'),
   'assemblees-documents': t('Assemblées et documents')
-};
+}));
 
-function buildTabs(family: SyndicWorkspaceFamily, tenantId: string, syndicId: string): WorkspaceTabItem[] {
+/** Événement émis par l'onglet « Paiements » quand la file des déclarations change (le compteur se relit). */
+export const DECLARATIONS_CHANGED_EVENT = 'syndic-declarations-changed';
+
+function buildTabs(
+  family: SyndicWorkspaceFamily,
+  tenantId: string,
+  syndicId: string,
+  pendingDeclarations = 0
+): WorkspaceTabItem[] {
   const base = `/tenant/${tenantId}/syndics/${syndicId}`;
   switch (family) {
     case 'copropriete':
@@ -84,6 +96,19 @@ function buildTabs(family: SyndicWorkspaceFamily, tenantId: string, syndicId: st
         },
         { key: 'recouvrement', label: t('Recouvrement'), href: `${base}/recouvrement`, icon: <AlertOutlined /> },
         { key: 'tresorerie', label: t('Trésorerie'), href: `${base}/finances`, icon: <BankOutlined /> },
+        {
+          key: 'paiements-en-ligne',
+          label: t('Paiements'),
+          href: `${base}/paiements-en-ligne`,
+          icon: <MobileOutlined />,
+          badge: pendingDeclarations
+        },
+        {
+          key: 'prelevements',
+          label: t('Prélèvements'),
+          href: `${base}/prelevements`,
+          icon: <CreditCardOutlined />
+        },
         {
           key: 'comptabilite',
           label: t('Comptabilité'),
@@ -131,6 +156,32 @@ export const SyndicWorkspaceLayout: React.FC<SyndicWorkspaceLayoutProps> = ({ fa
   const [name, setName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [syndicates, setSyndicates] = useState<Syndicate[]>([]);
+  const [pendingDeclarations, setPendingDeclarations] = useState(0);
+
+  // Compteur des paiements déclarés en attente (spec 047, R32), sur l'onglet « Paiements ». Information annexe :
+  // un échec (droit SYNDIC_VIEW absent compris) est silencieux et n'affiche simplement aucune pastille.
+  useEffect(() => {
+    if (family !== 'finances' || !tenantId || !syndicId) {
+      setPendingDeclarations(0);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const result = await listSyndicDeclarations(tenantId, syndicId, { status: 'PENDING', limit: 1 });
+        if (!cancelled) setPendingDeclarations(result?.counts?.pending ?? 0);
+      } catch {
+        if (!cancelled) setPendingDeclarations(0);
+      }
+    };
+    const reload = () => void load();
+    reload();
+    window.addEventListener(DECLARATIONS_CHANGED_EVENT, reload);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(DECLARATIONS_CHANGED_EVENT, reload);
+    };
+  }, [family, tenantId, syndicId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,7 +225,7 @@ export const SyndicWorkspaceLayout: React.FC<SyndicWorkspaceLayoutProps> = ({ fa
     };
   }, [tenantId, syndicId]);
 
-  const tabs = tenantId && syndicId ? buildTabs(family, tenantId, syndicId) : [];
+  const tabs = tenantId && syndicId ? buildTabs(family, tenantId, syndicId, pendingDeclarations) : [];
 
   // Le sélecteur n'a de sens qu'à partir de deux copropriétés.
   const switcher =

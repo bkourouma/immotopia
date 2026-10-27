@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforceTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { requireTenantCollaborator } from '../middleware/tenant-middleware';
+import { requireCommunicationByMethod } from '../middleware/communication-rbac-middleware';
 import * as controller from '../controllers/newsletter-controller';
 
 const router = Router({ mergeParams: true });
@@ -13,6 +14,8 @@ router.use(authenticate);
 router.use(requireTenantAccess);
 router.use(requireTenantCollaborator);
 router.use(enforceTenantIsolation);
+// Lecture (GET) : COMMUNICATION_VIEW / TENANT_ADMIN ; toute autre méthode : garde d'écriture.
+router.use(requireCommunicationByMethod);
 
 // Lists
 router.get('/lists', controller.listListsHandler);

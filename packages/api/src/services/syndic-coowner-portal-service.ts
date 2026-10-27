@@ -158,6 +158,11 @@ async function contactProfilesInTenant(tenantId: string, contactId: string) {
   });
 }
 
+/** Un lot compte une fois, même si le contact y a plusieurs profils. */
+function distinctLots<T extends { lotId: string }>(profiles: T[]): T[] {
+  return Array.from(new Map(profiles.map(profile => [profile.lotId, profile])).values());
+}
+
 /**
  * Un compte existant peut-il recevoir un NOUVEAU lien d'activation ? Voir
  * l'en-tête : seulement s'il n'a jamais servi et n'est rattaché qu'à cette
@@ -351,7 +356,10 @@ export async function inviteCoOwnerToPortal(params: {
         agencyName: tenant?.name ?? '',
         accessUrl: invitationUrl,
         isActivation: Boolean(activationToken),
-        lots: profiles.map(candidate => ({ syndicateName: candidate.syndicateName, lotNumber: candidate.lotNumber })),
+        lots: distinctLots(profiles).map(candidate => ({
+          syndicateName: candidate.syndicateName,
+          lotNumber: candidate.lotNumber
+        })),
         tenantId,
         language: isLanguage(user.preferredLanguage) ? user.preferredLanguage : undefined
       });
@@ -372,7 +380,7 @@ export async function inviteCoOwnerToPortal(params: {
       actionKey: AuditActionKey.SYNDIC_COOWNER_PORTAL_INVITED,
       entityType: 'LotOwnerProfile',
       entityId: profile.id,
-      payload: { contactId: contact.id, accountStatus, emailSent, openedLots: profiles.length }
+      payload: { contactId: contact.id, accountStatus, emailSent, openedLots: distinctLots(profiles).length }
     });
   }
 
@@ -383,7 +391,7 @@ export async function inviteCoOwnerToPortal(params: {
     invitationUrl,
     expiresAt: expiresAt ? expiresAt.toISOString() : null,
     emailSent,
-    openedLots: profiles.length
+    openedLots: distinctLots(profiles).length
   };
 }
 
@@ -439,10 +447,10 @@ export async function revokeCoOwnerPortalAccess(params: {
         actionKey: AuditActionKey.SYNDIC_COOWNER_PORTAL_REVOKED,
         entityType: 'LotOwnerProfile',
         entityId: profile.id,
-        payload: { contactId: contact.id, closedLots: profiles.length, unlinkedAccounts: clients.length }
+        payload: { contactId: contact.id, closedLots: distinctLots(profiles).length, unlinkedAccounts: clients.length }
       });
     }
   });
 
-  return { closedLots: profiles.length, unlinkedAccounts: clients.length };
+  return { closedLots: distinctLots(profiles).length, unlinkedAccounts: clients.length };
 }

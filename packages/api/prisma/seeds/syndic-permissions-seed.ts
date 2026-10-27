@@ -33,7 +33,17 @@ export const syndicPermissions = [
     description: 'Modifier le module Syndic : encaissements, relances, fonds, prestataires, factures, assemblees'
   },
   { key: 'OWNER_STATEMENTS_VIEW', description: 'Consulter les releves de gerance des proprietaires' },
-  { key: 'OWNER_STATEMENTS_EDIT', description: 'Creer, recalculer et envoyer les releves de gerance' }
+  { key: 'OWNER_STATEMENTS_EDIT', description: 'Creer, recalculer et envoyer les releves de gerance' },
+  {
+    key: 'SYNDIC_DIRECT_DEBIT_VIEW',
+    description:
+      "Consulter le compte, les mandats et les remises de prelevement bancaire d'une copropriete (IBAN masque)"
+  },
+  {
+    key: 'SYNDIC_DIRECT_DEBIT_MANAGE',
+    description:
+      "Gerer le prelevement bancaire d'une copropriete : IBAN complet dans l'autorisation, scan signe, activation, suspension, revocation, remises et retours"
+  }
 ];
 
 export const SYNDIC_ALL_KEYS = syndicPermissions.map(p => p.key);

@@ -218,6 +218,8 @@ type PieceEntry =
       amount: number;
       /** Part des pénalités qui revient à l'agence, déduite de ce qui va au propriétaire. */
       agencyPenalty: number;
+      /** Part des frais de rejet de prélèvement (spec 042) : ils rémunèrent l'agence, jamais le propriétaire. */
+      agencyRejectFee: number;
     }
   | { kind: 'FEE'; propertyId: string; feeAmount: number; vatAmount: number }
   | {
@@ -301,6 +303,37 @@ function penaltyPart(
     Number(installment.amount_other_fees ?? 0) +
     penalty;
   return total > 0 ? roundMoneyXof((amount * penalty) / total) : 0;
+}
+
+/** Nature d'un article d'échéance qui porte des frais de rejet de prélèvement refacturés (spec 042, P3). */
+const DIRECT_DEBIT_REJECT_FEE_KIND = 'DIRECT_DEBIT_REJECT_FEE';
+
+/**
+ * Part des frais de rejet de prélèvement dans un montant affecté à une
+ * échéance, au prorata (comme les pénalités). Ces frais remboursent l'agence qui
+ * a supporté les frais bancaires : ils sont exclus des sommes dues au propriétaire.
+ */
+function rejectFeePart(
+  amount: number,
+  installment: {
+    amount_rent: unknown;
+    amount_service: unknown;
+    amount_other_fees: unknown;
+    penalty_amount: unknown;
+    items?: Array<{ amount: unknown; metadata: unknown }>;
+  }
+) {
+  const fee = (installment.items ?? []).reduce((sum, item) => {
+    const kind = (item.metadata as { kind?: unknown } | null)?.kind;
+    return kind === DIRECT_DEBIT_REJECT_FEE_KIND ? sum + Number(item.amount ?? 0) : sum;
+  }, 0);
+  if (fee <= 0) return 0;
+  const total =
+    Number(installment.amount_rent) +
+    Number(installment.amount_service ?? 0) +
+    Number(installment.amount_other_fees ?? 0) +
+    Number(installment.penalty_amount ?? 0);
+  return total > 0 ? Math.min(roundMoneyXof((amount * fee) / total), roundMoney(amount)) : 0;
 }
 
 /** Part de loyer nu dans un montant affecté à une échéance, au prorata. */
@@ -464,6 +497,8 @@ export async function syncOwnerAccount(tenantId: string, ownerClientId: string, 
             amount_service: true,
             amount_other_fees: true,
             penalty_amount: true,
+            // Frais de rejet de prélèvement refacturés (spec 042) : exclus de la part du propriétaire.
+            items: { where: { charge_type: 'OTHER' }, select: { amount: true, metadata: true } },
             lease: { select: { id: true, lease_number: true, property_id: true } }
           }
         }
@@ -584,7 +619,8 @@ export async function syncOwnerAccount(tenantId: string, ownerClientId: string, 
     if (full <= 0) continue;
     const { period_year: year, period_month: month, lease } = allocation.installment;
     const agencyPenalty = penaltyToAgency ? penaltyPart(full, allocation.installment) : 0;
-    const ownerAmount = roundMoney(full - agencyPenalty);
+    const agencyRejectFee = rejectFeePart(full, allocation.installment);
+    const ownerAmount = roundMoney(full - agencyPenalty - agencyRejectFee);
     const payment: PaymentRef = {
       id: allocation.payment.id,
       date: allocation.payment.succeeded_at ?? allocation.payment.initiated_at,
@@ -609,7 +645,7 @@ export async function syncOwnerAccount(tenantId: string, ownerClientId: string, 
       date: payment.date,
       label: part.label,
       leaseId: lease.id,
-      entry: { kind: 'RENT', payment, propertyId: lease.property_id, amount: full, agencyPenalty }
+      entry: { kind: 'RENT', payment, propertyId: lease.property_id, amount: full, agencyPenalty, agencyRejectFee }
     });
   }
   for (const fee of fees) {
@@ -956,7 +992,7 @@ async function postSourceEntryTx(ctx: EntryContext, params: PendingMovement) {
     lines.push(
       ...(await ownerFundsLinesTx(ctx, {
         propertyId: piece.propertyId,
-        parts: [roundMoney(piece.amount - piece.agencyPenalty)],
+        parts: [roundMoney(piece.amount - piece.agencyPenalty - piece.agencyRejectFee)],
         side: 'credit',
         nature: 'CURRENT',
         label
@@ -964,6 +1000,14 @@ async function postSourceEntryTx(ctx: EntryContext, params: PendingMovement) {
     );
     if (piece.agencyPenalty > 0 && accounts.penaltyIncome) {
       lines.push({ accountId: accounts.penaltyIncome, credit: piece.agencyPenalty, label: `Pénalités — ${label}` });
+    }
+    if (piece.agencyRejectFee > 0) {
+      // Produit de l'agence : le compte des pénalités s'il existe, sinon celui des honoraires de gestion.
+      lines.push({
+        accountId: accounts.penaltyIncome ?? accounts.fees,
+        credit: piece.agencyRejectFee,
+        label: `Frais de rejet de prélèvement — ${label}`
+      });
     }
     await postDocumentEntryTx(tx, {
       tenantId,

@@ -454,9 +454,16 @@ export const Dashboard: React.FC = () => {
                   })
             }
             link={{ label: t('Voir les copropriétés'), to: `${base}/syndics` }}
-            empty={tableau.syndic.chargeCallsByStatus.length === 0}
+            empty={tableau.syndic.chargeCallsByStatus.length === 0 && !tableau.syndic.pendingDeclarations}
             emptyText={t('Aucun appel de charges émis.')}
           >
+            {tableau.syndic.pendingDeclarations ? (
+              <p style={{ margin: '0 0 8px' }}>
+                {t('{{count}} paiement(s) mobile money déclaré(s) à vérifier', {
+                  count: tableau.syndic.pendingDeclarations
+                })}
+              </p>
+            ) : null}
             <BarBreakdown
               items={tableau.syndic.chargeCallsByStatus}
               metric="amount"

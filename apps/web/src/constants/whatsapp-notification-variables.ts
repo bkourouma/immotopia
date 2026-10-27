@@ -71,7 +71,44 @@ export const WHATSAPP_VARIABLES_BY_KEY: Record<string, string[]> = {
   OWNER_LEASE_ENDING_SOON: ['ownerName', 'leaseLabel', 'leaseEndDate', 'agencyName'],
   OWNER_DOCUMENT_EXPIRY_ALERT: ['ownerName', 'documentTitle', 'documentType', 'propertyReference', 'expiresAt'],
   OWNER_MONTHLY_REPORT_SENT: ['ownerName', 'period', 'reportUrl', 'expiresAt', 'agencyName'],
-  RENTER_PAYMENT_LINK_SENT: ['renterName', 'agencyName', 'period', 'amountDue', 'paymentUrl', 'expiresAt']
+  RENTER_PAYMENT_LINK_SENT: ['renterName', 'agencyName', 'period', 'amountDue', 'paymentUrl', 'expiresAt'],
+  // Lien « Payer cet appel » envoyé par le gestionnaire (spec 042) : variables de `sendChargeCallPaymentLink`.
+  CHARGE_CALL_PAYMENT_LINK_SENT: [
+    'ownerName',
+    'syndicateName',
+    'lotLabel',
+    'period',
+    'amountDue',
+    'currency',
+    'dueDate',
+    'paymentUrl',
+    'expiresAt'
+  ],
+  // Avis et relances d'appel de charges : `paymentBlock` porte « Payer en ligne : <lien> » quand un lien existe,
+  // et reste vide sinon (le message part alors inchangé) ; `paymentUrl` ne porte que l'URL.
+  CHARGE_CALL_ISSUED: [
+    'ownerName',
+    'syndicateName',
+    'lotLabel',
+    'period',
+    'amount',
+    'currency',
+    'dueDate',
+    'paymentBlock',
+    'paymentUrl'
+  ],
+  CHARGE_CALL_REMINDER: [
+    'ownerName',
+    'syndicateName',
+    'lotLabel',
+    'period',
+    'amount',
+    'remainingAmount',
+    'currency',
+    'dueDate',
+    'paymentBlock',
+    'paymentUrl'
+  ]
 };
 
 export function getVariablePlaceholder(name: string): string {

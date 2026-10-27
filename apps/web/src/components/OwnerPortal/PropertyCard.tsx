@@ -3,6 +3,7 @@ import { Card, Tag, Space, Typography, Button } from 'antd';
 import { HomeOutlined, EyeOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
@@ -25,7 +26,7 @@ interface PropertyCardProps {
   };
 }
 
-const propertyTypeLabels: Record<string, string> = {
+const propertyTypeLabels: Record<string, string> = localizedRecord(() => ({
   APPARTEMENT: 'Appartement',
   MAISON_VILLA: t('Maison / Villa'),
   STUDIO: 'Studio',
@@ -38,9 +39,9 @@ const propertyTypeLabels: Record<string, string> = {
   IMMEUBLE: 'Immeuble',
   PARKING_BOX: t('Parking / Box'),
   LOT_PROGRAMME_NEUF: t('Lot programme neuf')
-};
+}));
 
-const statusLabels: Record<string, { label: string; color: string }> = {
+const statusLabels: Record<string, { label: string; color: string }> = localizedRecord(() => ({
   DRAFT: { label: t('Brouillon'), color: 'default' },
   UNDER_REVIEW: { label: t('En révision'), color: 'processing' },
   AVAILABLE: { label: t('Disponible'), color: 'success' },
@@ -49,13 +50,13 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   RENTED: { label: t('Loué'), color: 'success' },
   SOLD: { label: t('Vendu'), color: 'default' },
   ARCHIVED: { label: t('Archivé'), color: 'default' }
-};
+}));
 
-const transactionModeLabels: Record<string, string> = {
+const transactionModeLabels: Record<string, string> = localizedRecord(() => ({
   SALE: 'Vente',
   RENTAL: 'Location',
   SHORT_TERM: t('Location courte durée')
-};
+}));
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat(activeLocale(), {

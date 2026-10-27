@@ -237,14 +237,16 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Nouvel appel de charges</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
 <p style="margin:0 0 20px 0;">Un nouvel appel de charges a été émis pour votre lot dans la copropriété <strong>{{syndicateName}}</strong>.</p>
-<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Période : {{period}}. Lot : {{lotLabel}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.</p>`
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Période : {{period}}. Lot : {{lotLabel}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px;">{{paymentBlock}}</p>`
   },
   CHARGE_CALL_REMINDER: {
     subject: 'Rappel d appel de charges - {{period}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Rappel d appel de charges</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
 <p style="margin:0 0 20px 0;">Rappel pour l appel de charges de la période <strong>{{period}}</strong> concernant votre lot {{lotLabel}}.</p>
-<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.</p>`
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px;">{{paymentBlock}}</p>`
   },
   CHARGE_PAYMENT_RECEIPT: {
     subject: 'Reçu de paiement {{number}} - {{syndicateName}}',
@@ -266,7 +268,9 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#0f766e;">Convocation à l’Assemblée Générale</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
 <p style="margin:0 0 20px 0;">Vous êtes convoqué(e) à l’Assemblée Générale de la copropriété <strong>{{syndicateName}}</strong>.</p>
-<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Date : {{meetingDate}}. Heure : {{meetingTime}}. Lieu : {{meetingLocation}}.</p>`
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Date : {{meetingDate}}. Heure : {{meetingTime}}. Lieu : {{meetingLocation}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Suivez l’assemblée et votez en ligne : {{meetingLink}}</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">{{recordingNotice}}</p>`
   },
   GENERAL_MEETING_MINUTES: {
     subject: 'Procès-verbal de l’assemblée générale du {{meetingDate}}',
@@ -350,6 +354,105 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 20px 0; padding:14px; background:#eff6ff; border-radius:8px; font-size:14px;"><a href="{{paymentUrl}}" style="color:#1d4ed8; font-weight:600; text-decoration:underline;">Payer mon loyer</a></p>
 <p style="margin:0 0 12px 0; font-size:13px; color:#666;">Ce lien est personnel et valable jusqu'au {{expiresAt}}. Ne le transmettez pas.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
+  DIRECT_DEBIT_PRENOTIFICATION: {
+    subject: 'Prélèvement de votre loyer le {{collectionDate}} - {{agencyName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Prélèvement à venir sur votre compte</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{debtorName}},</p>
+<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> prélèvera <strong>{{amount}}</strong> sur votre compte bancaire le <strong>{{collectionDate}}</strong>, au titre de votre loyer {{period}} (bail {{leaseNumber}}).</p>
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
+  <tr><td style="padding:6px 0;"><strong>Compte débité :</strong> {{ibanMasked}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Référence du mandat :</strong> {{mandateReference}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Numéro d'émetteur :</strong> {{creditorIdentifier}}</td></tr>
+</table>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Veillez à ce que votre compte soit approvisionné à cette date. Pour toute question, contactez votre agence avant le prélèvement.</p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
+  DIRECT_DEBIT_REJECTED: {
+    subject: 'Prélèvement rejeté - {{agencyName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Prélèvement rejeté par votre banque</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{debtorName}},</p>
+<p style="margin:0 0 20px 0;">Le prélèvement de <strong>{{amount}}</strong> prévu le <strong>{{collectionDate}}</strong> par <strong>{{agencyName}}</strong> n'a pas pu être effectué.</p>
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
+  <tr><td style="padding:6px 0;"><strong>Compte concerné :</strong> {{ibanMasked}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Référence du mandat :</strong> {{mandateReference}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Motif :</strong> {{reason}}</td></tr>
+</table>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">{{rejectFee}} {{suspensionNotice}}</p>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Merci de régulariser votre loyer et de contacter votre agence si besoin.</p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
+  SYNDIC_DIRECT_DEBIT_PRENOTIFICATION: {
+    subject: 'Prélèvement de vos charges le {{collectionDate}} - {{syndicateName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Prélèvement à venir sur votre compte</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{debtorName}},</p>
+<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> prélèvera <strong>{{amount}}</strong> sur votre compte bancaire le <strong>{{collectionDate}}</strong>, au titre des appels de charges de votre lot {{lotNumber}} de la copropriété <strong>{{syndicateName}}</strong>.</p>
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
+  <tr><td style="padding:6px 0;"><strong>Compte débité :</strong> {{ibanMasked}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Référence du mandat :</strong> {{mandateReference}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Numéro d'émetteur :</strong> {{creditorIdentifier}}</td></tr>
+</table>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Veillez à ce que votre compte soit approvisionné à cette date. Pour toute question, contactez le syndic avant le prélèvement.</p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
+  SYNDIC_DIRECT_DEBIT_REJECTED: {
+    subject: 'Prélèvement de charges rejeté - {{syndicateName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Prélèvement rejeté par votre banque</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{debtorName}},</p>
+<p style="margin:0 0 20px 0;">Le prélèvement de <strong>{{amount}}</strong> prévu le <strong>{{collectionDate}}</strong> par <strong>{{agencyName}}</strong> pour les charges de votre lot {{lotNumber}} (copropriété <strong>{{syndicateName}}</strong>) n'a pas pu être effectué.</p>
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
+  <tr><td style="padding:6px 0;"><strong>Compte concerné :</strong> {{ibanMasked}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Référence du mandat :</strong> {{mandateReference}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Motif :</strong> {{reason}}</td></tr>
+</table>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">{{rejectFee}} {{suspensionNotice}}</p>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Merci de régulariser vos charges et de contacter le syndic si besoin.</p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
+  CHARGE_CALL_PAYMENT_LINK_SENT: {
+    subject: 'Appel de charges {{period}} - {{syndicateName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Paiement de votre appel de charges</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
+<p style="margin:0 0 20px 0;">L'appel de charges de la période <strong>{{period}}</strong> pour votre lot {{lotLabel}} de la copropriété <strong>{{syndicateName}}</strong> est à régler : <strong>{{amountDue}}</strong>, échéance le {{dueDate}}. Vous pouvez le payer en ligne par Mobile Money.</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#eff6ff; border-radius:8px; font-size:14px;"><a href="{{paymentUrl}}" style="color:#1d4ed8; font-weight:600; text-decoration:underline;">Payer cet appel</a></p>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Ce lien est personnel et valable jusqu'au {{expiresAt}}. Ne le transmettez pas.</p>`
+  },
+  SYNDIC_PAYMENT_DECLARATION_RECEIVED: {
+    subject: 'Paiement déclaré reçu - {{syndicName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Déclaration de paiement reçue</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
+<p style="margin:0 0 20px 0;">Nous avons bien reçu votre déclaration de paiement mobile money de <strong>{{amount}}</strong> (référence {{transactionReference}}, effectué le {{paidAt}}) pour la copropriété <strong>{{syndicName}}</strong>.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Elle est en cours de vérification par le gestionnaire : votre compte ne sera crédité qu'après sa validation. Vous serez prévenu(e) de la décision.</p>`
+  },
+  SYNDIC_PAYMENT_DECLARATION_APPROVED: {
+    subject: 'Paiement validé - {{syndicName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#0f766e;">Paiement validé</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
+<p style="margin:0 0 20px 0;">Votre paiement mobile money (référence {{transactionReference}}, effectué le {{paidAt}}) pour la copropriété <strong>{{syndicName}}</strong> a été validé : <strong>{{acceptedAmount}}</strong> ont été enregistrés sur votre compte.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Montant corrigé par le gestionnaire : {{corrected}}. {{reviewNote}}</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Votre reçu ou votre quittance vous est envoyé séparément et reste disponible dans votre espace copropriétaire.</p>`
+  },
+  SYNDIC_PAYMENT_DECLARATION_REJECTED: {
+    subject: 'Paiement non retenu - {{syndicName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b91c1c;">Paiement non retenu</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
+<p style="margin:0 0 20px 0;">Votre déclaration de paiement mobile money de <strong>{{amount}}</strong> (référence {{transactionReference}}, effectué le {{paidAt}}) pour la copropriété <strong>{{syndicName}}</strong> n'a pas été retenue.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Motif : {{rejectReasonLabel}}. {{reviewNote}}</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Aucun montant n'a été enregistré. Vous pouvez faire une nouvelle déclaration depuis votre espace copropriétaire ou contacter le gestionnaire.</p>`
+  },
+  SYNDIC_PAYMENT_DECLARATION_TO_REVIEW: {
+    subject: 'Paiements déclarés à vérifier - {{syndicName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Paiements déclarés à vérifier</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;"><strong>{{pendingCount}}</strong> paiement(s) mobile money déclaré(s) attendent votre vérification pour la copropriété <strong>{{syndicName}}</strong>, dont <strong>{{overdueCount}}</strong> en retard.</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#fffbeb; border-radius:8px; font-size:14px;"><a href="{{link}}" style="color:#b45309; font-weight:600; text-decoration:underline;">Ouvrir l'onglet Paiements</a></p>`
+  },
+  SYNDIC_RECEIVING_NUMBER_CHANGED: {
+    subject: 'Numéro de réception changé - {{syndicName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Numéro de réception changé</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;"><strong>{{actorName}}</strong> a changé le numéro mobile money qui reçoit les paiements de la copropriété <strong>{{syndicName}}</strong> : {{previousPhone}} devient {{newPhone}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Si vous n'êtes pas au courant de ce changement, vérifiez-le sans attendre auprès de votre collègue.</p>`
   },
   EXTERNAL_ACCESS_LINK_SENT: {
     subject: 'Accès partagé par {{agencyName}}',

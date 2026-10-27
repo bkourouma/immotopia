@@ -11,6 +11,7 @@ import { useListParams } from '../../hooks/useListParams';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, FilterSheet } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 const { RangePicker } = DatePicker;
@@ -31,7 +32,7 @@ const { RangePicker } = DatePicker;
  */
 
 /** Nature d'un mouvement -> libellé français, prêt à afficher (P-1). */
-export const NATURE_LABELS: Record<ThirdPartyMovementType, string> = {
+export const NATURE_LABELS: Record<ThirdPartyMovementType, string> = localizedRecord(() => ({
   INSTALLMENT: 'Loyer',
   PAYMENT: t('Règlement'),
   ADVANCE_RECEIVED: t('Avance reçue'),
@@ -41,7 +42,7 @@ export const NATURE_LABELS: Record<ThirdPartyMovementType, string> = {
   ADJUSTMENT: 'Ajustement',
   OPENING_BALANCE: t('Solde initial'),
   VOID: 'Annulation'
-};
+}));
 
 /**
  * Libellé lisible d'une nature de mouvement.
@@ -66,13 +67,14 @@ export function natureLabel(type: ThirdPartyMovementLine['type']): string {
  * Seules les natures dont le sens change d'un tiers à l'autre sont
  * surchargées : un règlement reste un règlement, une pénalité une pénalité.
  */
-const NATURES_PAR_TIERS: Partial<Record<ThirdPartyKind, Partial<Record<ThirdPartyMovementType, string>>>> = {
-  SUPPLIER: { INSTALLMENT: t('Facture'), ADVANCE_RECEIVED: t('Acompte versé') },
-  EMPLOYEE: { INSTALLMENT: t('Note de salaire'), ADVANCE_RECEIVED: t('Avance versée') },
-  CONTRACTOR: { INSTALLMENT: t("Situation d'avancement"), ADVANCE_RECEIVED: t('Acompte versé') },
-  LANDLORD: { INSTALLMENT: t('Loyer de terrain'), ADVANCE_RECEIVED: t('Acompte versé') },
-  PARTNER: { INSTALLMENT: t('Quote-part'), ADVANCE_RECEIVED: t('Acompte versé') }
-};
+const NATURES_PAR_TIERS: Partial<Record<ThirdPartyKind, Partial<Record<ThirdPartyMovementType, string>>>> =
+  localizedRecord(() => ({
+    SUPPLIER: { INSTALLMENT: t('Facture'), ADVANCE_RECEIVED: t('Acompte versé') },
+    EMPLOYEE: { INSTALLMENT: t('Note de salaire'), ADVANCE_RECEIVED: t('Avance versée') },
+    CONTRACTOR: { INSTALLMENT: t("Situation d'avancement"), ADVANCE_RECEIVED: t('Acompte versé') },
+    LANDLORD: { INSTALLMENT: t('Loyer de terrain'), ADVANCE_RECEIVED: t('Acompte versé') },
+    PARTNER: { INSTALLMENT: t('Quote-part'), ADVANCE_RECEIVED: t('Acompte versé') }
+  }));
 
 function natureLabelDuTiers(type: ThirdPartyMovementLine['type'], kind?: ThirdPartyKind): string {
   if (kind && NATURES_PAR_TIERS[kind]?.[type]) {
@@ -161,13 +163,15 @@ export const Releve: React.FC = () => {
       title: t('Facturé'),
       key: 'facture',
       align: 'end',
-      render: (_, m) => <MoneyValue value={m.amountBilled} />
+      render: (_, m) => <MoneyValue value={m.amountBilled} />,
+      exportValue: m => m.amountBilled
     },
     {
       title: t('Réglé'),
       key: 'regle',
       align: 'end',
-      render: (_, m) => <MoneyValue value={m.amountSettled} />
+      render: (_, m) => <MoneyValue value={m.amountSettled} />,
+      exportValue: m => m.amountSettled
     },
     {
       title: t('Solde après'),
@@ -177,7 +181,8 @@ export const Releve: React.FC = () => {
         <strong>
           <MoneyValue value={m.balanceAfter} />
         </strong>
-      )
+      ),
+      exportValue: m => m.balanceAfter
     }
   ];
 
@@ -225,6 +230,7 @@ export const Releve: React.FC = () => {
       </FilterSheet>
 
       <DataView<ThirdPartyMovementLine>
+        export={{ filename: data?.label ?? t('Relevé de compte') }}
         // Une chronologie se lit d'un bloc : pas de pagination, le serveur
         // rend déjà le relevé borné par les dates choisies.
         paginated={false}
@@ -237,6 +243,7 @@ export const Releve: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger le relevé.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={() => list.setFilters({ from: undefined, to: undefined })}

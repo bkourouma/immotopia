@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, App, Button, Card, Popconfirm, Space, Table, Tag } from 'antd';
+import { Alert, App, Button, Card, Popconfirm, Space, Tag } from 'antd';
 import {
   listInstallmentPaymentLinks,
   revokeInstallmentPaymentLink
@@ -10,7 +10,7 @@ import type {
   InstallmentPaymentLinkSummary
 } from '../../types/installment-payment-link-types';
 import { InstallmentPaymentLinkButton } from './InstallmentPaymentLinkButton';
-import { MoneyValue } from '../primitives';
+import { MoneyValue, Table } from '../primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
@@ -133,6 +133,7 @@ export const InstallmentPaymentLinksPanel: React.FC<InstallmentPaymentLinksPanel
           />
         ) : null}
         <Table
+          exportFilename={t('Lien de paiement Mobile Money')}
           scroll={{ x: 'max-content' }}
           rowKey="id"
           size="small"
@@ -146,6 +147,7 @@ export const InstallmentPaymentLinksPanel: React.FC<InstallmentPaymentLinksPanel
             {
               title: t('Consultations'),
               dataIndex: 'viewCount',
+              exportValue: (r: InstallmentPaymentLinkSummary) => r.viewCount,
               align: 'end' as const,
               render: (v: number) => <bdi dir="ltr">{v.toLocaleString(activeLocale())}</bdi>
             },

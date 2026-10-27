@@ -34,6 +34,11 @@ const store = {
 function matches(row: Row, where: Row = {}): boolean {
   return Object.entries(where).every(([key, expected]) => {
     if (key === 'NOT') return !matches(row, expected);
+    // Filtre relationnel `property: { ... }` : évalué sur le bien rattaché à la ligne.
+    if (key === 'property') {
+      const related = store.properties.find(p => p.id === row.propertyId);
+      return related ? matches(related, expected) : false;
+    }
     if (expected && typeof expected === 'object' && !(expected instanceof Date)) {
       if ('in' in expected) return expected.in.includes(row[key]);
       if ('notIn' in expected) return !expected.notIn.includes(row[key]);
@@ -224,10 +229,19 @@ describe("getPatrimoineOverview — ignore les lignes d'actifs non immobiliers",
     await getPatrimoineOverview(TENANT);
 
     expect(spies.valuationFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId: TENANT, propertyId: { not: null } } })
+      expect.objectContaining({
+        where: { tenantId: TENANT, propertyId: { not: null }, property: { ownershipType: 'TENANT' } }
+      })
     );
     expect(spies.loanFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId: TENANT, status: 'ACTIVE', propertyId: { not: null } } })
+      expect.objectContaining({
+        where: {
+          tenantId: TENANT,
+          status: 'ACTIVE',
+          propertyId: { not: null },
+          property: { ownershipType: 'TENANT' }
+        }
+      })
     );
   });
 });

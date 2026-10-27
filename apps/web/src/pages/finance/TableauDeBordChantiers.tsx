@@ -19,6 +19,7 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 /**
  * Tableau de bord des chantiers — écran de pilotage du lot 3
@@ -64,7 +65,9 @@ import { t } from '../../i18n/t';
 type Filters = { status: string; onlyOverBudget: string };
 const FILTER_KEYS = ['status', 'onlyOverBudget'] as const;
 
-const OPTIONS_STATUT = Object.entries(SITE_STATUS_LABELS).map(([value, label]) => ({ value, label }));
+const OPTIONS_STATUT = localizedList(() =>
+  Object.entries(SITE_STATUS_LABELS).map(([value, label]) => ({ value, label }))
+);
 
 /** Lit le SIGNE d'un écart déjà calculé — ne recalcule jamais l'écart lui-même. */
 function toneEcart(variance: number | null): StatusTone {
@@ -134,16 +137,30 @@ export const TableauDeBordChantiers: React.FC = () => {
       title: t('Budget initial'),
       key: 'budget-initial',
       align: 'end',
-      render: (_, r) => <MoneyValue value={r.initialBudget} />
+      render: (_, r) => <MoneyValue value={r.initialBudget} />,
+      exportValue: r => r.initialBudget
     },
     {
       title: t('Budget révisé'),
       key: 'budget-revise',
       align: 'end',
-      render: (_, r) => <MoneyValue value={r.revisedBudget} />
+      render: (_, r) => <MoneyValue value={r.revisedBudget} />,
+      exportValue: r => r.revisedBudget
     },
-    { title: t('Engagé'), key: 'engage', align: 'end', render: (_, r) => <MoneyValue value={r.engagedAmount} /> },
-    { title: t('Réalisé'), key: 'realise', align: 'end', render: (_, r) => <MoneyValue value={r.actualCost} /> },
+    {
+      title: t('Engagé'),
+      key: 'engage',
+      align: 'end',
+      render: (_, r) => <MoneyValue value={r.engagedAmount} />,
+      exportValue: r => r.engagedAmount
+    },
+    {
+      title: t('Réalisé'),
+      key: 'realise',
+      align: 'end',
+      render: (_, r) => <MoneyValue value={r.actualCost} />,
+      exportValue: r => r.actualCost
+    },
     {
       title: t('Écart'),
       key: 'ecart',
@@ -159,11 +176,20 @@ export const TableauDeBordChantiers: React.FC = () => {
           <StatusTag status={labelEcart(r.variance)} tone={toneEcart(r.variance)} label={labelEcart(r.variance)} />
           {r.variance !== null && <MoneyValue value={r.variance} signed />}
         </Space>
-      )
+      ),
+      // Nombre signé (négatif : dépassement) ; vide pour un chantier sans budget.
+      exportValue: r => r.variance
     },
     {
       title: t('Alerte'),
       key: 'alerte',
+      exportValue: r =>
+        r.openAlert
+          ? t('Seuil de {{thresholdPercent}} % franchi ({{consumedPercent}} %)', {
+              thresholdPercent: r.openAlert.thresholdPercent,
+              consumedPercent: r.openAlert.consumedPercent
+            })
+          : '',
       render: (_, r) =>
         r.openAlert ? (
           <Tooltip
@@ -234,6 +260,7 @@ export const TableauDeBordChantiers: React.FC = () => {
       </FilterSheet>
 
       <DataView<SiteDashboardRow>
+        export={{ filename: t('Tableau de bord des chantiers') }}
         // Le tableau de bord ne pagine pas (contrat gelé, §5 du modèle) : un
         // seul appel rend tous les chantiers de l'agence.
         paginated={false}
@@ -246,6 +273,7 @@ export const TableauDeBordChantiers: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger le tableau de bord des chantiers.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={() => list.setFilters({ status: undefined, onlyOverBudget: undefined })}

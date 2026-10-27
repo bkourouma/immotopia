@@ -125,6 +125,7 @@ export const ChantierDetail: React.FC = () => {
       title: t('Sous-total'),
       key: 'montant',
       align: 'end',
+      exportValue: p => p.amount,
       render: (_, p) => <MoneyValue value={p.amount} />
     }
   ];
@@ -139,6 +140,7 @@ export const ChantierDetail: React.FC = () => {
       title: t('Montant'),
       key: 'montant',
       align: 'end',
+      exportValue: l => l.amount,
       render: (_, l) => <MoneyValue value={l.amount} />
     }
   ];
@@ -231,6 +233,7 @@ export const ChantierDetail: React.FC = () => {
         columns={colonnesPostes}
         rowKey={p => p.costCategoryId}
         aria-label={t('Sous-totaux par poste')}
+        export={{ filename: t('Sous-totaux par poste') }}
         renderCard={p => <DataCard title={p.label} aria-label={p.label} highlight={<MoneyValue value={p.amount} />} />}
       />
 
@@ -249,6 +252,7 @@ export const ChantierDetail: React.FC = () => {
         columns={colonnesImputations}
         rowKey={l => l.id}
         aria-label={t('Imputations du chantier')}
+        export={{ filename: t('Imputations du chantier') }}
         renderCard={l => (
           <DataCard
             title={l.costCategoryLabel}

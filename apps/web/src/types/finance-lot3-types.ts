@@ -1,4 +1,5 @@
 import { t } from '../i18n/t';
+import { localizedRecord } from '../i18n/localized';
 /**
  * Contrat gelé de la frontière réseau — module financier, lot 3.
  *
@@ -27,19 +28,19 @@ import { t } from '../i18n/t';
 /** Cycle d'un budget de chantier et de ses avenants. */
 export type SiteBudgetStatus = 'DRAFT' | 'VALIDATED';
 
-export const SITE_BUDGET_STATUS_LABELS: Record<SiteBudgetStatus, string> = {
+export const SITE_BUDGET_STATUS_LABELS: Record<SiteBudgetStatus, string> = localizedRecord(() => ({
   DRAFT: 'Brouillon',
   VALIDATED: t('Validé')
-};
+}));
 
 /** Cycle **décidé** d'un bon de commande. Voir `PurchaseOrderInvoicingState`. */
 export type PurchaseOrderStatus = 'DRAFT' | 'ISSUED' | 'CANCELLED';
 
-export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
+export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> = localizedRecord(() => ({
   DRAFT: 'Brouillon',
   ISSUED: t('Émis'),
   CANCELLED: t('Annulé')
-};
+}));
 
 /**
  * État de facturation d'un bon. **Calculé par le serveur, jamais stocké.**
@@ -50,11 +51,11 @@ export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> =
  */
 export type PurchaseOrderInvoicingState = 'NOT_INVOICED' | 'PARTIALLY_INVOICED' | 'SETTLED';
 
-export const INVOICING_STATE_LABELS: Record<PurchaseOrderInvoicingState, string> = {
+export const INVOICING_STATE_LABELS: Record<PurchaseOrderInvoicingState, string> = localizedRecord(() => ({
   NOT_INVOICED: t('Non facturé'),
   PARTIALLY_INVOICED: t('Partiellement facturé'),
   SETTLED: t('Soldé')
-};
+}));
 
 // ---------------------------------------------------------------------------
 // Budget

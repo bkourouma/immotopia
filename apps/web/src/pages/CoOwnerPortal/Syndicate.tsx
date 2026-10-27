@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BankOutlined, EnvironmentOutlined, HomeOutlined, MailOutlined, PhoneOutlined } from '@ant-design/icons';
-import { Card, Col, Divider, Row, Select, Space, Typography } from 'antd';
+import { BankOutlined, EnvironmentOutlined, HomeOutlined } from '@ant-design/icons';
+import { Card, Col, Descriptions, Divider, Row, Select, Space, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { SkeletonList, StateBlock } from '../../components/primitives';
+import { PhoneNumber, SkeletonList, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import {
   fetchCoOwnerIssuerLogo,
@@ -83,13 +83,29 @@ function KeyFact({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-/** Une ligne de coordonnée : icône discrète, valeur, lien si utile. */
-function ContactRow({ icon, value, href }: { icon: React.ReactNode; value: string | null | undefined; href?: string }) {
+/** Coordonnées : la ligne Nom reste, les autres lignes vides sont masquées. */
+function ContactDetails({
+  name,
+  address,
+  phone,
+  email
+}: {
+  name: string | null;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}) {
   return (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-      <span style={{ color: '#8c8c8c', marginTop: 2 }}>{icon}</span>
-      {value ? href ? <a href={href}>{value}</a> : <Text>{value}</Text> : <Text type="secondary">—</Text>}
-    </div>
+    <Descriptions column={1} size="small">
+      <Descriptions.Item label={t('Nom')}>{name ?? '—'}</Descriptions.Item>
+      {address ? <Descriptions.Item label={t('Adresse')}>{address}</Descriptions.Item> : null}
+      {phone ? (
+        <Descriptions.Item label={t('Téléphone')}>
+          <PhoneNumber value={phone} />
+        </Descriptions.Item>
+      ) : null}
+      {email ? <Descriptions.Item label={t('E-mail')}>{email}</Descriptions.Item> : null}
+    </Descriptions>
   );
 }
 
@@ -156,35 +172,25 @@ function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
               ) : null
             }
           >
-            <Space direction="vertical" size={10}>
-              <Text strong>{data.issuer.name}</Text>
-              <ContactRow icon={<EnvironmentOutlined />} value={data.issuer.address} />
-              <ContactRow
-                icon={<PhoneOutlined />}
-                value={data.issuer.phone}
-                href={data.issuer.phone ? `tel:${data.issuer.phone}` : undefined}
-              />
-              <ContactRow
-                icon={<MailOutlined />}
-                value={data.issuer.email}
-                href={data.issuer.email ? `mailto:${data.issuer.email}` : undefined}
-              />
-            </Space>
+            <ContactDetails
+              name={data.issuer.name}
+              address={data.issuer.address}
+              phone={data.issuer.phone}
+              email={data.issuer.email}
+            />
           </Card>
         </Col>
         <Col xs={24} md={12} style={{ display: 'flex' }}>
           <Card style={{ width: '100%' }} title={t('Gestionnaire de la copropriété')}>
             {data.syndicContact ? (
-              <Space direction="vertical" size={10}>
-                <Text strong>{data.syndicContact.name ?? '—'}</Text>
-                <ContactRow
-                  icon={<MailOutlined />}
-                  value={data.syndicContact.email}
-                  href={data.syndicContact.email ? `mailto:${data.syndicContact.email}` : undefined}
-                />
-              </Space>
+              <ContactDetails name={data.syndicContact.name} email={data.syndicContact.email} />
             ) : (
-              <Text type="secondary">{t("Aucun gestionnaire n'est désigné pour l'instant.")}</Text>
+              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                <Text type="secondary">
+                  {t("Aucun gestionnaire n'est désigné : votre interlocuteur est l'émetteur des documents.")}
+                </Text>
+                <ContactDetails name={data.issuer.name} phone={data.issuer.phone} email={data.issuer.email} />
+              </Space>
             )}
           </Card>
         </Col>
@@ -202,7 +208,7 @@ function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
 export default function CoOwnerSyndicateSheet() {
   const [syndicId, setSyndicId] = useState<string | undefined>(undefined);
 
-  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], queryFn: () => listMyLots() });
+  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], staleTime: 30_000, queryFn: () => listMyLots() });
 
   const syndicateOptions = useMemo(() => {
     const seen = new Map<string, string>();
@@ -218,6 +224,7 @@ export default function CoOwnerSyndicateSheet() {
 
   const syndicate = useQuery({
     queryKey: ['coowner-portal', 'syndicate', syndicId ?? null],
+    staleTime: 30_000,
     queryFn: () => getCoOwnerSyndicate(syndicId as string),
     enabled: Boolean(syndicId)
   });

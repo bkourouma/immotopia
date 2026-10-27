@@ -1,5 +1,6 @@
 import * as cron from 'node-cron';
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { calculatePenaltiesForOverdueInstallments } from '../services/rental-penalty-service';
 import { markOverdueInstallments } from '../services/rental-installment-service';
 import { applyDueRevisions } from '../lib/lease-lifecycle/service';
@@ -23,9 +24,12 @@ export function startPenaltyCalculationJob() {
       try {
         logger.info('Starting scheduled penalty calculation job');
         // D'abord le statut (Brouillon/À payer échus -> En retard), puis les pénalités.
-        await applyDueRevisions();
-        await markOverdueInstallments();
-        const results = await calculatePenaltiesForOverdueInstallments();
+        const results = await withJobLock('penalty-calculation-daily', 60 * 60 * 1000, async () => {
+          await applyDueRevisions();
+          await markOverdueInstallments();
+          return calculatePenaltiesForOverdueInstallments();
+        });
+        if (!results) return; // une autre instance a pris le passage
         logger.info('Penalty calculation job completed', {
           processed: results.processed,
           errors: results.errors.length

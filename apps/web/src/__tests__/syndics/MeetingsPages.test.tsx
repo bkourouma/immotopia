@@ -18,6 +18,13 @@ vi.mock('../../utils/api-client', () => ({
   }
 }));
 
+// La console « En direct » (spec 043) a ses propres tests ; ici l'antd allégé ci-dessous ne la porterait pas.
+vi.mock('../../components/syndics/MeetingLiveConsole', () => ({
+  MANUAL_VOTE_ANCHOR_ID: 'meeting-vote-entry',
+  MeetingLiveConsole: () => null,
+  default: () => null
+}));
+
 vi.mock('@ant-design/icons', async () => {
   // Vitest resolves named imports against the keys of this object, so the mock
   // must expose the real export names — a Proxy over {} declares none.
@@ -25,6 +32,9 @@ vi.mock('@ant-design/icons', async () => {
   const Icon = () => <span />;
   return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
 });
+
+// Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
+vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
 
 vi.mock('antd', async () => {
   // importActual reaches the real module from inside a hoisted mock factory;
@@ -55,6 +65,7 @@ vi.mock('antd', async () => {
     Alert: passthrough(),
     Button: passthrough('button'),
     Card: passthrough(),
+    Checkbox: passthrough('span'),
     Col: passthrough(),
     DatePicker: passthrough('input'),
     TimePicker: passthrough('input'),
@@ -268,6 +279,100 @@ describe('Meetings pages', () => {
     expect(payload.scheduledAt).toBe(payload.startTime);
     expect(dayjs(payload.scheduledAt).format('YYYY-MM-DD HH:mm')).toBe('2026-10-15 09:30');
     expect(dayjs(payload.endTime).format('YYYY-MM-DD HH:mm')).toBe('2026-10-15 11:00');
+  });
+
+  const formValues = () => ({
+    type: 'ORDINARY',
+    date: dayjs('2026-10-15'),
+    startTime: dayjs('2000-01-01 09:30'),
+    location: 'Salle commune'
+  });
+
+  // Anomalie 3 (recette 17/10) : un 503 alors que l'AG était créée, puis un doublon au réessai.
+  it('envoie une Idempotency-Key et la conserve au réessai après une erreur 503', async () => {
+    mockApiClient.get.mockResolvedValue({ data: { success: true, data: [] } } as never);
+    mockApiClient.post
+      .mockRejectedValueOnce({ response: { status: 503, data: '<html>503</html>' } })
+      .mockResolvedValueOnce({
+        data: { success: true, data: { id: 'meeting-3' }, convocation: { status: 'SENDING' } }
+      } as never);
+
+    renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
+    fireEvent.click(await screen.findByText('Nouvelle assemblée'));
+
+    mockValidateFields.mockResolvedValue(formValues());
+    fireEvent.click(await screen.findByText('Créer'));
+    await waitFor(() =>
+      expect(mockMessage.error).toHaveBeenCalledWith(
+        "L'assemblée a peut-être été créée, vérifiez la liste avant de réessayer.",
+        8
+      )
+    );
+
+    fireEvent.click(await screen.findByText('Créer'));
+    await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledTimes(2));
+    const firstKey = mockApiClient.post.mock.calls[0][2].headers['Idempotency-Key'];
+    const secondKey = mockApiClient.post.mock.calls[1][2].headers['Idempotency-Key'];
+    expect(firstKey).toBeTruthy();
+    expect(secondKey).toBe(firstKey);
+    await waitFor(() => expect(mockMessage.success).toHaveBeenCalledWith('Assemblée créée'));
+  });
+
+  it('renouvelle la clé après un refus définitif (4xx)', async () => {
+    mockApiClient.get.mockResolvedValue({ data: { success: true, data: [] } } as never);
+    mockApiClient.post
+      .mockRejectedValueOnce({ response: { status: 400, data: { error: 'Date invalide' } } })
+      .mockResolvedValueOnce({ data: { success: true, data: { id: 'meeting-4' } } } as never);
+
+    renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
+    fireEvent.click(await screen.findByText('Nouvelle assemblée'));
+    mockValidateFields.mockResolvedValue(formValues());
+
+    fireEvent.click(await screen.findByText('Créer'));
+    await waitFor(() => expect(mockMessage.error).toHaveBeenCalledWith('Date invalide'));
+    fireEvent.click(await screen.findByText('Créer'));
+    await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledTimes(2));
+    expect(mockApiClient.post.mock.calls[1][2].headers['Idempotency-Key']).not.toBe(
+      mockApiClient.post.mock.calls[0][2].headers['Idempotency-Key']
+    );
+  });
+
+  it('ne demande pas l envoi des convocations par défaut (sendConvocation=false) et n ouvre aucun suivi si NOT_SENT', async () => {
+    mockApiClient.get.mockResolvedValue({ data: { success: true, data: [] } } as never);
+    mockApiClient.post.mockResolvedValueOnce({
+      data: { success: true, data: { id: 'meeting-5' }, convocation: { status: 'NOT_SENT' } }
+    } as never);
+
+    renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
+    fireEvent.click(await screen.findByText('Nouvelle assemblée'));
+    mockValidateFields.mockResolvedValue(formValues());
+    fireEvent.click(await screen.findByText('Créer'));
+
+    await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledTimes(1));
+    expect(mockApiClient.post.mock.calls[0][1].sendConvocation).toBe(false);
+    await waitFor(() =>
+      expect(mockMessage.success).toHaveBeenCalledWith(
+        "Assemblée créée. Les convocations n'ont pas été envoyées : envoyez-les depuis l'assemblée."
+      )
+    );
+    // L'alerte de suivi est un passe-plat dans ce test : son texte passe par l'attribut `message`.
+    expect(document.querySelector('[message]')).toBeNull();
+  });
+
+  it('transmet sendConvocation=true quand la case est cochée et suit l envoi (SENDING)', async () => {
+    mockApiClient.get.mockResolvedValue({ data: { success: true, data: [] } } as never);
+    mockApiClient.post.mockResolvedValueOnce({
+      data: { success: true, data: { id: 'meeting-6' }, convocation: { status: 'SENDING' } }
+    } as never);
+
+    renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
+    fireEvent.click(await screen.findByText('Nouvelle assemblée'));
+    mockValidateFields.mockResolvedValue({ ...formValues(), sendConvocation: true });
+    fireEvent.click(await screen.findByText('Créer'));
+
+    await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledTimes(1));
+    expect(mockApiClient.post.mock.calls[0][1].sendConvocation).toBe(true);
+    await waitFor(() => expect(mockMessage.success).toHaveBeenCalledWith('Assemblée créée'));
   });
 
   it("refuse une heure de fin antérieure ou égale à l'heure de début", async () => {

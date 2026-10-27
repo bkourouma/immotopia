@@ -20,6 +20,7 @@ function buildRouteLabels(): Record<string, string> {
     // Racines
     dashboard: t('Tableau de bord'),
     settings: t('Paramètres'),
+    abonnement: t('Abonnement'),
     profile: t('Profil'),
 
     assistant: t('Assistant'),
@@ -52,6 +53,8 @@ function buildRouteLabels(): Record<string, string> {
     // et le fil d'Ariane doit dire la même chose que l'onglet actif.
     installments: t('Encaisser'),
     payments: t('Paiements'),
+    'direct-debit': t('Prélèvements'),
+    remittances: t('Remises'),
     penalties: t('Pénalités'),
     deposits: t('Dépôts de garantie'),
     documents: t('Documents'),
@@ -79,6 +82,8 @@ function buildRouteLabels(): Record<string, string> {
     quittances: t('Quittances'),
     // Lot S4 : onglet des appels automatiques.
     programmation: t('Programmation'),
+    // Lot P4 : prélèvement bancaire des charges de copropriété.
+    prelevements: t('Prélèvements'),
 
     // Gestion locative, lots 2 et 3 : sans ces entrées, le fil d'Ariane
     // affichait « Owner accounts » et « Account », tels que dans l'adresse.
@@ -147,6 +152,8 @@ function buildRouteLabels(): Record<string, string> {
     tenants: t('Agences'),
     statistics: t('Statistiques'),
     audit: t("Journaux d'audit"),
+    notifications: t('Notifications'),
+    messages: t('Messagerie'),
     'roles-permissions': t('Rôles et permissions'),
     'ai-settings': t('Assistant IA'),
 
@@ -156,6 +163,7 @@ function buildRouteLabels(): Record<string, string> {
     invite: t('Inviter'),
     invitations: t('Invitations'),
     activity: t("Journal d'activité"),
+    'notifications-journal': t('Journal des notifications'),
 
     // Portails
     owner: t('Portail propriétaire'),

@@ -112,6 +112,7 @@ export function StockWhatsapp(): React.ReactElement {
           registrations={registrations.data ?? []}
           loading={registrations.isPending}
           error={registrations.error ? handleApiError(registrations.error) : null}
+          errorCause={registrations.error}
           onRetry={() => void registrations.refetch()}
           botNumber={overview.data?.botNumber ?? null}
         />

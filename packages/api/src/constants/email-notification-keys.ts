@@ -55,6 +55,21 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'LAND_STEP_OVERDUE_ALERT',
   'OWNER_MONTHLY_REPORT_SENT',
   'RENTER_PAYMENT_LINK_SENT',
+  // Location – prénotification d'un prélèvement bancaire (spec 042, P2)
+  'DIRECT_DEBIT_PRENOTIFICATION',
+  // Location – rejet d'un prélèvement bancaire (spec 042, P3)
+  'DIRECT_DEBIT_REJECTED',
+  // Syndic – prénotification et rejet d'un prélèvement de charges (spec 042, P4)
+  'SYNDIC_DIRECT_DEBIT_PRENOTIFICATION',
+  'SYNDIC_DIRECT_DEBIT_REJECTED',
+  // Syndic – lien « Payer cet appel » envoyé au copropriétaire (spec 042)
+  'CHARGE_CALL_PAYMENT_LINK_SENT',
+  // Syndic – paiement mobile money déclaré par le copropriétaire (spec 047)
+  'SYNDIC_PAYMENT_DECLARATION_RECEIVED',
+  'SYNDIC_PAYMENT_DECLARATION_APPROVED',
+  'SYNDIC_PAYMENT_DECLARATION_REJECTED',
+  'SYNDIC_PAYMENT_DECLARATION_TO_REVIEW',
+  'SYNDIC_RECEIVING_NUMBER_CHANGED',
   // Patrimoine – accès en lecture seule des tiers de confiance (lot B3)
   'EXTERNAL_ACCESS_LINK_SENT',
   // Chantiers – contrôle du stock (lot 040, B7-R6)
@@ -322,6 +337,76 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     description:
       "Envoi au locataire d'un lien sécurisé pour régler son loyer en ligne par Mobile Money (durée limitée, révocable), lorsque le canal e-mail est retenu.",
     recipientLabel: 'Locataire'
+  },
+  DIRECT_DEBIT_PRENOTIFICATION: {
+    key: 'DIRECT_DEBIT_PRENOTIFICATION',
+    label: "Prénotification d'un prélèvement bancaire",
+    description:
+      "Envoi au locataire, avant la date de prélèvement, du montant, de la date, de la référence du mandat et de l'IBAN masqué du compte qui sera débité (remise de prélèvements validée par l'agence).",
+    recipientLabel: 'Locataire (débiteur)'
+  },
+  DIRECT_DEBIT_REJECTED: {
+    key: 'DIRECT_DEBIT_REJECTED',
+    label: "Rejet d'un prélèvement bancaire",
+    description:
+      "Envoi au locataire, lorsque l'agence constate le rejet d'un prélèvement, du montant, de la date, de la référence du mandat, de l'IBAN masqué, du motif du rejet, des frais éventuellement refacturés et, le cas échéant, de la suspension du mandat.",
+    recipientLabel: 'Locataire (débiteur)'
+  },
+  SYNDIC_DIRECT_DEBIT_PRENOTIFICATION: {
+    key: 'SYNDIC_DIRECT_DEBIT_PRENOTIFICATION',
+    label: "Prénotification d'un prélèvement de charges",
+    description:
+      "Envoi au copropriétaire, avant la date de prélèvement, du montant, de la date, de la référence du mandat et de l'IBAN masqué du compte qui sera débité pour les appels de charges de son lot (remise de prélèvements validée par le gestionnaire).",
+    recipientLabel: 'Copropriétaire (débiteur)'
+  },
+  SYNDIC_DIRECT_DEBIT_REJECTED: {
+    key: 'SYNDIC_DIRECT_DEBIT_REJECTED',
+    label: "Rejet d'un prélèvement de charges",
+    description:
+      "Envoi au copropriétaire, lorsque le gestionnaire constate le rejet d'un prélèvement d'appels de charges, du montant, de la date, de la référence du mandat, de l'IBAN masqué, du motif du rejet et, le cas échéant, de la suspension du mandat.",
+    recipientLabel: 'Copropriétaire (débiteur)'
+  },
+  CHARGE_CALL_PAYMENT_LINK_SENT: {
+    key: 'CHARGE_CALL_PAYMENT_LINK_SENT',
+    label: "Lien de paiement d'un appel de charges",
+    description:
+      "Envoi au copropriétaire d'un lien sécurisé pour régler un appel de charges en ligne par Mobile Money (durée limitée, révocable), à la demande du gestionnaire, lorsque le canal e-mail est retenu.",
+    recipientLabel: 'Copropriétaire'
+  },
+  SYNDIC_PAYMENT_DECLARATION_RECEIVED: {
+    key: 'SYNDIC_PAYMENT_DECLARATION_RECEIVED',
+    label: 'Paiement déclaré reçu (accusé de réception)',
+    description:
+      'Envoyé au copropriétaire pour accuser réception de sa déclaration de paiement mobile money, en attente de vérification par le gestionnaire.',
+    recipientLabel: 'Copropriétaire'
+  },
+  SYNDIC_PAYMENT_DECLARATION_APPROVED: {
+    key: 'SYNDIC_PAYMENT_DECLARATION_APPROVED',
+    label: 'Paiement déclaré validé',
+    description:
+      'Envoyé au copropriétaire quand le gestionnaire valide sa déclaration de paiement mobile money (avec le montant retenu et la note de correction éventuelle). Les reçus et quittances partent dans leurs propres messages.',
+    recipientLabel: 'Copropriétaire'
+  },
+  SYNDIC_PAYMENT_DECLARATION_REJECTED: {
+    key: 'SYNDIC_PAYMENT_DECLARATION_REJECTED',
+    label: 'Paiement déclaré rejeté',
+    description:
+      'Envoyé au copropriétaire quand le gestionnaire rejette sa déclaration de paiement mobile money, avec le motif et la note du gestionnaire.',
+    recipientLabel: 'Copropriétaire'
+  },
+  SYNDIC_PAYMENT_DECLARATION_TO_REVIEW: {
+    key: 'SYNDIC_PAYMENT_DECLARATION_TO_REVIEW',
+    label: 'Paiements déclarés à vérifier (récapitulatif)',
+    description:
+      'Récapitulatif envoyé chaque heure aux gestionnaires de la copropriété (droit de modification du syndic) quand de nouveaux paiements mobile money déclarés attendent leur vérification, et chaque matin à 8 h pour ceux qui sont en retard.',
+    recipientLabel: 'Gestionnaires de la copropriété'
+  },
+  SYNDIC_RECEIVING_NUMBER_CHANGED: {
+    key: 'SYNDIC_RECEIVING_NUMBER_CHANGED',
+    label: 'Numéro de réception mobile money changé',
+    description:
+      'Envoyé aux autres gestionnaires de la copropriété (droit de modification du syndic) quand le numéro qui reçoit les paiements mobile money est changé : seuls les numéros masqués sont indiqués.',
+    recipientLabel: 'Gestionnaires de la copropriété'
   },
   EXTERNAL_ACCESS_LINK_SENT: {
     key: 'EXTERNAL_ACCESS_LINK_SENT',

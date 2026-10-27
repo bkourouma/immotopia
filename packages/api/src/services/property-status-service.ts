@@ -1,6 +1,6 @@
-import { prisma } from '../utils/database';
+import { prisma, type PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
-import { logAuditEvent } from './audit-service';
+import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { PROPERTY_ENTITY_TYPES } from '../types/audit-types';
 import { AuditActionKey } from '../types/audit-types';
 import { PropertyStatus, PropertyOwnershipType, PropertyAvailability } from '@prisma/client';
@@ -96,6 +96,9 @@ export function validateStatusTransition(
  * @param userId - User ID (for ownership validation)
  * @param actorUserId - User performing the status change (for audit)
  * @param notes - Optional notes about the status change
+ * @param client - Client de transaction optionnel : l'ecriture, le decompte des lots
+ *   et l'historique s'executent alors dans la transaction de l'appelant (pas de
+ *   transaction imbriquee) ; un echec remonte et l'annule.
  * @returns Updated property with status history
  */
 export async function updatePropertyStatus(
@@ -104,10 +107,15 @@ export async function updatePropertyStatus(
   tenantId?: string | null,
   userId?: string | null,
   actorUserId?: string,
-  notes?: string
+  notes?: string,
+  client?: PrismaTransactionClient
 ) {
-  // Get property with current status
-  const property = await getPropertyById(propertyId, tenantId, userId);
+  // Get property with current status. Dans la transaction de l'appelant, la
+  // lecture passe par son client (pas par le prisma global) : on voit ses
+  // ecritures non validees et on ne sort pas de la transaction.
+  const property = client
+    ? await getPropertyForStatusTx(client, propertyId, tenantId, userId)
+    : await getPropertyById(propertyId, tenantId, userId);
 
   if (!property) {
     throw new NotFoundError(t('Bien introuvable ou accès refusé'));
@@ -137,7 +145,7 @@ export async function updatePropertyStatus(
   // Sortie de brouillon, archivage, vente : le decompte des lots de
   // l'abonnement (D1) suit dans la meme transaction.
   const lotTenantId = tenantId || property.tenantId || null;
-  const updated = await prisma.$transaction(async tx => {
+  const run = async (tx: PrismaTransactionClient) => {
     const row = await tx.property.update({
       where: { id: propertyId },
       data: updateData
@@ -154,7 +162,8 @@ export async function updatePropertyStatus(
       );
     }
     return row;
-  });
+  };
+  const updated = client ? await run(client) : await prisma.$transaction(async tx => run(tx));
 
   // Record status history (immutable)
   await recordStatusHistory(
@@ -163,7 +172,8 @@ export async function updatePropertyStatus(
     newStatus,
     actorUserId || userId || '',
     notes,
-    property.tenantId
+    property.tenantId,
+    client
   );
 
   logger.info('Property status updated', {
@@ -173,9 +183,10 @@ export async function updatePropertyStatus(
     changedBy: actorUserId || userId
   });
 
-  // Audit log
+  // Audit log : dans la transaction de l'appelant quand il en fournit une (la
+  // trace suit le commit ou le rollback), sinon file asynchrone habituelle.
   if (actorUserId) {
-    logAuditEvent({
+    const auditEntry = {
       actorUserId,
       tenantId: property.tenantId || null,
       actionKey: AuditActionKey.PROPERTY_STATUS_CHANGED,
@@ -186,10 +197,43 @@ export async function updatePropertyStatus(
         newStatus,
         notes
       }
-    });
+    };
+    if (client) {
+      await recordAuditEvent(client, auditEntry);
+    } else {
+      logAuditEvent(auditEntry);
+    }
   }
 
   return updated;
+}
+
+/**
+ * Lecture du bien pour un changement de statut, via le client de transaction
+ * de l'appelant. Meme controle d'acces que `getPropertyById` (bien de l'agence
+ * ou mandat actif ; sans agence, proprietaire ou bien public publie).
+ */
+async function getPropertyForStatusTx(
+  client: PrismaTransactionClient,
+  propertyId: string,
+  tenantId?: string | null,
+  userId?: string | null
+) {
+  const property = await client.property.findUnique({
+    where: { id: propertyId },
+    include: { mandates: { where: { isActive: true }, select: { tenantId: true } } }
+  });
+  if (!property) return null;
+  const mandateTenantIds = property.mandates.map(mandate => mandate.tenantId);
+  let allowed: boolean;
+  if (tenantId) {
+    allowed = property.tenantId === tenantId || mandateTenantIds.includes(tenantId);
+  } else if (property.ownershipType === PropertyOwnershipType.PUBLIC) {
+    allowed = Boolean(userId && property.ownerUserId === userId) || property.isPublished;
+  } else {
+    allowed = Boolean(userId && property.ownerUserId === userId);
+  }
+  return allowed ? property : null;
 }
 
 /**
@@ -208,9 +252,10 @@ export async function recordStatusHistory(
   newStatus: PropertyStatus,
   changedByUserId: string,
   notes?: string,
-  tenantId?: string | null
+  tenantId?: string | null,
+  client?: PrismaTransactionClient
 ) {
-  const history = await prisma.propertyStatusHistory.create({
+  const history = await (client ?? prisma).propertyStatusHistory.create({
     data: {
       propertyId,
       tenantId: tenantId ?? null,

@@ -1,0 +1,316 @@
+name: Déploiement
+
+# Déploiement continu (non éprouvé : voir docs/workflows/DEPLOIEMENT.md, section
+# « Déploiement continu (GitHub Actions) » ; décision : ADR-008).
+#
+#   - tout push sur `main` dont la CI est verte déploie le STAGING, tant que la
+#     variable de dépôt AUTO_DEPLOY_STAGING vaut `true` (interrupteur et arrêt
+#     d'urgence) ;
+#   - la PRODUCTION ne part que par « Run workflow », derrière l'approbation de
+#     l'environnement GitHub `production` ;
+#   - les autres branches ne déploient rien (la CI est inchangée).
+#
+# Le workflow ne fait que se connecter en SSH avec une clé dont le seul pouvoir
+# est de lancer infra/scripts/ci-deploy.sh (commande imposée côté serveur). Le
+# dépôt est PUBLIC : les journaux de ce workflow sont lisibles par tous. Le
+# serveur n'y envoie qu'un canal public dédié (messages de ci-deploy.sh et titres
+# d'étapes de deploy.sh), jamais la sortie brute de deploy.sh, et aucun secret
+# n'est interpolé dans un script `run:` (toutes les entrées passent par `env:`).
+#
+# `workflow_run` lit le fichier de la branche par défaut : le déploiement
+# automatique n'agit qu'après la fusion de ce fichier dans `main`.
+# `workflow_dispatch`, lui, exécute le fichier de la branche choisie (« Use
+# workflow from » ou `--ref`) : le contrôle `REF == refs/heads/main` ci-dessous
+# n'est qu'un confort. La vraie barrière est la règle « Deployment branches :
+# main » des environnements GitHub `staging` et `production`, qui refuse le job
+# (et donc l'accès aux secrets) pour toute autre branche.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environnement à déployer"
+        type: choice
+        options: [staging, prod]
+        default: staging
+      sha:
+        description: "Commit à déployer (40 caractères hexadécimaux ; facultatif). Production : par défaut, le dernier commit déployé avec succès sur le staging."
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  deployments: read
+
+# Un groupe par environnement, jamais annulé en cours (une migration à moitié
+# appliquée). Dans un groupe, l'exécution en attente est remplacée par la plus
+# récente : un groupe commun aux deux environnements laisserait un push sur main
+# annuler en silence un déploiement de production en attente. Le serveur, lui,
+# n'exécute qu'un déploiement à la fois quel que soit l'environnement (verrou de
+# ci-deploy.sh, un seul checkout pour les deux piles).
+concurrency:
+  group: deploiement-${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'prod' && 'production' || 'staging' }}
+  cancel-in-progress: false
+
+env:
+  DEPLOY_HOST: 147.93.44.169
+  DEPLOY_PORT: "2222"
+  DEPLOY_USER: deployer
+
+jobs:
+  # Résolution de la cible, sans environnement GitHub : une exécution écartée
+  # (commit plus ancien que la tête de main) ne crée donc aucun « déploiement »
+  # dans le registre de GitHub, que la promotion en production relit.
+  cible:
+    name: Cible du déploiement
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Piège de sécurité : un fork peut nommer sa branche `main`, et `workflow_run`
+    # s'exécute avec les secrets du dépôt. On n'accepte que le même dépôt, un
+    # push, la branche main et une CI réussie ; l'interrupteur coupe le tout.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (vars.AUTO_DEPLOY_STAGING == 'true' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
+    outputs:
+      environment: ${{ steps.cible.outputs.environment }}
+      sha: ${{ steps.cible.outputs.sha }}
+      skip: ${{ steps.cible.outputs.skip }}
+      url: ${{ steps.cible.outputs.url }}
+    steps:
+      - name: Résolution de la cible
+        id: cible
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          RUN_SHA: ${{ github.sha }}
+          INPUT_ENV: ${{ inputs.environment }}
+          INPUT_SHA: ${{ inputs.sha }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          sha_re='^[0-9a-f]{40}$'
+          skip=false
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$REF" != "refs/heads/main" ]]; then
+              echo "::error::Lancer le workflow depuis la branche main."
+              exit 1
+            fi
+            case "$INPUT_ENV" in
+              staging|prod) env_name="$INPUT_ENV" ;;
+              *) echo "::error::Environnement inconnu (staging ou prod attendu)."; exit 1 ;;
+            esac
+            if [[ -n "$INPUT_SHA" && ! "$INPUT_SHA" =~ $sha_re ]]; then
+              echo "::error::Le commit doit faire 40 caractères hexadécimaux minuscules."
+              exit 1
+            fi
+
+            if [[ -n "$INPUT_SHA" ]]; then
+              sha="$INPUT_SHA"
+              # Le registre des déploiements de GitHub garde le SHA de l'exécution
+              # (tête de main), pas un SHA saisi à la main : la promotion en
+              # production lirait un commit qui n'a pas été déployé.
+              if [[ "$env_name" == "staging" && "$sha" != "$RUN_SHA" ]]; then
+                echo "::error::Le staging se déploie sur la tête de main (laisser le champ commit vide). Un autre commit : voie manuelle (DEPLOIEMENT.md)."
+                exit 1
+              fi
+            elif [[ "$env_name" == "staging" ]]; then
+              sha="$RUN_SHA"
+            else
+              # Production : le commit validé sur le staging, c'est-à-dire celui du
+              # dernier déploiement réussi de l'environnement GitHub `staging`.
+              sha=""
+              ids="$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=staging&per_page=20" --jq '.[] | "\(.id) \(.sha)"')"
+              while read -r dep_id dep_sha; do
+                [[ -n "${dep_id:-}" ]] || continue
+                state="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$dep_id/statuses?per_page=1" --jq '.[0].state // empty')"
+                if [[ "$state" == "success" && "$dep_sha" =~ $sha_re ]]; then
+                  sha="$dep_sha"
+                  break
+                fi
+              done <<< "$ids"
+              if [[ -z "$sha" ]]; then
+                echo "::error::Aucun déploiement staging réussi connu : préciser le SHA."
+                exit 1
+              fi
+            fi
+          else
+            env_name="staging"
+            sha="$WORKFLOW_RUN_SHA"
+            if [[ ! "$sha" =~ $sha_re ]]; then
+              echo "::error::SHA de la CI invalide."
+              exit 1
+            fi
+            # On ne recule jamais le staging : si main a avancé, le commit plus
+            # récent a sa propre CI et son propre déploiement.
+            tip="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+            if [[ "$tip" != "$sha" ]]; then
+              echo "::notice::Un commit plus récent est sur main, son propre déploiement suivra."
+              skip=true
+            fi
+          fi
+
+          if [[ "$env_name" == "prod" ]]; then
+            url="https://clients.immotopia.cloud"
+          else
+            url="https://app.immotopia.cloud"
+          fi
+
+          {
+            echo "environment=$env_name"
+            echo "sha=$sha"
+            echo "skip=$skip"
+            echo "url=$url"
+          } >> "$GITHUB_OUTPUT"
+
+          # Affiché AVANT l'approbation de l'environnement `production` : c'est ici
+          # que le relecteur vérifie ce qui va partir.
+          echo "Cible : $env_name, commit $sha"
+          if [[ "$skip" == "true" ]]; then
+            {
+              echo "### Déploiement écarté"
+              echo
+              echo "Un commit plus récent est sur main (cible : \`${sha:0:8}\`) : son propre déploiement suivra."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Cible du déploiement"
+              echo
+              echo "Environnement \`$env_name\`, commit \`$sha\` ($url)."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  deploy:
+    name: Déployer
+    needs: cible
+    runs-on: ubuntu-latest
+    # 90 min = attente du verrou CI (20 min au plus) + attente d'un deploy.sh
+    # manuel (20 min au plus) + déploiement lui-même (construction des images,
+    # migrations, tests de fumée : une trentaine de minutes au plus) + marge.
+    timeout-minutes: 90
+    # Même garde que `cible` (défense en profondeur), et rien à faire si la cible
+    # a été écartée.
+    if: >-
+      needs.cible.outputs.skip != 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+      (vars.AUTO_DEPLOY_STAGING == 'true' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository))
+    # La production passe par l'approbation de l'environnement `production`
+    # (réglée dans GitHub : relecteurs obligatoires, branche main seulement).
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'prod' && 'production' || 'staging' }}
+      url: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'prod' && 'https://clients.immotopia.cloud' || 'https://app.immotopia.cloud' }}
+    steps:
+      - name: Contrôle des secrets
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Le secret d'environnement $name est absent ou vide. Voir docs/workflows/DEPLOIEMENT.md, section « Déploiement continu (GitHub Actions) »."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Déploiement par SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          TARGET_ENV: ${{ needs.cible.outputs.environment }}
+          TARGET_SHA: ${{ needs.cible.outputs.sha }}
+        run: |
+          set -euo pipefail
+          umask 077
+          install -d -m 700 "$HOME/.ssh"
+          # La clé a été générée sur un poste Windows : on retire les CR (fins de
+          # ligne CRLF) en l'écrivant, comme pour known_hosts.
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" | tr -d '\r' > "$HOME/.ssh/deploy_known_hosts"
+          chmod 600 "$HOME/.ssh/deploy_key" "$HOME/.ssh/deploy_known_hosts"
+          # Valide la clé sans rien afficher d'elle.
+          if ! ssh-keygen -y -f "$HOME/.ssh/deploy_key" > /dev/null 2>&1; then
+            echo "::error::Clé privée invalide (DEPLOY_SSH_KEY n'est pas une clé privée SSH lisible)."
+            exit 1
+          fi
+          # Le serveur n'exécute que ci-deploy.sh (commande imposée par la clé) et
+          # ne renvoie que son canal public : le journal complet reste sur lui.
+          ssh -i "$HOME/.ssh/deploy_key" \
+            -p "$DEPLOY_PORT" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/deploy_known_hosts" \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "deploy $TARGET_ENV $TARGET_SHA"
+
+      - name: Suppression de la clé
+        if: always()
+        run: rm -f "$HOME/.ssh/deploy_key" "$HOME/.ssh/deploy_known_hosts"
+
+      - name: Contrôle externe
+        env:
+          TARGET_URL: ${{ needs.cible.outputs.url }}
+        run: |
+          set -euo pipefail
+          # Le serveur vient de redémarrer : quelques essais espacés.
+          for path in /health /; do
+            ok=0
+            for attempt in 1 2 3 4 5 6 7 8; do
+              code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$TARGET_URL$path" || true)"
+              if [[ "$code" == "200" ]]; then
+                ok=1
+                break
+              fi
+              echo "Essai $attempt : $TARGET_URL$path -> $code"
+              sleep 15
+            done
+            if [[ "$ok" != "1" ]]; then
+              echo "::error::$TARGET_URL$path ne répond pas 200."
+              exit 1
+            fi
+            echo "$TARGET_URL$path -> 200"
+          done
+
+      - name: Résumé
+        if: always()
+        env:
+          TARGET_ENV: ${{ needs.cible.outputs.environment }}
+          TARGET_SHA: ${{ needs.cible.outputs.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          RESULT: ${{ job.status }}
+        run: |
+          {
+            echo "### Déploiement"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Environnement | \`$TARGET_ENV\` |"
+            echo "| Commit | \`${TARGET_SHA:0:8}\` |"
+            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+              echo "| Déclencheur | lancement manuel par \`$ACTOR\` |"
+            else
+              echo "| Déclencheur | CI verte sur \`main\` |"
+            fi
+            echo "| Résultat | \`$RESULT\` |"
+            echo
+            echo "Le journal complet est sur le serveur, dans \`~/ci-deploy-logs/\` (ici, seul le canal public est repris)."
+          } >> "$GITHUB_STEP_SUMMARY"

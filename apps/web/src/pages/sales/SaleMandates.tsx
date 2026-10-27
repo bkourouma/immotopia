@@ -20,11 +20,12 @@ import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
 
-const STATUS_OPTIONS: { value: SaleMandateStatus; label: string }[] = [
+import { localizedList } from '../../i18n/localized';
+const STATUS_OPTIONS: { value: SaleMandateStatus; label: string }[] = localizedList(() => [
   { value: 'ACTIVE', label: t('Actif') },
   { value: 'REVOKED', label: t('Révoqué') },
   { value: 'COMPLETED', label: t('Terminé') }
-];
+]);
 
 interface MandateFormValues {
   propertyId: string;
@@ -145,9 +146,21 @@ export const SaleMandates: React.FC = () => {
     },
     { title: t('Bien'), key: 'bien', render: (_, m) => m.propertyLabel },
     { title: t('Vendeur'), key: 'vendeur', render: (_, m) => m.sellerName },
-    { title: t('Prix demandé'), key: 'prix', align: 'end', render: (_, m) => <MoneyValue value={m.askingPrice} /> },
+    {
+      title: t('Prix demandé'),
+      key: 'prix',
+      align: 'end',
+      exportValue: m => m.askingPrice,
+      render: (_, m) => <MoneyValue value={m.askingPrice} />
+    },
     { title: t('Type'), key: 'type', render: (_, m) => MANDATE_TYPE_LABELS[m.mandateType] },
-    { title: t('Offres'), key: 'offres', align: 'end', render: (_, m) => m.offersCount },
+    {
+      title: t('Offres'),
+      key: 'offres',
+      align: 'end',
+      exportValue: m => m.offersCount,
+      render: (_, m) => m.offersCount
+    },
     {
       title: t('Statut'),
       key: 'statut',
@@ -186,6 +199,8 @@ export const SaleMandates: React.FC = () => {
       />
 
       <DataView<SaleMandateDto>
+        // L'API ne pagine pas : tout est déjà chargé.
+        export={{ filename: t('Mandats de vente') }}
         paginated={false}
         items={items}
         total={items.length}
@@ -195,6 +210,7 @@ export const SaleMandates: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les mandats de vente.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={estFiltre}
         onClearFilters={() => {

@@ -96,7 +96,12 @@ const GLOBAL_MODELS = new Set([
   // Reçu avant toute résolution d'agence (elle se déduit de l'inscription) ;
   // sans numéro en clair (senderHash HMAC, payload effacé au traitement),
   // purgé à 30 jours.
-  'WhatsappCloudEvent'
+  'WhatsappCloudEvent',
+  // Audit 2026-10-19 : verrou des jobs cron (une ligne par nom de job, ecrite en SQL
+  // brut par le lot C). Plateforme par nature : un job planifie tourne pour toutes les
+  // agences, sans contexte d'agence ; ne porte aucune donnee d'agence (nom du job,
+  // identifiant du processus detenteur, echeance du verrou).
+  'JobLock'
 ]);
 
 /**
@@ -221,6 +226,21 @@ describe('Schema — couverture multi-tenant de chaque modele (lot E, E3)', () =
     }
 
     expect(unclassified).toEqual([]);
+  });
+
+  it('les modeles du paiement declare (spec 047) portent tous un tenantId (CLOISONNES)', () => {
+    const declaredPaymentModels = [
+      'SyndicReceivingNumber',
+      'SyndicDeclaredPaymentSettings',
+      'SyndicPaymentDeclaration',
+      'SyndicPaymentDeclarationLine',
+      'SyndicPaymentProofRead'
+    ];
+    const withoutTenant = declaredPaymentModels.filter(name => {
+      const model = modelsByName.get(name);
+      return !model || !tenantFieldOf(model);
+    });
+    expect(withoutTenant).toEqual([]);
   });
 
   describe('CHILD_MODELS — chaque chemin de relation est reel, obligatoire, et mene a un modele cloisonne', () => {

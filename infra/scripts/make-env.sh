@@ -65,6 +65,9 @@ JWT_SECRET="$(openssl rand -base64 48)"
 # Cle AES-256 (32 octets en base64) qui chiffre les cles API de paiement
 # enregistrees par les agences (lib/payment-gateway/crypto.ts).
 PAYMENT_SECRETS_KEY="$(openssl rand -base64 32)"
+# Cle AES-256 DEDIEE aux IBAN des mandats de prelevement (lib/direct-debit/
+# iban-crypto.ts) : distincte de PAYMENT_SECRETS_KEY.
+DIRECT_DEBIT_IBAN_KEY="$(openssl rand -base64 32)"
 
 PG_USER=immotopia
 PG_DB=immotopia
@@ -120,6 +123,13 @@ JWT_EXPIRES_IN=15m
 # Chiffre les cles API de paiement des agences. A SAUVEGARDER HORS SERVEUR : la
 # perdre rend ces cles illisibles (les agences devraient les ressaisir).
 PAYMENT_SECRETS_KEY=${PAYMENT_SECRETS_KEY}
+
+# Chiffre les IBAN des mandats de prelevement (cle DEDIEE, distincte de la
+# precedente). A SAUVEGARDER HORS SERVEUR : la perdre rend les IBAN illisibles.
+# Rotation : voir docs/workflows/DEPLOIEMENT.md (anciennes cles ci-dessous,
+# separees par des virgules, utilisees seulement pour dechiffrer).
+DIRECT_DEBIT_IBAN_KEY=${DIRECT_DEBIT_IBAN_KEY}
+DIRECT_DEBIT_IBAN_PREVIOUS_KEYS=
 
 NODE_ENV=production
 PORT=8001
@@ -191,8 +201,9 @@ echo
 echo "Longueur de JWT_SECRET : ${#JWT_SECRET} caracteres (minimum requis : 32)."
 echo
 echo "IMPORTANT : sauvegarde ce fichier HORS DU SERVEUR (gestionnaire de mots de"
-echo "passe). PAYMENT_SECRETS_KEY chiffre les cles API de paiement des agences :"
-echo "la perdre les rend illisibles."
+echo "passe). PAYMENT_SECRETS_KEY chiffre les cles API de paiement des agences et"
+echo "DIRECT_DEBIT_IBAN_KEY les IBAN des mandats de prelevement : perdre l'une de"
+echo "ces cles rend les donnees correspondantes illisibles."
 echo "Aucun secret n'a ete affiche."
 if [[ "$ENV_NAME" == "prod" ]]; then
   echo

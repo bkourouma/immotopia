@@ -95,6 +95,8 @@ const AWA = 'contact-awa';
 const BAKARY = 'contact-bakary';
 const d = (value: string) => new Date(value.length === 10 ? `${value}T00:00:00.000Z` : value);
 const NOW = d('2026-09-27T09:00:00.000Z');
+// « Exécuter » la période de septembre le 27/09 : échéance décalée (H6), ligne de note ajoutée en tête.
+const SHIFT_NOTE = 'Échéance décalée au 12/10/2026';
 
 const syndicates: Record<string, { tenantId: string; name: string }> = {
   [S1]: { tenantId: TENANT_A, name: 'Residence Les Palmiers' },
@@ -354,7 +356,8 @@ describe('execution et idempotence', () => {
     expect(calls()[0]).toMatchObject({
       periodStart: d('2026-09-01'),
       periodEnd: d('2026-09-30'),
-      dueDate: d('2026-09-16')
+      // H6 : émise le 27/09, l'échéance théorique (16/09) est passée -> 27/09 + 15 jours.
+      dueDate: d('2026-10-12')
     });
 
     const second = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
@@ -402,7 +405,20 @@ describe('execution et idempotence', () => {
     expect(runs().map(run => [run.status, run.trigger])).toEqual([['SUCCESS', 'CRON']]);
   });
 
-  it('montant fixe : reparti par tantiemes entre les lots principaux', async () => {
+  it('montant fixe : reparti par tantiemes entre les lots principaux (includeAnnexLots faux, historique)', async () => {
+    const schedule = await createChargeSchedule(
+      TENANT_A,
+      S1,
+      input({ amountSource: 'FIXED', budgetId: null, fixedAmount: 1000, includeAnnexLots: false }),
+      null,
+      NOW
+    );
+    await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(amountsByLot(calls())).toEqual({ [L1]: 600, [L2]: 400 });
+    expect(batches()[0].budgetId).toBeUndefined();
+  });
+
+  it('montant fixe : par defaut (includeAnnexLots vrai), tous les lots avec tantiemes comme l appel direct', async () => {
     const schedule = await createChargeSchedule(
       TENANT_A,
       S1,
@@ -411,7 +427,9 @@ describe('execution et idempotence', () => {
       NOW
     );
     await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
-    expect(amountsByLot(calls())).toEqual({ [L1]: 600, [L2]: 400 });
+    const amounts = Object.values(amountsByLot(calls())) as number[];
+    expect(amounts.length).toBeGreaterThan(2);
+    expect(Math.round(amounts.reduce((sum, amount) => sum + amount, 0) * 100) / 100).toBe(1000);
     expect(batches()[0].budgetId).toBeUndefined();
   });
 
@@ -696,7 +714,16 @@ describe('avis d appel PDF : gestion et portail', () => {
     const scope: CoOwnerPortalScope = {
       tenantId: TENANT_A,
       contactIds: [AWA],
-      lots: [{ lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince: d('2026-01-01') }],
+      lots: [
+        {
+          lotId: L1,
+          syndicateId: S1,
+          contactId: AWA,
+          ownershipPercentage: 100,
+          ownedSince: d('2026-01-01'),
+          visibleSince: null
+        }
+      ],
       lotIds: [L1],
       syndicateIds: [S1]
     };
@@ -708,12 +735,14 @@ describe('avis d appel PDF : gestion et portail', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('portail : un appel anterieur a l acquisition du lot (ownedSince) repond 404, un appel posterieur sert le PDF', async () => {
+  it('portail : un appel anterieur a l acquisition d un lot au proprietaire precedent (visibleSince) repond 404, un appel posterieur sert le PDF', async () => {
     expect(callL1.periodStart).toEqual(d('2026-09-01'));
     const scopeSince = (ownedSince: Date): CoOwnerPortalScope => ({
       tenantId: TENANT_A,
       contactIds: [AWA],
-      lots: [{ lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince }],
+      lots: [
+        { lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince, visibleSince: ownedSince }
+      ],
       lotIds: [L1],
       syndicateIds: [S1]
     });
@@ -726,6 +755,11 @@ describe('avis d appel PDF : gestion et portail', () => {
     const file = await getChargeCallNoticeForCoOwner(scopeSince(d('2026-08-15')), callL1.id);
     expect(file.mimeType).toBe('application/pdf');
     expect(file.buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    // Aucun proprietaire precedent (visibleSince nul) : l'appel de septembre est servi meme pour un profil cree apres.
+    const unbounded = { ...scopeSince(d('2026-09-15')) };
+    unbounded.lots = [{ ...unbounded.lots[0], visibleSince: null }];
+    const open = await getChargeCallNoticeForCoOwner(unbounded, callL1.id);
+    expect(open.mimeType).toBe('application/pdf');
   });
 });
 
@@ -871,7 +905,16 @@ describe('destinataire de l avis', () => {
     const scope: CoOwnerPortalScope = {
       tenantId: TENANT_A,
       contactIds: [AWA],
-      lots: [{ lotId: L2, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince: d('2026-01-01') }],
+      lots: [
+        {
+          lotId: L2,
+          syndicateId: S1,
+          contactId: AWA,
+          ownershipPercentage: 100,
+          ownedSince: d('2026-01-01'),
+          visibleSince: null
+        }
+      ],
       lotIds: [L2],
       syndicateIds: [S1]
     };
@@ -958,7 +1001,7 @@ describe('notifyUncoveredCalls : chaque appel non notifie compte en skipped, ave
       notificationsSkipped: 1
     });
     const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
-    expect(history.notes).toBe('Avis non envoyé (lot sans copropriétaire) : A-02');
+    expect(history.notes).toBe(`${SHIFT_NOTE}\nAvis non envoyé (lot sans copropriétaire) : A-02`);
   });
 
   it('copropriétaire sans e-mail ni WhatsApp (NO_EMAIL) -> ignore, note dediee', async () => {
@@ -974,7 +1017,9 @@ describe('notifyUncoveredCalls : chaque appel non notifie compte en skipped, ave
     });
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
     const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
-    expect(history.notes).toBe('Avis non envoyé (copropriétaire sans e-mail ni WhatsApp exploitable) : A-01');
+    expect(history.notes).toBe(
+      `${SHIFT_NOTE}\nAvis non envoyé (copropriétaire sans e-mail ni WhatsApp exploitable) : A-01`
+    );
   });
 
   it('notification e-mail desactivee pour l agence (NOTIFICATION_DISABLED) -> ignore, note dediee', async () => {
@@ -1028,8 +1073,9 @@ describe('notifyUncoveredCalls : chaque appel non notifie compte en skipped, ave
     });
     const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
     // Le motif technique du serveur mail (code + reponse SMTP) n'est pas expose : journaux seulement.
-    expect(history.notes).toBe("Avis non envoyé (échec de l'envoi) : A-01");
+    expect(history.notes).toBe(`${SHIFT_NOTE}\nAvis non envoyé (le serveur de messagerie a refusé l'e-mail) : A-01`);
     expect(history.notes).not.toContain('550');
+    expect(history.notes).not.toContain('mailbox');
     expect(warn).toHaveBeenCalledWith(
       'Scheduled charge call notice send failed',
       expect.objectContaining({ detail: '550 550 mailbox unavailable' })
@@ -1062,9 +1108,88 @@ describe('notifyUncoveredCalls : chaque appel non notifie compte en skipped, ave
     });
     const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
     expect(history.notes?.split('\n')).toEqual([
+      SHIFT_NOTE,
       'Avis non envoyé (propriétaire du lot différent du copropriétaire actuel) : A-01',
       'Avis non envoyé (lot sans copropriétaire) : A-02'
     ]);
+  });
+});
+
+describe('M8 : cause de l’échec d’envoi dans les notes', () => {
+  const RAW = 'SECRET-RAW-554 relay denied';
+  const cases: Array<[string, any, string]> = [
+    ['SMTP_REJECTED', { responseCode: 554, response: RAW }, "le serveur de messagerie a refusé l'e-mail"],
+    ['TIMEOUT', { code: 'ETIMEDOUT' }, 'délai dépassé'],
+    ['ERROR', {}, "erreur d'envoi"]
+  ];
+  it.each(cases)('%s -> libellé dédié, texte brut absent des notes', async (_name, extra, label) => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+    mockSendEmail.mockImplementationOnce(async () => {
+      throw Object.assign(new Error(RAW), extra);
+    });
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(result.run).toMatchObject({ notificationsSent: 1, notificationsSkipped: 1 });
+    const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
+    expect(history.notes).toContain(`Avis non envoyé (${label}`);
+    expect(history.notes).toContain(': A-01');
+    expect(history.notes).not.toContain('SECRET-RAW');
+    expect(history.notes).not.toContain('554');
+    warn.mockRestore();
+  });
+
+  it('le renvoi réutilise les mêmes libellés et conserve la note d’échéance décalée', async () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+    mockSendEmail.mockImplementationOnce(async () => {
+      throw Object.assign(new Error('x'), { code: 'ETIMEDOUT' });
+    });
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const executed = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    mockSendEmail.mockImplementationOnce(async () => {
+      throw Object.assign(new Error('x'), { responseCode: 550 });
+    });
+    const later = new Date(NOW.getTime() + 2 * 60 * 1000);
+    const resent = await resendChargeScheduleRunNotices(TENANT_A, S1, schedule.id, executed.run.runId!, later);
+    expect(resent.stillSkipped).toBe(1);
+    expect(resent.run.notes).toBe(`${SHIFT_NOTE}\nAvis non envoyé (le serveur de messagerie a refusé l'e-mail) : A-01`);
+    warn.mockRestore();
+  });
+});
+
+describe('H6 : échéance déjà passée à l’émission', () => {
+  it('émission à l’heure (cron du 1er) : ni décalage ni note', async () => {
+    const schedule = await createChargeSchedule(TENANT_A, S1, input({ startDate: d('2026-10-01') }), null, NOW);
+    const result = await runDueChargeSchedules(d('2026-10-01T06:00:00.000Z'));
+    expect(result).toMatchObject({ success: 1 });
+    expect(calls()[0].dueDate).toEqual(d('2026-10-16'));
+    const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
+    expect(history.notes ?? '').not.toContain('Échéance décalée');
+  });
+
+  it('émission tardive (19/10, échéance théorique 16/10) : échéance décalée et note', async () => {
+    const schedule = await createChargeSchedule(TENANT_A, S1, input({ startDate: d('2026-10-01') }), null, NOW);
+    const late = d('2026-10-19T10:30:00.000Z');
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, late);
+    expect(result.run).toMatchObject({ status: 'SUCCESS' });
+    expect(calls()[0].dueDate).toEqual(d('2026-11-03'));
+    expect(batches()[0].dueDate).toEqual(d('2026-11-03'));
+    const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
+    expect(history.notes).toBe('Échéance décalée au 03/11/2026');
+  });
+
+  it('aperçu : dueDatePassed, effectiveDueDate et avertissement ; additif quand rien ne passe', async () => {
+    const schedule = await createChargeSchedule(TENANT_A, S1, input({ startDate: d('2026-10-01') }), null, NOW);
+    const preview = await previewChargeSchedule(TENANT_A, S1, schedule.id, d('2026-10-19T10:00:00.000Z'));
+    expect(preview.periods[0]).toMatchObject({
+      issueDate: '2026-10-01',
+      dueDate: '2026-10-16',
+      dueDatePassed: true,
+      effectiveDueDate: '2026-11-03'
+    });
+    expect(preview.periods[0].warnings).toEqual([
+      "L'échéance du 16/10/2026 serait déjà passée à l'émission : elle sera décalée au 03/11/2026."
+    ]);
+    expect(preview.periods[1]).toMatchObject({ dueDatePassed: false, effectiveDueDate: null, warnings: [] });
   });
 });
 
@@ -1092,7 +1217,7 @@ describe('renvoi des avis non envoyes (item 4, anomalie recette)', () => {
     expect(mockSendEmail).toHaveBeenCalledTimes(2);
 
     const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
-    expect(history).toMatchObject({ notificationsSent: 2, notificationsSkipped: 0, notes: null });
+    expect(history).toMatchObject({ notificationsSent: 2, notificationsSkipped: 0, notes: SHIFT_NOTE });
 
     const l1Call = calls().find(call => call.lotId === L1)!;
     expect(l1Call.noticeSentAt).toBeInstanceOf(Date);
@@ -1259,8 +1384,8 @@ describe('erreurs techniques et doublons', () => {
   });
 });
 
-describe('avis d appel : ni signature ni cachet', () => {
-  it('le generateur de l avis ne recoit ni signature ni cachet, logos conserves (gestion, portail, e-mail)', async () => {
+describe('avis d appel : signature et cachet de l emetteur', () => {
+  it('le generateur de l avis recoit signature, cachet et logos tels que resolus (gestion, portail, e-mail)', async () => {
     const image = (name: string) => ({ format: 'png', bytes: Buffer.from(name) }) as any;
     const branding = jest.spyOn(documentBranding, 'resolveDocumentBranding').mockImplementation(async () => ({
       issuer: {
@@ -1296,7 +1421,16 @@ describe('avis d appel : ni signature ni cachet', () => {
       {
         tenantId: TENANT_A,
         contactIds: [AWA],
-        lots: [{ lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince: d('2026-01-01') }],
+        lots: [
+          {
+            lotId: L1,
+            syndicateId: S1,
+            contactId: AWA,
+            ownershipPercentage: 100,
+            ownedSince: d('2026-01-01'),
+            visibleSince: null
+          }
+        ],
         lotIds: [L1],
         syndicateIds: [S1]
       },
@@ -1305,8 +1439,8 @@ describe('avis d appel : ni signature ni cachet', () => {
 
     expect(render.mock.calls.length).toBeGreaterThanOrEqual(4);
     for (const [, used] of render.mock.calls) {
-      expect(used.signature).toBeNull();
-      expect(used.stamp).toBeNull();
+      expect(used.signature).not.toBeNull();
+      expect(used.stamp).not.toBeNull();
       expect(used.issuerLogo).not.toBeNull();
       expect(used.syndicate?.logo).not.toBeNull();
     }

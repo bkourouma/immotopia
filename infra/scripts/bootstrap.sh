@@ -10,9 +10,11 @@
 # connecte et cree une agence :
 #   1. RBAC (permissions, roles, matrice)        prisma/seeds/rbac-seed.ts
 #   2. les 12 gabarits de type de bien           prisma/seeds/property-templates-seed.ts
-#   3. un premier compte SUPER_ADMIN             prisma/seeds/create-platform-super-admin.ts
+#   3. le referentiel geographique (CI : 33 regions,
+#      164 communes), lu par le champ « Commune »   prisma/seeds/geographic-seed.ts
+#   4. un premier compte SUPER_ADMIN             prisma/seeds/create-platform-super-admin.ts
 #
-# Ces trois seeds, et AUCUN autre, tournent dans l'image « migrate » via le
+# Ces quatre seeds, et AUCUN autre, tournent dans l'image « migrate » via le
 # service Compose du meme nom. Chaque etape n'est lancee que si son etat est
 # absent ou INCOMPLET : le script est idempotent, et relance sans effet quand
 # tout est en place (relancer le seed RBAC reajouterait des permissions qu'un
@@ -185,6 +187,7 @@ read_state() {
   N_SA_PERMS="$(role_perm_count PLATFORM_SUPER_ADMIN)"
   N_TA_PERMS="$(role_perm_count TENANT_ADMIN)"
   N_TEMPLATES="$(count_of 'SELECT count(*) FROM property_type_templates;')"
+  N_COMMUNES="$(count_of 'SELECT count(*) FROM communes;')"
   N_SUPERADMINS="$(count_of "SELECT count(*) FROM users WHERE global_role = 'SUPER_ADMIN';")"
 }
 
@@ -194,6 +197,7 @@ print_state() {
   info "  permissions PLATFORM_SUPER_ADMIN : $N_SA_PERMS"
   info "  permissions TENANT_ADMIN         : $N_TA_PERMS"
   info "gabarits de type de bien : $N_TEMPLATES"
+  info "communes (referentiel)    : $N_COMMUNES"
   info "comptes SUPER_ADMIN      : $N_SUPERADMINS"
 }
 
@@ -210,10 +214,11 @@ rbac_state() {
   fi
 }
 
-DO_RBAC=0; DO_TEMPLATES=0; DO_ADMIN=0
+DO_RBAC=0; DO_TEMPLATES=0; DO_GEO=0; DO_ADMIN=0
 RBAC_STATE="$(rbac_state)"
 [[ "$RBAC_STATE" == "complet" ]] || DO_RBAC=1
 (( N_TEMPLATES == 0 )) && DO_TEMPLATES=1
+(( N_COMMUNES == 0 )) && DO_GEO=1
 (( N_SUPERADMINS == 0 )) && DO_ADMIN=1
 
 step "Plan"
@@ -223,6 +228,7 @@ case "$RBAC_STATE" in
   *)         info "RBAC             : deja pose, ignore" ;;
 esac
 if (( DO_TEMPLATES )); then info "gabarits de bien : seront poses (property-templates-seed.ts)"; else info "gabarits de bien : deja poses, ignores"; fi
+if (( DO_GEO )); then info "geographie       : sera posee (geographic-seed.ts)"; else info "geographie       : deja posee, ignoree"; fi
 if (( DO_ADMIN )); then info "super-admin      : sera cree (saisie interactive)"; else info "super-admin      : existe deja, ignore"; fi
 
 if (( DRY_RUN )); then
@@ -287,6 +293,12 @@ if (( DO_TEMPLATES )); then
   ok "gabarits poses"
 fi
 
+if (( DO_GEO )); then
+  step "Referentiel geographique"
+  run_seed geographic-seed
+  ok "referentiel geographique pose"
+fi
+
 # --- 4. Premier super-admin --------------------------------------------------
 
 if (( DO_ADMIN )); then
@@ -313,6 +325,7 @@ print_state
 (( N_TA_PERMS > 0 )) || fail "TENANT_ADMIN n'a aucune permission apres amorcage : relancer ce script."
 [[ "$(rbac_state)" == "complet" ]] || fail "RBAC encore incomplet apres amorcage : relancer ce script."
 (( N_TEMPLATES > 0 ))   || fail "aucun gabarit de bien apres amorcage."
+(( N_COMMUNES > 0 ))    || fail "aucune commune apres amorcage."
 (( N_SUPERADMINS > 0 )) || fail "aucun SUPER_ADMIN apres amorcage."
 
 printf '\n\033[1;32mAmorcage %s termine.\033[0m\n' "$ENV_NAME"

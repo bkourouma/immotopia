@@ -77,7 +77,9 @@ beforeEach(() => {
     owner: { id: 'u-etranger', email: 'proprio@example.test', fullName: 'Nom Etranger' },
     ...data
   }));
-  transactionMock.mockImplementation(async (cb: any) => cb({ property: { create: propertyCreate } }));
+  transactionMock.mockImplementation(async (cb: any) =>
+    cb({ property: { create: propertyCreate }, propertyMandate: { create: jest.fn() } })
+  );
 });
 
 describe('ownerEmail — compte existant', () => {

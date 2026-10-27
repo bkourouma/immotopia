@@ -65,3 +65,28 @@ describe('corsMiddleware', () => {
     expect(allowed).toEqual(expect.arrayContaining(['Content-Type', 'Authorization', 'X-Requested-With']));
   });
 });
+
+describe('corsMiddleware : origine lue dans la configuration validée (config/env)', () => {
+  function chargerAvec(frontendUrl: string) {
+    let middleware!: typeof corsMiddleware;
+    jest.isolateModules(() => {
+      jest.doMock('../../src/config/env', () => ({ env: { FRONTEND_URL: frontendUrl } }));
+      middleware = require('../../src/middleware/cors-middleware').corsMiddleware;
+    });
+    jest.dontMock('../../src/config/env');
+    return middleware;
+  }
+
+  it("autorise l'origine de env.FRONTEND_URL, et elle seule", () => {
+    const middleware = chargerAvec('https://app.exemple.test');
+    const autorisee = reponseFactice();
+    middleware(requeteFactice({ headers: { origin: 'https://app.exemple.test' } }), autorisee as any, jest.fn());
+    expect(autorisee.getHeader('Access-Control-Allow-Origin')).toBe('https://app.exemple.test');
+    expect(autorisee.getHeader('Access-Control-Allow-Credentials')).toBe('true');
+
+    const refusee = reponseFactice();
+    middleware(requeteFactice({ headers: { origin: 'http://localhost:3000' } }), refusee as any, jest.fn());
+    expect(refusee.getHeader('Access-Control-Allow-Origin')).toBeUndefined();
+    expect(refusee.getHeader('Access-Control-Allow-Credentials')).toBeUndefined();
+  });
+});

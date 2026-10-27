@@ -66,6 +66,7 @@ export default function CoOwnerLots() {
     refetch
   } = useQuery({
     queryKey: ['coowner-portal', 'lots'],
+    staleTime: 30_000,
     queryFn: () => listMyLots()
   });
 

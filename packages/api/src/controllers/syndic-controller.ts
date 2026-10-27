@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
-import { t } from '../i18n';
+import { runInFrench, t } from '../i18n';
+import { closeMeetingRoom } from '../lib/syndics/meeting-visio';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import {
@@ -7,6 +8,7 @@ import {
   getSyndicateWithLotsAndStats,
   createSyndicateWithDefaults,
   createSyndicateLot,
+  computeLotSharesWarnings,
   importLotsFromPropertiesBySyndicate,
   updateSyndicateLotByTenant,
   deleteSyndicateLotByTenant,
@@ -24,6 +26,7 @@ import {
   getMeetingByTenant,
   updateMeetingByTenant,
   addResolutionToMeeting,
+  deleteResolutionFromMeeting,
   castVoteAndRecomputeResolutionCounters,
   listMeetingProxiesByTenant,
   createMeetingProxyByTenant,
@@ -41,12 +44,14 @@ import {
   deleteMaintenanceContractByTenant,
   listDocumentsBySyndicate,
   createDocumentForSyndicate,
+  updateDocumentForSyndicate,
   getFinanceSummaryBySyndicate,
   listCommonAssetsBySyndicate,
   listOverdueDashboardBySyndicate,
   listPaymentRemindersBySyndicate,
   createManualReminderForChargeCall,
   runReminderBatchForSyndicate,
+  previewReminderBatchForSyndicate,
   listLatePaymentPenaltiesBySyndicate,
   listPaymentSchedulesBySyndicate,
   createLatePaymentPenaltyForChargeCall,
@@ -58,6 +63,7 @@ import {
   listOwnerAccountTransactionsByLot,
   listChartOfAccountsBySyndicate,
   createChartOfAccountBySyndicate,
+  loadSyndicChartTemplateBySyndicate,
   listAccountingJournalsBySyndicate,
   createAccountingJournalBySyndicate,
   listJournalEntriesBySyndicate,
@@ -124,6 +130,7 @@ import {
   updateServiceProviderSchema,
   createContractSchema,
   createDocumentSchema,
+  updateDocumentSchema,
   updateContractSchema,
   createManualReminderSchema,
   createPenaltyRequestSchema,
@@ -142,11 +149,19 @@ import {
   adjustSyndicateFundBalanceSchema
 } from '../lib/syndics/schemas';
 import { notifyChargeCall, notifyMeetingConvocation } from '../lib/syndics/notifications';
+import { hasMeetingConvocationBeenSent } from '../lib/syndics/meeting-convocation-status';
 import { deliverReminderNotification } from '../lib/syndics/reminder-delivery';
-import { badRequest, conflict, notFound } from '../lib/errors';
+import { badRequest, conflict, notFound, unprocessableEntity } from '../lib/errors';
 import { logger } from '../utils/logger';
+import { runWithTenantContext } from '../utils/tenant-context';
+import {
+  IDEMPOTENCY_KEY_MAX_LENGTH,
+  meetingCreationIdempotencyStore,
+  meetingResolutionIdempotencyStore,
+  fingerprintBody
+} from '../utils/idempotency';
 import { asyncHandler } from '../middleware/error-middleware';
-import { presentLotOwners } from '../lib/syndics/lot-owner';
+import { presentSyndicateLots } from '../lib/syndics/lot-owner';
 import { buildMeetingMinutesDocx } from '../lib/syndics/minutes-generator';
 import {
   addAgendaItemGuarded,
@@ -163,6 +178,8 @@ import {
   syndicateDocumentsDir
 } from '../lib/syndics/document-files';
 import { parsePagination } from '../utils/pagination-helper';
+import { logAuditEvent } from '../services/audit-service';
+import { AuditActionKey } from '../types/audit-types';
 
 export const listSyndicsHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
@@ -214,9 +231,11 @@ export const getSyndicHandler = asyncHandler(async (req: Request, res: Response)
     throw notFound(t('Copropriété introuvable ou inaccessible'));
   }
 
+  // Memes lots que `GET .../lots` : proprietaires actuels et etat d'acces au portail (« Résumé des lots »).
+  const response = toSyndicateResponse(syndic);
   res.json({
     success: true,
-    data: toSyndicateResponse(syndic)
+    data: syndic.lots ? { ...response, lots: presentSyndicateLots(syndic.lots) } : response
   });
 });
 
@@ -245,7 +264,7 @@ export const deleteSyndicHandler = asyncHandler(async (req: Request, res: Respon
     throw badRequest('TenantId manquant pour la suppression de copropriete');
   }
 
-  const syndic = await deleteEmptySyndicateByTenant(tenantId, syndicId);
+  const syndic = await deleteEmptySyndicateByTenant(tenantId, syndicId, req.user?.userId ?? null);
 
   res.json({
     success: true,
@@ -268,11 +287,9 @@ export const listSyndicLotsHandler = asyncHandler(async (req: Request, res: Resp
     throw notFound(t('Copropriété introuvable ou inaccessible'));
   }
 
-  // Chaque lot porte ses proprietaires actuels (`owners`, `ownersLabel`) : indivision incluse.
-  const lots = (syndic.lots || []).map(({ ownerProfiles, ...lot }) => ({
-    ...lot,
-    ...presentLotOwners(ownerProfiles ?? [])
-  }));
+  // Chaque lot porte ses proprietaires actuels (`owners`, `ownersLabel`, indivision incluse)
+  // et l'etat de leur acces au portail (`portalAccess`).
+  const lots = presentSyndicateLots(syndic.lots || []);
 
   res.json({
     success: true,
@@ -294,10 +311,12 @@ export const createSyndicLotHandler = asyncHandler(async (req: Request, res: Res
   });
 
   const lot = await createSyndicateLot(tenantId, parsed);
+  const warnings = await computeLotSharesWarnings(tenantId, syndicateId);
 
   res.status(201).json({
     success: true,
-    data: lot
+    data: lot,
+    warnings
   });
 });
 
@@ -329,10 +348,12 @@ export const updateSyndicLotHandler = asyncHandler(async (req: Request, res: Res
 
   const parsed = updateLotSchema.parse(req.body);
   const lot = await updateSyndicateLotByTenant(tenantId, syndicateId, lotId, parsed);
+  const warnings = await computeLotSharesWarnings(tenantId, syndicateId);
 
   res.json({
     success: true,
-    data: lot
+    data: lot,
+    warnings
   });
 });
 
@@ -728,7 +749,7 @@ export const createMeetingHandler = asyncHandler(async (req: Request, res: Respo
     throw badRequest('TenantId manquant pour la creation d assemblee');
   }
 
-  const meetingBase = createMeetingSchema.parse({
+  const { sendConvocation, ...meetingBase } = createMeetingSchema.parse({
     ...req.body,
     syndicateId
   });
@@ -737,21 +758,72 @@ export const createMeetingHandler = asyncHandler(async (req: Request, res: Respo
     ? req.body.resolutions.map((resolution: any) => createResolutionSchema.omit({ meetingId: true }).parse(resolution))
     : [];
 
-  const meeting = await createMeetingForTenant(tenantId, {
-    ...meetingBase,
-    resolutions
-  });
+  const idempotencyKey = req.header('Idempotency-Key')?.trim() || undefined;
+  if (idempotencyKey && idempotencyKey.length > IDEMPOTENCY_KEY_MAX_LENGTH) {
+    throw badRequest(`L'en-tête Idempotency-Key ne doit pas dépasser ${IDEMPOTENCY_KEY_MAX_LENGTH} caractères.`);
+  }
 
-  // Convocation APRES la validation de la creation : un echec d'envoi ne defait
-  // pas l'assemblee, il est journalise et rendu dans `convocation`.
-  const convocation = await sendMeetingConvocation(meeting.id);
+  // Creation + planification de l'envoi : la reponse n'attend JAMAIS les e-mails /
+  // WhatsApp (une AG de ~30 lots depassait le delai du proxy : 503 alors que l'AG
+  // etait creee, puis un doublon au reessai).
+  const create = async () => {
+    const meeting = await createMeetingForTenant(tenantId, { ...meetingBase, resolutions });
+    if (sendConvocation) {
+      scheduleMeetingConvocation(tenantId, meeting.id, req.user?.userId);
+    }
+    return meeting;
+  };
 
-  res.status(201).json({
+  let meeting: Awaited<ReturnType<typeof createMeetingForTenant>>;
+  let replay = false;
+  if (!idempotencyKey) {
+    meeting = await create();
+  } else {
+    const actorId = req.user?.userId ?? 'anonymous';
+    const storeKey = `${tenantId}:${syndicateId}:${idempotencyKey}`;
+    const existing = meetingCreationIdempotencyStore.get(actorId, storeKey);
+    if (existing) {
+      replay = true;
+      meeting = (await existing) as typeof meeting;
+    } else {
+      const pending = create();
+      meetingCreationIdempotencyStore.set(actorId, storeKey, pending);
+      // Une creation echouee ne doit pas verrouiller la cle : le reessai recommence.
+      pending.catch(() => meetingCreationIdempotencyStore.delete(actorId, storeKey));
+      meeting = await pending;
+    }
+  }
+
+  res.status(replay ? 200 : 201).json({
     success: true,
     data: meeting,
-    convocation
+    // Etat d'envoi : les convocations ne partent que sur demande (`sendConvocation`),
+    // apres la reponse (journal par copropriétaire consultable, envoi ou renvoi
+    // possible via .../convocation).
+    convocation: { status: sendConvocation ? ('SENDING' as const) : ('NOT_SENT' as const) },
+    ...(replay ? { replay: true } : {})
   });
 });
+
+/**
+ * Envoi differe, non bloquant, des convocations d'une AG qui vient d'etre creee.
+ * Garde le contexte d'agence (garde Prisma, audit) ; ne leve jamais et journalise
+ * le resultat ou l'echec.
+ */
+export function scheduleMeetingConvocation(tenantId: string, meetingId: string, userId?: string): void {
+  setImmediate(() => {
+    void runWithTenantContext({ tenantId, userId }, async () => {
+      const result = await sendMeetingConvocation(meetingId);
+      logger.info('Meeting convocation sent in background', { tenantId, meetingId, result });
+    }).catch(error => {
+      logger.error('Meeting convocation background job crashed', {
+        tenantId,
+        meetingId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+  });
+}
 
 /**
  * Convocation d'une AG : ne leve jamais. Le resultat (envoyes / echoues) est
@@ -858,6 +930,11 @@ export const updateMeetingHandler = asyncHandler(async (req: Request, res: Respo
   const parsed = updateMeetingSchema.parse(req.body);
   const updatedMeeting = await updateMeetingByTenant(tenantId, syndicateId, meetingId, parsed);
 
+  // Spec 045 : la cloture ou l'annulation ferme la salle de visio (au mieux, ne bloque pas la reponse).
+  if (parsed.status === 'COMPLETED' || parsed.status === 'CANCELLED') {
+    void closeMeetingRoom(tenantId, meetingId);
+  }
+
   res.json({
     success: true,
     data: updatedMeeting
@@ -879,9 +956,11 @@ export const getMeetingHandler = asyncHandler(async (req: Request, res: Response
     throw notFound('Assemblee generale introuvable ou inaccessible');
   }
 
+  const convocationSent = await hasMeetingConvocationBeenSent(tenantId, meeting.id);
+
   res.json({
     success: true,
-    data: meeting
+    data: { ...meeting, convocationSent }
   });
 });
 
@@ -899,11 +978,79 @@ export const addResolutionHandler = asyncHandler(async (req: Request, res: Respo
     meetingId
   });
 
-  const resolution = await addResolutionToMeeting(tenantId, syndicateId, parsed);
+  const idempotencyKey = req.header('Idempotency-Key')?.trim() || undefined;
+  if (idempotencyKey && idempotencyKey.length > IDEMPOTENCY_KEY_MAX_LENGTH) {
+    throw badRequest(`L'en-tête Idempotency-Key ne doit pas dépasser ${IDEMPOTENCY_KEY_MAX_LENGTH} caractères.`);
+  }
 
-  res.status(201).json({
+  let resolution: Awaited<ReturnType<typeof addResolutionToMeeting>>;
+  let replay = false;
+  if (!idempotencyKey) {
+    resolution = await addResolutionToMeeting(tenantId, syndicateId, parsed);
+  } else {
+    const actorId = req.user?.userId ?? 'anonymous';
+    const storeKey = `${tenantId}:${syndicateId}:${meetingId}:${idempotencyKey}`;
+    const fingerprint = fingerprintBody({
+      title: parsed.title,
+      description: parsed.description,
+      majorityRule: parsed.majorityRule
+    });
+    const existing = meetingResolutionIdempotencyStore.get(actorId, storeKey);
+    if (existing) {
+      // Meme cle, autre corps : ce n'est pas un rejeu, on ne renvoie pas l'ancienne reponse.
+      if (existing.fingerprint !== fingerprint) {
+        throw unprocessableEntity(t("Cette clé d'idempotence a déjà servi pour une résolution différente."));
+      }
+      replay = true;
+      resolution = (await existing.promise) as typeof resolution;
+    } else {
+      const pending = addResolutionToMeeting(tenantId, syndicateId, parsed);
+      const entry = {
+        fingerprint,
+        meetingKey: `${tenantId}:${syndicateId}:${meetingId}`,
+        promise: pending as Promise<unknown>,
+        resolutionId: undefined as string | undefined
+      };
+      meetingResolutionIdempotencyStore.set(actorId, storeKey, entry);
+      // Une creation echouee ne doit pas verrouiller la cle : le reessai recommence.
+      pending.then(
+        created => {
+          entry.resolutionId = (created as { id?: string } | null)?.id;
+        },
+        () => meetingResolutionIdempotencyStore.delete(actorId, storeKey)
+      );
+      resolution = await pending;
+    }
+  }
+
+  res.status(replay ? 200 : 201).json({
     success: true,
-    data: resolution
+    data: resolution,
+    ...(replay ? { replay: true } : {})
+  });
+});
+
+export const deleteResolutionHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  const meetingId = req.params.meetingId;
+  const resolutionId = req.params.resolutionId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la suppression de resolution');
+  }
+
+  const deleted = await deleteResolutionFromMeeting(tenantId, syndicateId, meetingId, resolutionId);
+
+  // Un rejeu d'une cle d'idempotence ne doit pas renvoyer une resolution supprimee.
+  const meetingKey = `${tenantId}:${syndicateId}:${meetingId}`;
+  meetingResolutionIdempotencyStore.deleteWhere(
+    entry => entry.meetingKey === meetingKey && entry.resolutionId === deleted.id
+  );
+
+  res.json({
+    success: true,
+    data: { id: deleted.id }
   });
 });
 
@@ -983,8 +1130,24 @@ export const castVoteHandler = asyncHandler(async (req: Request, res: Response) 
     syndicateId,
     parsed.resolutionId,
     parsed.lotId,
-    parsed.vote
+    parsed.vote,
+    { userId: req.user?.userId ?? null }
   );
+
+  // Le sens du vote n'entre pas dans l'audit (spec 043).
+  logAuditEvent({
+    actorUserId: req.user?.userId ?? null,
+    tenantId,
+    actionKey: AuditActionKey.SYNDIC_MEETING_VOTE_CAST,
+    entityType: 'GMResolution',
+    entityId: parsed.resolutionId,
+    payload: {
+      meetingId: req.params.meetingId,
+      resolutionId: parsed.resolutionId,
+      lotId: parsed.lotId,
+      source: 'MANAGER'
+    }
+  });
 
   res.json({
     success: true,
@@ -1065,7 +1228,7 @@ export const generateMeetingMinutesHandler = asyncHandler(async (req: Request, r
   }
 
   const branding = await resolveDocumentBranding(tenantId, syndicateId);
-  const buffer = await buildMeetingMinutesDocx(meeting, tenantId, branding);
+  const buffer = await runInFrench(() => buildMeetingMinutesDocx(meeting, tenantId, branding));
   const filename = `compte-rendu-${meetingId}.docx`;
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
@@ -1339,6 +1502,25 @@ export const createDocumentHandler = asyncHandler(async (req: Request, res: Resp
 });
 
 /**
+ * Modification d'un document (titre, type, visibilite pour les copropietaires).
+ * Le document doit appartenir au syndicat de l'URL ET a l'agence ; sinon 404.
+ */
+export const updateDocumentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la modification de document');
+  }
+
+  const parsed = updateDocumentSchema.parse(req.body ?? {});
+  const document = await updateDocumentForSyndicate(tenantId, req.params.syndicId, req.params.documentId, parsed);
+
+  res.json({
+    success: true,
+    data: document
+  });
+});
+
+/**
  * Telechargement d'un document de copropriete, cote gestion. Le document doit
  * appartenir a une copropriete de l'agence ; sinon 404, comme un document
  * inexistant. Remplace l'ouverture directe de `/uploads/syndics/...`, que le
@@ -1420,13 +1602,26 @@ export const createManualReminderHandler = asyncHandler(async (req: Request, res
   const parsed = createManualReminderSchema.parse(req.body ?? {});
   const reminder = await createManualReminderForChargeCall(tenantId, syndicateId, chargeCallId, parsed);
   // Un échec d'envoi n'annule pas la relance : elle passe à FAILED et la réponse le dit.
-  const { notificationFailed } = await deliverReminderNotification(reminder.id, tenantId);
+  const { notificationFailed, failureCode, failureMessage } = await deliverReminderNotification(reminder.id, tenantId);
 
   res.status(201).json({
     success: true,
-    data: notificationFailed ? { ...reminder, status: 'FAILED' } : reminder,
-    notificationFailed
+    data: notificationFailed ? { ...reminder, status: 'FAILED', failureCode, failureMessage } : reminder,
+    notificationFailed,
+    ...(notificationFailed ? { failureCode, failureMessage } : {})
   });
+});
+
+export const previewReminderBatchHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+
+  if (!tenantId) {
+    throw badRequest("TenantId manquant pour l'apercu des relances");
+  }
+
+  const preview = await previewReminderBatchForSyndicate(tenantId, syndicateId);
+  res.json({ success: true, data: preview });
 });
 
 export const runReminderBatchHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -1446,14 +1641,19 @@ export const runReminderBatchHandler = asyncHandler(async (req: Request, res: Re
     actorUserId: req.user?.userId
   });
   let notificationsFailed = 0;
+  const failuresByCause: Record<string, number> = {};
   for (const reminderId of result.createdReminderIds) {
-    const { notificationFailed } = await deliverReminderNotification(reminderId, tenantId);
-    if (notificationFailed) notificationsFailed += 1;
+    const { notificationFailed, failureCode } = await deliverReminderNotification(reminderId, tenantId);
+    if (notificationFailed) {
+      notificationsFailed += 1;
+      const cause = failureCode ?? 'ERROR';
+      failuresByCause[cause] = (failuresByCause[cause] ?? 0) + 1;
+    }
   }
 
   res.json({
     success: true,
-    data: { ...result, notificationsFailed }
+    data: { ...result, notificationsFailed, failuresByCause }
   });
 });
 
@@ -1856,6 +2056,17 @@ export const createChartOfAccountHandler = asyncHandler(async (req: Request, res
   const parsed = createChartOfAccountSchema.parse(req.body ?? {});
   const account = await createChartOfAccountBySyndicate(tenantId, syndicateId, parsed);
   res.status(201).json({ success: true, data: account });
+});
+
+export const loadSyndicChartTemplateHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour le chargement du plan comptable');
+  }
+
+  const data = await loadSyndicChartTemplateBySyndicate(tenantId, syndicateId);
+  res.json({ success: true, data });
 });
 
 export const listAccountingJournalsHandler = asyncHandler(async (req: Request, res: Response) => {

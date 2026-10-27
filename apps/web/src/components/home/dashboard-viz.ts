@@ -1,6 +1,7 @@
 import { statusLabel, statusTone } from '../primitives/StatusTag';
 import { t } from '../../i18n/t';
 
+import { localizedRecord } from '../../i18n/localized';
 import { activeLocale } from '../../i18n/format';
 /**
  * Libellés, couleurs et formats des graphiques du tableau de bord.
@@ -61,7 +62,7 @@ export function categoricalColor(index: number): string {
  * Libellés que `<StatusTag>` ne connaît pas : ce ne sont pas des statuts.
  * Types de bien, moyens de paiement, priorités et étapes commerciales.
  */
-const EXTRA_LABELS: Record<string, string> = {
+const EXTRA_LABELS: Record<string, string> = localizedRecord(() => ({
   // Types de bien
   APPARTEMENT: 'Appartement',
   MAISON_VILLA: t('Maison / Villa'),
@@ -81,6 +82,7 @@ const EXTRA_LABELS: Record<string, string> = {
   BANK_TRANSFER: 'Virement',
   CHECK: t('Chèque'),
   MOBILE_MONEY: t('Mobile Money'),
+  DIRECT_DEBIT: t('Prélèvement bancaire'),
   CARD: t('Carte bancaire'),
   OTHER: 'Autre',
 
@@ -97,7 +99,7 @@ const EXTRA_LABELS: Record<string, string> = {
   ACTIVE_CLIENT: 'Client',
   AUTRES: 'Autres',
   LEAD: 'Prospect'
-};
+}));
 
 /**
  * Libellé français d'un code métier.

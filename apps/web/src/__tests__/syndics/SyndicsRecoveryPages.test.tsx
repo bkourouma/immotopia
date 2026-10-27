@@ -24,6 +24,9 @@ vi.mock('@ant-design/icons', async () => {
   return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
 });
 
+// Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
+vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
+
 vi.mock('antd', async () => {
   // importActual reaches the real module from inside a hoisted mock factory;
   // a plain dynamic import here deadlocks the module graph.
@@ -58,7 +61,14 @@ vi.mock('antd', async () => {
     Form: FormComponent,
     Input: Object.assign(passthrough('input'), { TextArea: passthrough('textarea') }),
     InputNumber: passthrough('input'),
-    Modal: passthrough(),
+    // Une modale fermée ne rend rien ; ouverte, elle expose son bouton de confirmation.
+    Modal: ({ children, open, onOk, okText, okButtonProps }: any) =>
+      open === false ? null : (
+        <div>
+          {children}
+          {okButtonProps?.style?.display === 'none' ? null : <button onClick={onOk}>{okText}</button>}
+        </div>
+      ),
     Row: passthrough(),
     Select: passthrough('select'),
     Space: passthrough(),
@@ -175,6 +185,38 @@ describe('Syndics recovery page', () => {
         });
       }
 
+      if (url.endsWith('/relances/batch/preview')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: {
+              eligible: [
+                {
+                  chargeCallId: 'charge-1',
+                  lotNumber: 'A-01',
+                  period: '2026-T1',
+                  dueDate: '2026-02-01',
+                  outstanding: 150000,
+                  currentLevel: 0,
+                  nextLevel: 1,
+                  lastReminderAt: null
+                }
+              ],
+              excluded: [
+                {
+                  chargeCallId: 'charge-2',
+                  lotNumber: 'B-02',
+                  period: '2026-T1',
+                  reason: 'PAYMENT_PLAN_ACTIVE',
+                  reasonLabel: 'x'
+                }
+              ],
+              totals: { eligible: 1, excluded: 1 }
+            }
+          }
+        });
+      }
+
       if (url.endsWith('/relances')) {
         return Promise.resolve({ data: { success: true, data: [] } });
       }
@@ -210,6 +252,12 @@ describe('Syndics recovery page', () => {
     renderWithRoute();
     fireEvent.click(await screen.findByText('Lancer les relances groupées'));
 
+    // L'aperçu s'ouvre avec les exclus ; rien n'est envoyé avant la confirmation.
+    expect(await screen.findByText(/Plan de paiement actif/)).toBeTruthy();
+    expect(mockApiClient.post).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('Envoyer 1 relance(s)'));
+
     await waitFor(() => {
       expect(mockApiClient.post).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/relances/batch', {});
     });
@@ -225,6 +273,7 @@ describe('Syndics recovery page', () => {
 
     renderWithRoute();
     fireEvent.click(await screen.findByText('Lancer les relances groupées'));
+    fireEvent.click(await screen.findByText('Envoyer 1 relance(s)'));
 
     const { message } = (await import('antd')) as any;
     await waitFor(() => expect(message.warning).toHaveBeenCalled());

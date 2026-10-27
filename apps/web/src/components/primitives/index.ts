@@ -30,7 +30,13 @@ export { NotFound } from './NotFound';
 export { AccountNotLinked } from './AccountNotLinked';
 
 export { DataView } from './DataView';
-export type { DataViewProps } from './DataView';
+export type { DataViewProps, DataViewExport } from './DataView';
+
+export { ExportMenu } from './ExportMenu';
+export type { ExportMenuProps, ExportFetchAllResult } from './ExportMenu';
+
+export { Table } from './Table';
+export type { ExportableTableProps } from './Table';
 
 export { DataCard } from './DataCard';
 export type { DataCardProps, DataCardField } from './DataCard';
@@ -43,3 +49,6 @@ export type { StatCardProps } from './StatCard';
 
 export { StepRail } from './StepRail';
 export type { StepRailProps, StepRailItem } from './StepRail';
+
+export { PhoneNumber } from './PhoneNumber';
+export type { PhoneNumberProps } from './PhoneNumber';

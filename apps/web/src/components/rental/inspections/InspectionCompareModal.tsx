@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Col, Modal, Row, Space, Switch, Table, Tag, Typography } from 'antd';
+import { Alert, Col, Modal, Row, Space, Switch, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   compareInspections,
@@ -10,6 +10,7 @@ import {
 import { conditionLabel } from './inspection-constants';
 import { MoneyValue } from '../../primitives/MoneyValue';
 import { StatCard } from '../../primitives/StatCard';
+import { Table } from '../../primitives/Table';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 
@@ -115,6 +116,7 @@ const CompareSummaryBlock: React.FC<{ summary: InspectionCompareSummary }> = ({ 
 
       {meterRows.length > 0 && (
         <Table<MeterRow>
+          exportFilename={t('Compteurs')}
           size="small"
           rowKey="key"
           pagination={false}
@@ -124,13 +126,31 @@ const CompareSummaryBlock: React.FC<{ summary: InspectionCompareSummary }> = ({ 
             { title: t('Compteur'), key: 'meter', render: (_, row) => meterLabel(row.key) },
             { title: t("Relevé d'entrée"), key: 'entry', render: (_, row) => row.entry ?? '—' },
             { title: t('Relevé de sortie'), key: 'exit', render: (_, row) => row.exit ?? '—' },
-            { title: t('Différence'), key: 'difference', render: (_, row) => formatDifference(row.difference) }
+            {
+              title: t('Différence'),
+              key: 'difference',
+              exportValue: row => row.difference,
+              render: (_, row) => formatDifference(row.difference)
+            }
           ]}
         />
       )}
     </Space>
   );
 };
+
+/** État de sortie et ses constats, sur une ligne, pour l'export. */
+function exitConditionText(row: InspectionCompareRow): string {
+  return [
+    row.absentFromExit ? '—' : conditionLabel(row.exitCondition),
+    row.missing ? t('Manquant') : null,
+    row.quantityDecrease > 0 ? t('Baisse de quantité (−{{nombre}})', { nombre: row.quantityDecrease }) : null,
+    row.degraded ? t('Dégradé') : null,
+    row.absentFromExit ? t('Absent de la sortie') : null
+  ]
+    .filter(Boolean)
+    .join(' — ');
+}
 
 function exitConditionCell(row: InspectionCompareRow): React.ReactNode {
   return (
@@ -209,6 +229,7 @@ export const InspectionCompareModal: React.FC<InspectionCompareModalProps> = ({ 
     {
       title: t('État de sortie'),
       key: 'exitCondition',
+      exportValue: row => exitConditionText(row),
       render: (_, row) => exitConditionCell(row)
     },
     ...(hasFurniture
@@ -224,6 +245,7 @@ export const InspectionCompareModal: React.FC<InspectionCompareModalProps> = ({ 
     {
       title: t('Valeur des manquants'),
       key: 'missingValue',
+      exportValue: row => row.missingValue,
       render: (_, row) => <MoneyValue value={row.missingValue} />
     }
   ];
@@ -244,6 +266,7 @@ export const InspectionCompareModal: React.FC<InspectionCompareModalProps> = ({ 
         <Text>{t('Afficher seulement les écarts')}</Text>
       </Space>
       <Table
+        exportFilename={t('Comparaison entrée et sortie')}
         rowKey={row => `${row.roomId}-${row.itemId}`}
         dataSource={visibleRows}
         columns={columns}

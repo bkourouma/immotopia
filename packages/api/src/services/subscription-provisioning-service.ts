@@ -561,7 +561,7 @@ function overageWarnings(capacities: Record<CapacityKeyCode, { overBy: number; l
     // PHOTOS_INVENTAIRE (lot 041, data-model §4) : une consommation qui n'est
     // JAMAIS facturée en dépassement (le quota refuse au-delà) ; aucun
     // avertissement de facturation, avec ou sans option souscrite.
-    if (key === 'PHOTOS_INVENTAIRE') continue;
+    if (key === 'PHOTOS_INVENTAIRE' || key === 'SIGNATURES_MENSUELLES') continue;
     const overBy = capacities[key].overBy;
     if (overBy > 0) {
       warnings.push(
@@ -584,7 +584,8 @@ function quotaThresholdWarnings(capacities: Record<CapacityKeyCode, { used: numb
     // Capacités facultatives sans plafond (ACTIFS hors pack Particulier,
     // PHOTOS_INVENTAIRE sans option) : la tâche horaire n'alerte pas
     // (OPTIONAL_CAPACITIES, subscription-usage-job.ts).
-    if ((key === 'ACTIFS' || key === 'PHOTOS_INVENTAIRE') && cap.limit <= 0) continue;
+    if ((key === 'ACTIFS' || key === 'PHOTOS_INVENTAIRE' || key === 'SIGNATURES_MENSUELLES') && cap.limit <= 0)
+      continue;
     const crossed = crossedThresholds(cap.used, cap.limit);
     if (crossed.length === 0) continue;
     warnings.push(

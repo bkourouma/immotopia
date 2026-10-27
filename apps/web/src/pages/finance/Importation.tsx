@@ -12,7 +12,6 @@ import {
   Select,
   Space,
   Steps,
-  Table,
   Tag,
   Typography,
   Upload
@@ -24,7 +23,7 @@ import { useQuery } from '@tanstack/react-query';
 import dayjs, { Dayjs } from 'dayjs';
 import { listConstructionSites } from '../../services/finance-lot2-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { PageHeader, StateBlock } from '../../components/primitives';
+import { PageHeader, StateBlock, Table } from '../../components/primitives';
 import {
   champsObligatoiresManquants,
   chargerReferentiel,
@@ -555,6 +554,8 @@ export const Importation: React.FC = () => {
           ) : null}
 
           <Table
+            // Tableau de rapprochement : chaque ligne porte un sélecteur à remplir.
+            exportable={false}
             size="small"
             pagination={false}
             rowKey={(_ligne, index) => String(index)}
@@ -648,6 +649,8 @@ export const Importation: React.FC = () => {
           ) : null}
 
           <Table
+            // Aperçu éditable : chaque cellule est un champ de saisie.
+            exportable={false}
             size="small"
             rowKey={ligne => String(ligne.numero)}
             dataSource={lignes}
@@ -701,6 +704,7 @@ export const Importation: React.FC = () => {
 
               {compteRendu.echouees.length > 0 ? (
                 <Table
+                  exportFilename={t('Lignes refusées par le serveur')}
                   size="small"
                   rowKey={resultat => String(resultat.numero)}
                   dataSource={compteRendu.echouees}

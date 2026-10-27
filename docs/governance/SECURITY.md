@@ -85,10 +85,10 @@ Trois lignes de défense, dans l'ordre où une requête les traverse :
    `GeneralMeeting`, lignes d'écriture comptable…) : cette extension ne
    peut pas les couvrir directement, il faut vérifier le parent d'abord.
 
-Un middleware plus ancien, `middleware/property-ownership-middleware.ts`,
-n'est monté sur aucune route à ce jour : ne pas s'y fier comme garde
-active, le contrôle réel pour les biens passe par
-`enforcePropertyTenantIsolation` + `getPropertyForTenant`.
+Le contrôle des biens passe par `enforcePropertyTenantIsolation` +
+`getPropertyForTenant` (l'ancien `property-ownership-middleware.ts`, monté
+nulle part et qui répondait 403 ou 404 selon l'existence du bien, a été
+supprimé).
 
 **Filet en sortie** : `middleware/response-sanitizer-middleware.ts`
 retire récursivement `passwordHash`/`password_hash`/`tokenHash`/`token_hash`
@@ -234,13 +234,15 @@ est intégrée en clair dans le bundle JavaScript livré au navigateur
 (`app.immotopia.cloud`) et la production (`clients.immotopia.cloud`) tournent
 sur le même serveur, chacun dans sa pile, avec son fichier hors dépôt
 (`/home/deployer/immotopia-saas.env`, `/home/deployer/immotopia-prod.env`,
-mode 600) et ses propres `JWT_SECRET`, mot de passe Postgres et
+mode 600) et ses propres `JWT_SECRET`, mot de passe Postgres,
 `PAYMENT_SECRETS_KEY` (la clé qui chiffre les clés de paiement des agences ; à
-sauvegarder hors serveur, sa perte les rend illisibles). `deploy.sh prod` refuse
-un `JWT_SECRET`, un mot de passe Postgres ou une `PAYMENT_SECRETS_KEY` identique
-à celui du staging (comparaison d'empreintes, rien n'est affiché), et refuse de
+sauvegarder hors serveur, sa perte les rend illisibles) et `DIRECT_DEBIT_IBAN_KEY`
+(clé **dédiée** aux IBAN des mandats de prélèvement, voir ci-dessous).
+`deploy.sh prod` refuse un `JWT_SECRET`, un mot de passe Postgres, une
+`PAYMENT_SECRETS_KEY` ou une `DIRECT_DEBIT_IBAN_KEY` identique à celui du staging (comparaison d'empreintes, rien n'est affiché), et refuse de
 déployer si le fichier du staging est illisible (l'unicité ne serait pas
-prouvée). Il refuse aussi `PAYMENT_GATEWAY_SIMULATOR=1`, **quelle que soit son
+prouvée). Il refuse aussi `PAYMENT_GATEWAY_SIMULATOR=1` et `YOUSIGN_ALLOW_SANDBOX=1`
+(base sandbox de Yousign, réservée au staging), **quelle que soit leur
 écriture** (`export … = "1"` compris), un fichier où une clé critique est
 définie plusieurs fois (Compose applique la dernière occurrence : les contrôles
 lisent la même, et un doublon ajouté en fin de fichier ne les contourne pas), un
@@ -258,6 +260,95 @@ aux essais locaux, est refusé pour la production par `deploy.sh` et
 [ADR-005](../architecture/adr/ADR-005-environnements-staging-production.md) ;
 procédure : [DEPLOIEMENT.md](../workflows/DEPLOIEMENT.md).
 
+**IBAN des mandats de prélèvement.** Chiffrés en AES-256-GCM avec
+`DIRECT_DEBIT_IBAN_KEY`, une clé dédiée (jamais `PAYMENT_SECRETS_KEY` : l'API
+refuse de démarrer si elles sont égales, et `deploy.sh` aussi, ainsi qu'une clé
+de production présente dans le trousseau du staging). Chaque valeur
+(`ddk1:<id de clé>:…`) porte l'identifiant de sa clé, lié au chiffré par les
+données associées. Rotation : l'ancienne clé passe dans
+`DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` (déchiffrement seul), puis
+`reencrypt-direct-debit-ibans.js` rechiffre tout vers la nouvelle ; l'ancienne
+n'est retirée qu'après un passage à 0 et une sauvegarde vérifiée. Les valeurs
+de l'ancien format `pg1` restent lisibles (repli sur `PAYMENT_SECRETS_KEY`).
+Aucun message, journal ou sortie du script ne contient IBAN, chiffré ou clé.
+
+Limite connue : les données associées ne lient le chiffré qu'à l'identifiant de
+clé, pas au mandat. Copier la valeur chiffrée d'une ligne vers une autre suppose
+un accès en écriture à la base, hors du modèle de menace actuel. Si ce risque
+était retenu, un format `ddk2` (données associées incluant l'agence et le mandat)
+serait possible.
+
+Où l'IBAN complet sort en clair : le PDF d'autorisation d'un mandat (P1) et le
+fichier de remise (P2, `POST …/direct-debit/remittances/:id/export`), tous deux
+réservés à `RENTAL_DIRECT_DEBIT_MANAGE`, générés à la demande, jamais stockés,
+servis en `Cache-Control: no-store`, et audités dans la base avant l'envoi (un
+échec d'audit bloque l'envoi). Le fichier de remise ne garde qu'une empreinte
+HMAC-SHA-256 (clé dérivée de `DIRECT_DEBIT_IBAN_KEY`) : un SHA-256 nu d'un
+fichier à une seule ligne permettrait de retrouver l'IBAN par force brute. Les
+routes `direct-debit` sont marquées sensibles pour la passerelle de l'assistant
+IA, qui ne peut ni les lire ni les appeler. Le chemin `prelevements` (copropriété,
+P4) l'est aussi, et les permissions `SYNDIC_DIRECT_DEBIT_MANAGE` (copropriété) et
+`RENTAL_DIRECT_DEBIT_MANAGE` donnent seules accès à l'IBAN complet.
+
+**Retours de la banque (P3).** Le fichier de retour importé
+(`POST …/direct-debit/returns/preview` et `/apply`, et leurs équivalents de
+copropriété) est borné avant lecture : 2 Mo et 5 000 lignes au plus, sinon refus.
+Il est lu en mémoire par un parseur maison, **jamais stocké** : l'import ne garde
+que son nom assaini, des compteurs et une empreinte HMAC-SHA-256 (même clé
+dérivée que le fichier de remise). Les erreurs de lecture ne reprennent aucune
+valeur du fichier. Chaque constat est audité sans IBAN. L'avis de prénotification
+et l'avis de rejet ne gardent du destinataire que l'adresse **masquée**
+(`a•••@ex•••.ci`) et sa provenance (compte portail ou fiche contact) ; aucune
+réponse d'API ni aucun journal ne contient l'adresse complète. En copropriété, le
+rejet d'un paiement déjà réglé est refusé, ce qui évite une contre-passation que
+la comptabilité ne sait pas faire.
+
+**Signature électronique d'un mandat de prélèvement.** Le mandat porte l'IBAN
+complet, que le débiteur remet à sa banque : le PDF à signer le contient donc.
+Six règles (SIG-S1 à SIG-S6, contrat dans
+[data-model.md](../../specs/042-prelevement-bancaire/data-model.md) §10.2) :
+
+- _SIG-S1._ Le lien d'invitation ne révèle rien sans le code à usage unique :
+  ni le PDF, ni l'IBAN, même masqué. Le code est demandé avant toute consultation ;
+  il remet un jeton de consultation de 15 minutes (en-tête
+  `X-Signature-View-Token`), seul son SHA-256 est stocké.
+- _SIG-S2._ Pas de signature sans code : la signature « sur place » est refusée
+  pour ces types.
+- _SIG-S3._ Hors du PDF, l'IBAN complet n'apparaît nulle part : titre de la
+  demande, e-mails, SMS, WhatsApp, réponses, journaux, audit, preuve ; au plus
+  son masque.
+- _SIG-S4._ L'empreinte des données du document est un HMAC-SHA-256 à clé dérivée
+  de `DIRECT_DEBIT_IBAN_KEY`, jamais un hachage nu d'un contenu qui porte l'IBAN.
+- _SIG-S5._ Les PDF source, signé et de preuve ne se lisent qu'avec la permission
+  `_MANAGE` du périmètre ; chaque lecture, côté agence comme côté signataire, est
+  auditée dans la base avant l'envoi du fichier.
+- _SIG-S6._ Avec Yousign, ImmoTopia garde la porte : demande créée sans envoi par
+  Yousign (`delivery_mode: 'none'`), invitation et code par ImmoTopia, lien de
+  signature Yousign remis seulement après vérification du code (lu en direct,
+  jamais stocké ni journalisé), et code Yousign en plus au moment de signer.
+  **Risque accepté** : le PDF à IBAN complet est transmis à Yousign, sous-traitant,
+  quand ce fournisseur est configuré. Avec le fournisseur interne, rien ne sort
+  d'ImmoTopia.
+
+Complément (audit de la branche) :
+
+- **Rétention.** `source.pdf` (IBAN complet) est supprimé à l'annulation de la
+  demande. `signed.pdf` est **conservé** tant que le mandat existe : il tient lieu
+  de scan signé (preuve de l'autorisation). Il ne se lit que par la route
+  authentifiée du mandat ou de la demande, avec `_MANAGE`, et chaque lecture est
+  auditée avant l'envoi. Le remplacement par un scan papier remet le lien du
+  mandat à zéro mais ne supprime pas ce fichier.
+- **Jeton de consultation.** Invalidé à la signature, au refus et à l'annulation ;
+  exigé aussi pour refuser. Le lien de signature Yousign n'est accepté que si son
+  hôte est celui de l'API configurée ou un sous-domaine de `yousign.app`.
+- **Rotation de `DIRECT_DEBIT_IBAN_KEY`.** L'empreinte du document (SIG-S4) est
+  recalculée avec la clé courante : une rotation rend les demandes de signature
+  ouvertes non valides (annulées au scellement ou à la lecture). Les renvoyer après
+  une rotation (voir DEPLOIEMENT.md).
+- **Destinataire différent.** Si l'agence envoie l'invitation à une adresse autre
+  que celle du débiteur, l'envoi n'est pas bloqué mais l'audit
+  (`SIGNATURE_REQUEST_SENT`) porte `signerOverride` et l'adresse masquée.
+
 **Déployer la production.** `deploy.sh prod` prouve l'état git au lieu de le
 supposer : git utilisable, version identifiable, arbre propre, `origin/main`
 présent et `HEAD` dedans, sinon échec ; `HEAD` et l'arbre sont revérifiés juste
@@ -267,6 +358,28 @@ Dès que la base est initialisée, un `db-*.sql.gz` de moins de 24 heures doit
 exister dans `BACKUP_DIR` avant toute migration (aucune exigence au tout premier
 déploiement) ; le contrôle ne porte que sur l'existence d'un fichier récent, pas
 sur sa validité (voir §13).
+
+**Clés de déploiement de la CI.** Le déploiement continu
+([ADR-008](../architecture/adr/ADR-008-deploiement-continu.md)) se connecte au
+serveur avec deux clés ed25519 distinctes, une par environnement, stockées comme
+**secrets d'environnement GitHub** (`DEPLOY_SSH_KEY`, `DEPLOY_SSH_KNOWN_HOSTS` dans
+`staging` et `production`), jamais comme secrets de dépôt. Côté serveur, chaque clé
+est limitée dans `authorized_keys` par `command="…/ci-deploy.sh <env>",restrict` :
+ni shell, ni terminal, ni redirection ; elle ne lance que ce script, qui n'accepte
+que `deploy <env> <sha>` pour son propre environnement et un commit d'`origin/main` ;
+pour la production, le commit doit déjà avoir été déployé avec succès sur le staging
+et ne peut pas être un retour arrière. Écrire sur `main` valant exécution de code sur
+le serveur partagé, `main` doit être protégée (PR relue, status checks requis, pas de
+contournement, CODEOWNERS sur `.github/`, `infra/` et les Dockerfile : prérequis de
+la mise en service). `workflow_dispatch` exécute le fichier de la branche choisie ;
+la barrière est la règle « Deployment branches : main » des environnements.
+Rotation : regénérer la paire, remplacer la ligne `authorized_keys` et le secret
+d'environnement, supprimer l'ancienne clé privée ; retirer la ligne coupe l'accès
+immédiatement. Le dépôt étant public, les journaux des workflows le sont aussi : le
+serveur ne renvoie qu'un canal public dédié (messages de `ci-deploy.sh` et titres
+d'étapes de `deploy.sh` ; le journal complet reste dans `~/ci-deploy-logs/`, mode 600), et aucune entrée n'est interpolée dans un script
+`run:`. Procédure : [DEPLOIEMENT.md](../workflows/DEPLOIEMENT.md), « Déploiement
+continu (GitHub Actions) ».
 
 **Premier compte SUPER_ADMIN.** `infra/scripts/bootstrap.sh` recueille toutes les
 saisies (e-mail deux fois, nom, confirmation, mot de passe deux fois sans écho)
@@ -1081,6 +1194,78 @@ réconciliation existante, le surplus restant en avance sur le compte du locatai
 d'un lien `build-away` non utilisé inconnue (point 7 de
 [paysecurehub.md](../integrations/paysecurehub.md)). **Mode `LIVE` non validé** et envoi réel non
 vérifié.
+
+## 12 quater. Visio et enregistrement des AG (LiveKit, spec 045)
+
+**Surface.** Salle LiveKit par AG (`t_<tenantId>__ag_<meetingId>`), jetons délivrés par
+ImmoTopia (`services/livekit-service.ts`) : par lien personnel (`POST /api/public/assemblees/visio`,
+même résolution de jeton et même 404 uniforme que la spec 043, limiteur de 20/min par empreinte
+de jeton) et par la console (`SYNDIC_EDIT`). Enregistrement Egress vers un stockage S3 dédié,
+webhook public signé `POST /api/webhooks/livekit`, fichier MP4 rapatrié dans le stockage privé.
+
+**Droits dans la salle.** Le copropriétaire n'a ni `canPublish`, ni `canPublishData`, ni
+`canUpdateOwnMetadata` : il ne peut ni parler, ni envoyer de données, ni changer de nom ; la
+main levée et la parole passent par l'API (attribut et permission posés côté serveur). Le
+gestionnaire publie micro, caméra et écran mais **n'a pas `roomAdmin`** : toute modération
+(parole, exclusion) passe par une route vérifiée, filtrée par agence et par AG, et auditée. Aucun
+vote ne passe par la vidéo ; le seul message de données est le signal `ag-refresh` envoyé par le
+serveur, que le client n'accepte que sans émetteur participant. Le jeton porte l'identité (id du
+`GMParticipant` ou `gestionnaire-<userId>`) et le nom, jamais une coordonnée ; les noms des
+présents sont visibles des autres participants de la salle, comme en séance.
+
+**Exclusion.** Retire de la salle ; avec « Révoquer aussi ses liens », les liens sont révoqués
+d'abord et le retrait invalide les jetons déjà émis (`revokeTokenTs`). Un identifiant
+`gestionnaire-` dont l'utilisateur n'est plus membre actif de l'agence est retiré à la lecture
+de la console.
+
+**Webhook.** Corps brut (préfixe exclu des parseurs globaux et du plancher de débit global),
+signature LiveKit vérifiée (`WebhookReceiver` : JWT et `sha256` du corps) avant tout traitement,
+401 sans détail sinon ; seul `egress_ended` agit ; idempotent par `event.id` (colonne unique) et
+par la mise à jour conditionnelle sur le statut ; la clé S3 vient de la base, jamais du corps.
+Un webhook manquant est rattrapé par la réconciliation auprès de LiveKit à la lecture de la
+liste des enregistrements.
+
+**Fichiers.** Le MP4 n'est jamais servi par `/uploads` (refusé par `uploadsAccessGuard`) ; la
+lecture (`Range`) et le téléchargement passent par une route `SYNDIC_VIEW` qui résout le chemin
+sous la racine attendue, auditée (`SYNDIC_MEETING_RECORDING_ACCESSED`) ; les réponses ne portent
+ni clé S3, ni identifiant d'egress, ni chemin disque. La suppression (`SYNDIC_EDIT`) efface le
+fichier et l'objet S3 restant ; la ligne reste en `DELETED`. Une suppression en cascade
+(copropriété aujourd'hui ; toute future suppression d'AG ou purge d'agence doit passer par
+`lib/syndics/meeting-recording-cleanup.ts`) prend dans la transaction un verrou non bloquant par AG
+et refuse (409) si un démarrage ou un enregistrement est en cours ou en traitement, y écrit l'audit
+critique `SYNDIC_MEETING_RECORDING_DELETED` (avec la cause), puis, après validation, efface le
+fichier (chemin dérivé des identifiants, jamais de `fileUrl`) et l'objet S3 (clé vérifiée contre
+l'enregistrement) ; un échec d'effacement est journalisé sans chemin ni clé.
+
+**Configuration.** `LIVEKIT_*` : les trois ou aucune, secret de 32 caractères au moins, `wss://`
+hors développement ; `LIVEKIT_RECORDING_S3_*` : tous ou aucun, `https://` hors développement,
+taille maximale rapatriée bornée. Projet LiveKit **dédié** à ImmoTopia.
+
+**Limites connues.** Les jetons LiveKit durent 10 minutes et sont renouvelés par LiveKit tant que
+la connexion vit. Enregistrer une AG relève d'une base juridique et d'une information préalable
+non encore décidées (spec 045, R10) ; aucune purge automatique des enregistrements. Changer de
+langue pendant la visio remonte l'application et déconnecte de la salle. Une suppression qui
+contourne ce code (agence effacée à la main en SQL, `prisma/seed.ts` et `prisma/seeds/syndic-demo-seed.ts` de
+développement, dont son `syndicate.deleteMany`) laisse les MP4 et objets S3 de ses enregistrements.
+
+**Discussion écrite (spec 046).** Personne n'obtient `canPublishData`, ni copropriétaire ni
+gestionnaire : un message part à l'API d'ImmoTopia (`POST /api/public/assemblees/discussion/envoyer`
+par lien personnel, même 404 uniforme, limiteur de 10 envois/min par empreinte de jeton et plafond
+de 120 envois/min par AG ; console en `SYNDIC_EDIT`), est validé (zod, texte brut normalisé, 500
+caractères au plus, contrôles bidirectionnels, invisibles et caractères « tag » retirés, texte sans
+caractère visible refusé), stocké avec
+`tenantId` (`GMChatMessage`), puis diffusé par le serveur (`sendData`, sujet `ag-discussion`). Le
+client ignore tout message de ce sujet qui porte un émetteur participant. L'écriture exige l'AG en
+cours, le participant ayant rejoint et **présent dans la salle**, la discussion ouverte et son
+écriture non coupée. Le texte est **contenu saisi par un tiers** : il n'est jamais rendu en HTML
+ni en Markdown (texte React isolé par `<bdi dir="auto">`, pas de `dangerouslySetInnerHTML`), les
+adresses web ne sont pas cliquables, la fermeture et la coupure sont relues dans la transaction de
+l'écriture, et la route `visio/discussion` est exclue du catalogue de l'assistant IA (injection
+d'instructions, et l'IA n'écrit jamais dans une salle en direct). Un message masqué n'est plus
+servi aux copropriétaires mais reste en base pour le gestionnaire ; masquer, rétablir, couper
+l'écriture, ouvrir ou fermer la discussion sont audités sans le texte. `messageId` ou
+`participantId` d'une autre AG ou d'une autre agence : même 404 qu'un objet inexistant. Les
+messages sont conservés avec l'AG, sans purge automatique (même régime que R10).
 
 ## 13. Points ouverts
 

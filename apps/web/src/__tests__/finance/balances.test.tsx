@@ -313,6 +313,65 @@ describe('Balance âgée — rendu et tri', () => {
   });
 });
 
+describe('Balance âgée — écart comptable', () => {
+  it('affiche la somme des tranches comme solde et signale l’écart, sans rien afficher quand il est nul', async () => {
+    getClientsAgingBalance.mockResolvedValue({
+      lines: [
+        ligneAgee({
+          accountId: 'c1',
+          label: 'Avec écart',
+          balance: 777_000,
+          agedTotal: 500_000,
+          ledgerBalance: 777_000,
+          gap: 277_000,
+          daysOver90: 500_000
+        }),
+        ligneAgee({
+          accountId: 'c2',
+          label: 'Sans écart',
+          balance: 123_000,
+          agedTotal: 123_000,
+          ledgerBalance: 123_000,
+          gap: 0,
+          days0To30: 123_000
+        })
+      ],
+      totalBalance: 623_000,
+      ledgerTotalBalance: 900_000,
+      gap: 277_000,
+      currency: 'XOF'
+    });
+    getClientsBalance.mockResolvedValue({ lines: [], totalBalance: 0, currency: 'XOF' });
+
+    mountAgee();
+    const ligneAvecEcart = (await screen.findByText('Avec écart', {}, { timeout: 8000 })).closest('tr') as HTMLElement;
+    const ligneSansEcart = screen.getByText('Sans écart').closest('tr') as HTMLElement;
+
+    // Le solde est la somme des tranches, pas le solde comptable.
+    expect(within(ligneAvecEcart).queryByText(/777\s000/)).not.toBeInTheDocument();
+    expect(within(ligneAvecEcart).getAllByText(/500\s000/).length).toBeGreaterThan(0);
+    expect(within(ligneAvecEcart).getByText(/Écart avec la comptabilité : 277\s000/)).toBeInTheDocument();
+
+    expect(within(ligneSansEcart).queryByText(/Écart avec la comptabilité/)).not.toBeInTheDocument();
+
+    // Écart global : une mention près du total de contrôle (ligne + global).
+    expect(screen.getAllByText(/Écart avec la comptabilité/)).toHaveLength(2);
+  });
+
+  it('n’affiche aucun écart quand l’API n’en renvoie pas', async () => {
+    getClientsAgingBalance.mockResolvedValue({
+      lines: [ligneAgee({ label: 'Ancien cache', balance: 600_000 })],
+      totalBalance: 600_000,
+      currency: 'XOF'
+    });
+    getClientsBalance.mockResolvedValue({ lines: [], totalBalance: 0, currency: 'XOF' });
+
+    mountAgee();
+    await screen.findByText('Ancien cache', {}, { timeout: 8000 });
+    expect(screen.queryByText(/Écart avec la comptabilité/)).not.toBeInTheDocument();
+  });
+});
+
 describe('Vocabulaire — principe P-1 du PRD', () => {
   it('n’affiche jamais « débit » ni « crédit », sur aucun des deux écrans', async () => {
     const lignesNominales = [

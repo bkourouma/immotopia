@@ -9,6 +9,39 @@ import {
   assignChargeCallFundHandler
 } from '../controllers/syndic-fund-assignment-controller';
 import {
+  bulkLotAttendanceHandler,
+  closeResolutionVoteHandler,
+  getLiveMeetingHandler,
+  issueParticipantLinkHandler,
+  listMeetingParticipantsHandler,
+  openResolutionVoteHandler,
+  revokeParticipantLinksHandler,
+  setLotAttendanceHandler
+} from '../controllers/syndic-meeting-live-controller';
+import {
+  getMeetingVisioHandler,
+  issueMeetingVisioTokenHandler,
+  muteVisioParticipantHandler,
+  removeVisioParticipantHandler,
+  setVisioMediaLockHandler,
+  setVisioParticipantSpeakingHandler
+} from '../controllers/syndic-meeting-visio-controller';
+import {
+  getMeetingDiscussionHandler,
+  sendMeetingDiscussionMessageHandler,
+  setMeetingDiscussionMessageHiddenHandler,
+  setMeetingDiscussionOpenHandler,
+  setParticipantWritingHandler
+} from '../controllers/syndic-meeting-discussion-controller';
+import {
+  deleteRecordingHandler,
+  listRecordingsHandler,
+  retryRecordingHandler,
+  startRecordingHandler,
+  stopRecordingHandler,
+  streamRecordingHandler
+} from '../controllers/syndic-meeting-recording-controller';
+import {
   inviteCoOwnerToPortalHandler,
   revokeCoOwnerPortalAccessHandler
 } from '../controllers/syndic-coowner-portal-controller';
@@ -49,6 +82,7 @@ import {
   listMeetingProxiesHandler,
   createMeetingProxyHandler,
   deleteMeetingProxyHandler,
+  deleteResolutionHandler,
   generateMeetingMinutesHandler,
   listProvidersHandler,
   createProviderHandler,
@@ -62,12 +96,14 @@ import {
   deleteContractHandler,
   listDocumentsHandler,
   createDocumentHandler,
+  updateDocumentHandler,
   downloadDocumentHandler,
   getFinanceSummaryHandler,
   getOverdueDashboardHandler,
   listRemindersHandler,
   createManualReminderHandler,
   runReminderBatchHandler,
+  previewReminderBatchHandler,
   listPenaltiesHandler,
   listPaymentSchedulesHandler,
   createPenaltyHandler,
@@ -90,6 +126,7 @@ import {
   addIncidentImputationHandler,
   listChartOfAccountsHandler,
   createChartOfAccountHandler,
+  loadSyndicChartTemplateHandler,
   listAccountingJournalsHandler,
   createAccountingJournalHandler,
   listAccountingEntriesHandler,
@@ -102,6 +139,7 @@ import {
   renameFundHandler,
   adjustFundBalanceHandler
 } from '../controllers/syndic-controller';
+import { downloadConvocationDocxHandler } from '../controllers/syndic-word-documents-controller';
 
 const router = Router();
 
@@ -233,6 +271,11 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/relance',
   requirePropertyPermission('SYNDIC_EDIT'),
   createManualReminderHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/relances/batch/preview',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  previewReminderBatchHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/relances/batch',
@@ -367,6 +410,11 @@ router.post(
   requirePropertyPermission('SYNDIC_EDIT'),
   resendMeetingConvocationHandler
 );
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/lots/:lotId/convocation.docx',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  downloadConvocationDocxHandler
+);
 router.patch(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId',
   requirePropertyPermission('SYNDIC_EDIT'),
@@ -381,6 +429,11 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions',
   requirePropertyPermission('SYNDIC_EDIT'),
   addResolutionHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  deleteResolutionHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/ordre-du-jour',
@@ -416,6 +469,136 @@ router.delete(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs/:proxyId',
   requirePropertyPermission('SYNDIC_EDIT'),
   deleteMeetingProxyHandler
+);
+// Spec 043 : AG en direct (console du gestionnaire).
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/direct',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  getLiveMeetingHandler
+);
+router.put(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/presences/:lotId',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setLotAttendanceHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/presences',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  bulkLotAttendanceHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/ouvrir-vote',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  openResolutionVoteHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/clore-vote',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  closeResolutionVoteHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  listMeetingParticipantsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants/:contactId/lien',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  issueParticipantLinkHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants/:contactId/liens',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  revokeParticipantLinksHandler
+);
+// Spec 045 : visio integree a l'AG en direct.
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  getMeetingVisioHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/jeton',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  issueMeetingVisioTokenHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/parole',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setVisioParticipantSpeakingHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/exclure',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  removeVisioParticipantHandler
+);
+// Spec 045, V16 : moderation du micro et de la camera des participants.
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/couper',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  muteVisioParticipantHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/media/verrou',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setVisioMediaLockHandler
+);
+// Spec 046 : discussion ecrite moderee de la visio.
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  getMeetingDiscussionHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/messages',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  sendMeetingDiscussionMessageHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/messages/:messageId/masquer',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setMeetingDiscussionMessageHiddenHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/etat',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setMeetingDiscussionOpenHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/ecriture',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setParticipantWritingHandler
+);
+// Spec 045 : enregistrement de l'AG (le fichier ne sort que par la route authentifiee ci-dessous).
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/demarrer',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  startRecordingHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/arreter',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  stopRecordingHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  listRecordingsHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/fichier',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  streamRecordingHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/reessayer',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  retryRecordingHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  deleteRecordingHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/compte-rendu',
@@ -484,6 +667,11 @@ router.post(
   uploadDocument.single('file'),
   createDocumentHandler
 );
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/documents/:documentId',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  updateDocumentHandler
+);
 // Fichier d'un document : jamais servi en statique (/uploads/syndics est
 // refuse), seulement ici, apres controle de l'agence. Voir
 // lib/syndics/document-files.ts.
@@ -506,6 +694,11 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes',
   requirePropertyPermission('SYNDIC_EDIT'),
   createChartOfAccountHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes/charger-plan-syscohada',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  loadSyndicChartTemplateHandler
 );
 router.get(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/journaux',

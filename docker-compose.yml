@@ -14,11 +14,15 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-immotopia}
       POSTGRES_DB: ${POSTGRES_DB:-immotopia}
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-immotopia} -d ${POSTGRES_DB:-immotopia}']
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-immotopia} -d ${POSTGRES_DB:-immotopia}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,13 +40,13 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-immotopia}:${POSTGRES_PASSWORD:-immotopia}@db:5432/${POSTGRES_DB:-immotopia}?schema=public
       # Required: the API refuses to start without a strong secret.
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required - generate with: openssl rand -base64 48}
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET is required - generate with: openssl rand -base64 48}"
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       BACKEND_URL: ${BACKEND_URL:-http://localhost:8001}
       NODE_ENV: ${NODE_ENV:-production}
-      PORT: '8001'
+      PORT: "8001"
     ports:
-      - '8001:8001'
+      - "8001:8001"
     volumes:
       - api-uploads:/data/uploads
 

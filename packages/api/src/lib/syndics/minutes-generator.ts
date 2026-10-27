@@ -1,11 +1,17 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import PizZip from 'pizzip';
-import Docxtemplater from 'docxtemplater';
 import { logger } from '../../utils/logger';
 import { majorityRuleLabel, normalizeMajorityRule } from './meeting-majority';
-import { t } from '../../i18n';
+import { currentLanguage, t } from '../../i18n';
+import { getShippedTemplatesDir, getTemplatesWriteDir } from '../../utils/assets-paths';
 import type { DocumentBranding } from '../documents/document-branding';
+import { buildCommonDocumentContext, buildIssuerContext } from '../documents/docx-branding';
+import { loadStandardTemplate } from '../documents/docx-standard-templates';
+import { renderDocxBuffer } from '../../services/docx-renderer';
+
+// Compatibilité : `buildIssuerContext` vivait ici avant d'être partagé par tous les modèles DOCX.
+export { buildIssuerContext };
 
 interface AgendaItemInput {
   orderIndex: number;
@@ -28,6 +34,20 @@ interface ResolutionInput {
     sharesAbstain: number;
     referenceShares: number;
   } | null;
+}
+
+const NBSP = ' ';
+
+/**
+ * Pourcentage selon la langue du document : « 16,2 % » (espace insécable) en
+ * français, « 16.2% » en anglais et en arabe (chiffres latins).
+ */
+export function formatPercent(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  if (currentLanguage() === 'fr') {
+    return `${rounded.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}${NBSP}%`;
+  }
+  return `${rounded.toLocaleString('en-US', { maximumFractionDigits: 2 })}%`;
 }
 
 /** Libelle de la regle ; une saisie libre historique vaut l'article 24. */
@@ -115,6 +135,21 @@ function proxyContexts(proxies?: ProxyInput[]) {
   }));
 }
 
+interface AttendanceLotInput {
+  id: string;
+  lotNumber: string;
+  generalShares: number;
+  voters?: ContactLabelInput[] | null;
+}
+
+interface AttendanceInput {
+  lotId: string;
+  status: string;
+  mode?: string | null;
+  attendeeName?: string | null;
+  representedByName?: string | null;
+}
+
 interface MeetingInput {
   id: string;
   type: string;
@@ -125,8 +160,125 @@ interface MeetingInput {
   quorum?: unknown;
   proxies?: ProxyInput[];
   agendaItems?: AgendaItemInput[];
-  resolutions?: ResolutionInput[];
-  syndicate?: { name?: string | null; address?: string | null; tenantId?: string | null } | null;
+  resolutions?: Array<ResolutionInput & { votes?: Array<{ lotId: string }> }>;
+  /** Emargements de l'AG en direct (spec 043), avec les noms deja resolus. */
+  attendances?: AttendanceInput[];
+  syndicate?: {
+    name?: string | null;
+    address?: string | null;
+    tenantId?: string | null;
+    lots?: AttendanceLotInput[] | null;
+  } | null;
+}
+
+export interface AttendanceSheetRow {
+  lot: string;
+  shares: number;
+  person: string;
+  status: string;
+  mode: string;
+}
+
+export interface AttendanceSheet {
+  rows: AttendanceSheetRow[];
+  summary: string;
+}
+
+function formatDecimal(value: number): string {
+  return value.toLocaleString(currentLanguage() === 'fr' ? 'fr-FR' : 'en-US', { maximumFractionDigits: 2 });
+}
+
+function attendanceStatusLabel(status: string): string {
+  switch (status) {
+    case 'PRESENT':
+      return t('Présent(e)');
+    case 'REPRESENTED':
+      return t('Représenté(e)');
+    default:
+      return t('Absent(e)');
+  }
+}
+
+function attendanceModeLabel(mode?: string | null, representedBy?: string | null): string {
+  if (representedBy !== undefined) {
+    return t('Représenté (par {{representative}})', { representative: representedBy?.trim() || t('Non renseigné') });
+  }
+  if (mode === 'ONLINE') return t('En ligne');
+  if (mode === 'IN_PERSON') return t('En salle');
+  return '-';
+}
+
+/**
+ * Feuille de presence (spec 043) : un lot par ligne, avec son votant (ou son
+ * mandataire), son statut et son mode. Un lot sans emargement mais ayant vote
+ * est present (assemblees tenues avant l'AG en direct) ; sans emargement ni
+ * vote, il est absent.
+ */
+export function buildAttendanceSheet(meeting: MeetingInput): AttendanceSheet {
+  const lots = [...(meeting.syndicate?.lots ?? [])].sort((a, b) =>
+    String(a.lotNumber).localeCompare(String(b.lotNumber), 'fr', { numeric: true })
+  );
+  const votedLotIds = new Set((meeting.resolutions ?? []).flatMap(r => (r.votes ?? []).map(vote => vote.lotId)));
+  const attendanceByLot = new Map((meeting.attendances ?? []).map(row => [row.lotId, row]));
+
+  let countedLots = 0;
+  let countedShares = 0;
+  const rows = lots.map(lot => {
+    const row = attendanceByLot.get(lot.id);
+    const voted = votedLotIds.has(lot.id);
+    // Un emargement ABSENT l'emporte sur d'eventuels votes en base ; sans ligne d'emargement, avoir vote vaut presence.
+    const counted = row ? row.status === 'PRESENT' || row.status === 'REPRESENTED' : voted;
+    const status = !counted ? 'ABSENT' : row?.status === 'REPRESENTED' ? 'REPRESENTED' : 'PRESENT';
+    const voters = (lot.voters ?? [])
+      .map(voter => contactLabel(voter))
+      .filter(label => label !== t('Non renseigné'))
+      .join(' / ');
+    const person = voters || row?.attendeeName || t('Non renseigné');
+    if (counted) {
+      countedLots += 1;
+      countedShares += lot.generalShares || 0;
+    }
+    return {
+      lot: String(lot.lotNumber),
+      shares: lot.generalShares || 0,
+      person,
+      status: attendanceStatusLabel(status),
+      mode: !counted
+        ? '-'
+        : status === 'REPRESENTED'
+          ? attendanceModeLabel(row?.mode, row?.representedByName ?? '')
+          : attendanceModeLabel(row?.mode)
+    };
+  });
+
+  const totalShares = lots.reduce((sum, lot) => sum + (lot.generalShares || 0), 0);
+  const percent = totalShares > 0 ? Math.round((countedShares / totalShares) * 10000) / 100 : 0;
+  const summary = t(
+    'Lots présents ou représentés : {{lots}} sur {{totalLots}} ({{shares}} tantièmes sur {{totalShares}}, soit {{percent}} %).',
+    { lots: countedLots, totalLots: lots.length, shares: countedShares, totalShares, percent: formatDecimal(percent) }
+  ).replace(/ %/g, `${NBSP}%`);
+  return { rows, summary };
+}
+
+function attendanceLines(sheet: AttendanceSheet): string[] {
+  const lines = [t('FEUILLE DE PRÉSENCE'), sheet.summary];
+  if (sheet.rows.length === 0) {
+    lines.push(t('- Aucun lot enregistré.'));
+  } else {
+    for (const row of sheet.rows) {
+      lines.push(
+        t('- Lot {{lot}} ({{shares}} tantièmes) : {{person}} - {{status}} - {{mode}}', {
+          lot: row.lot,
+          shares: row.shares,
+          person: row.person,
+          status: row.status,
+          mode: row.mode
+        })
+      );
+    }
+  }
+  lines.push('');
+  return lines;
 }
 
 function normalizeDiscussions(value: unknown): string[] {
@@ -148,12 +300,27 @@ function formatTime(value?: Date | string | null): string {
 }
 
 function formatQuorum(value: unknown): string {
-  if (typeof value === 'number' && Number.isFinite(value)) return `${value}%`;
-  if (typeof value === 'string' && value.trim().length > 0) return `${value}%`;
-  if (value && typeof value === 'object' && 'toString' in value) {
-    return `${String(value)}%`;
-  }
-  return '0%';
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : value !== null && value !== undefined && String(value).trim().length > 0
+        ? Number(String(value).replace(',', '.'))
+        : 0;
+  return formatPercent(Number.isFinite(parsed) ? parsed : 0);
+}
+
+/**
+ * Points d'ordre du jour : ceux saisis ; à défaut, les titres des résolutions
+ * (un compte rendu ne dit jamais « aucun point » quand des résolutions existent).
+ */
+function agendaOrFallback(meeting: MeetingInput): AgendaItemInput[] {
+  const agendaItems = [...(meeting.agendaItems || [])].sort((a, b) => a.orderIndex - b.orderIndex);
+  if (agendaItems.length > 0) return agendaItems;
+  return (meeting.resolutions || []).map((resolution, index) => ({
+    orderIndex: index + 1,
+    title: resolution.title,
+    discussions: []
+  }));
 }
 
 function escapeXml(text: string): string {
@@ -163,42 +330,6 @@ function escapeXml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
-}
-
-function getProjectRoot(): string {
-  const cwd = process.cwd();
-  return path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-    ? path.resolve(cwd, '..', '..')
-    : cwd;
-}
-
-/**
- * Lot S1 : variables d'identite de l'emetteur (mandant de la copropriete,
- * sinon l'agence) offertes aux modeles DOCX d'agence :
- *   {{EMETTEUR_NOM}}, {{EMETTEUR_RAISON_SOCIALE}}, {{EMETTEUR_ADRESSE}},
- *   {{EMETTEUR_TELEPHONE}}, {{EMETTEUR_EMAIL}}, {{EMETTEUR_RCCM}},
- *   {{EMETTEUR_NCC}}, {{COPROPRIETE_IMMATRICULATION}},
- *   {{COPROPRIETE_REFERENCE_CADASTRALE}}.
- * Une valeur absente vaut une chaine vide (pas le motif `{{...}}` que laisse
- * `nullGetter` pour une variable inconnue).
- *
- * Le logo n'est PAS injecte dans le DOCX : `docxtemplater-image-module-free`
- * (1.1.1) plante au rendu avec docxtemplater 3.67 et tire `xmldom` 0.1.x,
- * vulnerable (CVE-2021-21366). Voir le rapport du lot S1.
- */
-export function buildIssuerContext(branding?: DocumentBranding | null): Record<string, string> {
-  const issuer = branding?.issuer;
-  return {
-    EMETTEUR_NOM: issuer?.name ?? '',
-    EMETTEUR_RAISON_SOCIALE: issuer?.legalName ?? issuer?.name ?? '',
-    EMETTEUR_ADRESSE: issuer?.address ?? '',
-    EMETTEUR_TELEPHONE: issuer?.phone ?? '',
-    EMETTEUR_EMAIL: issuer?.email ?? '',
-    EMETTEUR_RCCM: issuer?.rccm ?? '',
-    EMETTEUR_NCC: issuer?.taxId ?? '',
-    COPROPRIETE_IMMATRICULATION: branding?.syndicate?.registrationNo ?? '',
-    COPROPRIETE_REFERENCE_CADASTRALE: branding?.syndicate?.cadastralReference ?? ''
-  };
 }
 
 /** Lignes d'en-tete du compte rendu genere sans modele. */
@@ -231,9 +362,10 @@ function fallbackMinutes(meeting: MeetingInput, branding?: DocumentBranding | nu
   lines.push(`${t('Lieu')} : ${meeting.location || t('Non renseigné')}`);
   lines.push(`${t('Quorum')} : ${formatQuorum(meeting.quorum)}`);
   lines.push('');
+  lines.push(...attendanceLines(buildAttendanceSheet(meeting)));
   lines.push(t('ORDRE DU JOUR ET DISCUSSIONS'));
 
-  const agendaItems = [...(meeting.agendaItems || [])].sort((a, b) => a.orderIndex - b.orderIndex);
+  const agendaItems = agendaOrFallback(meeting);
   if (agendaItems.length === 0) {
     lines.push(t('- Aucun point d’ordre du jour renseigné.'));
   } else {
@@ -280,8 +412,9 @@ function fallbackMinutes(meeting: MeetingInput, branding?: DocumentBranding | nu
 }
 
 function buildTemplateContext(meeting: MeetingInput, branding?: DocumentBranding | null): Record<string, unknown> {
-  const agendaItems = [...(meeting.agendaItems || [])].sort((a, b) => a.orderIndex - b.orderIndex);
+  const agendaItems = agendaOrFallback(meeting);
   const resolutions = meeting.resolutions || [];
+  const attendanceSheet = buildAttendanceSheet(meeting);
   const agendaLines: string[] = [];
   const resolutionLines: string[] = [];
 
@@ -329,6 +462,7 @@ function buildTemplateContext(meeting: MeetingInput, branding?: DocumentBranding
       RESOLUTION_VOTES_FOR: resolution.votesFor || 0,
       RESOLUTION_VOTES_AGAINST: resolution.votesAgainst || 0,
       RESOLUTION_VOTES_ABSTAIN: resolution.votesAbstain || 0,
+      RESOLUTION_TANTIEMES: formatShares(resolution) ?? '',
       RESOLUTION_RESULT: formatResolutionResult(resolution.result)
     };
   });
@@ -341,7 +475,12 @@ function buildTemplateContext(meeting: MeetingInput, branding?: DocumentBranding
   }
 
   return {
-    ...buildIssuerContext(branding),
+    ...buildCommonDocumentContext(branding, {
+      reference: `AG-${meeting.id.slice(0, 8).toUpperCase()}`,
+      emittedAt: new Date()
+    }),
+    COPROPRIETE_NOM: branding?.syndicate?.name ?? meeting.syndicate?.name ?? '',
+    COPROPRIETE_ADRESSE: branding?.syndicate?.address ?? meeting.syndicate?.address ?? '',
     SYNDICATE_NAME: meeting.syndicate?.name || t('Non renseignée'),
     SYNDICATE_ADDRESS: meeting.syndicate?.address || t('Non renseignée'),
     MEETING_TYPE: formatMeetingType(meeting.type),
@@ -350,6 +489,15 @@ function buildTemplateContext(meeting: MeetingInput, branding?: DocumentBranding
     MEETING_END_TIME: formatTime(meeting.endTime),
     MEETING_LOCATION: meeting.location || t('Non renseigné'),
     MEETING_QUORUM: formatQuorum(meeting.quorum),
+    ATTENDANCE: attendanceSheet.rows.map(row => ({
+      ATTENDANCE_LOT: row.lot,
+      ATTENDANCE_SHARES: row.shares,
+      ATTENDANCE_PERSON: row.person,
+      ATTENDANCE_STATUS: row.status,
+      ATTENDANCE_MODE: row.mode
+    })),
+    ATTENDANCE_SUMMARY: attendanceSheet.summary,
+    ATTENDANCE_LIST: attendanceLines(attendanceSheet).join('\n'),
     AGENDA_ITEMS: agendaItemsContext,
     AGENDA_ITEMS_WITH_DISCUSSIONS: agendaLines.join('\n'),
     RESOLUTIONS: resolutionsContext,
@@ -367,45 +515,23 @@ async function resolveSyndicMinutesTemplatePath(
   const tenantId = tenantIdOverride || meeting.syndicate?.tenantId;
   if (!tenantId) return null;
 
-  const projectRoot = getProjectRoot();
-  const templatePath = path.join(
-    projectRoot,
-    'assets',
-    'modeles_documents',
-    'tenants',
-    tenantId,
-    'compte-rendu-TEMPLATE.docx'
-  );
-
-  try {
-    await fs.access(templatePath);
-    return templatePath;
-  } catch {
-    return null;
+  // Modele importe par l'agence : volume d'abord, puis ancien emplacement.
+  const relative = path.join('tenants', tenantId, 'compte-rendu-TEMPLATE.docx');
+  for (const base of [getTemplatesWriteDir(), getShippedTemplatesDir()]) {
+    const candidate = path.join(base, relative);
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      // essayer le suivant
+    }
   }
+  return null;
 }
 
-async function buildDocxFromTemplate(templatePath: string, context: Record<string, unknown>): Promise<Buffer> {
-  const templateBuffer = await fs.readFile(templatePath);
-  const zip = new PizZip(templateBuffer);
-
-  const doc = new Docxtemplater(zip, {
-    paragraphLoop: true,
-    linebreaks: true,
-    delimiters: {
-      start: '{{',
-      end: '}}'
-    },
-    nullGetter: (part: any) => {
-      const varName = part.value || part.module || (typeof part === 'string' ? part : 'VARIABLE');
-      return `{{${varName}}}`;
-    }
-  });
-
-  doc.setData(context);
-  doc.render();
-  const rendered = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
-  return Buffer.from(rendered);
+/** Rend un modèle DOCX (octets) avec le contexte du compte rendu ; une donnée vide reste vide. */
+function renderMinutesTemplate(templateBuffer: Buffer, context: Record<string, unknown>): Buffer {
+  return renderDocxBuffer(templateBuffer, context, { sanitize: false });
 }
 
 function buildDocumentXml(content: string): string {
@@ -490,34 +616,82 @@ function buildDocxBuffer(content: string): Buffer {
   return zip.generate({ type: 'nodebuffer' }) as Buffer;
 }
 
+function plainText(xml: string): string {
+  return xml
+    .replace(/<\/w:p>/g, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+/**
+ * Un modèle d'agence ancien ne porte pas les balises de présence : la feuille
+ * est alors ajoutée en fin de corps (avant la mise en page finale), pour
+ * qu'aucun chemin de génération ne la perde.
+ */
+function ensureAttendanceSheet(docx: Buffer, sheet: AttendanceSheet): Buffer {
+  const zip = new PizZip(docx);
+  const file = zip.file('word/document.xml');
+  if (!file) return docx;
+  const xml = file.asText();
+  if (plainText(xml).includes(sheet.summary)) return docx;
+
+  const [title, ...rest] = attendanceLines(sheet);
+  const paragraphs = [
+    `<w:p><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="80"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${escapeXml(title)}</w:t></w:r></w:p>`,
+    ...rest.map(line =>
+      line.trim().length === 0 ? '<w:p/>' : `<w:p><w:r><w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r></w:p>`
+    )
+  ].join('');
+  const sectIndex = xml.lastIndexOf('<w:sectPr');
+  const bodyEnd = xml.lastIndexOf('</w:body>');
+  const at = sectIndex >= 0 ? sectIndex : bodyEnd;
+  if (at < 0) return docx;
+  zip.file('word/document.xml', xml.slice(0, at) + paragraphs + xml.slice(at));
+  return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' }) as Buffer;
+}
+
+/** Modèle personnalisé de l'agence, sinon modèle standard avec en-tête et logos. */
+async function renderMinutesFromTemplates(
+  meeting: MeetingInput,
+  tenantIdOverride: string | undefined,
+  branding: DocumentBranding | null | undefined
+): Promise<Buffer> {
+  const context = buildTemplateContext(meeting, branding);
+  const templatePath = await resolveSyndicMinutesTemplatePath(meeting, tenantIdOverride);
+  if (templatePath) {
+    try {
+      const rendered = renderMinutesTemplate(await fs.readFile(templatePath), context);
+      logger.info('Syndic minutes generated from tenant DOCX template', { meetingId: meeting.id });
+      return ensureAttendanceSheet(rendered, buildAttendanceSheet(meeting));
+    } catch (error) {
+      logger.error('Syndic minutes tenant template failed, trying the standard template', {
+        error,
+        meetingId: meeting.id
+      });
+    }
+  }
+  const standard = await loadStandardTemplate('compte_rendu_assemblee_generale');
+  logger.info('Syndic minutes generated from the standard DOCX template', { meetingId: meeting.id });
+  return renderMinutesTemplate(standard, context);
+}
+
 export async function buildMeetingMinutesDocx(
   meeting: MeetingInput,
   tenantIdOverride?: string,
   branding?: DocumentBranding | null
 ): Promise<Buffer> {
-  const templatePath = await resolveSyndicMinutesTemplatePath(meeting, tenantIdOverride);
-
-  if (templatePath) {
-    try {
-      const context = buildTemplateContext(meeting, branding);
-      logger.info('Syndic minutes generated from DOCX template', {
-        meetingId: meeting.id,
-        templatePath
-      });
-      return await buildDocxFromTemplate(templatePath, context);
-    } catch (error) {
-      logger.error('Syndic minutes template rendering failed, fallback to internal text generator', {
-        error,
-        meetingId: meeting.id,
-        templatePath
-      });
-    }
-  } else {
-    logger.warn('Syndic minutes template not found, fallback to internal text generator', {
+  try {
+    return await renderMinutesFromTemplates(meeting, tenantIdOverride, branding);
+  } catch (error) {
+    logger.error('Syndic minutes template rendering failed, fallback to internal text generator', {
+      error,
       meetingId: meeting.id,
       tenantId: tenantIdOverride || meeting.syndicate?.tenantId || null
     });
+    return buildDocxBuffer(fallbackMinutes(meeting, branding));
   }
-
-  return buildDocxBuffer(fallbackMinutes(meeting, branding));
 }

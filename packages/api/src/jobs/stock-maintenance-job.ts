@@ -3,6 +3,7 @@ import * as cron from 'node-cron';
 import { env } from '../config/env';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { runWithLanguage, isLanguage, DEFAULT_LANGUAGE } from '../i18n';
 import type { Language } from '../i18n';
@@ -367,7 +368,7 @@ export function startStockMaintenanceJob(options: { mailEnabled: boolean } = { m
     '0 3 * * *',
     async () => {
       try {
-        await purgeStockClientRequests();
+        await withJobLock('stock-idempotency-purge-daily', 60 * 60 * 1000, () => purgeStockClientRequests());
       } catch (error) {
         logger.error('Error in stock idempotency purge', {
           error: error instanceof Error ? error.message : String(error)
@@ -385,7 +386,8 @@ export function startStockMaintenanceJob(options: { mailEnabled: boolean } = { m
         }
         mailRunning = true;
         try {
-          await runStockAlertMail();
+          // Période de 10 min : TTL de 9 min, le verrou expire avant le passage suivant.
+          await withJobLock('stock-alert-mail', 9 * 60 * 1000, () => runStockAlertMail());
         } catch (error) {
           logger.error('Error in stock alert mail job', {
             error: error instanceof Error ? error.message : String(error)

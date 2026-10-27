@@ -1,22 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Button,
-  DatePicker,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Spin,
-  Table,
-  Tag,
-  Typography
-} from 'antd';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Button, DatePicker, Input, InputNumber, Modal, Select, Space, Spin, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-import { MoneyValue } from '../primitives';
+import { MoneyValue, Table } from '../primitives';
 import {
   getLotAdvance,
   listOpenLotCharges,
@@ -31,6 +18,7 @@ import {
   LotPaymentResult,
   SyndicateLot
 } from '../../types/syndic-types';
+import { formatChargePeriod } from '../../utils/charge-period';
 import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
@@ -54,6 +42,12 @@ const allocationSourceLabel: Record<LotPaymentAllocationView['source'], string> 
   ADVANCE: t('Avance')
 };
 
+/** Clé d'idempotence d'un enregistrement : le serveur déduplique les rejeux. */
+function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
 /** Débounce en ms avant de rejouer l'aperçu : évite un appel API à chaque frappe. */
 const PREVIEW_DEBOUNCE_MS = 400;
 
@@ -72,8 +66,9 @@ export interface LotPaymentModalProps {
 }
 
 function formatPeriodRange(call: LotOpenChargeCall): string {
-  if (!call.periodStart || !call.periodEnd) return call.period;
-  return `${call.period} (${dayjs(call.periodStart).format('DD/MM/YYYY')} – ${dayjs(call.periodEnd).format('DD/MM/YYYY')})`;
+  const period = formatChargePeriod(call);
+  if (!call.periodStart || !call.periodEnd) return period;
+  return `${period} (${dayjs(call.periodStart).format('DD/MM/YYYY')} – ${dayjs(call.periodEnd).format('DD/MM/YYYY')})`;
 }
 
 /** Statut d'appel traduit, avec la même couleur que la liste des appels. */
@@ -116,6 +111,16 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Verrou synchrone anti double-clic (confirmLoading ne passe qu'au rendu suivant) et
+  // clé d'idempotence : la même à chaque soumission (retry compris), renouvelée à la
+  // réouverture ou après un succès.
+  const submittingRef = useRef(false);
+  const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
+  useEffect(() => {
+    if (!open) return;
+    idempotencyKeyRef.current = newIdempotencyKey();
+    submittingRef.current = false;
+  }, [open]);
 
   // Synthèse affichée après l'enregistrement, avant fermeture (lot S3 : les
   // documents émis, avec numéro et lien de téléchargement).
@@ -227,11 +232,17 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
   ];
 
   const allocationColumns: ColumnsType<LotPaymentAllocationView> = [
-    { title: t('Période'), dataIndex: 'period', key: 'period' },
+    {
+      title: t('Période'),
+      dataIndex: 'period',
+      key: 'period',
+      render: (value: string) => formatChargePeriod({ period: value })
+    },
     {
       title: t('Montant affecté'),
       key: 'amount',
       align: 'end',
+      exportValue: (row: LotPaymentAllocationView) => Number(row.amount),
       render: (_: unknown, row) => <MoneyValue value={row.amount} currency={displayCurrency(preview?.currency)} />
     },
     {
@@ -257,6 +268,8 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
       setSubmitError(t('Renseignez le lot, le montant, la date et le mode de paiement.'));
       return;
     }
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -265,8 +278,10 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
         paidAt: paidAt.toISOString(),
         method,
         reference: reference || undefined,
-        chargeCallIds: selectedCallIds.length > 0 ? selectedCallIds : undefined
+        chargeCallIds: selectedCallIds.length > 0 ? selectedCallIds : undefined,
+        idempotencyKey: idempotencyKeyRef.current
       });
+      idempotencyKeyRef.current = newIdempotencyKey();
       // Lot S3 : la synthèse (documents émis) reste affichée jusqu'à ce que
       // le gestionnaire ferme lui-même ; `onRecorded` (rafraîchissement de la
       // liste des appels côté parent) n'est appelé qu'à ce moment-là.
@@ -274,6 +289,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
     } catch (err: any) {
       setSubmitError(err.response?.data?.error || t('Enregistrement du paiement impossible'));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -312,6 +328,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
           {submitError ? <Alert type="error" message={submitError} showIcon /> : null}
 
           <Table<LotPaymentAllocationView>
+            exportFilename={t('Paiement enregistré')}
             rowKey={(row, index) => `${row.chargeCallId}-${index}`}
             size="small"
             dataSource={recordedResult.allocations}
@@ -328,6 +345,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
             <Text strong>{t('Documents émis')}</Text>
             {recordedResult.documents && recordedResult.documents.length > 0 ? (
               <Table<IssuedReceiptRef>
+                exportFilename={t('Documents émis')}
                 rowKey="id"
                 size="small"
                 style={{ marginTop: 4 }}
@@ -346,6 +364,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
                   },
                   {
                     title: t('Actions'),
+                    exportable: false,
                     render: (_: unknown, doc: IssuedReceiptRef) => (
                       <Button
                         size="small"
@@ -468,6 +487,8 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
         </Paragraph>
 
         <Table<LotOpenChargeCall>
+          // Tableau de sélection des appels à couvrir : rien à exporter.
+          exportable={false}
           rowKey="id"
           size="small"
           loading={callsLoading}
@@ -481,7 +502,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
             // Antd écrit en dur « Select all » / « Select row N » : libellés accessibles fournis ici.
             getTitleCheckboxProps: () => ({ 'aria-label': t('Sélectionner tous les appels') }),
             getCheckboxProps: call => ({
-              'aria-label': t("Sélectionner l'appel {{period}}", { period: call.period })
+              'aria-label': t("Sélectionner l'appel {{period}}", { period: formatChargePeriod(call) })
             })
           }}
         />
@@ -497,6 +518,8 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
           ) : preview ? (
             <>
               <Table<LotPaymentAllocationView>
+                // Aperçu avant enregistrement : pas d'export.
+                exportable={false}
                 rowKey={(row, index) => `${row.chargeCallId}-${index}`}
                 size="small"
                 dataSource={preview.allocations}

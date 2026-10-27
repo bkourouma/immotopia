@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { App, Input, Select, Row, Col, Slider, Button } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, SearchOutlined, HomeOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { listProperties, deleteProperty, updateStatus } from '../../services/property-service';
@@ -10,6 +11,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { getAllCommunes, GeographicLocation } from '../../services/geographic-service';
 import { PropertyNewsletterCampaignModal } from '../../components/newsletter/PropertyNewsletterCampaignModal';
 import { fileUrl } from '../../config/api';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { useListParams } from '../../hooks/useListParams';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
@@ -21,9 +23,11 @@ import {
   DataCard,
   FilterSheet,
   MoneyValue,
+  statusLabel,
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 /**
@@ -50,7 +54,7 @@ import { activeLocale } from '../../i18n/format';
  * et le retour depuis une fiche retrouve la page et les filtres.
  */
 
-const PROPERTY_TYPE_LABELS: Record<string, string> = {
+const PROPERTY_TYPE_LABELS: Record<string, string> = localizedRecord(() => ({
   APPARTEMENT: 'Appartement',
   MAISON_VILLA: t('Maison / Villa'),
   STUDIO: 'Studio',
@@ -63,7 +67,7 @@ const PROPERTY_TYPE_LABELS: Record<string, string> = {
   IMMEUBLE: 'Immeuble',
   PARKING_BOX: t('Parking / Box'),
   LOT_PROGRAMME_NEUF: t('Lot programme neuf')
-};
+}));
 
 /**
  * Types retirés du filtre, sans être retirés de `PROPERTY_TYPE_LABELS`.
@@ -74,11 +78,11 @@ const PROPERTY_TYPE_LABELS: Record<string, string> = {
  */
 const TYPES_RETIRES: string[] = ['CHAMBRE_COLOCATION', 'LOT_PROGRAMME_NEUF'];
 
-const TRANSACTION_MODE_LABELS: Record<string, string> = {
+const TRANSACTION_MODE_LABELS: Record<string, string> = localizedRecord(() => ({
   SALE: 'Vente',
   RENTAL: 'Location',
   SHORT_TERM: t('Location courte durée')
-};
+}));
 
 /**
  * Les deux seuls statuts proposés au filtre.
@@ -88,10 +92,34 @@ const TRANSACTION_MODE_LABELS: Record<string, string> = {
  * qu'on pose à un portefeuille locatif. Ils restent lisibles sur la fiche de
  * chaque bien, par `<StatusTag>` ; ils ne sont simplement plus offerts ici.
  */
-const STATUS_LABELS: Record<string, string> = {
+const STATUS_LABELS: Record<string, string> = localizedRecord(() => ({
   AVAILABLE: 'Disponible',
   RENTED: t('Loué')
-};
+}));
+
+/**
+ * Colonnes de l'export : la liste est en cartes, sans colonnes à elle. Texte pur,
+ * prix et surface en nombres pour qu'Excel puisse les trier et les sommer.
+ */
+function colonnesExport(): ColumnsType<Property> {
+  return [
+    { title: t('Référence'), key: 'reference', exportValue: p => p.internalReference },
+    { title: t('Titre'), key: 'titre', exportValue: p => p.title },
+    { title: t('Type'), key: 'type', exportValue: p => PROPERTY_TYPE_LABELS[p.propertyType] || p.propertyType },
+    {
+      title: t('Transaction'),
+      key: 'transaction',
+      exportValue: p => p.transactionModes?.map(mode => TRANSACTION_MODE_LABELS[mode] || mode).join(', ') || ''
+    },
+    { title: t('Statut'), key: 'statut', exportValue: p => statusLabel(p.status) ?? p.status },
+    { title: t('Adresse'), key: 'adresse', exportValue: p => p.address },
+    { title: t('Zone'), key: 'zone', exportValue: p => p.locationZone },
+    { title: t('Prix'), key: 'prix', exportValue: p => (p.propertyType === 'IMMEUBLE' ? null : p.price) },
+    { title: t('Surface (m²)'), key: 'surface', exportValue: p => p.surfaceArea },
+    { title: t('Pièces'), key: 'pieces', exportValue: p => p.rooms },
+    { title: t('Chambres'), key: 'chambres', exportValue: p => p.bedrooms }
+  ];
+}
 
 type Filters = {
   q: string;
@@ -655,6 +683,20 @@ export const Properties: React.FC = () => {
 
       <DataView<Property>
         layout="grid"
+        // Export de TOUS les biens, avec les mêmes filtres que la liste affichée.
+        export={{
+          filename: t("Biens de l'agence"),
+          columns: colonnesExport(),
+          fetchAll: () =>
+            collectAllPages<Property>(async (page, limit) => {
+              const reponse = await listProperties(effectiveTenantId as string, {
+                ...list.queryParams,
+                page,
+                limit
+              });
+              return { items: reponse.properties ?? [], total: reponse.pagination?.total ?? 0 };
+            })
+        }}
         items={properties}
         total={total}
         page={list.page}
@@ -666,6 +708,7 @@ export const Properties: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={queryError ? t('Impossible de charger le portefeuille.') : null}
+        errorCause={queryError}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}

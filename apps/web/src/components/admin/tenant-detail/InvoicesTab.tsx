@@ -11,7 +11,6 @@ import {
   Modal,
   Select,
   Space,
-  Table,
   Typography,
   Upload
 } from 'antd';
@@ -35,7 +34,8 @@ import {
   type PlatformInvoicePayment
 } from '../../../services/platform-billing-service';
 import { setSubscriptionManualReadOnly } from '../../../services/subscription-v2-service';
-import { formatMoney, StatusTag, useConfirmAction } from '../../primitives';
+import { formatMoney, StatusTag, Table, useConfirmAction } from '../../primitives';
+import { collectAllPages } from '../../../utils/table-export/collect';
 import {
   INVOICE_NATURE_LABEL,
   INVOICE_STATUS_LABEL,
@@ -45,6 +45,7 @@ import {
   formatPeriod
 } from '../../subscription/platform-invoice-labels';
 import { t } from '../../../i18n/t';
+import { localizedList, localizedRecord } from '../../../i18n/localized';
 
 const { Text } = Typography;
 
@@ -55,21 +56,21 @@ const { Text } = Typography;
  * les tentatives de paiement en ligne.
  */
 
-const MANUAL_METHODS: Array<{ value: ManualPaymentMethod; label: string }> = [
+const MANUAL_METHODS: Array<{ value: ManualPaymentMethod; label: string }> = localizedList(() => [
   { value: 'BANK_TRANSFER', label: PAYMENT_METHOD_LABEL.BANK_TRANSFER },
   { value: 'MOBILE_MONEY', label: PAYMENT_METHOD_LABEL.MOBILE_MONEY },
   { value: 'CHECK', label: PAYMENT_METHOD_LABEL.CHECK },
   { value: 'CASH', label: PAYMENT_METHOD_LABEL.CASH }
-];
+]);
 
-const CHECKOUT_STATUS_LABEL: Record<string, string> = {
+const CHECKOUT_STATUS_LABEL: Record<string, string> = localizedRecord(() => ({
   PENDING: t('En attente'),
   SUCCESS: t('Réussi'),
   FAILED: t('Échoué'),
   CANCELED: t('Annulé'),
   EXPIRED: t('Expiré'),
   REVIEW: t('À vérifier')
-};
+}));
 
 interface GenerateValues {
   nature: 'PERIOD' | 'OVERAGE';
@@ -194,9 +195,7 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         proof
       });
       message.success(
-        result.subscription === 'RENEWED'
-          ? t('Paiement enregistré : abonnement réactivé')
-          : t('Paiement enregistré')
+        result.subscription === 'RENEWED' ? t('Paiement enregistré : abonnement réactivé') : t('Paiement enregistré')
       );
       setPaying(null);
       load(pagination.page);
@@ -267,7 +266,12 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         </Button>
       )
     },
-    { title: t('Nature'), dataIndex: 'nature', key: 'nature', render: (v: string | null) => (v ? INVOICE_NATURE_LABEL[v] ?? v : '—') },
+    {
+      title: t('Nature'),
+      dataIndex: 'nature',
+      key: 'nature',
+      render: (v: string | null) => (v ? (INVOICE_NATURE_LABEL[v] ?? v) : '—')
+    },
     { title: t('Période'), key: 'period', render: (_, r) => formatPeriod(r.periodStart, r.periodEnd) },
     { title: t('Échéance'), dataIndex: 'dueDate', key: 'due', render: formatDay },
     {
@@ -350,13 +354,25 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       </div>
 
       <Table<PlatformInvoice>
+        exportFilename={t('Factures')}
+        exportFetchAll={() =>
+          collectAllPages<PlatformInvoice>(async (page, limit) => {
+            const result = await listAdminPlatformInvoices(tenantId, { page, limit });
+            return { items: result.invoices, total: result.pagination.total };
+          })
+        }
         rowKey="id"
         columns={columns}
         dataSource={invoices}
         loading={loading}
         scroll={{ x: 'max-content' }}
         aria-label={t('Factures')}
-        pagination={{ current: pagination.page, pageSize: pagination.limit, total: pagination.total, onChange: page => load(page) }}
+        pagination={{
+          current: pagination.page,
+          pageSize: pagination.limit,
+          total: pagination.total,
+          onChange: page => load(page)
+        }}
         locale={{ emptyText: t('Aucune facture pour cette agence') }}
       />
 
@@ -402,8 +418,16 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           <Form.Item label={t('Mode de règlement')} name="method" rules={[{ required: true }]}>
             <Select options={MANUAL_METHODS} />
           </Form.Item>
-          <Form.Item label={t('Date de paiement')} name="paidAt" rules={[{ required: true, message: t('La date est requise') }]}>
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" disabledDate={d => d.isAfter(dayjs().endOf('day'))} />
+          <Form.Item
+            label={t('Date de paiement')}
+            name="paidAt"
+            rules={[{ required: true, message: t('La date est requise') }]}
+          >
+            <DatePicker
+              style={{ width: '100%' }}
+              format="DD/MM/YYYY"
+              disabledDate={d => d.isAfter(dayjs().endOf('day'))}
+            />
           </Form.Item>
           <Form.Item label={t('Référence')} name="reference">
             <Input maxLength={120} placeholder={t('N° de virement, de transaction, de chèque…')} />
@@ -464,7 +488,12 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             "Ce dépassement impayé reste « en retard » sans effet automatique sur l'abonnement. Cette action bloque manuellement les écritures de l'agence, jusqu'à ce que vous la leviez vous-même depuis l'onglet Abonnement."
           )}
         </Text>
-        <Form form={lockForm} layout="vertical" onFinish={handleManualReadOnly} style={{ marginBlockStart: 'var(--space-3)' }}>
+        <Form
+          form={lockForm}
+          layout="vertical"
+          onFinish={handleManualReadOnly}
+          style={{ marginBlockStart: 'var(--space-3)' }}
+        >
           <Form.Item label={t('Motif')} name="reason" rules={[{ required: true, message: t('Le motif est requis') }]}>
             <Input.TextArea rows={3} maxLength={500} />
           </Form.Item>
@@ -499,6 +528,7 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
             {detail.invoice.lines && detail.invoice.lines.length > 0 && (
               <Table
+                exportFilename={t('Lignes')}
                 rowKey="id"
                 size="small"
                 pagination={false}
@@ -524,18 +554,24 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   <Descriptions.Item label={t('Mode de règlement')}>
                     {PAYMENT_METHOD_LABEL[detail.payment.method] ?? detail.payment.method}
                   </Descriptions.Item>
-                  <Descriptions.Item label={t('Date de paiement')}>{formatDay(detail.payment.paidAt)}</Descriptions.Item>
+                  <Descriptions.Item label={t('Date de paiement')}>
+                    {formatDay(detail.payment.paidAt)}
+                  </Descriptions.Item>
                   <Descriptions.Item label={t('Référence')}>{detail.payment.reference ?? '—'}</Descriptions.Item>
-                  {detail.payment.note && <Descriptions.Item label={t('Note')}>{detail.payment.note}</Descriptions.Item>}
+                  {detail.payment.note && (
+                    <Descriptions.Item label={t('Note')}>{detail.payment.note}</Descriptions.Item>
+                  )}
                   {detail.payment.hasProof && (
                     <Descriptions.Item label={t('Justificatif')}>
                       <Button
                         size="small"
                         type="link"
                         onClick={() =>
-                          downloadPaymentProof(tenantId, detail.invoice.id, detail.payment?.proofName ?? 'justificatif').catch(
-                            (err: any) => message.error(errorMessage(err, t('Téléchargement impossible')))
-                          )
+                          downloadPaymentProof(
+                            tenantId,
+                            detail.invoice.id,
+                            detail.payment?.proofName ?? 'justificatif'
+                          ).catch((err: any) => message.error(errorMessage(err, t('Téléchargement impossible'))))
                         }
                       >
                         {detail.payment.proofName ?? t('Télécharger')}
@@ -552,6 +588,7 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
             {detail.checkouts.length > 0 && (
               <Table<PlatformCheckout>
+                exportFilename={t('Paiements en ligne')}
                 rowKey="id"
                 size="small"
                 pagination={false}
@@ -564,6 +601,10 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                     title: t('Statut'),
                     dataIndex: 'status',
                     key: 'status',
+                    exportValue: r =>
+                      [CHECKOUT_STATUS_LABEL[r.status] ?? r.status, r.reviewReason ?? r.failureMessage]
+                        .filter(Boolean)
+                        .join(' — '),
                     render: (v: string, r) => (
                       <Space direction="vertical" size={0}>
                         <Text>{CHECKOUT_STATUS_LABEL[v] ?? v}</Text>

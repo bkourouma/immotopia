@@ -2,6 +2,7 @@ import * as cron from 'node-cron';
 
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { runWithTenantContext } from '../utils/tenant-context';
 import {
   alertExpiringDocuments,
@@ -137,7 +138,7 @@ export function startDocumentExpiryAlertJob(): void {
     '0 7 * * *',
     async () => {
       try {
-        await runDocumentExpiryAlerts();
+        await withJobLock('document-expiry-alert-daily', 60 * 60 * 1000, () => runDocumentExpiryAlerts());
       } catch (error) {
         logger.error('Error in document expiry alert job', {
           error: error instanceof Error ? error.message : String(error)

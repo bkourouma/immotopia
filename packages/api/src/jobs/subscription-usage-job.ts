@@ -34,6 +34,7 @@ import * as cron from 'node-cron';
 import { CapacityKey, Prisma, SubscriptionStatus } from '@prisma/client';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { t } from '../i18n';
 import { frontendUrl } from '../config/env';
@@ -66,7 +67,8 @@ const CAPACITY_LABELS: Record<CapacityKeyCode, string> = {
   CHANTIERS: 'chantiers',
   BIENS_DETENUS: 'biens détenus',
   ACTIFS: 'actifs',
-  PHOTOS_INVENTAIRE: 'photos analysées'
+  PHOTOS_INVENTAIRE: 'photos analysées',
+  SIGNATURES_MENSUELLES: 'signatures'
 };
 
 /**
@@ -75,7 +77,7 @@ const CAPACITY_LABELS: Record<CapacityKeyCode, string> = {
  * aucun plafond) ; PHOTOS_INVENTAIRE (lot 041, W11-R2) seulement avec l'option
  * Inventaire WhatsApp souscrite.
  */
-const OPTIONAL_CAPACITIES: readonly CapacityKeyCode[] = ['ACTIFS', 'PHOTOS_INVENTAIRE'];
+const OPTIONAL_CAPACITIES: readonly CapacityKeyCode[] = ['ACTIFS', 'PHOTOS_INVENTAIRE', 'SIGNATURES_MENSUELLES'];
 const isOptionalCapacityWithoutCap = (key: CapacityKeyCode, limit: number) =>
   OPTIONAL_CAPACITIES.includes(key) && limit <= 0;
 
@@ -440,6 +442,13 @@ function alertText(
       vars
     );
   }
+  if (key === 'SIGNATURES_MENSUELLES') {
+    // Consommation sans dépassement facturé : le texte de politique ne s'applique pas, l'extension oui.
+    return t(
+      'Vous avez utilisé {{used}} {{label}} sur {{limit}} ce mois-ci. Ajoutez l’extension « Signatures électroniques — bloc de 50 » depuis {{url}}.',
+      vars
+    );
+  }
   return t(
     'Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.',
     vars
@@ -581,7 +590,13 @@ let hourlyJob: cron.ScheduledTask | null = null;
 
 async function runLogged(alertsOnly: boolean) {
   try {
-    const report = await runSubscriptionUsageCycle({ alertsOnly });
+    // Passage complet (02:30) : jusqu'à 60 min ; alertes horaires (:15) : 30 min, sous la période.
+    const report = await withJobLock(
+      alertsOnly ? 'subscription-usage-hourly' : 'subscription-usage-daily',
+      alertsOnly ? 30 * 60 * 1000 : 60 * 60 * 1000,
+      () => runSubscriptionUsageCycle({ alertsOnly })
+    );
+    if (!report) return; // une autre instance a pris le passage
     logger.info('Subscription usage job completed', { alertsOnly, ...report, errors: report.errors.length });
     for (const e of report.errors) logger.error('Subscription usage job: tenant failed', e);
   } catch (error) {

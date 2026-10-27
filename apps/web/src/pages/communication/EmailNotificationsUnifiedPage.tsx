@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom';
 import {
   App,
   Card,
-  Table,
   Switch,
   Button,
   Form,
@@ -20,6 +19,7 @@ import {
 } from 'antd';
 import { EditOutlined, MailOutlined, CodeOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
 import { HtmlCodeEditor } from '../../components/HtmlCodeEditor';
+import { Table } from '../../components/primitives';
 import {
   emailNotificationConfigService,
   type EmailNotificationConfigItem,
@@ -202,6 +202,7 @@ export function EmailNotificationsUnifiedPage() {
     {
       title: t('Événement déclencheur'),
       key: 'label',
+      exportValue: (r: EmailNotificationConfigItem) => (r.description ? `${r.label} — ${r.description}` : r.label),
       render: (_: unknown, r: EmailNotificationConfigItem) => (
         <div>
           <Text strong>{r.label}</Text>
@@ -224,6 +225,7 @@ export function EmailNotificationsUnifiedPage() {
       dataIndex: 'enabled',
       key: 'enabled',
       width: 90,
+      exportValue: (record: EmailNotificationConfigItem) => record.enabled,
       render: (enabled: boolean, record: EmailNotificationConfigItem) => (
         <Switch checked={enabled} onChange={checked => handleToggleEnabled(record.key, checked)} />
       )
@@ -459,6 +461,7 @@ export function EmailNotificationsUnifiedPage() {
       <Card title={t('Liste des notifications email')}>
         <Spin spinning={loading}>
           <Table
+            exportFilename={t('Liste des notifications email')}
             scroll={{ x: 'max-content' }}
             rowKey="key"
             columns={columns}

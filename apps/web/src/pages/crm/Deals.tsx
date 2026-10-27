@@ -36,8 +36,9 @@ import { exportToCSV, exportToExcel } from '../../utils/export-utils';
 import { App } from 'antd';
 import { t } from '../../i18n/t';
 import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
+import { formatFcfa } from '../../utils/crm-utils';
 
-import { activeLocale } from '../../i18n/format';
+import { activeLocale, formatNumber } from '../../i18n/format';
 export const Deals: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -499,24 +500,12 @@ export const Deals: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('Type')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('Contact')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('Stade')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('Budget')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('Localisation')}
-                  </th>
-                  <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('Actions')}
-                  </th>
+                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500">{t('Type')}</th>
+                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500">{t('Contact')}</th>
+                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500">{t('Stade')}</th>
+                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500">{t('Budget')}</th>
+                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500">{t('Localisation')}</th>
+                  <th className="px-6 py-3 text-end text-xs font-medium text-gray-500">{t('Actions')}</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -539,12 +528,12 @@ export const Deals: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-500">
                         {deal.budgetMin && deal.budgetMax
-                          ? t('{{value}} - {{value2}} FCFA', {
-                              value: deal.budgetMin.toLocaleString(),
-                              value2: deal.budgetMax.toLocaleString()
+                          ? t('{{value}} - {{value2}}', {
+                              value: formatNumber(deal.budgetMin),
+                              value2: formatFcfa(deal.budgetMax)
                             })
                           : deal.budgetMax
-                            ? t("Jusqu'à {{value}} FCFA", { value: deal.budgetMax.toLocaleString() })
+                            ? t("Jusqu'à {{value}}", { value: formatFcfa(deal.budgetMax) })
                             : '-'}
                       </div>
                     </td>

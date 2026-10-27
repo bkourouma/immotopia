@@ -1,36 +1,41 @@
 ﻿import React from 'react';
-import { Button, Space, Table, Tag, Tooltip, Typography } from 'antd';
-import { BankOutlined, FilePdfOutlined, WalletOutlined } from '@ant-design/icons';
+import { Button, Space, Tag, Tooltip, Typography } from 'antd';
+import { BankOutlined, FilePdfOutlined, FileWordOutlined, LinkOutlined, WalletOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
+import { Table } from '../primitives';
 import { ChargeCall, ChargeCallStatus } from '../../types/syndic-types';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
+import { dateFormat } from '../../i18n/format';
 
+import { localizedRecord } from '../../i18n/localized';
 const { Text } = Typography;
 
 /** Libellé et couleur d'un statut d'appel de charges, partagés avec la modale de paiement par lot. */
-export const chargeCallStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
-  PENDING: { color: 'gold', label: t('En attente') },
-  PARTIAL: { color: 'blue', label: t('Partiel') },
-  PAID: { color: 'green', label: t('Payé') },
-  OVERDUE: { color: 'red', label: t('En retard') }
-};
+export const chargeCallStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = localizedRecord(
+  () => ({
+    PENDING: { color: 'gold', label: t('En attente') },
+    PARTIAL: { color: 'blue', label: t('Partiel') },
+    PAID: { color: 'green', label: t('Payé') },
+    OVERDUE: { color: 'red', label: t('En retard') }
+  })
+);
 
 function buildLotLabel(item: ChargeCall): string {
   return formatLotLabel(item.lot, item.lotId);
 }
 
 function recurrenceLabel(item: ChargeCall): string {
-  if (!item.isRecurring) return 'Non';
+  if (!item.isRecurring) return t('Non');
 
   const frequencyMap: Record<'MONTHLY' | 'QUARTERLY' | 'ANNUAL', string> = {
-    MONTHLY: 'Mensuelle',
-    QUARTERLY: 'Trimestrielle',
-    ANNUAL: 'Annuelle'
+    MONTHLY: t('Mensuelle'),
+    QUARTERLY: t('Trimestrielle'),
+    ANNUAL: t('Annuelle')
   };
-  const frequency = item.recurrenceFrequency ? frequencyMap[item.recurrenceFrequency] : 'Recurrente';
+  const frequency = item.recurrenceFrequency ? frequencyMap[item.recurrenceFrequency] : t('Récurrente');
   const occurrences = item.recurrenceCount ? ` (${item.recurrenceCount} occ.)` : '';
   return t('Oui - {{frequency}}{{occurrences}}', { frequency: frequency, occurrences: occurrences });
 }
@@ -46,6 +51,21 @@ function computeOutstandingAmount(item: ChargeCall): number {
   return Math.max(0, Number(item.amount) - computePaidAmount(item));
 }
 
+/** Devises que le paiement en ligne accepte (le serveur refuse les autres : `isSupportedCurrency`). */
+const ONLINE_PAYMENT_CURRENCIES = ['XOF', 'FCFA'];
+
+/**
+ * Un lien « Payer cet appel » n'a de sens que pour un appel à reste dû, non
+ * soldé, en francs CFA (spec 042, R8 : le serveur refuse le reste en 400).
+ */
+export function canOfferChargePaymentLink(item: ChargeCall): boolean {
+  return (
+    item.status !== 'PAID' &&
+    Math.round(computeOutstandingAmount(item)) > 0 &&
+    ONLINE_PAYMENT_CURRENCIES.includes((item.currency ?? '').trim().toUpperCase())
+  );
+}
+
 interface ChargeCallTableProps {
   items: ChargeCall[];
   loading?: boolean;
@@ -57,6 +77,7 @@ interface ChargeCallTableProps {
   onRecordPayment?: (charge: ChargeCall) => void;
   /** Callback pour l'action « Avis d'appel (PDF) » (lot S4). Optionnel, même règle que ci-dessus. */
   onDownloadNotice?: (charge: ChargeCall) => void;
+  onDownloadNoticeWord?: (charge: ChargeCall) => void;
   /**
    * Fonds de la copropriété : quand la liste est fournie, une colonne « Fonds »
    * affiche le fonds qui reçoit en entier ce qui est payé sur l'appel.
@@ -64,6 +85,18 @@ interface ChargeCallTableProps {
   funds?: Array<{ id: string; name: string }>;
   /** Callback pour l'action « Affecter à un fonds ». Optionnel, même règle que les autres actions. */
   onAssignFund?: (charge: ChargeCall) => void;
+  /**
+   * Callback pour l'action « Lien de paiement » (spec 042, lien « Payer cet
+   * appel »). Optionnel, même règle que les autres actions : l'appelant ne le
+   * fournit que si la copropriété a un paiement en ligne utilisable. Le bouton
+   * n'apparaît ensuite que pour un appel à reste dû (`canOfferChargePaymentLink`).
+   */
+  onPaymentLink?: (charge: ChargeCall) => void;
+  /**
+   * Appels visés par une déclaration de paiement mobile money en attente
+   * (spec 047) : la colonne « Statut » y ajoute la pastille « Paiement déclaré ».
+   */
+  declaredPendingCallIds?: ReadonlySet<string>;
 }
 
 export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
@@ -71,8 +104,11 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
   loading = false,
   onRecordPayment,
   onDownloadNotice,
+  onDownloadNoticeWord,
   funds,
-  onAssignFund
+  onAssignFund,
+  onPaymentLink,
+  declaredPendingCallIds
 }) => {
   const fundNames = new Map((funds || []).map(fund => [fund.id, fund.name]));
   const columns: ColumnsType<ChargeCall> = [
@@ -98,6 +134,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
       title: t('Montant'),
       key: 'amount',
       align: 'end',
+      exportValue: (item: ChargeCall) => Number(item.amount),
       render: (_: unknown, item: ChargeCall) => <MoneyValue value={item.amount} />
     },
     {
@@ -109,7 +146,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
         const isLate = dayjs(value).isBefore(dayjs(), 'day') && item.status !== 'PAID';
         return (
           <Text type={isLate ? 'danger' : undefined} style={{ whiteSpace: 'nowrap' }}>
-            {dayjs(value).format('DD/MM/YYYY')}
+            {dayjs(value).format(dateFormat('short'))}
           </Text>
         );
       }
@@ -123,21 +160,35 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
       title: t('Payé'),
       key: 'paid',
       align: 'end',
+      exportValue: (item: ChargeCall) => computePaidAmount(item),
       render: (_: unknown, item: ChargeCall) => <MoneyValue value={computePaidAmount(item)} />
     },
     {
       title: t('Reste'),
       key: 'outstanding',
       align: 'end',
+      exportValue: (item: ChargeCall) => computeOutstandingAmount(item),
       render: (_: unknown, item: ChargeCall) => <MoneyValue value={computeOutstandingAmount(item)} />
     },
     {
       title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
-      render: (value: ChargeCallStatus) => {
+      render: (value: ChargeCallStatus, item: ChargeCall) => {
         const config = chargeCallStatusConfig[value];
-        return <Tag color={config.color}>{config.label}</Tag>;
+        const declaredPending = value !== 'PAID' && declaredPendingCallIds?.has(item.id);
+        return (
+          <>
+            <Tag color={config.color}>{config.label}</Tag>
+            {declaredPending ? (
+              <Tooltip
+                title={t('Un copropriétaire a déclaré un paiement mobile money, en attente de votre validation.')}
+              >
+                <Tag color="processing">{t('Paiement déclaré')}</Tag>
+              </Tooltip>
+            ) : null}
+          </>
+        );
       }
     },
     ...(funds
@@ -150,7 +201,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
           }
         ]
       : []),
-    ...(onRecordPayment || onDownloadNotice || onAssignFund
+    ...(onRecordPayment || onDownloadNotice || onDownloadNoticeWord || onAssignFund || onPaymentLink
       ? [
           {
             title: t('Actions'),
@@ -179,6 +230,11 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
                     />
                   </Tooltip>
                 ) : null}
+                {onDownloadNoticeWord ? (
+                  <Button size="small" icon={<FileWordOutlined />} onClick={() => onDownloadNoticeWord(item)}>
+                    {t("Avis d'appel (Word)")}
+                  </Button>
+                ) : null}
                 {onAssignFund ? (
                   <Tooltip title={t('Affecter à un fonds')}>
                     <Button
@@ -189,6 +245,11 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
                     />
                   </Tooltip>
                 ) : null}
+                {onPaymentLink && canOfferChargePaymentLink(item) ? (
+                  <Button size="small" icon={<LinkOutlined />} onClick={() => onPaymentLink(item)}>
+                    {t('Lien de paiement')}
+                  </Button>
+                ) : null}
               </Space>
             )
           }
@@ -198,12 +259,13 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
 
   return (
     <Table
+      exportFilename={t('Appels de charges')}
       rowKey="id"
       columns={columns}
       dataSource={items}
       loading={loading}
       pagination={{ pageSize: 10, hideOnSinglePage: true }}
-      locale={{ emptyText: 'Aucun appel de charges' }}
+      locale={{ emptyText: t('Aucun appel de charges') }}
       scroll={{ x: 1200 }}
     />
   );

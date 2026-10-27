@@ -164,15 +164,17 @@ describe('SyndicFinances — actions du fonds en vue carte (< 992 px)', () => {
     ).toBeInTheDocument();
   });
 
-  it('permet de renommer le fonds depuis la carte (action secondaire, derriere « Autres actions »)', async () => {
+  it('permet de renommer le fonds depuis la carte (bouton visible, a cote de « Ajuster le solde »)', async () => {
     const user = userEvent.setup({ delay: null });
     renameSyndicateFund.mockResolvedValue({ id: 'fund-1', name: 'Fonds travaux renomme' });
 
     mount();
 
     const carte = await screen.findByRole('article', { name: 'Fonds de travaux' }, { timeout: 8000 });
-    await user.click(within(carte).getByRole('button', { name: 'Autres actions' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Renommer' }));
+    // Le bouton est a cote de la carte (meme ligne), pas dans le menu « Autres actions ».
+    const ligne = carte.parentElement?.parentElement as HTMLElement;
+    expect(within(carte).queryByRole('menuitem', { name: 'Renommer' })).not.toBeInTheDocument();
+    await user.click(within(ligne).getByRole('button', { name: 'Renommer' }));
 
     expect(await screen.findByText('Renommer le fonds')).toBeInTheDocument();
   });

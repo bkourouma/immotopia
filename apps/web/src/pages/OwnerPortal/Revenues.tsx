@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Select, Space, Typography, Spin, Alert, Empty, Row, Col, DatePicker, Table, Tag, Button } from 'antd';
+import { Card, Select, Space, Typography, Spin, Alert, Empty, Row, Col, DatePicker, Tag, Button } from 'antd';
 import { DollarOutlined, CalendarOutlined, SyncOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { RevenueChart } from '../../components/OwnerPortal/RevenueChart';
+import { Table } from '../../components/primitives';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
@@ -244,6 +245,7 @@ export default function Revenues() {
             {/* Revenue by Property Table (T087) */}
             <div style={{ marginTop: 24 }}>
               <Table
+                exportFilename={t('Revenus par propriété')}
                 scroll={{ x: 'max-content' }}
                 columns={propertyTableColumns}
                 dataSource={revenuesByProperty}

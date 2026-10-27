@@ -34,6 +34,12 @@ jest.mock('../../src/middleware/rbac-middleware', () => ({
   }
 }));
 
+// Enregistrer les réglages fige d'abord les honoraires des encaissements
+// existants (BUG-029) : ce test ne s'intéresse qu'aux réglages eux-mêmes.
+jest.mock('../../src/lib/rental-fees/materialize', () => ({
+  freezeManagementFees: jest.fn(async () => undefined)
+}));
+
 const mockStored = new Map<string, any>();
 
 jest.mock('../../src/utils/database', () => ({

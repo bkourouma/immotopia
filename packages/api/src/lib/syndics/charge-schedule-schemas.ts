@@ -11,6 +11,8 @@ import { isoDaySchema } from './charge-allocation-schemas';
 
 const frequencySchema = z.enum(['MONTHLY', 'QUARTERLY', 'SEMIANNUAL', 'ANNUAL']);
 const amountSourceSchema = z.enum(['BUDGET', 'FIXED']);
+/** Mode de répartition (menu lot 2) ; absent = SHARES (tantièmes, comportement historique). */
+const allocationMethodSchema = z.enum(['SHARES', 'BY_LOT_TYPE', 'EQUAL']);
 
 const scheduleFields = {
   label: z.string().trim().min(1, 'Le libelle est obligatoire').max(120),
@@ -19,6 +21,9 @@ const scheduleFields = {
   issueDay: z.number().int().min(1).max(28),
   dueOffsetDays: z.number().int().min(0).max(365),
   amountSource: amountSourceSchema,
+  allocationMethod: allocationMethodSchema.optional(),
+  /** Absent = vrai (service). Sans effet hors SHARES + montant fixe. */
+  includeAnnexLots: z.boolean().optional(),
   budgetId: z.string().uuid().nullable().optional(),
   fixedAmount: z.number().positive().max(9_999_999_999.99).nullable().optional(),
   currency: z
@@ -32,6 +37,8 @@ const scheduleFields = {
 
 export interface ScheduleConsistencyInput {
   amountSource: 'BUDGET' | 'FIXED';
+  /** Absent = SHARES. Ignoré pour la source BUDGET (toujours SHARES). */
+  allocationMethod?: 'SHARES' | 'BY_LOT_TYPE' | 'EQUAL' | null;
   budgetId?: string | null;
   fixedAmount?: number | null;
   startDate: Date;
@@ -41,8 +48,16 @@ export interface ScheduleConsistencyInput {
 /** Messages des règles croisées, partagés par le schéma et le service. */
 export function scheduleConsistencyIssues(value: ScheduleConsistencyInput): Array<{ field: string; message: string }> {
   const issues: Array<{ field: string; message: string }> = [];
-  if (value.amountSource === 'FIXED' && !value.fixedAmount) {
+  const byLotType = value.amountSource === 'FIXED' && value.allocationMethod === 'BY_LOT_TYPE';
+  if (value.amountSource === 'FIXED' && !byLotType && !value.fixedAmount) {
     issues.push({ field: 'fixedAmount', message: 'Le montant fixe est obligatoire pour un montant fixe' });
+  }
+  if (byLotType && value.fixedAmount) {
+    issues.push({
+      field: 'fixedAmount',
+      message:
+        'La répartition par type de lot ne prend pas de montant fixe : le total vient du barème de la copropriété'
+    });
   }
   if (value.amountSource === 'FIXED' && value.budgetId) {
     issues.push({ field: 'budgetId', message: "Un montant fixe ne s'appuie sur aucun budget" });
@@ -72,6 +87,8 @@ export const updateChargeScheduleSchema = z
     issueDay: scheduleFields.issueDay.optional(),
     dueOffsetDays: scheduleFields.dueOffsetDays.optional(),
     amountSource: amountSourceSchema.optional(),
+    allocationMethod: allocationMethodSchema.optional(),
+    includeAnnexLots: z.boolean().optional(),
     budgetId: scheduleFields.budgetId,
     fixedAmount: scheduleFields.fixedAmount,
     currency: scheduleFields.currency,

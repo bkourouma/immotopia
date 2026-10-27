@@ -3,11 +3,14 @@
  * DANS la transaction metier (`recordAuditEvent(tx, ...)`), jamais par la file
  * asynchrone (`logAuditEvent`).
  *
- * Trois familles se testent au comportement (faux Prisma) ; les trois autres
- * (suppression de bail, resiliation, revocation du portail copropriétaire)
- * dependent de chaines de services trop lourdes a simuler : on verifie dans le
- * source que l'evenement est ecrit par `recordAuditEvent` avec le client de la
- * transaction, et que la file asynchrone ne le porte plus.
+ * Trois familles se testent au comportement (faux Prisma) ; les autres
+ * (suppression de bail, resiliation, revocation du portail copropriétaire,
+ * suppression d'un enregistrement d'AG, manuelle ou en cascade) dependent de
+ * chaines de services trop lourdes a simuler ici : on verifie dans le source
+ * que l'evenement est ecrit par `recordAuditEvent` avec le client de la
+ * transaction, et que la file asynchrone ne le porte plus. La suppression
+ * manuelle d'un enregistrement a aussi son test de comportement
+ * (`api/syndics.meeting-recording.test.ts`).
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -36,6 +39,9 @@ const mockPrisma: Record<string, any> = {
   serviceProvider: {
     findFirst: jest.fn(async () => ({ id: 'v1', name: 'Plomberie Koné' }))
   },
+  ownerAccount: { count: jest.fn(async () => 0) },
+  saleOffer: { count: jest.fn(async () => 0) },
+  thirdPartyAccount: { count: jest.fn(async () => 0) },
   maintenanceTicket: { count: jest.fn(async () => 0) },
   maintenanceContract: { count: jest.fn(async () => 0) },
   $transaction: jest.fn(async (arg: unknown) => {
@@ -118,7 +124,9 @@ describe('actions critiques : verification structurelle du source', () => {
   const CASES: Array<[string, string, string]> = [
     ['services/rental-lease-service.ts', 'RENTAL_LEASE_DELETED', 'recordAuditEvent(tx,'],
     ['lib/lease-lifecycle/service.ts', 'RENTAL_LEASE_TERMINATED', 'auditTx(tx,'],
-    ['services/syndic-coowner-portal-service.ts', 'SYNDIC_COOWNER_PORTAL_REVOKED', 'recordAuditEvent(tx,']
+    ['services/syndic-coowner-portal-service.ts', 'SYNDIC_COOWNER_PORTAL_REVOKED', 'recordAuditEvent(tx,'],
+    ['lib/syndics/meeting-recording.ts', 'SYNDIC_MEETING_RECORDING_DELETED', 'recordAuditEvent(tx,'],
+    ['lib/syndics/meeting-recording-cleanup.ts', 'SYNDIC_MEETING_RECORDING_DELETED', 'recordAuditEvent(tx,']
   ];
 
   it.each(CASES)('%s : %s ecrit dans la transaction, jamais en file asynchrone', (file, actionKey, writer) => {

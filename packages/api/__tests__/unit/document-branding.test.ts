@@ -49,6 +49,7 @@ import {
 import { sanitizeForPdf } from '../../src/lib/documents/pdf-text';
 import { buildOwnerAccountStatementPdf } from '../../src/lib/syndics/owner-account-statement';
 import { buildIssuerContext, buildMeetingMinutesDocx } from '../../src/lib/syndics/minutes-generator';
+import { buildCommonDocumentContext } from '../../src/lib/documents/docx-branding';
 
 const UPLOADS = path.join(os.tmpdir(), `immotopia-branding-unit-${process.pid}`);
 const TENANT = 'tenant-a';
@@ -419,7 +420,7 @@ describe("compte rendu d'AG : identité de l'émetteur", () => {
   };
 
   it('expose les variables texte de l’émetteur, vides quand elles manquent', () => {
-    expect(buildIssuerContext(brandingAgency)).toEqual({
+    expect(buildCommonDocumentContext(brandingAgency)).toMatchObject({
       EMETTEUR_NOM: 'Cabinet Syndic',
       EMETTEUR_RAISON_SOCIALE: 'Cabinet Syndic',
       EMETTEUR_ADRESSE: 'Rue 12',
@@ -439,9 +440,11 @@ describe("compte rendu d'AG : identité de l'émetteur", () => {
       `tenant-sans-modele-${process.pid}`,
       brandingAgency
     );
-    const xml = new PizZip(buffer).file('word/document.xml')!.asText();
-    expect(xml.indexOf('Cabinet Syndic')).toBeGreaterThan(-1);
-    expect(xml.indexOf('Cabinet Syndic')).toBeLessThan(xml.indexOf('COMPTE RENDU'));
-    expect(xml).toContain('NCC NCC-AG');
+    // Sans modèle d'agence, le modèle standard porte l'identité dans son en-tête et son pied de page.
+    const zip = new PizZip(buffer);
+    const header = zip.file('word/header1.xml')!.asText();
+    const footer = zip.file('word/footer1.xml')?.asText() ?? '';
+    expect(header).toContain('Cabinet Syndic');
+    expect(header + footer).toContain('NCC NCC-AG');
   });
 });

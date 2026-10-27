@@ -195,6 +195,7 @@ function buildFakePrisma() {
     property: { count: jest.fn(async () => 0) },
     // Capacite PHOTOS_INVENTAIRE (lot 041) : `countInventoryPhotosThisMonth`, 0 sans ligne du mois.
     stockWhatsappUsage: { findFirst: jest.fn(async () => null) },
+    signatureUsage: { findFirst: jest.fn(async () => null) },
     lotActivation: {
       findMany: jest.fn(async ({ where }: Row) =>
         store.lotActivations.filter(a => a.tenantId === where.tenantId && a.deactivatedAt === null)

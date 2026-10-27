@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { StateBlock } from './StateBlock';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 /**
  * `<AccessDenied>` — refus d'accès avec une issue (REFONTE_UI_UX.md §5.6).
@@ -30,7 +31,7 @@ export interface AccessDeniedProps {
   requiredRole?: string | null;
 }
 
-const MESSAGES: Record<AccessDeniedReason, { title: string; body: string; ref: string }> = {
+const MESSAGES = localizedRecord<Record<AccessDeniedReason, { title: string; body: string; ref: string }>>(() => ({
   role: {
     title: t('Accès non autorisé'),
     body: t('Votre rôle ne donne pas accès à cette section.'),
@@ -48,7 +49,7 @@ const MESSAGES: Record<AccessDeniedReason, { title: string; body: string; ref: s
     ),
     ref: 'AUTH-403-NO-TENANT'
   }
-};
+}));
 
 export const AccessDenied: React.FC<AccessDeniedProps> = ({ reason, currentRole, requiredRole }) => {
   const navigate = useNavigate();

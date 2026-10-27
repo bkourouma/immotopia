@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { App, Alert, Button, Card, InputNumber, Table, Typography } from 'antd';
+import { App, Alert, Button, Card, InputNumber, Typography } from 'antd';
 import { SaveOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -8,6 +8,7 @@ import {
   updateAgentCommissionShare
 } from '../../services/agency-finance-settings-service';
 import { ModuleNotIncluded } from '../primitives/ModuleNotIncluded';
+import { Table } from '../primitives';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { t } from '../../i18n/t';
 
@@ -89,6 +90,8 @@ export const AgentCommissionCard: React.FC<AgentCommissionCardProps> = ({ tenant
       title: t('Part (%)'),
       key: 'sharePercent',
       width: 160,
+      // La part enregistrée, pas le brouillon en cours de saisie.
+      exportValue: agent => agent.sharePercent,
       render: (_, agent) => (
         <InputNumber
           id={`agent-share-${agent.userId}`}
@@ -133,7 +136,14 @@ export const AgentCommissionCard: React.FC<AgentCommissionCardProps> = ({ tenant
         {t('Part des honoraires HT reversée au collaborateur sur les baux dont il est le gestionnaire.')}
       </Text>
       {error ? <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} /> : null}
-      <Table rowKey="userId" columns={columns} dataSource={agents} loading={loading} pagination={false} />
+      <Table
+        exportFilename={t('Commission des collaborateurs')}
+        rowKey="userId"
+        columns={columns}
+        dataSource={agents}
+        loading={loading}
+        pagination={false}
+      />
     </Card>
   );
 };

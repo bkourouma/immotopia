@@ -4,6 +4,7 @@
  * copropriétés, de lots ni le taux de recouvrement.
  */
 const syndicateCount = jest.fn().mockResolvedValue(3);
+const declarationCount = jest.fn().mockResolvedValue(0);
 const getUserPermissions = jest.fn();
 
 function modelProxy(name: string): any {
@@ -12,6 +13,7 @@ function modelProxy(name: string): any {
     {
       get: (_t, method: string) => {
         if (name === 'syndicate' && method === 'count') return syndicateCount;
+        if (name === 'syndicPaymentDeclaration' && method === 'count') return declarationCount;
         return async () => {
           if (method === 'count') return 0;
           if (method === 'aggregate') return { _sum: {}, _count: { _all: 0 } };
@@ -46,6 +48,20 @@ describe('getTenantDashboard — section Syndic', () => {
     const dashboard = await getTenantDashboard('tenant-A', 'agent-1');
     expect(dashboard.syndic).toBeNull();
     expect(syndicateCount).not.toHaveBeenCalled();
+  });
+
+  it('compte les paiements mobile money déclarés en attente de l’agence (spec 047, R32)', async () => {
+    getUserPermissions.mockResolvedValue(['SYNDIC_VIEW']);
+    declarationCount.mockResolvedValueOnce(4);
+    const dashboard = await getTenantDashboard('tenant-A', 'gestionnaire-1');
+    expect(dashboard.syndic?.pendingDeclarations).toBe(4);
+    expect(declarationCount).toHaveBeenCalledWith({ where: { tenantId: 'tenant-A', status: 'PENDING' } });
+  });
+
+  it('sans SYNDIC_VIEW, les déclarations ne sont pas lues', async () => {
+    getUserPermissions.mockResolvedValue(['PROPERTIES_VIEW']);
+    await getTenantDashboard('tenant-A', 'agent-1');
+    expect(declarationCount).not.toHaveBeenCalled();
   });
 
   it('SYNDIC_VIEW ouvre la section, sans exiger PROPERTIES_VIEW', async () => {

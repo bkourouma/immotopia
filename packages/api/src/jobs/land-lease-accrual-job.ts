@@ -1,6 +1,7 @@
 import * as cron from 'node-cron';
 
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { runMonthlyLandLeaseAccruals } from '../lib/finance/land-leases';
 
 /**
@@ -77,7 +78,10 @@ export function startLandLeaseAccrualJob(): void {
       const periode = moisEchu(new Date());
       try {
         logger.info('Starting scheduled land lease accrual job', periode);
-        const compteRendu = await runMonthlyLandLeaseAccruals(periode);
+        const compteRendu = await withJobLock('land-lease-accrual-monthly', 60 * 60 * 1000, () =>
+          runMonthlyLandLeaseAccruals(periode)
+        );
+        if (!compteRendu) return; // une autre instance a pris le passage
         logger.info('Land lease accrual job completed', {
           ...periode,
           constatees: compteRendu.constatees,

@@ -32,8 +32,15 @@ const BUILD_DIR = join(WEB_ROOT, 'build');
  * et l'entrée de menu « Assistant IA » (super-admin) suffisait à la dépasser.
  * Relevé de 226 304 à 227 328 o (+1 Kio) le 2026-10-02, sur décision explicite de l'utilisateur :
  * les entrées de menu et routes du pack patrimoine (vagues B et C) dépassaient le plafond de 135 o.
+ * Relevé de 227 328 à 228 352 o (+1 Kio) le 2026-10-16, sur décision explicite de l'utilisateur :
+ * l'entrée de menu et la route de l'écran « Signatures » (spec 044, lot S5) dépassaient le plafond de 6 o.
+ * Relevé de 228 352 à 229 376 o (+1 Kio) le 2026-10-18, sur décision explicite de l'utilisateur :
+ * l'onglet « Prélèvements » (spec 042 P4) et la pastille de l'onglet « Paiements » (spec 047)
+ * dépassaient le plafond de 42 o.
+ * Relevé de 229 376 à 230 400 o (+1 Kio) le 2026-10-19, sur décision du superviseur :
+ * la cloche de notifications, l'icône Messagerie et leurs entrées de menu (lot 3) ne laissaient que 269 o de marge.
  */
-const DEFAULT_BUDGET = 227_328;
+const DEFAULT_BUDGET = 230_400;
 
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');

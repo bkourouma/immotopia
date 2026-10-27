@@ -7,6 +7,7 @@ import {
   updateOwnerPortalSettings
 } from '../../services/tenant-owner-portal-settings-service';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 const { Text } = Typography;
 
@@ -19,13 +20,13 @@ interface SectionRow {
   label: string;
 }
 
-const SECTIONS: SectionRow[] = [
+const SECTIONS: SectionRow[] = localizedList(() => [
   { key: 'patrimonyShowValuation', label: t('Valorisation et plus-value') },
   { key: 'patrimonyShowYield', label: t('Rendements') },
   { key: 'patrimonyShowLoans', label: t('Emprunts') },
   { key: 'patrimonyShowWorks', label: t('Travaux') },
   { key: 'patrimonyShowDocuments', label: t('Documents') }
-];
+]);
 
 /**
  * Carte « Portail propriétaire » — lot P5, masquage de la vue patrimoine.

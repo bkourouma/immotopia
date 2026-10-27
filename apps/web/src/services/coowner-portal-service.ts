@@ -2,8 +2,9 @@ import apiClient from '../utils/api-client';
 import { filenameFromDisposition } from '../utils/save-blob';
 
 /**
- * Portail copropriétaire — `/api/portal/copropriete/*`, en lecture seule
- * hormis le vote sur une résolution.
+ * Portail copropriétaire — `/api/portal/copropriete/*`. Lecture seule, sauf
+ * le vote sur une résolution et le paiement en ligne des appels de charges
+ * (spec 042, en fin de fichier).
  *
  * Aucun identifiant de copropriétaire ni d'agence n'est jamais transmis : la
  * session suffit au serveur pour résoudre le copropriétaire et ses lots.
@@ -68,6 +69,9 @@ export interface CoOwnerLotAccount {
 export interface CoOwnerChargeCall {
   id: string;
   period: string;
+  /** Bornes ISO de la période (absentes d'un serveur plus ancien) : servent à localiser le libellé. */
+  periodStart?: string | null;
+  periodEnd?: string | null;
   amount: number;
   paid: number;
   outstanding: number;
@@ -76,6 +80,19 @@ export interface CoOwnerChargeCall {
   status: CoOwnerChargeCallStatus;
   lot: { id: string; lotNumber: string; lotType: CoOwnerLotType } | null;
   syndicate: string | null;
+  /** Copropriété de l'appel : sert à retrouver sa disponibilité (plus de rapprochement par nom). */
+  syndicateId: string;
+  /** Copropriété payable en ligne ET reste dû > 0 ET devise XOF/FCFA (contrat 042 §2.2). */
+  onlinePayable: boolean;
+  /** Paiement en cours (< 15 min) ou à vérifier couvrant cet appel. */
+  onlineCheckout: 'NONE' | 'IN_PROGRESS' | 'REVIEW';
+  /** Code du paiement ouvert de CE compte (pour le reprendre) ; null sinon. */
+  onlineCheckoutCode: string | null;
+  /**
+   * Spec 047 : déclaration de paiement en attente visant cet appel. Absent d'un
+   * serveur antérieur à la spec 047 : lire avec `?? null`.
+   */
+  pendingDeclaration?: { declarationId: string; createdAt: string } | null;
 }
 
 export interface CoOwnerDocument {
@@ -112,6 +129,8 @@ export interface CoOwnerMeeting {
   location: string | null;
   status: CoOwnerMeetingStatus;
   syndicate: string | null;
+  /** AG planifiée ou en cours, à J-1 ou plus tard : le lien en direct peut être délivré (spec 043). */
+  liveAvailable?: boolean;
   agenda: Array<{ id: string; orderIndex: number; title: string }>;
   /**
    * Lots pour lesquels le copropriétaire peut voter (assemblée planifiée ou en
@@ -157,6 +176,14 @@ export async function castMyVote(resolutionId: string, lotId: string, vote: CoOw
 
 export async function listMyMeetings(): Promise<CoOwnerMeeting[]> {
   const response = await apiClient.get<ApiResponse<CoOwnerMeeting[]>>(`${BASE}/assemblees`);
+  return response.data.data;
+}
+
+/** Délivre le lien personnel de l'AG en direct pour le copropriétaire connecté. */
+export async function requestLiveAccess(meetingId: string): Promise<{ url: string }> {
+  const response = await apiClient.post<ApiResponse<{ url: string }>>(
+    `${BASE}/assemblees/${encodeURIComponent(meetingId)}/acces`
+  );
   return response.data.data;
 }
 
@@ -327,11 +354,17 @@ export interface CoOwnerLotMonthlyTracking {
   lot: { id: string; lotNumber: string };
   syndicate: { id: string; name: string | null };
   /**
-   * `AAAA-MM-JJ` : date d'acquisition du lot par le copropriétaire connecté.
-   * Les mois qui la précèdent arrivent à zéro (`NONE`) — ceux de l'ancien
-   * propriétaire, jamais montrés ici (audit S5).
+   * `AAAA-MM-JJ` : date d'acquisition du lot par le copropriétaire connecté
+   * (information seulement ; ne borne pas la visibilité).
    */
   ownedSince: string;
+  /**
+   * `AAAA-MM-JJ` : borne de visibilité, présente seulement après un vrai
+   * changement de propriétaire du lot. Les mois qui la précèdent arrivent à
+   * zéro (`NONE`) — ceux de l'ancien propriétaire, jamais montrés ici.
+   * `null` : aucune borne, tout l'historique du lot est visible.
+   */
+  visibleSince: string | null;
   advance: number;
   totals: { due: number; paid: number; outstanding: number };
   months: CoOwnerMonthCell[];
@@ -421,4 +454,264 @@ export async function downloadCoOwnerChargeCallNotice(
     blob: response.data,
     filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
   };
+}
+
+// ---------------------------------------------------------------------------
+// Spec 042 — paiement mobile money des appels de charges. Types recopiés de
+// `specs/042-syndic-paiement-mobile/contracts.md` (§0.1 et §2) : le web
+// n'importe rien de l'API.
+// ---------------------------------------------------------------------------
+
+export type GatewayMode = 'SIMULATOR' | 'LIVE';
+export type FeesPaidBy = 'CLIENT' | 'AGENCY';
+/** Vue du copropriétaire : REVIEW -> PENDING (+ `underReview`), EXPIRED -> CANCELED. */
+export type PublicCheckoutStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELED';
+export type OnlinePaymentChannel = 'WAVE' | 'ORANGE_MONEY' | 'MTN_MONEY' | 'MOOV_MONEY' | 'CARD';
+
+export interface DocumentRef {
+  id: string;
+  kind: 'RECEIPT' | 'QUITTANCE';
+  number: string;
+}
+
+export interface CoOwnerSyndicateOnlinePayment {
+  syndicateId: string;
+  name: string;
+  /** Configuration utilisable ET droit SYNDIC ET agence non suspendue. */
+  available: boolean;
+  unavailableReason: null | 'NOT_CONFIGURED' | 'SUBSCRIPTION';
+  mode: GatewayMode | null;
+  simulated: boolean;
+  feesPaidBy: FeesPaidBy;
+}
+
+export interface CoOwnerOnlinePaymentAvailability {
+  syndicates: CoOwnerSyndicateOnlinePayment[];
+  paymentMethods: OnlinePaymentChannel[];
+}
+
+export interface StartCoOwnerOnlinePaymentBody {
+  lotId: string;
+  chargeCallIds: string[];
+}
+
+export interface CoOwnerOnlineCheckout {
+  codePaiement: string;
+  status: PublicCheckoutStatus;
+  /** Vrai quand le paiement attend une décision du syndic (« en cours de vérification »). */
+  underReview: boolean;
+  amount: number;
+  currency: string;
+  chargeCallIds: string[];
+  periods: string[];
+  checkoutUrl: string | null;
+  /** POST seulement : le paiement en cours a été repris. */
+  reused: boolean;
+  lot: { id: string; lotNumber: string };
+  syndicate: { id: string; name: string };
+  mode: GatewayMode;
+  feesPaidBy: FeesPaidBy;
+  documents: DocumentRef[];
+  createdAt: string;
+  completedAt: string | null;
+}
+
+/** `data` du 409 `ONLINE_PAYMENT_IN_PROGRESS`, renseignée seulement si l'existant est reprenable. */
+export interface CoOwnerOnlinePaymentConflict {
+  codePaiement: string;
+  checkoutUrl: string;
+}
+
+/** Nombre maximal d'appels par paiement (contrat §2.3). */
+export const MAX_CHARGE_CALLS_PER_PAYMENT = 24;
+
+/** `GET /paiements-en-ligne/disponibilite` */
+export async function getOnlinePaymentAvailability(): Promise<CoOwnerOnlinePaymentAvailability> {
+  const response = await apiClient.get<ApiResponse<CoOwnerOnlinePaymentAvailability>>(
+    `${BASE}/paiements-en-ligne/disponibilite`
+  );
+  return response.data.data;
+}
+
+/** `POST /paiements-en-ligne` — 201 (nouveau) ou 200 (`reused: true`). */
+export async function startOnlinePayment(body: StartCoOwnerOnlinePaymentBody): Promise<CoOwnerOnlineCheckout> {
+  const response = await apiClient.post<ApiResponse<CoOwnerOnlineCheckout>>(`${BASE}/paiements-en-ligne`, body);
+  return response.data.data;
+}
+
+/** `GET /paiements-en-ligne/:codePaiement` — seul le statut serveur fait foi. */
+export async function getOnlinePayment(codePaiement: string): Promise<CoOwnerOnlineCheckout> {
+  const response = await apiClient.get<ApiResponse<CoOwnerOnlineCheckout>>(
+    `${BASE}/paiements-en-ligne/${encodeURIComponent(codePaiement)}`
+  );
+  return response.data.data;
+}
+
+// ---------------------------------------------------------------------------
+// Spec 047 — paiement mobile money déclaré (types recopiés de contracts.md §0.1)
+// ---------------------------------------------------------------------------
+
+export type MobileMoneyOperator = 'ORANGE' | 'MTN' | 'MOOV' | 'WAVE' | 'OTHER';
+export type DeclarationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELED';
+export type DeclarationRejectReason = 'NOT_FOUND' | 'AMOUNT_MISMATCH' | 'REFERENCE_USED' | 'WRONG_NUMBER' | 'OTHER';
+/** Champs que l'IA peut proposer et dont on suit la retouche. */
+export type PrefillField = 'operator' | 'amount' | 'paidAt' | 'transactionReference' | 'payerPhone';
+
+export interface ReceivingNumber {
+  id: string;
+  operator: MobileMoneyOperator;
+  /** E.164 */
+  phoneNumber: string;
+  holderName: string;
+  label: string | null;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+/** Proposition de l'IA : chaque champ peut manquer, il n'est jamais deviné. */
+export interface PaymentProofReading {
+  /** À renvoyer dans la déclaration (`proofReadId`). */
+  readId: string;
+  quality: 'OK' | 'UNREADABLE' | 'NOT_A_PAYMENT';
+  operator: MobileMoneyOperator | null;
+  amount: number | null;
+  paidAt: string | null;
+  transactionReference: string | null;
+  payerPhone: string | null;
+  recipientPhone: string | null;
+  recipientName: string | null;
+  /** 0 à 1 */
+  confidence: Partial<Record<PrefillField, number>>;
+  warnings: Array<'RECIPIENT_NOT_A_RECEIVING_NUMBER' | 'REFERENCE_ALREADY_DECLARED'>;
+  matchedReceivingNumberId: string | null;
+}
+
+export interface DeclarationLineInput {
+  lotId: string;
+  /** Part de ce lot, entier > 0. */
+  amount: number;
+  /** 0 à 24 appels ouverts du lot ; [] = plus anciens d'abord. */
+  chargeCallIds: string[];
+}
+
+export interface DeclarationInput {
+  syndicId: string;
+  receivingNumberId: string;
+  payerPhone: string;
+  /** 1 à 5 000 000, égal à la somme des lignes. */
+  amount: number;
+  /** Date-heure ISO avec décalage. */
+  paidAt: string;
+  transactionReference: string;
+  /** 1 à 10 lots distincts. */
+  lines: DeclarationLineInput[];
+  /** 500 caractères au plus. */
+  comment?: string | null;
+  /** Lecture IA dont la capture devient la preuve ; exclusif avec un fichier `proof`. */
+  proofReadId?: string | null;
+}
+
+/** Vue du copropriétaire. */
+export interface CoOwnerDeclaration {
+  id: string;
+  status: DeclarationStatus;
+  syndicate: { id: string; name: string };
+  receivingNumber: { operator: MobileMoneyOperator; phoneNumber: string; holderName: string };
+  payerPhone: string;
+  amount: number;
+  /** Si corrigé par le gestionnaire. */
+  acceptedAmount: number | null;
+  paidAt: string;
+  transactionReference: string;
+  lines: Array<{
+    lot: { id: string; lotNumber: string };
+    amount: number;
+    acceptedAmount: number | null;
+    chargeCallIds: string[];
+  }>;
+  documents: DocumentRef[];
+  rejectReason: DeclarationRejectReason | null;
+  /** Note de correction ou de rejet. */
+  reviewNote: string | null;
+  canCancel: boolean;
+  createdAt: string;
+  reviewedAt: string | null;
+}
+
+export interface CoOwnerDeclaredAvailability {
+  syndicateId: string;
+  available: boolean;
+  receivingNumbers: ReceivingNumber[];
+  payerInstructions: string | null;
+  proofRequired: boolean;
+  aiPrefillAvailable: boolean;
+  maxAmount: number;
+}
+
+export interface CoOwnerDeclarationsResult {
+  items: CoOwnerDeclaration[];
+  pagination: CoOwnerPagination;
+}
+
+export const MAX_DECLARATION_LINES = 10;
+export const MAX_DECLARATION_CHARGE_CALLS_PER_LINE = 24;
+export const DECLARATION_PROOF_MAX_BYTES = 5 * 1024 * 1024;
+export const DECLARATION_PROOF_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
+const MULTIPART = { headers: { 'Content-Type': 'multipart/form-data' } };
+
+/** `GET /paiements-declares/disponibilite?syndicId=` (contrat §2.1). */
+export async function getDeclaredAvailability(syndicId: string): Promise<CoOwnerDeclaredAvailability> {
+  const response = await apiClient.get<ApiResponse<CoOwnerDeclaredAvailability>>(
+    `${BASE}/paiements-declares/disponibilite`,
+    { params: { syndicId } }
+  );
+  return response.data.data;
+}
+
+/** `POST /paiements-declares/lecture` multipart `syndicId` + `proof` (contrat §2.3). */
+export async function readPaymentProof(syndicId: string, proof: File): Promise<PaymentProofReading> {
+  const form = new FormData();
+  form.append('syndicId', syndicId);
+  form.append('proof', proof);
+  const response = await apiClient.post<ApiResponse<PaymentProofReading>>(
+    `${BASE}/paiements-declares/lecture`,
+    form,
+    MULTIPART
+  );
+  return response.data.data;
+}
+
+/**
+ * `POST /paiements-declares` multipart `payload` + `proof?` (contrat §2.4).
+ * `proofReadId` et `proof` sont exclusifs : si un fichier est joint, l'identifiant est retiré.
+ */
+export async function createDeclaration(input: DeclarationInput, proof?: File | null): Promise<CoOwnerDeclaration> {
+  const { proofReadId, ...rest } = input;
+  const payload: Record<string, unknown> = { ...rest };
+  if (!proof && proofReadId) payload.proofReadId = proofReadId;
+  if (payload.comment === undefined) delete payload.comment;
+  const form = new FormData();
+  form.append('payload', JSON.stringify(payload));
+  if (proof) form.append('proof', proof);
+  const response = await apiClient.post<ApiResponse<CoOwnerDeclaration>>(`${BASE}/paiements-declares`, form, MULTIPART);
+  return response.data.data;
+}
+
+/** `GET /paiements-declares` (contrat §2.5). */
+export async function listMyDeclarations(
+  params: { status?: DeclarationStatus | 'ALL'; page?: number; limit?: number } = {}
+): Promise<CoOwnerDeclarationsResult> {
+  const response = await apiClient.get<ApiResponse<CoOwnerDeclarationsResult>>(`${BASE}/paiements-declares`, {
+    params
+  });
+  return response.data.data;
+}
+
+/** `POST /paiements-declares/:declarationId/annulation` sans corps (contrat §2.6). */
+export async function cancelDeclaration(declarationId: string): Promise<CoOwnerDeclaration> {
+  const response = await apiClient.post<ApiResponse<CoOwnerDeclaration>>(
+    `${BASE}/paiements-declares/${encodeURIComponent(declarationId)}/annulation`
+  );
+  return response.data.data;
 }

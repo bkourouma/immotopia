@@ -71,7 +71,7 @@ import { AppError, ErrorCode } from '../middleware/error-middleware';
  *   template, visible to every agency), but here a missing filter usually
  *   *is* a bug: a service reading a specific agency's templates must still
  *   name the field, typically as `OR: [{ tenant_id }, { tenant_id: null }]`.
- *   `DocumentTemplate` stays in the guarded map; `mentionsTenant` below
+ *   `DocumentTemplate` stays in the guarded map; `tenantClause` below
  *   already accepts that `OR` shape (every branch — including the
  *   `tenant_id: null` one — names the field), so no special case is needed
  *   beyond leaving it guarded.
@@ -234,34 +234,86 @@ function currentMode(): Mode {
 }
 
 /**
- * Whether a `where` clause constrains the tenant field, including through the
- * AND / OR / NOT combinators services use.
+ * How a `where` clause relates to the tenant field:
+ * - `missing`: it does not constrain the field;
+ * - `matches`: it constrains the field to the context tenant;
+ * - `foreign`: it names another tenant (cross-tenant read or write).
  */
-function mentionsTenant(where: unknown, field: string, depth = 0): boolean {
+type TenantClause = 'missing' | 'matches' | 'foreign';
+
+/** Bulk writes: a filter that does not positively pin the tenant counts as absent. */
+const STRICT_WHERE_OPERATIONS = new Set(['updateMany', 'deleteMany']);
+
+/**
+ * Compare the VALUE of a tenant filter with the context tenant. Recognised
+ * shapes: a plain string, `{ equals }` and `{ in: [...] }` (every element must
+ * be the context tenant). Anything else (`null`, `not`, `notIn`, relation
+ * filters) keeps the historical behaviour (the field is mentioned, not judged)
+ * unless `strict` (bulk writes): such a shape does not pin the tenant, so it
+ * counts as `missing`.
+ */
+function tenantValueState(value: unknown, tenantId: string, strict = false): TenantClause {
+  if (typeof value === 'string') {
+    return value === tenantId ? 'matches' : 'foreign';
+  }
+  if (value && typeof value === 'object') {
+    const filter = value as Record<string, unknown>;
+    if (typeof filter.equals === 'string') {
+      return filter.equals === tenantId ? 'matches' : 'foreign';
+    }
+    if (Array.isArray(filter.in)) {
+      return filter.in.every(item => item === tenantId) ? 'matches' : 'foreign';
+    }
+  }
+  return strict ? 'missing' : 'matches';
+}
+
+/**
+ * Whether a `where` clause constrains the tenant field to the context tenant,
+ * including through the AND / OR / NOT combinators services use. A clause whose
+ * value names another tenant is `foreign`, whatever else it says. In `strict`
+ * mode (bulk writes) unrecognised filter shapes are `missing` and a NOT branch
+ * never counts as a constraint.
+ */
+function tenantClause(where: unknown, field: string, tenantId: string, depth = 0, strict = false): TenantClause {
   if (!where || typeof where !== 'object' || depth > 5) {
-    return false;
+    return 'missing';
   }
 
   const clause = where as Record<string, unknown>;
+  let state: TenantClause = 'missing';
 
   if (clause[field] !== undefined) {
-    return true;
+    state = tenantValueState(clause[field], tenantId, strict);
+    if (state === 'foreign') {
+      return 'foreign';
+    }
   }
 
   for (const key of ['AND', 'OR', 'NOT'] as const) {
     const branch = clause[key];
-    if (Array.isArray(branch)) {
-      // OR only constrains the tenant if *every* branch does.
-      const check = key === 'OR' ? branch.every.bind(branch) : branch.some.bind(branch);
-      if (branch.length > 0 && check((b: unknown) => mentionsTenant(b, field, depth + 1))) {
-        return true;
-      }
-    } else if (branch && mentionsTenant(branch, field, depth + 1)) {
-      return true;
+    if (!branch) {
+      continue;
+    }
+    const branches: unknown[] = Array.isArray(branch) ? branch : [branch];
+    const states = branches.map(b => tenantClause(b, field, tenantId, depth + 1, strict));
+
+    // A foreign tenant named anywhere in AND / OR is a violation. Under NOT it
+    // only excludes rows, so it never counts as one.
+    if (key !== 'NOT' && states.includes('foreign')) {
+      return 'foreign';
+    }
+    // OR only constrains the tenant if *every* branch does.
+    const constrains =
+      !(strict && key === 'NOT') &&
+      states.length > 0 &&
+      (key === 'OR' ? states.every(s => s !== 'missing') : states.some(s => s !== 'missing'));
+    if (constrains) {
+      state = 'matches';
     }
   }
 
-  return false;
+  return state;
 }
 
 /** True when `row[field]` is present, non-null, and not the context tenant. */
@@ -354,8 +406,11 @@ export const tenantGuardExtension = {
 
         if (WHERE_GUARDED_OPERATIONS.has(operation)) {
           const where = (args as { where?: unknown })?.where;
-          if (!mentionsTenant(where, field)) {
+          const clauseState = tenantClause(where, field, tenantId, 0, STRICT_WHERE_OPERATIONS.has(operation));
+          if (clauseState === 'missing') {
             report(`requête ${model}.${operation} sans filtre ${field}`);
+          } else if (clauseState === 'foreign') {
+            report(`requête ${model}.${operation} avec un filtre ${field} d'une autre agence`);
           }
         }
 

@@ -198,6 +198,7 @@ jest.mock('../../src/utils/database', () => ({
 }));
 
 jest.mock('../../src/services/subscription-v2-service', () => ({
+  getEntitlements: jest.fn(async () => ({ packs: ['AGENCE'], capacities: {} })),
   applyDueItemTransitionsTx: jest.fn(async () => ({ ended: 0, started: 0 })),
   invalidateEntitlements: jest.fn(),
   toCatalogEntry: (row: Row) => ({
@@ -579,6 +580,16 @@ describe('Routes manquantes de la vague 2', () => {
         modules: ['MODULE_AGENCY'],
         isSellable: true,
         capacities: [{ capacityKey: 'LOTS', amount: 100 }]
+      },
+      {
+        id: 'cat-ext-lots',
+        code: 'EXT_LOTS_10',
+        kind: 'EXTENSION',
+        name: 'Bloc de 10 lots',
+        monthlyPrice: '1000',
+        modules: [],
+        isSellable: true,
+        capacities: [{ capacityKey: 'LOTS', amount: 10 }]
       }
     ];
     store.items = [
@@ -636,10 +647,10 @@ describe('Routes manquantes de la vague 2', () => {
   it("demande d'extension : tracée, auditée, e-mail aux super-admins, visible de l'agence seule", async () => {
     const request = await createExtensionRequest(
       TENANT_A,
-      { catalogCode: 'AGENCE', quantity: 1, message: 'Il nous faut 50 lots' },
+      { catalogCode: 'EXT_LOTS_10', quantity: 1, message: 'Il nous faut 50 lots' },
       'user-a'
     );
-    expect(request).toMatchObject({ status: 'OPEN', catalogName: 'Pack Agence', requestedByName: 'Awa Koné' });
+    expect(request).toMatchObject({ status: 'OPEN', catalogName: 'Bloc de 10 lots', requestedByName: 'Awa Koné' });
     await new Promise(resolve => setTimeout(resolve, 20));
     expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'root@immotopia.app' }));
     expect(logAuditEvent).toHaveBeenCalledWith(

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { App, Alert, Button, Card, Form, Modal, Select, Space, Table, Tag, Typography } from 'antd';
+import { App, Alert, Button, Card, Form, Modal, Select, Space, Tag, Typography } from 'antd';
 import { EditOutlined, UndoOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -11,12 +11,13 @@ import {
   listOwnerFeeTerms,
   updateOwnerFeeTerms
 } from '../../services/agency-finance-settings-service';
-import { ConfirmAction, formatMoney } from '../../components/primitives';
+import { ConfirmAction, Table, formatMoney } from '../../components/primitives';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { FeeTermsFields } from './FeeTermsFields';
 import { ModuleNotIncluded } from '../primitives/ModuleNotIncluded';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 const { Text } = Typography;
 
@@ -30,11 +31,11 @@ const DEFAULT_TERMS: OwnerFeeTermsInput = {
 };
 
 /** Libellés du statut fiscal, utilisés à la fois dans la modale et le tableau. */
-const TAX_STATUS_LABELS: Record<OwnerTaxStatus, string> = {
+const TAX_STATUS_LABELS: Record<OwnerTaxStatus, string> = localizedRecord(() => ({
   INDIVIDUAL: t('Personne physique'),
   COMPANY: t('Personne morale'),
   EXEMPT: t('Exonéré')
-};
+}));
 
 function taxStatusLabel(status: OwnerTaxStatus | null): string {
   return status ? TAX_STATUS_LABELS[status] : t('Non renseigné');
@@ -217,7 +218,14 @@ export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }
         )}
       </Text>
       {error ? <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} /> : null}
-      <Table rowKey="ownerClientId" columns={columns} dataSource={owners} loading={loading} pagination={false} />
+      <Table
+        exportFilename={t('Conditions par propriétaire')}
+        rowKey="ownerClientId"
+        columns={columns}
+        dataSource={owners}
+        loading={loading}
+        pagination={false}
+      />
 
       <Modal
         title={editing ? t('Conditions de {{name}}', { name: editing.ownerName }) : ''}

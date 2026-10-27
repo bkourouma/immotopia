@@ -1,9 +1,10 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import {
   App,
   Alert,
   Button,
   Card,
+  Checkbox,
   DatePicker,
   Form,
   Input,
@@ -18,10 +19,26 @@ import { PlusOutlined } from '@ant-design/icons';
 import { DocumentVault } from '../../components/syndics/DocumentVault';
 import { createSyndicDocument, listSyndicDocuments } from '../../services/syndic-service';
 import { SyndicateDocument } from '../../types/syndic-types';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
-const { Paragraph, Title } = Typography;
+const { Paragraph, Text, Title } = Typography;
+
+/** Types dont le document est destiné aux copropriétaires : la case « Visible » est cochée d'office. */
+const COOWNER_FACING_TYPES: ReadonlyArray<string> = ['REGULATION', 'GENERAL_MEETING_MINUTES'];
+
+/** Options construites au rendu : `t()` doit être appelé après le chargement de la langue. */
+function documentTypeOptions() {
+  return [
+    { label: t('Règlement de copropriété'), value: 'REGULATION' },
+    { label: t("Procès-verbal d'AG"), value: 'GENERAL_MEETING_MINUTES' },
+    { label: t('Diagnostic'), value: 'DIAGNOSTIC' },
+    { label: t('Assurance'), value: 'INSURANCE' },
+    { label: t('Budget'), value: 'BUDGET' },
+    { label: t('Autre'), value: 'OTHER' }
+  ];
+}
 
 export const SyndicDocuments: React.FC = () => {
   const { message } = App.useApp();
@@ -36,6 +53,18 @@ export const SyndicDocuments: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [form] = Form.useForm();
+  // « Visible des copropriétaires » suit le type choisi tant que l'utilisateur n'a pas touché la case.
+  const [visibleToCoOwners, setVisibleToCoOwners] = useState(false);
+  const visibilityTouched = useRef(false);
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const canEdit = permissionsReady && (permissions === null || permissions.has('SYNDIC_EDIT'));
+
+  const resetCreateForm = () => {
+    setOpenCreate(false);
+    setSelectedFile(null);
+    visibilityTouched.current = false;
+    setVisibleToCoOwners(false);
+  };
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
@@ -73,12 +102,12 @@ export const SyndicDocuments: React.FC = () => {
         title: values.title,
         type: values.type,
         file: selectedFile,
-        expiresAt: values.expiresAt ? values.expiresAt.toISOString() : undefined
+        expiresAt: values.expiresAt ? values.expiresAt.toISOString() : undefined,
+        visibleToCoOwners
       });
       message.success(t('Document ajoute'));
-      setOpenCreate(false);
       form.resetFields();
-      setSelectedFile(null);
+      resetCreateForm();
       await loadDocuments();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Ajout du document impossible'));
@@ -115,14 +144,7 @@ export const SyndicDocuments: React.FC = () => {
             style={{ minWidth: 260 }}
             value={typeFilter}
             onChange={value => setTypeFilter(value)}
-            options={[
-              { label: t('Règlement'), value: 'REGULATION' },
-              { label: t('Proces-verbal AG'), value: 'GENERAL_MEETING_MINUTES' },
-              { label: t('Diagnostic'), value: 'DIAGNOSTIC' },
-              { label: t('Assurance'), value: 'INSURANCE' },
-              { label: t('Budget'), value: 'BUDGET' },
-              { label: t('Autre'), value: 'OTHER' }
-            ]}
+            options={documentTypeOptions()}
           />
         </Card>
 
@@ -132,7 +154,13 @@ export const SyndicDocuments: React.FC = () => {
           </div>
         ) : (
           <Card title={t('Documents')}>
-            <DocumentVault documents={documents} tenantId={effectiveTenantId ?? ''} syndicId={syndicId ?? ''} />
+            <DocumentVault
+              documents={documents}
+              tenantId={effectiveTenantId ?? ''}
+              syndicId={syndicId ?? ''}
+              canEdit={canEdit}
+              onChanged={() => void loadDocuments()}
+            />
           </Card>
         )}
       </Space>
@@ -140,10 +168,7 @@ export const SyndicDocuments: React.FC = () => {
       <Modal
         title={t('Ajouter un document')}
         open={openCreate}
-        onCancel={() => {
-          setOpenCreate(false);
-          setSelectedFile(null);
-        }}
+        onCancel={resetCreateForm}
         onOk={() => void handleCreateDocument()}
         okText={t('Ajouter')}
         cancelText={t('Annuler')}
@@ -161,15 +186,27 @@ export const SyndicDocuments: React.FC = () => {
             <Select
               showSearch
               optionFilterProp="label"
-              options={[
-                { label: t('Règlement'), value: 'REGULATION' },
-                { label: t('Proces-verbal AG'), value: 'GENERAL_MEETING_MINUTES' },
-                { label: t('Diagnostic'), value: 'DIAGNOSTIC' },
-                { label: t('Assurance'), value: 'INSURANCE' },
-                { label: t('Budget'), value: 'BUDGET' },
-                { label: t('Autre'), value: 'OTHER' }
-              ]}
+              options={documentTypeOptions()}
+              onChange={(value: string) => {
+                if (!visibilityTouched.current) setVisibleToCoOwners(COOWNER_FACING_TYPES.includes(value));
+              }}
             />
+          </Form.Item>
+          <Form.Item>
+            <Checkbox
+              checked={visibleToCoOwners}
+              onChange={event => {
+                visibilityTouched.current = true;
+                setVisibleToCoOwners(event.target.checked);
+              }}
+            >
+              {t('Visible des copropriétaires')}
+            </Checkbox>
+            <div>
+              <Text type="secondary">
+                {t('Les copropriétaires voient et téléchargent ce document depuis leur portail.')}
+              </Text>
+            </div>
           </Form.Item>
           <Form.Item label={t('Fichier')} required>
             <Upload

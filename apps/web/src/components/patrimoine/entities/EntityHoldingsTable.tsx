@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { App, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Table } from 'antd';
+import { App, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
@@ -10,7 +10,7 @@ import type {
 } from '../../../types/patrimoine-entities-types';
 import type { Property } from '../../../types/property-types';
 import { listProperties } from '../../../services/property-service';
-import { ConfirmAction } from '../../primitives';
+import { ConfirmAction, Table } from '../../primitives';
 import { t } from '../../../i18n/t';
 import { apiErrorMessage } from '../patrimoine-labels';
 
@@ -173,6 +173,7 @@ export const EntityHoldingsTable: React.FC<EntityHoldingsTableProps> = ({
         </Button>
       </Space>
       <Table
+        exportFilename={t('Biens rattachés')}
         rowKey={holding => holding.id}
         columns={columns}
         dataSource={holdings}

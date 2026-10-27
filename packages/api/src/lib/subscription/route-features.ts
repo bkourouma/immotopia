@@ -50,7 +50,11 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
     feature: 'EXEMPT',
     note: 'Factures PLATFORM (vague 3) : une agence en lecture seule doit voir, telecharger et payer ses factures.'
   },
-  { prefix: '/register', feature: 'EXEMPT', note: "Auto-inscription d'un client, pas une action de l'agence." },
+  {
+    prefix: '/public-profile',
+    feature: 'EXEMPT',
+    note: "Fiche publique reduite de l'agence, lue par un client (nom, logo, coordonnees) : jamais bloquee."
+  },
   { prefix: '/unregister', feature: 'EXEMPT', note: "Desinscription d'un client." },
   { prefix: '/client-details', feature: 'EXEMPT', note: 'Un client met a jour sa propre fiche.' },
   {
@@ -83,6 +87,9 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
       'réellement appelée (même chaîne, même abonnement).'
   },
   { prefix: '/maintenance', feature: 'CORE' },
+  { prefix: '/notifications', feature: 'CORE', note: "Boîte de notifications de l'utilisateur." },
+  { prefix: '/admin/notifications', feature: 'CORE', note: "Journal des notifications de l'agence." },
+  { prefix: '/messages', feature: 'CORE', note: 'Messagerie interne.' },
   { prefix: '/email-notifications', feature: 'CORE' },
   { prefix: '/whatsapp-notifications', feature: 'CORE' },
   { prefix: '/newsletter', feature: 'CORE' },

@@ -8,10 +8,16 @@
  * ici comme dans `reports.ts`, parle la langue de la gestionnaire.
  */
 
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, PDFFont, PDFPage } from 'pdf-lib';
+import { t } from '../../i18n';
+import { drawDocumentHeader, fontsOf, resolveDocumentBranding, truncate } from '../documents/document-branding';
+import { FOOTER_RESERVED, drawDocumentFooters, pdfLanguage } from '../documents/document-layout';
+import { sanitizeForPdf } from '../documents/pdf-text';
 import type { ThirdPartyMovementRecord } from './types';
 
 export interface AccountStatementPdfPayload {
+  /** Agence émettrice : son identité (nom, logo) figure dans l'en-tête. */
+  tenantId: string;
   accountLabel: string;
   currency: string;
   openingBalance: number;
@@ -47,81 +53,107 @@ function formatDate(date?: Date) {
   return date ? new Date(date).toLocaleDateString('fr-FR') : '-';
 }
 
+const LEFT = 40;
+const PAGE_WIDTH = 595;
+/** Bord droit de la zone utile : aucune colonne ne le dépasse. */
+const RIGHT = PAGE_WIDTH - 40;
+/**
+ * Colonnes de texte (abscisse relative à LEFT) et colonnes de montants
+ * (bord droit absolu : un montant est aligné à droite, jamais tronqué).
+ */
+const COLUMNS = { type: 50, label: 105 } as const;
+const AMOUNT_WIDTH = 96;
+const AMOUNT_RIGHT = { billed: LEFT + 315, settled: LEFT + 415, balance: RIGHT } as const;
+const LABEL_WIDTH = AMOUNT_RIGHT.billed - AMOUNT_WIDTH - LEFT - COLUMNS.label - 6;
+
+function drawRightAligned(page: PDFPage, text: string, right: number, y: number, size: number, font: PDFFont) {
+  const clean = sanitizeForPdf(text);
+  // Un montant n'est jamais coupé : si la colonne est trop étroite, la police rapetisse.
+  let fitted = size;
+  while (fitted > 5 && font.widthOfTextAtSize(clean, fitted) > AMOUNT_WIDTH) fitted -= 0.5;
+  const width = font.widthOfTextAtSize(clean, fitted);
+  page.drawText(clean, { x: right - width, y, size: fitted, font });
+}
+
+function drawColumnHeaders(page: PDFPage, y: number, bold: PDFFont) {
+  page.drawText(t('Date', undefined, pdfLanguage()), { x: LEFT, y, size: 9, font: bold });
+  page.drawText(t('Type', undefined, pdfLanguage()), { x: LEFT + COLUMNS.type, y, size: 9, font: bold });
+  page.drawText(t('Libellé', undefined, pdfLanguage()), { x: LEFT + COLUMNS.label, y, size: 9, font: bold });
+  drawRightAligned(page, t('Facturé', undefined, pdfLanguage()), AMOUNT_RIGHT.billed, y, 9, bold);
+  drawRightAligned(page, t('Réglé', undefined, pdfLanguage()), AMOUNT_RIGHT.settled, y, 9, bold);
+  drawRightAligned(page, t('Solde', undefined, pdfLanguage()), AMOUNT_RIGHT.balance, y, 9, bold);
+}
+
+function drawMovementRow(
+  page: PDFPage,
+  y: number,
+  font: PDFFont,
+  movement: ThirdPartyMovementRecord,
+  currency: string
+) {
+  // Seuls les libellés sont abrégés ; les montants sont alignés à droite, entiers.
+  const text = (value: string, x: number, width: number) =>
+    page.drawText(truncate(value, font, 8, width), { x: LEFT + x, y, size: 8, font });
+  text(formatDate(movement.movementDate), 0, COLUMNS.type - 6);
+  text(movement.type, COLUMNS.type, COLUMNS.label - COLUMNS.type - 6);
+  text(movement.label, COLUMNS.label, LABEL_WIDTH);
+  const amount = (value: number | null, right: number, always = false) =>
+    drawRightAligned(page, value || always ? money(value ?? 0, currency) : '-', right, y, 8, font);
+  amount(movement.amountBilled, AMOUNT_RIGHT.billed);
+  amount(movement.amountSettled, AMOUNT_RIGHT.settled);
+  amount(movement.balanceAfter, AMOUNT_RIGHT.balance, true);
+}
+
 export async function buildAccountStatementPdf(payload: AccountStatementPdfPayload): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([595, 842]);
+  let page = pdfDoc.addPage([595, 842]);
   const { height } = page.getSize();
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const { regular: font, bold } = await fontsOf(pdfDoc);
 
-  const left = 40;
-  let y = height - 50;
+  // En-tête standard de l'agence, sans copropriété : un relevé de tiers n'en a pas.
+  const branding = await resolveDocumentBranding(payload.tenantId, null);
+  const language = pdfLanguage();
+  const period =
+    payload.periodFrom || payload.periodTo
+      ? `  -  ${t('Période', undefined, language)} : du ${formatDate(payload.periodFrom)} au ${formatDate(payload.periodTo)}`
+      : '';
+  let y = await drawDocumentHeader(pdfDoc, page, branding, {
+    title: t('Relevé de compte', undefined, language),
+    subtitle: `${t('Compte', undefined, language)} : ${payload.accountLabel}${period}`
+  });
 
-  page.drawText('Releve de compte', { x: left, y, size: 18, font: bold, color: rgb(0.1, 0.1, 0.1) });
-  y -= 28;
-
-  page.drawText(`Compte: ${payload.accountLabel}`, { x: left, y, size: 10, font });
-  y -= 16;
-
-  if (payload.periodFrom || payload.periodTo) {
-    page.drawText(`Periode: du ${formatDate(payload.periodFrom)} au ${formatDate(payload.periodTo)}`, {
-      x: left,
-      y,
-      size: 10,
-      font
-    });
-    y -= 16;
-  }
-  y -= 8;
-
-  page.drawText(`Solde d'ouverture: ${money(payload.openingBalance, payload.currency)}`, {
-    x: left,
+  page.drawText(`Solde d'ouverture : ${money(payload.openingBalance, payload.currency)}`, {
+    x: LEFT,
     y,
     size: 10,
     font: bold
   });
   y -= 16;
-  page.drawText(`Solde de cloture: ${money(payload.closingBalance, payload.currency)}`, {
-    x: left,
+  page.drawText(`Solde de clôture : ${money(payload.closingBalance, payload.currency)}`, {
+    x: LEFT,
     y,
     size: 10,
     font: bold
   });
   y -= 24;
-
-  page.drawText('Date', { x: left, y, size: 9, font: bold });
-  page.drawText('Type', { x: left + 70, y, size: 9, font: bold });
-  page.drawText('Libelle', { x: left + 140, y, size: 9, font: bold });
-  page.drawText('Facture', { x: left + 330, y, size: 9, font: bold });
-  page.drawText('Regle', { x: left + 410, y, size: 9, font: bold });
-  page.drawText('Solde', { x: left + 490, y, size: 9, font: bold });
+  drawColumnHeaders(page, y, bold);
   y -= 12;
 
   for (const movement of payload.movements) {
-    if (y < 60) {
-      // Même limite qu'`owner-account-statement.ts` : une page suffit pour
-      // l'aperçu imprimable, le détail complet reste consultable à l'écran.
-      break;
+    if (y < FOOTER_RESERVED + 14) {
+      // Page pleine : on poursuit sur la suivante, colonnes reprises.
+      page = pdfDoc.addPage([595, 842]);
+      y = height - 50;
+      drawColumnHeaders(page, y, bold);
+      y -= 12;
     }
-    page.drawText(formatDate(movement.movementDate), { x: left, y, size: 8, font });
-    page.drawText(movement.type, { x: left + 70, y, size: 8, font });
-    page.drawText(movement.label.slice(0, 38), { x: left + 140, y, size: 8, font });
-    page.drawText(movement.amountBilled ? money(movement.amountBilled, payload.currency) : '-', {
-      x: left + 330,
-      y,
-      size: 8,
-      font
-    });
-    page.drawText(movement.amountSettled ? money(movement.amountSettled, payload.currency) : '-', {
-      x: left + 410,
-      y,
-      size: 8,
-      font
-    });
-    page.drawText(money(movement.balanceAfter, payload.currency), { x: left + 490, y, size: 8, font });
+    drawMovementRow(page, y, font, movement, payload.currency);
     y -= 12;
   }
 
-  const bytes = await pdfDoc.save();
-  return Buffer.from(bytes);
+  await drawDocumentFooters(pdfDoc, {
+    issuerName: branding.issuer.name,
+    reference: payload.accountLabel
+  });
+  return Buffer.from(await pdfDoc.save());
 }

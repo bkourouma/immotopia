@@ -3,34 +3,37 @@ import { ChargeScheduleAmountSource, ChargeScheduleFrequency, ChargeScheduleRun 
 import { dateFormat } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 
+import { localizedRecord } from '../../../i18n/localized';
 /**
  * Onglet « Programmation » (lot S4, besoin 6) : appels de charges
  * automatiques. Contrat :
  * `packages/api/src/routes/syndic-charge-schedules-routes.ts`.
  */
 
-export const frequencyLabels: Record<ChargeScheduleFrequency, string> = {
+export const frequencyLabels: Record<ChargeScheduleFrequency, string> = localizedRecord(() => ({
   MONTHLY: t('Mensuelle'),
   QUARTERLY: t('Trimestrielle'),
   SEMIANNUAL: t('Semestrielle'),
   ANNUAL: t('Annuelle')
-};
+}));
 
-export const amountSourceLabels: Record<ChargeScheduleAmountSource, string> = {
+export const amountSourceLabels: Record<ChargeScheduleAmountSource, string> = localizedRecord(() => ({
   BUDGET: t('Budget approuvé'),
   FIXED: t('Montant fixe')
-};
+}));
 
-export const runStatusConfig: Record<ChargeScheduleRun['status'], { color: string; label: string }> = {
-  SUCCESS: { color: 'green', label: t('Réussie') },
-  FAILED: { color: 'red', label: t('Échec') },
-  SKIPPED: { color: 'default', label: t('Ignorée (déjà traitée)') }
-};
+export const runStatusConfig: Record<ChargeScheduleRun['status'], { color: string; label: string }> = localizedRecord(
+  () => ({
+    SUCCESS: { color: 'green', label: t('Réussie') },
+    FAILED: { color: 'red', label: t('Échec') },
+    SKIPPED: { color: 'default', label: t('Ignorée (déjà traitée)') }
+  })
+);
 
-export const runTriggerLabels: Record<ChargeScheduleRun['trigger'], string> = {
+export const runTriggerLabels: Record<ChargeScheduleRun['trigger'], string> = localizedRecord(() => ({
   CRON: t('Automatique'),
   MANUAL: t('Manuelle')
-};
+}));
 
 /**
  * L'API journalise deux refus d'émission sous forme de CODE brut (pas une
@@ -39,12 +42,12 @@ export const runTriggerLabels: Record<ChargeScheduleRun['trigger'], string> = {
  * conflit 409, message technique générique — est déjà une phrase lisible et
  * s'affiche tel quel.
  */
-const SCHEDULE_ERROR_CODE_LABELS: Record<string, string> = {
+const SCHEDULE_ERROR_CODE_LABELS: Record<string, string> = localizedRecord(() => ({
   TENANT_INACTIVE: t('Agence suspendue : réactivez-la avant de rejouer cette période avec « Exécuter maintenant ».'),
   SUBSCRIPTION_DENIED: t(
     'Abonnement sans module Syndic, ou en lecture seule : régularisez puis rejouez cette période avec « Exécuter maintenant ».'
   )
-};
+}));
 
 export function describeScheduleError(error: string | null | undefined): string | null {
   if (!error) return null;

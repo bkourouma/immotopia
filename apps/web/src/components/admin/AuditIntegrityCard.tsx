@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, App, Button, Card, DatePicker, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Card, DatePicker, Space, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { CopyOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -14,6 +14,7 @@ import {
 import { getAuditVisibilityLabelFr } from '../../constants/audit-labels';
 import { dateFormat, formatNumber } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { Table } from '../primitives';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -81,6 +82,9 @@ function buildColumns(tone: 'error' | 'warning'): ColumnsType<AuditIntegrityFind
 function FindingsTable({ rows, tone }: { rows: AuditIntegrityFinding[]; tone: 'error' | 'warning' }) {
   return (
     <Table<AuditIntegrityFinding>
+      exportFilename={
+        tone === 'error' ? t('Intégrité du journal compromise') : t('Lignes arrivées après le scellement')
+      }
       size="small"
       style={{ marginTop: 12 }}
       rowKey={row => `${row.sealDate}|${row.tenantKey}|${row.visibility}`}

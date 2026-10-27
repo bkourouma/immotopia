@@ -1,5 +1,6 @@
 import React from 'react';
-import { Card, Table, Tag } from 'antd';
+import { Card, Tag } from 'antd';
+import { Table } from '../primitives';
 import type { PropertyExpense } from '../../types/patrimoine-types';
 import { t } from '../../i18n/t';
 import { expenseCategoryLabel, expenseRecurrenceLabel } from './patrimoine-labels';
@@ -13,6 +14,7 @@ export const ExpenseTracker: React.FC<Props> = ({ expenses }) => {
   return (
     <Card title={t('Charges et dépenses')}>
       <Table
+        exportFilename={t('Charges et dépenses')}
         scroll={{ x: 'max-content' }}
         rowKey="id"
         dataSource={expenses}

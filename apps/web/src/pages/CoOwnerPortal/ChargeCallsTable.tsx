@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
-import { Button } from 'antd';
+import { Button, Checkbox, Space, Tag } from 'antd';
 import { FileTextOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { DataCard, DataView, MoneyValue } from '../../components/primitives';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
-import { downloadCoOwnerChargeCallNotice, type CoOwnerChargeCall } from '../../services/coowner-portal-service';
+import {
+  MAX_CHARGE_CALLS_PER_PAYMENT,
+  downloadCoOwnerChargeCallNotice,
+  type CoOwnerChargeCall
+} from '../../services/coowner-portal-service';
+import { formatChargePeriod } from '../../utils/charge-period';
 import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { ChargeCallStatusTag } from './labels';
@@ -30,7 +35,7 @@ const NoticeButton: React.FC<{ call: CoOwnerChargeCall }> = ({ call }) => {
     try {
       const { blob, filename } = await downloadCoOwnerChargeCallNotice(
         call.id,
-        t("Avis d'appel {{period}}.pdf", { period: call.period })
+        t("Avis d'appel {{period}}.pdf", { period: formatChargePeriod(call) })
       );
       saveBlob(blob, filename);
       setState('idle');
@@ -52,16 +57,104 @@ const NoticeButton: React.FC<{ call: CoOwnerChargeCall }> = ({ call }) => {
 };
 
 /**
- * Appels de charges d'un copropriétaire, partagé par « Mes appels de
- * charges » et par le détail d'un lot. Lecture seule : aucun bouton de
- * paiement (le paiement en ligne des charges de copropriété n'existe pas).
+ * Sélection des appels à régler en ligne (spec 042). Un paiement couvre les
+ * appels d'un seul lot : dès qu'un appel est coché, ceux des autres lots sont
+ * grisés. Le serveur reste juge (`onlinePayable`, reste dû recalculé).
  */
-export const ChargeCallsTable: React.FC<{ calls: CoOwnerChargeCall[]; showLot?: boolean }> = ({
-  calls,
-  showLot = true
+export interface ChargeCallSelection {
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}
+
+/** Vrai si l'appel peut être coché, compte tenu de la sélection courante. */
+export function isCallSelectable(call: CoOwnerChargeCall, selected: CoOwnerChargeCall[]): boolean {
+  if (call.pendingDeclaration) return false;
+  if (!call.onlinePayable || call.onlineCheckout !== 'NONE' || !call.lot) return false;
+  if (selected.some(other => other.id === call.id)) return true;
+  if (selected.length >= MAX_CHARGE_CALLS_PER_PAYMENT) return false;
+  return selected.length === 0 || selected[0].lot?.id === call.lot.id;
+}
+
+/** Mention d'un paiement déjà engagé sur l'appel (colonne « Statut »), avec la reprise si le compte en a le code. */
+const OnlineCheckoutTag: React.FC<{ call: CoOwnerChargeCall; onResume?: (call: CoOwnerChargeCall) => void }> = ({
+  call,
+  onResume
 }) => {
+  if (call.onlineCheckout === 'IN_PROGRESS') {
+    return (
+      <>
+        <Tag color="processing">{t('Paiement en cours')}</Tag>
+        {onResume && call.onlineCheckoutCode ? (
+          <Button size="small" type="link" onClick={() => onResume(call)}>
+            {t('Reprendre le paiement')}
+          </Button>
+        ) : null}
+      </>
+    );
+  }
+  if (call.onlineCheckout === 'REVIEW') return <Tag color="warning">{t('Paiement en vérification')}</Tag>;
+  return null;
+};
+
+/** Paiement mobile money déclaré, en attente de validation par l'agence (spec 047). */
+const PendingDeclarationTag: React.FC<{ call: CoOwnerChargeCall }> = ({ call }) =>
+  call.pendingDeclaration ? <Tag color="warning">{t('Paiement déclaré, en vérification')}</Tag> : null;
+
+/**
+ * Appels de charges d'un copropriétaire, partagé par « Mes appels de
+ * charges » et par le détail d'un lot. Sans `selection`, lecture seule ; avec,
+ * une case à cocher apparaît sur les appels payables en ligne.
+ */
+export const ChargeCallsTable: React.FC<{
+  calls: CoOwnerChargeCall[];
+  showLot?: boolean;
+  selection?: ChargeCallSelection;
+  /** Reprend le paiement en cours d'un appel (page du fournisseur) ; absent = pas de bouton. */
+  onResume?: (call: CoOwnerChargeCall) => void;
+}> = ({ calls, showLot = true, selection, onResume }) => {
+  const selectedCalls = selection ? calls.filter(call => selection.selectedIds.includes(call.id)) : [];
+  const showSelection = Boolean(selection) && calls.some(call => call.onlinePayable || call.pendingDeclaration);
+
+  const toggle = (call: CoOwnerChargeCall, checked: boolean) => {
+    if (!selection) return;
+    selection.onChange(
+      checked ? [...selection.selectedIds, call.id] : selection.selectedIds.filter(id => id !== call.id)
+    );
+  };
+
+  const selectBox = (call: CoOwnerChargeCall) => {
+    if (call.pendingDeclaration) {
+      const reason = t('Paiement déclaré, en vérification : paiement en ligne indisponible sur cet appel');
+      return <Checkbox checked={false} disabled title={reason} aria-label={reason} />;
+    }
+    if (!call.onlinePayable) return null;
+    return (
+      <Checkbox
+        checked={selectedCalls.some(other => other.id === call.id)}
+        disabled={!isCallSelectable(call, selectedCalls)}
+        onChange={event => toggle(call, event.target.checked)}
+        aria-label={t("Sélectionner l'appel {{period}}", { period: formatChargePeriod(call) })}
+      />
+    );
+  };
+
   const columns: ColumnsType<CoOwnerChargeCall> = [
-    { title: t('Période'), dataIndex: 'period', key: 'period' },
+    ...(showSelection
+      ? [
+          {
+            title: t('Payer'),
+            key: 'select',
+            width: 64,
+            render: (_: unknown, call: CoOwnerChargeCall) => selectBox(call)
+          }
+        ]
+      : []),
+    {
+      title: t('Période'),
+      dataIndex: 'period',
+      key: 'period',
+      render: (_: unknown, call: CoOwnerChargeCall) => formatChargePeriod(call)
+    },
     ...(showLot
       ? [
           {
@@ -73,20 +166,51 @@ export const ChargeCallsTable: React.FC<{ calls: CoOwnerChargeCall[]; showLot?: 
         ]
       : []),
     { title: t('Échéance'), key: 'dueDate', render: (_, call) => dayjs(call.dueDate).format('DD/MM/YYYY') },
-    { title: t('Montant'), key: 'amount', align: 'end', render: (_, call) => <MoneyValue value={call.amount} /> },
-    { title: t('Payé'), key: 'paid', align: 'end', render: (_, call) => <MoneyValue value={call.paid} /> },
+    {
+      title: t('Montant'),
+      key: 'amount',
+      align: 'end',
+      exportValue: call => Number(call.amount),
+      render: (_, call) => <MoneyValue value={call.amount} />
+    },
+    {
+      title: t('Payé'),
+      key: 'paid',
+      align: 'end',
+      exportValue: call => Number(call.paid),
+      render: (_, call) => <MoneyValue value={call.paid} />
+    },
     {
       title: t('Reste à payer'),
       key: 'outstanding',
       align: 'end',
+      exportValue: call => Number(call.outstanding),
       render: (_, call) => (
         <strong>
           <MoneyValue value={call.outstanding} />
         </strong>
       )
     },
-    { title: t('Statut'), key: 'status', render: (_, call) => <ChargeCallStatusTag status={call.status} /> },
-    { title: t('Avis'), key: 'notice', align: 'end', render: (_, call) => <NoticeButton call={call} /> }
+    {
+      title: t('Statut'),
+      key: 'status',
+      width: 220,
+      render: (_, call) => (
+        <Space wrap size={[4, 4]}>
+          <ChargeCallStatusTag status={call.status} />
+          <OnlineCheckoutTag call={call} onResume={onResume} />
+          <PendingDeclarationTag call={call} />
+        </Space>
+      )
+    },
+    // Bouton de téléchargement de l'avis : rien à exporter.
+    {
+      title: t('Avis'),
+      key: 'notice',
+      align: 'end',
+      exportable: false,
+      render: (_, call) => <NoticeButton call={call} />
+    }
   ];
 
   return (
@@ -99,22 +223,33 @@ export const ChargeCallsTable: React.FC<{ calls: CoOwnerChargeCall[]; showLot?: 
       onPageChange={() => {}}
       rowKey={call => call.id}
       aria-label={t('Appels de charges')}
+      export={{ filename: t('Appels de charges') }}
       emptyDescription={t("Aucun appel de charges n'a été émis pour vos lots.")}
       columns={columns}
+      scrollX={1100}
       renderCard={call => (
         <DataCard
-          title={call.period}
+          title={formatChargePeriod(call)}
           subtitle={[
             call.lot ? t('Lot {{lotNumber}}', { lotNumber: call.lot.lotNumber }) : null,
             t('échéance le {{date}}', { date: dayjs(call.dueDate).format('DD/MM/YYYY') })
           ]
             .filter(Boolean)
             .join(' · ')}
-          status={<ChargeCallStatusTag status={call.status} />}
+          status={
+            <>
+              <ChargeCallStatusTag status={call.status} />
+              <OnlineCheckoutTag call={call} onResume={onResume} />
+              <PendingDeclarationTag call={call} />
+            </>
+          }
           highlight={<MoneyValue value={call.outstanding} />}
           fields={[
             { label: t('Montant'), value: <MoneyValue value={call.amount} /> },
             { label: t('Payé'), value: <MoneyValue value={call.paid} /> },
+            ...(showSelection && (call.onlinePayable || call.pendingDeclaration)
+              ? [{ label: t('Payer'), value: selectBox(call) }]
+              : []),
             { label: t('Avis'), value: <NoticeButton call={call} /> }
           ]}
         />

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Select, Space, Table } from 'antd';
+import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Select, Space } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -11,7 +11,7 @@ import {
   type HoldingDto
 } from '../../../services/patrimoine-assets-service';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
-import { ConfirmAction, StateBlock } from '../../primitives';
+import { ConfirmAction, StateBlock, Table } from '../../primitives';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 import { apiErrorMessage, formatDay } from './asset-format';
@@ -190,6 +190,7 @@ export const AssetHoldingsTab: React.FC<{ tenantId: string; asset: AssetDto }> =
             />
           )}
           <Table<HoldingDto>
+            exportFilename={t('Détenteurs')}
             rowKey="id"
             size="small"
             loading={holdingsQuery.isPending}

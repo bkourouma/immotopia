@@ -50,6 +50,7 @@ import { getNavigation } from '../../navigation/model';
 import { getPermissionLabelFr, getPermissionGroupLabelFr, getRoleLabelFr } from '../../constants/permissions-labels';
 import { MenuTenantSelect, MenuScopeChoice, sameMenuScope } from '../../components/admin/MenuTenantSelect';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 const { Title, Text } = Typography;
 
@@ -86,11 +87,11 @@ interface ManagedRole {
   persona: PersonaId | null;
 }
 
-const SCOPE_TAGS: Record<ManagedRole['scope'], { color: string; label: string }> = {
+const SCOPE_TAGS: Record<ManagedRole['scope'], { color: string; label: string }> = localizedRecord(() => ({
   PLATFORM: { color: 'blue', label: t('Plateforme') },
   TENANT: { color: 'green', label: t('Agence') },
   PORTAL: { color: 'purple', label: t('Portail client') }
-};
+}));
 
 /**
  * Menus qu'on ne peut pas couper.

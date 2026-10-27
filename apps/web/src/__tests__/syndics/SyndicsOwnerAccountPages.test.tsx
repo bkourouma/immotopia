@@ -24,6 +24,9 @@ vi.mock('@ant-design/icons', async () => {
   return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
 });
 
+// Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
+vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
+
 vi.mock('antd', async () => {
   // importActual reaches the real module from inside a hoisted mock factory;
   // a plain dynamic import here deadlocks the module graph.

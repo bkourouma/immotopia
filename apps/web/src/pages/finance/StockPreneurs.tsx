@@ -469,6 +469,7 @@ const CarnetDesPreneurs: React.FC<CarnetProps> = ({ tenantId, canManage, people 
 
       <DataView<StockTakerView>
         aria-label={t('Carnet des preneurs')}
+        export={{ filename: t('Carnet des preneurs') }}
         items={preneurs}
         total={preneurs.length}
         page={1}
@@ -478,6 +479,7 @@ const CarnetDesPreneurs: React.FC<CarnetProps> = ({ tenantId, canManage, people 
         loading={liste.isLoading}
         isReloading={liste.isFetching && !liste.isLoading}
         error={liste.error ? lireErreur(liste.error).message || t('Le carnet n’a pas pu être chargé.') : null}
+        errorCause={liste.error}
         onRetry={() => void liste.refetch()}
         isFiltered={filtre}
         onClearFilters={() => {

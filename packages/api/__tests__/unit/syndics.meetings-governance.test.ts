@@ -17,6 +17,7 @@ let mockWorld: {
   resolutions: Row[];
   votes: Row[];
   proxies: Row[];
+  attendances: Row[];
 };
 let mockSeq = 0;
 
@@ -94,6 +95,36 @@ jest.mock('@prisma/client', () => {
         const r = mockWorld.resolutions.find(item => item.id === where.id)!;
         Object.assign(r, data);
         return r;
+      }),
+      // Spec 043 : la cloture de l'AG clot les votes encore ouverts.
+      updateMany: jest.fn(async ({ where, data }: Row) => {
+        const rows = mockWorld.resolutions.filter(
+          r => r.meetingId === where.meetingId && (where.voteStatus === undefined || r.voteStatus === where.voteStatus)
+        );
+        rows.forEach(r => Object.assign(r, data));
+        return { count: rows.length };
+      })
+    },
+    // Spec 043 : emargements (le vote du gestionnaire emarge le lot s'il ne l'est pas).
+    gMAttendance: {
+      findFirst: jest.fn(async ({ where }: Row) => {
+        const row = mockWorld.attendances.find(a => a.meetingId === where.meetingId && a.lotId === where.lotId);
+        return row ? { id: row.id, status: row.status } : null;
+      }),
+      findMany: jest.fn(async ({ where }: Row) => mockWorld.attendances.filter(a => a.meetingId === where.meetingId)),
+      create: jest.fn(async ({ data }: Row) => {
+        const row = { id: `att-${++mockSeq}`, ...data };
+        mockWorld.attendances.push(row);
+        return row;
+      }),
+      // Emargement automatique du vote : upsert sur (meetingId, lotId), jamais d'ecrasement.
+      upsert: jest.fn(async ({ where, create }: Row) => {
+        const key = where.meetingId_lotId;
+        const existing = mockWorld.attendances.find(a => a.meetingId === key.meetingId && a.lotId === key.lotId);
+        if (existing) return existing;
+        const row = { id: `att-${++mockSeq}`, ...create };
+        mockWorld.attendances.push(row);
+        return row;
       })
     },
     gMVote: {
@@ -151,8 +182,10 @@ jest.mock('@prisma/client', () => {
     }
   };
   client.$transaction = jest.fn(async (callback: any) => callback(client));
+  // Verrou consultatif de l'AG (spec 043) : sans effet sur le faux client.
+  client.$executeRaw = jest.fn(async () => 0);
 
-  return { PrismaClient: jest.fn(() => client), Prisma: {} };
+  return { PrismaClient: jest.fn(() => client), Prisma: {}, __mockPrisma: client };
 });
 
 import {
@@ -165,6 +198,7 @@ import {
   updateMeetingByTenant
 } from '../../src/lib/syndics/queries';
 
+const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as { __mockPrisma: any };
 const T1 = 'tenant-1';
 const T2 = 'tenant-2';
 const S1 = 'syndic-1';
@@ -210,7 +244,8 @@ function resetWorld(status = 'PLANNED') {
       }
     ],
     votes: [],
-    proxies: []
+    proxies: [],
+    attendances: []
   };
 }
 
@@ -484,5 +519,103 @@ describe('AG - pouvoirs', () => {
     await expectStatus(create('c2', 'c5'), 409, /pouvoirs ne peuvent plus/);
     await expectStatus(deleteMeetingProxyByTenant(T1, S1, 'M1', mockWorld.proxies[0].id), 409);
     expect(mockWorld.proxies).toHaveLength(1);
+  });
+});
+
+describe('AG en direct (spec 043) - ecritures du gestionnaire', () => {
+  beforeEach(() => resetWorld('IN_PROGRESS'));
+
+  it('la cloture de l AG clot les votes encore ouverts', async () => {
+    mockWorld.resolutions[0].voteStatus = 'OPEN';
+    await updateMeetingByTenant(T1, S1, 'M1', { status: 'COMPLETED' });
+    expect(mockWorld.resolutions[0].voteStatus).toBe('CLOSED');
+    expect(mockWorld.resolutions[0].voteClosedAt).toBeInstanceOf(Date);
+  });
+
+  it('un vote du gestionnaire garde son origine et emarge le lot en salle', async () => {
+    await castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A2', 'FOR', { userId: 'u-mgr' });
+    expect(mockWorld.votes[0]).toMatchObject({ lotId: 'A2', source: 'MANAGER', castByUserId: 'u-mgr' });
+    expect(mockWorld.attendances).toHaveLength(1);
+    expect(mockWorld.attendances[0]).toMatchObject({
+      tenantId: T1,
+      lotId: 'A2',
+      status: 'PRESENT',
+      mode: 'IN_PERSON',
+      recordedBy: 'MANAGER'
+    });
+    // Un second vote sur le meme lot n'ajoute pas d'emargement.
+    await castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A2', 'AGAINST', { userId: 'u-mgr' });
+    expect(mockWorld.attendances).toHaveLength(1);
+    expect(mockWorld.votes[0].vote).toBe('AGAINST');
+  });
+
+  it('l emargement automatique passe par un upsert (meetingId, lotId) : deux votes simultanes ne creent qu un emargement', async () => {
+    mockPrisma.gMAttendance.create.mockClear();
+    mockPrisma.gMAttendance.upsert.mockClear();
+    await Promise.all([
+      castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A2', 'FOR'),
+      castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A2', 'AGAINST')
+    ]);
+    expect(mockPrisma.gMAttendance.create).not.toHaveBeenCalled();
+    expect(mockPrisma.gMAttendance.upsert).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.gMAttendance.upsert.mock.calls[0][0]).toMatchObject({
+      where: { meetingId_lotId: { meetingId: 'M1', lotId: 'A2' } },
+      update: {},
+      create: { status: 'PRESENT', mode: 'IN_PERSON' }
+    });
+    expect(mockWorld.attendances).toHaveLength(1);
+  });
+
+  it('refuse le vote d un lot emarge absent, sans ecrire le vote ni toucher a l emargement', async () => {
+    mockWorld.attendances.push({ id: 'att-abs', meetingId: 'M1', lotId: 'A2', status: 'ABSENT' });
+    const error: any = await castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A2', 'FOR').catch(e => e);
+    expect(error.statusCode).toBe(409);
+    expect(error.message).toBe("Ce lot est émargé absent : modifiez son émargement avant d'enregistrer son vote.");
+    expect(mockWorld.votes).toHaveLength(0);
+    expect(mockWorld.attendances).toEqual([{ id: 'att-abs', meetingId: 'M1', lotId: 'A2', status: 'ABSENT' }]);
+    // Un lot represente ou present deja emarge vote normalement.
+    mockWorld.attendances.push({ id: 'att-rep', meetingId: 'M1', lotId: 'A3', status: 'REPRESENTED' });
+    await castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A3', 'FOR');
+    expect(mockWorld.votes).toHaveLength(1);
+    expect(mockWorld.attendances).toHaveLength(2);
+  });
+
+  it('refuse un pouvoir dont le mandataire est votant d un lot du mandant, seance ouverte (422), sans emargement', async () => {
+    // A1 est en indivision c1 + c2 : c2 ne peut pas representer c1 sur ce lot (regle de l emargement).
+    mockWorld.lots[0].ownerProfiles = [
+      {
+        contactId: 'c1',
+        ownershipPercentage: 50,
+        ownedSince: new Date('2010-01-01T00:00:00Z'),
+        ownedUntil: null,
+        contact: { id: 'c1', firstName: 'Awa', lastName: 'Kone', legalName: null, email: null }
+      },
+      {
+        contactId: 'c2',
+        ownershipPercentage: 50,
+        ownedSince: new Date('2010-01-01T00:00:00Z'),
+        ownedUntil: null,
+        contact: { id: 'c2', firstName: 'Bakary', lastName: 'Diallo', legalName: null, email: null }
+      }
+    ];
+    await expectStatus(
+      createMeetingProxyByTenant(T1, S1, { meetingId: 'M1', grantorContactId: 'c1', representativeContactId: 'c2' }),
+      422,
+      /ne peut pas être un propriétaire du lot/
+    );
+    expect(mockWorld.attendances).toHaveLength(0);
+    mockWorld.proxies.length = 0; // le mock n'annule pas la transaction ; la vraie base si
+    // Un mandataire etranger au lot reste accepte.
+    await createMeetingProxyByTenant(T1, S1, {
+      meetingId: 'M1',
+      grantorContactId: 'c1',
+      representativeContactId: 'c5'
+    });
+    expect(mockWorld.attendances[0]).toMatchObject({ lotId: 'A1', status: 'REPRESENTED' });
+  });
+
+  it('enregistre l URL de visioconference', async () => {
+    const updated = await updateMeetingByTenant(T1, S1, 'M1', { videoConferenceUrl: 'https://visio.example.test/x' });
+    expect(updated.videoConferenceUrl).toBe('https://visio.example.test/x');
   });
 });

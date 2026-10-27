@@ -11,6 +11,7 @@ import type {
 import { t } from '../../i18n/t';
 import { activeLocale } from '../../i18n/format';
 
+import { localizedRecord } from '../../i18n/localized';
 /**
  * Petits utilitaires partagés par les écrans du lot 9 (ventes) : libellés des
  * énumérations du contrat et construction des libellés affichés dans les
@@ -26,48 +27,48 @@ export function propertyLabel(property: Pick<Property, 'internalReference' | 'ti
   return `${property.internalReference} · ${property.title}`;
 }
 
-export const MANDATE_TYPE_LABELS: Record<SaleMandateType, string> = {
+export const MANDATE_TYPE_LABELS: Record<SaleMandateType, string> = localizedRecord(() => ({
   SIMPLE: t('Simple'),
   EXCLUSIVE: t('Exclusif')
-};
+}));
 
-export const COMMISSION_MODE_LABELS: Record<SaleCommissionMode, string> = {
+export const COMMISSION_MODE_LABELS: Record<SaleCommissionMode, string> = localizedRecord(() => ({
   PERCENT: t('Pourcentage'),
   FIXED: t('Forfait')
-};
+}));
 
-export const COMMISSION_PAYER_LABELS: Record<SaleCommissionPayer, string> = {
+export const COMMISSION_PAYER_LABELS: Record<SaleCommissionPayer, string> = localizedRecord(() => ({
   SELLER: t('Vendeur'),
   BUYER: t('Acquéreur')
-};
+}));
 
-export const FINANCING_LABELS: Record<SaleFinancing, string> = {
+export const FINANCING_LABELS: Record<SaleFinancing, string> = localizedRecord(() => ({
   CASH: t('Comptant'),
   LOAN: t('Crédit'),
   MIXED: t('Mixte')
-};
+}));
 
-export const DEPOSIT_HOLDER_LABELS: Record<SaleDepositHolder, string> = {
+export const DEPOSIT_HOLDER_LABELS: Record<SaleDepositHolder, string> = localizedRecord(() => ({
   NOTARY: t('Notaire'),
   SELLER: t('Vendeur')
-};
+}));
 
-export const OFFER_ACTION_LABELS: Record<SaleOfferAction, string> = {
+export const OFFER_ACTION_LABELS: Record<SaleOfferAction, string> = localizedRecord(() => ({
   COUNTER: t('Contre-offre'),
   ACCEPT: t('Accepter'),
   REJECT: t('Refuser'),
   WITHDRAW: t('Retirer')
-};
+}));
 
 /** Moyens de paiement d'un règlement de commission — mêmes valeurs que les paiements locatifs. */
-export const SALE_PAYMENT_METHOD_LABELS: Record<string, string> = {
+export const SALE_PAYMENT_METHOD_LABELS: Record<string, string> = localizedRecord(() => ({
   CASH: t('Espèces'),
   BANK_TRANSFER: t('Virement'),
   MOBILE_MONEY: t('Mobile Money'),
   CHECK: t('Chèque'),
   CARD: t('Carte'),
   OTHER: t('Autre')
-};
+}));
 
 export function dateCourte(iso: string | null | undefined): string {
   if (!iso) return '—';

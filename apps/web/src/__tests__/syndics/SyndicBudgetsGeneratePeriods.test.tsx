@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
-import { SyndicBudgets } from '../../pages/syndics/SyndicBudgets';
+import { SyndicBudgets, defaultChargeCallPeriod } from '../../pages/syndics/SyndicBudgets';
 
 /**
  * Option « Répartir sur » (1/2/4/12 périodes) et « Période n° » de la
@@ -155,5 +155,78 @@ describe('SyndicBudgets — répartition du budget sur plusieurs périodes (lot 
         ),
       { timeout: 15000 }
     );
+  });
+
+  it('pré-remplit la période annuelle « 2026 » et la suit quand « Répartir sur » change', async () => {
+    mount();
+
+    fireEvent.click(await screen.findByText('Générer appels', {}, { timeout: 15000 }));
+    const period = (await screen.findByLabelText('Période', {}, { timeout: 15000 })) as HTMLInputElement;
+    expect(period.value).toBe('2026');
+
+    fireEvent.mouseDown(await screen.findByLabelText('Répartir sur'));
+    fireEvent.click(await screen.findByText('12 périodes (mensuel)', {}, { timeout: 15000 }));
+    await waitFor(() => expect(period.value).toBe('2026-01'));
+
+    fireEvent.change(await screen.findByLabelText('Période n°'), { target: { value: '3' } });
+    await waitFor(() => expect(period.value).toBe('2026-03'));
+  });
+
+  it('conserve une période saisie à la main', async () => {
+    mount();
+
+    fireEvent.click(await screen.findByText('Générer appels', {}, { timeout: 15000 }));
+    const period = (await screen.findByLabelText('Période', {}, { timeout: 15000 })) as HTMLInputElement;
+    fireEvent.change(period, { target: { value: 'Perso' } });
+
+    fireEvent.mouseDown(await screen.findByLabelText('Répartir sur'));
+    fireEvent.click(await screen.findByText('4 périodes (trimestriel)', {}, { timeout: 15000 }));
+    await screen.findByLabelText('Période n°');
+    expect(period.value).toBe('Perso');
+  });
+
+  it('envoie les bornes explicites pour un semestre', async () => {
+    mount();
+
+    fireEvent.click(await screen.findByText('Générer appels', {}, { timeout: 15000 }));
+    fireEvent.change(await screen.findByLabelText('Date échéance', {}, { timeout: 15000 }), {
+      target: { value: '2999-04-30' }
+    });
+    fireEvent.mouseDown(await screen.findByLabelText('Répartir sur'));
+    fireEvent.click(await screen.findByText('2 périodes (semestriel)', {}, { timeout: 15000 }));
+    fireEvent.change(await screen.findByLabelText('Période n°'), { target: { value: '2' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Générer' }, { timeout: 15000 }));
+
+    await waitFor(
+      () =>
+        expect(generateBudgetChargeCalls).toHaveBeenCalledWith(
+          'tenant-1',
+          'syndic-1',
+          'budget-1',
+          expect.objectContaining({ period: '2026-S2', periodStart: '2026-07-01', periodEnd: '2026-12-31' })
+        ),
+      { timeout: 15000 }
+    );
+  });
+
+  it("avertit (sans bloquer) quand l'échéance est déjà passée", async () => {
+    mount();
+
+    fireEvent.click(await screen.findByText('Générer appels', {}, { timeout: 15000 }));
+    const due = await screen.findByLabelText('Date échéance', {}, { timeout: 15000 });
+    expect(screen.queryByText(/déjà passée/)).toBeNull();
+    fireEvent.change(due, { target: { value: '2020-01-31' } });
+    expect(await screen.findByText(/L'échéance saisie est déjà passée/)).toBeTruthy();
+    fireEvent.change(due, { target: { value: '2999-01-31' } });
+    await waitFor(() => expect(screen.queryByText(/déjà passée/)).toBeNull());
+  });
+});
+
+describe('defaultChargeCallPeriod', () => {
+  it('suit le découpage choisi', () => {
+    expect(defaultChargeCallPeriod(2026, 1, 1)).toBe('2026');
+    expect(defaultChargeCallPeriod(2026, 12, 3)).toBe('2026-03');
+    expect(defaultChargeCallPeriod(2026, 4, 2)).toBe('2026-T2');
+    expect(defaultChargeCallPeriod(2026, 2, 2)).toBe('2026-S2');
   });
 });

@@ -2,6 +2,7 @@ import * as cron from 'node-cron';
 
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { reconcileLotActivations } from '../services/lot-registry-service';
 
@@ -83,7 +84,7 @@ export function startLotReconciliationJob(): void {
     '10 3 * * *',
     async () => {
       try {
-        await runLotReconciliation();
+        await withJobLock('lot-reconciliation-daily', 60 * 60 * 1000, () => runLotReconciliation());
       } catch (error) {
         logger.error('Error in lot reconciliation job', {
           error: error instanceof Error ? error.message : String(error)

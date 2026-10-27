@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { EXTENSION_REQUIRED_PACKS, isExtensionAllowed } from '../../utils/extension-rules';
+import { isExtensionAllowed } from '../../utils/extension-rules';
 import { quotaExceededDenialText } from '../../utils/subscription-denial-notice';
 
 describe('isExtensionAllowed', () => {
@@ -9,10 +9,10 @@ describe('isExtensionAllowed', () => {
   });
 
   it('exige l’un des packs requis', () => {
-    expect(isExtensionAllowed(EXTENSION_REQUIRED_PACKS.EXT_BIENS_10, ['PATRIMOINE_PRO'])).toBe(false);
-    expect(isExtensionAllowed(EXTENSION_REQUIRED_PACKS.EXT_BIENS_10, ['PATRIMOINE_ESSENTIEL'])).toBe(true);
-    expect(isExtensionAllowed(EXTENSION_REQUIRED_PACKS.EXT_COPRO, ['PROMOTEUR'])).toBe(false);
-    expect(isExtensionAllowed(EXTENSION_REQUIRED_PACKS.EXT_CHANTIER, ['PROMOTEUR'])).toBe(true);
+    expect(isExtensionAllowed(['PATRIMOINE_ESSENTIEL'], ['PATRIMOINE_PRO'])).toBe(false);
+    expect(isExtensionAllowed(['PATRIMOINE_ESSENTIEL'], ['PATRIMOINE_ESSENTIEL'])).toBe(true);
+    expect(isExtensionAllowed(['SYNDIC', 'INTEGRE'], ['PROMOTEUR'])).toBe(false);
+    expect(isExtensionAllowed(['PROMOTEUR', 'INTEGRE'], ['PROMOTEUR'])).toBe(true);
   });
 });
 

@@ -1,10 +1,11 @@
 import { t } from '../i18n/t';
+import { localizedRecord } from '../i18n/localized';
 /**
  * Libellés en français pour la page Audit (actions et types de ressources).
  */
 
 /** Libellé français détaillé pour chaque clé d'action d'audit (description explicite de l'action) */
-export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
+export const AUDIT_ACTION_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   // Tenant
   TENANT_CREATED: t("Création d'un nouveau tenant (agence ou opérateur) sur la plateforme"),
   TENANT_UPDATED: t('Modification des paramètres ou informations du tenant'),
@@ -77,6 +78,7 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   // Location – Dépôts de garantie
   RENTAL_DEPOSIT_CREATED: t("Enregistrement d'un dépôt de garantie pour le bail"),
   RENTAL_DEPOSIT_MOVEMENT_CREATED: t("Enregistrement d'un mouvement sur le dépôt (entrée, sortie, etc.)"),
+  RENTAL_DEPOSIT_MOVEMENT_DELETED: t("Annulation d'un mouvement du dépôt (paiement annulé)"),
 
   // Location – Pénalités
   RENTAL_PENALTY_CALCULATED: t("Calcul automatique d'une pénalité de retard"),
@@ -164,6 +166,32 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   SYNDIC_PROVIDER_INVOICE_FILE_REPLACED: t("Remplacement du fichier d'une facture de prestataire"),
   SYNDIC_PROVIDER_INVOICE_FILE_REMOVED: t("Retrait du fichier d'une facture de prestataire"),
 
+  // Prélèvement bancaire (spec 042, lot P1)
+  DIRECT_DEBIT_CREDITOR_CREATED: t("Création d'un créancier de prélèvement bancaire"),
+  DIRECT_DEBIT_CREDITOR_UPDATED: t("Modification d'un créancier de prélèvement bancaire"),
+  DIRECT_DEBIT_MANDATE_CREATED: t("Création d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_UPDATED: t("Modification d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_ACTIVATED: t("Activation d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_SUSPENDED: t("Suspension d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_REACTIVATED: t("Réactivation d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_REVOKED: t("Révocation d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_SCAN_UPLOADED: t("Dépôt du scan signé d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED: t("Téléchargement de l'autorisation de prélèvement"),
+  DIRECT_DEBIT_MANDATE_SIGNED_ELECTRONICALLY: t("Signature électronique d'une autorisation de prélèvement"),
+  // Remises (lot P2)
+  DIRECT_DEBIT_REMITTANCE_CREATED: t("Préparation d'une remise de prélèvement"),
+  DIRECT_DEBIT_REMITTANCE_REFRESHED: t("Actualisation d'une remise de prélèvement"),
+  DIRECT_DEBIT_REMITTANCE_LINE_CANCELED: t("Retrait d'une ligne d'une remise de prélèvement"),
+  DIRECT_DEBIT_REMITTANCE_VALIDATED: t("Validation d'une remise de prélèvement"),
+  DIRECT_DEBIT_REMITTANCE_PRENOTIFIED: t('Envoi des prénotifications de prélèvement'),
+  DIRECT_DEBIT_REMITTANCE_EXPORTED: t('Production du fichier de remise de prélèvement'),
+  DIRECT_DEBIT_REMITTANCE_SUBMITTED: t('Remise de prélèvement déposée à la banque'),
+  DIRECT_DEBIT_REMITTANCE_CANCELED: t("Annulation d'une remise de prélèvement"),
+  DIRECT_DEBIT_LINE_SETTLED: t("Règlement constaté d'un prélèvement"),
+  DIRECT_DEBIT_LINE_REJECTED: t("Rejet constaté d'un prélèvement"),
+  DIRECT_DEBIT_RETURN_IMPORTED: t("Import d'un retour de la banque"),
+  DIRECT_DEBIT_MANDATE_AUTO_SUSPENDED: t("Suspension automatique d'un mandat de prélèvement"),
+
   // Stock de chantier (lot 040, spec B6-R1, ecrans §10.6)
   STOCK_RECEIPT_RECORDED: t("Enregistrement d'une réception de stock (bon de réception)"),
   STOCK_ISSUE_RECORDED: t("Enregistrement d'une sortie de stock (bon de sortie)"),
@@ -225,10 +253,10 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   TENANT_ACCESS_DENIED: t("Tentative d'accès à une agence dont l'utilisateur n'est pas membre"),
   DOCUMENT_DOWNLOADED: t("Téléchargement ou ouverture d'un document"),
   DATA_EXPORTED: t('Export de données (tableur ou archive)')
-};
+}));
 
 /** Libellé français pour chaque type d'entité (ressource) */
-export const AUDIT_ENTITY_TYPE_LABELS_FR: Record<string, string> = {
+export const AUDIT_ENTITY_TYPE_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   PROPERTY: t('Bien immobilier'),
   PROPERTY_MEDIA: t('Média (bien)'),
   PROPERTY_DOCUMENT: t('Document (bien)'),
@@ -288,10 +316,10 @@ export const AUDIT_ENTITY_TYPE_LABELS_FR: Record<string, string> = {
   StockWhatsappRegistration: t('Inscription WhatsApp d’un chef de chantier'),
   StockFieldCapture: t('Comptage par photo WhatsApp'),
   StockWhatsappUsage: t('Quota de photos du mois')
-};
+}));
 
 /** Libellé français de chaque catégorie du journal d'audit. */
-export const AUDIT_CATEGORY_LABELS_FR: Record<string, string> = {
+export const AUDIT_CATEGORY_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   AUTH: t('Authentification'),
   DATA: t('Données'),
   ADMIN: t('Administration'),
@@ -300,29 +328,29 @@ export const AUDIT_CATEGORY_LABELS_FR: Record<string, string> = {
   EXPORT: t('Export'),
   AI: t('Assistant IA'),
   SYSTEM: t('Système')
-};
+}));
 
 /** Libellé français du résultat d'une action auditée. */
-export const AUDIT_OUTCOME_LABELS_FR: Record<string, string> = {
+export const AUDIT_OUTCOME_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   SUCCESS: t('Réussie'),
   FAILURE: t('Échouée'),
   DENIED: t('Refusée')
-};
+}));
 
 /** Libellé français du type d'acteur d'une ligne du journal. */
-export const AUDIT_ACTOR_TYPE_LABELS_FR: Record<string, string> = {
+export const AUDIT_ACTOR_TYPE_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   USER: t('Utilisateur'),
   SUPER_ADMIN: t('Support ImmoTopia'),
   PORTAL: t('Portail'),
   SYSTEM: t('Système'),
   AI: t('Assistant IA')
-};
+}));
 
 /** Libellé français de la visibilité d'une ligne (qui peut la lire). */
-export const AUDIT_VISIBILITY_LABELS_FR: Record<string, string> = {
+export const AUDIT_VISIBILITY_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   TENANT: t("Visible de l'agence"),
   PLATFORM_ONLY: t('Réservée à la plateforme')
-};
+}));
 
 export function getAuditActionLabelFr(actionKey: string): string {
   return AUDIT_ACTION_LABELS_FR[actionKey] ?? actionKey;

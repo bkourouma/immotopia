@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Input, Select, Space, Table, Tag, Typography } from 'antd';
+import { Input, Select, Space, Tag, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { listAssets, type AssetClass, type AssetDto, type AssetStatus } from '../../services/patrimoine-assets-service';
 import { useAuth } from '../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { PageHeader, SkeletonList, StateBlock } from '../../components/primitives';
+import { PageHeader, SkeletonList, StateBlock, Table } from '../../components/primitives';
 import { AssetFormDrawer, useLinkedPropertyIds } from '../../components/patrimoine/actifs/AssetFormDrawer';
 import {
   assetClassLabel,
@@ -118,6 +118,7 @@ export const AssetsPage: React.FC = () => {
         )
       ) : (
         <Table<AssetDto>
+          exportFilename={t('Mes actifs')}
           rowKey="id"
           dataSource={rows}
           pagination={{ pageSize: 20, hideOnSinglePage: true }}
@@ -140,6 +141,7 @@ export const AssetsPage: React.FC = () => {
               title: t('Valeur courante'),
               key: 'currentValue',
               align: 'end',
+              exportValue: asset => asset.currentValue?.amount ?? null,
               render: (_: unknown, asset) =>
                 asset.currentValue ? (
                   <Space size={8} wrap style={{ justifyContent: 'flex-end' }}>

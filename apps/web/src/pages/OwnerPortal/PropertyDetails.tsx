@@ -26,6 +26,7 @@ import {
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -119,7 +120,7 @@ const formatDate = (dateString: string) => {
   });
 };
 
-const propertyTypeLabels: Record<string, string> = {
+const propertyTypeLabels: Record<string, string> = localizedRecord(() => ({
   APPARTEMENT: 'Appartement',
   MAISON_VILLA: 'Maison/Villa',
   STUDIO: 'Studio',
@@ -132,9 +133,9 @@ const propertyTypeLabels: Record<string, string> = {
   IMMEUBLE: 'Immeuble',
   PARKING_BOX: 'Parking/Box',
   LOT_PROGRAMME_NEUF: t('Lot programme neuf')
-};
+}));
 
-const propertyStatusLabels: Record<string, string> = {
+const propertyStatusLabels: Record<string, string> = localizedRecord(() => ({
   DRAFT: 'Brouillon',
   UNDER_REVIEW: t("En cours d'examen"),
   AVAILABLE: 'Disponible',
@@ -143,19 +144,31 @@ const propertyStatusLabels: Record<string, string> = {
   RENTED: t('Loué'),
   SOLD: 'Vendu',
   ARCHIVED: t('Archivé')
-};
+}));
 
 const translatePropertyType = (value: string) => propertyTypeLabels[value] || value;
 
 const translatePropertyStatus = (value: string) => propertyStatusLabels[value] || value;
 
-const transactionModeLabels: Record<string, string> = {
+const transactionModeLabels: Record<string, string> = localizedRecord(() => ({
   SALE: 'Vente',
   RENTAL: 'Location',
   SHORT_TERM: t('Location courte durée')
-};
+}));
 
 const translateTransactionMode = (value: string) => transactionModeLabels[value] || value;
+
+/** Libellé français d'un statut de bail (jamais le code brut à l'écran). */
+const leaseStatusLabel = (status: string): string => {
+  const labels: Record<string, string> = {
+    ACTIVE: t('Actif'),
+    ENDED: t('Terminé'),
+    SUSPENDED: t('Suspendu'),
+    CANCELED: t('Annulé'),
+    DRAFT: t('Brouillon')
+  };
+  return labels[status] || status;
+};
 
 export default function PropertyDetails() {
   const { id } = useParams<{ id: string }>();
@@ -287,7 +300,7 @@ export default function PropertyDetails() {
                 </Descriptions.Item>
                 <Descriptions.Item label={t('Statut')}>
                   <Tag color={data.currentLease.status === 'ACTIVE' ? 'success' : 'default'}>
-                    {data.currentLease.status}
+                    {leaseStatusLabel(data.currentLease.status)}
                   </Tag>
                 </Descriptions.Item>
               </Descriptions>

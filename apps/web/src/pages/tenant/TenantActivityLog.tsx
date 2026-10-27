@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Button, Card, Col, DatePicker, Empty, Row, Select, Space, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Col, DatePicker, Empty, Row, Select, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { EyeOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -17,6 +17,8 @@ import { getAuditActionLabelFr, getAuditCategoryLabelFr, getAuditOutcomeLabelFr 
 import { getAuditActorDisplay, getAuditOutcomeColor } from '../../utils/tenant-audit-display';
 import { AuditResourceCell } from '../../components/audit/AuditResourceCell';
 import { ActivityLogDetailModal } from '../../components/tenant/ActivityLogDetailModal';
+import { Table } from '../../components/primitives';
+import { EXPORT_MAX_ROWS } from '../../utils/table-export/collect';
 import { activeLocale, dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
@@ -131,6 +133,23 @@ export const TenantActivityLog: React.FC = () => {
     };
   }, [fetchPage]);
 
+  // Export : même route et mêmes filtres que la liste, en suivant les curseurs
+  // jusqu'au plafond d'export.
+  const fetchAllLogs = useCallback(async () => {
+    if (!tenantId) return { items: [] as TenantAuditLog[], truncated: false };
+    const items: TenantAuditLog[] = [];
+    let cursor: string | undefined;
+    do {
+      const response = await getTenantAuditLogs(tenantId, { ...filters, cursor, limit: 100 });
+      if (!response.success) throw new Error(t("Erreur lors du chargement du journal d'activité"));
+      items.push(...response.data.logs);
+      cursor = response.data.nextCursor ?? undefined;
+    } while (cursor && items.length < EXPORT_MAX_ROWS);
+    const truncated = Boolean(cursor) || items.length > EXPORT_MAX_ROWS;
+    if (items.length > EXPORT_MAX_ROWS) items.length = EXPORT_MAX_ROWS;
+    return { items, truncated };
+  }, [tenantId, filters]);
+
   const columns = useMemo(() => buildColumns(setSelected), []);
   const hasFilters = Boolean(category || outcome || range);
 
@@ -223,6 +242,8 @@ export const TenantActivityLog: React.FC = () => {
 
       <Card>
         <Table<TenantAuditLog>
+          exportFilename={t("Journal d'activité")}
+          exportFetchAll={fetchAllLogs}
           rowKey="id"
           columns={columns}
           dataSource={logs}

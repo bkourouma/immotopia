@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Avatar, Segmented, Space, Table, Tag, Typography } from 'antd';
+import { Avatar, Segmented, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { MailOutlined, PhoneOutlined } from '@ant-design/icons';
+import { Table } from '../primitives';
 import { MaintenanceContract, ServiceProvider } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
 
@@ -72,6 +73,7 @@ export const ProviderList: React.FC<ProviderListProps> = ({ providers, loading =
     {
       title: t('Prestataire'),
       key: 'name',
+      exportValue: provider => (provider.specialty ? `${provider.name} — ${provider.specialty}` : provider.name),
       render: (_: unknown, provider) => (
         <Space size={12} align="center">
           <Avatar
@@ -93,6 +95,7 @@ export const ProviderList: React.FC<ProviderListProps> = ({ providers, loading =
     {
       title: t('Contact'),
       key: 'contact',
+      exportValue: provider => [provider.phone, provider.email].filter(Boolean).join(' — '),
       render: (_: unknown, provider) =>
         provider.phone || provider.email ? (
           <Space direction="vertical" size={2}>
@@ -117,6 +120,16 @@ export const ProviderList: React.FC<ProviderListProps> = ({ providers, loading =
       title: t('Contrats'),
       key: 'contracts',
       width: 200,
+      exportValue: provider => {
+        const { active, ended } = contractsSummary(provider);
+        if (active === 0 && ended === 0) return t('Aucun contrat');
+        return [
+          active > 0 ? (active === 1 ? t('1 actif') : t('{{count}} actifs', { count: active })) : '',
+          ended > 0 ? (ended === 1 ? t('1 terminé') : t('{{count}} terminés', { count: ended })) : ''
+        ]
+          .filter(Boolean)
+          .join(' — ');
+      },
       render: (_: unknown, provider) => {
         const { active, ended } = contractsSummary(provider);
         if (active === 0 && ended === 0) return <Tag>{t('Aucun contrat')}</Tag>;
@@ -152,6 +165,7 @@ export const ProviderList: React.FC<ProviderListProps> = ({ providers, loading =
         ]}
       />
       <Table<ProviderWithContracts>
+        exportFilename={t('Prestataires')}
         rowKey="id"
         columns={columns}
         dataSource={rows}

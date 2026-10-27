@@ -1,4 +1,5 @@
 import { t } from '../i18n/t';
+import { localizedRecord } from '../i18n/localized';
 /**
  * Contrat gelé de la frontière réseau — lot 4, premier sous-lot : les baux de
  * terrain.
@@ -28,10 +29,10 @@ import { t } from '../i18n/t';
 /** Cycle d'un paiement au bailleur : brouillon, puis validé. */
 export type LandLeaseDocumentStatus = 'DRAFT' | 'VALIDATED';
 
-export const LAND_LEASE_STATUS_LABELS: Record<LandLeaseDocumentStatus, string> = {
+export const LAND_LEASE_STATUS_LABELS: Record<LandLeaseDocumentStatus, string> = localizedRecord(() => ({
   DRAFT: 'Brouillon',
   VALIDATED: t('Validé')
-};
+}));
 
 // ---------------------------------------------------------------------------
 // Le bail

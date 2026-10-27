@@ -8,6 +8,7 @@ import { t } from '../../i18n/t';
 import {
   castMyVote,
   listMyMeetings,
+  requestLiveAccess,
   type CoOwnerMeeting,
   type CoOwnerResolution,
   type CoOwnerVoteChoice
@@ -112,6 +113,45 @@ function VotableResolution({ meeting, resolution }: { meeting: CoOwnerMeeting; r
   );
 }
 
+/** Le lien reçu du serveur n'est suivi que s'il est en http(s) : jamais `javascript:` ni `data:`. */
+function isNavigableLiveUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value === '') return false;
+  try {
+    const url = new URL(value, window.location.origin);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+/** Bouton « Rejoindre l'AG en direct » : délivre le lien personnel puis y navigue. */
+function JoinLiveButton({ meetingId }: { meetingId: string }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const join = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { url } = await requestLiveAccess(meetingId);
+      if (!isNavigableLiveUrl(url)) throw new Error('invalid-url');
+      window.location.assign(url);
+    } catch (err) {
+      setError(portalErrorMessage(err, t("Impossible de rejoindre l'assemblée en direct pour le moment.")));
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Space direction="vertical" size={8} style={{ width: '100%' }}>
+      <Button type="primary" loading={loading} onClick={() => void join()}>
+        {t("Rejoindre l'AG en direct")}
+      </Button>
+      {error ? <Alert type="error" showIcon message={error} /> : null}
+    </Space>
+  );
+}
+
 function MeetingDetail({ meeting }: { meeting: CoOwnerMeeting }) {
   const open = isOpen(meeting);
   const voting = canVote(meeting);
@@ -140,6 +180,8 @@ function MeetingDetail({ meeting }: { meeting: CoOwnerMeeting }) {
           </ol>
         )}
       </div>
+
+      {meeting.liveAvailable ? <JoinLiveButton meetingId={meeting.id} /> : null}
 
       {open && meeting.resolutions.length > 0 ? (
         <div>
@@ -261,6 +303,7 @@ export default function CoOwnerMeetings() {
     refetch
   } = useQuery({
     queryKey: MEETINGS_KEY,
+    staleTime: 30_000,
     queryFn: () => listMyMeetings()
   });
 

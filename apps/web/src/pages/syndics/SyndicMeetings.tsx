@@ -1,10 +1,11 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   App,
   Alert,
   Button,
   Card,
+  Checkbox,
   DatePicker,
   Form,
   Input,
@@ -13,12 +14,12 @@ import {
   Space,
   Spin,
   TimePicker,
-  Table,
   Tag,
   Typography
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { Table } from '../../components/primitives';
 import { meetingStatusLabels, meetingTypeLabels } from '../../components/syndics/labels';
 import { MeetingStatusActions } from '../../components/syndics/MeetingStatusActions';
 import { describeConvocation, meetingStatusColors } from '../../components/syndics/meeting-governance';
@@ -32,12 +33,22 @@ import { GeneralMeeting, MeetingConvocationResult, MeetingStatus, MeetingType } 
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
+import { localizedList } from '../../i18n/localized';
 const { Paragraph, Title } = Typography;
 
-const meetingTypeOptions: Array<{ label: string; value: MeetingType }> = [
+function newIdempotencyKey(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  } catch {
+    // contexte non sécurisé : repli ci-dessous
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+const meetingTypeOptions: Array<{ label: string; value: MeetingType }> = localizedList(() => [
   { label: t('Ordinaire'), value: 'ORDINARY' },
   { label: t('Extraordinaire'), value: 'EXTRAORDINARY' }
-];
+]);
 
 export const SyndicMeetings: React.FC = () => {
   const { message } = App.useApp();
@@ -55,6 +66,12 @@ export const SyndicMeetings: React.FC = () => {
     null
   );
   const [resending, setResending] = useState(false);
+  const [convocationPending, setConvocationPending] = useState(false);
+  // Clé d'idempotence : posée à l'ouverture de la fenêtre, conservée tant qu'aucune réponse
+  // définitive du serveur n'est arrivée (un réessai après 503/coupure rejoue la même création).
+  const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
+  const fingerprintRef = useRef<string | null>(null);
+  const submittingRef = useRef(false);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -118,9 +135,11 @@ export const SyndicMeetings: React.FC = () => {
         return;
       }
     }
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     try {
-      const created = await createMeetingWithConvocation(effectiveTenantId, syndicId, {
+      const payload = {
         type: values.type,
         scheduledAt: startAt.toISOString(),
         startTime: startAt.toISOString(),
@@ -132,16 +151,54 @@ export const SyndicMeetings: React.FC = () => {
               .millisecond(0)
               .toISOString()
           : undefined,
-        location: values.location
-      });
-      message.success(t('Assemblée créée'));
-      setConvocation({ meetingId: created.meeting?.id, result: created.convocation });
+        location: values.location,
+        // Les convocations ne partent plus d'office : l'ordre du jour est d'abord saisi.
+        sendConvocation: values.sendConvocation === true
+      };
+      // La clé suit le contenu : une saisie modifiée après un échec est une nouvelle création.
+      const fingerprint = JSON.stringify(payload);
+      if (fingerprintRef.current !== fingerprint) {
+        idempotencyKeyRef.current = newIdempotencyKey();
+        fingerprintRef.current = fingerprint;
+      }
+      const created = await createMeetingWithConvocation(
+        effectiveTenantId,
+        syndicId,
+        payload,
+        idempotencyKeyRef.current
+      );
+      idempotencyKeyRef.current = newIdempotencyKey();
+      const notSent =
+        created.convocationNotSent || (!payload.sendConvocation && !created.convocationPending && !created.convocation);
+      if (notSent) {
+        message.success(
+          t("Assemblée créée. Les convocations n'ont pas été envoyées : envoyez-les depuis l'assemblée.")
+        );
+        // Rien n'est parti : pas de suivi d'envoi ni de bouton « Renvoyer la convocation ».
+        setConvocationPending(false);
+        setConvocation(null);
+      } else {
+        message.success(t('Assemblée créée'));
+        setConvocationPending(created.convocationPending);
+        setConvocation({ meetingId: created.meeting?.id, result: created.convocation });
+      }
       setOpen(false);
       form.resetFields();
       await loadMeetings();
     } catch (err: any) {
-      message.error(err.response?.data?.error || t('Création impossible'));
+      const status = err.response?.status as number | undefined;
+      if (status && status >= 400 && status < 500) {
+        // Refus définitif du serveur : rien n'a été créé, une nouvelle tentative est une nouvelle création.
+        idempotencyKeyRef.current = newIdempotencyKey();
+        message.error(err.response?.data?.error || t('Création impossible'));
+      } else {
+        // Réseau coupé, délai dépassé, 5xx : l'assemblée a pu être créée. La clé est conservée :
+        // un nouveau clic rejoue la même création au lieu d'en ajouter une.
+        message.error(t("L'assemblée a peut-être été créée, vérifiez la liste avant de réessayer."), 8);
+        void loadMeetings();
+      }
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -151,6 +208,7 @@ export const SyndicMeetings: React.FC = () => {
     setResending(true);
     try {
       const result = await resendMeetingConvocation(effectiveTenantId, syndicId, convocation.meetingId);
+      setConvocationPending(false);
       setConvocation({ meetingId: convocation.meetingId, result });
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Renvoi de la convocation impossible'));
@@ -159,7 +217,11 @@ export const SyndicMeetings: React.FC = () => {
     }
   };
 
-  const convocationSummary = convocation ? describeConvocation(convocation.result) : null;
+  const convocationSummary = convocation
+    ? convocationPending
+      ? { type: 'info' as const, text: t("Convocations en cours d'envoi."), failed: false }
+      : describeConvocation(convocation.result)
+    : null;
 
   return (
     <>
@@ -185,7 +247,10 @@ export const SyndicMeetings: React.FC = () => {
             type={convocationSummary.type}
             showIcon
             closable
-            onClose={() => setConvocation(null)}
+            onClose={() => {
+              setConvocation(null);
+              setConvocationPending(false);
+            }}
             message={convocationSummary.text}
             action={
               convocationSummary.failed && convocation?.meetingId ? (
@@ -204,6 +269,7 @@ export const SyndicMeetings: React.FC = () => {
         ) : (
           <Card title={t('Liste des assemblées')}>
             <Table
+              exportFilename={t('Liste des assemblées')}
               scroll={{ x: 'max-content' }}
               rowKey="id"
               dataSource={meetings}
@@ -212,7 +278,7 @@ export const SyndicMeetings: React.FC = () => {
                   title: t('Type'),
                   dataIndex: 'type',
                   key: 'type',
-                  render: (value: MeetingType) => meetingTypeLabels[value]
+                  render: (value: MeetingType) => t(meetingTypeLabels[value] ?? value)
                 },
                 {
                   title: t('Date'),
@@ -282,8 +348,11 @@ export const SyndicMeetings: React.FC = () => {
         okText={t('Créer')}
         cancelText={t('Annuler')}
         confirmLoading={submitting}
+        okButtonProps={{ disabled: submitting }}
+        cancelButtonProps={{ disabled: submitting }}
+        maskClosable={!submitting}
       >
-        <Form form={form} layout="vertical" initialValues={{ type: 'ORDINARY' }}>
+        <Form form={form} layout="vertical" initialValues={{ type: 'ORDINARY', sendConvocation: false }}>
           <Form.Item label={t('Type')} name="type" rules={[{ required: true, message: t('Le type est obligatoire') }]}>
             <Select showSearch optionFilterProp="label" options={meetingTypeOptions} />
           </Form.Item>
@@ -302,6 +371,13 @@ export const SyndicMeetings: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Lieu')} name="location">
             <Input />
+          </Form.Item>
+          <Form.Item
+            name="sendConvocation"
+            valuePropName="checked"
+            extra={t("Vous pourrez les envoyer depuis l'assemblée une fois l'ordre du jour saisi.")}
+          >
+            <Checkbox>{t('Envoyer les convocations maintenant')}</Checkbox>
           </Form.Item>
         </Form>
       </Modal>

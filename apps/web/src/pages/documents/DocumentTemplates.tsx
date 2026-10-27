@@ -81,12 +81,14 @@ export function DocumentTemplates() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [error, setError] = useState<string | null>(null);
+  const [errorCause, setErrorCause] = useState<unknown>(null);
   const [form] = Form.useForm();
   const confirmAction = useConfirmAction();
 
   const loadTemplates = useCallback(async () => {
     try {
       setLoading(true);
+      setErrorCause(null);
       const url = filterDocType
         ? `/tenants/${tenantId}/documents/templates?docType=${filterDocType}`
         : `/tenants/${tenantId}/documents/templates`;
@@ -105,6 +107,7 @@ export function DocumentTemplates() {
         setError(data.message || translate('Impossible de charger les modèles de documents.'));
       }
     } catch (err: any) {
+      setErrorCause(err);
       setError(err.response?.data?.message || translate('Impossible de charger les modèles de documents.'));
       console.error(err);
     } finally {
@@ -238,6 +241,10 @@ export function DocumentTemplates() {
       dataIndex: 'name',
       key: 'name',
       width: 340,
+      exportValue: (record: DocumentTemplate) =>
+        [record.name, record.is_default ? translate('Par défaut') : null, record.original_filename]
+          .filter(Boolean)
+          .join(' — '),
       render: (text: string, record: DocumentTemplate) => (
         <Space direction="vertical" size="small">
           {/* `wrap` : sans lui, l'étiquette « Par défaut » garde sa place sur la
@@ -276,6 +283,8 @@ export function DocumentTemplates() {
       dataIndex: 'placeholders',
       key: 'placeholders',
       width: 220,
+      // Toutes les variables, là où la cellule n'en montre que trois.
+      exportValue: (record: DocumentTemplate) => (record.placeholders || []).join(', '),
       render: (placeholders: string[]) => (
         <Space wrap>
           {(placeholders || []).slice(0, 3).map(p => (
@@ -466,6 +475,8 @@ export function DocumentTemplates() {
 
         {/* Liste — tableau au-dessus de 992 px, cartes en dessous. */}
         <DataView<DocumentTemplate>
+          // La collection entière est déjà chargée : l'export couvre tous les modèles filtrés, pas la seule page.
+          export={{ filename: translate('Modèles de documents'), fetchAll: async () => templates }}
           items={pageCourante}
           total={templates.length}
           page={page}
@@ -476,6 +487,7 @@ export function DocumentTemplates() {
           }}
           loading={loading}
           error={error}
+          errorCause={errorCause}
           onRetry={loadTemplates}
           isFiltered={Boolean(filterDocType)}
           onClearFilters={() => setFilterDocType('')}

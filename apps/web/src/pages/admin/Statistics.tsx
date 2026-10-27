@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Row, Col, Typography, Alert, Spin, Statistic, Space } from 'antd';
 import { BankOutlined, TeamOutlined, CreditCardOutlined, BarChartOutlined } from '@ant-design/icons';
 import { getGlobalStatistics, GlobalStatistics } from '../../services/statistics-service';
+import { getModuleKeyLabelFr } from '../../constants/module-labels';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -57,11 +58,11 @@ export const Statistics: React.FC = () => {
       icon: <BankOutlined style={{ fontSize: 24, color: '#1677ff' }} />,
       footer: (
         <>
-          <Text type="success">{stats.activeTenants} actifs</Text>
+          <Text type="success">{t('{{value}} actifs', { value: stats.activeTenants })}</Text>
           {stats.suspendedTenants > 0 && (
             <>
               <Text type="danger" style={{ marginInlineStart: 8 }}>
-                {stats.suspendedTenants} suspendus
+                {t('{{value}} suspendus', { value: stats.suspendedTenants })}
               </Text>
             </>
           )}
@@ -72,7 +73,7 @@ export const Statistics: React.FC = () => {
       title: t('Collaborateurs'),
       value: stats.totalCollaborators,
       icon: <TeamOutlined style={{ fontSize: 24, color: '#52c41a' }} />,
-      footer: <Text type="success">{stats.activeCollaborators} actifs</Text>
+      footer: <Text type="success">{t('{{value}} actifs', { value: stats.activeCollaborators })}</Text>
     },
     {
       title: t('Abonnements'),
@@ -92,14 +93,14 @@ export const Statistics: React.FC = () => {
       )
     },
     {
-      title: t('Modules Activés'),
+      title: t('Modules activés'),
       value: Object.keys(stats.moduleActivations).length,
       icon: <BarChartOutlined style={{ fontSize: 24, color: '#faad14' }} />,
       footer: (
         <Text type="secondary">
           {Object.entries(stats.moduleActivations)
             .slice(0, 2)
-            .map(([key, value]) => `${key}: ${value}`)
+            .map(([key, value]) => `${getModuleKeyLabelFr(key)} : ${value}`)
             .join(' · ')}
         </Text>
       )
@@ -113,7 +114,7 @@ export const Statistics: React.FC = () => {
           <Title level={3} style={{ margin: 0 }}>
             {t('Statistiques Globales')}
           </Title>
-          <Text type="secondary">Vue d&apos;ensemble de la plateforme</Text>
+          <Text type="secondary">{t("Vue d'ensemble de la plateforme")}</Text>
         </div>
 
         <Row gutter={[24, 24]}>
@@ -133,13 +134,13 @@ export const Statistics: React.FC = () => {
         </Row>
 
         {Object.keys(stats.moduleActivations).length > 0 && (
-          <Card title={t('Activations par Module')}>
+          <Card title={t('Activations par module')}>
             <Row gutter={[16, 16]}>
               {Object.entries(stats.moduleActivations).map(([moduleKey, count]) => (
                 <Col xs={24} sm={12} key={moduleKey}>
                   <Card size="small" style={{ background: 'var(--ant-color-fill-quaternary)' }}>
                     <div className="it-toolbar">
-                      <Text>{moduleKey}</Text>
+                      <Text>{getModuleKeyLabelFr(moduleKey)}</Text>
                       <Text strong>{count}</Text>
                     </div>
                   </Card>

@@ -140,6 +140,55 @@ function calculateDueDate(periodStartDate: Date, dueDayOfMonth: number): Date {
 }
 
 /**
+ * Changement de loyer/charges daté (révision, renouvellement avec nouveau
+ * loyer), lu dans `LeaseEvent`. `effectiveYear/effectiveMonth` est le mois
+ * d'effet : le nouveau montant ne vaut qu'à partir de cette période.
+ */
+export interface RentChange {
+  effectiveYear: number;
+  effectiveMonth: number;
+  previousRent: Decimal | number | null;
+  newRent: Decimal | number | null;
+  previousCharges: Decimal | number | null;
+  newCharges: Decimal | number | null;
+}
+
+/**
+ * Loyer et charges qui s'appliquent à une période (BUG-2026-09-28-023) : le
+ * bail ne porte que le montant le plus récent ; une période antérieure au mois
+ * d'effet d'une révision reste au montant d'avant.
+ */
+export function resolveAmountsForPeriod(
+  lease: Pick<LeaseForInstallmentBuilding, 'rent_amount' | 'service_charge_amount'>,
+  periodYear: number,
+  periodMonth: number,
+  changes?: RentChange[]
+): { rent: Decimal | number; charges: Decimal | number } {
+  const base = { rent: lease.rent_amount, charges: lease.service_charge_amount || 0 };
+  if (!changes || changes.length === 0) return base;
+  const index = (y: number, m: number) => y * 12 + m;
+  const period = index(periodYear, periodMonth);
+  const sorted = [...changes].sort(
+    (a, b) => index(a.effectiveYear, a.effectiveMonth) - index(b.effectiveYear, b.effectiveMonth)
+  );
+  type Amounts = { rent: Decimal | number; charges: Decimal | number };
+  let current = null as Amounts | null;
+  for (const change of sorted) {
+    if (index(change.effectiveYear, change.effectiveMonth) <= period) {
+      const before: Amounts = current ?? base;
+      current = { rent: change.newRent ?? before.rent, charges: change.newCharges ?? before.charges };
+    } else if (!current) {
+      // Avant la première révision : montants d'avant.
+      return {
+        rent: change.previousRent ?? base.rent,
+        charges: change.previousCharges ?? base.charges
+      };
+    }
+  }
+  return current ?? base;
+}
+
+/**
  * Construit les données d'une échéance pour un bail et une période donnés,
  * ou indique pourquoi cette période ne concerne pas ce bail.
  *
@@ -152,7 +201,8 @@ function calculateDueDate(periodStartDate: Date, dueDayOfMonth: number): Date {
 export function buildInstallmentForPeriod(
   lease: LeaseForInstallmentBuilding,
   periodYear: number,
-  periodMonth: number
+  periodMonth: number,
+  changes?: RentChange[]
 ): InstallmentBuildResult {
   const leaseStartDate = new Date(lease.start_date);
   const leaseStartYear = leaseStartDate.getFullYear();
@@ -191,7 +241,20 @@ export function buildInstallmentForPeriod(
   }
 
   const dueDayOfMonth = lease.due_day_of_month || 5;
-  const dueDate = calculateDueDate(periodStartDate, dueDayOfMonth);
+  let dueDate = calculateDueDate(periodStartDate, dueDayOfMonth);
+
+  // Première période : l'échéance n'est jamais antérieure au début du bail
+  // (BUG-2026-09-28-023). Si le jour d'échéance du mois de début est déjà passé
+  // à l'entrée dans les lieux, la première échéance tombe au jour d'échéance
+  // du mois suivant. Les échéances suivantes ne changent pas.
+  if (monthsSinceLeaseStart === 0 && dueDate < periodStartDate) {
+    dueDate = calculateDueDate(
+      new Date(periodStartDate.getFullYear(), periodStartDate.getMonth() + 1, 1),
+      dueDayOfMonth
+    );
+  }
+
+  const amounts = resolveAmountsForPeriod(lease, periodYear, periodMonth, changes);
 
   return {
     included: true,
@@ -203,8 +266,8 @@ export function buildInstallmentForPeriod(
       due_date: dueDate,
       status: RentalInstallmentStatus.DRAFT,
       currency: lease.currency || 'FCFA',
-      amount_rent: lease.rent_amount,
-      amount_service: lease.service_charge_amount || 0,
+      amount_rent: amounts.rent,
+      amount_service: amounts.charges,
       amount_other_fees: 0,
       penalty_amount: 0,
       amount_paid: 0

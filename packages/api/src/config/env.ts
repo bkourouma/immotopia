@@ -119,6 +119,96 @@ const paymentSecretsKeySchema = z
     { message: 'doit être 32 octets encodés en base64 (`openssl rand -base64 32`)' }
   );
 
+/**
+ * Contrôle strict d'une clé IBAN : forme canonique d'une clé de 32 octets en
+ * base64 (43 caractères et un `=`), 32 octets décodés, au moins 16 octets
+ * distincts (refus d'une clé manifestement faible : zéros, motif répété…).
+ * Renvoie la raison du refus, jamais la valeur.
+ */
+export function ibanKeyProblem(value: string): string | null {
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(value)) {
+    return 'doit être une clé de 32 octets en base64 canonique, 44 caractères (`openssl rand -base64 32`)';
+  }
+  const bytes = Buffer.from(value, 'base64');
+  if (bytes.length !== 32) return 'doit faire 32 octets une fois décodée (`openssl rand -base64 32`)';
+  if (new Set(bytes).size < 16) {
+    return 'est trop faible (octets trop peu variés) : générez-la avec `openssl rand -base64 32`';
+  }
+  return null;
+}
+
+/** `true` quand la valeur est une clé IBAN acceptable (voir `ibanKeyProblem`). */
+export function isStrictIbanKey(value: string | undefined): value is string {
+  return typeof value === 'string' && ibanKeyProblem(value) === null;
+}
+
+/**
+ * Clé DÉDIÉE aux IBAN des mandats de prélèvement (spec 042) : 32 octets en
+ * base64 canonique et non triviale ; une valeur vide vaut absente. Distincte
+ * de `PAYMENT_SECRETS_KEY` (contrôle dans `superRefine`). Le message ne cite
+ * jamais la valeur.
+ */
+const directDebitIbanKeySchema = emptyAsUndefined(
+  z
+    .string()
+    .optional()
+    .superRefine((value, ctx) => {
+      const problem = value === undefined ? null : ibanKeyProblem(value);
+      if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+    })
+);
+
+function isBase64Key32(value: string): boolean {
+  try {
+    return Buffer.from(value, 'base64').length === 32;
+  } catch {
+    return false;
+  }
+}
+
+/** Découpe une liste de clés séparées par des virgules (espaces tolérés, entrées vides ignorées). */
+export function parseKeyList(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map(entry => entry.trim())
+    .filter(entry => entry !== '');
+}
+
+/**
+ * Anciennes clés IBAN (rotation) : ne servent qu'à déchiffrer. Le message
+ * n'indique que le rang de l'entrée fautive, jamais sa valeur.
+ */
+const directDebitIbanPreviousKeysSchema = z
+  .string()
+  .optional()
+  .superRefine((value, ctx) => {
+    parseKeyList(value).forEach((entry, index) => {
+      const problem = ibanKeyProblem(entry);
+      if (problem) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `l'entrée n°${index + 1} ${problem}`
+        });
+      }
+    });
+  });
+
+/**
+ * Types de document signables (miroir de l'enum Prisma `SignatureDocumentKind`, gardé
+ * aligné par `__tests__/unit/env-signature-kinds.test.ts`). Liste littérale : la
+ * configuration ne dépend pas du client Prisma, que de nombreux tests simulent.
+ */
+export const SIGNATURE_DOCUMENT_KINDS = [
+  'LEASE_CONTRACT',
+  'MANAGEMENT_MANDATE',
+  'SALE_MANDATE',
+  'LEASE_INSPECTION',
+  'SALE_AGREEMENT',
+  'DIRECT_DEBIT_MANDATE',
+  'SYNDIC_DIRECT_DEBIT_MANDATE'
+] as const;
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -148,6 +238,9 @@ const envSchema = z
 
     // Paiement en ligne des loyers (lot 7) — agrégateur PaySecureHub.
     PAYMENT_SECRETS_KEY: paymentSecretsKeySchema,
+    // IBAN des mandats de prélèvement (spec 042) : clé dédiée, versionnée.
+    DIRECT_DEBIT_IBAN_KEY: directDebitIbanKeySchema,
+    DIRECT_DEBIT_IBAN_PREVIOUS_KEYS: directDebitIbanPreviousKeysSchema,
     PAYSECUREHUB_BASE_URL: z.string().url().default('https://rest-airtime.paysecurehub.com/api'),
     PAYSECUREHUB_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
     // '1' autorise le simulateur en production (démonstration). Hors
@@ -271,6 +364,50 @@ const envSchema = z
     META_WA_PHONE_NUMBER_ID: emptyAsUndefined(
       z.string().regex(/^\d+$/, 'chiffres seulement (phone_number_id de Meta)').optional()
     ),
+    // Visio integree a l'AG en direct (spec 045). Projet LiveKit DEDIE a
+    // ImmoTopia : les trois variables ou aucune (verifie dans le superRefine).
+    // `ws://` n'est accepte qu'en developpement et en test.
+    LIVEKIT_URL: emptyAsUndefined(
+      z
+        .string()
+        .regex(/^wss?:\/\/\S+$/, 'doit commencer par wss:// (ou ws:// en développement)')
+        .optional()
+    ),
+    LIVEKIT_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+    LIVEKIT_API_SECRET: optionalSecretSchema,
+    // Enregistrement des AG (spec 045, R3) : stockage S3 (ou compatible) vers lequel LiveKit
+    // Egress ecrit le MP4. Bucket et cles : tous ou aucun, et la visio doit etre configuree.
+    LIVEKIT_RECORDING_S3_BUCKET: emptyAsUndefined(z.string().min(3).max(255).optional()),
+    LIVEKIT_RECORDING_S3_REGION: emptyAsUndefined(z.string().min(1).default('us-east-1')),
+    LIVEKIT_RECORDING_S3_ENDPOINT: emptyAsUndefined(
+      z
+        .string()
+        .regex(/^https?:\/\/\S+$/, 'doit commencer par http:// ou https://')
+        .optional()
+    ),
+    // Cles d'acces S3 : pas de minimum de 32 caracteres (ce ne sont pas des secrets applicatifs).
+    LIVEKIT_RECORDING_S3_ACCESS_KEY: emptyAsUndefined(z.string().min(1).optional()),
+    LIVEKIT_RECORDING_S3_SECRET: emptyAsUndefined(z.string().min(1).optional()),
+    LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE: z.enum(['0', '1']).default('0'),
+    // Prefixe des objets : relatif (pas de / initial) et sans « .. ».
+    LIVEKIT_RECORDING_S3_PREFIX: emptyAsUndefined(
+      z
+        .string()
+        .min(1)
+        .max(200)
+        .refine(value => !value.startsWith('/') && !value.split('/').includes('..') && !value.includes('\\'), {
+          message: 'doit être relatif : pas de / initial, pas de « .. »'
+        })
+        .default('ag-enregistrements/')
+    ),
+    // Taille maximale (octets) d'un enregistrement rapatrie ; au-dela : echec `TOO_LARGE`, objet conserve.
+    LIVEKIT_RECORDING_MAX_BYTES: emptyAsUndefined(
+      z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(8 * 1024 ** 3)
+    ),
     META_WA_GRAPH_BASE_URL: z.string().url().default('https://graph.facebook.com'),
     // [A verifier au deploiement] : derniere version stable de l'API Graph.
     META_WA_GRAPH_VERSION: z
@@ -296,12 +433,176 @@ const envSchema = z
     // (https://openrouter.ai/google/gemini-3.8-flash, meme date).
     STOCK_VISION_MODEL: z.string().min(1).default('gemini-3.8-flash'),
     GEMINI_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
-    STOCK_VISION_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000)
+    STOCK_VISION_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000),
+
+    // Lecture IA des captures de paiement mobile money (spec 047, D9). `disabled`
+    // par defaut : le pre-remplissage est alors indisponible, sans erreur. Le
+    // transport et les cles sont ceux de la vision du stock (GEMINI_API_KEY,
+    // OPENROUTER_API_KEY) ; seuls le choix, le modele et le delai sont propres.
+    PAYMENT_PROOF_VISION_PROVIDER: z.enum(['disabled', 'fake', 'gemini', 'openrouter']).default('disabled'),
+    PAYMENT_PROOF_VISION_MODEL: z.string().min(1).default('gemini-3.8-flash'),
+    PAYMENT_PROOF_VISION_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000),
+    // Vision via OpenRouter : exige en plus une retention nulle (zero data retention) chez le fournisseur
+    // routé. `data_collection: deny` (aucune conservation ni entrainement) est TOUJOURS demande.
+    OPENROUTER_VISION_ZDR: z
+      .enum(['true', 'false', '1', '0'])
+      .default('false')
+      .transform(value => value === 'true' || value === '1'),
+
+    // WhatsApp : fournisseur de messagerie (WaSender ou Twilio). Aucun secret n'a de valeur
+    // par defaut. WHATSAPP_PROVIDER vide : WaSender si WASENDER_API_KEY est presente, sinon Twilio.
+    // Une valeur inconnue desactive l'envoi (comportement historique), elle ne bloque pas le demarrage.
+    WHATSAPP_PROVIDER: emptyAsUndefined(z.string().optional()),
+    TWILIO_ACCOUNT_SID: emptyAsUndefined(z.string().min(1).optional()),
+    TWILIO_AUTH_TOKEN: emptyAsUndefined(z.string().min(1).optional()),
+    TWILIO_WHATSAPP_FROM: emptyAsUndefined(z.string().min(1).optional()),
+    WASENDER_API_BASE_URL: emptyAsUndefined(z.string().default('https://wasenderapi.com/api')),
+    WASENDER_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+    WASENDER_SESSION: emptyAsUndefined(z.string().min(1).optional()),
+    WASENDER_SESSION_NAME: emptyAsUndefined(z.string().min(1).optional()),
+    WASENDER_TIMEOUT_MS: emptyAsUndefined(z.coerce.number().int().default(10000)),
+    // '1', 'true', 'yes' ou 'on' : n'interroge pas l'etat de la session WaSender avant l'envoi.
+    WASENDER_SKIP_STATUS_CHECK: emptyAsUndefined(z.string().optional()),
+
+    // Signature electronique (spec 044, SG-R13). `disabled` par defaut : toute
+    // demande est refusee. `log` : rien ne part, seules des metadonnees sont
+    // journalisees (jamais lien, jeton ni code). `internal` : jeton + code a
+    // usage unique geres par le noyau (e-mail, WhatsApp).
+    SIGNATURE_PROVIDER: z.enum(['disabled', 'log', 'internal', 'yousign']).default('disabled'),
+    // Prestataire externe Yousign API v3 (lot S6). Base par defaut = SANDBOX, jamais la
+    // production. Cle et secret de webhook : aucun defaut, requis si SIGNATURE_PROVIDER=yousign.
+    YOUSIGN_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+    YOUSIGN_API_BASE_URL: emptyAsUndefined(z.string().url().default('https://api-sandbox.yousign.app/v3')),
+    // '1' autorise la base SANDBOX de Yousign quand NODE_ENV=production : le staging
+    // tourne en production (make-env.sh) mais ne doit pas produire de vraies signatures
+    // facturees. Sans ce drapeau, une base « sandbox » en production est refusee au
+    // demarrage. deploy.sh prod refuse YOUSIGN_ALLOW_SANDBOX=1.
+    YOUSIGN_ALLOW_SANDBOX: emptyAsUndefined(z.enum(['0', '1']).default('0')),
+    YOUSIGN_WEBHOOK_SECRET: emptyAsUndefined(z.string().min(16).optional()),
+    // Niveau de signature demande a Yousign. Seuls `advanced` et `qualified` rendent le
+    // fournisseur « qualifie » (SG-R1) ; le defaut est `advanced` (decision du 19/10) ;
+    // `electronic_signature` (simple) doit etre choisi explicitement et ne leve pas l'exigence.
+    YOUSIGN_SIGNATURE_LEVEL: z
+      .enum(['electronic_signature', 'advanced_electronic_signature', 'qualified_electronic_signature'])
+      .default('advanced_electronic_signature'),
+    SIGNATURE_PROVIDER_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000),
+
+    // Transport SMS (signature, lot S7). `disabled` par defaut ; `log` n'envoie
+    // rien (development/test seulement) ; `orange` = SMS API Orange CI. Aucun
+    // secret n'a de valeur par defaut ; requis seulement si `orange` (superRefine).
+    SMS_PROVIDER: z.enum(['disabled', 'log', 'orange']).default('disabled'),
+    ORANGE_SMS_CLIENT_ID: emptyAsUndefined(z.string().min(1).optional()),
+    ORANGE_SMS_CLIENT_SECRET: emptyAsUndefined(z.string().min(1).optional()),
+    ORANGE_SMS_API_BASE_URL: z.string().url().default('https://api.orange.com'),
+    // Indicatifs pays (sans +) autorises pour un SMS de signature : UEMOA + Guinee.
+    SMS_ALLOWED_DIAL_CODES: z
+      .string()
+      .default('225,221,223,226,227,228,229,245,224')
+      .transform(value =>
+        value
+          .split(',')
+          .map(item => item.trim().replace(/^\+/, ''))
+          .filter(Boolean)
+      )
+      .refine(list => list.length > 0 && list.every(code => /^\d{1,4}$/.test(code)), {
+        message: 'liste d’indicatifs numériques séparés par des virgules'
+      }),
+    // Plafond de SMS de signature par agence et par jour (invitations, relances, codes).
+    SIGNATURE_SMS_DAILY_LIMIT: z.coerce.number().int().min(1).max(100000).default(200),
+    // Adresse d'expediteur Orange, forme `tel:+<numero>` (a confirmer avec le compte).
+    ORANGE_SMS_SENDER_ADDRESS: emptyAsUndefined(
+      z
+        .string()
+        .regex(/^tel:\+\d{6,15}$/, 'forme attendue : tel:+225...')
+        .optional()
+    ),
+    // Nom d'expediteur facultatif : 11 caracteres alphanumeriques ou espaces,
+    // approuve au prealable par Orange (sinon l'envoi est refuse).
+    ORANGE_SMS_SENDER_NAME: emptyAsUndefined(
+      z
+        .string()
+        .regex(/^[A-Za-z0-9 ]{1,11}$/, '11 caracteres alphanumeriques ou espaces au plus')
+        .optional()
+    ),
+    // Types de document dont la signature exige un prestataire qualifie (SG-R1) :
+    // liste separee par des virgules de SignatureDocumentKind. Le fournisseur
+    // `internal` (signature simple) est refuse pour ces types tant que le type
+    // n'est pas retire de la liste, apres avis juridique. Defaut : le compromis de vente.
+    // Chaque element est valide : une valeur inconnue (faute de frappe) bloque le
+    // demarrage, au lieu de laisser un type sans la protection attendue.
+    SIGNATURE_PROVIDER_REQUIRED_KINDS: z
+      .string()
+      .default('SALE_AGREEMENT')
+      .transform(value =>
+        value
+          .split(',')
+          .map(kind => kind.trim().toUpperCase())
+          .filter(Boolean)
+      )
+      .pipe(
+        z.array(
+          z.enum(SIGNATURE_DOCUMENT_KINDS, {
+            errorMap: (issue, ctx) => ({
+              message: `type de document inconnu ${JSON.stringify((issue as { received?: unknown }).received ?? ctx.data)} (valeurs : ${SIGNATURE_DOCUMENT_KINDS.join(', ')})`
+            })
+          })
+        )
+      ),
+    // Duree de validite par defaut d'une demande (et donc des jetons), en jours ; 30 au plus.
+    SIGNATURE_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
+    // Code a usage unique (SG-R4) : validite, essais, renvois, delai entre deux envois.
+    SIGNATURE_OTP_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(10),
+    SIGNATURE_OTP_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
+    SIGNATURE_OTP_MAX_RESENDS: z.coerce.number().int().min(0).max(10).default(3),
+    SIGNATURE_OTP_RESEND_DELAY_SECONDS: z.coerce.number().int().min(0).max(600).default(30),
+    // Quota de secours (demandes par agence et par mois) sans capacite
+    // SIGNATURES_MENSUELLES, en SUBSCRIPTION_ENFORCEMENT=warn ou off (SG-R12).
+    SIGNATURE_WARN_QUOTA: z.coerce.number().int().min(0).max(100000).default(50),
+    // Rappels automatiques avant expiration (spec 044, SG-R11) : seuils en jours
+    // restants, entiers de 1 a 30 separes par des virgules ("3,1" : a 3 jours puis a
+    // 1 jour de l'echeance). "" ou "off" desactive. Dedoublonnes, tries decroissant.
+    // Une valeur invalide bloque le demarrage.
+    SIGNATURE_REMINDER_DAYS_BEFORE: z
+      .string()
+      .default('3,1')
+      .transform((value, ctx): number[] => {
+        const raw = value.trim().toLowerCase();
+        if (raw === '' || raw === 'off') return [];
+        const days = new Set<number>();
+        for (const part of raw.split(',')) {
+          const item = part.trim();
+          const n = Number(item);
+          if (!/^\d+$/.test(item) || n < 1 || n > 30) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `seuil invalide ${JSON.stringify(item)} (entiers de 1 a 30 separes par des virgules, ou "off")`
+            });
+            return z.NEVER;
+          }
+          days.add(n);
+        }
+        return [...days].sort((a, b) => b - a);
+      }),
+    // Conversion DOCX -> PDF (lib/pdf-convert), necessaire au bail signable.
+    DOCX_PDF_CONVERTER: z.enum(['libreoffice', 'disabled']).default('disabled')
   })
   // Unknown keys are preserved: many optional integrations still read
   // process.env directly (WhatsApp, SMTP, Twilio).
   .passthrough()
   .superRefine((value, ctx) => {
+    if (
+      value.DIRECT_DEBIT_IBAN_KEY &&
+      value.PAYMENT_SECRETS_KEY &&
+      isBase64Key32(value.DIRECT_DEBIT_IBAN_KEY) &&
+      isBase64Key32(value.PAYMENT_SECRETS_KEY) &&
+      Buffer.from(value.DIRECT_DEBIT_IBAN_KEY, 'base64').equals(Buffer.from(value.PAYMENT_SECRETS_KEY, 'base64'))
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['DIRECT_DEBIT_IBAN_KEY'],
+        message: 'doit être dédiée aux IBAN : elle ne peut pas être identique à PAYMENT_SECRETS_KEY'
+      });
+    }
     if (value.AI_PROVIDER === 'anthropic' && !value.ANTHROPIC_API_KEY) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -335,6 +636,134 @@ const envSchema = z
         path: ['AI_PROVIDER'],
         message: "le faux fournisseur 'fake' n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test'"
       });
+    }
+
+    // Spec 045 : visio LiveKit, les trois variables ou aucune ; `wss://` hors développement et test.
+    const livekit = [
+      ['LIVEKIT_URL', value.LIVEKIT_URL],
+      ['LIVEKIT_API_KEY', value.LIVEKIT_API_KEY],
+      ['LIVEKIT_API_SECRET', value.LIVEKIT_API_SECRET]
+    ] as const;
+    if (livekit.some(([, present]) => present) && !livekit.every(([, present]) => present)) {
+      for (const [name, present] of livekit) {
+        if (!present) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: 'LIVEKIT_URL, LIVEKIT_API_KEY et LIVEKIT_API_SECRET vont ensemble : les trois ou aucune'
+          });
+        }
+      }
+    }
+    // Comme ws:// : un endpoint S3 en clair (http://) n'est accepte qu'en developpement et en test.
+    if (value.LIVEKIT_RECORDING_S3_ENDPOINT?.startsWith('http://') && !fakeProviderAllowed(process.env.NODE_ENV)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LIVEKIT_RECORDING_S3_ENDPOINT'],
+        message: "http:// n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test' : utilisez https://"
+      });
+    }
+    if (value.LIVEKIT_URL?.startsWith('ws://') && !fakeProviderAllowed(process.env.NODE_ENV)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LIVEKIT_URL'],
+        message: "ws:// n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test' : utilisez wss://"
+      });
+    }
+
+    // Spec 045 (R3) : enregistrement, bucket et cles ensemble, et seulement avec la visio.
+    const recording = [
+      ['LIVEKIT_RECORDING_S3_BUCKET', value.LIVEKIT_RECORDING_S3_BUCKET],
+      ['LIVEKIT_RECORDING_S3_ACCESS_KEY', value.LIVEKIT_RECORDING_S3_ACCESS_KEY],
+      ['LIVEKIT_RECORDING_S3_SECRET', value.LIVEKIT_RECORDING_S3_SECRET]
+    ] as const;
+    if (recording.some(([, present]) => present) && !recording.every(([, present]) => present)) {
+      for (const [name, present] of recording) {
+        if (!present) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: 'LIVEKIT_RECORDING_S3_BUCKET, _ACCESS_KEY et _SECRET vont ensemble : les trois ou aucune'
+          });
+        }
+      }
+    }
+    if (
+      value.LIVEKIT_RECORDING_S3_BUCKET &&
+      !(value.LIVEKIT_URL && value.LIVEKIT_API_KEY && value.LIVEKIT_API_SECRET)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LIVEKIT_RECORDING_S3_BUCKET'],
+        message: "l'enregistrement exige la visio configurée (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)"
+      });
+    }
+    // Transport SMS (signature, lot S7).
+    if (value.SMS_PROVIDER === 'orange') {
+      const requisSms = [
+        ['ORANGE_SMS_CLIENT_ID', value.ORANGE_SMS_CLIENT_ID],
+        ['ORANGE_SMS_CLIENT_SECRET', value.ORANGE_SMS_CLIENT_SECRET],
+        ['ORANGE_SMS_SENDER_ADDRESS', value.ORANGE_SMS_SENDER_ADDRESS]
+      ] as const;
+      for (const [name, present] of requisSms) {
+        if (!present) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: 'variable requise quand SMS_PROVIDER=orange'
+          });
+        }
+      }
+    }
+    if (value.SMS_PROVIDER === 'log' && !fakeProviderAllowed(process.env.NODE_ENV)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SMS_PROVIDER'],
+        message: "le transport 'log' n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test'"
+      });
+    }
+
+    // Lot S6 — prestataire de signature externe Yousign.
+    if (!value.ORANGE_SMS_API_BASE_URL.startsWith('https://')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ORANGE_SMS_API_BASE_URL'],
+        message: "l'URL doit être en https"
+      });
+    }
+    if (
+      value.NODE_ENV === 'production' &&
+      value.SIGNATURE_PROVIDER === 'yousign' &&
+      value.YOUSIGN_API_BASE_URL.includes('sandbox') &&
+      value.YOUSIGN_ALLOW_SANDBOX !== '1'
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['YOUSIGN_API_BASE_URL'],
+        message:
+          'la base SANDBOX Yousign est refusée en production (https://api.yousign.app/v3) ; seul le staging l’autorise, avec YOUSIGN_ALLOW_SANDBOX=1'
+      });
+    }
+    if (!value.YOUSIGN_API_BASE_URL.startsWith('https://')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['YOUSIGN_API_BASE_URL'],
+        message: "l'URL doit être en https"
+      });
+    }
+    if (value.SIGNATURE_PROVIDER === 'yousign') {
+      for (const [name, present] of [
+        ['YOUSIGN_API_KEY', value.YOUSIGN_API_KEY],
+        ['YOUSIGN_WEBHOOK_SECRET', value.YOUSIGN_WEBHOOK_SECRET]
+      ] as const) {
+        if (!present) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: 'variable requise quand SIGNATURE_PROVIDER=yousign'
+          });
+        }
+      }
     }
 
     // Lot 041 — inventaire par WhatsApp (data-model §7).
@@ -408,6 +837,47 @@ const envSchema = z
         });
       }
     }
+    // Les cles et les captures transitent par OPENROUTER_BASE_URL : jamais en clair en production.
+    if (value.NODE_ENV === 'production' && !value.OPENROUTER_BASE_URL.startsWith('https://')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['OPENROUTER_BASE_URL'],
+        message: 'en production, OPENROUTER_BASE_URL doit utiliser https'
+      });
+    }
+    // Spec 047 : lecture IA des captures de paiement. Le faux fournisseur n'existe
+    // qu'en developpement et en test ; une cle est exigee pour un vrai fournisseur.
+    if (value.PAYMENT_PROOF_VISION_PROVIDER === 'fake' && !fakeProviderAllowed(process.env.NODE_ENV)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PAYMENT_PROOF_VISION_PROVIDER'],
+        message: "le faux fournisseur 'fake' n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test'"
+      });
+    }
+    if (value.PAYMENT_PROOF_VISION_PROVIDER === 'gemini' && !value.GEMINI_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GEMINI_API_KEY'],
+        message: 'variable requise quand PAYMENT_PROOF_VISION_PROVIDER=gemini'
+      });
+    }
+    if (value.PAYMENT_PROOF_VISION_PROVIDER === 'openrouter') {
+      if (!value.OPENROUTER_API_KEY) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['OPENROUTER_API_KEY'],
+          message: 'variable requise quand PAYMENT_PROOF_VISION_PROVIDER=openrouter'
+        });
+      }
+      if (!value.PAYMENT_PROOF_VISION_MODEL.includes('/')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PAYMENT_PROOF_VISION_MODEL'],
+          message:
+            'identifiant OpenRouter requis quand PAYMENT_PROOF_VISION_PROVIDER=openrouter (ex. google/gemini-3.8-flash)'
+        });
+      }
+    }
   });
 
 export type Env = z.infer<typeof envSchema>;
@@ -452,6 +922,24 @@ function loadEnv(): Env {
     // eslint-disable-next-line no-console
     console.warn(
       `⚠️  ${perInstanceLimitersWarning({ tenantMinute: env.AI_TENANT_MINUTE_LIMIT, tenantDaily: env.AI_TENANT_DAILY_LIMIT })}`
+    );
+  }
+
+  if (
+    env.NODE_ENV === 'production' &&
+    env.SIGNATURE_PROVIDER === 'yousign' &&
+    env.YOUSIGN_API_BASE_URL.includes('sandbox')
+  ) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '⚠️  SIGNATURE_PROVIDER=yousign en production avec la base SANDBOX (YOUSIGN_ALLOW_SANDBOX=1, staging seulement) : les signatures n’ont aucune valeur. Renseignez YOUSIGN_API_BASE_URL (production) après recette.'
+    );
+  }
+
+  if (!env.SIGNATURE_PROVIDER_REQUIRED_KINDS.includes('SALE_AGREEMENT')) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "⚠️  SIGNATURE_PROVIDER_REQUIRED_KINDS ne contient pas SALE_AGREEMENT : le compromis de vente peut être signé par la signature simple (sans prestataire qualifié). À ne faire qu'après avis juridique."
     );
   }
 

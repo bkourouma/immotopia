@@ -1,29 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Table, Select, Space, Typography, Empty, Spin, Tag, Button } from 'antd';
+import { Card, Select, Space, Typography, Empty, Spin, Tag, Button } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
+import { Table } from '../primitives';
 import { TicketStatusBadge } from '../maintenance/TicketStatusBadge';
 import { propertyMaintenanceService } from '../../services/maintenance-service';
 import { Ticket, MaintenanceTicketStatus, MaintenanceTicketCategory } from '../../types/maintenance-types';
 import { safeFormatDate } from '../../utils/date-utils';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-const categoryLabels: Record<string, string> = {
+const categoryLabels: Record<string, string> = localizedRecord(() => ({
   PLUMBING: 'Plomberie',
   ELECTRICITY: t('Électricité'),
   AC: 'Climatisation',
   OTHER: 'Autre'
-};
+}));
 
-const priorityLabels: Record<string, string> = {
+const priorityLabels: Record<string, string> = localizedRecord(() => ({
   LOW: 'Faible',
   MEDIUM: 'Moyenne',
   HIGH: t('Élevée'),
   URGENT: 'Urgente'
-};
+}));
 
 const priorityColors: Record<string, string> = {
   LOW: 'default',
@@ -163,6 +165,7 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
           />
         ) : (
           <Table
+            exportFilename={t('Historique de maintenance')}
             columns={columns}
             dataSource={tickets}
             rowKey="id"

@@ -18,6 +18,8 @@ import contactSearchRoutes from './routes/contact-search-routes';
 import propertyRoutes from './routes/property-routes';
 import syndicRoutes from './routes/syndic-routes';
 import syndicLotPaymentsRoutes from './routes/syndic-lot-payments-routes';
+import syndicOnlinePaymentRoutes from './routes/syndic-online-payment-routes';
+import syndicDeclaredPaymentRoutes from './routes/syndic-declared-payment-routes';
 import syndicReceiptsRoutes from './routes/syndic-receipts-routes';
 import syndicChargeSchedulesRoutes from './routes/syndic-charge-schedules-routes';
 import syndicProviderInvoiceRoutes from './routes/syndic-provider-invoice-routes';
@@ -55,13 +57,25 @@ import newsletterRoutes from './routes/newsletter-routes';
 import newsletterPublicRoutes from './routes/newsletter-public-routes';
 import whatsappWebhookRoutes from './routes/whatsapp.webhook.route';
 import whatsappCloudWebhookRoutes, { WHATSAPP_CLOUD_WEBHOOK_PREFIX } from './routes/whatsapp-cloud-webhook-routes';
+import livekitWebhookRoutes, { LIVEKIT_WEBHOOK_PREFIX } from './routes/livekit-webhook-routes';
 import paymentGatewayPublicRoutes from './routes/payment-gateway-public-routes';
 import secureLinkPublicRoutes, { PUBLIC_SECURE_LINKS_PREFIX } from './routes/secure-link-public-routes';
+import signatureProviderWebhookRoutes, {
+  PUBLIC_SIGNATURE_PROVIDER_PREFIX
+} from './routes/signature-provider-webhook-routes';
+import signaturePublicRoutes, { PUBLIC_SIGNATURES_PREFIX } from './routes/signature-public-routes';
+import signatureRoutes from './routes/signature-routes';
 import externalAccessPublicRoutes, { PUBLIC_EXTERNAL_ACCESS_PREFIX } from './routes/external-access-public-routes';
+import meetingLivePublicRoutes, { PUBLIC_MEETING_LIVE_PREFIX } from './routes/meeting-live-public-routes';
 import externalAccessRoutes from './routes/external-access-routes';
 import tenantPortalRoutes from './routes/tenant-portal-routes';
 import ownerPortalRoutes from './routes/owner-portal-routes';
 import coOwnerPortalRoutes from './routes/coowner-portal-routes';
+import {
+  coOwnerPortalInboxRouter,
+  tenantPortalInboxRouter,
+  ownerPortalInboxRouter
+} from './routes/portal-inbox-routes';
 import patrimoineRoutes from './routes/patrimoine-routes';
 import patrimoineEntitiesRoutes from './routes/patrimoine-entities-routes';
 import patrimoineLandRoutes from './routes/patrimoine-land-routes';
@@ -73,10 +87,16 @@ import patrimoineProjectionsRoutes from './routes/patrimoine-projections-routes'
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
 import tenantAuditRoutes from './routes/tenant-audit-routes';
+import notificationRoutes from './routes/notification-routes';
+import notificationAdminRoutes from './routes/notification-admin-routes';
+import platformNotificationRoutes from './routes/platform-notification-routes';
+import messagingRoutes from './routes/messaging-routes';
 import managementFeeRoutes from './routes/management-fee-routes';
 import ownerAccountRoutes, { ownerAccountPortalRouter } from './routes/owner-account-routes';
 import leaseLifecycleRoutes from './routes/lease-lifecycle-routes';
 import leaseInspectionRoutes from './routes/lease-inspection-routes';
+import directDebitRoutes from './routes/direct-debit-routes';
+import syndicDirectDebitRoutes from './routes/syndic-direct-debit-routes';
 import accountingExportsRoutes from './routes/accounting-exports-routes';
 import propertyOwnershipRoutes from './routes/property-ownership-routes';
 import cashSessionRoutes from './routes/cash-session-routes';
@@ -138,12 +158,19 @@ app.use(compressionMiddleware);
 const PUBLIC_TOKEN_PREFIXES = [
   PUBLIC_SECURE_LINKS_PREFIX,
   PUBLIC_EXTERNAL_ACCESS_PREFIX,
-  WHATSAPP_CLOUD_WEBHOOK_PREFIX
+  PUBLIC_SIGNATURES_PREFIX,
+  PUBLIC_MEETING_LIVE_PREFIX,
+  WHATSAPP_CLOUD_WEBHOOK_PREFIX,
+  // Spec 045 : webhook LiveKit, corps BRUT pour verifier la signature.
+  LIVEKIT_WEBHOOK_PREFIX,
+  PUBLIC_SIGNATURE_PROVIDER_PREFIX
 ];
 const skipSecureLinkPublic =
   (parser: express.RequestHandler): express.RequestHandler =>
   (req, res, next) =>
-    PUBLIC_TOKEN_PREFIXES.some(prefix => req.path.startsWith(`${prefix}/`)) ? next() : parser(req, res, next);
+    PUBLIC_TOKEN_PREFIXES.some(prefix => req.path === prefix || req.path.startsWith(`${prefix}/`))
+      ? next()
+      : parser(req, res, next);
 app.use(skipSecureLinkPublic(express.json({ limit: '10mb' })));
 app.use(cookieParser());
 app.use(skipSecureLinkPublic(express.urlencoded({ extended: true, limit: '10mb' })));
@@ -234,6 +261,8 @@ app.get('/health', (_req, res) => {
 // router.use(express.urlencoded...) traverse toute requete /api/* : le corps
 // doit arriver brut jusqu'a la verification de signature.
 app.use(WHATSAPP_CLOUD_WEBHOOK_PREFIX, whatsappCloudWebhookRoutes);
+// Spec 045 : webhook LiveKit (fin d'enregistrement), public et signe, corps brut.
+app.use(LIVEKIT_WEBHOOK_PREFIX, livekitWebhookRoutes);
 // WhatsApp incoming webhook must be mounted before any /api router
 // that applies auth middleware globally (router.use(authenticate)).
 app.use('/api', whatsappWebhookRoutes);
@@ -246,6 +275,12 @@ app.use('/api', paymentGatewayPublicRoutes);
 app.use('/api', secureLinkPublicRoutes);
 // Lot B3 : acces en lecture seule des tiers de confiance (meme gabarit, jeton dans le corps).
 app.use('/api', externalAccessPublicRoutes);
+// Spec 044 (S6) : webhook du prestataire de signature, corps brut, signature verifiee, etat relu chez le prestataire.
+app.use(PUBLIC_SIGNATURE_PROVIDER_PREFIX, signatureProviderWebhookRoutes);
+// Spec 044 : signature electronique, page publique du signataire (jeton dans le chemin, masque du journal).
+app.use('/api', signaturePublicRoutes);
+// Spec 043 : AG en direct par lien personnel (jeton dans le corps, JSON 4 Ko, limiteurs par IP et par jeton).
+app.use('/api', meetingLivePublicRoutes);
 app.use('/api/auth', authRoutes);
 // Keep non-tenant endpoints before broad tenant-scoped routers mounted on /api.
 // The syndic/patrimoine/owner-statements routers below call requireTenantAccess
@@ -255,6 +290,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/platform/ai-settings', platformAiSettingsRoutes); // Réglage ImmoCopilot (super-admin)
 app.use('/api/roles', roleRoutes);
+app.use('/api/signatures', signatureRoutes); // Signature electronique, cote agence (spec 044)
 app.use('/api', personalSpaceRoutes); // Espace personnel en libre-service (lot 4B, hors tenant : authentifié seulement)
 // Abonnement (vague 2) : fonctionnalite requise par chaque route d'agence,
 // d'apres lib/subscription/route-features.ts. Monte AVEC son chemin et AVANT
@@ -308,6 +344,9 @@ app.use('/api/portal/tenant', tenantPortalRoutes); // Tenant portal routes
 app.use('/api/portal/owner', ownerPortalRoutes); // Owner portal routes
 app.use('/api/portal/owner', ownerAccountPortalRouter); // Compte courant du proprietaire connecte
 app.use('/api/portal/copropriete', coOwnerPortalRoutes); // Portail coproprietaire (lecture seule)
+app.use('/api/portal/copropriete', coOwnerPortalInboxRouter); // Notifications + messagerie (portail)
+app.use('/api/portal/tenant', tenantPortalInboxRouter);
+app.use('/api/portal/owner', ownerPortalInboxRouter);
 
 // Public routes must be mounted before any broad /api router
 // that applies auth middleware globally (router.use(authenticate)).
@@ -318,6 +357,8 @@ app.use('/api', propertyRoutes); // Property routes (tenant-scoped)
 app.use('/api', syndicProviderInvoiceRoutes); // Syndic S6 : factures et paiements des prestataires
 app.use('/api', documentBrandingRoutes); // Identite des documents : mandants, logos, signature et cachet (lot S1)
 app.use('/api', syndicLotPaymentsRoutes); // Paiements par lot, avance et suivi mensuel des charges (lot S2)
+app.use('/api', syndicOnlinePaymentRoutes); // Paiement mobile des coproprietaires, cote gestionnaire (spec 042)
+app.use('/api', syndicDeclaredPaymentRoutes); // Paiement mobile money declare par le coproprietaire, cote gestionnaire (spec 047)
 app.use('/api', syndicReceiptsRoutes); // Recus de paiement et quittances de charges, impression groupee (lot S3)
 app.use('/api', syndicChargeSchedulesRoutes); // Programmations d'appels automatiques et avis d'appel PDF (lot S4)
 app.use('/api', syndicRoutes); // Syndic (copropriétés) routes (tenant-scoped)
@@ -332,10 +373,16 @@ app.use('/api', patrimoineProjectionsRoutes); // Patrimoine — projections et s
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)
 app.use('/api', tenantAuditRoutes); // Journal d'activite de l'agence (tenant-scoped, ADR-006)
+app.use('/api', notificationRoutes); // Notifications persistantes de l'utilisateur (tenant-scoped)
+app.use('/api', notificationAdminRoutes); // Journal des notifications de l'agence (TENANT_NOTIFICATIONS_ADMIN)
+app.use('/api', platformNotificationRoutes); // Journal des notifications, toutes agences (super-admin)
+app.use('/api', messagingRoutes); // Messagerie interne agence / clients portail (tenant-scoped)
 app.use('/api', managementFeeRoutes); // Honoraires de gestion : conditions, gestionnaires, commissions
 app.use('/api', ownerAccountRoutes); // Comptes proprietaires et reversements (agence et portail)
 app.use('/api', leaseLifecycleRoutes); // Vie du bail : revision, renouvellement, avenant, resiliation
 app.use('/api', leaseInspectionRoutes); // Etats des lieux d'entree et de sortie
+app.use('/api', directDebitRoutes); // Prelevement bancaire : creanciers et mandats (spec 042)
+app.use('/api', syndicDirectDebitRoutes); // Prelevement bancaire des coproprietes (spec 042, P4)
 app.use('/api', accountingExportsRoutes); // Exports comptables : journal, grand livre, balance
 app.use('/api', propertyOwnershipRoutes); // Indivision : quotes-parts des proprietaires d'un bien
 app.use('/api', cashSessionRoutes); // Caisse d'agence : sessions, comptage, validation

@@ -5,6 +5,7 @@ import { OWNER_STATEMENT_COMPUTATION_VERSION } from '../lib/patrimoine/owner-sta
 import { sendOwnerMonthlyReport } from '../lib/patrimoine/notifications';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { runWithTenantContext } from '../utils/tenant-context';
 
 /**
@@ -146,7 +147,7 @@ export function startOwnerMonthlyReportJob(): void {
     '0 8 * * *',
     async () => {
       try {
-        await runOwnerMonthlyReports();
+        await withJobLock('owner-monthly-report-daily', 60 * 60 * 1000, () => runOwnerMonthlyReports());
       } catch (error) {
         logger.error('Error in owner monthly report job', {
           error: error instanceof Error ? error.message : String(error)

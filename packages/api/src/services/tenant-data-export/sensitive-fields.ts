@@ -29,7 +29,10 @@ export const EXPLICIT_SENSITIVE_FIELDS: Readonly<Record<string, readonly string[
   WhatsappGroupInviteLog: ['invite_link'],
   // Identifiants chiffres de la passerelle (deja couverts par la regle de nom,
   // listes ici pour qu'un renommage ne les fasse pas fuiter).
-  PaymentGatewayConfig: ['apiKeyEncrypted', 'apiKeyLast4', 'merchantId']
+  PaymentGatewayConfig: ['apiKeyEncrypted', 'apiKeyLast4', 'merchantId'],
+  // Enregistrement d'AG (spec 045) : cle d'objet S3 et identifiants LiveKit internes ; le fichier lui-meme
+  // (fileUrl) est suivi par le collecteur de fichiers de l'archive.
+  GMRecording: ['storageKey', 'egressId', 'webhookEventId']
 };
 
 /**

@@ -16,9 +16,39 @@ function sanitizeString(input: string): string {
 }
 
 /**
+ * Champs secrets que l'assainissement ne touche JAMAIS, à quelque profondeur
+ * que ce soit : `password`, `newPassword`, `currentPassword`, `confirmPassword`,
+ * `oldPassword`, `passwordConfirmation`, `passwd`, `passphrase`…
+ *
+ * Un mot de passe n'est ni affiché ni interprété comme du HTML : il est haché.
+ * L'« assainir » retirait silencieusement `<`, `>`, les espaces de bord,
+ * `javascript:` ou un motif `onxxx=` (« Bonjour=2024! » perdait « onjour= »),
+ * si bien que le hash enregistré ne correspondait plus à ce que la personne
+ * avait tapé — et qu'un compte créé par une invitation (qui ne passe pas par
+ * ce middleware) ne pouvait plus se connecter dès que son mot de passe
+ * contenait l'un de ces caractères.
+ */
+const SECRET_FIELD_PATTERN = /passw(or)?d|passphrase/i;
+
+export function isPasswordField(key: string): boolean {
+  return SECRET_FIELD_PATTERN.test(key);
+}
+
+/**
+ * Forme qu'un mot de passe prenait AVANT que `sanitizeBody` ne les épargne.
+ *
+ * Les comptes inscrits ou réinitialisés avant ce correctif ont un hash calculé
+ * sur cette forme : `loginUser` la compare en second recours pour ne pas les
+ * enfermer dehors. Ne pas utiliser ailleurs.
+ */
+export function legacySanitizedPassword(password: string): string {
+  return sanitizeString(password);
+}
+
+/**
  * Sanitize request body
  * @param body - Request body object
- * @returns Sanitized body
+ * @returns Sanitized body (les champs mot de passe sont recopiés tels quels)
  */
 export function sanitizeBody(body: any): any {
   if (typeof body === 'string') {
@@ -30,7 +60,9 @@ export function sanitizeBody(body: any): any {
   if (body && typeof body === 'object') {
     const sanitized: any = {};
     for (const key in body) {
-      if (typeof body[key] === 'string') {
+      if (isPasswordField(key)) {
+        sanitized[key] = body[key];
+      } else if (typeof body[key] === 'string') {
         sanitized[key] = sanitizeString(body[key]);
       } else {
         sanitized[key] = sanitizeBody(body[key]);

@@ -466,7 +466,13 @@ export async function syncDirectDepositMovementEntryTx(
 // ---------------------------------------------------------------------------
 
 /** Mouvements du compte locataire qui constatent un produit (le reste est de la trésorerie, voir en-tête). */
-const BILLING_SOURCES = new Set(['RENTAL_INSTALLMENT', 'RENTAL_PENALTY', 'LEASE_REVISION']);
+const BILLING_SOURCES = new Set([
+  'RENTAL_INSTALLMENT',
+  'RENTAL_PENALTY',
+  'LEASE_REVISION',
+  // Frais de rejet de prélèvement refacturés (spec 042 P3) : produit 7088, comme les pénalités.
+  'DIRECT_DEBIT_REJECT_FEE'
+]);
 const BILLING_TYPES = new Set(['INSTALLMENT', 'PENALTY', 'WAIVER', 'VOID', 'ADJUSTMENT']);
 
 export interface RenterMovementLike {
@@ -505,7 +511,9 @@ export async function syncDirectRenterMovementEntryTx(
   if (already) return false;
 
   const productSpec =
-    movement.sourceType === 'RENTAL_PENALTY' ? DIRECT_ACCOUNTS.penaltyIncome : DIRECT_ACCOUNTS.rentIncome;
+    movement.sourceType === 'RENTAL_PENALTY' || movement.sourceType === 'DIRECT_DEBIT_REJECT_FEE'
+      ? DIRECT_ACCOUNTS.penaltyIncome
+      : DIRECT_ACCOUNTS.rentIncome;
   const [clients, product] = await Promise.all([
     ensureChartAccountTx(
       tx,

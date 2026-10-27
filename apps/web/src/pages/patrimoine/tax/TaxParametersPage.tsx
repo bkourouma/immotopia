@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Select, Table, Tag, Typography } from 'antd';
+import { Select, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
 import { getTaxParameters } from '../../../services/patrimoine-entities-service';
 import type { TaxParametersData } from '../../../types/patrimoine-entities-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
-import { PageHeader, StateBlock, SkeletonTable } from '../../../components/primitives';
+import { PageHeader, StateBlock, SkeletonTable, Table } from '../../../components/primitives';
 import {
   fiscalCountryOptions,
   occupancySelectorLabel,
@@ -87,6 +87,8 @@ export const TaxParametersPage: React.FC = () => {
     {
       title: t('Source'),
       key: 'source',
+      exportValue: (row: ParameterRow) =>
+        row.sourceUrl && row.sourceUrl.startsWith('https://') ? `${row.source} — ${row.sourceUrl}` : row.source,
       render: (_: unknown, row: ParameterRow) => (
         <span>
           {row.source}
@@ -160,6 +162,7 @@ export const TaxParametersPage: React.FC = () => {
         <SkeletonTable rows={8} columns={columns.length} aria-label={t('Paramètres en cours de chargement')} />
       ) : (
         <Table
+          exportFilename={t('Paramètres fiscaux')}
           rowKey="id"
           columns={columns}
           dataSource={parametersQuery.data?.parameters ?? []}

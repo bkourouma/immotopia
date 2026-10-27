@@ -5,6 +5,7 @@ import { Ticket, MaintenanceTicketStatus } from '../../types/maintenance-types';
 import { TicketStatusBadge } from './TicketStatusBadge';
 import { safeFormatDate } from '../../utils/date-utils';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 const { Title, Text } = Typography;
 
@@ -15,19 +16,19 @@ interface TicketCardProps {
   onDelete?: (ticketId: string) => void;
 }
 
-const categoryLabels: Record<string, string> = {
+const categoryLabels: Record<string, string> = localizedRecord(() => ({
   PLUMBING: 'Plomberie',
   ELECTRICITY: t('Électricité'),
   AC: 'Climatisation',
   OTHER: 'Autre'
-};
+}));
 
-const priorityLabels: Record<string, string> = {
+const priorityLabels: Record<string, string> = localizedRecord(() => ({
   LOW: 'Faible',
   MEDIUM: 'Moyenne',
   HIGH: t('Élevée'),
   URGENT: 'Urgente'
-};
+}));
 
 const priorityColors: Record<string, string> = {
   LOW: 'default',

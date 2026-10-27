@@ -6,6 +6,7 @@ import './Calendar.css';
 import type { EvenementAgenda } from './calendar-model';
 import { t } from '../../i18n/t';
 
+import { localizedRecord } from '../../i18n/localized';
 /**
  * Grille mensuelle, hebdomadaire ou journalière — le module lourd.
  *
@@ -68,7 +69,7 @@ function couleurEvenement(event: EvenementAgenda): React.CSSProperties {
   };
 }
 
-const MESSAGES = {
+const MESSAGES = localizedRecord(() => ({
   next: 'Suivant',
   previous: t('Précédent'),
   today: "Aujourd'hui",
@@ -80,7 +81,7 @@ const MESSAGES = {
   time: 'Heure',
   event: t('Événement'),
   noEventsInRange: t('Aucun événement sur cette période')
-};
+}));
 
 export const CalendarGrid: React.FC<CalendarGridProps> = ({
   events,

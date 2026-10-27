@@ -1136,7 +1136,7 @@ export async function sendPlatformInvoiceEmail(tenantId: string, invoiceId: stri
                 number: invoice.invoiceNumber,
                 amount,
                 date: invoice.dueDate.toISOString().slice(0, 10),
-                url: `${frontendUrl}/tenant/${tenantId}/settings/abonnement`
+                url: `${frontendUrl}/tenant/${tenantId}/settings/facturation`
               }
             );
       let sent = 0;

@@ -36,6 +36,10 @@ export const SyndicChargeSchedules: React.FC = () => {
     approvedBudgetOptions,
     watchedAmountSource,
     watchedFrequency,
+    allocationMethod,
+    includeAnnexLots,
+    allocationPreview,
+    lotTypeRatesStatus,
     openCreateDrawer,
     openEditDrawer,
     closeDrawer,
@@ -116,6 +120,12 @@ export const SyndicChargeSchedules: React.FC = () => {
                   editing={editing}
                   approvedBudgetOptions={approvedBudgetOptions}
                   watchedAmountSource={watchedAmountSource}
+                  tenantId={effectiveTenantId}
+                  syndicId={syndicId}
+                  allocationMethod={allocationMethod}
+                  includeAnnexLots={includeAnnexLots}
+                  allocationPreview={allocationPreview}
+                  lotTypeRatesStatus={lotTypeRatesStatus}
                 />
               )
             },

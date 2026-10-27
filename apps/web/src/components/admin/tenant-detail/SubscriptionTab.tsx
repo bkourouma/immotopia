@@ -14,7 +14,6 @@ import {
   Select,
   Space,
   Spin,
-  Table,
   Typography
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -46,22 +45,23 @@ import {
   updateSubscriptionItem,
   type ExtensionRequest
 } from '../../../services/subscription-extras-service';
-import { StatusTag, MoneyValue, useConfirmAction } from '../../primitives';
+import { StatusTag, MoneyValue, Table, useConfirmAction } from '../../primitives';
 import { ReasonPromptModal } from '../ReasonPromptModal';
 import { isExtensionAllowed } from '../../../utils/extension-rules';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { localizedList, localizedRecord } from '../../../i18n/localized';
 
 const { Text, Title } = Typography;
 
 const REQUEST_STATUS_LABEL: Record<
   string,
   { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }
-> = {
+> = localizedRecord(() => ({
   OPEN: { label: t('Ouverte'), tone: 'warning' },
   HANDLED: { label: t('Traitée'), tone: 'success' },
   DECLINED: { label: t('Refusée'), tone: 'neutral' }
-};
+}));
 
 /**
  * Onglet Abonnement de la fiche agence (vague 2, lot C) — abonnements par
@@ -71,14 +71,15 @@ const REQUEST_STATUS_LABEL: Record<
  * les modules ouverts sont affichés ici, en lecture seule, déduits des packs.
  */
 
-const CAPACITY_LABEL: Record<CapacityKeyCode, string> = {
+const CAPACITY_LABEL: Record<CapacityKeyCode, string> = localizedRecord(() => ({
   LOTS: t('Lots'),
   COPROPRIETES: t('Copropriétés'),
   CHANTIERS: t('Chantiers'),
   BIENS_DETENUS: t('Biens détenus'),
   ACTIFS: t('Actifs'),
-  PHOTOS_INVENTAIRE: t('Photos d’inventaire analysées (par mois)')
-};
+  PHOTOS_INVENTAIRE: t('Photos d’inventaire analysées (par mois)'),
+  SIGNATURES_MENSUELLES: t('Signatures électroniques (par mois)')
+}));
 
 /**
  * Pack Patrimoine, lot P1 : Essentiel et Pro ne se cumulent pas
@@ -106,11 +107,11 @@ const phaseLabels = (): Record<
   READ_ONLY: { label: t('Lecture seule'), tone: 'danger' }
 });
 
-const QUOTA_POLICY_OPTIONS: Array<{ value: QuotaPolicyCode; label: string }> = [
+const QUOTA_POLICY_OPTIONS: Array<{ value: QuotaPolicyCode; label: string }> = localizedList(() => [
   { value: 'BLOCK', label: t('Bloquer le dépassement') },
   { value: 'BILL_OVERAGE', label: t('Facturer le dépassement') },
   { value: 'WARN_ONLY', label: t('Avertir seulement') }
-];
+]);
 
 /**
  * Écart de recette Syndic D.4 : en `warn` (valeur par défaut de
@@ -119,39 +120,42 @@ const QUOTA_POLICY_OPTIONS: Array<{ value: QuotaPolicyCode; label: string }> = [
  * y compris « Bloquer le dépassement ». Le super-admin doit le savoir avant
  * de croire la politique active.
  */
-const ENFORCEMENT_NOTICE: Partial<Record<'off' | 'warn', string>> = {
+const ENFORCEMENT_NOTICE: Partial<Record<'off' | 'warn', string>> = localizedRecord(() => ({
   off: t(
     'Mode « désactivé » : tous les modules restent accessibles, quels que soient les packs souscrits, et aucun dépassement n’est bloqué, quelle que soit la politique choisie. Les vérifications ne s’appliquent qu’en mode « appliquer » (SUBSCRIPTION_ENFORCEMENT=enforce).'
   ),
   warn: t(
     'Mode « avertir » : les modules non souscrits restent accessibles et aucun dépassement n’est bloqué, quelle que soit la politique choisie. La politique ne s’applique qu’en mode « appliquer » (SUBSCRIPTION_ENFORCEMENT=enforce).'
   )
-};
+}));
 
-const MODULE_LABEL: Record<string, string> = {
+const MODULE_LABEL: Record<string, string> = localizedRecord(() => ({
   MODULE_AGENCY: t('Agence'),
   MODULE_SYNDIC: t('Syndic'),
   MODULE_PROMOTER: t('Promoteur'),
   MODULE_PATRIMOINE: t('Patrimoine')
-};
+}));
 
-const MODULE_ACCESS_LABEL: Record<ModuleAccess, { label: string; tone: 'neutral' | 'success' | 'warning' }> = {
-  FULL: { label: t('Ouvert'), tone: 'success' },
-  READ_ONLY: { label: t('Lecture seule'), tone: 'warning' },
-  NONE: { label: t('Fermé'), tone: 'neutral' }
-};
+const MODULE_ACCESS_LABEL: Record<ModuleAccess, { label: string; tone: 'neutral' | 'success' | 'warning' }> =
+  localizedRecord(() => ({
+    FULL: { label: t('Ouvert'), tone: 'success' },
+    READ_ONLY: { label: t('Lecture seule'), tone: 'warning' },
+    NONE: { label: t('Fermé'), tone: 'neutral' }
+  }));
 
-const ITEM_KIND_LABEL: Record<string, string> = {
+const ITEM_KIND_LABEL: Record<string, string> = localizedRecord(() => ({
   PACK: t('Pack'),
   EXTENSION: t('Extension'),
   SETUP: t('Mise en route')
-};
+}));
 
-const ITEM_STATUS_LABEL: Record<string, { label: string; tone: 'success' | 'info' | 'neutral' }> = {
-  ACTIVE: { label: t('Actif'), tone: 'success' },
-  SCHEDULED: { label: t('Programmé'), tone: 'info' },
-  ENDED: { label: t('Terminé'), tone: 'neutral' }
-};
+const ITEM_STATUS_LABEL: Record<string, { label: string; tone: 'success' | 'info' | 'neutral' }> = localizedRecord(
+  () => ({
+    ACTIVE: { label: t('Actif'), tone: 'success' },
+    SCHEDULED: { label: t('Programmé'), tone: 'info' },
+    ENDED: { label: t('Terminé'), tone: 'neutral' }
+  })
+);
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return '—';
@@ -291,7 +295,8 @@ const OverrideModal: React.FC<OverrideModalProps> = ({ open, onClose, onSubmit }
               { value: 'CHANTIERS', label: t('Chantiers') },
               { value: 'BIENS_DETENUS', label: t('Biens détenus') },
               { value: 'ACTIFS', label: t('Actifs') },
-              { value: 'PHOTOS_INVENTAIRE', label: t('Photos d’inventaire analysées (par mois)') }
+              { value: 'PHOTOS_INVENTAIRE', label: t('Photos d’inventaire analysées (par mois)') },
+              { value: 'SIGNATURES_MENSUELLES', label: t('Signatures électroniques (par mois)') }
             ]}
           />
         </Form.Item>
@@ -630,6 +635,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
       title: t('Élément'),
       dataIndex: 'name',
       key: 'name',
+      exportValue: item => `${item.name} — ${ITEM_KIND_LABEL[item.kind] ?? item.kind}`,
       render: (_, item) => (
         <Space direction="vertical" size={0}>
           <Text strong>{item.name}</Text>
@@ -643,6 +649,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
     {
       title: t('Prix mensuel figé'),
       key: 'price',
+      exportValue: item => item.quantity * item.unitMonthlyPrice * (1 - item.discountPercent / 100),
       render: (_, item) => (
         <Space direction="vertical" size={0}>
           <MoneyValue value={item.quantity * item.unitMonthlyPrice * (1 - item.discountPercent / 100)} />
@@ -657,6 +664,8 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
     {
       title: t('Début / fin'),
       key: 'period',
+      exportValue: item =>
+        `${formatDateTime(item.startsAt)} — ${item.endsAt ? formatDateTime(item.endsAt) : t('sans fin')}`,
       render: (_, item) => (
         <Space direction="vertical" size={0}>
           <Text style={{ fontSize: 'var(--font-size-sm)' }}>{formatDateTime(item.startsAt)}</Text>
@@ -880,6 +889,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
         }
       >
         <Table<SubscriptionItemDTO>
+          exportFilename={t('Packs et extensions')}
           dataSource={items}
           columns={itemColumns}
           rowKey="id"
@@ -891,6 +901,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
 
       <Card title={t('Dérogations')}>
         <Table<CapacityOverrideDTO>
+          exportFilename={t('Dérogations')}
           dataSource={overrides}
           columns={overrideColumns}
           rowKey="id"
@@ -957,6 +968,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
 
       <Card title={t("Demandes d'extension")}>
         <Table<ExtensionRequest>
+          exportFilename={t("Demandes d'extension")}
           dataSource={requests}
           rowKey="id"
           pagination={false}

@@ -135,7 +135,8 @@ export type CreateSalaryNoteInput = z.infer<typeof createSalaryNoteSchema>;
 export const createSalaryPaymentSchema = z
   .object({
     paymentDate: z.coerce.date({ errorMap: () => ({ message: 'Date de règlement invalide.' }) }),
-    amount: z.number().positive('Le montant du règlement doit être positif.')
+    amount: z.number().positive('Le montant du règlement doit être positif.'),
+    treasuryAccountId: z.string().uuid('Identifiant de compte de trésorerie invalide.').nullish()
   })
   .strict();
 

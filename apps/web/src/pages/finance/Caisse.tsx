@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Button, Card, Input, InputNumber, Modal, Select, Space, Switch, Table, Typography } from 'antd';
+import { App, Button, Card, Input, InputNumber, Modal, Select, Space, Switch, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { CheckCircleOutlined, LockOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,16 +27,23 @@ import {
   StatCard,
   DataView,
   DataCard,
-  StatusTag
+  StatusTag,
+  Table
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
+import { useAuth } from '../../hooks/useAuth';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { isPermissionDenied, writeErrorMessage } from '../../utils/error-handler';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+
+const messageSansDroitCaisse = () => t("Vous n'avez pas le droit de tenir une caisse.");
 
 /**
  * Caisse d'agence — Lot 6 (scratchpad `lot6-contrat-api.md`).
@@ -65,11 +72,11 @@ const BILLETS: DenominationValue[] = ['10000', '5000', '2000', '1000', '500'];
 const PIECES: DenominationValue[] = ['250', '200', '100', '50', '25', '10', '5'];
 const TOUTES_DENOMINATIONS: DenominationValue[] = [...BILLETS, ...PIECES];
 
-const STATUS_LABEL: Record<CashSessionStatus, string> = {
+const STATUS_LABEL: Record<CashSessionStatus, string> = localizedRecord(() => ({
   OPEN: t('Ouverte'),
   CLOSED: t('À valider'),
   VALIDATED: t('Validée')
-};
+}));
 
 const STATUS_TONE: Record<CashSessionStatus, StatusTone> = {
   OPEN: 'info',
@@ -77,11 +84,11 @@ const STATUS_TONE: Record<CashSessionStatus, StatusTone> = {
   VALIDATED: 'success'
 };
 
-const KIND_LABEL: Record<ExpectedLine['kind'], string> = {
+const KIND_LABEL: Record<ExpectedLine['kind'], string> = localizedRecord(() => ({
   RENT_PAYMENT: t('Loyer encaissé'),
   OWNER_PAYOUT: t('Reversement propriétaire'),
   CASH_VOUCHER: t('Pièce de caisse')
-};
+}));
 
 function dateHeure(iso: string): string {
   return dayjs(iso).format(dateFormat('dateTime'));
@@ -102,8 +109,20 @@ export const Caisse: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
-  const [onglet, setOnglet] = useState<Onglet>('ma-caisse');
+  // Ce que la personne a le droit de faire (BUG-2026-09-29-006) : tenir une
+  // caisse demande FINANCE_DOCUMENTS_CREATE, la valider FINANCE_DOCUMENTS_VALIDATE.
+  // `permissions` nul = aucune restriction (administrateur d'agence) ; on
+  // n'appelle « Ma caisse » qu'une fois les droits connus, pour ne pas
+  // provoquer un 403 aussitôt masqué.
+  const { permissions, ready: droitsConnus } = useMyMenuAccess(tenantId);
+  const peutTenirCaisse = permissions === null || permissions.has('FINANCE_DOCUMENTS_CREATE');
+  const peutValider = permissions === null || permissions.has('FINANCE_DOCUMENTS_VALIDATE');
+
+  const [ongletChoisi, setOnglet] = useState<Onglet>('ma-caisse');
+  // Sans droit de tenir une caisse, l'écran s'ouvre sur l'historique.
+  const onglet: Onglet = peutTenirCaisse ? ongletChoisi : 'historique';
 
   // --- Ouverture -----------------------------------------------------------
   const [fondDeCaisse, setFondDeCaisse] = useState<number | null>(null);
@@ -128,8 +147,10 @@ export const Caisse: React.FC = () => {
   const sessionCouranteQuery = useQuery({
     queryKey: queryKey('cash-session-current', tenantId, {}),
     queryFn: () => getCurrentCashSession(tenantId as string),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
+    enabled: Boolean(tenantId) && droitsConnus && peutTenirCaisse,
+    staleTime: STALE_TIME.list,
+    // Un 403 est une réponse définitive : ne pas la rejouer.
+    retry: (nombre, erreur) => !isPermissionDenied(erreur) && nombre < 2
   });
 
   const historiqueQuery = useQuery({
@@ -176,7 +197,7 @@ export const Caisse: React.FC = () => {
       message.success(t('Caisse ouverte.'));
       queryClient.invalidateQueries({ queryKey: queryKey('cash-session-current', tenantId, {}) });
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t("L'ouverture de la caisse a échoué."));
+      message.error(writeErrorMessage(err, t("L'ouverture de la caisse a échoué."), messageSansDroitCaisse()));
     } finally {
       setOuvertureEnCours(false);
     }
@@ -202,7 +223,7 @@ export const Caisse: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: queryKey('cash-session-current', tenantId, {}) });
       queryClient.invalidateQueries({ queryKey: queryKey('cash-sessions', tenantId, {}) });
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t('La clôture a échoué.'));
+      message.error(writeErrorMessage(err, t('La clôture a échoué.'), messageSansDroitCaisse()));
     } finally {
       setClotureEnCours(false);
     }
@@ -219,8 +240,11 @@ export const Caisse: React.FC = () => {
       setCommentaireValidation('');
       setSessionOuverteId(null);
       queryClient.invalidateQueries({ queryKey: queryKey('cash-sessions', tenantId, {}) });
+      queryClient.invalidateQueries({ queryKey: queryKey('cash-session-detail', tenantId, {}) });
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t('La validation a échoué.'));
+      message.error(
+        writeErrorMessage(err, t('La validation a échoué.'), t("Vous n'avez pas le droit de valider une caisse."))
+      );
     } finally {
       setValidationEnCours(false);
     }
@@ -235,6 +259,7 @@ export const Caisse: React.FC = () => {
       title: t('Montant'),
       key: 'amount',
       align: 'end',
+      exportValue: l => l.amount,
       render: (_, l) => <MoneyValue value={l.amount} signed />
     }
   ];
@@ -352,6 +377,7 @@ export const Caisse: React.FC = () => {
             pagination={false}
             size="small"
             aria-label={t('Opérations de la caisse')}
+            exportFilename={t('Opérations de la caisse')}
           />
         ) : (
           <Text type="secondary">{t('Aucune opération pour le moment.')}</Text>
@@ -371,7 +397,13 @@ export const Caisse: React.FC = () => {
     </>
   );
 
-  const ongletMaCaisse = sessionCouranteQuery.error ? (
+  const ongletMaCaisse = isPermissionDenied(sessionCouranteQuery.error) ? (
+    <StateBlock
+      variant="empty"
+      title={t("Vous n'avez pas le droit de tenir une caisse.")}
+      description={t("Vous pouvez consulter l'historique des caisses depuis l'onglet « Historique ».")}
+    />
+  ) : sessionCouranteQuery.error ? (
     <StateBlock
       variant="error"
       description={t('Impossible de charger votre caisse.')}
@@ -393,12 +425,25 @@ export const Caisse: React.FC = () => {
     { title: t('Caissier'), key: 'cashier', render: (_, s) => s.cashierName },
     { title: t('Ouverture'), key: 'openedAt', render: (_, s) => dateHeure(s.openedAt) },
     { title: t('Clôture'), key: 'closedAt', render: (_, s) => (s.closedAt ? dateHeure(s.closedAt) : '—') },
-    { title: t('Attendu'), key: 'expected', align: 'end', render: (_, s) => <MoneyValue value={s.expected.amount} /> },
-    { title: t('Compté'), key: 'counted', align: 'end', render: (_, s) => <MoneyValue value={s.countedAmount} /> },
+    {
+      title: t('Attendu'),
+      key: 'expected',
+      align: 'end',
+      exportValue: s => s.expected.amount,
+      render: (_, s) => <MoneyValue value={s.expected.amount} />
+    },
+    {
+      title: t('Compté'),
+      key: 'counted',
+      align: 'end',
+      exportValue: s => s.countedAmount ?? null,
+      render: (_, s) => <MoneyValue value={s.countedAmount} />
+    },
     {
       title: t('Écart'),
       key: 'difference',
       align: 'end',
+      exportValue: s => s.difference ?? null,
       render: (_, s) =>
         s.difference === null ? (
           '—'
@@ -455,10 +500,12 @@ export const Caisse: React.FC = () => {
         onPageChange={() => undefined}
         loading={historiqueQuery.isPending}
         error={historiqueQuery.error ? t('Impossible de charger les sessions de caisse.') : null}
+        errorCause={historiqueQuery.error}
         onRetry={() => historiqueQuery.refetch()}
         emptyDescription={t('Aucune session de caisse.')}
         rowKey={s => s.id}
         aria-label={t('Historique des caisses')}
+        export={{ filename: t('Historique des caisses') }}
         columns={colonnesHistorique}
         renderCard={s => (
           <DataCard
@@ -487,14 +534,16 @@ export const Caisse: React.FC = () => {
       />
 
       <div role="tablist" style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-        <Button
-          role="tab"
-          aria-selected={onglet === 'ma-caisse'}
-          type={onglet === 'ma-caisse' ? 'primary' : 'default'}
-          onClick={() => setOnglet('ma-caisse')}
-        >
-          {t('Ma caisse')}
-        </Button>
+        {peutTenirCaisse && (
+          <Button
+            role="tab"
+            aria-selected={onglet === 'ma-caisse'}
+            type={onglet === 'ma-caisse' ? 'primary' : 'default'}
+            onClick={() => setOnglet('ma-caisse')}
+          >
+            {t('Ma caisse')}
+          </Button>
+        )}
         <Button
           role="tab"
           aria-selected={onglet === 'historique'}
@@ -731,6 +780,7 @@ export const Caisse: React.FC = () => {
                     title: t('Montant'),
                     key: 'amount',
                     align: 'end',
+                    exportValue: l => l.amount,
                     render: (_, l) => <MoneyValue value={l.amount} signed />
                   }
                 ]}
@@ -738,6 +788,7 @@ export const Caisse: React.FC = () => {
                 pagination={false}
                 size="small"
                 aria-label={t('Opérations de la caisse')}
+                exportFilename={t('Opérations de la caisse')}
               />
             ) : (
               <Text type="secondary">{t('Aucune opération.')}</Text>
@@ -755,12 +806,18 @@ export const Caisse: React.FC = () => {
                     }));
                   })()}
                   columns={[
-                    { title: t('Valeur'), key: 'valeur', render: (_, l) => <MoneyValue value={Number(l.valeur)} /> },
+                    {
+                      title: t('Valeur'),
+                      key: 'valeur',
+                      exportValue: l => Number(l.valeur),
+                      render: (_, l) => <MoneyValue value={Number(l.valeur)} />
+                    },
                     { title: t('Nombre'), key: 'nombre', align: 'end', render: (_, l) => l.nombre },
                     {
                       title: t('Sous-total'),
                       key: 'sous-total',
                       align: 'end',
+                      exportValue: l => Number(l.valeur) * l.nombre,
                       render: (_, l) => <MoneyValue value={Number(l.valeur) * l.nombre} />
                     }
                   ]}
@@ -768,11 +825,20 @@ export const Caisse: React.FC = () => {
                   pagination={false}
                   size="small"
                   aria-label={t('Billetage de la caisse')}
+                  exportFilename={t('Billetage')}
                 />
               </>
             )}
 
-            {detailQuery.data.status === 'CLOSED' && (
+            {detailQuery.data.status === 'CLOSED' && !peutValider && (
+              <Text type="secondary">{t('La validation d’une caisse est réservée aux responsables habilités.')}</Text>
+            )}
+
+            {detailQuery.data.status === 'CLOSED' && peutValider && user?.id === detailQuery.data.cashierUserId && (
+              <Text type="secondary">{t('Vous avez tenu cette caisse : un autre responsable doit la valider.')}</Text>
+            )}
+
+            {detailQuery.data.status === 'CLOSED' && peutValider && user?.id !== detailQuery.data.cashierUserId && (
               <>
                 <div>
                   <label htmlFor="caisse-commentaire-validation">{t('Commentaire (facultatif)')}</label>

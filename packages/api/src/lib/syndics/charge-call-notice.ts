@@ -122,17 +122,17 @@ export interface NoticeRenderContext {
 /**
  * Lu une fois par exécution de programmation, puis réutilisé pour chaque avis.
  *
- * L'avis est une DEMANDE de paiement, pas une pièce qui atteste quoi que ce
- * soit : il ne porte ni signature ni cachet (décision de l'audit S4, comme le
- * relevé du portail S5), sur le portail comme dans l'e-mail. Les logos
- * restent. Les quittances S3, elles, gardent leur signature.
+ * Le branding résolu est transmis tel quel : l'avis porte la signature et le
+ * cachet de l'émetteur quand ils sont configurés, comme le relevé et la
+ * quittance, sur le portail, dans l'e-mail et dans le Word (décision métier
+ * qui remplace celle de l'audit S4).
  */
 export async function loadNoticeRenderContext(tenantId: string, syndicateId: string): Promise<NoticeRenderContext> {
   const [branding, paymentMethods] = await Promise.all([
     resolveDocumentBranding(tenantId, syndicateId),
     loadPaymentMethods(syndicateId)
   ]);
-  return { syndicateId, branding: { ...branding, signature: null, stamp: null }, paymentMethods };
+  return { syndicateId, branding, paymentMethods };
 }
 
 async function renderNotice(
@@ -172,6 +172,30 @@ export async function getChargeCallNoticeForTenant(
 }
 
 /**
+ * Gestion : données de l'avis (celles du PDF) et identité, pour un rendu autre
+ * que PDF (avis Word). Même garde d'appartenance que `getChargeCallNoticeForTenant`.
+ */
+export async function loadChargeCallNoticeForTenant(
+  tenantId: string,
+  syndicateId: string,
+  chargeCallId: string
+): Promise<{
+  data: ChargeCallNoticeData;
+  branding: DocumentBranding;
+  paymentMethods: ChargeCallNoticeData['paymentMethods'];
+  lotId: string;
+}> {
+  const call = await findTenantCall(tenantId, syndicateId, chargeCallId);
+  const context = await loadNoticeRenderContext(tenantId, call.syndicateId);
+  return {
+    data: toNoticeData(call, context.paymentMethods),
+    branding: context.branding,
+    paymentMethods: context.paymentMethods,
+    lotId: call.lotId
+  };
+}
+
+/**
  * Portail : avis d'un appel d'un lot du périmètre (`resolveCoOwnerScope`).
  * Les copropriétés du périmètre sont déjà vérifiées comme étant de l'agence.
  * Le destinataire imprimé est le contact de la session pour ce lot (relu
@@ -183,8 +207,9 @@ export async function getChargeCallNoticeForCoOwner(
 ): Promise<PrivateFile> {
   if (scope.lotIds.length === 0) throw new NotFoundError('Appel de charges introuvable.');
   const call = await prisma.chargeCall.findFirst({
-    // Périmètre S5 : seuls les appels postérieurs à l'acquisition du lot
-    // (`ownedSince`) ; ceux de l'ancien propriétaire répondent le même 404.
+    // Périmètre S5 : si le lot a changé de propriétaire (`visibleSince`), seuls les
+    // appels postérieurs à l'acquisition ; ceux de l'ancien propriétaire répondent
+    // le même 404. Sans autre propriétaire avant, aucune borne.
     where: { id: chargeCallId, amount: { gt: 0 }, ...ownedChargeCallsWhere(scope, scope.lotIds) },
     select: NOTICE_CALL_SELECT
   });

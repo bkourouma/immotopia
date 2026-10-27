@@ -46,9 +46,9 @@ complet porte `passwordHash`. Toujours un `select` explicite, ex.
 
 `t()` prend le texte français comme clé : `t('Ajouter un bien')`, jamais
 `t('properties.add')`. Ne jamais retoucher un texte français déjà utilisé
-sans lancer ensuite `npm run i18n:extract` dans le paquet concerné — la
-traduction orpheline part dans un `*.orphans.json` au lieu d'être perdue,
-mais **doit être reportée à la main** sur la nouvelle clé.
+sans lancer ensuite `npm run i18n:extract` dans le paquet concerné — l'ancienne
+traduction reste dans le catalogue, non référencée, mais **doit être reportée
+à la main** sur la nouvelle clé (puis retirée avec `--prune`).
 
 ## RTL — propriétés logiques uniquement
 

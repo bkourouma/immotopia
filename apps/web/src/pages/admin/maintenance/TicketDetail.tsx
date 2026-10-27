@@ -16,32 +16,33 @@ import {
 import { useAuth } from '../../../hooks/useAuth';
 import { formatTicketDate } from '../../../utils/date-utils';
 import { t } from '../../../i18n/t';
+import { localizedRecord } from '../../../i18n/localized';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
 
-const categoryLabels: Record<string, string> = {
+const categoryLabels: Record<string, string> = localizedRecord(() => ({
   PLUMBING: 'Plomberie',
   ELECTRICITY: t('Électricité'),
   AC: 'Climatisation',
   OTHER: 'Autre'
-};
+}));
 
-const priorityLabels: Record<string, string> = {
+const priorityLabels: Record<string, string> = localizedRecord(() => ({
   LOW: 'Faible',
   MEDIUM: 'Moyenne',
   HIGH: t('Élevée'),
   URGENT: 'Urgente'
-};
+}));
 
-const statusLabels: Record<MaintenanceTicketStatus, string> = {
+const statusLabels: Record<MaintenanceTicketStatus, string> = localizedRecord(() => ({
   [MaintenanceTicketStatus.DECLARED]: t('Déclaré'),
   [MaintenanceTicketStatus.IN_PROGRESS]: t('En cours'),
   [MaintenanceTicketStatus.ASSIGNED]: t('Assigné'),
   [MaintenanceTicketStatus.RESOLVED]: t('Résolu'),
   [MaintenanceTicketStatus.CANCELED]: t('Annulé')
-};
+}));
 
 /**
  * Etapes atteignables depuis l'etape courante.

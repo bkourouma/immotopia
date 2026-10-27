@@ -1,4 +1,5 @@
 import { t } from '../i18n/t';
+import { localizedRecord } from '../i18n/localized';
 import type { StockLocationView } from './finance-stock-controle-types';
 /**
  * Contrat gelé de la frontière réseau — lot 5, premier sous-lot : le
@@ -68,10 +69,10 @@ import type { StockLocationView } from './finance-stock-controle-types';
  */
 export type StockLocationKind = 'WAREHOUSE' | 'SITE';
 
-export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = {
+export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = localizedRecord(() => ({
   WAREHOUSE: 'Magasin',
   SITE: t('Lieu de chantier')
-};
+}));
 
 /**
  * Une seule valeur, et c'est volontaire (contrat serveur, en-tête).
@@ -82,9 +83,9 @@ export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = {
  */
 export type StockValuationMethod = 'WEIGHTED_AVERAGE';
 
-export const STOCK_VALUATION_METHOD_LABELS: Record<StockValuationMethod, string> = {
+export const STOCK_VALUATION_METHOD_LABELS: Record<StockValuationMethod, string> = localizedRecord(() => ({
   WEIGHTED_AVERAGE: t('Coût moyen pondéré')
-};
+}));
 
 // ---------------------------------------------------------------------------
 // L'article

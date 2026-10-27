@@ -1,0 +1,559 @@
+<title>ImmoTopia Agence</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Prospectus A4 recto-verso. Recto : une bande marine qui porte la promesse et un relevé
+   propriétaire, puis six preuves. Verso : l'inventaire complet en trois colonnes, le tarif,
+   l'appel à la démonstration. Une seule apparence « papier », identique à l'écran et à l'impression. */
+:root {
+  --navy: #00215f;        /* bleu nuit ImmoTopia : bandeau, titres */
+  --blue: #1b4db1;        /* bleu de marque : liens, puces, réglé */
+  --blue-soft: #e6eeff;   /* fond des pastilles bleues */
+  --orange: #fc5e00;      /* accent de marque, jamais en texte fin */
+  --orange-ink: #c94600;  /* orange qui porte du texte */
+  --orange-soft: #fff1e8;
+  --paper: #ffffff;
+  --desk: #e9edf5;        /* fond derrière les feuilles, à l'écran */
+  --ink: #0f1a33;
+  --muted: #4d5a75;
+  --rule: #d6ddea;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--desk);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.stack { display: grid; gap: 28px; justify-items: center; }
+.sheet {
+  width: 100%;
+  max-width: 794px;
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgba(0, 33, 95, .08), 0 12px 40px rgba(0, 33, 95, .10);
+  position: relative;
+  overflow: hidden;
+}
+h1, h2, h3 { font-family: var(--font-display); color: var(--navy); margin: 0; text-wrap: balance; }
+p { margin: 0; }
+ul { margin: 0; padding: 0; list-style: none; }
+.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+/* ---------- En-tête commun ---------- */
+.mast {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 18px 36px 14px;
+}
+.brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 800; font-size: 19px; color: var(--navy); letter-spacing: -.01em; }
+.brand-mark { width: 22px; height: 22px; flex: none; }
+.brand small { font-weight: 500; font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+.pack-tag {
+  font-family: var(--font-data); font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--orange-ink); border: 1.5px solid var(--orange); padding: 4px 9px; border-radius: 3px;
+}
+
+/* ---------- Recto : bandeau ---------- */
+.hero {
+  background: var(--navy);
+  color: #fff;
+  display: grid;
+  grid-template-columns: 1.08fr 1fr;
+  gap: 26px;
+  padding: 20px 36px 20px;
+  position: relative;
+  align-items: center;
+}
+.hero::after { /* filet orange : la seule touche vive du bandeau */
+  content: ""; position: absolute; left: 36px; bottom: 0; width: 120px; height: 4px; background: var(--orange);
+}
+.hero-copy { display: grid; align-content: start; gap: 10px; min-width: 0; }
+.eyebrow { font-family: var(--font-data); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: #a9bff0; }
+.hero h1 { color: #fff; font-size: 35px; line-height: 1.02; font-weight: 800; letter-spacing: -.025em; }
+.hero h1 em { font-style: normal; color: var(--orange); }
+.hero .lede { color: #d5e0fa; font-size: 12.5px; line-height: 1.45; max-width: 42ch; }
+.hero-points { display: grid; gap: 5px; margin-top: 2px; }
+.hero-points li { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: #fff; }
+.hero-points li::before { content: ""; width: 7px; height: 7px; background: var(--orange); flex: none; transform: translateY(-1px); }
+
+/* Grille lot × mois (illustration) */
+.ledger {
+  background: #fff; color: var(--ink); border-radius: 6px; padding: 12px 12px 10px;
+  display: grid; gap: 8px; min-width: 0; align-self: start;
+}
+.ledger-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ledger-title { font-family: var(--font-display); font-weight: 700; font-size: 12.5px; color: var(--navy); }
+.ledger-sub { font-size: 10px; color: var(--muted); }
+.grid-wrap { overflow-x: auto; }
+.lm { display: grid; grid-template-columns: 28px repeat(12, minmax(0, 1fr)) 50px; gap: 2px; font-size: 9px; }
+.lm .h { font-family: var(--font-data); color: var(--muted); text-align: center; font-size: 8.5px; padding-bottom: 1px; }
+.lm .h.l, .lm .lot { text-align: start; }
+.lm .lot { font-family: var(--font-data); font-weight: 600; color: var(--navy); font-size: 9px; align-self: center; }
+.lm .c { height: 15px; border-radius: 2px; }
+.c.ok { background: var(--blue); }
+.c.adv { background: repeating-linear-gradient(135deg, var(--blue) 0 3px, #5b82d6 3px 6px); }
+.c.part { background: var(--orange-soft); box-shadow: inset 0 0 0 1.5px var(--orange); }
+.c.late { background: var(--orange); }
+.c.due { background: #fff; box-shadow: inset 0 0 0 1px var(--rule); }
+.lm .bal { font-family: var(--font-data); font-variant-numeric: tabular-nums; text-align: end; font-size: 8.5px; align-self: center; color: var(--ink); }
+.lm .bal.neg { color: var(--orange-ink); font-weight: 600; }
+.lm .bal.pos { color: var(--blue); font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 9px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.illus { font-family: var(--font-data); font-size: 8.5px; color: var(--muted); letter-spacing: .04em; }
+
+/* ---------- Bande de chiffres ---------- */
+.proof {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--rule);
+}
+.proof div { padding: 10px 14px 9px 36px; display: grid; gap: 2px; min-width: 0; }
+.proof div + div { border-inline-start: 1px solid var(--rule); padding-inline-start: 16px; }
+.proof b { font-family: var(--font-display); font-weight: 800; font-size: 25px; line-height: 1; color: var(--navy); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.proof span { font-size: 10.5px; color: var(--muted); line-height: 1.3; }
+
+/* ---------- Six preuves ---------- */
+.features { display: grid; grid-template-columns: repeat(3, 1fr); padding: 0 36px; }
+.feat { padding: 12px 16px 11px 0; display: grid; gap: 5px; align-content: start; min-width: 0; border-bottom: 1px solid var(--rule); }
+.feat:nth-child(3n+2), .feat:nth-child(3n+3) { padding-inline-start: 16px; border-inline-start: 1px solid var(--rule); }
+.feat:nth-child(n+4) { border-bottom: 0; }
+.feat .k { font-family: var(--font-data); font-size: 10px; font-weight: 600; color: var(--orange-ink); letter-spacing: .06em; text-transform: uppercase; }
+.feat h3 { font-size: 16px; line-height: 1.12; font-weight: 700; letter-spacing: -.01em; }
+.feat p { font-size: 11.2px; color: var(--muted); }
+.feat ul { display: grid; gap: 3px; margin-top: 2px; }
+.feat li { font-size: 11px; padding-inline-start: 12px; position: relative; }
+.feat li::before { content: ""; position: absolute; inset-inline-start: 0; top: .55em; width: 5px; height: 5px; border-radius: 50%; background: var(--blue); }
+.quorum { display: grid; gap: 4px; margin-top: 4px; padding: 7px 8px; background: var(--blue-soft); border-radius: 4px; }
+.quorum-row { display: flex; justify-content: space-between; gap: 6px; font-size: 9.5px; color: var(--navy); }
+.bar { height: 7px; background: #fff; border-radius: 4px; overflow: hidden; display: flex; }
+.bar i { display: block; height: 100%; }
+
+/* ---------- Pourquoi plus loin ---------- */
+.edge { background: var(--blue-soft); padding: 12px 36px 13px; display: grid; gap: 8px; }
+.edge h2 { font-size: 15px; font-weight: 700; }
+.edge-list { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.edge-list li { display: grid; gap: 3px; align-content: start; min-width: 0; }
+.edge-list b { font-family: var(--font-display); font-size: 12.5px; color: var(--navy); line-height: 1.15; }
+.edge-list span { font-size: 10.3px; color: var(--muted); line-height: 1.35; }
+.foot {
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center;
+  padding: 10px 36px 12px; font-size: 10px; color: var(--muted);
+}
+.foot b { color: var(--navy); }
+
+/* ---------- Verso ---------- */
+.verso-head { padding: 4px 36px 12px; display: grid; gap: 6px; border-bottom: 2px solid var(--navy); margin: 0 36px; padding-inline: 0; }
+.verso-head h2 { font-size: 27px; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; }
+.verso-head p { font-size: 11.5px; color: var(--muted); max-width: 72ch; }
+.key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 10px; color: var(--muted); }
+.soon {
+  font-family: var(--font-data); font-size: 8.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--orange-ink); background: var(--orange-soft); border: 1px solid #ffc29b; border-radius: 3px; padding: 0 4px; white-space: nowrap;
+}
+.catalog { column-count: 3; column-gap: 22px; column-rule: 1px solid var(--rule); padding: 10px 36px 2px; }
+.group { break-inside: avoid; display: grid; gap: 3px; margin-bottom: 9px; }
+.group h3 { font-size: 13px; font-weight: 700; display: flex; align-items: baseline; gap: 6px; }
+.group h3 .n { font-family: var(--font-data); font-size: 9.5px; color: var(--orange-ink); font-weight: 600; }
+.group li { font-size: 10.3px; line-height: 1.33; padding-inline-start: 9px; position: relative; color: var(--ink); }
+.group li::before { content: ""; position: absolute; inset-inline-start: 0; top: .55em; width: 4px; height: 4px; background: var(--blue); }
+.group li.later::before { background: var(--orange); }
+
+.close { display: grid; grid-template-columns: 1.15fr 1fr; gap: 0; margin: 0 36px 0; border-top: 2px solid var(--navy); }
+.price { padding: 11px 18px 12px 0; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.price h3 { font-size: 13px; }
+.price-main { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.price-main b { font-family: var(--font-display); font-size: 30px; font-weight: 800; color: var(--navy); letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+.price-main span { font-size: 11px; color: var(--muted); }
+.price table { border-collapse: collapse; width: 100%; font-size: 10px; }
+.price td { padding: 3px 0; border-bottom: 1px dotted var(--rule); vertical-align: baseline; }
+.price td:last-child { text-align: end; font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; padding-inline-start: 8px; color: var(--navy); }
+.price .fine { font-size: 9px; color: var(--muted); }
+.cta { background: var(--navy); color: #fff; padding: 13px 18px 12px; display: grid; gap: 7px; align-content: start; min-width: 0; }
+.cta h3 { color: #fff; font-size: 18px; line-height: 1.1; font-weight: 800; }
+.cta h3 em { font-style: normal; color: var(--orange); }
+.cta p { font-size: 10.8px; color: #d5e0fa; }
+.cta ol { margin: 0; padding-inline-start: 16px; display: grid; gap: 2px; font-size: 10.5px; color: #fff; }
+.contact { margin-top: 2px; display: grid; gap: 6px; }
+.contact div { display: flex; gap: 8px; align-items: flex-end; font-size: 9.5px; color: #a9bff0; }
+.contact div::after { content: ""; flex: 1; border-bottom: 1px dotted #6d86c0; height: 1px; }
+
+/* ---------- Écran étroit ---------- */
+@media (max-width: 720px) {
+  body { padding-block: 16px; }
+  .mast, .features, .edge, .foot, .catalog { padding-left: 18px; padding-right: 18px; }
+  .hero { grid-template-columns: 1fr; padding: 22px 18px 24px; }
+  .hero::after { left: 18px; }
+  .hero h1 { font-size: 30px; }
+  .lm { min-width: 300px; }
+  .proof { grid-template-columns: repeat(2, 1fr); }
+  .proof div, .proof div + div { padding: 12px 18px; border-inline-start: 0; }
+  .proof div:nth-child(even) { border-inline-start: 1px solid var(--rule); }
+  .features { grid-template-columns: 1fr; }
+  .feat, .feat:nth-child(3n+2), .feat:nth-child(3n+3) { padding: 14px 0; border-inline-start: 0; border-bottom: 1px solid var(--rule); }
+  .feat:last-child { border-bottom: 0; }
+  .edge-list { grid-template-columns: 1fr 1fr; }
+  .verso-head, .close { margin-left: 18px; margin-right: 18px; }
+  .verso-head h2 { font-size: 23px; }
+  .catalog { column-count: 1; }
+  .close { grid-template-columns: 1fr; }
+  .price { padding-inline-end: 0; }
+}
+@media (max-width: 420px) { .edge-list { grid-template-columns: 1fr; } }
+
+/* ---------- Impression : deux pages A4 exactes ---------- */
+@page { size: A4; margin: 0; }
+@media print {
+  body { background: #fff; padding: 0; }
+  .stack { gap: 0; display: block; }
+  .sheet { box-shadow: none; max-width: none; width: 210mm; height: 297mm; break-after: page; }
+  .sheet:last-child { break-after: auto; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .c { transition: transform .15s ease; }
+  .c:hover { transform: scale(1.25); }
+}
+
+/* Relevé propriétaire (illustration) */
+.stmt { background: #fff; color: var(--ink); border-radius: 6px; padding: 12px 14px 10px; display: grid; gap: 7px; min-width: 0; align-self: start; }
+.stmt table { width: 100%; border-collapse: collapse; font-size: 10px; }
+.stmt td { padding: 2px 0; border-bottom: 1px solid #edf0f6; vertical-align: baseline; }
+.stmt td:last-child { text-align: end; font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; padding-inline-start: 8px; }
+.stmt .sec td { font-family: var(--font-data); font-size: 8.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 0; padding-top: 4px; }
+.hero.wide { grid-template-columns: 1fr 1fr; }
+.stmt .minus td:last-child { color: var(--orange-ink); }
+.stmt .net td { border-bottom: 0; border-top: 2px solid var(--navy); padding-top: 6px; font-weight: 700; color: var(--navy); font-size: 11.5px; }
+.stmt .net td:last-child { font-size: 13px; }
+.sent { display: flex; align-items: center; gap: 6px; font-size: 9.5px; color: var(--blue); font-weight: 600; }
+.sent i { width: 8px; height: 8px; border-radius: 50%; background: #1f9d55; display: inline-block; }
+.lock { display: flex; gap: 8px; align-items: center; margin-top: 4px; padding: 7px 8px; background: var(--blue-soft); border-radius: 4px; font-size: 9.5px; color: var(--navy); }
+.lock .sig { font-family: var(--font-data); font-size: 9px; color: var(--muted); }
+.steps { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 3px; }
+.steps span { font-family: var(--font-data); font-size: 8.8px; padding: 2px 5px; border-radius: 3px; background: var(--blue-soft); color: var(--navy); }
+.steps span.on { background: var(--navy); color: #fff; }
+</style>
+
+<main class="stack">
+
+<!-- ======================= RECTO ======================= -->
+<article class="sheet" aria-label="Recto">
+  <header class="mast">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#00215f"/><path d="M5 12.2 12 6l7 6.2V18a1 1 0 0 1-1 1h-3.6v-4.4H9.6V19H6a1 1 0 0 1-1-1z" fill="#fff"/><rect x="15.6" y="4" width="3.4" height="3.4" fill="#fc5e00"/></svg>
+      ImmoTopia <small>· Agence immobilière</small>
+    </div>
+    <span class="pack-tag">Pack Agence</span>
+  </header>
+
+  <section class="hero wide">
+    <div class="hero-copy">
+      <span class="eyebrow">Agences immobilières · administrateurs de biens</span>
+      <h1>Toute votre agence, <em>du mandat au reversement.</em></h1>
+      <p class="lede">Vos biens, vos prospects, vos ventes et vos loyers dans un seul outil. Le locataire paie par Mobile Money depuis un lien WhatsApp. Le bail se signe sur téléphone. Le propriétaire reçoit son relevé chaque mois sans que vous l'écriviez.</p>
+      <ul class="hero-points">
+        <li>Fini les cahiers de loyers et les reçus à la main</li>
+        <li>Fini les reversements calculés sur Excel</li>
+        <li>Fini les baux imprimés, signés, scannés, perdus</li>
+      </ul>
+    </div>
+
+    <figure class="stmt" aria-label="Illustration d'un relevé propriétaire">
+      <div class="ledger-head">
+        <span class="ledger-title">Relevé propriétaire · Octobre 2026</span>
+        <span class="ledger-sub">M. Kouassi · 3 biens</span>
+      </div>
+      <table>
+        <tr class="sec"><td colspan="2">Loyers encaissés</td></tr>
+        <tr><td>Villa, Cocody Riviera 3</td><td>650 000</td></tr>
+        <tr><td>Appartement B4, Plateau</td><td>400 000</td></tr>
+        <tr><td>Studio, Marcory Zone 4</td><td>300 000</td></tr>
+        <tr class="sec"><td colspan="2">Déductions</td></tr>
+        <tr class="minus"><td>Honoraires de gestion 8 %</td><td>−108 000</td></tr>
+        <tr class="minus"><td>TVA 18 % sur honoraires</td><td>−19 440</td></tr>
+        <tr class="minus"><td>Réparation plomberie B4</td><td>−45 000</td></tr>
+        <tr class="net"><td>Net à reverser</td><td>1 177 560 FCFA</td></tr>
+      </table>
+      <span class="sent"><i></i><span>Envoyé par WhatsApp le 1<sup>er</sup> novembre</span></span>
+      <span class="illus">ILLUSTRATION · montants en FCFA</span>
+    </figure>
+  </section>
+
+  <section class="proof" aria-label="Chiffres clés">
+    <div><b class="num">550+</b><span>actions métier couvertes, du prospect au reversement</span></div>
+    <div><b class="num">3</b><span>espaces en ligne : propriétaire, locataire, annonces</span></div>
+    <div><b class="num">1</b><span>lien WhatsApp suffit pour encaisser un loyer</span></div>
+    <div><b class="num">3</b><span>langues : français, anglais, arabe</span></div>
+  </section>
+
+  <section class="features" aria-label="Fonctionnalités phares">
+    <div class="feat">
+      <span class="k">CRM et matching</span>
+      <h3>Le bon bien pour le bon client, en un clic</h3>
+      <p>Chaque demande devient une affaire suivie jusqu'à la signature.</p>
+      <ul>
+        <li>Pipeline d'affaires et calendrier des relances</li>
+        <li>Rapprochement automatique biens et demandes</li>
+        <li>Visites planifiées et comptes rendus</li>
+      </ul>
+    </div>
+    <div class="feat">
+      <span class="k">Ventes</span>
+      <h3>Du mandat de vente jusqu'à l'acte</h3>
+      <p>Toute la transaction tracée, rien d'oublié.</p>
+      <ul>
+        <li>Offres et contre-offres décidées en un clic</li>
+        <li>Compromis, conditions suspensives, échéancier</li>
+        <li>Commissions encaissées et partagées</li>
+      </ul>
+    </div>
+    <div class="feat">
+      <span class="k">Gestion locative</span>
+      <h3>Le bail de la signature à la sortie</h3>
+      <p>Révision, renouvellement, avenant, résiliation : tout est historisé.</p>
+      <ul>
+        <li>États des lieux en photos, entrée et sortie comparées</li>
+        <li>Retenues proposées depuis les dégradations</li>
+        <li>Dépôt de garantie et solde de tout compte</li>
+      </ul>
+    </div>
+    <div class="feat">
+      <span class="k">Encaissement</span>
+      <h3>Le loyer payé depuis WhatsApp</h3>
+      <p>Wave, Orange Money, MTN, Moov ou carte, sans application à installer.</p>
+      <ul>
+        <li>Facturation mensuelle lancée en une fois</li>
+        <li>Paiement rapproché de la bonne échéance</li>
+        <li>Pénalités de retard et caisse au billet près</li>
+      </ul>
+    </div>
+    <div class="feat">
+      <span class="k">Signature électronique</span>
+      <h3>Bail, mandat, état des lieux signés à distance</h3>
+      <p>Lien par e-mail ou SMS, code de confirmation, ou signature sur place sur la tablette.</p>
+      <div class="lock">
+        <span style="white-space:nowrap">Bail n° 2026-118</span>
+        <span class="steps"><span class="on">Bailleur ✓</span><span class="on">Locataire ✓</span><span class="on">Scellé</span></span>
+      </div>
+    </div>
+    <div class="feat">
+      <span class="k">Reversements et comptabilité</span>
+      <h3>Le propriétaire payé juste, chaque mois</h3>
+      <ul>
+        <li>Honoraires et TVA calculés à chaque encaissement</li>
+        <li>Relevé mensuel envoyé tout seul au propriétaire</li>
+        <li>Reversements numérotés, compte courant à jour</li>
+        <li>Comptabilité des mandants au plan SYSCOHADA</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="edge">
+    <h2>Ce que vous ne trouverez pas ailleurs</h2>
+    <ul class="edge-list">
+      <li><b>Des propriétaires rassurés</b><span>Revenus, paiements, documents et rapport du mois dans leur espace.</span></li>
+      <li><b>Des locataires autonomes</b><span>Échéances, paiement en ligne et pannes signalées avec photos.</span></li>
+      <li><b>Un assistant IA intégré</b><span>Retrouve un bail, prépare une quittance, répond en français.</span></li>
+      <li><b>Le patrimoine du client valorisé</b><span>Valeur, rendement, fiscalité, régularisation foncière.</span></li>
+      <li><b>Pensé pour l'Afrique</b><span>FCFA, Mobile Money, WhatsApp, SYSCOHADA, français, anglais, arabe.</span></li>
+    </ul>
+  </section>
+
+  <footer class="foot">
+    <span><b>ImmoTopia</b> · la plateforme immobilière tout-en-un : agence, syndic, promotion, patrimoine</span>
+    <span>Tout le détail au verso →</span>
+  </footer>
+</article>
+
+<!-- ======================= VERSO ======================= -->
+<article class="sheet" aria-label="Verso">
+  <header class="mast">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#00215f"/><path d="M5 12.2 12 6l7 6.2V18a1 1 0 0 1-1 1h-3.6v-4.4H9.6V19H6a1 1 0 0 1-1-1z" fill="#fff"/><rect x="15.6" y="4" width="3.4" height="3.4" fill="#fc5e00"/></svg>
+      ImmoTopia <small>· Agence immobilière</small>
+    </div>
+    <span class="pack-tag">Pack Agence</span>
+  </header>
+
+  <div class="verso-head">
+    <h2>Tout le Pack Agence, fonction par fonction</h2>
+    <p>Du premier contact au reversement du propriétaire, chaque geste du métier a sa fonction. Rien à installer : un navigateur ou le téléphone suffit.</p>
+    <div class="key"><span>■ Disponible</span><span><span class="soon">Bientôt</span> En cours de développement</span></div>
+  </div>
+
+  <div class="catalog">
+    <section class="group">
+      <h3><span class="n">01</span>Biens et annonces</h3>
+      <ul>
+        <li>Fiche par type de bien, immeubles et leurs appartements</li>
+        <li>Photos, vidéos, documents avec date d'échéance</li>
+        <li>Score de qualité de la fiche, statuts historisés</li>
+        <li>Recherche multicritère et par rayon autour d'un point</li>
+        <li>Publication sur le portail public des annonces</li>
+        <li>Visites planifiées, calendrier, comptes rendus</li>
+        <li>Mandats de gestion, indivision et quotes-parts</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">02</span>CRM</h3>
+      <ul>
+        <li>Contacts, rôles, étiquettes, prospects convertis en clients</li>
+        <li>Recherche avancée sauvegardée, export CSV</li>
+        <li>Pipeline d'affaires et tableau de bord</li>
+        <li>Rapprochement des biens et sélection par affaire</li>
+        <li>Activités : appel, e-mail, SMS, WhatsApp, visite</li>
+        <li>Calendrier des relances</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">03</span>Ventes</h3>
+      <ul>
+        <li>Mandats de vente, offres et contre-offres</li>
+        <li>Compromis généré depuis l'offre acceptée</li>
+        <li>Conditions suspensives, échéancier de l'acquéreur</li>
+        <li>Acte et conclusion de la vente</li>
+        <li>Commissions de vente encaissées, tableau des ventes</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">04</span>Baux et états des lieux</h3>
+      <ul>
+        <li>Bail, colocataires, honoraires propres au bail</li>
+        <li>Révision, renouvellement, avenant, résiliation</li>
+        <li>Solde de tout compte, historique complet</li>
+        <li>Dépôt de garantie : collecte, retenue, remboursement</li>
+        <li>États des lieux pièce par pièce, avec photos</li>
+        <li>Comparaison entrée et sortie, retenues proposées</li>
+        <li>Contrat, avenant, quittance, relevé depuis vos modèles Word</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">05</span>Encaissements</h3>
+      <ul>
+        <li>Échéances générées, facturation mensuelle en une fois</li>
+        <li>Échéances passées en retard automatiquement</li>
+        <li>Lien de paiement Mobile Money ou carte, par WhatsApp ou e-mail</li>
+        <li>Paiement déclaré par le locataire, validé par l'agence</li>
+        <li>Pénalités de retard avec délai de grâce, remise motivée</li>
+        <li>Caisse : sessions, billetage, écarts validés</li>
+        <li>Mandats de prélèvement, IBAN et RIB contrôlés</li>
+        <li class="later">Prélèvement automatique des loyers <span class="soon">Bientôt</span></li>
+        <li class="later">Relances automatiques des impayés par SMS et WhatsApp <span class="soon">Bientôt</span></li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">06</span>Propriétaires et reversements</h3>
+      <ul>
+        <li>Honoraires par propriétaire ou par bail, TVA calculée</li>
+        <li>Relevé mensuel : encaissé, honoraires, TVA, dépenses</li>
+        <li>Envoi automatique du rapport par WhatsApp ou e-mail</li>
+        <li>Reversements numérotés, comptes courants propriétaires</li>
+        <li>Indivisaires et associés suivis à leur quote-part</li>
+        <li>Commission des collaborateurs sur les honoraires</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">07</span>Comptabilité et finance</h3>
+      <ul>
+        <li>Écritures de la gestion locative passées automatiquement</li>
+        <li>Journal, grand livre, balance, comptes de mandants</li>
+        <li>Balance clients âgée, relevé de tiers en PDF</li>
+        <li>Factures et règlements des fournisseurs</li>
+        <li>Trésorerie : caisses, banques, Mobile Money</li>
+        <li>Saisie en lot depuis un classeur Excel</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">08</span>Signature électronique</h3>
+      <ul>
+        <li>Bail, état des lieux, mandats, compromis</li>
+        <li>Lien par e-mail ou SMS, code de confirmation</li>
+        <li>Signature sur place, côte à côte</li>
+        <li>Rappels automatiques à J-3 et J-1</li>
+        <li>PDF scellé, piste d'intégrité, prestataire qualifié</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">09</span>Maintenance et communication</h3>
+      <ul>
+        <li>Tickets du locataire avec photos, prestataire assigné</li>
+        <li>Suivi visible par le propriétaire, historique par bien</li>
+        <li>Notifications e-mail et WhatsApp</li>
+        <li>Diffusion WhatsApp groupée</li>
+        <li>Newsletters planifiées, double opt-in, taux d'ouverture</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">10</span>Patrimoine des clients</h3>
+      <ul>
+        <li>Valorisations, dépenses, emprunts, rendement par bien</li>
+        <li>Ratios bancaires, trésorerie prévisionnelle sur 24 mois</li>
+        <li>Assurances, sinistres, carnet d'entretien</li>
+        <li>Régularisation foncière étape par étape</li>
+        <li>SCI et holdings, fiscalité Côte d'Ivoire et Mali</li>
+        <li>Import Excel en masse, export PDF et Excel</li>
+        <li>Accès en lecture pour notaire, banquier, comptable</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">11</span>Portails</h3>
+      <ul>
+        <li>Propriétaire : biens, baux, revenus, paiements, documents, rapports</li>
+        <li>Locataire : bail, échéances, paiement en ligne, dépôt, tickets</li>
+      </ul>
+    </section>
+    <section class="group">
+      <h3><span class="n">12</span>Plateforme</h3>
+      <ul>
+        <li>Assistant IA ImmoCopilot ; aucune modification sans votre accord</li>
+        <li>Rôles, permissions, journal d'audit</li>
+        <li>Français, anglais, arabe ; application installable sur mobile</li>
+        <li class="later">Site vitrine de l'agence et diffusion sur les portails d'annonces <span class="soon">Bientôt</span></li>
+        <li class="later">Export complet de vos données <span class="soon">Bientôt</span></li>
+      </ul>
+    </section>
+  </div>
+
+  <div class="close">
+    <section class="price">
+      <h3>Tarif du Pack Agence</h3>
+      <div class="price-main"><b class="num">29 900</b><span>FCFA HT par mois</span></div>
+      <table>
+        <tr><td>Inclus : logements sous mandat</td><td>100</td></tr>
+        <tr><td>Bloc de 10 logements supplémentaires, par mois</td><td>1 500 FCFA</td></tr>
+        <tr><td>Le même bloc au-delà du 300e logement</td><td>750 FCFA</td></tr>
+        <tr><td>Signatures électroniques</td><td>incluses</td></tr>
+        <tr><td>Mise en route, une fois</td><td>100 000 FCFA</td></tr>
+      </table>
+      <p class="fine">Vous gérez aussi des copropriétés ou des chantiers ? Le pack Opérateur intégré réunit Agence, Syndic et Promoteur. Prix HT, hors coût des SMS et des paiements en ligne.</p>
+    </section>
+    <section class="cta">
+      <h3>Voyez-la tourner sur <em>vos</em> biens.</h3>
+      <p>Démonstration de 30 minutes, avec vos propres biens et baux.</p>
+      <ol>
+        <li>Nous importons vos biens et vos baux</li>
+        <li>Vous envoyez un lien de paiement à un locataire</li>
+        <li>Votre propriétaire reçoit son relevé du mois</li>
+      </ol>
+      <div class="contact">
+        <div>Votre conseiller</div>
+        <div>Téléphone / WhatsApp</div>
+        <div>E-mail</div>
+      </div>
+    </section>
+  </div>
+</article>
+
+</main>

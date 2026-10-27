@@ -273,6 +273,18 @@ function payoutDate(value: string): Date {
   return date;
 }
 
+/**
+ * Verrouille la ligne du compte de tiers (`SELECT … FOR UPDATE`) jusqu'à la fin
+ * de la transaction : deux reversements ou annulations concurrents sur le même
+ * compte se sérialisent, le second voit le solde déjà modifié par le premier.
+ */
+async function lockThirdPartyAccountTx(tx: any, tenantId: string, accountId: string) {
+  const locked = await tx.$queryRaw`
+    SELECT id FROM third_party_accounts WHERE id = ${accountId}::uuid AND tenant_id = ${tenantId} FOR UPDATE
+  `;
+  if (!Array.isArray(locked) || locked.length === 0) throw notFound('Compte propriétaire introuvable');
+}
+
 export async function createOwnerPayout(
   tenantId: string,
   ownerClientId: string,
@@ -297,6 +309,7 @@ export async function createOwnerPayout(
 
   const payout = await prisma.$transaction(async tx => {
     const account = await getOrCreateOwnerAccountTx(tx, tenantId, ownerClientId);
+    await lockThirdPartyAccountTx(tx, tenantId, account.id);
     await assertTreasuryAccountUsableTx(tx, tenantId, input.treasuryAccountId, input.method);
     const fresh = await tx.thirdPartyAccount.findUnique({ where: { id: account.id }, select: { balance: true } });
     if (value > due(fresh?.balance)) {
@@ -389,6 +402,14 @@ export async function voidOwnerPayout(
   const { reason } = voidSchema.parse(body);
 
   const payout = await prisma.$transaction(async tx => {
+    const found = await tx.ownerPayout.findFirst({
+      where: { id: payoutId, tenantId, ownerClientId },
+      select: { accountId: true }
+    });
+    if (!found) throw notFound('Reversement introuvable');
+    // Verrou du compte AVANT de relire le reversement : deux annulations
+    // concurrentes se sérialisent et la seconde voit le statut VOIDED.
+    await lockThirdPartyAccountTx(tx, tenantId, found.accountId);
     const existing = await tx.ownerPayout.findFirst({ where: { id: payoutId, tenantId, ownerClientId } });
     if (!existing) throw notFound('Reversement introuvable');
     if (existing.status === 'VOIDED') throw conflict('Ce reversement est déjà annulé');

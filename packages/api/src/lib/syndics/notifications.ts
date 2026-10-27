@@ -1,5 +1,7 @@
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
+import { t } from '../../i18n';
+import { isRecordingEnabled } from '../../services/livekit-service';
 import type { EmailNotificationKey } from '../../constants/email-notification-keys';
 import type { WhatsappNotificationKey } from '../../constants/whatsapp-notification-keys';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../constants/email-notification-default-templates';
@@ -12,7 +14,17 @@ import { currentOwnerProfilesSorted } from './lot-owner';
 // Même substitution que les reçus S3 : les valeurs injectées dans le HTML
 // (noms, libellés saisis librement) y sont échappées.
 import { applyReceiptTemplate } from './charge-receipt-delivery';
+import { classifyEmailError, type ReceiptEmailErrorCode } from './email-error';
 import { MARKER_KIND } from '../notification-markers';
+import {
+  buildPaymentTemplateVars,
+  resolveChargeCallPaymentUrl,
+  stripEmptyPaymentParagraph,
+  whatsappPaymentVars,
+  type ChargeCallPaymentUrlResolver
+} from './charge-call-payment-url';
+import { createConvocationLink } from './meeting-participants';
+import { journalSkippedNotice, type NoticeSkipCause } from './notice-journal';
 
 /** Sujet (texte brut) ou corps HTML d'un e-mail : valeurs échappées dans le HTML. */
 function applyTemplate(template: string, vars: Record<string, string>, html = false): string {
@@ -32,6 +44,20 @@ async function isCurrentLotOwner(lotId: string, ownerId: string, now: Date = new
   });
   const current = profiles.filter(profile => !profile.ownedUntil || profile.ownedUntil.getTime() >= now.getTime());
   return current.length === 0 || current.some(profile => profile.contactId === ownerId);
+}
+
+/**
+ * Destinataire d'un avis d'appel ou d'une relance : UNE seule règle, la même
+ * que les quittances (`charge-receipt-queries.ts`) — `ownerContactId` d'abord,
+ * à défaut `coownerId` (un lot créé depuis « Profils et copropriétaires » ne
+ * renseigne souvent que ce dernier). `null` quand le lot n'a ni l'un ni
+ * l'autre ; le contrôle « copropriétaire actuel » reste à `isCurrentLotOwner`.
+ */
+export function resolveChargeCallRecipient<T>(
+  lot?: { ownerContactId?: string | null; coownerId?: string | null; owner?: T | null; coowner?: T | null } | null
+): T | null {
+  const recipient = lot?.ownerContactId ? lot.owner : lot?.coownerId ? lot.coowner : null;
+  return recipient ?? null;
 }
 
 function getOwnerWhatsappTarget(owner: {
@@ -73,6 +99,8 @@ export interface NotifyChargeCallOptions {
    * n'empêche pas l'envoi : l'e-mail part sans pièce jointe.
    */
   buildAttachments?: () => Promise<NotificationAttachment[]>;
+  /** Lien de paiement en ligne joint au message (voir `charge-call-payment-url.ts`) ; aucun lien par défaut. */
+  resolvePaymentUrl?: ChargeCallPaymentUrlResolver;
 }
 
 async function resolveAttachments(chargeCallId: string, options: NotifyChargeCallOptions) {
@@ -114,6 +142,8 @@ export interface NotifyChargeCallResult {
   skipped?: NotifyChargeCallSkipReason;
   /** `SEND_FAILED` seulement : motif court et non sensible (code/réponse SMTP), jamais d'identifiants. */
   skipDetail?: string;
+  /** `SEND_FAILED` seulement : classe de l'erreur (refus SMTP, délai dépassé, autre), sans texte brut. */
+  skipCode?: ReceiptEmailErrorCode;
 }
 
 /** Motif court, non sensible, tiré d'une erreur d'envoi (jamais `command` : peut porter les identifiants SMTP en base64). */
@@ -209,6 +239,12 @@ export async function notifyChargeCall(
     recipient.legalName ||
     'Copropriétaire';
 
+  const paymentVars = await buildPaymentTemplateVars(options.resolvePaymentUrl ?? resolveChargeCallPaymentUrl, {
+    tenantId,
+    syndicateId: chargeCall.syndicateId,
+    lotId: chargeCall.lotId,
+    chargeCallIds: [chargeCall.id]
+  });
   const templateVars = {
     ownerName,
     syndicateName: chargeCall.syndicate.name,
@@ -217,13 +253,19 @@ export async function notifyChargeCall(
     period: chargeCall.period,
     amount,
     currency: chargeCall.currency,
-    dueDate
+    dueDate,
+    ...paymentVars
   };
+  const whatsappVars = whatsappPaymentVars(templateVars);
+  // Journal des notifications : corps sans lien de paiement (il porte un jeton).
+  const journalEntity = { type: 'ChargeCall', id: chargeCall.id };
+  const journalBody = `Appel de charges ${chargeCall.period} (${chargeCall.syndicate.name}, lot ${templateVars.lotNumber}) : ${amount} ${chargeCall.currency}, échéance le ${dueDate}.`;
 
   let emailSent = false;
   let whatsappSent = false;
   let emailBlockReason: NotifyChargeCallSkipReason | undefined;
   let emailBlockDetail: string | undefined;
+  let emailBlockCode: ReceiptEmailErrorCode | undefined;
 
   if (recipient.email?.trim()) {
     if (!isEmailDeliveryConfigured()) {
@@ -243,16 +285,26 @@ export async function notifyChargeCall(
         const bodyTpl = emailConfig.bodyHtmlOverride || defaults.bodyHtml;
         const attachments = await resolveAttachments(chargeCallId, options);
         try {
+          const subject = applyTemplate(subjectTpl, templateVars);
           await emailService.sendEmail({
             to: recipient.email,
-            subject: applyTemplate(subjectTpl, templateVars),
-            html: applyTemplate(bodyTpl, templateVars, true),
-            ...(attachments.length > 0 ? { attachments } : {})
+            subject,
+            html: stripEmptyPaymentParagraph(applyTemplate(bodyTpl, templateVars, true), paymentVars, bodyTpl),
+            ...(attachments.length > 0 ? { attachments } : {}),
+            journal: {
+              key: eventKeyEmail,
+              tenantId,
+              title: subject,
+              body: journalBody,
+              recipient: { contactId: recipient.id, email: recipient.email },
+              relatedEntity: journalEntity
+            }
           });
           emailSent = true;
         } catch (error) {
           emailBlockReason = 'SEND_FAILED';
           emailBlockDetail = emailFailureDetail(error);
+          emailBlockCode = classifyEmailError(error);
           logger.warn('notifyChargeCall: email send failed', {
             chargeCallId,
             error: error instanceof Error ? error.message : String(error)
@@ -265,8 +317,9 @@ export async function notifyChargeCall(
   whatsappSent = await sendWhatsappNotification({
     tenantId,
     notificationKey: eventKeyWhatsApp,
-    variables: templateVars,
-    contactId: recipient.id
+    variables: whatsappVars,
+    contactId: recipient.id,
+    journal: { relatedEntity: journalEntity }
   });
   if (!whatsappSent) {
     const directPhone = getOwnerWhatsappTarget(recipient);
@@ -274,10 +327,31 @@ export async function notifyChargeCall(
       whatsappSent = await sendWhatsappNotification({
         tenantId,
         notificationKey: eventKeyWhatsApp,
-        variables: templateVars,
-        to: directPhone
+        variables: whatsappVars,
+        to: directPhone,
+        journal: { recipient: { contactId: recipient.id }, relatedEntity: journalEntity }
       });
     }
+  }
+
+  // Aucune notification ne se perd : sans envoi tenté (ni e-mail, ni WhatsApp),
+  // le copropriétaire garde une ligne persistante SKIPPED avec sa raison.
+  const emailAttempted = emailSent || emailBlockReason === 'SEND_FAILED';
+  if (!emailAttempted && !whatsappSent) {
+    const cause: NoticeSkipCause =
+      emailBlockReason === 'EMAIL_NOT_CONFIGURED' || emailBlockReason === 'NOTIFICATION_DISABLED'
+        ? emailBlockReason
+        : 'NO_EMAIL';
+    await journalSkippedNotice({
+      tenantId,
+      key: eventKeyEmail,
+      title: t('Appel de charges émis'),
+      body: journalBody,
+      contactId: recipient.id,
+      email: recipient.email,
+      relatedEntity: journalEntity,
+      cause
+    });
   }
 
   logger.info('notifyChargeCall completed', {
@@ -304,7 +378,8 @@ export async function notifyChargeCall(
     emailSent,
     whatsappSent,
     skipped,
-    ...(skipped === 'SEND_FAILED' && emailBlockDetail ? { skipDetail: emailBlockDetail } : {})
+    ...(skipped === 'SEND_FAILED' && emailBlockDetail ? { skipDetail: emailBlockDetail } : {}),
+    ...(skipped === 'SEND_FAILED' && emailBlockCode ? { skipCode: emailBlockCode } : {})
   };
 }
 
@@ -431,6 +506,39 @@ async function recordConvocationDelivery(tenantId: string, meetingId: string, co
 }
 
 /**
+ * Gabarit e-mail sans le paragraphe d'une variable facultative VIDE : la convocation part sans
+ * phrase orpheline (« … votez en ligne : ») ni paragraphe vide.
+ */
+export function dropEmptyVariableParagraphs(
+  template: string,
+  vars: Record<string, string>,
+  optionalKeys: string[]
+): string {
+  let output = template;
+  for (const key of optionalKeys) {
+    if ((vars[key] ?? '').trim()) continue;
+    output = output
+      .replace(new RegExp(`<p\\b[^>]*>[^<]*\\{\\{${key}\\}\\}[^<]*</p>\\s*`, 'g'), '')
+      .replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), '');
+  }
+  return output;
+}
+
+/** Cas du lien personnel (spec 043) : conserve pour les appelants et tests existants. */
+export function dropMeetingLinkParagraph(template: string, meetingLink: string): string {
+  return dropEmptyVariableParagraphs(template, { meetingLink }, ['meetingLink']);
+}
+
+/** Avis d'enregistrement de la convocation (spec 045, decision du 2026-10-16) ; vide si non configure. */
+export function recordingNoticeText(): string {
+  return isRecordingEnabled()
+    ? t(
+        "La séance pourra être enregistrée (image et son), y compris la voix et l'image des participants qui activent leur micro ou leur caméra ; un avis s'affichera à l'écran pendant l'enregistrement."
+      )
+    : '';
+}
+
+/**
  * Convoque les copropriétaires de l'assemblée. Premier envoi : tous. Renvoi
  * (un journal existe) : seuls les destinataires en échec ou jamais servis,
  * sauf `options.all`.
@@ -481,6 +589,8 @@ export async function notifyMeetingConvocation(
   const emailConfig = await getEmailNotificationConfig(tenantId, eventKeyEmail);
   const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKeyEmail];
 
+  const recordingNotice = recordingNoticeText();
+
   let emailSent = 0;
   let emailFailed = 0;
   let emailSkippedNoAddress = 0;
@@ -490,12 +600,20 @@ export async function notifyMeetingConvocation(
   for (const owner of owners) {
     const ownerName =
       [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim() || owner.legalName || 'Copropriétaire';
+    // Un lien personnel par destinataire (spec 043) ; vide si sa creation echoue : la convocation part quand meme.
+    const meetingLink = await createConvocationLink(
+      tenantId,
+      { id: meeting.id, scheduledAt: meeting.scheduledAt },
+      owner.id
+    );
     const templateVars = {
       ownerName,
       syndicateName: meeting.syndicate.name,
       meetingDate,
       meetingTime,
-      meetingLocation: meeting.location || 'À préciser'
+      meetingLocation: meeting.location || 'À préciser',
+      meetingLink,
+      recordingNotice
     };
     let served = false;
     let failed = false;
@@ -507,7 +625,14 @@ export async function notifyMeetingConvocation(
         await emailService.sendEmail({
           to: owner.email,
           subject: applyTemplate(emailConfig.subjectOverride || defaults.subject, templateVars),
-          html: applyTemplate(emailConfig.bodyHtmlOverride || defaults.bodyHtml, templateVars, true)
+          html: applyTemplate(
+            dropEmptyVariableParagraphs(emailConfig.bodyHtmlOverride || defaults.bodyHtml, templateVars, [
+              'meetingLink',
+              'recordingNotice'
+            ]),
+            templateVars,
+            true
+          )
         });
         emailSent += 1;
         served = true;
@@ -529,7 +654,8 @@ export async function notifyMeetingConvocation(
       tenantId,
       notificationKey: eventKeyWhatsApp,
       variables: templateVars,
-      contactId: owner.id
+      contactId: owner.id,
+      optionalVariables: ['meetingLink', 'recordingNotice']
     });
     if (sentWhatsapp) {
       whatsappSent += 1;
@@ -541,7 +667,8 @@ export async function notifyMeetingConvocation(
           tenantId,
           notificationKey: eventKeyWhatsApp,
           variables: templateVars,
-          to: directPhone
+          to: directPhone,
+          optionalVariables: ['meetingLink', 'recordingNotice']
         });
         if (sentDirectWhatsapp) {
           whatsappSent += 1;
@@ -574,7 +701,10 @@ export async function notifyMeetingConvocation(
   } as ConvocationResult;
 }
 
-export async function notifyChargeCallReminder(reminderId: string) {
+export async function notifyChargeCallReminder(
+  reminderId: string,
+  options: Pick<NotifyChargeCallOptions, 'resolvePaymentUrl'> = {}
+) {
   const eventKeyEmail: EmailNotificationKey = 'CHARGE_CALL_REMINDER';
   const eventKeyWhatsApp: WhatsappNotificationKey = 'CHARGE_CALL_REMINDER';
 
@@ -586,6 +716,7 @@ export async function notifyChargeCallReminder(reminderId: string) {
           lot: {
             include: {
               owner: true,
+              coowner: true,
               property: {
                 select: {
                   title: true,
@@ -608,10 +739,18 @@ export async function notifyChargeCallReminder(reminderId: string) {
   }
 
   const call = reminder.chargeCall;
-  const owner = call.lot?.owner;
+  // Même règle de destinataire que l'avis d'appel (`notifyChargeCall`).
+  const owner = resolveChargeCallRecipient(call.lot);
   if (!owner) {
     logger.info('notifyChargeCallReminder: no owner linked to lot', { reminderId, lotId: call.lotId });
     return { emailSent: false, whatsappSent: false, skipped: 'NO_OWNER_CONTACT' as const };
+  }
+  if (!(await isCurrentLotOwner(call.lotId, owner.id))) {
+    logger.warn('notifyChargeCallReminder: lot owner is not a current co-owner, skipping notifications', {
+      reminderId,
+      lotId: call.lotId
+    });
+    return { emailSent: false, whatsappSent: false, skipped: 'OWNER_NOT_CURRENT' as const };
   }
 
   const tenantId = call.syndicate.tenantId;
@@ -626,6 +765,12 @@ export async function notifyChargeCallReminder(reminderId: string) {
   const ownerName =
     [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim() || owner.legalName || 'Copropriétaire';
 
+  const paymentVars = await buildPaymentTemplateVars(options.resolvePaymentUrl ?? resolveChargeCallPaymentUrl, {
+    tenantId,
+    syndicateId: call.syndicateId,
+    lotId: call.lotId,
+    chargeCallIds: [call.id]
+  });
   const templateVars = {
     ownerName,
     syndicateName: call.syndicate.name,
@@ -638,22 +783,38 @@ export async function notifyChargeCallReminder(reminderId: string) {
     remainingAmount: outstanding.toLocaleString('fr-FR'),
     currency: call.currency,
     dueDate: new Date(call.dueDate).toLocaleDateString('fr-FR'),
-    reminderLevel: String(reminder.reminderLevel)
+    reminderLevel: String(reminder.reminderLevel),
+    ...paymentVars
   };
+  const whatsappVars = whatsappPaymentVars(templateVars);
+  // Journal des notifications : corps sans lien de paiement (il porte un jeton).
+  const journalEntity = { type: 'PaymentReminder', id: reminderId };
+  const journalBody = `Relance de niveau ${reminder.reminderLevel} : appel de charges ${call.period} (${call.syndicate.name}, lot ${templateVars.lotNumber}), reste dû ${templateVars.outstanding} ${call.currency}, échéance le ${templateVars.dueDate}.`;
 
   let emailSent = false;
   let whatsappSent = false;
+  let emailBlockReason: 'NO_EMAIL' | 'NOTIFICATION_DISABLED' = 'NO_EMAIL';
 
   if (owner.email?.trim()) {
     const emailConfig = await getEmailNotificationConfig(tenantId, eventKeyEmail);
+    if (!emailConfig.enabled) emailBlockReason = 'NOTIFICATION_DISABLED';
     if (emailConfig.enabled) {
       const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKeyEmail];
       const subjectTpl = emailConfig.subjectOverride || defaults.subject;
       const bodyTpl = emailConfig.bodyHtmlOverride || defaults.bodyHtml;
+      const subject = applyTemplate(subjectTpl, templateVars);
       await emailService.sendEmail({
         to: owner.email,
-        subject: applyTemplate(subjectTpl, templateVars),
-        html: applyTemplate(bodyTpl, templateVars, true)
+        subject,
+        html: stripEmptyPaymentParagraph(applyTemplate(bodyTpl, templateVars, true), paymentVars, bodyTpl),
+        journal: {
+          key: eventKeyEmail,
+          tenantId,
+          title: subject,
+          body: journalBody,
+          recipient: { contactId: owner.id, email: owner.email },
+          relatedEntity: journalEntity
+        }
       });
       emailSent = true;
     }
@@ -662,8 +823,9 @@ export async function notifyChargeCallReminder(reminderId: string) {
   whatsappSent = await sendWhatsappNotification({
     tenantId,
     notificationKey: eventKeyWhatsApp,
-    variables: templateVars,
-    contactId: owner.id
+    variables: whatsappVars,
+    contactId: owner.id,
+    journal: { relatedEntity: journalEntity }
   });
   if (!whatsappSent) {
     const directPhone = getOwnerWhatsappTarget(owner);
@@ -671,10 +833,25 @@ export async function notifyChargeCallReminder(reminderId: string) {
       whatsappSent = await sendWhatsappNotification({
         tenantId,
         notificationKey: eventKeyWhatsApp,
-        variables: templateVars,
-        to: directPhone
+        variables: whatsappVars,
+        to: directPhone,
+        journal: { recipient: { contactId: owner.id }, relatedEntity: journalEntity }
       });
     }
+  }
+
+  // Aucune notification ne se perd (voir notifyChargeCall).
+  if (!emailSent && !whatsappSent) {
+    await journalSkippedNotice({
+      tenantId,
+      key: eventKeyEmail,
+      title: t('Relance d’appel de charges'),
+      body: journalBody,
+      contactId: owner.id,
+      email: owner.email,
+      relatedEntity: journalEntity,
+      cause: emailBlockReason
+    });
   }
 
   logger.info('notifyChargeCallReminder completed', {
@@ -686,5 +863,8 @@ export async function notifyChargeCallReminder(reminderId: string) {
     whatsappSent
   });
 
+  // Rien n'est parti (ni e-mail ni WhatsApp) sans exception : la cause est rendue à l'appelant,
+  // qui marque la relance FAILED au lieu de la laisser passer pour envoyée.
+  if (!emailSent && !whatsappSent) return { emailSent, whatsappSent, skipped: emailBlockReason };
   return { emailSent, whatsappSent };
 }

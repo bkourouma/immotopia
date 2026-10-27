@@ -67,12 +67,41 @@ export async function listSubscribers(
   listId: string,
   options: { status?: string; page?: number; limit?: number }
 ) {
-  const where: Prisma.NewsletterSubscriberWhereInput = { listId, tenantId };
-  if (options.status) where.status = options.status as 'PENDING_CONFIRMATION' | 'ACTIVE' | 'UNSUBSCRIBED';
+  // La liste doit appartenir à l'agence : une liste d'une autre agence est
+  // indiscernable d'une liste inexistante (même 404).
+  const list = await prisma.newsletterList.findFirst({ where: { id: listId, tenantId } });
+  if (!list) throw new NotFoundError(t('Liste non trouvée.'));
 
   const page = Math.max(1, options.page ?? 1);
   const limit = Math.min(100, Math.max(1, options.limit ?? 50));
   const skip = (page - 1) * limit;
+
+  // Liste dérivée (propriétaires, locataires, contacts CRM) : aucun abonné
+  // n'est stocké, on renvoie les destinataires résolus à la volée, avec la
+  // même logique que l'envoi de campagne et l'export. Ils sont tous actifs.
+  if (list.type !== 'MANUAL') {
+    const recipients = options.status && options.status !== 'ACTIVE' ? [] : await resolveRecipients(tenantId, listId);
+    const total = recipients.length;
+    const subscribers = recipients.slice(skip, skip + limit).map(r => ({
+      id: `derived:${r.email.toLowerCase()}`,
+      tenantId,
+      listId,
+      email: r.email,
+      name: [r.prenom, r.nom].filter(Boolean).join(' ').trim() || null,
+      status: 'ACTIVE' as const,
+      subscribedAt: null,
+      confirmedAt: null,
+      unsubscribedAt: null,
+      derived: true
+    }));
+    return {
+      subscribers,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) }
+    };
+  }
+
+  const where: Prisma.NewsletterSubscriberWhereInput = { listId, tenantId };
+  if (options.status) where.status = options.status as 'PENDING_CONFIRMATION' | 'ACTIVE' | 'UNSUBSCRIBED';
 
   const [subscribers, total] = await Promise.all([
     prisma.newsletterSubscriber.findMany({

@@ -16,17 +16,20 @@ import {
   Space,
   Tag,
   Spin,
+  Switch,
   Typography
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { LotTable } from '../../components/syndics/LotTable';
+import { listSyndicDeclarations } from '../../services/syndic-declared-payment-service';
 import { StatCard } from '../../components/primitives';
 import { listContacts } from '../../services/crm-service';
 import { listProperties } from '../../services/property-service';
 import {
   addLotTenantAssignment,
   createSyndicateLot,
+  deactivateLotTenantAssignment,
   getSyndicate,
   importSyndicateLotsFromProperties,
   listSyndicateLots,
@@ -44,17 +47,17 @@ import {
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+import { dateFormat } from '../../i18n/format';
+import { getLotTypeLabel } from '../../utils/syndic-lot-label';
 
 const { Paragraph, Title } = Typography;
 
-const lotTypeOptions: Array<{ label: string; value: LotType }> = [
-  { label: t('Appartement'), value: 'APARTMENT' },
-  { label: t('Parking'), value: 'PARKING' },
-  { label: t('Cave'), value: 'CELLAR' },
-  { label: t('Bureau'), value: 'OFFICE' },
-  { label: t('Commerce'), value: 'COMMERCIAL' },
-  { label: t('Autre'), value: 'OTHER' }
-];
+const LOT_TYPES: LotType[] = ['APARTMENT', 'PARKING', 'CELLAR', 'OFFICE', 'COMMERCIAL', 'OTHER'];
+
+/** Options du sélecteur de type, calculées au rendu pour suivre la langue affichée. */
+function getLotTypeOptions(): Array<{ label: string; value: LotType }> {
+  return LOT_TYPES.map(value => ({ label: getLotTypeLabel(value) ?? value, value }));
+}
 
 type PropertySelectOption = {
   value: string;
@@ -168,6 +171,7 @@ export const SyndicLots: React.FC = () => {
   const [lotPropertyOptions, setLotPropertyOptions] = useState<PropertySelectOption[]>([]);
   const [importPropertyOptions, setImportPropertyOptions] = useState<PropertySelectOption[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<OwnerSelectOption[]>([]);
+  const [hideInactive, setHideInactive] = useState(false);
   const [referenceWarning, setReferenceWarning] = useState<string | null>(null);
   const [form] = Form.useForm();
   const [importForm] = Form.useForm<{ propertyIds: string[] }>();
@@ -224,6 +228,29 @@ export const SyndicLots: React.FC = () => {
       return acc;
     }, {});
   }, [ownerOptions]);
+
+  // Lots visés par un paiement mobile money déclaré en attente (spec 047, R32). Information annexe : son échec
+  // (droit absent compris) est silencieux.
+  const [declaredPendingLotIds, setDeclaredPendingLotIds] = useState<ReadonlySet<string>>(() => new Set<string>());
+  useEffect(() => {
+    if (!effectiveTenantId || !syndicId) return;
+    let cancelled = false;
+    listSyndicDeclarations(effectiveTenantId, syndicId, { status: 'PENDING', limit: 100 })
+      .then(result => {
+        if (cancelled) return;
+        const ids = new Set<string>();
+        for (const declaration of result?.items ?? []) {
+          for (const line of declaration.lines ?? []) ids.add(line.lot.id);
+        }
+        setDeclaredPendingLotIds(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setDeclaredPendingLotIds(new Set<string>());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveTenantId, syndicId]);
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
@@ -340,6 +367,13 @@ export const SyndicLots: React.FC = () => {
     setReferenceWarning(warnings.length > 0 ? warnings.join(' - ') : null);
   };
 
+  const sharesSum = useMemo(() => lots.reduce((sum, lot) => sum + lot.generalShares, 0), [lots]);
+  const referenceShares = syndicate?.totalGeneralShares ?? null;
+  const visibleLots = useMemo(
+    () => (hideInactive ? lots.filter(lot => lot.generalShares !== 0) : lots),
+    [hideInactive, lots]
+  );
+
   const resetModalState = () => {
     setOpen(false);
     setEditingLot(null);
@@ -377,6 +411,26 @@ export const SyndicLots: React.FC = () => {
       await loadData();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Désactivation du lot impossible'));
+    }
+  };
+
+  // Réactiver = rouvrir la modification du lot avec les tantièmes vides : on ne devine pas la valeur à rétablir.
+  const handleReactivateLot = (lot: SyndicateLot) => {
+    openEditModal(lot);
+    form.setFieldsValue({ generalShares: undefined });
+  };
+
+  const handleEndTenantAssignment = async (
+    lot: SyndicateLot,
+    assignment: NonNullable<SyndicateLot['tenantAssignments']>[number]
+  ) => {
+    if (!effectiveTenantId || !syndicId) return;
+    try {
+      await deactivateLotTenantAssignment(effectiveTenantId, syndicId, lot.id, assignment.id);
+      message.success(t('Affectation du locataire terminée'));
+      await loadData();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t("Fin de l'affectation impossible"));
     }
   };
 
@@ -438,6 +492,11 @@ export const SyndicLots: React.FC = () => {
     });
   };
 
+  // Avertissements non bloquants de l'API (total de référence des tantièmes) : le lot est enregistré.
+  const showLotWarnings = (warnings?: string[]) => {
+    (warnings || []).forEach(warning => message.warning(warning, 8));
+  };
+
   const handleSubmitLot = async () => {
     if (!effectiveTenantId || !syndicId) {
       return;
@@ -459,11 +518,13 @@ export const SyndicLots: React.FC = () => {
           ownerSince: values.ownerSince ? values.ownerSince.toISOString() : null,
           specialShares: values.specialShares ?? null
         };
-        await updateSyndicateLot(effectiveTenantId, syndicId, editingLot.id, updatePayload);
+        const updated = await updateSyndicateLot(effectiveTenantId, syndicId, editingLot.id, updatePayload);
         message.success(t('Lot mis à jour'));
+        showLotWarnings(updated?.warnings);
       } else {
-        await createSyndicateLot(effectiveTenantId, syndicId, payload as CreateSyndicateLotRequest);
+        const created = await createSyndicateLot(effectiveTenantId, syndicId, payload as CreateSyndicateLotRequest);
         message.success(t('Lot créé'));
+        showLotWarnings(created?.warnings);
       }
       resetModalState();
       await loadData();
@@ -596,20 +657,42 @@ export const SyndicLots: React.FC = () => {
           <>
             {referenceWarning ? <Alert type="warning" message={referenceWarning} showIcon /> : null}
 
+            {referenceShares !== null && sharesSum !== referenceShares ? (
+              <Alert
+                type="warning"
+                showIcon
+                message={t('La somme des tantièmes ({{sum}}) diffère du total de référence ({{reference}}).', {
+                  sum: sharesSum,
+                  reference: referenceShares
+                })}
+              />
+            ) : null}
+
             <Row gutter={[16, 16]}>
               <Col xs={24} md={8}>
                 <StatCard label={t('Nombre de lots')} value={lots.length} />
               </Col>
               <Col xs={24} md={8}>
-                <StatCard
-                  label={t('Tantièmes généraux cumulés')}
-                  value={lots.reduce((sum, lot) => sum + lot.generalShares, 0)}
-                />
+                <StatCard label={t('Tantièmes généraux cumulés')} value={sharesSum} />
               </Col>
+              {referenceShares !== null ? (
+                <Col xs={24} md={8}>
+                  <StatCard label={t('Total de référence des tantièmes')} value={referenceShares} />
+                </Col>
+              ) : null}
               <Col xs={24} md={8}>
                 <StatCard
                   label={t('Lots avec propriétaire')}
                   value={lots.filter(lot => Boolean(lot.ownerContactId || lot.ownersLabel)).length}
+                />
+              </Col>
+              <Col xs={24} md={8}>
+                <StatCard
+                  label={t('Lots avec accès au portail')}
+                  value={
+                    lots.filter(lot => lot.portalAccess?.status === 'ACTIVE' || lot.portalAccess?.status === 'PARTIAL')
+                      .length
+                  }
                 />
               </Col>
               <Col xs={24} md={8}>
@@ -622,16 +705,34 @@ export const SyndicLots: React.FC = () => {
               </Col>
             </Row>
 
-            <Card title={t('Tableau des lots')}>
+            <Card
+              title={t('Tableau des lots')}
+              extra={
+                <Space size={8}>
+                  <Switch
+                    size="small"
+                    checked={hideInactive}
+                    onChange={setHideInactive}
+                    aria-label={t('Masquer les lots inactifs')}
+                  />
+                  <span>{t('Masquer les lots inactifs')}</span>
+                </Space>
+              }
+            >
               <LotTable
-                lots={lots}
+                lots={visibleLots}
+                declaredPendingLotIds={declaredPendingLotIds}
                 showMobileHint
+                portalManageHref={`/tenant/${effectiveTenantId}/syndics/${syndicId}/profils-incidents`}
                 propertyLabelById={propertyLabelById}
                 ownerLabelById={ownerLabelById}
                 ownerLabelByEmail={ownerLabelByEmail}
                 onEdit={openEditModal}
                 onDelete={lot => void handleDeleteLot(lot)}
                 onAssignTenant={openTenantModal}
+                onDeactivate={lot => void handleDeactivateLot(lot)}
+                onReactivate={handleReactivateLot}
+                onEndTenantAssignment={(lot, assignment) => void handleEndTenantAssignment(lot, assignment)}
                 onViewAccount={lot =>
                   navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/lots/${lot.id}/compte`)
                 }
@@ -689,7 +790,7 @@ export const SyndicLots: React.FC = () => {
                 name="lotType"
                 rules={[{ required: true, message: t('Le type est obligatoire') }]}
               >
-                <Select showSearch optionFilterProp="label" options={lotTypeOptions} />
+                <Select showSearch optionFilterProp="label" options={getLotTypeOptions()} />
               </Form.Item>
             </Col>
           </Row>
@@ -713,7 +814,7 @@ export const SyndicLots: React.FC = () => {
           </Row>
 
           <Form.Item label={t('Propriétaire depuis le')} name="ownerSince">
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+            <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
           </Form.Item>
         </Form>
       </Modal>
@@ -809,12 +910,12 @@ export const SyndicLots: React.FC = () => {
                 name="startDate"
                 rules={[{ required: true, message: t('La date de début est obligatoire') }]}
               >
-                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+                <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item label={t('Date de fin')} name="endDate">
-                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+                <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
               </Form.Item>
             </Col>
           </Row>

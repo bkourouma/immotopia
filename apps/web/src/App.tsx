@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useParams, useSearchParams } from 'react-router-dom';
 import { App as AntApp, ConfigProvider } from 'antd';
 import { buildAntdTheme } from './theme/antd-theme';
 import './i18n';
@@ -51,6 +51,18 @@ const OwnerMonthlyReportPage = lazy(() =>
 );
 // Paiement d'un loyer par lien sécurisé (spec 039) : pages publiques, sans session,
 // hors AppShell et hors ProtectedRoute ; chunks lazy, rien dans le budget d'entrée.
+// AG en direct (spec 043) : page publique à lien personnel (jeton dans le fragment), sans session.
+const MeetingLivePage = lazy(() =>
+  import(/* webpackChunkName: "public-meeting-live" */ './pages/public/MeetingLivePage').then(m => ({
+    default: m.MeetingLivePage
+  }))
+);
+// Projection de salle d'une AG : plein écran, gestionnaire connecté, hors AppShell.
+const SyndicMeetingProjection = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicMeetingProjection').then(m => ({
+    default: m.SyndicMeetingProjection
+  }))
+);
 const InstallmentPaymentPage = lazy(() =>
   import(/* webpackChunkName: "public-payment" */ './pages/public/InstallmentPaymentPage').then(m => ({
     default: m.InstallmentPaymentPage
@@ -59,6 +71,20 @@ const InstallmentPaymentPage = lazy(() =>
 const InstallmentPaymentStatusPage = lazy(() =>
   import(/* webpackChunkName: "public-payment" */ './pages/public/InstallmentPaymentStatusPage').then(m => ({
     default: m.InstallmentPaymentStatusPage
+  }))
+);
+// Paiement des charges de copropriété par lien sécurisé (spec 042) : mêmes règles que ci-dessus.
+// Pages écrites par un autre agent, export par défaut.
+const ChargeCallPaymentPage = lazy(
+  () => import(/* webpackChunkName: "public-payment" */ './pages/public/ChargeCallPaymentPage')
+);
+const ChargeCallPaymentStatusPage = lazy(
+  () => import(/* webpackChunkName: "public-payment" */ './pages/public/ChargeCallPaymentStatusPage')
+);
+// Signature électronique (spec 044) : page publique à jeton dans le chemin, hors AppShell.
+const SignaturePage = lazy(() =>
+  import(/* webpackChunkName: "public-signature" */ './pages/public/SignaturePage').then(m => ({
+    default: m.SignaturePage
   }))
 );
 const Dashboard = lazy(() =>
@@ -360,6 +386,21 @@ const SyndicProfilesIncidents = lazy(() =>
     default: m.SyndicProfilesIncidents
   }))
 );
+const SyndicOnlinePayments = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicOnlinePayments').then(m => ({
+    default: m.SyndicOnlinePayments
+  }))
+);
+const SyndicDirectDebit = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicDirectDebit').then(m => ({
+    default: m.SyndicDirectDebit
+  }))
+);
+const SyndicDirectDebitRemittanceDetail = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicDirectDebitRemittanceDetail').then(m => ({
+    default: m.SyndicDirectDebitRemittanceDetail
+  }))
+);
 const SyndicMandatingAgencies = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicMandatingAgencies').then(m => ({
     default: m.SyndicMandatingAgencies
@@ -473,6 +514,11 @@ const TenantSubscriptionSettings = lazy(() =>
     default: m.TenantSubscriptionSettings
   }))
 );
+const TenantBillingSettings = lazy(() =>
+  import(/* webpackChunkName: "tenant" */ './pages/tenant/TenantBillingSettings').then(m => ({
+    default: m.TenantBillingSettings
+  }))
+);
 // CRM pages
 const Contacts = lazy(() =>
   import(/* webpackChunkName: "crm" */ './pages/crm/Contacts').then(m => ({ default: m.Contacts }))
@@ -516,6 +562,21 @@ const Installments = lazy(() =>
 const InstallmentDetailPage = lazy(() =>
   import(/* webpackChunkName: "rental" */ './pages/rental/InstallmentDetailPage').then(m => ({
     default: m.InstallmentDetailPage
+  }))
+);
+const DirectDebitMandates = lazy(() =>
+  import(/* webpackChunkName: "rental" */ './pages/rental/DirectDebitMandates').then(m => ({
+    default: m.DirectDebitMandates
+  }))
+);
+const DirectDebitRemittances = lazy(() =>
+  import(/* webpackChunkName: "rental" */ './pages/rental/DirectDebitRemittances').then(m => ({
+    default: m.DirectDebitRemittances
+  }))
+);
+const DirectDebitRemittanceDetail = lazy(() =>
+  import(/* webpackChunkName: "rental" */ './pages/rental/DirectDebitRemittanceDetail').then(m => ({
+    default: m.DirectDebitRemittanceDetail
   }))
 );
 const Payments = lazy(() =>
@@ -618,6 +679,18 @@ const DocumentTemplates = lazy(() =>
     default: m.DocumentTemplates
   }))
 );
+const SignaturesPage = lazy(() => import(/* webpackChunkName: "signatures" */ './pages/signatures/SignaturesPage'));
+// Notifications persistantes et messagerie interne (lot 3).
+const NotificationsPage = lazy(
+  () => import(/* webpackChunkName: "notifications" */ './pages/notifications/NotificationsPage')
+);
+const NotificationJournalPage = lazy(
+  () => import(/* webpackChunkName: "notifications" */ './pages/notifications/NotificationJournalPage')
+);
+const PlatformNotificationJournalPage = lazy(
+  () => import(/* webpackChunkName: "notifications" */ './pages/notifications/PlatformNotificationJournalPage')
+);
+const MessagesRoute = lazy(() => import(/* webpackChunkName: "messages" */ './pages/messages/MessagesRoute'));
 // Transactions page
 // Reports page
 // Tenant Portal pages
@@ -819,7 +892,24 @@ function App() {
                         <Route path="/rapport-proprietaire" element={<OwnerMonthlyReportPage />} />
                         <Route path="/payer" element={<InstallmentPaymentPage />} />
                         <Route path="/payer/statut" element={<InstallmentPaymentStatusPage />} />
+                        <Route path="/payer-charges" element={<ChargeCallPaymentPage />} />
+                        <Route path="/payer-charges/statut" element={<ChargeCallPaymentStatusPage />} />
                         <Route path="/acces-partage" element={<ExternalAccessViewPage />} />
+                        <Route path="/signer/:token" element={<SignaturePage />} />
+                        <Route path="/ag-direct" element={<MeetingLivePage />} />
+                        {/* Projection de salle : session et agence exigées, mais sans coquille (plein écran). */}
+                        <Route
+                          element={
+                            <ProtectedRoute requireTenant>
+                              <Outlet />
+                            </ProtectedRoute>
+                          }
+                        >
+                          <Route
+                            path="/tenant/:tenantId/syndics/:syndicId/assemblees/:meetingId/projection"
+                            element={<SyndicMeetingProjection />}
+                          />
+                        </Route>
                         {/* Coquille — routes authentifiees. <AppShell> est monte UNE fois et persiste
                       d un ecran a l autre : c est ce que <Outlet/> apporte, la ou les 81 pages
                       remontaient DashboardLayout a chaque navigation (§4.1). */}
@@ -831,6 +921,11 @@ function App() {
                           }
                         >
                           <Route path="/dashboard" element={<Dashboard />} />
+                          {/* Notifications et messagerie : ouvertes aussi aux clients des portails
+                        (scope décidé par useNotificationScope) ; l'API filtre chaque accès. */}
+                          <Route path="/notifications" element={<NotificationsPage />} />
+                          <Route path="/messages" element={<MessagesRoute />} />
+                          <Route path="/messages/:conversationId" element={<MessagesRoute />} />
                           <Route path="/properties" element={<Properties />} />
                           {/* Fusions du §4.3. Les ecrans disparaissent, les URL en
                         circulation sont redirigees et non cassees.
@@ -955,6 +1050,18 @@ function App() {
                             />
                             <Route path="/tenant/:tenantId/syndics/:syndicId/finances" element={<SyndicFinances />} />
                             <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/paiements-en-ligne"
+                              element={<SyndicOnlinePayments />}
+                            />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/prelevements"
+                              element={<SyndicDirectDebit />}
+                            />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/prelevements/remises/:remittanceId"
+                              element={<SyndicDirectDebitRemittanceDetail />}
+                            />
+                            <Route
                               path="/tenant/:tenantId/syndics/:syndicId/comptabilite"
                               element={<SyndicAccounting />}
                             />
@@ -980,7 +1087,10 @@ function App() {
                             path="/tenant/:tenantId/settings/abonnement"
                             element={<TenantSubscriptionSettings />}
                           />
+                          <Route path="/tenant/:tenantId/settings/facturation" element={<TenantBillingSettings />} />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
+                          <Route path="/tenant/:tenantId/signatures" element={<SignaturesPage />} />
+                          <Route path="/tenant/:tenantId/notifications-journal" element={<NotificationJournalPage />} />
                           <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
                           <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />
                           <Route path="/tenant/:tenantId/crm/contacts/:contactId" element={<ContactDetailPage />} />
@@ -1003,6 +1113,15 @@ function App() {
                             element={<InstallmentDetailPage />}
                           />
                           <Route path="/tenant/:tenantId/rental/payments" element={<Payments />} />
+                          <Route path="/tenant/:tenantId/rental/direct-debit" element={<DirectDebitMandates />} />
+                          <Route
+                            path="/tenant/:tenantId/rental/direct-debit/remittances"
+                            element={<DirectDebitRemittances />}
+                          />
+                          <Route
+                            path="/tenant/:tenantId/rental/direct-debit/remittances/:remittanceId"
+                            element={<DirectDebitRemittanceDetail />}
+                          />
                           <Route path="/tenant/:tenantId/rental/payments/:paymentId" element={<PaymentDetailPage />} />
                           {/*
                         Finance. Les écrans d'un même flux partagent une route
@@ -1048,8 +1167,22 @@ function App() {
                           <Route path="/tenant/:tenantId/finance/comptabilite" element={<Comptabilite />} />
                           <Route element={<FinanceWorkspaceLayout family="facturation-balances" />}>
                             <Route path="/tenant/:tenantId/finance/facturation" element={<Facturation />} />
-                            <Route path="/tenant/:tenantId/finance/balance-clients" element={<BalanceClients />} />
-                            <Route path="/tenant/:tenantId/finance/balance-agee" element={<BalanceAgee />} />
+                            <Route
+                              path="/tenant/:tenantId/finance/balance-clients"
+                              element={
+                                <ProtectedRoute requiredPermissions="FINANCE_REPORTS_READ">
+                                  <BalanceClients />
+                                </ProtectedRoute>
+                              }
+                            />
+                            <Route
+                              path="/tenant/:tenantId/finance/balance-agee"
+                              element={
+                                <ProtectedRoute requiredPermissions="FINANCE_REPORTS_READ">
+                                  <BalanceAgee />
+                                </ProtectedRoute>
+                              }
+                            />
                           </Route>
                           <Route element={<FinanceWorkspaceLayout family="reversements-commissions" />}>
                             <Route path="/tenant/:tenantId/finance/owner-accounts" element={<ComptesProprietaires />} />
@@ -1067,7 +1200,14 @@ function App() {
                           {/* Relevé d'un compte de tiers : ouvert depuis la balance
                         clients, la balance âgée ET la balance fournisseurs, il
                         n'appartient à aucune famille et reste hors onglets. */}
-                          <Route path="/tenant/:tenantId/finance/comptes/:accountId" element={<Releve />} />
+                          <Route
+                            path="/tenant/:tenantId/finance/comptes/:accountId"
+                            element={
+                              <ProtectedRoute requiredPermissions="FINANCE_ACCOUNTS_READ">
+                                <Releve />
+                              </ProtectedRoute>
+                            }
+                          />
                           <Route element={<FinanceWorkspaceLayout family="fournisseurs-commandes" />}>
                             <Route path="/tenant/:tenantId/finance/fournisseurs" element={<Fournisseurs />} />
                             {/*
@@ -1214,6 +1354,7 @@ function App() {
                           />
                           <Route path="/admin/statistics" element={<Statistics />} />
                           <Route path="/admin/audit" element={<AuditLogs />} />
+                          <Route path="/admin/notifications" element={<PlatformNotificationJournalPage />} />
                           <Route path="/admin/ai-settings" element={<AiSettingsPage />} />
                           <Route path="/admin/roles-permissions" element={<RolesPermissions />} />
                         </Route>

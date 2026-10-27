@@ -64,7 +64,8 @@ const CAPACITY_LABELS: Record<string, string> = {
   CHANTIERS: 'chantiers',
   BIENS_DETENUS: 'biens détenus',
   ACTIFS: 'actifs',
-  PHOTOS_INVENTAIRE: 'photos d’inventaire analysées ce mois-ci'
+  PHOTOS_INVENTAIRE: 'photos d’inventaire analysées ce mois-ci',
+  SIGNATURES_MENSUELLES: 'signatures électroniques ce mois-ci'
 };
 
 function capacityLabel(capacityKey: string): string {
@@ -109,10 +110,15 @@ export function quotaExceededDenialText(
   detail: QuotaExceededDetail,
   tenantId?: string | null
 ): { title: string; description: string; settingsPath: string | null } {
+  const signaturesExtension = detail.capacityKey === 'SIGNATURES_MENSUELLES' && detail.extensible !== false;
   return {
     title: t('Capacité de votre abonnement atteinte'),
-    description:
-      detail.extensible === false
+    description: signaturesExtension
+      ? t(
+          'Votre abonnement comprend {{limit}} {{capacite}} et {{used}} sont utilisés. Ajoutez l’extension « Signatures supplémentaires » pour en envoyer davantage.',
+          { limit: detail.limit, capacite: capacityLabel(detail.capacityKey), used: detail.used }
+        )
+      : detail.extensible === false
         ? t(
             'Votre abonnement comprend {{limit}} {{capacite}} et {{used}} sont utilisés. Aucune extension n’est vendue avec votre pack : choisissez la facturation du dépassement, changez de pack ou contactez-nous.',
             { limit: detail.limit, capacite: capacityLabel(detail.capacityKey), used: detail.used }

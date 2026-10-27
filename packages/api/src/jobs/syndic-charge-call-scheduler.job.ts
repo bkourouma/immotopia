@@ -1,6 +1,7 @@
 import * as cron from 'node-cron';
 
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { runDueChargeSchedules } from '../lib/syndics/charge-schedule-runner';
 
 /**
@@ -44,7 +45,7 @@ export function startSyndicChargeCallSchedulerJob(): void {
     '0 6 * * *',
     async () => {
       try {
-        await runSyndicChargeCallScheduler();
+        await withJobLock('syndic-charge-call-scheduler-daily', 60 * 60 * 1000, () => runSyndicChargeCallScheduler());
       } catch (error) {
         logger.error('Error in syndic charge call scheduler job', {
           error: error instanceof Error ? error.message : String(error)

@@ -128,6 +128,23 @@ describe('apiClient — dépassement de capacité (QUOTA_EXCEEDED)', () => {
     expect(warning).not.toHaveBeenCalled();
   });
 
+  it('suggère l’extension « Signatures supplémentaires » pour le quota mensuel de signatures', () => {
+    expect(
+      quotaExceededDenialText({ capacityKey: 'SIGNATURES_MENSUELLES', used: 20, limit: 20, requested: 1 }).description
+    ).toBe(
+      'Votre abonnement comprend 20 signatures électroniques ce mois-ci et 20 sont utilisés. Ajoutez l’extension « Signatures supplémentaires » pour en envoyer davantage.'
+    );
+    expect(
+      quotaExceededDenialText({
+        capacityKey: 'SIGNATURES_MENSUELLES',
+        used: 20,
+        limit: 20,
+        requested: 1,
+        extensible: false
+      }).description
+    ).toContain('Aucune extension n’est vendue');
+  });
+
   it('construit le message pour chaque capacité, avec ou sans tenantId', () => {
     expect(quotaExceededDenialText({ capacityKey: 'COPROPRIETES', used: 3, limit: 3, requested: 1 })).toMatchObject({
       title: 'Capacité de votre abonnement atteinte',

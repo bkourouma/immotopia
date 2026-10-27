@@ -18,7 +18,8 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   BANK_TRANSFER: 'Virement bancaire',
   CHECK: 'Chèque',
   MOBILE_MONEY: 'Mobile Money',
-  CARD: 'Carte bancaire'
+  CARD: 'Carte bancaire',
+  DIRECT_DEBIT: 'Prélèvement bancaire'
 };
 
 const MOBILE_OPERATOR_LABELS: Record<string, string> = {

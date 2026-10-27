@@ -17,6 +17,8 @@
  *     process et au multi-instance.
  */
 
+import { createHash } from 'crypto';
+
 interface CacheEntry<T> {
   value: T;
   expiresAt: number;
@@ -58,10 +60,57 @@ class IdempotencyStore<T> {
     this.sweep();
     this.entries.set(this.buildKey(actorId, idempotencyKey), { value, expiresAt: Date.now() + this.ttlMs });
   }
+
+  /** Oublie la cle (ex. creation echouee : un reessai doit pouvoir recommencer). */
+  delete(actorId: string, idempotencyKey: string): void {
+    this.entries.delete(this.buildKey(actorId, idempotencyKey));
+  }
+
+  /** Oublie toutes les entrees dont la valeur satisfait le predicat (ex. ressource supprimee entre-temps). */
+  deleteWhere(predicate: (value: T) => boolean): void {
+    for (const [key, entry] of this.entries) {
+      if (predicate(entry.value)) {
+        this.entries.delete(key);
+      }
+    }
+  }
+
+  /** Pour les tests uniquement. */
+  clear(): void {
+    this.entries.clear();
+  }
 }
 
 /** Magasin dedie a la creation d'agence (F1). Un module = une instance = un seul magasin partage par tous les appels. */
 export const tenantProvisioningIdempotencyStore = new IdempotencyStore<unknown>();
+
+/**
+ * Magasin de la creation d'assemblee (POST .../assemblees). Stocke la PROMESSE de
+ * creation : un reessai qui arrive pendant que la premiere requete tourne encore
+ * attend le meme resultat au lieu de creer un doublon.
+ */
+export const meetingCreationIdempotencyStore = new IdempotencyStore<Promise<unknown>>();
+
+/** Magasin de l'ajout de resolution a une assemblee (POST .../resolutions) : meme principe que ci-dessus. */
+export interface ResolutionIdempotencyEntry {
+  /** Empreinte du corps de la premiere requete : une meme cle avec un autre corps est refusee (422). */
+  fingerprint: string;
+  /** Identifiant d'AG (tenant:copropriete:AG), pour purger les entrees d'une resolution supprimee. */
+  meetingKey: string;
+  promise: Promise<unknown>;
+  /** Renseigne quand la creation a abouti. */
+  resolutionId?: string;
+}
+
+export const meetingResolutionIdempotencyStore = new IdempotencyStore<ResolutionIdempotencyEntry>();
+
+/** Empreinte stable (ordre des cles fige, undefined = null) d'un corps de requete. */
+export function fingerprintBody(fields: Record<string, unknown>): string {
+  const normalized = Object.keys(fields)
+    .sort()
+    .map(key => [key, fields[key] === undefined ? null : fields[key]]);
+  return createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+}
 
 /** Longueur max de l'en-tete `Idempotency-Key` accepte (voir F2). */
 export const IDEMPOTENCY_KEY_MAX_LENGTH = 100;

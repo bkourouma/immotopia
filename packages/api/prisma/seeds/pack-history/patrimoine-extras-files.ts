@@ -11,7 +11,7 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { deflateSync } from 'node:zlib';
 import PizZip from 'pizzip';
-import { getProjectRoot } from '../../../src/utils/project-root';
+import { getGeneratedDocumentDir } from '../../../src/utils/assets-paths';
 
 // ------------------------------------------------------------------ mise en forme
 
@@ -210,8 +210,10 @@ export function buildDocx(title: string, lines: readonly string[]): Buffer {
 
 /**
  * Écrit un document locatif généré là où le téléchargement l'attend :
- * `<racine>/assets/generated_documents/<agence>/<type>/<AAAA>/<MM>/…`
- * (`docx-renderer.saveGeneratedDocument`). Renvoie le chemin absolu.
+ * `<dossier des documents générés>/<agence>/<type>/<AAAA>/<MM>/…`, soit le volume
+ * (`UPLOADS_DIR`/generated_documents) quand `UPLOADS_DIR` est posé, sinon
+ * `<racine>/assets/generated_documents` (`docx-renderer.saveGeneratedDocument`,
+ * via `getGeneratedDocumentDir`). Renvoie le chemin absolu.
  */
 export async function writeGeneratedDocx(
   tenantId: string,
@@ -221,15 +223,7 @@ export async function writeGeneratedDocx(
   issuedAt: Date,
   buffer: Buffer
 ): Promise<string> {
-  const dir = path.join(
-    getProjectRoot(),
-    'assets',
-    'generated_documents',
-    tenantId,
-    docType,
-    String(issuedAt.getFullYear()),
-    String(issuedAt.getMonth() + 1).padStart(2, '0')
-  );
+  const dir = getGeneratedDocumentDir(tenantId, docType, issuedAt.getFullYear(), issuedAt.getMonth() + 1);
   await fs.mkdir(dir, { recursive: true });
   const filePath = path.join(dir, `${slug(documentNumber)}_${docType}_${sourceKey.substring(0, 8)}.docx`);
   await fs.writeFile(filePath, buffer);

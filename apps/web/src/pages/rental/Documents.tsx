@@ -14,6 +14,7 @@ import {
   RentalDocumentStatus,
   GenerateDocumentRequest
 } from '../../services/rental-service';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { DocumentForm } from '../../components/rental/DocumentForm';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useListParams } from '../../hooks/useListParams';
@@ -28,6 +29,7 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList, localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 /**
@@ -63,7 +65,7 @@ interface DocumentsProps {
 type Filters = { type: string; status: string };
 const FILTER_KEYS = ['type', 'status'] as const;
 
-const TYPE_LABELS: Record<string, string> = {
+const TYPE_LABELS: Record<string, string> = localizedRecord(() => ({
   LEASE_CONTRACT: t('Contrat de bail'),
   LEASE_ADDENDUM: 'Avenant',
   RENT_RECEIPT: t('Reçu de loyer'),
@@ -71,13 +73,13 @@ const TYPE_LABELS: Record<string, string> = {
   DEPOSIT_RECEIPT: t('Reçu de dépôt'),
   STATEMENT: t('Relevé'),
   OTHER: 'Autre'
-};
+}));
 
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS = localizedList(() => [
   { value: 'DRAFT', label: t('Brouillon') },
   { value: 'FINAL', label: t('Final') },
   { value: 'VOID', label: t('Annulé') }
-];
+]);
 
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
@@ -215,6 +217,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
     {
       title: t('Document'),
       key: 'document',
+      exportValue: doc => (doc.title ? `${doc.document_number} — ${doc.title}` : doc.document_number),
       render: (_, doc) => (
         <>
           <div style={{ fontWeight: 600 }}>{doc.document_number}</div>
@@ -311,6 +314,21 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
       </FilterSheet>
 
       <DataView<RentalDocument>
+        // Export de TOUS les documents, avec les mêmes filtres que la liste affichée.
+        export={{
+          filename: t('Documents de location'),
+          fetchAll: () =>
+            collectAllPages<RentalDocument>(async (page, limit) => {
+              const reponse = await listDocuments(tenantId, {
+                leaseId,
+                type: (list.filters.type as RentalDocumentType) || undefined,
+                status: (list.filters.status as RentalDocumentStatus) || undefined,
+                page,
+                limit
+              });
+              return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
+            })
+        }}
         items={documents}
         total={total}
         page={list.page}
@@ -319,6 +337,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les documents.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}

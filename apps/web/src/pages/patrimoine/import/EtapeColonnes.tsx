@@ -1,9 +1,10 @@
 import React from 'react';
-import { Alert, Button, Descriptions, Select, Space, Table, Typography } from 'antd';
+import { Alert, Button, Descriptions, Select, Space, Typography } from 'antd';
 import { champsObligatoiresManquants } from '../../../lib/importation/rapprochement';
 import type { FichierLu } from '../../../lib/importation/fichier';
 import type { DescripteurNature } from '../../../lib/importation/types';
 import { t } from '../../../i18n/t';
+import { Table } from '../../../components/primitives';
 
 const { Text } = Typography;
 
@@ -70,6 +71,8 @@ export const EtapeColonnes: React.FC<EtapeColonnesProps> = props => {
       ) : null}
 
       <Table
+        // Tableau de correspondance éditable (une liste déroulante par ligne) : rien à exporter.
+        exportable={false}
         size="small"
         pagination={false}
         rowKey={ligne => String(ligne.index)}

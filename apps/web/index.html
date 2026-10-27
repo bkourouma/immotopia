@@ -3,8 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#00215e" />
     <meta name="description" content="ImmoTopia - Plateforme immobilière" />
+    <!-- PWA : manifeste d'installation (écran d'accueil, plein écran). Le service
+         worker est enregistré par src/pwa/register.ts. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="ImmoTopia" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <!-- Icones derivees du logotype (apps/web/scripts/make-favicon.py).
          Sans ces balises, le navigateur demande /favicon.ico et le repli SPA
          `try_files ... /index.html` lui renvoyait index.html en text/html. -->

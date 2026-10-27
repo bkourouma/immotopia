@@ -3,17 +3,27 @@ import { t } from '../i18n/t';
 /**
  * Libellé du type de lot, partagé par tous les écrans du module syndic.
  *
- * Reprend les valeurs déjà dupliquées dans plusieurs pages (`SyndicCharges`,
- * `SyndicLots`...) — un seul endroit pour cette table de correspondance.
+ * Fonction (et non table au niveau du module) : `t()` doit être appelé au rendu
+ * pour suivre la langue affichée. Un type inconnu renvoie `undefined`.
  */
-export const LOT_TYPE_LABELS: Record<string, string> = {
-  APARTMENT: 'Appartement',
-  PARKING: 'Parking',
-  CELLAR: 'Cave',
-  OFFICE: 'Bureau',
-  COMMERCIAL: 'Commerce',
-  OTHER: 'Autre'
-};
+export function getLotTypeLabel(lotType?: string | null): string | undefined {
+  switch (lotType) {
+    case 'APARTMENT':
+      return t('Appartement');
+    case 'PARKING':
+      return t('Parking');
+    case 'CELLAR':
+      return t('Cave');
+    case 'OFFICE':
+      return t('Bureau');
+    case 'COMMERCIAL':
+      return t('Commerce');
+    case 'OTHER':
+      return t('Autre');
+    default:
+      return undefined;
+  }
+}
 
 /**
  * Un titre de bien généré automatiquement à l'import
@@ -66,7 +76,7 @@ export function formatLotLabel(lot: LotLabelInput | null | undefined, fallbackRe
   const lotNumber = lot?.lotNumber?.trim();
   const segments: string[] = [lotNumber || fallbackReference?.trim() || t('Lot inconnu')];
 
-  const typeLabel = lot?.lotType ? LOT_TYPE_LABELS[lot.lotType] : undefined;
+  const typeLabel = getLotTypeLabel(lot?.lotType);
   if (typeLabel) {
     segments.push(typeLabel);
   }

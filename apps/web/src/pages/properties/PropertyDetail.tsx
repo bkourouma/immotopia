@@ -42,6 +42,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { PropertyVisitScheduler } from '../../components/properties/PropertyVisitScheduler';
+import { PropertyVisitsList } from '../../components/properties/PropertyVisitsList';
 import { PropertyMaintenanceTab } from '../../components/properties/PropertyMaintenanceTab';
 import { PropertyApartments } from '../../components/properties/PropertyApartments';
 import { PropertyNewsletterCampaignModal } from '../../components/newsletter/PropertyNewsletterCampaignModal';
@@ -55,6 +56,7 @@ import { API_URL } from '../../config/api';
 
 import { PageHeader, StatusTag } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 import { activeLocale } from '../../i18n/format';
 
 const PropertyInsuranceTab = lazy(() =>
@@ -99,7 +101,7 @@ const { Text, Title } = Typography;
  * l'onglet quitté, et un rechargement ne ramène pas sur « Aperçu ».
  */
 
-const TYPE_LABELS: Record<string, string> = {
+const TYPE_LABELS: Record<string, string> = localizedRecord(() => ({
   APPARTEMENT: 'Appartement',
   MAISON_VILLA: t('Maison / Villa'),
   STUDIO: 'Studio',
@@ -112,25 +114,25 @@ const TYPE_LABELS: Record<string, string> = {
   IMMEUBLE: 'Immeuble',
   PARKING_BOX: t('Parking / Box'),
   LOT_PROGRAMME_NEUF: t('Lot de programme neuf')
-};
+}));
 
-const TRANSACTION_LABELS: Record<string, string> = {
+const TRANSACTION_LABELS: Record<string, string> = localizedRecord(() => ({
   SALE: 'Vente',
   RENTAL: 'Location',
   SHORT_TERM: t('Court terme')
-};
+}));
 
-const FURNISHING_LABELS: Record<string, string> = {
+const FURNISHING_LABELS: Record<string, string> = localizedRecord(() => ({
   FURNISHED: t('Meublé'),
   UNFURNISHED: t('Non meublé'),
   PARTIALLY_FURNISHED: t('Partiellement meublé')
-};
+}));
 
-const AVAILABILITY_LABELS: Record<string, string> = {
+const AVAILABILITY_LABELS: Record<string, string> = localizedRecord(() => ({
   AVAILABLE: 'Disponible',
   UNAVAILABLE: 'Indisponible',
   SOON_AVAILABLE: t('Bientôt disponible')
-};
+}));
 
 /**
  * Qui possède le bien.
@@ -293,7 +295,7 @@ export const PropertyDetail: React.FC = () => {
   const formatPrice = (price?: number, currency?: string, propertyType?: string) => {
     if (!price) return propertyType === 'IMMEUBLE' ? '' : t('Prix sur demande');
     const formatted = new Intl.NumberFormat(activeLocale()).format(price);
-    return `${formatted} ${currency || 'EUR'}`;
+    return `${formatted} ${currency || 'XOF'}`;
   };
 
   if (!effectiveTenantId) {
@@ -663,9 +665,12 @@ export const PropertyDetail: React.FC = () => {
             </Space>
           ),
           children: (
-            <Card title={t('Planifier une visite')}>
-              <PropertyVisitScheduler propertyId={id!} tenantId={effectiveTenantId} onVisitScheduled={() => {}} />
-            </Card>
+            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              <PropertyVisitsList propertyId={id!} tenantId={effectiveTenantId} />
+              <Card title={t('Planifier une visite')}>
+                <PropertyVisitScheduler propertyId={id!} tenantId={effectiveTenantId} onVisitScheduled={() => {}} />
+              </Card>
+            </Space>
           )
         }
       : null

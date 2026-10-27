@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
@@ -26,13 +26,27 @@ vi.mock('@ant-design/icons', async () => {
 
 // Exposé hors de la factory (hoisted) pour que les tests puissent vérifier
 // les appels `setFieldsValue` du pré-remplissage de la modale d'imputation.
-const { formInstance } = vi.hoisted(() => ({
+const { formInstance, valuesChangeHandlers } = vi.hoisted(() => ({
   formInstance: {
     validateFields: vi.fn(),
     resetFields: vi.fn(),
-    setFieldsValue: vi.fn()
-  }
+    setFieldsValue: vi.fn(),
+    setFields: vi.fn(),
+    getFieldValue: vi.fn()
+  },
+  // `onValuesChange` de chaque <Form> rendu : le mock de Form ne sait pas déclencher de saisie.
+  valuesChangeHandlers: [] as Array<(changed: Record<string, unknown>) => void>
 }));
+
+// Le formulaire de contact CRM a ses propres tests : ici un bouton le remplace.
+vi.mock('../../components/crm/ContactForm', () => ({
+  ContactForm: ({ onSubmit }: { onSubmit: (data: unknown) => Promise<void> }) => (
+    <button onClick={() => void onSubmit({ firstName: 'Awa', lastName: 'Kone' })}>Valider le contact</button>
+  )
+}));
+
+// Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
+vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
 
 vi.mock('antd', async () => {
   // importActual reaches the real module from inside a hoisted mock factory;
@@ -43,7 +57,10 @@ vi.mock('antd', async () => {
     ({ children, ...props }: any) =>
       React.createElement(Tag, props, children);
 
-  const FormComponent: any = passthrough('form');
+  const FormComponent: any = ({ children, onValuesChange, ...props }: any) => {
+    if (onValuesChange) valuesChangeHandlers.push(onValuesChange);
+    return React.createElement('form', props, children);
+  };
   FormComponent.useForm = () => [formInstance];
   FormComponent.Item = passthrough();
 
@@ -71,11 +88,19 @@ vi.mock('antd', async () => {
     InputNumber: passthrough('input'),
     // Un passthrough n'aurait rendu aucun bouton OK : la validation de la
     // modale « Modifier l'incident » se teste en cliquant dessus.
-    Modal: ({ children, onOk, onCancel, okText, cancelText }: any) => (
+    // `afterClose` suit l'annulation : AntD l'appelle une fois la modale refermée.
+    Modal: ({ children, onOk, onCancel, okText, cancelText, afterClose }: any) => (
       <div>
         {children}
         <button onClick={onOk}>{okText || 'OK'}</button>
-        <button onClick={onCancel}>{cancelText || 'Annuler'}</button>
+        <button
+          onClick={() => {
+            onCancel?.();
+            afterClose?.();
+          }}
+        >
+          {cancelText || 'Annuler'}
+        </button>
       </div>
     ),
     Select: passthrough('select'),
@@ -173,7 +198,28 @@ function renderWithRoute() {
 describe('Syndics profiles/incidents page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    valuesChangeHandlers.length = 0;
     mockApiClient.get.mockImplementation((url: string) => {
+      if (url.endsWith('/budgets')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: [
+              {
+                id: 'b-1',
+                label: 'Budget 2026',
+                fiscalYear: 2026,
+                lines: [{ id: 'bl-1', category: 'Entretien', description: 'Ascenseur' }]
+              }
+            ]
+          }
+        });
+      }
+      if (url.endsWith('/contrats')) {
+        return Promise.resolve({
+          data: { success: true, data: [{ id: 'ct-1', nature: 'Maintenance ascenseur', provider: { name: 'Otis' } }] }
+        });
+      }
       if (url.includes('/profils/proprietaires')) {
         return Promise.resolve({
           data: {
@@ -203,6 +249,15 @@ describe('Syndics profiles/incidents page', () => {
                 tenantSince: '2026-01-01T00:00:00.000Z',
                 chargesBilledToTenant: false,
                 isCurrent: true
+              },
+              {
+                id: 'tp-2',
+                lotId: 'lot-1',
+                contactId: 'c-3',
+                tenantSince: '2024-01-01T00:00:00.000Z',
+                tenantUntil: '2025-01-01T00:00:00.000Z',
+                chargesBilledToTenant: false,
+                isCurrent: false
               }
             ]
           }
@@ -376,5 +431,212 @@ describe('Syndics profiles/incidents page', () => {
     // Le lot reste modifiable (pas de `disabled`) : seule la valeur initiale
     // du formulaire est celle de l'incident.
     expect(formInstance.setFieldsValue).toHaveBeenCalledWith({ lotId: 'lot-1' });
+  });
+
+  it('un double clic sur « OK » de la modale profil propriétaire ne crée le profil qu’une fois', async () => {
+    mockApiClient.post.mockResolvedValue({ data: { success: true, data: { id: 'op-2' } } });
+    // Validation asynchrone : le second clic arrive avant la fin du premier.
+    formValidateFields.mockResolvedValue({
+      lotId: 'lot-1',
+      contactId: 'c-1',
+      ownershipPercentage: 100,
+      ownedSince: '2026-01-01',
+      portalAccessEnabled: false
+    });
+
+    renderWithRoute();
+    fireEvent.click(await screen.findByText('Profil propriétaire'));
+
+    // La modale d'invitation (sans libellé de validation) précède la modale profil propriétaire.
+    const okButtons = screen.getAllByText('OK');
+    fireEvent.click(okButtons[1]);
+    fireEvent.click(okButtons[1]);
+
+    await waitFor(() =>
+      expect(mockApiClient.post).toHaveBeenCalledWith(
+        '/tenants/tenant-1/syndics/syndic-1/profils/proprietaires',
+        expect.objectContaining({ lotId: 'lot-1', contactId: 'c-1' })
+      )
+    );
+    expect(mockApiClient.post).toHaveBeenCalledTimes(1);
+    formValidateFields.mockReset();
+  });
+
+  it('« Créer un contact » crée le contact via l’API et le sélectionne dans le champ du profil', async () => {
+    mockApiClient.post.mockResolvedValueOnce({
+      data: { success: true, data: { id: 'c-new', firstName: 'Awa', lastName: 'Kone' } }
+    });
+    renderWithRoute();
+    await screen.findByText('Profils lot et incidents');
+
+    // Premier bouton : celui du champ « Contact propriétaire ».
+    fireEvent.click(screen.getAllByRole('button', { name: 'Créer un contact' })[0]);
+    fireEvent.click(screen.getByText('Valider le contact'));
+
+    await waitFor(() =>
+      expect(mockApiClient.post).toHaveBeenCalledWith(
+        '/tenants/tenant-1/crm/contacts',
+        expect.objectContaining({ firstName: 'Awa', lastName: 'Kone' })
+      )
+    );
+    await waitFor(() => expect(formInstance.setFieldsValue).toHaveBeenCalledWith({ contactId: 'c-new' }));
+  });
+
+  it('l’erreur de parts est effacée à la fermeture de la modale et quand la valeur change', async () => {
+    renderWithRoute();
+    await screen.findByText('Profils lot et incidents');
+
+    valuesChangeHandlers.forEach(handler => handler({ ownershipPercentage: 50 }));
+    expect(formInstance.setFields).toHaveBeenCalledWith([{ name: 'ownershipPercentage', errors: [] }]);
+
+    formInstance.resetFields.mockClear();
+    // Modales sans libellé de validation : invitation (0), propriétaire (1).
+    fireEvent.click(screen.getAllByText('Annuler')[1]);
+    expect(formInstance.resetFields).toHaveBeenCalled();
+  });
+
+  it('le tableau des locataires affiche le statut et « Terminer » met fin au profil actuel', async () => {
+    mockApiClient.patch.mockResolvedValueOnce({ data: { success: true, data: { id: 'tp-1', isCurrent: false } } });
+    renderWithRoute();
+
+    expect(await screen.findByText('Actuel')).toBeTruthy();
+    expect(screen.getByText('Terminé')).toBeTruthy();
+    // Un seul profil actuel : une seule action.
+    const endButtons = screen.getAllByRole('button', { name: 'Terminer' });
+    expect(endButtons).toHaveLength(1);
+
+    // La confirmation est acceptée d'office par le mock d'App.useApp.
+    fireEvent.click(endButtons[0]);
+    await waitFor(() =>
+      expect(mockApiClient.patch).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/profils/locataires/tp-1', {
+        isCurrent: false,
+        tenantUntil: expect.any(String)
+      })
+    );
+  });
+
+  it('l’imputation transmet le poste de budget et le contrat choisis, la devise restant XOF', async () => {
+    mockApiClient.post.mockResolvedValueOnce({ data: { success: true, data: { id: 'imp-1' } } });
+    renderWithRoute();
+    fireEvent.click(await screen.findByText('Ajouter imputation'));
+    await waitFor(() =>
+      expect(mockApiClient.get.mock.calls.some(([url]: [string]) => url.endsWith('/budgets'))).toBe(true)
+    );
+
+    formValidateFields.mockResolvedValueOnce({
+      imputationType: 'SYNDICATE_BUDGET',
+      amount: 5000,
+      budgetLineId: 'bl-1',
+      contractId: 'ct-1',
+      lotId: 'lot-1'
+    });
+    // La modale d'imputation est la dernière à porter le libellé par défaut « OK ».
+    const okButtons = screen.getAllByText('OK');
+    fireEvent.click(okButtons[okButtons.length - 1]);
+
+    await waitFor(() =>
+      expect(mockApiClient.post).toHaveBeenCalledWith(
+        '/tenants/tenant-1/syndics/syndic-1/incidents/i-1/imputations',
+        expect.objectContaining({
+          imputationType: 'SYNDICATE_BUDGET',
+          amount: 5000,
+          currency: 'XOF',
+          budgetLineId: 'bl-1',
+          contractId: 'ct-1'
+        })
+      )
+    );
+    formValidateFields.mockReset();
+  });
+
+  describe('lot déjà détenu (409 OPEN_OWNERS)', () => {
+    const ownerValues = {
+      lotId: 'lot-1',
+      contactId: 'c-1',
+      ownershipPercentage: 100,
+      ownedSince: '2026-01-01',
+      portalAccessEnabled: false
+    };
+    const openOwnersError = {
+      response: {
+        status: 409,
+        data: {
+          success: false,
+          message: 'Conflit',
+          errors: [
+            {
+              field: 'previousOwnersHandling',
+              message: 'Lot déjà détenu',
+              reason: 'OPEN_OWNERS',
+              owners: [{ profileId: 'op-1', contactName: 'Awa Traoré' }]
+            }
+          ]
+        }
+      }
+    };
+    const url = '/tenants/tenant-1/syndics/syndic-1/profils/proprietaires';
+
+    const submitOwnerForm = async () => {
+      formValidateFields.mockResolvedValue(ownerValues);
+      renderWithRoute();
+      fireEvent.click(await screen.findByText('Profil propriétaire'));
+      fireEvent.click(screen.getAllByText('OK')[1]);
+    };
+
+    afterEach(() => formValidateFields.mockReset());
+
+    it('ouvre la modale avec le nom du propriétaire en cours', async () => {
+      mockApiClient.post.mockRejectedValueOnce(openOwnersError);
+      await submitOwnerForm();
+      expect(await screen.findByText('Awa Traoré')).toBeTruthy();
+      expect(screen.getByText('Propriétaire(s) actuel(s) de ce lot :')).toBeTruthy();
+      expect(mockApiClient.post).toHaveBeenCalledTimes(1);
+      expect(mockApiClient.post.mock.calls[0][1].previousOwnersHandling).toBeUndefined();
+    });
+
+    it('« Revente » renvoie la création avec CLOSE', async () => {
+      mockApiClient.post
+        .mockRejectedValueOnce(openOwnersError)
+        .mockResolvedValueOnce({ data: { success: true, data: { id: 'op-2' } } });
+      await submitOwnerForm();
+      fireEvent.click(await screen.findByText(/Revente/));
+      await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledTimes(2));
+      expect(mockApiClient.post).toHaveBeenLastCalledWith(
+        url,
+        expect.objectContaining({ lotId: 'lot-1', contactId: 'c-1', previousOwnersHandling: 'CLOSE' })
+      );
+    });
+
+    it('« Indivision » renvoie la création avec KEEP', async () => {
+      mockApiClient.post
+        .mockRejectedValueOnce(openOwnersError)
+        .mockResolvedValueOnce({ data: { success: true, data: { id: 'op-2' } } });
+      await submitOwnerForm();
+      fireEvent.click(await screen.findByText(/Indivision/));
+      await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledTimes(2));
+      expect(mockApiClient.post).toHaveBeenLastCalledWith(
+        url,
+        expect.objectContaining({ previousOwnersHandling: 'KEEP' })
+      );
+    });
+
+    it('« Annuler » ne crée rien', async () => {
+      mockApiClient.post.mockRejectedValueOnce(openOwnersError);
+      await submitOwnerForm();
+      const wrapper = (await screen.findByText(/Revente/)).closest('div')!.parentElement!.parentElement!;
+      fireEvent.click(within(wrapper).getByText('Annuler'));
+      await waitFor(() => expect(screen.queryByText(/Revente/)).toBeNull());
+      expect(mockApiClient.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('une autre erreur affiche le message habituel, sans modale', async () => {
+      const { message } = (await import('antd')) as any;
+      mockApiClient.post.mockRejectedValueOnce({
+        response: { status: 409, data: { error: 'Parts au-delà de 100 %' } }
+      });
+      await submitOwnerForm();
+      await waitFor(() => expect(message.error).toHaveBeenCalledWith('Parts au-delà de 100 %'));
+      expect(screen.queryByText(/Revente/)).toBeNull();
+    });
   });
 });

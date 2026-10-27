@@ -9,6 +9,7 @@ import { env } from '../../config/env';
 import { getUploadsRoot } from '../../utils/project-root';
 import { badRequest, conflict, notFound } from '../errors';
 import { AppError, ErrorCode } from '../../middleware/error-middleware';
+import { cancelOpenRequestsForTarget } from '../signature/cancel';
 import {
   CONDITIONS,
   DEDUCTION_SOURCES,
@@ -581,12 +582,22 @@ async function safeUnlink(filePath: string): Promise<void> {
   }
 }
 
-export async function deleteInspection(tenantId: string, leaseId: string, inspectionId: string): Promise<void> {
+export async function deleteInspection(
+  tenantId: string,
+  leaseId: string,
+  inspectionId: string,
+  actorUserId?: string
+): Promise<void> {
   await assertLeaseForTenant(tenantId, leaseId);
   const existing = await getInspectionRow(tenantId, leaseId, inspectionId);
   if (existing.status === LeaseInspectionStatus.FINALIZED) {
     throw conflict('Cet état des lieux est finalisé : il ne peut plus être supprimé.');
   }
+
+  // Un brouillon n'a jamais de demande ouverte (seul un état finalisé s'envoie en
+  // signature, et il n'est jamais supprimé) ; par prudence, toute demande encore
+  // ouverte sur cette cible est annulée (SG-R2) avant que le document disparaisse.
+  await cancelOpenRequestsForTarget({ tenantId, userId: actorUserId ?? null }, 'LeaseInspection', inspectionId);
 
   await Promise.all(existing.photos.map(photo => safeUnlink(photo.filePath)));
   // `onDelete: Cascade` sur LeaseInspectionPhoto.inspection supprime les

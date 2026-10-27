@@ -25,6 +25,11 @@ jest.mock('node-cron', () => ({
   }
 }));
 
+// Le verrou distribué (SQL brut) est neutralisé : on teste le corps des passages.
+jest.mock('../../src/utils/job-lock', () => ({
+  withJobLock: (_name: string, _ttlMs: number, fn: () => Promise<unknown>) => fn()
+}));
+
 jest.mock('../../src/lib/stock-whatsapp/webhook/process-event', () => ({
   processWebhookEvent: async (eventId: string) => {
     mockProcessed.push(eventId);

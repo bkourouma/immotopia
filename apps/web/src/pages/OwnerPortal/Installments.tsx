@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Spin, Alert, Table, Tag, Space, Select, DatePicker, Empty, Button } from 'antd';
+import { Card, Row, Col, Typography, Spin, Alert, Tag, Space, Select, DatePicker, Empty, Button } from 'antd';
 import { DollarOutlined, CalendarOutlined, FilterOutlined, SyncOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
+import { Table } from '../../components/primitives';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
@@ -149,6 +150,7 @@ export default function Installments() {
       title: t('Montant'),
       dataIndex: 'amount',
       key: 'amount',
+      exportValue: (record: InstallmentListItem) => Number(record.amount),
       render: (amount: number, record: InstallmentListItem) => (
         <Space direction="vertical" size={0}>
           <Text>{formatCurrency(amount)}</Text>
@@ -338,6 +340,7 @@ export default function Installments() {
       <Card title={t('Liste des échéances')}>
         {data && data.installments.length > 0 ? (
           <Table
+            exportFilename={t('Liste des échéances')}
             scroll={{ x: 'max-content' }}
             columns={columns}
             dataSource={data.installments}

@@ -12,22 +12,30 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
   requiredRole?: 'SUPER_ADMIN' | 'USER';
   requireTenant?: boolean;
-  requirePermission?: string;
+  /**
+   * Permissions exigées dans l'agence de la route (celle de l'URL, sinon
+   * l'agence courante) : TOUTES les clés listées. Indication d'interface — le
+   * serveur reste l'autorité. Tant que les droits ne sont pas connus
+   * (`user.memberships` absent, appartenance inconnue ou liste vide), on laisse passer et c'est le 403 serveur,
+   * rendu par `<DataView errorCause>`, qui tranche.
+   */
+  requiredPermissions?: string | string[];
 }
 
 /**
  * ProtectedRoute component
  * Protects routes that require authentication
  * Redirects to login if not authenticated
- * Optionally checks for required role, tenant membership, or permission
+ * Optionally checks for required role, tenant membership, or permissions
  */
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   requiredRole,
   requireTenant,
-  requirePermission
+  requiredPermissions
 }) => {
-  const { isAuthenticated, isLoading, user, tenantMembership, isLoadingMembership } = useAuth();
+  const { isAuthenticated, isLoading, user, tenantMembership, isLoadingMembership, activeTenantId, hasPermission } =
+    useAuth();
   const location = useLocation();
   const params = useParams<{ tenantId?: string }>();
 
@@ -110,9 +118,26 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     }
   }
 
-  // Permission check would require an API call to check user permissions
-  // For now, we'll skip this as it requires backend permission checking endpoint
-  // TODO: Implement permission checking when backend endpoint is available
+  // Permissions de l'agence (lues sur /auth/me). La garde est volontairement
+  // TOLÉRANTE : elle ne refuse que si l'appartenance de l'agence est connue ET
+  // que sa liste de permissions est NON vide ET ne contient pas les clés. Une
+  // liste vide est indistinguable d'un échec de calcul côté API
+  // (getActiveMembershipsWithPermissions renvoie [] dans ce cas), et une
+  // appartenance inconnue n'est pas une preuve : on laisse passer, le 403
+  // serveur affiché par DataView errorCause rend le refus. Le contrôle
+  // strict (liste vide = rien) reste celui de hasPermission, pour masquer
+  // des boutons.
+  if (requiredPermissions && user?.memberships !== undefined) {
+    const tenantId = params.tenantId ?? tenantMembership?.tenantId ?? activeTenantId;
+    const known = user.memberships.find(m => m.tenantId === tenantId);
+    if (known && known.permissions.length > 0 && !hasPermission?.(tenantId, requiredPermissions)) {
+      return (
+        <Suspense fallback={null}>
+          <AccessDenied reason="role" />
+        </Suspense>
+      );
+    }
+  }
 
   return <>{children}</>;
 };

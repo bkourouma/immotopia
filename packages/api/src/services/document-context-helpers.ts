@@ -37,6 +37,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CHECK: 'Chèque',
   MOBILE_MONEY: 'Mobile Money',
   CARD: 'Carte bancaire',
+  DIRECT_DEBIT: 'Prélèvement bancaire',
   OTHER: 'Autre'
 };
 

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Card, Table, Typography } from 'antd';
+import { Card, Typography } from 'antd';
+import { Table } from '../../primitives';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type {
   ProjectionPoint,
@@ -92,6 +93,7 @@ export const ProjectionChartCard: React.FC<{
 export const ProjectionTableCard: React.FC<{ points: ProjectionPoint[] }> = ({ points }) => (
   <Card title={t('Tableau annuel')}>
     <Table<ProjectionPoint>
+      exportFilename={t('Tableau annuel')}
       size="small"
       rowKey="year"
       pagination={false}
@@ -161,6 +163,7 @@ export const SimulationDeltaCard: React.FC<{ data: ProjectionResponse }> = ({ da
         </Typography.Paragraph>
       )}
       <Table<DeltaRow>
+        exportFilename={t('Écart avec la base')}
         size="small"
         rowKey="year"
         pagination={false}

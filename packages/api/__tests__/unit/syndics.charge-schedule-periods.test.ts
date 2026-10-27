@@ -8,6 +8,7 @@ import {
   annualShareForPeriod,
   describePeriod,
   distributeFixedAmount,
+  effectiveDueDate,
   firstPeriod,
   firstPeriodIssuedOnOrAfter,
   followingPeriod,
@@ -180,5 +181,23 @@ describe('montant fixe reparti par tantiemes', () => {
       { lotId: 'y', amount: 45 }
     ]);
     expect(distributeFixedAmount(90, [])).toEqual([]);
+  });
+});
+
+describe('effectiveDueDate (H6)', () => {
+  const period = describePeriod(timing(), d('2026-10-01')); // échéance théorique 2026-10-16
+
+  it('échéance future ou du jour : inchangée', () => {
+    expect(day(effectiveDueDate(period, d('2026-10-01'), 15).dueDate)).toBe('2026-10-16');
+    expect(effectiveDueDate(period, d('2026-10-01'), 15).shifted).toBe(false);
+    const sameDay = new Date('2026-10-16T23:59:59.000Z');
+    expect(effectiveDueDate(period, sameDay, 15)).toEqual({ dueDate: period.dueDate, shifted: false });
+  });
+
+  it('échéance passée : jour UTC d’émission + délai', () => {
+    const result = effectiveDueDate(period, new Date('2026-10-19T23:30:00.000Z'), 15);
+    expect(result.shifted).toBe(true);
+    expect(day(result.dueDate)).toBe('2026-11-03');
+    expect(result.dueDate.getUTCHours()).toBe(0);
   });
 });

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Alert, App, Button, Card, Space, Table, Typography } from 'antd';
+import { Alert, App, Button, Card, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { CreditCardOutlined, FilePdfOutlined } from '@ant-design/icons';
 import {
@@ -13,11 +13,24 @@ import {
   type PlatformCheckout,
   type PlatformInvoice
 } from '../../services/platform-billing-service';
-import { formatMoney, StatusTag } from '../primitives';
-import { INVOICE_NATURE_LABEL, INVOICE_STATUS_LABEL, PAYABLE_STATUSES, formatDay, formatPeriod } from './platform-invoice-labels';
+import { formatMoney, StatusTag, Table } from '../primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
+import {
+  INVOICE_NATURE_LABEL,
+  INVOICE_STATUS_LABEL,
+  PAYABLE_STATUSES,
+  formatDay,
+  formatPeriod
+} from './platform-invoice-labels';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
+
+/** Erreur HTTP 4xx qui ne passera pas en réessayant (hors délai d'attente et limitation de débit). */
+function isDefinitiveError(err: any): boolean {
+  const status = err?.response?.status;
+  return typeof status === 'number' && status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
 
 /** Suivi du retour de paiement : toutes les 3 s, 60 s au plus (comme le portail locataire du lot 7). */
 const POLL_INTERVAL_MS = 3000;
@@ -44,8 +57,12 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
   const [paying, setPaying] = useState<string | null>(null);
   const [returned, setReturned] = useState<PlatformCheckout | null>(null);
   const [stillPending, setStillPending] = useState(false);
+  const [unknownPayment, setUnknownPayment] = useState(false);
   const onPaidRef = useRef(onPaid);
   onPaidRef.current = onPaid;
+  // Référence stable : `setSearchParams` change avec l'adresse et relancerait le suivi.
+  const setSearchParamsRef = useRef(setSearchParams);
+  setSearchParamsRef.current = setSearchParams;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,8 +106,25 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
           await load();
           onPaidRef.current?.();
         }
-      } catch {
-        if (!cancelled) setStillPending(true);
+      } catch (err: any) {
+        if (cancelled) return;
+        // Code inconnu (404) ou refus définitif : inutile de réinterroger, et le paramètre
+        // `paiement` est retiré de l'adresse (rechargement sans boucle).
+        if (isDefinitiveError(err)) {
+          setStillPending(false);
+          setReturned(null);
+          setUnknownPayment(true);
+          setSearchParamsRef.current(
+            previous => {
+              const next = new URLSearchParams(previous);
+              next.delete('paiement');
+              return next;
+            },
+            { replace: true }
+          );
+          return;
+        }
+        setStillPending(true);
       }
     };
     poll();
@@ -150,7 +184,7 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
       title: t('Nature'),
       dataIndex: 'nature',
       key: 'nature',
-      render: (v: string | null) => (v ? INVOICE_NATURE_LABEL[v] ?? v : '—')
+      render: (v: string | null) => (v ? (INVOICE_NATURE_LABEL[v] ?? v) : '—')
     },
     { title: t('Période'), key: 'period', render: (_, r) => formatPeriod(r.periodStart, r.periodEnd) },
     { title: t('Échéance'), dataIndex: 'dueDate', key: 'due', render: formatDay },
@@ -199,20 +233,43 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
     <Card title={t('Factures')}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {returned && returned.status === 'SUCCESS' && (
-          <Alert type="success" showIcon closable onClose={dismissReturn} message={t('Paiement reçu : la facture est réglée.')} />
+          <Alert
+            type="success"
+            showIcon
+            closable
+            onClose={dismissReturn}
+            message={t('Paiement reçu : la facture est réglée.')}
+          />
         )}
-        {returned && (returned.status === 'FAILED' || returned.status === 'CANCELED' || returned.status === 'EXPIRED') && (
+        {returned &&
+          (returned.status === 'FAILED' || returned.status === 'CANCELED' || returned.status === 'EXPIRED') && (
+            <Alert
+              type="error"
+              showIcon
+              closable
+              onClose={dismissReturn}
+              message={t("Le paiement n'a pas abouti.")}
+              description={returned.failureMessage ?? undefined}
+            />
+          )}
+        {unknownPayment && (
           <Alert
             type="error"
             showIcon
             closable
-            onClose={dismissReturn}
-            message={t("Le paiement n'a pas abouti.")}
-            description={returned.failureMessage ?? undefined}
+            onClose={() => setUnknownPayment(false)}
+            message={t('Paiement introuvable')}
+            description={t('Ce code de paiement ne correspond à aucun paiement de votre agence.')}
           />
         )}
         {returned && returned.status === 'REVIEW' && (
-          <Alert type="warning" showIcon closable onClose={dismissReturn} message={t('Paiement en cours de vérification par ImmoTopia.')} />
+          <Alert
+            type="warning"
+            showIcon
+            closable
+            onClose={dismissReturn}
+            message={t('Paiement en cours de vérification par ImmoTopia.')}
+          />
         )}
         {codePaiement && (stillPending || (returned?.status === 'PENDING' && !stillPending)) && (
           <Alert
@@ -227,6 +284,13 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
           <Text type="secondary">{t('Mode démonstration : aucun paiement réel.')}</Text>
         )}
         <Table<PlatformInvoice>
+          exportFilename={t('Factures')}
+          exportFetchAll={() =>
+            collectAllPages<PlatformInvoice>(async (page, limit) => {
+              const result = await listOwnPlatformInvoices(tenantId, { page, limit });
+              return { items: result.invoices, total: result.pagination.total };
+            })
+          }
           rowKey="id"
           size="small"
           columns={columns}

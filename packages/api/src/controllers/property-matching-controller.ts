@@ -9,6 +9,8 @@ import {
   generateMatchExplanation
 } from '../services/property-matching-service';
 import { CrmDealPropertyStatus } from '@prisma/client';
+import { parseIntParam, parseEnumParam } from '../utils/query-params';
+import { respondWithAppError } from '../utils/app-error-response';
 
 /**
  * Match properties for a deal handler
@@ -17,7 +19,7 @@ export async function matchPropertiesHandler(req: Request, res: Response): Promi
   try {
     const dealId = req.params.dealId;
     const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+    const limit = parseIntParam(req.query.limit, 'limit', { min: 1 }) ?? 20;
 
     if (!tenantId) {
       res.status(400).json({
@@ -56,6 +58,7 @@ export async function matchPropertiesHandler(req: Request, res: Response): Promi
       data: enrichedMatches
     });
   } catch (error: any) {
+    if (respondWithAppError(res, error)) return;
     logger.error('Error matching properties', { error, dealId: req.params.dealId });
     res.status(500).json({
       success: false,
@@ -106,6 +109,7 @@ export async function addToShortlistHandler(req: Request, res: Response): Promis
       data: dealProperty
     });
   } catch (error: any) {
+    if (respondWithAppError(res, error)) return;
     logger.error('Error adding property to shortlist', { error });
     res.status(500).json({
       success: false,
@@ -121,7 +125,7 @@ export async function updateMatchStatusHandler(req: Request, res: Response): Pro
   try {
     const dealId = req.params.dealId;
     const propertyId = req.body.propertyId;
-    const status = req.body.status as CrmDealPropertyStatus;
+    const status = parseEnumParam(req.body.status, CrmDealPropertyStatus, 'status');
     const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
 
     if (!tenantId) {
@@ -147,6 +151,7 @@ export async function updateMatchStatusHandler(req: Request, res: Response): Pro
       data: dealProperty
     });
   } catch (error: any) {
+    if (respondWithAppError(res, error)) return;
     logger.error('Error updating match status', { error });
     res.status(500).json({
       success: false,

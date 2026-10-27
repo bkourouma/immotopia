@@ -31,9 +31,9 @@ vi.mock('../../services/property-service', () => ({
   listProperties: (...a: unknown[]) => listProperties(...a)
 }));
 
-const getTenantClients = vi.fn();
+const getOwnerClients = vi.fn();
 vi.mock('../../services/tenant-service', () => ({
-  getTenantClients: (...a: unknown[]) => getTenantClients(...a)
+  getOwnerClients: (...a: unknown[]) => getOwnerClients(...a)
 }));
 
 const listMembers = vi.fn();
@@ -110,18 +110,15 @@ beforeEach(() => {
     properties: [{ id: 'property-1', internalReference: 'REF-001', title: 'Villa Cocody' }],
     pagination: { page: 1, limit: 500, total: 1, totalPages: 1 }
   });
-  getTenantClients.mockResolvedValue({
-    success: true,
-    data: [
-      {
-        id: 'client-1',
-        userId: 'user-1',
-        tenantId: 'agence-1',
-        clientType: 'OWNER',
-        user: { id: 'user-1', email: 'aissatou@example.com', fullName: 'Aissatou Barry' }
-      }
-    ]
-  });
+  getOwnerClients.mockResolvedValue([
+    {
+      id: 'client-1',
+      userId: 'user-1',
+      tenantId: 'agence-1',
+      clientType: 'OWNER',
+      user: { id: 'user-1', email: 'aissatou@example.com', fullName: 'Aissatou Barry' }
+    }
+  ]);
   listMembers.mockResolvedValue({
     success: true,
     data: { members: [], pagination: { page: 1, limit: 500, total: 0, totalPages: 1 } }

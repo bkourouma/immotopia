@@ -13,6 +13,9 @@ import './index.css';
 // haut, et la specificite est identique.
 import './styles/rtl.css';
 import App from './App';
+// Importé tôt : `beforeinstallprompt` peut partir avant le premier rendu.
+import './pwa/install';
+import { registerServiceWorker } from './pwa/register';
 
 // Posé une seule fois : dayjs alimente les DatePicker AntD et le localizer de
 // react-big-calendar (`pages/crm/Calendar.tsx`). §3.5.
@@ -25,3 +28,5 @@ root.render(
     <App />
   </React.StrictMode>
 );
+
+registerServiceWorker();

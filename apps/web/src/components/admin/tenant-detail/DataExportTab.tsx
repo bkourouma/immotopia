@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { App, Button, Space, Table, Typography } from 'antd';
+import { App, Button, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined, DeleteOutlined, ExportOutlined } from '@ant-design/icons';
 import {
@@ -10,9 +10,10 @@ import {
   type TenantDataExport,
   type TenantDataExportStatus
 } from '../../../services/tenant-data-export-service';
-import { StatusTag, useConfirmAction, type StatusTone } from '../../primitives';
+import { StatusTag, Table, useConfirmAction, type StatusTone } from '../../primitives';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { localizedRecord } from '../../../i18n/localized';
 
 const { Text } = Typography;
 
@@ -26,13 +27,13 @@ const { Text } = Typography;
 
 const POLL_INTERVAL_MS = 5000;
 
-const STATUS_LABEL: Record<TenantDataExportStatus, { tone: StatusTone; label: string }> = {
+const STATUS_LABEL: Record<TenantDataExportStatus, { tone: StatusTone; label: string }> = localizedRecord(() => ({
   QUEUED: { tone: 'neutral', label: t('En attente') },
   RUNNING: { tone: 'info', label: t('En cours') },
   READY: { tone: 'success', label: t('Prêt') },
   FAILED: { tone: 'danger', label: t('Échoué') },
   EXPIRED: { tone: 'neutral', label: t('Expiré') }
-};
+}));
 
 const ACTIVE_STATUSES: TenantDataExportStatus[] = ['QUEUED', 'RUNNING'];
 
@@ -232,7 +233,10 @@ export const DataExportTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         </Button>
       </div>
 
+      {/* Historique des demandes d'archive, pas un jeu de données : le bouton
+          « Préparer un export » ci-dessus est l'export de cet écran. */}
       <Table<TenantDataExport>
+        exportable={false}
         rowKey="id"
         columns={columns}
         dataSource={exports}

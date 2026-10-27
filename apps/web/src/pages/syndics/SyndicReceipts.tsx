@@ -1,14 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { App, Alert, Button, Card, Select, Space, Table, Tag, Typography } from 'antd';
+import { App, Alert, Button, Card, Select, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { DownloadOutlined, MailOutlined, PlusOutlined, PrinterOutlined } from '@ant-design/icons';
+import { DownloadOutlined, FileWordOutlined, MailOutlined, PlusOutlined, PrinterOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { MoneyValue } from '../../components/primitives';
+import { MoneyValue, Table } from '../../components/primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { PrintReceiptsModal } from '../../components/syndics/PrintReceiptsModal';
 import { listSyndicateLots } from '../../services/syndic-service';
 import {
   backfillMissingReceipts,
   downloadReceiptFile,
+  downloadReceiptWordFile,
   listSyndicateReceipts,
   resendReceiptEmail
 } from '../../services/syndic-receipt-service';
@@ -19,13 +21,15 @@ import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
+import { dateFormat } from '../../i18n/format';
 
+import { localizedRecord } from '../../i18n/localized';
 const { Paragraph, Text, Title } = Typography;
 
-const kindLabel: Record<ReceiptKind, string> = {
+const kindLabel: Record<ReceiptKind, string> = localizedRecord(() => ({
   RECEIPT: t('Reçu'),
   QUITTANCE: t('Quittance')
-};
+}));
 
 const kindColor: Record<ReceiptKind, string> = {
   RECEIPT: 'blue',
@@ -38,11 +42,11 @@ const kindColor: Record<ReceiptKind, string> = {
  * côté serveur). Mêmes libellés que `RECEIPT_EMAIL_ERROR_MESSAGES`
  * (`packages/api/src/lib/syndics/charge-receipt-delivery.ts`), traduits ici.
  */
-const emailErrorLabel: Record<NonNullable<ReceiptView['emailErrorCode']>, string> = {
+const emailErrorLabel: Record<NonNullable<ReceiptView['emailErrorCode']>, string> = localizedRecord(() => ({
   SMTP_REJECTED: t("Le serveur de messagerie a refusé l'e-mail."),
   TIMEOUT: t("Le serveur de messagerie n'a pas répondu à temps."),
   ERROR: t("L'envoi de l'e-mail a échoué.")
-};
+}));
 
 /** Délai entre deux passages de rattrapage automatique, pour ne pas marteler l'API. */
 const BACKFILL_CONTINUE_DELAY_MS = 300;
@@ -59,7 +63,7 @@ function ownerLabelOf(lot: SyndicateLot): string {
 function periodLabelOf(receipt: ReceiptView): string {
   if (receipt.periodLabel) return receipt.periodLabel;
   if (receipt.periodStart && receipt.periodEnd) {
-    return `${dayjs(receipt.periodStart).format('DD/MM/YYYY')} – ${dayjs(receipt.periodEnd).format('DD/MM/YYYY')}`;
+    return `${dayjs(receipt.periodStart).format(dateFormat('short'))} – ${dayjs(receipt.periodEnd).format(dateFormat('short'))}`;
   }
   return '—';
 }
@@ -144,6 +148,20 @@ export const SyndicReceipts: React.FC = () => {
     try {
       const fallback = `${receipt.kind === 'QUITTANCE' ? 'Quittance' : 'Recu'} ${receipt.number}.pdf`;
       const { blob, filename } = await downloadReceiptFile(effectiveTenantId, syndicId, receipt.id, fallback);
+      saveBlob(blob, filename);
+    } catch (err) {
+      message.error(await describeDownloadError(err));
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handleDownloadWord = async (receipt: ReceiptView) => {
+    if (!effectiveTenantId || !syndicId) return;
+    setDownloadingId(receipt.id);
+    try {
+      const fallback = `${receipt.kind === 'QUITTANCE' ? 'Quittance' : 'Recu'} ${receipt.number}.docx`;
+      const { blob, filename } = await downloadReceiptWordFile(effectiveTenantId, syndicId, receipt.id, fallback);
       saveBlob(blob, filename);
     } catch (err) {
       message.error(await describeDownloadError(err));
@@ -250,7 +268,7 @@ export const SyndicReceipts: React.FC = () => {
       return <Tag color="red">{t('Erreur : {{error}}', { error: receipt.emailError })}</Tag>;
     }
     if (receipt.emailedAt) {
-      return <Tag color="green">{dayjs(receipt.emailedAt).format('DD/MM/YYYY HH:mm')}</Tag>;
+      return <Tag color="green">{dayjs(receipt.emailedAt).format(dateFormat('dateTime'))}</Tag>;
     }
     return <Tag>{t('Non envoyé')}</Tag>;
   };
@@ -275,13 +293,14 @@ export const SyndicReceipts: React.FC = () => {
       title: t('Montant'),
       key: 'amount',
       align: 'end',
+      exportValue: row => Number(row.amount),
       render: (_: unknown, row) => <MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Émis le'),
       dataIndex: 'issuedAt',
       key: 'issuedAt',
-      render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+      render: (value: string) => dayjs(value).format(dateFormat('short'))
     },
     { title: t('E-mail'), key: 'email', render: (_: unknown, row) => emailColumn(row) },
     {
@@ -302,6 +321,14 @@ export const SyndicReceipts: React.FC = () => {
             onClick={() => void handleDownload(row)}
           >
             {t('Télécharger')}
+          </Button>
+          <Button
+            size="small"
+            icon={<FileWordOutlined />}
+            loading={downloadingId === row.id}
+            onClick={() => void handleDownloadWord(row)}
+          >
+            {t('Télécharger (Word)')}
           </Button>
           <Button
             size="small"
@@ -337,6 +364,18 @@ export const SyndicReceipts: React.FC = () => {
             </Button>
           </Space>
         </div>
+
+        <Alert
+          type="info"
+          showIcon={false}
+          message={
+            <Typography.Text type="secondary">
+              {t(
+                'Un reçu (R-) est émis pour un paiement partiel ou qui laisse une avance ; un paiement qui solde exactement ses appels ne reçoit que leurs quittances (Q-).'
+              )}
+            </Typography.Text>
+          }
+        />
 
         <Card size="small">
           <Space wrap size={16}>
@@ -386,6 +425,20 @@ export const SyndicReceipts: React.FC = () => {
         {error ? <Alert type="error" message={error} showIcon /> : null}
 
         <Table<ReceiptView>
+          exportFilename={t('Quittances')}
+          // Tous les reçus et quittances, avec les mêmes filtres que la liste affichée.
+          exportFetchAll={() =>
+            collectAllPages<ReceiptView>(async (exportPage, limit) => {
+              const result = await listSyndicateReceipts(effectiveTenantId ?? '', syndicId ?? '', {
+                kind: kindFilter,
+                lotId: lotFilter,
+                contactId: contactFilter,
+                page: exportPage,
+                limit
+              });
+              return { items: result.items, total: result.pagination.total };
+            })
+          }
           rowKey="id"
           loading={loading}
           dataSource={items}

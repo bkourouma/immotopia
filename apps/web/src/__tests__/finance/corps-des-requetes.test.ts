@@ -279,6 +279,22 @@ describe('Salaires — le corps ne répète jamais un identifiant que le chemin 
     expect(corps).not.toHaveProperty('allocations');
     expect(Object.keys(corps).sort()).toEqual(['amount', 'paymentDate']);
   });
+
+  it('règlement de salaire : `treasuryAccountId` part seulement si un compte est choisi', async () => {
+    await createSalaryPayment(TENANT, EMPLOYE, {
+      paymentDate: '2026-09-18',
+      amount: 175_000,
+      treasuryAccountId: 'compte-banque'
+    });
+    expect(dernierAppel().corps).toEqual({
+      paymentDate: '2026-09-18',
+      amount: 175_000,
+      treasuryAccountId: 'compte-banque'
+    });
+
+    await createSalaryPayment(TENANT, EMPLOYE, { paymentDate: '2026-09-18', amount: 1, treasuryAccountId: null });
+    expect(dernierAppel().corps).not.toHaveProperty('treasuryAccountId');
+  });
 });
 
 /**

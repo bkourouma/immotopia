@@ -25,22 +25,17 @@ vi.mock('../../services/property-service', () => ({
   uploadMedia: vi.fn()
 }));
 
-vi.mock('../../services/crm-service', () => ({
+// Propriétaires = clients OWNER de l'agence (contacts convertis compris).
+vi.mock('../../services/tenant-service', () => ({
   __esModule: true,
-  listContacts: vi.fn(async () => ({
-    success: true,
-    contacts: [
-      {
-        id: 'c1',
-        firstName: 'Mamadou',
-        lastName: 'Bamba',
-        legalName: 'Boutique Ivoire SARL',
-        contactType: 'COMPANY',
-        email: 'boutique@example.com',
-        roles: [{ active: true }]
-      }
-    ]
-  }))
+  getOwnerClients: vi.fn(async () => [
+    {
+      id: 'client-1',
+      userId: 'u-boutique',
+      clientType: 'OWNER',
+      user: { id: 'u-boutique', email: 'boutique@example.com', fullName: 'Boutique Ivoire SARL' }
+    }
+  ])
 }));
 
 const getMenuEntitlements = vi.fn();
@@ -147,14 +142,15 @@ describe('Assistant de création — type de détention', () => {
     expect(screen.queryByText('Sélectionner un propriétaire')).toBeNull();
   });
 
-  it('un propriétaire tiers choisi crée un bien CLIENT avec son e-mail', async () => {
+  it('un propriétaire tiers choisi crée un bien CLIENT avec son identifiant de compte', async () => {
     const user = userEvent.setup();
     await jusquauxMedias(user, true);
 
     await waitFor(() => expect(createProperty).toHaveBeenCalledTimes(1));
     const [, corps] = createProperty.mock.calls[0];
     expect(corps.ownershipType).toBe('CLIENT');
-    expect(corps.ownerEmail).toBe('boutique@example.com');
+    expect(corps.ownerUserId).toBe('u-boutique');
+    expect(corps.ownerEmail).toBeUndefined();
   });
 
   it('sans propriétaire, le bien reste celui de l’agence (TENANT)', async () => {

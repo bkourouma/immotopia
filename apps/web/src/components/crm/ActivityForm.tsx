@@ -8,7 +8,6 @@ import { listContacts, listDeals, getContact, getDeal, CrmContact, CrmDeal } fro
 import { t } from '../../i18n/t';
 import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
 
-import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
 
 interface ActivityFormProps {

@@ -8,6 +8,7 @@ import { ReceiptKind, SyndicateLot } from '../../types/syndic-types';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 
+import { localizedList } from '../../i18n/localized';
 const { RangePicker } = DatePicker;
 const { Text } = Typography;
 
@@ -16,11 +17,11 @@ const GRID_LIMITS = { minCols: 1, maxCols: 3, minRows: 1, maxRows: 4 } as const;
 
 type PrintKind = ReceiptKind | 'ALL';
 
-const kindOptions: Array<{ label: string; value: PrintKind }> = [
+const kindOptions: Array<{ label: string; value: PrintKind }> = localizedList(() => [
   { label: t('Quittances'), value: 'QUITTANCE' },
   { label: t('Reçus'), value: 'RECEIPT' },
   { label: t('Tous'), value: 'ALL' }
-];
+]);
 
 type Scope = 'ALL' | 'LOT';
 

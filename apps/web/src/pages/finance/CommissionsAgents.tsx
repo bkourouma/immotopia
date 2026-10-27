@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { DatePicker, Table, Tooltip, Typography } from 'antd';
+import { DatePicker, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
@@ -8,7 +8,7 @@ import dayjs from 'dayjs';
 import { getAgentCommissions } from '../../services/agent-commissions-service';
 import type { AgentCommissionDetailLine, AgentCommissionLine } from '../../services/agent-commissions-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { PageHeader, StateBlock, MoneyValue, StatCard } from '../../components/primitives';
+import { PageHeader, StateBlock, MoneyValue, StatCard, Table } from '../../components/primitives';
 import { dateFormat, formatPercent } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
@@ -131,24 +131,37 @@ export const CommissionsAgents: React.FC = () => {
   ];
 
   const colonnesAgents: ColumnsType<AgentCommissionLine> = [
-    { title: t('Agent'), key: 'agent', render: (_, agent) => colonneAgent(agent) },
+    {
+      title: t('Agent'),
+      key: 'agent',
+      exportValue: agent => agent.agentName,
+      render: (_, agent) => colonneAgent(agent)
+    },
     {
       title: t('Part'),
       key: 'sharePercent',
       align: 'end',
       render: (_, agent) => (agent.sharePercent !== null ? formatPercent(agent.sharePercent) : '—')
     },
-    { title: t('Encaissements'), key: 'feeCount', align: 'end', render: (_, agent) => agent.feeCount },
+    {
+      title: t('Encaissements'),
+      key: 'feeCount',
+      align: 'end',
+      exportValue: agent => agent.feeCount,
+      render: (_, agent) => agent.feeCount
+    },
     {
       title: t('Honoraires HT'),
       key: 'feesAmount',
       align: 'end',
+      exportValue: agent => agent.feesAmount,
       render: (_, agent) => <MoneyValue value={agent.feesAmount} />
     },
     {
       title: t('Commission due'),
       key: 'shareAmount',
       align: 'end',
+      exportValue: agent => agent.shareAmount,
       render: (_, agent) => <MoneyValue value={agent.shareAmount} />
     }
   ];
@@ -224,6 +237,7 @@ export const CommissionsAgents: React.FC = () => {
                 loading={isFetching && !isPending}
                 scroll={{ x: 'max-content' }}
                 aria-label={t('Commissions des agents')}
+                exportFilename={t('Commissions des agents')}
                 expandable={{
                   expandedRowRender: agent =>
                     agent.lines.length === 0 ? (
@@ -235,6 +249,8 @@ export const CommissionsAgents: React.FC = () => {
                         rowKey={ligne => ligne.id}
                         pagination={false}
                         size="small"
+                        // Sous-tableau d'une ligne dépliée : il ne s'exporte pas seul.
+                        exportable={false}
                         aria-label={t('Détail des encaissements de {{agentName}}', { agentName: agent.agentName })}
                       />
                     )

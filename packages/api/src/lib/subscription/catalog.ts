@@ -13,12 +13,20 @@
  * sont amorces par la migration 20261001101600_patrimoine_pack_catalogue.
  * L'option Inventaire WhatsApp (lot 041, W-D6 du 04/10) est amorcee par la
  * migration 20261009090200_inventaire_whatsapp_catalogue.
+ * La capacite SIGNATURES_MENSUELLES (spec 044, decisions du 15/10) est incluse selon
+ * le pack (VALEURS PROVISOIRES, a valider : AGENCE 20, SYNDIC 50, PROMOTEUR 20,
+ * INTEGRE 100) et se complete par l'extension EXT_SIGNATURES_SUPPLEMENTAIRES (bloc de
+ * 50, cumulable). Les deux sont posees sur le catalogue par la migration
+ * 20261015120000_signatures_incluses_packs (qui l'amorce a 0). L'extension est vendable
+ * a 5 000 XOF par mois et par bloc (decision du 19/10) : une base existante garde l'ancien
+ * prix tant que `npm run db:seed:catalog` n'est pas relance.
  *
  * Voir docs/architecture/PLAN-ABONNEMENTS.md.
  */
 
 export type ModuleKeyCode = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER' | 'MODULE_PATRIMOINE';
-export type CapacityKeyCode = 'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS' | 'ACTIFS' | 'PHOTOS_INVENTAIRE';
+export type CapacityKeyCode =
+  'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS' | 'ACTIFS' | 'PHOTOS_INVENTAIRE' | 'SIGNATURES_MENSUELLES';
 export type CatalogItemKindCode = 'PACK' | 'EXTENSION' | 'SETUP';
 
 export const MODULE_KEYS: readonly ModuleKeyCode[] = [
@@ -34,7 +42,9 @@ export const CAPACITY_KEYS: readonly CapacityKeyCode[] = [
   'BIENS_DETENUS',
   'ACTIFS',
   /** Lot 041 (W11) : photos analysees dans le mois civil UTC (consommation, sans depassement facture). */
-  'PHOTOS_INVENTAIRE'
+  'PHOTOS_INVENTAIRE',
+  /** Spec 044 (SG-R12) : demandes de signature electronique du mois civil UTC (consommation, sans depassement facture). */
+  'SIGNATURES_MENSUELLES'
 ];
 
 /** Codes stables des packs et extensions (les lignes SETUP suivent `SETUP_<PACK>`). */
@@ -57,7 +67,9 @@ export const EXTENSION = {
   CHANTIER: 'EXT_CHANTIER',
   BIENS_10: 'EXT_BIENS_10',
   /** Lot 041 (W-D6) : bloc de 500 photos analysees par mois, Promoteur et Integre. */
-  INVENTAIRE_WHATSAPP: 'EXT_INVENTAIRE_WHATSAPP'
+  INVENTAIRE_WHATSAPP: 'EXT_INVENTAIRE_WHATSAPP',
+  /** Spec 044 : bloc de 50 signatures electroniques par mois, cumulable, packs d'agence. */
+  SIGNATURES_SUPPLEMENTAIRES: 'EXT_SIGNATURES_SUPPLEMENTAIRES'
 } as const;
 
 /** Palier commun aux deux packs Patrimoine : Essentiel et Pro ne se cumulent pas (`rules.tierGroup`). */
@@ -131,6 +143,9 @@ export interface CatalogItemDef {
   capacities: Partial<Record<CapacityKeyCode, number>>;
 }
 
+// Noms et descriptions du catalogue : traduits a l'affichage (`listTenantExtensionOffers`) avec
+// repli sur le texte en base (le super-admin peut l'editer). Le texte francais est la cle.
+// @i18n-keys name description
 export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
   {
     code: PACK.AGENCE,
@@ -144,7 +159,7 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
     rules: null,
     isSellable: true,
     sortOrder: 10,
-    capacities: { LOTS: 100 }
+    capacities: { LOTS: 100, SIGNATURES_MENSUELLES: 20 }
   },
   {
     code: PACK.SYNDIC,
@@ -158,7 +173,7 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
     rules: null,
     isSellable: true,
     sortOrder: 20,
-    capacities: { COPROPRIETES: 2, LOTS: 100 }
+    capacities: { COPROPRIETES: 2, LOTS: 100, SIGNATURES_MENSUELLES: 50 }
   },
   {
     code: PACK.PROMOTEUR,
@@ -172,7 +187,7 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
     rules: null,
     isSellable: true,
     sortOrder: 30,
-    capacities: { CHANTIERS: 2, LOTS: 150 }
+    capacities: { CHANTIERS: 2, LOTS: 150, SIGNATURES_MENSUELLES: 20 }
   },
   {
     code: PACK.INTEGRE,
@@ -187,7 +202,7 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
     rules: null,
     isSellable: true,
     sortOrder: 40,
-    capacities: { CHANTIERS: 3, COPROPRIETES: 3, LOTS: 300 }
+    capacities: { CHANTIERS: 3, COPROPRIETES: 3, LOTS: 300, SIGNATURES_MENSUELLES: 100 }
   },
   {
     code: PACK.PATRIMOINE_ESSENTIEL,
@@ -343,6 +358,24 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
     isSellable: true,
     sortOrder: 150,
     capacities: { PHOTOS_INVENTAIRE: 500 }
+  },
+  {
+    // Spec 044 (decision du 15/10) : a l'atteinte du quota mensuel de signatures de leur pack,
+    // les agences achetent des blocs de 50 (cumulables par la quantite), jamais de depassement
+    // facture. Prix fixe par decision utilisateur (19/10) : 5 000 XOF par mois et par bloc,
+    // vendable. La migration 20261015120000 l'a amorce a 0 : `npm run db:seed:catalog` aligne la base.
+    code: EXTENSION.SIGNATURES_SUPPLEMENTAIRES,
+    kind: 'EXTENSION',
+    name: 'Signatures électroniques — bloc de 50',
+    description: 'Signatures électroniques supplémentaires : 50 par mois et par bloc, cumulable',
+    monthlyPrice: 5_000,
+    setupPrice: 0,
+    modules: [],
+    exclusiveGroup: null,
+    rules: { requiresAnyOf: [PACK.AGENCE, PACK.SYNDIC, PACK.PROMOTEUR, PACK.INTEGRE] },
+    isSellable: true,
+    sortOrder: 160,
+    capacities: { SIGNATURES_MENSUELLES: 50 }
   },
   ...(
     [

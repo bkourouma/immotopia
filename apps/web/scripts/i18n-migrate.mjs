@@ -9,9 +9,25 @@
  * source. Un `printer.printFile()` aurait reformate les 328 fichiers de fond en
  * comble et noye la reprise dans un diff illisible.
  *
+ * Fusion NON DESTRUCTIVE des catalogues : une traduction non vide n'est jamais
+ * supprimee par un passage normal. Une cle non recensee mais traduite est
+ * GARDEE (elle peut etre dynamique, ou venir d'un texte retouche) ; seule
+ * `--prune` la deplace vers `<module>.orphans.json` (union avec l'existant :
+ * ce fichier n'est jamais supprime ni ecrase).
+ *
+ * Cles dynamiques, deux mecanismes (scripts/i18n/catalog.mjs) :
+ *   - `t(CONSTANTE[k] ?? ...)` : les chaines des constantes de niveau module
+ *     du meme fichier sont resolues statiquement ;
+ *   - commentaire `// @i18n-keys [noms...]` avant un noeud : ses chaines en
+ *     position de valeur (ou les proprietes nommees) sont des cles.
+ *
  *   node scripts/i18n-migrate.mjs --dry                  analyse sans rien ecrire
+ *   node scripts/i18n-migrate.mjs --check                comme --dry, exit 1 s'il y a a ecrire
  *   node scripts/i18n-migrate.mjs                        applique + catalogues
- *   node scripts/i18n-migrate.mjs --only=pages/finance   restreint le perimetre
+ *   node scripts/i18n-migrate.mjs --only=pages/finance   restreint le perimetre (ajout seul)
+ *   node scripts/i18n-migrate.mjs --prune                deplace les non referencees vers *.orphans.json
+ *   node scripts/i18n-migrate.mjs --unreferenced         liste les traductions non referencees gardees
+ *   node scripts/i18n-migrate.mjs --root=<dossier>       racine du paquet (essai sur une copie)
  */
 import ts from 'typescript';
 import fs from 'node:fs';
@@ -19,14 +35,37 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+import {
+  applyPlan,
+  findOrphanFiles,
+  isAcceptableKey,
+  markedKeys,
+  parseOptions,
+  planCatalog,
+  resolveStrings,
+  truncateKey,
+  validateOptions
+} from '../../../scripts/i18n/catalog.mjs';
+
+const options = parseOptions(
+  process.argv.slice(2),
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+);
+const optionError = validateOptions(options);
+if (optionError) {
+  console.error(optionError);
+  process.exit(2);
+}
+
+const ROOT = options.root;
 const SRC = path.join(ROOT, 'src');
 const LOCALES = path.join(SRC, 'i18n', 'locales');
 const TARGET_LANGUAGES = ['en', 'ar'];
 
-const argv = process.argv.slice(2);
-const DRY = argv.includes('--dry');
-const ONLY = (argv.find(a => a.startsWith('--only=')) || '').slice('--only='.length);
+const DRY = options.dry;
+const CHECK = options.check;
+const WRITE = options.write;
+const ONLY = options.only;
 
 /* ------------------------------------------------------------------ fichiers */
 
@@ -145,6 +184,7 @@ const NEVER_TRANSLATED = new Set([
   'User-Agent',
   'Orange Money',
   'Moov Money',
+  'MTN Money',
   'MTN Mobile Money'
 ]);
 
@@ -394,12 +434,17 @@ function interpolationName(expression, used) {
 
 /* ------------------------------------------------------------------ traitement */
 
-const report = { files: 0, changed: 0, errors: [] };
+const report = { files: 0, changed: 0, errors: [], rewritten: [] };
 const catalogs = new Map(); // module -> Set(cle)
 
 function record(moduleName, key) {
   if (!catalogs.has(moduleName)) catalogs.set(moduleName, new Set());
   catalogs.get(moduleName).add(key);
+}
+
+/** Chaine resolue ou marquee : cle de `t()`, sans l'heuristique de texte. */
+function recordLoose(moduleName, text) {
+  if (isAcceptableKey(text)) record(moduleName, text);
 }
 
 function processFile(file) {
@@ -432,6 +477,9 @@ function processFile(file) {
       const [first] = node.arguments;
       if (first && (ts.isStringLiteral(first) || ts.isNoSubstitutionTemplateLiteral(first))) {
         record(moduleName, first.text);
+      } else if (first) {
+        // `t(LABELS[k] ?? ...)` : constantes de niveau module du meme fichier.
+        for (const text of resolveStrings(ts, sf, first)) recordLoose(moduleName, text);
       }
       node.arguments.slice(1).forEach(visit);
       return;
@@ -504,6 +552,8 @@ function processFile(file) {
 
   ts.forEachChild(sf, visit);
 
+  for (const text of markedKeys(ts, sf)) recordLoose(moduleName, text);
+
   if (edits.length === 0) return false;
 
   let output = source;
@@ -519,46 +569,64 @@ function processFile(file) {
       ? `import { t as translate } from '${specifier}';`
       : `import { t } from '${specifier}';`;
 
+    const eol = source.includes('\r\n') ? '\r\n' : '\n';
     const imports = sf.statements.filter(ts.isImportDeclaration);
     if (imports.length > 0) {
       const insertAt = imports[imports.length - 1].getEnd();
-      output = output.slice(0, insertAt) + `\n${statement}` + output.slice(insertAt);
+      output = output.slice(0, insertAt) + `${eol}${statement}` + output.slice(insertAt);
     } else {
-      output = `${statement}\n` + output;
+      output = `${statement}${eol}` + output;
     }
   }
 
-  if (!DRY) fs.writeFileSync(file, output, 'utf8');
+  report.rewritten.push(path.relative(ROOT, file).split(path.sep).join('/'));
+  if (WRITE) fs.writeFileSync(file, output, 'utf8');
   return true;
 }
 
 /* ------------------------------------------------------------------ catalogues */
 
+/** Calcule (et ecrit si WRITE) tous les catalogues ; renvoie le bilan. */
 function writeCatalogs() {
-  for (const language of TARGET_LANGUAGES) {
-    const dir = path.join(LOCALES, language);
-    if (!DRY) fs.mkdirSync(dir, { recursive: true });
-    for (const [moduleName, keys] of catalogs) {
-      const target = path.join(dir, `${moduleName}.json`);
-      const existing = fs.existsSync(target) ? JSON.parse(fs.readFileSync(target, 'utf8')) : {};
-      const merged = {};
-      for (const key of [...keys].sort((a, b) => a.localeCompare(b, 'fr'))) {
-        // Une valeur vide vaut « a traduire » : `returnEmptyString: false`
-        // renvoie alors la cle, c'est-a-dire le texte francais.
-        merged[key] = existing[key] ?? '';
-      }
-      const orphans = Object.entries(existing).filter(([key, value]) => !(key in merged) && value);
-      if (!DRY) {
-        fs.writeFileSync(target, JSON.stringify(merged, null, 2) + '\n', 'utf8');
-        const orphanFile = path.join(dir, `${moduleName}.orphans.json`);
-        if (orphans.length) {
-          fs.writeFileSync(orphanFile, JSON.stringify(Object.fromEntries(orphans), null, 2) + '\n', 'utf8');
-        } else if (fs.existsSync(orphanFile)) {
-          fs.rmSync(orphanFile);
-        }
-      }
+  const summary = {
+    added: new Set(), // module\0cle
+    unreferenced: new Map(), // module\0cle -> { moduleName, key, languages }
+    changedFiles: [],
+    moved: 0,
+    referencedBy: new Map() // cle -> modules qui la referencent
+  };
+  for (const [moduleName, keys] of catalogs) {
+    for (const key of keys) {
+      if (!summary.referencedBy.has(key)) summary.referencedBy.set(key, new Set());
+      summary.referencedBy.get(key).add(moduleName);
     }
   }
+
+  for (const language of TARGET_LANGUAGES) {
+    const dir = path.join(LOCALES, language);
+    for (const [moduleName, keys] of catalogs) {
+      const plan = planCatalog({
+        file: path.join(dir, `${moduleName}.json`),
+        orphanFile: path.join(dir, `${moduleName}.orphans.json`),
+        referenced: keys,
+        prune: options.prune,
+        // Recensement partiel (--only) : on ne retire rien, on ajoute seulement.
+        keepEmpty: Boolean(ONLY)
+      });
+      for (const key of plan.added) summary.added.add(`${moduleName}\0${key}`);
+      for (const key of plan.kept) {
+        const id = `${moduleName}\0${key}`;
+        const entry = summary.unreferenced.get(id) ?? { moduleName, key, languages: [] };
+        entry.languages.push(language);
+        summary.unreferenced.set(id, entry);
+      }
+      summary.moved += Object.keys(plan.moved).length;
+      if (plan.status !== 'same') summary.changedFiles.push(path.relative(ROOT, plan.file));
+      if (plan.orphanStatus !== 'same') summary.changedFiles.push(path.relative(ROOT, plan.orphanFile));
+      if (WRITE) applyPlan(plan);
+    }
+  }
+  return summary;
 }
 
 /* ------------------------------------------------------------------------ main */
@@ -575,17 +643,83 @@ for (const file of files) {
   }
 }
 
-writeCatalogs();
+const summary = writeCatalogs();
 
 const totalKeys = [...catalogs.values()].reduce((sum, set) => sum + set.size, 0);
 console.log(
-  `${DRY ? '[analyse] ' : ''}${report.changed}/${report.files} fichiers touches, ` +
+  `${DRY || CHECK ? '[analyse] ' : ''}${report.changed}/${report.files} fichiers touches, ` +
     `${totalKeys} cles distinctes dans ${catalogs.size} catalogues.`
 );
 for (const [moduleName, keys] of [...catalogs].sort((a, b) => b[1].size - a[1].size)) {
   console.log(`  ${moduleName.padEnd(14)} ${keys.size}`);
 }
+
+let duplicates = 0;
+for (const { moduleName, key } of summary.unreferenced.values()) {
+  const others = [...(summary.referencedBy.get(key) ?? [])].filter(name => name !== moduleName);
+  if (others.length) duplicates += 1;
+}
+const unreferencedCount = summary.unreferenced.size;
+let catalogLine = `Catalogues : +${summary.added.size} cle(s) a traduire`;
+if (!ONLY) {
+  catalogLine +=
+    `; ${unreferencedCount} traduction(s) non referencee(s) conservee(s) ` +
+    `(${duplicates} doublon(s) d'une cle referencee dans un autre catalogue, ` +
+    `${unreferencedCount - duplicates} inconnue(s) du code : cle dynamique non declaree, texte retouche ou code supprime)`;
+}
+if (options.prune) catalogLine += `; ${summary.moved} entree(s) deplacee(s) vers *.orphans.json`;
+console.log(`${catalogLine}.`);
+
+if (options.unreferenced && !ONLY) {
+  const rows = [...summary.unreferenced.values()].sort(
+    (a, b) => a.moduleName.localeCompare(b.moduleName) || a.key.localeCompare(b.key, 'fr')
+  );
+  for (const { moduleName, key, languages } of rows) {
+    console.log(`  [${moduleName}] ${truncateKey(key)} (${languages.join(', ')})`);
+  }
+}
+
 if (report.errors.length) {
   console.log(`\n${report.errors.length} fichier(s) en erreur :`);
   for (const entry of report.errors) console.log(`  ${entry.file} — ${entry.error}`);
+}
+
+if (CHECK) {
+  const problems = [];
+  if (summary.added.size) {
+    const list = [...summary.added].map(id => id.replace('\0', ' : '));
+    problems.push(
+      `${summary.added.size} cle(s) recensee(s) absente(s) d'un catalogue :\n` +
+        list
+          .slice(0, 15)
+          .map(item => `    ${truncateKey(item, 100)}`)
+          .join('\n') +
+        (list.length > 15 ? `\n    ... (+${list.length - 15})` : '')
+    );
+  }
+  if (summary.changedFiles.length) {
+    problems.push(
+      `${summary.changedFiles.length} catalogue(s) dont le contenu changerait :\n` +
+        summary.changedFiles.map(file => `    ${file}`).join('\n')
+    );
+  }
+  if (report.rewritten.length) {
+    problems.push(
+      `${report.rewritten.length} fichier(s) source reecrit(s) par l'enveloppement automatique de t() :\n` +
+        report.rewritten.map(file => `    ${file}`).join('\n')
+    );
+  }
+  const orphanFiles = TARGET_LANGUAGES.flatMap(language => findOrphanFiles(path.join(LOCALES, language)));
+  if (orphanFiles.length) {
+    problems.push(
+      `${orphanFiles.length} fichier(s) *.orphans.json present(s) :\n` +
+        orphanFiles.map(file => `    ${path.relative(ROOT, file)}`).join('\n')
+    );
+  }
+  if (problems.length) {
+    console.error(`\nCatalogues a regenerer :\n  ${problems.join('\n  ')}`);
+    console.error('\nRemede : lancer `npm run i18n:extract -w @immotopia/web`, puis committer le resultat.');
+    process.exit(1);
+  }
+  console.log('Catalogues à jour.');
 }

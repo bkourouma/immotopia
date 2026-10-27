@@ -59,6 +59,14 @@ export const requireTenantPortalAccess = async (req: Request, res: Response, nex
       return;
     }
 
+    // Un compte désactivé perd le portail immédiatement, même avec une session
+    // encore valide (même règle que le portail copropriétaire). Compte introuvable : même refus.
+    const account = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { isActive: true } });
+    if (!account || account.isActive === false) {
+      res.status(403).json({ success: false, message: 'Accès portail locataire refusé.' });
+      return;
+    }
+
     // Every TenantClient this user has, oldest first (deterministic default).
     const clients = await prisma.tenantClient.findMany({
       where: { userId: req.user.userId },
@@ -88,18 +96,14 @@ export const requireTenantPortalAccess = async (req: Request, res: Response, nex
         return;
       }
       if (selected.tenant.status === TenantStatus.SUSPENDED) {
-        res
-          .status(403)
-          .json({ success: false, code: 'TENANT_SUSPENDED', message: t('Cette agence est suspendue.') });
+        res.status(403).json({ success: false, code: 'TENANT_SUSPENDED', message: t('Cette agence est suspendue.') });
         return;
       }
     } else {
       selected = clients.find(client => client.tenant.status !== TenantStatus.SUSPENDED);
       if (!selected) {
         // Toutes les agences de ce client sont suspendues.
-        res
-          .status(403)
-          .json({ success: false, code: 'TENANT_SUSPENDED', message: t('Cette agence est suspendue.') });
+        res.status(403).json({ success: false, code: 'TENANT_SUSPENDED', message: t('Cette agence est suspendue.') });
         return;
       }
     }

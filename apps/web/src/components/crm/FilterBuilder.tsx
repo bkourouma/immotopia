@@ -1,35 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Collapse, Input, Button, Checkbox, Select, Space } from 'antd';
-import { useParams } from 'react-router-dom';
-import { listTags } from '../../services/crm-service';
-import { listAssignableMembers } from '../../services/membership-service';
-import { getAllCommunes } from '../../services/geographic-service';
 import type { ContactSearchFilters } from '../../services/contact-search.service';
-import type { CrmTag } from '../../types/crm-types';
 import { t as translate } from '../../i18n/t';
+import { getContactRoleLabel, getContactStatusLabel, getMaturityLabel } from '../../utils/crm-utils';
+import type { FilterReferences } from './contact-search-filter-labels';
 
 interface FilterBuilderProps {
   initialFilters: Partial<ContactSearchFilters>;
   onApply: (filters: ContactSearchFilters) => void;
   onCancel: () => void;
+  /** Communes, tags et collaborateurs, chargés une fois par l'écran de recherche. */
+  references: FilterReferences;
 }
 
-const statusOptions = () => [
-  { value: 'LEAD', label: translate('Lead') },
-  { value: 'ACTIVE_CLIENT', label: translate('Client actif') },
-  { value: 'ARCHIVED', label: translate('Archivé') }
-];
+// Fonctions (et non des constantes de module) : les libellés suivent la langue active.
+const statusOptions = () =>
+  ['LEAD', 'ACTIVE_CLIENT', 'ARCHIVED'].map(value => ({ value, label: getContactStatusLabel(value) }));
 
 const typeOptions = () => [
   { value: 'PERSON', label: translate('Personne') },
   { value: 'COMPANY', label: translate('Société') }
 ];
 
-const maturityOptions = () => [
-  { value: 'COLD', label: translate('Froid') },
-  { value: 'WARM', label: translate('Tiède') },
-  { value: 'HOT', label: translate('Chaud') }
-];
+const maturityOptions = () => ['COLD', 'WARM', 'HOT'].map(value => ({ value, label: getMaturityLabel(value) }));
+
+const roleOptions = () =>
+  ['PROPRIETAIRE', 'LOCATAIRE', 'COPROPRIETAIRE', 'ACQUEREUR'].map(value => ({
+    value,
+    label: getContactRoleLabel(value)
+  }));
 
 const dealTypeOptions = () => [
   { value: 'ACHAT', label: translate('Achat') },
@@ -45,29 +44,9 @@ const borrowingOptions = () => [
   { value: 'UNKNOWN', label: translate('Inconnu') }
 ];
 
-export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuilderProps) {
-  const { tenantId } = useParams<{ tenantId: string }>();
+export function FilterBuilder({ initialFilters, onApply, onCancel, references }: FilterBuilderProps) {
+  const { tags, users, communes } = references;
   const [filters, setFilters] = useState<Partial<ContactSearchFilters>>(initialFilters || {});
-  const [tags, setTags] = useState<CrmTag[]>([]);
-  const [users, setUsers] = useState<Array<{ id: string; fullName: string | null }>>([]);
-  const [communes, setCommunes] = useState<Array<{ id: string; name: string }>>([]);
-
-  useEffect(() => {
-    if (!tenantId) return;
-    listTags(tenantId)
-      .then(r => setTags(r.data || []))
-      .catch(() => {});
-    listAssignableMembers(tenantId)
-      .then(r =>
-        setUsers(
-          (r.data?.members || []).map(m => ({ id: m.userId, fullName: m.user?.fullName ?? m.user?.email ?? null }))
-        )
-      )
-      .catch(() => {});
-    getAllCommunes()
-      .then(list => setCommunes(list.map(c => ({ id: c.communeId, name: c.displayName || c.commune }))))
-      .catch(() => {});
-  }, [tenantId]);
 
   const update = (key: keyof ContactSearchFilters, value: unknown) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -156,13 +135,23 @@ export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuild
                 options={maturityOptions()}
               />
             </div>
+            <div>
+              <div style={{ marginBottom: 4 }}>{translate('Rôles CRM')}</div>
+              <Checkbox.Group
+                value={filters.roles ?? []}
+                onChange={v =>
+                  update('roles', (v as string[]).length ? (v as ContactSearchFilters['roles']) : undefined)
+                }
+                options={roleOptions()}
+              />
+            </div>
           </Space>
         </Collapse.Panel>
 
         <Collapse.Panel header={translate('Projet immobilier')} key="project">
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <div>
-              <div style={{ marginBottom: 4 }}>{translate('Types de deals')}</div>
+              <div style={{ marginBottom: 4 }}>{translate("Types d'affaire")}</div>
               <Checkbox.Group
                 value={filters.dealTypes ?? []}
                 onChange={v => update('dealTypes', v as string[])}
@@ -246,7 +235,7 @@ export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuild
               onChange={e => update('incomeMax', e.target.value ? Number(e.target.value) : undefined)}
             />
             <div>
-              <div style={{ marginBottom: 4 }}>Capacité d&apos;emprunt</div>
+              <div style={{ marginBottom: 4 }}>{translate("Capacité d'emprunt")}</div>
               <Checkbox.Group
                 value={filters.borrowingCapacities ?? []}
                 onChange={v => update('borrowingCapacities', v as string[])}

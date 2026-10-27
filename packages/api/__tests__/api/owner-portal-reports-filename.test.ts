@@ -77,6 +77,8 @@ const USER_OUMAR = 'user-oumar';
 
 function seed() {
   mockPrisma.reset();
+  // Les portails relisent `User.isActive` (middleware/owner-portal-access.ts).
+  mockPrisma.user.rows.push({ id: USER_OUMAR, isActive: true });
   mockPrisma.tenant.rows.push({ id: TENANT_A, status: 'ACTIVE' });
   mockPrisma.tenantClient.rows.push({
     id: 'tc-oumar-a',

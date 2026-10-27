@@ -200,6 +200,33 @@ Jamais de `Float` pour un montant.
 décrites ci-dessus. Les dates métier (échéance, début/fin de bail...)
 suivent la même convention que le reste du modèle auquel elles appartiennent.
 
+### Migrations : horodatages dupliqués
+
+**Horodatages dupliqués actuels** (préfixe de 14 chiffres partagé par plusieurs dossiers de migration) :
+
+- `20260928120000` : `abonnements_paiement`, `charge_call_notice_sent_at`
+- `20261007090000` : `audit_deux_niveaux`, `patrimoine_hypotheses_projection`
+- `20261007100000` : `audit_tenant_permission`, `patrimoine_plan_tresorerie`
+- `20261007110000` : `audit_backfill_crm_deal_keys`, `secure_links`
+- `20261007120000` : `audit_platform_permissions`, `patrimoine_assurances_sinistres`
+- `20261007130000` : `notification_markers`, `patrimoine_regularisation_fonciere`
+- `20261007140000` : `audit_seals`, `patrimoine_acces_tiers`
+- `20261015100000` : `signature_enums`, `syndic_ag_en_direct`
+- `20261015120000` : `signatures_incluses_packs`, `syndic_paiement_mobile`
+- `20261017120000` : `signature_prelevement_types`, `syndic_ag_media_moderation`
+
+**Pourquoi ne pas les renommer :** Ces migrations ont déjà été appliquées en staging et en production. La table `_prisma_migrations` les indexe par nom de dossier ; renommer un dossier ferait rejouer `migrate deploy` sur ces migrations, ce qui causerait une duplication des changements ou des erreurs. Aucun renommage n'est acceptable après un déploiement.
+
+**Règle pour l'avenir :** Tout nouvel horodatage doit être unique au moment de la création. Avant de créer un dossier de migration, vérifier l'unicité du préfixe (14 chiffres) avec :
+
+```bash
+ls packages/api/prisma/migrations | cut -c1-14 | sort | uniq -d
+```
+
+Le résultat doit être vide pour le nouveau préfixe.
+
+**Localisation des scripts** : Les fichiers `.ts` ou `.js` n'habitent jamais dans `migrations/`. Les scripts seed vivent dans `seeds/` (ex. `seed_syndic_v2_migration.ts`), pas dans `migrations/`.
+
 ### Suppression logique
 
 **Aucun champ `deletedAt` dans le schéma** (0 occurrence, vérifié par
@@ -425,6 +452,147 @@ d'une traite, donc dans une seule transaction : la valeur est donc ajoutée seul
 même fichier (ni `UPDATE`, ni index partiel, ni valeur par défaut). Elle est ordonnée **après**
 la migration de la colonne. Une autre branche qui ajoute sa propre valeur à `SecureLinkScope`
 prend un horodatage et un nom distincts.
+
+## Paiement mobile des charges de copropriété (spec 042)
+
+Les copropriétaires règlent leurs appels de charges par mobile money (PaySecureHub) depuis le
+portail ou un lien sécurisé. Spec : [specs/042-syndic-paiement-mobile](../../specs/042-syndic-paiement-mobile/spec.md),
+contrats : [contracts.md](../../specs/042-syndic-paiement-mobile/contracts.md). Le compte
+fournisseur est celui **de la copropriété**, jamais celui du cabinet : aucun repli sur
+`PaymentGatewayConfig`.
+
+### `SyndicPaymentGatewayConfig` (table `syndic_payment_gateway_configs`)
+
+Une ligne par copropriété (`syndicate_id` unique), `tenantId` posé côté serveur. Reprend les
+champs de `PaymentGatewayConfig` : `provider`, `mode` (`SIMULATOR`/`LIVE`), `isActive`,
+`merchantId`, `apiKeyEncrypted` (AES-256-GCM, `PAYMENT_SECRETS_KEY`, **jamais renvoyée** par
+l'API), `apiKeyLast4`, `lastTestAt/Ok/Message`, `updatedByUserId`. Sans ligne, l'API répond
+les valeurs par défaut (simulateur, inactif) sans rien écrire. Index `tenantId` ; couverte par
+`schema-tenant-coverage.test.ts`.
+
+### `SyndicOnlineCheckout` (table `syndic_online_checkouts`)
+
+Une tentative de paiement en ligne d'un ou plusieurs appels d'un **lot**. Rattachée à la
+copropriété, au lot et à la configuration utilisée (`configId`, `onDelete: Restrict`).
+
+| Champ                                                   | Rôle                                                                                                                             |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `origin`, `tenantClientId`, `secureLinkId`, `contactId` | Point d'entrée (portail ou lien) et payeur ; champs simples, sans relation, jamais un jeton                                      |
+| `codePaiement`                                          | Unique, préfixe `IMS-` ; clé d'idempotence du `ChargePayment` créé                                                               |
+| `amount`, `receivedAmount`, `currency`                  | Montant demandé et montant rapporté par le fournisseur                                                                           |
+| `chargeCallIds`                                         | Appels visés, figés au lancement (`ChargeCall.id`, champ simple)                                                                 |
+| `status` (`OnlineCheckoutStatus`)                       | `PENDING`, `SUCCESS`, `FAILED`, `CANCELED`, `EXPIRED`, `REVIEW`                                                                  |
+| `reviewKind`, `reviewReason`                            | Motif de mise en revue (`AMOUNT_MISMATCH`, `FISCAL_YEAR_CLOSED`, `CALLS_UNAVAILABLE`, `DUPLICATE_TRANSACTION`, `CONTRARY_STATE`) |
+| `resolution`, `resolutionNote`, `resolvedAt/ByUserId`   | Décision du gestionnaire (`ACCEPTED`/`REJECTED`), note obligatoire                                                               |
+| `chargePaymentId` (unique)                              | Encaissement enregistré ; nul tant que le fournisseur n'a pas confirmé                                                           |
+
+Index `(tenantId, status)`, `(syndicateId, status)`, `(syndicateId, createdAt)`, `lotId`,
+`(tenantId, secureLinkId)`. `tenantId` direct : gardé par l'extension d'isolation.
+
+### Champs ajoutés à `ChargePayment`
+
+- `origin` (`ChargePaymentOrigin` : `MANUAL` par défaut, `ONLINE`) ;
+- `idempotencyKey` (unique, nullable) : `codePaiement` du checkout pour un paiement en ligne ;
+- `providerTransactionId` (unique, nullable) : un même paiement opérateur ne s'enregistre
+  qu'une fois (le doublon met le checkout en `REVIEW` / `DUPLICATE_TRANSACTION`) ;
+- relation inverse `onlineCheckout`.
+
+### Autres ajouts
+
+- `SecureLinkScope.CHARGE_CALL_PAYMENT` : `objectType = "ChargeCall"`, un lien = un appel ;
+  URL `${FRONTEND_URL}/payer-charges#<jeton>`.
+- Compte comptable **5525** « PaySecureHub (mobile money) » de la copropriété (classe 5, actif),
+  créé à la première utilisation ; encaissement en ligne = débit 5525 / crédit copropriétaire ;
+  reversement enregistré par le gestionnaire = débit 521 / crédit 5525 (`documentType`
+  `SYNDIC_GATEWAY_PAYOUT`).
+
+**Migrations** (non commitées au moment de la rédaction, additives) :
+`20261015115900_secure_link_scope_charge_call_payment` (valeur d'enum, seule dans sa
+migration) puis `20261015120000_syndic_paiement_mobile` (deux tables, enums, colonnes de
+`charge_payments`).
+
+## Paiement mobile money déclaré (spec 047)
+
+Le copropriétaire règle par mobile money **hors ImmoTopia**, vers un numéro de réception de la
+copropriété, puis déclare ce paiement ; le gestionnaire le valide ou le rejette. Rien n'est
+crédité avant `APPROVED`. Spec : [specs/047-syndic-paiement-declare](../../specs/047-syndic-paiement-declare/spec.md),
+contrats : [contracts.md](../../specs/047-syndic-paiement-declare/contracts.md) (§4). Les cinq
+modèles portent `tenantId` direct (cloisonnés, gardés par l'extension d'isolation et couverts par
+`schema-tenant-coverage.test.ts`).
+
+### Enums
+
+- `SyndicDeclarationStatus` : `PENDING`, `APPROVED`, `REJECTED`, `CANCELED`.
+- `SyndicDeclarationRejectReason` : `NOT_FOUND`, `AMOUNT_MISMATCH`, `REFERENCE_USED`,
+  `WRONG_NUMBER`, `OTHER`.
+- `ChargePaymentOrigin` gagne la valeur **`DECLARED`** (après `MANUAL`, `ONLINE`), ajoutée par une
+  migration séparée (`ALTER TYPE … ADD VALUE`, seule dans son fichier).
+
+### `SyndicReceivingNumber` (table `syndic_receiving_numbers`)
+
+Numéro mobile money sur lequel une copropriété reçoit les charges : `operator`
+(`MobileMoneyOperator`), `phoneNumber` (E.164), `holderName`, `label`, `isActive`, `sortOrder`,
+`treasuryAccountNumber` (sous-compte de trésorerie 5521x du plan de la copropriété, hypothèse
+comptable H1). Unique `(syndicateId, operator, phoneNumber)` ; index `(tenantId, phoneNumber)`
+(un même numéro peut servir plusieurs copropriétés de l'agence). Une déclaration le référence en
+`onDelete: Restrict` : un numéro qui porte des déclarations se désactive, il ne se supprime pas.
+
+### `SyndicDeclaredPaymentSettings` (table `syndic_declared_payment_settings`)
+
+Une ligne par copropriété (`syndicateId` unique) ; sans ligne, l'API répond les valeurs par
+défaut sans rien écrire : `enabled` faux, `reviewAlertBusinessDays` 3, `proofRequired` faux,
+`payerInstructions` nul (500 caractères au plus), `aiPrefillEnabled` faux, plus `updatedById`
+(champ simple). Index `tenantId`.
+
+### `SyndicPaymentDeclaration` (table `syndic_payment_declarations`)
+
+| Champ                                                               | Rôle                                                                                          |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `receivingNumberId`                                                 | Numéro choisi (`Restrict`)                                                                    |
+| `receivingOperator`, `receivingPhone`, `receivingHolderName`        | Instantané du numéro au moment de la déclaration : il survit à une désactivation              |
+| `declaredByContactId`, `declaredByUserId`                           | Déclarant : copropriétaire ou gestionnaire ; champs simples, sans relation                    |
+| `payerPhone`, `amount`, `paidAt`, `transactionReference`, `comment` | Données déclarées ; la référence est stockée normalisée (majuscules, sans espaces)            |
+| `proofFileUrl`, `proofSha256`, `proofReadId` (unique)               | Capture facultative (fichier privé, jamais servi en statique) ; lecture IA dont elle provient |
+| `aiPrefill`, `aiEditedFields`                                       | Proposition de l'IA et champs retouchés par le déclarant                                      |
+| `status`                                                            | `SyndicDeclarationStatus`, `PENDING` par défaut                                               |
+| `acceptedAmount`, `acceptedPaidAt`                                  | Valeurs retenues si le gestionnaire corrige                                                   |
+| `rejectReason`, `reviewNote`, `reviewedByUserId`, `reviewedAt`      | Décision du gestionnaire ; `canceledAt` pour l'annulation par le déclarant                    |
+
+Index `(tenantId, syndicateId, status, createdAt)` et `(receivingNumberId, transactionReference)`.
+
+### `SyndicPaymentDeclarationLine` (table `syndic_payment_declaration_lines`)
+
+Part d'une déclaration affectée à un lot : `lotId` (`Restrict`), `amount`, `acceptedAmount`,
+`chargeCallIds` (appels visés, `ChargeCall.id` en champ simple), `chargePaymentId` (unique,
+nullable : l'encaissement créé à la validation, un par ligne). Unique `(declarationId, lotId)` ;
+index `lotId` et `tenantId`. Supprimée en cascade avec la déclaration.
+
+### `SyndicPaymentProofRead` (table `syndic_payment_proof_reads`)
+
+Lecture IA d'une capture ; sert aussi au quota mensuel de l'agence. Créée dès le premier lot
+mais alimentée seulement par la lecture IA (PR3). `contactId`, `tempFileUrl` (capture gardée
+24 h), `sha256`, `provider`, `model`, `outcome` (`OK`, `UNREADABLE`, `NOT_A_PAYMENT`, `FAILED`,
+`DISABLED`), `result` (JSON), `latencyMs`, `consumedAt`, `expiresAt` (création + 24 h). Index
+`(tenantId, createdAt)`, `(contactId, createdAt)` et `expiresAt`. L'audit ne reprend jamais la
+capture ni les valeurs lues.
+
+### Index unique partiel
+
+`syndic_payment_declarations_ref_active_uq` sur `(tenant_id, receiving_phone,
+transaction_reference)` `WHERE status IN ('PENDING', 'APPROVED')` : une même référence ne peut
+être déclarée qu'une fois, par agence et numéro de réception, tant que la déclaration est
+active (un rejet ou une annulation libère la référence). **Prisma ne sait pas l'exprimer** : il
+est écrit à la main dans le SQL de la migration et n'apparaît pas dans `schema.prisma`. Un
+`prisma migrate dev` ultérieur ne doit pas le supprimer ; la violation (`P2002`) est
+convertie en `DECLARATION_REFERENCE_USED` (409).
+
+### Relations inverses et comptabilité
+
+Relations inverses ajoutées à `Tenant` (cinq listes), `Syndicate` (`receivingNumbers`,
+`declaredPaymentSettings`, `paymentDeclarations`, `paymentProofReads`), `SyndicateLot`
+(`paymentDeclarationLines`) et `ChargePayment` (`declarationLine`). Un encaissement validé est
+un `ChargePayment` `method = MOBILE_MONEY`, `origin = DECLARED`, `idempotencyKey = DECL-<lineId>`,
+`providerTransactionId` nul, comptabilisé débit 5521x / crédit 450.
 
 ## LandRegularization — régularisation foncière (lot B2, spec 033)
 

@@ -115,6 +115,24 @@ export function describePeriod(timing: ScheduleTiming, periodStart: Date): Sched
   };
 }
 
+/**
+ * Échéance effective d'un appel émis à `issuedAt` (hypothèse H6, réversible) :
+ * l'échéance théorique de la période, sauf si elle est déjà strictement passée
+ * le jour de l'émission réelle (rattrapage, exécution tardive) ; l'échéance est
+ * alors décalée au jour UTC d'émission + `dueOffsetDays`.
+ */
+export function effectiveDueDate(
+  period: Pick<SchedulePeriod, 'dueDate'>,
+  issuedAt: Date,
+  dueOffsetDays: number
+): { dueDate: Date; shifted: boolean } {
+  const issuedDay = startOfUtcDay(issuedAt);
+  if (period.dueDate.getTime() < issuedDay.getTime()) {
+    return { dueDate: addUtcDays(issuedDay, dueOffsetDays), shifted: true };
+  }
+  return { dueDate: period.dueDate, shifted: false };
+}
+
 /** La période commence-t-elle au plus tard à la date de fin (quand il y en a une) ? */
 function withinEnd(timing: ScheduleTiming, periodStart: Date): boolean {
   return !timing.endDate || periodStart.getTime() <= startOfUtcDay(timing.endDate).getTime();

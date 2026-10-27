@@ -10,6 +10,7 @@ import {
 } from '../services/document-template-service';
 import { DocumentType, DocumentTemplateStatus } from '@prisma/client';
 import { badRequest } from '../lib/errors';
+import { parseEnumParam } from '../utils/query-params';
 
 /**
  * Un modele ne sort jamais avec son chemin de stockage disque (`storage_path`)
@@ -122,10 +123,10 @@ export async function listTemplatesHandler(req: Request, res: Response, next: Ne
 
     const filters: any = {};
     if (docType) {
-      filters.docType = docType as DocumentType;
+      filters.docType = parseEnumParam(docType, DocumentType, 'docType');
     }
     if (status) {
-      filters.status = status as DocumentTemplateStatus;
+      filters.status = parseEnumParam(status, DocumentTemplateStatus, 'status');
     }
 
     const templates = await listTemplates(tenantId, filters);

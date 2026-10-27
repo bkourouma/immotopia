@@ -25,6 +25,7 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
@@ -118,10 +119,12 @@ function validerPiece(tenantId: string, doc: PendingDocument) {
   }
 }
 
-const OPTIONS_NATURE = (Object.keys(DOCUMENT_TYPE_LABELS) as VoidableDocumentType[]).map(type => ({
-  value: type,
-  label: DOCUMENT_TYPE_LABELS[type]
-}));
+const OPTIONS_NATURE = localizedList(() =>
+  (Object.keys(DOCUMENT_TYPE_LABELS) as VoidableDocumentType[]).map(type => ({
+    value: type,
+    label: DOCUMENT_TYPE_LABELS[type]
+  }))
+);
 
 interface RapportLot {
   succes: string[];
@@ -346,6 +349,7 @@ export const FileDeValidation: React.FC = () => {
         />
       ),
       key: 'selection',
+      exportable: false,
       width: 48,
       render: (_, doc) => (
         <Checkbox
@@ -361,7 +365,8 @@ export const FileDeValidation: React.FC = () => {
       title: t('Montant'),
       key: 'montant',
       align: 'end',
-      render: (_, doc) => <MoneyValue value={doc.amount} />
+      render: (_, doc) => <MoneyValue value={doc.amount} />,
+      exportValue: doc => doc.amount
     },
     { title: t('Saisie le'), key: 'date', render: (_, doc) => dateCourte(doc.createdAt) },
     { title: t('Saisi par'), key: 'saisisseur', render: (_, doc) => doc.createdByLabel },
@@ -520,6 +525,7 @@ export const FileDeValidation: React.FC = () => {
       )}
 
       <DataView<PendingDocument>
+        export={{ filename: t('File de validation') }}
         // La file n'est pas paginée : le contrat gelé (`getValidationQueue`)
         // rend l'ensemble des pièces en attente, sans enveloppe de pagination.
         paginated={false}
@@ -531,6 +537,7 @@ export const FileDeValidation: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger la file de validation.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}

@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { App } from 'antd';
-import { listBudgets } from '../../../services/syndic-service';
+import { listBudgets, listSyndicateLots } from '../../../services/syndic-service';
 import {
   listChargeScheduleRuns,
   listChargeSchedules,
   previewChargeSchedule
 } from '../../../services/syndic-charge-schedule-service';
-import { ChargeSchedule, ChargeSchedulePreview, ChargeScheduleRun, SyndicateBudget } from '../../../types/syndic-types';
+import {
+  ChargeSchedule,
+  ChargeSchedulePreview,
+  ChargeScheduleRun,
+  SyndicateBudget,
+  SyndicateLot
+} from '../../../types/syndic-types';
 import { t } from '../../../i18n/t';
 
 /**
@@ -20,6 +26,8 @@ export function useScheduleData(tenantId: string | undefined, syndicId: string |
 
   const [schedules, setSchedules] = useState<ChargeSchedule[]>([]);
   const [budgets, setBudgets] = useState<SyndicateBudget[]>([]);
+  // Lots de la copropriété : sert à l'aperçu par lot avant enregistrement. Jamais bloquant.
+  const [lots, setLots] = useState<SyndicateLot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,6 +56,9 @@ export function useScheduleData(tenantId: string | undefined, syndicId: string |
       ]);
       setSchedules(schedulesData);
       setBudgets(budgetsData);
+      void listSyndicateLots(tenantId, syndicId)
+        .then(data => setLots(Array.isArray(data) ? data : []))
+        .catch(() => setLots([]));
     } catch (err: any) {
       setError(err.response?.data?.error || t('Impossible de charger les programmations'));
     } finally {
@@ -94,6 +105,7 @@ export function useScheduleData(tenantId: string | undefined, syndicId: string |
     loading,
     error,
     loadData,
+    lots,
     approvedBudgetOptions,
     preview,
     previewLoading,

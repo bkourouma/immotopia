@@ -26,8 +26,9 @@
  * la liste blanche de `lib/subscription/particulier-routes.ts` (403
  * PERSONAL_SPACE_ROUTE_FORBIDDEN sinon), y compris en `off` et `warn`.
  *
- * Une erreur de calcul des droits laisse passer (journalisee) : une panne du
- * module d'abonnement ne doit pas fermer l'application.
+ * Panne du calcul des droits (`getEntitlements` jette) : selon le mode global,
+ * `enforce` REFUSE (503 ENTITLEMENTS_UNAVAILABLE, jamais d'acces gratuit par
+ * defaut) ; `warn` laisse passer en journalisant (warn) ; `off` ne lit rien.
  */
 
 import { NextFunction, Request, Response } from 'express';
@@ -48,6 +49,19 @@ import { AppError } from './error-middleware';
 import { isRouteAllowedForParticulier } from '../lib/subscription/particulier-routes';
 import { authenticate } from './auth-middleware';
 import { requireTenantAccess } from './tenant-middleware';
+
+/** Code stable : le calcul des droits est indisponible (503, mode `enforce`). */
+export const ENTITLEMENTS_UNAVAILABLE_CODE = 'ENTITLEMENTS_UNAVAILABLE';
+
+export class EntitlementsUnavailableError extends AppError {
+  constructor() {
+    super(
+      t("Les droits d'abonnement de votre agence sont momentanément indisponibles. Réessayez dans un instant."),
+      503,
+      ENTITLEMENTS_UNAVAILABLE_CODE
+    );
+  }
+}
 
 // ---------------------------------------------------------------- compteur
 
@@ -83,11 +97,21 @@ async function checkFeature(req: Request, tenantId: string, feature: Feature, wr
   try {
     entitlements = await getEntitlements(tenantId);
   } catch (error) {
-    logger.error('Subscription guard: entitlements unavailable, request allowed', {
+    // Le calcul des droits est en panne : le mode vient donc de la configuration globale.
+    const mode = getSubscriptionEnforcement();
+    const details = {
       tenantId,
       feature,
+      mode,
+      method: req.method,
+      path: req.originalUrl.split('?')[0],
       error: error instanceof Error ? error.message : String(error)
-    });
+    };
+    if (mode === 'enforce') {
+      logger.error('Subscription guard: entitlements unavailable, request refused', details);
+      throw new EntitlementsUnavailableError();
+    }
+    logger.warn('Subscription guard: entitlements unavailable, request allowed', details);
     return;
   }
   if (entitlements.enforcement === 'off') return;
@@ -168,6 +192,18 @@ export class PersonalSpaceRouteForbiddenError extends AppError {
 function checkTenantTypeGuard(req: Request, relativePath: string): AppError | undefined {
   if (req.tenantContext?.tenantType !== 'PARTICULIER') return undefined;
   return isRouteAllowedForParticulier(relativePath) ? undefined : new PersonalSpaceRouteForbiddenError();
+}
+
+/**
+ * Garde de TYPE d'espace pour un routeur monte hors de `/api/tenants/:tenantId`
+ * (ex. `/api/signatures`) : le tenantId vient de `req.tenantContext`, donc a
+ * poser APRES `requireTenantAccess`. `routePrefix` est le chemin que la liste
+ * blanche connait (ex. `/signatures`) ; defaut refuse pour un PARTICULIER.
+ */
+export function requireTenantTypeGuard(routePrefix: string) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    next(checkTenantTypeGuard(req, routePrefix));
+  };
 }
 
 /**

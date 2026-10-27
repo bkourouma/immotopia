@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, App, Button, Card, Empty, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Card, Empty, Space, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined, EyeOutlined } from '@ant-design/icons';
 import {
@@ -21,6 +21,8 @@ import {
   PlatformAuditFilterBar,
   type PlatformAuditFilterState
 } from '../../components/admin/PlatformAuditFilterBar';
+import { Table } from '../../components/primitives';
+import { EXPORT_MAX_ROWS } from '../../utils/table-export/collect';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
@@ -211,6 +213,23 @@ export const AuditLogs: React.FC = () => {
     };
   }, [fetchPage]);
 
+  // Export Excel/CSV/PDF du tableau : même route et mêmes filtres que la liste
+  // (donc mêmes droits), en suivant les curseurs jusqu'au plafond d'export.
+  // L'export CSV serveur ci-dessus reste réservé au SUPER_ADMIN.
+  const fetchAllLogs = useCallback(async () => {
+    const items: PlatformAuditLog[] = [];
+    let cursor: string | undefined;
+    do {
+      const response = await getAuditLogs({ ...filters, cursor, limit: 100 });
+      if (!response.success) throw new Error(t("Erreur lors du chargement du journal d'audit"));
+      items.push(...response.data.logs);
+      cursor = response.data.nextCursor ?? undefined;
+    } while (cursor && items.length < EXPORT_MAX_ROWS);
+    const truncated = Boolean(cursor) || items.length > EXPORT_MAX_ROWS;
+    if (items.length > EXPORT_MAX_ROWS) items.length = EXPORT_MAX_ROWS;
+    return { items, truncated };
+  }, [filters]);
+
   const columns = useMemo(() => buildColumns(setSelected), []);
   const hasFilters = JSON.stringify(state) !== JSON.stringify(EMPTY_AUDIT_FILTERS);
   const patchState = (patch: Partial<PlatformAuditFilterState>) => setState(previous => ({ ...previous, ...patch }));
@@ -272,6 +291,8 @@ export const AuditLogs: React.FC = () => {
 
       <Card>
         <Table<PlatformAuditLog>
+          exportFilename={t("Journal d'audit")}
+          exportFetchAll={fetchAllLogs}
           rowKey="id"
           columns={columns}
           dataSource={logs}

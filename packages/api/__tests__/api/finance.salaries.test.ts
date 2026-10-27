@@ -127,6 +127,7 @@ function salaryPaymentRecord(overrides: Partial<Record<string, unknown>> = {}) {
     status: 'DRAFT',
     createdByLabel: 'Fatoumata Camara',
     validatedAt: null,
+    treasuryAccountId: null,
     ...overrides
   };
 }
@@ -412,6 +413,32 @@ describe('POST /tenants/:tenantId/finance/employees/:employeeId/salary-payments'
       TENANT_A,
       expect.objectContaining({ employeeId: EMPLOYEE_A, amount: 300_000, createdByUserId: 'user-1' })
     );
+  });
+
+  it('transmet le compte de trésorerie désigné et le renvoie', async () => {
+    const TREASURY = '11111111-1111-4111-8111-111111111111';
+    createSalaryPaymentTx.mockResolvedValue(salaryPaymentRecord({ treasuryAccountId: TREASURY }));
+
+    const res = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/employees/${EMPLOYEE_A}/salary-payments`)
+      .send({ paymentDate: '2026-03-05', amount: 300_000, treasuryAccountId: TREASURY });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.treasuryAccountId).toBe(TREASURY);
+    expect(createSalaryPaymentTx).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_A,
+      expect.objectContaining({ treasuryAccountId: TREASURY })
+    );
+  });
+
+  it('refuse un treasuryAccountId invalide (400)', async () => {
+    const res = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/employees/${EMPLOYEE_A}/salary-payments`)
+      .send({ paymentDate: '2026-03-05', amount: 300_000, treasuryAccountId: 'abc' });
+
+    expect(res.status).toBe(400);
+    expect(createSalaryPaymentTx).not.toHaveBeenCalled();
   });
 
   it('refuse un corps qui répéterait employeeId (400, schéma strict)', async () => {

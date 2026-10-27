@@ -153,7 +153,8 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
   const setupItems = useMemo(() => catalog.filter(c => c.kind === 'SETUP'), [catalog]);
 
   const includedCapacity = (
-    key: 'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS' | 'ACTIFS' | 'PHOTOS_INVENTAIRE'
+    key:
+      'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS' | 'ACTIFS' | 'PHOTOS_INVENTAIRE' | 'SIGNATURES_MENSUELLES'
   ) => packs.filter(p => selectedPacks.includes(p.code)).reduce((sum, p) => sum + (p.capacities[key] ?? 0), 0);
 
   const extensionAllowed = (code: string) => {

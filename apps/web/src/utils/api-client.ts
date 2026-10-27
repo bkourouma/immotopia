@@ -236,6 +236,18 @@ interface RetriableConfig extends InternalAxiosRequestConfig {
   _retryCount?: number;
 }
 
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    /**
+     * Désactive le rejeu automatique d'un GET en échec. Réservé aux lectures
+     * d'interrogation périodique (AG en direct) : la boucle d'appel a déjà sa
+     * propre reprise avec attente croissante ; un rejeu empilerait les requêtes
+     * sur un serveur déjà saturé (503 en rafale).
+     */
+    noRetry?: boolean;
+  }
+}
+
 /** Délai dépassé : `ECONNABORTED` (axios), parfois `ETIMEDOUT` selon l'adaptateur. */
 function isTimeoutError(error: AxiosError): boolean {
   return error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
@@ -244,6 +256,9 @@ function isTimeoutError(error: AxiosError): boolean {
 function isRetriable(error: AxiosError): boolean {
   const method = error.config?.method?.toLowerCase();
   if (method !== 'get') return false;
+
+  // Lecture d'interrogation périodique : la boucle d'appel gère elle-même la reprise.
+  if (error.config?.noRetry === true) return false;
 
   // Requête annulée par l'appelant (AbortController) : ce n'est pas une panne,
   // c'est une décision. La rejouer irait contre l'intention.

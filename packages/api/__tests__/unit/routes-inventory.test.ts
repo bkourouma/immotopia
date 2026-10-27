@@ -55,7 +55,20 @@ function withPrefix(prefixPath: string) {
  * Routes publiques volontaires — chacune commentee avec sa raison d'etre.
  * Toute route absente d'ici doit porter une garde d'agence ou de plateforme.
  */
+const PUBLIC_MEETING_LIVE_REASON =
+  "AG en direct par lien personnel (spec 043, lib/secure-links) : public par nature, le copropriétaire n'a pas de " +
+  'session. Le jeton (256 bits, SHA-256 seul en base, expirant, revocable) est dans le corps (4 Ko max) ; il ne donne ' +
+  "acces qu'aux lots du participant (votants a la date de l'AG + pouvoirs), jamais au vote des autres. Limiteurs par IP " +
+  'et par empreinte de jeton, refus uniforme 404, en-tetes no-store/noindex/no-referrer.';
+
 const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
+  { method: 'POST', test: exact('/api/public/assemblees/etat'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/rejoindre'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/voter'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/visio'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/visio/main'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/discussion'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/discussion/envoyer'), reason: PUBLIC_MEETING_LIVE_REASON },
   {
     method: '*',
     test: withPrefix('/api/auth'),
@@ -95,6 +108,12 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
     test: exact('/api/webhooks/whatsapp-cloud/events'),
     reason:
       'Webhook Meta WhatsApp Cloud (lot 041) : signature X-Hub-Signature-256 toujours vérifiée, aucune session par nature.'
+  },
+  {
+    method: 'POST',
+    test: exact('/api/webhooks/livekit'),
+    reason:
+      'Webhook LiveKit (spec 045) : signature du projet LiveKit toujours vérifiée sur le corps brut, aucune session par nature.'
   },
   {
     method: 'POST',
@@ -168,6 +187,38 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
   },
   {
     method: 'POST',
+    test: exact('/api/public/secure-links/charge-call-payment'),
+    reason:
+      'Appel de charges de copropriete a payer, lu par son lien securise (spec 042, lib/secure-links, portee CHARGE_CALL_PAYMENT) : ' +
+      "public par nature, le coproprietaire n'a pas de session. Le jeton (32 octets aleatoires, 256 bits, SHA-256 seul en base, " +
+      "expirant, revocable) est dans le corps du POST (1 Ko max) et designe un unique appel, lu dans l'agence du lien : aucun " +
+      'identifiant, montant ou agence ne vient de la requete (reste du recalcule cote serveur). Lecture seule. Limiteur par IP ' +
+      '(30/min, cle propre) avant verification, refus uniforme 404 (lien inconnu, expire, revoque, appel solde, copropriete non ' +
+      'configuree, lot revendu), en-tetes no-store/noindex/no-referrer, consultation journalisee (SECURE_LINK_VIEWED).'
+  },
+  {
+    method: 'POST',
+    test: exact('/api/public/secure-links/charge-call-payment/start'),
+    reason:
+      "Demarrage du paiement Mobile Money d'un appel de charges par son lien securise (spec 042) : public par nature, le " +
+      "coproprietaire n'a pas de session. Meme jeton secret a 256 bits dans le corps (1 Ko max), objet unique ; le montant " +
+      "n'est jamais lu de l'appelant (recalcule cote serveur par le moteur) et l'URL de paiement est fournie par le " +
+      'fournisseur, jamais construite a partir de la requete. Limiteur par IP plus strict (10/min, cle propre) avant ' +
+      'verification, refus uniforme 404, en-tetes no-store/noindex/no-referrer, audit SECURE_LINK_CHARGE_PAYMENT_STARTED.'
+  },
+  {
+    method: 'POST',
+    test: exact('/api/public/secure-links/charge-call-payment/status'),
+    reason:
+      "Statut d'un paiement issu d'un lien d'appel de charges (spec 042) : public par nature (retour du fournisseur de " +
+      'paiement, sans session). Le corps (1 Ko max) porte la reference IMS-<20 alphanumeriques>, imprevisible, qui ne sert que ' +
+      "les paiements d'origine lien securise d'une agence non suspendue (un code du portail repond 404). Lecture seule, le " +
+      "statut vient de l'agregateur (une verification par fenetre de 10 s), aucun identifiant ni montant lu de l'appelant. " +
+      'Limiteur par IP dedie (90/min, la page interroge toutes les 3 s) avant verification, refus uniforme 404, en-tetes ' +
+      'no-store/noindex/no-referrer.'
+  },
+  {
+    method: 'POST',
     test: exact('/api/public/external-access/patrimoine'),
     reason:
       "Vue en lecture seule d'un tiers de confiance (notaire, expert-comptable, banquier ; lot B3, spec 034), lue par " +
@@ -238,16 +289,27 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
     reason: "Liste des agences de l'utilisateur courant, resolue depuis req.user."
   },
   {
-    method: 'POST',
-    test: exact('/api/tenants/:tenantId/register'),
-    reason:
-      "S'enregistrer comme client d'une agence : c'est cette action qui CREE l'acces, elle ne peut pas le presupposer."
-  },
-  {
     method: 'DELETE',
     test: exact('/api/tenants/:tenantId/unregister'),
     reason:
       "Se desinscrire d'une agence : agit sur le TenantClient de l'utilisateur courant (userId + tenantId de l'URL)."
+  },
+  {
+    method: 'POST',
+    test: exact('/api/public/signature-provider/yousign'),
+    reason:
+      'Webhook du prestataire de signature (spec 044, lot S6) : HMAC du prestataire verifie sur le corps brut, aucune session ' +
+      "par nature ; l'etat est relu chez le prestataire, jamais deduit du corps. Limiteur par IP, 404 si le fournisseur actif n'est pas externe."
+  },
+  {
+    method: '*',
+    test: withPrefix('/api/public/signatures/:token'),
+    reason:
+      "Page publique de signature electronique (spec 044, lot S1) : le signataire n'a pas de compte, le jeton (32 octets " +
+      "aleatoires, SHA-256 seul en base, expirant, lie a UNE demande et UN signataire) est la seule preuve d'acces. " +
+      "Aucun identifiant d'agence ne vient de la requete : l'agence se deduit du jeton. Limiteur par IP avant toute " +
+      'verification, refus uniforme 404 pour jeton inconnu, expire, revoque ou demande close, en-tetes no-store/noindex, ' +
+      'jeton masque des journaux, code a usage unique (5 essais) exige pour signer hors presence.'
   }
 ];
 
@@ -284,6 +346,13 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     expect(routes.length).toBeGreaterThan(50);
   });
 
+  it("l'auto-inscription d'un client a une agence reste fermee (pas d'oracle d'existence)", () => {
+    // POST /api/tenants/:tenantId/register repondait differemment selon que
+    // l'agence existait, etait inactive ou deja rejointe : la route est retiree.
+    const register = routes.filter(r => /^\/api\/tenants\/:tenantId\/register$/.test(r.path));
+    expect(register).toEqual([]);
+  });
+
   it('ne recense aucune route dupliquee anormalement dans la liste blanche', () => {
     // Garde-fou sur la liste blanche elle-meme : une entree qui ne matche plus
     // aucune route reelle signale un chemin renomme/deplace, a corriger ici.
@@ -313,7 +382,8 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       ['POST', '/api/admin/tenants/:tenantId/platform-invoices/:invoiceId/credit-note', 'PLATFORM_INVOICES_EDIT'],
       ['GET', '/api/tenants/:tenantId/subscription/invoices', 'TENANT'],
       ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId', 'TENANT'],
-      ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId/pdf', 'TENANT']
+      ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId/pdf', 'TENANT'],
+      ['GET', '/api/tenants/:tenantId/subscription/extension-offers', 'TENANT']
     ];
     for (const [method, path, guard] of expected) {
       const route = routes.find(r => r.method === method && r.path === path);
@@ -381,6 +451,109 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       expect(hasTenantOrPortalGuard(route!)).toBe(true);
       expect(route!.middlewares).toContain(authenticate);
       // Aucune de ces routes n'est publique : elles ne figurent pas dans la liste blanche.
+      expect(isWhitelisted(route!)).toBeUndefined();
+    }
+    expect(routes.filter(r => r.path.startsWith(base))).toHaveLength(expected.length);
+  });
+
+  it('declare l’aperçu des relances groupées en lecture (SYNDIC_VIEW) et le lancement en SYNDIC_EDIT', () => {
+    const base = '/api/tenants/:tenantId/syndics/:syndicId/relances/batch';
+    const expected: Array<[string, string, 'SYNDIC_VIEW' | 'SYNDIC_EDIT']> = [
+      ['GET', `${base}/preview`, 'SYNDIC_VIEW'],
+      ['POST', base, 'SYNDIC_EDIT']
+    ];
+    for (const [method, path, permission] of expected) {
+      const route = routes.find(r => r.method === method && r.path === path);
+      expect(route ? `${method} ${path}` : `ABSENTE : ${method} ${path}`).toBe(`${method} ${path}`);
+      expect(hasTenantOrPortalGuard(route!)).toBe(true);
+      expect(route!.middlewares).toContain(authenticate);
+      expect(isWhitelisted(route!)).toBeUndefined();
+      const keys = route!.middlewares.flatMap(mw => [
+        (mw as any)?.permissionKey,
+        ...((mw as any)?.anyPermissionKeys ?? [])
+      ]);
+      expect(keys).toContain(permission);
+    }
+  });
+
+  it('declare les 12 routes agence du paiement mobile money declare (spec 047) avec authentification, garde d’agence et droit SYNDIC', () => {
+    const base = '/api/tenants/:tenantId/syndics/:syndicId';
+    const expected: Array<[string, string, 'SYNDIC_VIEW' | 'SYNDIC_EDIT']> = [
+      ['GET', `${base}/numeros-reception`, 'SYNDIC_VIEW'],
+      ['POST', `${base}/numeros-reception`, 'SYNDIC_EDIT'],
+      ['PATCH', `${base}/numeros-reception/:numberId`, 'SYNDIC_EDIT'],
+      ['DELETE', `${base}/numeros-reception/:numberId`, 'SYNDIC_EDIT'],
+      ['GET', `${base}/paiements-declares/reglages`, 'SYNDIC_VIEW'],
+      ['PUT', `${base}/paiements-declares/reglages`, 'SYNDIC_EDIT'],
+      ['GET', `${base}/paiements-declares`, 'SYNDIC_VIEW'],
+      ['GET', `${base}/paiements-declares/:declarationId`, 'SYNDIC_VIEW'],
+      ['GET', `${base}/paiements-declares/:declarationId/preuve`, 'SYNDIC_VIEW'],
+      ['POST', `${base}/paiements-declares/:declarationId/validation`, 'SYNDIC_EDIT'],
+      ['POST', `${base}/paiements-declares/:declarationId/rejet`, 'SYNDIC_EDIT'],
+      ['POST', `${base}/paiements-declares`, 'SYNDIC_EDIT']
+    ];
+    for (const [method, path, permission] of expected) {
+      const route = routes.find(r => r.method === method && r.path === path);
+      expect(route ? `${method} ${path}` : `ABSENTE : ${method} ${path}`).toBe(`${method} ${path}`);
+      expect(hasTenantOrPortalGuard(route!)).toBe(true);
+      expect(route!.middlewares).toContain(authenticate);
+      expect(isWhitelisted(route!)).toBeUndefined();
+      // requirePropertyPermission expose `permissionKey`, requireAnyPropertyPermission `anyPermissionKeys`.
+      const keys = route!.middlewares.flatMap(mw => [
+        (mw as any)?.permissionKey,
+        ...((mw as any)?.anyPermissionKeys ?? [])
+      ]);
+      expect(keys).toContain(permission);
+    }
+    // Le chemin littéral « reglages » précède « :declarationId » dans la pile (sinon il serait capturé).
+    const order = routes
+      .filter(r => r.method === 'GET' && r.path.startsWith(`${base}/paiements-declares/`))
+      .map(r => r.path.slice(`${base}/paiements-declares/`.length));
+    expect(order.indexOf('reglages')).toBeLessThan(order.indexOf(':declarationId'));
+  });
+
+  it('declare la route de chargement du plan comptable SYSCOHADA derriere authentification, garde d’agence et SYNDIC_EDIT', () => {
+    const path = '/api/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes/charger-plan-syscohada';
+    const route = routes.find(r => r.method === 'POST' && r.path === path);
+    expect(route ? `POST ${path}` : `ABSENTE : POST ${path}`).toBe(`POST ${path}`);
+    expect(hasTenantOrPortalGuard(route!)).toBe(true);
+    expect(route!.middlewares).toContain(authenticate);
+    expect(isWhitelisted(route!)).toBeUndefined();
+    const keys = route!.middlewares.flatMap(mw => [
+      (mw as any)?.permissionKey,
+      ...((mw as any)?.anyPermissionKeys ?? [])
+    ]);
+    expect(keys).toContain('SYNDIC_EDIT');
+  });
+
+  it('declare la route de modification d’un document de copropriété derriere authentification, garde d’agence et SYNDIC_EDIT', () => {
+    const path = '/api/tenants/:tenantId/syndics/:syndicId/documents/:documentId';
+    const route = routes.find(r => r.method === 'PATCH' && r.path === path);
+    expect(route ? `PATCH ${path}` : `ABSENTE : PATCH ${path}`).toBe(`PATCH ${path}`);
+    expect(hasTenantOrPortalGuard(route!)).toBe(true);
+    expect(route!.middlewares).toContain(authenticate);
+    expect(isWhitelisted(route!)).toBeUndefined();
+    const keys = route!.middlewares.flatMap(mw => [
+      (mw as any)?.permissionKey,
+      ...((mw as any)?.anyPermissionKeys ?? [])
+    ]);
+    expect(keys).toContain('SYNDIC_EDIT');
+  });
+
+  it('declare les 5 routes portail du paiement mobile money declare (spec 047) derriere la garde du portail copropriétaire', () => {
+    const base = '/api/portal/copropriete/paiements-declares';
+    const expected: Array<[string, string]> = [
+      ['GET', `${base}/disponibilite`],
+      ['POST', `${base}/lecture`],
+      ['POST', base],
+      ['GET', base],
+      ['POST', `${base}/:declarationId/annulation`]
+    ];
+    for (const [method, path] of expected) {
+      const route = routes.find(r => r.method === method && r.path === path);
+      expect(route ? `${method} ${path}` : `ABSENTE : ${method} ${path}`).toBe(`${method} ${path}`);
+      expect(route!.middlewares).toContain(requireCoOwnerPortalAccess);
+      expect(route!.middlewares).toContain(authenticate);
       expect(isWhitelisted(route!)).toBeUndefined();
     }
     expect(routes.filter(r => r.path.startsWith(base))).toHaveLength(expected.length);

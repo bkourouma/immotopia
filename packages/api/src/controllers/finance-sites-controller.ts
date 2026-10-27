@@ -1,5 +1,9 @@
 import { Request, Response } from 'express';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
+import { drawDocumentHeader, fontsOf, resolveDocumentBranding, truncate } from '../lib/documents/document-branding';
+import { drawDocumentFooters } from '../lib/documents/document-layout';
+import { pdfLanguage, sanitizeForPdf } from '../lib/documents/pdf-text';
+import { t } from '../i18n';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { prisma } from '../utils/database';
 import { toAmountOrZero } from '../lib/finance/types';
@@ -411,6 +415,8 @@ function formatDate(date?: Date | null): string {
  * retrouve, brouillon comme validée.
  */
 async function buildCashVoucherPdf(payload: {
+  /** Agence émettrice : son identité figure dans l'en-tête standard. */
+  tenantId: string;
   /** Nul pour un brouillon : le numéro est attribué à la validation. */
   number: string | null;
   beneficiary: string;
@@ -425,25 +431,23 @@ async function buildCashVoucherPdf(payload: {
 }): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([595, 842]);
-  const { height } = page.getSize();
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
+  const { regular: font, bold } = await fontsOf(pdfDoc);
   const left = 40;
-  let y = height - 50;
 
-  page.drawText('Bon de caisse', { x: left, y, size: 18, font: bold, color: rgb(0.1, 0.1, 0.1) });
-  y -= 26;
+  // En-tête standard de l'agence (nom, logo, coordonnées), sans copropriété.
+  const branding = await resolveDocumentBranding(payload.tenantId, null);
   // Un brouillon n'a pas de numéro, et le bon imprimé le dit en toutes lettres.
   // Un tiret ou une chaîne vide se liraient comme un numéro sur une pièce
   // papier qu'on remet à quelqu'un, ce qui est exactement ce qu'il faut éviter.
   const numeroImprime = payload.number ? `Pièce n° ${payload.number}` : 'Pièce n° : attribué à la validation';
-  page.drawText(numeroImprime, { x: left, y, size: 13, font: bold });
-  y -= 30;
+  let y = await drawDocumentHeader(pdfDoc, page, branding, {
+    title: t('Bon de caisse', undefined, pdfLanguage()),
+    subtitle: numeroImprime
+  });
 
   const line = (label: string, value: string) => {
-    page.drawText(label, { x: left, y, size: 10, font: bold });
-    page.drawText(value, { x: left + 170, y, size: 10, font });
+    page.drawText(sanitizeForPdf(label), { x: left, y, size: 10, font: bold });
+    page.drawText(truncate(value, font, 10, 595 - 2 * left - 170), { x: left + 170, y, size: 10, font });
     y -= 18;
   };
 
@@ -458,6 +462,7 @@ async function buildCashVoucherPdf(payload: {
     line('Validée le :', formatDate(payload.validatedAt));
   }
 
+  await drawDocumentFooters(pdfDoc, { issuerName: branding.issuer.name, reference: payload.number });
   const bytes = await pdfDoc.save();
   return Buffer.from(bytes);
 }
@@ -547,6 +552,7 @@ export const printCashVoucherHandler = asyncHandler(async (req: Request, res: Re
   const number = formatCashVoucherNumber(voucher.voucherYear, voucher.voucherNumber);
 
   const pdfBuffer = await buildCashVoucherPdf({
+    tenantId,
     number,
     beneficiary: voucher.beneficiaryName,
     amount: toAmountOrZero(voucher.amount),

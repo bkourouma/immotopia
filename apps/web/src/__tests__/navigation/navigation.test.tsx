@@ -63,7 +63,9 @@ describe('modèle de navigation — intégrité', () => {
       '/copropriete/paiements',
       '/copropriete/quittances',
       '/copropriete/suivi-mensuel',
-      '/copropriete/ma-copropriete'
+      '/copropriete/ma-copropriete',
+      '/notifications',
+      '/messages'
     ]);
 
     const plus = NAVIGATION.proprietaire.tree.find(g => g.key === 'plus');
@@ -374,11 +376,29 @@ describe('contextFromPath', () => {
     expect(contextFromPath(`/tenant/${TENANT}/properties`)).toEqual({ tenantId: TENANT });
     expect(contextFromPath('/dashboard')).toEqual({});
   });
+
+  it('ne prend pas « mandants » pour une copropriété', () => {
+    expect(contextFromPath(`/tenant/${TENANT}/syndics/mandants`)).toEqual({ tenantId: TENANT });
+    expect(contextFromPath(`/tenant/${TENANT}/syndics/mandants/assemblees`)).toEqual({ tenantId: TENANT });
+  });
 });
 
 describe('fil d’Ariane', () => {
   it('absorbe les identifiants et masque le préfixe d’agence', () => {
     expect(buildCrumbs(`/tenant/${TENANT}/rental/leases`).map(c => c.label)).toEqual(['Gestion locative', 'Baux']);
+  });
+
+  it('range abonnement et facturation sous « Mon compte »', () => {
+    expect(buildCrumbs(`/tenant/${TENANT}/settings/abonnement`).map(c => c.label)).toEqual([
+      'Mon compte',
+      'Abonnement'
+    ]);
+    expect(buildCrumbs(`/tenant/${TENANT}/settings/facturation`).map(c => c.label)).toEqual([
+      'Mon compte',
+      'Facturation'
+    ]);
+    // Les autres écrans de paramètres gardent « Paramètres ».
+    expect(buildCrumbs(`/tenant/${TENANT}/settings/finance`).map(c => c.label)).toEqual(['Paramètres', 'Finance']);
   });
 
   it('ne dit jamais « Agence » à un locataire', () => {

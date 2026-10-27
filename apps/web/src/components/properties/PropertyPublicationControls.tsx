@@ -7,6 +7,7 @@ import {
   CheckCircleOutlined
 } from '@ant-design/icons';
 import { Property } from '../../types/property-types';
+import { apiFieldErrors } from './property-api-errors';
 import { publishProperty, unpublishProperty } from '../../services/property-service';
 import { t } from '../../i18n/t';
 
@@ -39,12 +40,12 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
         onUpdate();
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.error || t('Erreur lors de la publication');
-      if (errorMessage.includes('requirements not met')) {
-        const errors = errorMessage.split(':')[1]?.split(',') || [errorMessage];
-        setValidationErrors(errors.map((e: string) => e.trim()));
+      // Refus métier : l'API liste chaque condition manquante dans `errors`.
+      const conditions = apiFieldErrors(error).map(entry => entry.message);
+      if (conditions.length > 0) {
+        setValidationErrors(conditions);
       } else {
-        setValidationErrors([errorMessage]);
+        setValidationErrors([error.response?.data?.message || t('Erreur lors de la publication')]);
       }
       message.error(t('Erreur lors de la publication'));
     } finally {

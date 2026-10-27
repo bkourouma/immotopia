@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Spin, Alert, Table, Tag, Space, Statistic, Descriptions, Empty } from 'antd';
+import { Card, Row, Col, Typography, Spin, Alert, Tag, Space, Statistic, Descriptions, Empty } from 'antd';
 import {
   DollarOutlined,
   CalendarOutlined,
@@ -8,6 +8,7 @@ import {
   CloseCircleOutlined
 } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
+import { Table } from '../../components/primitives';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
@@ -113,6 +114,7 @@ export default function TenantDeposit() {
       CASH: t('Espèces'),
       BANK_TRANSFER: t('Virement bancaire'),
       MOBILE_MONEY: t('Mobile Money'),
+      DIRECT_DEBIT: t('Prélèvement bancaire'),
       CHECK: t('Chèque'),
       CARD: t('Carte bancaire'),
       OTHER: 'Autre'
@@ -247,6 +249,7 @@ export default function TenantDeposit() {
       >
         {movements && movements.length > 0 ? (
           <Table
+            exportFilename={t('Historique des mouvements')}
             scroll={{ x: 'max-content' }}
             columns={[
               {
@@ -272,6 +275,9 @@ export default function TenantDeposit() {
                 title: t('Montant'),
                 dataIndex: 'amount',
                 key: 'amount',
+                // Montant signé, en nombre pur : Excel peut le sommer.
+                exportValue: (record: DepositMovement) =>
+                  ['COLLECT', 'ADJUSTMENT'].includes(record.type) ? Math.abs(record.amount) : -Math.abs(record.amount),
                 render: (amount: number, record: DepositMovement) => {
                   const isPositive =
                     ['COLLECT', 'ADJUSTMENT'].includes(record.type) || (record.type === 'ADJUSTMENT' && amount > 0);
@@ -289,6 +295,10 @@ export default function TenantDeposit() {
                 title: t('Paiement associé'),
                 dataIndex: ['payment', 'method'],
                 key: 'payment',
+                exportValue: (record: DepositMovement) =>
+                  record.payment
+                    ? `${getPaymentMethodLabel(record.payment.method)} — ${formatCurrency(record.payment.amount)}`
+                    : '',
                 render: (method: string | null, record: DepositMovement) => {
                   if (!record.payment) return '-';
                   return (

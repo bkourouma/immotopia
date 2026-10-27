@@ -69,6 +69,23 @@ export async function downloadReceiptFile(
   };
 }
 
+/** Quittance ou reçu en Word (`GET .../quittances/:receiptId/fichier.docx`), depuis le document figé. */
+export async function downloadReceiptWordFile(
+  tenantId: string,
+  syndicId: string,
+  receiptId: string,
+  fallbackName = 'Document.docx'
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(
+    `/tenants/${tenantId}/syndics/${syndicId}/quittances/${encodeURIComponent(receiptId)}/fichier.docx`,
+    { responseType: 'blob' }
+  );
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
+}
+
 /** Renvoi manuel par e-mail. 422 sans adresse copropriétaire, 502 `code: 'EMAIL_SEND_FAILED'`. */
 export async function resendReceiptEmail(
   tenantId: string,

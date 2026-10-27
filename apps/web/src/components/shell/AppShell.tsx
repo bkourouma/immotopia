@@ -4,10 +4,10 @@ import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import {
-  useDisabledMenuKeys,
   CORE_ONLY_ACCESS,
   useFeatureAccessState,
   useFilteredNavigation,
+  useMyMenuAccess,
   useOwnAssetsOnly
 } from '../../hooks/useMenuAccess';
 import { useScrollRestoration } from '../../hooks/useScrollRestoration';
@@ -18,7 +18,13 @@ import { particulierNavigation } from '../../navigation/particulier';
 import { useTenantType } from '../../hooks/useTenantType';
 import { useCopilotStatus } from '../../hooks/useCopilotStatus';
 import { withAssistantMenu, withOwnerPatrimoineMenu } from '../../navigation/owner-patrimoine-menu';
-import { contextFromPath, lastSyndicKey, portalRedirect, resolvePersona } from '../../navigation/resolve';
+import {
+  contextFromPath,
+  isSyndicIdSegment,
+  lastSyndicKey,
+  portalRedirect,
+  resolvePersona
+} from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
 import { ownerPortalPatrimoineService } from '../../services/owner-portal-patrimoine-service';
 import { AccountNotLinked } from '../primitives/AccountNotLinked';
@@ -34,6 +40,8 @@ import { installSubscriptionDenialInterceptor } from '../../utils/subscription-d
 
 // Assistant ImmoCopilot : chargé à part, hors du bundle d'entrée.
 const CopilotRoot = lazy(() => import('../copilot/CopilotRoot'));
+// Cloche de notifications et icône Messagerie : chargées à part, hors du bundle d'entrée.
+const HeaderActions = lazy(() => import('../notifications/HeaderActions'));
 
 /**
  * `<AppShell>` — coquille unique, montée AU NIVEAU ROUTE (REFONTE_UI_UX.md §4.1).
@@ -100,6 +108,8 @@ export const AppShell: React.FC = () => {
         // sur la liste, ce qui reste utilisable.
         syndicId = null;
       }
+      // Une valeur mémorisée par une version antérieure peut être un segment réservé.
+      if (!isSyndicIdSegment(syndicId)) syndicId = null;
     }
     return { tenantId, syndicId };
   }, [location.pathname, tenantMembership?.tenantId]);
@@ -152,7 +162,7 @@ export const AppShell: React.FC = () => {
    * decide de montrer a ce role. Sans ce filtrage, l'ecran d'administration ne
    * serait qu'une declaration d'intention.
    */
-  const disabledMenuKeys = useDisabledMenuKeys(navContext.tenantId);
+  const { disabled: disabledMenuKeys, enabled: enabledMenuKeys, permissions } = useMyMenuAccess(navContext.tenantId);
   // Abonnement de l'agence : seul le collaborateur a un menu d'agence.
   const { access: featureAccess, loading: featureAccessLoading } = useFeatureAccessState(
     navContext.tenantId,
@@ -219,7 +229,9 @@ export const AppShell: React.FC = () => {
     effectiveDisabledMenuKeys,
     // Pendant la lecture des droits : socle seul, pas de menu complet qui clignote.
     featureAccessLoading ? CORE_ONLY_ACCESS : featureAccess,
-    ownAssetsOnly
+    ownAssetsOnly,
+    permissions,
+    enabledMenuKeys
   );
 
   // Refus d'abonnement (403 MODULE_NOT_INCLUDED / MODULE_READ_ONLY /
@@ -290,6 +302,16 @@ export const AppShell: React.FC = () => {
       >
         <TenantSuspendedBanner />
         <AppHeader
+          actions={
+            (persona === 'collaborateur' && navContext.tenantId) ||
+            persona === 'proprietaire' ||
+            persona === 'locataire' ||
+            persona === 'coproprietaire' ? (
+              <Suspense fallback={null}>
+                <HeaderActions />
+              </Suspense>
+            ) : null
+          }
           onOpenNavigation={
             canOpenDrawer
               ? () => {

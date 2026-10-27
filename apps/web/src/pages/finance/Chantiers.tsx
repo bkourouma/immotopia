@@ -21,6 +21,7 @@ import {
   StatusTag
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 /**
@@ -57,7 +58,9 @@ import { activeLocale } from '../../i18n/format';
 type Filters = { status: string };
 const FILTER_KEYS = ['status'] as const;
 
-const OPTIONS_STATUT = Object.entries(SITE_STATUS_LABELS).map(([value, label]) => ({ value, label }));
+const OPTIONS_STATUT = localizedList(() =>
+  Object.entries(SITE_STATUS_LABELS).map(([value, label]) => ({ value, label }))
+);
 
 function dateCourte(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString(activeLocale()) : '—';
@@ -174,6 +177,7 @@ export const Chantiers: React.FC = () => {
       key: 'cout',
       align: 'end',
       // Calculé côté serveur (P-4) : cette colonne se contente de l'afficher.
+      exportValue: c => c.actualCost,
       render: (_, c) => <MoneyValue value={c.actualCost} />
     },
     {
@@ -234,6 +238,7 @@ export const Chantiers: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les chantiers.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={() => list.setFilters({ status: undefined })}
@@ -242,6 +247,7 @@ export const Chantiers: React.FC = () => {
         columns={colonnes}
         rowKey={c => c.id}
         aria-label={t('Chantiers')}
+        export={{ filename: t('Chantiers') }}
         renderCard={c => (
           <DataCard
             title={c.name}

@@ -4,9 +4,11 @@ import { ConflictError, NotFoundError, ValidationError } from '../../middleware/
 import { assertSyndicateOfTenant, paidFromAllocations } from './charge-allocation';
 import { computeOutstanding } from './finance-utils';
 import { formatIsoDay } from './period';
+import { parseLotTypeRates, type ChargeAllocationMethodKey } from './charge-allocation-methods';
 import {
   firstPeriodIssuedOnOrAfter,
   periodStartContaining,
+  effectiveDueDate,
   followingPeriod,
   periodContaining,
   type SchedulePeriod
@@ -15,6 +17,9 @@ import {
   advanceSchedule,
   computePeriodPlan,
   executeSchedulePeriod,
+  extractDueShiftedNote,
+  formatFrenchDay,
+  joinRunNotes,
   notifyUncoveredCalls,
   publicErrorMessage,
   timingOf,
@@ -90,6 +95,8 @@ function toScheduleView(
     issueDay: schedule.issueDay,
     dueOffsetDays: schedule.dueOffsetDays,
     amountSource: schedule.amountSource,
+    allocationMethod: (schedule.allocationMethod ?? 'SHARES') as ChargeAllocationMethodKey,
+    includeAnnexLots: schedule.includeAnnexLots ?? true,
     budgetId: schedule.budgetId,
     budget: schedule.budget
       ? {
@@ -158,6 +165,24 @@ async function assertBudgetOfSyndicate(syndicateId: string, budgetId: string | n
   if (!budgetId) return;
   const budget = await prisma.syndicateBudget.findFirst({ where: { id: budgetId, syndicateId }, select: { id: true } });
   if (!budget) throw new NotFoundError('Budget introuvable pour cette copropriété.');
+}
+
+/**
+ * Refuse la répartition par type de lot tant que la copropriété (de l'agence)
+ * n'a aucun barème. Un barème incomplet n'est pas refusé ici : il est signalé à
+ * l'aperçu et à l'émission.
+ */
+async function assertLotTypeRatesDefined(tenantId: string, syndicateId: string) {
+  const syndicate = await prisma.syndicate.findFirst({
+    where: { id: syndicateId, tenantId },
+    select: { lotTypeRates: true }
+  });
+  if (Object.keys(parseLotTypeRates(syndicate?.lotTypeRates)).length === 0) {
+    throw new ValidationError(
+      'Le barème par type de lot de cette copropriété est vide : renseignez-le dans les paramètres de la copropriété.',
+      [{ field: 'allocationMethod', message: 'Barème par type de lot vide' }]
+    );
+  }
 }
 
 async function processedPeriodStarts(tenantId: string, scheduleId: string): Promise<Set<number>> {
@@ -260,6 +285,14 @@ export async function createChargeSchedule(
 ): Promise<ChargeScheduleView> {
   await assertSyndicateOfTenant(prisma, tenantId, syndicateId);
   await assertBudgetOfSyndicate(syndicateId, input.budgetId);
+  // Mêmes règles croisées que le schéma Zod (le service reste sûr hors contrôleur).
+  const issues = scheduleConsistencyIssues(input);
+  if (issues.length > 0) throw new ValidationError(issues[0].message, issues);
+
+  // Source BUDGET : clé de répartition des postes du budget, donc SHARES (sans erreur).
+  const allocationMethod: ChargeAllocationMethodKey =
+    input.amountSource === 'BUDGET' ? 'SHARES' : (input.allocationMethod ?? 'SHARES');
+  if (allocationMethod === 'BY_LOT_TYPE') await assertLotTypeRatesDefined(tenantId, syndicateId);
 
   const data = {
     tenantId,
@@ -269,8 +302,11 @@ export async function createChargeSchedule(
     issueDay: input.issueDay,
     dueOffsetDays: input.dueOffsetDays,
     amountSource: input.amountSource,
+    allocationMethod,
+    includeAnnexLots: input.includeAnnexLots ?? true,
     budgetId: input.amountSource === 'BUDGET' ? (input.budgetId ?? null) : null,
-    fixedAmount: input.amountSource === 'FIXED' ? (input.fixedAmount ?? null) : null,
+    fixedAmount:
+      input.amountSource === 'FIXED' && allocationMethod !== 'BY_LOT_TYPE' ? (input.fixedAmount ?? null) : null,
     currency: input.currency ?? 'XOF',
     startDate: input.startDate,
     endDate: input.endDate ?? null,
@@ -307,10 +343,17 @@ export async function updateChargeSchedule(
   // Changer de source efface le champ de l'autre source, sauf s'il est fourni (et alors refusé).
   if (input.amountSource === 'FIXED' && input.budgetId === undefined) merged.budgetId = null;
   if (input.amountSource === 'BUDGET' && input.fixedAmount === undefined) merged.fixedAmount = null;
+  const previousMethod = (schedule.allocationMethod ?? 'SHARES') as ChargeAllocationMethodKey;
+  // Source BUDGET : toujours SHARES. BY_LOT_TYPE efface le montant fixe (le total vient du barème).
+  merged.allocationMethod = merged.amountSource === 'BUDGET' ? 'SHARES' : (input.allocationMethod ?? previousMethod);
+  if (merged.allocationMethod === 'BY_LOT_TYPE' && input.fixedAmount === undefined) merged.fixedAmount = null;
 
   const issues = scheduleConsistencyIssues(merged);
   if (issues.length > 0) throw new ValidationError(issues[0].message, issues);
   await assertBudgetOfSyndicate(syndicateId, input.budgetId);
+  if (merged.allocationMethod === 'BY_LOT_TYPE' && previousMethod !== 'BY_LOT_TYPE') {
+    await assertLotTypeRatesDefined(tenantId, syndicateId);
+  }
 
   const changesCalendar = CALENDAR_FIELDS.some(
     field => input[field] !== undefined && String(input[field]) !== String(schedule[field])
@@ -327,6 +370,8 @@ export async function updateChargeSchedule(
     issueDay: merged.issueDay,
     dueOffsetDays: merged.dueOffsetDays,
     amountSource: merged.amountSource,
+    allocationMethod: merged.allocationMethod,
+    includeAnnexLots: input.includeAnnexLots ?? schedule.includeAnnexLots ?? true,
     budgetId: merged.budgetId,
     fixedAmount: merged.fixedAmount,
     currency: merged.currency,
@@ -506,9 +551,11 @@ export async function resendChargeScheduleRunNotices(
   const previouslySent = uncovered.length - stillUnsent.length;
   const totalSent = previouslySent + summary.sent;
   const totalSkipped = uncovered.length - totalSent;
+  // La note d'échéance décalée (H6) de l'émission initiale survit au renvoi.
+  const notes = joinRunNotes(extractDueShiftedNote(run.notes), summary.notes);
   await prisma.syndicChargeScheduleRun.updateMany({
     where: { id: run.id, tenantId },
-    data: { notificationsSent: totalSent, notificationsSkipped: totalSkipped, notes: summary.notes, finishedAt: now }
+    data: { notificationsSent: totalSent, notificationsSkipped: totalSkipped, notes, finishedAt: now }
   });
 
   return {
@@ -518,7 +565,7 @@ export async function resendChargeScheduleRunNotices(
       ...run,
       notificationsSent: totalSent,
       notificationsSkipped: totalSkipped,
-      notes: summary.notes,
+      notes,
       finishedAt: now
     })
   };
@@ -545,14 +592,26 @@ export async function previewChargeSchedule(
     : firstPeriodIssuedOnOrAfter(timing, now);
   const periods = [];
   for (let index = 0; period && index < count; index += 1) {
-    periods.push(await previewPeriod(schedule, period));
+    periods.push(await previewPeriod(schedule, period, now));
     period = followingPeriod(timing, period);
   }
   return { scheduleId, active: schedule.active, periods };
 }
 
-async function previewPeriod(schedule: SyndicChargeSchedule, period: SchedulePeriod) {
-  const base = periodDates(period);
+async function previewPeriod(schedule: SyndicChargeSchedule, period: SchedulePeriod, now: Date) {
+  // Émission réelle : à la date prévue, ou dès maintenant si elle est déjà passée.
+  const issuedAt = period.issueDate.getTime() > now.getTime() ? period.issueDate : now;
+  const due = effectiveDueDate(period, issuedAt, schedule.dueOffsetDays);
+  const base = {
+    ...periodDates(period),
+    dueDatePassed: due.shifted,
+    effectiveDueDate: due.shifted ? formatIsoDay(due.dueDate) : null,
+    warnings: due.shifted
+      ? [
+          `L'échéance du ${formatFrenchDay(period.dueDate)} serait déjà passée à l'émission : elle sera décalée au ${formatFrenchDay(due.dueDate)}.`
+        ]
+      : ([] as string[])
+  };
   try {
     const plan = await computePeriodPlan(schedule, period, { allowRecompute: false });
     return {
@@ -560,6 +619,7 @@ async function previewPeriod(schedule: SyndicChargeSchedule, period: SchedulePer
       totalAmount: plan.totalAmount,
       currency: plan.currency,
       budgetId: plan.budgetId,
+      allocationMethod: plan.allocationMethod,
       lots: plan.lots.map(lot => ({ lotId: lot.lotId, lotNumber: lot.lotNumber, amount: lot.amount })),
       error: null as string | null
     };
@@ -569,6 +629,9 @@ async function previewPeriod(schedule: SyndicChargeSchedule, period: SchedulePer
       totalAmount: null,
       currency: schedule.currency,
       budgetId: schedule.budgetId,
+      allocationMethod: (schedule.amountSource === 'FIXED'
+        ? (schedule.allocationMethod ?? 'SHARES')
+        : 'SHARES') as ChargeAllocationMethodKey,
       lots: [],
       error: publicErrorMessage(error, { scheduleId: schedule.id, step: 'preview' })
     };

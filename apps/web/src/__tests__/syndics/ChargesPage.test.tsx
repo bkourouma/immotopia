@@ -26,6 +26,9 @@ vi.mock('@ant-design/icons', async () => {
   return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
 });
 
+// Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
+vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
+
 vi.mock('antd', async () => {
   // Vitest runs test files as ESM: `require` is not available here.
   const React = await vi.importActual<typeof import('react')>('react');

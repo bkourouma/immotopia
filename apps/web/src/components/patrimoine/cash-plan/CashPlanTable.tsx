@@ -1,9 +1,9 @@
 import React from 'react';
-import { Table, Tag, Typography } from 'antd';
+import { Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { CashPlanCategory, CashPlanLine, CashPlanMonth } from '../../../types/cash-plan-types';
 import { t } from '../../../i18n/t';
-import { MoneyValue } from '../../primitives';
+import { MoneyValue, Table } from '../../primitives';
 import { categoryLabel, formatPlanMonth, noteLabel, sourceKindLabel } from './cash-plan-labels';
 
 const { Text } = Typography;
@@ -19,6 +19,7 @@ function categoryColumn(category: CashPlanCategory): ColumnsType<CashPlanMonth>[
     title: categoryLabel(category),
     key: category,
     align: 'end',
+    exportValue: (period: CashPlanMonth) => period.byCategory?.[category] ?? 0,
     render: (_: unknown, period: CashPlanMonth) => amountCell(period.byCategory?.[category] ?? 0)
   };
 }
@@ -32,6 +33,7 @@ const DetailLines: React.FC<{ lines: CashPlanLine[] }> = ({ lines }) => {
   if (lines.length === 0) return <Text type="secondary">{t('Aucun flux prévu ce mois-ci.')}</Text>;
   return (
     <Table<CashPlanLine>
+      exportable={false}
       size="small"
       pagination={false}
       rowKey="id"
@@ -97,18 +99,21 @@ export const CashPlanTable: React.FC<Props> = ({ periods }) => {
       title: t('Net'),
       key: 'net',
       align: 'end',
+      exportValue: (period: CashPlanMonth) => period.net,
       render: (_: unknown, period: CashPlanMonth) => <MoneyValue value={period.net} currency={null} signed />
     },
     {
       title: t('Cumul'),
       key: 'cumulative',
       align: 'end',
+      exportValue: (period: CashPlanMonth) => period.cumulative,
       render: (_: unknown, period: CashPlanMonth) => <MoneyValue value={period.cumulative} currency={null} signed />
     }
   ];
 
   return (
     <Table<CashPlanMonth>
+      exportFilename={t('Plan de trésorerie mensuel')}
       rowKey="month"
       size="middle"
       pagination={false}

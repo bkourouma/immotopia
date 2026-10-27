@@ -1,8 +1,8 @@
 import React from 'react';
-import { Alert, Card, Col, Row, Table, Tag, Typography } from 'antd';
+import { Alert, Card, Col, Row, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { EntityConsolidation } from '../../../types/patrimoine-entities-types';
-import { StatCard, MoneyValue } from '../../primitives';
+import { StatCard, MoneyValue, Table } from '../../primitives';
 import { t } from '../../../i18n/t';
 import { formatAsOf, formatYieldPercent } from '../patrimoine-format';
 
@@ -143,6 +143,7 @@ export const EntityConsolidationCard: React.FC<EntityConsolidationCardProps> = (
 
       <Card>
         <Table
+          exportFilename={t('Biens de la consolidation')}
           rowKey={row => row.propertyId}
           columns={columns}
           dataSource={properties}

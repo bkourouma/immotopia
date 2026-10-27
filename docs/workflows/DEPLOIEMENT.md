@@ -19,6 +19,7 @@ produisent ; ce qui n'a jamais tourné sur le serveur est marqué **non éprouv�
 Dans ce document : [éprouvé ou non](#éprouvé-et-non-éprouvé) ·
 [règle d'or](#règle-dor) · [vue d'ensemble](#vue-densemble) ·
 [première mise en service de la production](#première-mise-en-service-de-la-production) ·
+[déploiement continu](#déploiement-continu-github-actions) ·
 [cycle courant](#cycle-courant) ·
 [sauvegarde et restauration](#sauvegarde-et-restauration) ·
 [différences de configuration](#différences-de-configuration-staging-et-production) ·
@@ -108,6 +109,8 @@ Dans ce document : [éprouvé ou non](#éprouvé-et-non-éprouvé) ·
     exécutées avec un `DATABASE_URL` invalide, sortie en code 1 avant toute
     connexion.
 - **Non éprouvé** (à la date de rédaction) :
+  - le déploiement continu (`deploy.yml`, `ci-deploy.sh`, clés SSH de la CI,
+    environnements et secrets GitHub) : écrit et testé en local seulement ;
   - la copie hors serveur (rclone), la restauration réelle d'une sauvegarde, le
     retour arrière par étiquette d'image, le fichier temporaire de
     `set-google-oauth.sh`, la connexion Google et le paiement en mode `LIVE` ;
@@ -172,9 +175,9 @@ de paiement) : un essai y enverrait de vrais messages à de vrais clients.
 - **Certificats** : `app.immotopia.cloud` et `clients.immotopia.cloud` ont
   chacun leur certificat. Le certificat de `immotopia.cloud` (un autre projet,
   servi par un autre vhost qu'il ne faut pas toucher) ne les couvre pas.
-- **Secrets** : `JWT_SECRET`, mot de passe Postgres et `PAYMENT_SECRETS_KEY`
-  distincts, tous trois générés neufs par `make-env.sh` et **contrôlés par
-  `deploy.sh prod`** (comparaison d'empreintes, rien n'est affiché) : un secret
+- **Secrets** : `JWT_SECRET`, mot de passe Postgres, `PAYMENT_SECRETS_KEY` et
+  `DIRECT_DEBIT_IBAN_KEY` distincts, tous générés neufs par `make-env.sh` et
+  **contrôlés par `deploy.sh prod`** (comparaison d'empreintes, rien n'est affiché) : un secret
   identique à celui du staging fait échouer le déploiement. Les clés
   d'intégration (e-mail, SMTP, Twilio, WaSender, Google, Anthropic, OpenRouter,
   PaySecureHub) identiques à celles du staging ne donnent qu'un avertissement.
@@ -206,24 +209,28 @@ de paiement) : un essai y enverrait de vrais messages à de vrais clients.
 
 ### Scripts
 
-| Script                                        | Rôle                                                                                                                                                                                        |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make-env.sh <staging\|prod> [fichier]`       | Crée le fichier de secrets (mode 600, secrets neufs). Refuse d'écraser un fichier existant.                                                                                                 |
-| `deploy.sh <staging\|prod> [--no-build]`      | Contrôles, construction, migrations, démarrage, tests de fumée, empreinte des voisins. Idempotent, ne supprime jamais de volume. Un seul à la fois (verrou).                                |
-| `bootstrap.sh <staging\|prod> [--dry-run]`    | Amorce une base vierge : RBAC, gabarits de biens, premier SUPER_ADMIN saisi au terminal (toutes les saisies avant la première écriture).                                                    |
-| `set-google-oauth.sh <staging\|prod> [fich.]` | Écrit `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` dans le fichier de secrets, sans jamais afficher le secret.                                                                              |
-| `set-email-smtp.sh <staging\|prod> [fich.]`   | Écrit la configuration SMTP (serveur, port, utilisateur, expéditeur, mot de passe saisi deux fois sans écho et protégé par des apostrophes pour Docker Compose) dans le fichier de secrets. |
-| `backup.sh <staging\|prod>`                   | Sauvegarde la base et le volume des documents, avec rotation et copie hors serveur facultative.                                                                                             |
-| `restore-check.sh <dump.sql.gz>`              | Vérifie qu'un dump se restaure, dans un conteneur jetable sans réseau. Ne touche aucune pile.                                                                                               |
-| `seed-pack-tests.sh staging [--dry-run]`      | Crée ou resynchronise 12 agences de test (deux par pack, avec 6 mois ou 3 ans de données) à mot de passe public. Refuse `prod`. Voir « Comptes de test par pack ».                          |
-| `check-infra.sh`                              | Contrôle statique sans secret (syntaxe, rendu Compose, ports, modes 100755), lancé par la CI (`bash infra/scripts/check-infra.sh` aussi en local).                                          |
+| Script                                                    | Rôle                                                                                                                                                                                                                                |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make-env.sh <staging\|prod> [fichier]`                   | Crée le fichier de secrets (mode 600, secrets neufs). Refuse d'écraser un fichier existant.                                                                                                                                         |
+| `deploy.sh <staging\|prod> [--no-build]`                  | Contrôles, construction, migrations, démarrage, tests de fumée, empreinte des voisins. Idempotent, ne supprime jamais de volume. Un seul à la fois (verrou).                                                                        |
+| `bootstrap.sh <staging\|prod> [--dry-run]`                | Amorce une base vierge : RBAC, gabarits de biens, référentiel géographique, premier SUPER_ADMIN saisi au terminal (toutes les saisies avant la première écriture).                                                                  |
+| `set-google-oauth.sh <staging\|prod> [fich.]`             | Écrit `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` dans le fichier de secrets, sans jamais afficher le secret.                                                                                                                      |
+| `set-email-smtp.sh <staging\|prod> [fich.]`               | Écrit la configuration SMTP (serveur, port, utilisateur, expéditeur, mot de passe saisi deux fois sans écho et protégé par des apostrophes pour Docker Compose) dans le fichier de secrets.                                         |
+| `backup.sh <staging\|prod>`                               | Sauvegarde la base et le volume des documents, avec rotation et copie hors serveur facultative.                                                                                                                                     |
+| `restore-check.sh <dump.sql.gz>`                          | Vérifie qu'un dump se restaure, dans un conteneur jetable sans réseau. Ne touche aucune pile.                                                                                                                                       |
+| `seed-pack-tests.sh staging [--dry-run] [--repair-files]` | Crée ou resynchronise 12 agences de test (deux par pack, avec 6 mois ou 3 ans de données) à mot de passe public ; `--repair-files` répare les fichiers déjà semés hors du volume. Refuse `prod`. Voir « Comptes de test par pack ». |
+| `ci-deploy.sh <staging\|prod> [sha]`                      | Entrée imposée aux clés SSH de la CI (`command=`, `restrict`) : contrôles git, sauvegarde (prod), `deploy.sh`, détaché de SSH. **Non éprouvé.** Voir « Déploiement continu ».                                                       |
+| `check-infra.sh`                                          | Contrôle statique sans secret (syntaxe, rendu Compose, ports, modes 100755), lancé par la CI (`bash infra/scripts/check-infra.sh` aussi en local).                                                                                  |
+| `exploitation-syndic.ps1` (poste Windows)                 | Diagnostic puis correction de la clé IBAN, du simulateur, du SMTP, du pool Prisma et du proxy, par ssh. Voir « Script d'exploitation Windows ».                                                                                     |
 
 Les scripts doivent porter le **mode 100755 dans le dépôt** (voir le piège
 « Modes des scripts »).
 
 `migrate deploy` (lancé par `deploy.sh`) ne pose que le schéma, le catalogue
 d'abonnements et les paramètres fiscaux. Les rôles, les permissions, les
-gabarits de biens et le premier super-admin viennent de `bootstrap.sh`. Le seed
+gabarits de biens, le référentiel géographique (Côte d'Ivoire : 33 régions,
+164 communes, qui alimente le champ « Commune » des contacts) et le premier
+super-admin viennent de `bootstrap.sh`. Le seed
 de démonstration (`npm run db:seed`) n'est pas une option : il efface la base et
 refuse de tourner en production.
 
@@ -381,8 +388,10 @@ Le script refuse d'écraser un fichier existant (code de sortie 1, rien n'est
 **Sauvegarder le fichier hors du serveur, tout de suite**, dans un gestionnaire
 de mots de passe : le propriétaire ouvre lui-même le fichier et l'y copie.
 `PAYMENT_SECRETS_KEY` chiffre les clés de paiement enregistrées par les agences :
-la perdre les rend illisibles, et les agences devraient les ressaisir. Ce fichier
-n'est pas couvert par `backup.sh`.
+la perdre les rend illisibles, et les agences devraient les ressaisir.
+`DIRECT_DEBIT_IBAN_KEY` chiffre les IBAN des mandats de prélèvement (voir
+[Clé dédiée aux IBAN](#clé-dédiée-aux-iban-prélèvement-bancaire)) : la perdre les
+rend illisibles. Ce fichier n'est pas couvert par `backup.sh`.
 
 ### Étape 2 — Compléter à la main et décider des intégrations
 
@@ -526,8 +535,12 @@ Il contrôle, dans l'ordre :
      illisibilité **bloque la production**, faute de pouvoir prouver
      l'unicité des secrets (mode 600, propriétaire `deployer` : l'utilisateur
      courant doit pouvoir le lire) ;
-   - `JWT_SECRET`, `POSTGRES_PASSWORD` **et `PAYMENT_SECRETS_KEY`** différents de
-     ceux du staging (comparaison d'empreintes, rien n'est affiché).
+   - `JWT_SECRET`, `POSTGRES_PASSWORD`, `PAYMENT_SECRETS_KEY` **et
+     `DIRECT_DEBIT_IBAN_KEY`** différents de ceux du staging, et aucune clé du
+     trousseau IBAN de la production (courante ou ancienne) présente dans celui du
+     staging (comparaison d'empreintes, rien n'est affiché) ;
+   - `YOUSIGN_ALLOW_SANDBOX` valant `1` (base sandbox de Yousign, signatures sans
+     valeur : réservée au staging), même écriture tolérante.
 
    Il **avertit**, sans bloquer, si une clé d'intégration (e-mail, SMTP, Twilio,
    WaSender, Google, Anthropic, OpenRouter, PaySecureHub) est identique à celle du
@@ -598,8 +611,10 @@ sur `127.0.0.1:3020->80`) et `200`.
 ### Étape 5 — Amorcer la base
 
 `bootstrap.sh` lit l'état de la base, pose ce qui manque (RBAC, 12 gabarits de
-type de bien, premier compte SUPER_ADMIN) et ne relance pas une étape terminée :
-il est idempotent. Les gabarits sont posés si leur table est vide, le compte s'il
+type de bien, référentiel géographique, premier compte SUPER_ADMIN) et ne relance pas une étape terminée :
+il est idempotent. Les gabarits sont posés si leur table est vide, le référentiel
+géographique si la table `communes` est vide (`geographic-seed.ts` n'insère que
+les lignes absentes et ne modifie jamais une ligne existante), le compte s'il
 n'existe aucun SUPER_ADMIN. Le RBAC, lui, n'est pas jugé sur « zéro permission »
 mais sur trois états :
 
@@ -688,6 +703,26 @@ et des gabarits. Un refus (`Refus : …`, puis « la creation du super-admin a
 echoue ») ne crée aucun compte mais laisse le RBAC et les gabarits en place, ce
 qui est sans danger : relancer `./infra/scripts/bootstrap.sh prod` ne redemande
 que les saisies et la création du compte.
+
+### Modèles de documents par défaut
+
+Sans modèle global (`document_templates` avec `tenant_id` NULL), la génération
+d'un bail, d'un reçu de loyer ou d'un relevé échoue pour toute agence (« aucun
+modèle »). Les semer depuis le conteneur de l'API, qui porte `assets/`, le volume
+`/data/uploads` et le JS compilé :
+
+```bash
+docker exec immotopia-prod-api node dist/scripts/seed-default-document-templates.js
+```
+
+La commande est rejouable et **insert-only** : un modèle global par défaut actif
+déjà présent est ignoré sans être modifié. Le créateur est le plus ancien
+SUPER_ADMIN ; s'il n'en existe aucun, elle échoue sans créer d'utilisateur
+(créer d'abord le super-administrateur). Le bilan est affiché en français
+(créés / ignorés / rafraîchis / en erreur), code de sortie non nul si une erreur.
+Ajouter `--refresh` pour remplacer le fichier d'un ancien modèle livré non
+personnalisé (`--refresh --force` remplace aussi un global d'empreinte inconnue ;
+`--force` seul est refusé). Un modèle d'agence n'est jamais touché.
 
 ### Étape 6 — Première connexion et première agence
 
@@ -821,44 +856,366 @@ durée de fonctionnement inchangée (pas « Up 2 minutes » alors que personne n
 déployé le staging), `127.0.0.1:3019->80` et `127.0.0.1:5436->5432`, et `200`.
 `deploy.sh prod` a déjà comparé la liste des conteneurs voisins avant et après.
 
+## Déploiement continu (GitHub Actions)
+
+**Non éprouvé : aucun essai réel n'a eu lieu.** Le workflow
+`.github/workflows/deploy.yml` et le script `infra/scripts/ci-deploy.sh` sont
+écrits et contrôlés en local (refus d'arguments, enchaînement sur un faux dépôt),
+mais jamais exécutés par GitHub ni sur le serveur. Décision :
+[ADR-008](../architecture/adr/ADR-008-deploiement-continu.md). Tant que la mise en
+service ci-dessous n'est pas faite, rien ne change : le déploiement manuel
+(« Cycle courant ») reste la référence.
+
+### Ce qui part tout seul, ce qui reste manuel
+
+| Cas                                                                | Déclencheur                                                    | Approbation                                                  |
+| ------------------------------------------------------------------ | -------------------------------------------------------------- | ------------------------------------------------------------ |
+| **Staging** (https://app.immotopia.cloud), à chaque push de `main` | automatique si la variable `AUTO_DEPLOY_STAGING` vaut `true`   | aucune                                                       |
+| **Staging**, à la demande                                          | « Run workflow », environnement `staging`                      | aucune                                                       |
+| **Production** (https://clients.immotopia.cloud)                   | « Run workflow », environnement `prod`, **jamais automatique** | relecteur obligatoire de l'environnement GitHub `production` |
+| Toute autre branche                                                | rien ne se déploie (la CI reste inchangée)                     |                                                              |
+
+La production se déploie, par défaut, sur le **commit du dernier déploiement
+réussi du staging** (registre des déploiements de GitHub) : on promeut ce qui a
+été validé. Le champ « commit » du formulaire permet d'en choisir un autre pour
+la production (40 caractères hexadécimaux) ; pour le staging, il doit rester vide
+(tête de `main`). Avant `deploy.sh prod`, le déploiement fait la sauvegarde
+(`backup.sh prod`) et étiquette les images actuelles (`immotopia-prod-api` et
+`-web` en `avant-<date>-<version de la production>`, voir « Retour arrière »). Le staging se
+déploie **sans sauvegarde préalable**.
+
+### Cheminement
+
+1. **Workflow `Déploiement`** (GitHub) : sur `workflow_run` du workflow `CI` (branche
+   `main`, push du même dépôt, conclusion `success`, interrupteur actif) ou sur
+   `workflow_dispatch` (lancé depuis `main`). Un premier job résout la cible
+   (environnement et commit) ; si un commit plus récent est déjà sur `main`, le
+   déploiement est écarté sans erreur (on ne recule jamais le staging, le commit
+   plus récent a le sien). Un second job, rattaché à l'environnement GitHub
+   `staging` ou `production`, ouvre la connexion SSH.
+2. **SSH** : `ssh -p 2222 deployer@147.93.44.169 "deploy <env> <sha>"` avec une clé
+   propre à l'environnement, vérification stricte de l'hôte (`known_hosts` fourni
+   par un secret).
+3. **`ci-deploy.sh <env>`** : imposé par la clé (`command=…`), il valide la commande
+   reçue (`^deploy (staging|prod) ([0-9a-f]{40})$`, environnement égal à celui de la
+   clé), puis lance un worker **détaché de la session SSH** et ne suit que le
+   **canal public** de ce worker. Le worker : place d'attente et verrou CI,
+   attente d'un `deploy.sh` manuel, `git fetch`, contrôles (commit dans
+   `origin/main` et portant `ci-deploy.sh`, arbre propre, HEAD actuel dans
+   `origin/main`) ; pour la production, commit déjà déployé avec succès sur le
+   staging et refus du retour arrière ; placement du checkout ; puis (production)
+   sauvegarde et étiquettes ; enfin `./infra/scripts/deploy.sh <env>`. Le code de
+   sortie de `deploy.sh` est celui du job (l'entrée le lit dans `<journal>.rc`,
+   jamais dans un journal).
+4. **`deploy.sh`** : inchangé (contrôles, construction, migrations, tests de fumée,
+   empreinte des voisins). Seuls les titres de ses étapes `==>` sont recopiés sur le
+   canal public.
+5. **Contrôle externe** du workflow : `<url>/health` et `<url>/` doivent répondre
+   200 (quelques essais espacés).
+
+### Garde-fous
+
+- **Clé limitée** : la ligne `authorized_keys` porte `command="…ci-deploy.sh <env>"` et
+  `restrict` (ni shell, ni terminal, ni redirection de port, ni agent). Elle ne sait
+  rien faire d'autre que ce script ; **une clé par environnement** : la clé du
+  staging ne peut pas déployer la production (le script compare l'environnement de
+  la commande à celui de la clé, code de sortie 2 sinon).
+- **Seul un commit d'`origin/main`** se déploie, et il doit **embarquer
+  `infra/scripts/ci-deploy.sh`** (sinon `command=` pointerait sur un fichier
+  disparu et la CI deviendrait inutilisable). **L'arbre du serveur doit être
+  propre** (fichiers non suivis compris) ; le **checkout actuel doit déjà être dans
+  `origin/main`** : un essai manuel sur le serveur (autre branche, commit non
+  fusionné) n'est jamais déplacé, le déploiement s'arrête avec un message. Remettre
+  le checkout sur `origin/main`, puis relancer.
+- **La clé de production ne contourne pas la validation, côté serveur.** Pour
+  `prod`, `ci-deploy.sh` exige (fermé par défaut : fichier absent ou illisible =
+  refus) que le commit figure, avec l'environnement `staging`, dans
+  `~/deploy-history-immotopia-saas.log` (déployé **avec succès** sur le staging), et
+  **refuse un retour arrière** : si la version de la production (3e colonne de la
+  dernière ligne de `~/deploy-history-immotopia-prod.log`) descend du commit demandé,
+  le déploiement s'arrête. Un retour arrière ne se fait **que par la voie manuelle**
+  (« Retour arrière »). Le tout premier déploiement de la production se fait aussi à
+  la main (la production existe depuis le 2026-09-30).
+- **File d'attente bornée, verrous dans `~/ci-deploy-logs/`** (dossier 700, hors de
+  `/tmp`) : `.attente.lock` (une seule place d'attente : un second déploiement CI
+  qui arrive s'arrête tout de suite, « réessayer plus tard ») et `.ci.lock` (un seul
+  déploiement CI à la fois). Puis l'attente du verrou de `deploy.sh`
+  (`/tmp/immotopia-deploy.lock`) quand un déploiement manuel est en cours. Chaque
+  attente se fait par tranches de 30 s (20 min au plus) et le worker **abandonne
+  sans rien déployer si la connexion SSH a disparu avant le début** (job GitHub
+  annulé, réseau) : contrôle à chaque tour d'attente et une dernière fois, après
+  deux messages publics espacés, une fois les verrous obtenus (une coupure ne tue
+  l'entrée qu'en écrivant ; l'entrée pose alors un marqueur `<journal>.parti` que le
+  worker consulte). Une toute petite fenêtre reste : un `deploy.sh` manuel lancé
+  entre l'attente et la prise du verrou par le `deploy.sh` de la CI fait échouer ce
+  dernier aussitôt, sans rien abîmer.
+- **Session détachée une fois le travail commencé** : à partir du placement du
+  checkout, si la connexion tombe ou si le job est annulé, le worker continue
+  jusqu'au bout (une migration n'est jamais interrompue à mi-course) ; son code de
+  sortie est écrit dans `<journal>.rc`.
+- **Un changement de `ci-deploy.sh` ne s'applique qu'au déploiement SUIVANT** : le
+  worker en cours exécute la version du script d'avant le placement du checkout
+  (aucune ré-exécution). À savoir quand on corrige ce script.
+- **Jamais annulé en cours** : un groupe `concurrency` par environnement
+  (`deploiement-staging`, `deploiement-production`), sans annulation. Un groupe
+  commun laisserait un push sur `main` remplacer, donc annuler, un déploiement de
+  production en attente. Sur le serveur, un seul déploiement à la fois quel que
+  soit l'environnement (verrou de `ci-deploy.sh`). Le job `deploy` a un plafond de
+  90 minutes : 20 d'attente du verrou CI, 20 d'attente d'un `deploy.sh` manuel, le
+  déploiement lui-même et une marge.
+- **Dépôt public, journaux publics : un canal public dédié, pas un filtre.** Le
+  worker écrit, à côté du journal complet, un fichier `<journal>.public` que l'entrée
+  seule suit (ANSI et caractères de contrôle retirés). Il ne reçoit que les messages
+  de `ci-deploy.sh` lui-même et, de `deploy.sh`, les titres des étapes `==> ` (chaînes
+  fixes, forme exacte vérifiée). Rien d'autre de `deploy.sh`, `backup.sh`, `git` ou
+  `docker` n'y va : ni les contrôles `OK …` de `deploy.sh` (qui citent des chemins de
+  secrets et des noms d'intégrations), ni les journaux de conteneurs (falsifiables),
+  ni le `diff` des voisins. En cas d'échec de `deploy.sh`, le canal public ne porte
+  que « `ECHEC deploy.sh a echoue (code N) : raison dans le journal complet du
+serveur` ». Le **journal complet** est sur le serveur :
+  `~/ci-deploy-logs/<AAAAMMJJ-HHMMSS>-<env>-<commit>-<pid>.log` (dossier 700,
+  fichiers 600, purge à 30 jours, hors du checkout pour ne pas le salir). Le workflow
+  n'interpole jamais d'entrée dans un script `run:`.
+- **Pas de déclenchement par un fork** : le déploiement automatique exige le même
+  dépôt, un `push`, la branche `main` et une CI réussie.
+- **`workflow_dispatch` exécute le fichier de la branche choisie** (« Use workflow
+  from », `--ref`), pas seulement celui de la branche par défaut (seul
+  `workflow_run` lit la branche par défaut). Le contrôle `REF == refs/heads/main` du
+  workflow n'est qu'un confort : la vraie barrière est la règle « Deployment
+  branches : main » des environnements `staging` et `production`.
+- **Écrire sur `main` vaut exécuter du code sur le serveur partagé** (Docker y est un
+  accès administrateur de l'hôte), et la CI est définie par le commit poussé : « CI
+  verte » n'est pas une frontière de confiance. D'où le prérequis bloquant de la
+  mise en service (protection de `main`).
+
+### Mise en service (par le propriétaire, pas à pas)
+
+À faire **après la fusion** de ce changement dans `main` : `workflow_run` ne lit que
+le fichier de la branche par défaut, donc le premier déploiement automatique
+n'arrive qu'ensuite, et le workflow n'existe pas avant pour `workflow_dispatch` sur
+`main`. Chaque étape sur le serveur suit la [règle d'or](#règle-dor).
+
+1. **Prérequis bloquant : protéger `main`, avant tout essai et avant d'activer
+   `AUTO_DEPLOY_STAGING`.** Avec le déploiement continu, quiconque peut écrire sur
+   `main` exécute du code sur le serveur partagé, et la CI étant définie par le
+   commit poussé, une CI verte ne prouve rien sur l'auteur. Créer un _ruleset_
+   GitHub (Settings → Rules) sur `main` : pull request obligatoire (plus aucun
+   push direct), avec au moins une relecture approuvée **dès qu'un second
+   mainteneur existe** (un propriétaire seul ne peut pas approuver ses propres
+   pull requests : avec une relecture exigée et aucun contournement, il ne
+   pourrait plus rien fusionner ; tant qu'il est seul, mettre 0 relecture et
+   garder le reste) ; _status checks_ requis :
+   `API — typecheck, lint, test`, les 4 lots `Web — tests`,
+   `Web — typecheck, lint, build` et `Infra — scripts et compose` ; ni
+   _force-push_ ni suppression ; **aucun contournement, pas même par les
+   administrateurs**. Décision du propriétaire, **non créée par ce dépôt** :
+   un fichier `CODEOWNERS` couvrant `.github/`, `infra/`, `**/Dockerfile*` et
+   `docs/governance/`, avec relecture du propriétaire obligatoire dans le ruleset.
+   Sans cela, ne pas activer le staging automatique.
+
+2. **Contrôler le serveur** : checkout sur `origin/main` à jour, arbre propre,
+   `ci-deploy.sh` exécutable ; et configuration `sshd` : un porteur de clé ne doit
+   pas pouvoir passer d'environnement (`BASH_ENV` exécuterait du code avant toute
+   validation).
+
+   ```bash
+   cd /home/deployer/immotopia-saas
+   git fetch origin && git merge --ff-only origin/main
+   git status -sb
+   ls -l infra/scripts/ci-deploy.sh
+   sudo sshd -T -C user=deployer,host=x,addr=127.0.0.1 | grep -iE 'acceptenv|permituserenvironment'
+   ```
+
+   `git status -sb` n'affiche que la ligne de branche ; le fichier porte
+   `-rwxr-xr-x` ; `sshd` n'affiche **au plus** `acceptenv LANG LC_*` et
+   `permituserenvironment no`. Sinon, corriger `sshd_config` avant de continuer.
+
+3. **Générer deux paires de clés ed25519 sur SON poste** (jamais sur le serveur,
+   jamais dans une conversation) :
+
+   ```bash
+   ssh-keygen -t ed25519 -N "" -C github-actions-immotopia-staging -f immotopia-ci-staging
+   ssh-keygen -t ed25519 -N "" -C github-actions-immotopia-prod -f immotopia-ci-prod
+   ```
+
+4. **Poser les clés PUBLIQUES** dans `/home/deployer/.ssh/authorized_keys` (en
+   sauvegardant le fichier d'abord), chacune sur **une seule ligne**, avec son
+   préfixe :
+
+   ```text
+   command="/home/deployer/immotopia-saas/infra/scripts/ci-deploy.sh staging",restrict <contenu de immotopia-ci-staging.pub>
+   command="/home/deployer/immotopia-saas/infra/scripts/ci-deploy.sh prod",restrict <contenu de immotopia-ci-prod.pub>
+   ```
+
+5. **Obtenir la ligne `known_hosts`** et la comparer à l'empreinte lue **sur le
+   serveur** :
+
+   ```bash
+   # Sur le poste
+   ssh-keyscan -p 2222 -t ed25519 147.93.44.169 > known_hosts_ci
+   ssh-keygen -lf known_hosts_ci
+   # Sur le serveur
+   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+   ```
+
+   Les deux empreintes (`SHA256:…`) doivent être identiques ; sinon, s'arrêter.
+
+6. **Créer les environnements GitHub** (Settings → Environments) : `staging` et
+   `production`, chacun avec « Deployment branches : main seulement » ; pour
+   `production`, « Required reviewers » = le propriétaire (laisser « Prevent
+   self-review » désactivé s'il est seul, sinon il ne pourrait pas approuver sa
+   propre exécution ; voir le risque résiduel de l'ADR-008).
+
+7. **Poser les secrets d'environnement**, **tester les refus de la clé**, puis
+   supprimer les clés privées du poste :
+
+   ```bash
+   gh secret set DEPLOY_SSH_KEY --env staging < immotopia-ci-staging
+   gh secret set DEPLOY_SSH_KNOWN_HOSTS --env staging < known_hosts_ci
+   gh secret set DEPLOY_SSH_KEY --env production < immotopia-ci-prod
+   gh secret set DEPLOY_SSH_KNOWN_HOSTS --env production < known_hosts_ci
+   ```
+
+   **Tests négatifs obligatoires, AVANT de supprimer les clés privées** (SHA
+   quelconque de 40 caractères hexadécimaux) : chacun doit être refusé, avec le
+   code de sortie 2 de `ci-deploy.sh`, et ne rien déployer.
+
+   ```bash
+   # Clé du staging qui demande la production : refus (2)
+   ssh -i immotopia-ci-staging -o IdentitiesOnly=yes -p 2222 deployer@147.93.44.169 "deploy prod 0123456789abcdef0123456789abcdef01234567"; echo $?
+   # Commande hors liste blanche : refus (2)
+   ssh -i immotopia-ci-staging -o IdentitiesOnly=yes -p 2222 deployer@147.93.44.169 "id"; echo $?
+   # Aucune commande (pas de shell interactif) : refus (2)
+   ssh -i immotopia-ci-staging -o IdentitiesOnly=yes -p 2222 deployer@147.93.44.169; echo $?
+   ```
+
+   Puis seulement : `rm -f immotopia-ci-staging immotopia-ci-prod`.
+
+8. **Tester les refus du workflow** (après la création des environnements) : un
+   `workflow_dispatch` lancé depuis une autre branche ne doit pas atteindre les
+   secrets. Depuis une branche d'essai (créée à partir de `main`, donc portant
+   `deploy.yml`) :
+
+   ```bash
+   gh workflow run deploy.yml --ref <autre-branche> -f environment=staging
+   gh workflow run deploy.yml --ref <autre-branche> -f environment=prod
+   ```
+
+   Le contrôle de branche du premier job refuse déjà ; pour éprouver **la règle de
+   l'environnement elle-même**, refaire l'essai sur une branche d'essai où ce
+   contrôle est retiré : le job `deploy` doit être refusé (« branch not allowed »)
+   avant l'étape « Contrôle des secrets ». Supprimer la branche d'essai ensuite.
+
+9. **Premier essai manuel du staging** : onglet Actions → « Déploiement » → « Run
+   workflow » (environnement `staging`, commit vide), ou
+   `gh workflow run deploy.yml -f environment=staging`. Lire les lignes `ci-deploy:`
+   et `==>` du journal GitHub, puis le journal complet sur le serveur
+   (`ls -t ~/ci-deploy-logs | head -3`). Vérifier qu'aucune ligne du journal
+   GitHub ne cite un secret, un chemin de fichier de secrets ou un nom d'intégration.
+
+10. **Activer le staging automatique** (seulement si l'étape 1 est faite) :
+
+    ```bash
+    gh variable set AUTO_DEPLOY_STAGING --body true
+    ```
+
+11. **Premier essai de la production** : le premier déploiement de la production
+    par la CI suppose une version déjà inscrite dans son journal (la production
+    existe depuis le 2026-09-30). « Run workflow », environnement `prod` (commit
+    vide : celui du dernier staging réussi) ; vérifier l'environnement et le commit
+    dans le résumé du job « Cible du déploiement » **avant** d'approuver
+    l'environnement `production` (l'approbation précède la connexion au serveur),
+    puis constater `Deploiement prod termine`.
+
+### Arrêt d'urgence, rotation
+
+- **Rotation de `DIRECT_DEBIT_IBAN_KEY` et signatures de mandats ouvertes.** L'empreinte
+  HMAC des demandes de signature de mandats de prélèvement dérive de cette clé : après
+  une rotation, toute demande encore ouverte est tenue pour périmée (la signature est
+  refusée, la demande s'annule). Avant de tourner la clé, laisser les demandes aboutir
+  ou les annuler ; après, les renvoyer (les mandats restent en brouillon).
+
+- **Couper le staging automatique** :
+  `gh variable set AUTO_DEPLOY_STAGING --body false` (n'empêche pas un « Run
+  workflow » manuel).
+- **Annuler un run GitHub** (bouton « Cancel ») : si le worker n'a pas encore
+  commencé (il attend un verrou), il abandonne tout seul dans les 30 secondes et rien
+  n'est déployé. S'il a commencé, il va au bout.
+- **Couper tout accès CI à un environnement** : retirer sa ligne de
+  `/home/deployer/.ssh/authorized_keys`.
+- **Un worker déjà en cours** : le repérer avec `pgrep -af 'ci-deploy.sh --worker'` et
+  lire le journal le plus récent (`ls -t ~/ci-deploy-logs | head -3`). **Ne JAMAIS le
+  tuer pendant les migrations** : une migration à moitié appliquée est pire qu'un
+  déploiement terminé.
+- **Retour arrière** : uniquement par la voie manuelle (« Retour arrière »). La CI
+  refuse un commit antérieur à la version de la production.
+- **Rotation** : regénérer la paire, remplacer la ligne `authorized_keys`, remplacer
+  le secret d'environnement, supprimer l'ancienne clé privée. Voir
+  [SECURITY.md](../governance/SECURITY.md), section 8.
+- **Un déploiement échoue sur « le checkout est sur un commit hors de main »** : un
+  essai manuel a laissé le serveur sur un autre commit. Le remettre sur
+  `origin/main` à la main, puis relancer le workflow.
+
 ## Cycle courant
 
-Le staging d'abord, la production ensuite, **sur le même commit**.
+Le staging d'abord, la production ensuite, **sur le même commit**. Deux voies
+coexistent : la voie automatisée par GitHub Actions
+([Déploiement continu](#déploiement-continu-github-actions), **non éprouvée**) et
+la voie manuelle par SSH, qui reste valable et qui sert de repli.
 
 1. **Fusionner** la pull request dans `main` (décision de l'utilisateur), CI
    verte, job `infra` compris.
-2. **Placer le checkout** sur le commit voulu d'`origin/main`
-   (`git fetch origin`, puis `git merge --ff-only origin/main` si le checkout
-   suit `main`) et noter `git rev-parse --short HEAD`. Si la fusion a créé un
-   nouveau commit, c'est lui qui se valide, pas celui de la branche.
-3. **Déployer le staging** : `./infra/scripts/deploy.sh staging`. Il n'exige ni
-   arbre propre ni commit dans `origin/main` (un essai avant fusion reste
-   possible), mais le checkout étant partagé, le déplacer change ce que la
-   prochaine construction de la production emploierait : avant tout déploiement
-   de production, le remettre sur le commit validé.
+2. **Le staging part tout seul** après la fusion, si la CI du push est verte et si
+   l'interrupteur `AUTO_DEPLOY_STAGING` vaut `true` : suivre l'exécution
+   « Déploiement » dans l'onglet Actions de GitHub, noter le commit déployé (lignes
+   `ci-deploy:`). Interrupteur à `false`, ou besoin de le lancer à la main :
+   « Run workflow » (environnement `staging`). **Un essai manuel sur le staging
+   avant la fusion bloque ce déploiement automatique** : tant que le checkout du
+   serveur n'est pas remis sur `origin/main`, `ci-deploy.sh` s'arrête (« le
+   checkout est sur un commit hors de main »). Remettre le checkout sur
+   `origin/main` avant la fusion, ou juste après l'essai.
+3. **Voie manuelle du staging** : placer le checkout sur le commit voulu
+   d'`origin/main` (`git fetch origin`, puis `git merge --ff-only origin/main` si
+   le checkout suit `main`), noter `git rev-parse --short HEAD` (si la fusion a créé
+   un nouveau commit, c'est lui qui se valide, pas celui de la branche), puis
+   `./infra/scripts/deploy.sh staging`. Il n'exige ni arbre propre ni commit dans
+   `origin/main` (un essai avant fusion reste possible), mais le checkout étant
+   partagé, le déplacer change ce que la prochaine construction de la production
+   emploierait : avant tout déploiement de production, le remettre sur le commit
+   validé.
 4. **Valider sur le staging** (liste ci-dessous).
-5. **Sauvegarder la production, juste avant** : `./infra/scripts/backup.sh prod`.
-   Les migrations ne se défont pas : c'est cette sauvegarde qui permet de revenir
-   en arrière. Ce n'est plus seulement une bonne pratique : **`deploy.sh prod`
-   échoue** si la base est déjà initialisée et qu'aucun `db-*.sql.gz` de moins de
-   24 heures n'existe dans `BACKUP_DIR` (contrôle fait après la construction des
-   images, juste avant les migrations).
-6. **Étiqueter les images actuelles** pour un retour arrière (`deploy.sh` les
-   reconstruit sous l'étiquette `latest`, l'ancienne image serait perdue) :
+5. **Déployer la production, voie recommandée** : « Run workflow », environnement
+   `prod`, champ « commit » vide (le dernier commit déployé avec succès sur le
+   staging). Le workflow fait, dans l'ordre : sauvegarde (`backup.sh prod`),
+   étiquetage des images actuelles (`avant-<date>-<version de la production>`), puis
+   `deploy.sh prod` sur ce commit, après l'approbation de l'environnement GitHub
+   `production`. Hors heures de pointe. Le serveur refuse, côté `ci-deploy.sh`, un
+   commit jamais déployé avec succès sur le staging et tout retour arrière. Passer
+   ensuite à l'étape 8.
+6. **Voie manuelle de la production : sauvegarder, juste avant** :
+   `./infra/scripts/backup.sh prod`. Les migrations ne se défont pas : c'est cette
+   sauvegarde qui permet de revenir en arrière. Ce n'est plus seulement une bonne
+   pratique : **`deploy.sh prod` échoue** si la base est déjà initialisée et
+   qu'aucun `db-*.sql.gz` de moins de 24 heures n'existe dans `BACKUP_DIR`
+   (contrôle fait après la construction des images, juste avant les migrations).
+7. **Voie manuelle : étiqueter les images actuelles** pour un retour arrière
+   (`deploy.sh` les reconstruit sous l'étiquette `latest`, l'ancienne image serait
+   perdue), puis **déployer la production** sur le même commit, hors heures de
+   pointe :
 
    ```bash
    docker tag immotopia-prod-api:latest immotopia-prod-api:avant-AAAAMMJJ
    docker tag immotopia-prod-web:latest immotopia-prod-web:avant-AAAAMMJJ
+   ./infra/scripts/deploy.sh prod
    ```
 
-7. **Déployer la production** sur le même commit, hors heures de pointe :
-   `./infra/scripts/deploy.sh prod`. Vérifier que le commit affiché est celui du
-   staging : `tail -n 1 /home/deployer/deploy-history-immotopia-saas.log`
-   (troisième colonne) doit égaler `git rev-parse --short HEAD`. Ne rien faire
-   d'autre dans le checkout pendant ce temps (pas de `git checkout`, pas de
-   fichier créé, pas de second `deploy.sh`) : le script vérifie que `HEAD` et
-   l'arbre n'ont pas bougé juste avant la construction et juste avant les
-   migrations, et s'arrête sinon.
+   Vérifier que le commit affiché est celui du staging :
+   `tail -n 1 /home/deployer/deploy-history-immotopia-saas.log` (troisième colonne)
+   doit égaler `git rev-parse --short HEAD`. Ne rien faire d'autre dans le checkout
+   pendant ce temps (pas de `git checkout`, pas de fichier créé, pas de second
+   `deploy.sh`) : le script vérifie que `HEAD` et l'arbre n'ont pas bougé juste
+   avant la construction et juste avant les migrations, et s'arrête sinon.
+
 8. **Constater** : `Deploiement prod termine`, « aucun conteneur voisin n'a
    bougé », `https://clients.immotopia.cloud/ -> 200`, puis un parcours rapide
    des écrans touchés.
@@ -931,12 +1288,49 @@ suspendre ou la purger, puis relancer. Les comptes de connexion ajoutés (équip
 portails propriétaire, locataire, copropriétaire) ont le même mot de passe de test public
 que les administrateurs. Durée constatée en local : environ une heure pour les 12 agences créées de zéro (55 min mesurées), 6 minutes pour une relance sur des agences déjà peuplées.
 
-**Limite connue : documents générés.** Les modèles DOCX de bail et de quittance et les
-documents générés des baux vivent sous `assets/`, dossier absent des images Docker du
-staging (voir « Non résolus » plus haut). Sur le staging, « Générer un contrat » et le
-téléchargement des quittances du jeu de démonstration ne fonctionneront pas tant que ce
-point n'est pas corrigé ; les autres pièces (PDF de syndic, de patrimoine, de stock, de
-biens, photos) sont de vrais fichiers écrits sur le volume des téléversements.
+**Documents générés (corrigé, lot S0 de la spec 044).** Les modèles DOCX livrés
+(`assets/modeles_documents/*.docx`) sont copiés en lecture seule dans l'image
+runtime (`/app/assets/modeles_documents`) ; les documents générés et les
+modèles importés par une agence s'écrivent sous `UPLOADS_DIR`
+(`/data/uploads/generated_documents`, `/data/uploads/modeles_documents`), donc
+sur le volume `<pile>-uploads-data`, sauvegardé par `backup.sh`. À vérifier sur
+le staging après le prochain déploiement : « Générer un contrat » et le
+téléchargement d'une quittance.
+
+**Fichiers semés hors du volume (corrigé, réparation à lancer une fois).** Le seed
+tourne dans un conteneur `migrate` **jetable** : seul le volume `<pile>-uploads-data`
+(monté sur `/data/uploads`, `UPLOADS_DIR`) survit à la fin du script. Les agences
+semées avant le correctif ont eu leurs documents locatifs (contrats, avenants,
+reçus, quittances, relevés) et les modèles de l'agence écrits sous `/repo/assets/...`,
+dans ce conteneur : les lignes `RentalDocument.file_path` et
+`DocumentTemplate.storage_path` pointent vers des fichiers disparus et hors des dossiers
+que l'API lit. Symptôme : « Envoyer pour signature » répond « Fichier du document
+invalide », le téléchargement d'une quittance échoue. Le correctif fait écrire le seed
+sur le volume (mêmes helpers que l'API, `utils/assets-paths.ts`) et monte `assets/` du
+dépôt en lecture seule dans le conteneur (l'image `migrate` n'embarque pas les modèles
+livrés ; un écrivain qui oublierait `UPLOADS_DIR` échoue donc au lieu de perdre ses
+fichiers). Pour réparer les agences **déjà semées**, sans purge ni recréation :
+
+```bash
+./infra/scripts/seed-pack-tests.sh staging --repair-files --dry-run   # n'affiche que le plan
+./infra/scripts/seed-pack-tests.sh staging --repair-files             # répare les fichiers
+```
+
+À lancer sur le serveur, depuis `/home/deployer/immotopia-saas`, **après** le
+déploiement qui apporte le correctif (l'image `migrate` doit contenir le script de
+réparation : `deploy.sh staging` la reconstruit). Le mode **refuse `prod`** comme le
+reste du script. Pour chaque document locatif et chaque modèle d'une agence de test dont
+le fichier est absent ou hors du volume, il réécrit le fichier sur le volume et met le
+chemin à jour : documents reconstitués avec le même générateur Word que le seed (à
+partir du numéro, de la date, du bail et de la description de la ligne ; ce n'est pas le
+contenu d'origine, perdu), modèles recopiés depuis `assets/modeles_documents`. Il n'affiche
+que des **compteurs** par agence (examinés, réparés, déjà sains, impossibles avec leur code
+d'erreur), jamais un contenu ni un chemin, et il est **idempotent** : un second passage
+répare 0 ligne. Il redonne ensuite les droits du volume à l'utilisateur de l'API
+(`chown`, comme le seed). Si une agence de gestion locative n'a aucun modèle propre, il
+le signale : relancer alors `./infra/scripts/seed-pack-tests.sh staging`, qui crée les
+modèles manquants. Les gabarits globaux « par défaut » (`db:seed:document-templates`)
+ne sont pas concernés : `bootstrap.sh` ne les pose toujours pas.
 
 ```bash
 ./infra/scripts/deploy.sh staging           # amène d'abord le web à jour
@@ -980,7 +1374,9 @@ touche pas le statut d'une agence existante.
 ### Retour arrière (non éprouvé)
 
 Les images se remettent à l'étiquette précédente ; la base, elle, n'est pas
-défaite.
+défaite. **Le retour arrière se fait uniquement par cette voie manuelle** : le
+déploiement continu (`ci-deploy.sh`) refuse un commit antérieur à la version de la
+production.
 
 ```bash
 docker tag immotopia-prod-api:avant-AAAAMMJJ immotopia-prod-api:latest
@@ -989,7 +1385,7 @@ docker tag immotopia-prod-web:avant-AAAAMMJJ immotopia-prod-web:latest
 ```
 
 - **Une sauvegarde de moins de 24 heures doit exister**, même avec `--no-build` :
-  celle qui a précédé le déploiement (étape 5 du cycle) convient tant qu'elle a
+  celle qui a précédé le déploiement (étape 5 ou 6 du cycle) convient tant qu'elle a
   moins de 24 heures ; sinon `./infra/scripts/backup.sh prod` d'abord.
 - **Laisser le checkout sur le commit déployé.** Le remettre sur l'ancien commit
   ferait voir à `deploy.sh prod` les migrations déjà appliquées comme
@@ -1037,6 +1433,222 @@ seul le journal dit ce qui aurait été refusé. `make-env.sh` livre `warn` dans
 deux environnements : tant que la bascule n'est pas faite, le filet
 multi-tenant et les quotas d'abonnement de la production ne bloquent rien (voir
 les [points ouverts](#points-ouverts)).
+
+### Script d'exploitation Windows
+
+`infra/scripts/exploitation-syndic.ps1` se lance depuis le **poste Windows**
+(PowerShell 5.1 ou 7, client OpenSSH, agent SSH chargé : `ssh-add -l`) et agit
+sur le serveur par `ssh` avec les réglages de ce document (hôte `147.93.44.169`,
+port `2222`, utilisateur `deployer`, paramètres `-Hote`, `-Port`,
+`-Utilisateur`). Aucune clé ni aucun mot de passe n'est dans le script.
+
+| Action        | Diagnostic (sans `-Appliquer`)                                                                            | Avec `-Appliquer`                                                                                                                  |
+| ------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `-CleIban`    | `DIRECT_DEBIT_IBAN_KEY` absente, vide, valide ou non conforme ; différente de `PAYMENT_SECRETS_KEY`       | Absente ou vide seulement : clé générée localement, écrite, copiée dans le presse-papiers. Une clé valide n'est **jamais** changée |
+| `-Simulateur` | Valeur de `PAYMENT_GATEWAY_SIMULATOR`                                                                     | Pose `1` (`-Desactiver` : `0`) ; sur prod, il faut taper `prod`                                                                    |
+| `-Mail`       | Variables `EMAIL_*` (mot de passe masqué), connexion TCP/TLS et authentification depuis le conteneur API  | Délègue à `set-email-smtp.sh` en terminal interactif (mot de passe saisi sur le serveur)                                           |
+| `-Pool`       | `connection_limit` et `pool_timeout` de `DATABASE_URL`, `max_connections` de postgres, CPU et mémoire     | Ajoute ou remplace les deux paramètres (défauts `-ConnectionLimit 20`, `-PoolTimeout 20`)                                          |
+| `-Proxy`      | `limit_req`, `limit_conn`, timeouts nginx, 503 des dernières 24 h par URL, erreurs de pool Prisma (P2024) | Rien : le dépôt ne contient aucun `limit_req`, nginx n'est pas modifié                                                             |
+| `-Tout`       | `-CleIban -Mail -Pool -Proxy` et l'état du simulateur                                                     | N'active **jamais** le simulateur ni ne réécrit le SMTP (commutateurs explicites)                                                  |
+
+```powershell
+# 1. Diagnostic d'abord : lecture seule, rien n'est modifié.
+.\infra\scripts\exploitation-syndic.ps1 -Environnement prod -Tout
+# 2. Application ciblée, après lecture du diagnostic.
+.\infra\scripts\exploitation-syndic.ps1 -Environnement prod -CleIban -Pool -Appliquer
+# Simulateur pour une recette sur prod, puis retrait.
+.\infra\scripts\exploitation-syndic.ps1 -Environnement prod -Simulateur -Appliquer
+.\infra\scripts\exploitation-syndic.ps1 -Environnement prod -Simulateur -Desactiver -Appliquer
+# E-mail : diagnostic avec un envoi de test réel.
+.\infra\scripts\exploitation-syndic.ps1 -Environnement prod -Mail -EmailTest moi@exemple.com
+```
+
+Garde-fous :
+
+- **Diagnostic par défaut.** Sans `-Appliquer`, rien n'est écrit (seul
+  `-EmailTest` envoie un message réel). Sur prod, `-Appliquer` demande de taper
+  `prod`.
+- **Une variable à la fois, sauvegardée avant.** Le fichier d'environnement est
+  copié en `<fichier>.avant-<action>-<horodatage>` (mode 600), puis une seule
+  ligne est remplacée ou ajoutée, par écriture atomique en mode 600. Ces copies
+  contiennent les secrets en clair : les supprimer une fois la modification
+  validée.
+- **Aucun secret affiché ni passé en argument.** Seuls le nom, la présence, la
+  longueur ou une empreinte tronquée apparaissent ; la clé IBAN transite par
+  l'entrée standard de `ssh`.
+- **Clé IBAN jamais remplacée si elle est valide** : les IBAN déjà chiffrés
+  deviendraient illisibles. La rotation suit « Clé dédiée aux IBAN ».
+- **Simulateur sur prod** : paiements simulés acceptés dans une base de vrais
+  clients. Confirmation par saisie de `prod`, à désactiver après la recette.
+  `deploy.sh prod` refuse de déployer tant que `PAYMENT_GATEWAY_SIMULATOR=1`.
+- **Prise en compte** : l'API (seule) est recréée par `docker compose up -d
+--no-deps --force-recreate api` avec les réglages du dépôt, sans
+  reconstruction ni migration, sous le verrou de `deploy.sh`, puis `/health` est
+  contrôlé. En cas d'échec, le script affiche la commande de restauration de la
+  sauvegarde.
+- **`connection_limit`** : l'API est un seul processus par pile, Prisma retient
+  sinon `2 × CPU + 1`, et PostgreSQL accepte 100 connexions par défaut. Le
+  serveur refuse une valeur supérieure à `max_connections - 20`.
+
+Code de sortie : `0` sans échec (des points « À FAIRE » peuvent subsister), `1` au
+moins un échec, `2` emploi incorrect.
+
+### Rattrapage des honoraires de gestion (PR « Opérateur intégré »)
+
+À faire **une fois, APRÈS la migration et AVANT d'ouvrir la version aux
+utilisateurs**, sur le staging puis sur la production. Un niveau de conditions
+d'honoraires (bail, propriétaire, agence) ne vaut que pour les encaissements
+enregistrés après son dernier enregistrement (`feeTermsApplyToAllocation`) :
+un encaissement antérieur dont les honoraires ne sont pas encore figés n'en
+recevrait **jamais**. Le script fige l'historique de chaque agence avec les
+conditions encore en vigueur (`freezeManagementFees`, le même appel que celui
+qui précède chaque changement de conditions).
+
+```bash
+C=immotopia-prod-api; T=dist/scripts/backfill-management-fees.js   # staging : immotopia-saas-api
+# 1. Simulation (rien n'est écrit) : encaissements et honoraires qui seraient figés, par agence.
+docker exec $C node $T --allow-production
+# 2. Lire le rapport, puis appliquer (idempotent : on peut le relancer).
+docker exec $C node $T --allow-production --apply
+# Une seule agence : --tenant <id>. Sortie machine : --json.
+```
+
+- **Simulation par défaut.** `--apply` écrit ; `--allow-production` est exigé
+  dans le conteneur (`NODE_ENV=production`). Une agence en échec est signalée
+  sans arrêter les autres (code de sortie 1).
+- **Idempotent.** Seuls les encaissements sans honoraires sont traités (unicité
+  sur l'affectation) : un second passage, ou un passage concurrent, ne crée
+  rien. Un nouvel `--apply` après coup ne touche que les encaissements arrivés
+  entre-temps.
+- **Sauvegarde d'abord** en production (`./infra/scripts/backup.sh prod`), comme
+  pour tout déploiement. Le rattrapage ne modifie ni ne supprime aucune ligne
+  existante : il ajoute des lignes d'honoraires.
+- Le fichier est compilé dans l'image (`src/scripts/`) ; en développement :
+  `npm run ops:backfill-management-fees -w @immotopia/api -- [options]`.
+- Après `--apply`, la simulation doit afficher 0 encaissement pour chaque agence
+  (les encaissements sans condition d'honoraires applicable restent sans
+  honoraires, ce qui est voulu : ils n'apparaissent pas non plus en simulation).
+
+### Clé dédiée aux IBAN (prélèvement bancaire)
+
+Les IBAN des mandats de prélèvement (spec 042) sont chiffrés en AES-256-GCM avec
+une clé **dédiée**, `DIRECT_DEBIT_IBAN_KEY`, distincte de `PAYMENT_SECRETS_KEY`
+(qui protège les clés API de paiement). Chaque valeur stockée porte
+l'identifiant de la clé qui l'a chiffrée (`ddk1:<id de clé>:…`), ce qui permet de
+changer de clé sans perdre l'existant. Les valeurs de l'ancien format `pg1`
+(chiffrées avec `PAYMENT_SECRETS_KEY`) restent **lisibles** ; on n'écrit plus
+jamais en `pg1`.
+
+- **Génération** : `openssl rand -base64 32`. `make-env.sh` la génère pour une
+  pile neuve et ajoute une ligne `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS=` vide.
+- **Sauvegarde hors serveur** (gestionnaire de mots de passe), avec le reste du
+  fichier de secrets : la perdre rend les IBAN illisibles, les mandats devraient
+  être ressaisis. `backup.sh` ne la couvre pas.
+- **Sans clé**, l'API démarre mais refuse de créer un mandat ; les mandats
+  existants au format `pg1` restent lisibles. L'API **refuse de démarrer** si la
+  clé est identique à `PAYMENT_SECRETS_KEY` ou si une entrée de
+  `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` n'est pas une clé de 32 octets en base64
+  canonique (44 caractères, terminée par `=`) ou est manifestement faible
+  (moins de 16 octets distincts). `deploy.sh` applique la même forme et refuse
+  avant de remplacer le conteneur.
+- **Contrôles de `deploy.sh`** : doublons de ligne, valeur `REMPLACER`, égalité
+  avec `PAYMENT_SECRETS_KEY` (échec) ; en production, unicité face au staging,
+  trousseau compris (échec) ; clé absente en production (avertissement). Rien
+  n'est jamais affiché.
+
+**Rotation** (par exemple après une suspicion de fuite) :
+
+1. Sauvegarde fraîche (`backup.sh`), puis copie de l'ancien fichier de secrets
+   hors serveur.
+2. Générer la nouvelle clé. Dans le fichier de secrets, mettre l'**ancienne**
+   valeur de `DIRECT_DEBIT_IBAN_KEY` dans `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS`
+   (séparées par des virgules s'il y en a déjà), puis la nouvelle dans
+   `DIRECT_DEBIT_IBAN_KEY` (en modifiant les lignes existantes, sans doublon).
+3. Recréer l'API : `./infra/scripts/deploy.sh <staging|prod> --no-build`. Les
+   mandats existants restent lisibles, les nouveaux sont chiffrés avec la
+   nouvelle clé.
+4. Rechiffrer : `docker exec <conteneur-api> node dist/scripts/reencrypt-direct-debit-ibans.js --dry-run`,
+   puis la même commande sans `--dry-run`. Le script n'affiche que des compteurs,
+   l'identifiant de la clé courante et les identifiants des mandats illisibles
+   (code de sortie 0 : **toutes** les valeurs ont été déchiffrées, y compris
+   celles déjà sur la clé courante, et aucune n'a changé entre-temps ; 2 : il
+   reste des illisibles, code prioritaire ; 3 : des mandats ont changé entre la
+   lecture et l'écriture, relancer ; 1 : erreur d'usage ou de configuration). Il
+   est idempotent : relancé, il annonce 0 mandat rechiffré, et préserve la date
+   de dernière modification des mandats.
+5. N'**ôter l'ancienne clé** de `DIRECT_DEBIT_IBAN_PREVIOUS_KEYS` (et recréer
+   l'API) qu'après un passage à 0 à rechiffrer, 0 illisible, **et** une
+   sauvegarde de la base vérifiée faite après le rechiffrement : une sauvegarde
+   antérieure contient encore des valeurs chiffrées avec l'ancienne clé.
+
+Points d'attention de la rotation :
+
+- **Pas de retour arrière après rechiffrement.** Une version de l'API
+  antérieure à ce changement ne sait pas lire le format `ddk1` : une fois des
+  valeurs rechiffrées, revenir à cette version rend les IBAN illisibles. Le
+  retour arrière passe par un correctif en avant, pas par l'ancienne image.
+- **Conserver l'ancienne clé** dans le gestionnaire de mots de passe jusqu'à
+  l'expiration des sauvegardes (14 jours), avec l'identifiant de clé affiché par
+  le script : c'est la seule façon de relire une sauvegarde antérieure.
+- **Rotation après une fuite** : purger aussi du serveur les copies du fichier
+  de secrets (`*.env.bak-*`), qui contiennent l'ancienne clé en clair.
+
+> **Staging — commandes à lancer par l'utilisateur** (aucun agent ne touche au
+> fichier de secrets). Ordre : la clé peut être ajoutée **avant** la fusion de la
+> PR (l'API actuelle ignore la variable) ; le script de rechiffrement n'existe
+> dans le conteneur qu'**après le déploiement** de cette PR.
+>
+> ```bash
+> F=/home/deployer/immotopia-saas.env
+>
+> # 1. Ajout idempotent de la clé, sans jamais l'afficher. Le bloc est dans un
+> #    sous-shell ( … ) : aucun `exit`, la session SSH reste ouverte, et le
+> #    `umask 077` ne la déborde pas. Une valeur de 44 caractères déjà présente
+> #    est laissée telle quelle ; une ligne vide, « REMPLACER » ou entre
+> #    guillemets est à corriger À LA MAIN (jamais de doublon : Compose retient
+> #    la dernière occurrence).
+> (
+>   umask 077
+>   F=/home/deployer/immotopia-saas.env
+>   if [ ! -f "$F" ]; then
+>     echo "fichier absent"
+>   else
+>     if grep -Eq '^DIRECT_DEBIT_IBAN_KEY=.{44}$' "$F"; then
+>       echo "DIRECT_DEBIT_IBAN_KEY déjà renseignée : inchangée"
+>     elif grep -q '^DIRECT_DEBIT_IBAN_KEY=' "$F"; then
+>       echo "ligne DIRECT_DEBIT_IBAN_KEY présente mais vide ou non conforme : à corriger à la main"
+>     else
+>       K="$(openssl rand -base64 32)"
+>       if [ "${#K}" -eq 44 ]; then
+>         printf '\nDIRECT_DEBIT_IBAN_KEY=%s\n' "$K" >> "$F"
+>       else
+>         echo "génération de la clé échouée : rien n'est écrit"
+>       fi
+>       unset K
+>     fi
+>     grep -q '^DIRECT_DEBIT_IBAN_PREVIOUS_KEYS=' "$F" || printf '\nDIRECT_DEBIT_IBAN_PREVIOUS_KEYS=\n' >> "$F"
+>   fi
+> )
+>
+> # 2. Mode 600 attendu (affiche « 600 »).
+> stat -c '%a' "$F"
+>
+> # 3. Une seule ligne par clé (affiche « 1 »), et clé différente de PAYMENT_SECRETS_KEY
+> #    (empreintes tronquées de la VALEUR seule : deux résultats différents, jamais les clés).
+> grep -c '^DIRECT_DEBIT_IBAN_KEY=' "$F"
+> for k in PAYMENT_SECRETS_KEY DIRECT_DEBIT_IBAN_KEY; do grep -E "^$k=" "$F" | cut -d= -f2- | tr -d '"' | sha256sum | cut -c1-12; done
+>
+> # 4. Sauvegarder le fichier HORS SERVEUR (gestionnaire de mots de passe) AVANT de continuer.
+>
+> # 5. Prise en compte : recréation de l'API sans reconstruire
+> #    (voir « Modifier une variable d'environnement »).
+> ./infra/scripts/deploy.sh staging --no-build
+>
+> # 6. APRÈS le déploiement de la PR : simulation puis rechiffrement
+> #    (résultat attendu aujourd'hui : 0 mandat).
+> docker exec immotopia-saas-api node dist/scripts/reencrypt-direct-debit-ibans.js --dry-run
+> docker exec immotopia-saas-api node dist/scripts/reencrypt-direct-debit-ibans.js
+> ```
 
 ### Lot 040 — contrôle du stock de chantier
 
@@ -1158,6 +1770,79 @@ journal ; celui d'un expéditeur inconnu n'est gardé qu'en empreinte HMAC. Les
 photos sont des fichiers privés (`uploads/stock-whatsapp/<agence>/…`), jamais
 servis en statique, et partent avec l'export d'agence.
 
+### Lot 044 — Signature électronique : Yousign sandbox sur le staging
+
+Spec `specs/044-signature-electronique/`, détail de l'adaptateur dans
+[signature-prestataire.md](../integrations/signature-prestataire.md). Le staging
+tourne en `NODE_ENV=production` comme la production : sans réglage, `env.ts` refuse
+au démarrage `SIGNATURE_PROVIDER=yousign` avec une base « sandbox » (le refus est
+voulu pour la production), et la base de production Yousign y produirait de vraies
+signatures facturées. Le drapeau `YOUSIGN_ALLOW_SANDBOX=1` lève ce seul refus, sur le
+staging seulement.
+
+| Variable                 | Staging                                           | Production                                                              |
+| ------------------------ | ------------------------------------------------- | ----------------------------------------------------------------------- |
+| `SIGNATURE_PROVIDER`     | `yousign` pour essayer Yousign ; sinon `internal` | `yousign` (ou `internal`) selon le choix produit; `disabled` par défaut |
+| `YOUSIGN_API_BASE_URL`   | `https://api-sandbox.yousign.app/v3` (défaut)     | `https://api.yousign.app/v3`                                            |
+| `YOUSIGN_ALLOW_SANDBOX`  | `1`                                               | absent (`0`) : `deploy.sh prod` refuse `1`                              |
+| `YOUSIGN_API_KEY`        | clé de la **sandbox** Yousign                     | clé de production, distincte                                            |
+| `YOUSIGN_WEBHOOK_SECRET` | secret du webhook sandbox (32 caractères)         | secret du webhook de production, distinct                               |
+
+**État du staging réel (relevé du 2026-10-16, soir).** Relevé par l'utilisateur sur le
+serveur, non revérifié depuis le dépôt. Le fichier `/home/deployer/immotopia-saas.env`
+est antérieur à `make-env.sh` : il ne portait ni `SIGNATURE_PROVIDER`, ni
+`PAYMENT_GATEWAY_SIMULATOR`, ni configuration e-mail, alors que le tableau « Vue
+d'ensemble » les donne pour acquis (il décrit la cible que `make-env.sh staging`
+écrit, pas l'état d'un fichier plus ancien). Corrigé le jour même, à la main :
+
+- `SIGNATURE_PROVIDER=internal` : la signature interne est active, **Yousign ne l'est
+  pas encore** (ce lot : passer à `yousign` avec les lignes ci-dessous) ;
+- `PAYMENT_GATEWAY_SIMULATOR=1` : le simulateur de paiement est disponible ;
+- e-mail : boîte dédiée au staging, configurée par `set-email-smtp.sh` (port 465) ;
+  `deploy.sh staging --no-build` passé, test `verify()` de nodemailer : « SMTP OK » ;
+- `SMS_PROVIDER` reste **absent** (donc `disabled`) : pas de canal SMS sur le staging.
+
+Piège à retenir : un fichier de secrets plus ancien que `make-env.sh` ne reçoit
+jamais les réglages que le script écrit aujourd'hui pour un fichier neuf. Pour un
+fichier existant, comparer ses clés à celles du gabarit (`grep -E '^(...)='`, voir
+« Différences de configuration, staging et production »), sans afficher les secrets.
+
+**Brancher la sandbox**, dans `/home/deployer/immotopia-saas.env` (édité à la main
+sur le serveur, en **modifiant les lignes existantes**, sans les doubler) :
+
+```bash
+SIGNATURE_PROVIDER=yousign
+YOUSIGN_API_KEY=…            # clé API de la sandbox, jamais celle de la production
+YOUSIGN_WEBHOOK_SECRET=…     # 32 caractères, le même que celui déclaré chez Yousign
+YOUSIGN_API_BASE_URL=https://api-sandbox.yousign.app/v3
+YOUSIGN_ALLOW_SANDBOX=1
+```
+
+Puis [modifier une variable](#modifier-une-variable-denvironnement) :
+`./infra/scripts/deploy.sh staging --no-build`. Le journal de l'API doit porter
+l'avertissement « les signatures n'ont aucune valeur ». Webhook à déclarer chez
+Yousign, dans la sandbox : `https://app.immotopia.cloud/api/public/signature-provider/yousign`
+(événements et secret : [signature-prestataire.md](../integrations/signature-prestataire.md#créer-le-webhook-chez-yousign)).
+
+**`SIGNATURE_PROVIDER` est unique.** Un seul fournisseur sert tout le serveur :
+
+- avec `yousign`, **le canal SMS est refusé** (ainsi que WhatsApp et « sur place ») :
+  Yousign n'invite que par e-mail ;
+- tester le SMS (Orange CI) exige `SIGNATURE_PROVIDER=internal` (ou `log`) et
+  `SMS_PROVIDER=orange` avec un compte Orange CI **dédié au staging** ;
+- **`SMS_PROVIDER=log` est refusé sur le staging** : `NODE_ENV=production` et le
+  transport `log` n'est accepté que si `NODE_ENV` vaut `development` ou `test`. Le
+  staging n'a donc pas de SMS « à blanc » : `orange` ou `disabled`.
+
+Passer d'un essai à l'autre revient à modifier le fichier de secrets et à
+redéployer avec `--no-build`.
+
+**Refus de `deploy.sh prod`.** Le script refuse la production si le fichier de
+secrets porte `YOUSIGN_ALLOW_SANDBOX=1`, quelle que soit l'écriture (`export`,
+guillemets, espaces), comme `PAYMENT_GATEWAY_SIMULATOR`. Sans le drapeau, `env.ts`
+refuse de toute façon une base « sandbox » en production : deux barrières
+indépendantes. Ne pas copier le fichier de secrets du staging vers la production.
+
 ## Sauvegarde et restauration
 
 ### Ce que produit `backup.sh` (non éprouvé)
@@ -1198,8 +1883,9 @@ se chevaucher. Code de sortie non nul au moindre échec.
 - **Ce que `backup.sh` ne sauvegarde pas** : le fichier de secrets (à conserver
   hors serveur, étape 1), le volume des journaux (`<pile>-api-logs`), la
   configuration nginx et les certificats, la crontab, la configuration rclone, et
-  tout dossier `assets/` créé dans le conteneur d'API (voir
-  [points ouverts](#points-ouverts)).
+  tout dossier `assets/` créé dans le conteneur d'API (les documents générés
+  sont désormais sur le volume des téléversements, voir
+  [« Fichiers livrés et fichiers générés »](#fichiers-livrés-et-fichiers-générés)).
 
 ### `restore-check.sh` (non éprouvé)
 
@@ -1339,33 +2025,36 @@ neuf, puis reprendre les étapes 2 à 8 ci-dessus.
 
 ## Différences de configuration, staging et production
 
-| Réglage                                                     | Staging                                                       | Production                                                          |
-| ----------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Origine (`PUBLIC_ORIGIN`, `FRONTEND_URL`, `BACKEND_URL`)    | `https://app.immotopia.cloud`                                 | `https://clients.immotopia.cloud`                                   |
-| `NODE_ENV`                                                  | `production`                                                  | `production` (mêmes contrôles au démarrage sur les deux piles)      |
-| `VITE_SHOW_DEMO_ACCOUNTS` (figé dans l'image web)           | `true`                                                        | `false`                                                             |
-| `PAYMENT_GATEWAY_SIMULATOR`                                 | `1`                                                           | absent, `deploy.sh prod` refuse `1`                                 |
-| `PLATFORM_PAYSECUREHUB_MODE`                                | `SIMULATOR`                                                   | `SIMULATOR` à la création, puis `LIVE` (avertissement tant que non) |
-| E-mail, WhatsApp, Google OAuth                              | vides ou bac à sable, client OAuth propre                     | identifiants réels dédiés, client OAuth propre                      |
-| Clés d'intégration (contrôle de `deploy.sh`)                | avertissement si l'une est renseignée                         | avertissement si l'une est identique à celle du staging             |
-| Assistant IA (`AI_PROVIDER`)                                | `disabled`, ou clé propre au staging                          | selon le choix produit ; `fake` refusé sur les deux                 |
-| `TENANT_GUARD_MODE`, `SUBSCRIPTION_ENFORCEMENT`             | `warn` à la création ; on bascule ici d'abord                 | `warn` à la création ; `enforce` seulement après le staging         |
-| `JWT_SECRET`, mot de passe Postgres, `PAYMENT_SECRETS_KEY`  | propres à la pile                                             | propres à la pile, distincts de ceux du staging (échec sinon)       |
-| Migrations orphelines tolérées                              | celles de `migrations-orphelines-connues.txt`                 | aucune                                                              |
-| Arbre git propre et `HEAD` dans `origin/main` (`deploy.sh`) | non exigés                                                    | exigés, revérifiés avant la construction et avant les migrations    |
-| Sauvegarde `db-*.sql.gz` de moins de 24 h avant de migrer   | non exigée                                                    | exigée dès que la base est initialisée (pas au premier déploiement) |
-| En-tête `X-Robots-Tag: noindex, nofollow`                   | prévu par le vhost du dépôt, à ajouter à la main côté serveur | non posé                                                            |
-| `BACKUP_DIR`, `BACKUP_KEEP_DAYS`                            | `/home/deployer/backups/immotopia-saas`, 14                   | `/home/deployer/backups/immotopia-prod`, 14                         |
+| Réglage                                                                             | Staging                                                       | Production                                                          |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Origine (`PUBLIC_ORIGIN`, `FRONTEND_URL`, `BACKEND_URL`)                            | `https://app.immotopia.cloud`                                 | `https://clients.immotopia.cloud`                                   |
+| `NODE_ENV`                                                                          | `production`                                                  | `production` (mêmes contrôles au démarrage sur les deux piles)      |
+| `VITE_SHOW_DEMO_ACCOUNTS` (figé dans l'image web)                                   | `true`                                                        | `false`                                                             |
+| `PAYMENT_GATEWAY_SIMULATOR`                                                         | `1`                                                           | absent, `deploy.sh prod` refuse `1`                                 |
+| `PLATFORM_PAYSECUREHUB_MODE`                                                        | `SIMULATOR`                                                   | `SIMULATOR` à la création, puis `LIVE` (avertissement tant que non) |
+| E-mail, WhatsApp, Google OAuth                                                      | vides ou bac à sable, client OAuth propre                     | identifiants réels dédiés, client OAuth propre                      |
+| Signature (`SIGNATURE_PROVIDER`, `YOUSIGN_ALLOW_SANDBOX`)                           | Yousign sandbox : `YOUSIGN_ALLOW_SANDBOX=1`                   | base de production, `deploy.sh prod` refuse le drapeau              |
+| Clés d'intégration (contrôle de `deploy.sh`)                                        | avertissement si l'une est renseignée                         | avertissement si l'une est identique à celle du staging             |
+| Assistant IA (`AI_PROVIDER`)                                                        | `disabled`, ou clé propre au staging                          | selon le choix produit ; `fake` refusé sur les deux                 |
+| `TENANT_GUARD_MODE`, `SUBSCRIPTION_ENFORCEMENT`                                     | `warn` à la création ; on bascule ici d'abord                 | `warn` à la création ; `enforce` seulement après le staging         |
+| `JWT_SECRET`, mot de passe Postgres, `PAYMENT_SECRETS_KEY`, `DIRECT_DEBIT_IBAN_KEY` | propres à la pile                                             | propres à la pile, distincts de ceux du staging (échec sinon)       |
+| Migrations orphelines tolérées                                                      | celles de `migrations-orphelines-connues.txt`                 | aucune                                                              |
+| Arbre git propre et `HEAD` dans `origin/main` (`deploy.sh`)                         | non exigés                                                    | exigés, revérifiés avant la construction et avant les migrations    |
+| Sauvegarde `db-*.sql.gz` de moins de 24 h avant de migrer                           | non exigée                                                    | exigée dès que la base est initialisée (pas au premier déploiement) |
+| En-tête `X-Robots-Tag: noindex, nofollow`                                           | prévu par le vhost du dépôt, à ajouter à la main côté serveur | non posé                                                            |
+| `BACKUP_DIR`, `BACKUP_KEEP_DAYS`                                                    | `/home/deployer/backups/immotopia-saas`, 14                   | `/home/deployer/backups/immotopia-prod`, 14                         |
 
 Comment vérifier, en lecture seule, depuis le serveur :
 
 ```bash
 # Réglages non secrets des deux fichiers (aucun secret dans cette liste).
-grep -E '^(NODE_ENV|FRONTEND_URL|BACKEND_URL|CLIENT_URL|PUBLIC_ORIGIN|PAYMENT_GATEWAY_SIMULATOR|PLATFORM_PAYSECUREHUB_MODE|AI_PROVIDER|TENANT_GUARD_MODE|SUBSCRIPTION_ENFORCEMENT)=' \
+grep -E '^(NODE_ENV|FRONTEND_URL|BACKEND_URL|CLIENT_URL|PUBLIC_ORIGIN|PAYMENT_GATEWAY_SIMULATOR|PLATFORM_PAYSECUREHUB_MODE|AI_PROVIDER|SIGNATURE_PROVIDER|YOUSIGN_API_BASE_URL|YOUSIGN_ALLOW_SANDBOX|SMS_PROVIDER|TENANT_GUARD_MODE|SUBSCRIPTION_ENFORCEMENT)=' \
   /home/deployer/immotopia-saas.env /home/deployer/immotopia-prod.env
 
-# PAYMENT_SECRETS_KEY distincte : deux empreintes différentes (pas la clé).
-for e in saas prod; do grep -E '^PAYMENT_SECRETS_KEY=' /home/deployer/immotopia-$e.env | sha256sum | cut -c1-12; done
+# PAYMENT_SECRETS_KEY et DIRECT_DEBIT_IBAN_KEY distinctes : empreintes différentes (pas les clés).
+for k in PAYMENT_SECRETS_KEY DIRECT_DEBIT_IBAN_KEY; do
+  for e in saas prod; do grep -E "^$k=" /home/deployer/immotopia-$e.env | sha256sum | cut -c1-12; done
+done
 
 # Ports et conteneurs, volumes, réseaux : chaque pile a les siens.
 docker ps --format 'table {{.Names}}\t{{.Ports}}' | grep immotopia-
@@ -1382,8 +2071,8 @@ for h in app clients; do
 done
 ```
 
-`JWT_SECRET`, `POSTGRES_PASSWORD` et `PAYMENT_SECRETS_KEY` sont déjà comparés par
-`deploy.sh prod`, qui échoue s'ils sont identiques à ceux du staging. Le panneau
+`JWT_SECRET`, `POSTGRES_PASSWORD`, `PAYMENT_SECRETS_KEY` et `DIRECT_DEBIT_IBAN_KEY`
+sont déjà comparés par `deploy.sh prod`, qui échoue s'ils sont identiques à ceux du staging. Le panneau
 de démo se vérifie à l'écran de connexion, et le bundle de production est refusé
 au build s'il contient un identifiant de démonstration (`Dockerfile.web`). Sans
 serveur, `bash infra/scripts/check-infra.sh` prouve sur le rendu Compose que les
@@ -1491,7 +2180,8 @@ ls -lh /home/deployer/backups/immotopia-prod
   court, sur une pile déjà initialisée, se change d'abord dans Postgres
   (`ALTER USER`), puis dans le fichier. De même, régénérer un fichier de
   secrets sur une pile en marche rendrait illisibles les clés de paiement
-  (`PAYMENT_SECRETS_KEY`) et invaliderait les sessions (`JWT_SECRET`) :
+  (`PAYMENT_SECRETS_KEY`), les IBAN des mandats (`DIRECT_DEBIT_IBAN_KEY`) et
+  invaliderait les sessions (`JWT_SECRET`) :
   `make-env.sh` refuse d'écraser pour cette raison.
 - **« Vide » n'est pas « absent »** pour `CLIENT_URL` et `GOOGLE_CALLBACK_URL` :
   une chaîne vide empêche l'API de démarrer (validation d'URL).
@@ -1504,28 +2194,132 @@ ls -lh /home/deployer/backups/immotopia-prod
   Le `docker-compose.yml` de la racine est un outil de développement : ne jamais
   le déployer.
 
+## Fichiers livrés et fichiers générés
+
+Choix (lot S0) : une seule règle, portée par `packages/api/src/utils/assets-paths.ts`.
+
+| Nature                                           | Emplacement dans l'image                                        | Écriture                     |
+| ------------------------------------------------ | --------------------------------------------------------------- | ---------------------------- |
+| Modèles livrés `assets/modeles_documents/*.docx` | `/app/assets/modeles_documents` (couche d'image)                | jamais, lecture seule        |
+| Documents générés (baux, quittances)             | `$UPLOADS_DIR/generated_documents/<agence>/<type>/<AAAA>/<MM>/` | volume `<pile>-uploads-data` |
+| Modèles importés par une agence                  | `$UPLOADS_DIR/modeles_documents/tenants/<agence>/`              | volume `<pile>-uploads-data` |
+
+- Pas de nouveau volume ni de nouvelle variable : `UPLOADS_DIR` (déjà
+  `/data/uploads` dans l'image et dans le compose) suffit, et `backup.sh` couvre
+  déjà ce volume. `docker-compose.yml`, `docker-compose.prod.yml` (utilisé aussi
+  pour le staging) n'ont pas changé.
+- Le serveur statique ne sert jamais `generated_documents` ni `modeles_documents`
+  (liste blanche de `uploadsAccessGuard`) : le téléchargement passe par la route
+  authentifiée.
+- `.dockerignore` : `assets/generated_documents`, `assets/modeles_documents/tenants`,
+  `assets/modeles_documents/default` et `assets/media` restent hors de l'image ;
+  seuls les `.docx` livrés à la racine de `modeles_documents` sont copiés.
+- Repli pour l'existant : un document déjà généré porte en base un chemin absolu
+  de l'ancien emplacement (`<cwd>/assets/generated_documents/...`) ; la lecture
+  l'accepte toujours (chemin stocké, dans l'ancien ou le nouveau dossier). Les
+  modèles importés sont cherchés d'abord sur le volume, puis sous
+  `assets/modeles_documents`. Aucune migration de données. Sans `UPLOADS_DIR`
+  (développement), rien ne change : tout reste sous `<racine>/assets/`.
+- Les gabarits globaux « par défaut » (`db:seed:document-templates`) ne sont
+  toujours pas amorcés par `bootstrap.sh`.
+
+### Conversion DOCX vers PDF (LibreOffice)
+
+L'étape runtime installe `libreoffice-writer`, `font-noto` et `ttf-dejavu` et
+pose `DOCX_PDF_CONVERTER=libreoffice` (`lib/pdf-convert`, utilisé par la
+signature électronique). **Impact sur l'image : de l'ordre de +450 à +600 Mo**
+(estimation Alpine, à mesurer au premier build), et un build plus long. Hors
+Docker (développement), la variable vaut `disabled` par défaut : la conversion
+répond 503 avec un message clair. Pour la désactiver sur une pile, poser
+`DOCX_PDF_CONVERTER=disabled` dans son fichier d'environnement.
+
+Durcissement : la conversion lance `soffice` avec un environnement réduit à
+`PATH`, `HOME` (dossier de travail) et `LANG` (aucun secret du serveur hérité),
+neutralise le DOCX avant conversion (relations externes, champs `INCLUDEPICTURE`
+/ `INCLUDETEXT` / `LINK`, adresses `file:`, macros) et borne les conversions à
+2 simultanées par processus (503 au-delà).
+
+### Journaux nginx sans jeton de signature
+
+Le lien `/signer/<jeton>` et l'API publique `/api/public/signatures/<jeton>`
+portent un jeton secret dans le chemin. Les trois fichiers `infra/nginx/*.conf`
+déclarent un `map` + un `log_format` (`immotopia_staging_masked`,
+`immotopia_prod_masked`, `immotopia_web_masked`) qui remplacent le jeton par
+`[masque]` dans la ligne de requête ET dans le Referer, et branchent
+`access_log` dessus. Les fichiers de `sites-enabled` sont inclus dans le
+contexte `http` : ces directives y sont valides sans toucher à `nginx.conf`.
+
+Actions sur le serveur (non éprouvées, `nginx -t` non exécuté ici) :
+
+1. **Les vhosts de l'hôte ont déjà été réécrits par certbot** : ne pas recopier
+   le fichier du dépôt. Ajouter à la main, AVANT le premier bloc `server`, les
+   blocs `map` et `log_format` du fichier du dépôt, puis remplacer dans le bloc
+   `server` qui écoute en 443 (et en 80) la ligne `access_log` par
+   `access_log /var/log/nginx/<hôte>.access.log immotopia_staging_masked;`
+   (`immotopia_prod_masked` en production).
+2. `sudo nginx -t && sudo systemctl reload nginx`.
+3. Le nginx embarqué (`spa.conf`) est reconstruit avec l'image web : redéployer.
+4. Vérifier : `curl -s https://<hôte>/signer/AAAAAAAAAAAAAAAAAAAAAAAA >/dev/null`
+   puis `grep signer /var/log/nginx/<hôte>.access.log | tail -1` doit montrer
+   `/signer/[masque]`.
+
+Limite : `error_log` peut citer la ligne de requête lors d'une erreur amont
+(502, délai). Il n'a pas de masquage possible côté nginx ; en limiter la
+conservation et l'accès (rotation courte, lecture réservée à root).
+
 ## Points ouverts
 
 Non résolus à la date de rédaction :
 
+- **Staging : Yousign sandbox et SMS pas encore branchés (relevé du 2026-10-16).** Le
+  fichier de secrets du staging, antérieur à `make-env.sh`, a été mis à niveau à la
+  main le jour même (`SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`,
+  e-mail). Restent : Yousign sandbox (cette PR, puis
+  [Lot 044](#lot-044--signature-électronique--yousign-sandbox-sur-le-staging)) et
+  `SMS_PROVIDER`, absent donc `disabled`.
+- **Déploiement continu non éprouvé.** Aucun essai réel du workflow
+  `deploy.yml` ni de `ci-deploy.sh` (clés, `known_hosts`, environnements GitHub,
+  détachement de la session, filtre de sortie, étiquettes d'images). Le premier
+  essai se fait à la main, staging d'abord ([mise en service](#mise-en-service-par-le-propriétaire-pas-à-pas)).
+- **Le staging se déploie sans sauvegarde préalable** par le déploiement continu
+  (seule la production en fait une). Une migration destructrice ou mal écrite se
+  verrait sur le staging avant la production, mais ses données de test ne seraient
+  pas restaurables : à décider si cela gêne.
+- **Canal public : hypothèse sur `deploy.sh`.** Le canal public ne reçoit des
+  étapes de `deploy.sh` que leurs titres `==> `, supposés fixes (chaînes sans
+  variable : vérifié à la rédaction) et vérifiés contre une forme et un jeu de
+  caractères stricts. Un titre d'étape futur qui contiendrait une donnée variable
+  la publierait : relire les `step` de `deploy.sh` à chaque modification. Le titre est
+  limité à `^[A-Za-z0-9 ,.()'_-]{1,100}$` (ni `/` ni `:` : aucun chemin ni URL). **Risque
+  résiduel** : une ligne de journal de conteneur qui imiterait exactement la séquence
+  de couleur d'une étape pourrait publier un faux titre de 100 caractères ordinaires
+  au plus.
+- **Protection de `main` et CODEOWNERS : décisions du propriétaire, non créées par
+  le dépôt.** Sans ruleset (PR relue, status checks requis, pas de contournement) ni
+  CODEOWNERS sur `.github/`, `infra/`, `**/Dockerfile*` et `docs/governance/`,
+  l'écriture sur `main` vaut exécution de code sur le serveur partagé : ne pas
+  activer `AUTO_DEPLOY_STAGING` avant.
+- **Propriétaire seul relecteur de `production`.** Avec « Prevent self-review »
+  désactivé, il approuve ses propres exécutions : l'approbation est formelle, pas un
+  second regard.
+- **Retour arrière : manuel uniquement.** La CI refuse tout commit antérieur à la
+  version de la production et tout commit jamais déployé avec succès sur le staging
+  (journaux `~/deploy-history-*.log`). Ce garde-fou lit ces journaux : s'ils sont
+  absents ou illisibles, la CI refuse (fermé par défaut).
+- **Version du script.** Un changement de `ci-deploy.sh` ne s'applique qu'au
+  déploiement suivant (le worker en cours exécute l'ancienne version).
+- **File d'attente d'une seule place.** Un troisième déploiement CI qui arrive
+  pendant qu'un autre attend est refusé (« réessayer plus tard ») ; GitHub marque
+  le job en échec.
+- **Registre des déploiements de GitHub.** La promotion en production lit le
+  dernier déploiement réussi de l'environnement `staging` ; ce registre garde le
+  SHA de l'exécution. Pour cette raison le staging refuse un commit saisi à la main
+  différent de la tête de `main`.
+- **Dépôt privé.** Le serveur fait son `git fetch` en HTTPS sans identifiant : si le
+  dépôt devenait privé, le déploiement continu échouerait (il faudrait une clé de
+  déploiement en lecture seule).
 - **Géographie de la Côte d'Ivoire non amorcée.** `bootstrap.sh` ne lance pas
   `db:seed:geographic` : la recherche de communes est vide. Non bloquant.
-- **Gabarits DOCX globaux (baux, quittances) non amorcés, et écriture sous
-  `<cwd>/assets/` impossible dans l'image : CONFIRMÉ le 2026-09-29.**
-  `bootstrap.sh` ne lance pas `db:seed:document-templates`. Les `.docx` sources
-  sont dans `assets/modeles_documents/` du dépôt, mais `packages/api/Dockerfile`
-  ne copie aucun dossier `assets/` dans ses images. Le code lit et écrit sous
-  `<cwd>/assets/` (`modeles_documents`, `generated_documents`) ; dans l'image
-  runtime le répertoire courant est `/app`, qui appartient à `root`, alors que le
-  conteneur tourne sous l'utilisateur `node`. Mesuré sur une image construite en
-  local : `mkdir /app/assets` répond « Permission denied » et `/app/assets`
-  n'existe pas. La génération d'un bail ou d'une quittance et l'import d'un
-  gabarit par une agence échouent donc très probablement aussi sur le staging
-  actuel. Même en créant le dossier, il vivrait dans la couche du conteneur
-  (perdu à chaque recréation) et hors sauvegarde. Correction confiée à une tâche
-  séparée (variable de dossier, volume nommé sauvegardé, gabarits livrés) ;
-  **ne pas promettre les contrats de bail ni les quittances à un client avant
-  qu'elle soit livrée et vérifiée sur le staging.**
 - **34 paramètres fiscaux livrés en statut `A_VALIDER`** (référentiel
   `TaxParameter`, migration `20261002143700_patrimoine_p4_entites_fiscalite`) :
   validation métier à obtenir avant de présenter les estimations à un client.

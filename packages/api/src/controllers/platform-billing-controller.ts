@@ -16,6 +16,7 @@ import {
   createExtensionRequest,
   handleExtensionRequest,
   listExtensionRequests,
+  listTenantExtensionOffers,
   listSubscriptionSummaries,
   MAX_SUMMARY_TENANTS,
   updateSubscriptionItem
@@ -202,5 +203,11 @@ export const createExtensionRequestHandler = asyncHandler(async (req: Request, r
 /** GET …/subscription/extension-requests */
 export const tenantListExtensionRequestsHandler = asyncHandler(async (req: Request, res: Response) => {
   const data = await listExtensionRequests(req.params.tenantId);
+  res.json({ success: true, data });
+});
+
+/** GET …/subscription/extension-offers — extensions du catalogue ouvertes par les packs de l'agence. */
+export const tenantListExtensionOffersHandler = asyncHandler(async (req: Request, res: Response) => {
+  const data = await listTenantExtensionOffers(req.params.tenantId);
   res.json({ success: true, data });
 });

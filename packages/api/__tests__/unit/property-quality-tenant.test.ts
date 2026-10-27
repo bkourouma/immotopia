@@ -8,6 +8,7 @@
 
 const propertyFindUnique = jest.fn();
 const qualityScoreFindFirst = jest.fn();
+const getTemplateByType = jest.fn().mockResolvedValue(null);
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
@@ -20,7 +21,7 @@ jest.mock('../../src/utils/database', () => ({
 }));
 
 jest.mock('../../src/services/property-template-service', () => ({
-  getTemplateByType: jest.fn().mockResolvedValue(null)
+  getTemplateByType
 }));
 
 import { calculateQualityScore, getLatestQualityScore } from '../../src/services/property-quality-service';
@@ -60,15 +61,13 @@ describe('calculateQualityScore — isolation par agence', () => {
   });
 
   it("accepte un bien d'une autre agence quand un mandat actif existe", async () => {
-    propertyFindUnique.mockResolvedValue(
-      bien({ tenantId: null, mandates: [{ tenantId: 'tenant-A' }] })
-    );
+    propertyFindUnique.mockResolvedValue(bien({ tenantId: null, mandates: [{ tenantId: 'tenant-A' }] }));
 
     const result = await calculateQualityScore('p1', 'tenant-A');
     expect(result.score).toBeGreaterThanOrEqual(0);
   });
 
-  it('renvoie NotFound quand le bien n\'existe pas du tout', async () => {
+  it("renvoie NotFound quand le bien n'existe pas du tout", async () => {
     propertyFindUnique.mockResolvedValue(null);
 
     await expect(calculateQualityScore('p1', 'tenant-A')).rejects.toThrow();
@@ -89,5 +88,57 @@ describe('getLatestQualityScore — isolation par agence', () => {
 
     const result = await getLatestQualityScore('p1', 'tenant-A');
     expect(result?.id).toBe('score-1');
+  });
+});
+
+describe('calculateQualityScore — template TERRAIN avec fieldDefinitions', () => {
+  it('calcule le score avec un template qui utilise field.key sans field.name', async () => {
+    // Template TERRAIN type : fieldDefinitions avec `key` et sans `name`
+    const terrainTemplate = {
+      propertyType: 'TERRAIN',
+      name: 'Terrain',
+      fieldDefinitions: [
+        { key: 'surfaceArea', label: 'Surface', type: 'number', required: true, section: 'basics' },
+        { key: 'description', label: 'Description', type: 'text', required: true, section: 'details' }
+        // Pas de `name` : échouerait avec `field.name.split('.')`
+      ]
+    };
+    getTemplateByType.mockResolvedValue(terrainTemplate);
+    propertyFindUnique.mockResolvedValue(
+      bien({
+        tenantId: 'tenant-A',
+        propertyType: 'TERRAIN',
+        surfaceArea: 1500,
+        description: 'Beau terrain en Cocody'
+      })
+    );
+
+    const result = await calculateQualityScore('p1', 'tenant-A');
+    expect(result.score).toBeGreaterThan(0);
+    expect(result.breakdown.requiredFields).toBe(100); // Tous les champs requis remplis
+  });
+
+  it('détecte les champs manquants sur template TERRAIN', async () => {
+    const terrainTemplate = {
+      propertyType: 'TERRAIN',
+      name: 'Terrain',
+      fieldDefinitions: [
+        { key: 'surfaceArea', label: 'Surface', type: 'number', required: true, section: 'basics' },
+        { key: 'description', label: 'Description', type: 'text', required: true, section: 'details' }
+      ]
+    };
+    getTemplateByType.mockResolvedValue(terrainTemplate);
+    propertyFindUnique.mockResolvedValue(
+      bien({
+        tenantId: 'tenant-A',
+        propertyType: 'TERRAIN',
+        surfaceArea: 1500,
+        description: null // Explicitement manquante
+      })
+    );
+
+    const result = await calculateQualityScore('p1', 'tenant-A');
+    expect(result.breakdown.requiredFields).toBeLessThan(100);
+    expect(result.suggestions.length).toBeGreaterThan(0);
   });
 });

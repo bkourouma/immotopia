@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { env } from '../config/env';
 import { t } from '../i18n';
 import { assertSignupAllowed } from '../services/signup-guard-service';
+import { hashToken } from '../lib/secure-links/token';
 
 /**
  * Limiteur d'inscription : 3 par heure et par IP (fenêtre glissante).
@@ -158,6 +159,22 @@ export const whatsappCloudWebhookRateLimiter = rateLimit({
 });
 
 /**
+ * Webhook du prestataire de signature (spec 044, lot S6) : 600 requetes par
+ * minute et par IP, AVANT la lecture du corps et la verification de signature.
+ */
+export const signatureProviderWebhookRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 600,
+  keyGenerator: req => `sig-provider:${req.ip ?? 'inconnue'}`,
+  message: {
+    success: false,
+    message: 'Trop de requêtes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
  * Routes publiques des liens securises (lib/secure-links) : 30 requetes par
  * minute et par IP, appliquees AVANT toute verification du jeton. La reponse
  * 429 est la meme quel que soit le jeton ; elle porte les memes en-tetes
@@ -219,11 +236,311 @@ export const secureLinkStatusRateLimiter = rateLimit({
   legacyHeaders: false
 });
 
+/** 429 des routes publiques de l'AG en direct : memes en-tetes anti-cache que la route. */
+function meetingLiveTooMany(_req: Request, res: Response): void {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
+}
+
+/**
+ * Cle d'un limiteur par jeton : l'EMPREINTE du jeton lu dans le corps, jamais
+ * le jeton en clair (le magasin du limiteur et ses journaux ne le voient pas).
+ * Sans jeton exploitable, repli sur l'IP.
+ */
+export function meetingLiveTokenKey(req: Request, bucket: string): string {
+  const token = (req.body as { token?: unknown } | undefined)?.token;
+  if (typeof token === 'string' && token.length > 0 && token.length <= 256) {
+    return `meeting-live-${bucket}:${hashToken(token)}`;
+  }
+  return `meeting-live-${bucket}:ip:${req.ip ?? 'inconnue'}`;
+}
+
+/**
+ * AG en direct, routes publiques (spec 043) : 3000/min par IP (une salle
+ * derriere une seule IP : 20 requetes/min par participant), applique AVANT
+ * toute lecture du corps.
+ */
+export const meetingLiveIpRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 3000,
+  keyGenerator: req => `meeting-live-ip:${req.ip ?? 'inconnue'}`,
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Interrogation de l'etat : 60/min par jeton (toutes les 3 s = 20/min, marge pour plusieurs onglets). */
+export const meetingLiveStateRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyGenerator: req => meetingLiveTokenKey(req, 'etat'),
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Visio (jeton de salle et main levee ensemble) : 20/min par jeton (spec 045). */
+export const meetingVisioRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => meetingLiveTokenKey(req, 'visio'),
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Discussion de la visio (spec 046, M4) : lecture de l'historique, 30/min par jeton. */
+export const meetingDiscussionReadRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: req => meetingLiveTokenKey(req, 'discussion'),
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Discussion de la visio (spec 046, M4) : envoi d'un message, 10/min par jeton. */
+export const meetingDiscussionSendRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => meetingLiveTokenKey(req, 'discussion-envoi'),
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Webhook LiveKit (spec 045, R4) : 3000/min par IP, applique AVANT la lecture du corps et
+ * la verification de signature (qui reste toujours exigee). LiveKit envoie TOUS ses
+ * evenements (entrees, sorties, pistes) a cette URL depuis une seule IP : une AG de
+ * 300 participants en produit des centaines par minute, et un `egress_ended` refuse
+ * ici ne serait rattrape que par la reconciliation de la liste des enregistrements.
+ */
+export const livekitWebhookRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 3000,
+  keyGenerator: req => `livekit-webhook:${req.ip ?? 'inconnue'}`,
+  message: { success: false, message: 'Trop de requêtes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Rejoindre et voter : 30/min par jeton. */
+export const meetingLiveActionRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: req => meetingLiveTokenKey(req, 'action'),
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// ---------------------------------------------------------------------------
+// Paiement mobile des copropriétaires (spec 042)
+// ---------------------------------------------------------------------------
+
+/** Test de connexion PaySecureHub d'une copropriété : appelle le fournisseur. 10 par minute et par utilisateur. */
+export const syndicGatewayTestRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `syndic-gw-test:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Solde fournisseur d'une copropriété : appelle le fournisseur. 10 par minute et par utilisateur. */
+export const syndicGatewayBalanceRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `syndic-gw-balance:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Écritures gestionnaire du paiement en ligne (configuration, vérification, décision, reversement, lien). 20 par minute et par utilisateur. */
+export const syndicGatewayWriteRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => `syndic-gw-write:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Écritures gestionnaire du paiement mobile money déclaré (numéros, réglages, validation, rejet, déclaration pour un tiers, spec 047). 20 par minute et par utilisateur. */
+export const syndicDeclaredWriteRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => `syndic-declared-write:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Consultation des captures de paiements déclarés (fichiers privés, spec 047) : 60 par minute et par utilisateur. */
+export const syndicDeclaredProofReadRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyGenerator: req => `syndic-declared-proof:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Déclaration de paiement mobile money depuis le portail copropriétaire (spec 047, contrat §2.4) :
+ * 10 par minute et par compte (repli sur l'IP), posé APRÈS `authenticate` et AVANT le parseur multipart.
+ */
+export const coOwnerDeclarationCreateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `coowner-declaration-create:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const proofReadMessage = () => ({
+  success: false,
+  code: 'RATE_LIMITED',
+  message: t('Trop de lectures automatiques. Réessayez plus tard ou saisissez les champs à la main.')
+});
+
+const coOwnerProofReadPerMinute = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  keyGenerator: req => `coowner-proof-read-min:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  handler: (_req, res) => {
+    res.status(429).json(proofReadMessage());
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const coOwnerProofReadPerDay = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 30,
+  keyGenerator: req => `coowner-proof-read-day:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  handler: (_req, res) => {
+    res.status(429).json(proofReadMessage());
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Lecture IA d'une capture depuis le portail copropriétaire (spec 047, contrat §2.3) : 5 par minute et
+ * 30 par jour par compte (repli sur l'IP), posés APRÈS `authenticate` et AVANT le parseur multipart.
+ */
+export const coOwnerProofReadLimiter = (req: Request, res: Response, next: NextFunction): void => {
+  coOwnerProofReadPerMinute(req, res, error => {
+    if (error) next(error);
+    else coOwnerProofReadPerDay(req, res, next);
+  });
+};
+
+/** Lien « Payer cet appel » (spec 042), consultation : 30 par minute et par IP, avant toute vérification du jeton. Mêmes en-têtes anti-cache que les liens sécurisés. */
+export const chargePaymentViewRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: req => `charge-payment-view:${req.ip ?? 'inconnue'}`,
+  handler: (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lien « Payer cet appel », démarrage du paiement : 10 par minute et par IP (chaque appel peut créer un paiement chez l'agrégateur). */
+export const chargePaymentStartRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `charge-payment-start:${req.ip ?? 'inconnue'}`,
+  handler: (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lien « Payer cet appel », statut : la page interroge toutes les 3 s ; seau dédié de 90 par minute et par IP. */
+export const chargePaymentStatusRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 90,
+  keyGenerator: req => `charge-payment-status:${req.ip ?? 'inconnue'}`,
+  handler: (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 /**
  * Baseline limiter applied to the whole API.
  * Sized well above normal single-user traffic; the per-endpoint limiters above
  * remain the tight ones on sensitive routes.
  */
+/**
+ * Le webhook LiveKit (spec 045) a son propre limiteur (`livekitWebhookRateLimiter`) : le plancher
+ * global (1000/15 min par IP) couperait des evenements legitimes d'un meme serveur LiveKit.
+ */
+export function isLivekitWebhookPath(path: string): boolean {
+  return path === '/api/webhooks/livekit' || path.startsWith('/api/webhooks/livekit/');
+}
+
 export const globalApiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000,
@@ -234,7 +551,13 @@ export const globalApiRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   // Health checks and static uploads must not consume the budget.
-  skip: req => req.path === '/health' || req.path.startsWith('/uploads/')
+  // L'AG en direct (spec 043) interroge toutes les 3 s depuis une IP souvent partagee : elle a ses
+  // propres limiteurs (600/min par IP, 60/min par jeton), le plancher global la couperait trop tot.
+  skip: req =>
+    req.path === '/health' ||
+    req.path.startsWith('/uploads/') ||
+    req.path.startsWith('/api/public/assemblees/') ||
+    isLivekitWebhookPath(req.path)
 });
 
 /**
@@ -247,6 +570,22 @@ export const coOwnerPortalPdfRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 30,
   keyGenerator: req => `coowner-pdf:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  message: {
+    success: false,
+    message: 'Trop de requêtes. Veuillez réessayer dans quelques minutes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Portail copropriétaire : délivrance d'un lien personnel d'AG en direct
+ * (spec 043). Chaque appel crée un lien : 10 par minute et par compte.
+ */
+export const coOwnerMeetingAccessRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `coowner-meeting-access:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
   message: {
     success: false,
     message: 'Trop de requêtes. Veuillez réessayer dans quelques minutes.'
@@ -523,3 +862,149 @@ export const auditIntegrityRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+// ---------------------------------------------------------------------------
+// Signature électronique publique (spec 044) : /api/public/signatures/:token
+// ---------------------------------------------------------------------------
+
+function signatureLimitHandler(_req: Request, res: Response): void {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
+}
+
+/** Consultation de la page de signature et du PDF : 60 par minute et par IP, avant toute vérification du jeton. */
+export const signaturePublicRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyGenerator: req => `signature-public:${req.ip ?? 'inconnue'}`,
+  handler: signatureLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Envoi de code (coûte un message) : 10 par 15 minutes et par IP. */
+export const signatureOtpRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: req => `signature-otp:${req.ip ?? 'inconnue'}`,
+  handler: signatureLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Signature et refus (devinette du code) : 20 par 15 minutes et par IP, en plus du plafond d'essais par code. */
+export const signatureActionRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: req => `signature-action:${req.ip ?? 'inconnue'}`,
+  handler: signatureLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Vérification du code avant consultation (devinette du code) : 20 par 15 minutes et par IP, en plus du plafond d'essais par code. */
+export const signatureOtpVerifyRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: req => `signature-otp-verify:${req.ip ?? 'inconnue'}`,
+  handler: signatureLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lien de signature du prestataire (coûte un appel au prestataire) : 20 par 15 minutes et par IP. */
+export const signatureExternalLinkRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: req => `signature-external-link:${req.ip ?? 'inconnue'}`,
+  handler: signatureLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Envoi de messages (messagerie interne, agence et portails) : 30 par minute et par utilisateur
+ * (clé agence + utilisateur, repli sur l'IP). Posé APRÈS `authenticate` et la garde (pour
+ * disposer de l'utilisateur et de l'agence) et AVANT le contrôleur.
+ */
+export const messagingSendRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: req => {
+    const tenantId =
+      req.tenantContext?.tenantId ??
+      req.coOwnerPortal?.scope?.tenantId ??
+      req.tenantPortal?.tenantId ??
+      req.ownerPortal?.tenantId ??
+      'sans-agence';
+    return `messaging-send:${tenantId}:${req.user?.userId ?? req.ip ?? 'anonyme'}`;
+  },
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Envoi de test WhatsApp (`POST .../whatsapp-notification-config/test-send`) :
+ * chaque appel déclenche un vrai message facturable. Deux limiteurs chaînés,
+ * l'un par utilisateur, l'autre par agence (un seul collaborateur ne peut pas
+ * épuiser le quota des autres, et plusieurs ne peuvent pas contourner le
+ * plafond d'agence). Magasin en mémoire de processus, comme les autres
+ * limiteurs de ce fichier. À placer APRÈS `authenticate` et `requireTenantAccess`.
+ */
+export const WHATSAPP_TEST_SEND_USER_LIMIT = { windowMs: 60 * 1000, max: 5 };
+export const WHATSAPP_TEST_SEND_TENANT_LIMIT = { windowMs: 60 * 60 * 1000, max: 20 };
+
+const testSendLimitedHandler = (_req: Request, res: Response): void => {
+  res.status(429).json({
+    success: false,
+    error: 'Too Many Requests',
+    message: t("Trop d'envois de test. Veuillez réessayer dans quelques instants.")
+  });
+};
+
+export const whatsappTestSendUserRateLimiter = rateLimit({
+  ...WHATSAPP_TEST_SEND_USER_LIMIT,
+  keyGenerator: req => `wa-test-user:${req.user?.userId ?? 'anonyme'}`,
+  handler: testSendLimitedHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Renvoi d'une notification depuis le journal (agence ou plateforme) : 10 renvois par
+ * minute et par utilisateur. Pose APRES les gardes, AVANT le controleur.
+ */
+export const notificationResendRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `notification-resend:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+export const whatsappTestSendTenantRateLimiter = rateLimit({
+  ...WHATSAPP_TEST_SEND_TENANT_LIMIT,
+  keyGenerator: req => `wa-test-tenant:${req.tenantContext?.tenantId ?? 'inconnue'}`,
+  handler: testSendLimitedHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+export const whatsappTestSendRateLimiter = [whatsappTestSendUserRateLimiter, whatsappTestSendTenantRateLimiter];

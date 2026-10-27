@@ -57,6 +57,7 @@ function makeTx(installment: Row | null): Row {
       findMany: jest.fn(async () => []),
       update: jest.fn(async ({ data }: Row) => ({ ...installment, ...data }))
     },
+    rentalDepositMovement: { findMany: jest.fn(async () => []) },
     thirdPartyMovement: { count: jest.fn(async () => 0) }
   };
 }

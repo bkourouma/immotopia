@@ -9,8 +9,14 @@ import {
   reconcileCheckoutPublic,
   recordSimulatedOutcome
 } from '../lib/payment-gateway/checkout';
-import { isPlatformCodePaiement } from '../lib/payment-gateway/codes';
+import { isPlatformCodePaiement, isSyndicCodePaiement } from '../lib/payment-gateway/codes';
 import { platformReturnUrl } from '../lib/payment-gateway/platform-account';
+import {
+  findSyndicSimulatorCheckout,
+  reconcileSyndicCheckoutPublic,
+  recordSyndicSimulatedOutcome
+} from '../lib/syndics/online-payment/checkout-reconcile';
+import { syndicCheckoutReturnUrl } from '../lib/syndics/online-payment/checkout-start';
 import {
   findPlatformSimulatorCheckout,
   reconcilePlatformCheckoutPublic,
@@ -45,7 +51,9 @@ export const paysecurehubIpnHandler = asyncHandler(async (req: Request, res: Res
   }
 
   try {
-    await reconcileCheckoutPublic(codePaiement);
+    // Aiguillage par préfixe : « IMS- » (charges de copropriété) vers le moteur Syndic, le reste vers les loyers.
+    if (isSyndicCodePaiement(codePaiement)) await reconcileSyndicCheckoutPublic(codePaiement);
+    else await reconcileCheckoutPublic(codePaiement);
   } catch (error) {
     // L'agrégateur peut être injoignable au moment de l'IPN : la tâche
     // planifiée reprendra le rapprochement. L'IPN ne doit jamais échouer.
@@ -86,6 +94,10 @@ async function findAnySimulatorCheckout(
     return platform
       ? { codePaiement: platform.codePaiement, amount: platform.amount, platformTenantId: platform.tenantId }
       : null;
+  }
+  if (isSyndicCodePaiement(codePaiement)) {
+    const syndic = await findSyndicSimulatorCheckout(codePaiement);
+    return syndic ? { codePaiement: syndic.codePaiement, amount: syndic.amount, platformTenantId: null } : null;
   }
   const rental = await findSimulatorCheckout(codePaiement);
   return rental ? { codePaiement: rental.codePaiement, amount: rental.amount, platformTenantId: null } : null;
@@ -189,6 +201,22 @@ export const simulatorActionHandler = asyncHandler(async (req: Request, res: Res
       });
     }
     res.redirect(303, platformReturnUrl(platform.tenantId, codePaiement));
+    return;
+  }
+
+  if (isSyndicCodePaiement(codePaiement)) {
+    // Charges de copropriété : retour sur le portail ou la page publique selon l'origine de la tentative.
+    const syndic = await findSyndicSimulatorCheckout(codePaiement);
+    if (!syndic) {
+      throw new NotFoundError('Paiement introuvable.');
+    }
+    await recordSyndicSimulatedOutcome(syndic, mapped);
+    try {
+      await reconcileSyndicCheckoutPublic(codePaiement);
+    } catch (error) {
+      logger.warn('Simulateur PaySecureHub (charges) : rapprochement en échec', { error: (error as Error)?.message });
+    }
+    res.redirect(303, syndicCheckoutReturnUrl(syndic));
     return;
   }
 

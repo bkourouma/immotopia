@@ -83,6 +83,7 @@ export const ComptesProprietaires: React.FC = () => {
       title: t('Solde dû'),
       key: 'solde',
       align: 'end',
+      exportValue: c => c.balance,
       render: (_, c) =>
         c.balance > 0 ? (
           <strong style={{ color: 'var(--color-warning-text)' }}>
@@ -148,11 +149,13 @@ export const ComptesProprietaires: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les comptes propriétaires.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         emptyDescription={t('Aucun compte propriétaire enregistré.')}
         columns={colonnes}
         rowKey={c => c.ownerClientId}
         aria-label={t('Comptes propriétaires')}
+        export={{ filename: t('Comptes propriétaires') }}
         renderCard={c => (
           <DataCard
             title={c.ownerName}

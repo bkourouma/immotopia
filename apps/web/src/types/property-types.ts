@@ -261,6 +261,8 @@ export interface PropertyMandate {
   isActive: boolean;
   revokedAt?: string;
   revokedByUserId?: string;
+  /** Spec 044 : date de signature électronique par toutes les parties (ISO). */
+  signedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -340,7 +342,7 @@ export interface CreatePropertyRequest {
 
 export interface UpdatePropertyRequest {
   ownershipType?: PropertyOwnershipType;
-  ownerUserId?: string;
+  ownerUserId?: string | null;
   /** Alternative à ownerUserId : l'API trouve ou crée le compte par e-mail. */
   ownerEmail?: string;
   title?: string;
@@ -359,7 +361,7 @@ export interface UpdatePropertyRequest {
   rooms?: number;
   bedrooms?: number;
   bathrooms?: number;
-  furnishingStatus?: PropertyFurnishingStatus;
+  furnishingStatus?: PropertyFurnishingStatus | null;
   availability?: PropertyAvailability;
   status?: PropertyStatus;
   typeSpecificData?: Record<string, any>;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Table, Button, Tag, Space, Typography, Empty, Alert, Card, Row, Col, Spin } from 'antd';
+import { App, Button, Tag, Space, Typography, Empty, Alert, Card, Row, Col, Spin } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, SafetyOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import {
@@ -14,6 +14,7 @@ import {
   RentalDepositMovementType
 } from '../../services/rental-service';
 import { DepositMovementForm } from '../../components/rental/DepositMovementForm';
+import { Table } from '../../components/primitives';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -229,6 +230,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
 
             <Card title={t('Historique des mouvements')}>
               <Table
+                exportFilename={t('Historique des mouvements')}
                 dataSource={movements}
                 loading={loading}
                 rowKey="id"
@@ -255,6 +257,9 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
                   {
                     title: t('Montant'),
                     key: 'amount',
+                    // Montant signé, en nombre pur : Excel peut le sommer.
+                    exportValue: record =>
+                      record.type === 'COLLECT' || record.type === 'ADJUSTMENT' ? record.amount : -record.amount,
                     render: (_, record) => {
                       const isPositive = record.type === 'COLLECT' || record.type === 'ADJUSTMENT';
                       return (

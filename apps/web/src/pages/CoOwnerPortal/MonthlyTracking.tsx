@@ -3,16 +3,19 @@ import { Card, Row, Col, Select, Space, Tooltip, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { formatMoney, MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 import {
   listMyLots,
   getCoOwnerLotMonthlyTracking,
   type CoOwnerMonthStatus
 } from '../../services/coowner-portal-service';
+import { displayCurrency } from '../../utils/syndic-currency';
 import { portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
 
-const MONTH_LABELS = [
+/** Appelée au rendu : un tableau figé au chargement du module resterait dans la langue d'alors. */
+const monthLabels = (): string[] => [
   t('Janv.'),
   t('Févr.'),
   t('Mars'),
@@ -32,25 +35,27 @@ const MONTH_LABELS = [
  * (`SyndicMonthlyTracking.tsx`, lot S2). Pas de composant partagé : celui-ci
  * ne rend qu'un seul lot à la fois, la grille de gestion en rend plusieurs.
  */
-const STATUS_CONFIG: Record<CoOwnerMonthStatus, { color: string; textColor: string; label: string }> = {
-  PAID: {
-    color: 'var(--color-success-bg, #e6f7e9)',
-    textColor: 'var(--color-success-text, #237a3f)',
-    label: t('Réglé')
-  },
-  PARTIAL: {
-    color: 'var(--color-warning-bg, #fff3e0)',
-    textColor: 'var(--color-warning-text, #ad6800)',
-    label: t('Partiel')
-  },
-  DUE: { color: 'var(--color-info-bg, #e6f0ff)', textColor: 'var(--color-info-text, #1d4ed8)', label: t('Dû') },
-  OVERDUE: {
-    color: 'var(--color-error-bg, #fde8e8)',
-    textColor: 'var(--color-error-text, #c0202c)',
-    label: t('En retard')
-  },
-  NONE: { color: 'transparent', textColor: 'var(--text-secondary, #999)', label: t('—') }
-};
+const STATUS_CONFIG: Record<CoOwnerMonthStatus, { color: string; textColor: string; label: string }> = localizedRecord(
+  () => ({
+    PAID: {
+      color: 'var(--color-success-bg, #e6f7e9)',
+      textColor: 'var(--color-success-text, #237a3f)',
+      label: t('Réglé')
+    },
+    PARTIAL: {
+      color: 'var(--color-warning-bg, #fff3e0)',
+      textColor: 'var(--color-warning-text, #ad6800)',
+      label: t('Partiel')
+    },
+    DUE: { color: 'var(--color-info-bg, #e6f0ff)', textColor: 'var(--color-info-text, #1d4ed8)', label: t('Dû') },
+    OVERDUE: {
+      color: 'var(--color-error-bg, #fde8e8)',
+      textColor: 'var(--color-error-text, #c0202c)',
+      label: t('En retard')
+    },
+    NONE: { color: 'transparent', textColor: 'var(--text-secondary, #999)', label: t('—') }
+  })
+);
 
 function yearRange(current: number, minYear?: number): number[] {
   const years: number[] = [];
@@ -65,9 +70,10 @@ function parseIsoDay(value: string): { year: number; month: number } {
   return { year, month };
 }
 
-/** Vrai si ce mois précède l'acquisition du lot : le mois de l'ancien propriétaire, jamais montré ici. */
-function isBeforeOwnership(year: number, month: number, ownedSince: string): boolean {
-  const owned = parseIsoDay(ownedSince);
+/** Vrai si ce mois précède la borne de visibilité (changement de propriétaire) : mois de l'ancien propriétaire, jamais montré ici. Sans borne (`null`), rien n'est masqué. */
+function isBeforeOwnership(year: number, month: number, visibleSince: string | null): boolean {
+  if (!visibleSince) return false;
+  const owned = parseIsoDay(visibleSince);
   return year < owned.year || (year === owned.year && month < owned.month);
 }
 
@@ -80,7 +86,7 @@ export default function CoOwnerMonthlyTracking() {
   const [lotId, setLotId] = useState<string | undefined>(undefined);
   const [year, setYear] = useState(() => new Date().getFullYear());
 
-  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], queryFn: () => listMyLots() });
+  const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], staleTime: 30_000, queryFn: () => listMyLots() });
 
   useEffect(() => {
     if (!lotId && lots.data && lots.data.length > 0) setLotId(lots.data[0].id);
@@ -94,11 +100,12 @@ export default function CoOwnerMonthlyTracking() {
 
   const tracking = useQuery({
     queryKey: ['coowner-portal', 'monthly-tracking', lotId ?? null, year],
+    staleTime: 30_000,
     queryFn: () => getCoOwnerLotMonthlyTracking(lotId as string, year),
     enabled: Boolean(lotId)
   });
 
-  const ownedSinceYear = tracking.data ? parseIsoDay(tracking.data.ownedSince).year : undefined;
+  const ownedSinceYear = tracking.data?.visibleSince ? parseIsoDay(tracking.data.visibleSince).year : undefined;
 
   // Un lot acquis après l'année choisie (par ex. après un changement de lot) :
   // l'API répondrait 404 sur une année qui n'existe pas pour ce copropriétaire.
@@ -106,7 +113,7 @@ export default function CoOwnerMonthlyTracking() {
     if (ownedSinceYear !== undefined && year < ownedSinceYear) setYear(ownedSinceYear);
   }, [ownedSinceYear, year]);
 
-  const currency = tracking.data?.currency;
+  const currency = displayCurrency(tracking.data?.currency);
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -185,7 +192,7 @@ export default function CoOwnerMonthlyTracking() {
               <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
                 <thead>
                   <tr>
-                    {MONTH_LABELS.map(label => (
+                    {monthLabels().map(label => (
                       <th key={label} style={{ textAlign: 'center', padding: 8, minWidth: 60 }}>
                         {label}
                       </th>
@@ -198,7 +205,7 @@ export default function CoOwnerMonthlyTracking() {
                       const beforeOwnership = isBeforeOwnership(
                         tracking.data.year,
                         cell.month,
-                        tracking.data.ownedSince
+                        tracking.data.visibleSince
                       );
                       const config = STATUS_CONFIG[cell.status];
                       const tooltip = beforeOwnership

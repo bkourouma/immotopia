@@ -109,6 +109,9 @@ enum CapacityKey {
   /// Lot 041 (W11). Photos analysees par l'IA dans le MOIS CIVIL UTC
   /// (consommation, pas stock). Sans facturation de depassement.
   PHOTOS_INVENTAIRE
+  /// Spec 044 (SG-R12). Demandes de signature electronique envoyees dans le
+  /// MOIS CIVIL UTC (consommation, pas stock). Sans facturation de depassement.
+  SIGNATURES_MENSUELLES
 }
 
 enum SubscriptionItemStatus {
@@ -482,6 +485,8 @@ model User {
   // New relationships for multi-tenant RBAC
   memberships                 Membership[]
   userRoles                   UserRole[]
+  receivedNotifications       UserNotification[]    @relation("UserNotificationRecipient")
+  conversationParticipations  ConversationParticipant[]
   invitations                 Invitation[]          @relation("InvitedBy")
   acceptedInvitations         Invitation[]          @relation("AcceptedBy")
   createdSecureLinks          SecureLink[]          @relation("SecureLinkCreatedBy")
@@ -520,67 +525,67 @@ model User {
   maintenanceCommentsAuthored     MaintenanceTicketComment[]       @relation("MaintenanceCommentAuthorUser")
   maintenanceStatusHistoryChanged MaintenanceTicketStatusHistory[] @relation("MaintenanceStatusHistoryChangedBy")
 
-  newsletterCampaignsCreated    NewsletterCampaign[]
-  savedContactSearches          SavedContactSearch[]
-  rentBillingRuns               RentBillingRun[]
-  supplierInvoicesCreated       SupplierInvoice[]       @relation("SupplierInvoiceCreatedBy")
-  supplierInvoicesValidated     SupplierInvoice[]       @relation("SupplierInvoiceValidatedBy")
-  supplierPaymentsCreated       SupplierPayment[]       @relation("SupplierPaymentCreatedBy")
-  supplierPaymentsValidated     SupplierPayment[]       @relation("SupplierPaymentValidatedBy")
-  cashVouchersCreated           CashVoucher[]           @relation("CashVoucherCreatedBy")
-  cashVouchersValidated         CashVoucher[]           @relation("CashVoucherValidatedBy")
-  managedConstructionSites      ConstructionSite[]      @relation("ConstructionSiteManager")
-  siteBudgetsValidated          SiteBudget[]            @relation("SiteBudgetValidatedBy")
-  budgetAmendmentsCreated       BudgetAmendment[]       @relation("BudgetAmendmentCreatedBy")
-  budgetAmendmentsValidated     BudgetAmendment[]       @relation("BudgetAmendmentValidatedBy")
-  purchaseOrdersCreated         PurchaseOrder[]         @relation("PurchaseOrderCreatedBy")
-  purchaseOrdersIssued          PurchaseOrder[]         @relation("PurchaseOrderIssuedBy")
-  siteProgressEntriesLogged     SiteProgressEntry[]     @relation("SiteProgressEntryCreatedBy")
-  siteBudgetAlertsSeen          SiteBudgetAlert[]       @relation("SiteBudgetAlertAcknowledgedBy")
-  landLeasePaymentsCreated      LandLeasePayment[]      @relation("LandLeasePaymentCreatedBy")
-  landLeasePaymentsValidated    LandLeasePayment[]      @relation("LandLeasePaymentValidatedBy")
-  salaryNotesCreated            SalaryNote[]            @relation("SalaryNoteCreatedBy")
-  salaryNotesValidated          SalaryNote[]            @relation("SalaryNoteValidatedBy")
-  salaryPaymentsCreated         SalaryPayment[]         @relation("SalaryPaymentCreatedBy")
-  salaryPaymentsValidated       SalaryPayment[]         @relation("SalaryPaymentValidatedBy")
-  progressStatementsCreated     ProgressStatement[]     @relation("ProgressStatementCreatedBy")
-  progressStatementsValidated   ProgressStatement[]     @relation("ProgressStatementValidatedBy")
-  contractorPaymentsCreated     ContractorPayment[]     @relation("ContractorPaymentCreatedBy")
-  contractorPaymentsValidated   ContractorPayment[]     @relation("ContractorPaymentValidatedBy")
-  retentionsCreated             RetentionGuarantee[]    @relation("RetentionCreatedBy")
-  retentionsReleased            RetentionGuarantee[]    @relation("RetentionReleasedBy")
-  sitesClosed                   ConstructionSite[]      @relation("ConstructionSiteClosedBy")
-  stockMovementsCreated         StockMovement[]         @relation("StockMovementCreatedBy")
-  stockCountsCreated            StockCount[]            @relation("StockCountCreatedBy")
-  stockCountsValidated          StockCount[]            @relation("StockCountValidatedBy")
+  newsletterCampaignsCreated        NewsletterCampaign[]
+  savedContactSearches              SavedContactSearch[]
+  rentBillingRuns                   RentBillingRun[]
+  supplierInvoicesCreated           SupplierInvoice[]           @relation("SupplierInvoiceCreatedBy")
+  supplierInvoicesValidated         SupplierInvoice[]           @relation("SupplierInvoiceValidatedBy")
+  supplierPaymentsCreated           SupplierPayment[]           @relation("SupplierPaymentCreatedBy")
+  supplierPaymentsValidated         SupplierPayment[]           @relation("SupplierPaymentValidatedBy")
+  cashVouchersCreated               CashVoucher[]               @relation("CashVoucherCreatedBy")
+  cashVouchersValidated             CashVoucher[]               @relation("CashVoucherValidatedBy")
+  managedConstructionSites          ConstructionSite[]          @relation("ConstructionSiteManager")
+  siteBudgetsValidated              SiteBudget[]                @relation("SiteBudgetValidatedBy")
+  budgetAmendmentsCreated           BudgetAmendment[]           @relation("BudgetAmendmentCreatedBy")
+  budgetAmendmentsValidated         BudgetAmendment[]           @relation("BudgetAmendmentValidatedBy")
+  purchaseOrdersCreated             PurchaseOrder[]             @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersIssued              PurchaseOrder[]             @relation("PurchaseOrderIssuedBy")
+  siteProgressEntriesLogged         SiteProgressEntry[]         @relation("SiteProgressEntryCreatedBy")
+  siteBudgetAlertsSeen              SiteBudgetAlert[]           @relation("SiteBudgetAlertAcknowledgedBy")
+  landLeasePaymentsCreated          LandLeasePayment[]          @relation("LandLeasePaymentCreatedBy")
+  landLeasePaymentsValidated        LandLeasePayment[]          @relation("LandLeasePaymentValidatedBy")
+  salaryNotesCreated                SalaryNote[]                @relation("SalaryNoteCreatedBy")
+  salaryNotesValidated              SalaryNote[]                @relation("SalaryNoteValidatedBy")
+  salaryPaymentsCreated             SalaryPayment[]             @relation("SalaryPaymentCreatedBy")
+  salaryPaymentsValidated           SalaryPayment[]             @relation("SalaryPaymentValidatedBy")
+  progressStatementsCreated         ProgressStatement[]         @relation("ProgressStatementCreatedBy")
+  progressStatementsValidated       ProgressStatement[]         @relation("ProgressStatementValidatedBy")
+  contractorPaymentsCreated         ContractorPayment[]         @relation("ContractorPaymentCreatedBy")
+  contractorPaymentsValidated       ContractorPayment[]         @relation("ContractorPaymentValidatedBy")
+  retentionsCreated                 RetentionGuarantee[]        @relation("RetentionCreatedBy")
+  retentionsReleased                RetentionGuarantee[]        @relation("RetentionReleasedBy")
+  sitesClosed                       ConstructionSite[]          @relation("ConstructionSiteClosedBy")
+  stockMovementsCreated             StockMovement[]             @relation("StockMovementCreatedBy")
+  stockCountsCreated                StockCount[]                @relation("StockCountCreatedBy")
+  stockCountsValidated              StockCount[]                @relation("StockCountValidatedBy")
   // Lot 040 : controle du stock de chantier.
-  stockCountsClosed             StockCount[]            @relation("StockCountClosedBy")
-  stockCountsCancelled          StockCount[]            @relation("StockCountCancelledBy")
-  stockCountLinesCounted        StockCountLine[]        @relation("StockCountLineCountedBy")
-  stockCountLinesJustified      StockCountLine[]        @relation("StockCountLineJustifiedBy")
-  stockCountLinesSetAside       StockCountLine[]        @relation("StockCountLineSetAsideBy")
-  stockTakersCreated            StockTaker[]            @relation("StockTakerCreatedBy")
-  stockSlipsCreated             StockSlip[]             @relation("StockSlipCreatedBy")
-  stockAttachmentsUploaded      StockAttachment[]       @relation("StockAttachmentUploadedBy")
-  stockAttachmentsRemoved       StockAttachment[]       @relation("StockAttachmentRemovedBy")
-  stockAlertsAcknowledged       StockAlert[]            @relation("StockAlertAcknowledgedBy")
+  stockCountsClosed                 StockCount[]                @relation("StockCountClosedBy")
+  stockCountsCancelled              StockCount[]                @relation("StockCountCancelledBy")
+  stockCountLinesCounted            StockCountLine[]            @relation("StockCountLineCountedBy")
+  stockCountLinesJustified          StockCountLine[]            @relation("StockCountLineJustifiedBy")
+  stockCountLinesSetAside           StockCountLine[]            @relation("StockCountLineSetAsideBy")
+  stockTakersCreated                StockTaker[]                @relation("StockTakerCreatedBy")
+  stockSlipsCreated                 StockSlip[]                 @relation("StockSlipCreatedBy")
+  stockAttachmentsUploaded          StockAttachment[]           @relation("StockAttachmentUploadedBy")
+  stockAttachmentsRemoved           StockAttachment[]           @relation("StockAttachmentRemovedBy")
+  stockAlertsAcknowledged           StockAlert[]                @relation("StockAlertAcknowledgedBy")
   // Lot 041 : inventaire de chantier par WhatsApp.
   stockWhatsappRegistrations        StockWhatsappRegistration[] @relation("StockWhatsappRegistrationUser")
   stockWhatsappRegistrationsCreated StockWhatsappRegistration[] @relation("StockWhatsappRegistrationCreatedBy")
   stockWhatsappRegistrationsRevoked StockWhatsappRegistration[] @relation("StockWhatsappRegistrationRevokedBy")
   stockFieldCaptures                StockFieldCapture[]         @relation("StockFieldCaptureUser")
   stockFieldCapturePhotosRemoved    StockFieldCapture[]         @relation("StockFieldCapturePhotoRemovedBy")
-  voidedDocuments               VoidDocument[]
-  leasesManaged                 LeaseManagementTerms[]  @relation("LeaseManagementAgent")
-  agentCommissionRates          AgentCommissionRate[]
+  voidedDocuments                   VoidDocument[]
+  leasesManaged                     LeaseManagementTerms[]      @relation("LeaseManagementAgent")
+  agentCommissionRates              AgentCommissionRate[]
   // Lot 9 : ventes immobilieres.
-  saleMandatesAsAgent           SaleMandate[]           @relation("SaleMandateAgent")
-  saleMandatesRevoked           SaleMandate[]           @relation("SaleMandateRevokedBy")
-  saleOffersDecided             SaleOffer[]             @relation("SaleOfferDecidedBy")
-  saleAgreementsCancelled       SaleAgreement[]         @relation("SaleAgreementCancelledBy")
-  saleCommissionsAsAgent        SaleCommission[]        @relation("SaleCommissionAgent")
-  saleCommissionPaymentsCreated SaleCommissionPayment[] @relation("SaleCommissionPaymentCreatedBy")
-  saleCommissionPaymentsVoided  SaleCommissionPayment[] @relation("SaleCommissionPaymentVoidedBy")
+  saleMandatesAsAgent               SaleMandate[]               @relation("SaleMandateAgent")
+  saleMandatesRevoked               SaleMandate[]               @relation("SaleMandateRevokedBy")
+  saleOffersDecided                 SaleOffer[]                 @relation("SaleOfferDecidedBy")
+  saleAgreementsCancelled           SaleAgreement[]             @relation("SaleAgreementCancelledBy")
+  saleCommissionsAsAgent            SaleCommission[]            @relation("SaleCommissionAgent")
+  saleCommissionPaymentsCreated     SaleCommissionPayment[]     @relation("SaleCommissionPaymentCreatedBy")
+  saleCommissionPaymentsVoided      SaleCommissionPayment[]     @relation("SaleCommissionPaymentVoidedBy")
 
   @@index([email])
   @@map("users")
@@ -618,7 +623,7 @@ model Tenant {
 
   // Relationships
   roleMenuAccess RoleMenuAccess[]
-  clients TenantClient[]
+  clients        TenantClient[]
 
   // New relationships for multi-tenant RBAC
   modules                       TenantModule[]
@@ -627,6 +632,10 @@ model Tenant {
   invoices                      Invoice[]
   invitations                   Invitation[]
   secureLinks                   SecureLink[]
+  gmParticipants                GMParticipant[]
+  gmAttendances                 GMAttendance[]
+  gmRecordings                  GMRecording[]
+  gmChatMessages                GMChatMessage[]
   externalAccessGrants          ExternalAccessGrant[]
   externalAccessGrantProperties ExternalAccessGrantProperty[]
   externalAccessGrantEntities   ExternalAccessGrantEntity[]
@@ -642,6 +651,13 @@ model Tenant {
   usageSnapshots      UsageSnapshot[]
   quotaAlerts         QuotaAlert[]
   notificationMarkers NotificationMarker[]
+
+  // Notifications persistantes et messagerie interne (lot 3)
+  userNotifications        UserNotification[]
+  notificationDeliveries   NotificationDelivery[]
+  conversations            Conversation[]
+  conversationParticipants ConversationParticipant[]
+  messages                 Message[]
 
   // CRM relationships
   crmContacts           CrmContact[]
@@ -661,24 +677,26 @@ model Tenant {
   propertyMandates PropertyMandate[]
 
   // Rental relationships
-  rentalLeases             RentalLease[]
-  rentalInstallments       RentalInstallment[]
-  rentalInstallmentItems   RentalInstallmentItem[]
-  rentalPayments           RentalPayment[]
-  rentalPaymentAllocations RentalPaymentAllocation[]
-  rentalRefunds            RentalRefund[]
+  rentalLeases                RentalLease[]
+  rentalInstallments          RentalInstallment[]
+  rentalInstallmentItems      RentalInstallmentItem[]
+  rentalPayments              RentalPayment[]
+  rentalPaymentAllocations    RentalPaymentAllocation[]
+  rentalRefunds               RentalRefund[]
   /// Lot 7 : paiement en ligne des loyers (PaySecureHub). Un compte marchand
   /// par agence, jamais rempli tant qu'elle n'a pas ouvert la page.
-  paymentGatewayConfig     PaymentGatewayConfig?
-  onlinePaymentCheckouts   OnlinePaymentCheckout[]
-  rentalPenaltyRules       RentalPenaltyRule[]
-  rentalPenalties          RentalPenalty[]
-  rentalSecurityDeposits   RentalSecurityDeposit[]
-  rentalDepositMovements   RentalDepositMovement[]
-  rentalDocuments          RentalDocument[]
-  rentalLeaseCoRenters     RentalLeaseCoRenter[]
-  documentTemplates        DocumentTemplate[]
-  documentCounters         DocumentCounter[]
+  paymentGatewayConfig        PaymentGatewayConfig?
+  syndicPaymentGatewayConfigs SyndicPaymentGatewayConfig[]
+  syndicOnlineCheckouts       SyndicOnlineCheckout[]
+  onlinePaymentCheckouts      OnlinePaymentCheckout[]
+  rentalPenaltyRules          RentalPenaltyRule[]
+  rentalPenalties             RentalPenalty[]
+  rentalSecurityDeposits      RentalSecurityDeposit[]
+  rentalDepositMovements      RentalDepositMovement[]
+  rentalDocuments             RentalDocument[]
+  rentalLeaseCoRenters        RentalLeaseCoRenter[]
+  documentTemplates           DocumentTemplate[]
+  documentCounters            DocumentCounter[]
 
   // Maintenance relationships
   maintenanceTickets             MaintenanceTicket[]
@@ -703,85 +721,90 @@ model Tenant {
   savedContactSearches         SavedContactSearch[]
 
   // Syndic relationships
-  syndicates               Syndicate[]
-  syndicMandatingAgencies  SyndicMandatingAgency[]
-  syndicChargeReceipts     SyndicChargeReceipt[]
-  syndicReceiptSequences   SyndicReceiptSequence[]
-  syndicChargeSchedules    SyndicChargeSchedule[]
-  syndicChargeScheduleRuns SyndicChargeScheduleRun[]
-  serviceProviders         ServiceProvider[]
-  assetValuations          AssetValuation[]
-  propertyLoans            PropertyLoan[]
-  propertyExpenses         PropertyExpense[]
-  ownerStatements          OwnerStatement[]
-  workPrograms             WorkProgram[]
-  patrimonyDocuments       PatrimonyDocument[]
-  thirdPartyAccounts       ThirdPartyAccount[]
-  thirdPartyMovements      ThirdPartyMovement[]
-  rentBillingRuns          RentBillingRun[]
-  suppliers                Supplier[]
-  supplierInvoices         SupplierInvoice[]
-  supplierPayments         SupplierPayment[]
-  constructionSites        ConstructionSite[]
-  costCategories           CostCategory[]
-  costAllocations          CostAllocation[]
-  cashVouchers             CashVoucher[]
-  voidDocuments            VoidDocument[]
-  siteBudgets              SiteBudget[]
-  budgetAmendments         BudgetAmendment[]
-  purchaseOrders           PurchaseOrder[]
-  siteProgressEntries      SiteProgressEntry[]
-  siteBudgetAlerts         SiteBudgetAlert[]
-  landLeases               LandLease[]
-  landLeasePayments        LandLeasePayment[]
-  landLeaseAccruals        LandLeaseAccrual[]
-  partnerships             Partnership[]
-  partnershipDistributions PartnershipDistribution[]
-  employees                Employee[]
-  salaryNotes              SalaryNote[]
-  salaryPayments           SalaryPayment[]
-  contractors              Contractor[]
-  contractorContracts      ContractorContract[]
-  progressStatements       ProgressStatement[]
-  contractorPayments       ContractorPayment[]
-  retentionGuarantees      RetentionGuarantee[]
-  siteLots                 SiteLot[]
-  stockSettings            StockSettings?
-  financeSettings          AgencyFinanceSettings?
-  ownerPortalSettings      OwnerPortalSettings?
-  cashPlanSettings         PatrimonyCashPlanSettings?
-  ownerManagementTerms     OwnerManagementTerms[]
-  leaseManagementTerms     LeaseManagementTerms[]
-  agentCommissionRates     AgentCommissionRate[]
-  managementFees           ManagementFee[]
-  ownerPayouts             OwnerPayout[]
-  leaseEvents              LeaseEvent[]
-  leaseInspections         LeaseInspection[]
-  leaseInspectionPhotos    LeaseInspectionPhoto[]
-  propertyOwnershipShares  PropertyOwnershipShare[]
+  syndicates                     Syndicate[]
+  syndicMandatingAgencies        SyndicMandatingAgency[]
+  syndicChargeReceipts           SyndicChargeReceipt[]
+  syndicReceiptSequences         SyndicReceiptSequence[]
+  syndicChargeSchedules          SyndicChargeSchedule[]
+  syndicChargeScheduleRuns       SyndicChargeScheduleRun[]
+  serviceProviders               ServiceProvider[]
+  assetValuations                AssetValuation[]
+  propertyLoans                  PropertyLoan[]
+  propertyExpenses               PropertyExpense[]
+  ownerStatements                OwnerStatement[]
+  workPrograms                   WorkProgram[]
+  patrimonyDocuments             PatrimonyDocument[]
+  thirdPartyAccounts             ThirdPartyAccount[]
+  thirdPartyMovements            ThirdPartyMovement[]
+  rentBillingRuns                RentBillingRun[]
+  suppliers                      Supplier[]
+  supplierInvoices               SupplierInvoice[]
+  supplierPayments               SupplierPayment[]
+  constructionSites              ConstructionSite[]
+  costCategories                 CostCategory[]
+  costAllocations                CostAllocation[]
+  cashVouchers                   CashVoucher[]
+  voidDocuments                  VoidDocument[]
+  siteBudgets                    SiteBudget[]
+  budgetAmendments               BudgetAmendment[]
+  purchaseOrders                 PurchaseOrder[]
+  siteProgressEntries            SiteProgressEntry[]
+  siteBudgetAlerts               SiteBudgetAlert[]
+  landLeases                     LandLease[]
+  landLeasePayments              LandLeasePayment[]
+  landLeaseAccruals              LandLeaseAccrual[]
+  partnerships                   Partnership[]
+  partnershipDistributions       PartnershipDistribution[]
+  employees                      Employee[]
+  salaryNotes                    SalaryNote[]
+  salaryPayments                 SalaryPayment[]
+  contractors                    Contractor[]
+  contractorContracts            ContractorContract[]
+  progressStatements             ProgressStatement[]
+  contractorPayments             ContractorPayment[]
+  retentionGuarantees            RetentionGuarantee[]
+  siteLots                       SiteLot[]
+  stockSettings                  StockSettings?
+  financeSettings                AgencyFinanceSettings?
+  ownerPortalSettings            OwnerPortalSettings?
+  cashPlanSettings               PatrimonyCashPlanSettings?
+  ownerManagementTerms           OwnerManagementTerms[]
+  leaseManagementTerms           LeaseManagementTerms[]
+  agentCommissionRates           AgentCommissionRate[]
+  managementFees                 ManagementFee[]
+  ownerPayouts                   OwnerPayout[]
+  leaseEvents                    LeaseEvent[]
+  leaseInspections               LeaseInspection[]
+  directDebitCreditors           DirectDebitCreditor[]
+  directDebitMandates            DirectDebitMandate[]
+  directDebitRemittances         DirectDebitRemittance[]
+  directDebitRemittanceLines     DirectDebitRemittanceLine[]
+  directDebitReturnImports       DirectDebitReturnImport[]
+  leaseInspectionPhotos          LeaseInspectionPhoto[]
+  propertyOwnershipShares        PropertyOwnershipShare[]
   // PATRIMOINE — Lot P4
-  holdingEntities          HoldingEntity[]
-  propertyHoldings         PropertyHolding[]
-  propertyTaxProfiles      PropertyTaxProfile[]
-  propertyYieldAssumptions PropertyYieldAssumption[]
-  assets                   Asset[]
-  patrimonyScenarios       PatrimonyScenario[]
-  cashSessions             CashSession[]
-  treasuryAccounts         TreasuryAccount[]
-  treasuryTransfers        TreasuryTransfer[]
-  rentWithholdings         RentWithholding[]
-  taxRemittances           TaxRemittance[]
-  stockItems               StockItem[]
-  stockLocations           StockLocation[]
-  stockBalances            StockBalance[]
-  stockMovements           StockMovement[]
-  stockCounts              StockCount[]
+  holdingEntities                HoldingEntity[]
+  propertyHoldings               PropertyHolding[]
+  propertyTaxProfiles            PropertyTaxProfile[]
+  propertyYieldAssumptions       PropertyYieldAssumption[]
+  assets                         Asset[]
+  patrimonyScenarios             PatrimonyScenario[]
+  cashSessions                   CashSession[]
+  treasuryAccounts               TreasuryAccount[]
+  treasuryTransfers              TreasuryTransfer[]
+  rentWithholdings               RentWithholding[]
+  taxRemittances                 TaxRemittance[]
+  stockItems                     StockItem[]
+  stockLocations                 StockLocation[]
+  stockBalances                  StockBalance[]
+  stockMovements                 StockMovement[]
+  stockCounts                    StockCount[]
   // Lot 040 : controle du stock de chantier.
-  stockTakers              StockTaker[]
-  stockSlips               StockSlip[]
-  stockAttachments         StockAttachment[]
-  stockAlerts              StockAlert[]
-  stockClientRequests      StockClientRequest[]
+  stockTakers                    StockTaker[]
+  stockSlips                     StockSlip[]
+  stockAttachments               StockAttachment[]
+  stockAlerts                    StockAlert[]
+  stockClientRequests            StockClientRequest[]
   // Lot 041 : inventaire de chantier par WhatsApp.
   stockWhatsappRegistrations     StockWhatsappRegistration[]
   stockWhatsappRegistrationSites StockWhatsappRegistrationSite[]
@@ -789,24 +812,35 @@ model Tenant {
   stockWhatsappMessages          StockWhatsappMessage[]
   stockFieldCaptures             StockFieldCapture[]
   stockWhatsappUsages            StockWhatsappUsage[]
+  // Spec 044 : signature electronique.
+  signatureRequests              SignatureRequest[]
+  signatureSigners               SignatureSigner[]
+  signatureEvents                SignatureEvent[]
+  signatureUsages                SignatureUsage[]
   // Nouvelles au lot 2 : ces trois tables n'avaient aucune relation
   // Tenant avant la generalisation du moteur comptable.
-  chartOfAccounts          ChartOfAccount[]
-  accountingJournals       AccountingJournal[]
-  journalEntries           JournalEntry[]
+  chartOfAccounts                ChartOfAccount[]
+  accountingJournals             AccountingJournal[]
+  journalEntries                 JournalEntry[]
   // Lot 9 : ventes immobilieres.
-  saleMandates             SaleMandate[]
-  saleOffers               SaleOffer[]
-  saleAgreements           SaleAgreement[]
-  saleAgreementConditions  SaleAgreementCondition[]
-  salePaymentMilestones    SalePaymentMilestone[]
-  saleCommissions          SaleCommission[]
-  saleCommissionPayments   SaleCommissionPayment[]
-  insurancePolicies        InsurancePolicy[]
-  insuranceClaims          InsuranceClaim[]
-  insuranceClaimDocs       InsuranceClaimDocument[]
-  insuranceClaimHistory    InsuranceClaimStatusHistory[]
-  maintenanceLogEntries    MaintenanceLogEntry[]
+  saleMandates                   SaleMandate[]
+  saleOffers                     SaleOffer[]
+  saleAgreements                 SaleAgreement[]
+  saleAgreementConditions        SaleAgreementCondition[]
+  salePaymentMilestones          SalePaymentMilestone[]
+  saleCommissions                SaleCommission[]
+  saleCommissionPayments         SaleCommissionPayment[]
+  insurancePolicies              InsurancePolicy[]
+  insuranceClaims                InsuranceClaim[]
+  insuranceClaimDocs             InsuranceClaimDocument[]
+  insuranceClaimHistory          InsuranceClaimStatusHistory[]
+  maintenanceLogEntries          MaintenanceLogEntry[]
+  // Spec 047 : paiement mobile money declare.
+  syndicReceivingNumbers         SyndicReceivingNumber[]
+  syndicDeclaredPaymentSettings  SyndicDeclaredPaymentSettings[]
+  syndicPaymentDeclarations      SyndicPaymentDeclaration[]
+  syndicPaymentDeclarationLines  SyndicPaymentDeclarationLine[]
+  syndicPaymentProofReads        SyndicPaymentProofRead[]
 
   @@index([slug])
   @@index([status])
@@ -834,11 +868,13 @@ model TenantClient {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Rental relationships
-  primaryLeases       RentalLease[]              @relation("RentalLeasePrimaryRenter")
-  ownerLeases         RentalLease[]              @relation("RentalLeaseOwner")
-  coRenterLeases      RentalLeaseCoRenter[]
-  rentalPayments      RentalPayment[]
-  paymentDeclarations RentalPaymentDeclaration[] @relation("RentalPaymentDeclarationDeclarer")
+  primaryLeases              RentalLease[]               @relation("RentalLeasePrimaryRenter")
+  ownerLeases                RentalLease[]               @relation("RentalLeaseOwner")
+  coRenterLeases             RentalLeaseCoRenter[]
+  directDebitMandates        DirectDebitMandate[]
+  directDebitRemittanceLines DirectDebitRemittanceLine[]
+  rentalPayments             RentalPayment[]
+  paymentDeclarations        RentalPaymentDeclaration[]  @relation("RentalPaymentDeclarationDeclarer")
 
   // Communication relationships
   communicationsAsRecipient Communication[]           @relation("CommRecipientClient")
@@ -1059,6 +1095,11 @@ enum SecureLinkScope {
   INSTALLMENT_PAYMENT
   /// Acces en lecture seule d'un tiers de confiance (lot B3, spec 034).
   EXTERNAL_ACCESS_GRANT
+  /// Paiement Mobile Money d'un appel de charges de copropriete (spec 042).
+  /// Un lien = un appel : objectType `ChargeCall`, objectId = id de l'appel.
+  CHARGE_CALL_PAYMENT
+  /// Acces personnel d'un copropriétaire a une assemblee generale en direct (spec 043).
+  GENERAL_MEETING_ACCESS
 }
 
 /// Lien securise a jeton aleatoire, lecture seule, expirant et revocable.
@@ -1087,6 +1128,7 @@ model SecureLink {
   @@index([tenantId])
   @@index([tenantId, objectType, objectId])
   @@index([expiresAt])
+  @@index([createdByUserId])
   @@map("secure_links")
 }
 
@@ -1140,6 +1182,7 @@ model ExternalAccessGrant {
 
   @@index([tenantId])
   @@index([tenantId, revokedAt])
+  @@index([ownerClientId])
   @@map("external_access_grants")
 }
 
@@ -1158,6 +1201,7 @@ model ExternalAccessGrantProperty {
   @@unique([grantId, propertyId])
   @@index([tenantId])
   @@index([grantId])
+  @@index([propertyId])
   @@map("external_access_grant_properties")
 }
 
@@ -1197,6 +1241,8 @@ model ExternalAccessGrantDocument {
   @@unique([grantId, documentId])
   @@index([tenantId])
   @@index([grantId])
+  @@index([propertyId])
+  @@index([documentId])
   @@map("external_access_grant_documents")
 }
 
@@ -1854,10 +1900,11 @@ model CrmContact {
   paymentIncidentsCount  Int?           @default(0) @map("payment_incidents_count")
   preferredPaymentMethod PaymentMethod? @map("preferred_payment_method")
 
-  // Consents & Compliance (default true: consentements cochés par défaut)
-  consentMarketing Boolean?  @default(true) @map("consent_marketing")
-  consentWhatsapp  Boolean?  @default(true) @map("consent_whatsapp")
-  consentEmail     Boolean?  @default(true) @map("consent_email")
+  // Consents & Compliance (defaut false depuis l'audit du 2026-10-19, decision validee :
+  // un consentement n'est jamais presume). Les lignes existantes ne sont pas modifiees.
+  consentMarketing Boolean?  @default(false) @map("consent_marketing")
+  consentWhatsapp  Boolean?  @default(false) @map("consent_whatsapp")
+  consentEmail     Boolean?  @default(false) @map("consent_email")
   consentDate      DateTime? @map("consent_date")
   consentSource    String?   @map("consent_source")
 
@@ -1902,6 +1949,7 @@ model CrmContact {
   syndicManaged              Syndicate[]           @relation("SyndicManager")
   gmProxiesAsGrantor         GMProxy[]             @relation("GMProxyGrantor")
   gmProxiesAsRepresentative  GMProxy[]             @relation("GMProxyRepresentative")
+  gmParticipations           GMParticipant[]
   lotOwnerProfiles           LotOwnerProfile[]
   lotTenantProfiles          LotTenantProfile[]
   ownerAccounts              OwnerAccount[]
@@ -1913,6 +1961,10 @@ model CrmContact {
   saleOffersAsBuyer          SaleOffer[]
 
   syndicChargeReceipts SyndicChargeReceipt[]
+
+  // Spec 042 P4 : prélèvement des appels de charges
+  directDebitMandates        DirectDebitMandate[]
+  directDebitRemittanceLines DirectDebitRemittanceLine[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -2265,6 +2317,7 @@ model Property {
   @@index([latitude, longitude])
   @@index([locationZone])
   @@index([containerParentId])
+  @@index([partnershipId])
   @@map("properties")
 }
 
@@ -2407,26 +2460,37 @@ model PropertyVisitCollaborator {
 
 // Property Mandate
 model PropertyMandate {
-  id              String    @id @default(uuid())
-  propertyId      String    @map("property_id")
-  tenantId        String    @map("tenant_id")
-  ownerUserId     String    @map("owner_user_id")
-  startDate       DateTime  @map("start_date")
-  endDate         DateTime? @map("end_date")
-  scope           Json?
-  notes           String?   @db.Text
-  isActive        Boolean   @default(true) @map("is_active")
-  revokedAt       DateTime? @map("revoked_at")
-  revokedByUserId String?   @map("revoked_by_user_id")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id                 String    @id @default(uuid())
+  propertyId         String    @map("property_id")
+  tenantId           String    @map("tenant_id")
+  ownerUserId        String    @map("owner_user_id")
+  startDate          DateTime  @map("start_date")
+  endDate            DateTime? @map("end_date")
+  scope              Json?
+  notes              String?   @db.Text
+  isActive           Boolean   @default(true) @map("is_active")
+  revokedAt          DateTime? @map("revoked_at")
+  revokedByUserId    String?   @map("revoked_by_user_id")
+  /// Spec 044 : mandat signe electroniquement par toutes les parties (renseigne au
+  /// scellement ; `signature_request_id` designe la SignatureRequest, sans relation).
+  signedAt           DateTime? @map("signed_at")
+  signatureRequestId String?   @map("signature_request_id") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   owner     User     @relation("PropertyMandateOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   revokedBy User?    @relation("PropertyMandateRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
 
-  @@unique([propertyId, tenantId, isActive])
+  // Audit 2026-10-19 : l'ancienne contrainte @@unique([propertyId, tenantId, isActive])
+  // interdisait aussi deux mandats REVOQUES (is_active = false) pour un meme bien et
+  // une meme agence, donc la 2e revocation levait P2002. Remplacee par un index unique
+  // PARTIEL pose en SQL brut (non exprimable en Prisma), migration
+  // 20261019130000_audit_integrite_schema :
+  //   CREATE UNIQUE INDEX "property_mandates_active_property_tenant_key"
+  //   ON "property_mandates"("property_id", "tenant_id") WHERE "is_active" = true;
+  // Un seul mandat actif par (bien, agence) ; autant de mandats revoques que voulu.
   @@index([propertyId])
   @@index([tenantId])
   @@index([ownerUserId])
@@ -2552,6 +2616,7 @@ enum RentalPaymentMethod {
   MOBILE_MONEY
   CARD
   OTHER
+  DIRECT_DEBIT
 }
 
 enum RentalPaymentStatus {
@@ -2713,25 +2778,33 @@ model RentalLease {
   notes                    String?                @db.Text
   terms_json               Json?                  @map("terms_json")
   created_by_user_id       String                 @map("created_by_user_id")
+  /// Spec 044 : bail signe electroniquement par toutes les parties. Renseigne au
+  /// scellement ; `signature_request_id` designe la demande (SignatureRequest)
+  /// dont le PDF scelle fait foi. Sans relation Prisma : le PDF scelle n'est PAS
+  /// un RentalDocument (il vit dans uploads/signatures, jamais en statique).
+  signed_at                DateTime?              @map("signed_at")
+  signature_request_id     String?                @map("signature_request_id") @db.Uuid
   created_at               DateTime               @default(now()) @map("created_at")
   updated_at               DateTime               @updatedAt @map("updated_at")
 
-  tenant              Tenant                     @relation(fields: [tenant_id], references: [id])
-  property            Property                   @relation(fields: [property_id], references: [id])
-  primaryRenter       TenantClient               @relation("RentalLeasePrimaryRenter", fields: [primary_renter_client_id], references: [id])
-  ownerClient         TenantClient?              @relation("RentalLeaseOwner", fields: [owner_client_id], references: [id])
-  createdBy           User                       @relation("RentalLeaseCreatedBy", fields: [created_by_user_id], references: [id])
-  coRenters           RentalLeaseCoRenter[]
-  installments        RentalInstallment[]
-  deposit             RentalSecurityDeposit?
-  documents           RentalDocument[]
-  payments            RentalPayment[]
-  paymentDeclarations RentalPaymentDeclaration[] @relation("RentalPaymentDeclarationLease")
-  maintenanceTickets  MaintenanceTicket[]
-  thirdPartyMovements ThirdPartyMovement[]
-  managementTerms     LeaseManagementTerms?
-  events              LeaseEvent[]
-  inspections         LeaseInspection[]
+  tenant                     Tenant                      @relation(fields: [tenant_id], references: [id])
+  property                   Property                    @relation(fields: [property_id], references: [id])
+  primaryRenter              TenantClient                @relation("RentalLeasePrimaryRenter", fields: [primary_renter_client_id], references: [id])
+  ownerClient                TenantClient?               @relation("RentalLeaseOwner", fields: [owner_client_id], references: [id])
+  createdBy                  User                        @relation("RentalLeaseCreatedBy", fields: [created_by_user_id], references: [id])
+  coRenters                  RentalLeaseCoRenter[]
+  installments               RentalInstallment[]
+  deposit                    RentalSecurityDeposit?
+  documents                  RentalDocument[]
+  payments                   RentalPayment[]
+  paymentDeclarations        RentalPaymentDeclaration[]  @relation("RentalPaymentDeclarationLease")
+  maintenanceTickets         MaintenanceTicket[]
+  thirdPartyMovements        ThirdPartyMovement[]
+  managementTerms            LeaseManagementTerms?
+  events                     LeaseEvent[]
+  inspections                LeaseInspection[]
+  directDebitMandates        DirectDebitMandate[]
+  directDebitRemittanceLines DirectDebitRemittanceLine[]
 
   @@unique([tenant_id, lease_number])
   @@index([tenant_id])
@@ -2741,6 +2814,7 @@ model RentalLease {
   @@index([crm_deal_id])
   @@index([start_date])
   @@index([end_date])
+  @@index([owner_client_id])
   @@map("rental_leases")
 }
 
@@ -2783,15 +2857,16 @@ model RentalInstallment {
   created_at        DateTime                @default(now()) @map("created_at")
   updated_at        DateTime                @updatedAt @map("updated_at")
 
-  tenant              Tenant                     @relation(fields: [tenant_id], references: [id])
-  lease               RentalLease                @relation(fields: [lease_id], references: [id], onDelete: Cascade)
-  invoice             Invoice?                   @relation(fields: [invoice_id], references: [id])
-  items               RentalInstallmentItem[]
-  payments            RentalPaymentAllocation[]
-  penalties           RentalPenalty[]
-  depositMovements    RentalDepositMovement[]
-  documents           RentalDocument[]
-  paymentDeclarations RentalPaymentDeclaration[] @relation("RentalPaymentDeclarationInstallment")
+  tenant                     Tenant                      @relation(fields: [tenant_id], references: [id])
+  lease                      RentalLease                 @relation(fields: [lease_id], references: [id], onDelete: Cascade)
+  invoice                    Invoice?                    @relation(fields: [invoice_id], references: [id])
+  items                      RentalInstallmentItem[]
+  payments                   RentalPaymentAllocation[]
+  penalties                  RentalPenalty[]
+  depositMovements           RentalDepositMovement[]
+  documents                  RentalDocument[]
+  paymentDeclarations        RentalPaymentDeclaration[]  @relation("RentalPaymentDeclarationInstallment")
+  directDebitRemittanceLines DirectDebitRemittanceLine[]
 
   partnershipDistributions PartnershipDistribution[]
 
@@ -2854,11 +2929,11 @@ model RentalPayment {
   created_at          DateTime             @default(now()) @map("created_at")
   updated_at          DateTime             @updatedAt @map("updated_at")
 
-  tenant           Tenant                    @relation(fields: [tenant_id], references: [id])
-  lease            RentalLease?              @relation(fields: [lease_id], references: [id])
-  renterClient     TenantClient?             @relation(fields: [renter_client_id], references: [id])
-  invoice          Invoice?                  @relation(fields: [invoice_id], references: [id])
-  createdBy        User?                     @relation("RentalPaymentCreatedBy", fields: [created_by_user_id], references: [id])
+  tenant           Tenant                     @relation(fields: [tenant_id], references: [id])
+  lease            RentalLease?               @relation(fields: [lease_id], references: [id])
+  renterClient     TenantClient?              @relation(fields: [renter_client_id], references: [id])
+  invoice          Invoice?                   @relation(fields: [invoice_id], references: [id])
+  createdBy        User?                      @relation("RentalPaymentCreatedBy", fields: [created_by_user_id], references: [id])
   allocations      RentalPaymentAllocation[]
   refunds          RentalRefund[]
   depositMovements RentalDepositMovement[]
@@ -2866,6 +2941,8 @@ model RentalPayment {
   /// Lot 7 : tentative de paiement en ligne (PaySecureHub) adossée 1-1 à ce
   /// paiement PENDING.
   onlineCheckout   OnlinePaymentCheckout?
+  /// Prélèvement (spec 042 P3) ayant généré cet encaissement, le cas échéant.
+  directDebitLine  DirectDebitRemittanceLine?
 
   // Client-supplied idempotency keys are only unique within a tenant.
   @@unique([tenant_id, idempotency_key])
@@ -3041,6 +3118,10 @@ model RentalPenalty {
   rate               Decimal?          @db.Decimal(12, 4)
   fixed_amount       Decimal?          @map("fixed_amount") @db.Decimal(12, 2)
   amount             Decimal           @db.Decimal(12, 2)
+  /// Audit 2026-10-19 : montant calcule initialement par le moteur de penalites,
+  /// conserve quand `amount` est ajuste a la main. Rempli a `amount` pour
+  /// l'existant (migration 20261019130000_audit_integrite_schema), nul si non renseigne.
+  calculatedAmount   Decimal?          @map("calculated_amount") @db.Decimal(12, 2)
   currency           String            @default("FCFA")
   is_manual_override Boolean           @default(false) @map("is_manual_override")
   override_reason    String?           @map("override_reason") @db.Text
@@ -3314,6 +3395,7 @@ model MaintenanceTicket {
   @@index([tenant_id, created_at])
   @@index([property_id])
   @@index([lease_id])
+  @@index([tenant_contact_id])
   @@map("maintenance_tickets")
 }
 
@@ -3913,6 +3995,18 @@ enum DistributionKey {
   MANUAL
 }
 
+/// Menu lot 2 : mode de repartition du montant d'un appel de charges (ou d'un appel
+/// de fonds) entre les lots. Distinct de `DistributionKey`, qui est la cle d'un POSTE
+/// de budget ; ici on repartit le montant d'une programmation fixe ou d'un appel saisi.
+enum ChargeAllocationMethod {
+  /// Au prorata des tantiemes generaux (comportement historique, defaut).
+  SHARES
+  /// Un montant PAR LOT saisi pour chaque type de lot (`amountsByLotType`) ; le total en decoule.
+  BY_LOT_TYPE
+  /// Meme montant pour chaque lot concerne (total / nombre de lots).
+  EQUAL
+}
+
 enum TransactionType {
   CHARGE_CALL
   PAYMENT
@@ -3968,44 +4062,65 @@ model Syndicate {
   cadastralReference String?         @map("cadastral_reference")
   totalLots          Int             @default(0) @map("total_lots")
   totalBuildings     Int             @default(1) @map("total_buildings")
+  /// Total de reference des tantiemes generaux (ex. 1000), facultatif.
+  totalGeneralShares Int?            @map("total_general_shares")
   status             SyndicateStatus @default(ACTIVE)
   regulationDocUrl   String?         @map("regulation_doc_url")
   /// Lot S1 : agence mandante dont l'identite figure sur les documents.
   mandatingAgencyId  String?         @map("mandating_agency_id") @db.Uuid
   /// Lot S1 : cle de stockage PRIVEE du logo de la copropriete.
   logoPath           String?         @map("logo_path")
+  /// Menu lot 2 : bareme par type de lot, parametre UNE fois par l'administrateur (modifiable).
+  /// Montant PAR LOT et par type, ex. {"APARTMENT": 50000, "PARKING": 10000}. Nul : pas de bareme.
+  lotTypeRates          Json?            @map("lot_type_rates")
+  lotTypeRatesUpdatedAt DateTime?        @map("lot_type_rates_updated_at")
+  /// Auteur de la derniere modification du bareme (sans cle etrangere : trace d'audit).
+  lotTypeRatesUpdatedById String?        @map("lot_type_rates_updated_by_id")
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
-  tenant             Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                   Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   // Defense en profondeur (audit S1) : cle composite (tenant_id,
   // mandating_agency_id) -> syndic_mandating_agencies(tenant_id, id), pour
   // qu'une copropriete ne puisse jamais etre rattachee au mandant d'une
   // autre agence, meme si un bug applicatif oubliait de le verifier.
-  mandatingAgency    SyndicMandatingAgency?     @relation(fields: [tenantId, mandatingAgencyId], references: [tenantId, id], onDelete: Restrict)
-  property           Property?                  @relation("SyndicateProperty", fields: [propertyId], references: [id], onDelete: SetNull)
-  syndicManager      CrmContact?                @relation("SyndicManager", fields: [syndicManagerId], references: [id], onDelete: SetNull)
-  lots               SyndicateLot[]
-  generalMeetings    GeneralMeeting[]
-  serviceContracts   MaintenanceContract[]
-  commonAssets       CommonAreaAsset[]
-  documents          SyndicateDocument[]
-  funds              SyndicateFund[]
-  chargeCalls        ChargeCall[]
-  chargeCallBatches  ChargeCallBatch[]
-  paymentMethods     SyndicPaymentMethod[]
-  reminderConfigs    ReminderConfig[]
-  budgets            SyndicateBudget[]
-  chartOfAccounts    ChartOfAccount[]
-  accountingJournals AccountingJournal[]
-  ownerAccounts      OwnerAccount[]
-  incidents          SyndicateIncident[]
-  maintenanceLinks   SyndicateMaintenanceLink[]
-  contractLinks      SyndicateContractLink[]
-  chargeReceipts     SyndicChargeReceipt[]
+  mandatingAgency          SyndicMandatingAgency?         @relation(fields: [tenantId, mandatingAgencyId], references: [tenantId, id], onDelete: Restrict)
+  property                 Property?                      @relation("SyndicateProperty", fields: [propertyId], references: [id], onDelete: SetNull)
+  syndicManager            CrmContact?                    @relation("SyndicManager", fields: [syndicManagerId], references: [id], onDelete: SetNull)
+  lots                     SyndicateLot[]
+  generalMeetings          GeneralMeeting[]
+  serviceContracts         MaintenanceContract[]
+  commonAssets             CommonAreaAsset[]
+  documents                SyndicateDocument[]
+  funds                    SyndicateFund[]
+  chargeCalls              ChargeCall[]
+  /// Spec 042 : compte marchand de la copropriete et tentatives de paiement en ligne.
+  paymentGatewayConfig     SyndicPaymentGatewayConfig?
+  onlineCheckouts          SyndicOnlineCheckout[]
+  chargeCallBatches        ChargeCallBatch[]
+  paymentMethods           SyndicPaymentMethod[]
+  reminderConfigs          ReminderConfig[]
+  budgets                  SyndicateBudget[]
+  chartOfAccounts          ChartOfAccount[]
+  accountingJournals       AccountingJournal[]
+  ownerAccounts            OwnerAccount[]
+  incidents                SyndicateIncident[]
+  maintenanceLinks         SyndicateMaintenanceLink[]
+  contractLinks            SyndicateContractLink[]
+  chargeReceipts           SyndicChargeReceipt[]
   /// Lot S4 : programmations d'appels de charges automatiques.
-  chargeSchedules    SyndicChargeSchedule[]
-  providerInvoices   SyndicProviderInvoice[]
+  chargeSchedules          SyndicChargeSchedule[]
+  providerInvoices         SyndicProviderInvoice[]
+  /// Spec 047 : paiement mobile money declare.
+  receivingNumbers         SyndicReceivingNumber[]
+  declaredPaymentSettings  SyndicDeclaredPaymentSettings?
+  paymentDeclarations      SyndicPaymentDeclaration[]
+  paymentProofReads        SyndicPaymentProofRead[]
+  /// Spec 042 P4 : prélèvement bancaire des appels de charges.
+  directDebitCreditors     DirectDebitCreditor[]
+  directDebitMandates      DirectDebitMandate[]
+  directDebitRemittances   DirectDebitRemittance[]
+  directDebitReturnImports DirectDebitReturnImport[]
 
   @@index([tenantId])
   @@index([tenantId, name])
@@ -4058,32 +4173,40 @@ model SyndicateLot {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  syndicate            Syndicate                  @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
-  property             Property?                  @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-  coowner              CrmContact?                @relation("LotCoowner", fields: [coownerId], references: [id], onDelete: SetNull)
-  owner                CrmContact?                @relation("SyndicateLotOwner", fields: [ownerContactId], references: [id], onDelete: SetNull)
-  votes                GMVote[]
-  charges              ChargeCall[]
-  chargePayments       ChargePayment[]
-  ownerProfiles        LotOwnerProfile[]
-  tenantProfiles       LotTenantProfile[]
-  tenantAssignments    LotTenantAssignment[]
-  paymentReminders     PaymentReminder[]
-  latePaymentPenalties LatePaymentPenalty[]
-  paymentSchedules     PaymentSchedule[]
-  ownerAccount         OwnerAccount?
-  journalLines         JournalEntryLine[]
-  budgetAllocations    BudgetAllocation[]
-  incidents            SyndicateIncident[]
-  incidentImputations  IncidentCostImputation[]
-  maintenanceLinks     SyndicateMaintenanceLink[]
-  chargeReceipts       SyndicChargeReceipt[]
+  syndicate                  Syndicate                      @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  property                   Property?                      @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  coowner                    CrmContact?                    @relation("LotCoowner", fields: [coownerId], references: [id], onDelete: SetNull)
+  owner                      CrmContact?                    @relation("SyndicateLotOwner", fields: [ownerContactId], references: [id], onDelete: SetNull)
+  votes                      GMVote[]
+  gmAttendances              GMAttendance[]
+  charges                    ChargeCall[]
+  onlineCheckouts            SyndicOnlineCheckout[]
+  chargePayments             ChargePayment[]
+  ownerProfiles              LotOwnerProfile[]
+  tenantProfiles             LotTenantProfile[]
+  tenantAssignments          LotTenantAssignment[]
+  paymentReminders           PaymentReminder[]
+  latePaymentPenalties       LatePaymentPenalty[]
+  paymentSchedules           PaymentSchedule[]
+  ownerAccount               OwnerAccount?
+  journalLines               JournalEntryLine[]
+  budgetAllocations          BudgetAllocation[]
+  incidents                  SyndicateIncident[]
+  incidentImputations        IncidentCostImputation[]
+  maintenanceLinks           SyndicateMaintenanceLink[]
+  chargeReceipts             SyndicChargeReceipt[]
+  /// Spec 047 : parts de declarations de paiement affectees a ce lot.
+  paymentDeclarationLines    SyndicPaymentDeclarationLine[]
+  /// Spec 042 P4.
+  directDebitMandates        DirectDebitMandate[]
+  directDebitRemittanceLines DirectDebitRemittanceLine[]
 
   @@index([syndicateId])
   @@index([syndicateId, lotNumber])
   // Unicite (syndicate_id, lower(btrim(lot_number))) : index sur expression pose en SQL brut,
   // migration 20261005090000_syndic_lot_number_unique (non exprimable en Prisma).
   @@index([ownerContactId])
+  @@index([coownerId])
   @@map("syndicate_lots")
 }
 
@@ -4177,8 +4300,9 @@ model ChargeCall {
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
 
-  syndicate      Syndicate                 @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
-  lot            SyndicateLot              @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  // Audit 2026-10-19 : Restrict, un appel de fonds (creance) ne disparait pas avec son parent.
+  syndicate      Syndicate                 @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
+  lot            SyndicateLot              @relation(fields: [lotId], references: [id], onDelete: Restrict)
   batch          ChargeCallBatch?          @relation(fields: [batchId], references: [id], onDelete: SetNull)
   fund           SyndicateFund?            @relation(fields: [fundId], references: [id], onDelete: SetNull)
   /// Paiements dont c'est l'appel « principal » (compatibilite). Le montant
@@ -4206,30 +4330,53 @@ model ChargeCall {
 /// sur un ou plusieurs appels par `ChargePaymentAllocation` ; la part non
 /// encore imputee (`unallocatedAmount`) constitue l'avance du lot.
 model ChargePayment {
-  id                String   @id @default(uuid()) @db.Uuid
-  lotId             String   @map("lot_id") @db.Uuid
+  id                    String              @id @default(uuid()) @db.Uuid
+  lotId                 String              @map("lot_id") @db.Uuid
   /// Premier appel solde par ce paiement, conserve pour compatibilite. Nul pour
   /// une avance pure. Ne sert jamais a calculer le regle d'un appel.
-  chargeCallId      String?  @map("charge_call_id") @db.Uuid
-  amount            Decimal  @db.Decimal(12, 2)
+  chargeCallId          String?             @map("charge_call_id") @db.Uuid
+  amount                Decimal             @db.Decimal(12, 2)
   /// Part du paiement non encore affectee a un appel (avance restante).
-  unallocatedAmount Decimal  @default(0) @map("unallocated_amount") @db.Decimal(12, 2)
-  paidAt            DateTime @map("paid_at")
-  method            String?
-  reference         String?
+  unallocatedAmount     Decimal             @default(0) @map("unallocated_amount") @db.Decimal(12, 2)
+  paidAt                DateTime            @map("paid_at")
+  method                String?
+  reference             String?
   /// Utilisateur qui a saisi le paiement (sans cle etrangere : trace d'audit).
-  createdById       String?  @map("created_by_id")
-  createdAt         DateTime @default(now()) @map("created_at")
+  createdById           String?             @map("created_by_id")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  /// Spec 042 : cle d'idempotence d'un paiement cree par le systeme (paiement en
+  /// ligne : `codePaiement` du checkout). Nulle pour un paiement saisi a la main.
+  idempotencyKey        String?             @unique @map("idempotency_key")
+  /// Spec 042 : identifiant de transaction du fournisseur, unique : un meme
+  /// paiement operateur ne peut etre enregistre qu'une fois.
+  providerTransactionId String?             @unique @map("provider_transaction_id")
+  origin                ChargePaymentOrigin @default(MANUAL)
 
-  lot         SyndicateLot              @relation(fields: [lotId], references: [id], onDelete: Cascade)
-  chargeCall  ChargeCall?               @relation(fields: [chargeCallId], references: [id], onDelete: SetNull)
-  allocations ChargePaymentAllocation[]
+  // Audit 2026-10-19 : Restrict, un paiement encaisse ne disparait pas avec le lot.
+  lot             SyndicateLot                  @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  chargeCall      ChargeCall?                   @relation(fields: [chargeCallId], references: [id], onDelete: SetNull)
+  allocations     ChargePaymentAllocation[]
   /// Lot S3 : recu de paiement emis pour ce paiement.
-  receipts    SyndicChargeReceipt[]
+  receipts        SyndicChargeReceipt[]
+  /// Spec 042 : tentative de paiement en ligne a l'origine de ce paiement.
+  onlineCheckout  SyndicOnlineCheckout?
+  /// Spec 047 : ligne de declaration validee a l'origine de ce paiement.
+  declarationLine SyndicPaymentDeclarationLine?
+  /// Spec 042 P4 : ligne de prélèvement à l'origine de ce paiement.
+  directDebitLine DirectDebitRemittanceLine?
 
   @@index([chargeCallId])
   @@index([lotId, paidAt])
   @@map("charge_payments")
+}
+
+/// Spec 042 : provenance d'un paiement de charges.
+enum ChargePaymentOrigin {
+  MANUAL
+  ONLINE
+  /// Spec 047 : paiement mobile money declare, valide par le gestionnaire.
+  DECLARED
+  DIRECT_DEBIT
 }
 
 enum ChargeAllocationSource {
@@ -4336,23 +4483,33 @@ model SyndicReceiptSequence {
 }
 
 model GeneralMeeting {
-  id          String        @id @default(uuid()) @db.Uuid
-  syndicateId String        @map("syndicate_id") @db.Uuid
-  type        MeetingType   @map("meeting_type")
-  scheduledAt DateTime      @map("scheduled_at")
-  startTime   DateTime?     @map("start_time")
-  endTime     DateTime?     @map("end_time")
-  location    String?
-  quorum      Decimal?      @db.Decimal(5, 2)
-  status      MeetingStatus @default(PLANNED)
-  minutesUrl  String?       @map("minutes_url")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  id                 String        @id @default(uuid()) @db.Uuid
+  syndicateId        String        @map("syndicate_id") @db.Uuid
+  type               MeetingType   @map("meeting_type")
+  scheduledAt        DateTime      @map("scheduled_at")
+  startTime          DateTime?     @map("start_time")
+  endTime            DateTime?     @map("end_time")
+  location           String?
+  quorum             Decimal?      @db.Decimal(5, 2)
+  status             MeetingStatus @default(PLANNED)
+  minutesUrl         String?       @map("minutes_url")
+  /// URL de visioconference facultative (https uniquement), affichee sur la page en direct (spec 043).
+  videoConferenceUrl String?       @map("video_conference_url")
+  /// Discussion écrite de la visio fermée par le gestionnaire (spec 046, M5).
+  chatClosedAt       DateTime?     @map("chat_closed_at")
+  /// Micro et caméra interdits à tous les copropriétaires de la visio par le gestionnaire (spec 045, V16).
+  mediaLockedAt      DateTime?     @map("media_locked_at")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
 
-  syndicate   Syndicate      @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
-  agendaItems GMAgendaItem[]
-  resolutions GMResolution[]
-  proxies     GMProxy[]
+  syndicate    Syndicate       @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  agendaItems  GMAgendaItem[]
+  resolutions  GMResolution[]
+  proxies      GMProxy[]
+  participants GMParticipant[]
+  attendances  GMAttendance[]
+  recordings   GMRecording[]
+  chatMessages GMChatMessage[]
 
   @@index([syndicateId])
   @@index([status])
@@ -4377,17 +4534,21 @@ model GMAgendaItem {
 }
 
 model GMResolution {
-  id           String            @id @default(uuid()) @db.Uuid
-  meetingId    String            @map("meeting_id") @db.Uuid
+  id           String                 @id @default(uuid()) @db.Uuid
+  meetingId    String                 @map("meeting_id") @db.Uuid
   title        String
-  description  String?           @db.Text
-  majorityRule String?           @map("majority_rule")
+  description  String?                @db.Text
+  majorityRule String?                @map("majority_rule")
   result       ResolutionResult?
-  votesFor     Int               @default(0) @map("votes_for")
-  votesAgainst Int               @default(0) @map("votes_against")
-  votesAbstain Int               @default(0) @map("votes_abstain")
-  sharesFor    Int               @default(0) @map("shares_for")
-  createdAt    DateTime          @default(now()) @map("created_at")
+  votesFor     Int                    @default(0) @map("votes_for")
+  votesAgainst Int                    @default(0) @map("votes_against")
+  votesAbstain Int                    @default(0) @map("votes_abstain")
+  sharesFor    Int                    @default(0) @map("shares_for")
+  createdAt    DateTime               @default(now()) @map("created_at")
+  /// Etat du vote en direct (spec 043) : PENDING (non soumise), OPEN, CLOSED.
+  voteStatus   GMResolutionVoteStatus @default(PENDING) @map("vote_status")
+  voteOpenedAt DateTime?              @map("vote_opened_at")
+  voteClosedAt DateTime?              @map("vote_closed_at")
 
   meeting         GeneralMeeting    @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   votes           GMVote[]
@@ -4398,11 +4559,16 @@ model GMResolution {
 }
 
 model GMVote {
-  id           String     @id @default(uuid()) @db.Uuid
-  resolutionId String     @map("resolution_id") @db.Uuid
-  lotId        String     @map("lot_id") @db.Uuid
-  vote         VoteChoice
-  createdAt    DateTime   @default(now()) @map("created_at")
+  id              String       @id @default(uuid()) @db.Uuid
+  resolutionId    String       @map("resolution_id") @db.Uuid
+  lotId           String       @map("lot_id") @db.Uuid
+  vote            VoteChoice
+  createdAt       DateTime     @default(now()) @map("created_at")
+  /// Origine du vote (spec 043) : gestionnaire, copropriétaire connecté ou mandataire connecté.
+  source          GMVoteSource @default(MANAGER)
+  castByUserId    String?      @map("cast_by_user_id")
+  castByContactId String?      @map("cast_by_contact_id")
+  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at")
 
   resolution GMResolution @relation(fields: [resolutionId], references: [id], onDelete: Cascade)
   lot        SyndicateLot @relation(fields: [lotId], references: [id], onDelete: Cascade)
@@ -4411,6 +4577,168 @@ model GMVote {
   @@index([resolutionId])
   @@index([lotId])
   @@map("gm_votes")
+}
+
+enum GMResolutionVoteStatus {
+  PENDING
+  OPEN
+  CLOSED
+}
+
+enum GMVoteSource {
+  MANAGER
+  CO_OWNER
+  PROXY_HOLDER
+}
+
+enum GMAttendanceStatus {
+  PRESENT
+  REPRESENTED
+  ABSENT
+}
+
+enum GMAttendanceMode {
+  ONLINE
+  IN_PERSON
+}
+
+enum GMAttendanceRecorder {
+  SELF
+  MANAGER
+}
+
+/// Contact invite a une AG (porteur des liens personnels, spec 043). Un par contact et par AG.
+/// DEFAULT suit l'interdiction globale de l'AG, ALLOWED l'outrepasse (parole donnée), BLOCKED l'emporte toujours.
+enum GMMediaPolicy {
+  DEFAULT
+  ALLOWED
+  BLOCKED
+}
+
+model GMParticipant {
+  id          String        @id @default(uuid()) @db.Uuid
+  tenantId    String        @map("tenant_id")
+  meetingId   String        @map("meeting_id") @db.Uuid
+  contactId   String        @map("contact_id")
+  joinedAt    DateTime?     @map("joined_at")
+  lastSeenAt  DateTime?     @map("last_seen_at")
+  /// Écriture coupée dans la discussion de la visio par le gestionnaire (spec 046, M6).
+  chatMutedAt DateTime?     @map("chat_muted_at")
+  /// Droit de publier micro et caméra dans la visio, décidé par le gestionnaire (spec 045, V16).
+  mediaPolicy GMMediaPolicy @default(DEFAULT) @map("media_policy")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  meeting      GeneralMeeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  contact      CrmContact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  chatMessages GMChatMessage[]
+
+  @@unique([meetingId, contactId])
+  @@index([tenantId])
+  @@index([contactId])
+  @@map("gm_participants")
+}
+
+enum GMRecordingStatus {
+  RECORDING
+  PROCESSING
+  AVAILABLE
+  FAILED
+  DELETED
+}
+
+/// Enregistrement d'une AG en visio (spec 045, R1-R10). Le fichier MP4 est rapatrie
+/// depuis le stockage S3 de LiveKit vers le stockage prive d'ImmoTopia.
+model GMRecording {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @map("tenant_id")
+  meetingId       String            @map("meeting_id") @db.Uuid
+  egressId        String            @unique @map("egress_id")
+  status          GMRecordingStatus @default(RECORDING)
+  /// Cle S3 de l'objet produit par LiveKit.
+  storageKey      String            @map("storage_key")
+  /// Identifiant de stockage prive (/uploads/...), jamais servi en statique.
+  fileUrl         String?           @map("file_url")
+  fileSize        BigInt?           @map("file_size")
+  durationSeconds Int?              @map("duration_seconds")
+  failureReason   String?           @map("failure_reason")
+  /// Identifiant de l'evenement egress_ended traite (idempotence du webhook).
+  webhookEventId  String?           @unique @map("webhook_event_id")
+  startedAt       DateTime          @default(now()) @map("started_at")
+  startedByUserId String?           @map("started_by_user_id")
+  stoppedAt       DateTime?         @map("stopped_at")
+  stoppedByUserId String?           @map("stopped_by_user_id")
+  endedAt         DateTime?         @map("ended_at")
+  deletedAt       DateTime?         @map("deleted_at")
+  deletedByUserId String?           @map("deleted_by_user_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  meeting GeneralMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([meetingId])
+  @@map("gm_recordings")
+}
+
+enum GMChatAuthorKind {
+  COOWNER
+  MANAGER
+}
+
+/// Message de la discussion écrite de la visio d'une AG (spec 046).
+model GMChatMessage {
+  id             String           @id @default(uuid()) @db.Uuid
+  tenantId       String           @map("tenant_id")
+  meetingId      String           @map("meeting_id") @db.Uuid
+  authorKind     GMChatAuthorKind @map("author_kind")
+  /// GMParticipant auteur (COOWNER) ; nul pour le gestionnaire.
+  participantId  String?          @map("participant_id") @db.Uuid
+  /// Utilisateur auteur (MANAGER) ; nul pour un copropriétaire.
+  authorUserId   String?          @map("author_user_id")
+  /// Nom affiché, figé à l'envoi (M12).
+  authorName     String           @map("author_name")
+  /// Texte brut normalisé, 500 caractères au plus (M3).
+  body           String
+  hiddenAt       DateTime?        @map("hidden_at")
+  hiddenByUserId String?          @map("hidden_by_user_id")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  meeting     GeneralMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  participant GMParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([meetingId, createdAt])
+  @@map("gm_chat_messages")
+}
+
+/// Emargement d'un lot a une AG (spec 043). Absence de ligne = absent.
+model GMAttendance {
+  id                     String               @id @default(uuid()) @db.Uuid
+  tenantId               String               @map("tenant_id")
+  meetingId              String               @map("meeting_id") @db.Uuid
+  lotId                  String               @map("lot_id") @db.Uuid
+  status                 GMAttendanceStatus
+  mode                   GMAttendanceMode
+  attendeeContactId      String?              @map("attendee_contact_id")
+  representedByContactId String?              @map("represented_by_contact_id")
+  recordedBy             GMAttendanceRecorder @map("recorded_by")
+  recordedByUserId       String?              @map("recorded_by_user_id")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  meeting GeneralMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  lot     SyndicateLot   @relation(fields: [lotId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, lotId])
+  @@index([tenantId])
+  @@index([lotId])
+  @@map("gm_attendances")
 }
 
 model GMProxy {
@@ -4501,6 +4829,8 @@ model SyndicateDocument {
   type        SyndicateDocType
   fileUrl     String           @map("file_url")
   expiresAt   DateTime?        @map("expires_at")
+  /// Visible au portail des coproprietaires (regle explicite, plus deduite du type).
+  visibleToCoOwners Boolean    @default(false) @map("visible_to_co_owners")
   createdAt   DateTime         @default(now()) @map("created_at")
 
   syndicate Syndicate @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
@@ -4591,6 +4921,9 @@ model ChargeCallBatch {
   totalAmount Decimal     @map("total_amount") @db.Decimal(14, 2)
   currency    String      @default("XOF")
   status      BatchStatus @default(DRAFT)
+  /// Menu lot 2 : mode de repartition utilise pour ce lot d'appels (trace d'audit). SHARES
+  /// pour les lots issus d'un budget (cle des postes) et les lots historiques.
+  allocationMethod ChargeAllocationMethod @default(SHARES) @map("allocation_method")
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
@@ -4648,8 +4981,16 @@ model SyndicChargeSchedule {
   amountSource  SyndicChargeAmountSource @map("amount_source")
   /// Budget a utiliser ; nul avec BUDGET = budget approuve de l'exercice de la periode.
   budgetId      String?                  @map("budget_id") @db.Uuid
-  /// Montant total appele par periode (source FIXED).
+  /// Montant total appele par periode (source FIXED, modes SHARES et EQUAL ; nul en BY_LOT_TYPE).
   fixedAmount   Decimal?                 @map("fixed_amount") @db.Decimal(14, 2)
+  /// Menu lot 2 : repartition du montant fixe entre les lots. SHARES (defaut) = tantiemes,
+  /// comportement historique ; toujours SHARES pour la source BUDGET (cle des postes du budget).
+  /// BY_LOT_TYPE applique le bareme de la copropriete (`Syndicate.lotTypeRates`) a chaque periode.
+  allocationMethod ChargeAllocationMethod @default(SHARES) @map("allocation_method")
+  /// BUG-2026-10-19-004 : avec SHARES + FIXED, inclut tous les lots actifs (parkings, caves...) comme
+  /// l'appel direct « Tous les lots ». Faux = calcul historique (lots principaux seulement, avec repli).
+  /// Les programmations anterieures a la migration sont mises a faux ; ignore dans les autres modes.
+  includeAnnexLots Boolean               @default(true) @map("include_annex_lots")
   currency      String                   @default("XOF")
   startDate     DateTime                 @map("start_date") @db.Date
   endDate       DateTime?                @map("end_date") @db.Date
@@ -4735,6 +5076,9 @@ model PaymentReminder {
   channel        ReminderChannel
   status         ReminderStatus
   responseAction String?         @map("response_action")
+  /// Cause d'echec d'envoi (code technique et message).
+  failureCode    String?         @map("failure_code")
+  failureMessage String?         @map("failure_message")
   createdAt      DateTime        @default(now()) @map("created_at")
 
   chargeCall ChargeCall   @relation(fields: [chargeCallId], references: [id], onDelete: Cascade)
@@ -5014,6 +5358,7 @@ model JournalEntry {
   @@index([entryDate])
   @@index([tenantId])
   @@index([documentType, documentId])
+  @@index([voidedByEntryId])
   @@map("journal_entries")
 }
 
@@ -5038,7 +5383,9 @@ model JournalEntryLine {
   updatedAt           DateTime            @updatedAt @map("updated_at")
 
   entry      JournalEntry       @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  account    ChartOfAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  // Audit 2026-10-19 : Restrict, une ligne d'ecriture ne disparait pas avec son compte
+  // du plan comptable. `entry` reste en Cascade : seuls les brouillons sont supprimables.
+  account    ChartOfAccount     @relation(fields: [accountId], references: [id], onDelete: Restrict)
   lot        SyndicateLot?      @relation(fields: [lotId], references: [id], onDelete: SetNull)
   thirdParty ThirdPartyAccount? @relation(fields: [thirdPartyAccountId], references: [id], onDelete: SetNull)
 
@@ -5059,9 +5406,11 @@ model OwnerAccount {
   lastUpdatedAt DateTime @updatedAt @map("last_updated_at")
   createdAt     DateTime @default(now()) @map("created_at")
 
-  syndicate    Syndicate                 @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
-  lot          SyndicateLot              @relation(fields: [lotId], references: [id], onDelete: Cascade)
-  contact      CrmContact                @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  // Audit 2026-10-19 : Restrict (et non Cascade), la suppression d'un parent ne doit
+  // pas effacer le compte ni l'historique financier du coproprietaire.
+  syndicate    Syndicate                 @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
+  lot          SyndicateLot              @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  contact      CrmContact                @relation(fields: [contactId], references: [id], onDelete: Restrict)
   transactions OwnerAccountTransaction[]
 
   @@index([syndicateId])
@@ -5235,6 +5584,7 @@ model SyndicProviderInvoice {
   @@index([incidentId])
   @@index([budgetLineItemId])
   @@index([fundId])
+  @@index([providerId])
   @@map("syndic_provider_invoices")
 }
 
@@ -6053,7 +6403,9 @@ model ThirdPartyAccount {
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
   tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  tenantClient TenantClient?        @relation(fields: [tenantClientId], references: [id], onDelete: Cascade)
+  // Audit 2026-10-19 : Restrict, le compte de tiers (et son releve) survit a la
+  // suppression du TenantClient ; la suppression du client doit etre refusee.
+  tenantClient TenantClient?        @relation(fields: [tenantClientId], references: [id], onDelete: Restrict)
   movements    ThirdPartyMovement[]
   journalLines JournalEntryLine[]
   // Un pour un : `Supplier.thirdPartyAccountId` est unique. Un compte de
@@ -6094,7 +6446,8 @@ model ThirdPartyMovement {
   leaseId      String?                @map("lease_id") @db.Uuid
   createdAt    DateTime               @default(now()) @map("created_at")
 
-  account ThirdPartyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  // Audit 2026-10-19 : Restrict, un mouvement de releve ne disparait pas avec son compte.
+  account ThirdPartyAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
   tenant  Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   lease   RentalLease?      @relation(fields: [leaseId], references: [id], onDelete: SetNull)
 
@@ -6269,6 +6622,7 @@ model SupplierInvoice {
   @@index([tenantId, status])
   @@index([supplierId])
   @@index([siteId])
+  @@index([purchaseOrderId])
   @@map("supplier_invoices")
 }
 
@@ -6405,11 +6759,11 @@ model ConstructionSite {
   closedBy            User?                @relation("ConstructionSiteClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
   lots                SiteLot[]
 
-  stockLocation  StockLocation?
-  stockMovements StockMovement[]
+  stockLocation                  StockLocation?
+  stockMovements                 StockMovement[]
   // Lot 040 : bons et alertes rattaches au chantier.
-  stockSlips     StockSlip[]
-  stockAlerts    StockAlert[]
+  stockSlips                     StockSlip[]
+  stockAlerts                    StockAlert[]
   // Lot 041 : inventaire de chantier par WhatsApp.
   stockWhatsappRegistrationSites StockWhatsappRegistrationSite[]
   stockWhatsappSessions          StockWhatsappSession[]
@@ -7158,6 +7512,7 @@ model Employee {
 
   @@index([tenantId])
   @@index([tenantId, isActive])
+  @@index([thirdPartyAccountId])
   @@map("employees")
 }
 
@@ -7225,16 +7580,21 @@ model SalaryPayment {
   createdByUserId   String                @map("created_by_user_id")
   validatedByUserId String?               @map("validated_by_user_id")
   validatedAt       DateTime?             @map("validated_at")
+  /// Audit 2026-10-19 : compte de tresorerie qui a paye le salaire. Nul : compte
+  /// resolu par defaut (caisse) par lib/finance/treasury/accounts.ts, comme avant.
+  treasuryAccountId String?               @map("treasury_account_id") @db.Uuid
   createdAt         DateTime              @default(now()) @map("created_at")
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  journalEntry JournalEntry? @relation("SalaryPaymentEntry", fields: [journalEntryId], references: [id], onDelete: SetNull)
-  createdBy    User          @relation("SalaryPaymentCreatedBy", fields: [createdByUserId], references: [id])
-  validatedBy  User?         @relation("SalaryPaymentValidatedBy", fields: [validatedByUserId], references: [id])
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee        Employee         @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  journalEntry    JournalEntry?    @relation("SalaryPaymentEntry", fields: [journalEntryId], references: [id], onDelete: SetNull)
+  createdBy       User             @relation("SalaryPaymentCreatedBy", fields: [createdByUserId], references: [id])
+  validatedBy     User?            @relation("SalaryPaymentValidatedBy", fields: [validatedByUserId], references: [id])
+  treasuryAccount TreasuryAccount? @relation(fields: [treasuryAccountId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([employeeId])
+  @@index([treasuryAccountId])
   @@map("salary_payments")
 }
 
@@ -7796,8 +8156,8 @@ model StockItem {
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
-  tenant              Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  defaultCostCategory CostCategory?    @relation(fields: [defaultCostCategoryId], references: [id], onDelete: SetNull)
+  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  defaultCostCategory CostCategory?       @relation(fields: [defaultCostCategoryId], references: [id], onDelete: SetNull)
   balances            StockBalance[]
   movements           StockMovement[]
   countLines          StockCountLine[]
@@ -7826,14 +8186,14 @@ model StockLocation {
   createdAt DateTime          @default(now()) @map("created_at")
   updatedAt DateTime          @updatedAt @map("updated_at")
 
-  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  site      ConstructionSite? @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  balances  StockBalance[]
-  movements StockMovement[]
-  counts    StockCount[]
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site             ConstructionSite?      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  balances         StockBalance[]
+  movements        StockMovement[]
+  counts           StockCount[]
   // Lot 040 : bons emis sur ce lieu, alertes qui le visent.
-  slips     StockSlip[]
-  alerts    StockAlert[]
+  slips            StockSlip[]
+  alerts           StockAlert[]
   // Lot 041 : sessions et captures WhatsApp sur ce lieu.
   whatsappSessions StockWhatsappSession[]
   fieldCaptures    StockFieldCapture[]
@@ -7984,6 +8344,8 @@ model StockMovement {
   // Lot 040 : cumul recu / retourne par facture (A6-R1, A8-R2).
   @@index([supplierInvoiceId])
   @@index([slipId])
+  @@index([locationId])
+  @@index([stockCountId])
   @@map("stock_movements")
 }
 
@@ -8005,45 +8367,45 @@ model StockCount {
   createdAt         DateTime         @default(now()) @map("created_at")
   updatedAt         DateTime         @updatedAt @map("updated_at")
 
-  kind                  StockCountKind @default(REGULAR)
+  kind                  StockCountKind   @default(REGULAR)
   /// Lot 040 (A2-R4). Cloture du comptage (DRAFT -> COUNTED).
-  closedAt              DateTime?      @map("closed_at")
-  closedByUserId        String?        @map("closed_by_user_id")
+  closedAt              DateTime?        @map("closed_at")
+  closedByUserId        String?          @map("closed_by_user_id")
   /// Lot 040 (A2-R6).
-  cancelledAt           DateTime?      @map("cancelled_at")
-  cancelledByUserId     String?        @map("cancelled_by_user_id")
-  cancelReason          String?        @map("cancel_reason")
+  cancelledAt           DateTime?        @map("cancelled_at")
+  cancelledByUserId     String?          @map("cancelled_by_user_id")
+  cancelReason          String?          @map("cancel_reason")
   /// Lot 040 (A1-R3). Derogation du validateur unique.
-  selfValidated         Boolean        @default(false) @map("self_validated")
-  selfValidationReason  String?        @map("self_validation_reason")
+  selfValidated         Boolean          @default(false) @map("self_validated")
+  selfValidationReason  String?          @map("self_validation_reason")
   /// Lot 040 (A1-R1, revision 2). Toutes les personnes qui ont saisi au moins
   /// une ligne, meme remplacee, retiree ou ecartee ensuite. Alimente a chaque
   /// saisie, jamais diminue. Vide pour un inventaire d'avant le lot (le
   /// createur fait alors office de compteur, sans ecriture en base).
-  counterUserIds        String[]       @default([]) @map("counter_user_ids")
+  counterUserIds        String[]         @default([]) @map("counter_user_ids")
   /// Lot 040 (B8). Valeurs FIGEES a la validation. Nulles avant le lot 040 et
   /// tant que l'inventaire n'est pas valide. Remplacent la valeur d'ecart
   /// recalculee au cout moyen courant pour un inventaire valide.
-  countedValue          Decimal?       @map("counted_value") @db.Decimal(16, 2)
-  varianceValueGross    Decimal?       @map("variance_value_gross") @db.Decimal(16, 2)
-  varianceValueNet      Decimal?       @map("variance_value_net") @db.Decimal(16, 2)
+  countedValue          Decimal?         @map("counted_value") @db.Decimal(16, 2)
+  varianceValueGross    Decimal?         @map("variance_value_gross") @db.Decimal(16, 2)
+  varianceValueNet      Decimal?         @map("variance_value_net") @db.Decimal(16, 2)
   /// Lot 040 (A2-R7, revision 2). Somme des |ecart| valorises des lignes
   /// ECARTEES (lignes non comptees exclues : leur ecart est inconnu), au cout
   /// moyen du lieu a la validation. Entre dans COUNT_VARIANCE et dans le taux.
-  setAsideVarianceValue Decimal?       @map("set_aside_variance_value") @db.Decimal(16, 2)
+  setAsideVarianceValue Decimal?         @map("set_aside_variance_value") @db.Decimal(16, 2)
   /// Lot 041 (W5-R2). WHATSAPP : ouvert par le bot. Un inventaire WEB peut
   /// recevoir des lignes par WhatsApp ; il n'est alors jamais clos par le bot.
   source                StockCountSource @default(WEB)
 
-  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  location    StockLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  createdBy   User             @relation("StockCountCreatedBy", fields: [createdByUserId], references: [id])
-  validatedBy User?            @relation("StockCountValidatedBy", fields: [validatedByUserId], references: [id])
-  lines       StockCountLine[]
-  adjustments StockMovement[]
-  closedBy    User?            @relation("StockCountClosedBy", fields: [closedByUserId], references: [id])
-  cancelledBy User?            @relation("StockCountCancelledBy", fields: [cancelledByUserId], references: [id])
-  slip        StockSlip?       @relation("StockCountReport")
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location         StockLocation          @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdBy        User                   @relation("StockCountCreatedBy", fields: [createdByUserId], references: [id])
+  validatedBy      User?                  @relation("StockCountValidatedBy", fields: [validatedByUserId], references: [id])
+  lines            StockCountLine[]
+  adjustments      StockMovement[]
+  closedBy         User?                  @relation("StockCountClosedBy", fields: [closedByUserId], references: [id])
+  cancelledBy      User?                  @relation("StockCountCancelledBy", fields: [cancelledByUserId], references: [id])
+  slip             StockSlip?             @relation("StockCountReport")
   // Lot 041 : captures et sessions WhatsApp rattachees a cet inventaire.
   fieldCaptures    StockFieldCapture[]
   whatsappSessions StockWhatsappSession[]
@@ -8057,15 +8419,15 @@ model StockCount {
 
 /// Une ligne de comptage : ce qu'on a trouve, face a ce que le systeme disait.
 model StockCountLine {
-  id               String  @id @default(uuid()) @db.Uuid
-  countId          String  @map("count_id") @db.Uuid
-  itemId           String  @map("item_id") @db.Uuid
+  id               String   @id @default(uuid()) @db.Uuid
+  countId          String   @map("count_id") @db.Uuid
+  itemId           String   @map("item_id") @db.Uuid
   /// Ce que le systeme disait au moment du comptage. FIGE a la saisie.
   ///
   /// Recopie, et c'est voulu : relire le solde a la validation comparerait le
   /// comptage d'hier au stock d'aujourd'hui, et l'ecart ne voudrait plus rien
   /// dire.
-  expectedQuantity Decimal @map("expected_quantity") @db.Decimal(16, 4)
+  expectedQuantity Decimal  @map("expected_quantity") @db.Decimal(16, 4)
   /// Ce qu'on a compte. NUL = ligne « non comptee » creee par le systeme a la
   /// cloture du comptage (lot 040, A2-R8) : elle ne s'ajuste pas, elle s'ecarte.
   countedQuantity  Decimal? @map("counted_quantity") @db.Decimal(16, 4)
@@ -8098,15 +8460,16 @@ model StockCountLine {
   count StockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
   item  StockItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
 
-  countedBy   User?             @relation("StockCountLineCountedBy", fields: [countedByUserId], references: [id])
-  justifiedBy User?             @relation("StockCountLineJustifiedBy", fields: [justifiedByUserId], references: [id])
-  setAsideBy  User?             @relation("StockCountLineSetAsideBy", fields: [setAsideByUserId], references: [id])
-  attachments StockAttachment[]
+  countedBy     User?               @relation("StockCountLineCountedBy", fields: [countedByUserId], references: [id])
+  justifiedBy   User?               @relation("StockCountLineJustifiedBy", fields: [justifiedByUserId], references: [id])
+  setAsideBy    User?               @relation("StockCountLineSetAsideBy", fields: [setAsideByUserId], references: [id])
+  attachments   StockAttachment[]
   /// Lot 041 : captures WhatsApp qui ont fixe la quantite de cette ligne.
   fieldCaptures StockFieldCapture[]
 
   @@unique([countId, itemId])
   @@index([countId])
+  @@index([itemId])
   @@map("stock_count_lines")
 }
 
@@ -8655,8 +9018,10 @@ model TreasuryAccount {
   createdAt        DateTime             @default(now()) @map("created_at")
   updatedAt        DateTime             @updatedAt @map("updated_at")
 
-  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  chartOfAccount ChartOfAccount @relation(fields: [chartOfAccountId], references: [id], onDelete: Restrict)
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chartOfAccount       ChartOfAccount        @relation(fields: [chartOfAccountId], references: [id], onDelete: Restrict)
+  directDebitCreditors DirectDebitCreditor[]
+  salaryPayments       SalaryPayment[]
 
   @@unique([tenantId, accountNumber])
   @@index([tenantId, kind])
@@ -8857,6 +9222,10 @@ model SaleMandate {
   revokedByUserId       String?             @map("revoked_by_user_id")
   revokeReason          String?             @map("revoke_reason") @db.Text
   notes                 String?             @db.Text
+  /// Spec 044 : mandat signe electroniquement par toutes les parties (renseigne au
+  /// scellement ; `signature_request_id` designe la SignatureRequest, sans relation).
+  signedAt              DateTime?           @map("signed_at")
+  signatureRequestId    String?             @map("signature_request_id") @db.Uuid
   createdAt             DateTime            @default(now()) @map("created_at")
   updatedAt             DateTime            @updatedAt @map("updated_at")
 
@@ -9153,6 +9522,126 @@ model PlatformPaymentCheckout {
   @@index([tenantId, status])
   @@index([invoiceId])
   @@map("platform_payment_checkouts")
+}
+
+/// Spec 042 : compte marchand PaySecureHub propre a UNE copropriete (les
+/// encaissements de charges ne transitent pas par le compte de l'agence).
+/// Une ligne par copropriete (`syndicateId` unique) ; sans ligne, le service
+/// renvoie des valeurs par defaut. Meme forme que `PaymentGatewayConfig`.
+model SyndicPaymentGatewayConfig {
+  id          String @id @default(uuid()) @db.Uuid
+  tenantId    String @map("tenant_id")
+  syndicateId String @unique @map("syndicate_id") @db.Uuid
+
+  provider        PaymentGatewayProvider @default(PAYSECUREHUB)
+  mode            PaymentGatewayMode     @default(SIMULATOR)
+  isActive        Boolean                @default(false) @map("is_active")
+  merchantId      String?                @map("merchant_id")
+  /// AES-256-GCM (`lib/payment-gateway/crypto.ts`), jamais renvoyee par l'API.
+  apiKeyEncrypted String?                @map("api_key_encrypted")
+  apiKeyLast4     String?                @map("api_key_last4")
+  lastTestAt      DateTime?              @map("last_test_at")
+  lastTestOk      Boolean?               @map("last_test_ok")
+  lastTestMessage String?                @map("last_test_message")
+  updatedByUserId String?                @map("updated_by_user_id")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  tenant    Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate Syndicate              @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  checkouts SyndicOnlineCheckout[]
+
+  @@index([tenantId])
+  @@map("syndic_payment_gateway_configs")
+}
+
+/// Spec 042 : point d'entree du paiement (portail ou lien securise).
+enum SyndicCheckoutOrigin {
+  PORTAL
+  SECURE_LINK
+}
+
+/// Spec 042 : motif de mise en revue d'un paiement en ligne.
+enum SyndicReviewKind {
+  AMOUNT_MISMATCH
+  FISCAL_YEAR_CLOSED
+  CALLS_UNAVAILABLE
+  DUPLICATE_TRANSACTION
+  CONTRARY_STATE
+}
+
+/// Spec 042 : decision prise sur un paiement en revue.
+enum SyndicCheckoutResolution {
+  ACCEPTED
+  REJECTED
+}
+
+/// Spec 042 : une tentative de paiement en ligne d'appels de charges d'un lot,
+/// sur le compte de la copropriete. Le `ChargePayment` n'existe qu'apres
+/// confirmation du fournisseur (`chargePaymentId`).
+model SyndicOnlineCheckout {
+  id          String @id @default(uuid()) @db.Uuid
+  tenantId    String @map("tenant_id")
+  syndicateId String @map("syndicate_id") @db.Uuid
+  lotId       String @map("lot_id") @db.Uuid
+  configId    String @map("config_id") @db.Uuid
+
+  origin         SyndicCheckoutOrigin
+  /// Compte portail du coproprietaire (nul pour un lien securise). Champ simple,
+  /// comme `OnlinePaymentCheckout.renterClientId` : pas de relation formelle.
+  tenantClientId String?              @map("tenant_client_id")
+  /// Lien securise a l'origine (portee CHARGE_CALL_PAYMENT) ; jamais un jeton.
+  secureLinkId   String?              @map("secure_link_id")
+  /// Payeur : `CrmContact.id` (champ simple, pas de relation formelle).
+  contactId      String?              @map("contact_id")
+
+  codePaiement          String               @unique @map("code_paiement")
+  amount                Decimal              @db.Decimal(14, 2)
+  currency              String               @default("FCFA")
+  /// Appels vises (champ simple : ChargeCall.id), figes au lancement du paiement.
+  chargeCallIds         String[]             @map("charge_call_ids")
+  checkoutUrl           String?              @map("checkout_url")
+  providerToken         String?              @map("provider_token")
+  providerTransactionId String?              @map("provider_transaction_id")
+  providerServiceName   String?              @map("provider_service_name")
+  providerFees          Decimal?             @map("provider_fees") @db.Decimal(12, 2)
+  /// Montant paye selon le fournisseur, des qu'il l'a rapporte.
+  receivedAmount        Decimal?             @map("received_amount") @db.Decimal(14, 2)
+  mmOperator            MobileMoneyOperator? @map("mm_operator")
+
+  status              OnlineCheckoutStatus @default(PENDING)
+  lastProviderState   String?              @map("last_provider_state")
+  lastProviderPayload Json?                @map("last_provider_payload")
+  lastCheckedAt       DateTime?            @map("last_checked_at")
+  checkAttempts       Int                  @default(0) @map("check_attempts")
+  failureMessage      String?              @map("failure_message")
+  reviewReason        String?              @map("review_reason")
+  reviewKind          SyndicReviewKind?    @map("review_kind")
+  /// SUCCESS | FAILED | CANCELED — mode simulateur seulement.
+  simulatedOutcome    String?              @map("simulated_outcome")
+
+  chargePaymentId  String?                   @unique @map("charge_payment_id") @db.Uuid
+  resolvedByUserId String?                   @map("resolved_by_user_id")
+  resolvedAt       DateTime?                 @map("resolved_at")
+  resolution       SyndicCheckoutResolution?
+  resolutionNote   String?                   @map("resolution_note")
+  createdByUserId  String?                   @map("created_by_user_id")
+  completedAt      DateTime?                 @map("completed_at")
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
+
+  tenant        Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate     Syndicate                  @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  lot           SyndicateLot               @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  config        SyndicPaymentGatewayConfig @relation(fields: [configId], references: [id], onDelete: Restrict)
+  chargePayment ChargePayment?             @relation(fields: [chargePaymentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([syndicateId, status])
+  @@index([lotId])
+  @@index([tenantId, secureLinkId])
+  @@index([syndicateId, createdAt])
+  @@map("syndic_online_checkouts")
 }
 
 enum SubscriptionExtensionRequestStatus {
@@ -9776,6 +10265,7 @@ model StockWhatsappRegistration {
 
   @@index([tenantId, status])
   @@index([phoneE164])
+  @@index([userId])
   @@map("stock_whatsapp_registrations")
 }
 
@@ -9835,6 +10325,9 @@ model StockWhatsappSession {
 
   @@index([tenantId, closedAt])
   @@index([closedAt, lastInboundAt])
+  @@index([locationId])
+  @@index([registrationId])
+  @@index([siteId])
   @@map("stock_whatsapp_sessions")
 }
 
@@ -9949,6 +10442,8 @@ model StockFieldCapture {
   @@index([tenantId, countId])
   @@index([countLineId])
   @@index([tenantId, outcome, receivedAt])
+  @@index([itemId])
+  @@index([userId])
   @@map("stock_field_captures")
 }
 
@@ -10002,4 +10497,831 @@ model WhatsappCloudEvent {
   @@index([senderHash, unknownReplySentAt])
   @@index([receivedAt])
   @@map("whatsapp_cloud_events")
+}
+
+// =============================================================
+// SIGNATURE ELECTRONIQUE (spec 044, lot S1)
+// =============================================================
+
+enum SignatureDocumentKind {
+  LEASE_CONTRACT
+  MANAGEMENT_MANDATE
+  SALE_MANDATE
+  LEASE_INSPECTION
+  SALE_AGREEMENT
+  /// Autorisation de prélèvement d'un mandat locatif (spec 042 §10).
+  DIRECT_DEBIT_MANDATE
+  /// Autorisation de prélèvement d'un mandat de copropriété (spec 042 §10).
+  SYNDIC_DIRECT_DEBIT_MANDATE
+}
+
+enum SignatureRequestStatus {
+  DRAFT
+  SENT
+  PARTIALLY_SIGNED
+  COMPLETED
+  DECLINED
+  EXPIRED
+  CANCELED
+}
+
+enum SignatureSignerStatus {
+  PENDING
+  OPENED
+  SIGNED
+  DECLINED
+}
+
+enum SignatureChannel {
+  EMAIL
+  WHATSAPP
+  SMS
+  IN_PERSON
+}
+
+/// Spec 044 (SG-R2, SG-R7). Demande de signature d'UN document. `sourceHash`
+/// est le SHA-256 du PDF source fige a l'envoi ; `signedHash` celui du PDF
+/// scelle. Les deux fichiers sont PRIVES (uploads/signatures/<agence>/<demande>/),
+/// jamais servis en statique : la cle stockee est un identifiant, pas une URL.
+model SignatureRequest {
+  id               String                 @id @default(uuid()) @db.Uuid
+  tenantId         String                 @map("tenant_id")
+  kind             SignatureDocumentKind
+  /// Modele cible (RentalLease, ...) ; `targetId` est verifie par assertBelongsToTenant.
+  targetType       String                 @map("target_type")
+  targetId         String                 @map("target_id")
+  /// Titre affiche au signataire (ex. « Contrat de bail BAIL-2026-0012 »).
+  title            String
+  /// Langue du document et du certificat : fr | en | ar.
+  language         String                 @default("fr") @db.VarChar(2)
+  status           SignatureRequestStatus @default(DRAFT)
+  /// internal | log | nom d'un prestataire.
+  providerId       String                 @map("provider_id")
+  providerRef      String?                @map("provider_ref")
+  /// Document source dans son module (RentalDocument.id pour un bail).
+  sourceDocumentId String?                @map("source_document_id")
+  sourceFileKey    String                 @map("source_file_key")
+  sourceHash       String                 @map("source_hash") @db.Char(64)
+  /// SHA-256 du fichier DOCX source (RentalDocument.file_hash) : SG-R2, le contrat ne doit pas avoir change depuis l'envoi.
+  sourceDocHash    String?                @map("source_doc_hash") @db.Char(64)
+  signedFileKey    String?                @map("signed_file_key")
+  signedHash       String?                @map("signed_hash") @db.Char(64)
+  sequential       Boolean                @default(false)
+  expiresAt        DateTime               @map("expires_at")
+  createdByUserId  String                 @map("created_by_user_id")
+  /// Reserve du scellement : une seule instance scelle a la fois (perime apres 5 min).
+  sealingAt        DateTime?              @map("sealing_at")
+  completedAt      DateTime?              @map("completed_at")
+  canceledAt       DateTime?              @map("canceled_at")
+  lastReminderAt   DateTime?              @map("last_reminder_at")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  tenant  Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  signers SignatureSigner[]
+  events  SignatureEvent[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, targetType, targetId])
+  @@index([status, expiresAt])
+  @@map("signature_requests")
+}
+
+/// Spec 044 (SG-R3, SG-R4, SG-R5). Un signataire = un jeton. Seul le SHA-256 du
+/// jeton est stocke (`tokenHash`), comme SecureLink ; le code a usage unique
+/// n'est stocke qu'en HMAC-SHA256 a cle serveur (`otpHash`). `contact` (e-mail
+/// ou numero) n'est JAMAIS renvoye en clair : masque en sortie, absent des
+/// journaux et de l'audit.
+model SignatureSigner {
+  id                 String                @id @default(uuid()) @db.Uuid
+  tenantId           String                @map("tenant_id")
+  requestId          String                @map("request_id") @db.Uuid
+  /// LOCATAIRE, BAILLEUR, AGENT...
+  role               String                @db.VarChar(40)
+  position           Int
+  fullName           String                @map("full_name")
+  channel            SignatureChannel
+  contact            String
+  /// CrmContact.id facultatif : s'il est fourni, le consentement WhatsApp du CRM est exige.
+  contactId          String?               @map("contact_id")
+  status             SignatureSignerStatus @default(PENDING)
+  tokenHash          String                @unique @map("token_hash") @db.Char(64)
+  tokenExpiresAt     DateTime              @map("token_expires_at")
+  otpHash            String?               @map("otp_hash") @db.Char(64)
+  otpExpiresAt       DateTime?             @map("otp_expires_at")
+  otpAttempts        Int                   @default(0) @map("otp_attempts")
+  otpSends           Int                   @default(0) @map("otp_sends")
+  otpLastSentAt      DateTime?             @map("otp_last_sent_at")
+  /// Dernier envoi du lien : SENT | FAILED | NOT_APPLICABLE (sur place) | WAITING (tour de signature).
+  inviteStatus       String                @default("WAITING") @map("invite_status") @db.VarChar(20)
+  openedAt           DateTime?             @map("opened_at")
+  /// TYPED | DRAWN ; `signatureTyped` porte le nom saisi, `signatureImageKey` le PNG dessine (fichier prive).
+  signatureMode      String?               @map("signature_mode") @db.VarChar(10)
+  signatureTyped     String?               @map("signature_typed")
+  signatureImageKey  String?               @map("signature_image_key")
+  consentTextHash    String?               @map("consent_text_hash") @db.Char(64)
+  signedAt           DateTime?             @map("signed_at")
+  /// IP : HMAC-SHA256 a cle serveur, jamais en clair. `ipTruncated` : /24 (IPv4) ou /48 (IPv6) pour le certificat.
+  ipHash             String?               @map("ip_hash") @db.Char(64)
+  ipTruncated        String?               @map("ip_truncated") @db.VarChar(64)
+  userAgent          String?               @map("user_agent") @db.VarChar(200)
+  declineReason      String?               @map("decline_reason") @db.VarChar(500)
+  /// Signature sur place : utilisateur de l'agence qui a remis le jeton (creation ou reemission), consigne a la signature.
+  inPersonIssuedBy   String?               @map("in_person_issued_by")
+  /// Code vérifié avant consultation (spec 042 §10, SIG-S1) : SHA-256 du jeton de consultation remis au navigateur.
+  viewGrantHash      String?               @map("view_grant_hash") @db.Char(64)
+  viewGrantExpiresAt DateTime?             @map("view_grant_expires_at")
+  otpVerifiedAt      DateTime?             @map("otp_verified_at")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request SignatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, requestId])
+  @@map("signature_signers")
+}
+
+/// Spec 044 (SG-R8). Piste de preuve APPEND-ONLY et chainee : `eventHash` =
+/// SHA-256 de (prevHash, seq, type, signataire, payload, date) ; `seq` est
+/// unique par demande, donc deux ajouts simultanes ne peuvent pas bifurquer la
+/// chaine. Un declencheur SQL refuse toute modification (migration).
+model SignatureEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id")
+  requestId String   @map("request_id") @db.Uuid
+  signerId  String?  @map("signer_id") @db.Uuid
+  seq       Int
+  /// CREATED, INVITE_SENT, INVITE_FAILED, OPENED, OTP_SENT, OTP_FAILED, OTP_LOCKED, SIGNED, DECLINED, SEALED, EXPIRED, CANCELED, REMINDER_SENT.
+  type      String   @db.VarChar(40)
+  payload   Json?
+  prevHash  String?  @map("prev_hash") @db.Char(64)
+  eventHash String   @map("event_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request SignatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, seq])
+  @@index([tenantId, requestId])
+  @@map("signature_events")
+}
+
+/// Spec 044 (SG-R12). Consommation mensuelle (mois civil UTC `AAAA-MM`) de la
+/// capacite SIGNATURES_MENSUELLES. Ecrit par la seule reservation atomique de
+/// `lib/signature/quota.ts` (jamais lu puis reecrit) ; rendu si l'envoi echoue.
+/// CHECK `signature_usages_used_non_negative` en SQL.
+model SignatureUsage {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id")
+  month     String   @db.Char(7)
+  used      Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, month])
+  @@map("signature_usages")
+}
+
+enum DirectDebitFileFormat {
+  GENERIC_CSV
+}
+
+enum DirectDebitMandateScope {
+  RENTAL_LEASE
+  SYNDIC_LOT
+}
+
+enum DirectDebitMandateStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+/// Compte bancaire qui reçoit les prélèvements d'une agence (spec 042 PB1).
+model DirectDebitCreditor {
+  id                          String                  @id @default(uuid()) @db.Uuid
+  tenantId                    String                  @map("tenant_id")
+  scope                       DirectDebitMandateScope @default(RENTAL_LEASE)
+  /// Obligatoire en RENTAL_LEASE (contrôle du service), nul en SYNDIC_LOT (spec 042 §9.2).
+  treasuryAccountId           String?                 @map("treasury_account_id") @db.Uuid
+  /// Obligatoire en SYNDIC_LOT : un créancier par syndicat.
+  syndicateId                 String?                 @map("syndicate_id") @db.Uuid
+  /// Banque et compte du syndicat (SYNDIC_LOT), pour l'affichage.
+  bankName                    String?                 @map("bank_name")
+  bankAccountRef              String?                 @map("bank_account_ref")
+  label                       String
+  /// Numéro d'émetteur attribué par la banque. Nul tant que la convention n'est pas signée.
+  creditorIdentifier          String?                 @map("creditor_identifier")
+  fileFormat                  DirectDebitFileFormat   @default(GENERIC_CSV) @map("file_format")
+  collectionDay               Int                     @default(5) @map("collection_day")
+  prenotificationBusinessDays Int                     @default(5) @map("prenotification_business_days")
+  rejectFeeAmount             Decimal                 @default(0) @map("reject_fee_amount") @db.Decimal(12, 2)
+  maxConsecutiveRejects       Int                     @default(2) @map("max_consecutive_rejects")
+  isActive                    Boolean                 @default(true) @map("is_active")
+  createdByUserId             String?                 @map("created_by_user_id")
+  createdAt                   DateTime                @default(now()) @map("created_at")
+  updatedAt                   DateTime                @updatedAt @map("updated_at")
+
+  tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  treasuryAccount TreasuryAccount?        @relation(fields: [treasuryAccountId], references: [id], onDelete: Restrict)
+  syndicate       Syndicate?              @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
+  mandates        DirectDebitMandate[]
+  remittances     DirectDebitRemittance[]
+
+  /// PB1-R3 : un créancier par compte de trésorerie.
+  @@unique([tenantId, treasuryAccountId])
+  /// Spec 042 §9.2 : un créancier par syndicat.
+  @@unique([tenantId, syndicateId])
+  @@index([tenantId])
+  @@index([tenantId, scope])
+  @@map("direct_debit_creditors")
+}
+
+/// Autorisation de prélèvement signée par un débiteur (spec 042 PB2).
+model DirectDebitMandate {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  tenantId             String                   @map("tenant_id")
+  /// Référence MDT-<year>-<sequence sur 4 chiffres>.
+  year                 Int
+  sequence             Int
+  scope                DirectDebitMandateScope  @default(RENTAL_LEASE)
+  creditorId           String                   @map("creditor_id") @db.Uuid
+  /// Obligatoire en RENTAL_LEASE (contrôle du service).
+  debtorClientId       String?                  @map("debtor_client_id")
+  /// Obligatoire en SYNDIC_LOT (CrmContact copropriétaire du lot).
+  debtorContactId      String?                  @map("debtor_contact_id")
+  leaseId              String?                  @map("lease_id") @db.Uuid
+  syndicateId          String?                  @map("syndicate_id") @db.Uuid
+  lotId                String?                  @map("lot_id") @db.Uuid
+  status               DirectDebitMandateStatus @default(DRAFT)
+  /// IBAN chiffré (lib/direct-debit/iban-crypto.ts, format ddk1:<id de clé>:…, clé DIRECT_DEBIT_IBAN_KEY ;
+  /// anciennes valeurs pg1:… lisibles en repli). Jamais renvoyé.
+  ibanEncrypted        String                   @map("iban_encrypted")
+  ibanBankCode         String                   @map("iban_bank_code")
+  ibanLast4            String                   @map("iban_last4")
+  holderName           String                   @map("holder_name")
+  maxAmount            Decimal?                 @map("max_amount") @db.Decimal(12, 2)
+  collectionDay        Int?                     @map("collection_day")
+  signedAt             DateTime?                @map("signed_at")
+  /// Identifiant /uploads/… du scan signé. Jamais renvoyé au client.
+  signedScanUrl        String?                  @map("signed_scan_url")
+  signedScanUploadedAt DateTime?                @map("signed_scan_uploaded_at")
+  /// Demande de signature dont le PDF scellé tient lieu de scan (spec 042 §10 ; pas de clé étrangère, comme les autres mandats).
+  signatureRequestId   String?                  @map("signature_request_id") @db.Uuid
+  activatedAt          DateTime?                @map("activated_at")
+  suspendedAt          DateTime?                @map("suspended_at")
+  suspensionReason     String?                  @map("suspension_reason")
+  revokedAt            DateTime?                @map("revoked_at")
+  revocationReason     String?                  @map("revocation_reason")
+  consecutiveRejects   Int                      @default(0) @map("consecutive_rejects")
+  /// PB2-R7 : "<leaseId>:<creditorId>" ("lot:<lotId>:<creditorId>" en SYNDIC_LOT) tant que le mandat n'est pas révoqué,
+  /// nul une fois révoqué. L'unicité en base interdit deux mandats ouverts.
+  openSlotKey          String?                  @map("open_slot_key")
+  notes                String?                  @db.Text
+  createdByUserId      String?                  @map("created_by_user_id")
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+
+  tenant          Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creditor        DirectDebitCreditor         @relation(fields: [creditorId], references: [id], onDelete: Restrict)
+  debtor          TenantClient?               @relation(fields: [debtorClientId], references: [id], onDelete: Restrict)
+  debtorContact   CrmContact?                 @relation(fields: [debtorContactId], references: [id], onDelete: Restrict)
+  lease           RentalLease?                @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  syndicate       Syndicate?                  @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
+  lot             SyndicateLot?               @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  remittanceLines DirectDebitRemittanceLine[]
+
+  @@unique([tenantId, year, sequence])
+  @@unique([tenantId, openSlotKey])
+  @@index([tenantId, status])
+  @@index([tenantId, scope])
+  @@index([lotId])
+  @@index([leaseId])
+  @@index([debtorClientId])
+  @@index([creditorId])
+  @@index([syndicateId])
+  @@map("direct_debit_mandates")
+}
+
+enum DirectDebitRemittanceStatus {
+  DRAFT // brouillon : lignes modifiables, rien n'est parti
+  VALIDATED // validée par un humain, prénotifications envoyées
+  EXPORTED // fichier de remise produit au moins une fois
+  SUBMITTED // marquée « déposée à la banque » par l'agence
+  CANCELED
+}
+
+enum DirectDebitRemittanceLineStatus {
+  PENDING
+  CANCELED
+  SETTLED // règlement constaté (P3)
+  REJECTED // rejet constaté (P3)
+}
+
+/// Origine d'un constat de retour banque (spec 042 P3).
+enum DirectDebitReturnSource {
+  MANUAL
+  IMPORT
+}
+
+/// Origine de l'adresse e-mail de l'avis de prélèvement (spec 042 P3).
+enum DirectDebitRecipientSource {
+  ACCOUNT // compte portail du débiteur
+  CONTACT // fiche contact CRM
+}
+
+/// Format d'un fichier de retour de la banque (spec 042 P3).
+enum DirectDebitReturnFormat {
+  GENERIC_CSV
+}
+
+enum DirectDebitPrenotificationStatus {
+  PENDING // pas encore envoyée (brouillon)
+  SENT
+  NO_EMAIL // le débiteur n'a pas d'adresse e-mail
+  DISABLED // notification désactivée par l'agence (Notifications email)
+  FAILED
+}
+
+/// Remise de prélèvements d'un créancier pour une date de collecte (spec 042 P2).
+model DirectDebitRemittance {
+  id                         String                      @id @default(uuid()) @db.Uuid
+  tenantId                   String                      @map("tenant_id")
+  /// Référence PRL-<year>-<sequence sur 4 chiffres>, par (agence, année).
+  year                       Int
+  sequence                   Int
+  scope                      DirectDebitMandateScope     @default(RENTAL_LEASE)
+  creditorId                 String                      @map("creditor_id") @db.Uuid
+  /// Obligatoire en SYNDIC_LOT.
+  syndicateId                String?                     @map("syndicate_id") @db.Uuid
+  status                     DirectDebitRemittanceStatus @default(DRAFT)
+  collectionDate             DateTime                    @map("collection_date") @db.Date
+  /// Dernier jour de prénotification : recalculé à l'actualisation et à la validation, figé ensuite.
+  prenotificationDeadline    DateTime                    @map("prenotification_deadline") @db.Date
+  periodYear                 Int                         @map("period_year")
+  periodMonth                Int                         @map("period_month")
+  /// Totaux des lignes PENDING, tenus à jour dans la même transaction que les lignes.
+  lineCount                  Int                         @default(0) @map("line_count")
+  totalAmount                Decimal                     @default(0) @map("total_amount") @db.Decimal(12, 2)
+  /// Figés à la validation : le fichier reste identique à chaque téléchargement.
+  fileFormat                 DirectDebitFileFormat?      @map("file_format")
+  creditorLabelSnapshot      String?                     @map("creditor_label_snapshot")
+  creditorIdentifierSnapshot String?                     @map("creditor_identifier_snapshot")
+  validatedAt                DateTime?                   @map("validated_at")
+  validatedByUserId          String?                     @map("validated_by_user_id")
+  firstExportedAt            DateTime?                   @map("first_exported_at")
+  lastExportedAt             DateTime?                   @map("last_exported_at")
+  exportCount                Int                         @default(0) @map("export_count")
+  /// HMAC-SHA-256 (clé dérivée de DIRECT_DEBIT_IBAN_KEY) du dernier fichier produit : traçabilité, pas un SHA-256 vérifiable de l'extérieur ; le fichier n'est jamais stocké.
+  lastFileDigest             String?                     @map("last_file_digest")
+  submittedAt                DateTime?                   @map("submitted_at")
+  submittedByUserId          String?                     @map("submitted_by_user_id")
+  canceledAt                 DateTime?                   @map("canceled_at")
+  cancellationReason         String?                     @map("cancellation_reason")
+  notes                      String?                     @db.Text
+  createdByUserId            String?                     @map("created_by_user_id")
+  createdAt                  DateTime                    @default(now()) @map("created_at")
+  updatedAt                  DateTime                    @updatedAt @map("updated_at")
+
+  tenant    Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creditor  DirectDebitCreditor         @relation(fields: [creditorId], references: [id], onDelete: Restrict)
+  syndicate Syndicate?                  @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
+  lines     DirectDebitRemittanceLine[]
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, status])
+  @@index([tenantId, scope])
+  @@index([creditorId])
+  @@index([syndicateId])
+  @@map("direct_debit_remittances")
+}
+
+/// Une échéance à prélever dans une remise (spec 042 P2).
+model DirectDebitRemittanceLine {
+  id                             String                           @id @default(uuid()) @db.Uuid
+  tenantId                       String                           @map("tenant_id")
+  remittanceId                   String                           @map("remittance_id") @db.Uuid
+  /// Rang dans la remise (1, 2, …), jamais réutilisé : référence d'opération PRL-AAAA-NNNN-<rang sur 3 chiffres>.
+  lineNumber                     Int                              @map("line_number")
+  mandateId                      String                           @map("mandate_id") @db.Uuid
+  /// Facultatifs : renseignés en RENTAL_LEASE.
+  leaseId                        String?                          @map("lease_id") @db.Uuid
+  installmentId                  String?                          @map("installment_id") @db.Uuid
+  debtorClientId                 String?                          @map("debtor_client_id")
+  /// SYNDIC_LOT (spec 042 §9.2).
+  lotId                          String?                          @map("lot_id") @db.Uuid
+  debtorContactId                String?                          @map("debtor_contact_id")
+  /// Appels de charges couverts, figés à la sélection, plus ancien d'abord.
+  chargeCallIds                  String[]                         @default([]) @map("charge_call_ids") @db.Uuid
+  status                         DirectDebitRemittanceLineStatus  @default(PENDING)
+  amount                         Decimal                          @db.Decimal(12, 2)
+  /// Reste dû (hors pénalités) au moment de la sélection, avant plafond.
+  remainingDueAtSelection        Decimal                          @map("remaining_due_at_selection") @db.Decimal(12, 2)
+  capped                         Boolean                          @default(false)
+  /// ADR-007 §6 : `<installmentId>` tant que la ligne n'est pas annulée, nul
+  /// ensuite. L'unicité en base interdit deux lignes vivantes pour une même
+  /// échéance, quel que soit le mandat ou le créancier.
+  activeKey                      String?                          @map("active_key")
+  canceledAt                     DateTime?                        @map("canceled_at")
+  cancellationReason             String?                          @map("cancellation_reason")
+  prenotificationStatus          DirectDebitPrenotificationStatus @default(PENDING) @map("prenotification_status")
+  prenotifiedAt                  DateTime?                        @map("prenotified_at")
+  /// Adresse masquée où l'avis est parti (jamais l'adresse complète), posée à l'envoi.
+  prenotificationRecipientMasked String?                          @map("prenotification_recipient_masked")
+  prenotificationRecipientSource DirectDebitRecipientSource?      @map("prenotification_recipient_source")
+  /// Date de valeur du règlement (relevé), AAAA-MM-JJ (P3).
+  settledAt                      DateTime?                        @map("settled_at") @db.Date
+  /// Date du rejet (relevé ou fichier de rejets), AAAA-MM-JJ (P3).
+  rejectedAt                     DateTime?                        @map("rejected_at") @db.Date
+  rejectionCode                  String?                          @map("rejection_code")
+  rejectionReason                String?                          @map("rejection_reason")
+  /// Frais de rejet réellement refacturés au débiteur (0 ou nul : aucun).
+  rejectFeeAmount                Decimal?                         @map("reject_fee_amount") @db.Decimal(12, 2)
+  returnSource                   DirectDebitReturnSource?         @map("return_source")
+  returnImportId                 String?                          @map("return_import_id") @db.Uuid
+  returnRecordedAt               DateTime?                        @map("return_recorded_at")
+  returnRecordedByUserId         String?                          @map("return_recorded_by_user_id")
+  /// Encaissement locatif créé au règlement (RENTAL_LEASE). Jamais deux lignes pour un paiement.
+  rentalPaymentId                String?                          @unique @map("rental_payment_id") @db.Uuid
+  /// Encaissement de charges créé au règlement (SYNDIC_LOT).
+  chargePaymentId                String?                          @unique @map("charge_payment_id") @db.Uuid
+  createdAt                      DateTime                         @default(now()) @map("created_at")
+  updatedAt                      DateTime                         @updatedAt @map("updated_at")
+
+  tenant        Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  remittance    DirectDebitRemittance    @relation(fields: [remittanceId], references: [id], onDelete: Cascade)
+  mandate       DirectDebitMandate       @relation(fields: [mandateId], references: [id], onDelete: Restrict)
+  lease         RentalLease?             @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  installment   RentalInstallment?       @relation(fields: [installmentId], references: [id], onDelete: Restrict)
+  debtor        TenantClient?            @relation(fields: [debtorClientId], references: [id], onDelete: Restrict)
+  rentalPayment RentalPayment?           @relation(fields: [rentalPaymentId], references: [id], onDelete: Restrict)
+  lot           SyndicateLot?            @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  debtorContact CrmContact?              @relation(fields: [debtorContactId], references: [id], onDelete: Restrict)
+  chargePayment ChargePayment?           @relation(fields: [chargePaymentId], references: [id], onDelete: Restrict)
+  returnImport  DirectDebitReturnImport? @relation(fields: [returnImportId], references: [id], onDelete: SetNull)
+
+  @@unique([remittanceId, lineNumber])
+  @@unique([tenantId, activeKey])
+  @@index([tenantId, status])
+  @@index([returnImportId])
+  @@index([mandateId])
+  @@index([installmentId])
+  @@index([leaseId])
+  @@index([lotId])
+  @@map("direct_debit_remittance_lines")
+}
+
+enum SyndicDeclarationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELED
+}
+
+enum SyndicDeclarationRejectReason {
+  NOT_FOUND
+  AMOUNT_MISMATCH
+  REFERENCE_USED
+  WRONG_NUMBER
+  OTHER
+}
+
+/// Spec 047 : numéro mobile money sur lequel une copropriété reçoit les charges.
+model SyndicReceivingNumber {
+  id                    String              @id @default(uuid()) @db.Uuid
+  tenantId              String              @map("tenant_id")
+  syndicateId           String              @map("syndicate_id") @db.Uuid
+  operator              MobileMoneyOperator
+  phoneNumber           String              @map("phone_number") // E.164
+  holderName            String              @map("holder_name")
+  label                 String?
+  /// Sous-compte de trésorerie du plan de la copropriété (hypothèse H1 : 5521x).
+  treasuryAccountNumber String              @map("treasury_account_number")
+  isActive              Boolean             @default(true) @map("is_active")
+  sortOrder             Int                 @default(0) @map("sort_order")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  tenant       Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate    Syndicate                  @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  declarations SyndicPaymentDeclaration[]
+
+  @@unique([syndicateId, operator, phoneNumber])
+  @@index([tenantId, phoneNumber]) // numéro partagé entre copropriétés (D10)
+  @@map("syndic_receiving_numbers")
+}
+
+/// Spec 047 : réglages du paiement déclaré d'une copropriété. Sans ligne : valeurs par défaut.
+model SyndicDeclaredPaymentSettings {
+  id                      String   @id @default(uuid()) @db.Uuid
+  tenantId                String   @map("tenant_id")
+  syndicateId             String   @unique @map("syndicate_id") @db.Uuid
+  enabled                 Boolean  @default(false) // D11
+  reviewAlertBusinessDays Int      @default(3) @map("review_alert_business_days") // D12
+  proofRequired           Boolean  @default(false) @map("proof_required") // D14
+  payerInstructions       String?  @map("payer_instructions") @db.VarChar(500)
+  aiPrefillEnabled        Boolean  @default(false) @map("ai_prefill_enabled") // D9
+  updatedById             String?  @map("updated_by_id")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate Syndicate @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("syndic_declared_payment_settings")
+}
+
+/// Spec 047 : paiement mobile money fait hors d'ImmoTopia et déclaré. Rien n'est crédité avant APPROVED.
+model SyndicPaymentDeclaration {
+  id                   String                         @id @default(uuid()) @db.Uuid
+  tenantId             String                         @map("tenant_id")
+  syndicateId          String                         @map("syndicate_id") @db.Uuid
+  receivingNumberId    String                         @map("receiving_number_id") @db.Uuid
+  /// Instantané du numéro au moment de la déclaration (S10).
+  receivingOperator    MobileMoneyOperator            @map("receiving_operator")
+  receivingPhone       String                         @map("receiving_phone")
+  receivingHolderName  String                         @map("receiving_holder_name")
+  /// Déclarant : copropriétaire (CrmContact.id) ou gestionnaire (User.id, P4). Champs simples, sans FK.
+  declaredByContactId  String?                        @map("declared_by_contact_id")
+  declaredByUserId     String?                        @map("declared_by_user_id")
+  payerPhone           String                         @map("payer_phone")
+  amount               Decimal                        @db.Decimal(14, 2)
+  paidAt               DateTime                       @map("paid_at")
+  transactionReference String                         @map("transaction_reference") // normalisée
+  comment              String?                        @db.VarChar(500)
+  proofFileUrl         String?                        @map("proof_file_url")
+  proofSha256          String?                        @map("proof_sha256")
+  proofReadId          String?                        @unique @map("proof_read_id") @db.Uuid
+  aiPrefill            Json?                          @map("ai_prefill")
+  aiEditedFields       String[]                       @default([]) @map("ai_edited_fields")
+  status               SyndicDeclarationStatus        @default(PENDING)
+  acceptedAmount       Decimal?                       @map("accepted_amount") @db.Decimal(14, 2)
+  acceptedPaidAt       DateTime?                      @map("accepted_paid_at")
+  rejectReason         SyndicDeclarationRejectReason? @map("reject_reason")
+  reviewNote           String?                        @map("review_note") @db.VarChar(500)
+  reviewedByUserId     String?                        @map("reviewed_by_user_id")
+  reviewedAt           DateTime?                      @map("reviewed_at")
+  canceledAt           DateTime?                      @map("canceled_at")
+  createdAt            DateTime                       @default(now()) @map("created_at")
+  updatedAt            DateTime                       @updatedAt @map("updated_at")
+
+  tenant          Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate       Syndicate                      @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  receivingNumber SyndicReceivingNumber          @relation(fields: [receivingNumberId], references: [id], onDelete: Restrict)
+  proofRead       SyndicPaymentProofRead?        @relation(fields: [proofReadId], references: [id], onDelete: SetNull)
+  lines           SyndicPaymentDeclarationLine[]
+
+  @@index([tenantId, syndicateId, status, createdAt])
+  @@index([receivingNumberId, transactionReference])
+  @@map("syndic_payment_declarations")
+}
+
+/// Spec 047 : part d'une déclaration affectée à un lot (D15). Un encaissement par ligne à la validation.
+model SyndicPaymentDeclarationLine {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id")
+  declarationId   String   @map("declaration_id") @db.Uuid
+  lotId           String   @map("lot_id") @db.Uuid
+  amount          Decimal  @db.Decimal(14, 2)
+  acceptedAmount  Decimal? @map("accepted_amount") @db.Decimal(14, 2)
+  chargeCallIds   String[] @default([]) @map("charge_call_ids")
+  chargePaymentId String?  @unique @map("charge_payment_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  declaration   SyndicPaymentDeclaration @relation(fields: [declarationId], references: [id], onDelete: Cascade)
+  lot           SyndicateLot             @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  chargePayment ChargePayment?           @relation(fields: [chargePaymentId], references: [id], onDelete: SetNull)
+
+  @@unique([declarationId, lotId])
+  @@index([lotId])
+  @@index([tenantId])
+  @@map("syndic_payment_declaration_lines")
+}
+
+/// Spec 047 (alimenté en PR3) : lecture IA d'une capture ; sert aussi au quota mensuel par agence (D9).
+model SyndicPaymentProofRead {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id")
+  syndicateId String    @map("syndicate_id") @db.Uuid
+  contactId   String    @map("contact_id")
+  tempFileUrl String?   @map("temp_file_url")
+  sha256      String
+  provider    String
+  model       String
+  outcome     String // OK | UNREADABLE | NOT_A_PAYMENT | FAILED | DISABLED
+  result      Json?
+  latencyMs   Int       @map("latency_ms")
+  consumedAt  DateTime? @map("consumed_at")
+  expiresAt   DateTime  @map("expires_at") // création + 24 h
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  tenant      Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate   Syndicate                 @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  declaration SyndicPaymentDeclaration?
+
+  @@index([tenantId, createdAt])
+  @@index([contactId, createdAt])
+  @@index([expiresAt])
+  @@index([syndicateId])
+  @@map("syndic_payment_proof_reads")
+}
+
+/// Un fichier de retour importé (relevé ou rejets) : traçabilité, jamais le fichier lui-même (spec 042 P3).
+model DirectDebitReturnImport {
+  id               String                  @id @default(uuid()) @db.Uuid
+  tenantId         String                  @map("tenant_id")
+  scope            DirectDebitMandateScope @default(RENTAL_LEASE)
+  syndicateId      String?                 @map("syndicate_id") @db.Uuid
+  format           DirectDebitReturnFormat @default(GENERIC_CSV)
+  /// Nom de fichier assaini (200 caractères au plus), pour l'affichage.
+  fileName         String                  @map("file_name")
+  /// HMAC-SHA-256 du fichier (même clé dérivée que la remise, `file-digest.ts`).
+  fileDigest       String                  @map("file_digest")
+  recordCount      Int                     @map("record_count")
+  settledCount     Int                     @default(0) @map("settled_count")
+  rejectedCount    Int                     @default(0) @map("rejected_count")
+  skippedCount     Int                     @default(0) @map("skipped_count")
+  errorCount       Int                     @default(0) @map("error_count")
+  importedByUserId String?                 @map("imported_by_user_id")
+  createdAt        DateTime                @default(now()) @map("created_at")
+
+  tenant    Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate Syndicate?                  @relation(fields: [syndicateId], references: [id], onDelete: Restrict)
+  lines     DirectDebitRemittanceLine[]
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, fileDigest])
+  @@map("direct_debit_return_imports")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications persistantes et messagerie interne (menu lot 3)
+// ---------------------------------------------------------------------------
+
+/// Canal d'une notification.
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  WHATSAPP
+  SMS
+}
+
+/// Etat d'une notification (agregat) ou d'un envoi par canal. La lecture n'est
+/// PAS un statut : elle vit dans `UserNotification.readAt`.
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  SKIPPED
+}
+
+enum ConversationKind {
+  DIRECT
+  GROUP
+}
+
+/// Notification adressee a une personne de l'agence (compte ou contact CRM sans
+/// compte). Ecrite AVANT tout envoi : un canal en echec ne l'efface jamais.
+model UserNotification {
+  id                 String             @id @default(uuid())
+  tenantId           String             @map("tenant_id")
+  /// Destinataire ayant un compte. SetNull : le libelle fige reste lisible.
+  recipientUserId    String?            @map("recipient_user_id")
+  /// Destinataire sans compte : identifiant CRM (CrmContact.id), sans relation.
+  recipientContactId String?            @map("recipient_contact_id")
+  /// Libelle du destinataire au moment de l'envoi.
+  recipientLabel     String             @map("recipient_label")
+  /// Cle metier (ex. MAINTENANCE_TICKET_CREATED_TENANT).
+  key                String
+  title              String
+  body               String             @db.Text
+  link               String?
+  /// Agregat des canaux (jamais READ).
+  status             NotificationStatus @default(PENDING)
+  failureReason      String?            @map("failure_reason")
+  readAt             DateTime?          @map("read_at")
+  sentAt             DateTime?          @map("sent_at")
+  /// Qui a declenche l'envoi (User.id, sans relation), pour « envoyees ».
+  senderUserId       String?            @map("sender_user_id")
+  relatedEntityType  String?            @map("related_entity_type")
+  relatedEntityId    String?            @map("related_entity_id")
+  metadata           Json?
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recipientUser User?                  @relation("UserNotificationRecipient", fields: [recipientUserId], references: [id], onDelete: SetNull)
+  deliveries    NotificationDelivery[]
+
+  @@index([tenantId, recipientUserId, readAt, createdAt(sort: Desc)], map: "user_notifications_inbox_idx")
+  @@index([tenantId, createdAt(sort: Desc)], map: "user_notifications_tenant_created_idx")
+  @@index([tenantId, status, createdAt(sort: Desc)], map: "user_notifications_tenant_status_idx")
+  @@index([tenantId, key], map: "user_notifications_tenant_key_idx")
+  @@index([relatedEntityType, relatedEntityId], map: "user_notifications_related_idx")
+  @@map("user_notifications")
+}
+
+/// Envoi d'une notification sur un canal. Une ligne par (notification, canal).
+model NotificationDelivery {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  notificationId    String              @map("notification_id")
+  channel           NotificationChannel
+  status            NotificationStatus  @default(PENDING)
+  /// Adresse e-mail ou numero vise.
+  target            String?
+  failureReason     String?             @map("failure_reason")
+  attempts          Int                 @default(0)
+  lastAttemptAt     DateTime?           @map("last_attempt_at")
+  sentAt            DateTime?           @map("sent_at")
+  deliveredAt       DateTime?           @map("delivered_at")
+  providerMessageId String?             @map("provider_message_id")
+  /// De quoi rejouer l'envoi (gabarit WhatsApp et variables, sujet e-mail...).
+  resendPayload     Json?               @map("resend_payload")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  notification UserNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, channel])
+  @@index([tenantId, status, createdAt(sort: Desc)], map: "notification_deliveries_tenant_status_idx")
+  @@map("notification_deliveries")
+}
+
+/// Fil de messagerie interne : 1-a-1 (deduplique par `directKey`) ou groupe.
+model Conversation {
+  id              String           @id @default(uuid())
+  tenantId        String           @map("tenant_id")
+  kind            ConversationKind
+  title           String?
+  /// Ids tries des deux participants d'un 1-a-1, joints par « : ».
+  directKey       String?          @map("direct_key")
+  createdByUserId String           @map("created_by_user_id")
+  lastMessageAt   DateTime?        @map("last_message_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@unique([tenantId, directKey])
+  @@index([tenantId, lastMessageAt(sort: Desc)], map: "conversations_tenant_last_message_idx")
+  @@map("conversations")
+}
+
+/// Participant : toujours un User de l'agence (membre actif ou client portail).
+model ConversationParticipant {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  conversationId String    @map("conversation_id")
+  userId         String    @map("user_id")
+  lastReadAt     DateTime? @map("last_read_at")
+  joinedAt       DateTime  @default(now()) @map("joined_at")
+  leftAt         DateTime? @map("left_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([tenantId, userId], map: "conversation_participants_tenant_user_idx")
+  @@map("conversation_participants")
+}
+
+/// Message texte d'une conversation (pas de piece jointe dans ce lot).
+model Message {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  conversationId String    @map("conversation_id")
+  /// Auteur (User.id, sans relation : le message survit au compte).
+  authorUserId   String    @map("author_user_id")
+  body           String    @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt(sort: Desc)], map: "messages_conversation_created_idx")
+  @@map("messages")
+}
+
+/// Audit 2026-10-19 : verrou des jobs cron entre instances de l'API. Une ligne par
+/// nom de job ; le verrou est pris et libere en SQL brut (lot C), jamais par le client
+/// Prisma. Modele PLATEFORME : pas de tenantId (un job tourne pour toutes les agences).
+model JobLock {
+  name        String   @id
+  holder      String
+  lockedUntil DateTime @map("locked_until") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("job_locks")
 }

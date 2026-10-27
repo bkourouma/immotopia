@@ -18,8 +18,17 @@ import {
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
+import { Link } from 'react-router-dom';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
+import {
+  AllocationMethodRadio,
+  AllocationPreview,
+  ratesUnavailableMessage,
+  useLotTypeRatesForAllocation
+} from '../../components/syndics/charge-allocation/ChargeAllocationControls';
 import { LotPaymentModal } from '../../components/syndics/LotPaymentModal';
+import { ChargeCallPaymentLinkModal } from '../../components/syndics/online-payment/ChargeCallPaymentLinkModal';
+import { useSyndicOnlinePaymentUsable } from '../../components/syndics/online-payment/useOnlinePaymentUsable';
 import { MoneyValue, StatCard, formatMoney } from '../../components/primitives';
 import {
   assignChargeCallFund,
@@ -29,8 +38,12 @@ import {
   listSyndicateFunds,
   listSyndicateLots
 } from '../../services/syndic-service';
-import { downloadChargeCallNotice } from '../../services/syndic-charge-schedule-service';
+import { listSyndicDeclarations } from '../../services/syndic-declared-payment-service';
+import { downloadChargeCallNotice, downloadChargeCallNoticeWord } from '../../services/syndic-charge-schedule-service';
+import { describeDownloadError } from '../../utils/download-error';
+import { saveBlob } from '../../utils/save-blob';
 import {
+  ChargeAllocationMethod,
   ChargeCall,
   ChargeCallStatus,
   ChargeCallSummary,
@@ -40,10 +53,12 @@ import {
   SyndicateFund,
   SyndicateLot
 } from '../../types/syndic-types';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
+import { lotsWithShares, previewAllocation } from '../../utils/charge-allocation-preview';
 
 const { Paragraph, Title } = Typography;
 
@@ -94,6 +109,11 @@ export const SyndicCharges: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
   const dueDateValue = Form.useWatch('dueDate', form) as Dayjs | null | undefined;
+  const targetModeValue = Form.useWatch('targetMode', form) as 'single' | 'multiple' | 'all' | undefined;
+  const allocationMethodValue = Form.useWatch('allocationMethod', form) as ChargeAllocationMethod | undefined;
+  const amountValue = Form.useWatch('amount', form) as number | null | undefined;
+  const currencyValue = Form.useWatch('currency', form) as string | undefined;
+  const lotIdsValue = Form.useWatch('lotIds', form) as string[] | undefined;
 
   // Lot S2 : la modale de paiement travaille PAR LOT. `paymentContext` porte
   // le lot et, si elle a été ouverte depuis un dossier précis, l'appel à
@@ -108,6 +128,18 @@ export const SyndicCharges: React.FC = () => {
   const [fundTarget, setFundTarget] = useState<ChargeCall | null>(null);
   const [fundChoice, setFundChoice] = useState<string | undefined>(undefined);
   const [fundSaving, setFundSaving] = useState(false);
+
+  // Lien « Payer cet appel » (spec 042) : proposé seulement si la copropriété a un paiement en ligne
+  // utilisable ; créer et révoquer exigent SYNDIC_EDIT (lire la liste, SYNDIC_VIEW). L'API reste l'autorité.
+  const onlinePaymentUsable = useSyndicOnlinePaymentUsable(effectiveTenantId, syndicId);
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const canEditSyndic = permissionsReady && (permissions === null || permissions.has('SYNDIC_EDIT'));
+  const [linkTarget, setLinkTarget] = useState<ChargeCall | null>(null);
+
+  // Paiements mobile money déclarés en attente (spec 047) : pastille sur les appels visés et bandeau.
+  // Information annexe : son échec (403 compris) est silencieux et ne bloque jamais la page.
+  const [declaredPendingCallIds, setDeclaredPendingCallIds] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const [declaredPendingCount, setDeclaredPendingCount] = useState(0);
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
@@ -124,6 +156,28 @@ export const SyndicCharges: React.FC = () => {
     }
     void loadCharges();
   }, [effectiveTenantId, syndicId, statusFilter, periodFilter]);
+
+  const loadDeclaredPending = async () => {
+    if (!effectiveTenantId || !syndicId) return;
+    try {
+      const data = await listSyndicDeclarations(effectiveTenantId, syndicId, { status: 'PENDING', limit: 100 });
+      const ids = new Set<string>();
+      for (const declaration of data.items ?? []) {
+        for (const line of declaration.lines ?? []) {
+          for (const call of line.chargeCalls ?? []) ids.add(call.id);
+        }
+      }
+      setDeclaredPendingCallIds(ids);
+      setDeclaredPendingCount(data.pagination?.total ?? 0);
+    } catch {
+      setDeclaredPendingCallIds(new Set<string>());
+      setDeclaredPendingCount(0);
+    }
+  };
+
+  useEffect(() => {
+    void loadDeclaredPending();
+  }, [effectiveTenantId, syndicId]);
 
   const loadBaseData = async () => {
     if (!effectiveTenantId || !syndicId) {
@@ -205,6 +259,42 @@ export const SyndicCharges: React.FC = () => {
     [lots]
   );
 
+  // Mode de répartition : proposé seulement pour plusieurs lots ou tous les lots.
+  // Un seul lot garde le comportement historique (montant du lot = total).
+  const allocationMethod: ChargeAllocationMethod | null =
+    targetModeValue === 'multiple' || targetModeValue === 'all' ? (allocationMethodValue ?? 'SHARES') : null;
+  const { rates: lotTypeRates, status: ratesStatus } = useLotTypeRatesForAllocation(
+    effectiveTenantId,
+    syndicId,
+    open && allocationMethod === 'BY_LOT_TYPE'
+  );
+  const allocationCandidates = useMemo(() => {
+    if (targetModeValue === 'multiple') {
+      const chosen = new Set(lotIdsValue ?? []);
+      return lots.filter(lot => chosen.has(lot.id));
+    }
+    return lotsWithShares(lots);
+  }, [targetModeValue, lotIdsValue, lots]);
+  const allocationPreview = useMemo(
+    () =>
+      allocationMethod
+        ? previewAllocation({
+            method: allocationMethod,
+            lots: allocationCandidates,
+            totalAmount: amountValue,
+            lotTypeRates,
+            currency: currencyValue || 'XOF'
+          })
+        : null,
+    [allocationMethod, allocationCandidates, amountValue, lotTypeRates, currencyValue]
+  );
+  // Aperçu SHARES / EQUAL : seulement une fois le total saisi et des lots choisis.
+  const shownPreview =
+    (allocationMethod === 'BY_LOT_TYPE' && allocationCandidates.length > 0) ||
+    (allocationPreview && Number(amountValue) > 0 && (targetModeValue === 'all' || (lotIdsValue ?? []).length > 0))
+      ? allocationPreview
+      : null;
+
   const handleCreate = async () => {
     if (!effectiveTenantId || !syndicId) {
       return;
@@ -228,6 +318,17 @@ export const SyndicCharges: React.FC = () => {
     const period: string =
       (values.period && String(values.period).trim()) ||
       (periodStart && periodEnd ? `${periodStart} au ${periodEnd}` : '');
+    if (allocationMethod) {
+      // Même contrôle que l'API (messages identiques) : on bloque d'avance une saisie qu'elle refuserait.
+      if (allocationMethod === 'BY_LOT_TYPE' && lotTypeRates === null) {
+        message.error(ratesUnavailableMessage());
+        return;
+      }
+      if (allocationPreview?.error) {
+        message.error(allocationPreview.error);
+        return;
+      }
+    }
     const payload: CreateChargeCallRequest = {
       lotId: targetMode === 'single' ? values.lotId : undefined,
       lotIds: targetMode === 'multiple' ? values.lotIds : undefined,
@@ -235,7 +336,8 @@ export const SyndicCharges: React.FC = () => {
       period,
       periodStart,
       periodEnd,
-      amount: values.amount,
+      amount: allocationMethod === 'BY_LOT_TYPE' ? undefined : values.amount,
+      allocationMethod: allocationMethod ?? undefined,
       currency: values.currency || 'XOF',
       dueDate: values.dueDate.toISOString(),
       fundId: values.fundId || undefined,
@@ -272,6 +374,21 @@ export const SyndicCharges: React.FC = () => {
     }
   };
 
+  const handleDownloadNoticeWord = async (charge: ChargeCall) => {
+    if (!effectiveTenantId || !syndicId) return;
+    try {
+      const { blob, filename } = await downloadChargeCallNoticeWord(
+        effectiveTenantId,
+        syndicId,
+        charge.id,
+        `avis-appel-${charge.id}.docx`
+      );
+      saveBlob(blob, filename);
+    } catch (err) {
+      message.error(await describeDownloadError(err));
+    }
+  };
+
   const handleOpenPaymentForCharge = (charge: ChargeCall) => {
     setPaymentContext({ lotId: charge.lotId, chargeCallId: charge.id });
     setPaymentOpen(true);
@@ -298,6 +415,7 @@ export const SyndicCharges: React.FC = () => {
         : t('Paiement enregistré : avance de {{advance}}', { advance })
     );
     void loadCharges();
+    void loadDeclaredPending();
   };
 
   return (
@@ -370,12 +488,34 @@ export const SyndicCharges: React.FC = () => {
             </Card>
 
             <Card title={t('Liste des appels de charges')}>
+              {declaredPendingCount > 0 ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  message={
+                    <Space wrap size={8}>
+                      <span>
+                        {t('{{count}} paiement(s) déclaré(s) en attente de validation.', {
+                          count: declaredPendingCount
+                        })}
+                      </span>
+                      <Link to={`/tenant/${effectiveTenantId}/syndics/${syndicId}/paiements-en-ligne`}>
+                        {t('Voir les paiements')}
+                      </Link>
+                    </Space>
+                  }
+                />
+              ) : null}
               <ChargeCallTable
                 items={charges}
                 onRecordPayment={handleOpenPaymentForCharge}
                 onDownloadNotice={charge => void handleDownloadNotice(charge)}
+                onDownloadNoticeWord={charge => void handleDownloadNoticeWord(charge)}
                 funds={funds}
                 onAssignFund={funds.length > 0 ? handleOpenAssignFund : undefined}
+                onPaymentLink={onlinePaymentUsable ? setLinkTarget : undefined}
+                declaredPendingCallIds={declaredPendingCallIds}
               />
             </Card>
           </>
@@ -397,6 +537,7 @@ export const SyndicCharges: React.FC = () => {
           initialValues={{
             currency: 'XOF',
             targetMode: 'single',
+            allocationMethod: 'SHARES',
             isRecurring: false,
             recurrenceFrequency: 'MONTHLY',
             recurrenceCount: 1
@@ -491,16 +632,24 @@ export const SyndicCharges: React.FC = () => {
             </Col>
           </Row>
 
+          {allocationMethod ? (
+            <Form.Item label={t('Répartition entre les lots')} name="allocationMethod">
+              <AllocationMethodRadio />
+            </Form.Item>
+          ) : null}
+
           <Row gutter={12}>
-            <Col xs={24} md={12}>
-              <Form.Item
-                label={t('Montant')}
-                name="amount"
-                rules={[{ required: true, message: t('Le montant est obligatoire') }]}
-              >
-                <InputNumber min={1} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
+            {allocationMethod === 'BY_LOT_TYPE' ? null : (
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label={allocationMethod ? t('Montant total à répartir') : t('Montant')}
+                  name="amount"
+                  rules={[{ required: true, message: t('Le montant est obligatoire') }]}
+                >
+                  <InputNumber min={1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            )}
             <Col xs={24} md={12}>
               <Form.Item
                 label={t('Devise')}
@@ -511,6 +660,19 @@ export const SyndicCharges: React.FC = () => {
               </Form.Item>
             </Col>
           </Row>
+
+          {allocationMethod ? (
+            <Form.Item style={{ marginTop: -8 }}>
+              <AllocationPreview
+                method={allocationMethod}
+                result={shownPreview}
+                currency={currencyValue || 'XOF'}
+                ratesStatus={ratesStatus}
+                tenantId={effectiveTenantId}
+                syndicId={syndicId}
+              />
+            </Form.Item>
+          ) : null}
 
           <Form.Item
             label={t("Date d'échéance")}
@@ -603,6 +765,19 @@ export const SyndicCharges: React.FC = () => {
           options={fundSelectOptions}
         />
       </Modal>
+
+      {/* Monté seulement ouvert : l'URL du lien, montrée une fois, ne survit pas dans l'état de la page. */}
+      {effectiveTenantId && syndicId && linkTarget ? (
+        <ChargeCallPaymentLinkModal
+          key={`${effectiveTenantId}:${syndicId}:${linkTarget.id}`}
+          tenantId={effectiveTenantId}
+          syndicId={syndicId}
+          charge={linkTarget}
+          open
+          canEdit={canEditSyndic}
+          onClose={() => setLinkTarget(null)}
+        />
+      ) : null}
 
       {effectiveTenantId && syndicId ? (
         <LotPaymentModal

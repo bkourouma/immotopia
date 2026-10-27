@@ -1,4 +1,5 @@
 import { prisma } from '../utils/database';
+import { cancelOpenRequestsForTarget } from '../lib/signature/cancel';
 import { logger } from '../utils/logger';
 import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
@@ -10,6 +11,7 @@ import { renderDocx, calculateHash, saveGeneratedDocument } from './docx-rendere
 import { withDocumentNumberLock } from './document-number-lock';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getGeneratedDocumentsDir, getLegacyGeneratedDocumentsDir, isInsideDir } from '../utils/assets-paths';
 
 /**
  * Generate document number based on type and period
@@ -84,6 +86,19 @@ function escapeRegExp(text: string): string {
  * DANS `withDocumentNumberLock`, avec l'écriture du document : sans le verrou,
  * deux générations simultanées liraient le même dernier suffixe.
  */
+/** SG-R2 : annule les demandes de signature ouvertes du bail. Une panne ici ne défait pas le document déjà écrit. */
+async function cancelSignaturesOfLease(tenantId: string, actorUserId: string, leaseId: string): Promise<void> {
+  try {
+    await cancelOpenRequestsForTarget({ tenantId, userId: actorUserId }, 'RentalLease', leaseId);
+  } catch (error) {
+    logger.error('Signature : annulation des demandes du bail en échec', {
+      tenantId,
+      leaseId,
+      error: error instanceof Error ? error.name : 'inconnue'
+    });
+  }
+}
+
 export async function nextLeaseContractNumber(tenantId: string, leaseNumber: string): Promise<string> {
   const existing = await prisma.rentalDocument.findMany({
     where: {
@@ -400,6 +415,11 @@ export async function generateDocument(
       )
     : await persist(await counterNumber());
 
+  // SG-R2 : un nouveau contrat rend caduque toute demande de signature en cours sur ce bail.
+  if (rentalDocType === RentalDocumentType.LEASE_CONTRACT && leaseId) {
+    await cancelSignaturesOfLease(tenantId, actorUserId, leaseId);
+  }
+
   logger.info('Document generated', {
     documentId: document.id,
     tenantId,
@@ -554,6 +574,11 @@ export async function regenerateDocument(
     }
   });
 
+  // SG-R2 : le contrat a change, la demande de signature en cours n'a plus de sens.
+  if (updatedDocument.type === RentalDocumentType.LEASE_CONTRACT && updatedDocument.lease_id) {
+    await cancelSignaturesOfLease(tenantId, actorUserId, updatedDocument.lease_id);
+  }
+
   logger.info('Document regenerated', {
     documentId: updatedDocument.id,
     documentNumber: updatedDocument.document_number,
@@ -596,18 +621,14 @@ export async function getDocumentFile(tenantId: string, documentId: string): Pro
     throw new NotFoundError(t('Fichier du document introuvable.'));
   }
 
-  // Verify path is within allowed directory (security)
-  // Use same project root detection as in index.ts
-  const cwd = process.cwd();
-  const projectRoot =
-    path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-      ? path.resolve(cwd, '..', '..')
-      : cwd;
-  const allowedBase = path.join(projectRoot, 'assets', 'generated_documents');
+  // Verify path is within allowed directory (security) : volume des fichiers
+  // (UPLOADS_DIR) ou ancien emplacement `assets/generated_documents`, lu en repli
+  // pour les documents generes avant le deplacement vers le volume.
   const resolvedPath = path.resolve(document.file_path);
-  const resolvedBase = path.resolve(allowedBase);
-
-  if (!resolvedPath.startsWith(resolvedBase)) {
+  if (
+    !isInsideDir(resolvedPath, getGeneratedDocumentsDir()) &&
+    !isInsideDir(resolvedPath, getLegacyGeneratedDocumentsDir())
+  ) {
     throw new BadRequestError(t('Fichier du document invalide.'));
   }
 

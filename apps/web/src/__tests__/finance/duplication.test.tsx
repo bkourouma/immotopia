@@ -67,6 +67,7 @@ const createSupplierInvoice = vi.fn();
 const validateSupplierInvoice = vi.fn();
 const voidSupplierInvoice = vi.fn();
 const createSupplierPayment = vi.fn();
+const listSupplierPayments = vi.fn();
 const validateSupplierPayment = vi.fn();
 const voidSupplierPayment = vi.fn();
 const createCashVoucher = vi.fn();
@@ -84,6 +85,7 @@ vi.mock('../../services/finance-lot2-service', () => ({
   validateSupplierInvoice: (...a: unknown[]) => validateSupplierInvoice(...a),
   voidSupplierInvoice: (...a: unknown[]) => voidSupplierInvoice(...a),
   createSupplierPayment: (...a: unknown[]) => createSupplierPayment(...a),
+  listSupplierPayments: (...a: unknown[]) => listSupplierPayments(...a),
   validateSupplierPayment: (...a: unknown[]) => validateSupplierPayment(...a),
   voidSupplierPayment: (...a: unknown[]) => voidSupplierPayment(...a),
   createCashVoucher: (...a: unknown[]) => createCashVoucher(...a),
@@ -91,6 +93,9 @@ vi.mock('../../services/finance-lot2-service', () => ({
   voidCashVoucher: (...a: unknown[]) => voidCashVoucher(...a),
   getCashVoucherPdfUrl: (...a: unknown[]) => getCashVoucherPdfUrl(...a)
 }));
+
+// Le formulaire de règlement embarque le sélecteur de compte de trésorerie.
+vi.mock('../../services/treasury-service', () => ({ listTreasuryAccounts: vi.fn().mockResolvedValue([]) }));
 
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })

@@ -38,6 +38,16 @@ describe('<ChargeCallTable> — bouton avis d’appel (lot S4)', () => {
     expect(onDownloadNotice).toHaveBeenCalledWith(CHARGE);
   });
 
+  it("affiche « Avis d'appel (Word) » et appelle onDownloadNoticeWord avec l'appel concerné", () => {
+    const onDownloadNoticeWord = vi.fn();
+    render(<ChargeCallTable items={[CHARGE]} onDownloadNoticeWord={onDownloadNoticeWord} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Avis d'appel \(Word\)/ }));
+
+    expect(onDownloadNoticeWord).toHaveBeenCalledWith(CHARGE);
+    expect(screen.queryByRole('button', { name: /Avis d'appel \(PDF\)/ })).not.toBeInTheDocument();
+  });
+
   it('affiche les deux actions côte à côte quand les deux callbacks sont fournis', () => {
     const onRecordPayment = vi.fn();
     const onDownloadNotice = vi.fn();
@@ -67,5 +77,44 @@ describe('<ChargeCallTable> — fonds de copropriété', () => {
     render(<ChargeCallTable items={[{ ...CHARGE, fundId: 'fund-1' } as ChargeCall]} />);
     expect(screen.queryByText('Fonds de travaux')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Affecter à un fonds' })).not.toBeInTheDocument();
+  });
+});
+
+describe('<ChargeCallTable> — lien de paiement (spec 042)', () => {
+  it('propose « Lien de paiement » pour un appel à reste dû et appelle onPaymentLink avec l’appel', () => {
+    const onPaymentLink = vi.fn();
+    render(<ChargeCallTable items={[CHARGE]} onPaymentLink={onPaymentLink} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Lien de paiement/ }));
+
+    expect(onPaymentLink).toHaveBeenCalledWith(CHARGE);
+  });
+
+  it("n'affiche ni la colonne Actions ni le bouton sans callback", () => {
+    render(<ChargeCallTable items={[CHARGE]} />);
+    expect(screen.queryByRole('button', { name: /Lien de paiement/ })).not.toBeInTheDocument();
+  });
+
+  it('masque le bouton pour un appel soldé (statut ou reste nul)', () => {
+    const solde = { ...CHARGE, id: 'charge-2', status: 'PAID' } as ChargeCall;
+    const sansReste = { ...CHARGE, id: 'charge-3', paidAmount: 100000, outstandingAmount: 0 } as ChargeCall;
+    render(<ChargeCallTable items={[solde, sansReste]} onPaymentLink={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: /Lien de paiement/ })).not.toBeInTheDocument();
+  });
+
+  it('le propose pour un appel partiellement payé (reste dû > 0)', () => {
+    const partiel = { ...CHARGE, status: 'PARTIAL', paidAmount: 40000, outstandingAmount: 60000 } as ChargeCall;
+    render(<ChargeCallTable items={[partiel]} onPaymentLink={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: /Lien de paiement/ })).toBeInTheDocument();
+  });
+
+  it('le masque pour une devise que le paiement en ligne refuse', () => {
+    const euros = { ...CHARGE, currency: 'EUR' } as ChargeCall;
+    const fcfa = { ...CHARGE, id: 'charge-4', currency: 'FCFA' } as ChargeCall;
+    render(<ChargeCallTable items={[euros, fcfa]} onPaymentLink={vi.fn()} />);
+
+    expect(screen.getAllByRole('button', { name: /Lien de paiement/ })).toHaveLength(1);
   });
 });

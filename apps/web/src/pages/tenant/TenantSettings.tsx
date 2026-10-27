@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { App, Form, Input, Card, Button, Space, Alert, Spin, Typography, Row, Col, Upload } from 'antd';
 import {
   SaveOutlined,
@@ -22,6 +22,7 @@ import {
 } from '../../services/document-branding-service';
 import { OwnerPortalSettingsCard } from '../../components/settings/OwnerPortalSettingsCard';
 import { t } from '../../i18n/t';
+import { writeErrorMessage } from '../../utils/error-handler';
 
 const { Title, Text } = Typography;
 
@@ -29,7 +30,6 @@ const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 
 export const TenantSettings: React.FC = () => {
   const { message } = App.useApp();
-  const navigate = useNavigate();
 
   const { tenantId } = useParams<{ tenantId: string }>();
   const [form] = Form.useForm();
@@ -145,8 +145,13 @@ export const TenantSettings: React.FC = () => {
         setError(t('Erreur lors de la sauvegarde'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors de la sauvegarde'));
-      message.error(t('Erreur lors de la sauvegarde'));
+      const text = writeErrorMessage(
+        err,
+        t('Erreur lors de la sauvegarde'),
+        t("Vous n'avez pas les droits nécessaires pour modifier les paramètres de l'agence.")
+      );
+      setError(text);
+      message.error(text);
     } finally {
       setSaving(false);
     }
@@ -233,19 +238,6 @@ export const TenantSettings: React.FC = () => {
             {t('Gérez les informations de votre agence. Ces informations seront utilisées dans les documents générés.')}
           </Text>
         </div>
-
-        {/* Abonnement — consultation seule, vague 2 (lot C) : packs, période,
-            jauges de consommation. */}
-        <Card title={t('Abonnement')}>
-          <Space direction="vertical" size="small">
-            <Text type="secondary">
-              {t('Packs souscrits, période en cours et consommation de lots, copropriétés et chantiers.')}
-            </Text>
-            <Button onClick={() => navigate(`/tenant/${tenantId}/settings/abonnement`)}>
-              {t('Voir mon abonnement')}
-            </Button>
-          </Space>
-        </Card>
 
         {/* Portail propriétaire (lot P5) : masquage de la vue patrimoine. */}
         {tenantId && <OwnerPortalSettingsCard tenantId={tenantId} />}

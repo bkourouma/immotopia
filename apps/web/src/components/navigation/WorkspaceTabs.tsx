@@ -30,6 +30,8 @@ export interface WorkspaceTabItem {
   /** URL absolue de la route existante — jamais un fragment de panneau local. */
   href: string;
   icon?: React.ReactNode;
+  /** Compteur affiché après le libellé quand il est supérieur à zéro (ex. éléments à traiter). */
+  badge?: number;
   /**
    * Autres chemins qui allument cet onglet sans en prolonger l'URL — la
    * facture d'un fournisseur (`/finance/factures-fournisseurs`) relève de
@@ -202,6 +204,15 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ items, ariaLabel, 
                 </span>
               )}
               {item.label}
+              {item.badge && item.badge > 0 ? (
+                <span
+                  data-testid={`tab-badge-${item.key}`}
+                  aria-label={`${item.badge}`}
+                  className="inline-flex min-w-5 items-center justify-center rounded-full bg-brand-bg px-1.5 text-xs font-semibold text-brand-strong"
+                >
+                  {item.badge > 99 ? '99+' : item.badge}
+                </span>
+              ) : null}
             </Link>
           );
         })}

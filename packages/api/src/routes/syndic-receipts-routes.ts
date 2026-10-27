@@ -12,6 +12,7 @@ import {
   printReceiptsHandler,
   resendReceiptHandler
 } from '../controllers/syndic-receipts-controller';
+import { downloadReceiptDocxHandler } from '../controllers/syndic-word-documents-controller';
 
 /**
  * Reçus de paiement et quittances de charges (lot S3).
@@ -37,6 +38,7 @@ router.get(`${SYNDIC}/quittances`, ...guards, canView, listSyndicateReceiptsHand
 router.get(`${SYNDIC}/quittances/impression`, ...guards, canView, receiptPrintRateLimiter, printReceiptsHandler);
 router.post(`${SYNDIC}/quittances/generer-manquantes`, ...guards, canEdit, backfillQuittancesHandler);
 router.get(`${SYNDIC}/quittances/:receiptId/fichier`, ...guards, canView, downloadReceiptHandler);
+router.get(`${SYNDIC}/quittances/:receiptId/fichier.docx`, ...guards, canView, downloadReceiptDocxHandler);
 router.post(
   `${SYNDIC}/quittances/:receiptId/envoi`,
   ...guards,

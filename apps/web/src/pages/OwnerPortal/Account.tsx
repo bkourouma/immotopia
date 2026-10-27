@@ -12,6 +12,7 @@ import {
 } from '../../services/owner-portal-account-service';
 import { DataCard, DataView, MoneyValue, SkeletonList, SkeletonStats, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 const { Title, Text } = Typography;
 
@@ -34,20 +35,20 @@ function dateCourte(iso: string): string {
   return dayjs(iso).format('DD/MM/YYYY');
 }
 
-const PAYOUT_METHOD_LABELS: Record<PayoutMethod, string> = {
+const PAYOUT_METHOD_LABELS: Record<PayoutMethod, string> = localizedRecord(() => ({
   CASH: t('Espèces'),
   BANK_TRANSFER: t('Virement bancaire'),
   CHECK: t('Chèque'),
   MOBILE_MONEY: t('Mobile Money'),
   OTHER: t('Autre')
-};
+}));
 
 function methodLabel(method: PayoutMethod): string {
   return PAYOUT_METHOD_LABELS[method] ?? method;
 }
 
 /** Nature d'un mouvement, en français. */
-const MOVEMENT_TYPE_LABELS: Record<OwnerMovement['type'], string> = {
+const MOVEMENT_TYPE_LABELS: Record<OwnerMovement['type'], string> = localizedRecord(() => ({
   RENT_COLLECTED: t('Loyer encaissé'),
   MANAGEMENT_FEE: t('Honoraires de gestion'),
   MANAGEMENT_FEE_VAT: t('TVA sur honoraires'),
@@ -56,7 +57,7 @@ const MOVEMENT_TYPE_LABELS: Record<OwnerMovement['type'], string> = {
   VOID: t('Annulation'),
   WITHHOLDING_TAX: t('Retenue à la source'),
   DEPOSIT_RETAINED: t('Dépôt de garantie conservé')
-};
+}));
 
 function movementTypeLabel(type: OwnerMovement['type']): string {
   return MOVEMENT_TYPE_LABELS[type] ?? type;
@@ -135,7 +136,8 @@ export default function Account() {
       title: t('Montant'),
       key: 'montant',
       align: 'end',
-      render: (_, p) => <MoneyValue value={p.amount} />
+      render: (_, p) => <MoneyValue value={p.amount} />,
+      exportValue: p => p.amount
     },
     { title: t('Statut'), key: 'statut', render: (_, p) => statutReversement(p) }
   ];
@@ -149,12 +151,14 @@ export default function Account() {
       title: t('Montant'),
       key: 'montant',
       align: 'end',
-      render: (_, m) => <MontantMouvement movement={m} />
+      render: (_, m) => <MontantMouvement movement={m} />,
+      exportValue: m => (m.credit > 0 ? m.credit : -m.debit)
     },
     {
       title: t('Solde après'),
       key: 'solde',
       align: 'end',
+      exportValue: m => m.balanceAfter,
       render: (_, m) => (
         <strong>
           <MoneyValue value={m.balanceAfter} />
@@ -240,6 +244,7 @@ export default function Account() {
 
       <Card title={t('Reversements reçus')}>
         <DataView<OwnerPayout>
+          export={{ filename: t('Reversements reçus') }}
           paginated={false}
           items={compte.payouts}
           total={compte.payouts.length}
@@ -264,6 +269,7 @@ export default function Account() {
 
       <Card title={t('Détail des mouvements')}>
         <DataView<OwnerMovement>
+          export={{ filename: t('Détail des mouvements') }}
           paginated={false}
           items={compte.movements}
           total={compte.movements.length}

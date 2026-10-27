@@ -29,6 +29,7 @@ import {
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
+import { localizedList } from '../../i18n/localized';
 const { Text, Title } = Typography;
 
 /**
@@ -66,12 +67,12 @@ type Vue = 'agenda' | 'month' | 'week' | 'day';
 type Filtres = { vue: string; perimetre: string; relances: string };
 const FILTER_KEYS = ['vue', 'perimetre', 'relances'] as const;
 
-const VUES: { value: Vue; label: string }[] = [
+const VUES: { value: Vue; label: string }[] = localizedList(() => [
   { value: 'agenda', label: t('Agenda') },
   { value: 'month', label: t('Mois') },
   { value: 'week', label: t('Semaine') },
   { value: 'day', label: t('Jour') }
-];
+]);
 
 function memeJour(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();

@@ -1,8 +1,8 @@
 import React from 'react';
-import { Button, Space, Table, Tag, Typography } from 'antd';
+import { Button, Space, Tag, Typography } from 'antd';
 import { DeleteOutlined, PauseCircleOutlined, PlayCircleOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { ConfirmAction, MoneyValue } from '../../primitives';
+import { ConfirmAction, MoneyValue, Table, formatMoney } from '../../primitives';
 import { ChargeSchedule } from '../../../types/syndic-types';
 import { t } from '../../../i18n/t';
 import {
@@ -14,8 +14,18 @@ import {
 } from './chargeScheduleLabels';
 import { ChargeScheduleRunNotices } from '../ChargeScheduleRunNotices';
 import { displayCurrency } from '../../../utils/syndic-currency';
+import { allocationMethodLabel } from '../charge-allocation/ChargeAllocationControls';
 
 const { Text } = Typography;
+
+/** Libellé de répartition d'une programmation : précise le périmètre des tantièmes (montant fixe). */
+function scheduleAllocationLabel(schedule: ChargeSchedule): string {
+  const isShares = !schedule.allocationMethod || schedule.allocationMethod === 'SHARES';
+  if (schedule.amountSource === 'FIXED' && isShares && schedule.includeAnnexLots !== undefined) {
+    return schedule.includeAnnexLots ? t('Tantièmes (tous les lots)') : t('Tantièmes (lots principaux)');
+  }
+  return allocationMethodLabel(schedule.allocationMethod);
+}
 
 export const ScheduleTable: React.FC<{
   tenantId: string | null | undefined;
@@ -34,6 +44,7 @@ export const ScheduleTable: React.FC<{
       title: t('Libellé'),
       dataIndex: 'label',
       key: 'label',
+      exportValue: schedule => `${schedule.label} — ${frequencyLabels[schedule.frequency]}`,
       render: (value: string, schedule) => (
         <Space direction="vertical" size={0}>
           <Text strong>{value}</Text>
@@ -44,12 +55,29 @@ export const ScheduleTable: React.FC<{
     {
       title: t('Source et montant'),
       key: 'source',
+      exportValue: schedule =>
+        schedule.amountSource === 'FIXED'
+          ? `${amountSourceLabels.FIXED} — ${
+              schedule.allocationMethod === 'BY_LOT_TYPE'
+                ? t('Barème par type de lot')
+                : formatMoney(schedule.fixedAmount ?? 0, { currency: displayCurrency(schedule.currency) })
+            } (${scheduleAllocationLabel(schedule)})`
+          : schedule.budget
+            ? `${amountSourceLabels.BUDGET} — ${schedule.budget.label} (${schedule.budget.fiscalYear})`
+            : amountSourceLabels.BUDGET,
       render: (_, schedule) =>
         schedule.amountSource === 'FIXED' ? (
           <Space direction="vertical" size={0}>
             <Text>{amountSourceLabels.FIXED}</Text>
             <Text type="secondary">
-              <MoneyValue value={schedule.fixedAmount ?? 0} currency={displayCurrency(schedule.currency)} />
+              {schedule.allocationMethod === 'BY_LOT_TYPE' ? (
+                t('Barème par type de lot')
+              ) : (
+                <MoneyValue value={schedule.fixedAmount ?? 0} currency={displayCurrency(schedule.currency)} />
+              )}
+            </Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {scheduleAllocationLabel(schedule)}
             </Text>
           </Space>
         ) : (
@@ -64,6 +92,10 @@ export const ScheduleTable: React.FC<{
     {
       title: t('Prochaine émission'),
       key: 'next',
+      exportValue: schedule =>
+        schedule.nextPeriod
+          ? `${schedule.nextPeriod.label} — ${t('Émission')} ${formatDay(schedule.nextPeriod.issueDate)} · ${t('Échéance')} ${formatDay(schedule.nextPeriod.dueDate)}`
+          : t('Aucune (fin de programmation atteinte)'),
       render: (_, schedule) =>
         schedule.nextPeriod ? (
           <Space direction="vertical" size={0}>
@@ -80,12 +112,19 @@ export const ScheduleTable: React.FC<{
     {
       title: t('Statut'),
       key: 'status',
+      exportValue: schedule => (schedule.active ? t('Active') : t('En pause')),
       render: (_, schedule) =>
         schedule.active ? <Tag color="green">{t('Active')}</Tag> : <Tag color="default">{t('En pause')}</Tag>
     },
     {
       title: t('Dernière exécution'),
       key: 'lastRun',
+      exportValue: schedule => {
+        const run = schedule.lastRun;
+        if (!run) return t('Aucune');
+        const error = run.error ? describeScheduleError(run.error) : '';
+        return `${run.periodLabel} · ${runStatusConfig[run.status].label}${error ? ` — ${error}` : ''}`;
+      },
       render: (_, schedule) =>
         schedule.lastRun ? (
           <Space direction="vertical" size={0}>
@@ -167,6 +206,7 @@ export const ScheduleTable: React.FC<{
 
   return (
     <Table
+      exportFilename={t('Programmation des appels de charges')}
       rowKey="id"
       scroll={{ x: 'max-content' }}
       dataSource={schedules}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { App, Button, Card, Space, Table } from 'antd';
+import { App, Button, Card, Space } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -11,7 +11,7 @@ import {
   type DebtInput
 } from '../../../services/patrimoine-assets-service';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
-import { ConfirmAction, StateBlock } from '../../primitives';
+import { ConfirmAction, StateBlock, Table } from '../../primitives';
 import { t } from '../../../i18n/t';
 import { apiErrorMessage, formatAmount, formatDay } from './asset-format';
 import { loanStatusLabel } from '../patrimoine-labels';
@@ -72,9 +72,11 @@ export const DebtsPanel: React.FC<DebtsPanelProps> = ({ tenantId, assetId, title
     setModalOpen(true);
   };
 
+  const cardTitle = title ?? (assetId ? t('Dettes adossées') : t('Dettes personnelles'));
+
   return (
     <Card
-      title={title ?? (assetId ? t('Dettes adossées') : t('Dettes personnelles'))}
+      title={cardTitle}
       extra={
         <Button icon={<PlusOutlined />} onClick={() => openForm(null)}>
           {t('Ajouter une dette')}
@@ -89,6 +91,7 @@ export const DebtsPanel: React.FC<DebtsPanelProps> = ({ tenantId, assetId, title
         />
       ) : (
         <Table<DebtDto>
+          exportFilename={cardTitle}
           rowKey="id"
           size="small"
           loading={debtsQuery.isPending}

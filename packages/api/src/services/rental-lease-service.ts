@@ -13,7 +13,7 @@ import {
 } from '@prisma/client';
 import { emailService } from './email-service';
 import { getEmailNotificationConfig } from './email-notification-config-service';
-import { updatePropertyStatus } from './property-status-service';
+import { updatePropertyStatus, validateStatusTransition } from './property-status-service';
 import { syncLotActivationsTx } from './lot-registry-service';
 import { getTenantById } from './tenant-service';
 import { assertThirdPartyAllowedForTenant } from './own-assets-barrier-service';
@@ -189,6 +189,12 @@ export async function createLease(
   // registre des lots dans la meme transaction.
   type NewAccount = { isNewUser: boolean; passwordResetToken?: string; user: any };
   const autoNumbered = !data.leaseNumber;
+  // Statut du bien apres creation : Vente (SALE) -> Vendu (SOLD), Location
+  // (RENTAL) / Location courte duree (SHORT_TERM) -> Loue (RENTED).
+  const hasSale = modes.includes(PropertyTransactionMode.SALE);
+  const hasRental =
+    modes.includes(PropertyTransactionMode.RENTAL) || modes.includes(PropertyTransactionMode.SHORT_TERM);
+  const newPropertyStatus = hasSale && !hasRental ? PropertyStatus.SOLD : PropertyStatus.RENTED;
   const createInTransaction = () =>
     prisma.$transaction(
       async tx => {
@@ -274,6 +280,32 @@ export async function createLease(
           }
         });
         await syncLotActivationsTx(tx, tenantId, { propertyIds: [data.propertyId] }, { actorUserId });
+        // Statut du bien dans la meme transaction : un echec annule la creation du bail.
+        // Bien deja dans le statut cible (ex. second bail d'un bien deja loue) : rien a faire.
+        // Transition non permise (bien en vente seule, archive, deja vendu…) :
+        // le statut reste inchange et le bail est cree comme avant. Les vraies
+        // erreurs (base, etc.) annulent toujours la creation.
+        const transition = validateStatusTransition(property.status, newPropertyStatus, property.ownershipType, true);
+        if (!transition.valid) {
+          if (property.status !== newPropertyStatus) {
+            logger.warn('Statut du bien inchangé à la création du bail : transition non permise', {
+              propertyId: data.propertyId,
+              from: property.status,
+              to: newPropertyStatus,
+              reason: transition.error
+            });
+          }
+        } else {
+          await updatePropertyStatus(
+            data.propertyId,
+            newPropertyStatus,
+            tenantId,
+            undefined,
+            actorUserId,
+            `Statut mis à jour automatiquement lors de la création du bail (type d'opération: ${hasSale && !hasRental ? 'Vente' : 'Location'})`,
+            tx
+          );
+        }
         return { lease: createdLease, primaryRenterClientId, primaryRenterResult, ownerClientId, ownerResult };
       },
       { timeout: 15000, maxWait: 10000 }
@@ -312,38 +344,6 @@ export async function createLease(
       propertyId: data.propertyId
     }
   });
-
-  // Update property status when bail created based on property operation type:
-  // Vente (SALE) -> Vendu (SOLD), Location (RENTAL) / Location courte durée (SHORT_TERM) -> Loué (RENTED)
-  {
-    try {
-      const modes = (property.transactionModes || []) as PropertyTransactionMode[];
-      const hasSale = modes.includes(PropertyTransactionMode.SALE);
-      const hasRental =
-        modes.includes(PropertyTransactionMode.RENTAL) || modes.includes(PropertyTransactionMode.SHORT_TERM);
-      const newPropertyStatus = hasSale && !hasRental ? PropertyStatus.SOLD : PropertyStatus.RENTED;
-
-      await updatePropertyStatus(
-        data.propertyId,
-        newPropertyStatus,
-        tenantId,
-        undefined,
-        actorUserId,
-        `Statut mis à jour automatiquement lors de la création du bail (type d'opération: ${hasSale && !hasRental ? 'Vente' : 'Location'})`
-      );
-      logger.info('Property status updated after lease creation', {
-        propertyId: data.propertyId,
-        leaseId: lease.id,
-        newStatus: newPropertyStatus
-      });
-    } catch (statusError: any) {
-      logger.warn('Could not update property status after lease creation', {
-        propertyId: data.propertyId,
-        leaseId: lease.id,
-        error: statusError?.message
-      });
-    }
-  }
 
   // Les emails (ex. LEASE_ACTIVATED) sont gérés uniquement par "Notifications email" (email_notification_configs), pas par triggerEvent.
 

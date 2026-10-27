@@ -376,6 +376,15 @@ describe('Chiffrement des clés API (AES-256-GCM, PAYMENT_SECRETS_KEY)', () => {
     expect(() => crypto.decryptSecret('format-inconnu')).toThrow('format inconnu');
   });
 
+  it('refuse une balise tronquée à 4 octets', () => {
+    const crypto = loadCrypto(randomBytes(32).toString('base64'));
+    const [prefix, iv, tag, ciphertext] = crypto.encryptSecret('sk_live_ABCDEF123456').split(':');
+    const truncated = Buffer.from(tag, 'base64').subarray(0, 4).toString('base64');
+    expect(() => crypto.decryptSecret([prefix, iv, truncated, ciphertext].join(':'))).toThrow(
+      'Impossible de déchiffrer la clé API'
+    );
+  });
+
   it('refuse de déchiffrer avec une autre clé serveur', () => {
     const encrypted = loadCrypto(randomBytes(32).toString('base64')).encryptSecret('secret-agence');
     const other = loadCrypto(randomBytes(32).toString('base64'));

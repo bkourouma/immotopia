@@ -199,8 +199,9 @@ describe('requireTenantAccess — agence suspendue', () => {
     };
   }
 
-  it("refuse l'acces a une agence suspendue, meme a un membre actif", async () => {
+  it("refuse l'acces a une agence suspendue a un membre actif : TENANT_SUSPENDED", async () => {
     tenantFindUnique.mockResolvedValue({ status: 'SUSPENDED' });
+    findUnique.mockResolvedValue({ status: 'ACTIVE' });
     const res = reponseFactice();
     const next = jest.fn();
 
@@ -209,18 +210,25 @@ describe('requireTenantAccess — agence suspendue', () => {
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'TENANT_SUSPENDED' }));
     expect(next).not.toHaveBeenCalled();
-    expect(findUnique).not.toHaveBeenCalled();
   });
 
-  it('renvoie 404 pour une agence inexistante', async () => {
-    tenantFindUnique.mockResolvedValue(null);
-    const res = reponseFactice();
-    const next = jest.fn();
+  it("ne revele ni l'inexistence ni la suspension d'une agence a un non-membre : 403 uniforme", async () => {
+    findUnique.mockResolvedValue(null);
+    tenantClientFindUnique.mockResolvedValue(null);
+    const reponses: unknown[] = [];
+    for (const agence of [null, { status: 'SUSPENDED' }, { status: 'ACTIVE' }]) {
+      tenantFindUnique.mockResolvedValue(agence);
+      const res = reponseFactice();
+      const next = jest.fn();
+      await requireTenantAccess(requete() as any, res as any, next);
+      expect(next).not.toHaveBeenCalled();
+      reponses.push([res.status.mock.calls, res.json.mock.calls]);
+    }
 
-    await requireTenantAccess(requete() as any, res as any, next);
-
-    expect(res.status).toHaveBeenCalledWith(404);
-    expect(next).not.toHaveBeenCalled();
+    expect(reponses[0]).toEqual(reponses[1]);
+    expect(reponses[0]).toEqual(reponses[2]);
+    expect((reponses[0] as any)[0][0][0]).toBe(403);
+    expect((reponses[0] as any)[1][0][0]).not.toHaveProperty('code');
   });
 
   it('laisse passer le super-admin sur une agence suspendue, pour la reactiver', async () => {

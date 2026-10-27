@@ -15,6 +15,7 @@ import { formatRelativeDate, safeFormatDate } from '../../utils/date-utils';
 import type { DashboardActivity, DashboardTask, DashboardTaskKind } from '../../services/dashboard-service';
 import { t } from '../../i18n/t';
 
+import { localizedRecord } from '../../i18n/localized';
 const { Text } = Typography;
 
 /**
@@ -26,11 +27,11 @@ const { Text } = Typography;
  * la semaine, puis ce qui bloque, et le journal en queue).
  */
 
-const SEVERITE: Record<DashboardTask['severity'], { color: string; label: string }> = {
+const SEVERITE: Record<DashboardTask['severity'], { color: string; label: string }> = localizedRecord(() => ({
   danger: { color: 'var(--color-error)', label: t('Urgent') },
   warning: { color: 'var(--color-warning)', label: t('À surveiller') },
   info: { color: 'var(--color-primary)', label: t('Information') }
-};
+}));
 
 /**
  * La ligne secondaire : le montant, puis ce qui le qualifie.
