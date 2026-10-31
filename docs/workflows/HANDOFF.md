@@ -19,18 +19,18 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 ## État des lieux (pilote) — 2026-10-31
 
-**État :** constat, puis préparation de la mise en application des PR ouvertes (planning du 2026-10-31). Fusions et déploiements à faire par l'utilisateur : le classifieur du mode auto refuse `gh pr merge` à l'agent (« Merge Without Review »). Branche `docs/etat-des-lieux-2026-10-31` (cette section, PR #191).
-**Référence :** `main` = `37123d68` (PR #190, 2026-10-22) ; aucun commit sur `main` depuis.
+**État :** constat, puis mise en application des PR ouvertes (planning du 2026-10-31) : #175 fusionnée par l'utilisateur, staging déployé ; production à faire. Le classifieur du mode auto refuse `gh pr merge` à l'agent (« Merge Without Review ») : les fusions restent à l'utilisateur. Branche `docs/etat-des-lieux-2026-10-31` (cette section, PR #191).
+**Référence :** `main` = `dd5b61c3` (PR #175, 2026-10-31 15:37 UTC), arbre identique à `4a4cf73d` validé par la CI de #175.
 
 Déploiements (registre des déploiements GitHub, `/health` 200 sur les deux le 2026-10-31) :
 
-- Staging ET production à `e5c866cd` (2026-10-20, 16:27 et 16:40 UTC, workflow « Déploiement » lancé à la main). Les migrations de #183 et #184 ont dû passer avec ce déploiement (`deploy.sh` les applique ; non vérifié sur les bases) ; `db:seed:catalog` (prix de l'extension Signatures) non confirmé.
-- Sur `main`, pas déployés : #188 (oracles d'existence d'agence, motifs d'échec des notifications) et #190 (script de saisie de la clé ImmoCopilot). Aucune migration dans l'écart.
+- Staging à `dd5b61c3` depuis le 2026-10-31 (15:39–15:48 UTC, run 41215853111, lancé par le pilote à la demande de l'utilisateur) : contient #188, #190 et #175.
+- Production à `e5c866cd` (2026-10-20, 16:40 UTC). Les migrations de #183 et #184 ont dû passer avec ce déploiement (`deploy.sh` les applique ; non vérifié sur les bases) ; `db:seed:catalog` (prix de l'extension Signatures) non confirmé. Écart avec le staging : #188, #190, #175, sans migration.
 - Les exécutions automatiques finissent toutes en `skipped` : `AUTO_DEPLOY_STAGING` n'est pas activé.
 
 Non fusionné :
 
-- PR ouvertes : #175 (invitation ouverte avec la session d'un autre compte) remise à jour avec `main` le 2026-10-31 (`4a4cf73d` : classeur = version de main + la ligne « Accepter une invitation », HANDOFF = version de main), CI verte 8/8, prête à fusionner ; #191 (cette passation). #179 et #189 fermées sans fusion le 2026-10-31 (passations périmées ; points utiles de #189 repris dans la section menu-messagerie plus bas).
+- PR ouverte : #191 (cette passation). #175 remise à jour avec `main` puis fusionnée le 2026-10-31 (squash `dd5b61c3`). #179 et #189 fermées sans fusion le 2026-10-31 (passations périmées ; points utiles de #189 repris dans la section menu-messagerie plus bas).
 - Branches sans PR : `feat/syndic-encaissement` (portail copropriétaire : AG en cartes, vote en ligne, menu à plat ; 23 fichiers, 2026-10-15) ; `feat/abonnement-libre-service` (sauvegarde inachevée, jamais vérifiée, numéro 045 en collision) ; `feat/sms-lot-1` et `docs/spec-fournisseur-sms` (spec 020, en partie dépassées par `lib/sms` de la signature S7) ; `wip/port-oi-finance` (sans doute repris par #142) ; `test/recette-operateur-integre` (17 commits, 307 fichiers, ~100 conflits). `feat/mon-compte-abonnement` est bien fusionnée (#181, squash) malgré `--no-merged`.
 
 Specs non entamées (aucun code sur `main`, vérifié par recherche) : 027 clôture d'exercice Syndic ; 028 crédits IA ; 035 vue Groupe, 036 multi-devises, 037 dossier bancaire et fiscal (numéros réservés, aucun dossier) ; démembrement (C6, plus de numéro) ; 042 P5 (portails, tâche quotidienne, prénotifications, rejets) et P6 ; routes de l'abonnement libre-service ; liste serveur des conversations ImmoCopilot. Partielles : 042 prélèvement (P0–P4 faits), 047 (T069 validation comptable des 5521x, recette), 031 sans SMS. Dossier `specs/main` = gabarit vide ; doublons de numéros 023 et 042.
@@ -39,11 +39,11 @@ Livré mais pas en service (actions du propriétaire) : visio d'AG (`LIVEKIT_*` 
 
 Anomalies du bus `.agent-bus/bugs` (local, 243 fiches) : 128 passées, 61 nouvelles, 44 prêtes au retest, 6 en correction, 3 bloquées. Presque toutes les ouvertes datent du 27/09 au 01/10 (recette des packs) et une partie est corrigée sans retest (contrôle de solde de trésorerie, catalogues anglais) : à trier par une recette de reprise avant de s'y fier.
 
-Suite du planning (par l'utilisateur, dans cet ordre) :
+Suite du planning :
 
-1. Fusionner #175, puis #191.
-2. Actions → « Déploiement » → Run workflow → `staging` (tête de `main` : #175, #188, #190 ; aucune migration).
-3. Vérifier le staging : `/health` ; invitation ouverte connecté avec un autre compte → « destinée à b•••@… » et « Se déconnecter et continuer », puis création du compte invité ; journal des notifications avec un motif lisible (plus « Error EAUTH ») ; slug d'agence inconnue ou désactivée → même 404 (le slug inconnu répond déjà 404 sur les deux environnements le 2026-10-31).
+1. Fait : #175 fusionnée ; #191 à fusionner par l'utilisateur dès sa CI verte.
+2. Fait : staging déployé sur `dd5b61c3`.
+3. Staging vérifié sans compte le 2026-10-31 : `/health` 200 ; registre `staging` = `dd5b61c3` en succès ; nouveau bundle (`index-F0c6CJah.js`) dont le morceau `AcceptInvitePage` contient « Cette invitation est destinée à », « Se déconnecter et continuer » et `INVITATION_FOR_ANOTHER_ACCOUNT` ; slug inconnu → 404 « Agence introuvable. » ; jeton d'invitation invalide → 400 de validation. Reste à faire par l'utilisateur (comptes requis) : invitation ouverte connecté avec un autre compte → « destinée à b•••@… » et « Se déconnecter et continuer », puis création du compte invité ; journal des notifications avec un motif lisible (plus « Error EAUTH ») ; slug d'une agence désactivée → même 404.
 4. Run workflow → `prod` (reprend par défaut le dernier commit réussi sur le staging, sauvegarde et étiquettes `avant-*` faites par le workflow, approbation de l'environnement `production` par bkourouma), puis `/health` et le test d'invitation.
 5. Après la production : `infra/scripts/set-ai-key.sh prod openrouter` pour ImmoCopilot ; prix de l'extension Signatures (5 000) par `db:seed:catalog` seulement si aucun prix n'a été ajusté à la main en production, sinon `PATCH /api/admin/catalog/EXT_SIGNATURES_SUPPLEMENTAIRES`.
 
@@ -51,7 +51,7 @@ Retour arrière : sans migration dans l'écart, remettre les images `avant-*` (p
 
 Pièges :
 
-- Tests web instables en CI, sans lien avec les diffs : `tenant-detail-invoices.test.tsx` (« lecture seule manuelle sur une facture de dépassement en retard ») et `MeetingLiveConsole.test.tsx` (« le texte est conservé si l'envoi échoue », 2026-10-31) : relancer le seul job en échec (`gh run rerun <id> --failed`) une fois l'exécution terminée.
+- Tests web instables en CI, sans lien avec les diffs : `tenant-detail-invoices.test.tsx` (« lecture seule manuelle sur une facture de dépassement en retard ») `MeetingLiveConsole.test.tsx` (« le texte est conservé si l'envoi échoue », 2026-10-31) et `SyndicChargeSchedules.test.tsx` (« un budget n'affiche pas le sélecteur et envoie SHARES », 2026-10-31, sur #191 qui ne touche que la documentation) : relancer le seul job en échec (`gh run rerun <id> --failed`) une fois l'exécution terminée.
 - Le checkout principal est encore sur `feat/signature-s5-s7` (déjà fusionnée), 372 commits derrière `main`, avec des modifications locales (`.claude/launch.json`, `packages/api/package.json`) : lire l'état depuis `origin/main` (`git show`, `git grep`) ou depuis un worktree à jour, jamais depuis cet arbre.
 - Disque D: à 97 % (15 Go libres) ; une quinzaine de worktrees périmés sous `.claude/worktrees/` et `D:\APP\Immobillier-worktrees\` (retirer les jonctions avec `rmdir` avant tout `git worktree remove`).
 
