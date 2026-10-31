@@ -6,6 +6,7 @@ import { ownerPortalService } from '../../services/ownerPortalService';
 import { PropertyCard } from '../../components/OwnerPortal/PropertyCard';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -34,7 +35,7 @@ interface PropertiesData {
   };
 }
 
-const propertyTypeOptions = [
+const propertyTypeOptions = localizedList(() => [
   { value: '', label: t('Tous les types') },
   { value: 'APPARTEMENT', label: t('Appartement') },
   { value: 'MAISON_VILLA', label: t('Maison / Villa') },
@@ -43,23 +44,23 @@ const propertyTypeOptions = [
   { value: 'BUREAU', label: t('Bureau') },
   { value: 'BOUTIQUE_COMMERCIAL', label: t('Boutique / Commercial') },
   { value: 'TERRAIN', label: t('Terrain') }
-];
+]);
 
-const statusOptions = [
+const statusOptions = localizedList(() => [
   { value: '', label: t('Tous les statuts') },
   { value: 'AVAILABLE', label: t('Disponible') },
   { value: 'RENTED', label: t('Loué') },
   { value: 'UNDER_REVIEW', label: t('En révision') },
   { value: 'RESERVED', label: t('Réservé') },
   { value: 'UNDER_OFFER', label: t('Sous offre') }
-];
+]);
 
-const transactionModeOptions = [
+const transactionModeOptions = localizedList(() => [
   { value: '', label: t('Tous les modes') },
   { value: 'RENTAL', label: t('Location') },
   { value: 'SALE', label: t('Vente') },
   { value: 'SHORT_TERM', label: t('Location courte durée') }
-];
+]);
 
 export default function Properties() {
   const navigate = useNavigate();

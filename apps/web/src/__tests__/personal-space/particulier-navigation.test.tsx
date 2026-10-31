@@ -88,7 +88,9 @@ function monter(value: AuthContextType) {
 }
 
 function sidebar() {
-  return screen.getByRole('menu');
+  // Le groupe de la page courante est ouvert d'emblée (BUG-2026-10-19-008) : son sous-menu en ligne
+  // porte aussi `role="menu"`. La racine est le premier menu dans l'ordre du document.
+  return screen.getAllByRole('menu')[0];
 }
 
 beforeEach(() => {
@@ -116,6 +118,15 @@ describe('particulierNavigation (modèle)', () => {
     for (const interdit of ['/syndics', '/sales', '/finance', '/crm', '/newsletter', 'mandates']) {
       expect(hrefs).not.toContain(interdit);
     }
+  });
+
+  it('garde Facturation à côté d’Abonnement pour atteindre les factures', () => {
+    const parametres = nav.tree.find(group => group.key === 'particulier-parametres');
+    expect(parametres?.children?.map(leaf => leaf.key)).toEqual([
+      'particulier-abonnement',
+      'particulier-facturation',
+      'particulier-settings'
+    ]);
   });
 
   it('limite le patrimoine à la valeur nette, aux actifs et aux projections', () => {
@@ -160,6 +171,8 @@ describe('AppShell — espace particulier', () => {
     // Pendant la lecture des droits, le menu ne montre que le socle (BUG-010) : attendre la réponse.
     expect((await within(sidebar()).findAllByText('Ventes')).length).toBeGreaterThan(0);
     expect(within(sidebar()).getByText('Copropriété')).toBeInTheDocument();
-    expect(within(sidebar()).queryByText('Valeur nette')).not.toBeInTheDocument();
+    // Le groupe Patrimoine de la page courante est ouvert d'emblée : « Valeur nette » y figure aussi pour une agence.
+    // Ce qui distingue l'agence du particulier : « Vue consolidée » (absente du palier particulier).
+    expect(within(sidebar()).getByText('Vue consolidée')).toBeInTheDocument();
   });
 });

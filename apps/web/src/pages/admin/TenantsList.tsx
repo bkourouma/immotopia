@@ -17,16 +17,17 @@ import { CreateTenantDrawer } from '../../components/admin/CreateTenantDrawer';
 import { Table } from '../../components/primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
-const statusOptions = [
+const statusOptions = localizedList(() => [
   { value: '', label: t('Tous les statuts') },
   { value: 'ACTIVE', label: t('Actif') },
   { value: 'SUSPENDED', label: t('Suspendu') },
   { value: 'INACTIVE', label: t('Inactif') }
-];
+]);
 
 const getStatusTag = (status: string) => {
   const config: Record<string, { color: string; text: string }> = {

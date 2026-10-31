@@ -3,8 +3,10 @@ import {
   AccountBookOutlined,
   ApartmentOutlined,
   BankOutlined,
+  BellOutlined,
   BuildOutlined,
   ContactsOutlined,
+  CreditCardOutlined,
   DashboardOutlined,
   DollarOutlined,
   EllipsisOutlined,
@@ -13,6 +15,7 @@ import {
   GoldOutlined,
   MailOutlined,
   MenuOutlined,
+  MessageOutlined,
   RobotOutlined,
   RiseOutlined,
   SafetyOutlined,
@@ -272,6 +275,7 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
             { key: 'admin-roles', label: t('Rôles et permissions'), href: '/admin/roles-permissions' },
             { key: 'admin-statistics', label: t('Statistiques'), href: '/admin/statistics' },
             { key: 'admin-audit', label: t("Journaux d'audit"), href: '/admin/audit' },
+            { key: 'admin-notifications', label: t('Notifications (plateforme)'), href: '/admin/notifications' },
             { key: 'admin-ai-settings', label: t('Assistant IA'), href: '/admin/ai-settings' }
           ]
         }
@@ -683,6 +687,22 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
           href: '/tenant/:tenantId/signatures'
         },
         {
+          key: 'notifications',
+          label: t('Notifications'),
+          icon: <BellOutlined />,
+          zone: 'more',
+          section: 'parametrage',
+          href: '/notifications'
+        },
+        {
+          key: 'messagerie',
+          label: t('Messagerie'),
+          icon: <MessageOutlined />,
+          zone: 'more',
+          section: 'parametrage',
+          href: '/messages'
+        },
+        {
           key: 'agence',
           label: t('Agence'),
           icon: <TeamOutlined />,
@@ -698,7 +718,25 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
               label: t('Paramètres financiers'),
               href: '/tenant/:tenantId/settings/finance'
             },
-            { key: 'agence-activity', label: t("Journal d'activité"), href: '/tenant/:tenantId/activity' }
+            { key: 'agence-activity', label: t("Journal d'activité"), href: '/tenant/:tenantId/activity' },
+            {
+              key: 'agence-notifications',
+              label: t('Journal des notifications'),
+              href: '/tenant/:tenantId/notifications-journal'
+            }
+          ]
+        },
+        {
+          // L'abonnement et les factures de la plateforme : jusque-là cachés derrière un bouton des paramètres.
+          key: 'mon-compte',
+          label: t('Mon compte'),
+          icon: <CreditCardOutlined />,
+          zone: 'more',
+          section: 'parametrage',
+          href: '/tenant/:tenantId/settings/abonnement',
+          children: [
+            { key: 'mon-compte-abonnement', label: t('Abonnement'), href: '/tenant/:tenantId/settings/abonnement' },
+            { key: 'mon-compte-facturation', label: t('Facturation'), href: '/tenant/:tenantId/settings/facturation' }
           ]
         }
       ]
@@ -775,7 +813,9 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
             // Un bailleur peut AUSSI etre coproprietaire d'un lot : l'espace
             // s'ouvre s'il a ete invite, sinon l'ecran le dit.
             { key: 'owner-copropriete', label: t('Ma copropriété'), href: '/copropriete' },
-            { key: 'owner-preferences', label: t('Préférences'), href: '/owner/preferences' }
+            { key: 'owner-preferences', label: t('Préférences'), href: '/owner/preferences' },
+            { key: 'owner-notifications', label: t('Notifications'), href: '/notifications' },
+            { key: 'owner-messagerie', label: t('Messagerie'), href: '/messages' }
           ]
         }
       ]
@@ -802,7 +842,17 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
           zone: 'primary',
           href: '/tenant/maintenance'
         },
-        { key: 'bail', label: t('Mon bail'), icon: <FileTextOutlined />, zone: 'primary', href: '/tenant/lease' }
+        { key: 'bail', label: t('Mon bail'), icon: <FileTextOutlined />, zone: 'primary', href: '/tenant/lease' },
+        {
+          key: 'plus',
+          label: t('Plus'),
+          icon: <EllipsisOutlined />,
+          zone: 'more',
+          children: [
+            { key: 'tenant-notifications', label: t('Notifications'), href: '/notifications' },
+            { key: 'tenant-messagerie', label: t('Messagerie'), href: '/messages' }
+          ]
+        }
       ]
     },
 
@@ -853,7 +903,9 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
             { key: 'coprop-paiements', label: t('Mes paiements'), href: '/copropriete/paiements' },
             { key: 'coprop-quittances', label: t('Mes quittances'), href: '/copropriete/quittances' },
             { key: 'coprop-suivi-mensuel', label: t('Suivi mensuel'), href: '/copropriete/suivi-mensuel' },
-            { key: 'coprop-ma-copropriete', label: t('Ma copropriété'), href: '/copropriete/ma-copropriete' }
+            { key: 'coprop-ma-copropriete', label: t('Ma copropriété'), href: '/copropriete/ma-copropriete' },
+            { key: 'coprop-notifications', label: t('Notifications'), href: '/notifications' },
+            { key: 'coprop-messagerie', label: t('Messagerie'), href: '/messages' }
           ]
         }
       ]

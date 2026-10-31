@@ -244,6 +244,7 @@ export const SyndicFinances: React.FC = () => {
   const [reminders, setReminders] = useState<PaymentReminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorCause, setErrorCause] = useState<unknown>(null);
 
   const [fundModalOpen, setFundModalOpen] = useState(false);
   const [fundSubmitting, setFundSubmitting] = useState(false);
@@ -272,6 +273,7 @@ export const SyndicFinances: React.FC = () => {
     if (!effectiveTenantId || !syndicId) return;
     setLoading(true);
     setError(null);
+    setErrorCause(null);
     try {
       const [summaryData, chargesData, dashboardData, remindersData] = await Promise.all([
         getSyndicFinanceSummary(effectiveTenantId, syndicId),
@@ -284,6 +286,7 @@ export const SyndicFinances: React.FC = () => {
       setDashboard(dashboardData);
       setReminders(remindersData);
     } catch (err: any) {
+      setErrorCause(err);
       setError(err.response?.data?.error || t('Impossible de charger la synthèse financière'));
     } finally {
       setLoading(false);
@@ -574,6 +577,7 @@ export const SyndicFinances: React.FC = () => {
               onSortChange={fundsTable.onSortChange}
               loading={loading}
               error={error}
+              errorCause={errorCause}
               onRetry={() => void loadAll()}
               emptyDescription={t('Aucun fonds enregistré pour cette copropriété.')}
               columns={fundColumns}
@@ -633,6 +637,7 @@ export const SyndicFinances: React.FC = () => {
               onSortChange={chargesTable.onSortChange}
               loading={loading}
               error={error}
+              errorCause={errorCause}
               onRetry={() => void loadAll()}
               emptyDescription={t('Aucun appel de charges enregistré pour cette copropriété.')}
               columns={chargeColumns}
@@ -672,6 +677,7 @@ export const SyndicFinances: React.FC = () => {
               onSortChange={paymentsTable.onSortChange}
               loading={loading}
               error={error}
+              errorCause={errorCause}
               onRetry={() => void loadAll()}
               emptyDescription={t('Aucun paiement enregistré pour cette copropriété.')}
               columns={paymentColumns}
@@ -704,6 +710,7 @@ export const SyndicFinances: React.FC = () => {
               onSortChange={overdueTable.onSortChange}
               loading={loading}
               error={error}
+              errorCause={errorCause}
               onRetry={() => void loadAll()}
               emptyDescription={t('Aucun dossier en retard pour cette copropriété.')}
               columns={overdueColumns}

@@ -182,6 +182,8 @@ export interface SalaryPaymentRecord {
   status: SalaryDocumentStatus;
   createdByLabel: string;
   validatedAt: Date | null;
+  /** Compte de trésorerie qui paie ; `null` = caisse par défaut. */
+  treasuryAccountId: string | null;
 }
 
 /**
@@ -194,7 +196,13 @@ export interface SalaryPaymentRecord {
 export type CreateSalaryPaymentTx = (
   tx: PrismaTransactionClient,
   tenantId: string,
-  params: { employeeId: string; paymentDate: Date; amount: number; createdByUserId: string }
+  params: {
+    employeeId: string;
+    paymentDate: Date;
+    amount: number;
+    createdByUserId: string;
+    treasuryAccountId?: string | null;
+  }
 ) => Promise<SalaryPaymentRecord>;
 
 /**

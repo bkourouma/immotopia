@@ -59,6 +59,7 @@ export const inviteCollaboratorHandler = asyncHandler(async (req: Request, res: 
     message: result.emailSent
       ? t('Invitation envoyée avec succès.')
       : t("Invitation créée, mais l'e-mail n'a pas pu être envoyé. Utilisez « Renvoyer » pour réessayer."),
+    emailSent: result.emailSent,
     data: result.invitation
   });
 });

@@ -25,6 +25,7 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
@@ -118,10 +119,12 @@ function validerPiece(tenantId: string, doc: PendingDocument) {
   }
 }
 
-const OPTIONS_NATURE = (Object.keys(DOCUMENT_TYPE_LABELS) as VoidableDocumentType[]).map(type => ({
-  value: type,
-  label: DOCUMENT_TYPE_LABELS[type]
-}));
+const OPTIONS_NATURE = localizedList(() =>
+  (Object.keys(DOCUMENT_TYPE_LABELS) as VoidableDocumentType[]).map(type => ({
+    value: type,
+    label: DOCUMENT_TYPE_LABELS[type]
+  }))
+);
 
 interface RapportLot {
   succes: string[];
@@ -534,6 +537,7 @@ export const FileDeValidation: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger la file de validation.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}

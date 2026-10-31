@@ -30,6 +30,23 @@ export interface InvitationResponse {
   success: boolean;
   data: Invitation;
   message?: string;
+  /** Absent des anciennes reponses : le serveur ne l'envoie que si l'e-mail est connu. */
+  emailSent?: boolean;
+}
+
+/**
+ * Le serveur repond 201 meme quand l'e-mail n'est pas parti (l'invitation
+ * existe, « Renvoyer » permet de reessayer). `emailSent === false` le dit sans
+ * ambiguite ; a defaut, on reconnait le message d'avertissement du controleur
+ * (`warningMessage` : son texte traduit, fourni par l'ecran).
+ */
+export function isInvitationEmailNotSent(
+  response: Pick<InvitationResponse, 'message' | 'emailSent'>,
+  warningMessage: string
+): boolean {
+  if (response.emailSent === false) return true;
+  if (response.emailSent === true) return false;
+  return Boolean(response.message) && response.message?.trim() === warningMessage.trim();
 }
 
 export interface InvitationListResponse {

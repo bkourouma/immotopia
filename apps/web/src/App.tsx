@@ -514,6 +514,11 @@ const TenantSubscriptionSettings = lazy(() =>
     default: m.TenantSubscriptionSettings
   }))
 );
+const TenantBillingSettings = lazy(() =>
+  import(/* webpackChunkName: "tenant" */ './pages/tenant/TenantBillingSettings').then(m => ({
+    default: m.TenantBillingSettings
+  }))
+);
 // CRM pages
 const Contacts = lazy(() =>
   import(/* webpackChunkName: "crm" */ './pages/crm/Contacts').then(m => ({ default: m.Contacts }))
@@ -675,6 +680,17 @@ const DocumentTemplates = lazy(() =>
   }))
 );
 const SignaturesPage = lazy(() => import(/* webpackChunkName: "signatures" */ './pages/signatures/SignaturesPage'));
+// Notifications persistantes et messagerie interne (lot 3).
+const NotificationsPage = lazy(
+  () => import(/* webpackChunkName: "notifications" */ './pages/notifications/NotificationsPage')
+);
+const NotificationJournalPage = lazy(
+  () => import(/* webpackChunkName: "notifications" */ './pages/notifications/NotificationJournalPage')
+);
+const PlatformNotificationJournalPage = lazy(
+  () => import(/* webpackChunkName: "notifications" */ './pages/notifications/PlatformNotificationJournalPage')
+);
+const MessagesRoute = lazy(() => import(/* webpackChunkName: "messages" */ './pages/messages/MessagesRoute'));
 // Transactions page
 // Reports page
 // Tenant Portal pages
@@ -905,6 +921,11 @@ function App() {
                           }
                         >
                           <Route path="/dashboard" element={<Dashboard />} />
+                          {/* Notifications et messagerie : ouvertes aussi aux clients des portails
+                        (scope décidé par useNotificationScope) ; l'API filtre chaque accès. */}
+                          <Route path="/notifications" element={<NotificationsPage />} />
+                          <Route path="/messages" element={<MessagesRoute />} />
+                          <Route path="/messages/:conversationId" element={<MessagesRoute />} />
                           <Route path="/properties" element={<Properties />} />
                           {/* Fusions du §4.3. Les ecrans disparaissent, les URL en
                         circulation sont redirigees et non cassees.
@@ -1066,8 +1087,10 @@ function App() {
                             path="/tenant/:tenantId/settings/abonnement"
                             element={<TenantSubscriptionSettings />}
                           />
+                          <Route path="/tenant/:tenantId/settings/facturation" element={<TenantBillingSettings />} />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
                           <Route path="/tenant/:tenantId/signatures" element={<SignaturesPage />} />
+                          <Route path="/tenant/:tenantId/notifications-journal" element={<NotificationJournalPage />} />
                           <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
                           <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />
                           <Route path="/tenant/:tenantId/crm/contacts/:contactId" element={<ContactDetailPage />} />
@@ -1144,8 +1167,22 @@ function App() {
                           <Route path="/tenant/:tenantId/finance/comptabilite" element={<Comptabilite />} />
                           <Route element={<FinanceWorkspaceLayout family="facturation-balances" />}>
                             <Route path="/tenant/:tenantId/finance/facturation" element={<Facturation />} />
-                            <Route path="/tenant/:tenantId/finance/balance-clients" element={<BalanceClients />} />
-                            <Route path="/tenant/:tenantId/finance/balance-agee" element={<BalanceAgee />} />
+                            <Route
+                              path="/tenant/:tenantId/finance/balance-clients"
+                              element={
+                                <ProtectedRoute requiredPermissions="FINANCE_REPORTS_READ">
+                                  <BalanceClients />
+                                </ProtectedRoute>
+                              }
+                            />
+                            <Route
+                              path="/tenant/:tenantId/finance/balance-agee"
+                              element={
+                                <ProtectedRoute requiredPermissions="FINANCE_REPORTS_READ">
+                                  <BalanceAgee />
+                                </ProtectedRoute>
+                              }
+                            />
                           </Route>
                           <Route element={<FinanceWorkspaceLayout family="reversements-commissions" />}>
                             <Route path="/tenant/:tenantId/finance/owner-accounts" element={<ComptesProprietaires />} />
@@ -1163,7 +1200,14 @@ function App() {
                           {/* Relevé d'un compte de tiers : ouvert depuis la balance
                         clients, la balance âgée ET la balance fournisseurs, il
                         n'appartient à aucune famille et reste hors onglets. */}
-                          <Route path="/tenant/:tenantId/finance/comptes/:accountId" element={<Releve />} />
+                          <Route
+                            path="/tenant/:tenantId/finance/comptes/:accountId"
+                            element={
+                              <ProtectedRoute requiredPermissions="FINANCE_ACCOUNTS_READ">
+                                <Releve />
+                              </ProtectedRoute>
+                            }
+                          />
                           <Route element={<FinanceWorkspaceLayout family="fournisseurs-commandes" />}>
                             <Route path="/tenant/:tenantId/finance/fournisseurs" element={<Fournisseurs />} />
                             {/*
@@ -1310,6 +1354,7 @@ function App() {
                           />
                           <Route path="/admin/statistics" element={<Statistics />} />
                           <Route path="/admin/audit" element={<AuditLogs />} />
+                          <Route path="/admin/notifications" element={<PlatformNotificationJournalPage />} />
                           <Route path="/admin/ai-settings" element={<AiSettingsPage />} />
                           <Route path="/admin/roles-permissions" element={<RolesPermissions />} />
                         </Route>

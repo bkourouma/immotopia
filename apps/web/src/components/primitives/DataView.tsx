@@ -9,6 +9,8 @@ import { ContexteMontants, deviseParDefaut } from './MoneyValue';
 import type { Sort } from '../../hooks/useListParams';
 import { ExportMenu, type ExportFetchAllResult } from './ExportMenu';
 import { t } from '../../i18n/t';
+import { AccessDenied } from './AccessDenied';
+import { isPermissionDenied } from '../../utils/error-handler';
 
 /**
  * `<DataView>` — une liste, dans les deux représentations (§5.1, §6, §10.1).
@@ -88,6 +90,13 @@ interface DataViewBase<T> {
   /** Message d'erreur métier, déjà traduit. */
   error?: string | null;
   onRetry?: () => void;
+  /**
+   * Erreur brute de la requête (AxiosError, `ApiError`, `{ response: { status } }`
+   * ou `{ statusCode }`). Optionnelle : sur un refus de droits (HTTP 403 sans
+   * `code`), la liste affiche `<AccessDenied>` au lieu de la panne générique, même
+   * si `error` est vide. Un 403 d'abonnement (avec `code`) garde le rendu d'erreur.
+   */
+  errorCause?: unknown;
 
   /** Vrai si un filtre est posé. Décide entre « vide » et « aucun résultat ». */
   isFiltered?: boolean;
@@ -145,6 +154,17 @@ interface DataViewBase<T> {
 export type DataViewProps<T> = DataViewBase<T> &
   ({ layout?: 'table'; columns: ColumnsType<T> } | { layout: 'grid'; columns?: never });
 
+/**
+ * Refus de droits (RBAC) : 403 sans `code`. `isPermissionDenied` couvre
+ * AxiosError et `{ response }` ; on ajoute ici `ApiError` / `{ statusCode }`.
+ */
+function isForbiddenCause(cause: unknown): boolean {
+  if (!cause) return false;
+  if (isPermissionDenied(cause)) return true;
+  const plain = cause as { statusCode?: unknown; code?: unknown };
+  return plain.statusCode === 403 && !plain.code;
+}
+
 export function DataView<T>(props: DataViewProps<T>) {
   const {
     items,
@@ -157,6 +177,7 @@ export function DataView<T>(props: DataViewProps<T>) {
     isReloading = false,
     error = null,
     onRetry,
+    errorCause,
     isFiltered = false,
     onClearFilters,
     emptyAction,
@@ -190,6 +211,10 @@ export function DataView<T>(props: DataViewProps<T>) {
     setPorteDesMontants(true);
   }, []);
   const contexteMontants = useMemo(() => ({ sansDevise: true, signaler }), [signaler]);
+
+  if (isForbiddenCause(errorCause)) {
+    return <AccessDenied reason="role" />;
+  }
 
   if (error) {
     return (

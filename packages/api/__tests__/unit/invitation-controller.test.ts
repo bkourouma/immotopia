@@ -36,6 +36,7 @@ jest.mock('../../src/services/invitation-service', () => ({
 
 import {
   acceptInvitationHandler,
+  inviteCollaboratorHandler,
   resendInvitationHandler,
   revokeInvitationHandler
 } from '../../src/controllers/invitation-controller';
@@ -48,6 +49,7 @@ function buildApp(user: { userId: string; globalRole?: string } | null) {
     if (user) req.user = user;
     next();
   });
+  app.post('/tenants/:tenantId/users/invite', inviteCollaboratorHandler);
   app.post('/tenants/:tenantId/users/invitations/:invitationId/resend', resendInvitationHandler);
   app.delete('/tenants/:tenantId/users/invitations/:invitationId', revokeInvitationHandler);
   app.post('/auth/invitations/accept', acceptInvitationHandler);
@@ -61,6 +63,38 @@ const INVITATION_ID = 'inv-1';
 
 beforeEach(() => {
   jest.clearAllMocks();
+});
+
+describe('inviteCollaboratorHandler', () => {
+  const ROLE_ID = '22222222-2222-2222-2222-222222222222';
+
+  it('expose emailSent dans la reponse, reprise du service (envoi reussi)', async () => {
+    inviteCollaborator.mockResolvedValue({
+      invitation: { id: 'inv-1', email: 'e@example.com', expiresAt: new Date('2026-01-01'), status: 'PENDING' },
+      emailSent: true
+    });
+
+    const res = await request(buildApp({ userId: 'admin-1', globalRole: 'USER' }))
+      .post(`/tenants/${TENANT_A}/users/invite`)
+      .send({ email: 'e@example.com', roleIds: [ROLE_ID] })
+      .expect(201);
+
+    expect(res.body.emailSent).toBe(true);
+  });
+
+  it("expose emailSent a false quand l'e-mail n'a pas pu partir", async () => {
+    inviteCollaborator.mockResolvedValue({
+      invitation: { id: 'inv-1', email: 'e@example.com', expiresAt: new Date('2026-01-01'), status: 'PENDING' },
+      emailSent: false
+    });
+
+    const res = await request(buildApp({ userId: 'admin-1', globalRole: 'USER' }))
+      .post(`/tenants/${TENANT_A}/users/invite`)
+      .send({ email: 'e@example.com', roleIds: [ROLE_ID] })
+      .expect(201);
+
+    expect(res.body.emailSent).toBe(false);
+  });
 });
 
 describe('resendInvitationHandler', () => {

@@ -21,6 +21,8 @@ import type { ColumnsType } from 'antd/es/table';
 import { ApartmentOutlined, BankOutlined, EditOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { LotTable } from '../../components/syndics/LotTable';
+import { LotTypeRatesCard } from '../../components/syndics/LotTypeRatesCard';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { BrandingImageField } from '../../components/documents/BrandingImageField';
 import { DataCard, DataView, MoneyValue, StatCard } from '../../components/primitives';
 import { listContacts } from '../../services/crm-service';
@@ -46,25 +48,26 @@ import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
+import { localizedRecord } from '../../i18n/localized';
 const { Paragraph, Title } = Typography;
 
-const statusConfig: Record<Syndicate['status'], { color: string; label: string }> = {
+const statusConfig: Record<Syndicate['status'], { color: string; label: string }> = localizedRecord(() => ({
   ACTIVE: { color: 'green', label: t('Active') },
   IN_LIQUIDATION: { color: 'orange', label: t('En liquidation') },
   IN_DISPUTE: { color: 'red', label: t('En litige') }
-};
+}));
 
 /**
  * Étiquettes de statut d'un appel de charges — mêmes clés que
  * `<SyndicFinances>`, pour ne pas dupliquer la traduction sous une forme
  * légèrement différente.
  */
-const chargeStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
+const chargeStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = localizedRecord(() => ({
   PENDING: { color: 'gold', label: t('En attente') },
   PARTIAL: { color: 'blue', label: t('Partiel') },
   PAID: { color: 'green', label: t('Payé') },
   OVERDUE: { color: 'red', label: t('En retard') }
-};
+}));
 
 /**
  * La réponse réelle de `GET .../syndics/:id` porte le bien IMMEUBLE lié au
@@ -246,6 +249,9 @@ function buildChargeRows(charges: ChargeCall[]): ChargeRow[] {
 export const SyndicDetail: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
+  // Même logique que SyndicCharges : l'API reste l'autorité (SYNDIC_EDIT pour modifier le barème).
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const canEditSyndic = permissionsReady && (permissions === null || permissions.has('SYNDIC_EDIT'));
 
   const [syndicate, setSyndicate] = useState<SyndicateWithProperty | null>(null);
   const [charges, setCharges] = useState<ChargeCall[]>([]);
@@ -577,6 +583,10 @@ export const SyndicDetail: React.FC = () => {
           }}
         />
       </Card>
+
+      {effectiveTenantId && syndicId ? (
+        <LotTypeRatesCard tenantId={effectiveTenantId} syndicId={syndicId} canEdit={canEditSyndic} />
+      ) : null}
 
       <Modal
         title={t('Modifier la copropriété')}

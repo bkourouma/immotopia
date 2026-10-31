@@ -189,44 +189,35 @@ export async function enableMemberHandler(req: Request, res: Response): Promise<
  * Reset member password
  * POST /api/tenants/:tenantId/users/:userId/reset-password
  */
-export async function resetPasswordHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { tenantId, userId } = req.params;
-
-    // Validate request body (optional password)
-    const validationResult = resetPasswordSchema.safeParse(req.body);
-    if (!validationResult.success) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: validationResult.error.errors
-      });
-      return;
-    }
-
-    const newPassword = validationResult.data.newPassword;
-    const result = await resetMemberPassword(userId, tenantId, newPassword, req.user.userId);
-
-    res.status(200).json({
-      success: true,
-      message: result.password
-        ? 'Mot de passe réinitialisé. Un lien de réinitialisation a également été envoyé au membre.'
-        : 'Un lien de réinitialisation a été envoyé au membre. Ses sessions ont été révoquées.'
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    if (errorMessage.includes('introuvable')) {
-      res.status(404).json({ success: false, message: errorMessage });
-    } else {
-      res.status(400).json({ success: false, message: errorMessage });
-    }
+export const resetPasswordHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError('Authentification requise.');
   }
-}
+
+  const { tenantId, userId } = req.params;
+
+  // Validate request body (optional password)
+  const validationResult = resetPasswordSchema.safeParse(req.body);
+  if (!validationResult.success) {
+    res.status(400).json({
+      success: false,
+      message: 'Données invalides',
+      errors: validationResult.error.errors
+    });
+    return;
+  }
+
+  const result = await resetMemberPassword(userId, tenantId, validationResult.data.newPassword, req.user.userId);
+
+  res.status(200).json({
+    success: true,
+    message: result.password
+      ? 'Mot de passe réinitialisé. Un lien de réinitialisation a également été envoyé au membre.'
+      : result.sessionsRevoked
+        ? 'Un lien de réinitialisation a été envoyé au membre. Ses sessions ont été révoquées.'
+        : 'Un lien de réinitialisation a été envoyé au membre. Son mot de passe actuel reste valable tant qu’il ne l’a pas changé.'
+  });
+});
 
 /**
  * Revoke member sessions

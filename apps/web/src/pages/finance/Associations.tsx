@@ -164,6 +164,7 @@ export const Associations: React.FC = () => {
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les associations.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         emptyDescription={t("Aucune association n'est encore enregistrée.")}
         emptyAction={{ label: t('Nouvelle association'), onClick: ouvrirCreation }}

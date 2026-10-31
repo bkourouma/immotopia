@@ -20,6 +20,7 @@ import {
 import { Table, useConfirmAction } from '../../components/primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 const statusColors: Record<string, string> = {
   DRAFT: 'default',
@@ -30,14 +31,14 @@ const statusColors: Record<string, string> = {
   FAILED: 'error'
 };
 
-const statusLabels: Record<string, string> = {
+const statusLabels: Record<string, string> = localizedRecord(() => ({
   DRAFT: 'Brouillon',
   SCHEDULED: t('Planifiée'),
   SENDING: t('En cours'),
   SENT: t('Envoyée'),
   CANCELLED: t('Annulée'),
   FAILED: t('Échec')
-};
+}));
 
 export function NewsletterCampaignsPage() {
   const { message } = App.useApp();

@@ -17,6 +17,7 @@ import { FeeTermsFields } from './FeeTermsFields';
 import { ModuleNotIncluded } from '../primitives/ModuleNotIncluded';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 const { Text } = Typography;
 
@@ -30,11 +31,11 @@ const DEFAULT_TERMS: OwnerFeeTermsInput = {
 };
 
 /** Libellés du statut fiscal, utilisés à la fois dans la modale et le tableau. */
-const TAX_STATUS_LABELS: Record<OwnerTaxStatus, string> = {
+const TAX_STATUS_LABELS: Record<OwnerTaxStatus, string> = localizedRecord(() => ({
   INDIVIDUAL: t('Personne physique'),
   COMPANY: t('Personne morale'),
   EXEMPT: t('Exonéré')
-};
+}));
 
 function taxStatusLabel(status: OwnerTaxStatus | null): string {
   return status ? TAX_STATUS_LABELS[status] : t('Non renseigné');

@@ -54,6 +54,14 @@ import {
 } from './charge-allocation';
 import { toCents, fromCents } from './charge-allocation-plan';
 import {
+  allocateCharge,
+  allocationPrecisionFor,
+  ChargeAllocationError,
+  parseLotTypeRates,
+  type AllocationResult,
+  type ChargeAllocationMethodKey
+} from './charge-allocation-methods';
+import {
   applyChronologicalBalances,
   chronologicalBalanceStrictlyBefore,
   type RunningBalanceMovement
@@ -523,19 +531,26 @@ export async function deleteEmptySyndicateByTenant(
     throw notFound('Copropriété introuvable ou inaccessible');
   }
 
-  const [lots, budgets, chargeCalls, meetings, documents, contracts, incidents] = await Promise.all([
-    prisma.syndicateLot.count({ where: { syndicateId } }),
-    prisma.syndicateBudget.count({ where: { syndicateId } }),
-    prisma.chargeCall.count({ where: { syndicateId } }),
-    prisma.generalMeeting.count({ where: { syndicateId } }),
-    prisma.syndicateDocument.count({ where: { syndicateId } }),
-    prisma.maintenanceContract.count({ where: { syndicateId } }),
-    prisma.syndicateIncident.count({ where: { syndicateId } })
-  ]);
+  const [lots, budgets, chargeCalls, meetings, documents, contracts, incidents, ownerAccounts, chargePayments] =
+    await Promise.all([
+      prisma.syndicateLot.count({ where: { syndicateId } }),
+      prisma.syndicateBudget.count({ where: { syndicateId } }),
+      prisma.chargeCall.count({ where: { syndicateId } }),
+      prisma.generalMeeting.count({ where: { syndicateId } }),
+      prisma.syndicateDocument.count({ where: { syndicateId } }),
+      prisma.maintenanceContract.count({ where: { syndicateId } }),
+      prisma.syndicateIncident.count({ where: { syndicateId } }),
+      // Relations Restrict (audit 2026-10) : comptes coproprietaires et paiements encaisses.
+      prisma.ownerAccount.count({ where: { syndicateId } }),
+      prisma.chargePayment.count({ where: { lot: { syndicateId } } })
+    ]);
 
-  if (lots + budgets + chargeCalls + meetings + documents + contracts + incidents > 0) {
+  if (
+    lots + budgets + chargeCalls + meetings + documents + contracts + incidents + ownerAccounts + chargePayments >
+    0
+  ) {
     throw conflict(
-      'Cette copropriete a des lots, des appels de charges, des assemblees ou des documents : elle ne peut pas etre supprimee.'
+      'Cette copropriete a des lots, des appels de charges, des paiements, des comptes coproprietaires, des assemblees ou des documents : elle ne peut pas etre supprimee.'
     );
   }
 
@@ -1213,7 +1228,9 @@ export async function deleteSyndicateLotByTenant(tenantId: string, syndicateId: 
       tx.syndicPaymentDeclarationLine.count({ where: { lotId } }),
       tx.directDebitMandate.count({ where: { lotId } }),
       tx.directDebitRemittanceLine.count({ where: { lotId } }),
-      tx.gMAttendance.count({ where: { lotId } })
+      tx.gMAttendance.count({ where: { lotId } }),
+      // Compte coproprietaire au solde non nul : l'argent du lot ne disparait pas avec lui.
+      tx.ownerAccount.count({ where: { lotId, NOT: { balance: 0 } } })
     ]);
     if (counts.some(count => count > 0)) {
       const message = t(
@@ -1587,7 +1604,13 @@ export async function createChargeCallAndUpdateStatus(
     period: string;
     periodStart?: Date | null;
     periodEnd?: Date | null;
-    amount: number;
+    /**
+     * Sans `allocationMethod` : montant PAR LOT (historique). Avec SHARES ou
+     * EQUAL : TOTAL a repartir. Avec BY_LOT_TYPE : ignore (total issu du bareme).
+     */
+    amount?: number;
+    /** Mode de repartition entre les lots (menu lot 2) ; absent = montant identique par lot. */
+    allocationMethod?: ChargeAllocationMethodKey;
     currency: string;
     dueDate: Date;
     /** Appel verse en entier a ce fonds (appel de fonds travaux). */
@@ -1603,7 +1626,11 @@ export async function createChargeCallAndUpdateStatus(
     const fund = await assertFundOfSyndicate(prisma, tenantId, data.syndicateId, data.fundId);
     assertFundCurrency(fund, data.currency);
   }
+  if (!data.allocationMethod && data.amount === undefined) {
+    throw unprocessableEntity('Le montant est obligatoire');
+  }
   const isSimpleSingleCall =
+    !data.allocationMethod &&
     !data.applyToAllLots &&
     (!data.lotIds || data.lotIds.length === 0) &&
     Boolean(data.lotId) &&
@@ -1638,7 +1665,7 @@ export async function createChargeCallAndUpdateStatus(
           lotId: data.lotId!,
           period: data.period,
           bounds: baseBounds,
-          amount: data.amount,
+          amount: data.amount as number,
           currency: data.currency,
           dueDate: data.dueDate,
           fundId: data.fundId ?? null
@@ -1679,16 +1706,26 @@ export async function createChargeCallAndUpdateStatus(
       syndicateId: data.syndicateId,
       syndicate: { tenantId }
     },
-    select: { id: true }
+    select: data.allocationMethod ? { id: true, lotNumber: true, lotType: true, generalShares: true } : { id: true }
   });
 
   if (existingLots.length !== targetLotIds.length) {
     throw notFound('Un ou plusieurs lots sont introuvables pour cette copropriete');
   }
 
+  // Menu lot 2 : repartition calculee UNE fois, reutilisee par chaque occurrence.
+  let allocation: AllocationResult | null = null;
+  if (data.allocationMethod) {
+    allocation = await computeManualAllocation(tenantId, data, existingLots as unknown as ManualAllocationLot[]);
+  }
+  const amountByLotId = allocation ? new Map(allocation.lots.map(line => [line.lotId, line.amount])) : null;
+
   // Verrous consultatifs par lot pris dans un ordre GLOBAL (identifiant croissant) :
   // deux creations concurrentes sur [L7, L3] et [L3, L7] s'interbloqueraient sinon.
-  const lotIdsInLockOrder = sortLotIdsForLocking(targetLotIds);
+  // Un lot sans part (hors repartition) n'est ni appele ni verrouille.
+  const lotIdsInLockOrder = sortLotIdsForLocking(
+    amountByLotId ? targetLotIds.filter(lotId => amountByLotId.has(lotId)) : targetLotIds
+  );
 
   const recurrenceCount = data.isRecurring ? Math.max(1, data.recurrenceCount ?? 1) : 1;
   const recurrenceFrequency = data.recurrenceFrequency ?? 'MONTHLY';
@@ -1741,7 +1778,7 @@ export async function createChargeCallAndUpdateStatus(
             lotId,
             period,
             bounds,
-            amount: data.amount,
+            amount: amountByLotId ? (amountByLotId.get(lotId) as number) : (data.amount as number),
             currency: data.currency,
             dueDate,
             fundId: data.fundId ?? null
@@ -1759,10 +1796,66 @@ export async function createChargeCallAndUpdateStatus(
 
   return {
     chargeCalls: createdChargeCalls,
-    generatedLots: targetLotIds.length,
+    generatedLots: lotIdsInLockOrder.length,
     occurrences: recurrenceCount,
-    totalCreated: createdChargeCalls.length
+    totalCreated: createdChargeCalls.length,
+    ...(allocation ? { allocationMethod: allocation.method, totalAmount: allocation.totalAmount } : {})
   };
+}
+
+type ManualAllocationLot = { id: string; lotNumber: string; lotType: string; generalShares: unknown };
+
+/**
+ * Menu lot 2 : repartit un appel manuel entre ses lots cibles. Les erreurs de
+ * saisie ou de bareme deviennent un 422 au meme message ; la somme des parts
+ * (SHARES, EQUAL) doit valoir exactement le total, sinon c'est un bug.
+ */
+async function computeManualAllocation(
+  tenantId: string,
+  data: { syndicateId: string; allocationMethod?: ChargeAllocationMethodKey; amount?: number; currency: string },
+  lots: ManualAllocationLot[]
+): Promise<AllocationResult> {
+  const method = data.allocationMethod as ChargeAllocationMethodKey;
+  const precision = allocationPrecisionFor(data.currency);
+  let lotTypeRates: ReturnType<typeof parseLotTypeRates> | null = null;
+  if (method === 'BY_LOT_TYPE') {
+    const syndicate = await prisma.syndicate.findFirst({
+      where: { id: data.syndicateId, tenantId },
+      select: { lotTypeRates: true }
+    });
+    if (!syndicate) throw notFound('Copropriete introuvable ou inaccessible');
+    lotTypeRates = parseLotTypeRates(syndicate.lotTypeRates);
+  }
+  let allocation: AllocationResult;
+  try {
+    allocation = allocateCharge({
+      method,
+      lots: lots.map(lot => ({
+        id: lot.id,
+        lotNumber: String(lot.lotNumber ?? ''),
+        lotType: String(lot.lotType ?? ''),
+        generalShares: Number(lot.generalShares ?? 0)
+      })),
+      totalAmount: data.amount ?? null,
+      lotTypeRates,
+      precision
+    });
+  } catch (error) {
+    if (error instanceof ChargeAllocationError) throw unprocessableEntity(error.message);
+    throw error;
+  }
+  if (method !== 'BY_LOT_TYPE') {
+    const scale = precision === 'UNIT' ? 1 : 100;
+    const expected = Math.round(Number(((data.amount ?? 0) * scale).toFixed(6)));
+    const distributed = allocation.lots.reduce(
+      (sum, line) => sum + Math.round(Number((line.amount * scale).toFixed(6))),
+      0
+    );
+    if (distributed !== expected) {
+      throw new Error(`Repartition incoherente : somme des parts ${distributed} differente du total ${expected}`);
+    }
+  }
+  return allocation;
 }
 
 /**
@@ -5049,6 +5142,8 @@ export async function createChargeCallBatchWithCallsTx(
     totalAmount: number;
     currency: string;
     lots: LotCallAmount[];
+    /** Mode de repartition ecrit sur le lot d'appels (defaut SHARES). */
+    allocationMethod?: ChargeAllocationMethodKey;
     /** Auteur des credits de fonds nes de l'imputation d'avance (null : automatique). */
     actorUserId?: string | null;
   },
@@ -5067,6 +5162,7 @@ export async function createChargeCallBatchWithCallsTx(
       ...(data.budgetId ? { budgetId: data.budgetId } : {}),
       totalAmount: roundMoney(data.totalAmount),
       currency: data.currency,
+      allocationMethod: data.allocationMethod ?? 'SHARES',
       status: 'SENT'
     }
   });

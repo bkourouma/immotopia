@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, DatePicker, Input, InputNumber, Modal, Select, Space, Spin, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined } from '@ant-design/icons';
@@ -41,6 +41,12 @@ const allocationSourceLabel: Record<LotPaymentAllocationView['source'], string> 
   PAYMENT: t('Paiement'),
   ADVANCE: t('Avance')
 };
+
+/** Clé d'idempotence d'un enregistrement : le serveur déduplique les rejeux. */
+function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
 
 /** Débounce en ms avant de rejouer l'aperçu : évite un appel API à chaque frappe. */
 const PREVIEW_DEBOUNCE_MS = 400;
@@ -105,6 +111,16 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Verrou synchrone anti double-clic (confirmLoading ne passe qu'au rendu suivant) et
+  // clé d'idempotence : la même à chaque soumission (retry compris), renouvelée à la
+  // réouverture ou après un succès.
+  const submittingRef = useRef(false);
+  const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
+  useEffect(() => {
+    if (!open) return;
+    idempotencyKeyRef.current = newIdempotencyKey();
+    submittingRef.current = false;
+  }, [open]);
 
   // Synthèse affichée après l'enregistrement, avant fermeture (lot S3 : les
   // documents émis, avec numéro et lien de téléchargement).
@@ -252,6 +268,8 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
       setSubmitError(t('Renseignez le lot, le montant, la date et le mode de paiement.'));
       return;
     }
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -260,8 +278,10 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
         paidAt: paidAt.toISOString(),
         method,
         reference: reference || undefined,
-        chargeCallIds: selectedCallIds.length > 0 ? selectedCallIds : undefined
+        chargeCallIds: selectedCallIds.length > 0 ? selectedCallIds : undefined,
+        idempotencyKey: idempotencyKeyRef.current
       });
+      idempotencyKeyRef.current = newIdempotencyKey();
       // Lot S3 : la synthèse (documents émis) reste affichée jusqu'à ce que
       // le gestionnaire ferme lui-même ; `onRecorded` (rafraîchissement de la
       // liste des appels côté parent) n'est appelé qu'à ce moment-là.
@@ -269,6 +289,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
     } catch (err: any) {
       setSubmitError(err.response?.data?.error || t('Enregistrement du paiement impossible'));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };

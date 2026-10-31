@@ -1,6 +1,6 @@
 ﻿import { Request, Response } from 'express';
 import {
-  registerTenantClient,
+  getTenantPublicProfile,
   getTenantById,
   getTenantBySlug,
   getTenantClients,
@@ -15,7 +15,7 @@ import {
   activateTenant,
   uploadTenantLogo
 } from '../services/tenant-service';
-import { ClientType, TenantType } from '@prisma/client';
+import { TenantType } from '@prisma/client';
 import {
   UpdateTenantRequest,
   TenantFilters,
@@ -26,52 +26,21 @@ import { z } from 'zod';
 import { getTenantModules, updateTenantModules } from '../services/module-service';
 import { provisionTenant } from '../services/tenant-provisioning-service';
 import { IDEMPOTENCY_KEY_MAX_LENGTH } from '../utils/idempotency';
-import { AppError, asyncHandler, BadRequestError } from '../middleware/error-middleware';
+import { AppError, asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import { httpUrl } from '../lib/safe-url';
 import { parsePagination } from '../utils/pagination-helper';
 import { syncOwnerClients } from '../services/owner-client-service';
 
 /**
- * Register as a client of a tenant
- * POST /api/tenants/:tenantId/register
+ * Fiche publique reduite d'une agence (vitrine + contact), pour tout
+ * utilisateur rattache a l'agence, client de portail compris.
+ * GET /api/tenants/:tenantId/public-profile
  */
-export async function registerAsTenantClient(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { tenantId } = req.params;
-    const { clientType, details } = req.body;
-
-    // Validate clientType
-    if (!clientType || !Object.values(ClientType).includes(clientType)) {
-      res.status(400).json({
-        success: false,
-        message: 'Type de client invalide. Valeurs acceptées: OWNER, RENTER, BUYER, CO_OWNER.'
-      });
-      return;
-    }
-
-    const tenantClient = await registerTenantClient({
-      userId: req.user.userId,
-      tenantId,
-      clientType,
-      details
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'Inscription réussie au tenant.',
-      data: tenantClient
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
-  }
-}
+export const getTenantPublicProfileHandler = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const tenant = await getTenantPublicProfile(req.params.tenantId);
+  res.status(200).json({ success: true, data: tenant });
+});
 
 /**
  * Get tenant by ID
@@ -98,22 +67,13 @@ export async function getTenant(req: Request, res: Response): Promise<void> {
  * Get tenant by slug
  * GET /api/tenants/slug/:slug
  */
-export async function getTenantBySlugHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const { slug } = req.params;
-    const tenant = await getTenantBySlug(slug);
-
-    if (!tenant) {
-      res.status(404).json({ success: false, message: 'Tenant introuvable.' });
-      return;
-    }
-
-    res.status(200).json({ success: true, data: tenant });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
-  }
-}
+export const getTenantBySlugHandler = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  // Route publique : agence inconnue, suspendue ou inactive -> meme 404, et
+  // jamais de message technique (erreurs typees via asyncHandler).
+  const tenant = await getTenantBySlug(req.params.slug);
+  if (!tenant) throw new NotFoundError(t('Agence introuvable.'));
+  res.status(200).json({ success: true, data: tenant });
+});
 
 /**
  * List all active tenants
@@ -660,19 +620,14 @@ export async function updateClientDetails(req: Request, res: Response): Promise<
  * Unregister from a tenant
  * DELETE /api/tenants/:tenantId/unregister
  */
-export async function unregisterFromTenant(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { tenantId } = req.params;
-    await removeTenantClient(req.user.userId, tenantId);
-
-    res.status(200).json({ success: true, message: 'Désinscription réussie.' });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
+export const unregisterFromTenant = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  if (!req.user?.userId) {
+    res.status(401).json({ success: false, message: 'Authentification requise.' });
+    return;
   }
-}
+
+  const { tenantId } = req.params;
+  await removeTenantClient(req.user.userId, tenantId);
+
+  res.status(200).json({ success: true, message: 'Désinscription réussie.' });
+});

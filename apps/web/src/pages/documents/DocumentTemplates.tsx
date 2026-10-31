@@ -81,12 +81,14 @@ export function DocumentTemplates() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [error, setError] = useState<string | null>(null);
+  const [errorCause, setErrorCause] = useState<unknown>(null);
   const [form] = Form.useForm();
   const confirmAction = useConfirmAction();
 
   const loadTemplates = useCallback(async () => {
     try {
       setLoading(true);
+      setErrorCause(null);
       const url = filterDocType
         ? `/tenants/${tenantId}/documents/templates?docType=${filterDocType}`
         : `/tenants/${tenantId}/documents/templates`;
@@ -105,6 +107,7 @@ export function DocumentTemplates() {
         setError(data.message || translate('Impossible de charger les modèles de documents.'));
       }
     } catch (err: any) {
+      setErrorCause(err);
       setError(err.response?.data?.message || translate('Impossible de charger les modèles de documents.'));
       console.error(err);
     } finally {
@@ -484,6 +487,7 @@ export function DocumentTemplates() {
           }}
           loading={loading}
           error={error}
+          errorCause={errorCause}
           onRetry={loadTemplates}
           isFiltered={Boolean(filterDocType)}
           onClearFilters={() => setFilterDocType('')}

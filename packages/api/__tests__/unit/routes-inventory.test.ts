@@ -289,12 +289,6 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
     reason: "Liste des agences de l'utilisateur courant, resolue depuis req.user."
   },
   {
-    method: 'POST',
-    test: exact('/api/tenants/:tenantId/register'),
-    reason:
-      "S'enregistrer comme client d'une agence : c'est cette action qui CREE l'acces, elle ne peut pas le presupposer."
-  },
-  {
     method: 'DELETE',
     test: exact('/api/tenants/:tenantId/unregister'),
     reason:
@@ -352,6 +346,13 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     expect(routes.length).toBeGreaterThan(50);
   });
 
+  it("l'auto-inscription d'un client a une agence reste fermee (pas d'oracle d'existence)", () => {
+    // POST /api/tenants/:tenantId/register repondait differemment selon que
+    // l'agence existait, etait inactive ou deja rejointe : la route est retiree.
+    const register = routes.filter(r => /^\/api\/tenants\/:tenantId\/register$/.test(r.path));
+    expect(register).toEqual([]);
+  });
+
   it('ne recense aucune route dupliquee anormalement dans la liste blanche', () => {
     // Garde-fou sur la liste blanche elle-meme : une entree qui ne matche plus
     // aucune route reelle signale un chemin renomme/deplace, a corriger ici.
@@ -381,7 +382,8 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       ['POST', '/api/admin/tenants/:tenantId/platform-invoices/:invoiceId/credit-note', 'PLATFORM_INVOICES_EDIT'],
       ['GET', '/api/tenants/:tenantId/subscription/invoices', 'TENANT'],
       ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId', 'TENANT'],
-      ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId/pdf', 'TENANT']
+      ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId/pdf', 'TENANT'],
+      ['GET', '/api/tenants/:tenantId/subscription/extension-offers', 'TENANT']
     ];
     for (const [method, path, guard] of expected) {
       const route = routes.find(r => r.method === method && r.path === path);

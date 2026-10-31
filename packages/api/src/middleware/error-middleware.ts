@@ -458,9 +458,32 @@ function toErrorResponse(err: unknown): { status: number; body: ErrorResponse } 
             code: ErrorCode.CONFLICT
           }
         };
+      case 'P2023':
+        // Valeur d'identifiant illisible pour la colonne (UUID mal formé dans
+        // l'URL : `/syndics/mandants`) : aucune ligne ne peut correspondre.
+        // Même réponse qu'un objet inexistant.
+        return {
+          status: 404,
+          body: { success: false, message: 'Ressource introuvable.', code: ErrorCode.NOT_FOUND }
+        };
       default:
         break;
     }
+  }
+
+  // Requête Prisma rejetée avant l'envoi (type de filtre ou d'enum invalide,
+  // argument manquant) : l'appelant a fourni une entrée inexploitable. Le
+  // message d'origine porte le chemin du source, le code et les noms de
+  // colonnes : il reste dans les journaux, jamais dans la réponse.
+  if (anyErr?.name === 'PrismaClientValidationError') {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: 'Les données fournies sont invalides.',
+        code: ErrorCode.VALIDATION_ERROR
+      }
+    };
   }
 
   // Une erreur Prisma non reconnue ci-dessus ne sort jamais telle quelle, meme

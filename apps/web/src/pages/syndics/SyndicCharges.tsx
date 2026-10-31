@@ -20,6 +20,12 @@ import { PlusOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { Link } from 'react-router-dom';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
+import {
+  AllocationMethodRadio,
+  AllocationPreview,
+  ratesUnavailableMessage,
+  useLotTypeRatesForAllocation
+} from '../../components/syndics/charge-allocation/ChargeAllocationControls';
 import { LotPaymentModal } from '../../components/syndics/LotPaymentModal';
 import { ChargeCallPaymentLinkModal } from '../../components/syndics/online-payment/ChargeCallPaymentLinkModal';
 import { useSyndicOnlinePaymentUsable } from '../../components/syndics/online-payment/useOnlinePaymentUsable';
@@ -37,6 +43,7 @@ import { downloadChargeCallNotice, downloadChargeCallNoticeWord } from '../../se
 import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import {
+  ChargeAllocationMethod,
   ChargeCall,
   ChargeCallStatus,
   ChargeCallSummary,
@@ -51,6 +58,7 @@ import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
+import { lotsWithShares, previewAllocation } from '../../utils/charge-allocation-preview';
 
 const { Paragraph, Title } = Typography;
 
@@ -101,6 +109,11 @@ export const SyndicCharges: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
   const dueDateValue = Form.useWatch('dueDate', form) as Dayjs | null | undefined;
+  const targetModeValue = Form.useWatch('targetMode', form) as 'single' | 'multiple' | 'all' | undefined;
+  const allocationMethodValue = Form.useWatch('allocationMethod', form) as ChargeAllocationMethod | undefined;
+  const amountValue = Form.useWatch('amount', form) as number | null | undefined;
+  const currencyValue = Form.useWatch('currency', form) as string | undefined;
+  const lotIdsValue = Form.useWatch('lotIds', form) as string[] | undefined;
 
   // Lot S2 : la modale de paiement travaille PAR LOT. `paymentContext` porte
   // le lot et, si elle a été ouverte depuis un dossier précis, l'appel à
@@ -246,6 +259,42 @@ export const SyndicCharges: React.FC = () => {
     [lots]
   );
 
+  // Mode de répartition : proposé seulement pour plusieurs lots ou tous les lots.
+  // Un seul lot garde le comportement historique (montant du lot = total).
+  const allocationMethod: ChargeAllocationMethod | null =
+    targetModeValue === 'multiple' || targetModeValue === 'all' ? (allocationMethodValue ?? 'SHARES') : null;
+  const { rates: lotTypeRates, status: ratesStatus } = useLotTypeRatesForAllocation(
+    effectiveTenantId,
+    syndicId,
+    open && allocationMethod === 'BY_LOT_TYPE'
+  );
+  const allocationCandidates = useMemo(() => {
+    if (targetModeValue === 'multiple') {
+      const chosen = new Set(lotIdsValue ?? []);
+      return lots.filter(lot => chosen.has(lot.id));
+    }
+    return lotsWithShares(lots);
+  }, [targetModeValue, lotIdsValue, lots]);
+  const allocationPreview = useMemo(
+    () =>
+      allocationMethod
+        ? previewAllocation({
+            method: allocationMethod,
+            lots: allocationCandidates,
+            totalAmount: amountValue,
+            lotTypeRates,
+            currency: currencyValue || 'XOF'
+          })
+        : null,
+    [allocationMethod, allocationCandidates, amountValue, lotTypeRates, currencyValue]
+  );
+  // Aperçu SHARES / EQUAL : seulement une fois le total saisi et des lots choisis.
+  const shownPreview =
+    (allocationMethod === 'BY_LOT_TYPE' && allocationCandidates.length > 0) ||
+    (allocationPreview && Number(amountValue) > 0 && (targetModeValue === 'all' || (lotIdsValue ?? []).length > 0))
+      ? allocationPreview
+      : null;
+
   const handleCreate = async () => {
     if (!effectiveTenantId || !syndicId) {
       return;
@@ -269,6 +318,17 @@ export const SyndicCharges: React.FC = () => {
     const period: string =
       (values.period && String(values.period).trim()) ||
       (periodStart && periodEnd ? `${periodStart} au ${periodEnd}` : '');
+    if (allocationMethod) {
+      // Même contrôle que l'API (messages identiques) : on bloque d'avance une saisie qu'elle refuserait.
+      if (allocationMethod === 'BY_LOT_TYPE' && lotTypeRates === null) {
+        message.error(ratesUnavailableMessage());
+        return;
+      }
+      if (allocationPreview?.error) {
+        message.error(allocationPreview.error);
+        return;
+      }
+    }
     const payload: CreateChargeCallRequest = {
       lotId: targetMode === 'single' ? values.lotId : undefined,
       lotIds: targetMode === 'multiple' ? values.lotIds : undefined,
@@ -276,7 +336,8 @@ export const SyndicCharges: React.FC = () => {
       period,
       periodStart,
       periodEnd,
-      amount: values.amount,
+      amount: allocationMethod === 'BY_LOT_TYPE' ? undefined : values.amount,
+      allocationMethod: allocationMethod ?? undefined,
       currency: values.currency || 'XOF',
       dueDate: values.dueDate.toISOString(),
       fundId: values.fundId || undefined,
@@ -476,6 +537,7 @@ export const SyndicCharges: React.FC = () => {
           initialValues={{
             currency: 'XOF',
             targetMode: 'single',
+            allocationMethod: 'SHARES',
             isRecurring: false,
             recurrenceFrequency: 'MONTHLY',
             recurrenceCount: 1
@@ -570,16 +632,24 @@ export const SyndicCharges: React.FC = () => {
             </Col>
           </Row>
 
+          {allocationMethod ? (
+            <Form.Item label={t('Répartition entre les lots')} name="allocationMethod">
+              <AllocationMethodRadio />
+            </Form.Item>
+          ) : null}
+
           <Row gutter={12}>
-            <Col xs={24} md={12}>
-              <Form.Item
-                label={t('Montant')}
-                name="amount"
-                rules={[{ required: true, message: t('Le montant est obligatoire') }]}
-              >
-                <InputNumber min={1} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
+            {allocationMethod === 'BY_LOT_TYPE' ? null : (
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label={allocationMethod ? t('Montant total à répartir') : t('Montant')}
+                  name="amount"
+                  rules={[{ required: true, message: t('Le montant est obligatoire') }]}
+                >
+                  <InputNumber min={1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            )}
             <Col xs={24} md={12}>
               <Form.Item
                 label={t('Devise')}
@@ -590,6 +660,19 @@ export const SyndicCharges: React.FC = () => {
               </Form.Item>
             </Col>
           </Row>
+
+          {allocationMethod ? (
+            <Form.Item style={{ marginTop: -8 }}>
+              <AllocationPreview
+                method={allocationMethod}
+                result={shownPreview}
+                currency={currencyValue || 'XOF'}
+                ratesStatus={ratesStatus}
+                tenantId={effectiveTenantId}
+                syndicId={syndicId}
+              />
+            </Form.Item>
+          ) : null}
 
           <Form.Item
             label={t("Date d'échéance")}

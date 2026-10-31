@@ -12,7 +12,7 @@ import { inscrireAllocationTx, inscrireReliquatTx, libelleMoyen } from './rental
 import { assertTreasuryAccountUsableTx } from '../lib/treasury/accounts';
 import { syncDirectRentPaymentEntryTx } from '../lib/finance/rental-direct-ledger';
 import { t } from '../i18n';
-import { NotFoundError } from '../middleware/error-middleware';
+import { ConflictError, NotFoundError } from '../middleware/error-middleware';
 
 interface PaymentDeclarationFilters {
   status?: PaymentDeclarationStatus;
@@ -64,6 +64,21 @@ export async function approvePaymentDeclaration(
 
     // Use transaction to ensure consistency
     const result = await prisma.$transaction(async tx => {
+      // Passage atomique PENDING -> APPROVED : de deux approbations
+      // concurrentes, une seule l'emporte (l'autre voit count === 0).
+      const revendiquee = await tx.rentalPaymentDeclaration.updateMany({
+        where: { id: declarationId, tenant_id: tenantId, status: PaymentDeclarationStatus.PENDING },
+        data: {
+          status: PaymentDeclarationStatus.APPROVED,
+          reviewed_by: actorUserId,
+          reviewed_at: new Date(),
+          review_notes: reviewNotes || null
+        }
+      });
+      if (revendiquee.count === 0) {
+        throw new ConflictError(t('Déclaration déjà traitée'));
+      }
+
       await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, declaration.payment_method);
 
       // Create payment from declaration
@@ -78,7 +93,7 @@ export async function approvePaymentDeclaration(
           mm_operator: declaration.mobile_operator as any,
           treasury_account_id: treasuryAccountId || null,
           psp_reference: declaration.reference || null,
-          idempotency_key: `declaration-${declaration.id}-${Date.now()}`,
+          idempotency_key: `declaration-${declaration.id}`,
           status: RentalPaymentStatus.SUCCESS,
           succeeded_at: declaration.payment_date,
           created_by_user_id: actorUserId
@@ -210,15 +225,10 @@ export async function approvePaymentDeclaration(
       // Gestion directe : trésorerie et journal, dans la même transaction.
       await syncDirectRentPaymentEntryTx(tx, tenantId, payment.id);
 
-      // Update declaration status
+      // Le statut est déjà passé à APPROVED plus haut : relecture avec les relations.
       const updatedDeclaration = await tx.rentalPaymentDeclaration.update({
         where: { id: declarationId, tenant_id: tenantId },
-        data: {
-          status: PaymentDeclarationStatus.APPROVED,
-          reviewed_by: actorUserId,
-          reviewed_at: new Date(),
-          review_notes: reviewNotes || null
-        },
+        data: {},
         include: {
           lease: {
             select: {

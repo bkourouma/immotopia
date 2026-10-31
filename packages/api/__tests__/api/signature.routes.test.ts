@@ -18,9 +18,19 @@ jest.mock('../../src/middleware/auth-middleware', () => ({
 }));
 jest.mock('../../src/middleware/tenant-middleware', () => ({
   requireTenantAccess: (req: any, _res: any, next: any) => {
-    req.tenantContext = { tenantId: String(req.query.tenantId ?? 'tenant-1'), isCollaborator: true };
+    req.tenantContext = {
+      tenantId: String(req.query.tenantId ?? 'tenant-1'),
+      isCollaborator: true
+    };
     next();
-  }
+  },
+  // Comme le vrai : refuse (403) un non-collaborateur.
+  requireTenantCollaborator: (req: any, res: any, next: any) =>
+    req.tenantContext?.isCollaborator ? next() : res.status(403).json({ success: false })
+}));
+// Garde de type d'espace : testée pour de vrai dans signature-routes-guards.test.ts.
+jest.mock('../../src/middleware/subscription-feature-middleware', () => ({
+  requireTenantTypeGuard: () => (_req: any, _res: any, next: any) => next()
 }));
 // Permission et abonnement selon le TYPE de document : testés dans signature-access.test.ts.
 const permittedSignatureKinds = jest.fn(async (..._args: unknown[]): Promise<string[]> => ['LEASE_CONTRACT']);

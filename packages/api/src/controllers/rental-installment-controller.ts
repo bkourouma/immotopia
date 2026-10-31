@@ -10,6 +10,7 @@ import {
 import { RentalInstallmentStatus } from '@prisma/client';
 import { parsePagination } from '../utils/pagination-helper';
 import { respondWithAppError } from '../utils/app-error-response';
+import { parseEnumParam, parseIntParam } from '../utils/query-params';
 
 /**
  * Generate installments for a lease
@@ -72,14 +73,17 @@ export async function listInstallmentsHandler(req: Request, res: Response): Prom
     if (renterClientId) {
       filters.renterClientId = renterClientId as string;
     }
-    if (status) {
-      filters.status = status as RentalInstallmentStatus;
+    const statusFilter = parseEnumParam(status, RentalInstallmentStatus, 'status');
+    if (statusFilter) {
+      filters.status = statusFilter;
     }
-    if (year) {
-      filters.year = parseInt(year as string, 10);
+    const yearFilter = parseIntParam(year, 'year', { min: 1, max: 9999 });
+    if (yearFilter !== undefined) {
+      filters.year = yearFilter;
     }
-    if (month) {
-      filters.month = parseInt(month as string, 10);
+    const monthFilter = parseIntParam(month, 'month', { min: 1, max: 12 });
+    if (monthFilter !== undefined) {
+      filters.month = monthFilter;
     }
     if (overdue === 'true') {
       filters.overdue = true;

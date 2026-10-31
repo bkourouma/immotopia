@@ -35,7 +35,10 @@ const CONFIRM_MAX_MS = 60_000;
  * Absente pour une agence (`plan === 'AGENCY'`) et tant que l'usage n'est pas
  * connu.
  */
-export const PersonalTierCard: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+export const PersonalTierCard: React.FC<{ tenantId: string; onConfirmed?: () => void }> = ({
+  tenantId,
+  onConfirmed
+}) => {
   const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
@@ -69,6 +72,8 @@ export const PersonalTierCard: React.FC<{ tenantId: string }> = ({ tenantId }) =
     if (!waiting) return undefined;
     if (usage?.plan === 'PAID') {
       setWaiting(false);
+      // Le pack a changé : la page qui héberge la carte relit ses droits.
+      onConfirmed?.();
       return undefined;
     }
     const timer = setTimeout(() => {
@@ -76,6 +81,7 @@ export const PersonalTierCard: React.FC<{ tenantId: string }> = ({ tenantId }) =
       else void refetchUsage();
     }, CONFIRM_INTERVAL_MS);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `onConfirmed` change à chaque rendu de l'hôte.
   }, [waiting, usage?.plan, usageQuery.dataUpdatedAt, refetchUsage]);
 
   if (!usage || usage.plan === 'AGENCY') return null;

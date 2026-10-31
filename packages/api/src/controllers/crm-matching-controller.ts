@@ -8,6 +8,7 @@ import {
 } from '../services/crm-matching-service';
 import { UpdatePropertyMatchStatusRequest } from '../types/crm-types';
 import { respondWithAppError } from '../utils/app-error-response';
+import { parseIntParam } from '../utils/query-params';
 
 /**
  * Match properties for a deal
@@ -17,8 +18,8 @@ export async function matchPropertiesHandler(req: Request, res: Response): Promi
   try {
     const tenantId = getTenantIdFromRequest(req);
     const { dealId } = req.params;
-    const threshold = req.body.threshold ? parseInt(req.body.threshold, 10) : 40;
-    const limit = req.body.limit ? parseInt(req.body.limit, 10) : 10;
+    const threshold = parseIntParam(req.body.threshold, 'threshold', { min: 0 }) ?? 40;
+    const limit = parseIntParam(req.body.limit, 'limit', { min: 1 }) ?? 10;
 
     const matches = await matchPropertiesForDeal(tenantId, dealId, threshold, limit);
 

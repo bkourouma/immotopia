@@ -1,4 +1,5 @@
 import { t } from '../i18n/t';
+import { localizedRecord } from '../i18n/localized';
 import { activeLocale } from '../i18n/format';
 import type {
   CreateCountRequest,
@@ -117,10 +118,10 @@ export interface StockItemRef {
 
 export type StockLocationKind = 'WAREHOUSE' | 'SITE';
 
-export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = {
+export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = localizedRecord(() => ({
   WAREHOUSE: 'Magasin',
   SITE: t('Lieu de chantier')
-};
+}));
 
 /** Sous-ensemble LU de `StockLocationRecord` (sous-lot 1). */
 export interface StockLocationRef {
@@ -183,12 +184,12 @@ export type StockCountStatus = 'DRAFT' | 'COUNTED' | 'VALIDATED' | 'CANCELLED';
  * étiquette, toujours les passer en `label` à `<StatusTag>` : son libellé par
  * défaut de `DRAFT` est « Brouillon ».
  */
-export const STOCK_COUNT_STATUS_LABELS: Record<StockCountStatus, string> = {
+export const STOCK_COUNT_STATUS_LABELS: Record<StockCountStatus, string> = localizedRecord(() => ({
   DRAFT: t('Comptage en cours'),
   COUNTED: t('Comptage clos'),
   VALIDATED: t('Validé'),
   CANCELLED: t('Abandonné')
-};
+}));
 
 /**
  * Une ligne de comptage (contrat `CountLineView`). En DRAFT, `expectedQuantity`

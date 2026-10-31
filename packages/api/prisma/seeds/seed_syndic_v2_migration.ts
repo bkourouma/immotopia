@@ -2,7 +2,10 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-const documentTypeMap: Record<string, 'SYNDICATE_REGL_COPRO' | 'SYNDICATE_PV' | 'SYNDICATE_BUDGET' | 'SYNDICATE_CONTRAT'> = {
+const documentTypeMap: Record<
+  string,
+  'SYNDICATE_REGL_COPRO' | 'SYNDICATE_PV' | 'SYNDICATE_BUDGET' | 'SYNDICATE_CONTRAT'
+> = {
   REGULATION: 'SYNDICATE_REGL_COPRO',
   GENERAL_MEETING_MINUTES: 'SYNDICATE_PV',
   BUDGET: 'SYNDICATE_BUDGET',
@@ -26,7 +29,7 @@ async function migrateLotCoowners() {
 
   for (const lot of lots) {
     if (!lot.ownerContactId) continue;
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async tx => {
       await tx.syndicateLot.update({
         where: { id: lot.id },
         data: { coownerId: lot.ownerContactId }
@@ -69,7 +72,7 @@ async function migrateTenantProfiles() {
   });
 
   for (const profile of profiles) {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async tx => {
       await tx.lotTenantAssignment.updateMany({
         where: { lotId: profile.lotId, isActive: true },
         data: { isActive: false }
@@ -146,7 +149,13 @@ async function migrateIncidentsToMaintenanceLinks() {
         title: `Incident syndic ${incident.incidentType}`,
         category: 'OTHER',
         priority:
-          incident.urgency === 'CRITICAL' ? 'URGENT' : incident.urgency === 'HIGH' ? 'HIGH' : incident.urgency === 'MEDIUM' ? 'MEDIUM' : 'LOW',
+          incident.urgency === 'CRITICAL'
+            ? 'URGENT'
+            : incident.urgency === 'HIGH'
+              ? 'HIGH'
+              : incident.urgency === 'MEDIUM'
+                ? 'MEDIUM'
+                : 'LOW',
         description: incident.description,
         status:
           incident.status === 'CLOSED'
@@ -223,7 +232,7 @@ main()
   .then(async () => {
     await prisma.$disconnect();
   })
-  .catch(async (error) => {
+  .catch(async error => {
     console.error(error);
     await prisma.$disconnect();
     process.exit(1);

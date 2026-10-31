@@ -10,15 +10,18 @@ import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 import { dateFormat } from '../../i18n/format';
 
+import { localizedRecord } from '../../i18n/localized';
 const { Text } = Typography;
 
 /** Libellé et couleur d'un statut d'appel de charges, partagés avec la modale de paiement par lot. */
-export const chargeCallStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
-  PENDING: { color: 'gold', label: t('En attente') },
-  PARTIAL: { color: 'blue', label: t('Partiel') },
-  PAID: { color: 'green', label: t('Payé') },
-  OVERDUE: { color: 'red', label: t('En retard') }
-};
+export const chargeCallStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = localizedRecord(
+  () => ({
+    PENDING: { color: 'gold', label: t('En attente') },
+    PARTIAL: { color: 'blue', label: t('Partiel') },
+    PAID: { color: 'green', label: t('Payé') },
+    OVERDUE: { color: 'red', label: t('En retard') }
+  })
+);
 
 function buildLotLabel(item: ChargeCall): string {
   return formatLotLabel(item.lot, item.lotId);

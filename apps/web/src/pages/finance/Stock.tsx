@@ -2034,6 +2034,7 @@ function OngletEtat(props: {
         loading={soldes.isPending}
         isReloading={soldes.isFetching && !soldes.isPending}
         error={soldes.error ? t("Impossible de charger l'état du stock.") : null}
+        errorCause={soldes.error}
         onRetry={() => soldes.refetch()}
         isFiltered={nbFiltres > 0}
         onClearFilters={effacer}

@@ -170,6 +170,7 @@ export const SalesDashboard: React.FC = () => {
         loading={mandatesLoading}
         isReloading={mandatesFetching && !mandatesLoading}
         error={mandatesError ? t('Impossible de charger les mandats actifs.') : null}
+        errorCause={mandatesError}
         onRetry={() => refetchMandates()}
         emptyDescription={t('Aucun mandat de vente actif.')}
         columns={colonnes}

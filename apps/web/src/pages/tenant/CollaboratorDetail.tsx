@@ -13,6 +13,7 @@ import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
 import { useConfirmAction } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 interface Role {
@@ -22,11 +23,11 @@ interface Role {
   description: string | null;
 }
 
-const statusLabels: Record<string, string> = {
+const statusLabels: Record<string, string> = localizedRecord(() => ({
   ACTIVE: 'Actif',
   PENDING_INVITE: t('Invitation en attente'),
   INACTIVE: t('Désactivé')
-};
+}));
 
 export const CollaboratorDetail: React.FC = () => {
   const { message } = App.useApp();

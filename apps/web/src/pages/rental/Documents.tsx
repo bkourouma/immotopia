@@ -29,6 +29,7 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList, localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 /**
@@ -64,7 +65,7 @@ interface DocumentsProps {
 type Filters = { type: string; status: string };
 const FILTER_KEYS = ['type', 'status'] as const;
 
-const TYPE_LABELS: Record<string, string> = {
+const TYPE_LABELS: Record<string, string> = localizedRecord(() => ({
   LEASE_CONTRACT: t('Contrat de bail'),
   LEASE_ADDENDUM: 'Avenant',
   RENT_RECEIPT: t('Reçu de loyer'),
@@ -72,13 +73,13 @@ const TYPE_LABELS: Record<string, string> = {
   DEPOSIT_RECEIPT: t('Reçu de dépôt'),
   STATEMENT: t('Relevé'),
   OTHER: 'Autre'
-};
+}));
 
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS = localizedList(() => [
   { value: 'DRAFT', label: t('Brouillon') },
   { value: 'FINAL', label: t('Final') },
   { value: 'VOID', label: t('Annulé') }
-];
+]);
 
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
@@ -336,6 +337,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les documents.') : null}
+        errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}

@@ -1,4 +1,8 @@
-import { ChargeScheduleAmountSource, ChargeScheduleFrequency } from '../../../types/syndic-types';
+import {
+  ChargeAllocationMethod,
+  ChargeScheduleAmountSource,
+  ChargeScheduleFrequency
+} from '../../../types/syndic-types';
 
 export interface ScheduleFormValues {
   label: string;
@@ -8,6 +12,8 @@ export interface ScheduleFormValues {
   amountSource: ChargeScheduleAmountSource;
   budgetId?: string;
   fixedAmount?: number;
+  allocationMethod?: ChargeAllocationMethod;
+  includeAnnexLots?: boolean;
   currency: string;
   startDate: string;
   endDate?: string;

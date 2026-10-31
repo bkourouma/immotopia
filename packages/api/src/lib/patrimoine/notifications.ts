@@ -1,6 +1,7 @@
 import { LoanStatus, PropertyDocumentType, RentalLeaseStatus, WorkProgramStatus } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
+import { t } from '../../i18n';
 import { ConflictError } from '../../middleware/error-middleware';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../constants/email-notification-default-templates';
 import { getEmailNotificationConfig } from '../../services/email-notification-config-service';
@@ -222,7 +223,8 @@ async function sendExpiryAlertToRecipients(params: {
         documentType: params.documentTypeLabel,
         propertyReference: params.propertyReference,
         expiresAt: params.expiresAtLabel
-      }
+      },
+      journal: { relatedEntity: { type: 'PropertyDocument', id: params.documentId } }
     });
     if (delivery.sent) {
       deliveredCount += 1;
@@ -527,7 +529,8 @@ export async function alertExpiringLeases(tenantId: string, options?: { daysAhea
         recipient,
         configs,
         targets: LEASE_ALERT_TARGETS,
-        variables: { contactName: recipient.name, ownerName: recipient.name, leaseLabel, leaseEndDate, agencyName }
+        variables: { contactName: recipient.name, ownerName: recipient.name, leaseLabel, leaseEndDate, agencyName },
+        journal: { relatedEntity: { type: 'RentalLease', id: lease.id } }
       });
       if (delivery.sent) {
         deliveredCount += 1;
@@ -625,7 +628,16 @@ export async function alertLoanMaturity(tenantId: string, options?: { daysAhead?
           to: recipient.email,
           subject: applyTemplate(config.subjectOverride || defaults.subject, variables),
           html: applyTemplate(config.bodyHtmlOverride || defaults.bodyHtml, bodyVariables),
-          tenantId
+          tenantId,
+          journal: {
+            key: eventKey,
+            body: t('Échéance du prêt du bien {{propertyReference}} le {{loanEndDate}}', {
+              propertyReference,
+              loanEndDate
+            }),
+            recipient: { email: recipient.email, label: recipient.fullName ?? undefined },
+            relatedEntity: { type: 'PropertyLoan', id: loan.id }
+          }
         });
         deliveredCount += 1;
       } catch (error) {
@@ -718,7 +730,16 @@ export async function alertUpcomingWorks(tenantId: string, options?: { daysAhead
           to: recipient.email,
           subject: applyTemplate(config.subjectOverride || defaults.subject, variables),
           html: applyTemplate(config.bodyHtmlOverride || defaults.bodyHtml, bodyVariables),
-          tenantId
+          tenantId,
+          journal: {
+            key: eventKey,
+            body: t('Travaux prévus le {{plannedDate}} : {{workProgramTitle}}', {
+              plannedDate,
+              workProgramTitle: work.title
+            }),
+            recipient: { email: recipient.email, label: recipient.fullName ?? undefined },
+            relatedEntity: { type: 'WorkProgram', id: work.id }
+          }
         });
         deliveredCount += 1;
       } catch (error) {
@@ -836,7 +857,16 @@ export async function sendOwnerStatement(statementId: string, tenantId: string) 
   await emailService.sendEmail({
     to: owner.email,
     subject: applyTemplate(subjectTemplate, plainVariables),
-    html: applyTemplate(bodyTemplate, htmlVariables)
+    html: applyTemplate(bodyTemplate, htmlVariables),
+    // Pas de `tenantId` d'envoi (l'identite d'expediteur ne change pas) : l'agence va au journal seul.
+    journal: {
+      key: eventKey,
+      tenantId: statement.tenantId,
+      // Corps court et non financier : jamais le texte du releve.
+      body: t('Relevé propriétaire {{period}}', { period: statement.period }),
+      recipient: { contactId: owner.id, email: owner.email },
+      relatedEntity: { type: 'OwnerStatement', id: statement.id }
+    }
   });
 
   const whatsappSent = await sendWhatsappNotification({
@@ -846,6 +876,10 @@ export async function sendOwnerStatement(statementId: string, tenantId: string) 
     variables: {
       ...plainVariables,
       statementLines: linesText
+    },
+    journal: {
+      recipient: { contactId: owner.id },
+      relatedEntity: { type: 'OwnerStatement', id: statement.id }
     }
   });
 
@@ -956,7 +990,8 @@ export async function sendOwnerMonthlyReport(
       reportUrl: link.url,
       expiresAt: link.expiresAt.toLocaleDateString('fr-FR', { timeZone: 'UTC' }),
       agencyName: tenant?.name ?? ''
-    }
+    },
+    journal: { relatedEntity: { type: 'OwnerStatement', id: statement.id } }
   });
 
   if (!delivery.sent) {

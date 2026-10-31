@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  registerAsTenantClient,
+  getTenantPublicProfileHandler,
   getTenant,
   getTenantBySlugHandler,
   listTenants,
@@ -39,7 +39,8 @@ import {
   paymentAvailabilityHandler,
   startCheckoutHandler,
   tenantGetInvoicePaymentHandler,
-  tenantListExtensionRequestsHandler
+  tenantListExtensionRequestsHandler,
+  tenantListExtensionOffersHandler
 } from '../controllers/platform-billing-controller';
 import { startUpgradeHandler } from '../controllers/subscription-upgrade-controller';
 import { platformInvoiceTenantRouter } from './platform-invoice-routes';
@@ -78,12 +79,23 @@ router.post(
 // Fiche complete d'une agence (membres, clients, abonnement) : reservee a ses
 // membres et au super-admin. Elle etait publique et renvoyait des `User`
 // complets, empreinte du mot de passe comprise.
-router.get('/:tenantId', authenticate, requireTenantAccess, getTenant);
+router.get('/:tenantId', authenticate, requireTenantAccess, requireTenantCollaborator, getTenant);
+
+// Fiche publique reduite (vitrine + contact) : ouverte a tout utilisateur
+// rattache a l'agence, y compris un client de portail (TenantClient), qui n'a
+// pas acces a la fiche complete ci-dessus.
+router.get('/:tenantId/public-profile', authenticate, requireTenantAccess, getTenantPublicProfileHandler);
 
 // Droits de l'agence (abonnement par packs) : modules, lecture seule,
 // capacites et consommation. Lu par le menu et les gardes de la vague 2
 // (docs/architecture/PLAN-ABONNEMENTS.md).
-router.get('/:tenantId/entitlements', authenticate, requireTenantAccess, getEntitlementsHandler);
+router.get(
+  '/:tenantId/entitlements',
+  authenticate,
+  requireTenantAccess,
+  requireTenantCollaborator,
+  getEntitlementsHandler
+);
 // Factures PLATFORM de l'agence (vague 3, lot A) : liste, detail, PDF.
 router.use(platformInvoiceTenantRouter);
 // Abonnement vu par l'agence (vague 3, lot B) : paiement en ligne des
@@ -129,6 +141,13 @@ router.get(
   getCheckoutHandler
 );
 router.get(
+  '/:tenantId/subscription/extension-offers',
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_VIEW'),
+  tenantListExtensionOffersHandler
+);
+router.get(
   '/:tenantId/subscription/extension-requests',
   authenticate,
   requireTenantAccess,
@@ -142,7 +161,8 @@ router.post(
   requirePermission('TENANT_SETTINGS_EDIT'),
   createExtensionRequestHandler
 );
-router.post('/:tenantId/register', authenticate, registerAsTenantClient);
+// L'auto-inscription (POST /:tenantId/register) est fermee : un compte client
+// est cree par l'agence (invitation, conversion de contact).
 
 // Client directory exposes e-mails and names: restricted to collaborators of
 // this tenant (used by the property form to pick an owner). Any authenticated

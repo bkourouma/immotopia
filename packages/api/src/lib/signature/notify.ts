@@ -170,7 +170,14 @@ export async function notifyIssuer(args: {
       subject: args.subject,
       text: args.text,
       html: `<div dir="${languageOf(args.language) === 'ar' ? 'rtl' : 'ltr'}"><p>${args.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p></div>`,
-      tenantId: args.tenantId
+      tenantId: args.tenantId,
+      // Message a l'emetteur : ni lien ni jeton, le texte peut etre journalise.
+      journal: {
+        key: 'SIGNATURE_ISSUER_NOTICE',
+        title: args.subject,
+        recipient: { userId: args.userId, email: user.email },
+        link: `/tenant/${args.tenantId}/signatures`
+      }
     });
   } catch (error) {
     logger.warn('Signature : notification de l’émetteur en échec', {

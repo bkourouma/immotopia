@@ -3,6 +3,7 @@ import { Card, Row, Col, Statistic, Tag, Button, Typography, Space } from 'antd'
 import { TeamOutlined, UserOutlined, MailOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { NewsletterList } from '../../services/newsletter.service';
 import { t } from '../../i18n/t';
+import { localizedRecord } from '../../i18n/localized';
 
 const { Title, Text } = Typography;
 
@@ -15,12 +16,12 @@ interface ListDashboardProps {
   onDeleteList: (list: NewsletterList) => void;
 }
 
-const typeLabels: Record<string, string> = {
+const typeLabels: Record<string, string> = localizedRecord(() => ({
   MANUAL: 'Manuelle',
   FROM_OWNERS: t('Propriétaires'),
   FROM_RENTERS: 'Locataires',
   FROM_CRM_CONTACTS: t('Contacts CRM')
-};
+}));
 
 export function ListDashboard({
   lists,

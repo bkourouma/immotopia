@@ -1,4 +1,5 @@
 import { t } from '../i18n/t';
+import { localizedRecord } from '../i18n/localized';
 /**
  * Libellés et descriptions en français des permissions et rôles RBAC.
  * Utilisé sur la page Admin > Rôles et permissions pour clarifier les fonctionnalités.
@@ -10,7 +11,7 @@ export interface PermissionLabelFr {
 }
 
 /** Libellé court + description en français par clé de permission */
-export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
+export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = localizedRecord(() => ({
   // --- Plateforme (administration centrale) ---
   PLATFORM_TENANTS_VIEW: {
     label: t('Voir les tenants'),
@@ -73,6 +74,11 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
   TENANT_AUDIT_VIEW: {
     label: t("Voir le journal d'activité"),
     description: t("Consulter le journal d'activité de l'agence (qui a fait quoi, quand).")
+  },
+
+  TENANT_NOTIFICATIONS_ADMIN: {
+    label: t('Voir le journal des notifications'),
+    description: t("Consulter le journal des notifications de l'agence et renvoyer les envois en échec.")
   },
 
   // --- Utilisateurs / collaborateurs ---
@@ -377,10 +383,10 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
     label: t('Alertes de stock'),
     description: t('Consulter et traiter les alertes, et les recevoir par e-mail.')
   }
-};
+}));
 
 /** Libellés des groupes de permissions (préfixes) pour l’affichage en sections */
-export const PERMISSION_GROUP_LABELS_FR: Record<string, string> = {
+export const PERMISSION_GROUP_LABELS_FR: Record<string, string> = localizedRecord(() => ({
   PLATFORM: t('Plateforme (administration centrale)'),
   TENANT: t('Paramètres du tenant'),
   USERS: 'Collaborateurs',
@@ -392,10 +398,10 @@ export const PERMISSION_GROUP_LABELS_FR: Record<string, string> = {
   COMMUNICATION: 'Communication',
   FINANCE: t('Finance'),
   STOCK: t('Stock de chantier')
-};
+}));
 
 /** Noms et descriptions en français des rôles (clé technique → libellé) */
-export const ROLE_LABELS_FR: Record<string, { name: string; description: string }> = {
+export const ROLE_LABELS_FR: Record<string, { name: string; description: string }> = localizedRecord(() => ({
   PLATFORM_SUPER_ADMIN: {
     name: 'Super administrateur plateforme',
     description: t('Accès complet à la plateforme : tous les tenants, modules, abonnements et factures.')
@@ -435,7 +441,7 @@ export const ROLE_LABELS_FR: Record<string, { name: string; description: string 
       'Compte le stock de ses chantiers, notamment par WhatsApp, sans valider l’inventaire ni voir les valeurs.'
     )
   }
-};
+}));
 
 /**
  * Retourne le libellé et la description en français pour une permission (clé).

@@ -120,8 +120,19 @@ code {
 .ant-layout-sider .ant-menu-light .ant-menu-item,
 .ant-layout-sider .ant-menu-light .ant-menu-submenu .ant-menu-submenu-title,
 .ant-drawer-body .ant-menu-light .ant-menu-item,
-.ant-drawer-body .ant-menu-light .ant-menu-submenu .ant-menu-submenu-title {
+.ant-drawer-body .ant-menu-light .ant-menu-submenu .ant-menu-submenu-title,
+.ant-menu-submenu-popup.app-nav-popup.ant-menu-light .ant-menu-item {
   color: var(--text-on-nav-muted);
+}
+
+/* Popup du rail (72 px, icones seules) : Ant Design le rend dans <body>, HORS
+   de `.ant-layout-sider`, avec un fond colorBgElevated (blanc) et un texte
+   sombre. `classNames.popup.root` d'AppNavigation y pose `app-nav-popup`.
+   Fond navy, comme la sidebar et le drawer, pour que les libelles suivent la
+   meme regle (blanc, gras en selection) et restent lisibles. */
+.ant-menu-submenu-popup.app-nav-popup.ant-menu-light > .ant-menu-sub {
+  background: var(--surface-nav);
+  border: 1px solid var(--border-nav);
 }
 
 /* Un groupe DEPLIE ou contenant la destination courante : Ant Design repasse
@@ -146,15 +157,32 @@ code {
 .ant-layout-sider .ant-menu-light .ant-menu-item:hover,
 .ant-layout-sider .ant-menu-light .ant-menu-submenu .ant-menu-submenu-title:hover,
 .ant-drawer-body .ant-menu-light .ant-menu-item:hover,
-.ant-drawer-body .ant-menu-light .ant-menu-submenu .ant-menu-submenu-title:hover {
+.ant-drawer-body .ant-menu-light .ant-menu-submenu .ant-menu-submenu-title:hover,
+.ant-menu-submenu-popup.app-nav-popup.ant-menu.ant-menu-light .ant-menu-item:not(.ant-menu-item-disabled):hover {
   color: var(--text-on-nav);
   background: var(--nav-item-hover-bg);
 }
 
 .ant-layout-sider .ant-menu-light .ant-menu-item-selected,
-.ant-drawer-body .ant-menu-light .ant-menu-item-selected {
+.ant-drawer-body .ant-menu-light .ant-menu-item-selected,
+.ant-menu-submenu-popup.app-nav-popup.ant-menu-light .ant-menu-item-selected {
   color: var(--text-on-nav);
   background: var(--nav-item-active-bg);
+}
+
+/* Destination courante ET titre du groupe qui la contient : blanc et semi-gras,
+   partout (sidebar, drawer, popup du rail). Ant Design colore ces deux etats
+   en `itemSelectedColor` (orange fonce, theme/antd-theme.ts) et ne les grasse
+   pas. Les selecteurs portent `.ant-menu.ant-menu-light` pour ne dependre ni de
+   l'ordre d'injection de cssinjs, ni du `:where()` d'Ant Design. Le titre du
+   groupe n'avait AUCUNE regle de graisse : seule l'entree selectionnee l'etait. */
+.ant-layout-sider .ant-menu.ant-menu-light .ant-menu-item-selected,
+.ant-drawer-body .ant-menu.ant-menu-light .ant-menu-item-selected,
+.ant-menu-submenu-popup.app-nav-popup.ant-menu-light .ant-menu-item-selected,
+.ant-layout-sider .ant-menu.ant-menu-light .ant-menu-submenu-selected > .ant-menu-submenu-title,
+.ant-drawer-body .ant-menu.ant-menu-light .ant-menu-submenu-selected > .ant-menu-submenu-title {
+  color: var(--text-on-nav);
+  font-weight: var(--font-weight-semibold);
 }
 
 /* Le chevron d'un groupe repliable. Laisse a sa valeur d'origine, il restait en
@@ -240,13 +268,15 @@ code {
    signaux ci-dessus s'en chargent ; a 4,87:1 sur le navy, il le porte quand
    meme largement au-dessus du seuil non-texte. */
 .ant-layout-sider .ant-menu-item-selected,
-.ant-drawer-body .ant-menu-item-selected {
+.ant-drawer-body .ant-menu-item-selected,
+.app-nav-popup .ant-menu-item-selected {
   position: relative;
   font-weight: var(--font-weight-semibold);
 }
 
 .ant-layout-sider .ant-menu-item-selected::before,
-.ant-drawer-body .ant-menu-item-selected::before {
+.ant-drawer-body .ant-menu-item-selected::before,
+.app-nav-popup .ant-menu-item-selected::before {
   content: '';
   position: absolute;
   inset-block: 0;

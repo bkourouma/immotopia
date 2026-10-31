@@ -15,6 +15,24 @@ export interface User {
   preferredLanguage: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Appartenances ACTIVE avec leurs droits effectifs, renvoyées par
+   * `GET /auth/me` seulement (absentes de `PATCH /auth/me/language`). Sert aux
+   * gardes d'écran ; le serveur reste la seule autorité.
+   */
+  memberships?: UserMembership[];
+}
+
+/** Une appartenance active de `GET /auth/me`, avec ses permissions effectives. */
+export interface UserMembership {
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string | null;
+  tenantType: string;
+  membershipId: string;
+  roleKeys: string[];
+  /** Mêmes clés que les gardes serveur. Liste vide = aucun droit, jamais « tout ». */
+  permissions: string[];
 }
 
 // Login credentials
@@ -102,6 +120,18 @@ export interface AuthState {
   availableTenants: AvailableTenant[];
   /** `tenantMembership?.tenantId ?? tenantClient?.tenantId ?? null`. */
   activeTenantId: string | null;
+  /**
+   * Appartenances (et droits) chargées par `/auth/me` ; vide tant que la session
+   * n'est pas établie. Optionnel dans le type pour que les doublures de test de
+   * `useAuth` n'aient pas à le fournir : le vrai fournisseur le renseigne toujours.
+   */
+  memberships?: UserMembership[];
+  /**
+   * Vrai si l'utilisateur détient TOUTES les permissions demandées dans
+   * l'agence `tenantId`. Faux tant que la session charge, hors appartenance
+   * ou sans permission ; le super-admin passe toujours.
+   */
+  hasPermission?: (tenantId: string | null | undefined, permission: string | string[]) => boolean;
 }
 
 // Auth context actions

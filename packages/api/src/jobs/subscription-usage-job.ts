@@ -34,6 +34,7 @@ import * as cron from 'node-cron';
 import { CapacityKey, Prisma, SubscriptionStatus } from '@prisma/client';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { withJobLock } from '../utils/job-lock';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { t } from '../i18n';
 import { frontendUrl } from '../config/env';
@@ -589,7 +590,13 @@ let hourlyJob: cron.ScheduledTask | null = null;
 
 async function runLogged(alertsOnly: boolean) {
   try {
-    const report = await runSubscriptionUsageCycle({ alertsOnly });
+    // Passage complet (02:30) : jusqu'à 60 min ; alertes horaires (:15) : 30 min, sous la période.
+    const report = await withJobLock(
+      alertsOnly ? 'subscription-usage-hourly' : 'subscription-usage-daily',
+      alertsOnly ? 30 * 60 * 1000 : 60 * 60 * 1000,
+      () => runSubscriptionUsageCycle({ alertsOnly })
+    );
+    if (!report) return; // une autre instance a pris le passage
     logger.info('Subscription usage job completed', { alertsOnly, ...report, errors: report.errors.length });
     for (const e of report.errors) logger.error('Subscription usage job: tenant failed', e);
   } catch (error) {

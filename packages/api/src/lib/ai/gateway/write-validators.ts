@@ -61,7 +61,7 @@ const viaValidateMiddleware = (schema: z.ZodTypeAny): WriteBodyValidator => ({
 
 /**
  * Contrôleur des biens (`controllers/property-controller.ts`) : il recopie les champs connus avec
- * des défauts. Le schéma ignore les clés inconnues ; sont reproduits `currency` (`|| 'EUR'`) et
+ * des défauts. Le schéma ignore les clés inconnues ; sont reproduits `currency` (`|| 'XOF'`) et
  * `ownerUserId ?? defaultOwnerUserId(ownershipType, ownerEmail, userId)` : un propriétaire absent
  * retombe sur l'utilisateur courant (un uuid valide, ici un uuid de remplacement) pour un bien privé,
  * et reste `undefined` pour un bien de l'agence (`TENANT`) ou quand un e-mail de propriétaire est fourni.
@@ -75,7 +75,7 @@ const propertyCreateValidator: WriteBodyValidator = {
     return {
       ...source,
       ownerUserId: source.ownerUserId ?? (withoutDefaultOwner ? undefined : CURRENT_USER_PLACEHOLDER),
-      currency: source.currency || 'EUR'
+      currency: source.currency || 'XOF'
     };
   }
 };

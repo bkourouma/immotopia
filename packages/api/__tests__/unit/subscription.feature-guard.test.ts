@@ -10,6 +10,17 @@
 import express from 'express';
 import request from 'supertest';
 
+const loggerWarn = jest.fn();
+const loggerError = jest.fn();
+jest.mock('../../src/utils/logger', () => ({
+  logger: {
+    warn: (...a: any[]) => loggerWarn(...a),
+    error: (...a: any[]) => loggerError(...a),
+    info: jest.fn(),
+    debug: jest.fn()
+  }
+}));
+
 let mode: 'off' | 'warn' | 'enforce' = 'warn';
 const getEntitlements = jest.fn();
 let currentUser: any = { userId: 'u1', globalRole: 'USER' };
@@ -90,6 +101,8 @@ beforeEach(() => {
   currentUser = { userId: 'u1', globalRole: 'USER' };
   currentContext = { isClient: false };
   getEntitlements.mockReset();
+  loggerWarn.mockClear();
+  loggerError.mockClear();
   resetSubscriptionGuardCounters();
 });
 
@@ -213,8 +226,31 @@ describe('mode enforce', () => {
     expect(getEntitlements).not.toHaveBeenCalled();
   });
 
-  it("une panne du calcul des droits laisse passer", async () => {
+  it('warn : une panne du calcul des droits laisse passer ET journalise (warn)', async () => {
+    mode = 'warn';
     getEntitlements.mockRejectedValue(new Error('base indisponible'));
+    expect((await request(app).post(`/api/tenants/${TENANT}/syndics`)).status).toBe(200);
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.stringContaining('entitlements unavailable'),
+      expect.objectContaining({ tenantId: TENANT, feature: 'SYNDIC', error: 'base indisponible' })
+    );
+    expect(loggerWarn.mock.calls[0][1].path).toContain('/syndics');
+  });
+
+  it('enforce : une panne du calcul des droits REFUSE en 503 ENTITLEMENTS_UNAVAILABLE', async () => {
+    mode = 'enforce';
+    getEntitlements.mockRejectedValue(new Error('base indisponible'));
+    const res = await request(app).post(`/api/tenants/${TENANT}/syndics`);
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe('ENTITLEMENTS_UNAVAILABLE');
+    expect(loggerError).toHaveBeenCalled();
+    // requireFeature explicite : meme refus.
+    expect((await request(app).get(`/api/tenants/${TENANT}/explicit`)).status).toBe(503);
+  });
+
+  it('enforce : droits calcules normalement, comportement inchange (passe)', async () => {
+    mode = 'enforce';
+    getEntitlements.mockResolvedValue(entitlements({ MODULE_AGENCY: 'FULL', MODULE_SYNDIC: 'FULL' }));
     expect((await request(app).post(`/api/tenants/${TENANT}/syndics`)).status).toBe(200);
   });
 

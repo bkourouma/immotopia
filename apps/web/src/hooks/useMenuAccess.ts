@@ -89,6 +89,23 @@ export function useMyMenuAccess(tenantId?: string | null): MyMenuAccessState {
 }
 
 /**
+ * Une entrée de navigation est-elle ouverte à la personne connectée ? Même source que
+ * la coquille (`useMyMenuAccess` + `MENU_REQUIREMENTS`), mais sur les permissions
+ * SEULES : une entrée ouverte explicitement dans « Rôles et menus » reste visible dans le
+ * menu, alors que l'API répond 403 sans la permission. Un écran protégé s'en sert pour
+ * afficher « Accès réservé » plutôt que des erreurs 403. `allowed` vaut `true` sans
+ * restriction connue (administrateur d'agence, super-admin, échec réseau) ; attendre
+ * `ready` avant d'appeler une route protégée.
+ */
+export function useMenuEntryAccess(
+  tenantId: string | null | undefined,
+  navKey: string
+): { ready: boolean; allowed: boolean } {
+  const { permissions, ready } = useMyMenuAccess(tenantId);
+  return { ready, allowed: defaultMenuEnabled(requirementsFor(navKey), permissions) };
+}
+
+/**
  * Accès aux fonctionnalités d'abonnement de l'agence (vague 2 des
  * abonnements), ou `null` quand le menu ne doit pas en tenir compte.
  *

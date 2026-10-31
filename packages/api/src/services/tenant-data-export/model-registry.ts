@@ -109,7 +109,10 @@ export const EXCLUDED_MODELS: Readonly<Record<string, string>> = {
   // fiscal de la plateforme, commun à toutes les agences.
   TaxParameter: 'Référentiel fiscal de la plateforme, commun à toutes les agences.',
   // Réglage IA (fournisseur, modèle) : singleton de la plateforme, sans donnée d'agence ni secret.
-  PlatformAiSettings: "Réglage global de l'assistant IA de la plateforme (fournisseur, modèle), sans donnée d'agence."
+  PlatformAiSettings: "Réglage global de l'assistant IA de la plateforme (fournisseur, modèle), sans donnée d'agence.",
+  // Verrou des jobs cron entre instances de l'API : technique, plateforme, sans donnée d'agence.
+  JobLock:
+    "Verrou technique des jobs planifiés de la plateforme (nom du job, détenteur, échéance), sans donnée d'agence."
 };
 
 /** Champs d'agence reconnus, comme `schema-tenant-coverage.test.ts`. */
