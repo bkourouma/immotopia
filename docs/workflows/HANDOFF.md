@@ -17,6 +17,44 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## État des lieux (pilote) — 2026-10-31
+
+**État :** constat, puis mise en application des PR ouvertes (planning du 2026-10-31) : #175 fusionnée par l'utilisateur, staging déployé ; production à faire. Le classifieur du mode auto refuse `gh pr merge` à l'agent (« Merge Without Review ») : les fusions restent à l'utilisateur. Branche `docs/etat-des-lieux-2026-10-31` (cette section, PR #191).
+**Référence :** `main` = `dd5b61c3` (PR #175, 2026-10-31 15:37 UTC), arbre identique à `4a4cf73d` validé par la CI de #175.
+
+Déploiements (registre des déploiements GitHub, `/health` 200 sur les deux le 2026-10-31) :
+
+- Staging à `dd5b61c3` depuis le 2026-10-31 (15:39–15:48 UTC, run 41215853111, lancé par le pilote à la demande de l'utilisateur) : contient #188, #190 et #175.
+- Production à `e5c866cd` (2026-10-20, 16:40 UTC). Les migrations de #183 et #184 ont dû passer avec ce déploiement (`deploy.sh` les applique ; non vérifié sur les bases) ; `db:seed:catalog` (prix de l'extension Signatures) non confirmé. Écart avec le staging : #188, #190, #175, sans migration.
+- Les exécutions automatiques finissent toutes en `skipped` : `AUTO_DEPLOY_STAGING` n'est pas activé.
+
+Non fusionné :
+
+- PR ouverte : #191 (cette passation). #175 remise à jour avec `main` puis fusionnée le 2026-10-31 (squash `dd5b61c3`). #179 et #189 fermées sans fusion le 2026-10-31 (passations périmées ; points utiles de #189 repris dans la section menu-messagerie plus bas).
+- Branches sans PR : `feat/syndic-encaissement` (portail copropriétaire : AG en cartes, vote en ligne, menu à plat ; 23 fichiers, 2026-10-15) ; `feat/abonnement-libre-service` (sauvegarde inachevée, jamais vérifiée, numéro 045 en collision) ; `feat/sms-lot-1` et `docs/spec-fournisseur-sms` (spec 020, en partie dépassées par `lib/sms` de la signature S7) ; `wip/port-oi-finance` (sans doute repris par #142) ; `test/recette-operateur-integre` (17 commits, 307 fichiers, ~100 conflits). `feat/mon-compte-abonnement` est bien fusionnée (#181, squash) malgré `--no-merged`.
+
+Specs non entamées (aucun code sur `main`, vérifié par recherche) : 027 clôture d'exercice Syndic ; 028 crédits IA ; 035 vue Groupe, 036 multi-devises, 037 dossier bancaire et fiscal (numéros réservés, aucun dossier) ; démembrement (C6, plus de numéro) ; 042 P5 (portails, tâche quotidienne, prénotifications, rejets) et P6 ; routes de l'abonnement libre-service ; liste serveur des conversations ImmoCopilot. Partielles : 042 prélèvement (P0–P4 faits), 047 (T069 validation comptable des 5521x, recette), 031 sans SMS. Dossier `specs/main` = gabarit vide ; doublons de numéros 023 et 042.
+
+Livré mais pas en service (actions du propriétaire) : visio d'AG (`LIVEKIT_*` absents), Yousign (staging en `internal`), SMS Orange (nom d'expéditeur à faire approuver), PaySecureHub en mode réel (prod en `SIMULATOR` pour les abonnements), WhatsApp Meta, ImmoCopilot en prod (`ops:set-ai-provider` et clé), lecture IA des preuves de paiement (clé Gemini), `TENANT_GUARD_MODE=warn`.
+
+Anomalies du bus `.agent-bus/bugs` (local, 243 fiches) : 128 passées, 61 nouvelles, 44 prêtes au retest, 6 en correction, 3 bloquées. Presque toutes les ouvertes datent du 27/09 au 01/10 (recette des packs) et une partie est corrigée sans retest (contrôle de solde de trésorerie, catalogues anglais) : à trier par une recette de reprise avant de s'y fier.
+
+Suite du planning :
+
+1. Fait : #175 fusionnée ; #191 à fusionner par l'utilisateur dès sa CI verte.
+2. Fait : staging déployé sur `dd5b61c3`.
+3. Staging vérifié sans compte le 2026-10-31 : `/health` 200 ; registre `staging` = `dd5b61c3` en succès ; nouveau bundle (`index-F0c6CJah.js`) dont le morceau `AcceptInvitePage` contient « Cette invitation est destinée à », « Se déconnecter et continuer » et `INVITATION_FOR_ANOTHER_ACCOUNT` ; slug inconnu → 404 « Agence introuvable. » ; jeton d'invitation invalide → 400 de validation. Reste à faire par l'utilisateur (comptes requis) : invitation ouverte connecté avec un autre compte → « destinée à b•••@… » et « Se déconnecter et continuer », puis création du compte invité ; journal des notifications avec un motif lisible (plus « Error EAUTH ») ; slug d'une agence désactivée → même 404.
+4. Run workflow → `prod` (reprend par défaut le dernier commit réussi sur le staging, sauvegarde et étiquettes `avant-*` faites par le workflow, approbation de l'environnement `production` par bkourouma), puis `/health` et le test d'invitation.
+5. Après la production : `infra/scripts/set-ai-key.sh prod openrouter` pour ImmoCopilot ; prix de l'extension Signatures (5 000) par `db:seed:catalog` seulement si aucun prix n'a été ajusté à la main en production, sinon `PATCH /api/admin/catalog/EXT_SIGNATURES_SUPPLEMENTAIRES`.
+
+Retour arrière : sans migration dans l'écart, remettre les images `avant-*` (procédure manuelle de DEPLOIEMENT.md).
+
+Pièges :
+
+- Tests web instables en CI, sans lien avec les diffs : `tenant-detail-invoices.test.tsx` (« lecture seule manuelle sur une facture de dépassement en retard ») `MeetingLiveConsole.test.tsx` (« le texte est conservé si l'envoi échoue », 2026-10-31) et `SyndicChargeSchedules.test.tsx` (« un budget n'affiche pas le sélecteur et envoie SHARES », 2026-10-31, sur #191 qui ne touche que la documentation) : relancer le seul job en échec (`gh run rerun <id> --failed`) une fois l'exécution terminée.
+- Le checkout principal est encore sur `feat/signature-s5-s7` (déjà fusionnée), 372 commits derrière `main`, avec des modifications locales (`.claude/launch.json`, `packages/api/package.json`) : lire l'état depuis `origin/main` (`git show`, `git grep`) ou depuis un worktree à jour, jamais depuis cet arbre.
+- Disque D: à 97 % (15 Go libres) ; une quinzaine de worktrees périmés sous `.claude/worktrees/` et `D:\APP\Immobillier-worktrees\` (retirer les jonctions avec `rmdir` avant tout `git worktree remove`).
+
 ## Branche `fix/oracles-et-finitions` — 2026-10-20
 
 **État :** PR vers `main` (fusion par l'utilisateur). Oracles d'existence d'agence restants après la PR #185 et deux finitions de la recette des notifications.
@@ -42,37 +80,20 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Pièges :** les dossiers `D:\APP\Immobillier-worktrees\audit-lot-{S,T,C}` restent sur disque (fichiers verrouillés, désenregistrés de git) : vérifier qu'ils ne contiennent aucune jonction avant de les supprimer. Le checkout principal est sur `feat/signature-s5-s7`, loin derrière `main` : les copies du chantier utilisaient les `node_modules` de `audit-integ` (npm ci). Budget d'entrée web : 228 974 o pour 229 376 o (marge ≈ 400 o). `ai.write-plan.test.ts` échoue sous Windows (préexistant).
 
-## Branche `orch/2026-10-19-menu-messagerie` — 2026-10-20
+## Menu, répartition des charges, notifications et messagerie — fusionnés (2026-10-20)
 
-**État :** prêt à relire — PR #183 vers `main`, à fusionner par l'utilisateur ; PR #185 séparée (anomalie 009, branche `fix/isolation-acces-agence`, CI verte).
-**Dernier commit :** `4f89951c` fusion de `origin/main` (PR #184), après `72066cee` (anomalie 004) et `d7fe20b5` (CI + anomalie 008).
+**État :** PR #183 et #185 fusionnées dans `main` et déployées en staging et production le 2026-10-20 (`e5c866cd`) ; #188 (finitions) : voir l'état des lieux ci-dessus.
 
-Fait :
+- Migrations livrées avec ce déploiement (appliquées par `deploy.sh`, non vérifié sur les bases) : `20261019140000_syndic_mode_repartition_appels`, `20261019180000_notifications_messagerie` (permission `TENANT_NOTIFICATIONS_ADMIN` accordée à TENANT_ADMIN et TENANT_MANAGER), `20261019190000_syndic_programmation_montant_bareme`, `20261020090000_syndic_programmation_lots_annexes` (programmations existantes mises à `include_annex_lots = false`, calcul historique conservé).
+- Recette faite sur la démo : menu, barème et trois modes de répartition, lots annexes, notifications persistantes, messagerie, isolation entre agences. Non testé : refus du journal pour un utilisateur sans permission (comptes de recette tous administrateurs) ; baisse de la cloche à l'ouverture d'une conversation (notifications déjà lues).
+- À valider par le fondateur : montants en clair dans le journal des e-mails d'appel de charges ; `amount` devient un total à répartir quand l'appel vise plusieurs lots ; relecture des traductions arabes (« barème »).
+- Limiteurs de messagerie en mémoire (par instance d'API).
 
-- Lot 1 : sous-menu sélectionné en blanc et gras (sidebar, tiroir, popup du rail replié).
-- Lot 2 : répartition des appels de charges par tantièmes, type de lot ou équitable ; barème par type de lot par copropriété (`bareme-types-lots`). Migrations `20261019140000_*`, `20261019190000_*`.
-- Lot 3 : notifications persistantes écrites avant envoi, messagerie interne, cloche, journal admin, vue plateforme, portails. Migration `20261019180000_*`. Messagerie exclue du catalogue IA.
-- Recette du 19/10 : 9 anomalies (`.agent-bus/bugs/BUG-2026-10-19-*`) toutes traitées : 001-003, 005-007 (correctifs de recette), 004 (interrupteur `includeAnnexLots`, migration `20261020090000_*`, nouvelles programmations avec lots annexes, existantes historiques — décision du fondateur), 008 (groupe actif ouvert après changement de langue), 009 (PR #185).
-- CI : routes notifications/messagerie classées CORE, catalogue IA régénéré ; suite API complète verte en local hors `ai.write-plan` (CRLF Windows).
-- Recette de reprise sur la démo (72066cee) le 2026-10-20 : 001, 002, 003, 004, 007, 008 passés ; migration `20261020090000` appliquée sans erreur sur `immotopia_demo` (les 4 migrations y sont).
+Pièges :
 
-Reste à faire :
+- Démo laissée sur `72066cee` (`AI_PROVIDER=fake` passé au lancement), comptes jetables `recette.mm.*@immotopia.test` et données de recette dans `immotopia_demo`.
+- Dossier résiduel `D:\APP\Immobillier-worktrees\menu-ci` (retiré de git, non vide) : à effacer à la main après avoir vérifié qu'il ne contient aucune jonction.
 
-- Recette finie le 2026-10-20 avec les sessions a2 et b1 ouvertes par l'utilisateur : 005 réussi (cloche de a2 : 2 appels de charges) ; 006 réussi en partie (badge messagerie immédiat ; baisse de la cloche non observée, notifications de message déjà lues) ; isolation OK pour b1 ; oracle 403/404 confirmé sur la démo sans le correctif (PR #185). Non testé : refus du journal pour un utilisateur sans permission (tous les comptes de recette sont administrateurs). Défaut mineur : « Un envoi a échoué » affiché deux fois dans la cloche.
-- Nouvelle anomalie mineure BUG-2026-10-20-001 : le journal affiche « Error EAUTH » brut. La démo a un SMTP qui refuse l'authentification : les e-mails sont en échec (pas « ignorés »).
-- Autres oracles d'existence relevés (PR #185) : traités sur `fix/oracles-et-finitions`, ainsi que BUG-2026-10-20-001 et le double « Un envoi a échoué ».
-- Migrations appliquées seulement sur `immotopia_demo` ; ailleurs seulement après accord.
-- À valider : montants en clair dans le journal des e-mails d'appel de charges ; `amount` = total à répartir ; relecture de l'arabe.
-
-Pièges et décisions :
-
-- Copies de travail sous `D:\APP\Immobillier-worktrees\` : `menu-ci` (branche d'intégration, `node_modules` propre) ; `menu-lot-6`, `menu-lot-7`, `isolation-agence` (jonctions vers le checkout principal : `rmdir` des jonctions AVANT `git worktree remove`).
-- Configs Jest temporaires hors dépôt dans le scratchpad de la session (stubs livekit/aws pour le `node_modules` partagé, auquel ces paquets manquent).
-- Comptes jetables `recette.mm.*@immotopia.test` et données de recette dans la base de démo ; démo laissée sur 72066cee, serveurs arrêtés.
-- Fusion de `origin/main` (0839b2ca9, PR #184 correctifs de l'audit du 19/10) résolue le 2026-10-20 en gardant les deux côtés : catalogues `common.json`, `menu-catalog.ts` (`agence-notifications` + `mon-compte*`), limiteurs (messagerie, renvoi, envoi de test WhatsApp), `schema.prisma` (modèles de messagerie + `JobLock`), classeur des fonctionnalités (main + 25 lignes de la branche = 1150 lignes). Migrations de la branche toutes postérieures à `20261019130000_audit_integrite_schema` (main), sans collision. Après cette fusion, relancer `npm ci` à la racine (nouvelle dépendance `@pdf-lib/fontkit`).
-- Deux tests web corrigés : l'ouverture d'emblée du groupe de la page courante (anomalie 008) ajoute un sous-menu `role="menu"` dans `particulier-navigation.test.tsx` ; un `reduce` de `syndics.charge-schedules.test.ts` ne compilait pas sous ts-jest (`as number[]`).
-
-````markdown
 ## Branche `feat/mon-compte-abonnement` — 2026-10-19
 
 **État :** prêt à relire — PR ouverte (base `main`), à fusionner par l'utilisateur
@@ -304,7 +325,6 @@ Pièges et décisions :
 
 - …
 ```
-````
 
 ## Branche `fix/test-prestataire-syndic-instable` — 2026-10-19
 
