@@ -284,6 +284,80 @@ describe('acceptInvitation — jamais de reecriture de mot de passe sur un compt
 
     await expect(acceptInvitation({ token: 'peu-importe' })).rejects.toMatchObject({ statusCode: 400 });
   });
+
+  it("session d'un autre compte + adresse invitee sans compte : 409 INVITATION_FOR_ANOTHER_ACCOUNT, rien n'est ecrit", async () => {
+    mockPrisma.user.rows.push({
+      id: 'session-a',
+      email: 'a@example.com',
+      passwordHash: 'x',
+      isActive: true,
+      emailVerified: true
+    });
+    const invitation = seedInvitation({ email: 'bob@gmail.com', tenantId: TENANT_A });
+    const usersBefore = mockPrisma.user.rows.length;
+    const membershipsBefore = mockPrisma.membership.rows.length;
+
+    const error: any = await acceptInvitation({
+      token: 'peu-importe',
+      requestingUserId: 'session-a',
+      password: 'MotDePasseValide#1',
+      fullName: 'Bob'
+    }).catch(e => e);
+
+    expect(error).toMatchObject({
+      statusCode: 409,
+      code: 'INVITATION_FOR_ANOTHER_ACCOUNT',
+      data: { maskedEmail: 'b•••@gmail.com' }
+    });
+    expect(error.message).toContain('b•••@gmail.com');
+    expect(JSON.stringify([error.message, error.data])).not.toContain('bob@gmail.com');
+    expect(mockPrisma.user.rows.length).toBe(usersBefore);
+    expect(mockPrisma.membership.rows.length).toBe(membershipsBefore);
+    const stored = mockPrisma.invitation.rows.find((row: any) => row.id === invitation.id)!;
+    expect(stored.status).toBe(InvitationStatus.PENDING);
+  });
+
+  it("invitation expiree + session d'un autre compte : erreur d'expiration habituelle, pas INVITATION_FOR_ANOTHER_ACCOUNT", async () => {
+    mockPrisma.user.rows.push({
+      id: 'session-a',
+      email: 'a@example.com',
+      passwordHash: 'x',
+      isActive: true,
+      emailVerified: true
+    });
+    seedInvitation({ email: 'bob@gmail.com', tenantId: TENANT_A, expiresAt: new Date(Date.now() - 1000) });
+
+    const error: any = await acceptInvitation({ token: 'peu-importe', requestingUserId: 'session-a' }).catch(e => e);
+
+    expect(error).toMatchObject({ statusCode: 409, message: 'Cette invitation a expiré.' });
+    expect(error.code).not.toBe('INVITATION_FOR_ANOTHER_ACCOUNT');
+  });
+
+  it("session d'un autre compte + compte existant pour l'adresse invitee : meme erreur", async () => {
+    mockPrisma.user.rows.push({
+      id: 'session-a',
+      email: 'a@example.com',
+      passwordHash: 'x',
+      isActive: true,
+      emailVerified: true
+    });
+    mockPrisma.user.rows.push({
+      id: 'existing-b',
+      email: 'carol@example.com',
+      passwordHash: 'x',
+      isActive: true,
+      emailVerified: true
+    });
+    const invitation = seedInvitation({ email: 'carol@example.com', tenantId: TENANT_A });
+
+    await expect(acceptInvitation({ token: 'peu-importe', requestingUserId: 'session-a' })).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'INVITATION_FOR_ANOTHER_ACCOUNT',
+      data: { maskedEmail: 'c•••@example.com' }
+    });
+    const stored = mockPrisma.invitation.rows.find((row: any) => row.id === invitation.id)!;
+    expect(stored.status).toBe(InvitationStatus.PENDING);
+  });
 });
 
 describe('Casse des e-mails — le garde anti-super-admin et la recherche de compte ne se contournent pas par variation de casse', () => {
