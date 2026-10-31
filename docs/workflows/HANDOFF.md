@@ -17,6 +17,33 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## État des lieux (pilote) — 2026-10-31
+
+**État :** constat seul, aucun code modifié. Branche `docs/etat-des-lieux-2026-10-31` (cette section).
+**Référence :** `main` = `37123d68` (PR #190, 2026-10-22) ; aucun commit sur `main` depuis.
+
+Déploiements (registre des déploiements GitHub, `/health` 200 sur les deux le 2026-10-31) :
+
+- Staging ET production à `e5c866cd` (2026-10-20, 16:27 et 16:40 UTC, workflow « Déploiement » lancé à la main). Les migrations de #183 et #184 ont dû passer avec ce déploiement (`deploy.sh` les applique ; non vérifié sur les bases) ; `db:seed:catalog` (prix de l'extension Signatures) non confirmé.
+- Sur `main`, pas déployés : #188 (oracles d'existence d'agence, motifs d'échec des notifications) et #190 (script de saisie de la clé ImmoCopilot). Aucune migration dans l'écart.
+- Les exécutions automatiques finissent toutes en `skipped` : `AUTO_DEPLOY_STAGING` n'est pas activé.
+
+Non fusionné :
+
+- PR ouvertes : #175 (invitation ouverte avec la session d'un autre compte : en conflit), #179 (passation QA2 : en conflit, périmée), #189 (passation menu-messagerie : CI « Web lot 4/4 » rouge, sans doute l'instabilité connue).
+- Branches sans PR : `feat/syndic-encaissement` (portail copropriétaire : AG en cartes, vote en ligne, menu à plat ; 23 fichiers, 2026-10-15) ; `feat/abonnement-libre-service` (sauvegarde inachevée, jamais vérifiée, numéro 045 en collision) ; `feat/sms-lot-1` et `docs/spec-fournisseur-sms` (spec 020, en partie dépassées par `lib/sms` de la signature S7) ; `wip/port-oi-finance` (sans doute repris par #142) ; `test/recette-operateur-integre` (17 commits, 307 fichiers, ~100 conflits). `feat/mon-compte-abonnement` est bien fusionnée (#181, squash) malgré `--no-merged`.
+
+Specs non entamées (aucun code sur `main`, vérifié par recherche) : 027 clôture d'exercice Syndic ; 028 crédits IA ; 035 vue Groupe, 036 multi-devises, 037 dossier bancaire et fiscal (numéros réservés, aucun dossier) ; démembrement (C6, plus de numéro) ; 042 P5 (portails, tâche quotidienne, prénotifications, rejets) et P6 ; routes de l'abonnement libre-service ; liste serveur des conversations ImmoCopilot. Partielles : 042 prélèvement (P0–P4 faits), 047 (T069 validation comptable des 5521x, recette), 031 sans SMS. Dossier `specs/main` = gabarit vide ; doublons de numéros 023 et 042.
+
+Livré mais pas en service (actions du propriétaire) : visio d'AG (`LIVEKIT_*` absents), Yousign (staging en `internal`), SMS Orange (nom d'expéditeur à faire approuver), PaySecureHub en mode réel (prod en `SIMULATOR` pour les abonnements), WhatsApp Meta, ImmoCopilot en prod (`ops:set-ai-provider` et clé), lecture IA des preuves de paiement (clé Gemini), `TENANT_GUARD_MODE=warn`.
+
+Anomalies du bus `.agent-bus/bugs` (local, 243 fiches) : 128 passées, 61 nouvelles, 44 prêtes au retest, 6 en correction, 3 bloquées. Presque toutes les ouvertes datent du 27/09 au 01/10 (recette des packs) et une partie est corrigée sans retest (contrôle de solde de trésorerie, catalogues anglais) : à trier par une recette de reprise avant de s'y fier.
+
+Pièges :
+
+- Le checkout principal est encore sur `feat/signature-s5-s7` (déjà fusionnée), 372 commits derrière `main`, avec des modifications locales (`.claude/launch.json`, `packages/api/package.json`) : lire l'état depuis `origin/main` (`git show`, `git grep`) ou depuis un worktree à jour, jamais depuis cet arbre.
+- Disque D: à 97 % (15 Go libres) ; une quinzaine de worktrees périmés sous `.claude/worktrees/` et `D:\APP\Immobillier-worktrees\` (retirer les jonctions avec `rmdir` avant tout `git worktree remove`).
+
 ## Branche `fix/oracles-et-finitions` — 2026-10-20
 
 **État :** PR vers `main` (fusion par l'utilisateur). Oracles d'existence d'agence restants après la PR #185 et deux finitions de la recette des notifications.
