@@ -72,7 +72,11 @@ export interface LotLabelInput {
  * @param fallbackReference Repli si `lot` est absent ou sans numéro (ex. un
  *   `lotId` technique), pour ne jamais afficher une chaîne vide.
  */
-export function formatLotLabel(lot: LotLabelInput | null | undefined, fallbackReference?: string | null): string {
+export function formatLotLabel(
+  lot: LotLabelInput | null | undefined,
+  fallbackReference?: string | null,
+  options: { withShares?: boolean } = {}
+): string {
   const lotNumber = lot?.lotNumber?.trim();
   const segments: string[] = [lotNumber || fallbackReference?.trim() || t('Lot inconnu')];
 
@@ -81,7 +85,9 @@ export function formatLotLabel(lot: LotLabelInput | null | undefined, fallbackRe
     segments.push(typeLabel);
   }
 
-  if (typeof lot?.generalShares === 'number' && lot.generalShares > 0) {
+  // Les tantièmes ne s'affichent que là où ils pèsent (votes, procurations d'assemblée) : ailleurs, les charges
+  // suivent le barème ou le budget et « 1 tantième » n'apprend rien.
+  if (options.withShares && typeof lot?.generalShares === 'number' && lot.generalShares > 0) {
     segments.push(t('{{shares}} tantièmes', { shares: lot.generalShares }));
   }
 

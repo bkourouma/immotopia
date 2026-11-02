@@ -71,7 +71,10 @@ export const lotPaymentSchema = z
   .strict();
 
 export const monthlyTrackingQuerySchema = z.object({
-  year: z.coerce.number().int().min(2000).max(2100)
+  /** Absent : l'année courante, ou celle du budget quand `budgetId` est donné. */
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+  /** Ne garde que les appels des lots d'appels rattachés à ce budget ; absent = tous les appels. */
+  budgetId: z.string().uuid().optional()
 });
 
 export type LotPaymentBody = z.infer<typeof lotPaymentSchema>;

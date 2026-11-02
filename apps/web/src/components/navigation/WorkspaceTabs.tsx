@@ -1,6 +1,8 @@
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { cn } from '../../lib/utils';
+import { t } from '../../i18n/t';
 import './WorkspaceTabs.css';
 
 /**
@@ -22,6 +24,12 @@ import './WorkspaceTabs.css';
  * compte du RTL ; Entrée/Espace active le lien focalisé comme n'importe quel
  * lien. Rien ne navigue au seul déplacement du focus : un utilisateur clavier
  * doit pouvoir parcourir les onglets sans quitter la page à chaque flèche.
+ *
+ * Défilement : quand les onglets débordent de la largeur disponible, une flèche
+ * apparaît du côté où il reste des onglets cachés (début et/ou fin, inversés en
+ * RTL) et fait défiler d'une bonne portion de la barre ; l'onglet actif est
+ * recentré à l'ouverture. Le défilement tactile, la molette horizontale et le
+ * clavier restent actifs.
  */
 
 export interface WorkspaceTabItem {
@@ -65,9 +73,36 @@ function isWithinRtl(node: HTMLElement | null): boolean {
   return false;
 }
 
+/** Flèche de défilement posée au bord de la barre ; hors de l'ordre de tabulation (le clavier a déjà les flèches du tablist). */
+const ScrollButton: React.FC<{
+  side: 'start' | 'end';
+  rtl: boolean;
+  label: string;
+  onClick: () => void;
+}> = ({ side, rtl, label, onClick }) => {
+  // Début de la barre = gauche en LTR, droite en RTL.
+  const pointsLeft = (side === 'start') !== rtl;
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-label={label}
+      data-testid={`workspace-tabs-scroll-${side}`}
+      onClick={onClick}
+      style={side === 'start' ? { insetInlineStart: 0 } : { insetInlineEnd: 0 }}
+      className="absolute top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-line-subtle bg-surface-card text-content-secondary shadow-sm transition-colors hover:bg-brand-bg hover:text-brand-strong"
+    >
+      {pointsLeft ? <LeftOutlined aria-hidden="true" /> : <RightOutlined aria-hidden="true" />}
+    </button>
+  );
+};
+
 export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ items, ariaLabel, className }) => {
   const location = useLocation();
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const [overflow, setOverflow] = useState({ start: false, end: false });
+  const [rtl, setRtl] = useState(false);
   const tabRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
   const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
 
@@ -88,6 +123,54 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ items, ariaLabel, 
   }, [items, location.pathname]);
 
   const activeItem = activeIndex >= 0 ? items[activeIndex] : undefined;
+
+  // Reste-t-il des onglets cachés avant et/ou après ? `scrollLeft` part de 0 au début de la barre et
+  // devient négatif en RTL : sa valeur absolue est donc la distance parcourue, dans les deux sens d'écriture.
+  const updateOverflow = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const travelled = Math.abs(scroller.scrollLeft);
+    const max = scroller.scrollWidth - scroller.clientWidth;
+    const next = { start: travelled > 1, end: travelled < max - 1 };
+    setOverflow(previous => (previous.start === next.start && previous.end === next.end ? previous : next));
+  }, []);
+
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    setRtl(isWithinRtl(scroller));
+    updateOverflow();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateOverflow);
+      return () => window.removeEventListener('resize', updateOverflow);
+    }
+    const observer = new ResizeObserver(updateOverflow);
+    observer.observe(scroller);
+    if (listRef.current) observer.observe(listRef.current);
+    return () => observer.disconnect();
+  }, [items, updateOverflow]);
+
+  // À l'ouverture d'un onglet lointain, la barre se recentre dessus (la barre seule défile, jamais la page).
+  const activeKey = activeItem?.key;
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    const activeEl = activeKey ? tabRefs.current.get(activeKey) : undefined;
+    if (!scroller || !activeEl) return;
+    const scrollerRect = scroller.getBoundingClientRect();
+    const tabRect = activeEl.getBoundingClientRect();
+    if (tabRect.left >= scrollerRect.left && tabRect.right <= scrollerRect.right) return;
+    const delta = tabRect.left + tabRect.width / 2 - (scrollerRect.left + scrollerRect.width / 2);
+    scroller.scrollBy?.({ left: delta, behavior: 'smooth' });
+  }, [activeKey]);
+
+  const scrollTabs = (direction: 'start' | 'end') => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const step = Math.max(160, scroller.clientWidth * 0.6);
+    // `scrollBy` est physique : vers la fin, c'est la droite en LTR et la gauche en RTL.
+    const physical = (direction === 'end' ? 1 : -1) * (rtl ? -1 : 1);
+    scroller.scrollBy?.({ left: physical * step, behavior: 'smooth' });
+  };
 
   // Repositionne l'indicateur sur l'onglet actif. Le calcul est fait dans le
   // référentiel du conteneur `listRef` — qui défile AVEC les onglets — et non
@@ -166,69 +249,82 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ items, ariaLabel, 
   if (items.length === 0) return null;
 
   return (
-    <div className={cn('workspace-tabs-scroll overflow-x-auto', className)}>
-      <div
-        ref={listRef}
-        role="tablist"
-        aria-label={ariaLabel}
-        onKeyDown={handleKeyDown}
-        className="relative flex min-w-max items-center gap-1 border-b border-line-subtle"
-      >
-        {items.map((item, index) => {
-          const active = index === activeIndex;
-          // Roving tabindex : un seul onglet dans l'ordre de tabulation — le
-          // repli sur le premier tient au cas où aucune route ne matche
-          // encore (donnée en cours de résolution du contexte syndic).
-          const roving = activeIndex >= 0 ? activeIndex : 0;
-          return (
-            <Link
-              key={item.key}
-              to={item.href}
-              ref={node => {
-                if (node) tabRefs.current.set(item.key, node);
-                else tabRefs.current.delete(item.key);
+    <div className={cn('relative', className)}>
+      <div ref={scrollerRef} onScroll={updateOverflow} className="workspace-tabs-scroll overflow-x-auto">
+        <div
+          ref={listRef}
+          role="tablist"
+          aria-label={ariaLabel}
+          onKeyDown={handleKeyDown}
+          className="relative flex min-w-max items-center gap-1 border-b border-line-subtle"
+        >
+          {items.map((item, index) => {
+            const active = index === activeIndex;
+            // Roving tabindex : un seul onglet dans l'ordre de tabulation — le
+            // repli sur le premier tient au cas où aucune route ne matche
+            // encore (donnée en cours de résolution du contexte syndic).
+            const roving = activeIndex >= 0 ? activeIndex : 0;
+            return (
+              <Link
+                key={item.key}
+                to={item.href}
+                ref={node => {
+                  if (node) tabRefs.current.set(item.key, node);
+                  else tabRefs.current.delete(item.key);
+                }}
+                role="tab"
+                aria-selected={active}
+                tabIndex={index === roving ? 0 : -1}
+                className={cn(
+                  'relative flex shrink-0 items-center gap-2 whitespace-nowrap rounded-sm px-4 py-3 text-sm font-medium text-content-secondary',
+                  'transition-colors duration-fast ease-standard',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                  active ? 'font-semibold text-primary' : 'hover:bg-brand-bg hover:text-brand-strong'
+                )}
+              >
+                {item.icon && (
+                  <span aria-hidden="true" className="text-base leading-none">
+                    {item.icon}
+                  </span>
+                )}
+                {item.label}
+                {item.badge && item.badge > 0 ? (
+                  <span
+                    data-testid={`tab-badge-${item.key}`}
+                    aria-label={`${item.badge}`}
+                    className="inline-flex min-w-5 items-center justify-center rounded-full bg-brand-bg px-1.5 text-xs font-semibold text-brand-strong"
+                  >
+                    {item.badge > 99 ? '99+' : item.badge}
+                  </span>
+                ) : null}
+              </Link>
+            );
+          })}
+          {indicator && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-0 h-[3px] rounded-full bg-brand"
+              style={{
+                width: indicator.width,
+                left: indicator.left,
+                transition:
+                  'left var(--duration-base) var(--ease-standard), width var(--duration-base) var(--ease-standard)'
               }}
-              role="tab"
-              aria-selected={active}
-              tabIndex={index === roving ? 0 : -1}
-              className={cn(
-                'relative flex shrink-0 items-center gap-2 whitespace-nowrap rounded-sm px-4 py-3 text-sm font-medium text-content-secondary',
-                'transition-colors duration-fast ease-standard',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                active ? 'font-semibold text-primary' : 'hover:bg-brand-bg hover:text-brand-strong'
-              )}
-            >
-              {item.icon && (
-                <span aria-hidden="true" className="text-base leading-none">
-                  {item.icon}
-                </span>
-              )}
-              {item.label}
-              {item.badge && item.badge > 0 ? (
-                <span
-                  data-testid={`tab-badge-${item.key}`}
-                  aria-label={`${item.badge}`}
-                  className="inline-flex min-w-5 items-center justify-center rounded-full bg-brand-bg px-1.5 text-xs font-semibold text-brand-strong"
-                >
-                  {item.badge > 99 ? '99+' : item.badge}
-                </span>
-              ) : null}
-            </Link>
-          );
-        })}
-        {indicator && (
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute bottom-0 h-[3px] rounded-full bg-brand"
-            style={{
-              width: indicator.width,
-              left: indicator.left,
-              transition:
-                'left var(--duration-base) var(--ease-standard), width var(--duration-base) var(--ease-standard)'
-            }}
-          />
-        )}
+            />
+          )}
+        </div>
       </div>
+      {overflow.start ? (
+        <ScrollButton
+          side="start"
+          rtl={rtl}
+          label={t('Voir les onglets précédents')}
+          onClick={() => scrollTabs('start')}
+        />
+      ) : null}
+      {overflow.end ? (
+        <ScrollButton side="end" rtl={rtl} label={t('Voir les onglets suivants')} onClick={() => scrollTabs('end')} />
+      ) : null}
     </div>
   );
 };

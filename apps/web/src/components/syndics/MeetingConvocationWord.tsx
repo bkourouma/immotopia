@@ -29,7 +29,10 @@ export const MeetingConvocationWord: React.FC<MeetingConvocationWordProps> = ({
   const { message } = App.useApp();
   const [lotId, setLotId] = useState<string | undefined>();
   const [downloading, setDownloading] = useState(false);
-  const options = useMemo(() => lots.map(lot => ({ value: lot.id, label: formatLotLabel(lot) })), [lots]);
+  const options = useMemo(
+    () => lots.map(lot => ({ value: lot.id, label: formatLotLabel(lot, undefined, { withShares: true }) })),
+    [lots]
+  );
 
   if (lots.length === 0) return null;
 

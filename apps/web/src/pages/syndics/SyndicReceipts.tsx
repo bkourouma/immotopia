@@ -6,7 +6,7 @@ import dayjs from 'dayjs';
 import { MoneyValue, Table } from '../../components/primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { PrintReceiptsModal } from '../../components/syndics/PrintReceiptsModal';
-import { listSyndicateLots } from '../../services/syndic-service';
+import { listBudgets, listSyndicateLots } from '../../services/syndic-service';
 import {
   backfillMissingReceipts,
   downloadReceiptFile,
@@ -14,7 +14,7 @@ import {
   listSyndicateReceipts,
   resendReceiptEmail
 } from '../../services/syndic-receipt-service';
-import { ReceiptKind, ReceiptView, SyndicateLot } from '../../types/syndic-types';
+import { ReceiptKind, ReceiptView, SyndicateBudget, SyndicateLot } from '../../types/syndic-types';
 import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
@@ -86,6 +86,9 @@ export const SyndicReceipts: React.FC = () => {
   const [kindFilter, setKindFilter] = useState<ReceiptKind | undefined>(undefined);
   const [lotFilter, setLotFilter] = useState<string | undefined>(undefined);
   const [contactFilter, setContactFilter] = useState<string | undefined>(undefined);
+  // Vide = tous les documents, y compris ceux sans budget.
+  const [budgetFilter, setBudgetFilter] = useState<string | undefined>(undefined);
+  const [budgets, setBudgets] = useState<SyndicateBudget[]>([]);
 
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -97,6 +100,10 @@ export const SyndicReceipts: React.FC = () => {
     listSyndicateLots(effectiveTenantId, syndicId)
       .then(setLots)
       .catch(() => setLots([]));
+    // Liste des budgets du filtre : information annexe, son échec laisse simplement le filtre vide.
+    listBudgets(effectiveTenantId, syndicId)
+      .then(data => setBudgets(Array.isArray(data) ? data : []))
+      .catch(() => setBudgets([]));
   }, [effectiveTenantId, syndicId]);
 
   const loadReceipts = async (page = 1) => {
@@ -108,6 +115,7 @@ export const SyndicReceipts: React.FC = () => {
         kind: kindFilter,
         lotId: lotFilter,
         contactId: contactFilter,
+        budgetId: budgetFilter,
         page,
         limit: pagination.limit
       });
@@ -128,7 +136,12 @@ export const SyndicReceipts: React.FC = () => {
     }
     void loadReceipts(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveTenantId, syndicId, kindFilter, lotFilter, contactFilter]);
+  }, [effectiveTenantId, syndicId, kindFilter, lotFilter, contactFilter, budgetFilter]);
+
+  const budgetOptions = useMemo(
+    () => budgets.map(budget => ({ value: budget.id, label: `${budget.label} (${budget.fiscalYear})` })),
+    [budgets]
+  );
 
   const lotOptions = useMemo(() => lots.map(lot => ({ value: lot.id, label: formatLotLabel(lot) })), [lots]);
 
@@ -407,6 +420,20 @@ export const SyndicReceipts: React.FC = () => {
               />
             </label>
             <label>
+              <Text style={{ marginInlineEnd: 8 }}>{t('Budget')}</Text>
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                style={{ minWidth: 260 }}
+                placeholder={t('Tous les budgets')}
+                aria-label={t('Budget')}
+                value={budgetFilter}
+                onChange={value => setBudgetFilter(value)}
+                options={budgetOptions}
+              />
+            </label>
+            <label>
               <Text style={{ marginInlineEnd: 8 }}>{t('Copropriétaire')}</Text>
               <Select
                 allowClear
@@ -433,6 +460,7 @@ export const SyndicReceipts: React.FC = () => {
                 kind: kindFilter,
                 lotId: lotFilter,
                 contactId: contactFilter,
+                budgetId: budgetFilter,
                 page: exportPage,
                 limit
               });

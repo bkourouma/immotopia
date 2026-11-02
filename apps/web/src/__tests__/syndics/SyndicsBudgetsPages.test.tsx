@@ -72,12 +72,27 @@ vi.mock('antd', async () => {
   const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
     Button: passthrough('button'),
-    Card: passthrough(),
+    // `extra` porte le sélecteur de budget de la carte « Répartition des lots ».
+    Card: ({ children, extra }: any) => (
+      <div>
+        {extra}
+        {children}
+      </div>
+    ),
     Form: FormComponent,
     Input: passthrough('input'),
     InputNumber: passthrough('input'),
     Modal: ModalComponent,
-    Select: passthrough('select'),
+    // Un vrai <select> natif : `onChange` reçoit la valeur, comme le `Select` d'AntD.
+    Select: ({ options = [], value, onChange, 'aria-label': ariaLabel }: any) => (
+      <select aria-label={ariaLabel} value={value ?? ''} onChange={event => onChange?.(event.target.value)}>
+        {options.map((option: any) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    ),
     Space: passthrough(),
     Spin: passthrough(),
     Table,
@@ -346,5 +361,101 @@ describe('Syndics budgets page — budget clôturé (lecture seule)', () => {
     const repartirButton = (await screen.findByText('Répartir')) as HTMLButtonElement;
     expect(repartirButton.disabled).toBe(true);
     expect(screen.queryByText('Générer appels')).toBeNull();
+  });
+});
+
+describe('Syndics budgets page — répartition des lots par budget', () => {
+  const allocationFor = (lotNumber: string) => ({
+    id: `alloc-${lotNumber}`,
+    budgetId: 'b',
+    lotId: `lot-${lotNumber}`,
+    totalAllocated: 1000,
+    breakdown: [],
+    lot: { id: `lot-${lotNumber}`, lotNumber, lotType: 'APARTMENT', generalShares: 1 }
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiClient.get.mockImplementation((url: string) => {
+      if (url.endsWith('/budgets')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: [
+              {
+                id: 'budget-2025',
+                fiscalYear: 2025,
+                label: 'Budget 2025',
+                totalAmount: 1000,
+                status: 'APPROVED',
+                currency: 'XOF',
+                createdAt: '2025-01-10T00:00:00.000Z',
+                allocations: [allocationFor('ANCIEN-1')]
+              },
+              {
+                id: 'budget-2026',
+                fiscalYear: 2026,
+                label: 'Budget 2026',
+                totalAmount: 1000,
+                status: 'DRAFT',
+                currency: 'XOF',
+                createdAt: '2026-01-10T00:00:00.000Z',
+                allocations: [allocationFor('RECENT-1')]
+              }
+            ]
+          }
+        });
+      }
+      if (url.endsWith('/charges/batch')) {
+        const batch = (id: string, label: string, budgetId: string | null) => ({
+          id,
+          label,
+          period: '2026',
+          dueDate: '2026-04-30T00:00:00.000Z',
+          batchType: 'REGULAR',
+          budgetId,
+          totalAmount: 1000,
+          chargeCalls: [],
+          status: 'SENT'
+        });
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: [
+              batch('batch-old', 'Campagne ancienne', 'budget-2025'),
+              batch('batch-new', 'Campagne récente', 'budget-2026')
+            ]
+          }
+        });
+      }
+      if (url.endsWith('/lots')) return Promise.resolve({ data: { success: true, data: [] } });
+      return Promise.reject(new Error(`Unhandled GET ${url}`));
+    });
+  });
+
+  it('affiche par défaut les allocations du dernier budget créé', async () => {
+    renderWithRoute();
+    expect(await screen.findByText('RECENT-1 · Appartement')).toBeTruthy();
+    expect(screen.queryByText('ANCIEN-1 · Appartement')).toBeNull();
+  });
+
+  it('le sélecteur de budget bascule le tableau sur le budget choisi', async () => {
+    renderWithRoute();
+    await screen.findByText('RECENT-1 · Appartement');
+    fireEvent.change(screen.getAllByLabelText('Budget')[0], { target: { value: 'budget-2025' } });
+    expect(await screen.findByText('ANCIEN-1 · Appartement')).toBeTruthy();
+    expect(screen.queryByText('RECENT-1 · Appartement')).toBeNull();
+  });
+
+  it('filtre aussi les campagnes d’appels par budget, avec le même sélecteur', async () => {
+    renderWithRoute();
+    expect(await screen.findByText('Campagne récente')).toBeTruthy();
+    expect(screen.queryByText('Campagne ancienne')).toBeNull();
+
+    // Le sélecteur de la carte « Campagnes d'appels » est le second de la page.
+    fireEvent.change(screen.getAllByLabelText('Budget')[1], { target: { value: 'budget-2025' } });
+    expect(await screen.findByText('Campagne ancienne')).toBeTruthy();
+    expect(screen.queryByText('Campagne récente')).toBeNull();
+    expect(await screen.findByText('ANCIEN-1 · Appartement')).toBeTruthy();
   });
 });

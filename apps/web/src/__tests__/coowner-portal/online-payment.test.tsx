@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -152,64 +152,59 @@ describe('Appels de charges — paiement en ligne', () => {
     mountPage();
 
     expect(await screen.findByText(/pas encore ouvert pour votre copropriété/, {}, WAIT)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Payer en ligne' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Payer en ligne/ })).not.toBeInTheDocument();
   });
 
-  it("n'affiche ni bouton ni case si la disponibilité est en erreur", async () => {
+  it("n'affiche aucun bouton « Payer en ligne » si la disponibilité est en erreur", async () => {
     listMyChargeCalls.mockResolvedValue([call()]);
     getOnlinePaymentAvailability.mockRejectedValue({ response: { status: 403 } });
 
     mountPage();
 
     await screen.findByText('Mes appels de charges', {}, WAIT);
-    expect(screen.queryByRole('button', { name: 'Payer en ligne' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Payer en ligne/ })).not.toBeInTheDocument();
   });
 
-  it('additionne la sélection, la limite à un seul lot et grise les appels déjà engagés', async () => {
+  it('pose un bouton « Payer en ligne » sur chaque appel payable, sans colonne de sélection', async () => {
     listMyChargeCalls.mockResolvedValue([
       ...twoCallsSameLot(),
-      call({
-        id: 'call-3',
-        period: '2026-T3',
-        lot: { id: 'lot-2', lotNumber: 'B2', lotType: 'PARKING' }
-      }),
-      call({ id: 'call-4', period: '2026-T4', onlineCheckout: 'IN_PROGRESS' })
+      call({ id: 'call-3', period: '2026-T3', lot: { id: 'lot-2', lotNumber: 'B2', lotType: 'PARKING' } }),
+      call({ id: 'call-4', period: '2026-T4', onlineCheckout: 'IN_PROGRESS' }),
+      call({ id: 'call-5', period: '2026-T5', onlinePayable: false, status: 'PAID', paid: 100000, outstanding: 0 })
     ]);
     mountPage();
 
-    const payButton = await screen.findByRole('button', { name: 'Payer en ligne' }, WAIT);
-    expect(payButton).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Payer en ligne : 2026-T1' }, WAIT)).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Payer en ligne : 2026-T2' })).toBeEnabled();
+    // Autre lot : payable lui aussi, chaque appel se règle seul.
+    expect(screen.getByRole('button', { name: 'Payer en ligne : 2026-T3' })).toBeEnabled();
+    // Appel déjà engagé ou soldé : pas de bouton.
     expect(screen.getByText('Paiement en cours')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('checkbox', { name: "Sélectionner l'appel 2026-T1" }));
-    await userEvent.click(screen.getByRole('checkbox', { name: "Sélectionner l'appel 2026-T2" }));
-
-    expect(screen.getByText(/Total à payer/).textContent?.replace(/\s/g, '')).toContain('150000');
-    expect(screen.getByRole('button', { name: 'Payer en ligne' })).toBeEnabled();
-    // Autre lot et appel déjà en cours : non cochables.
-    expect(screen.getByRole('checkbox', { name: "Sélectionner l'appel 2026-T3" })).toBeDisabled();
-    expect(screen.getByRole('checkbox', { name: "Sélectionner l'appel 2026-T4" })).toBeDisabled();
-    // Frais à la charge du payeur.
-    expect(screen.getByText(/frais du service de paiement peuvent s/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Payer en ligne : 2026-T4' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Payer en ligne : 2026-T5' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Payer' })).not.toBeInTheDocument();
   });
 
-  it('retrouve la copropriété par son identifiant, même si deux copropriétés portent le même nom', async () => {
-    listMyChargeCalls.mockResolvedValue([call({ syndicateId: 's2' })]);
-    getOnlinePaymentAvailability.mockResolvedValue({
-      syndicates: [
-        { ...availability().syndicates[0], syndicateId: 's1', feesPaidBy: 'CLIENT' },
-        { ...availability().syndicates[0], syndicateId: 's2', feesPaidBy: 'AGENCY' }
-      ],
-      paymentMethods: ['WAVE']
-    });
+  it('affiche dans la colonne « Lot » le seul numéro du lot, sans le nom de la copropriété', async () => {
+    listMyChargeCalls.mockResolvedValue([call()]);
     mountPage();
 
-    await userEvent.click(await screen.findByRole('checkbox', { name: "Sélectionner l'appel 2026-T1" }, WAIT));
+    const row = (await screen.findByText('2026-T1', {}, WAIT)).closest('tr') as HTMLElement;
+    expect(within(row).getByText('A1')).toBeInTheDocument();
+    expect(within(row).queryByText(/Résidence Les Acacias/)).not.toBeInTheDocument();
+  });
 
-    expect(screen.getByText(/frais du service de paiement sont pris en charge/)).toBeInTheDocument();
-    expect(screen.queryByText(/frais du service de paiement peuvent s/)).not.toBeInTheDocument();
+  it("n'affiche aucun bandeau d'explication (mode démonstration, frais, moyens de paiement) au-dessus du tableau", async () => {
+    listMyChargeCalls.mockResolvedValue([call()]);
+    getOnlinePaymentAvailability.mockResolvedValue(availability({ mode: 'SIMULATOR', simulated: true }));
+    mountPage();
+
+    await screen.findByRole('button', { name: 'Payer en ligne : 2026-T1' }, WAIT);
+    expect(screen.queryByText('Mode démonstration')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Cliquez sur « Payer en ligne »/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/frais du service de paiement/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Moyens de paiement/)).not.toBeInTheDocument();
   });
 
   it('reprend un paiement en cours depuis la liste grâce à son code', async () => {
@@ -242,27 +237,15 @@ describe('Appels de charges — paiement en ligne', () => {
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
-  it('indique que les frais sont pris en charge par l’agence quand c’est le cas', async () => {
-    listMyChargeCalls.mockResolvedValue([call()]);
-    getOnlinePaymentAvailability.mockResolvedValue(availability({ feesPaidBy: 'AGENCY' }));
-    mountPage();
-
-    await userEvent.click(await screen.findByRole('checkbox', { name: "Sélectionner l'appel 2026-T1" }, WAIT));
-
-    expect(screen.getByText(/pris en charge par votre agence/)).toBeInTheDocument();
-  });
-
-  it('démarre le paiement du lot choisi puis redirige vers la page du fournisseur', async () => {
+  it('règle l’appel de la ligne seul puis redirige vers la page du fournisseur', async () => {
     listMyChargeCalls.mockResolvedValue(twoCallsSameLot());
-    startOnlinePayment.mockResolvedValue(checkout());
+    startOnlinePayment.mockResolvedValue(checkout({ chargeCallIds: ['call-2'] }));
     mountPage();
 
-    await userEvent.click(await screen.findByRole('checkbox', { name: "Sélectionner l'appel 2026-T1" }, WAIT));
-    await userEvent.click(screen.getByRole('checkbox', { name: "Sélectionner l'appel 2026-T2" }));
-    await userEvent.click(screen.getByRole('button', { name: 'Payer en ligne' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Payer en ligne : 2026-T2' }, WAIT));
 
     await waitFor(() => expect(redirectMock).toHaveBeenCalledWith(CHECKOUT_URL));
-    expect(startOnlinePayment).toHaveBeenCalledWith({ lotId: 'lot-1', chargeCallIds: ['call-1', 'call-2'] });
+    expect(startOnlinePayment).toHaveBeenCalledWith({ lotId: 'lot-1', chargeCallIds: ['call-2'] });
   });
 
   it("refuse une URL de fournisseur non sûre : aucune redirection, un message d'erreur", async () => {
@@ -270,8 +253,7 @@ describe('Appels de charges — paiement en ligne', () => {
     startOnlinePayment.mockResolvedValue(checkout({ checkoutUrl: 'javascript:alert(1)' }));
     mountPage();
 
-    await userEvent.click(await screen.findByRole('checkbox', { name: "Sélectionner l'appel 2026-T1" }, WAIT));
-    await userEvent.click(screen.getByRole('button', { name: 'Payer en ligne' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Payer en ligne : 2026-T1' }, WAIT));
 
     expect(await screen.findByText("Le paiement en ligne n'a pas pu être initié.", {}, WAIT)).toBeInTheDocument();
     expect(redirectMock).not.toHaveBeenCalled();
@@ -292,8 +274,7 @@ describe('Appels de charges — paiement en ligne', () => {
     });
     mountPage();
 
-    await userEvent.click(await screen.findByRole('checkbox', { name: "Sélectionner l'appel 2026-T1" }, WAIT));
-    await userEvent.click(screen.getByRole('button', { name: 'Payer en ligne' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Payer en ligne : 2026-T1' }, WAIT));
 
     expect(await screen.findByText('Un paiement en ligne est déjà en cours.', {}, WAIT)).toBeInTheDocument();
     expect(redirectMock).not.toHaveBeenCalled();
@@ -311,8 +292,7 @@ describe('Appels de charges — paiement en ligne', () => {
     });
     mountPage();
 
-    await userEvent.click(await screen.findByRole('checkbox', { name: "Sélectionner l'appel 2026-T1" }, WAIT));
-    await userEvent.click(screen.getByRole('button', { name: 'Payer en ligne' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Payer en ligne : 2026-T1' }, WAIT));
 
     expect(await screen.findByText('Paiement à vérifier par le syndic.', {}, WAIT)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reprendre le paiement' })).not.toBeInTheDocument();

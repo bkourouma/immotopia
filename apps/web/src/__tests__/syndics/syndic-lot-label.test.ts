@@ -11,7 +11,7 @@ import { formatLotLabel, isTechnicalPropertyTitle } from '../../utils/syndic-lot
  * tête.
  */
 describe('formatLotLabel', () => {
-  it('leads with the lot number, type and tantièmes when there is no linked property', () => {
+  it('leads with the lot number and type, without tantièmes, when there is no linked property', () => {
     expect(
       formatLotLabel({
         lotNumber: 'ACA-A1',
@@ -19,7 +19,22 @@ describe('formatLotLabel', () => {
         generalShares: 100,
         property: null
       })
-    ).toBe('ACA-A1 · Appartement · 100 tantièmes');
+    ).toBe('ACA-A1 · Appartement');
+  });
+
+  it('adds the tantièmes only when asked (votes and proxies of the general meeting)', () => {
+    const lot = {
+      lotNumber: 'ACA-A1',
+      lotType: 'APARTMENT',
+      generalShares: 100,
+      property: { title: 'Villa Les Cocotiers' }
+    };
+    expect(formatLotLabel(lot, undefined, { withShares: true })).toBe(
+      'ACA-A1 · Appartement · 100 tantièmes · Villa Les Cocotiers'
+    );
+    expect(formatLotLabel({ ...lot, generalShares: 0 }, undefined, { withShares: true })).toBe(
+      'ACA-A1 · Appartement · Villa Les Cocotiers'
+    );
   });
 
   it('never falls back to a generic placeholder for a lot without a linked property', () => {
@@ -28,7 +43,7 @@ describe('formatLotLabel', () => {
     expect(label.startsWith('ACA-A2')).toBe(true);
   });
 
-  it('appends the linked property title after the lot number, type and tantièmes', () => {
+  it('appends the linked property title after the lot number and type', () => {
     expect(
       formatLotLabel({
         lotNumber: 'B-12',
@@ -36,7 +51,7 @@ describe('formatLotLabel', () => {
         generalShares: 50,
         property: { title: 'Villa Les Cocotiers' }
       })
-    ).toBe('B-12 · Bureau · 50 tantièmes · Villa Les Cocotiers');
+    ).toBe('B-12 · Bureau · Villa Les Cocotiers');
   });
 
   it('never hides the lot number behind the property title (former bug in budgets/recouvrement/incidents)', () => {
@@ -57,7 +72,7 @@ describe('formatLotLabel', () => {
         generalShares: 10,
         property: { title: 'PROP-20260115-AB12-0001' }
       })
-    ).toBe('D-03 · Parking · 10 tantièmes');
+    ).toBe('D-03 · Parking');
   });
 
   it('degrades gracefully when lotType/generalShares are not provided by a lighter API payload', () => {

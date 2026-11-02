@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import AuthContext from '../../context/AuthContext';
@@ -264,6 +264,69 @@ describe('SyndicFinances — indicateurs et tableaux de détail', () => {
     // de relances.
     const sectionRetards = document.getElementById('finances-retards') as HTMLElement;
     expect(within(sectionRetards).getByText('9')).toBeInTheDocument();
+  });
+
+  it('filtre le tableau des appels par copropriétaire, sans toucher aux autres tableaux', async () => {
+    mockNonEmptyData();
+    mount();
+    expect(await screen.findByText('Finances copropriété', {}, { timeout: 8000 })).toBeInTheDocument();
+
+    const section = document.getElementById('finances-appels') as HTMLElement;
+    expect(within(section).getAllByText('Fabrice Aka').length).toBeGreaterThan(0);
+    expect(within(section).getAllByText('Awa Koné').length).toBeGreaterThan(0);
+
+    fireEvent.mouseDown(screen.getByLabelText('Filtrer par copropriétaire'));
+    fireEvent.click(await screen.findByTitle('Awa Koné'));
+
+    await waitFor(() => expect(within(section).queryAllByText('Fabrice Aka')).toHaveLength(0));
+    expect(within(section).getAllByText('Awa Koné').length).toBeGreaterThan(0);
+    // Le tableau des paiements reste complet.
+    const payments = document.getElementById('finances-paiements') as HTMLElement;
+    expect(within(payments).getAllByText('Fabrice Aka').length).toBeGreaterThan(0);
+  });
+
+  it('filtre le tableau des paiements reçus par copropriétaire, indépendamment des appels', async () => {
+    mockNonEmptyData();
+    mount();
+    expect(await screen.findByText('Finances copropriété', {}, { timeout: 8000 })).toBeInTheDocument();
+
+    const payments = document.getElementById('finances-paiements') as HTMLElement;
+    expect(within(payments).getAllByText('Fabrice Aka').length).toBeGreaterThan(0);
+    expect(within(payments).getAllByText('Awa Koné').length).toBeGreaterThan(0);
+
+    fireEvent.mouseDown(screen.getByLabelText('Filtrer les paiements par copropriétaire'));
+    fireEvent.click(await screen.findByTitle('Awa Koné'));
+
+    await waitFor(() => expect(within(payments).queryAllByText('Fabrice Aka')).toHaveLength(0));
+    expect(within(payments).getAllByText('Awa Koné').length).toBeGreaterThan(0);
+    // Le tableau des appels reste complet.
+    const calls = document.getElementById('finances-appels') as HTMLElement;
+    expect(within(calls).getAllByText('Fabrice Aka').length).toBeGreaterThan(0);
+  });
+
+  it('filtre le tableau des appels par fonds : l’API désigne les appels qui l’alimentent', async () => {
+    mockNonEmptyData();
+    mount();
+    expect(await screen.findByText('Finances copropriété', {}, { timeout: 8000 })).toBeInTheDocument();
+    const allCharges = await listAllChargeCalls.mock.results[0].value;
+    const onlyAwa = allCharges.filter((charge: any) => charge.lot?.owner?.firstName === 'Awa');
+    listAllChargeCalls.mockClear();
+    listAllChargeCalls.mockResolvedValue(onlyAwa);
+
+    fireEvent.mouseDown(screen.getByLabelText('Filtrer par fonds'));
+    fireEvent.click(await screen.findByTitle('Fonds de travaux'));
+
+    await waitFor(() => expect(listAllChargeCalls).toHaveBeenCalledWith('tenant-1', 'syndic-1', { fundId: 'fund-2' }));
+    const section = document.getElementById('finances-appels') as HTMLElement;
+    await waitFor(() => expect(within(section).queryAllByText('Fabrice Aka')).toHaveLength(0));
+    expect(within(section).getAllByText('Awa Koné').length).toBeGreaterThan(0);
+
+    // Retour à tous les fonds : l'ancienne liste est de nouveau affichée.
+    fireEvent.mouseDown(screen.getByLabelText('Filtrer par fonds'));
+    fireEvent.click(await screen.findByTitle('Fonds de roulement'));
+    await waitFor(() =>
+      expect(listAllChargeCalls).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', { fundId: 'fund-1' })
+    );
   });
 
   it('affiche « Aucune donnée » de façon identique sur les quatre tableaux quand rien n’existe', async () => {

@@ -31,6 +31,8 @@ export const receiptListQuerySchema = z
   .object({
     lotId: optionalUuid,
     contactId: optionalContactId,
+    /** Quittances des appels de ce budget, et reçus dont le paiement a soldé des appels de ce budget. */
+    budgetId: optionalUuid,
     kind: z.enum(['RECEIPT', 'QUITTANCE']).optional(),
     from: isoDaySchema.optional(),
     to: isoDaySchema.optional(),

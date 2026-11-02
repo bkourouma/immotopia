@@ -16,8 +16,10 @@ import {
   type PaymentProofReading,
   type ReceivingNumber
 } from '../../../services/coowner-portal-service';
+import { CopyOutlined } from '@ant-design/icons';
 import { MoneyValue, PhoneNumber } from '../../primitives';
 import { formatChargePeriod } from '../../../utils/charge-period';
+import { copyText, nationalNumber } from './copy-number';
 import {
   aiFieldHint,
   aiReadFailedMessage,
@@ -47,6 +49,8 @@ export interface DeclarationFormProps {
   calls: CoOwnerChargeCall[];
   /** Numéro du profil, prérempli dans « Numéro qui a payé » (peut être absent). */
   defaultPayerPhone?: string;
+  /** Déclaration lancée depuis la ligne d'un appel : lot, appel et montant (reste dû) sont préremplis. */
+  initialCall?: CoOwnerChargeCall;
 }
 
 const TOUCH = 40;
@@ -79,15 +83,17 @@ function activeNumbers(availability: CoOwnerDeclaredAvailability): ReceivingNumb
 
 function initialState(props: DeclarationFormProps): FormState {
   const numbers = activeNumbers(props.availability);
+  const call = props.initialCall;
+  const callLotId = call?.lot?.id && props.lots.some(lot => lot.id === call.lot?.id) ? call.lot.id : null;
   return {
     receivingNumberId: numbers.length === 1 ? numbers[0].id : null,
     payerPhone: props.defaultPayerPhone ?? '',
-    amount: null,
+    amount: call && callLotId && call.outstanding <= props.availability.maxAmount ? call.outstanding : null,
     paidAt: null,
     reference: '',
-    checkedLots: props.lots.length === 1 ? [props.lots[0].id] : [],
+    checkedLots: callLotId ? [callLotId] : props.lots.length === 1 ? [props.lots[0].id] : [],
     shares: {},
-    callIds: {},
+    callIds: call && callLotId ? { [callLotId]: [call.id] } : {},
     comment: '',
     ai: {}
   };
@@ -326,10 +332,20 @@ function ReceivingNumberField(
         >
           <Space orientation="vertical">
             {numbers.map(n => (
-              <Radio key={n.id} value={n.id} style={{ minHeight: TOUCH, alignItems: 'center' }}>
-                {operatorLabel(n.operator)} — <PhoneNumber value={formatPhoneForDisplay(n.phoneNumber)} /> —{' '}
-                {n.holderName}
-              </Radio>
+              <Space key={n.id} wrap size={4}>
+                <Radio value={n.id} style={{ minHeight: TOUCH, alignItems: 'center' }}>
+                  {operatorLabel(n.operator)} — <PhoneNumber value={formatPhoneForDisplay(n.phoneNumber)} />
+                </Radio>
+                <Button
+                  size="small"
+                  type="link"
+                  icon={<CopyOutlined />}
+                  aria-label={t('Copier le numéro {{numero}}', { numero: formatPhoneForDisplay(n.phoneNumber) })}
+                  onClick={() => void copyText(nationalNumber(n.phoneNumber), t('Numéro copié'))}
+                >
+                  {t('Copier')}
+                </Button>
+              </Space>
             ))}
           </Space>
         </Radio.Group>
@@ -900,6 +916,21 @@ function DeclarationDrawer(props: DeclarationFormProps): React.ReactElement {
     >
       {submitError ? <Alert type="error" showIcon style={{ marginBottom: 16 }} title={submitError} /> : null}
       <Typography.Paragraph type="secondary">{syndicate.name}</Typography.Paragraph>
+      {props.initialCall ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          title={t(
+            'Appel {{period}} · lot {{lot}} : envoyez {{amount}} FCFA à l’un des numéros ci-dessous, puis déclarez-le.',
+            {
+              period: formatChargePeriod(props.initialCall),
+              lot: props.initialCall.lot?.lotNumber ?? '',
+              amount: groupDigits(props.initialCall.outstanding)
+            }
+          )}
+        />
+      ) : null}
       {availability.aiPrefillAvailable ? proofBlock : null}
       <ReceivingNumberField
         state={state}

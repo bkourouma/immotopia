@@ -142,6 +142,39 @@ export const DEV_TENANT_ACCOUNTS: DevTenantAccounts[] = [
   ),
   ...packGroups('patrimoine-pro', 'Pack Patrimoine Pro', 'Admin Test Patrimoine Pro', 'patrimoine-pro'),
   {
+    // Portails de l'agence « Pack Agence · 6 mois », ouverts par les scripts
+    // `seed-demo-presentation-proprietaires.ts` et `-paiements-portails.ts`
+    // (packages/api/prisma/seeds) : n'existent qu'après leur exécution.
+    id: 'presentation-locative',
+    name: 'Présentation — Gestion locative (portails)',
+    accounts: [
+      {
+        email: 'odile.yeo.proprio.pres@exemple.test',
+        password: PACK_PASSWORD,
+        fullName: 'Odile Yéo',
+        persona: 'Propriétaire'
+      },
+      {
+        email: 'henri.bakayoko.proprio.pres@exemple.test',
+        password: PACK_PASSWORD,
+        fullName: 'Henri Bakayoko',
+        persona: 'Propriétaire'
+      },
+      {
+        email: 'koffi.armand.pres@exemple.test',
+        password: PACK_PASSWORD,
+        fullName: 'Armand Koffi',
+        persona: 'Locataire'
+      },
+      {
+        email: 'mamadou.diabate.pres@exemple.test',
+        password: PACK_PASSWORD,
+        fullName: 'Mamadou Diabaté',
+        persona: 'Locataire'
+      }
+    ]
+  },
+  {
     id: 'platform',
     name: 'Plateforme (hors agence)',
     accounts: [

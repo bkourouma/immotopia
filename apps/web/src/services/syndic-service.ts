@@ -291,7 +291,7 @@ export async function listChargeCalls(
 export async function listAllChargeCallsWithSummary(
   tenantId: string,
   syndicId: string,
-  filters?: { period?: string; status?: string }
+  filters?: { period?: string; status?: string; budgetId?: string }
 ): Promise<{ items: ChargeCall[]; summary: ChargeCallSummary }> {
   const limit = 100;
   let items: ChargeCall[] = [];
@@ -325,7 +325,7 @@ export async function listAllChargeCallsWithSummary(
 export async function listAllChargeCalls(
   tenantId: string,
   syndicId: string,
-  filters?: { period?: string; status?: string }
+  filters?: { period?: string; status?: string; fundId?: string }
 ): Promise<ChargeCall[]> {
   const limit = 100;
   let page = 1;

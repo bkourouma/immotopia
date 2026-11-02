@@ -647,6 +647,51 @@ describe('suivi mensuel', () => {
     expect(bakary.months[5]).toEqual({ month: 6, due: 5000, paid: 5000, status: 'PAID' });
     expect(bakary.advance).toBe(2000);
   });
+
+  it('filtre la grille par budget (appels de ses lots d appels), 404 pour un budget d une autre agence', async () => {
+    const BUDGET_1 = id(21);
+    const BUDGET_2 = id(22);
+    const BUDGET_B = id(23);
+    mockPrisma.syndicateBudget.rows.push(
+      { id: BUDGET_1, syndicateId: S1, syndicate: { tenantId: TENANT_A } },
+      { id: BUDGET_2, syndicateId: S1, syndicate: { tenantId: TENANT_A } },
+      { id: BUDGET_B, syndicateId: SB, syndicate: { tenantId: TENANT_B } }
+    );
+    const january = await createCall(L1, '2026-01', 30000, '2026-01-10');
+    const february = await createCall(L1, '2026-02', 20000, '2026-02-10');
+    await createCall(L1, '2026-03', 10000, '2026-03-10'); // sans lot d'appels : aucun budget
+    const attach = (callId: string, budgetId: string) => {
+      const row: any = mockPrisma.chargeCall.rows.find(candidate => candidate.id === callId);
+      row.batch = { budgetId };
+    };
+    attach(january.id, BUDGET_1);
+    attach(february.id, BUDGET_2);
+
+    const monthsWithCall = (grid: any) =>
+      grid.lots[0].months.filter((cell: any) => cell.status !== 'NONE').map((cell: any) => cell.month);
+
+    expect(monthsWithCall(await getMonthlyTrackingBySyndicate(TENANT_A, S1, 2026))).toEqual([1, 2, 3]);
+    expect(monthsWithCall(await getMonthlyTrackingBySyndicate(TENANT_A, S1, 2026, BUDGET_1))).toEqual([1]);
+    expect(monthsWithCall(await getMonthlyTrackingBySyndicate(TENANT_A, S1, 2026, BUDGET_2))).toEqual([2]);
+
+    // Sans année, le budget donne l'année de son premier appel, sinon son exercice.
+    expect((await getMonthlyTrackingBySyndicate(TENANT_A, S1, undefined, BUDGET_1)).year).toBe(2026);
+    const BUDGET_VIDE = id(24);
+    mockPrisma.syndicateBudget.rows.push({
+      id: BUDGET_VIDE,
+      syndicateId: S1,
+      fiscalYear: 2031,
+      syndicate: { tenantId: TENANT_A }
+    });
+    expect((await getMonthlyTrackingBySyndicate(TENANT_A, S1, undefined, BUDGET_VIDE)).year).toBe(2031);
+
+    await expect(getMonthlyTrackingBySyndicate(TENANT_A, S1, 2026, BUDGET_B)).rejects.toMatchObject({
+      statusCode: 404
+    });
+    await expect(getMonthlyTrackingBySyndicate(TENANT_A, S1, 2026, id(99))).rejects.toMatchObject({
+      statusCode: 404
+    });
+  });
 });
 
 describe('withAllocationPayments — forme historique des appels', () => {

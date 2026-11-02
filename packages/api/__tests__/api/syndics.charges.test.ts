@@ -282,6 +282,70 @@ describe('Syndics charges routes', () => {
     );
   });
 
+  it('forwards the budget filter to both the list and the summary cards, 400 on an invalid id', async () => {
+    const queries = jest.requireMock('../../src/lib/syndics/queries') as {
+      listChargeCallsBySyndicate: jest.Mock;
+      summarizeChargeCallsBySyndicate: jest.Mock;
+    };
+    queries.listChargeCallsBySyndicate.mockClear();
+    queries.summarizeChargeCallsBySyndicate.mockClear();
+    const budgetId = '3f0f3a0e-6b5c-4d58-9a39-0d1c6f2f9b11';
+
+    const response = await request(app).get(
+      `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges?budgetId=${budgetId}`
+    );
+
+    expect(response.status).toBe(200);
+    expect(queries.listChargeCallsBySyndicate).toHaveBeenCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      expect.objectContaining({ budgetId })
+    );
+    expect(queries.summarizeChargeCallsBySyndicate).toHaveBeenCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      expect.objectContaining({ budgetId })
+    );
+
+    // Paramètre vide : aucun filtre.
+    await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges?budgetId=`);
+    expect(queries.listChargeCallsBySyndicate).toHaveBeenLastCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      expect.objectContaining({ budgetId: undefined })
+    );
+
+    const invalid = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges?budgetId=nope`);
+    expect(invalid.status).toBe(400);
+  });
+
+  it('forwards the fund filter to both the list and the summary cards, 400 on an invalid id', async () => {
+    const queries = jest.requireMock('../../src/lib/syndics/queries') as {
+      listChargeCallsBySyndicate: jest.Mock;
+      summarizeChargeCallsBySyndicate: jest.Mock;
+    };
+    queries.listChargeCallsBySyndicate.mockClear();
+    queries.summarizeChargeCallsBySyndicate.mockClear();
+    const fundId = '5f0f3a0e-6b5c-4d58-9a39-0d1c6f2f9b22';
+
+    const response = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges?fundId=${fundId}`);
+
+    expect(response.status).toBe(200);
+    expect(queries.listChargeCallsBySyndicate).toHaveBeenCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      expect.objectContaining({ fundId })
+    );
+    expect(queries.summarizeChargeCallsBySyndicate).toHaveBeenCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      expect.objectContaining({ fundId })
+    );
+
+    const invalid = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges?fundId=nope`);
+    expect(invalid.status).toBe(400);
+  });
+
   it('enforces tenant isolation when paying a charge call', async () => {
     const response = await request(app)
       .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges/${OTHER_TENANT_CHARGE_ID}/pay`)

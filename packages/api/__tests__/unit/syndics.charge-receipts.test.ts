@@ -717,6 +717,40 @@ describe('listes, impression groupee et isolation', () => {
     expect(lot.items.map(item => item.lotId)).toEqual([L2]);
   });
 
+  it('filtre la liste par budget : les quittances des appels de ce budget', async () => {
+    const BUDGET_1 = '77777777-7777-4777-8777-777777777771';
+    const BUDGET_2 = '77777777-7777-4777-8777-777777777772';
+    // La base en mémoire ne résout pas les relations : on rattache à la main chaque quittance à son lot d'appels.
+    const budgetByPeriod: Record<string, string> = { '2026-01': BUDGET_1, '2026-02': BUDGET_2 };
+    for (const row of mockPrisma.syndicChargeReceipt.rows as any[]) {
+      if (row.kind === 'QUITTANCE') row.chargeCall = { batch: { budgetId: budgetByPeriod[row.periodLabel] } };
+    }
+
+    const first = await listSyndicateReceipts(TENANT_A, S1, {
+      page: 1,
+      limit: 20,
+      kind: 'QUITTANCE',
+      budgetId: BUDGET_1
+    });
+    expect(first.items.map(item => item.periodLabel).sort()).toEqual(['2026-01']);
+
+    const second = await listSyndicateReceipts(TENANT_A, S1, {
+      page: 1,
+      limit: 20,
+      kind: 'QUITTANCE',
+      budgetId: BUDGET_2
+    });
+    expect(second.items.map(item => item.periodLabel)).toEqual(['2026-02']);
+
+    const none = await listSyndicateReceipts(TENANT_A, S1, {
+      page: 1,
+      limit: 20,
+      kind: 'QUITTANCE',
+      budgetId: '77777777-7777-4777-8777-777777777773'
+    });
+    expect(none.items).toEqual([]);
+  });
+
   it('impression groupee : quittances de la periode, un seul coproprietaire, et refus sans document', async () => {
     const pdf = await PDFDocument.load(
       await printReceipts(TENANT_A, S1, {

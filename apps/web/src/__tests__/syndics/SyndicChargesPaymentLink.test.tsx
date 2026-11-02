@@ -27,6 +27,7 @@ vi.mock('../../services/syndic-service', () => ({
   listAllChargeCallsWithSummary: (...args: unknown[]) => listChargeCalls(...args),
   createChargeCall: vi.fn(),
   listSyndicateFunds: vi.fn(async () => []),
+  listBudgets: vi.fn(async () => []),
   assignChargeCallFund: vi.fn()
 }));
 

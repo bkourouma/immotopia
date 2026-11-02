@@ -17,6 +17,8 @@
  */
 
 import { prisma } from '../../utils/database';
+import { NotFoundError } from '../../middleware/error-middleware';
+import { t } from '../../i18n';
 import { assertSyndicateOfTenant, sumAllocationsByCall } from './charge-allocation';
 import { fromCents, toCents } from './charge-allocation-plan';
 import { utcDay, lastDayOfMonth } from './period';
@@ -127,14 +129,16 @@ function monthStatus(cell: { hasCall: boolean; dueCents: number; paidCents: numb
   return 'DUE';
 }
 
-function ownerNameOf(contact?: { firstName?: string | null; lastName?: string | null; legalName?: string | null } | null) {
+function ownerNameOf(
+  contact?: { firstName?: string | null; lastName?: string | null; legalName?: string | null } | null
+) {
   if (!contact) return null;
   const name = [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim();
   return name || contact.legalName || null;
 }
 
 /** Appels touchant l'annee : bornes qui chevauchent l'annee, ou echeance dans l'annee sans bornes. */
-async function loadCallsOfYear(syndicateId: string, tenantId: string, year: number) {
+async function loadCallsOfYear(syndicateId: string, tenantId: string, year: number, budgetId?: string) {
   const yearStart = utcDay(year, 1, 1);
   const yearEnd = lastDayOfMonth(year, 12);
   const nextYear = utcDay(year + 1, 1, 1);
@@ -142,6 +146,8 @@ async function loadCallsOfYear(syndicateId: string, tenantId: string, year: numb
     where: {
       syndicateId,
       syndicate: { tenantId },
+      // Un appel appartient à un budget par son lot d'appels ; un appel sans lot d'appels n'en a pas.
+      ...(budgetId ? { batch: { budgetId } } : {}),
       OR: [
         { periodStart: { lte: yearEnd }, periodEnd: { gte: yearStart } },
         { periodStart: null, dueDate: { gte: yearStart, lt: nextYear } }
@@ -164,8 +170,39 @@ async function loadAdvanceByLot(lotIds: string[]) {
   return byLot;
 }
 
-export async function getMonthlyTrackingBySyndicate(tenantId: string, syndicateId: string, year: number) {
+/**
+ * Année affichée pour un budget quand l'appelant n'en donne pas : celle de son premier appel (les appels d'un
+ * budget peuvent tomber dans un autre exercice que le sien), sinon l'exercice du budget.
+ */
+async function trackingYearOfBudget(syndicateId: string, tenantId: string, budgetId: string, fiscalYear: number) {
+  const calls = await prisma.chargeCall.findMany({
+    where: { syndicateId, syndicate: { tenantId }, batch: { budgetId } },
+    select: { periodStart: true, dueDate: true }
+  });
+  const years = calls.map(call => new Date(call.periodStart ?? call.dueDate).getUTCFullYear());
+  return years.length > 0 ? Math.min(...years) : fiscalYear;
+}
+
+/** `year` absent avec un budget : l'année de ce budget ; sans budget, l'appelant fournit toujours l'année. */
+export async function getMonthlyTrackingBySyndicate(
+  tenantId: string,
+  syndicateId: string,
+  yearOrUndefined: number | undefined,
+  budgetId?: string
+) {
   await assertSyndicateOfTenant(prisma, tenantId, syndicateId);
+  let year = yearOrUndefined ?? new Date().getUTCFullYear();
+  if (budgetId) {
+    // Un budget d'une autre copropriété ou d'une autre agence lève la même erreur qu'un budget inexistant.
+    const budget = await prisma.syndicateBudget.findFirst({
+      where: { id: budgetId, syndicateId, syndicate: { tenantId } },
+      select: { id: true, fiscalYear: true }
+    });
+    if (!budget) throw new NotFoundError(t('Budget introuvable pour cette copropriété.'));
+    if (yearOrUndefined === undefined) {
+      year = await trackingYearOfBudget(syndicateId, tenantId, budgetId, budget.fiscalYear);
+    }
+  }
 
   const [lots, calls] = await Promise.all([
     prisma.syndicateLot.findMany({
@@ -178,7 +215,7 @@ export async function getMonthlyTrackingBySyndicate(tenantId: string, syndicateI
       },
       orderBy: { lotNumber: 'asc' }
     }),
-    loadCallsOfYear(syndicateId, tenantId, year)
+    loadCallsOfYear(syndicateId, tenantId, year, budgetId)
   ]);
   const [paidByCall, advanceByLot] = await Promise.all([
     sumAllocationsByCall(

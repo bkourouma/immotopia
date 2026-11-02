@@ -58,14 +58,19 @@ export async function listOpenLotCharges(
   return response.data.data;
 }
 
+/**
+ * `year` absent avec un budget : l'API prend l'année des appels de ce budget ; sans budget, l'année courante.
+ * `budgetId` absent : tous les appels de l'année ; présent : seulement ceux des lots d'appels de ce budget.
+ */
 export async function getMonthlyTracking(
   tenantId: string,
   syndicId: string,
-  year: number
+  year?: number,
+  budgetId?: string
 ): Promise<MonthlyTracking> {
   const response = await apiClient.get<{ success: boolean; data: MonthlyTracking }>(
     `/tenants/${tenantId}/syndics/${syndicId}/suivi-mensuel`,
-    { params: { year } }
+    { params: { ...(year !== undefined ? { year } : {}), ...(budgetId ? { budgetId } : {}) } }
   );
   return response.data.data;
 }

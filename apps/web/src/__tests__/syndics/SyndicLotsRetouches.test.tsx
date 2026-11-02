@@ -400,11 +400,34 @@ describe('LotTable — désactiver, réactiver, locataires', () => {
     render(<LotTable lots={[baseLot({})]} />);
     expect(screen.getAllByText('Non renseigné').length).toBeGreaterThan(0);
   });
+
+  it('affiche le montant du barème du type du lot, et rien sans barème fourni', () => {
+    const { unmount } = render(<LotTable lots={[baseLot({})]} lotTypeRates={{ APARTMENT: 25000 }} />);
+    expect(screen.getByText(/25\s000/)).toBeTruthy();
+    unmount();
+
+    render(<LotTable lots={[baseLot({})]} />);
+    expect(screen.queryByText(/25\s000/)).toBeNull();
+  });
 });
 
 describe('SyndicLots — total de référence des tantièmes', () => {
-  function mockApi(reference: number | null, shares: number[]) {
+  function mockApi(reference: number | null, shares: number[], rates: Record<string, number> = {}) {
     mockApiClient.get.mockImplementation((url: string) => {
+      if (url === '/tenants/tenant-1/syndics/syndic-1/bareme-types-lots') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: {
+              rates,
+              lotTypesPresent: [],
+              missingTypes: [],
+              isEmpty: Object.keys(rates).length === 0,
+              updatedAt: null
+            }
+          }
+        });
+      }
       if (url === '/tenants/tenant-1/syndics/syndic-1') {
         return Promise.resolve({
           data: {
@@ -472,6 +495,14 @@ describe('SyndicLots — total de référence des tantièmes', () => {
     renderPage();
     expect(await screen.findByText('La somme des tantièmes (900) diffère du total de référence (1000).')).toBeTruthy();
     expect(screen.getByText('Total de référence des tantièmes')).toBeTruthy();
+  });
+
+  it("n'affiche pas l'alerte quand le barème par type de lot est renseigné", async () => {
+    mockApi(1000, [1, 1], { APARTMENT: 25000 });
+    renderPage();
+    await screen.findByText('Total de référence des tantièmes');
+    await waitFor(() => expect(screen.getAllByText(/25\s000/).length).toBeGreaterThan(0));
+    expect(screen.queryByText(/diffère du total de référence/)).toBeNull();
   });
 
   it("n'affiche aucune alerte sans total de référence ou quand la somme correspond", async () => {

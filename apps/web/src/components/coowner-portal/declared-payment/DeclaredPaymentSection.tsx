@@ -1,19 +1,14 @@
 import { invalidateAfterDeclaration } from './invalidate';
 import React, { useState } from 'react';
-import { Button, Space } from 'antd';
-import { MobileOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useBreakpoint } from '../../../hooks/useBreakpoint';
-import { t } from '../../../i18n/t';
 import { listMyLots, type CoOwnerChargeCall, type CoOwnerDeclaration } from '../../../services/coowner-portal-service';
 import { DeclarationForm } from './DeclarationForm';
-import { ReceivingNumbersCard } from './ReceivingNumbersCard';
 import type { DeclaredAvailabilityEntry } from './useDeclaredAvailabilities';
 
 /**
- * Parcours « J'ai payé par mobile money » (spec 047, étapes 1 et 5) sur la
- * page « Mes appels de charges » : numéros de réception de chaque copropriété
- * ouverte et bouton qui ouvre le formulaire de déclaration.
+ * Parcours « J'ai payé par mobile money » (spec 047) sur la page « Mes appels de
+ * charges » : le bouton de chaque ligne ouvre ici le formulaire de déclaration
+ * prérempli sur l'appel (les numéros de réception s'y choisissent).
  */
 
 const PAYER_PHONE_KEY = 'coowner-portal:payer-phone';
@@ -38,12 +33,18 @@ function writePayerPhone(phone: string | undefined): void {
 export interface DeclaredPaymentSectionProps {
   calls: CoOwnerChargeCall[];
   entries: DeclaredAvailabilityEntry[];
+  /** Appel dont le bouton de ligne « J'ai payé par mobile money » a été cliqué : ouvre le formulaire prérempli. */
+  callToDeclare: CoOwnerChargeCall | null;
+  onCallDeclarationClose: () => void;
 }
 
-export function DeclaredPaymentSection({ calls, entries }: DeclaredPaymentSectionProps): React.ReactElement | null {
+export function DeclaredPaymentSection({
+  calls,
+  entries,
+  callToDeclare,
+  onCallDeclarationClose
+}: DeclaredPaymentSectionProps): React.ReactElement | null {
   const queryClient = useQueryClient();
-  const { isMobile } = useBreakpoint();
-  const [openSyndicateId, setOpenSyndicateId] = useState<string | null>(null);
   const [payerPhone, setPayerPhone] = useState<string | undefined>(() => readPayerPhone());
 
   const lotsQuery = useQuery({
@@ -54,57 +55,30 @@ export function DeclaredPaymentSection({ calls, entries }: DeclaredPaymentSectio
     retry: false
   });
 
-  if (entries.length === 0) return null;
+  const entry = callToDeclare ? entries.find(candidate => candidate.syndicate.id === callToDeclare.syndicateId) : null;
+  if (!callToDeclare || !entry) return null;
 
   const handleSubmitted = (declaration: CoOwnerDeclaration) => {
     writePayerPhone(declaration.payerPhone);
     if (declaration.payerPhone) setPayerPhone(declaration.payerPhone);
-    setOpenSyndicateId(null);
+    onCallDeclarationClose();
     invalidateAfterDeclaration(queryClient);
   };
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {entries.map(({ syndicate, availability }) => {
-        const lots = (lotsQuery.data ?? []).filter(lot => lot.syndicate?.id === syndicate.id);
-        const canDeclare = lots.length > 0;
-        return (
-          <ReceivingNumbersCard
-            key={syndicate.id}
-            numbers={availability.receivingNumbers}
-            payerInstructions={availability.payerInstructions}
-            syndicateName={entries.length > 1 ? syndicate.name : undefined}
-            extra={
-              canDeclare ? (
-                <>
-                  <Button
-                    type="primary"
-                    icon={<MobileOutlined aria-hidden />}
-                    block={isMobile}
-                    style={{ minHeight: 40 }}
-                    onClick={() => setOpenSyndicateId(syndicate.id)}
-                  >
-                    {t("J'ai payé par mobile money")}
-                  </Button>
-                  {openSyndicateId === syndicate.id ? (
-                    <DeclarationForm
-                      open
-                      onClose={() => setOpenSyndicateId(null)}
-                      onSubmitted={handleSubmitted}
-                      syndicate={syndicate}
-                      availability={availability}
-                      lots={lots.map(lot => ({ id: lot.id, lotNumber: lot.lotNumber }))}
-                      calls={calls}
-                      defaultPayerPhone={payerPhone}
-                    />
-                  ) : null}
-                </>
-              ) : null
-            }
-          />
-        );
-      })}
-    </Space>
+    <DeclarationForm
+      open
+      onClose={onCallDeclarationClose}
+      onSubmitted={handleSubmitted}
+      syndicate={entry.syndicate}
+      availability={entry.availability}
+      lots={(lotsQuery.data ?? [])
+        .filter(lot => lot.syndicate?.id === entry.syndicate.id)
+        .map(lot => ({ id: lot.id, lotNumber: lot.lotNumber }))}
+      calls={calls}
+      defaultPayerPhone={payerPhone}
+      initialCall={callToDeclare}
+    />
   );
 }
 

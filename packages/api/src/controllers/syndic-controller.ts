@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import { runInFrench, t } from '../i18n';
 import { closeMeetingRoom } from '../lib/syndics/meeting-visio';
 import * as path from 'path';
@@ -417,18 +418,31 @@ export const listChargeCallsHandler = asyncHandler(async (req: Request, res: Res
 
   const period = req.query.period as string | undefined;
   const status = req.query.status as 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE' | undefined;
+  // Un identifiant d'un autre syndic ou d'une autre agence ne ramène aucun appel : la requête reste bornée à la copropriété.
+  const budgetId = z
+    .string()
+    .uuid()
+    .optional()
+    .parse(req.query.budgetId || undefined);
+  const fundId = z
+    .string()
+    .uuid()
+    .optional()
+    .parse(req.query.fundId || undefined);
 
   const [chargeCalls, summary] = await Promise.all([
     listChargeCallsBySyndicate(tenantId, syndicateId, {
       period,
       status,
+      budgetId,
+      fundId,
       pagination: {
         ...parsePagination(req.query)
       }
     }),
     // Cartes de l'écran : agrégat sur TOUS les appels filtrés (mêmes filtres
     // que la liste), jamais sur la page renvoyée.
-    summarizeChargeCallsBySyndicate(tenantId, syndicateId, { period, status })
+    summarizeChargeCallsBySyndicate(tenantId, syndicateId, { period, status, budgetId, fundId })
   ]);
 
   res.json({

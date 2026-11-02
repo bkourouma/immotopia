@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, Card, Col, Row, Space, Typography } from 'antd';
-import { CreditCardOutlined, SyncOutlined } from '@ant-design/icons';
+import { SyncOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
@@ -13,39 +13,15 @@ import {
   listMyChargeCalls,
   startOnlinePayment,
   type CoOwnerChargeCall,
-  type CoOwnerOnlinePaymentAvailability,
-  type CoOwnerOnlinePaymentConflict,
-  type OnlinePaymentChannel
+  type CoOwnerOnlinePaymentConflict
 } from '../../services/coowner-portal-service';
 import { isSafeCheckoutUrl } from '../../services/public-installment-payment-service';
 import { redirectToExternalUrl } from '../../utils/external-redirect';
-import { ChargeCallsTable, isCallSelectable } from './ChargeCallsTable';
+import { ChargeCallsTable } from './ChargeCallsTable';
 import { OnlinePaymentReturn, isPaymentCode } from './OnlinePaymentReturn';
 import { portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
-
-function channelLabel(channel: OnlinePaymentChannel): string {
-  switch (channel) {
-    case 'WAVE':
-      return 'Wave';
-    case 'ORANGE_MONEY':
-      return 'Orange Money';
-    case 'MTN_MONEY':
-      return t('MTN Money');
-    case 'MOOV_MONEY':
-      return 'Moov Money';
-    default:
-      return t('Carte bancaire');
-  }
-}
-
-/** Frais et mode de la copropriété de l'appel choisi, retrouvée par son identifiant. */
-function syndicateOnlineInfo(availability: CoOwnerOnlinePaymentAvailability, syndicateId: string) {
-  return (
-    availability.syndicates.find(syndicate => syndicate.available && syndicate.syndicateId === syndicateId) ?? null
-  );
-}
 
 interface PaymentProblem {
   message: string;
@@ -83,8 +59,10 @@ export default function CoOwnerChargeCalls() {
   const [returnCode, setReturnCode] = useState<string | null>(() =>
     isPaymentCode(paiementParam) ? paiementParam : null
   );
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [paying, setPaying] = useState(false);
+  // Appel dont le bouton « Payer en ligne » a été cliqué : un seul paiement s'initie à la fois.
+  const [payingCallId, setPayingCallId] = useState<string | null>(null);
+  // Appel dont le bouton « J'ai payé par mobile money » a été cliqué : ouvre la déclaration préremplie.
+  const [callToDeclare, setCallToDeclare] = useState<CoOwnerChargeCall | null>(null);
   const [problem, setProblem] = useState<PaymentProblem | null>(null);
 
   const {
@@ -107,7 +85,11 @@ export default function CoOwnerChargeCalls() {
   });
 
   // Paiement mobile money déclaré (spec 047) : n'attend rien, ne bloque rien.
-  const { entries: declaredEntries, anyAvailable: declaredAvailable } = useDeclaredAvailabilities(calls ?? []);
+  const {
+    entries: declaredEntries,
+    anyAvailable: declaredAvailable,
+    declarableSyndicateIds
+  } = useDeclaredAvailabilities(calls ?? []);
 
   const removePaiementParam = () =>
     setSearchParams(
@@ -138,7 +120,6 @@ export default function CoOwnerChargeCalls() {
 
   const handleReturnSettled = () => {
     removePaiementParam();
-    setSelectedIds([]);
     void queryClient.invalidateQueries({ queryKey: ['coowner-portal'] });
   };
 
@@ -167,22 +148,14 @@ export default function CoOwnerChargeCalls() {
   const availabilityKnown = !availabilityQuery.isPending;
   const hasSomethingToPay = calls.some(call => call.outstanding > 0);
 
-  // Sélection valide : un appel disparu ou devenu non payable (liste rechargée) en sort.
-  const selectedCalls: CoOwnerChargeCall[] = [];
-  for (const call of calls) {
-    if (selectedIds.includes(call.id) && isCallSelectable(call, selectedCalls)) selectedCalls.push(call);
-  }
-  const selectedTotal = selectedCalls.reduce((sum, call) => sum + call.outstanding, 0);
-  const selectedInfo =
-    availability && selectedCalls.length > 0 ? syndicateOnlineInfo(availability, selectedCalls[0].syndicateId) : null;
-
-  const payOnline = async () => {
-    const lotId = selectedCalls[0]?.lot?.id;
+  // Bouton de la ligne : règle cet appel seul.
+  const payOnline = async (call: CoOwnerChargeCall) => {
+    const lotId = call.lot?.id;
     if (!lotId) return;
-    setPaying(true);
+    setPayingCallId(call.id);
     setProblem(null);
     try {
-      const checkout = await startOnlinePayment({ lotId, chargeCallIds: selectedCalls.map(call => call.id) });
+      const checkout = await startOnlinePayment({ lotId, chargeCallIds: [call.id] });
       if (isSafeCheckoutUrl(checkout.checkoutUrl)) {
         redirectToExternalUrl(checkout.checkoutUrl);
         return;
@@ -191,7 +164,7 @@ export default function CoOwnerChargeCalls() {
     } catch (e) {
       setProblem(problemFromError(e));
     } finally {
-      setPaying(false);
+      setPayingCallId(null);
     }
   };
 
@@ -245,79 +218,38 @@ export default function CoOwnerChargeCalls() {
         </Col>
       </Row>
 
-      {onlineEnabled && availability ? (
-        <Card>
-          <Space direction="vertical" size="small" style={{ width: '100%' }}>
-            {selectedInfo?.simulated ? <Alert type="info" showIcon message={t('Mode démonstration')} /> : null}
-            {problem ? (
-              <Alert
-                type="warning"
-                showIcon
-                closable
-                onClose={() => setProblem(null)}
-                message={problem.message}
-                action={
-                  problem.resumeUrl ? (
-                    <Button
-                      size="small"
-                      type="primary"
-                      onClick={() => redirectToExternalUrl(problem.resumeUrl as string)}
-                    >
-                      {t('Reprendre le paiement')}
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ) : null}
-            <div className="it-toolbar__actions" style={{ alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-              <Space direction="vertical" size={0}>
-                <Text>
-                  {selectedCalls.length > 0 ? (
-                    <>
-                      {t('Total à payer :')} <MoneyValue value={selectedTotal} />
-                    </>
-                  ) : (
-                    t('Cochez un ou plusieurs appels d’un même lot pour les régler en ligne.')
-                  )}
-                </Text>
-                {selectedCalls.length > 0 && selectedInfo ? (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {selectedInfo.feesPaidBy === 'CLIENT'
-                      ? t('Des frais du service de paiement peuvent s’ajouter au montant.')
-                      : t('Les frais du service de paiement sont pris en charge par votre agence.')}
-                  </Text>
-                ) : null}
-                {availability.paymentMethods.length > 0 ? (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {t('Moyens de paiement : {{methods}}', {
-                      methods: availability.paymentMethods.map(channelLabel).join(', ')
-                    })}
-                  </Text>
-                ) : null}
-              </Space>
-              <Button
-                type="primary"
-                icon={<CreditCardOutlined aria-hidden />}
-                disabled={selectedCalls.length === 0}
-                loading={paying}
-                onClick={() => void payOnline()}
-              >
-                {t('Payer en ligne')}
+      {problem ? (
+        <Alert
+          type="warning"
+          showIcon
+          closable
+          onClose={() => setProblem(null)}
+          message={problem.message}
+          action={
+            problem.resumeUrl ? (
+              <Button size="small" type="primary" onClick={() => redirectToExternalUrl(problem.resumeUrl as string)}>
+                {t('Reprendre le paiement')}
               </Button>
-            </div>
-          </Space>
-        </Card>
+            ) : undefined
+          }
+        />
       ) : null}
 
-      <DeclaredPaymentSection calls={calls} entries={declaredEntries} />
+      <DeclaredPaymentSection
+        calls={calls}
+        entries={declaredEntries}
+        callToDeclare={callToDeclare}
+        onCallDeclarationClose={() => setCallToDeclare(null)}
+      />
 
       <Card>
         <ChargeCallsTable
           calls={calls}
           onResume={onlineEnabled ? call => void resumePayment(call) : undefined}
-          selection={
-            onlineEnabled ? { selectedIds: selectedCalls.map(call => call.id), onChange: setSelectedIds } : undefined
-          }
+          onPayOne={onlineEnabled ? call => void payOnline(call) : undefined}
+          onDeclareOne={declaredAvailable ? setCallToDeclare : undefined}
+          canDeclare={call => declarableSyndicateIds.has(call.syndicateId)}
+          payingCallId={payingCallId}
         />
       </Card>
 

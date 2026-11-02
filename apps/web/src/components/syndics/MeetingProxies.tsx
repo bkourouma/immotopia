@@ -58,7 +58,7 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
       const ownerId = lotOwnerId(lot);
       if (!ownerId) continue;
       const entry = byOwner.get(ownerId) ?? { contact: lot.owner, lotLabels: [] };
-      entry.lotLabels.push(formatLotLabel(lot));
+      entry.lotLabels.push(formatLotLabel(lot, undefined, { withShares: true }));
       byOwner.set(ownerId, entry);
     }
     return Array.from(byOwner.entries()).map(([id, entry]) => ({
@@ -72,7 +72,7 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
     for (const lot of lots) {
       const ownerId = lotOwnerId(lot);
       if (!ownerId) continue;
-      map.set(ownerId, [...(map.get(ownerId) ?? []), formatLotLabel(lot)]);
+      map.set(ownerId, [...(map.get(ownerId) ?? []), formatLotLabel(lot, undefined, { withShares: true })]);
     }
     return map;
   }, [lots]);

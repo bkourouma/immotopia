@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import AuthContext from '../../context/AuthContext';
@@ -16,6 +16,7 @@ const getSyndicate = vi.fn();
 const listSyndicateLots = vi.fn();
 const listChargeCalls = vi.fn();
 const createChargeCall = vi.fn();
+const listBudgets = vi.fn();
 
 vi.mock('../../services/syndic-service', () => ({
   getSyndicate: (...args: unknown[]) => getSyndicate(...args),
@@ -24,6 +25,7 @@ vi.mock('../../services/syndic-service', () => ({
   createChargeCall: (...args: unknown[]) => createChargeCall(...args),
   // Fonds de la copropriete : aucun ici, le champ « Fonds alimente » reste masque.
   listSyndicateFunds: vi.fn(async () => []),
+  listBudgets: (...args: unknown[]) => listBudgets(...args),
   assignChargeCallFund: vi.fn()
 }));
 
@@ -98,6 +100,7 @@ describe('SyndicCharges — cartes de synthèse (BUG-047)', () => {
     vi.clearAllMocks();
     getSyndicate.mockResolvedValue({ id: 'syndic-1', tenantId: 'tenant-1', name: 'Residence Test', status: 'ACTIVE' });
     listSyndicateLots.mockResolvedValue([]);
+    listBudgets.mockResolvedValue([]);
   });
 
   it('affiche les totaux de l’API même quand les lignes chargées ne les reproduisent pas', async () => {
@@ -118,5 +121,25 @@ describe('SyndicCharges — cartes de synthèse (BUG-047)', () => {
       status: undefined,
       period: undefined
     });
+  });
+
+  it('filtre les appels et les cartes par budget, puis retire le filtre', async () => {
+    listChargeCalls.mockResolvedValue({ items: [], summary: SUMMARY });
+    listBudgets.mockResolvedValue([
+      { id: 'budget-2025', label: 'Budget prévisionnel 2025', fiscalYear: 2025, createdAt: '2026-10-27T10:00:00.000Z' }
+    ]);
+    renderPage();
+    await waitFor(() => expect(listChargeCalls).toHaveBeenCalled());
+
+    fireEvent.mouseDown(screen.getByLabelText('Filtrer par budget'));
+    fireEvent.click(await screen.findByText('Budget prévisionnel 2025 (2025)'));
+
+    await waitFor(() =>
+      expect(listChargeCalls).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', {
+        status: undefined,
+        period: undefined,
+        budgetId: 'budget-2025'
+      })
+    );
   });
 });

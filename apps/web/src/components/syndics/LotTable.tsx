@@ -2,7 +2,8 @@
 import { Link } from 'react-router-dom';
 import { Button, Popconfirm, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { Table } from '../primitives';
+import { Table, MoneyValue, formatMoney } from '../primitives';
+import type { LotTypeRates } from '../../services/syndic-lot-type-rates-service';
 import { SyndicateLot } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
 import { getLotTypeLabel } from '../../utils/syndic-lot-label';
@@ -97,6 +98,8 @@ interface LotTableProps {
   lots: SyndicateLot[];
   loading?: boolean;
   showMobileHint?: boolean;
+  /** Barème par type de lot : alimente la colonne « Montant du barème » ; absent, la colonne est masquée. */
+  lotTypeRates?: LotTypeRates;
   /**
    * Lien vers « Profils et incidents », où l'on invite au portail ou révoque
    * l'accès. Absent : la colonne « Portail » s'affiche sans lien.
@@ -124,6 +127,7 @@ export const LotTable: React.FC<LotTableProps> = ({
   lots,
   loading = false,
   showMobileHint = false,
+  lotTypeRates,
   portalManageHref,
   declaredPendingLotIds,
   propertyLabelById,
@@ -160,6 +164,19 @@ export const LotTable: React.FC<LotTableProps> = ({
       width: 140,
       render: (value: SyndicateLot['lotType']) => <Tag>{getLotTypeLabel(value) ?? value}</Tag>
     },
+    ...(lotTypeRates
+      ? [
+          {
+            title: t('Montant du barème'),
+            key: 'lotTypeRate',
+            width: 170,
+            align: 'end' as const,
+            responsive: ['md' as const],
+            exportValue: (lot: SyndicateLot) => formatMoney(lotTypeRates[lot.lotType], { placeholder: '' }),
+            render: (_value: unknown, lot: SyndicateLot) => <MoneyValue value={lotTypeRates[lot.lotType]} />
+          }
+        ]
+      : []),
     {
       title: t('Tantièmes généraux'),
       dataIndex: 'generalShares',

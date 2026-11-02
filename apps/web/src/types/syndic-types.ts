@@ -1521,6 +1521,8 @@ export interface ReceiptView {
 export interface ReceiptListQuery {
   lotId?: string;
   contactId?: string;
+  /** Quittances des appels de ce budget, et reçus dont le paiement a soldé des appels de ce budget. */
+  budgetId?: string;
   kind?: ReceiptKind;
   from?: string;
   to?: string;

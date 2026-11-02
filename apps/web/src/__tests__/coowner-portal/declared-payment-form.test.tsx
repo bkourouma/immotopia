@@ -116,6 +116,7 @@ interface MountOptions {
   calls?: CoOwnerChargeCall[];
   availability?: Partial<CoOwnerDeclaredAvailability>;
   defaultPayerPhone?: string;
+  initialCall?: CoOwnerChargeCall;
 }
 
 function mountForm(options: MountOptions = {}) {
@@ -129,6 +130,7 @@ function mountForm(options: MountOptions = {}) {
       lots={options.lots ?? [LOT_A]}
       calls={options.calls ?? [call()]}
       defaultPayerPhone={options.defaultPayerPhone ?? '0606060606'}
+      initialCall={options.initialCall}
     />
   );
 }
@@ -256,6 +258,41 @@ describe('DeclarationForm — un seul lot', () => {
   it('indique qu’un lot sans appel ouvert deviendra une avance', () => {
     mountForm({ calls: [] });
     expect(screen.getByText('Aucun appel ouvert sur ce lot : le paiement deviendra une avance.')).toBeInTheDocument();
+  });
+});
+
+describe("DeclarationForm — depuis la ligne d'un appel", () => {
+  it("préremplit le lot, l'appel coché et le montant, avec un bandeau et un bouton Copier par numéro", async () => {
+    const user = userEvent.setup();
+    const target = call({ id: 'call-2', period: '2026-T2', outstanding: 50000 });
+    mountForm({ calls: [call(), target], initialCall: target });
+
+    expect(
+      screen.getByText(/Appel 2026-T2 · lot A1 : envoyez 50 000 FCFA à l.un des numéros ci-dessous/)
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Montant envoyé/)).toHaveValue('50 000');
+    expect(screen.getByRole('checkbox', { name: /2026-T2/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /2026-T1/ })).not.toBeChecked();
+    expect(screen.getByRole('button', { name: /Copier le numéro \+225 07 07 07 07 07/ })).toBeInTheDocument();
+
+    await fillCommon(user, '50000');
+    await user.click(submitButton());
+    await waitFor(() => expect(createDeclaration).toHaveBeenCalled(), WAIT);
+    expect(createDeclaration.mock.calls[0][0].lines).toEqual([
+      { lotId: 'lot-1', amount: 50000, chargeCallIds: ['call-2'] }
+    ]);
+  }, 30000);
+
+  it('laisse le montant vide quand le reste dû dépasse le plafond', () => {
+    const target = call({ outstanding: 6000000 });
+    mountForm({ calls: [target], initialCall: target });
+    expect(screen.getByLabelText(/Montant envoyé/)).toHaveValue('');
+  });
+
+  it("n'affiche pas le nom du titulaire dans la liste des numéros de réception", () => {
+    mountForm();
+    expect(screen.getByRole('radio', { name: /Orange Money — .*07 07 07 07 07/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Syndic Acacias/)).not.toBeInTheDocument();
   });
 });
 

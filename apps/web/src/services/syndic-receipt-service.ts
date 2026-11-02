@@ -19,6 +19,7 @@ function toParams(query: Partial<ReceiptListQuery>): Record<string, unknown> {
   return {
     lotId: query.lotId || undefined,
     contactId: query.contactId || undefined,
+    budgetId: query.budgetId || undefined,
     kind: query.kind || undefined,
     from: query.from || undefined,
     to: query.to || undefined,

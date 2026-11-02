@@ -37,12 +37,19 @@ describe('syndic-receipt-service (lot S3, besoin 1)', () => {
       data: { success: true, data: { items: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 1 } } }
     });
 
-    await listSyndicateReceipts('tenant-1', 'syndic-1', { kind: 'QUITTANCE', lotId: 'lot-1', page: 2, limit: 10 });
+    await listSyndicateReceipts('tenant-1', 'syndic-1', {
+      kind: 'QUITTANCE',
+      lotId: 'lot-1',
+      budgetId: 'budget-1',
+      page: 2,
+      limit: 10
+    });
 
     expect(get).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/quittances', {
       params: {
         lotId: 'lot-1',
         contactId: undefined,
+        budgetId: 'budget-1',
         kind: 'QUITTANCE',
         from: undefined,
         to: undefined,

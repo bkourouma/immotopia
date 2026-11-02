@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import CoOwnerChargeCalls from '../../pages/CoOwnerPortal/ChargeCalls';
-import { isCallSelectable } from '../../pages/CoOwnerPortal/ChargeCallsTable';
+import { isCallPayableOnline } from '../../pages/CoOwnerPortal/ChargeCallsTable';
 import type {
   CoOwnerChargeCall,
   CoOwnerDeclaredAvailability,
@@ -14,7 +14,7 @@ import type {
 } from '../../services/coowner-portal-service';
 
 /**
- * Spec 047 — « Mes appels de charges » : numéros de réception, bouton
+ * Spec 047 — « Mes appels de charges » : bouton de ligne
  * « J'ai payé par mobile money », état « Paiement déclaré, en vérification »
  * et case de paiement en ligne grisée. Le formulaire est remplacé par un stub
  * qui expose ce que la page lui passe.
@@ -49,6 +49,7 @@ vi.mock('../../components/coowner-portal/declared-payment/DeclarationForm', () =
     lots: Array<{ id: string; lotNumber: string }>;
     calls: unknown[];
     defaultPayerPhone?: string;
+    initialCall?: { id: string };
     onClose: () => void;
     onSubmitted: (declaration: unknown) => void;
   }) =>
@@ -57,6 +58,7 @@ vi.mock('../../components/coowner-portal/declared-payment/DeclarationForm', () =
         <span data-testid="form-syndicate">{props.syndicate.id}</span>
         <span data-testid="form-lots">{props.lots.map(lot => lot.lotNumber).join(',')}</span>
         <span data-testid="form-calls">{props.calls.length}</span>
+        <span data-testid="form-initial-call">{props.initialCall?.id ?? ''}</span>
         <span data-testid="form-phone">{props.defaultPayerPhone ?? ''}</span>
         <button
           type="button"
@@ -71,7 +73,9 @@ vi.mock('../../components/coowner-portal/declared-payment/DeclarationForm', () =
 
 const WAIT = { timeout: 8000 };
 const PHONE_KEY = 'coowner-portal:payer-phone';
-const MOBILE_BUTTON = /J'ai payé par mobile money/;
+// Le bouton de ligne porte « J'ai payé par mobile money : <période> ».
+const rowButton = (period: string) => `J'ai payé par mobile money : ${period}`;
+const ANY_MOBILE_BUTTON = /mobile money/;
 
 function call(overrides: Partial<CoOwnerChargeCall> = {}): CoOwnerChargeCall {
   return {
@@ -188,23 +192,25 @@ describe('Appels de charges — paiement mobile money déclaré', () => {
     mountPage();
     expect(await screen.findByText('2026-T1', {}, WAIT)).toBeInTheDocument();
     await waitFor(() => expect(getDeclaredAvailability).toHaveBeenCalledWith('s1'));
-    expect(screen.queryByRole('button', { name: MOBILE_BUTTON })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Numéros pour payer par mobile money/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: ANY_MOBILE_BUTTON })).not.toBeInTheDocument();
   });
 
-  it('un copropriétaire SANS appel de charges peut déclarer une avance : la copropriété vient de ses lots', async () => {
-    listMyChargeCalls.mockResolvedValue([]);
-    listMyLots.mockResolvedValue([lot('lot-1', 'A1', 's1')]);
-    const user = userEvent.setup();
+  it("n'affiche plus de bloc « Numéros pour payer par mobile money » dans la page ni de bouton global", async () => {
     mountPage();
 
-    const button = await screen.findByRole('button', { name: MOBILE_BUTTON }, WAIT);
-    expect(getDeclaredAvailability).toHaveBeenCalledWith('s1');
-    await user.click(button);
-    expect(await screen.findByTestId('declaration-form')).toBeInTheDocument();
-    expect(screen.getByTestId('form-syndicate')).toHaveTextContent('s1');
-    expect(screen.getByTestId('form-lots')).toHaveTextContent('A1');
-    expect(screen.getByTestId('form-calls')).toHaveTextContent('0');
+    await screen.findByRole('button', { name: rowButton('2026-T1') }, WAIT);
+    expect(screen.queryByText(/Numéros pour payer par mobile money/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: "J'ai payé par mobile money" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Consigne du syndic/)).not.toBeInTheDocument();
+  });
+
+  it('sans appel de charges, aucun bouton n’est proposé (la déclaration part d’une ligne)', async () => {
+    listMyChargeCalls.mockResolvedValue([]);
+    listMyLots.mockResolvedValue([lot('lot-1', 'A1', 's1')]);
+    mountPage();
+
+    await waitFor(() => expect(getDeclaredAvailability).toHaveBeenCalledWith('s1'));
+    expect(screen.queryByRole('button', { name: ANY_MOBILE_BUTTON })).not.toBeInTheDocument();
   });
 
   it('sans appel ni lot, rien n’est proposé', async () => {
@@ -213,10 +219,10 @@ describe('Appels de charges — paiement mobile money déclaré', () => {
     mountPage();
     await waitFor(() => expect(listMyLots).toHaveBeenCalled());
     expect(getDeclaredAvailability).not.toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: MOBILE_BUTTON })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: ANY_MOBILE_BUTTON })).not.toBeInTheDocument();
   });
 
-  it('affiche les numéros et le bouton, et le clic ouvre le formulaire de la bonne copropriété', async () => {
+  it('le clic sur la ligne ouvre le formulaire de la bonne copropriété, prérempli sur cet appel', async () => {
     listMyLots.mockResolvedValue([lot('lot-1', 'A1', 's1'), lot('lot-9', 'Z9', 's2')]);
     // La seconde copropriété (un lot, aucun appel) n'accepte pas les déclarations.
     getDeclaredAvailability.mockImplementation(async (id: string) =>
@@ -225,9 +231,7 @@ describe('Appels de charges — paiement mobile money déclaré', () => {
     const user = userEvent.setup();
     mountPage();
 
-    const button = await screen.findByRole('button', { name: MOBILE_BUTTON }, WAIT);
-    expect(screen.getByText(/Numéros pour payer par mobile money/)).toBeInTheDocument();
-    expect(screen.getByText(/Syndic Acacias/)).toBeInTheDocument();
+    const button = await screen.findByRole('button', { name: rowButton('2026-T1') }, WAIT);
     expect(screen.queryByTestId('declaration-form')).not.toBeInTheDocument();
 
     await user.click(button);
@@ -237,14 +241,15 @@ describe('Appels de charges — paiement mobile money déclaré', () => {
     expect(screen.getByTestId('form-lots')).toHaveTextContent('A1');
     expect(screen.getByTestId('form-lots')).not.toHaveTextContent('Z9');
     expect(screen.getByTestId('form-calls')).toHaveTextContent('1');
+    expect(screen.getByTestId('form-initial-call')).toHaveTextContent('call-1');
   });
 
-  it('masque le bouton si les lots ne se chargent pas', async () => {
+  it('masque le bouton de ligne si les lots ne se chargent pas', async () => {
     listMyLots.mockRejectedValue(new Error('500'));
     mountPage();
     expect(await screen.findByText('2026-T1', {}, WAIT)).toBeInTheDocument();
     await waitFor(() => expect(listMyLots).toHaveBeenCalled());
-    expect(screen.queryByRole('button', { name: MOBILE_BUTTON })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: ANY_MOBILE_BUTTON })).not.toBeInTheDocument();
   });
 
   it('transmet le dernier numéro payeur mémorisé, le mémorise après l’envoi et recharge les appels', async () => {
@@ -252,7 +257,7 @@ describe('Appels de charges — paiement mobile money déclaré', () => {
     const user = userEvent.setup();
     mountPage();
 
-    await user.click(await screen.findByRole('button', { name: MOBILE_BUTTON }, WAIT));
+    await user.click(await screen.findByRole('button', { name: rowButton('2026-T1') }, WAIT));
     expect(await screen.findByTestId('form-phone')).toHaveTextContent('+2250101010101');
 
     const before = listMyChargeCalls.mock.calls.length;
@@ -263,7 +268,7 @@ describe('Appels de charges — paiement mobile money déclaré', () => {
     await waitFor(() => expect(screen.queryByTestId('declaration-form')).not.toBeInTheDocument());
   });
 
-  it('marque l’appel déclaré, grise sa case et laisse son reste dû inchangé', async () => {
+  it('marque l’appel déclaré, lui retire le bouton de paiement en ligne et laisse son reste dû inchangé', async () => {
     getOnlinePaymentAvailability.mockResolvedValue(onlineAvailability(true));
     listMyChargeCalls.mockResolvedValue([
       call({
@@ -277,20 +282,46 @@ describe('Appels de charges — paiement mobile money déclaré', () => {
 
     const row = (await screen.findByText('2026-T1', {}, WAIT)).closest('tr') as HTMLElement;
     expect(within(row).getByText('Paiement déclaré, en vérification')).toBeInTheDocument();
-    const box = within(row).getByRole('checkbox');
-    expect(box).toBeDisabled();
-    expect(box).not.toBeChecked();
-    expect(box).toHaveAccessibleName(/paiement en ligne indisponible/);
+    expect(within(row).queryByRole('button', { name: /Payer en ligne/ })).not.toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: /mobile money/ })).not.toBeInTheDocument();
     expect(row.textContent).toMatch(/100\s?000/);
 
     const otherRow = screen.getByText('2026-T2').closest('tr') as HTMLElement;
-    expect(within(otherRow).getByRole('checkbox')).toBeEnabled();
+    expect(within(otherRow).getByRole('button', { name: 'Payer en ligne : 2026-T2' })).toBeEnabled();
     expect(within(otherRow).queryByText('Paiement déclaré, en vérification')).not.toBeInTheDocument();
+  });
+
+  it("pose « J'ai payé par mobile money » sur chaque appel qui a un reste dû et ouvre la déclaration sur cet appel", async () => {
+    listMyChargeCalls.mockResolvedValue([
+      call(),
+      call({ id: 'call-2', period: '2026-T2', amount: 50000, outstanding: 50000 }),
+      call({ id: 'call-3', period: '2026-T3', status: 'PAID', paid: 100000, outstanding: 0, onlinePayable: false })
+    ]);
+    const user = userEvent.setup();
+    mountPage();
+
+    await user.click(await screen.findByRole('button', { name: "J'ai payé par mobile money : 2026-T2" }, WAIT));
+
+    expect(await screen.findByTestId('form-initial-call')).toHaveTextContent('call-2');
+    expect(screen.getByRole('button', { name: "J'ai payé par mobile money : 2026-T1" })).toBeInTheDocument();
+    // Appel soldé : rien à déclarer.
+    expect(screen.queryByRole('button', { name: "J'ai payé par mobile money : 2026-T3" })).not.toBeInTheDocument();
+  });
+
+  it("referme la déclaration de ligne après l'envoi", async () => {
+    listMyChargeCalls.mockResolvedValue([call()]);
+    const user = userEvent.setup();
+    mountPage();
+
+    await user.click(await screen.findByRole('button', { name: "J'ai payé par mobile money : 2026-T1" }, WAIT));
+    await user.click(await screen.findByRole('button', { name: 'envoyer-stub' }));
+
+    await waitFor(() => expect(screen.queryByTestId('declaration-form')).not.toBeInTheDocument());
   });
 
   it('masque la phrase « règlement en ligne pas encore ouvert » quand la déclaration est disponible', async () => {
     mountPage();
-    await screen.findByRole('button', { name: MOBILE_BUTTON }, WAIT);
+    await screen.findByRole('button', { name: rowButton('2026-T1') }, WAIT);
     expect(screen.queryByText(/pas encore ouvert pour votre copropriété/)).not.toBeInTheDocument();
   });
 
@@ -301,13 +332,13 @@ describe('Appels de charges — paiement mobile money déclaré', () => {
   });
 });
 
-describe('isCallSelectable — déclaration en attente', () => {
-  it('refuse un appel qui a une déclaration en attente, même payable en ligne', () => {
+describe('isCallPayableOnline — déclaration en attente', () => {
+  it('ne propose pas le paiement en ligne sur un appel qui a une déclaration en attente, même payable en ligne', () => {
     const pending = call({
       onlinePayable: true,
       pendingDeclaration: { declarationId: 'd', createdAt: '2026-10-15T09:00:00.000Z' }
     });
-    expect(isCallSelectable(pending, [])).toBe(false);
-    expect(isCallSelectable(call({ onlinePayable: true }), [])).toBe(true);
+    expect(isCallPayableOnline(pending)).toBe(false);
+    expect(isCallPayableOnline(call({ onlinePayable: true }))).toBe(true);
   });
 });

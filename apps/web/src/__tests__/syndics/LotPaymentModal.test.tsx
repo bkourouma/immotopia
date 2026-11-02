@@ -23,7 +23,8 @@ vi.mock('../../services/syndic-service', () => ({
   getSyndicate: (...args: unknown[]) => getSyndicate(...args),
   listSyndicateLots: (...args: unknown[]) => listSyndicateLots(...args),
   listAllChargeCallsWithSummary: (...args: unknown[]) => listChargeCalls(...args),
-  createChargeCall: (...args: unknown[]) => createChargeCall(...args)
+  createChargeCall: (...args: unknown[]) => createChargeCall(...args),
+  listBudgets: vi.fn(async () => [])
 }));
 
 const listOpenLotCharges = vi.fn();

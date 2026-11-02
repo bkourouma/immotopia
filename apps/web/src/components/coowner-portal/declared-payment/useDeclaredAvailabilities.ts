@@ -23,6 +23,8 @@ export interface DeclaredAvailabilityEntry {
 export interface DeclaredAvailabilities {
   entries: DeclaredAvailabilityEntry[];
   anyAvailable: boolean;
+  /** Copropriétés ouvertes où le copropriétaire a au moins un lot : seules à proposer la déclaration depuis une ligne. */
+  declarableSyndicateIds: Set<string>;
 }
 
 function distinctSyndicates(calls: CoOwnerChargeCall[], lots: CoOwnerLot[]): Array<{ id: string; name: string }> {
@@ -66,5 +68,10 @@ export function useDeclaredAvailabilities(calls: CoOwnerChargeCall[]): DeclaredA
     entries.push({ syndicate: syndicates[index], availability });
   });
 
-  return { entries, anyAvailable: entries.length > 0 };
+  const lotSyndicateIds = new Set((lotsQuery.data ?? []).map(lot => lot.syndicate?.id));
+  const declarableSyndicateIds = new Set(
+    entries.filter(entry => lotSyndicateIds.has(entry.syndicate.id)).map(entry => entry.syndicate.id)
+  );
+
+  return { entries, anyAvailable: entries.length > 0, declarableSyndicateIds };
 }

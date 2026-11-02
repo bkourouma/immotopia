@@ -1365,6 +1365,13 @@ export async function deactivateLotTenantAssignmentBySyndicate(
 
 type ChargeCallListFilters = {
   period?: string;
+  /** Seuls les appels des lots d'appels rattachés à ce budget (un appel sans lot d'appels n'a pas de budget). */
+  budgetId?: string;
+  /**
+   * Appels qui alimentent ce fonds : affectés au fonds en entier (`ChargeCall.fundId`), ou issus d'un budget dont un
+   * poste l'alimente (part au prorata de la répartition du lot).
+   */
+  fundId?: string;
   status?: 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE';
   range?: DateRangeInput;
   pagination?: PaginationInput;
@@ -1407,6 +1414,12 @@ function buildChargeCallListWhere(
       tenantId
     },
     ...(filters?.period ? { period: filters.period } : {}),
+    ...(filters?.budgetId ? { batch: { budgetId: filters.budgetId } } : {}),
+    ...(filters?.fundId
+      ? {
+          OR: [{ fundId: filters.fundId }, { batch: { budget: { lines: { some: { fundId: filters.fundId } } } } }]
+        }
+      : {}),
     ...(combinedConditions.length > 0 ? { AND: combinedConditions } : {})
   };
 }

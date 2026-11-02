@@ -35,6 +35,7 @@ import {
   createChargeCall,
   getSyndicate,
   listAllChargeCallsWithSummary,
+  listBudgets,
   listSyndicateFunds,
   listSyndicateLots
 } from '../../services/syndic-service';
@@ -50,6 +51,7 @@ import {
   CreateChargeCallRequest,
   LotPaymentResult,
   Syndicate,
+  SyndicateBudget,
   SyndicateFund,
   SyndicateLot
 } from '../../types/syndic-types';
@@ -103,6 +105,9 @@ export const SyndicCharges: React.FC = () => {
   });
   const [statusFilter, setStatusFilter] = useState<ChargeCallStatus | undefined>(undefined);
   const [periodFilter, setPeriodFilter] = useState('');
+  // Budget des appels affichés (et des cartes) ; vide = tous les appels, y compris ceux sans budget.
+  const [budgetFilter, setBudgetFilter] = useState<string | undefined>(undefined);
+  const [budgets, setBudgets] = useState<SyndicateBudget[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -155,7 +160,28 @@ export const SyndicCharges: React.FC = () => {
       return;
     }
     void loadCharges();
-  }, [effectiveTenantId, syndicId, statusFilter, periodFilter]);
+  }, [effectiveTenantId, syndicId, statusFilter, periodFilter, budgetFilter]);
+
+  // Liste des budgets du filtre : information annexe, son échec laisse simplement le filtre vide.
+  useEffect(() => {
+    if (!effectiveTenantId || !syndicId) return;
+    let cancelled = false;
+    listBudgets(effectiveTenantId, syndicId)
+      .then(data => {
+        if (!cancelled) setBudgets(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setBudgets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveTenantId, syndicId]);
+
+  const budgetOptions = useMemo(
+    () => budgets.map(budget => ({ value: budget.id, label: `${budget.label} (${budget.fiscalYear})` })),
+    [budgets]
+  );
 
   const loadDeclaredPending = async () => {
     if (!effectiveTenantId || !syndicId) return;
@@ -241,7 +267,8 @@ export const SyndicCharges: React.FC = () => {
     try {
       const data = await listAllChargeCallsWithSummary(effectiveTenantId, syndicId, {
         status: statusFilter,
-        period: periodFilter || undefined
+        period: periodFilter || undefined,
+        budgetId: budgetFilter
       });
       setCharges(data.items);
       setSummary(data.summary);
@@ -476,6 +503,17 @@ export const SyndicCharges: React.FC = () => {
                   value={statusFilter}
                   onChange={value => setStatusFilter(value)}
                   options={statusOptions}
+                />
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  allowClear
+                  style={{ minWidth: 280 }}
+                  placeholder={t('Filtrer par budget')}
+                  aria-label={t('Filtrer par budget')}
+                  value={budgetFilter}
+                  onChange={value => setBudgetFilter(value)}
+                  options={budgetOptions}
                 />
                 <Input
                   allowClear

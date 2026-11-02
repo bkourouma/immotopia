@@ -15,9 +15,11 @@ import { SyndicReceipts } from '../../pages/syndics/SyndicReceipts';
  */
 
 const listSyndicateLots = vi.fn();
+const listBudgets = vi.fn();
 
 vi.mock('../../services/syndic-service', () => ({
-  listSyndicateLots: (...args: unknown[]) => listSyndicateLots(...args)
+  listSyndicateLots: (...args: unknown[]) => listSyndicateLots(...args),
+  listBudgets: (...args: unknown[]) => listBudgets(...args)
 }));
 
 const listSyndicateReceipts = vi.fn();
@@ -116,6 +118,7 @@ describe('SyndicReceipts (lot S3, besoin 1)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     listSyndicateLots.mockResolvedValue([]);
+    listBudgets.mockResolvedValue([]);
   });
 
   it('affiche la liste et envoie les filtres au service', async () => {
@@ -139,6 +142,31 @@ describe('SyndicReceipts (lot S3, besoin 1)', () => {
     expect(await screen.findByText('Q-2026-000001')).toBeTruthy();
     expect(screen.getByText('Awa Diop')).toBeTruthy();
     expect(screen.getByText('Non envoyé')).toBeTruthy();
+  });
+
+  it('filtre la liste par budget, puis retire le filtre', async () => {
+    listSyndicateReceipts.mockResolvedValue({
+      items: [RECEIPT],
+      pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
+    });
+    listBudgets.mockResolvedValue([
+      { id: 'budget-2025', label: 'Budget prévisionnel 2025', fiscalYear: 2025, createdAt: '2026-10-27T10:00:00.000Z' }
+    ]);
+
+    renderWithRoute();
+    await screen.findByText('Q-2026-000001');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText('Budget'));
+    await user.click(await screen.findByText('Budget prévisionnel 2025 (2025)'));
+
+    await waitFor(() =>
+      expect(listSyndicateReceipts).toHaveBeenLastCalledWith(
+        'tenant-1',
+        'syndic-1',
+        expect.objectContaining({ budgetId: 'budget-2025', page: 1 })
+      )
+    );
   });
 
   it('télécharge la quittance en Word depuis le bouton « Télécharger (Word) »', async () => {

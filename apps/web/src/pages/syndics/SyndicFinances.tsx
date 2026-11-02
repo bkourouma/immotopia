@@ -260,6 +260,15 @@ export const SyndicFinances: React.FC = () => {
 
   const [movementsTarget, setMovementsTarget] = useState<FundRow | null>(null);
 
+  // Filtres du tableau « Détail des appels de fonds » seulement : les autres tableaux gardent tous les appels.
+  const [fundFilter, setFundFilter] = useState<string | undefined>(undefined);
+  const [ownerFilter, setOwnerFilter] = useState<string | undefined>(undefined);
+  // Filtre du tableau « Détail des paiements reçus » : indépendant de celui des appels.
+  const [paymentOwnerFilter, setPaymentOwnerFilter] = useState<string | undefined>(undefined);
+  // Appels qui alimentent le fonds choisi (l'API les désigne : affectés au fonds, ou issus d'un budget dont un poste l'alimente).
+  const [fundCharges, setFundCharges] = useState<ChargeCall[] | null>(null);
+  const [fundChargesLoading, setFundChargesLoading] = useState(false);
+
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
       setLoading(false);
@@ -268,6 +277,33 @@ export const SyndicFinances: React.FC = () => {
     }
     void loadAll();
   }, [effectiveTenantId, syndicId]);
+
+  useEffect(() => {
+    if (!effectiveTenantId || !syndicId) return;
+    if (!fundFilter) {
+      setFundCharges(null);
+      return;
+    }
+    let cancelled = false;
+    setFundChargesLoading(true);
+    listAllChargeCalls(effectiveTenantId, syndicId, { fundId: fundFilter })
+      .then(data => {
+        if (!cancelled) setFundCharges(data);
+      })
+      .catch((err: any) => {
+        if (!cancelled) {
+          setFundCharges(null);
+          message.error(err.response?.data?.error || t('Impossible de filtrer les appels par fonds'));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setFundChargesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveTenantId, syndicId, fundFilter]);
 
   const loadAll = async () => {
     if (!effectiveTenantId || !syndicId) return;
@@ -358,8 +394,32 @@ export const SyndicFinances: React.FC = () => {
   };
 
   const fundRows = useMemo(() => buildFundRows(summary), [summary]);
-  const chargeRows = useMemo(() => buildChargeRows(charges), [charges]);
-  const paymentRows = useMemo(() => buildPaymentRows(charges), [charges]);
+  const allChargeRows = useMemo(() => buildChargeRows(charges), [charges]);
+  const fundOptions = useMemo(() => fundRows.map(fund => ({ value: fund.id, label: fund.name })), [fundRows]);
+  // Copropriétaires proposés : ceux de tous les appels, pas seulement du fonds choisi.
+  const ownerOptions = useMemo(
+    () =>
+      Array.from(new Set(allChargeRows.map(row => row.ownerLabel)))
+        .sort((a, b) => a.localeCompare(b))
+        .map(label => ({ value: label, label })),
+    [allChargeRows]
+  );
+  const chargeRows = useMemo(() => {
+    const rows = fundFilter && fundCharges ? buildChargeRows(fundCharges) : allChargeRows;
+    return ownerFilter ? rows.filter(row => row.ownerLabel === ownerFilter) : rows;
+  }, [allChargeRows, fundCharges, fundFilter, ownerFilter]);
+  const allPaymentRows = useMemo(() => buildPaymentRows(charges), [charges]);
+  const paymentOwnerOptions = useMemo(
+    () =>
+      Array.from(new Set(allPaymentRows.map(row => row.ownerLabel)))
+        .sort((a, b) => a.localeCompare(b))
+        .map(label => ({ value: label, label })),
+    [allPaymentRows]
+  );
+  const paymentRows = useMemo(
+    () => (paymentOwnerFilter ? allPaymentRows.filter(row => row.ownerLabel === paymentOwnerFilter) : allPaymentRows),
+    [allPaymentRows, paymentOwnerFilter]
+  );
   const overdueRows = useMemo(() => buildOverdueRows(dashboard, reminders), [dashboard, reminders]);
 
   const fundsTable = useLocalTable(fundRows, 10);
@@ -626,7 +686,35 @@ export const SyndicFinances: React.FC = () => {
         </div>
 
         <div id="finances-appels">
-          <Card title={t('Détail des appels de fonds')}>
+          <Card
+            title={t('Détail des appels de fonds')}
+            extra={
+              <Space wrap size={12}>
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  style={{ minWidth: 200 }}
+                  placeholder={t('Filtrer par fonds')}
+                  aria-label={t('Filtrer par fonds')}
+                  value={fundFilter}
+                  onChange={value => setFundFilter(value)}
+                  options={fundOptions}
+                />
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  style={{ minWidth: 220 }}
+                  placeholder={t('Filtrer par copropriétaire')}
+                  aria-label={t('Filtrer par copropriétaire')}
+                  value={ownerFilter}
+                  onChange={value => setOwnerFilter(value)}
+                  options={ownerOptions}
+                />
+              </Space>
+            }
+          >
             <DataView<ChargeRow>
               items={chargesTable.pageItems}
               total={chargesTable.total}
@@ -635,7 +723,7 @@ export const SyndicFinances: React.FC = () => {
               onPageChange={chargesTable.onPageChange}
               sort={chargesTable.sort}
               onSortChange={chargesTable.onSortChange}
-              loading={loading}
+              loading={loading || fundChargesLoading}
               error={error}
               errorCause={errorCause}
               onRetry={() => void loadAll()}
@@ -666,7 +754,22 @@ export const SyndicFinances: React.FC = () => {
         </div>
 
         <div id="finances-paiements">
-          <Card title={t('Détail des paiements reçus')}>
+          <Card
+            title={t('Détail des paiements reçus')}
+            extra={
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                style={{ minWidth: 220 }}
+                placeholder={t('Filtrer par copropriétaire')}
+                aria-label={t('Filtrer les paiements par copropriétaire')}
+                value={paymentOwnerFilter}
+                onChange={value => setPaymentOwnerFilter(value)}
+                options={paymentOwnerOptions}
+              />
+            }
+          >
             <DataView<PaymentRow>
               items={paymentsTable.pageItems}
               total={paymentsTable.total}
