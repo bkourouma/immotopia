@@ -137,7 +137,7 @@ export interface AuthState {
 // Auth context actions
 export interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<void>;
-  logout: () => Promise<void>;
+  logout: (options?: { redirectTo?: string }) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   refreshToken: () => Promise<void>;
   clearError: () => void;

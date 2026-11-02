@@ -41,7 +41,7 @@ const getPasswordStrength = (
 export const AcceptInvitePage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
   const [form] = Form.useForm<AcceptInviteFormValues>();
   const passwordValue = Form.useWatch('password', form) || '';
   const passwordStrength = getPasswordStrength(passwordValue);
@@ -54,6 +54,10 @@ export const AcceptInvitePage: React.FC = () => {
   // son mot de passe et demande une connexion avec CE compte avant de
   // rattacher l'agence (voir invitation-service.ts, acceptInvitation).
   const [requiresLogin, setRequiresLogin] = useState(false);
+  // La session ouverte n'est pas celle de l'adresse invitee : l'API refuse
+  // (INVITATION_FOR_ANOTHER_ACCOUNT) et renvoie l'adresse MASQUEE.
+  const [anotherAccount, setAnotherAccount] = useState<{ maskedEmail: string } | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     const inviteToken = searchParams.get('token');
@@ -73,6 +77,7 @@ export const AcceptInvitePage: React.FC = () => {
 
     setGeneralError('');
     setRequiresLogin(false);
+    setAnotherAccount(null);
     setIsSubmitting(true);
 
     try {
@@ -96,6 +101,8 @@ export const AcceptInvitePage: React.FC = () => {
     } catch (err: any) {
       if (err?.response?.data?.code === 'INVITATION_REQUIRES_LOGIN') {
         setRequiresLogin(true);
+      } else if (err?.response?.data?.code === 'INVITATION_FOR_ANOTHER_ACCOUNT') {
+        setAnotherAccount({ maskedEmail: String(err.response.data.data?.maskedEmail ?? '') });
       } else {
         setGeneralError(err?.response?.data?.message || t('Une erreur est survenue. Veuillez réessayer.'));
       }
@@ -106,6 +113,47 @@ export const AcceptInvitePage: React.FC = () => {
   };
 
   const loginRedirectUrl = `/login?redirect=${encodeURIComponent(`/auth/accept-invite?token=${token}`)}`;
+
+  // Deconnecte la session courante, puis revient a la meme page (meme jeton) :
+  // sans session, les champs nom et mot de passe reapparaissent.
+  const handleLogoutAndContinue = async (): Promise<void> => {
+    setIsLoggingOut(true);
+    try {
+      await logout({ redirectTo: `/auth/accept-invite?token=${encodeURIComponent(token)}` });
+      setAnotherAccount(null);
+      setGeneralError('');
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  if (anotherAccount) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24,
+          background: '#f0f2f5'
+        }}
+      >
+        <Card style={{ maxWidth: 520, width: '100%' }}>
+          <Result
+            status="warning"
+            title={t('Cette invitation est destinée à {{email}}', { email: anotherAccount.maskedEmail })}
+            subTitle={t('Vous êtes connecté avec un autre compte. Déconnectez-vous pour accepter cette invitation.')}
+            extra={
+              <Button type="primary" loading={isLoggingOut} onClick={handleLogoutAndContinue}>
+                {t('Se déconnecter et continuer')}
+              </Button>
+            }
+          />
+        </Card>
+      </div>
+    );
+  }
 
   if (requiresLogin) {
     return (

@@ -114,4 +114,36 @@ describe('<AcceptInvitePage>', () => {
     expect(await screen.findByText('Connectez-vous pour accepter')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Se connecter' })).toBeInTheDocument();
   });
+
+  it("session d'un autre compte : affiche l'adresse masquee et se deconnecte pour afficher les champs", async () => {
+    const logout = vi.fn(async () => {
+      mockUseAuth.mockReturnValue({ isAuthenticated: false, logout });
+    });
+    mockUseAuth.mockReturnValue({ isAuthenticated: true, logout });
+    post.mockRejectedValue({
+      response: {
+        data: {
+          success: false,
+          code: 'INVITATION_FOR_ANOTHER_ACCOUNT',
+          message: 'Cette invitation est destinée à une autre adresse (b•••@gmail.com).',
+          data: { maskedEmail: 'b•••@gmail.com' }
+        }
+      }
+    });
+    const user = userEvent.setup();
+
+    renderPage();
+    await user.click(screen.getByRole('button', { name: "Accepter l'invitation" }));
+
+    expect(await screen.findByText(/b•••@gmail\.com/)).toBeInTheDocument();
+    expect(screen.getByText(/connecté avec un autre compte/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Mot de passe')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Se déconnecter et continuer' }));
+
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(logout).toHaveBeenCalledWith({ redirectTo: `/auth/accept-invite?token=${encodeURIComponent(TOKEN)}` });
+    expect(await screen.findByLabelText('Mot de passe')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nom complet')).toBeInTheDocument();
+  });
 });

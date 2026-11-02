@@ -62,6 +62,8 @@ export const ErrorCode = {
   // Invitations (correctif securite) : un compte existe deja pour l'email
   // invite, l'acceptation exige une session de CE compte.
   INVITATION_REQUIRES_LOGIN: 'INVITATION_REQUIRES_LOGIN',
+  // Invitations : la session ouverte n'est pas celle de l'adresse invitee.
+  INVITATION_FOR_ANOTHER_ACCOUNT: 'INVITATION_FOR_ANOTHER_ACCOUNT',
   // Controle du stock de chantier (spec 040, contrat `StockErrorCode`). Leves en
   // `AppError` avec, si utile, `data` (ex. `data.items`), jamais par
   // `lib/errors.conflict(message, details)` dont les details ne sortent pas.
@@ -255,6 +257,18 @@ export class InvitationRequiresLoginError extends AppError {
     message = 'Un compte existe déjà avec cette adresse e-mail. Connectez-vous avec ce compte pour accepter cette invitation.'
   ) {
     super(message, 403, ErrorCode.INVITATION_REQUIRES_LOGIN);
+  }
+}
+
+/**
+ * La requete porte une session, mais ce n'est pas celle de l'adresse invitee
+ * (compte inexistant pour cette adresse, ou compte different de la session)
+ * (409). Le front propose alors de se deconnecter pour continuer. `data.maskedEmail`
+ * porte l'adresse MASQUEE (premiere lettre + domaine), jamais l'adresse complete.
+ */
+export class InvitationForAnotherAccountError extends AppError {
+  constructor(message: string, maskedEmail: string) {
+    super(message, 409, ErrorCode.INVITATION_FOR_ANOTHER_ACCOUNT, undefined, { maskedEmail });
   }
 }
 
