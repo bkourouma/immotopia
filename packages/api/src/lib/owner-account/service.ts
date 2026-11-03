@@ -285,6 +285,15 @@ async function lockThirdPartyAccountTx(tx: any, tenantId: string, accountId: str
   if (!Array.isArray(locked) || locked.length === 0) throw notFound('Compte propriétaire introuvable');
 }
 
+/** Somme des reversements NON annulés rattachés à un relevé. */
+async function statementCoveredTx(tx: any, tenantId: string, statementId: string) {
+  const rows: Array<{ amount: Decimalish }> = await tx.ownerPayout.findMany({
+    where: { tenantId, statementId, status: { not: 'VOIDED' } },
+    select: { amount: true }
+  });
+  return roundMoney(rows.reduce((sum, row) => sum + amount(row.amount), 0));
+}
+
 export async function createOwnerPayout(
   tenantId: string,
   ownerClientId: string,
@@ -300,11 +309,18 @@ export async function createOwnerPayout(
   const settings = await getAgencyFinanceSettings(tenantId);
 
   if (input.statementId) {
-    const statement = await prisma.ownerStatement.findFirst({
-      where: { id: input.statementId, tenantId },
-      select: { id: true }
-    });
-    if (!statement) throw notFound('Releve introuvable');
+    const [statement, ownerClient] = await Promise.all([
+      prisma.ownerStatement.findFirst({
+        where: { id: input.statementId, tenantId },
+        select: { id: true, ownerContactId: true }
+      }),
+      prisma.tenantClient.findFirst({ where: { id: ownerClientId, tenantId }, select: { id: true, details: true } })
+    ]);
+    // Le relevé doit être celui du propriétaire du compte : même erreur qu'un relevé inexistant.
+    const ownerContactId = (ownerClient?.details as { crmContactId?: unknown } | null)?.crmContactId;
+    if (!statement || !ownerContactId || statement.ownerContactId !== ownerContactId) {
+      throw notFound('Releve introuvable');
+    }
   }
 
   const payout = await prisma.$transaction(async tx => {
@@ -380,8 +396,22 @@ export async function createOwnerPayout(
       ]
     });
 
+    // Le relevé n'est « Payé » que lorsque les reversements non annulés qui lui sont
+    // rattachés couvrent son net dû au propriétaire (un reversement partiel le laisse tel quel).
     if (input.statementId) {
-      await tx.ownerStatement.update({ where: { id: input.statementId, tenantId }, data: { status: 'PAID', paidAt } });
+      const statement = await tx.ownerStatement.findFirst({
+        where: { id: input.statementId, tenantId },
+        select: { netAmount: true, status: true }
+      });
+      if (statement && statement.status !== 'PAID') {
+        const covered = await statementCoveredTx(tx, tenantId, input.statementId);
+        if (covered >= roundMoney(amount(statement.netAmount))) {
+          await tx.ownerStatement.update({
+            where: { id: input.statementId, tenantId },
+            data: { status: 'PAID', paidAt }
+          });
+        }
+      }
     }
     return created;
   });
@@ -444,11 +474,21 @@ export async function voidOwnerPayout(
     });
 
     // Le relevé que ce reversement réglait redevient dû.
+    // Il ne l'est que si les reversements restants ne couvrent plus son net.
     if (existing.statementId) {
-      await tx.ownerStatement.updateMany({
-        where: { id: existing.statementId, tenantId, status: 'PAID' },
-        data: { status: 'SENT', paidAt: null }
+      const statement = await tx.ownerStatement.findFirst({
+        where: { id: existing.statementId, tenantId },
+        select: { netAmount: true, status: true }
       });
+      if (statement?.status === 'PAID') {
+        const covered = await statementCoveredTx(tx, tenantId, existing.statementId);
+        if (covered < roundMoney(amount(statement.netAmount))) {
+          await tx.ownerStatement.updateMany({
+            where: { id: existing.statementId, tenantId, status: 'PAID' },
+            data: { status: 'SENT', paidAt: null }
+          });
+        }
+      }
     }
     return updated;
   });

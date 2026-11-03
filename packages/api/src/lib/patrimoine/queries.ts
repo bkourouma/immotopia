@@ -1,5 +1,6 @@
 import { Prisma, PropertyStatus, StatementStatus, WorkProgramStatus } from '@prisma/client';
-import { activeMandateWhere } from '../owner-portal-scope';
+import { activeMandateWhere, resolveOwnerPortalPropertyIds } from '../owner-portal-scope';
+import { t } from '../../i18n';
 import { badRequest, conflict, notFound } from '../errors';
 import { prisma } from '../../utils/database';
 import { annualizeRent, remainingLoanMonths, type LoanSchedule, type YieldInput } from './yield';
@@ -1072,6 +1073,42 @@ export async function generateOwnerStatement(
     throw badRequest('Un ou plusieurs biens sont introuvables ou hors tenant');
   }
 
+  // Périmètre du propriétaire : mêmes règles que son portail (biens rattachés,
+  // mandats actifs, baux) plus les biens dont il détient une quote-part.
+  // Un bien hors périmètre se comporte comme un bien inexistant.
+  const ownerClients = await prisma.tenantClient.findMany({
+    where: { tenantId, details: { path: ['crmContactId'], equals: params.ownerContactId } },
+    select: { id: true, userId: true }
+  });
+  if (ownerClients.length === 0) {
+    throw badRequest(
+      t(
+        "Ce propriétaire n'est rattaché à aucun compte propriétaire de l'agence : rattachez-le avant de générer son relevé."
+      )
+    );
+  }
+  const inScope = new Set<string>();
+  {
+    const scopes = await Promise.all(
+      ownerClients.map(client =>
+        resolveOwnerPortalPropertyIds({ userId: client.userId, tenantClientId: client.id, tenantId })
+      )
+    );
+    scopes.forEach(ids => ids.forEach(id => inScope.add(id)));
+    const shares = await prisma.propertyOwnershipShare.findMany({
+      where: {
+        tenantId,
+        ownerClientId: { in: ownerClients.map(client => client.id) },
+        propertyId: { in: propertyIds }
+      },
+      select: { propertyId: true }
+    });
+    shares.forEach(share => inScope.add(share.propertyId));
+  }
+  if (propertyIds.some(id => !inScope.has(id))) {
+    throw notFound('Bien introuvable');
+  }
+
   const existing = await prisma.ownerStatement.findUnique({
     where: {
       tenantId_ownerContactId_period: {
@@ -1354,6 +1391,12 @@ export async function updateOwnerStatement(
     where: { id: statementId, tenantId }
   });
   if (!existing) throw notFound('Relevé introuvable');
+
+  // Un relevé payé ne repasse ni en brouillon ni en envoyé : annuler le
+  // reversement qui l'a réglé est le seul chemin.
+  if (existing.status === StatementStatus.PAID && data.status && data.status !== StatementStatus.PAID) {
+    throw conflict(t('Ce relevé est déjà payé : son statut ne peut plus être modifié.'));
+  }
 
   return prisma.ownerStatement.update({
     where: { id: statementId, tenantId },
