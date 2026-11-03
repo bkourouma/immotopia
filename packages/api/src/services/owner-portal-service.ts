@@ -139,6 +139,14 @@ function summarizePortfolio(properties: Array<{ status: PropertyStatus; rentalLe
   return { total: properties.length, rented, available, inMaintenance };
 }
 
+/**
+ * Intersecte un identifiant de bien reçu dans la requête avec le périmètre du
+ * propriétaire : liste vide si le bien n'en fait pas partie.
+ */
+function restrictToOwnerScope(propertyIds: string[], requestedPropertyId: string): string[] {
+  return propertyIds.filter(id => id === requestedPropertyId);
+}
+
 export class OwnerPortalService {
   /**
    * Get dashboard data for owner portal
@@ -834,7 +842,8 @@ export class OwnerPortalService {
       }
 
       if (filters?.propertyId) {
-        where.property_id = filters.propertyId;
+        // Le filtre RESTREINT le périmètre : bien hors périmètre = liste vide.
+        where.property_id = { in: restrictToOwnerScope(propertyIds, filters.propertyId) };
       }
 
       // Get leases
@@ -2051,7 +2060,8 @@ export class OwnerPortalService {
       }
 
       if (filters?.propertyId) {
-        where.property_id = filters.propertyId;
+        // Le filtre RESTREINT le périmètre : bien hors périmètre = liste vide.
+        where.property_id = { in: restrictToOwnerScope(propertyIds, filters.propertyId) };
       }
 
       if (filters?.category) {
@@ -2273,26 +2283,12 @@ export class OwnerPortalService {
       }
 
       if (filters?.propertyId) {
+        // Restriction (jamais remplacement) du périmètre du propriétaire.
+        const scoped = restrictToOwnerScope(propertyIds, filters.propertyId);
         where.OR = [
-          {
-            lease: {
-              property_id: filters.propertyId
-            }
-          },
-          {
-            installment: {
-              lease: {
-                property_id: filters.propertyId
-              }
-            }
-          },
-          {
-            payment: {
-              lease: {
-                property_id: filters.propertyId
-              }
-            }
-          }
+          { lease: { property_id: { in: scoped } } },
+          { installment: { lease: { property_id: { in: scoped } } } },
+          { payment: { lease: { property_id: { in: scoped } } } }
         ];
       }
 
