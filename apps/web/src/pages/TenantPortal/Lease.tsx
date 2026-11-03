@@ -25,6 +25,7 @@ import {
 } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import { t } from '../../i18n/t';
+import { filenameFromDisposition } from '../../utils/save-blob';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -223,7 +224,11 @@ export default function TenantLease() {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `document-${documentId}.pdf`);
+      // Nom et extension fidèles au fichier servi (.docx, .pdf…), jamais un « .pdf » imposé.
+      link.setAttribute(
+        'download',
+        filenameFromDisposition(response.headers?.['content-disposition'], `document-${documentId}`)
+      );
       document.body.appendChild(link);
       link.click();
       link.remove();

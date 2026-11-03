@@ -146,7 +146,7 @@ export default function TenantDeposit() {
     );
   }
 
-  const { deposit, movements, currentHeldAmount } = data;
+  const { deposit, movements } = data;
   const availableAmount = deposit.collectedAmount - deposit.refundedAmount - deposit.forfeitedAmount;
 
   return (
@@ -184,7 +184,7 @@ export default function TenantDeposit() {
           <Card>
             <Statistic
               title={t('Montant retenu')}
-              value={currentHeldAmount}
+              value={deposit.heldAmount}
               valueStyle={{ color: '#faad14' }}
               prefix={<DollarOutlined />}
               formatter={value => formatCurrency(Number(value))}

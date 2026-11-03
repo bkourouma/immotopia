@@ -4,6 +4,14 @@
  */
 
 import { z } from 'zod';
+import { detectMandateScanKind } from '../lib/direct-debit/mandate-files';
+
+/**
+ * Plafond d'un montant déclaré : la colonne est un `Decimal(12, 2)` (au plus
+ * 9 999 999 999,99). Au-delà, la base lève une erreur qui devenait un 500 ;
+ * le plafond métier est volontairement plus bas qu'une limite technique.
+ */
+export const MAX_DECLARED_AMOUNT = 1_000_000_000;
 
 // Payment Declaration Validation
 export const declarePaymentSchema = z
@@ -13,7 +21,8 @@ export const declarePaymentSchema = z
         required_error: 'Le montant est requis.',
         invalid_type_error: 'Le montant doit être un nombre.'
       })
-      .positive('Le montant doit être positif.'),
+      .positive('Le montant doit être positif.')
+      .max(MAX_DECLARED_AMOUNT, 'Le montant est trop élevé.'),
     paymentDate: z
       .string({
         required_error: 'La date de paiement est requise.'
@@ -69,25 +78,62 @@ export const declarePaymentSchema = z
   );
 
 // File Upload Validation
-export const validatePaymentProofFile = (file: Express.Multer.File | undefined): { valid: boolean; error?: string } => {
-  if (!file) {
-    return { valid: true }; // File is optional
-  }
+type FileCheck = { valid: boolean; error?: string };
+type ProofKind = 'pdf' | 'png' | 'jpg' | 'webp';
 
-  // Check file size (5MB max)
+const ALLOWED_PROOF_KINDS: Record<string, ProofKind> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'application/pdf': 'pdf'
+};
+
+/** WebP : conteneur RIFF (`RIFF....WEBP`). PDF, PNG et JPEG : lecteur déjà utilisé pour les scans de mandat. */
+function detectProofKind(buffer: Buffer): ProofKind | null {
+  const kind = detectMandateScanKind(buffer);
+  if (kind) return kind;
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString('latin1') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('latin1') === 'WEBP'
+  ) {
+    return 'webp';
+  }
+  return null;
+}
+
+/**
+ * Taille, type déclaré ET signature réelle du fichier : un faux `.png` (texte,
+ * HTML…) envoyé avec `image/png` est refusé.
+ */
+function validateImageOrPdf(file: Express.Multer.File): FileCheck {
   const maxSize = 5 * 1024 * 1024; // 5MB in bytes
   if (file.size > maxSize) {
     return { valid: false, error: 'Le fichier ne doit pas dépasser 5MB.' };
   }
 
-  // Check file type (images and PDFs only)
-  const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
-
-  if (!allowedMimeTypes.includes(file.mimetype)) {
+  const declaredKind = ALLOWED_PROOF_KINDS[file.mimetype];
+  if (!declaredKind) {
     return { valid: false, error: 'Le fichier doit être une image (JPEG, PNG, WebP) ou un PDF.' };
   }
 
+  const realKind = file.buffer ? detectProofKind(file.buffer) : null;
+  if (realKind !== declaredKind) {
+    return {
+      valid: false,
+      error: 'Le contenu du fichier ne correspond pas à son type (JPEG, PNG, WebP ou PDF attendu).'
+    };
+  }
+
   return { valid: true };
+}
+
+export const validatePaymentProofFile = (file: Express.Multer.File | undefined): FileCheck => {
+  if (!file) {
+    return { valid: true }; // File is optional
+  }
+  return validateImageOrPdf(file);
 };
 
 // Maintenance Ticket Creation Validation
@@ -117,27 +163,11 @@ export const createMaintenanceTicketSchema = z.object({
 });
 
 // File Upload Validation for Maintenance Attachments
-export const validateMaintenanceAttachment = (
-  file: Express.Multer.File | undefined
-): { valid: boolean; error?: string } => {
+export const validateMaintenanceAttachment = (file: Express.Multer.File | undefined): FileCheck => {
   if (!file) {
     return { valid: false, error: 'Le fichier est requis.' };
   }
-
-  // Check file size (5MB max)
-  const maxSize = 5 * 1024 * 1024; // 5MB in bytes
-  if (file.size > maxSize) {
-    return { valid: false, error: 'Le fichier ne doit pas dépasser 5MB.' };
-  }
-
-  // Check file type (images and PDFs only)
-  const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
-
-  if (!allowedMimeTypes.includes(file.mimetype)) {
-    return { valid: false, error: 'Le fichier doit être une image (JPEG, PNG, WebP) ou un PDF.' };
-  }
-
-  return { valid: true };
+  return validateImageOrPdf(file);
 };
 
 // Add Comment Validation

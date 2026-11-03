@@ -438,6 +438,13 @@ export default function TenantPayments() {
     return dayjs(dateString).format('DD/MM/YYYY');
   };
 
+  /**
+   * Seules les échéances exigibles se paient : ni brouillon (pas encore
+   * facturée), ni annulée, ni soldée.
+   */
+  const isPayable = (record: InstallmentItem) =>
+    ['DUE', 'OVERDUE', 'PARTIAL'].includes(record.status) && record.balance > 0;
+
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
       PAID: { label: t('Payé'), color: 'success' },
@@ -651,7 +658,7 @@ export default function TenantPayments() {
       width: 190,
       render: (_: any, record: InstallmentItem) => (
         <Space>
-          {record.balance > 0 && (
+          {isPayable(record) && (
             <Button
               type="primary"
               size="small"
@@ -897,7 +904,7 @@ export default function TenantPayments() {
                               selectedRowKeys: selectedInstallmentIds,
                               onChange: keys => setSelectedInstallmentIds(keys as string[]),
                               getCheckboxProps: (record: InstallmentItem) => ({
-                                disabled: record.balance <= 0,
+                                disabled: !isPayable(record),
                                 'aria-label': t('Sélectionner {{period}}', { period: record.period })
                               })
                             }
@@ -1073,7 +1080,16 @@ export default function TenantPayments() {
                                     : declStatus === 'REJECTED'
                                       ? 'error'
                                       : 'default';
-                              return <Tag color={color}>{label}</Tag>;
+                              return (
+                                <Space direction="vertical" size={2}>
+                                  <Tag color={color}>{label}</Tag>
+                                  {declStatus === 'REJECTED' && record.rejectionReason ? (
+                                    <Text type="secondary" style={{ fontSize: 12 }}>
+                                      {t('Motif : {{reason}}', { reason: record.rejectionReason })}
+                                    </Text>
+                                  ) : null}
+                                </Space>
+                              );
                             }
                           },
                           {

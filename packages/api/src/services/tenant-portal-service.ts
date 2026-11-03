@@ -35,8 +35,48 @@ import {
   resolveTenantPortalCrmContactId,
   tenantPortalTicketFilter
 } from '../lib/maintenance/portal-visibility';
-import { NotFoundError } from '../middleware/error-middleware';
+import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
+import { isUuid } from '../lib/signature/sources/guards';
 import { PORTAL_RENTAL_DOCUMENT_SELECT, toPortalAttachment, toPortalRentalDocument } from '../lib/files/portal-files';
+
+/** Montant exigé d'une échéance : loyer, charges, autres frais et pénalité. */
+function installmentTotal(inst: {
+  amount_rent: unknown;
+  amount_service: unknown;
+  amount_other_fees: unknown;
+  penalty_amount: unknown;
+}): number {
+  return (
+    Number(inst.amount_rent) +
+    Number(inst.amount_service) +
+    Number(inst.amount_other_fees) +
+    Number(inst.penalty_amount || 0)
+  );
+}
+
+/** Reste dû : total moins le plus grand du cumul des allocations SUCCESS et de `amount_paid`. */
+function installmentRemaining(inst: {
+  amount_rent: unknown;
+  amount_service: unknown;
+  amount_other_fees: unknown;
+  penalty_amount: unknown;
+  amount_paid?: unknown;
+  payments?: Array<{ amount: unknown; payment?: { status?: unknown } | null }>;
+}): number {
+  const fromAllocations = (inst.payments ?? []).reduce(
+    (sum, a) => (a.payment?.status === RentalPaymentStatus.SUCCESS ? sum + Number(a.amount || 0) : sum),
+    0
+  );
+  return installmentTotal(inst) - Math.max(fromAllocations, Number(inst.amount_paid || 0));
+}
+
+/** Un identifiant qui n'a pas la forme d'un UUID ne désigne rien : 404, jamais une erreur de base. */
+function assertKnownId(id: string | undefined, message: string): string {
+  if (!id || !isUuid(id)) {
+    throw new NotFoundError(message);
+  }
+  return id;
+}
 
 export class TenantPortalService {
   /**
@@ -90,7 +130,7 @@ export class TenantPortalService {
       });
 
       if (!lease) {
-        throw new Error('Bail non trouvé');
+        throw new NotFoundError('Bail non trouvé');
       }
 
       // Build lease overview
@@ -104,50 +144,36 @@ export class TenantPortalService {
         status: lease.status
       };
 
-      // Calculate current balance (T021)
-      // Sum of DUE + OVERDUE installments minus allocated payments
+      // Calculate current balance (T021) : reste dû de toutes les échéances
+      // facturées (à échoir, en retard ET partiellement payées). Les
+      // brouillons et les échéances annulées ne sont pas dus.
       const dueInstallments = await prisma.rentalInstallment.findMany({
         where: {
           lease_id: leaseId,
           tenant_id: tenantId,
           status: {
-            in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.OVERDUE]
-          }
-        }
-      });
-
-      let totalDue = 0;
-      for (const inst of dueInstallments) {
-        const installmentTotal =
-          Number(inst.amount_rent) +
-          Number(inst.amount_service) +
-          Number(inst.amount_other_fees) +
-          Number(inst.penalty_amount || 0);
-        totalDue += installmentTotal;
-      }
-
-      // Get total allocated payments for these installments
-      const allocatedPayments = await prisma.rentalPaymentAllocation.aggregate({
-        where: {
-          tenant_id: tenantId,
-          installment: {
-            lease_id: leaseId,
-            status: {
-              in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.OVERDUE]
-            }
-          },
-          payment: {
-            status: RentalPaymentStatus.SUCCESS
+            in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.PARTIAL, RentalInstallmentStatus.OVERDUE]
           }
         },
-        _sum: {
-          amount: true
+        include: {
+          payments: { select: { amount: true, payment: { select: { status: true } } } }
         }
       });
 
-      const totalPaid = Number(allocatedPayments._sum.amount || 0);
-      const currentBalance = totalDue - totalPaid;
-      const overdueInstallmentsCount = dueInstallments.filter(i => i.status === RentalInstallmentStatus.OVERDUE).length;
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      let currentBalance = 0;
+      let overdueInstallmentsCount = 0;
+      for (const inst of dueInstallments) {
+        const remaining = installmentRemaining(inst);
+        if (remaining <= 0) continue;
+        currentBalance += remaining;
+        const dueDate = new Date(inst.due_date);
+        dueDate.setHours(0, 0, 0, 0);
+        if (inst.status === RentalInstallmentStatus.OVERDUE || dueDate < todayStart) {
+          overdueInstallmentsCount++;
+        }
+      }
 
       // Find next installment (T022) - la plus ancienne échéance non soldée :
       // à échoir, partiellement payée ou en retard (BUG-2026-09-28-027).
@@ -343,7 +369,7 @@ export class TenantPortalService {
       });
 
       if (!lease) {
-        throw new Error('Bail non trouvé');
+        throw new NotFoundError('Bail non trouvé');
       }
 
       // Get co-renters list (T037)
@@ -558,6 +584,11 @@ export class TenantPortalService {
         const dueDate = new Date(inst.due_date);
         dueDate.setHours(0, 0, 0, 0);
 
+        // Brouillon (pas encore facturée) et annulée : ni due, ni en retard.
+        if (inst.status === RentalInstallmentStatus.DRAFT || inst.status === RentalInstallmentStatus.CANCELED) {
+          continue;
+        }
+
         let calculatedStatus: RentalInstallmentStatus;
         if (amountPaid >= total && total > 0) {
           calculatedStatus = RentalInstallmentStatus.PAID;
@@ -584,7 +615,9 @@ export class TenantPortalService {
       }
 
       const summary = {
-        total: allInstallments.length,
+        total: allInstallments.filter(
+          i => i.status !== RentalInstallmentStatus.DRAFT && i.status !== RentalInstallmentStatus.CANCELED
+        ).length,
         paid: paidCount,
         due: dueCount,
         overdue: overdueCount,
@@ -612,30 +645,15 @@ export class TenantPortalService {
         const dueDate = new Date(inst.due_date);
         dueDate.setHours(0, 0, 0, 0);
 
-        // Only recalculate if status is DRAFT or if payment/due date conditions changed
-        if (inst.status === RentalInstallmentStatus.DRAFT || inst.status === RentalInstallmentStatus.CANCELED) {
+        // Brouillon et annulée gardent leur statut : elles ne sont ni dues ni payables.
+        if (inst.status !== RentalInstallmentStatus.DRAFT && inst.status !== RentalInstallmentStatus.CANCELED) {
           if (amountPaid >= totalAmount && totalAmount > 0) {
             calculatedStatus = RentalInstallmentStatus.PAID;
           } else if (amountPaid > 0 && amountPaid < totalAmount) {
             calculatedStatus = RentalInstallmentStatus.PARTIAL;
           } else if (dueDate < today) {
             calculatedStatus = RentalInstallmentStatus.OVERDUE;
-          } else if (dueDate >= today) {
-            calculatedStatus = RentalInstallmentStatus.DUE;
-          }
-        } else {
-          // For non-DRAFT statuses, verify the status is still correct
-          if (amountPaid >= totalAmount && totalAmount > 0) {
-            calculatedStatus = RentalInstallmentStatus.PAID;
-          } else if (amountPaid > 0 && amountPaid < totalAmount) {
-            calculatedStatus = RentalInstallmentStatus.PARTIAL;
-          } else if (dueDate < today) {
-            calculatedStatus = RentalInstallmentStatus.OVERDUE;
-          } else if (
-            dueDate >= today &&
-            inst.status !== RentalInstallmentStatus.PAID &&
-            inst.status !== RentalInstallmentStatus.PARTIAL
-          ) {
+          } else if (inst.status !== RentalInstallmentStatus.PAID && inst.status !== RentalInstallmentStatus.PARTIAL) {
             calculatedStatus = RentalInstallmentStatus.DUE;
           }
         }
@@ -696,6 +714,7 @@ export class TenantPortalService {
     installmentId: string
   ): Promise<any> {
     try {
+      assertKnownId(installmentId, 'Échéance non trouvée');
       // Get installment with items, allocations, penalties (T047)
       const installment = await prisma.rentalInstallment.findFirst({
         where: {
@@ -750,7 +769,7 @@ export class TenantPortalService {
       });
 
       if (!installment) {
-        throw new Error('Échéance non trouvée');
+        throw new NotFoundError('Échéance non trouvée');
       }
 
       // Get related payments (T048) - all payments for this lease that could be related
@@ -839,6 +858,7 @@ export class TenantPortalService {
     try {
       // Validate installment if provided (T060)
       if (data.installmentId) {
+        assertKnownId(data.installmentId, 'Échéance non trouvée ou non associée à ce bail');
         const installment = await prisma.rentalInstallment.findFirst({
           where: {
             id: data.installmentId,
@@ -848,7 +868,13 @@ export class TenantPortalService {
         });
 
         if (!installment) {
-          throw new Error('Échéance non trouvée ou non associée à ce bail');
+          throw new NotFoundError('Échéance non trouvée ou non associée à ce bail');
+        }
+        if (
+          installment.status === RentalInstallmentStatus.DRAFT ||
+          installment.status === RentalInstallmentStatus.CANCELED
+        ) {
+          throw new BadRequestError("Cette échéance n'est pas exigible : aucun paiement ne peut être déclaré dessus.");
         }
       }
 
@@ -1318,6 +1344,8 @@ export class TenantPortalService {
           unallocatedAmount: Number(d.amount),
           isDeclaration: true,
           declarationStatus: d.status,
+          // Motif saisi par l'agence au rejet : le locataire doit savoir quoi corriger.
+          rejectionReason: d.status === 'REJECTED' ? d.review_notes || null : null,
           allocations: []
         }));
 
@@ -1506,7 +1534,7 @@ export class TenantPortalService {
       });
 
       if (!lease) {
-        throw new Error('Bail non trouvé');
+        throw new NotFoundError('Bail non trouvé');
       }
 
       // Call existing maintenance ticket service (T084, T085)
@@ -1674,6 +1702,7 @@ export class TenantPortalService {
     try {
       // Visible dans ce portail (bail actif ou fiche CRM), sinon 404 comme un
       // ticket inexistant ; le detail complet vient ensuite du service.
+      assertKnownId(ticketId, 'Ticket introuvable');
       const visible = await findTenantPortalTicket({ tenantId, tenantClientId, leaseId }, ticketId);
       if (!visible) {
         throw new NotFoundError('Ticket introuvable');
@@ -1727,6 +1756,7 @@ export class TenantPortalService {
       // Seulement sur un ticket visible dans ce portail : `addComment` ne
       // verifie que l'agence, et un locataire commentait ainsi le ticket d'un
       // autre en connaissant son identifiant.
+      assertKnownId(ticketId, 'Ticket introuvable');
       const visible = await findTenantPortalTicket({ tenantId, tenantClientId, leaseId }, ticketId);
       if (!visible) {
         throw new NotFoundError('Ticket introuvable');
@@ -1850,6 +1880,7 @@ export class TenantPortalService {
     documentId: string
   ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
     try {
+      assertKnownId(documentId, 'Document non trouvé ou accès refusé');
       // Validate document access (T105)
       const document = await prisma.rentalDocument.findFirst({
         where: {
@@ -1863,7 +1894,7 @@ export class TenantPortalService {
       });
 
       if (!document) {
-        throw new Error('Document non trouvé ou accès refusé');
+        throw new NotFoundError('Document non trouvé ou accès refusé');
       }
 
       // Get document file (T106)
