@@ -1,17 +1,13 @@
 import { prisma } from '../utils/database';
 import type { PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
-import {
-  RentalBillingFrequency,
-  RentalInstallmentStatus,
-  RentalLeaseStatus,
-  ThirdPartyMovementType
-} from '@prisma/client';
+import { RentalInstallmentStatus, RentalLeaseStatus, ThirdPartyMovementType } from '@prisma/client';
 import { buildInstallmentForPeriod } from '../lib/finance/installment-builder';
 import { appendThirdPartyMovementTx, getOrCreateTenantAccountTx } from '../lib/finance/ledger';
 import { roundMoney } from '../lib/finance/money';
 import type { FinanceSourceType } from '../lib/finance/types';
 import { computeInstallmentStatus, startOfDay } from '../lib/finance/installment-status';
+import { listBillingPeriods } from '../lib/rental/installment-periods';
 import { withEffectiveAmounts } from '../lib/lease-lifecycle/effective-rent';
 import { logAuditEvent } from './audit-service';
 import { runWithTenantContext } from '../utils/tenant-context';
@@ -314,60 +310,6 @@ export async function inscrireEcheanceFactureeTx(
 }
 
 /**
- * Get billing period days based on frequency
- * @param frequency - Billing frequency
- * @returns Number of days in billing period (approximate, for calculation purposes)
- */
-function getBillingPeriodDays(frequency: RentalBillingFrequency): number {
-  switch (frequency) {
-    case RentalBillingFrequency.MONTHLY:
-      return 30; // Approximate, actual months will be calculated using calendar months
-    case RentalBillingFrequency.QUARTERLY:
-      return 90;
-    case RentalBillingFrequency.SEMIANNUAL:
-      return 180;
-    case RentalBillingFrequency.ANNUAL:
-      return 365;
-    default:
-      return 30;
-  }
-}
-
-/**
- * Calculate the end date of a billing period based on frequency and start date
- * Uses calendar months for accurate period calculation
- */
-function calculatePeriodEnd(startDate: Date, frequency: RentalBillingFrequency): Date {
-  const endDate = new Date(startDate);
-
-  switch (frequency) {
-    case RentalBillingFrequency.MONTHLY:
-      // Move to the same day next month, then subtract 1 day to get last day of current month
-      endDate.setMonth(endDate.getMonth() + 1);
-      endDate.setDate(0); // This sets to last day of previous month
-      break;
-    case RentalBillingFrequency.QUARTERLY:
-      endDate.setMonth(endDate.getMonth() + 3);
-      endDate.setDate(0); // Last day of the quarter
-      break;
-    case RentalBillingFrequency.SEMIANNUAL:
-      endDate.setMonth(endDate.getMonth() + 6);
-      endDate.setDate(0); // Last day of the 6-month period
-      break;
-    case RentalBillingFrequency.ANNUAL:
-      // For annual, go to next year, then get last day of previous month (which is Dec of current year)
-      endDate.setFullYear(endDate.getFullYear() + 1);
-      endDate.setDate(0); // This sets to last day of previous month (December of current year)
-      break;
-    default:
-      endDate.setMonth(endDate.getMonth() + 1);
-      endDate.setDate(0);
-  }
-
-  return endDate;
-}
-
-/**
  * Generate installments for a lease
  * @param tenantId - Tenant ID
  * @param leaseId - Lease ID
@@ -410,45 +352,18 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
     );
   }
 
-  const startDate = new Date(lease.start_date);
-  const endDate = lease.end_date ? new Date(lease.end_date) : null;
+  const periods = listBillingPeriods(
+    new Date(lease.start_date),
+    lease.end_date ? new Date(lease.end_date) : null,
+    lease.billing_frequency
+  );
 
-  // If no end date, generate installments for 12 months (default)
-  const effectiveEndDate = endDate || new Date(startDate);
-  if (!endDate) {
-    effectiveEndDate.setFullYear(effectiveEndDate.getFullYear() + 1);
-  }
-
-  const billingFrequency = lease.billing_frequency;
-  const billingPeriodDays = getBillingPeriodDays(billingFrequency);
-
-  // Calculate number of periods
-  const totalDays = Math.floor((effectiveEndDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-  const numberOfPeriods = Math.ceil(totalDays / billingPeriodDays);
-
-  if (numberOfPeriods <= 0) {
+  if (periods.length === 0) {
     throw new BadRequestError(t('La durée du bail est invalide'));
   }
 
-  // Generate installments using calendar months
   const installments = [];
-  let currentPeriodStart = new Date(startDate);
-  currentPeriodStart.setHours(0, 0, 0, 0); // Normalize to start of day
-
-  while (currentPeriodStart <= effectiveEndDate) {
-    // Calculate period end based on billing frequency (using calendar months)
-    const periodEnd = calculatePeriodEnd(currentPeriodStart, billingFrequency);
-
-    // Don't exceed lease end date
-    if (endDate && periodEnd > effectiveEndDate) {
-      periodEnd.setTime(effectiveEndDate.getTime());
-    }
-
-    // Skip if period start is after end date
-    if (currentPeriodStart > effectiveEndDate) {
-      break;
-    }
-
+  for (const { start: currentPeriodStart } of periods) {
     // Extract period year and month from the period start date
     // This represents which month/year the installment covers (the billing period)
     const periodYear = currentPeriodStart.getFullYear();
@@ -468,8 +383,6 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
     );
 
     if (!built.included) {
-      currentPeriodStart = new Date(periodEnd);
-      currentPeriodStart.setDate(currentPeriodStart.getDate() + 1);
       continue;
     }
 
@@ -491,8 +404,6 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
         periodMonth
       });
       // Move to next period
-      currentPeriodStart = new Date(periodEnd);
-      currentPeriodStart.setDate(currentPeriodStart.getDate() + 1);
       continue;
     }
 
@@ -502,11 +413,6 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
     });
 
     installments.push(installment);
-
-    // Move to next period: start of next month/quarter/etc.
-    currentPeriodStart = new Date(periodEnd);
-    currentPeriodStart.setDate(currentPeriodStart.getDate() + 1);
-    currentPeriodStart.setHours(0, 0, 0, 0);
   }
 
   logger.info('Installments generated', {
