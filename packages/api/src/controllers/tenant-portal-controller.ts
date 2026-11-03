@@ -9,7 +9,7 @@
  * ni `stack`) pour une panne de la base. Voir BUG-2026-11-03-004 et -007.
  */
 
-import { NextFunction, Request, RequestHandler, Response } from 'express';
+import { Request, Response } from 'express';
 import { RentalInstallmentStatus } from '@prisma/client';
 import { TenantPortalService } from '../services/tenant-portal-service';
 import {
@@ -22,22 +22,7 @@ import {
 import { handleTenantPortalFinanceStatement } from './finance-controller';
 import { parseEnumParam, parseNumberParam } from '../utils/query-params';
 import { parsePagination } from '../utils/pagination-helper';
-import { asyncHandler, BadRequestError, errorHandler, ForbiddenError } from '../middleware/error-middleware';
-
-type PortalHandler = (req: Request, res: Response) => Promise<unknown>;
-
-/**
- * Enveloppe `asyncHandler`. Le routeur appelle `(req, res) => controller.x(req, res)`
- * sans transmettre `next` : à défaut, l'erreur va directement à `errorHandler`,
- * qui est le même qu'en fin de chaîne Express.
- */
-function portalHandler(handler: PortalHandler): (req: Request, res: Response, next?: NextFunction) => Promise<unknown> {
-  const wrapped: RequestHandler = asyncHandler(handler);
-  const fallbackNext = (req: Request, res: Response): NextFunction => {
-    return ((err?: unknown) => errorHandler(err as Error, req, res, () => undefined)) as NextFunction;
-  };
-  return (req, res, next) => wrapped(req, res, next ?? fallbackNext(req, res)) as unknown as Promise<unknown>;
-}
+import { asyncHandler, BadRequestError, ForbiddenError } from '../middleware/error-middleware';
 
 /** Contexte du portail locataire posé par `requireTenantPortalAccess`, sinon 403. */
 function portalContext(req: Request): { tenantClientId: string; leaseId: string; tenantId: string } {
@@ -75,7 +60,7 @@ export class TenantPortalController {
    * Get dashboard data
    * GET /api/portal/tenant/dashboard
    */
-  getDashboard = portalHandler(async (req, res) => {
+  getDashboard = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = portalContext(req);
 
     const dashboardData = await this.service.getDashboard(tenantClientId, leaseId, tenantId);
@@ -90,7 +75,7 @@ export class TenantPortalController {
    * Get lease details
    * GET /api/portal/tenant/lease
    */
-  getLeaseDetails = portalHandler(async (req, res) => {
+  getLeaseDetails = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = portalContext(req);
 
     const leaseDetailsData = await this.service.getLeaseDetails(tenantClientId, leaseId, tenantId);
@@ -105,7 +90,7 @@ export class TenantPortalController {
    * Get installments list
    * GET /api/portal/tenant/installments
    */
-  getInstallments = portalHandler(async (req, res) => {
+  getInstallments = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = portalContext(req);
 
     const filters: { status?: string; startDate?: string; endDate?: string } = {};
@@ -138,7 +123,7 @@ export class TenantPortalController {
    * Get installment details
    * GET /api/portal/tenant/installments/:id
    */
-  getInstallmentDetails = portalHandler(async (req, res) => {
+  getInstallmentDetails = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = portalContext(req);
 
     const installmentDetailsData = await this.service.getInstallmentDetails(
@@ -158,7 +143,7 @@ export class TenantPortalController {
    * Declare payment
    * POST /api/portal/tenant/payments/declare
    */
-  declarePayment = portalHandler(async (req, res) => {
+  declarePayment = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = portalContext(req);
     const body = req.body ?? {};
 
@@ -192,7 +177,7 @@ export class TenantPortalController {
    * Get payment history
    * GET /api/portal/tenant/payments
    */
-  getPaymentHistory = portalHandler(async (req, res) => {
+  getPaymentHistory = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = portalContext(req);
 
     const filters: { startDate?: string; endDate?: string; method?: string } = {};
@@ -224,7 +209,7 @@ export class TenantPortalController {
    * Get deposit information
    * GET /api/portal/tenant/deposit
    */
-  getDepositInfo = portalHandler(async (req, res) => {
+  getDepositInfo = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = portalContext(req);
 
     const depositInfoData = await this.service.getDepositInfo(tenantClientId, leaseId, tenantId);
@@ -239,7 +224,7 @@ export class TenantPortalController {
    * Create maintenance ticket
    * POST /api/portal/tenant/maintenance
    */
-  createMaintenanceTicket = portalHandler(async (req, res) => {
+  createMaintenanceTicket = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = portalContext(req);
     const body = req.body ?? {};
 
@@ -280,7 +265,7 @@ export class TenantPortalController {
    * Get maintenance tickets
    * GET /api/portal/tenant/maintenance
    */
-  getMaintenanceTickets = portalHandler(async (req, res) => {
+  getMaintenanceTickets = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = portalContext(req);
 
     const filters: { status?: string } = {};
@@ -306,7 +291,7 @@ export class TenantPortalController {
    * Get maintenance ticket details
    * GET /api/portal/tenant/maintenance/:id
    */
-  getMaintenanceTicketDetails = portalHandler(async (req, res) => {
+  getMaintenanceTicketDetails = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = portalContext(req);
 
     const ticketDetails = await this.service.getMaintenanceTicketDetails(
@@ -326,7 +311,7 @@ export class TenantPortalController {
    * Add comment to maintenance ticket
    * POST /api/portal/tenant/maintenance/:id/comment
    */
-  addTicketComment = portalHandler(async (req, res) => {
+  addTicketComment = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = portalContext(req);
 
     const { comment: text } = addCommentSchema.parse({ comment: req.body?.comment });
@@ -344,7 +329,7 @@ export class TenantPortalController {
    * Get documents
    * GET /api/portal/tenant/documents
    */
-  getDocuments = portalHandler(async (req, res) => {
+  getDocuments = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = portalContext(req);
 
     const filters: { type?: string } = {};
@@ -364,7 +349,7 @@ export class TenantPortalController {
    * Download document
    * GET /api/portal/tenant/documents/:id/download
    */
-  downloadDocument = portalHandler(async (req, res) => {
+  downloadDocument = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = portalContext(req);
 
     const { buffer, fileName, mimeType } = await this.service.downloadDocument(
@@ -396,7 +381,5 @@ export class TenantPortalController {
    * réutilisé tel quel pour que le locataire voie exactement ce que verrait
    * la gestionnaire pour son compte (US6, scénario 1).
    */
-  async getFinanceStatement(req: Request, res: Response): Promise<void> {
-    return handleTenantPortalFinanceStatement(req, res);
-  }
+  getFinanceStatement = (req: Request, res: Response): Promise<void> => handleTenantPortalFinanceStatement(req, res);
 }

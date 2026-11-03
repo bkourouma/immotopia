@@ -207,6 +207,19 @@ interface PreparedCheckout {
   amount: number;
 }
 
+/** Même texte que le refus de déclaration d'un paiement du portail (`tenant-portal-service.ts`). */
+const NOT_EXIGIBLE_MESSAGE = "Cette échéance n'est pas exigible : aucun paiement ne peut être déclaré dessus.";
+
+interface PrepareCheckoutOptions {
+  /**
+   * Portail locataire : une échéance au statut `DRAFT` (pas encore émise) n'est
+   * pas exigible, quelle que soit sa date. Le lien de paiement juge l'exigibilité
+   * lui-même (`installment-payment-link.ts` : un brouillon en retard y est « En
+   * retard »), il ne passe donc pas cette option.
+   */
+  refuseDraft?: boolean;
+}
+
 /**
  * Contrôles communs au portail et au lien de paiement : configuration
  * utilisable, de 1 à 24 échéances du MÊME tenant ET du bail, non annulées,
@@ -217,7 +230,8 @@ async function prepareCheckout(
   leaseId: string,
   installmentIds: string[],
   db: Pick<PrismaTransactionClient, 'rentalInstallment'> = prisma,
-  preloadedConfig?: PaymentGatewayConfig | null
+  preloadedConfig?: PaymentGatewayConfig | null,
+  options: PrepareCheckoutOptions = {}
 ): Promise<PreparedCheckout> {
   // `preloadedConfig` : chargée AVANT d'ouvrir une transaction (aucune requête hors `tx` à l'intérieur).
   const config = preloadedConfig === undefined ? await loadConfig(tenantId) : preloadedConfig;
@@ -252,6 +266,9 @@ async function prepareCheckout(
   for (const installment of installments) {
     if (installment.status === 'CANCELED') {
       throw new BadRequestError('Une échéance sélectionnée est annulée.');
+    }
+    if (options.refuseDraft && installment.status === 'DRAFT') {
+      throw new BadRequestError(t(NOT_EXIGIBLE_MESSAGE));
     }
     const resteDu = resteDuEcheance(installment);
     if (resteDu <= 0) {
@@ -399,7 +416,7 @@ export async function startCheckout(
   installmentIds: string[],
   actorUserId: string | undefined
 ): Promise<OnlineCheckoutDto> {
-  const prepared = await prepareCheckout(tenantId, leaseId, installmentIds);
+  const prepared = await prepareCheckout(tenantId, leaseId, installmentIds, prisma, undefined, { refuseDraft: true });
   const { uniqueIds } = prepared;
 
   const fifteenMinutesAgo = new Date(Date.now() - PENDING_REUSE_WINDOW_MS);

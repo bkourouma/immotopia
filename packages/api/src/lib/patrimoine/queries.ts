@@ -1088,23 +1088,21 @@ export async function generateOwnerStatement(
     );
   }
   const inScope = new Set<string>();
-  {
-    const scopes = await Promise.all(
-      ownerClients.map(client =>
-        resolveOwnerPortalPropertyIds({ userId: client.userId, tenantClientId: client.id, tenantId })
-      )
-    );
-    scopes.forEach(ids => ids.forEach(id => inScope.add(id)));
-    const shares = await prisma.propertyOwnershipShare.findMany({
-      where: {
-        tenantId,
-        ownerClientId: { in: ownerClients.map(client => client.id) },
-        propertyId: { in: propertyIds }
-      },
-      select: { propertyId: true }
-    });
-    shares.forEach(share => inScope.add(share.propertyId));
-  }
+  const scopes = await Promise.all(
+    ownerClients.map(client =>
+      resolveOwnerPortalPropertyIds({ userId: client.userId, tenantClientId: client.id, tenantId })
+    )
+  );
+  scopes.forEach(ids => ids.forEach(id => inScope.add(id)));
+  const shares = await prisma.propertyOwnershipShare.findMany({
+    where: {
+      tenantId,
+      ownerClientId: { in: ownerClients.map(client => client.id) },
+      propertyId: { in: propertyIds }
+    },
+    select: { propertyId: true }
+  });
+  shares.forEach(share => inScope.add(share.propertyId));
   if (propertyIds.some(id => !inScope.has(id))) {
     throw notFound('Bien introuvable');
   }

@@ -20,10 +20,18 @@ jest.mock('../../src/services/tenant-portal-service', () => ({
 jest.mock('../../src/controllers/finance-controller', () => ({ handleTenantPortalFinanceStatement: jest.fn() }));
 
 import { TenantPortalController } from '../../src/controllers/tenant-portal-controller';
-import { NotFoundError } from '../../src/middleware/error-middleware';
+import { errorHandler, NotFoundError } from '../../src/middleware/error-middleware';
 import { declarePaymentSchema, validatePaymentProofFile } from '../../src/utils/tenant-portal-validators';
 
 const controller = new TenantPortalController();
+
+/**
+ * Appelle un handler comme Express : `next(err)` mène à `errorHandler`, dernier
+ * maillon de la chaîne. Les routes branchent les handlers tels quels (ils
+ * reçoivent `next`) ; le contrôleur n'a plus de repli quand `next` manque.
+ */
+const run = (handler: (req: any, res: any, next: any) => unknown, request: any, res: any) =>
+  handler(request, res, (err?: unknown) => errorHandler(err as Error, request, res, () => undefined));
 
 function fakeRes() {
   const res: any = { headersSent: false, statusCode: 200, body: undefined };
@@ -62,7 +70,7 @@ describe('déclaration de paiement : montant', () => {
 
   it('le contrôleur répond 400 sans appeler le service', async () => {
     const res = fakeRes();
-    await controller.declarePayment(req({ body: { ...valid, amount: '999999999999' } }), res);
+    await run(controller.declarePayment, req({ body: { ...valid, amount: '999999999999' } }), res);
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
     expect(res.body.stack).toBeUndefined();
@@ -73,14 +81,14 @@ describe('déclaration de paiement : montant', () => {
 describe('contrôleur : erreurs typées', () => {
   it('une NotFoundError du service devient 404', async () => {
     const res = fakeRes();
-    await controller.getInstallmentDetails(req({ params: { id: 'abc' } }), res);
+    await run(controller.getInstallmentDetails, req({ params: { id: 'abc' } }), res);
     expect(res.statusCode).toBe(404);
     expect(res.body.stack).toBeUndefined();
   });
 
   it('une panne de base ne livre ni chemin ni stack', async () => {
     const res = fakeRes();
-    await controller.getDashboard(req(), res);
+    await run(controller.getDashboard, req(), res);
     expect(res.statusCode).toBeGreaterThanOrEqual(500);
     expect(JSON.stringify(res.body)).not.toContain('/srv/x.ts');
     expect(res.body.stack).toBeUndefined();
@@ -88,7 +96,7 @@ describe('contrôleur : erreurs typées', () => {
 
   it('sans contexte portail : 403', async () => {
     const res = fakeRes();
-    await controller.getDashboard(req({ tenantPortal: undefined }), res);
+    await run(controller.getDashboard, req({ tenantPortal: undefined }), res);
     expect(res.statusCode).toBe(403);
   });
 
