@@ -318,6 +318,20 @@ async function assertDepositMovementAllowedTx(
     }
   }
 
+  // Une retenue ne peut pas dépasser ce que le dépôt détient encore, retenues
+  // déjà posées comprises : sinon la retenue excéderait le dépôt accepté.
+  if (type === RentalDepositMovementType.HOLD) {
+    const availableToHold = computeDepositBalance(deposit) - Number(deposit.held_amount);
+    if (amount > availableToHold) {
+      throw new BadRequestError(
+        t('Le montant à retenir dépasse le dépôt disponible (disponible : {{available}}, demandé : {{requested}})', {
+          available: String(Math.max(0, availableToHold)),
+          requested: String(amount)
+        })
+      );
+    }
+  }
+
   // Une libération ne peut pas dépasser ce qui est retenu : sinon held_amount
   // deviendrait négatif.
   if (type === RentalDepositMovementType.RELEASE && amount > Number(deposit.held_amount)) {

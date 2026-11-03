@@ -1,4 +1,4 @@
-import { LeaseEventType, Prisma, RentalInstallmentStatus, RentalLeaseStatus } from '@prisma/client';
+import { LeaseEventType, Prisma, PropertyStatus, RentalInstallmentStatus, RentalLeaseStatus } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
@@ -13,6 +13,8 @@ import {
   recalculateInstallmentStatuses
 } from '../../services/rental-installment-service';
 import { syncLotActivationsTx } from '../../services/lot-registry-service';
+import { logger } from '../../utils/logger';
+import { updatePropertyStatus } from '../../services/property-status-service';
 import { runWithTenantContext } from '../../utils/tenant-context';
 import { effectiveRentAt } from './effective-rent';
 
@@ -434,9 +436,29 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
     let created = 0;
     let cursor = { ...firstNew };
     const last = periodIndex(newEnd.getUTCFullYear(), newEnd.getUTCMonth() + 1);
+    // Chaque période prend le loyer EFFECTIF à sa date : les révisions déjà
+    // planifiées comptent, et le nouveau prix du renouvellement (inscrit plus
+    // bas comme révision) s'y ajoute dès son jour d'effet.
+    const plannedRevisions = await tx.leaseEvent.findMany({
+      where: { tenantId, leaseId, type: LeaseEventType.REVISION },
+      orderBy: { createdAt: 'asc' },
+      select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
+    });
+    const revisionsForPeriods = priceChanges
+      ? [...plannedRevisions, { effectiveDate: renewalEffective, newRent: rent, newCharges: charges }]
+      : plannedRevisions;
     while (periodIndex(cursor.year, cursor.month) <= last) {
+      const effective = effectiveRentAt(
+        { rent_amount: Number(lease.rent_amount), service_charge_amount: Number(lease.service_charge_amount) },
+        revisionsForPeriods,
+        new Date(Date.UTC(cursor.year, cursor.month - 1, 1, 12))
+      );
       const built = buildInstallmentForPeriod(
-        { ...updatedLease, rent_amount: new Prisma.Decimal(rent), service_charge_amount: new Prisma.Decimal(charges) },
+        {
+          ...updatedLease,
+          rent_amount: new Prisma.Decimal(effective.rent),
+          service_charge_amount: new Prisma.Decimal(effective.charges)
+        },
         cursor.year,
         cursor.month
       );
@@ -655,6 +677,43 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
     return terminationEvent;
   });
 
+  // Résiliation effective : le bien redevient « Disponible » comme au changement
+  // de statut manuel du bail (sauf si un autre bail actif l'occupe). Une
+  // résiliation future ne libère rien tout de suite.
+  if (
+    end.getTime() <= Date.now() &&
+    (lease.status === RentalLeaseStatus.ACTIVE || lease.status === RentalLeaseStatus.SUSPENDED)
+  ) {
+    const otherActiveLeases = await prisma.rentalLease.count({
+      where: {
+        property_id: lease.property_id,
+        tenant_id: tenantId,
+        status: RentalLeaseStatus.ACTIVE,
+        id: { not: leaseId }
+      }
+    });
+    if (otherActiveLeases === 0) {
+      // La résiliation est déjà validée : un statut de bien qui ne se laisse pas
+      // changer ne doit pas la faire échouer (même tolérance que le changement
+      // de statut manuel du bail).
+      try {
+        await updatePropertyStatus(
+          lease.property_id,
+          PropertyStatus.AVAILABLE,
+          tenantId,
+          undefined,
+          actorUserId,
+          'Statut réinitialisé après résiliation du bail'
+        );
+      } catch (err) {
+        logger.warn('Could not revert property status after lease termination', {
+          propertyId: lease.property_id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    }
+  }
+
   return eventDto(event);
 }
 
@@ -675,7 +734,9 @@ export async function getFinalSettlement(tenantId: string, leaseId: string) {
       where: {
         tenant_id: tenantId,
         lease_id: leaseId,
-        status: { in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.OVERDUE, RentalInstallmentStatus.PARTIAL] },
+        // Toute échéance échue non annulée et non soldée est un impayé, quel
+        // que soit le statut stocké (une échéance « DRAFT » non recalculée compte).
+        status: { notIn: [RentalInstallmentStatus.CANCELED, RentalInstallmentStatus.PAID] },
         // Un impayé est échu. Les échéances sont facturées dès leur génération :
         // sans cette borne, un solde établi avant la fin du bail compterait les
         // loyers des mois à venir comme des dettes.
