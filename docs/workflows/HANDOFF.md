@@ -19,13 +19,13 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 ## État des lieux (pilote) — 2026-10-31
 
-**État :** constat, puis mise en application des PR ouvertes (planning du 2026-10-31) : #175 fusionnée par l'utilisateur, staging déployé ; production à faire. Le classifieur du mode auto refuse `gh pr merge` à l'agent (« Merge Without Review ») : les fusions restent à l'utilisateur. Branche `docs/etat-des-lieux-2026-10-31` (cette section, PR #191).
-**Référence :** `main` = `dd5b61c3` (PR #175, 2026-10-31 15:37 UTC), arbre identique à `4a4cf73d` validé par la CI de #175.
+**État :** constat, puis mise en application des PR ouvertes (planning du 2026-10-31) : #175 et #191 fusionnées par l'utilisateur, staging puis production déployés sur `dd5b61c3` ; restent les actions de l'étape 5. Le classifieur du mode auto refuse `gh pr merge` à l'agent (« Merge Without Review ») : les fusions restent à l'utilisateur.
+**Référence :** code de `main` = `dd5b61c3` (PR #175, 2026-10-31 15:37 UTC, CI verte), arbre identique à `4a4cf73d` validé par la CI de #175 ; puis `d364f061` (#191, documentation seule).
 
 Déploiements (registre des déploiements GitHub, `/health` 200 sur les deux le 2026-10-31) :
 
 - Staging à `dd5b61c3` depuis le 2026-10-31 (15:39–15:48 UTC, run 41215853111, lancé par le pilote à la demande de l'utilisateur) : contient #188, #190 et #175.
-- Production à `e5c866cd` (2026-10-20, 16:40 UTC). Les migrations de #183 et #184 ont dû passer avec ce déploiement (`deploy.sh` les applique ; non vérifié sur les bases) ; `db:seed:catalog` (prix de l'extension Signatures) non confirmé. Écart avec le staging : #188, #190, #175, sans migration.
+- Production à `dd5b61c3` depuis le 2026-10-31 (17:22–17:31 UTC, run 41224066880 lancé par le pilote sur ordre de l'utilisateur, approuvé par bkourouma). Avant : `e5c866cd` (2026-10-20), avec les migrations de #183 et #184 (`deploy.sh` les applique ; non vérifié sur les bases) ; `db:seed:catalog` (prix de l'extension Signatures) non confirmé.
 - Les exécutions automatiques finissent toutes en `skipped` : `AUTO_DEPLOY_STAGING` n'est pas activé.
 
 Non fusionné :
@@ -43,9 +43,9 @@ Suite du planning :
 
 1. Fait : #175 fusionnée ; #191 à fusionner par l'utilisateur dès sa CI verte.
 2. Fait : staging déployé sur `dd5b61c3`.
-3. Staging vérifié sans compte le 2026-10-31 : `/health` 200 ; registre `staging` = `dd5b61c3` en succès ; nouveau bundle (`index-F0c6CJah.js`) dont le morceau `AcceptInvitePage` contient « Cette invitation est destinée à », « Se déconnecter et continuer » et `INVITATION_FOR_ANOTHER_ACCOUNT` ; slug inconnu → 404 « Agence introuvable. » ; jeton d'invitation invalide → 400 de validation. Reste à faire par l'utilisateur (comptes requis) : invitation ouverte connecté avec un autre compte → « destinée à b•••@… » et « Se déconnecter et continuer », puis création du compte invité ; journal des notifications avec un motif lisible (plus « Error EAUTH ») ; slug d'une agence désactivée → même 404.
-4. Run workflow → `prod` (reprend par défaut le dernier commit réussi sur le staging, sauvegarde et étiquettes `avant-*` faites par le workflow, approbation de l'environnement `production` par bkourouma), puis `/health` et le test d'invitation.
-5. Après la production : `infra/scripts/set-ai-key.sh prod openrouter` pour ImmoCopilot ; prix de l'extension Signatures (5 000) par `db:seed:catalog` seulement si aucun prix n'a été ajusté à la main en production, sinon `PATCH /api/admin/catalog/EXT_SIGNATURES_SUPPLEMENTAIRES`.
+3. Staging vérifié sans compte le 2026-10-31 : `/health` 200 ; registre `staging` = `dd5b61c3` en succès ; nouveau bundle (`index-F0c6CJah.js`) dont le morceau `AcceptInvitePage` contient « Cette invitation est destinée à », « Se déconnecter et continuer » et `INVITATION_FOR_ANOTHER_ACCOUNT` ; slug inconnu → 404 « Agence introuvable. » ; jeton d'invitation invalide → 400 de validation. Test d'invitation avec deux comptes fait par l'utilisateur sur le staging le 2026-10-31 (réussi selon lui). Non vérifiés : journal des notifications avec un motif lisible (plus « Error EAUTH ») ; slug d'une agence désactivée → même 404.
+4. Fait : production déployée sur `dd5b61c3` (SHA passé explicitement au workflow ; sauvegarde et étiquettes `avant-*` faites par le workflow). Vérifiée sans compte le 2026-10-31 : registre `production` = `dd5b61c3` en succès, `/health` 200, morceau `AcceptInvitePage` avec les trois textes de #175, slug inconnu → 404, jeton invalide → 400. Test d'invitation avec deux comptes non refait en production.
+5. À faire par l'utilisateur (accès SSH) : `infra/scripts/set-ai-key.sh prod openrouter` pour ImmoCopilot ; prix de l'extension Signatures (5 000) par `db:seed:catalog` seulement si aucun prix n'a été ajusté à la main en production, sinon `PATCH /api/admin/catalog/EXT_SIGNATURES_SUPPLEMENTAIRES`.
 
 Retour arrière : sans migration dans l'écart, remettre les images `avant-*` (procédure manuelle de DEPLOIEMENT.md).
 
