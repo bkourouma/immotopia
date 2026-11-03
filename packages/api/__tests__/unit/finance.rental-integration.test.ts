@@ -478,6 +478,7 @@ function seedLocataire(): void {
     tenant_id: TENANT_ID,
     lease_number: 'BAIL-001',
     primary_renter_client_id: CLIENT_ID,
+    status: 'ACTIVE',
     currency: 'FCFA',
     penalty_grace_days: 0,
     penalty_mode: null,

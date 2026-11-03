@@ -105,7 +105,7 @@ export async function getDefaultPenaltyRule(tenantId: string) {
         grace_days: 0,
         mode: RentalPenaltyMode.PERCENT_OF_BALANCE,
         fixed_amount: 0,
-        rate: 0.02, // 2% default
+        rate: 2, // 2 %, en pourcentage comme `RentalLease.penalty_rate` (2 = 2 %)
         cap_amount: null,
         min_balance_to_apply: null
       }
@@ -139,14 +139,23 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
     throw new NotFoundError(t('Échéance introuvable'));
   }
 
+  // Une pénalité ne se calcule que pour un bail actif (brouillon, suspendu,
+  // terminé ou annulé : rien n'est dû au titre du retard).
+  if (installment.lease.status !== 'ACTIVE') {
+    throw new BadRequestError(t('Les pénalités ne se calculent que pour un bail actif'));
+  }
+
   // Get penalty rule (use provided or fetch default)
   const penaltyRule = rule || (await getDefaultPenaltyRule(tenantId));
 
   // Use lease penalty settings if available, otherwise use tenant rule
   const graceDays = installment.lease.penalty_grace_days ?? penaltyRule.grace_days;
   const mode = installment.lease.penalty_mode ?? penaltyRule.mode;
-  const rate = Number(installment.lease.penalty_rate) || Number(penaltyRule.rate);
-  const fixedAmount = Number(installment.lease.penalty_fixed_amount) || Number(penaltyRule.fixed_amount);
+  // Un 0 explicite sur le bail veut dire « pas de pénalité » : seul un taux ou
+  // un montant ABSENT (null/undefined) prend la valeur de l'agence. Les deux
+  // taux sont en pourcentage (2 = 2 %).
+  const rate = Number(installment.lease.penalty_rate ?? penaltyRule.rate);
+  const fixedAmount = Number(installment.lease.penalty_fixed_amount ?? penaltyRule.fixed_amount);
   const capAmount = installment.lease.penalty_cap_amount
     ? Number(installment.lease.penalty_cap_amount)
     : penaltyRule.cap_amount
@@ -212,6 +221,13 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
       calculated_at: 'desc'
     }
   });
+
+  // Une pénalité ajustée à la main n'est pas recalculée (comme dans le calcul de
+  // masse) : on la rend telle quelle plutôt que d'en créer une seconde pour la
+  // même échéance, qui doublerait le débit au compte du locataire.
+  if (existingPenalty?.is_manual_override) {
+    return existingPenalty;
+  }
 
   // La pénalité, le miroir qu'en garde l'échéance et le mouvement qui la
   // facture au locataire naissent ensemble ou pas du tout : une pénalité
@@ -331,7 +347,10 @@ export async function calculatePenaltiesForOverdueInstallments(tenantId?: string
     status: {
       in: ['DRAFT', 'DUE', 'PARTIAL', 'OVERDUE']
     },
-    due_date: { lt: today }
+    due_date: { lt: today },
+    // Bail actif seulement : pas de pénalité sur un bail brouillon, suspendu,
+    // terminé ou annulé.
+    lease: { status: 'ACTIVE' }
   };
 
   if (tenantId) {
@@ -512,7 +531,9 @@ export async function updatePenalty(
     throw new NotFoundError(t('Pénalité introuvable'));
   }
 
-  const ancienAjustement = lireAjustement(penalty.is_manual_override ? penalty.override_reason : null);
+  // Le JSON peut déjà porter un justificatif joint avant tout ajustement : on le
+  // lit toujours, sinon l'ajustement l'écraserait.
+  const ancienAjustement = lireAjustement(penalty.override_reason);
 
   // Le geste commercial de la gestionnaire et sa trace au compte du locataire
   // sont indivisibles : une pénalité ramenée à zéro dont le compte garderait le
