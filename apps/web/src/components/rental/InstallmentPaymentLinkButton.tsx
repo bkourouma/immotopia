@@ -19,9 +19,10 @@ const { Paragraph } = Typography;
 
 export const DEFAULT_TTL_DAYS = 7;
 
-/** Une échéance accepte un lien tant qu'il reste à payer et qu'elle n'est pas annulée. */
+/** Une échéance accepte un lien quand elle est exigible (Dû, Partiel, En retard) et qu'il reste à payer. */
+const STATUTS_EXIGIBLES = ['DUE', 'PARTIAL', 'OVERDUE'];
 export function canOfferPaymentLink(remaining: number, status?: string | null): boolean {
-  return remaining > 0 && status !== 'CANCELED';
+  return remaining > 0 && STATUTS_EXIGIBLES.includes(status ?? '');
 }
 
 function errorText(e: any, fallback: string): string {

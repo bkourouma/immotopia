@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { App, Button, Card, Tag, Tabs, Select, Descriptions, Space, Row, Col, Spin, Alert, Typography } from 'antd';
 import {
   EditOutlined,
@@ -27,16 +27,35 @@ import { LeaseInspectionsPanel } from '../../components/rental/inspections/Lease
 import { SignaturesPanel } from '../../components/signature/SignaturesPanel';
 import type { SignerInput } from '../../types/signature-types';
 import { LeaseDirectDebitPanel } from '../../components/rental/direct-debit/LeaseDirectDebitPanel';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { t as translate } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
+
+/**
+ * Paramètres d'URL propres à la liste d'un onglet (filtres, page, tri). Chaque
+ * onglet a les siens : sans remise à zéro, le statut d'échéance `OVERDUE` de
+ * l'onglet Échéances partait à la liste des paiements (BUG-2026-11-03-010).
+ */
+const PARAMS_PROPRES_A_UN_ONGLET = ['status', 'overdue', 'renterClientId', 'onglet', 'page', 'limit', 'sort'];
 
 export const LeaseDetailPage: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId, leaseId } = useParams<{ tenantId: string; leaseId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { permissions } = useMyMenuAccess(tenantId);
+  // Modifier le bail et changer son statut exigent RENTAL_LEASES_EDIT (BUG-2026-11-03-011).
+  const peutModifier = permissions === null || permissions.has('RENTAL_LEASES_EDIT');
+
+  const handleTabChange = () => {
+    if (!PARAMS_PROPRES_A_UN_ONGLET.some(key => searchParams.has(key))) return;
+    const next = new URLSearchParams(searchParams);
+    PARAMS_PROPRES_A_UN_ONGLET.forEach(key => next.delete(key));
+    setSearchParams(next, { replace: true });
+  };
   const [lease, setLease] = useState<RentalLease | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -267,6 +286,7 @@ export const LeaseDetailPage: React.FC = () => {
                 value={lease.status}
                 onChange={value => handleStatusChange(value as RentalLeaseStatus)}
                 style={{ width: 180 }}
+                disabled={!peutModifier}
               >
                 <Select.Option value="DRAFT">{translate('Brouillon')}</Select.Option>
                 <Select.Option value="ACTIVE">{translate('Actif')}</Select.Option>
@@ -274,13 +294,15 @@ export const LeaseDetailPage: React.FC = () => {
                 <Select.Option value="ENDED">{translate('Terminé')}</Select.Option>
                 <Select.Option value="CANCELED">{translate('Annulé')}</Select.Option>
               </Select>
-              <Button
-                type="primary"
-                icon={<EditOutlined />}
-                onClick={() => navigate(`/tenant/${tenantId}/rental/leases/${leaseId}/edit`)}
-              >
-                {translate('Modifier')}
-              </Button>
+              {peutModifier && (
+                <Button
+                  type="primary"
+                  icon={<EditOutlined />}
+                  onClick={() => navigate(`/tenant/${tenantId}/rental/leases/${leaseId}/edit`)}
+                >
+                  {translate('Modifier')}
+                </Button>
+              )}
             </Space>
           </Col>
         </Row>
@@ -612,6 +634,7 @@ export const LeaseDetailPage: React.FC = () => {
                 defaultActiveKey={isSaleOnly ? 'documents' : 'installments'}
                 type="line"
                 size="large"
+                onChange={handleTabChange}
                 items={tabItems}
               />
             );

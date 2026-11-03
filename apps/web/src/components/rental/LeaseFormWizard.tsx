@@ -15,6 +15,7 @@ import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { StepRail } from '../primitives/StepRail';
 import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
+import { formatsSaisieDate } from './lease-date-formats';
 import { findLeaseOwnerContactId } from './lease-owner-match';
 
 import { activeLocale } from '../../i18n/format';
@@ -459,6 +460,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
             help={currentStepErrors.startDate}
           >
             <DatePicker
+              format={formatsSaisieDate()}
               value={formData.startDate ? dayjs(formData.startDate) : null}
               onChange={date => handleChange('startDate', date ? date.format('YYYY-MM-DD') : '')}
               disabled={!!lease}
@@ -474,6 +476,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
             help={currentStepErrors.endDate}
           >
             <DatePicker
+              format={formatsSaisieDate()}
               value={formData.endDate ? dayjs(formData.endDate) : null}
               onChange={date => handleChange('endDate', date ? date.format('YYYY-MM-DD') : '')}
               disabledDate={current => (formData.startDate ? current && current < dayjs(formData.startDate) : false)}
@@ -487,6 +490,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         <Col xs={24} md={12}>
           <Form.Item label={t("Date d'emménagement")}>
             <DatePicker
+              format={formatsSaisieDate()}
               value={formData.moveInDate ? dayjs(formData.moveInDate) : null}
               onChange={date => handleChange('moveInDate', date ? date.format('YYYY-MM-DD') : '')}
               style={{ width: '100%' }}
@@ -497,6 +501,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         <Col xs={24} md={12}>
           <Form.Item label={t('Date de déménagement')}>
             <DatePicker
+              format={formatsSaisieDate()}
               value={formData.moveOutDate ? dayjs(formData.moveOutDate) : null}
               onChange={date => handleChange('moveOutDate', date ? date.format('YYYY-MM-DD') : '')}
               style={{ width: '100%' }}

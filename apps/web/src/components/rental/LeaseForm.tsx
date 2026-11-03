@@ -14,6 +14,7 @@ import { listContacts, CrmContact } from '../../services/crm-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
+import { formatsSaisieDate } from './lease-date-formats';
 
 const { TextArea } = Input;
 
@@ -526,6 +527,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
             rules={[{ required: true, message: t('La date de début est requise') }]}
           >
             <DatePicker
+              format={formatsSaisieDate()}
               style={{ width: '100%' }}
               disabled={!!lease}
               onChange={date => handleChange('startDate', date ? date.format('YYYY-MM-DD') : '')}
@@ -541,6 +543,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
             help={errors.endDate}
           >
             <DatePicker
+              format={formatsSaisieDate()}
               style={{ width: '100%' }}
               onChange={date => handleChange('endDate', date ? date.format('YYYY-MM-DD') : '')}
             />
@@ -550,6 +553,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
         <Col xs={24} md={12}>
           <Form.Item label={t("Date d'emménagement")} name="moveInDate">
             <DatePicker
+              format={formatsSaisieDate()}
               style={{ width: '100%' }}
               onChange={date => handleChange('moveInDate', date ? date.format('YYYY-MM-DD') : '')}
             />
@@ -559,6 +563,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
         <Col xs={24} md={12}>
           <Form.Item label={t('Date de déménagement')} name="moveOutDate">
             <DatePicker
+              format={formatsSaisieDate()}
               style={{ width: '100%' }}
               onChange={date => handleChange('moveOutDate', date ? date.format('YYYY-MM-DD') : '')}
             />
