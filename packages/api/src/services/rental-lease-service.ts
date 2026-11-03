@@ -2,7 +2,7 @@
 import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { diffForAudit } from '../lib/audit/changes';
-import { BadRequestError } from '../middleware/error-middleware';
+import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { CreateLeaseRequest, UpdateLeaseRequest, LeaseDetail } from '../types/rental-types';
 import {
   RentalLeaseStatus,
@@ -940,7 +940,7 @@ export async function updateLease(
   });
 
   if (!existingLease) {
-    throw new BadRequestError(t('Bail introuvable'));
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   // Validate dates if provided
@@ -1029,7 +1029,7 @@ export async function updateLeaseStatus(
   });
 
   if (!existingLease) {
-    throw new BadRequestError(t('Bail introuvable'));
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   // Validate status transition
@@ -1169,7 +1169,7 @@ export async function addCoRenter(
   });
 
   if (!lease) {
-    throw new BadRequestError(t('Bail introuvable'));
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   // Validate co-renter client exists and belongs to this tenant (same error
@@ -1251,7 +1251,7 @@ export async function removeCoRenter(
   });
 
   if (!lease) {
-    throw new BadRequestError(t('Bail introuvable'));
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   // Remove co-renter
@@ -1298,7 +1298,7 @@ export async function listCoRenters(tenantId: string, leaseId: string) {
   });
 
   if (!lease) {
-    throw new BadRequestError(t('Bail introuvable'));
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   const coRenters = await prisma.rentalLeaseCoRenter.findMany({
@@ -1336,7 +1336,7 @@ export async function deleteLease(tenantId: string, leaseId: string, actorUserId
   });
 
   if (!lease) {
-    throw new BadRequestError('Bail non trouvé ou accès refusé');
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   // Check if lease has installments with payments allocated

@@ -16,6 +16,7 @@ import type { OwnerStatement } from '../../../types/patrimoine-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { useOwnAssetsOnly } from '../../../hooks/useMenuAccess';
 import { t } from '../../../i18n/t';
+import { statementApiErrorMessage } from './statement-errors';
 
 const { Title, Text } = Typography;
 
@@ -75,7 +76,7 @@ export const OwnerStatementsPage: React.FC = () => {
         }))
       );
     } catch (e: any) {
-      setError(e?.response?.data?.error || t('Erreur de chargement des relevés'));
+      setError(statementApiErrorMessage(e, t('Erreur de chargement des relevés')));
     } finally {
       setLoading(false);
     }
@@ -93,7 +94,7 @@ export const OwnerStatementsPage: React.FC = () => {
       message.success(t('Relevé généré'));
       await loadData();
     } catch (e: any) {
-      message.error(e?.response?.data?.error || t('Échec de génération du relevé'));
+      message.error(statementApiErrorMessage(e, t('Échec de génération du relevé')));
     } finally {
       setCreateLoading(false);
     }
@@ -111,7 +112,7 @@ export const OwnerStatementsPage: React.FC = () => {
       }
       await loadData();
     } catch (e: any) {
-      message.error(e?.response?.data?.error || t("Échec de l'envoi du relevé"));
+      message.error(statementApiErrorMessage(e, t("Échec de l'envoi du relevé")));
     } finally {
       setSendLoadingId(null);
     }
@@ -125,7 +126,7 @@ export const OwnerStatementsPage: React.FC = () => {
       message.success(t('Relevé recalculé. Vérifiez-le avant de le renvoyer au propriétaire.'));
       await loadData();
     } catch (e: any) {
-      message.error(e?.response?.data?.error || e?.response?.data?.message || t('Échec du recalcul du relevé'));
+      message.error(statementApiErrorMessage(e, t('Échec du recalcul du relevé')));
     } finally {
       setRecomputeLoadingId(null);
     }
