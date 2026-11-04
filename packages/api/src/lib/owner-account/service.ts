@@ -93,6 +93,17 @@ const TOTAL_BY_SOURCE: Record<string, 'rentCollected' | 'fees' | 'vat' | 'expens
   [OWNER_SOURCE.PAYOUT]: 'payouts'
 };
 
+/**
+ * Mouvements qui ne sont pas l'un des cinq indicateurs d'origine
+ * (BUG-2026-11-04-003) : la retenue à la source (débit) et le dépôt de garantie
+ * conservé (crédit) pèsent sur le solde. Sans eux, les indicateurs n'expliquent
+ * pas le solde affiché.
+ */
+const EXTRA_TOTAL_BY_SOURCE: Record<string, 'withholdingTax' | 'depositRetained'> = {
+  [OWNER_SOURCE.WITHHOLDING]: 'withholdingTax',
+  [OWNER_SOURCE.DEPOSIT_RETAINED]: 'depositRetained'
+};
+
 async function buildAccountDetail(tenantId: string, ownerClientId: string) {
   const owner = await prisma.tenantClient.findFirst({
     where: { id: ownerClientId, tenantId },
@@ -130,6 +141,10 @@ async function buildAccountDetail(tenantId: string, ownerClientId: string) {
   // mouvement suit l'ordre d'inscription, qui peut différer (un loyer d'août
   // inscrit en septembre). Le total, lui, est le même.
   const totals = { rentCollected: 0, fees: 0, vat: 0, expenses: 0, payouts: 0 };
+  // `withholdingTax` : retenue à la source, comptée à son débit (diminue le
+  // solde). `depositRetained` : dépôt conservé, compté à son crédit.
+  const extraTotals = { withholdingTax: 0, depositRetained: 0 };
+  let otherMovements = 0;
   let running = 0;
   const rows = movements.map(m => {
     const debit = amount(m.debit);
@@ -140,6 +155,11 @@ async function buildAccountDetail(tenantId: string, ownerClientId: string) {
       // Un loyer se compte à son crédit ; tout le reste à son débit. Une
       // contre-passation, de sens inverse, vient en diminution.
       totals[bucket] += bucket === 'rentCollected' ? credit - debit : debit - credit;
+    } else {
+      const extra = EXTRA_TOTAL_BY_SOURCE[m.sourceType];
+      if (extra === 'withholdingTax') extraTotals.withholdingTax += debit - credit;
+      else if (extra === 'depositRetained') extraTotals.depositRetained += credit - debit;
+      else otherMovements += credit - debit; // toute autre écriture : le solde reste explicable
     }
     const lease = m.leaseId ? leaseById.get(m.leaseId) : undefined;
     return {
@@ -166,7 +186,12 @@ async function buildAccountDetail(tenantId: string, ownerClientId: string) {
       fees: roundMoney(totals.fees),
       vat: roundMoney(totals.vat),
       expenses: roundMoney(totals.expenses),
-      payouts: roundMoney(totals.payouts)
+      payouts: roundMoney(totals.payouts),
+      // Solde = loyers - honoraires - TVA - dépenses - reversements
+      //         - retenue à la source + dépôt conservé + autres mouvements.
+      withholdingTax: roundMoney(extraTotals.withholdingTax),
+      depositRetained: roundMoney(extraTotals.depositRetained),
+      otherMovements: roundMoney(otherMovements)
     },
     movements: rows,
     payouts: payouts.map(p => toPayoutDto(p, names))

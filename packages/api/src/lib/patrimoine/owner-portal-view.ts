@@ -5,7 +5,20 @@ import { t } from '../../i18n';
 import { getOwnerPortalSettings, type OwnerPortalSettingsDto } from '../settings/owner-portal-settings';
 import { ownerSharesByProperty } from '../ownership/service';
 import { buildPropertyYieldInput } from './queries';
-import { grossYield, netYield, netNetYield, latentCapitalGain } from './yield';
+import { grossYield, netYield, netNetYield, latentCapitalGain, type YieldInput } from './yield';
+
+/**
+ * Rendement brut / net du portail : `null` quand la base de calcul (valeur
+ * estimée) manque. `yield.ts` renvoie 0 dans ce cas, ce qui s'affichait « 0,00 % »
+ * comme si c'était une donnée (BUG-2026-11-04-010).
+ */
+export function portalGrossYield(input: YieldInput): number | null {
+  return input.currentValue > 0 ? grossYield(input) : null;
+}
+
+export function portalNetYield(input: YieldInput): number | null {
+  return input.currentValue > 0 ? netYield(input) : null;
+}
 import { PORTAL_PROPERTY_DOCUMENT_SELECT } from '../files/portal-files';
 import { VALUATION_ORDER_BY } from './valuation-order';
 
@@ -132,6 +145,7 @@ export async function getOwnerPortalPatrimoine(tenantId: string, tenantClientId:
   ]);
 
   let totalEstimatedValue = 0;
+  let hasKnownValuation = false;
   let totalLatentCapitalGain: number | null = null;
   let hasKnownCapitalGain = false;
   let totalRemainingLoanCapital = 0;
@@ -168,6 +182,7 @@ export async function getOwnerPortalPatrimoine(tenantId: string, tenantClientId:
           : null;
         if (valuation) {
           totalEstimatedValue += Number(valuation.estimatedValue) * factor;
+          hasKnownValuation = true;
         }
 
         const latentGain = latentCapitalGain(yieldInput!);
@@ -180,8 +195,8 @@ export async function getOwnerPortalPatrimoine(tenantId: string, tenantClientId:
 
       if (sections.yield) {
         const yieldEntry: Record<string, unknown> = {
-          grossYield: grossYield(yieldInput!),
-          netYield: netYield(yieldInput!),
+          grossYield: portalGrossYield(yieldInput!),
+          netYield: portalNetYield(yieldInput!),
           annualRent: yieldInput!.annualRent,
           annualExpenses: yieldInput!.annualExpenses
         };
@@ -206,7 +221,8 @@ export async function getOwnerPortalPatrimoine(tenantId: string, tenantClientId:
     currency: 'XOF'
   };
   if (sections.valuation) {
-    summary.totalEstimatedValue = totalEstimatedValue;
+    // `null` sans aucune valorisation : « Non renseigné », pas « 0 FCFA ».
+    summary.totalEstimatedValue = hasKnownValuation ? totalEstimatedValue : null;
     summary.totalLatentCapitalGain = hasKnownCapitalGain ? totalLatentCapitalGain : null;
   }
   if (sections.loans) {
@@ -284,8 +300,8 @@ export async function getOwnerPortalPatrimoineProperty(
 
   if (sections.yield) {
     const yieldEntry: Record<string, unknown> = {
-      grossYield: grossYield(yieldInput!),
-      netYield: netYield(yieldInput!),
+      grossYield: portalGrossYield(yieldInput!),
+      netYield: portalNetYield(yieldInput!),
       annualRent: yieldInput!.annualRent,
       annualExpenses: yieldInput!.annualExpenses
     };

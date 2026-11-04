@@ -196,7 +196,9 @@ export default function Patrimoine() {
               value={
                 summary.totalEstimatedValue === undefined
                   ? DASH
-                  : formatMoney(summary.totalEstimatedValue, { currency: deviseAffichee(summary.currency) })
+                  : summary.totalEstimatedValue === null
+                    ? t('Non renseigné')
+                    : formatMoney(summary.totalEstimatedValue, { currency: deviseAffichee(summary.currency) })
               }
               icon={<GoldOutlined style={{ color: '#1890ff' }} />}
               valueStyle={{ fontSize: 18, color: '#1890ff' }}

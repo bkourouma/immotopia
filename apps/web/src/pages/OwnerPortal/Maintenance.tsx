@@ -27,6 +27,7 @@ import {
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
+import { portalPersonName, type PortalPerson } from './owner-portal-people';
 import { Table } from '../../components/primitives';
 import {
   AttachmentList,
@@ -83,16 +84,8 @@ interface TicketDetails {
       content: string;
       author_type: string;
       created_at: string;
-      authorUser: {
-        firstName: string;
-        lastName: string;
-        email: string;
-      } | null;
-      authorContact: {
-        firstName: string;
-        lastName: string;
-        email: string;
-      } | null;
+      authorUser: PortalPerson | null;
+      authorContact: PortalPerson | null;
     }>;
     statusHistory: Array<{
       id: string;
@@ -100,11 +93,7 @@ interface TicketDetails {
       to_status: string;
       note: string | null;
       changed_at: string;
-      changedByUser: {
-        firstName: string;
-        lastName: string;
-        email: string;
-      } | null;
+      changedByUser: PortalPerson | null;
     }>;
     assignedVendor: {
       id: string;
@@ -112,12 +101,7 @@ interface TicketDetails {
       phone: string | null;
       email: string | null;
     } | null;
-    assignedToUser: {
-      id: string;
-      firstName: string;
-      lastName: string;
-      email: string;
-    } | null;
+    assignedToUser: (PortalPerson & { id: string }) | null;
   };
 }
 
@@ -523,11 +507,9 @@ export default function Maintenance() {
                   {ticketDetails.ticket.assignedVendor.phone && ` - ${ticketDetails.ticket.assignedVendor.phone}`}
                 </Descriptions.Item>
               )}
-              {ticketDetails.ticket.assignedToUser && (
-                <Descriptions.Item label={t('Utilisateur assigné')}>
-                  {`${ticketDetails.ticket.assignedToUser.firstName} ${ticketDetails.ticket.assignedToUser.lastName}`}
-                </Descriptions.Item>
-              )}
+              <Descriptions.Item label={t('Utilisateur assigné')}>
+                {portalPersonName(ticketDetails.ticket.assignedToUser) ?? t('Non assigné')}
+              </Descriptions.Item>
             </Descriptions>
 
             {/* Pièces jointes : lues par la route du portail, jamais en statique. */}
@@ -550,11 +532,8 @@ export default function Maintenance() {
                 <List
                   dataSource={ticketDetails.ticket.comments}
                   renderItem={comment => {
-                    const authorName = comment.authorUser
-                      ? `${comment.authorUser.firstName} ${comment.authorUser.lastName}`
-                      : comment.authorContact
-                        ? `${comment.authorContact.firstName} ${comment.authorContact.lastName}`
-                        : t('Système');
+                    const authorName =
+                      portalPersonName(comment.authorUser) ?? portalPersonName(comment.authorContact) ?? t('Système');
                     return (
                       <List.Item>
                         <List.Item.Meta
@@ -585,9 +564,7 @@ export default function Maintenance() {
                 <List
                   dataSource={ticketDetails.ticket.statusHistory}
                   renderItem={history => {
-                    const changedBy = history.changedByUser
-                      ? `${history.changedByUser.firstName} ${history.changedByUser.lastName}`
-                      : t('Système');
+                    const changedBy = portalPersonName(history.changedByUser) ?? t('Système');
                     return (
                       <List.Item>
                         <List.Item.Meta

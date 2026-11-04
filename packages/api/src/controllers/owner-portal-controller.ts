@@ -716,6 +716,7 @@ export class OwnerPortalController {
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(buffer);
     } catch (error) {
+      if (respondWithAppError(res, error)) return;
       logger.error('Error generating revenue report:', error);
       res.status(500).json({
         success: false,
@@ -766,6 +767,7 @@ export class OwnerPortalController {
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(buffer);
     } catch (error) {
+      if (respondWithAppError(res, error)) return;
       logger.error('Error generating occupancy report:', error);
       res.status(500).json({
         success: false,
@@ -834,6 +836,7 @@ export class OwnerPortalController {
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(buffer);
     } catch (error) {
+      if (respondWithAppError(res, error)) return;
       logger.error('Error exporting data:', error);
       res.status(500).json({
         success: false,

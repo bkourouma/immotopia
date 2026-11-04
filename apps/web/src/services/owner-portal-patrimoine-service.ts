@@ -33,10 +33,11 @@ export interface PatrimoineValuation {
 }
 
 export interface PatrimoineYield {
-  grossYield: number;
-  netYield: number;
+  /** `null` : pas de valeur estimée, donc pas de base de calcul (« Non renseigné »). */
+  grossYield: number | null;
+  netYield: number | null;
   /** Absent quand `sections.loans` est masqué : il révèlerait les mensualités. */
-  netNetYield?: number;
+  netNetYield?: number | null;
   annualRent: number;
   annualExpenses: number;
 }
@@ -62,7 +63,8 @@ export interface PatrimoineSummaryProperty {
 export interface PatrimoineSummary {
   propertyCount: number;
   currency: string;
-  totalEstimatedValue?: number;
+  /** `null` : aucune valorisation saisie. */
+  totalEstimatedValue?: number | null;
   totalLatentCapitalGain?: number | null;
   totalRemainingLoanCapital?: number;
 }

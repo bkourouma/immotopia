@@ -72,7 +72,8 @@ import {
 import { getDocumentFile } from './document-generation-service';
 import { ownerPortalPropertyWhere } from '../lib/owner-portal-scope';
 import { depositCurrentBalance } from './rental-deposit-balance';
-import { currentLanguage } from '../i18n';
+import { currentLanguage, t } from '../i18n';
+import { NotFoundError } from '../middleware/error-middleware';
 import { ownerPortalTicketWhere } from '../lib/maintenance/portal-visibility';
 import {
   PORTAL_ATTACHMENT_SELECT,
@@ -989,15 +990,30 @@ export class OwnerPortalService {
       // que DUE/OVERDUE donnait « total dû 0 » sur un bail dont le loyer venait
       // d'être payé, et un reste à payer négatif. Une échéance annulée n'est
       // pas due ; un brouillon non payé n'est pas encore exigible.
+      //
+      // BUG-2026-11-04-006 : le « reste à payer » ne compte que les échéances
+      // EXIGIBLES (date d'échéance <= aujourd'hui) non soldées, comme la Balance
+      // clients de l'agence. Les échéances à venir sont totalisées à part
+      // (`upcoming`), jamais mêlées à ce qui est réellement dû.
       let totalDue = 0;
+      let remainingDue = 0;
+      let upcoming = 0;
+      const now = new Date();
       for (const inst of installments) {
         if (inst.status === RentalInstallmentStatus.CANCELED) continue;
         if (inst.status === RentalInstallmentStatus.DRAFT && Number(inst.amount_paid || 0) <= 0) continue;
-        totalDue +=
+        const instTotal =
           Number(inst.amount_rent) +
           Number(inst.amount_service) +
           Number(inst.amount_other_fees) +
           Number(inst.penalty_amount || 0);
+        totalDue += instTotal;
+        const unpaid = Math.max(0, instTotal - Number(inst.amount_paid || 0));
+        if (inst.due_date.getTime() <= now.getTime()) {
+          remainingDue += unpaid;
+        } else {
+          upcoming += unpaid;
+        }
       }
 
       // Tous les reglements encaisses sur ce bail, quel que soit le statut
@@ -1025,12 +1041,13 @@ export class OwnerPortalService {
       });
 
       const totalPaid = Number(allocatedPayments._sum.amount || 0);
-      const remaining = Math.max(0, totalDue - totalPaid);
+      const remaining = remainingDue;
 
       const balance: LeaseBalance = {
         totalDue,
         totalPaid,
-        remaining
+        remaining,
+        upcoming
       };
 
       // T061: Fetch security deposit information
@@ -1855,7 +1872,8 @@ export class OwnerPortalService {
           summary: {
             total: 0,
             totalHeld: 0,
-            totalReleased: 0
+            totalReleased: 0,
+            totalWithheld: 0
           }
         };
       }
@@ -1915,13 +1933,18 @@ export class OwnerPortalService {
           propertyAddress,
           tenantName,
           depositAmount: Number(deposit.target_amount),
+          // Détenu : ce que l'agence garde pour le locataire (collecté - rendu - confisqué).
           currentHeldAmount: depositCurrentBalance(deposit),
+          // Retenu (BUG-2026-11-04-011) : retenues réelles de l'agence — mises
+          // en retenue en cours + confiscations. Zéro pour un dépôt intact.
+          withheldAmount: Number(deposit.held_amount) + Number(deposit.forfeited_amount),
           status
         };
       });
 
       // Calculate summary
       const total = depositList.length;
+      const totalWithheld = depositList.reduce((sum, d) => sum + d.withheldAmount, 0);
       const totalHeld = depositList.reduce((sum, d) => sum + d.currentHeldAmount, 0);
       const totalReleased = depositList.reduce((sum, d) => {
         if (d.status === 'REFUNDED' || d.status === 'FORFEITED') {
@@ -1935,7 +1958,8 @@ export class OwnerPortalService {
         summary: {
           total,
           totalHeld,
-          totalReleased
+          totalReleased,
+          totalWithheld
         }
       };
     } catch (error) {
@@ -2439,14 +2463,13 @@ export class OwnerPortalService {
       };
 
       if (params.propertyId) {
-        // Verify that the filtered propertyId is in the allowed list
-        if (propertyIds.includes(params.propertyId)) {
-          // Replace the lease clause with the specific propertyId filter
-          where.lease = { property_id: params.propertyId };
-        } else {
-          // If propertyId is not in allowed list, throw error
-          throw new Error('Propriété non autorisée');
+        // BUG-2026-11-04-005 : un bien hors périmètre se comporte comme un bien
+        // inexistant (404), jamais comme une erreur serveur.
+        const scoped = restrictToOwnerScope(propertyIds, params.propertyId);
+        if (scoped.length === 0) {
+          throw new NotFoundError('Bien introuvable.');
         }
+        where.lease = { property_id: { in: scoped } };
       }
 
       const payments = await prisma.rentalPayment.findMany({
@@ -2490,10 +2513,12 @@ export class OwnerPortalService {
 
       // Group by month
       const revenuesByMonthMap = new Map<string, { month: string; revenue: number }>();
+      // Mois dans la langue de l'utilisateur (BUG-2026-11-04-009), jamais l'anglais de date-fns.
+      const monthLabel = new Intl.DateTimeFormat(INTL_LOCALES[currentLanguage()], { month: 'long', year: 'numeric' });
       for (const payment of payments) {
         if (!payment.succeeded_at) continue;
         const monthKey = format(payment.succeeded_at, 'yyyy-MM');
-        const monthName = format(payment.succeeded_at, 'MMMM yyyy');
+        const monthName = monthLabel.format(payment.succeeded_at);
         if (!revenuesByMonthMap.has(monthKey)) {
           revenuesByMonthMap.set(monthKey, { month: monthName, revenue: 0 });
         }
@@ -2549,7 +2574,8 @@ export class OwnerPortalService {
         include: {
           rentalLeases: {
             where: {
-              status: RentalLeaseStatus.ACTIVE,
+              // Un bail terminé depuis couvrait bien la date passée demandée.
+              status: { in: [RentalLeaseStatus.ACTIVE, RentalLeaseStatus.ENDED] },
               start_date: { lte: params.asOfDate },
               OR: [{ end_date: null }, { end_date: { gte: params.asOfDate } }]
             },
@@ -2579,7 +2605,9 @@ export class OwnerPortalService {
 
       const propertiesData = properties.map(prop => ({
         address: prop.address,
-        status: prop.status,
+        // Occupation À LA DATE demandée (bail actif couvrant la date), et non
+        // la colonne `status` du bien qui dit l'état d'aujourd'hui (BUG-2026-11-04-008).
+        status: prop.rentalLeases.length > 0 ? t('Loué') : t('Disponible'),
         currentLease: prop.rentalLeases[0]
           ? {
               leaseNumber: prop.rentalLeases[0].lease_number || '-',

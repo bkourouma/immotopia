@@ -90,7 +90,10 @@ interface LeaseDetailsData {
   balance: {
     totalDue: number;
     totalPaid: number;
+    /** Reste dû : échéances exigibles (échues) non soldées. */
     remaining: number;
+    /** Échéances à venir non soldées, séparées du reste dû. */
+    upcoming: number;
   };
   deposit: {
     target_amount: number;
@@ -466,6 +469,20 @@ export default function LeaseDetails() {
                 />
               </Col>
             </Row>
+            {data.balance.upcoming > 0 && (
+              <Alert
+                message={t('Échéances à venir (non exigibles)')}
+                description={t(
+                  '{{value}} seront dus aux prochaines échéances ; ce montant n’est pas inclus dans le reste à payer.',
+                  {
+                    value: formatCurrency(data.balance.upcoming)
+                  }
+                )}
+                type="info"
+                showIcon
+                style={{ marginTop: 16 }}
+              />
+            )}
             {data.balance.remaining > 0 && (
               <Alert
                 message={t('Montant en attente de paiement')}

@@ -141,9 +141,10 @@ describe('le dépôt de garantie collecté ne compte pas comme revenu', () => {
 });
 
 describe('solde du bail et dépôt détenu', () => {
-  const echeance = (status: string, paid = 0) => ({
+  const echeance = (status: string, paid = 0, dueDate: Date = new Date('2020-01-01')) => ({
     id: `inst-${status}-${Math.random()}`,
     status,
+    due_date: dueDate,
     amount_rent: 400_000,
     amount_service: 0,
     amount_other_fees: 0,
@@ -162,7 +163,7 @@ describe('solde du bail et dépôt détenu', () => {
     expect(details.balance.remaining).toBe(0);
   });
 
-  it('une échéance à venir non payée reste due', async () => {
+  it('une échéance échue non payée reste due', async () => {
     store.installments = [echeance('PAID', 400_000), echeance('DUE')];
     store.allocations = [{ amount: 400_000 }];
 
@@ -170,6 +171,16 @@ describe('solde du bail et dépôt détenu', () => {
 
     expect(details.balance.totalDue).toBe(800_000);
     expect(details.balance.remaining).toBe(400_000);
+  });
+
+  it("une échéance à venir n'entre pas dans le reste à payer (BUG-2026-11-04-006)", async () => {
+    store.installments = [echeance('PAID', 400_000), echeance('DUE', 0, new Date('2099-01-01'))];
+    store.allocations = [{ amount: 400_000 }];
+
+    const details = await service.getLeaseDetails('lease-1', [PROPERTY], T);
+
+    expect(details.balance.remaining).toBe(0);
+    expect((details.balance as any).upcoming).toBe(400_000);
   });
 
   it('le montant détenu du dépôt est son solde actuel : 800 000', async () => {
