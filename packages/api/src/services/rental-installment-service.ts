@@ -227,33 +227,50 @@ export async function remettrePenaliteTx(
     penaltyId: string;
     montantRestant: number;
     label: string;
+    /** Libellé d'un complément de pénalité (hausse). Absent : « Pénalité de retard ». */
+    labelPenalite?: string;
     leaseId?: string | null;
     movementDate?: Date;
   }
 ) {
-  const solde = await soldePieceTx(tx, params.tenantId, 'RENTAL_PENALTY', params.penaltyId);
+  // Net déjà inscrit pour cette pénalité : le mouvement d'origine (clé
+  // `<id>`) et les compléments (clés `<id>:<n>`).
+  const mouvements = await tx.thirdPartyMovement.findMany({
+    where: { tenantId: params.tenantId, sourceType: 'RENTAL_PENALTY', sourceId: params.penaltyId },
+    select: { debit: true, credit: true, type: true, sourceId: true }
+  });
+  const complements = await tx.thirdPartyMovement.findMany({
+    where: {
+      tenantId: params.tenantId,
+      sourceType: 'RENTAL_PENALTY',
+      sourceId: { startsWith: `${params.penaltyId}:` }
+    },
+    select: { debit: true, credit: true, type: true, sourceId: true }
+  });
+  const tous = [...mouvements, ...complements];
+  const solde = roundMoney(tous.reduce((somme, m) => somme + Number(m.debit ?? 0) - Number(m.credit ?? 0), 0));
   const ecart = roundMoney(solde - roundMoney(params.montantRestant));
 
-  if (ecart <= 0) {
-    if (ecart < 0) {
-      logger.warn('Pénalité revue à la hausse après inscription : écart non représentable au grand livre', {
-        tenantId: params.tenantId,
-        penaltyId: params.penaltyId,
-        soldeInscrit: solde,
-        montantRestant: params.montantRestant
-      });
-    }
+  if (ecart === 0) {
     return null;
   }
+
+  const baisse = ecart > 0;
+  const type = baisse ? ThirdPartyMovementType.WAIVER : ThirdPartyMovementType.PENALTY;
+  // La clé d'unicité est `(sourceType, sourceId, type)` : le premier mouvement
+  // de chaque type garde l'id de la pénalité, les suivants un suffixe unique.
+  const premier = !tous.some(m => m.type === type && m.sourceId === params.penaltyId);
+  const sourceId = premier ? params.penaltyId : `${params.penaltyId}:${tous.length}`;
 
   return appendThirdPartyMovementTx(tx, {
     accountId: params.accountId,
     tenantId: params.tenantId,
-    type: ThirdPartyMovementType.WAIVER,
-    settled: ecart,
-    label: params.label,
+    type,
+    billed: baisse ? undefined : -ecart,
+    settled: baisse ? ecart : undefined,
+    label: baisse ? params.label : (params.labelPenalite ?? 'Pénalité de retard'),
     sourceType: 'RENTAL_PENALTY',
-    sourceId: params.penaltyId,
+    sourceId,
     leaseId: params.leaseId ?? null,
     movementDate: params.movementDate
   });

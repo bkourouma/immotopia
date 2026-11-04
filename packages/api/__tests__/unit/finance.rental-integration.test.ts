@@ -121,6 +121,7 @@ function matchField(value: any, criterion: any): boolean {
   if (criterion !== null && typeof criterion === 'object' && !(criterion instanceof Date)) {
     if ('not' in criterion) return value !== criterion.not;
     if ('in' in criterion) return (criterion.in as any[]).includes(value);
+    if ('startsWith' in criterion) return typeof value === 'string' && value.startsWith(criterion.startsWith);
     if ('lt' in criterion) return new Date(value).getTime() < new Date(criterion.lt).getTime();
     if ('gte' in criterion) return new Date(value).getTime() >= new Date(criterion.gte).getTime();
     return true;

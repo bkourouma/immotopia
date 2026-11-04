@@ -3,19 +3,19 @@ import type { PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { diffForAudit } from '../lib/audit/changes';
-import { RentalPenaltyMode, ThirdPartyMovementType } from '@prisma/client';
+import { RentalPenaltyMode } from '@prisma/client';
 import {
   compteLocataireTx,
   libellePeriodeEcheance,
   remettrePenaliteTx,
   updateInstallmentStatus
 } from './rental-installment-service';
-import { appendThirdPartyMovementTx } from '../lib/finance/ledger';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { getProjectRoot } from '../utils/project-root';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { t } from '../i18n';
+import { contentMatchesDeclaredType } from '../utils/file-signature';
 import { NotFoundError, BadRequestError } from '../middleware/error-middleware';
 
 // ---------------------------------------------------------------------------
@@ -57,23 +57,12 @@ async function inscrirePenaliteTx(
   const accountId = await compteLocataireTx(tx, params.tenantId, params.tenantClientId);
   const periode = libellePeriodeEcheance(params.periodYear, params.periodMonth);
 
-  await appendThirdPartyMovementTx(tx, {
-    accountId,
-    tenantId: params.tenantId,
-    type: ThirdPartyMovementType.PENALTY,
-    billed: params.montant,
-    label: periode ? `Pénalité de retard sur l'échéance ${periode}` : 'Pénalité de retard',
-    sourceType: 'RENTAL_PENALTY',
-    sourceId: params.penaltyId,
-    leaseId: params.leaseId,
-    movementDate: params.movementDate
-  });
-
   await remettrePenaliteTx(tx, {
     tenantId: params.tenantId,
     accountId,
     penaltyId: params.penaltyId,
     montantRestant: params.montant,
+    labelPenalite: periode ? `Pénalité de retard sur l'échéance ${periode}` : 'Pénalité de retard',
     label: periode ? `Remise de la pénalité de retard sur l'échéance ${periode}` : 'Remise de la pénalité de retard',
     leaseId: params.leaseId,
     movementDate: params.movementDate
@@ -466,6 +455,33 @@ function lireAjustement(brut: string | null | undefined): {
 }
 
 /**
+ * Justificatif joint, sans chemin interne ni identifiant d'utilisateur : le
+ * fichier se télécharge par la route authentifiée de la pénalité.
+ */
+function lireJustificatif(
+  brut: string | null | undefined
+): { fileName: string | null; uploadedAt: string | null } | null {
+  const j = lireAjustement(brut).raw.justification;
+  if (!j || typeof j !== 'object') return null;
+  const { fileName, uploadedAt } = j as { fileName?: unknown; uploadedAt?: unknown };
+  return {
+    fileName: typeof fileName === 'string' ? fileName : null,
+    uploadedAt: typeof uploadedAt === 'string' ? uploadedAt : null
+  };
+}
+
+/**
+ * Multer lit le nom d'origine d'un fichier en Latin-1 alors que les
+ * navigateurs l'envoient en UTF-8 (« reçu » devient « reÃ§u »,
+ * BUG-2026-11-04-015) : on relit les octets en UTF-8 quand c'est valide.
+ */
+export function corrigerNomFichier(nom: string): string {
+  if (!nom || Array.from(nom).some(c => (c.codePointAt(0) ?? 0) > 255)) return nom;
+  const decode = Buffer.from(nom, 'latin1').toString('utf8');
+  return decode.includes(String.fromCharCode(65533)) ? nom : decode;
+}
+
+/**
  * Expose l'ajustement : `amount` reste le montant retenu (celui du compte du
  * locataire) ; une pénalité ajustée porte en plus `calculated_amount` (montant
  * calculé d'origine, quand il est connu), `adjusted_amount` et
@@ -486,12 +502,24 @@ export function presenterPenalite<
     penalty.calculatedAmount !== null && penalty.calculatedAmount !== undefined
       ? Number(penalty.calculatedAmount)
       : null;
+  const justification = lireJustificatif(penalty.override_reason);
   if (!penalty.is_manual_override) {
-    return { ...penalty, calculated_amount: colonne, adjusted_amount: null, adjustment_reason: null };
+    return {
+      ...penalty,
+      // Le champ brut porte le JSON du justificatif (chemin interne, id
+      // utilisateur) : il ne sort jamais tel quel (BUG-2026-11-04-014).
+      override_reason: null,
+      justification,
+      calculated_amount: colonne,
+      adjusted_amount: null,
+      adjustment_reason: null
+    };
   }
   const ajustement = lireAjustement(penalty.override_reason);
   return {
     ...penalty,
+    override_reason: ajustement.reason,
+    justification,
     // Pour une pénalité ajustée, le JSON d'ajustement prime : la migration a
     // rempli la colonne avec `amount` pour l'existant, donc avec le montant déjà
     // ajusté, alors que le JSON a gardé le calcul d'origine.
@@ -591,7 +619,7 @@ export async function updatePenalty(
         leaseId: penalty.installment.lease_id,
         periodYear: penalty.installment.period_year,
         periodMonth: penalty.installment.period_month,
-        movementDate: ligne.calculated_at
+        movementDate: new Date()
       });
     }
 
@@ -865,6 +893,14 @@ export async function uploadPenaltyJustification(
     );
   }
 
+  // Le contenu doit correspondre au type déclaré : un faux .png (texte, HTML…)
+  // est refusé (BUG-2026-11-04-019).
+  if (!file.buffer || !contentMatchesDeclaredType(file.buffer, file.mimetype)) {
+    throw new BadRequestError(
+      t('Le contenu du fichier ne correspond pas à son type. Envoyez un vrai PDF, DOC, DOCX, JPEG ou PNG.')
+    );
+  }
+
   // Generate file path
   const projectRoot = getProjectRoot();
   const uploadDir = path.join(projectRoot, 'uploads', 'rental', 'penalties', penaltyId);
@@ -878,6 +914,8 @@ export async function uploadPenaltyJustification(
   await fs.writeFile(filePath, file.buffer);
 
   const fileUrl = `/uploads/rental/penalties/${penaltyId}/${fileName}`;
+
+  const nomFichier = corrigerNomFichier(file.originalname);
 
   // Store justification info in override_reason as JSON
   // Format: { "reason": "...", "justification": { "fileUrl": "...", "fileName": "...", ... } }
@@ -893,7 +931,7 @@ export async function uploadPenaltyJustification(
 
   justificationInfo.justification = {
     fileUrl,
-    fileName: file.originalname,
+    fileName: nomFichier,
     uploadedAt: new Date().toISOString(),
     uploadedBy: actorUserId
   };
@@ -911,7 +949,7 @@ export async function uploadPenaltyJustification(
   logger.info('Penalty justification uploaded', {
     penaltyId,
     tenantId,
-    fileName: file.originalname,
+    fileName: nomFichier,
     fileUrl
   });
 
@@ -923,10 +961,12 @@ export async function uploadPenaltyJustification(
     entityType: 'RENTAL_PENALTY',
     entityId: penaltyId,
     payload: {
-      fileName: file.originalname,
+      fileName: nomFichier,
       fileUrl
     }
   });
 
-  return { ...updatedPenalty, justificationFileUrl: fileUrl };
+  // Le chemin interne ne sort pas : le fichier se télécharge par la route
+  // authentifiée du justificatif.
+  return presenterPenalite(updatedPenalty);
 }

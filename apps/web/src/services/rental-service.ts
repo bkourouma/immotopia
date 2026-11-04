@@ -627,6 +627,10 @@ export interface RentalPenalty {
   calculated_amount?: number | null;
   adjusted_amount?: number | null;
   adjustment_reason?: string | null;
+  /** Raison de l'ajustement uniquement (jamais le JSON interne du justificatif). */
+  override_reason?: string | null;
+  /** Justificatif joint : nom et date, sans chemin interne (téléchargement par la route de la pénalité). */
+  justification?: { fileName: string | null; uploadedAt: string | null } | null;
   is_manual_override?: boolean;
   created_at: string;
   updated_at: string;

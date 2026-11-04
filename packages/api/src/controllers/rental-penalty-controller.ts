@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError, NotFoundError, UnauthorizedError } from '../middleware/error-middleware';
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
-import { z } from 'zod';
+import { updatePenaltySchema } from '../lib/rental/penalty-schemas';
 import {
   calculatePenalty,
   updatePenalty,
@@ -11,11 +11,6 @@ import {
   uploadPenaltyJustification
 } from '../services/rental-penalty-service';
 import { triggerPenaltyCalculation } from '../jobs/penalty-calculation-job';
-
-const updatePenaltySchema = z.object({
-  amount: z.number().nonnegative(),
-  reason: z.string().min(1)
-});
 
 /**
  * Calculate penalties for overdue installments
