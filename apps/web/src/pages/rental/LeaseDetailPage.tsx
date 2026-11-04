@@ -56,6 +56,7 @@ export const LeaseDetailPage: React.FC = () => {
     PARAMS_PROPRES_A_UN_ONGLET.forEach(key => next.delete(key));
     setSearchParams(next, { replace: true });
   };
+  const [activeTab, setActiveTab] = useState<string | null>(null);
   const [lease, setLease] = useState<RentalLease | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -623,13 +624,29 @@ export const LeaseDetailPage: React.FC = () => {
 
             const tabItems = isSaleOnly ? allTabItems.filter(t => t.key === 'documents') : allTabItems;
 
+            // BUG-2026-11-04-035 : sur une barre qui défile (375 px), le focus
+            // qu'un appui donne à l'onglet fait défiler la barre (`scrollToTab`
+            // de rc-tabs) ENTRE l'appui et le relâchement : le clic retombe sur
+            // un autre élément et ne l'active pas ; la touche Entrée ne le fait
+            // pas non plus après un appui souris (aucun onglet « focalisé »).
+            // On active donc l'onglet dès l'appui, avant tout déplacement.
+            const defaultTab = isSaleOnly ? 'documents' : 'installments';
+            const currentTab = tabItems.some(item => item.key === activeTab) ? (activeTab as string) : defaultTab;
+            const itemsWithPress = tabItems.map(item => ({
+              ...item,
+              label: <span onMouseDown={() => setActiveTab(item.key)}>{item.label}</span>
+            }));
+
             return (
               <Tabs
-                defaultActiveKey={isSaleOnly ? 'documents' : 'installments'}
+                activeKey={currentTab}
                 type="line"
                 size="large"
-                onChange={handleTabChange}
-                items={tabItems}
+                onChange={key => {
+                  setActiveTab(key);
+                  handleTabChange();
+                }}
+                items={itemsWithPress}
               />
             );
           })()}

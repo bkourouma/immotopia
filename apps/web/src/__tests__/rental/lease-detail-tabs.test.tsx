@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useSearchParams } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -82,6 +82,18 @@ describe('Détail du bail — onglets', () => {
     await user.click(screen.getByRole('tab', { name: /Paiements/ }));
 
     expect(await screen.findByText('paiements status=aucun')).toBeTruthy();
+  });
+
+  it("BUG-2026-11-04-035 : l'onglet s'active dès l'appui, avant que la barre défile sous le pointeur", async () => {
+    monter('/tenant/agence-1/rental/leases/bail-1');
+    await screen.findByText('echeances status=aucun', undefined, { timeout: 8000 });
+
+    // À 375 px le focus de l'appui fait défiler la barre ; le relâchement (donc
+    // le clic) ne tombe plus sur l'onglet. Seul l'appui est simulé ici.
+    fireEvent.mouseDown(screen.getByText('Paiements'));
+
+    expect(await screen.findByText('paiements status=aucun')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /Paiements/ }).getAttribute('aria-selected')).toBe('true');
   });
 });
 
