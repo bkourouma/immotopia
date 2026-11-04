@@ -193,6 +193,13 @@ describe('Journal — comptabilité de l’agence', () => {
     expect(dernierAppel()[1]).toMatchObject({ limit: 100 });
   });
 
+  it('page hors bornes recadrée sur la dernière page (lien partagé)', async () => {
+    renderPage(`?${PERIODE}&page=9`);
+    await waitFor(() => expect(dernierAppel()[1]).toMatchObject({ page: 3, limit: 50 }));
+    await waitFor(() => expect(screen.getByTestId('recherche').textContent).toContain('page=3'));
+    expect(await screen.findByText('JRN-0001')).toBeInTheDocument();
+  });
+
   it('changer de page appelle la page 2', async () => {
     renderPage();
     await screen.findByText('JRN-0001');

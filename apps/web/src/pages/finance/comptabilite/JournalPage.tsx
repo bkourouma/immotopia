@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button, Card, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -67,6 +67,14 @@ export const JournalPage: React.FC = () => {
     placeholderData: keepPreviousData
   });
   const data = query.data;
+
+  // Lien partagé hors bornes (`?page=9` pour 3 pages) : la barre est montée à part, donc le recadrage
+  // automatique de `DataView` ne joue pas. On recadre une fois la vraie réponse reçue (jamais sur la précédente).
+  const totalEcritures = query.isPlaceholderData ? undefined : data?.total;
+  const { clampPage } = search;
+  useEffect(() => {
+    if (totalEcritures !== undefined) clampPage?.(totalEcritures);
+  }, [totalEcritures, clampPage]);
 
   const basculer = useCallback((id: string) => {
     setDepliees(prev => {

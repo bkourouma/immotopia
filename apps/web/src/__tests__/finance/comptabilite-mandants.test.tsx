@@ -223,6 +223,18 @@ describe('Mandants — grand livre auxiliaire', () => {
     expect(totaux.textContent).toContain('Solde de clôture');
   });
 
+  it('page hors bornes recadrée sur la dernière page (liste des propriétaires)', async () => {
+    renderPage(`?${PERIODE}&page=9`);
+    await waitFor(() => expect(dernier(getMandantOwners)[1]).toMatchObject({ page: 3, limit: 50 }));
+    await waitFor(() => expect(url()).toContain('page=3'));
+  });
+
+  it('page-lignes hors bornes recadrée sur la dernière page du détail', async () => {
+    renderPage(`?${PERIODE}&owner=own-1&page-lignes=9`);
+    await waitFor(() => expect(dernier(getMandantOwnerLedger)[1]).toMatchObject({ page: 3, limit: 100 }));
+    await waitFor(() => expect(url()).toContain('page-lignes=3'));
+  });
+
   it('changer de page appelle la page 2', async () => {
     renderPage();
     await screen.findByRole('button', { name: 'Propriétaire 1' });
