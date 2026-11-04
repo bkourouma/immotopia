@@ -570,6 +570,43 @@ describe('remises / actualisation', () => {
     expect(refreshed.remittance.lines[0].status).toBe('CANCELED');
   });
 
+  it('BUG-020 : une ligne annulée automatiquement (mandat suspendu) revient quand le mandat est réactivé', async () => {
+    const { remittance } = await create();
+    const before = remittance.lines.length;
+    const totalBefore = remittance.totalAmount;
+    state.mandates[1].status = 'SUSPENDED';
+    const suspended = await refreshRemittance(TENANT, remittance.id, 'user-1');
+    expect(suspended.remittance.lines[1].status).toBe('CANCELED');
+    expect(suspended.remittance.lineCount).toBe(before - 1);
+
+    state.mandates[1].status = 'ACTIVE';
+    const back = await refreshRemittance(TENANT, remittance.id, 'user-1');
+    expect(back.remittance.lineCount).toBe(before);
+    expect(back.remittance.totalAmount).toBe(totalBefore);
+    const pending = back.remittance.lines.filter(line => line.status === 'PENDING');
+    expect(pending).toHaveLength(before);
+    // Nouvelle ligne au rang suivant ; l'ancienne reste annulée (historique), rang jamais réutilisé.
+    expect(back.remittance.lines.filter(line => line.status === 'CANCELED')).toHaveLength(1);
+    expect(Math.max(...back.remittance.lines.map(line => line.lineNumber))).toBe(before + 1);
+    expect(back.skipped.map(entry => entry.mandateReference)).not.toContain(pending[1].mandate.reference);
+
+    // Une actualisation de plus ne duplique rien.
+    const again = await refreshRemittance(TENANT, remittance.id, 'user-1');
+    expect(again.remittance.lines).toHaveLength(back.remittance.lines.length);
+  });
+
+  it('BUG-020 : une ligne retirée à la main reste retirée même après réactivation du mandat', async () => {
+    const { remittance } = await create();
+    await cancelRemittanceLine(TENANT, remittance.id, remittance.lines[1].id, null, 'user-1');
+    state.mandates[1].status = 'SUSPENDED';
+    await refreshRemittance(TENANT, remittance.id, 'user-1');
+    state.mandates[1].status = 'ACTIVE';
+    const refreshed = await refreshRemittance(TENANT, remittance.id, 'user-1');
+    expect(refreshed.remittance.lines).toHaveLength(remittance.lines.length);
+    expect(refreshed.remittance.lines[1].status).toBe('CANCELED');
+    expect(refreshed.remittance.lineCount).toBe(remittance.lines.length - 1);
+  });
+
   it('refuse une remise qui n est plus un brouillon', async () => {
     const id = await validated();
     await expect(refreshRemittance(TENANT, id, 'user-1')).rejects.toBeInstanceOf(ConflictError);

@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { t } from '../../i18n';
+import { LANGUAGES, runWithLanguage, t } from '../../i18n';
 import { BadRequestError, ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { recordAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
@@ -554,6 +554,24 @@ function autoCancelReason(reason: SkipReason | 'MANDATE_INELIGIBLE'): string {
   }
 }
 
+/**
+ * Une annulation automatique se reconnaît à son motif, fixe et traduit : on le compare dans les
+ * trois langues, car il est écrit dans celle de la requête qui a actualisé. Un retrait manuel
+ * porte le motif saisi par l'utilisateur (ou aucun) et n'est jamais confondu avec lui.
+ */
+function isAutoCancelReason(reason: string | null | undefined): boolean {
+  if (!reason) return false;
+  const kinds: Array<SkipReason | 'MANDATE_INELIGIBLE'> = [
+    'NOTHING_DUE',
+    'LEASE_NOT_ACTIVE',
+    'NO_INSTALLMENT',
+    'MANDATE_INELIGIBLE'
+  ];
+  return LANGUAGES.some(language =>
+    runWithLanguage(language, () => kinds.some(kind => autoCancelReason(kind) === reason))
+  );
+}
+
 export async function refreshRemittance(
   tenantId: string,
   remittanceId: string,
@@ -593,7 +611,8 @@ export async function refreshRemittance(
           amount: true,
           remainingDueAtSelection: true,
           capped: true,
-          chargeCallIds: true
+          chargeCallIds: true,
+          cancellationReason: true
         }
       });
 
@@ -633,8 +652,15 @@ export async function refreshRemittance(
         }
       }
 
-      // Un mandat qui a déjà une ligne dans cette remise (même retirée) n y est pas rajouté.
-      const withLine = new Set(lines.map(line => line.mandateId));
+      // Un mandat qui a déjà une ligne dans cette remise n y est pas rajouté, y compris si l'utilisateur
+      // l'a retirée à la main (sa décision). Une ligne annulée AUTOMATIQUEMENT par une actualisation
+      // (mandat suspendu, bail inactif, rien à devoir…) ne bloque pas : si l'échéance redevient
+      // éligible, une nouvelle ligne est créée au rang suivant et l'ancienne reste en historique.
+      const withLine = new Set(
+        lines
+          .filter(line => !(line.status === 'CANCELED' && isAutoCancelReason(line.cancellationReason)))
+          .map(line => line.mandateId)
+      );
       const fresh = candidates.filter(candidate => !withLine.has(candidate.mandateId));
       const toAdd = fresh.filter(isSelected);
       const nextNumber = lines.reduce((max, line) => Math.max(max, line.lineNumber), 0) + 1;
