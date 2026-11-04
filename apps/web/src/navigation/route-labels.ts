@@ -106,6 +106,10 @@ function buildRouteLabels(): Record<string, string> {
     'factures-fournisseurs': t('Factures fournisseurs'),
     'pieces-de-caisse': t('Pièce de caisse'),
     balance: t('Balance fournisseurs'),
+    // Comptabilité de l'agence (`/finance/comptabilite/…`). « balance » et
+    // « mandants » y ont un autre sens : voir `contextualLabel`.
+    journal: t('Journal'),
+    'grand-livre': t('Grand livre'),
     'bons-de-commande': t('Bons de commande'),
     nouveau: t('Nouveau'),
     retenues: t('Retenues de garantie'),
@@ -212,8 +216,26 @@ function currentRouteLabels(): Record<string, string> {
   return cachedLabels.labels;
 }
 
-/** Libellé d'un segment ; capitalise le segment brut s'il est inconnu. */
-export function labelForSegment(segment: string): string {
+/**
+ * Segments dont le sens dépend du segment qui les précède. Sous
+ * `comptabilite`, « balance » est la balance générale (et non celle des
+ * fournisseurs) et « mandants » les soldes de mandants (et non les agences
+ * mandantes du syndic).
+ */
+function contextualLabel(segment: string, parent: string | undefined): string | null {
+  if (parent !== 'comptabilite') return null;
+  if (segment === 'balance') return t('Balance générale');
+  if (segment === 'mandants') return t('Mandants');
+  return null;
+}
+
+/**
+ * Libellé d'un segment ; capitalise le segment brut s'il est inconnu.
+ * `parent` : le segment précédent, pour les libellés qui en dépendent.
+ */
+export function labelForSegment(segment: string, parent?: string): string {
+  const contextual = contextualLabel(segment, parent);
+  if (contextual) return contextual;
   const known = currentRouteLabels()[segment];
   if (known) return known;
   return segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' ');

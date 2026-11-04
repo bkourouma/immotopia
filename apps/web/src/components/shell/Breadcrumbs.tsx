@@ -99,7 +99,10 @@ export function buildCrumbs(pathname: string): Crumb[] {
       return;
     }
 
-    crumbs.push({ label: labelForSegment(segment), to: isLast ? undefined : (SECTION_ROOT_TARGETS[acc] ?? acc) });
+    crumbs.push({
+      label: labelForSegment(segment, segments[index - 1]),
+      to: isLast ? undefined : (SECTION_ROOT_TARGETS[acc] ?? acc)
+    });
   });
 
   return crumbs;

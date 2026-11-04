@@ -174,7 +174,10 @@ describe('modèle de navigation — intégrité', () => {
       'tresorerie',
       'validation',
       'importation',
-      'comptabilite',
+      'comptabilite/journal',
+      'comptabilite/grand-livre',
+      'comptabilite/balance',
+      'comptabilite/mandants',
       'facturation',
       'balance-clients',
       'balance-agee',
@@ -232,6 +235,10 @@ describe('modèle de navigation — intégrité', () => {
     // mais reste un document de caisse : elle allume l'entrée de l'onglet
     // Caisse, pas celle des chantiers d'où elle est parfois ouverte.
     expect(activeKey(`${base}/pieces-de-caisse`)).toBe('finance-tresorerie');
+    // Une seule entrée « Comptabilité », allumée sur chacune de ses quatre sous-pages.
+    for (const page of ['journal', 'grand-livre', 'balance', 'mandants']) {
+      expect(activeKey(`${base}/comptabilite/${page}`)).toBe('finance-comptabilite');
+    }
     expect(activeKey(`${base}/owner-accounts/9`)).toBe('finance-owner-accounts');
     expect(activeKey(`${base}/associations/3`)).toBe('finance-owner-accounts');
     expect(activeKey(`${base}/salaires/5`)).toBe('finance-salaires');
@@ -438,6 +445,16 @@ describe('fil d’Ariane', () => {
     const labels = buildCrumbs(`/tenant/${TENANT}/rental/installments`).map(c => c.label);
     expect(labels).toContain('Encaisser');
     expect(labels).not.toContain('Échéances');
+  });
+
+  it('nomme les quatre sous-pages de la comptabilité, « balance » et « mandants » sous leur parent', () => {
+    expect(labelForSegment('journal', 'comptabilite')).toBe('Journal');
+    expect(labelForSegment('grand-livre', 'comptabilite')).toBe('Grand livre');
+    expect(labelForSegment('balance', 'comptabilite')).toBe('Balance générale');
+    expect(labelForSegment('mandants', 'comptabilite')).toBe('Mandants');
+    // Hors de la comptabilité, ces segments gardent leur sens d'origine.
+    expect(labelForSegment('balance', 'fournisseurs')).toBe('Balance fournisseurs');
+    expect(labelForSegment('mandants', 'syndics')).toBe('Agences mandantes');
   });
 
   it('nomme les écrans de la finance comme leurs onglets, accents compris', () => {

@@ -1,16 +1,21 @@
 import apiClient from '../utils/api-client';
 
 /**
- * Exports comptables — Lot 8 (scratchpad `lot8-contrat-api.md`).
+ * Comptabilité de l'agence — journal, grand livre, balance générale, mandants.
  *
- * Comptabilité **opérationnelle** de l'agence (gestion locative, fournisseurs,
- * chantiers…), pas celle des copropriétés — qui a son propre module
- * (`services/syndic-service.ts`). Trois lectures (journal, grand livre,
- * balance générale) et un téléchargement de fichier partagé par les trois.
+ * Comptabilité **opérationnelle** (gestion locative, fournisseurs, chantiers),
+ * pas celle des copropriétés (`services/syndic-service.ts`).
  *
- * Écrit contre le contrat, l'API n'existant pas encore : mêmes types, mêmes
- * routes, même enveloppe `{ success, data }` que les autres services finance
- * (`finance-service.ts`).
+ * Lot C (comptabilité rapide) : chaque lecture est paginée côté serveur et
+ * répond sans attendre la synchronisation des comptes propriétaires, qui
+ * tourne en arrière-plan. L'enveloppe est `{ success, data, meta: { sync } }` :
+ * chaque fonction renvoie `data` augmenté de `sync`, l'état de cette
+ * synchronisation, pour le bandeau « Mise à jour des écritures en cours… ».
+ *
+ * Types recopiés de `packages/api/src/lib/accounting-exports/types.ts`.
+ *
+ * Toutes les lectures passent `noRetry: true` : un rejeu automatique d'une
+ * lecture lente empilait les requêtes sur un serveur déjà occupé.
  */
 
 const BASE = (tenantId: string) => `/tenants/${tenantId}/finance/accounting`;
@@ -19,24 +24,81 @@ export type AccountingExportFormat = 'json' | 'csv' | 'xlsx';
 export type AccountingReport =
   'journal' | 'general-ledger' | 'trial-balance' | 'mandant-subledger' | 'mandant-trial-balance';
 
-/** Bornes de période communes aux trois lectures. `from`/`to` au format `YYYY-MM-DD`. */
+// ---------------------------------------------------------------------------
+// Commun
+// ---------------------------------------------------------------------------
+
+export interface SyncMeta {
+  status: 'idle' | 'running' | 'error';
+  /** Fin de la dernière synchronisation réussie (ISO 8601), `null` sinon. */
+  lastSyncedAt: string | null;
+}
+
+export type WithSync<T> = T & { sync: SyncMeta };
+
+/** Bornes de période. `from`/`to` au format `YYYY-MM-DD`. */
 export interface AccountingPeriodParams {
   from?: string;
   to?: string;
 }
+
+export interface PageParams {
+  page?: number;
+  limit?: number;
+}
+
+export interface Paged<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface AccountRef {
+  accountNumber: string;
+  accountName: string;
+}
+
+export interface AccountOption extends AccountRef {
+  id: string;
+  accountClass: number;
+}
+
+export interface BalanceSummary {
+  openingBalance: number;
+  totalDebit: number;
+  totalCredit: number;
+  closingBalance: number;
+}
+
+// ---------------------------------------------------------------------------
+// Méta
+// ---------------------------------------------------------------------------
 
 export interface AccountingJournalRef {
   code: string;
   label: string;
 }
 
+export interface AccountingMeta {
+  journals: AccountingJournalRef[];
+  /** Années civiles qui portent au moins une écriture, décroissantes. */
+  years: number[];
+  minDate: string | null;
+  maxDate: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Journal
+// ---------------------------------------------------------------------------
+
 export interface JournalEntryLine {
   accountNumber: string;
   accountName: string;
   label: string;
-  /** Lot 10 : libellé du compte de tiers de la ligne (mandant), absent sinon. */
+  /** Libellé du compte de tiers de la ligne (mandant), absent sinon. */
   thirdParty: string | null;
-  /** Lot 10 : nature des fonds de mandant portés par la ligne — « Compte courant », « Dépôt de garantie », « À affecter ». */
+  /** Nature des fonds de mandant — « Compte courant », « Dépôt de garantie », « À affecter ». */
   nature: string | null;
   debit: number;
   credit: number;
@@ -51,53 +113,89 @@ export interface JournalEntry {
   documentType: string | null;
   /** Contre-passée par une écriture ultérieure. */
   reversed: boolean;
+  debit: number;
+  credit: number;
   lines: JournalEntryLine[];
 }
 
-export interface JournalData {
+export interface JournalPage extends Paged<JournalEntry> {
   from: string;
   to: string;
-  /** Options du filtre par journal. */
-  journals: AccountingJournalRef[];
-  entries: JournalEntry[];
+  /** Totaux de tout le filtre, toutes pages confondues. */
   totals: { debit: number; credit: number };
 }
 
+export interface JournalParams extends AccountingPeriodParams, PageParams {
+  journal?: string;
+  /** Numéro de compte ou préfixe. */
+  account?: string;
+  /** Libellé, pièce ou description. */
+  search?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Grand livre
+// ---------------------------------------------------------------------------
+
+export interface AccountBalanceRow extends AccountOption, BalanceSummary {}
+
+export interface LedgerSummaryPage extends Paged<AccountBalanceRow> {
+  mode: 'summary';
+  from: string;
+  to: string;
+  totals: BalanceSummary;
+}
+
 export interface GeneralLedgerLine {
+  id: string;
+  entryId: string;
   date: string;
   journalCode: string;
   reference: string;
   label: string;
-  /** Lot 10 : libellé du compte de tiers de la ligne (mandant), absent sinon. */
   thirdParty: string | null;
-  /** Lot 10 : nature des fonds de mandant portés par la ligne. */
   nature: string | null;
   debit: number;
   credit: number;
-  /** Solde progressif, déjà calculé côté serveur. */
+  /** Solde progressif du compte après la ligne, calculé côté serveur. */
   balance: number;
 }
 
-export interface GeneralLedgerAccount {
-  accountNumber: string;
-  accountName: string;
-  /** Solde au jour précédant `from` (débit − crédit). */
-  openingBalance: number;
-  lines: GeneralLedgerLine[];
-  totalDebit: number;
-  totalCredit: number;
-  closingBalance: number;
-}
-
-export interface GeneralLedgerData {
+export interface AccountLedgerPage extends Paged<GeneralLedgerLine> {
+  mode: 'account';
   from: string;
   to: string;
-  accounts: GeneralLedgerAccount[];
+  account: AccountOption;
+  /** Synthèse du compte sur la période, filtres de recherche et de journal ignorés. */
+  summary: BalanceSummary;
+  /** Débit et crédit des seules lignes filtrées ; `null` sans filtre. */
+  filteredTotals: { debit: number; credit: number } | null;
+  previousAccount: AccountRef | null;
+  nextAccount: AccountRef | null;
 }
 
-export interface TrialBalanceLine {
-  accountNumber: string;
-  accountName: string;
+export interface LedgerSummaryParams extends AccountingPeriodParams, PageParams {
+  search?: string;
+}
+
+export interface AccountLedgerParams extends AccountingPeriodParams, PageParams {
+  /** Numéro de compte exact. */
+  account: string;
+  search?: string;
+  journal?: string;
+}
+
+export interface AccountSearchParams extends AccountingPeriodParams {
+  search?: string;
+  withMovements?: boolean;
+  limit?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Balance générale
+// ---------------------------------------------------------------------------
+
+export interface TrialBalanceLine extends AccountOption {
   openingDebit: number;
   openingCredit: number;
   periodDebit: number;
@@ -118,16 +216,33 @@ export interface TrialBalanceTotals {
 export interface TrialBalanceData {
   from: string;
   to: string;
+  /** Toutes les lignes du filtre (une par compte, non paginé). */
   lines: TrialBalanceLine[];
+  /** Totaux des lignes filtrées. */
   totals: TrialBalanceTotals;
+  /** Totaux de tous les comptes, base du contrôle d'équilibre. */
+  control: TrialBalanceTotals;
   isBalanced: boolean;
 }
 
+export interface TrialBalanceParams extends AccountingPeriodParams {
+  /** Classe de compte, 1 à 9. */
+  accountClass?: number;
+  /** Masquer les comptes soldés. */
+  hideZero?: boolean;
+  search?: string;
+}
+
 // ---------------------------------------------------------------------------
-// Grand livre auxiliaire et balance auxiliaire des mandants — lot 10
+// Mandants
 // ---------------------------------------------------------------------------
 
-/** Contrôle commun aux deux états auxiliaires : le total auxiliaire doit égaler le solde général du compte. */
+/** Clé d'URL des lignes sans compte de tiers. */
+export const UNASSIGNED_OWNER = 'non-reparti';
+
+export type MandantFundsNature = 'CURRENT' | 'DEPOSIT' | 'UNALLOCATED';
+
+/** Le total auxiliaire doit égaler le solde général du compte de fonds. */
 export interface MandantControl {
   auxiliaryBalance: number;
   generalBalance: number;
@@ -135,53 +250,52 @@ export interface MandantControl {
   isBalanced: boolean;
 }
 
-export interface MandantSubledgerLine {
-  date: string;
-  journalCode: string;
-  reference: string;
-  label: string;
-  debit: number;
-  credit: number;
-  balance: number;
-}
-
-export interface MandantSubledgerNatureGroup {
-  nature: 'CURRENT' | 'DEPOSIT' | 'UNALLOCATED';
-  natureLabel: string;
-  openingBalance: number;
-  lines: MandantSubledgerLine[];
-  totalDebit: number;
-  totalCredit: number;
-  closingBalance: number;
-}
-
-export interface MandantSubledgerOwnerGroup {
+/** Solde d'un propriétaire sur la période, sens crédit − débit. */
+export interface MandantOwnerRow extends BalanceSummary {
+  ownerKey: string;
   thirdPartyAccountId: string | null;
-  /** « Non réparti » pour les lignes sans compte de tiers. */
   ownerLabel: string;
-  natures: MandantSubledgerNatureGroup[];
-  openingBalance: number;
-  totalDebit: number;
-  totalCredit: number;
-  closingBalance: number;
 }
 
-export interface MandantSubledgerData {
+export interface MandantOwnersPage extends Paged<MandantOwnerRow> {
+  mode: 'owners';
   from: string;
   to: string;
   accountNumber: string;
   accountName: string;
-  owners: MandantSubledgerOwnerGroup[];
-  totals: {
-    openingBalance: number;
-    totalDebit: number;
-    totalCredit: number;
-    closingBalance: number;
-  };
+  totals: BalanceSummary;
   control: MandantControl;
 }
 
+export interface MandantNatureSummary extends BalanceSummary {
+  nature: MandantFundsNature;
+  natureLabel: string;
+}
+
+export interface MandantLine {
+  id: string;
+  date: string;
+  journalCode: string;
+  reference: string;
+  label: string;
+  nature: MandantFundsNature;
+  natureLabel: string;
+  debit: number;
+  credit: number;
+  /** Solde progressif de la nature de la ligne pour ce propriétaire. */
+  balance: number;
+}
+
+export interface MandantOwnerLedgerPage extends Paged<MandantLine> {
+  mode: 'owner';
+  from: string;
+  to: string;
+  owner: { ownerKey: string; thirdPartyAccountId: string | null; ownerLabel: string };
+  natures: MandantNatureSummary[];
+}
+
 export interface MandantTrialBalanceRow {
+  ownerKey: string;
   thirdPartyAccountId: string | null;
   ownerLabel: string;
   current: number;
@@ -190,102 +304,153 @@ export interface MandantTrialBalanceRow {
   total: number;
 }
 
-export interface MandantTrialBalanceData {
+export interface MandantTrialBalancePage extends Paged<MandantTrialBalanceRow> {
   date: string;
   accountNumber: string;
   accountName: string;
-  rows: MandantTrialBalanceRow[];
   totals: { current: number; deposit: number; unallocated: number; total: number };
   control: MandantControl;
 }
 
-/** Journal — `GET /journal`. Paramètre facultatif : `journal` (code). */
-export async function getJournal(
-  tenantId: string,
-  params: AccountingPeriodParams & { journal?: string }
-): Promise<JournalData> {
-  const response = await apiClient.get(`${BASE(tenantId)}/journal`, {
-    params: { from: params.from, to: params.to, journal: params.journal || undefined, format: 'json' }
-  });
-  return response.data.data;
+export interface MandantOwnersParams extends AccountingPeriodParams, PageParams {
+  search?: string;
 }
 
-/** Grand livre — `GET /general-ledger`. Paramètre facultatif : `account` (numéro). */
-export async function getGeneralLedger(
+export interface MandantOwnerLedgerParams extends AccountingPeriodParams, PageParams {
+  /** `thirdPartyAccountId` ou `UNASSIGNED_OWNER`. */
+  owner: string;
+  nature?: MandantFundsNature;
+}
+
+export interface MandantTrialBalanceParams extends PageParams {
+  /** Date d'arrêté `YYYY-MM-DD`. */
+  date?: string;
+  search?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Appels
+// ---------------------------------------------------------------------------
+
+type RawParams = Record<string, string | number | boolean | undefined | null>;
+
+const IDLE: SyncMeta = { status: 'idle', lastSyncedAt: null };
+
+/** Retire les paramètres vides : l'API valide strictement et refuse une chaîne vide là où elle attend un nombre. */
+function clean(params: RawParams): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue;
+    out[key] = typeof value === 'boolean' ? String(value) : value;
+  }
+  return out;
+}
+
+async function read<T>(url: string, params: RawParams): Promise<WithSync<T>> {
+  const response = await apiClient.get(url, { params: clean({ ...params, format: 'json' }), noRetry: true });
+  const body = response.data as { data: T; meta?: { sync?: SyncMeta } };
+  return { ...body.data, sync: body.meta?.sync ?? IDLE };
+}
+
+/** Méta — `GET /meta` : journaux, années et bornes de dates disponibles. */
+export function getAccountingMeta(tenantId: string): Promise<WithSync<AccountingMeta>> {
+  return read<AccountingMeta>(`${BASE(tenantId)}/meta`, {});
+}
+
+/** Sélecteur de compte — `GET /accounts`. Résultats limités (20 par défaut, 50 au plus). */
+export async function searchAccountingAccounts(
   tenantId: string,
-  params: AccountingPeriodParams & { account?: string }
-): Promise<GeneralLedgerData> {
-  const response = await apiClient.get(`${BASE(tenantId)}/general-ledger`, {
-    params: { from: params.from, to: params.to, account: params.account || undefined, format: 'json' }
+  params: AccountSearchParams
+): Promise<AccountOption[]> {
+  const data = await read<{ items: AccountOption[] }>(`${BASE(tenantId)}/accounts`, {
+    search: params.search,
+    withMovements: params.withMovements,
+    from: params.from,
+    to: params.to,
+    limit: params.limit
   });
-  return response.data.data;
+  return data.items;
+}
+
+/** Force la synchronisation des comptes propriétaires et l'attend — `POST /sync`. */
+export async function syncAccounting(tenantId: string): Promise<SyncMeta> {
+  // Une synchronisation peut durer : même délai que les téléchargements.
+  const response = await apiClient.post(`${BASE(tenantId)}/sync`, undefined, { timeout: 120_000 });
+  return (response.data?.data as SyncMeta | undefined) ?? IDLE;
+}
+
+/** Journal — `GET /journal`, paginé (50 par défaut, 100 au plus). */
+export function getJournal(tenantId: string, params: JournalParams): Promise<WithSync<JournalPage>> {
+  return read<JournalPage>(`${BASE(tenantId)}/journal`, { ...params });
+}
+
+/** Récapitulatif des comptes mouvementés — `GET /general-ledger` sans `account`. */
+export function getLedgerSummary(tenantId: string, params: LedgerSummaryParams): Promise<WithSync<LedgerSummaryPage>> {
+  return read<LedgerSummaryPage>(`${BASE(tenantId)}/general-ledger`, { ...params });
+}
+
+/** Grand livre d'un compte — `GET /general-ledger?account=…`, paginé (100 par défaut). */
+export function getAccountLedger(tenantId: string, params: AccountLedgerParams): Promise<WithSync<AccountLedgerPage>> {
+  return read<AccountLedgerPage>(`${BASE(tenantId)}/general-ledger`, { ...params });
 }
 
 /** Balance générale — `GET /trial-balance`. */
-export async function getTrialBalance(tenantId: string, params: AccountingPeriodParams): Promise<TrialBalanceData> {
-  const response = await apiClient.get(`${BASE(tenantId)}/trial-balance`, {
-    params: { from: params.from, to: params.to, format: 'json' }
+export function getTrialBalance(tenantId: string, params: TrialBalanceParams): Promise<WithSync<TrialBalanceData>> {
+  return read<TrialBalanceData>(`${BASE(tenantId)}/trial-balance`, {
+    from: params.from,
+    to: params.to,
+    class: params.accountClass,
+    hideZero: params.hideZero,
+    search: params.search
   });
-  return response.data.data;
 }
 
-/** Grand livre auxiliaire des mandants (lot 10) — `GET /mandant-subledger`, sur une période. */
-export async function getMandantSubledger(
+/** Propriétaires et leurs soldes sur la période — `GET /mandant-subledger` sans `owner`. */
+export function getMandantOwners(tenantId: string, params: MandantOwnersParams): Promise<WithSync<MandantOwnersPage>> {
+  return read<MandantOwnersPage>(`${BASE(tenantId)}/mandant-subledger`, { ...params });
+}
+
+/** Lignes d'un propriétaire — `GET /mandant-subledger?owner=…`, paginé. */
+export function getMandantOwnerLedger(
   tenantId: string,
-  params: AccountingPeriodParams
-): Promise<MandantSubledgerData> {
-  const response = await apiClient.get(`${BASE(tenantId)}/mandant-subledger`, {
-    params: { from: params.from, to: params.to, format: 'json' }
-  });
-  return response.data.data;
+  params: MandantOwnerLedgerParams
+): Promise<WithSync<MandantOwnerLedgerPage>> {
+  return read<MandantOwnerLedgerPage>(`${BASE(tenantId)}/mandant-subledger`, { ...params });
 }
 
-/** Balance auxiliaire des mandants (lot 10) — `GET /mandant-trial-balance`, à une date. */
-export async function getMandantTrialBalance(
+/** Balance auxiliaire des mandants à une date — `GET /mandant-trial-balance`, paginée. */
+export function getMandantTrialBalance(
   tenantId: string,
-  params: { date?: string }
-): Promise<MandantTrialBalanceData> {
-  const response = await apiClient.get(`${BASE(tenantId)}/mandant-trial-balance`, {
-    params: { date: params.date, format: 'json' }
-  });
-  return response.data.data;
+  params: MandantTrialBalanceParams
+): Promise<WithSync<MandantTrialBalancePage>> {
+  return read<MandantTrialBalancePage>(`${BASE(tenantId)}/mandant-trial-balance`, { ...params });
 }
-
-const REPORT_ROUTES: Record<AccountingReport, string> = {
-  journal: 'journal',
-  'general-ledger': 'general-ledger',
-  'trial-balance': 'trial-balance',
-  'mandant-subledger': 'mandant-subledger',
-  'mandant-trial-balance': 'mandant-trial-balance'
-};
 
 /**
- * Télécharge un export (`csv` ou `xlsx`) d'une des trois lectures.
+ * Paramètres d'export : les filtres de l'écran, sans pagination (l'export
+ * porte toutes les lignes du filtre). Mêmes noms que les lectures ; la balance
+ * générale prend `class`, pas `accountClass`.
+ */
+export type AccountingExportParams = RawParams;
+
+/**
+ * Télécharge un export (`csv` ou `xlsx`). L'API attend la synchronisation
+ * des comptes propriétaires avant de produire le fichier.
  *
- * Passe par `apiClient`, comme `rental-service.downloadDocument` : délai
- * maximal, rafraîchissement de session sur 401 et nouvelles tentatives, là où
- * un `fetch` brut n'offre rien de tout cela.
- *
- * Le nom de fichier vient de l'en-tête `Content-Disposition` quand le serveur
- * le fournit — `filename*=UTF-8''…` d'abord, seule forme qui porte les
- * accents, `filename="…"` ensuite —, et retombe sur `fallbackName` sinon.
+ * Le nom de fichier vient de `Content-Disposition` — `filename*=UTF-8''…`
+ * d'abord, `filename="…"` ensuite —, et retombe sur `fallbackName` sinon.
  */
 export async function downloadAccountingExport(
   tenantId: string,
   report: AccountingReport,
   format: Exclude<AccountingExportFormat, 'json'>,
-  params: AccountingPeriodParams & { journal?: string; account?: string; date?: string },
+  params: AccountingExportParams,
   fallbackName: string
 ): Promise<{ blob: Blob; filename: string }> {
-  const response = await apiClient.get<Blob>(`${BASE(tenantId)}/${REPORT_ROUTES[report]}`, {
-    params: {
-      from: params.from,
-      to: params.to,
-      journal: params.journal || undefined,
-      account: params.account || undefined,
-      date: params.date || undefined,
-      format
-    },
+  // L'export porte tout le filtre : la page affichée n'a pas cours.
+  const filters: RawParams = { ...params, page: undefined, limit: undefined };
+  const response = await apiClient.get<Blob>(`${BASE(tenantId)}/${report}`, {
+    params: clean({ ...filters, format }),
     responseType: 'blob'
   });
 
