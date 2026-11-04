@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SearchCriterion, SearchOption, SearchValues } from '../../../utils/list-search/types';
-import { cacheKey, isActiveValue, knownOptionLabel } from './format';
+import { isActiveValue } from '../../../utils/list-search/filter';
+import { cacheKey, knownOptionLabel } from './format';
 
 /**
  * Mémoire des libellés d'options vus par la barre.
@@ -10,8 +11,10 @@ import { cacheKey, isActiveValue, knownOptionLabel } from './format';
  * valeur de `select` venue de l'URL dont le libellé est inconnu. Les puces et
  * les champs s'en servent pour afficher « Villa Angré » plutôt que l'id.
  *
- * `resolveLabel` est relu dans une ref : l'écran redéclare ses critères à
- * chaque rendu, et dépendre de l'identité de la fonction relancerait l'appel.
+ * `resolveLabel` est lu dans une ref (toujours la dernière fonction reçue) :
+ * l'identité de la fonction ne relance jamais l'appel, seule une valeur
+ * nouvelle à résoudre le fait. Une identité qui change (nouvelle agence) n'a
+ * donc pas à être redemandée par la barre.
  */
 export function useOptionLabels(criteria: readonly SearchCriterion[], values: SearchValues) {
   const [cache, setCache] = useState<Record<string, string>>({});

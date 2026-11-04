@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Table, Pagination, Spin, Row, Col, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { SorterResult } from 'antd/es/table/interface';
@@ -230,6 +230,16 @@ export function DataView<T>(props: DataViewProps<T>) {
   const isFiltered = isFilteredProp ?? (search ? search.activeCount > 0 : false);
   const onClearFilters = onClearFiltersProp ?? search?.onClear;
 
+  // Page hors bornes (lien ancien, filtre qui réduit le jeu) : on recadre sur la
+  // dernière page au lieu d'afficher un « aucune donnée » trompeur.
+  const lastPage = paginated && total > 0 && pageSize > 0 ? Math.ceil(total / pageSize) : 0;
+  const pageOutOfRange = Boolean(search) && lastPage > 0 && page > lastPage;
+  useEffect(() => {
+    if (pageOutOfRange) onPageChange(lastPage, pageSize);
+    // `onPageChange` est volontairement hors des dépendances : l'écran le recrée à chaque rendu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageOutOfRange, lastPage, pageSize]);
+
   /**
    * La barre de recherche, au-dessus de tous les états. `counted: false` pour
    * les états où un compteur mentirait (premier chargement, erreur). Rien du
@@ -263,7 +273,7 @@ export function DataView<T>(props: DataViewProps<T>) {
   }
 
   // Premier chargement seulement : un rechargement garde la liste à l'écran.
-  if (loading && items.length === 0) {
+  if ((loading || pageOutOfRange) && items.length === 0) {
     return withSearch(
       isDesktop && layout === 'table' ? (
         <SkeletonTable

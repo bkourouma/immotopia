@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import type { TablePaginationConfig } from 'antd';
 import { useListParams } from './useListParams';
 import type { Sort } from './useListParams';
@@ -9,6 +9,7 @@ import type {
   ListSearchBinding,
   NumberRangeValue,
   SearchCriterion,
+  SelectCriterion,
   SearchValue,
   SearchValues
 } from '../utils/list-search/types';
@@ -48,6 +49,8 @@ export interface UseListSearchOptions {
    * Défaut `{ page: 'page', limit: 'limit', sort: 'sort' }` ; `sort: false` = tri non envoyé.
    */
   apiNames?: { page?: string; limit?: string; sort?: string | false };
+  /** Nom accessible de la zone de recherche, reporté dans `searchProps['aria-label']`. */
+  ariaLabel?: string;
 }
 
 export interface UseListSearchResult {
@@ -65,7 +68,14 @@ export interface UseListSearchResult {
   page: number;
   pageSize: number;
   sort: Sort | null;
-  setPage: (page: number) => void;
+  setPage: (page: number, options?: { replace?: boolean }) => void;
+  /**
+   * Ramène `?page` hors bornes à la dernière page (mode serveur), sans empiler
+   * d'historique. Ne fait rien si `total` vaut 0 ou si la page est valide.
+   * `<DataView>` et `<Table>` la déclenchent seuls quand `search` leur est passé ;
+   * un écran sur mesure l'appelle dans un `useEffect` dès que `total` est connu.
+   */
+  clampPage?: (total: number) => void;
   setPageSize: (size: number) => void;
   setSort: (sort: Sort | null) => void;
   /** Critères traduits pour l'API, SANS pagination ni tri : à réutiliser tel quel par l'export. */
@@ -117,6 +127,19 @@ function criterionUrlKeys(criterion: SearchCriterion): string[] {
   return [criterion.key];
 }
 
+/**
+ * Valeurs des options STATIQUES d'un critère, ou `undefined` s'il n'y a rien à
+ * vérifier : `loadOptions` présent, ou tableau absent / vide (options pas encore
+ * chargées : un lien partagé ne doit pas perdre son critère pendant ce temps).
+ */
+function staticOptionValues(criterion: SearchCriterion): Set<string> | undefined {
+  if (criterion.type !== 'select' && criterion.type !== 'multiSelect') return undefined;
+  if (criterion.type === 'select' && criterion.loadOptions) return undefined;
+  const options = criterion.options;
+  if (!options || options.length === 0) return undefined;
+  return new Set(options.map(option => option.value));
+}
+
 /** Lit la valeur d'un critère dans les filtres bruts de l'URL ; toute valeur mal formée est ignorée. */
 function readValue(criterion: SearchCriterion, raw: Record<string, string>): SearchValue {
   switch (criterion.type) {
@@ -124,13 +147,18 @@ function readValue(criterion: SearchCriterion, raw: Record<string, string>): Sea
       const text = raw[criterion.key]?.trim();
       return text ? text : undefined;
     }
-    case 'select':
-      return raw[criterion.key] || undefined;
-    case 'multiSelect':
+    case 'select': {
+      const value = raw[criterion.key] || undefined;
+      const known = staticOptionValues(criterion);
+      return value !== undefined && known && !known.has(value) ? undefined : value;
+    }
+    case 'multiSelect': {
+      const known = staticOptionValues(criterion);
       return (raw[criterion.key] ?? '')
         .split(',')
         .map(part => part.trim())
-        .filter(Boolean);
+        .filter(part => part !== '' && (!known || known.has(part)));
+    }
     case 'dateRange': {
       const [fromKey, toKey] = rangeUrlKeys(criterion);
       const value: DateRangeValue = {};
@@ -239,24 +267,67 @@ function formatSort(sort: Sort): string {
  * est sans coût et ne produit ni boucle ni nouvel objet.
  */
 export function useListSearch(options: UseListSearchOptions): UseListSearchResult {
-  const { criteria, paramPrefix, defaultPageSize, defaultSort, apiNames } = options;
+  const { criteria, paramPrefix, defaultPageSize, defaultSort, apiNames, ariaLabel } = options;
 
   // Signature structurelle : clés, types et clés d'URL. Seule elle pilote les
   // mémos de données ; l'identité du tableau `criteria` ne compte pas.
-  const dataSignature = criteria.map(c => `${c.type}:${c.key}:${criterionUrlKeys(c).join('+')}`).join('|');
-  // Signature d'affichage : ajoute libellés et options, pour que la barre suive
-  // un changement de langue ou des options chargées sans changer à chaque rendu.
+  // Les options statiques entrent dans la signature des données : elles filtrent
+  // les valeurs d'URL (voir `readValue`), `values` doit donc suivre leur arrivée.
+  const dataSignature = criteria
+    .map(c => {
+      const known = staticOptionValues(c);
+      return `${c.type}:${c.key}:${criterionUrlKeys(c).join('+')}:${known ? [...known].join(',') : ''}`;
+    })
+    .join('|');
+  // Signature d'affichage : ajoute libellés, options et textes, pour que la barre
+  // suive un changement de langue ou des options chargées sans changer à chaque rendu.
   const displaySignature = criteria
     .map(c => {
       const opts = 'options' in c && c.options ? c.options.map(o => `${o.value}=${o.label}`).join(',') : '';
-      return `${c.key}:${c.label}:${c.primary ? 1 : 0}:${opts}`;
+      const extras = [
+        'placeholder' in c ? c.placeholder : '',
+        c.help,
+        'unit' in c ? c.unit : '',
+        'trueLabel' in c ? c.trueLabel : '',
+        'falseLabel' in c ? c.falseLabel : '',
+        'tristate' in c && c.tristate ? 1 : 0,
+        'loadOptions' in c && c.loadOptions ? 1 : 0,
+        'resolveLabel' in c && c.resolveLabel ? 1 : 0
+      ].join('~');
+      return `${c.key}:${c.label}:${c.primary ? 1 : 0}:${opts}:${extras}`;
     })
     .join('|');
 
+  // Version COURANTE des critères : les fonctions (`loadOptions`, `resolveLabel`,
+  // `api`) ferment sur l'état du composant et changent d'un rendu à l'autre alors
+  // que la signature, elle, ne bouge pas.
+  const criteriaRef = useRef(criteria);
+  criteriaRef.current = criteria;
+
   // eslint-disable-next-line react-hooks/exhaustive-deps -- volontairement piloté par la signature
   const stableData = useMemo(() => criteria, [dataSignature]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- volontairement piloté par la signature
-  const stableCriteria = useMemo(() => criteria, [dataSignature, displaySignature]);
+  // Critères exposés : `loadOptions` et `resolveLabel` sont des enveloppes à
+  // identité stable qui délèguent à la version courante lue dans la ref.
+  const stableCriteria = useMemo<readonly SearchCriterion[]>(
+    () =>
+      criteria.map(criterion => {
+        if (criterion.type !== 'select' || (!criterion.loadOptions && !criterion.resolveLabel)) return criterion;
+        const current = (): SelectCriterion | undefined => {
+          const found = criteriaRef.current.find(c => c.key === criterion.key);
+          return found && found.type === 'select' ? found : undefined;
+        };
+        const wrapped: SelectCriterion = { ...criterion };
+        if (criterion.loadOptions) {
+          wrapped.loadOptions = (search: string) => current()?.loadOptions?.(search) ?? Promise.resolve([]);
+        }
+        if (criterion.resolveLabel) {
+          wrapped.resolveLabel = (value: string) => current()?.resolveLabel?.(value);
+        }
+        return wrapped;
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- volontairement piloté par la signature
+    [dataSignature, displaySignature]
+  );
 
   const filterKeys = useMemo(() => stableData.flatMap(criterionUrlKeys), [stableData]);
 
@@ -297,7 +368,12 @@ export function useListSearch(options: UseListSearchOptions): UseListSearchResul
     [stableData, setFilters]
   );
 
-  const filterParams = useMemo(() => buildFilterParams(stableData, values), [stableData, values]);
+  // Recalculé à chaque rendu avec les critères COURANTS (`api` fonction qui ferme
+  // sur un état), puis stabilisé par contenu comme `values`.
+  const rawFilterParams = buildFilterParams(criteria, values);
+  const filterSignature = JSON.stringify(rawFilterParams);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- piloté par le contenu
+  const filterParams = useMemo(() => rawFilterParams, [filterSignature]);
 
   const pageName = apiNames?.page ?? 'page';
   const limitName = apiNames?.limit ?? 'limit';
@@ -312,8 +388,24 @@ export function useListSearch(options: UseListSearchOptions): UseListSearchResul
   const isFiltered = activeCount > 0;
 
   const searchProps = useMemo<ListSearchBinding>(
-    () => ({ criteria: stableCriteria, values, onChange: setValues, onClear: clearFilters, activeCount }),
-    [stableCriteria, values, setValues, clearFilters, activeCount]
+    () => ({
+      criteria: stableCriteria,
+      values,
+      onChange: setValues,
+      onClear: clearFilters,
+      activeCount,
+      ...(ariaLabel ? { 'aria-label': ariaLabel } : {})
+    }),
+    [stableCriteria, values, setValues, clearFilters, activeCount, ariaLabel]
+  );
+
+  const clampPage = useCallback(
+    (total: number) => {
+      if (!(total > 0)) return;
+      const last = Math.max(1, Math.ceil(total / pageSize));
+      if (page > last) setPage(last, { replace: true });
+    },
+    [page, pageSize, setPage]
   );
 
   const onPageChange = useCallback(
@@ -359,6 +451,7 @@ export function useListSearch(options: UseListSearchOptions): UseListSearchResul
     pageSize,
     sort,
     setPage,
+    clampPage,
     setPageSize,
     setSort,
     filterParams,
