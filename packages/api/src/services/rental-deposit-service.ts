@@ -92,27 +92,14 @@ export async function createDeposit(tenantId: string, leaseId: string, actorUser
   return deposit;
 }
 
-/**
- * Get deposit for a lease
- * @param tenantId - Tenant ID
- * @param leaseId - Lease ID
- * @param actorUserId - Optional user ID for auto-creation (if deposit doesn't exist but lease has security_deposit_amount)
- * @returns Deposit or null
- */
-export async function getDeposit(tenantId: string, leaseId: string, actorUserId?: string) {
-  // Verify lease exists and belongs to tenant
-  const lease = await prisma.rentalLease.findFirst({
-    where: {
-      id: leaseId,
-      tenant_id: tenantId
-    }
-  });
+/** Violation d'une contrainte unique Prisma (`P2002`). */
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && (error as { code?: unknown }).code === 'P2002');
+}
 
-  if (!lease) {
-    throw new NotFoundError(t('Bail introuvable'));
-  }
-
-  let deposit = await prisma.rentalSecurityDeposit.findUnique({
+/** Dépôt d'un bail, avec le bail, ses mouvements, leur paiement et leur auteur. */
+function findDepositByLease(leaseId: string) {
+  return prisma.rentalSecurityDeposit.findUnique({
     where: {
       lease_id: leaseId
     },
@@ -147,51 +134,94 @@ export async function getDeposit(tenantId: string, leaseId: string, actorUserId?
       }
     }
   });
+}
+
+/**
+ * Get deposit for a lease
+ *
+ * Le dépôt naît à la première lecture quand le bail porte un dépôt de garantie
+ * (aucune autre route ne le crée à la création du bail). Cette lecture doit
+ * rester idempotente : deux lectures simultanées (double montage de l'onglet
+ * sous React.StrictMode, deux onglets, un rafraîchissement) trouvent toutes deux
+ * le dépôt absent et tentent toutes deux de le créer ; la seconde bute sur
+ * l'unicité de `lease_id` (`P2002`), que le middleware d'erreurs traduit en 409
+ * — or un GET ne doit jamais répondre « existe déjà » (BUG-2026-11-03-020).
+ * Perdre la course n'est donc pas une erreur : on relit le dépôt que l'autre
+ * lecture vient de créer. L'écriture est hors transaction, donc rien n'est
+ * condamné par la violation et la relecture est permise.
+ *
+ * @param tenantId - Tenant ID
+ * @param leaseId - Lease ID
+ * @param actorUserId - Optional user ID for auto-creation (if deposit doesn't exist but lease has security_deposit_amount)
+ * @returns Deposit or null
+ */
+export async function getDeposit(tenantId: string, leaseId: string, actorUserId?: string) {
+  // Verify lease exists and belongs to tenant
+  const lease = await prisma.rentalLease.findFirst({
+    where: {
+      id: leaseId,
+      tenant_id: tenantId
+    }
+  });
+
+  if (!lease) {
+    throw new NotFoundError(t('Bail introuvable'));
+  }
+
+  let deposit = await findDepositByLease(leaseId);
 
   // If deposit doesn't exist but lease has security_deposit_amount, create it automatically
   if (!deposit && lease.security_deposit_amount && Number(lease.security_deposit_amount) > 0) {
-    deposit = await prisma.rentalSecurityDeposit.create({
-      data: {
-        tenant_id: tenantId,
-        lease_id: leaseId,
-        currency: lease.currency,
-        target_amount: lease.security_deposit_amount,
-        collected_amount: 0,
-        held_amount: 0,
-        refunded_amount: 0,
-        forfeited_amount: 0
-      },
-      include: {
-        lease: {
-          select: {
-            id: true,
-            lease_number: true
-          }
+    try {
+      deposit = await prisma.rentalSecurityDeposit.create({
+        data: {
+          tenant_id: tenantId,
+          lease_id: leaseId,
+          currency: lease.currency,
+          target_amount: lease.security_deposit_amount,
+          collected_amount: 0,
+          held_amount: 0,
+          refunded_amount: 0,
+          forfeited_amount: 0
         },
-        movements: {
-          orderBy: {
-            created_at: 'desc'
+        include: {
+          lease: {
+            select: {
+              id: true,
+              lease_number: true
+            }
           },
-          include: {
-            payment: {
-              select: {
-                id: true,
-                method: true,
-                amount: true,
-                succeeded_at: true
-              }
+          movements: {
+            orderBy: {
+              created_at: 'desc'
             },
-            createdBy: {
-              select: {
-                id: true,
-                email: true,
-                fullName: true
+            include: {
+              payment: {
+                select: {
+                  id: true,
+                  method: true,
+                  amount: true,
+                  succeeded_at: true
+                }
+              },
+              createdBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  fullName: true
+                }
               }
             }
           }
         }
-      }
-    });
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      // Course perdue : une lecture concurrente a créé le dépôt entre-temps.
+      const concurrent = await findDepositByLease(leaseId);
+      if (!concurrent) throw error;
+      return concurrent;
+    }
 
     logger.info('Security deposit auto-created from lease', {
       depositId: deposit.id,
