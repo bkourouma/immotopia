@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { App, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Alert, Tabs, Typography } from 'antd';
 import { PlusOutlined, UserAddOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -98,6 +98,7 @@ function extractOpenOwners(err: any): OpenOwner[] | null {
 
 /** Délai de la recherche de contacts côté serveur (frappe au clavier). */
 const CONTACT_SEARCH_DEBOUNCE_MS = 300;
+const CONTACT_SEARCH_LIMIT = 20;
 
 /** Message d'erreur de l'API : `message` (erreurs typées), à défaut `error`, sinon le repli. */
 function apiErrorMessage(err: unknown, fallback: string): string {
@@ -196,11 +197,29 @@ export const SyndicProfilesIncidents: React.FC = () => {
   // Création d'un contact depuis un formulaire : le champ d'origine reçoit le contact créé.
   const [createContactFor, setCreateContactFor] = useState<ContactTarget | null>(null);
   const contactSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contactRequestGeneration = useRef(0);
+  const contactSearchSequence = useRef(0);
   // Tous les contacts déjà vus (liste initiale, recherches, créations) : la sélection courante reste affichable.
   const knownContacts = useRef<Record<string, CrmContact>>({});
   // Contacts des formulaires : chargés à la première ouverture d'un formulaire, pas au montage de la page.
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const contactsRequested = useRef(false);
+
+  // Un changement d'agence invalide les options de contact et les réponses encore en vol.
+  useEffect(() => {
+    contactRequestGeneration.current += 1;
+    contactSearchSequence.current += 1;
+    if (contactSearchTimer.current) clearTimeout(contactSearchTimer.current);
+    contactSearchTimer.current = null;
+    contactsRequested.current = false;
+    knownContacts.current = {};
+    setContacts([]);
+    return () => {
+      contactRequestGeneration.current += 1;
+      contactSearchSequence.current += 1;
+      if (contactSearchTimer.current) clearTimeout(contactSearchTimer.current);
+    };
+  }, [effectiveTenantId]);
   const [budgets, setBudgets] = useState<SyndicateBudget[]>([]);
   const [contracts, setContracts] = useState<MaintenanceContract[]>([]);
   const [endingTenantProfileId, setEndingTenantProfileId] = useState<string | null>(null);
@@ -242,9 +261,11 @@ export const SyndicProfilesIncidents: React.FC = () => {
   // Charge les contacts des formulaires une seule fois, à la première ouverture d'un formulaire.
   const ensureContacts = async () => {
     if (!effectiveTenantId || contactsRequested.current) return;
+    const generation = contactRequestGeneration.current;
     contactsRequested.current = true;
     try {
-      const contactsData = await listContacts(effectiveTenantId, { page: 1, limit: 200 });
+      const contactsData = await listContacts(effectiveTenantId, { page: 1, limit: CONTACT_SEARCH_LIMIT });
+      if (generation !== contactRequestGeneration.current) return;
       const found = contactsData.contacts || [];
       rememberContacts(found);
       // Les contacts déjà présents (créés ou recherchés entre-temps) restent en tête.
@@ -253,6 +274,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
         return merged.filter((contact, index) => merged.findIndex(c => c.id === contact.id) === index);
       });
     } catch {
+      if (generation !== contactRequestGeneration.current) return;
       contactsRequested.current = false;
       message.error(t('Recherche de contacts impossible'));
     }
@@ -275,20 +297,28 @@ export const SyndicProfilesIncidents: React.FC = () => {
     return ids.map(id => (id ? knownContacts.current[id] : undefined)).filter((c): c is CrmContact => Boolean(c));
   };
 
-  // Recherche côté serveur (au-delà des 200 premiers contacts), avec un délai après la frappe.
+  // Recherche côté serveur (au-delà des premiers contacts), avec un délai après la frappe.
   const handleContactSearch = (term: string) => {
     if (contactSearchTimer.current) clearTimeout(contactSearchTimer.current);
     if (!effectiveTenantId) return;
+    const generation = contactRequestGeneration.current;
+    const sequence = ++contactSearchSequence.current;
     contactSearchTimer.current = setTimeout(() => {
+      if (generation !== contactRequestGeneration.current || sequence !== contactSearchSequence.current) return;
       const search = term.trim();
-      listContacts(effectiveTenantId, { page: 1, limit: 200, ...(search ? { search } : {}) })
+      listContacts(effectiveTenantId, { page: 1, limit: CONTACT_SEARCH_LIMIT, ...(search ? { search } : {}) })
         .then(result => {
+          if (generation !== contactRequestGeneration.current || sequence !== contactSearchSequence.current) return;
           const found = result.contacts || [];
           rememberContacts(found);
           const merged = [...selectedContacts(), ...found];
           setContacts(merged.filter((contact, index) => merged.findIndex(c => c.id === contact.id) === index));
         })
-        .catch(() => message.error(t('Recherche de contacts impossible')));
+        .catch(() => {
+          if (generation === contactRequestGeneration.current && sequence === contactSearchSequence.current) {
+            message.error(t('Recherche de contacts impossible'));
+          }
+        });
     }, CONTACT_SEARCH_DEBOUNCE_MS);
   };
 

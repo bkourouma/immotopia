@@ -485,6 +485,25 @@ describe('Paiements et déclarations : préfixes « pa » et « dec »', () => {
     expect(listMyPayments.mock.calls.length).toBe(appelsAvant);
   });
 
+  it('signale que la recherche et l’export sont limités quand l’API renvoie 500 paiements', async () => {
+    listMyPayments.mockResolvedValue({
+      items: Array.from({ length: 500 }, (_, index) => payment({ id: `pay-${index}`, reference: `REF-${index}` })),
+      advances: []
+    });
+    mount('/copropriete/paiements');
+
+    expect(
+      await screen.findByText(
+        'Seuls les 500 paiements les plus récents sont affichés. Les critères de recherche et l’export portent sur ces paiements.',
+        {},
+        WAIT
+      )
+    ).toBeInTheDocument();
+    await userEvent.type(searchBox('Rechercher dans les paiements'), 'REF-999');
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', {}, WAIT)).toBeInTheDocument();
+    expect(screen.getByText(/Seuls les 500 paiements les plus récents/)).toBeInTheDocument();
+  });
+
   it('envoie lot et exercice de l’URL à l’appel des paiements', async () => {
     mount('/copropriete/paiements?pa.lot=lot-1&pa.year=2026');
 

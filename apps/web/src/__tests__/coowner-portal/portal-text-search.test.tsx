@@ -132,6 +132,13 @@ describe('Quittances : champ libre serveur', () => {
 });
 
 describe('Paiements déclarés : champ libre serveur', () => {
+  it('ramène une taille de page URL supérieure à 50 dans la limite du portail', async () => {
+    mount('/copropriete/paiements?dec.limit=100');
+    expect(await screen.findByText('MP-ATTENTE', {}, WAIT)).toBeInTheDocument();
+    await waitFor(() => expect(url()).toContain('dec.limit=50'), WAIT);
+    expect(listMyDeclarations).toHaveBeenLastCalledWith({ page: 1, limit: 50 });
+  });
+
   it('envoie la saisie sous le nom `search` à listMyDeclarations', async () => {
     mount('/copropriete/paiements');
     expect(await screen.findByText('MP-ATTENTE', {}, WAIT)).toBeInTheDocument();

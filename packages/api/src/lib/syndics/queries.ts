@@ -365,7 +365,6 @@ export async function getSyndicateWithLotsAndStats(
           }
         }
       },
-      chargeCalls: true,
       funds: true,
       mandatingAgency: { select: { id: true, name: true } }
     }
@@ -2047,7 +2046,7 @@ export async function listMeetingsBySyndicate(
     },
     skip: pager.skip,
     take: pager.take,
-    orderBy: [{ scheduledAt: 'desc' }, { createdAt: 'desc' }]
+    orderBy: [{ scheduledAt: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }]
   });
 }
 

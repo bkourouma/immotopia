@@ -11,6 +11,10 @@ export const paginationQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(20)
 });
 
+export const meetingsListQuerySchema = paginationQuerySchema.extend({
+  status: z.enum(['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional()
+});
+
 export const dateRangeQuerySchema = z
   .object({
     from: z.coerce.date().optional(),

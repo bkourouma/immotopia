@@ -1,4 +1,4 @@
-import { listSyndicates } from '../../services/syndic-service';
+import { listMeetings, listSyndicates } from '../../services/syndic-service';
 import apiClient from '../../utils/api-client';
 
 /**
@@ -102,5 +102,27 @@ describe('listSyndicates', () => {
 
     expect(result.map(s => s.id)).toEqual(['1']);
     expect(mockApiClient.get).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('listMeetings', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('récupère les assemblées au-delà de la première page pour la recherche locale', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({ id: `meeting-${index}` }));
+    mockApiClient.get
+      .mockResolvedValueOnce({ data: { success: true, data: firstPage } })
+      .mockResolvedValueOnce({ data: { success: true, data: [{ id: 'meeting-100' }] } });
+
+    const meetings = await listMeetings('t1', 's1');
+
+    expect(meetings).toHaveLength(101);
+    expect(meetings[100].id).toBe('meeting-100');
+    expect(mockApiClient.get).toHaveBeenNthCalledWith(1, '/tenants/t1/syndics/s1/assemblees', {
+      params: { page: 1, limit: 100 }
+    });
+    expect(mockApiClient.get).toHaveBeenNthCalledWith(2, '/tenants/t1/syndics/s1/assemblees', {
+      params: { page: 2, limit: 100 }
+    });
   });
 });

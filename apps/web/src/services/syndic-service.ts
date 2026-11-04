@@ -421,11 +421,19 @@ export async function listMeetings(
   syndicId: string,
   filters?: { status?: string }
 ): Promise<GeneralMeeting[]> {
-  const response = await apiClient.get<{ success: boolean; data: GeneralMeeting[] }>(
-    `/tenants/${tenantId}/syndics/${syndicId}/assemblees`,
-    { params: filters }
-  );
-  return response.data.data;
+  const limit = 100;
+  const maxPages = 50;
+  const meetings: GeneralMeeting[] = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const response = await apiClient.get<{ success: boolean; data: GeneralMeeting[] }>(
+      `/tenants/${tenantId}/syndics/${syndicId}/assemblees`,
+      { params: { ...filters, page, limit } }
+    );
+    const batch = response.data.data;
+    meetings.push(...batch);
+    if (batch.length < limit) break;
+  }
+  return meetings;
 }
 
 export async function getMeeting(tenantId: string, syndicId: string, meetingId: string): Promise<GeneralMeeting> {

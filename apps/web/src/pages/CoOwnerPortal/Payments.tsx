@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Button, Card, Col, Modal, Row, Space, Typography } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Button, Card, Col, Modal, Row, Space, Typography } from 'antd';
 import { DownloadOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
@@ -42,6 +42,8 @@ const TEXTE_RECHERCHE = [
   (payment: CoOwnerPayment) => payment.methodLabel
 ];
 const NO_PAYMENTS: CoOwnerPayment[] = [];
+const PAYMENT_LIST_LIMIT = 500;
+const DECLARATION_PAGE_LIMIT = 50;
 const DECLARATION_STATUSES: DeclarationStatus[] = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELED'];
 
 function yearOptions(): number[] {
@@ -162,13 +164,18 @@ function DeclarationsSection() {
     }
   ];
   const search = useListSearch({ criteria, paramPrefix: 'dec', apiNames: { sort: false } });
+  const { pageSize, setPageSize } = search;
+  useEffect(() => {
+    if (pageSize > DECLARATION_PAGE_LIMIT) setPageSize(DECLARATION_PAGE_LIMIT);
+  }, [pageSize, setPageSize]);
+  const declarationParams = {
+    ...search.apiParams,
+    limit: Math.min(pageSize, DECLARATION_PAGE_LIMIT)
+  } as { status?: DeclarationStatus; search?: string; page?: number; limit: number };
   const declarations = useQuery({
-    queryKey: ['coowner-portal', 'declarations', search.apiParams],
+    queryKey: ['coowner-portal', 'declarations', declarationParams],
     staleTime: 30_000,
-    queryFn: () =>
-      listMyDeclarations(
-        search.apiParams as { status?: DeclarationStatus; search?: string; page?: number; limit?: number }
-      ),
+    queryFn: () => listMyDeclarations(declarationParams),
     placeholderData: keepPreviousData,
     retry: false
   });
@@ -333,6 +340,16 @@ export default function CoOwnerPayments() {
               </Col>
             ))}
         </Row>
+      ) : null}
+
+      {paymentItems.length >= PAYMENT_LIST_LIMIT ? (
+        <Alert
+          type="warning"
+          showIcon
+          message={t(
+            'Seuls les 500 paiements les plus récents sont affichés. Les critères de recherche et l’export portent sur ces paiements.'
+          )}
+        />
       ) : null}
 
       {payments.isPending ? (

@@ -97,6 +97,7 @@ import {
 } from '../lib/syndics/queries';
 import {
   paginationQuerySchema,
+  meetingsListQuerySchema,
   createSyndicateSchema,
   createLotSchema,
   importLotsFromPropertiesSchema,
@@ -754,8 +755,10 @@ export const listMeetingsHandler = asyncHandler(async (req: Request, res: Respon
     throw badRequest('TenantId manquant pour la liste des assemblees');
   }
 
+  const { status, page, limit } = meetingsListQuerySchema.parse(req.query ?? {});
   const meetings = await listMeetingsBySyndicate(tenantId, syndicateId, {
-    status: req.query.status as 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | undefined
+    status,
+    pagination: { page, limit }
   });
 
   res.json({

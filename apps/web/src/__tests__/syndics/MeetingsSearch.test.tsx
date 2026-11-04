@@ -89,7 +89,7 @@ describe('SyndicMeetings : recherche multicritères locale', () => {
     await vi.waitFor(() => expect(screen.queryByText('Hall A')).not.toBeInTheDocument(), T);
     expect(screen.getByText('Salle des fêtes')).toBeInTheDocument();
     expect(screen.queryByText("Cour de l'immeuble")).not.toBeInTheDocument();
-    expect(screen.getByTestId('url').textContent).toContain('q=SALLE DES FETES');
+    expect(new URLSearchParams(screen.getByTestId('url').textContent ?? '').get('q')).toBe('SALLE DES FETES');
   });
 
   it('le champ libre cherche aussi dans le type affiché', async () => {
