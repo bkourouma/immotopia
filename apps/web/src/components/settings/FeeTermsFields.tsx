@@ -57,7 +57,8 @@ export const FeeTermsFields: React.FC<FeeTermsFieldsProps> = ({ namePrefix = [] 
                 }
               ]}
             >
-              <InputNumber min={1} style={{ width: '100%' }} />
+              {/* `min={0}` et non 1 : un 0 saisi doit atteindre la règle ci-dessus, pas être recadré en silence. */}
+              <InputNumber min={0} style={{ width: '100%' }} />
             </Form.Item>
           ) : (
             <Form.Item

@@ -961,6 +961,17 @@ export async function updateLease(
     notes: data.notes !== undefined ? data.notes : undefined
   };
   const { lease, installmentsRepriced } = await prisma.$transaction(async tx => {
+    // Le dépôt déjà créé suit le montant du bail (BUG-2026-11-04-012). Fait avant
+    // la mise à jour du bail pour que sa relation `deposit` relue porte la
+    // nouvelle cible. Son statut (Complet / En attente) est dérivé du solde et de
+    // la cible : il se recalcule seul, une cible abaissée sous le solde donne
+    // « Complet », relevée au-dessus « En attente ». Aucun mouvement n'est modifié.
+    if (data.securityDepositAmount !== undefined) {
+      await tx.rentalSecurityDeposit.updateMany({
+        where: { lease_id: leaseId, tenant_id: tenantId },
+        data: { target_amount: data.securityDepositAmount ?? 0 }
+      });
+    }
     const lease = await tx.rentalLease.update({
       where: {
         id: leaseId,
@@ -1027,6 +1038,24 @@ export async function updateLease(
   };
 }
 
+/** Libellé affichable d'un statut de bail (jamais le code Prisma brut dans un message). */
+function leaseStatusLabel(status: RentalLeaseStatus): string {
+  switch (status) {
+    case RentalLeaseStatus.DRAFT:
+      return t('Brouillon');
+    case RentalLeaseStatus.ACTIVE:
+      return t('Actif');
+    case RentalLeaseStatus.SUSPENDED:
+      return t('Suspendu');
+    case RentalLeaseStatus.ENDED:
+      return t('Terminé');
+    case RentalLeaseStatus.CANCELED:
+      return t('Annulé');
+    default:
+      return String(status);
+  }
+}
+
 /**
  * Update lease status with transition validation
  * @param tenantId - Tenant ID
@@ -1065,7 +1094,10 @@ export async function updateLeaseStatus(
   const allowedStatuses = validTransitions[existingLease.status];
   if (!allowedStatuses.includes(newStatus)) {
     throw new BadRequestError(
-      t('Changement de statut invalide : de {{from}} à {{to}}', { from: existingLease.status, to: newStatus })
+      t('Changement de statut invalide : de {{from}} à {{to}}', {
+        from: leaseStatusLabel(existingLease.status),
+        to: leaseStatusLabel(newStatus)
+      })
     );
   }
 

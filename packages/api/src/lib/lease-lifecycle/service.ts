@@ -17,6 +17,7 @@ import { logger } from '../../utils/logger';
 import { updatePropertyStatus } from '../../services/property-status-service';
 import { runWithTenantContext } from '../../utils/tenant-context';
 import { effectiveRentAt } from './effective-rent';
+import { t } from '../../i18n';
 
 /**
  * Vie d'un bail : révision du loyer, renouvellement, avenant, résiliation, et
@@ -37,7 +38,36 @@ import { effectiveRentAt } from './effective-rent';
 
 const month = z.string().regex(/^\d{4}-\d{2}$/, 'Mois attendu au format AAAA-MM');
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ');
-const money = z.coerce.number().nonnegative();
+/** Plus grand montant que les colonnes Decimal(12,2) savent porter (voir `rental/payment-schemas.ts`). */
+const MONTANT_MAX = 9_999_999_999.99;
+const MSG_TROP_ELEVE = 'Le montant dépasse le maximum autorisé (9 999 999 999,99).';
+const MSG_DECIMALES = 'Le montant ne peut pas avoir plus de deux décimales.';
+/** Au plus deux décimales, tolérance flottante comprise. */
+const deuxDecimales = (value: number) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
+
+const money = z.coerce
+  .number()
+  .nonnegative('Les charges ne peuvent pas être négatives')
+  .max(MONTANT_MAX, MSG_TROP_ELEVE)
+  .refine(deuxDecimales, MSG_DECIMALES);
+const positiveMoney = z.coerce
+  .number()
+  .positive('Le loyer doit être supérieur à 0')
+  .max(MONTANT_MAX, MSG_TROP_ELEVE)
+  .refine(deuxDecimales, MSG_DECIMALES);
+
+/**
+ * Valide un corps de requête : la première erreur devient une 400 au message
+ * lisible (le message générique « données invalides » masquerait la cause dans
+ * la fenêtre de l'utilisateur).
+ */
+function parseInput<S extends z.ZodTypeAny>(schema: S, body: unknown): z.output<S> {
+  const result = schema.safeParse(body);
+  if (result.success) return result.data;
+  const issue = result.error.issues[0];
+  throw badRequest(t(issue.message), { field: issue.path.join('.') });
+}
+
 const optionalText = z
   .string()
   .trim()
@@ -178,7 +208,7 @@ export async function getLeaseEvents(tenantId: string, leaseId: string) {
 
 const revisionSchema = z.object({
   effectiveMonth: month,
-  newRent: z.coerce.number().positive(),
+  newRent: positiveMoney,
   newCharges: money.optional(),
   revisionRate: z.coerce.number().min(-100).max(1000).nullish(),
   summary: optionalText
@@ -317,7 +347,7 @@ export async function repriceUnstartedInstallmentsTx(
 }
 
 export async function reviseRent(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
-  const input = revisionSchema.parse(body);
+  const input = parseInput(revisionSchema, body);
   const lease = await loadLease(tenantId, leaseId);
   if (await isTerminated(leaseId)) throw conflict('Ce bail est résilié : son loyer ne se révise plus.');
   if (lease.status === RentalLeaseStatus.CANCELED) throw conflict('Ce bail est annulé.');
@@ -349,12 +379,6 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
   // indicateurs gardent l'ancien loyer (BUG-2026-09-30-068).
   const planned = effectiveDate.getTime() > Date.now();
   const event = await prisma.$transaction(async tx => {
-    if (!planned) {
-      await tx.rentalLease.update({
-        where: { id: leaseId, tenant_id: tenantId },
-        data: { rent_amount: new Prisma.Decimal(input.newRent), service_charge_amount: new Prisma.Decimal(newCharges) }
-      });
-    }
     const created = await tx.leaseEvent.create({
       data: {
         tenantId,
@@ -374,6 +398,30 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
         createdByUserId: actorUserId ?? null
       }
     });
+    // Le loyer en vigueur du bail suit la MÊME règle que les échéances : la
+    // révision à la date d'effet la plus récente (à date égale, la dernière
+    // saisie) parmi celles dont le jour est arrivé. Une révision saisie après
+    // coup mais datée plus tôt ne réécrit donc pas le loyer en vigueur
+    // (BUG-2026-11-04-016).
+    if (!planned) {
+      const revisions = await tx.leaseEvent.findMany({
+        where: { tenantId, leaseId, type: LeaseEventType.REVISION },
+        orderBy: [{ createdAt: 'asc' }],
+        select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
+      });
+      const inForce = effectiveRentAt(
+        { rent_amount: lease.rent_amount, service_charge_amount: lease.service_charge_amount },
+        revisions,
+        new Date()
+      );
+      await tx.rentalLease.update({
+        where: { id: leaseId, tenant_id: tenantId },
+        data: {
+          rent_amount: new Prisma.Decimal(inForce.rent),
+          service_charge_amount: new Prisma.Decimal(inForce.charges)
+        }
+      });
+    }
     const updated = await reprice(tx, {
       tenantId,
       leaseId,
@@ -397,13 +445,13 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
 
 const renewalSchema = z.object({
   newEndDate: day,
-  newRent: z.coerce.number().positive().optional(),
+  newRent: positiveMoney.optional(),
   newCharges: money.optional(),
   summary: optionalText
 });
 
 export async function renewLease(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
-  const input = renewalSchema.parse(body);
+  const input = parseInput(renewalSchema, body);
   const lease = await loadLease(tenantId, leaseId);
   if (await isTerminated(leaseId)) throw conflict('Ce bail est résilié : il ne se renouvelle plus.');
   if (lease.status === RentalLeaseStatus.CANCELED) throw conflict('Ce bail est annulé.');
@@ -566,7 +614,7 @@ const amendmentSchema = z.object({
 });
 
 export async function recordAmendment(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
-  const input = amendmentSchema.parse(body);
+  const input = parseInput(amendmentSchema, body);
   await loadLease(tenantId, leaseId);
   const event = await prisma.leaseEvent.create({
     data: {
@@ -595,7 +643,7 @@ const terminationSchema = z.object({
 });
 
 export async function terminateLease(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
-  const input = terminationSchema.parse(body);
+  const input = parseInput(terminationSchema, body);
   const lease = await loadLease(tenantId, leaseId);
   if (await isTerminated(leaseId)) throw conflict('Ce bail est déjà résilié.');
   if (lease.status === RentalLeaseStatus.CANCELED) throw conflict('Ce bail est annulé.');
@@ -837,7 +885,8 @@ export async function applyDueRevisions(tenantId?: string, now: Date = new Date(
       newRent: { not: null },
       details: { path: ['planned'], equals: true }
     },
-    orderBy: { effectiveDate: 'asc' }
+    // Date d'effet croissante, puis ordre de saisie : à date égale, la dernière saisie gagne.
+    orderBy: [{ effectiveDate: 'asc' }, { createdAt: 'asc' }]
   });
 
   let applied = 0;

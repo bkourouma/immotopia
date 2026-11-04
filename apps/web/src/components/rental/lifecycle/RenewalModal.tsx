@@ -98,7 +98,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({ open, currentEndDate
         <Form.Item
           label={t('Nouveau loyer')}
           name="newRent"
-          help={t('Facultatif : appliqué au premier mois qui suit l’ancienne fin.')}
+          extra={t('Facultatif : appliqué au premier mois qui suit l’ancienne fin.')}
         >
           <InputNumber style={{ width: '100%' }} min={0} step={1000} />
         </Form.Item>

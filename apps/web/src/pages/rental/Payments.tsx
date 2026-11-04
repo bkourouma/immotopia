@@ -84,7 +84,9 @@ const STATUS_OPTIONS = localizedList(() => [
   { value: 'PENDING', label: t('En attente') },
   { value: 'SUCCESS', label: t('Réussi') },
   { value: 'FAILED', label: t('Échoué') },
-  { value: 'CANCELED', label: t('Annulé') }
+  { value: 'CANCELED', label: t('Annulé') },
+  { value: 'REFUNDED', label: t('Remboursé') },
+  { value: 'PARTIALLY_REFUNDED', label: t('Partiellement remboursé') }
 ]);
 
 /**

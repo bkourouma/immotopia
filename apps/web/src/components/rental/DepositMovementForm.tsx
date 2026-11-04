@@ -176,7 +176,7 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
               label={t('Paiement associé')}
               name="paymentId"
               rules={[{ required: true, message: t('Le paiement est requis pour une collecte') }]}
-              help={t(
+              extra={t(
                 'Choisissez le paiement qui correspond à la collecte du dépôt. Le montant ci-dessous sera rempli automatiquement.'
               )}
             >
@@ -218,7 +218,7 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
               { required: true, message: t('Le montant est requis') },
               { type: 'number', min: 0.01, message: t('Le montant doit être supérieur à 0') }
             ]}
-            help={
+            extra={
               movementType === RentalDepositMovementType.COLLECT
                 ? t('Pour une collecte, ce montant doit être égal au montant cible du dépôt (rempli automatiquement).')
                 : undefined
@@ -247,7 +247,7 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
             <Form.Item
               label={t('Compte de trésorerie')}
               name="treasuryAccountId"
-              help={t('Compte débité pour le remboursement du dépôt de garantie au locataire.')}
+              extra={t('Compte débité pour le remboursement du dépôt de garantie au locataire.')}
             >
               <RefundTreasuryAccountField tenantId={tenantId} />
             </Form.Item>
