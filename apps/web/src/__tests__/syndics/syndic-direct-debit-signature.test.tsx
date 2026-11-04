@@ -4,6 +4,7 @@ import { configure, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { SyndicMandatesCard } from '../../components/syndics/direct-debit/SyndicMandatesCard';
 
 /**
@@ -16,6 +17,10 @@ configure({ asyncUtilTimeout: 8000 });
 vi.setConfig({ testTimeout: 60000 });
 
 const SYNDIC = 'syn-1';
+
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
 
 let permissions: Set<string> | null = null;
 vi.mock('../../hooks/useMenuAccess', () => ({
@@ -82,7 +87,9 @@ function renderCard() {
   return render(
     <QueryClientProvider client={client}>
       <AntApp>
-        <SyndicMandatesCard tenantId="agence-1" syndicId={SYNDIC} creditor={creditor} />
+        <MemoryRouter>
+          <SyndicMandatesCard tenantId="agence-1" syndicId={SYNDIC} creditor={creditor} />
+        </MemoryRouter>
       </AntApp>
     </QueryClientProvider>
   );

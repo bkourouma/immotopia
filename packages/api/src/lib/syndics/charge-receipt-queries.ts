@@ -19,6 +19,7 @@ import { renderChargeReceiptSheets, sheetCount } from './charge-receipt-pdf';
 import type { ReceiptListQuery, ReceiptPrintQuery } from './charge-receipt-schemas';
 import { isoDay } from './charge-receipt-snapshot';
 import { toCents, fromCents } from './charge-allocation-plan';
+import { contactSearchOr, insensitiveContains } from './payment-list-filters';
 
 /**
  * Lectures et actions sur les reçus et quittances d'une copropriété (lot S3).
@@ -69,16 +70,32 @@ export function periodWhere(from?: Date, to?: Date): Prisma.SyndicChargeReceiptW
 function listWhere(
   tenantId: string,
   syndicateId: string,
-  filters: Pick<ReceiptListQuery, 'lotId' | 'contactId' | 'kind' | 'from' | 'to'>
+  filters: Pick<ReceiptListQuery, 'lotId' | 'contactId' | 'kind' | 'from' | 'to'> &
+    Partial<Pick<ReceiptListQuery, 'search' | 'backfilled'>>
 ): Prisma.SyndicChargeReceiptWhereInput {
   const period = periodWhere(filters.from, filters.to);
+  const and: Prisma.SyndicChargeReceiptWhereInput[] = period ? [period] : [];
+  if (filters.search) {
+    // Numéro du document, numéro du lot, nom / e-mail du contact rattaché.
+    and.push({
+      OR: [
+        { number: insensitiveContains(filters.search) },
+        { lot: { lotNumber: insensitiveContains(filters.search) } },
+        { contact: { OR: contactSearchOr(filters.search) } }
+      ]
+    });
+  }
+  // `backfilled` vit dans l'instantané JSON, écrit à chaque émission.
+  if (filters.backfilled !== undefined) {
+    and.push({ snapshot: { path: ['backfilled'], equals: filters.backfilled } });
+  }
   return {
     tenantId,
     syndicateId,
     ...(filters.lotId ? { lotId: filters.lotId } : {}),
     ...(filters.contactId ? { contactId: filters.contactId } : {}),
     ...(filters.kind ? { kind: filters.kind } : {}),
-    ...(period ? { AND: [period] } : {})
+    ...(and.length > 0 ? { AND: and } : {})
   };
 }
 

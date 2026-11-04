@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp } from 'antd';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
@@ -24,7 +25,10 @@ const listChargeCalls = vi.fn();
 vi.mock('../../services/syndic-service', () => ({
   getSyndicate: (...args: unknown[]) => getSyndicate(...args),
   listSyndicateLots: (...args: unknown[]) => listSyndicateLots(...args),
-  listAllChargeCallsWithSummary: (...args: unknown[]) => listChargeCalls(...args),
+  listChargeCallsPage: async (...args: unknown[]) => {
+    const page = await listChargeCalls(...args);
+    return page && { pagination: { page: 1, limit: 20, total: page.items.length, totalPages: 1 }, ...page };
+  },
   createChargeCall: vi.fn(),
   listSyndicateFunds: vi.fn(async () => []),
   assignChargeCallFund: vi.fn()
@@ -136,16 +140,19 @@ const CHARGES = [
 ];
 
 function renderPage() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <AuthContext.Provider value={authValue}>
-      <AntApp>
-        <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/charges']}>
-          <Routes>
-            <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
-          </Routes>
-        </MemoryRouter>
-      </AntApp>
-    </AuthContext.Provider>
+    <QueryClientProvider client={queryClient}>
+      <AuthContext.Provider value={authValue}>
+        <AntApp>
+          <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/charges']}>
+            <Routes>
+              <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
+            </Routes>
+          </MemoryRouter>
+        </AntApp>
+      </AuthContext.Provider>
+    </QueryClientProvider>
   );
 }
 

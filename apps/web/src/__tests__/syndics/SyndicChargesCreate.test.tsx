@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp } from 'antd';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
@@ -21,7 +22,10 @@ const createChargeCall = vi.fn();
 vi.mock('../../services/syndic-service', () => ({
   getSyndicate: (...args: unknown[]) => getSyndicate(...args),
   listSyndicateLots: (...args: unknown[]) => listSyndicateLots(...args),
-  listAllChargeCallsWithSummary: (...args: unknown[]) => listChargeCalls(...args),
+  listChargeCallsPage: async (...args: unknown[]) => {
+    const page = await listChargeCalls(...args);
+    return page && { pagination: { page: 1, limit: 20, total: page.items.length, totalPages: 1 }, ...page };
+  },
   createChargeCall: (...args: unknown[]) => createChargeCall(...args),
   // Fonds de la copropriete : aucun ici, le champ « Fonds alimente » reste masque.
   listSyndicateFunds: vi.fn(async () => []),
@@ -86,16 +90,19 @@ const authValue: AuthContextType = {
 };
 
 function renderWithRoute() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <AuthContext.Provider value={authValue}>
-      <AntApp>
-        <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/charges']}>
-          <Routes>
-            <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
-          </Routes>
-        </MemoryRouter>
-      </AntApp>
-    </AuthContext.Provider>
+    <QueryClientProvider client={queryClient}>
+      <AuthContext.Provider value={authValue}>
+        <AntApp>
+          <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/charges']}>
+            <Routes>
+              <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
+            </Routes>
+          </MemoryRouter>
+        </AntApp>
+      </AuthContext.Provider>
+    </QueryClientProvider>
   );
 }
 

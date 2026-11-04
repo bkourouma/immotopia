@@ -9,6 +9,7 @@ jest.mock('@prisma/client', () => {
   const prisma = {
     syndicate: { findFirst: jest.fn() },
     chargeCall: { findMany: jest.fn() },
+    paymentReminder: { groupBy: jest.fn(async () => []) },
     $transaction: jest.fn(async (callback: any) => callback(tx))
   };
   return { PrismaClient: jest.fn(() => prisma), __mockPrisma: prisma, __mockTx: tx };

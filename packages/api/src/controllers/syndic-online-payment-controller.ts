@@ -6,6 +6,7 @@ import { assertUuidOrNotFound } from '../lib/documents/mandating-agencies';
 import { logAuditEvent } from '../services/audit-service';
 import { AuditActionKey } from '../types/audit-types';
 import { parseIsoDay } from '../lib/syndics/period';
+import { optionalQuery, searchQuery } from '../lib/syndics/payment-list-filters';
 import {
   getSyndicGatewaySettings,
   getSyndicProviderBalance,
@@ -82,7 +83,11 @@ const isoDaySchema = z
 
 // --- 1.5 à 1.7 : suivi, vérification, décision ----------------------------
 
-const isoDayString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+// Jour réel (le 31 février est refusé en 400, jamais une erreur 500 en base).
+const isoDayString = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine(value => parseIsoDay(value) !== null, 'Date invalide');
 
 const checkoutsQuerySchema = z.object({
   status: z
@@ -99,8 +104,9 @@ const checkoutsQuerySchema = z.object({
     .pipe(z.array(z.enum(ONLINE_CHECKOUT_STATUSES)).optional()),
   origin: z.enum(['PORTAL', 'SECURE_LINK']).optional(),
   lotId: z.string().uuid().optional(),
-  from: isoDayString.optional(),
-  to: isoDayString.optional(),
+  from: optionalQuery(isoDayString),
+  to: optionalQuery(isoDayString),
+  search: searchQuery,
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional()
 });

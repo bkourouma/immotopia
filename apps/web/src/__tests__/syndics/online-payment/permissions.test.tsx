@@ -1,6 +1,8 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp } from 'antd';
 import { SyndicOnlinePayments } from '../../../pages/syndics/SyndicOnlinePayments';
 
@@ -26,6 +28,10 @@ vi.mock('../../../services/syndic-online-payment-service', () => ({
   listSyndicOnlineCheckouts: (...a: unknown[]) => listSyndicOnlineCheckouts(...a),
   listSyndicGatewayPayouts: (...a: unknown[]) => listSyndicGatewayPayouts(...a),
   recordSyndicGatewayPayout: vi.fn()
+}));
+
+vi.mock('../../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
 vi.mock('../../../hooks/useMenuAccess', () => ({
@@ -83,11 +89,21 @@ const ROW = {
 };
 
 function renderPage() {
+  // Les cartes du paiement en ligne et les reversements sont dans deux onglets (?tab=) : les tests les visitent tour à tour.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <AntApp>
-      <SyndicOnlinePayments />
-    </AntApp>
+    <QueryClientProvider client={client}>
+      <AntApp>
+        <MemoryRouter initialEntries={['/paiements-en-ligne?tab=en-ligne']}>
+          <SyndicOnlinePayments />
+        </MemoryRouter>
+      </AntApp>
+    </QueryClientProvider>
   );
+}
+
+function openPayouts() {
+  fireEvent.click(screen.getByRole('tab', { name: 'Reversements vers la banque' }));
 }
 
 beforeEach(() => {
@@ -111,9 +127,10 @@ describe('SyndicOnlinePayments : droits', () => {
     await screen.findByPlaceholderText('•••• 1234');
     expect(screen.queryByRole('button', { name: /Vérifier/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Trancher/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Enregistrer un reversement/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Tester la connexion/ })).toBeNull();
+    openPayouts();
+    expect(screen.queryByRole('button', { name: /Enregistrer un reversement/ })).toBeNull();
   });
 
   it('SYNDIC_EDIT sans TENANT_SETTINGS_EDIT : actions de suivi, configuration masquée', async () => {
@@ -124,10 +141,11 @@ describe('SyndicOnlinePayments : droits', () => {
     await screen.findByPlaceholderText('•••• 1234');
     expect(screen.getByRole('button', { name: /Vérifier/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Trancher/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Enregistrer un reversement/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Tester la connexion/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Remplacer la clé' })).toBeNull();
+    openPayouts();
+    expect(await screen.findByRole('button', { name: /Enregistrer un reversement/ })).toBeTruthy();
   });
 
   it('administrateur (permissions nulles) : tout est proposé', async () => {

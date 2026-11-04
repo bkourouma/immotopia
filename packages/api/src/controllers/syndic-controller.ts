@@ -17,6 +17,9 @@ import {
   updateSyndicateByTenant,
   deleteEmptySyndicateByTenant,
   listChargeCallsBySyndicate,
+  countPaymentRemindersBySyndicate,
+  countLatePaymentPenaltiesBySyndicate,
+  countPaymentSchedulesBySyndicate,
   summarizeChargeCallsBySyndicate,
   countOwnerAccountTransactionsByLot,
   getChargeCallByTenant,
@@ -61,16 +64,12 @@ import {
   getOwnerAccountByLot,
   getOwnerAccountStatementByLot,
   listOwnerAccountTransactionsByLot,
-  listChartOfAccountsBySyndicate,
   createChartOfAccountBySyndicate,
   loadSyndicChartTemplateBySyndicate,
   listAccountingJournalsBySyndicate,
   createAccountingJournalBySyndicate,
-  listJournalEntriesBySyndicate,
   createJournalEntryBySyndicate,
   lockJournalEntryBySyndicate,
-  getTrialBalanceBySyndicate,
-  getGeneralLedgerBySyndicate,
   listBudgetsBySyndicate,
   createBudgetBySyndicate,
   updateBudgetBySyndicate,
@@ -138,12 +137,15 @@ import {
   createScheduleRequestSchema,
   createOwnerAccountAdjustmentSchema,
   ownerAccountStatementQuerySchema,
+  ownerAccountTransactionListQuerySchema,
+  chargeCallListQuerySchema,
+  paymentReminderListQuerySchema,
+  latePenaltyListQuerySchema,
+  paymentScheduleListQuerySchema,
   createChartOfAccountSchema,
   createAccountingJournalSchema,
   createJournalEntrySchema,
-  accountingEntriesQuerySchema,
   lockJournalEntrySchema,
-  accountingRangeQuerySchema,
   createSyndicateFundSchema,
   renameSyndicateFundSchema,
   adjustSyndicateFundBalanceSchema
@@ -178,6 +180,18 @@ import {
   syndicateDocumentsDir
 } from '../lib/syndics/document-files';
 import { parsePagination } from '../utils/pagination-helper';
+
+/** Pagination des listes de recherche serveur : page de 20 par défaut, 100 au plus. */
+const LIST_PAGINATION = { defaultPage: 1, defaultLimit: 20, maxLimit: 100 };
+
+function buildListPagination(pagination: { page: number; limit: number }, total: number) {
+  return {
+    page: pagination.page,
+    limit: pagination.limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / pagination.limit))
+  };
+}
 import { logAuditEvent } from '../services/audit-service';
 import { AuditActionKey } from '../types/audit-types';
 
@@ -415,26 +429,28 @@ export const listChargeCallsHandler = asyncHandler(async (req: Request, res: Res
     throw badRequest('TenantId manquant pour la liste des appels de charges');
   }
 
-  const period = req.query.period as string | undefined;
-  const status = req.query.status as 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE' | undefined;
+  const criteria = chargeCallListQuerySchema.parse(req.query ?? {});
+  const pagination = parsePagination(req.query, LIST_PAGINATION);
+  const filters = {
+    period: criteria.period,
+    status: criteria.status,
+    search: criteria.search,
+    lotId: criteria.lotId
+  };
 
   const [chargeCalls, summary] = await Promise.all([
-    listChargeCallsBySyndicate(tenantId, syndicateId, {
-      period,
-      status,
-      pagination: {
-        ...parsePagination(req.query)
-      }
-    }),
+    listChargeCallsBySyndicate(tenantId, syndicateId, { ...filters, pagination }),
     // Cartes de l'écran : agrégat sur TOUS les appels filtrés (mêmes filtres
     // que la liste), jamais sur la page renvoyée.
-    summarizeChargeCallsBySyndicate(tenantId, syndicateId, { period, status })
+    summarizeChargeCallsBySyndicate(tenantId, syndicateId, filters)
   ]);
 
   res.json({
     success: true,
     data: chargeCalls,
-    summary
+    summary,
+    // Même where que la liste : le total des cartes est le total paginé.
+    pagination: buildListPagination(pagination, summary.totalCount)
   });
 });
 
@@ -1580,13 +1596,19 @@ export const listRemindersHandler = asyncHandler(async (req: Request, res: Respo
     throw badRequest('TenantId manquant pour la liste des relances');
   }
 
-  const reminders = await listPaymentRemindersBySyndicate(tenantId, syndicateId, {
-    ...parsePagination(req.query)
-  });
+  const criteria = paymentReminderListQuerySchema.parse(req.query ?? {});
+  const pagination = parsePagination(req.query, LIST_PAGINATION);
+  const filters = { ...pagination, ...criteria };
+
+  const [reminders, total] = await Promise.all([
+    listPaymentRemindersBySyndicate(tenantId, syndicateId, filters),
+    countPaymentRemindersBySyndicate(tenantId, syndicateId, filters)
+  ]);
 
   res.json({
     success: true,
-    data: reminders
+    data: reminders,
+    pagination: buildListPagination(pagination, total)
   });
 });
 
@@ -1665,13 +1687,19 @@ export const listPenaltiesHandler = asyncHandler(async (req: Request, res: Respo
     throw badRequest('TenantId manquant pour la liste des penalites');
   }
 
-  const penalties = await listLatePaymentPenaltiesBySyndicate(tenantId, syndicateId, {
-    ...parsePagination(req.query)
-  });
+  const criteria = latePenaltyListQuerySchema.parse(req.query ?? {});
+  const pagination = parsePagination(req.query, LIST_PAGINATION);
+  const filters = { ...pagination, ...criteria };
+
+  const [penalties, total] = await Promise.all([
+    listLatePaymentPenaltiesBySyndicate(tenantId, syndicateId, filters),
+    countLatePaymentPenaltiesBySyndicate(tenantId, syndicateId, filters)
+  ]);
 
   res.json({
     success: true,
-    data: penalties
+    data: penalties,
+    pagination: buildListPagination(pagination, total)
   });
 });
 
@@ -1753,13 +1781,19 @@ export const listPaymentSchedulesHandler = asyncHandler(async (req: Request, res
     throw badRequest('TenantId manquant pour la liste des echeanciers');
   }
 
-  const schedules = await listPaymentSchedulesBySyndicate(tenantId, syndicateId, {
-    ...parsePagination(req.query)
-  });
+  const criteria = paymentScheduleListQuerySchema.parse(req.query ?? {});
+  const pagination = parsePagination(req.query, LIST_PAGINATION);
+  const filters = { ...pagination, ...criteria };
+
+  const [schedules, total] = await Promise.all([
+    listPaymentSchedulesBySyndicate(tenantId, syndicateId, filters),
+    countPaymentSchedulesBySyndicate(tenantId, syndicateId, filters)
+  ]);
 
   res.json({
     success: true,
-    data: schedules
+    data: schedules,
+    pagination: buildListPagination(pagination, total)
   });
 });
 
@@ -1789,23 +1823,20 @@ export const listLotOwnerAccountTransactionsHandler = asyncHandler(async (req: R
     throw badRequest('TenantId manquant pour la liste des transactions compte lot');
   }
 
-  const parsedRange = ownerAccountStatementQuerySchema.safeParse(req.query ?? {});
-  const range = parsedRange.success ? parsedRange.data : {};
+  const criteria = ownerAccountTransactionListQuerySchema.parse(req.query ?? {});
+  const pagination = parsePagination(req.query, LIST_PAGINATION);
+  const filters = { range: { from: criteria.from, to: criteria.to }, type: criteria.type, search: criteria.search };
 
   const [transactions, totalCount] = await Promise.all([
-    listOwnerAccountTransactionsByLot(tenantId, syndicateId, lotId, {
-      range,
-      pagination: {
-        ...parsePagination(req.query)
-      }
-    }),
-    countOwnerAccountTransactionsByLot(tenantId, syndicateId, lotId, { range })
+    listOwnerAccountTransactionsByLot(tenantId, syndicateId, lotId, { ...filters, pagination }),
+    countOwnerAccountTransactionsByLot(tenantId, syndicateId, lotId, filters)
   ]);
 
   res.json({
     success: true,
     data: transactions,
-    summary: { totalCount }
+    summary: { totalCount },
+    pagination: buildListPagination(pagination, totalCount)
   });
 });
 
@@ -2034,18 +2065,6 @@ export const addIncidentImputationHandler = asyncHandler(async (req: Request, re
   res.status(201).json({ success: true, data: imputation });
 });
 
-export const listChartOfAccountsHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-  const syndicateId = req.params.syndicId;
-  if (!tenantId) {
-    throw badRequest('TenantId manquant pour la liste des comptes comptables');
-  }
-
-  const onlyActive = req.query.onlyActive !== 'false';
-  const accounts = await listChartOfAccountsBySyndicate(tenantId, syndicateId, onlyActive);
-  res.json({ success: true, data: accounts });
-});
-
 export const createChartOfAccountHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
   const syndicateId = req.params.syndicId;
@@ -2093,23 +2112,6 @@ export const createAccountingJournalHandler = asyncHandler(async (req: Request, 
   res.status(201).json({ success: true, data: journal });
 });
 
-export const listAccountingEntriesHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-  const syndicateId = req.params.syndicId;
-  if (!tenantId) {
-    throw badRequest('TenantId manquant pour la liste des ecritures comptables');
-  }
-
-  const parsed = accountingEntriesQuerySchema.parse(req.query ?? {});
-  const entries = await listJournalEntriesBySyndicate(tenantId, syndicateId, {
-    journalId: parsed.journalId,
-    range: { from: parsed.from, to: parsed.to },
-    pagination: { page: parsed.page, limit: parsed.limit }
-  });
-
-  res.json({ success: true, data: entries });
-});
-
 export const createAccountingEntryHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
   const syndicateId = req.params.syndicId;
@@ -2141,35 +2143,6 @@ export const lockAccountingEntryHandler = asyncHandler(async (req: Request, res:
   const entry = await lockJournalEntryBySyndicate(tenantId, syndicateId, entryId);
   logger.info('Audit: accounting entry locked', { tenantId, syndicateId, entryId, actorUserId: req.user?.userId });
   res.json({ success: true, data: entry });
-});
-
-export const getTrialBalanceHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-  const syndicateId = req.params.syndicId;
-  if (!tenantId) {
-    throw badRequest('TenantId manquant pour la balance comptable');
-  }
-  const parsed = accountingRangeQuerySchema.parse(req.query ?? {});
-  const balance = await getTrialBalanceBySyndicate(tenantId, syndicateId, {
-    from: parsed.from,
-    to: parsed.to
-  });
-  res.json({ success: true, data: balance });
-});
-
-export const getGeneralLedgerHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-  const syndicateId = req.params.syndicId;
-  if (!tenantId) {
-    throw badRequest('TenantId manquant pour le grand livre');
-  }
-  const parsed = accountingRangeQuerySchema.parse(req.query ?? {});
-  const ledger = await getGeneralLedgerBySyndicate(tenantId, syndicateId, {
-    accountId: parsed.accountId,
-    range: { from: parsed.from, to: parsed.to },
-    pagination: { page: parsed.page, limit: parsed.limit }
-  });
-  res.json({ success: true, data: ledger });
 });
 
 export const listFundsHandler = asyncHandler(async (req: Request, res: Response) => {

@@ -1,8 +1,9 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
@@ -13,6 +14,11 @@ import { SyndicReceipts } from '../../pages/syndics/SyndicReceipts';
  * (frontière logique de ce module, comme `LotPaymentModal.test.tsx`) : liste
  * filtrable, renvoi par e-mail (avec son 422), rattrapage.
  */
+
+// 992 px et plus : la barre de recherche s'affiche en ligne.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
 
 const listSyndicateLots = vi.fn();
 
@@ -76,17 +82,27 @@ const authValue: AuthContextType = {
   switchTenant: () => undefined
 };
 
-function renderWithRoute() {
+function Url() {
+  return <div data-testid="url">{decodeURIComponent(useLocation().search)}</div>;
+}
+
+const T = { timeout: 8000 };
+
+function renderWithRoute(search = '') {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <AuthContext.Provider value={authValue}>
-      <AntApp>
-        <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/quittances']}>
-          <Routes>
-            <Route path="/tenant/:tenantId/syndics/:syndicId/quittances" element={<SyndicReceipts />} />
-          </Routes>
-        </MemoryRouter>
-      </AntApp>
-    </AuthContext.Provider>
+    <QueryClientProvider client={queryClient}>
+      <AuthContext.Provider value={authValue}>
+        <AntApp>
+          <MemoryRouter initialEntries={[`/tenant/tenant-1/syndics/syndic-1/quittances${search}`]}>
+            <Url />
+            <Routes>
+              <Route path="/tenant/:tenantId/syndics/:syndicId/quittances" element={<SyndicReceipts />} />
+            </Routes>
+          </MemoryRouter>
+        </AntApp>
+      </AuthContext.Provider>
+    </QueryClientProvider>
   );
 }
 
@@ -127,18 +143,81 @@ describe('SyndicReceipts (lot S3, besoin 1)', () => {
     renderWithRoute();
 
     await waitFor(() =>
-      expect(listSyndicateReceipts).toHaveBeenCalledWith('tenant-1', 'syndic-1', {
-        kind: undefined,
-        lotId: undefined,
-        contactId: undefined,
-        page: 1,
-        limit: 20
-      })
+      expect(listSyndicateReceipts).toHaveBeenCalledWith('tenant-1', 'syndic-1', { page: 1, limit: 20 })
     );
 
     expect(await screen.findByText('Q-2026-000001')).toBeTruthy();
     expect(screen.getByText('Awa Diop')).toBeTruthy();
     expect(screen.getByText('Non envoyé')).toBeTruthy();
+    expect(screen.getByRole('search')).toBeTruthy();
+  });
+
+  it('envoie la saisie de recherche au service après le debounce et la met dans l’URL', async () => {
+    listSyndicateReceipts.mockResolvedValue({
+      items: [RECEIPT],
+      pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
+    });
+    const user = userEvent.setup();
+    renderWithRoute();
+    await screen.findByText('Q-2026-000001', undefined, T);
+    await user.type(
+      within(screen.getByRole('search')).getByPlaceholderText('Numéro, lot, copropriétaire, e-mail…'),
+      'diop'
+    );
+
+    await waitFor(
+      () =>
+        expect(listSyndicateReceipts).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', {
+          search: 'diop',
+          page: 1,
+          limit: 20
+        }),
+      T
+    );
+    expect(screen.getByTestId('url').textContent).toContain('q=diop');
+  });
+
+  it('applique les critères d’une URL partagée (type, lot, copropriétaire, période, rattrapé)', async () => {
+    listSyndicateReceipts.mockResolvedValue({
+      items: [RECEIPT],
+      pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
+    });
+    listSyndicateLots.mockResolvedValue([
+      { id: 'lot-1', syndicateId: 'syndic-1', lotNumber: 'A-01', lotType: 'APARTMENT', ownerContactId: 'contact-1' }
+    ]);
+    renderWithRoute('?type=QUITTANCE&lot=lot-1&owner=contact-1&periodFrom=2026-09-01&periodTo=2026-09-30&backfilled=0');
+    await screen.findByText('Q-2026-000001', undefined, T);
+
+    await waitFor(
+      () =>
+        expect(listSyndicateReceipts).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', {
+          kind: 'QUITTANCE',
+          lotId: 'lot-1',
+          contactId: 'contact-1',
+          from: '2026-09-01',
+          to: '2026-09-30',
+          backfilled: false,
+          page: 1,
+          limit: 20
+        }),
+      T
+    );
+  });
+
+  it('propose d’effacer les critères quand rien ne correspond', async () => {
+    const user = userEvent.setup();
+    listSyndicateReceipts.mockImplementation(async (_t: string, _s: string, params: Record<string, unknown>) => ({
+      items: params.search ? [] : [RECEIPT],
+      pagination: { page: 1, limit: 20, total: params.search ? 0 : 1, totalPages: 1 }
+    }));
+    renderWithRoute('?q=zzz');
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', undefined, T)).toBeTruthy();
+    const boutons = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(boutons[boutons.length - 1]);
+
+    expect(await screen.findByText('Q-2026-000001', undefined, T)).toBeTruthy();
+    expect(listSyndicateReceipts).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', { page: 1, limit: 20 });
+    expect(screen.getByTestId('url').textContent).not.toContain('q=');
   });
 
   it('télécharge la quittance en Word depuis le bouton « Télécharger (Word) »', async () => {

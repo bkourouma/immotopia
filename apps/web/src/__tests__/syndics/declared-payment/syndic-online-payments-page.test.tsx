@@ -38,7 +38,11 @@ vi.mock('../../../components/syndics/online-payment/CheckoutsTable', () => ({
   CheckoutsTable: (p: { refreshToken?: number }) => <div>checkouts refresh:{p.refreshToken}</div>
 }));
 vi.mock('../../../components/syndics/online-payment/PayoutsPanel', () => ({
-  PayoutsPanel: () => <div>payouts</div>
+  PayoutsPanel: (p: { collectionBalance: number | null }) => <div>payouts balance:{String(p.collectionBalance)}</div>
+}));
+const getSyndicGatewaySettings = vi.fn();
+vi.mock('../../../services/syndic-online-payment-service', () => ({
+  getSyndicGatewaySettings: (...args: unknown[]) => getSyndicGatewaySettings(...args)
 }));
 vi.mock('../../../components/syndics/online-payment/ReviewDecisionModal', () => ({
   ReviewDecisionModal: () => null
@@ -156,10 +160,10 @@ vi.mock('../../../components/syndics/declared-payment/DeclareForThirdPartyModal'
     ) : null
 }));
 
-function renderPage() {
+function renderPage(search = '') {
   return render(
     <AntApp>
-      <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/paiements-en-ligne']}>
+      <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/paiements-en-ligne' + search]}>
         <Routes>
           <Route path="/tenant/:tenantId/syndics/:syndicId/paiements-en-ligne" element={<SyndicOnlinePayments />} />
         </Routes>
@@ -169,12 +173,14 @@ function renderPage() {
 }
 
 beforeEach(() => {
+  getSyndicGatewaySettings.mockReset();
+  getSyndicGatewaySettings.mockResolvedValue({ collectionAccount: { balance: 12500 } });
   heldPermissions = null;
   permissionsReady = true;
 });
 
 describe('<SyndicOnlinePayments> — écran « Paiements » (spec 047)', () => {
-  it('affiche le titre « Paiements » et les trois sections en titres de niveau 3', () => {
+  it('affiche le titre « Paiements » et, par défaut, le seul onglet des paiements déclarés', () => {
     renderPage();
 
     expect(screen.getByRole('heading', { level: 2, name: 'Paiements' })).toBeInTheDocument();
@@ -184,13 +190,45 @@ describe('<SyndicOnlinePayments> — écran « Paiements » (spec 047)', () => {
       )
     ).toBeInTheDocument();
 
+    expect(screen.getByRole('tab', { name: 'Paiements déclarés' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Paiement en ligne' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Reversements vers la banque' })).toBeInTheDocument();
     const sections = screen.getAllByRole('heading', { level: 3 }).map(node => node.textContent);
-    expect(sections).toEqual(['Paiements déclarés', 'Paiement par transfert mobile money', 'Paiement en ligne']);
+    expect(sections).toEqual(['Paiement par transfert mobile money']);
 
-    // Section en ligne conservée.
+    // Seul l'onglet actif est monté : rien de la section « Paiement en ligne » ni des reversements.
+    expect(screen.queryByText(/gateway-config/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/checkouts/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/payouts balance/)).not.toBeInTheDocument();
+    expect(getSyndicGatewaySettings).not.toHaveBeenCalled();
+  });
+
+  it('?tab=en-ligne monte la configuration et le suivi, sans les déclarations', () => {
+    renderPage('?tab=en-ligne');
+
     expect(screen.getByText(/gateway-config/)).toBeInTheDocument();
     expect(screen.getByText(/checkouts/)).toBeInTheDocument();
-    expect(screen.getByText('payouts')).toBeInTheDocument();
+    expect(screen.queryByText(/table refresh/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/payouts balance/)).not.toBeInTheDocument();
+    expect(getSyndicGatewaySettings).not.toHaveBeenCalled();
+  });
+
+  it('?tab=reversements charge le solde du compte de collecte et monte les reversements seuls', async () => {
+    renderPage('?tab=reversements');
+
+    expect(screen.getByText(/payouts balance:/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('payouts balance:12500')).toBeInTheDocument());
+    expect(getSyndicGatewaySettings).toHaveBeenCalledWith('tenant-1', 'syndic-1');
+    expect(screen.queryByText(/gateway-config/)).not.toBeInTheDocument();
+  });
+
+  it("le changement d'onglet monte l'onglet choisi", () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Paiement en ligne' }));
+
+    expect(screen.getByText(/checkouts/)).toBeInTheDocument();
+    expect(screen.queryByText(/table refresh/)).not.toBeInTheDocument();
   });
 
   it('propose « Déclarer pour un copropriétaire » avec SYNDIC_EDIT et passe canEdit aux cartes et au tiroir', () => {
@@ -224,7 +262,6 @@ describe('<SyndicOnlinePayments> — écran « Paiements » (spec 047)', () => {
   it('ouvrir le tiroir puis Valider : ferme le tiroir, ouvre la validation, confirme et recharge', async () => {
     renderPage();
     expect(screen.getByText('table refresh:0')).toBeInTheDocument();
-    expect(screen.getByText('checkouts refresh:0')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('open-row'));
     fireEvent.click(screen.getByText('drawer-approve'));
@@ -239,8 +276,6 @@ describe('<SyndicOnlinePayments> — écran « Paiements » (spec 047)', () => {
     expect(screen.queryByText(/Paiement validé/)).not.toBeInTheDocument();
     // Le compteur des déclarations ET celui du paiement en ligne avancent.
     expect(screen.getByText('table refresh:1')).toBeInTheDocument();
-    expect(screen.getByText('checkouts refresh:1')).toBeInTheDocument();
-    expect(screen.getByText('gateway-config refresh:1')).toBeInTheDocument();
   });
 
   it('Rejeter depuis le tiroir ouvre le rejet, puis confirme et recharge les déclarations seules', async () => {
@@ -258,7 +293,6 @@ describe('<SyndicOnlinePayments> — écran « Paiements » (spec 047)', () => {
     await waitFor(() => expect(screen.queryByText(/reject-modal:/)).not.toBeInTheDocument());
     expect(screen.queryByText('Déclaration rejetée')).not.toBeInTheDocument();
     expect(screen.getByText('table refresh:1')).toBeInTheDocument();
-    expect(screen.getByText('checkouts refresh:0')).toBeInTheDocument();
   });
 
   it.each([
@@ -318,7 +352,5 @@ describe('<SyndicOnlinePayments> — écran « Paiements » (spec 047)', () => {
     fireEvent.click(screen.getByText('settings-saved'));
     expect(screen.getByText('table refresh:2')).toBeInTheDocument();
     expect(screen.getByText(/numbers canEdit:\w+ refresh:2/)).toBeInTheDocument();
-    // Le paiement en ligne n'est pas touché.
-    expect(screen.getByText('checkouts refresh:0')).toBeInTheDocument();
   });
 });

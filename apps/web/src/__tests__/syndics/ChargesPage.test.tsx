@@ -2,6 +2,7 @@ import type { Mock } from 'vitest';
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
@@ -28,6 +29,10 @@ vi.mock('@ant-design/icons', async () => {
 
 // Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
 vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
+
+// La barre de recherche a ses propres tests (primitives/list-search, SyndicChargesSearch, SyndicRecoverySearch) :
+// ce fichier moque tout antd, la barre y est neutralisée.
+vi.mock('../../components/primitives/ListSearch', () => ({ ListSearch: () => null }));
 
 vi.mock('antd', async () => {
   // Vitest runs test files as ESM: `require` is not available here.
@@ -174,14 +179,17 @@ const authValue: AuthContextType = {
 };
 
 function renderWithRoute() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <AuthContext.Provider value={authValue}>
-      <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/charges']}>
-        <Routes>
-          <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
-        </Routes>
-      </MemoryRouter>
-    </AuthContext.Provider>
+    <QueryClientProvider client={queryClient}>
+      <AuthContext.Provider value={authValue}>
+        <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/charges']}>
+          <Routes>
+            <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>
+    </QueryClientProvider>
   );
 }
 
@@ -290,7 +298,8 @@ describe('SyndicCharges page', () => {
     expect(await screen.findByText(/Charges de Residence Test/)).toBeTruthy();
     await waitFor(() => {
       expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/charges', {
-        params: { status: undefined, period: undefined, page: 1, limit: 100 }
+        params: { page: 1, limit: 20 },
+        noRetry: true
       });
     });
     expect(await screen.findByText(/2026-Q2/)).toBeTruthy();

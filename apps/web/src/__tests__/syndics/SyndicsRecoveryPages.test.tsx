@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
 import { SyndicRecovery } from '../../pages/syndics/SyndicRecovery';
@@ -26,6 +27,10 @@ vi.mock('@ant-design/icons', async () => {
 
 // Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
 vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
+
+// La barre de recherche a ses propres tests (primitives/list-search, SyndicChargesSearch, SyndicRecoverySearch) :
+// ce fichier moque tout antd, la barre y est neutralisée.
+vi.mock('../../components/primitives/ListSearch', () => ({ ListSearch: () => null }));
 
 vi.mock('antd', async () => {
   // importActual reaches the real module from inside a hoisted mock factory;
@@ -79,6 +84,10 @@ vi.mock('antd', async () => {
       </div>
     ),
     Table: ({ dataSource }: any) => <div>{JSON.stringify(dataSource || [])}</div>,
+    // Onglets : seul le panneau actif est rendu (comme `destroyOnHidden`).
+    Tabs: ({ items, activeKey }: any) => (
+      <div>{items.find((item: any) => item.key === activeKey)?.children ?? null}</div>
+    ),
     Tag: passthrough('span'),
     Typography: {
       Title: passthrough('h1'),
@@ -142,13 +151,16 @@ const authValue: AuthContextType = {
 };
 
 function renderWithRoute() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <AuthContext.Provider value={authValue}>
-      <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/recouvrement']}>
-        <Routes>
-          <Route path="/tenant/:tenantId/syndics/:syndicId/recouvrement" element={<SyndicRecovery />} />
-        </Routes>
-      </MemoryRouter>
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/recouvrement']}>
+          <Routes>
+            <Route path="/tenant/:tenantId/syndics/:syndicId/recouvrement" element={<SyndicRecovery />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
     </AuthContext.Provider>
   );
 }

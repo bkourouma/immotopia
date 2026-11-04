@@ -78,6 +78,7 @@ import {
   ImportLotsFromPropertiesResult,
   WaivePenaltyRequest,
   TrialBalance,
+  TrialBalanceItem,
   BudgetAllocation,
   SyndicateBudget,
   UpdateBudgetRequest,
@@ -281,6 +282,42 @@ export async function listChargeCalls(
     { params: filters }
   );
   return response.data.data;
+}
+
+export interface ChargeCallsPageQuery extends ListWithPaginationQuery {
+  period?: string;
+  /** PENDING, PARTIAL, PAID, OVERDUE — plusieurs valeurs séparées par des virgules. */
+  status?: string;
+  /** Recherche libre : référence / libellé de l'appel, numéro de lot, nom du copropriétaire. */
+  search?: string;
+  lotId?: string;
+}
+
+/**
+ * Une page d'appels de charges, la synthèse calculée sur TOUS les appels
+ * filtrés (mêmes critères) et la pagination serveur.
+ */
+export async function listChargeCallsPage(
+  tenantId: string,
+  syndicId: string,
+  query: ChargeCallsPageQuery = {}
+): Promise<SyndicPage<ChargeCall> & { summary: ChargeCallSummary | null }> {
+  const response = await apiClient.get<{
+    success: boolean;
+    data: ChargeCall[];
+    summary?: ChargeCallSummary;
+    pagination?: SyndicPageMeta;
+  }>(`/tenants/${tenantId}/syndics/${syndicId}/charges`, { params: query, noRetry: true });
+  const summary = response.data.summary ?? null;
+  return {
+    items: response.data.data,
+    summary,
+    pagination: pageMetaOf(
+      response.data.pagination ?? (summary ? { total: summary.totalCount } : undefined),
+      response.data.data.length,
+      query
+    )
+  };
 }
 
 /**
@@ -762,6 +799,39 @@ export async function listPaymentReminders(
   return response.data.data;
 }
 
+export interface RecoveryListQuery extends ListWithPaginationQuery {
+  /** Recherche libre : numéro de lot, nom / e-mail / téléphone du copropriétaire, période de l'appel. */
+  search?: string;
+  lotId?: string;
+}
+
+export interface PaymentRemindersPageQuery extends RecoveryListQuery {
+  /** SENT, DELIVERED, FAILED — plusieurs valeurs séparées par des virgules. */
+  status?: string;
+  /** EMAIL, SMS, WHATSAPP, PUSH — plusieurs valeurs séparées par des virgules. */
+  channel?: string;
+  level?: number;
+  /** Bornes sur la date d'envoi (AAAA-MM-JJ). */
+  from?: string;
+  to?: string;
+}
+
+/** Historique des relances, paginé et filtré par le serveur. */
+export async function listPaymentRemindersPage(
+  tenantId: string,
+  syndicId: string,
+  query: PaymentRemindersPageQuery = {}
+): Promise<SyndicPage<PaymentReminder>> {
+  const response = await apiClient.get<{ success: boolean; data: PaymentReminder[]; pagination?: SyndicPageMeta }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/relances`,
+    { params: query, noRetry: true }
+  );
+  return {
+    items: response.data.data,
+    pagination: pageMetaOf(response.data.pagination, response.data.data.length, query)
+  };
+}
+
 export async function createManualReminder(
   tenantId: string,
   syndicId: string,
@@ -809,6 +879,27 @@ export async function listLatePaymentPenalties(
     { params: query }
   );
   return response.data.data;
+}
+
+export interface LatePaymentPenaltiesPageQuery extends RecoveryListQuery {
+  /** true : pénalités annulées seulement ; false : pénalités actives seulement. */
+  waived?: boolean;
+}
+
+/** Pénalités de retard, paginées et filtrées par le serveur. */
+export async function listLatePaymentPenaltiesPage(
+  tenantId: string,
+  syndicId: string,
+  query: LatePaymentPenaltiesPageQuery = {}
+): Promise<SyndicPage<LatePaymentPenalty>> {
+  const response = await apiClient.get<{ success: boolean; data: LatePaymentPenalty[]; pagination?: SyndicPageMeta }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/penalites`,
+    { params: query, noRetry: true }
+  );
+  return {
+    items: response.data.data,
+    pagination: pageMetaOf(response.data.pagination, response.data.data.length, query)
+  };
 }
 
 export async function createLatePaymentPenalty(
@@ -862,6 +953,27 @@ export async function listPaymentSchedules(
   return response.data.data;
 }
 
+export interface PaymentSchedulesPageQuery extends RecoveryListQuery {
+  /** ACTIVE, COMPLETED, DEFAULTED — plusieurs valeurs séparées par des virgules. */
+  status?: string;
+}
+
+/** Échéanciers, paginés et filtrés par le serveur. */
+export async function listPaymentSchedulesPage(
+  tenantId: string,
+  syndicId: string,
+  query: PaymentSchedulesPageQuery = {}
+): Promise<SyndicPage<PaymentSchedule>> {
+  const response = await apiClient.get<{ success: boolean; data: PaymentSchedule[]; pagination?: SyndicPageMeta }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/echeanciers`,
+    { params: query, noRetry: true }
+  );
+  return {
+    items: response.data.data,
+    pagination: pageMetaOf(response.data.pagination, response.data.data.length, query)
+  };
+}
+
 export async function getLotOwnerAccount(tenantId: string, syndicId: string, lotId: string): Promise<OwnerAccount> {
   const response = await apiClient.get<{ success: boolean; data: OwnerAccount }>(
     `/tenants/${tenantId}/syndics/${syndicId}/lots/${lotId}/compte`
@@ -890,7 +1002,14 @@ export async function listLotOwnerAccountTransactionsWithTotal(
   tenantId: string,
   syndicId: string,
   lotId: string,
-  query?: ListWithPaginationQuery & { from?: string; to?: string }
+  query?: ListWithPaginationQuery & {
+    from?: string;
+    to?: string;
+    /** Type de mouvement, plusieurs valeurs séparées par des virgules. */
+    type?: string;
+    /** Recherche libre sur le libellé. */
+    search?: string;
+  }
 ): Promise<{ items: OwnerAccountTransaction[]; totalCount: number }> {
   const response = await apiClient.get<{
     success: boolean;
@@ -932,11 +1051,19 @@ export async function downloadLotOwnerAccountStatement(
 export async function listChartOfAccounts(
   tenantId: string,
   syndicId: string,
-  query?: { onlyActive?: boolean }
+  query?: {
+    onlyActive?: boolean;
+    /** Recherche : numéro ou intitulé (sélecteur à recherche distante). */
+    search?: string;
+    /** Classes de comptes, plusieurs valeurs séparées par des virgules. */
+    accountClass?: string;
+    /** Plafond de résultats (sélecteur : 20). Sans plafond, le plan entier. */
+    limit?: number;
+  }
 ): Promise<ChartOfAccount[]> {
   const response = await apiClient.get<{ success: boolean; data: ChartOfAccount[] }>(
     `/tenants/${tenantId}/syndics/${syndicId}/comptabilite/comptes`,
-    { params: query }
+    { params: query, noRetry: true }
   );
   return response.data.data;
 }
@@ -993,16 +1120,54 @@ export async function createAccountingJournal(
   return response.data.data;
 }
 
+/** Pagination renvoyée par les listes paginées serveur des copropriétés. */
+export interface SyndicPageMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface SyndicPage<T> {
+  items: T[];
+  pagination: SyndicPageMeta;
+}
+
+function pageMetaOf(
+  meta: Partial<SyndicPageMeta> | undefined,
+  count: number,
+  query?: { page?: number; limit?: number }
+) {
+  const page = meta?.page ?? query?.page ?? 1;
+  const limit = meta?.limit ?? query?.limit ?? 20;
+  const total = meta?.total ?? count;
+  return { page, limit, total, totalPages: meta?.totalPages ?? Math.max(1, Math.ceil(total / Math.max(1, limit))) };
+}
+
+export interface AccountingEntriesPageQuery extends ListWithPaginationQuery {
+  journalId?: string;
+  accountId?: string;
+  /** Recherche libre : référence, description, libellé de ligne. */
+  search?: string;
+  status?: 'locked' | 'open';
+  from?: string;
+  to?: string;
+}
+
+/** Journal des écritures de la copropriété, paginé et filtré par le serveur. */
 export async function listAccountingEntries(
   tenantId: string,
   syndicId: string,
-  query?: ListWithPaginationQuery & { journalId?: string; from?: string; to?: string }
-): Promise<JournalEntry[]> {
-  const response = await apiClient.get<{ success: boolean; data: JournalEntry[] }>(
+  query: AccountingEntriesPageQuery = {}
+): Promise<SyndicPage<JournalEntry>> {
+  const response = await apiClient.get<{ success: boolean; data: JournalEntry[]; pagination?: SyndicPageMeta }>(
     `/tenants/${tenantId}/syndics/${syndicId}/comptabilite/ecritures`,
-    { params: query }
+    { params: query, noRetry: true }
   );
-  return response.data.data;
+  return {
+    items: response.data.data,
+    pagination: pageMetaOf(response.data.pagination, response.data.data.length, query)
+  };
 }
 
 export async function createAccountingEntry(
@@ -1025,33 +1190,98 @@ export async function lockAccountingEntry(tenantId: string, syndicId: string, en
   return response.data.data;
 }
 
+export interface SyndicTrialBalanceQuery {
+  from?: string;
+  to?: string;
+  /** Classes de comptes (1 à 9), plusieurs valeurs séparées par des virgules. */
+  accountClass?: string;
+  /** Masque les comptes soldés (solde nul sur la période). */
+  hideZero?: boolean;
+  /** Recherche : numéro ou intitulé de compte. */
+  search?: string;
+}
+
+export interface SyndicTrialBalanceLine extends TrialBalanceItem {
+  accountClass: number;
+}
+
+export interface SyndicTrialBalance {
+  items: SyndicTrialBalanceLine[];
+  /** Totaux de TOUS les comptes de la période (indépendants des filtres). */
+  totals: TrialBalance['totals'];
+  /** Totaux des seuls comptes renvoyés après filtres. */
+  filteredTotals: { totalDebit: number; totalCredit: number };
+}
+
+/** Balance de la copropriété, agrégée en SQL par le serveur. */
 export async function getTrialBalance(
   tenantId: string,
   syndicId: string,
-  query?: { from?: string; to?: string }
-): Promise<TrialBalance> {
-  const response = await apiClient.get<{ success: boolean; data: TrialBalance }>(
+  query: SyndicTrialBalanceQuery = {}
+): Promise<SyndicTrialBalance> {
+  const response = await apiClient.get<{ success: boolean; data: SyndicTrialBalance }>(
     `/tenants/${tenantId}/syndics/${syndicId}/comptabilite/balance`,
-    { params: query }
+    { params: query, noRetry: true }
   );
-  return response.data.data;
+  const data = response.data.data;
+  return {
+    ...data,
+    filteredTotals: data.filteredTotals ?? { totalDebit: data.totals.totalDebit, totalCredit: data.totals.totalCredit }
+  };
 }
 
-export async function getGeneralLedger(
+export interface SyndicLedgerQuery extends ListWithPaginationQuery {
+  accountId: string;
+  from?: string;
+  to?: string;
+  /** Recherche : référence de pièce, description, libellé de ligne. */
+  search?: string;
+}
+
+export interface SyndicLedgerLine {
+  id: string;
+  entryId: string;
+  entryDate: string;
+  reference: string;
+  description: string;
+  journalCode: string | null;
+  label: string;
+  lotId: string | null;
+  lotNumber: string | null;
+  debit: number;
+  credit: number;
+  /** Solde progressif (débit − crédit) depuis l'ouverture, toutes lignes de la période comprises. */
+  runningBalance: number;
+}
+
+export interface SyndicAccountLedger {
+  account: {
+    id: string;
+    accountNumber: string;
+    accountName: string;
+    accountClass: number;
+    accountType: ChartOfAccount['accountType'];
+  };
+  summary: {
+    openingBalance: number;
+    periodDebit: number;
+    periodCredit: number;
+    closingBalance: number;
+    lineCount: number;
+  };
+  items: SyndicLedgerLine[];
+  pagination: SyndicPageMeta;
+}
+
+/** Grand livre d'UN compte : synthèse agrégée et lignes paginées avec solde progressif. */
+export async function getAccountLedger(
   tenantId: string,
   syndicId: string,
-  query?: ListWithPaginationQuery & { accountId?: string; from?: string; to?: string }
-): Promise<any[]> {
-  const safeQuery = query
-    ? {
-        ...query,
-        limit: query.limit ? Math.min(query.limit, 100) : query.limit
-      }
-    : query;
-
-  const response = await apiClient.get<{ success: boolean; data: any[] }>(
+  query: SyndicLedgerQuery
+): Promise<SyndicAccountLedger> {
+  const response = await apiClient.get<{ success: boolean; data: SyndicAccountLedger }>(
     `/tenants/${tenantId}/syndics/${syndicId}/comptabilite/grand-livre`,
-    { params: safeQuery }
+    { params: query, noRetry: true }
   );
   return response.data.data;
 }

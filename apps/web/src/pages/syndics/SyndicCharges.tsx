@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   App,
   Alert,
@@ -34,7 +35,8 @@ import {
   assignChargeCallFund,
   createChargeCall,
   getSyndicate,
-  listAllChargeCallsWithSummary,
+  listChargeCallsPage,
+  type ChargeCallsPageQuery,
   listSyndicateFunds,
   listSyndicateLots
 } from '../../services/syndic-service';
@@ -45,7 +47,6 @@ import { saveBlob } from '../../utils/save-blob';
 import {
   ChargeAllocationMethod,
   ChargeCall,
-  ChargeCallStatus,
   ChargeCallSummary,
   CreateChargeCallRequest,
   LotPaymentResult,
@@ -55,19 +56,15 @@ import {
 } from '../../types/syndic-types';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { chargeCallCriteria } from '../../components/syndics/finances/charge-call-criteria';
+import { useListSearch } from '../../hooks/useListSearch';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
 import { lotsWithShares, previewAllocation } from '../../utils/charge-allocation-preview';
 
 const { Paragraph, Title } = Typography;
-
-const statusOptions: Array<{ label: string; value: ChargeCallStatus }> = [
-  { label: t('En attente'), value: 'PENDING' },
-  { label: t('Partiel'), value: 'PARTIAL' },
-  { label: t('Payé'), value: 'PAID' },
-  { label: t('En retard'), value: 'OVERDUE' }
-];
 
 const targetModeOptions = [
   { label: t('Un lot'), value: 'single' },
@@ -93,16 +90,17 @@ export const SyndicCharges: React.FC = () => {
 
   const [syndicate, setSyndicate] = useState<Syndicate | null>(null);
   const [lots, setLots] = useState<SyndicateLot[]>([]);
-  const [charges, setCharges] = useState<ChargeCall[]>([]);
-  // Cartes de synthèse : agrégat calculé par l'API sur tous les appels filtrés.
-  const [summary, setSummary] = useState<ChargeCallSummary>({
-    totalCount: 0,
-    totalAmount: 0,
-    pendingCount: 0,
-    overdueCount: 0
+  const queryClient = useQueryClient();
+
+  // Liste paginée et filtrée PAR LE SERVEUR : recherche libre, statut et lot vivent dans l'URL
+  // (`q`, `status`, `lotId`, `page`, `limit`). Les options du critère « Lot » sont la liste
+  // déjà chargée des lots de la copropriété.
+  const lotSelectOptions = useMemo(() => lots.map(lot => ({ value: lot.id, label: formatLotLabel(lot) })), [lots]);
+  const search = useListSearch({
+    ariaLabel: t('Rechercher dans les appels de charges'),
+    apiNames: { sort: false },
+    criteria: chargeCallCriteria(lotSelectOptions)
   });
-  const [statusFilter, setStatusFilter] = useState<ChargeCallStatus | undefined>(undefined);
-  const [periodFilter, setPeriodFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -150,12 +148,21 @@ export const SyndicCharges: React.FC = () => {
     void loadBaseData();
   }, [effectiveTenantId, syndicId]);
 
-  useEffect(() => {
-    if (!effectiveTenantId || !syndicId) {
-      return;
-    }
-    void loadCharges();
-  }, [effectiveTenantId, syndicId, statusFilter, periodFilter]);
+  const chargesQuery = useQuery({
+    queryKey: ['syndic-charge-calls', effectiveTenantId, syndicId, search.apiParams],
+    queryFn: () => listChargeCallsPage(effectiveTenantId!, syndicId!, search.apiParams as ChargeCallsPageQuery),
+    enabled: Boolean(effectiveTenantId && syndicId),
+    placeholderData: keepPreviousData
+  });
+  const charges = chargesQuery.data?.items ?? [];
+  // Cartes de synthèse : agrégat calculé par l'API sur tous les appels filtrés (même réponse que la page).
+  const summary: ChargeCallSummary = chargesQuery.data?.summary ?? {
+    totalCount: 0,
+    totalAmount: 0,
+    pendingCount: 0,
+    overdueCount: 0
+  };
+  const chargesError = chargesQuery.isError ? t('Impossible de charger les appels de charges') : null;
 
   const loadDeclaredPending = async () => {
     if (!effectiveTenantId || !syndicId) return;
@@ -233,31 +240,21 @@ export const SyndicCharges: React.FC = () => {
     }
   };
 
-  const loadCharges = async () => {
-    if (!effectiveTenantId || !syndicId) {
-      return;
-    }
-
-    try {
-      const data = await listAllChargeCallsWithSummary(effectiveTenantId, syndicId, {
-        status: statusFilter,
-        period: periodFilter || undefined
-      });
-      setCharges(data.items);
-      setSummary(data.summary);
-    } catch (err: any) {
-      setError(err.response?.data?.error || t('Impossible de charger les appels de charges'));
-    }
-  };
-
-  const lotSelectOptions = useMemo(
-    () =>
-      lots.map(lot => ({
-        value: lot.id,
-        label: formatLotLabel(lot)
-      })),
-    [lots]
+  // Après une écriture (création, fonds, paiement) : toutes les pages et synthèses de la copropriété sont périmées.
+  const loadCharges = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ['syndic-charge-calls', effectiveTenantId, syndicId] }),
+    [queryClient, effectiveTenantId, syndicId]
   );
+
+  const exportAllCharges = () =>
+    collectAllPages<ChargeCall>(async (exportPage, exportLimit) => {
+      const result = await listChargeCallsPage(effectiveTenantId!, syndicId!, {
+        ...(search.filterParams as ChargeCallsPageQuery),
+        page: exportPage,
+        limit: exportLimit
+      });
+      return { items: result.items, total: result.pagination.total };
+    });
 
   // Mode de répartition : proposé seulement pour plusieurs lots ou tous les lots.
   // Un seul lot garde le comportement historique (montant du lot = total).
@@ -441,7 +438,7 @@ export const SyndicCharges: React.FC = () => {
           </Space>
         </div>
 
-        {error ? <Alert type="error" message={error} showIcon /> : null}
+        {error || chargesError ? <Alert type="error" message={error || chargesError} showIcon /> : null}
 
         {loading ? (
           <div style={{ minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -465,28 +462,6 @@ export const SyndicCharges: React.FC = () => {
               </Col>
             </Row>
 
-            <Card>
-              <Space wrap size={12}>
-                <Select
-                  showSearch
-                  optionFilterProp="label"
-                  allowClear
-                  style={{ minWidth: 210 }}
-                  placeholder={t('Filtrer par statut')}
-                  value={statusFilter}
-                  onChange={value => setStatusFilter(value)}
-                  options={statusOptions}
-                />
-                <Input
-                  allowClear
-                  style={{ minWidth: 220 }}
-                  placeholder={t('Filtrer par période (ex : 2026-T1)')}
-                  value={periodFilter}
-                  onChange={event => setPeriodFilter(event.target.value)}
-                />
-              </Space>
-            </Card>
-
             <Card title={t('Liste des appels de charges')}>
               {declaredPendingCount > 0 ? (
                 <Alert
@@ -509,6 +484,15 @@ export const SyndicCharges: React.FC = () => {
               ) : null}
               <ChargeCallTable
                 items={charges}
+                loading={chargesQuery.isFetching}
+                pagination={{
+                  page: search.page,
+                  limit: search.pageSize,
+                  total: chargesQuery.data?.pagination.total ?? 0,
+                  onChange: search.dataViewProps.onPageChange
+                }}
+                search={search.searchProps}
+                exportFetchAll={exportAllCharges}
                 onRecordPayment={handleOpenPaymentForCharge}
                 onDownloadNotice={charge => void handleDownloadNotice(charge)}
                 onDownloadNoticeWord={charge => void handleDownloadNoticeWord(charge)}
