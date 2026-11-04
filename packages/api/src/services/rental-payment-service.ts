@@ -267,6 +267,49 @@ export function resolvePaymentDate(paidAt: string | undefined, now: Date = new D
   return chosen === today ? now : date;
 }
 
+/** FCFA, CFA et XOF désignent la même monnaie ; toute autre devise reste telle quelle. */
+function normaliserDevise(code: string | null | undefined): string {
+  const c = (code ?? '').trim().toUpperCase();
+  return c === 'FCFA' || c === 'CFA' || c === 'XOF' ? 'XOF' : c;
+}
+
+const LIBELLE_STATUT: Record<RentalPaymentStatus, string> = {
+  PENDING: 'En attente',
+  SUCCESS: 'Réussi',
+  FAILED: 'Échoué',
+  CANCELED: 'Annulé',
+  REFUNDED: 'Remboursé',
+  PARTIALLY_REFUNDED: 'Partiellement remboursé'
+};
+
+/**
+ * Changements de statut permis à la main.
+ *
+ * Un paiement attendu devient réussi, échoué ou annulé ; un paiement encaissé
+ * ne revient jamais « en attente » (il peut être annulé, rejeté, remboursé).
+ * Un paiement annulé ou échoué peut être réactivé (« Réussi ») : c'est la
+ * correction d'une annulation faite par erreur. Un remboursement est définitif.
+ */
+const TRANSITIONS_STATUT: Record<RentalPaymentStatus, RentalPaymentStatus[]> = {
+  PENDING: ['SUCCESS', 'FAILED', 'CANCELED'],
+  SUCCESS: ['CANCELED', 'FAILED', 'REFUNDED', 'PARTIALLY_REFUNDED'],
+  FAILED: ['SUCCESS'],
+  CANCELED: ['SUCCESS'],
+  PARTIALLY_REFUNDED: ['REFUNDED', 'CANCELED'],
+  REFUNDED: []
+};
+
+export function assertPaymentStatusTransition(from: RentalPaymentStatus, to: RentalPaymentStatus): void {
+  if (!TRANSITIONS_STATUT[from]?.includes(to)) {
+    throw new ConflictError(
+      t('Un paiement « {{de}} » ne peut pas passer à « {{vers}} ».', {
+        de: t(LIBELLE_STATUT[from] ?? String(from)),
+        vers: t(LIBELLE_STATUT[to] ?? String(to))
+      })
+    );
+  }
+}
+
 interface CreatePaymentData {
   /** Date du règlement, `YYYY-MM-DD` — voir `resolvePaymentDate`. */
   paidAt?: string;
@@ -339,6 +382,8 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
 
     // Validate lease exists if provided
     let locatairePrincipalDuBail: string | null = null;
+    // Sans bail, le paiement alimente le compte du locataire, tenu en FCFA (XOF).
+    let deviseAttendue = 'XOF';
     if (data.leaseId) {
       const lease = await prisma.rentalLease.findFirst({
         where: {
@@ -351,6 +396,17 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
         throw new NotFoundError(t('Bail introuvable'));
       }
       locatairePrincipalDuBail = lease.primary_renter_client_id ?? null;
+      deviseAttendue = normaliserDevise(lease.currency || 'FCFA');
+    }
+
+    // Aucune conversion n'existe : un paiement en EUR serait compté comme des FCFA.
+    if (normaliserDevise(data.currency || 'FCFA') !== deviseAttendue) {
+      throw new BadRequestError(
+        t('La devise du paiement ({{paiement}}) est différente de celle du bail ({{bail}}).', {
+          paiement: (data.currency || 'FCFA').toUpperCase(),
+          bail: deviseAttendue === 'XOF' ? 'FCFA' : deviseAttendue
+        })
+      );
     }
 
     // Validate renter client exists and belongs to this tenant, if provided.
@@ -486,6 +542,18 @@ export async function allocatePaymentTx(
     throw new NotFoundError(t('Paiement introuvable'));
   }
 
+  // Un paiement non encaissé ne solde rien : l'argent n'est pas reçu.
+  if (payment.status !== RentalPaymentStatus.SUCCESS) {
+    throw new ConflictError(t('Seul un paiement encaissé (statut « Réussi ») peut être affecté à une échéance.'));
+  }
+
+  // Sans bail, la recherche d'échéances n'était plus bornée : elle piochait dans tous les baux de l'agence.
+  if (!payment.lease_id) {
+    throw new BadRequestError(
+      t("Ce paiement n'est rattaché à aucun bail : il ne peut pas être affecté à une échéance.")
+    );
+  }
+
   // Check if payment is already fully allocated (échéances + dépôt de garantie)
   const remainingAmount = await montantDisponibleTx(tx, tenantId, payment);
 
@@ -498,7 +566,7 @@ export async function allocatePaymentTx(
     where: {
       id: { in: data.installmentIds },
       tenant_id: tenantId,
-      lease_id: payment.lease_id || undefined,
+      lease_id: payment.lease_id,
       // Une échéance annulée ne reçoit aucune allocation.
       status: { not: RentalInstallmentStatus.CANCELED }
     },
@@ -509,6 +577,22 @@ export async function allocatePaymentTx(
 
   if (installments.length === 0) {
     throw new NotFoundError(t('Aucune échéance trouvée'));
+  }
+
+  // Une seule affectation par paiement et par échéance (unicité en base) : le dire
+  // plutôt que laisser remonter « Cette ressource existe déjà. ».
+  const dejaAffectees = await tx.rentalPaymentAllocation.findMany({
+    where: {
+      payment_id: paymentId,
+      tenant_id: tenantId,
+      installment_id: { in: installments.map(i => i.id) }
+    },
+    select: { installment_id: true }
+  });
+  if (dejaAffectees.length > 0) {
+    throw new ConflictError(
+      t('Ce paiement est déjà affecté à cette échéance : affectez le reliquat à une autre échéance.')
+    );
   }
 
   // Calculate allocations
@@ -944,6 +1028,42 @@ async function defaireCollectesDepotTx(
 }
 
 /**
+ * Solde au crédit de chaque pièce « avance » d'un règlement : la pièce d'origine
+ * `<paiement>` et les ré-inscriptions `<paiement>:rN`, contre-passations comprises.
+ * Une pièce à 0 a été contre-passée.
+ */
+async function soldesAvancesTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  paymentId: string
+): Promise<Map<string, number>> {
+  const mouvements = await tx.thirdPartyMovement.findMany({
+    where: {
+      tenantId,
+      sourceType: 'RENTAL_PAYMENT',
+      OR: [{ sourceId: paymentId }, { sourceId: { startsWith: `${paymentId}:` } }]
+    },
+    select: { sourceId: true, debit: true, credit: true }
+  });
+
+  const soldes = new Map<string, number>();
+  for (const m of mouvements) {
+    soldes.set(m.sourceId, (soldes.get(m.sourceId) ?? 0) + Number(m.credit ?? 0) - Number(m.debit ?? 0));
+  }
+  return soldes;
+}
+
+/** Clés `<paiement>:rN` des avances ré-inscrites après une réactivation. */
+async function clesAvancesReinscritesTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  paymentId: string
+): Promise<string[]> {
+  const soldes = await soldesAvancesTx(tx, tenantId, paymentId);
+  return [...soldes.keys()].filter(cle => cle.startsWith(`${paymentId}:`));
+}
+
+/**
  * Corps de `updatePaymentStatus`, utilisable dans une transaction fournie par
  * l'appelant.
  *
@@ -958,17 +1078,29 @@ export async function updatePaymentStatusTx(
   tenantId: string,
   paymentId: string,
   status: RentalPaymentStatus,
-  actorUserId?: string
+  actorUserId?: string,
+  options: { strictTransitions?: boolean } = {}
 ): Promise<any> {
   const payment = await tx.rentalPayment.findFirst({
     where: {
       id: paymentId,
       tenant_id: tenantId
-    }
+    },
+    include: { allocations: { include: { installment: true } } }
   });
 
   if (!payment) {
     throw new NotFoundError(t('Paiement introuvable'));
+  }
+
+  // Changement manuel : seules les transitions de `TRANSITIONS_STATUT` passent. Le même statut
+  // redemandé (double clic) ne réécrit rien. Les flux automatiques (paiement en ligne,
+  // prélèvement) pilotent leurs propres états et n'activent pas ce contrôle.
+  if (options.strictTransitions) {
+    if (payment.status === status) {
+      return payment;
+    }
+    assertPaymentStatusTransition(payment.status, status);
   }
 
   const updateData: any = { status };
@@ -1065,21 +1197,50 @@ export async function updatePaymentStatusTx(
           leaseId: payment.lease_id ?? null,
           movementDate: dateAnnulation
         });
+
+        // Avances ré-inscrites par une réactivation (`<paiement>:rN`) : même contre-passation.
+        for (const sourceId of await clesAvancesReinscritesTx(tx, tenantId, paymentId)) {
+          await annulerPieceTx(tx, {
+            tenantId,
+            accountId,
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId,
+            label: `Annulation du règlement (${moyen}) reçu en avance`,
+            leaseId: payment.lease_id ?? null,
+            movementDate: dateAnnulation
+          });
+        }
       }
     } else if (status === RentalPaymentStatus.SUCCESS) {
       // Un règlement qui devient encaissé porte au compte ce qu'il ne solde
       // encore aucune échéance.
       const dejaAffecte = await totalAffecteTx(tx, tenantId, paymentId);
-      const accountId = roundMoney(Number(payment.amount ?? 0) - dejaAffecte) > 0 ? await compteId() : null;
+      const reliquat = roundMoney(Number(payment.amount ?? 0) - dejaAffecte);
+      const accountId = reliquat > 0 ? await compteId() : null;
 
       if (accountId) {
-        await inscrireReliquatTx(tx, {
-          tenantId,
-          accountId,
-          payment,
-          dejaAffecte,
-          movementDate: updateData.succeeded_at ?? payment.succeeded_at ?? payment.initiated_at
-        });
+        const movementDate = updateData.succeeded_at ?? payment.succeeded_at ?? payment.initiated_at;
+        const pieces = await soldesAvancesTx(tx, tenantId, paymentId);
+
+        if (pieces.size === 0) {
+          // Premier encaissement : l'avance n'a jamais été portée au compte.
+          await inscrireReliquatTx(tx, { tenantId, accountId, payment, dejaAffecte, movementDate });
+        } else if (![...pieces.values()].some(solde => solde > 0)) {
+          // Réactivation : l'avance d'origine a été contre-passée à l'annulation. Sa clé
+          // `(RENTAL_PAYMENT, id, ADVANCE_RECEIVED)` est prise : une clé neuve ré-inscrit l'argent.
+          await appendThirdPartyMovementTx(tx, {
+            accountId,
+            tenantId,
+            type: ThirdPartyMovementType.ADVANCE_RECEIVED,
+            settled: reliquat,
+            label: `Règlement (${moyen}) réactivé, reçu en avance, non affecté`,
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId: `${paymentId}:r${pieces.size}`,
+            leaseId: payment.lease_id ?? null,
+            movementDate
+          });
+        }
+        // Sinon l'avance est toujours au compte : rien à écrire.
       }
     }
 
@@ -1128,7 +1289,7 @@ export async function updatePaymentStatus(
 
   try {
     const updatedPayment = await prisma.$transaction(tx =>
-      updatePaymentStatusTx(tx, tenantId, paymentId, status, actorUserId)
+      updatePaymentStatusTx(tx, tenantId, paymentId, status, actorUserId, { strictTransitions: true })
     );
 
     logger.info(`Payment ${paymentId} status updated to ${status}`);
