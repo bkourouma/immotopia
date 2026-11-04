@@ -62,6 +62,23 @@ function TableImpl<T extends AnyObject = AnyObject>(props: ExportableTableProps<
   const rows = (tableProps.dataSource ?? []) as readonly T[];
   const childrenColumnName = tableProps.expandable?.childrenColumnName ?? 'children';
   const hasColumns = React.useMemo(() => resolveExportColumns(tableProps.columns).length > 0, [tableProps.columns]);
+  // Recadrage d'une page hors bornes quand la recherche est active (voir DataView).
+  const searchPagination = search && typeof tableProps.pagination === 'object' ? tableProps.pagination : null;
+  const pgTotal = searchPagination?.total;
+  const pgCurrent = searchPagination?.current;
+  const pgSize = searchPagination?.pageSize;
+  const pgOnChange = searchPagination?.onChange;
+  const pgLastPage =
+    typeof pgTotal === 'number' && pgTotal > 0 && typeof pgSize === 'number' && pgSize > 0
+      ? Math.ceil(pgTotal / pgSize)
+      : 0;
+  const pgOutOfRange = pgLastPage > 0 && typeof pgCurrent === 'number' && pgCurrent > pgLastPage;
+  React.useEffect(() => {
+    if (pgOutOfRange) pgOnChange?.(pgLastPage, pgSize as number);
+    // `onChange` est volontairement hors des dépendances : l'écran le recrée à chaque rendu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pgOutOfRange, pgLastPage, pgSize]);
+
   const showExport = exportable && rows.length > 0 && hasColumns;
   const label =
     exportFilename ??
@@ -102,19 +119,27 @@ function TableImpl<T extends AnyObject = AnyObject>(props: ExportableTableProps<
       : rows.length);
 
   // Aucun résultat sous des critères actifs : un état qui propose d'en sortir,
-  // sauf si l'écran a fourni le sien.
-  const locale =
-    rows.length === 0 && search.activeCount > 0 && tableProps.locale?.emptyText === undefined
-      ? {
-          ...tableProps.locale,
-          emptyText: (
-            <StateBlock
-              variant="no-results"
-              actions={[{ label: t('Effacer les critères'), onClick: search.onClear, primary: true }]}
-            />
-          )
-        }
-      : tableProps.locale;
+  // sauf si l'écran a fourni le sien. Pas pendant un chargement : la liste n'est
+  // pas encore connue, et le bouton serait recouvert par l'indicateur d'AntD.
+  const loadingProp = tableProps.loading;
+  const isLoading =
+    typeof loadingProp === 'object' && loadingProp !== null ? loadingProp.spinning !== false : Boolean(loadingProp);
+  const showNoResults =
+    rows.length === 0 && !pgOutOfRange && search.activeCount > 0 && tableProps.locale?.emptyText === undefined;
+  const locale = showNoResults
+    ? {
+        ...tableProps.locale,
+        emptyText: isLoading ? (
+          // Emplacement neutre sous l'indicateur : ni « aucune donnée » ni « aucun résultat ».
+          <div style={{ minHeight: 120 }} aria-hidden="true" />
+        ) : (
+          <StateBlock
+            variant="no-results"
+            actions={[{ label: t('Effacer les critères'), onClick: search.onClear, primary: true }]}
+          />
+        )
+      }
+    : tableProps.locale;
 
   return (
     <>

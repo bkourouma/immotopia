@@ -5,7 +5,7 @@ import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { t } from '../../i18n/t';
 import type { ListSearchBinding, SearchCriterion, SearchValues, TextCriterion } from '../../utils/list-search/types';
 import { CriterionControl, TextField } from './list-search/controls';
-import { isActiveValue } from './list-search/format';
+import { isActiveValue } from '../../utils/list-search/filter';
 import { MobileFilters, type NonTextCriterion } from './list-search/MobileFilters';
 import { ClearCriteriaButton, ResultCounter, SearchChips } from './list-search/parts';
 import { useOptionLabels } from './list-search/useOptionLabels';
