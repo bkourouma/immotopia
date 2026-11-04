@@ -9,6 +9,8 @@ import { getAgentCommissions } from '../../services/agent-commissions-service';
 import type { AgentCommissionDetailLine, AgentCommissionLine } from '../../services/agent-commissions-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, StatCard, Table } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { dateFormat, formatPercent } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
@@ -47,6 +49,14 @@ const { Text } = Typography;
  */
 
 const PERIOD_KEY = 'period';
+// Champ libre : le nom de l'agent (constante de module : filtrage mémoïsé).
+const TEXTE_RECHERCHE = [(a: AgentCommissionLine) => a.agentName];
+
+const TAILLE_PAGE_DETAIL = 10;
+
+/** Compteur « 1–20 sur 25 », même texte que `<DataView>`. */
+const afficherTotal = (total: number, range: [number, number]) =>
+  t('{{start}}–{{end}} sur {{total}}', { start: range[0], end: range[1], total });
 
 function periodeCourante(): string {
   return dayjs().format('YYYY-MM');
@@ -83,9 +93,26 @@ export const CommissionsAgents: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
+  // Le mois reste le paramètre d'URL et de requête existant (sélecteur de mois ci-dessous) :
+  // un mois n'est pas un intervalle de dates. Seul le nom de l'agent se recherche, en local.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t("Nom de l'agent…")
+    }
+  ];
+  const local = useLocalListSearch<AgentCommissionLine>(data?.agents, {
+    criteria: criteres,
+    text: TEXTE_RECHERCHE
+  });
+
   const handlePeriodChange = (date: dayjs.Dayjs | null) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
+      // Un seul appel : poser la période ET revenir à la page 1 (clé `page` retirée).
+      next.delete('page');
       // `null` (bouton d'effacement) ne doit pas laisser un écran sans
       // période : on retombe sur le mois courant plutôt que sur une adresse
       // sans intention.
@@ -230,14 +257,15 @@ export const CommissionsAgents: React.FC = () => {
           ) : (
             <>
               <Table<AgentCommissionLine>
-                dataSource={agents}
+                {...local.tableProps}
+                pagination={{ ...local.tableProps.pagination, showTotal: afficherTotal }}
                 columns={colonnesAgents}
                 rowKey={agent => agent.agentUserId ?? 'sans-gestionnaire'}
-                pagination={false}
                 loading={isFetching && !isPending}
                 scroll={{ x: 'max-content' }}
                 aria-label={t('Commissions des agents')}
                 exportFilename={t('Commissions des agents')}
+                exportFetchAll={local.exportAll}
                 expandable={{
                   expandedRowRender: agent =>
                     agent.lines.length === 0 ? (
@@ -247,7 +275,11 @@ export const CommissionsAgents: React.FC = () => {
                         dataSource={agent.lines}
                         columns={colonnesDetail}
                         rowKey={ligne => ligne.id}
-                        pagination={false}
+                        pagination={
+                          agent.lines.length > TAILLE_PAGE_DETAIL
+                            ? { pageSize: TAILLE_PAGE_DETAIL, showSizeChanger: false, showTotal: afficherTotal }
+                            : false
+                        }
                         size="small"
                         // Sous-tableau d'une ligne dépliée : il ne s'exporte pas seul.
                         exportable={false}

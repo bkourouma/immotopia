@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Button, Card, Checkbox, Select, Space, Typography } from 'antd';
+import { App, Button, Card, Checkbox, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -12,7 +12,9 @@ import {
 } from '../../services/finance-lot2-service';
 import { DOCUMENT_TYPE_LABELS } from '../../types/finance-lot2-types';
 import type { PendingDocument, VoidableDocumentType } from '../../types/finance-lot2-types';
-import { useListParams } from '../../hooks/useListParams';
+import { useListSearch } from '../../hooks/useListSearch';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { queryKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
 import {
   PageHeader,
@@ -21,7 +23,6 @@ import {
   StatCard,
   DataView,
   DataCard,
-  FilterSheet,
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
@@ -58,12 +59,25 @@ const { Text, Title } = Typography;
  * saisisseur ne fait pas disparaître les autres du menu, et chaque option
  * porte l'identifiant en valeur, le nom en affichage.
  *
- * **Le filtre « Nature » est purement local.** Le contrat de
- * `getValidationQueue` n'accepte que `createdByUserId` : il n'existe pas de
- * paramètre serveur pour la nature de la pièce. L'écran filtre donc les trois
- * natures (facture, règlement, pièce de caisse) après réception, ce que
- * l'Acceptance Scenario 3 du récit demande aussi bien que le filtre par
- * auteur, sans que cela contredise le contrat gelé.
+ * **Recherche en mode mixte** (guide : `docs/architecture/recherche-listes.md`).
+ * « Saisi par » et « Nature » sont des critères SERVEUR (`createdByUserId`,
+ * `documentType`, sans accesseur local) ; le champ libre (pièce, saisisseur),
+ * le montant et la date de saisie filtrent la liste reçue en local
+ * (`api: false` + accesseurs). Deux hooks lisent la même URL : `useListSearch`
+ * donne les paramètres d'API avant la requête, `useLocalListSearch` filtre,
+ * découpe et porte la barre.
+ *
+ * **Le filtre « Nature » part au serveur.** L'API accepte `documentType` ;
+ * l'écran l'envoie (avec `createdByUserId`) au lieu de filtrer après
+ * réception. Les compteurs par nature et le sous-titre restent ceux de la
+ * file du saisisseur choisi, toutes natures confondues (requête dédiée, voir
+ * `filePourCompteurs`).
+ *
+ * **Pagination locale et sélection.** La liste est découpée en pages de 20.
+ * La sélection (cases à cocher, validation en lot) est limitée à la page
+ * affichée : elle est vidée dès que la page, la taille de page ou un filtre
+ * change, pour qu'un « Valider la sélection » ne vise jamais des pièces
+ * invisibles. « Tout sélectionner » ne coche que la page affichée.
  *
  * **L'irréversibilité est dite, pas dramatisée.** Valider verrouille la pièce
  * (principe P-6 du PRD, contrairement à la relance de campagne du lot 1, qui
@@ -85,9 +99,6 @@ const { Text, Title } = Typography;
  * jamais « débit » ni « crédit ». Les montants passent systématiquement par
  * `<MoneyValue>`, sans préciser `currency`.
  */
-
-type Filters = { saisisseur: string; nature: string };
-const FILTER_KEYS = ['saisisseur', 'nature'] as const;
 
 function libelleNature(type: VoidableDocumentType): string {
   return DOCUMENT_TYPE_LABELS[type] ?? type;
@@ -119,12 +130,28 @@ function validerPiece(tenantId: string, doc: PendingDocument) {
   }
 }
 
+/** Une nature inconnue (URL modifiée à la main) n'est pas envoyée : l'API répondrait 400. */
+function natureConnue(valeur: string | undefined): VoidableDocumentType | undefined {
+  return valeur && Object.prototype.hasOwnProperty.call(DOCUMENT_TYPE_LABELS, valeur)
+    ? (valeur as VoidableDocumentType)
+    : undefined;
+}
+
 const OPTIONS_NATURE = localizedList(() =>
   (Object.keys(DOCUMENT_TYPE_LABELS) as VoidableDocumentType[]).map(type => ({
     value: type,
     label: DOCUMENT_TYPE_LABELS[type]
   }))
 );
+
+// Champ libre local : libellé de la pièce et nom du saisisseur (constantes de module).
+const TEXTE_RECHERCHE = [(doc: PendingDocument) => doc.label, (doc: PendingDocument) => doc.createdByLabel];
+
+// Critères purement locaux : montant et date de saisie.
+const ACCESSEURS = {
+  montant: (doc: PendingDocument) => doc.amount,
+  saisie: (doc: PendingDocument) => doc.createdAt
+};
 
 interface RapportLot {
   succes: string[];
@@ -136,36 +163,18 @@ export const FileDeValidation: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const queryClient = useQueryClient();
   const confirmAction = useConfirmAction();
-  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS });
-
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [enCours, setEnCours] = useState<string | null>(null);
   const [rapportLot, setRapportLot] = useState<RapportLot | null>(null);
 
-  const filtreCreateur = list.filters.saisisseur || undefined;
-
-  const {
-    data,
-    isPending,
-    isFetching,
-    error: erreurRequete,
-    refetch
-  } = useQuery({
-    queryKey: queryKey('validation-queue', tenantId, { createdByUserId: filtreCreateur }),
-    queryFn: () => getValidationQueue(tenantId as string, { createdByUserId: filtreCreateur }),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
-  });
-
   /**
-   * Options du filtre « Saisi par », lues sur la file NON filtrée.
+   * Options du critère « Saisi par », lues sur la file NON filtrée.
    *
-   * Même raisonnement que `BalanceClients.tsx` pour son filtre « Bien » :
-   * choisir un saisisseur ne doit pas faire disparaître les autres du menu.
+   * Choisir un saisisseur ne doit pas faire disparaître les autres du menu.
    */
   const { data: toutesLesPieces } = useQuery({
     queryKey: queryKey('validation-queue', tenantId, {}),
-    queryFn: () => getValidationQueue(tenantId as string),
+    queryFn: () => getValidationQueue(tenantId as string, {}),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
   });
@@ -180,14 +189,83 @@ export const FileDeValidation: React.FC = () => {
       .map(([id, label]) => ({ value: id, label }));
   }, [toutesLesPieces]);
 
-  const donneesBrutes = data ?? [];
-  const items = list.filters.nature
-    ? donneesBrutes.filter(doc => doc.documentType === list.filters.nature)
-    : donneesBrutes;
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Pièce, saisisseur…'), api: false },
+    {
+      key: 'saisisseur',
+      type: 'select',
+      label: t('Saisi par'),
+      primary: true,
+      options: optionsSaisisseurs,
+      api: 'createdByUserId'
+    },
+    {
+      key: 'nature',
+      type: 'select',
+      label: t('Nature'),
+      primary: true,
+      options: OPTIONS_NATURE,
+      // Une nature inconnue (URL modifiée à la main) n'est pas envoyée : l'API répondrait 400.
+      api: (valeur): Record<string, string> => {
+        const nature = natureConnue(String(valeur));
+        return nature ? { documentType: nature } : {};
+      }
+    },
+    { key: 'montant', type: 'numberRange', label: t('Montant'), unit: 'FCFA', api: false },
+    { key: 'saisie', type: 'dateRange', label: t('Saisie du… au…'), api: false }
+  ];
+  // Paramètres d'API des critères serveur, disponibles avant la requête.
+  const { filterParams } = useListSearch({ criteria: criteres });
+  const filtreCreateur = filterParams.createdByUserId as string | undefined;
+  const filtreNature = filterParams.documentType as VoidableDocumentType | undefined;
 
-  const piecesSelectionnees = donneesBrutes.filter(doc => selection.has(cle(doc)));
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: erreurRequete,
+    refetch
+  } = useQuery({
+    queryKey: queryKey('validation-queue', tenantId, { createdByUserId: filtreCreateur, documentType: filtreNature }),
+    queryFn: () =>
+      getValidationQueue(tenantId as string, { createdByUserId: filtreCreateur, documentType: filtreNature }),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list
+  });
 
-  const clesVisibles = items.map(cle);
+  /**
+   * File du saisisseur choisi, toutes natures confondues : alimente les
+   * compteurs par nature et le sous-titre, qui ne doivent pas tomber à zéro
+   * quand on filtre sur une nature. Sans filtre de nature, c'est la même clé
+   * que la requête ci-dessus : une seule requête part.
+   */
+  const { data: filePourCompteurs } = useQuery({
+    queryKey: queryKey('validation-queue', tenantId, { createdByUserId: filtreCreateur }),
+    queryFn: () => getValidationQueue(tenantId as string, { createdByUserId: filtreCreateur }),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list
+  });
+
+  // Déjà filtrée par nature et par saisisseur côté serveur ; le reste (texte,
+  // montant, date de saisie) se filtre ici, puis la liste est découpée en pages.
+  const local = useLocalListSearch<PendingDocument>(data, {
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
+  const itemsPage = local.pageItems;
+  const compteurs = filePourCompteurs ?? data ?? [];
+
+  // La sélection ne vaut que pour la page affichée : on la vide dès que ce qui
+  // est affiché change (page, taille de page, critères).
+  useEffect(() => {
+    setSelection(prev => (prev.size > 0 ? new Set() : prev));
+  }, [local.page, local.pageSize, local.values]);
+
+  const piecesSelectionnees = itemsPage.filter(doc => selection.has(cle(doc)));
+
+  const clesVisibles = itemsPage.map(cle);
   const toutSelectionne = clesVisibles.length > 0 && clesVisibles.every(k => selection.has(k));
   const selectionPartielle = !toutSelectionne && clesVisibles.some(k => selection.has(k));
 
@@ -393,45 +471,10 @@ export const FileDeValidation: React.FC = () => {
     <>
       <PageHeader
         title={t('File de validation')}
-        subtitle={
-          donneesBrutes.length > 0 ? `${accord(donneesBrutes.length, t('pièce'), t('pièces'))} en attente` : undefined
-        }
+        subtitle={compteurs.length > 0 ? `${accord(compteurs.length, t('pièce'), t('pièces'))} en attente` : undefined}
       />
 
-      <FilterSheet
-        activeCount={Object.keys(list.filters).length}
-        onClear={list.clearFilters}
-        title={t('Filtrer la file')}
-      >
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-validation-saisisseur">{t('Saisi par')}</label>
-          <Select
-            id="filtre-validation-saisisseur"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les saisisseurs')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            value={list.filters.saisisseur || undefined}
-            onChange={value => list.setFilters({ saisisseur: value })}
-            options={optionsSaisisseurs}
-          />
-        </div>
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-validation-nature">{t('Nature')}</label>
-          <Select
-            id="filtre-validation-nature"
-            style={{ width: '100%' }}
-            placeholder={t('Toutes les natures')}
-            allowClear
-            value={list.filters.nature || undefined}
-            onChange={value => list.setFilters({ nature: value })}
-            options={OPTIONS_NATURE}
-          />
-        </div>
-      </FilterSheet>
-
-      {donneesBrutes.length > 0 && (
+      {compteurs.length > 0 && (
         <div
           style={{
             display: 'grid',
@@ -442,15 +485,15 @@ export const FileDeValidation: React.FC = () => {
         >
           <StatCard
             label={DOCUMENT_TYPE_LABELS.SUPPLIER_INVOICE}
-            value={String(donneesBrutes.filter(d => d.documentType === 'SUPPLIER_INVOICE').length)}
+            value={String(compteurs.filter(d => d.documentType === 'SUPPLIER_INVOICE').length)}
           />
           <StatCard
             label={DOCUMENT_TYPE_LABELS.SUPPLIER_PAYMENT}
-            value={String(donneesBrutes.filter(d => d.documentType === 'SUPPLIER_PAYMENT').length)}
+            value={String(compteurs.filter(d => d.documentType === 'SUPPLIER_PAYMENT').length)}
           />
           <StatCard
             label={DOCUMENT_TYPE_LABELS.CASH_VOUCHER}
-            value={String(donneesBrutes.filter(d => d.documentType === 'CASH_VOUCHER').length)}
+            value={String(compteurs.filter(d => d.documentType === 'CASH_VOUCHER').length)}
           />
         </div>
       )}
@@ -525,22 +568,15 @@ export const FileDeValidation: React.FC = () => {
       )}
 
       <DataView<PendingDocument>
-        export={{ filename: t('File de validation') }}
-        // La file n'est pas paginée : le contrat gelé (`getValidationQueue`)
-        // rend l'ensemble des pièces en attente, sans enveloppe de pagination.
-        paginated={false}
-        items={items}
-        total={items.length}
-        page={1}
-        pageSize={Math.max(items.length, 1)}
-        onPageChange={() => {}}
+        export={{ filename: t('File de validation'), fetchAll: local.exportAll }}
+        // Le contrat (`getValidationQueue`) rend l'ensemble des pièces en
+        // attente, sans enveloppe de pagination : pagination locale.
+        {...local.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger la file de validation.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={list.isFiltered}
-        onClearFilters={list.clearFilters}
         // Une file vide est une bonne nouvelle : elle se présente comme
         // telle, jamais comme une panne ou une absence à corriger.
         emptyDescription={t("Bonne nouvelle : aucune pièce n'attend de validation, tout est à jour.")}

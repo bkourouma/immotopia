@@ -169,14 +169,44 @@ describe('Facturation — le compte rendu', () => {
     expect(screen.getByText('Fatoumata Kouassi — Villa Angré 12')).toBeInTheDocument();
     expect(screen.queryByText('BAIL-2026-0001')).not.toBeInTheDocument();
 
+    // Les deux autres sections sont des onglets paresseux : leurs lignes
+    // n'existent qu'une fois l'onglet choisi.
+    const user = userEvent.setup({ delay: null });
     expect(screen.getByText('Baux exclus')).toBeInTheDocument();
-    expect(screen.getByText('Ousmane Touré — Local Abobo 9')).toBeInTheDocument();
+    expect(screen.queryByText('Ousmane Touré — Local Abobo 9')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: /Baux exclus/ }));
+    expect(await screen.findByText('Ousmane Touré — Local Abobo 9')).toBeInTheDocument();
     expect(screen.queryByText('BAIL-2026-0002')).not.toBeInTheDocument();
     expect(screen.getByText("Le bail n'est pas actif")).toBeInTheDocument();
 
     expect(screen.getByText('Avances imputées')).toBeInTheDocument();
-    expect(screen.getByText('Aïssatou Brou')).toBeInTheDocument();
+    expect(screen.queryByText('Aïssatou Brou')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: /Avances imputées/ }));
+    expect(await screen.findByText('Aïssatou Brou')).toBeInTheDocument();
     expect(screen.queryByText('CLI-2026-0009')).not.toBeInTheDocument();
+  });
+
+  it('pagine localement les baux facturés : 25 lignes donnent 20 affichées et « 1–20 sur 25 »', async () => {
+    const billed = Array.from({ length: 25 }, (_, i) => ({
+      leaseId: `B-${i}`,
+      leaseLabel: `Locataire ${String(i + 1).padStart(2, '0')} — Bien ${i + 1}`,
+      installmentId: `e-${i}`,
+      amount: 100_000 + i
+    }));
+    getBillingRun.mockResolvedValue(run({ id: 'vingt-cinq', summary: { billed, excluded: [], advancesApplied: [] } }));
+    mount('/tenant/agence-1/finance/facturation?campagne=vingt-cinq');
+
+    await screen.findByText('Locataire 01 — Bien 1', {}, { timeout: 8000 });
+    expect(screen.getAllByText(/^Locataire \d{2} — Bien \d+$/)).toHaveLength(20);
+    expect(screen.queryByText('Locataire 21 — Bien 21')).not.toBeInTheDocument();
+    expect(screen.getByText('1–20 sur 25')).toBeInTheDocument();
+  });
+
+  it('place l’onglet actif dans l’URL et retombe sur « facturés » si la valeur est inconnue', async () => {
+    getBillingRun.mockResolvedValue(run());
+    mount('/tenant/agence-1/finance/facturation?campagne=run-1&detail=nimporte');
+    await screen.findByText('Fatoumata Kouassi — Villa Angré 12', {}, { timeout: 8000 });
+    expect(screen.queryByText('Ousmane Touré — Local Abobo 9')).not.toBeInTheDocument();
   });
 
   it('affiche chacun des six motifs d’exclusion en français, jamais sous sa forme brute', async () => {
@@ -197,7 +227,7 @@ describe('Facturation — le compte rendu', () => {
         }
       })
     );
-    mount('/tenant/agence-1/finance/facturation?campagne=six-motifs');
+    mount('/tenant/agence-1/finance/facturation?campagne=six-motifs&detail=exclus');
 
     await screen.findByText('Baux exclus', {}, { timeout: 8000 });
 
@@ -236,7 +266,7 @@ describe('Facturation — le compte rendu', () => {
         }
       })
     );
-    mount('/tenant/agence-1/finance/facturation?campagne=relance-idempotente');
+    mount('/tenant/agence-1/finance/facturation?campagne=relance-idempotente&detail=exclus');
 
     expect(
       await screen.findAllByText('Une échéance existe déjà pour cette période', {}, { timeout: 8000 })
@@ -264,7 +294,7 @@ describe('Facturation — le compte rendu', () => {
         }
       })
     );
-    mount('/tenant/agence-1/finance/facturation?campagne=sans-exclusion');
+    mount('/tenant/agence-1/finance/facturation?campagne=sans-exclusion&detail=exclus');
 
     expect(
       await screen.findByText(
@@ -341,5 +371,46 @@ describe('Facturation — vocabulaire (P-1 du PRD)', () => {
 
     expect(normalise).not.toMatch(/\bdebit/);
     expect(normalise).not.toMatch(/\bcredit/);
+  });
+});
+
+describe('Facturation — recherche multicritères', () => {
+  const baux = [
+    { leaseId: 'B-1', leaseLabel: 'Fatoumata Kouassi — Villa Angré 12', installmentId: 'e-1', amount: 1_250_000 },
+    { leaseId: 'B-2', leaseLabel: 'Ousmane Touré — Local Abobo 9', installmentId: 'e-2', amount: 400_000 },
+    { leaseId: 'B-3', leaseLabel: 'Mariam Diallo — Studio Plateau 4', installmentId: 'e-3', amount: 300_000 }
+  ];
+
+  it('filtre les baux facturés par texte : les lignes et le compteur se réduisent', async () => {
+    getBillingRun.mockResolvedValue(
+      run({ id: 'filtre', summary: { billed: baux, excluded: [], advancesApplied: [] } })
+    );
+    const user = userEvent.setup({ delay: null });
+    mount('/tenant/agence-1/finance/facturation?campagne=filtre');
+
+    await screen.findByText('Fatoumata Kouassi — Villa Angré 12', {}, { timeout: 8000 });
+    expect(screen.getByText('3 résultats')).toBeInTheDocument();
+
+    const barre = screen.getByRole('search', { name: 'Rechercher dans les baux facturés' });
+    await user.type(within(barre).getByRole('textbox'), 'OUSMANE');
+
+    await waitFor(() => expect(screen.queryByText('Fatoumata Kouassi — Villa Angré 12')).not.toBeInTheDocument(), {
+      timeout: 8000
+    });
+    expect(screen.getByText('Ousmane Touré — Local Abobo 9')).toBeInTheDocument();
+    expect(screen.queryByText('Mariam Diallo — Studio Plateau 4')).not.toBeInTheDocument();
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
+  });
+
+  it('applique les critères de l’URL à l’historique (statut) sans toucher au compte rendu', async () => {
+    listBillingRuns.mockResolvedValue([
+      run({ id: 'ok', label: 'Loyer de septembre 2026' }),
+      run({ id: 'ko', label: "Loyer d'août 2026", periodMonth: 8, status: 'FAILED', summary: null })
+    ]);
+    mount('/tenant/agence-1/finance/facturation?his.statut=FAILED');
+
+    await screen.findByText("Loyer d'août 2026", {}, { timeout: 8000 });
+    expect(screen.queryByText('Loyer de septembre 2026')).not.toBeInTheDocument();
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
   });
 });

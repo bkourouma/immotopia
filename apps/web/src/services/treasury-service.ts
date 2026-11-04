@@ -21,6 +21,28 @@ import apiClient from '../utils/api-client';
 
 const BASE = (tenantId: string) => `/tenants/${tenantId}/treasury`;
 
+export interface ListTreasuryTransfersFilters {
+  from?: string;
+  to?: string;
+  accountId?: string;
+  status?: string;
+  search?: string;
+}
+
+export interface ListTaxRemittancesFilters {
+  from?: string;
+  to?: string;
+  status?: string;
+  treasuryAccountId?: string;
+}
+
+/** Retire les valeurs vides ; undefined si aucun filtre (appel sans paramètre). */
+function compactParams(filters?: object): Record<string, string> | undefined {
+  if (!filters) return undefined;
+  const entries = Object.entries(filters).filter(([, v]) => typeof v === 'string' && v.trim() !== '');
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
 export type TreasuryAccountKind = 'CASH' | 'BANK' | 'MOBILE_MONEY' | 'CHECKS_TO_CASH' | 'CARDS_TO_CASH';
 
 export interface TreasuryAccountDto {
@@ -146,8 +168,12 @@ export async function updateTreasuryAccount(
 }
 
 /** Liste les virements internes — `GET /treasury/transfers`. */
-export async function listTreasuryTransfers(tenantId: string): Promise<TreasuryTransferDto[]> {
-  const response = await apiClient.get(`${BASE(tenantId)}/transfers`);
+export async function listTreasuryTransfers(
+  tenantId: string,
+  filters?: ListTreasuryTransfersFilters
+): Promise<TreasuryTransferDto[]> {
+  const params = compactParams(filters);
+  const response = await apiClient.get(`${BASE(tenantId)}/transfers`, params ? { params } : undefined);
   return response.data.data;
 }
 
@@ -177,8 +203,12 @@ export async function getWithholdingSummary(tenantId: string): Promise<Withholdi
 }
 
 /** Liste les versements de retenue à la source à la DGI — `GET /treasury/tax-remittances`. */
-export async function listTaxRemittances(tenantId: string): Promise<TaxRemittanceDto[]> {
-  const response = await apiClient.get(`${BASE(tenantId)}/tax-remittances`);
+export async function listTaxRemittances(
+  tenantId: string,
+  filters?: ListTaxRemittancesFilters
+): Promise<TaxRemittanceDto[]> {
+  const params = compactParams(filters);
+  const response = await apiClient.get(`${BASE(tenantId)}/tax-remittances`, params ? { params } : undefined);
   return response.data.data;
 }
 

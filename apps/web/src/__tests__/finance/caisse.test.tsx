@@ -1,8 +1,8 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Caisse } from '../../pages/finance/Caisse';
@@ -101,12 +101,16 @@ function sessionAttendu31000(overrides: Partial<CashSession> = {}): CashSession 
   });
 }
 
+/** Expose l'URL courante pour vérifier les clés `det.*`. */
+const SondeUrl: React.FC = () => <output data-testid="url">{useLocation().search}</output>;
+
 function mount(url = '/tenant/agence-1/finance/caisse') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <SondeUrl />
           <Routes>
             <Route path="/tenant/:tenantId/finance/caisse" element={<Caisse />} />
           </Routes>
@@ -419,4 +423,136 @@ describe('Caisse — rôle sans droit de tenir une caisse (Gestionnaire)', () =>
     ).toBeInTheDocument();
     expect(screen.queryByText('Impossible de charger votre caisse.')).not.toBeInTheDocument();
   });
+});
+
+describe('Caisse — recherche multicritères', () => {
+  const ouvrirHistorique = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole('tab', { name: 'Historique' }, { timeout: 8000 }));
+  };
+
+  it('historique : choisir un statut envoie status à listCashSessions (critère serveur)', async () => {
+    listCashSessions.mockResolvedValue([
+      sessionAttendu31000({ status: 'CLOSED', difference: 0, countedAmount: 31_000 })
+    ]);
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await ouvrirHistorique(user);
+    await screen.findByText('CAI-2026-0001', {}, { timeout: 8000 });
+
+    await user.click(screen.getByRole('combobox', { name: 'Statut' }));
+    await user.click(
+      await screen.findByText('À valider', { selector: '.ant-select-item-option-content' }, { timeout: 8000 })
+    );
+
+    await waitFor(() => expect(listCashSessions).toHaveBeenLastCalledWith('agence-1', { status: 'CLOSED' }), {
+      timeout: 8000
+    });
+  }, 30000);
+
+  it('historique : la période d’ouverture de l’URL part en from / to', async () => {
+    listCashSessions.mockResolvedValue([]);
+    const user = userEvent.setup({ delay: null });
+    mount('/tenant/agence-1/finance/caisse?his.ouvertureFrom=2026-09-01&his.ouvertureTo=2026-09-30');
+    await ouvrirHistorique(user);
+
+    await waitFor(
+      () => expect(listCashSessions).toHaveBeenCalledWith('agence-1', { from: '2026-09-01', to: '2026-09-30' }),
+      { timeout: 8000 }
+    );
+  }, 30000);
+
+  it('historique : le texte et « Écart non nul » partent au serveur (search, hasDifference)', async () => {
+    listCashSessions.mockResolvedValue([sessionAttendu31000({ status: 'VALIDATED', difference: -500 })]);
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await ouvrirHistorique(user);
+    await screen.findByText('CAI-2026-0001', {}, { timeout: 8000 });
+
+    const barre = screen.getByRole('search', { name: "Rechercher dans l'historique des caisses" });
+    await user.type(within(barre).getByRole('textbox', { name: 'Rechercher' }), 'Awa');
+    await waitFor(() => expect(listCashSessions).toHaveBeenLastCalledWith('agence-1', { search: 'Awa' }), {
+      timeout: 8000
+    });
+
+    await user.click(screen.getByRole('button', { name: /Plus de critères/ }));
+    await user.click(screen.getByRole('checkbox', { name: 'Écart non nul' }));
+    await waitFor(
+      () => expect(listCashSessions).toHaveBeenLastCalledWith('agence-1', { search: 'Awa', hasDifference: 'true' }),
+      { timeout: 8000 }
+    );
+  }, 30000);
+
+  it('historique : le bandeau de plafond apparaît à 200 sessions, pas à 3', async () => {
+    const MESSAGE =
+      'Seules les 200 sessions les plus récentes correspondant aux critères sont affichées. Affinez par période, statut ou caisse.';
+    listCashSessions.mockResolvedValue(
+      Array.from({ length: 200 }, (_, i) =>
+        sessionAttendu31000({ id: `s-${i}`, number: `CAI-2026-${String(i + 1).padStart(4, '0')}`, status: 'VALIDATED' })
+      )
+    );
+    const user = userEvent.setup({ delay: null });
+    const premier = mount();
+    await ouvrirHistorique(user);
+    expect(await screen.findByText(MESSAGE, {}, { timeout: 8000 })).toBeInTheDocument();
+    premier.unmount();
+
+    listCashSessions.mockResolvedValue(
+      Array.from({ length: 3 }, (_, i) =>
+        sessionAttendu31000({ id: `t-${i}`, number: `CAI-T-${i}`, status: 'VALIDATED' })
+      )
+    );
+    mount();
+    await ouvrirHistorique(user);
+    await screen.findByText('CAI-T-0', {}, { timeout: 8000 });
+    expect(screen.queryByText(MESSAGE)).not.toBeInTheDocument();
+  }, 30000);
+
+  it('détail : les critères du détail sont effacés à la fermeture, et les deux barres ont des noms distincts', async () => {
+    const closed = sessionAttendu31000({
+      status: 'CLOSED',
+      closedAt: '2026-09-23T18:00:00.000Z',
+      countedAmount: 31_000,
+      difference: 0,
+      expected: sessionOuverte().expected
+    });
+    listCashSessions.mockResolvedValue([closed]);
+    getCashSession.mockResolvedValue(closed);
+    getCurrentCashSession.mockResolvedValue(sessionOuverte({ id: 'sess-2', number: 'CAI-2026-0002' }));
+    const user = userEvent.setup({ delay: null });
+    mount();
+
+    // Onglet « Ma caisse » : barre de la session en cours.
+    await screen.findByText('Pièce de caisse PC-2026-0004', {}, { timeout: 8000 });
+    expect(
+      screen.getByRole('search', { name: 'Rechercher dans les opérations de la session en cours' })
+    ).toBeInTheDocument();
+
+    await ouvrirHistorique(user);
+    await screen.findByText('CAI-2026-0001', {}, { timeout: 8000 });
+    await user.click(screen.getByRole('button', { name: 'Voir le détail' }));
+    const barreDetail = await screen.findByRole(
+      'search',
+      { name: 'Rechercher dans les opérations de la session' },
+      { timeout: 8000 }
+    );
+    await user.type(within(barreDetail).getByRole('textbox', { name: 'Rechercher' }), 'BAIL');
+    await waitFor(() => expect(screen.getByTestId('url').textContent).toContain('det.q=BAIL'), { timeout: 8000 });
+
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Close|Fermer/ }));
+    await waitFor(() => expect(screen.getByTestId('url').textContent).not.toContain('det.'), { timeout: 8000 });
+  }, 90000);
+
+  it('opérations attendues : le champ libre filtre sur le libellé, en local', async () => {
+    getCurrentCashSession.mockResolvedValue(sessionOuverte());
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await screen.findByText('Pièce de caisse PC-2026-0004', {}, { timeout: 8000 });
+
+    await user.type(within(screen.getByRole('search')).getByRole('textbox', { name: 'Rechercher' }), 'BAIL');
+
+    await waitFor(() => expect(screen.queryByText('Pièce de caisse PC-2026-0004')).not.toBeInTheDocument(), {
+      timeout: 8000
+    });
+    expect(screen.getByText('Loyer — BAIL-2026-0012')).toBeInTheDocument();
+  }, 30000);
 });

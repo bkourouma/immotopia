@@ -4,6 +4,7 @@ import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/erro
 import { getAccountStatement, getClientsAgingBalance, getClientsBalance } from '../lib/finance/reports';
 import { runRentBilling } from '../lib/finance/billing-run';
 import { buildAccountStatementPdf } from '../lib/finance/statement-pdf';
+import { searchAccountStatement } from '../lib/finance/statement-search';
 import type { AccountStatementResult, BillingRunSummary } from '../lib/finance/types';
 import { prisma } from '../utils/database';
 import {
@@ -68,8 +69,14 @@ function requireUuidParam(req: Request, name: string): string {
  * Les deux formes sont exposées côte à côte plutôt que de trancher entre un
  * document déjà consommé et un contrat déjà publié.
  */
-export function toAccountStatementResponse(statement: AccountStatementResult, page: number, pageSize: number) {
+export function toAccountStatementResponse(
+  statement: AccountStatementResult,
+  page: number,
+  pageSize: number,
+  filteredTotals?: { debit: number; credit: number }
+) {
   return {
+    ...(filteredTotals ? { filteredTotals } : {}),
     accountId: statement.accountId,
     label: statement.label,
     kind: statement.kind,
@@ -143,7 +150,8 @@ export const getClientsBalanceHandler = asyncHandler(async (req: Request, res: R
 
   const result = await getClientsBalance(tenantId, {
     range: range.from || range.to ? range : undefined,
-    propertyId: query.propertyId
+    propertyId: query.propertyId,
+    search: query.search
   });
 
   if (query.format === 'csv') {
@@ -169,6 +177,7 @@ export const getClientsAgingBalanceHandler = asyncHandler(async (req: Request, r
   const result = await getClientsAgingBalance(tenantId, {
     range: range.from || range.to ? range : undefined,
     propertyId: query.propertyId,
+    search: query.search,
     asOf
   });
 
@@ -191,6 +200,21 @@ export const getAccountStatementHandler = asyncHandler(async (req: Request, res:
   const query = accountStatementQuerySchema.parse(req.query ?? {});
   const range = resolveRange(query);
   const pagination = resolvePagination(query);
+
+  // Avec un texte de recherche : relevé filtré, soldes « après » de la suite complète.
+  if (query.search) {
+    const found = await searchAccountStatement(tenantId, accountId, {
+      range: range.from || range.to ? range : undefined,
+      search: query.search,
+      skip: pagination.skip,
+      take: pagination.take
+    });
+    res.status(200).json({
+      success: true,
+      data: toAccountStatementResponse(found, pagination.page, pagination.pageSize, found.filteredTotals)
+    });
+    return;
+  }
 
   const statement = await getAccountStatement(tenantId, accountId, {
     range: range.from || range.to ? range : undefined,

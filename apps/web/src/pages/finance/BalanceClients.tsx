@@ -1,25 +1,18 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, DatePicker, Select } from 'antd';
+import { Button } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { getClientsBalance } from '../../services/finance-service';
-import type { ClientsBalanceLine } from '../../types/finance-types';
-import { useListParams } from '../../hooks/useListParams';
-import { listProperties } from '../../services/property-service';
+import { getProperty, listProperties } from '../../services/property-service';
+import type { BalanceFilters, ClientsBalanceLine } from '../../types/finance-types';
+import { useListSearch } from '../../hooks/useListSearch';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { exportToCSV } from '../../utils/export-utils';
-import {
-  PageHeader,
-  StateBlock,
-  MoneyValue,
-  DataView,
-  DataCard,
-  FilterSheet,
-  StatCard
-} from '../../components/primitives';
+import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatCard } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded';
@@ -34,10 +27,17 @@ import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded
  * mêmes primitives, même état de liste porté par l'URL, mêmes trois états
  * (chargement, vide, erreur) délégués à `<DataView>`.
  *
- * **Aucune pagination.** `ClientsBalance` ne porte pas d'enveloppe de
- * pagination : l'API rend la balance entière, comme le fait déjà l'écran
- * des pénalités (`pages/rental/Penalties.tsx`). `paginated={false}` le dit
- * explicitement plutôt que de le laisser deviner.
+ * **Recherche en mode mixte** (guide : `docs/architecture/recherche-listes.md`).
+ * `ClientsBalance` ne porte pas d'enveloppe de pagination : l'API rend la
+ * balance entière avec ses totaux. Tous les critères (locataire, période,
+ * bien) partent au serveur, parce que les totaux doivent suivre le périmètre
+ * filtré : un filtre local contredirait le total de contrôle. Seule la
+ * découpe en pages (20 par page, dans l'URL) est locale ; l'export porte la
+ * liste complète.
+ *
+ * Deux hooks lisent la même URL : `useListSearch` donne les paramètres d'API
+ * AVANT la requête (`useLocalListSearch` a besoin de la liste reçue, donc de
+ * la requête), `useLocalListSearch` découpe en pages et porte la barre.
  *
  * **Vocabulaire (P-1 du PRD).** Les colonnes disent « Facturé » et
  * « Réglé » — jamais « débit » ni « crédit ». Un test dédié
@@ -49,23 +49,45 @@ import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded
  * jamais un suffixe écrit en dur ici (contrat gelé, `finance-types.ts`).
  */
 
-type Filters = { from: string; to: string; propertyId: string };
-const FILTER_KEYS = ['from', 'to', 'propertyId'] as const;
-
-const { RangePicker } = DatePicker;
-
 export const BalanceClients: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   // Locatif : sans gestion locative (RENTAL), ni campagne ni balance de locataires (BUG-051).
   const features = useAgencyFeatures(tenantId);
   const navigate = useNavigate();
-  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS });
 
-  const filtresPeriode = {
-    from: list.filters.from || undefined,
-    to: list.filters.to || undefined
-  };
-  const filtresApi = { ...filtresPeriode, propertyId: list.filters.propertyId || undefined };
+  // `loadOptions` et `resolveLabel` sont gelés au premier rendu : l'agence se lit par une ref.
+  const tenantRef = useRef(tenantId);
+  tenantRef.current = tenantId;
+
+  // Tous les critères partent au serveur : aucun accesseur local, le filtrage
+  // local les ignore.
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom du locataire…'), api: 'search' },
+    {
+      key: 'periode',
+      type: 'dateRange',
+      label: t('Période'),
+      primary: true,
+      urlKeys: ['from', 'to'],
+      api: ['from', 'to']
+    },
+    {
+      key: 'propertyId',
+      type: 'select',
+      label: t('Bien'),
+      primary: true,
+      loadOptions: async terme => {
+        const { properties } = await listProperties(tenantRef.current as string, { q: terme || undefined, limit: 20 });
+        return properties.map(bien => ({ value: bien.id, label: bien.title || bien.id }));
+      },
+      resolveLabel: async id => {
+        const bien = await getProperty(tenantRef.current as string, id);
+        return bien.title || id;
+      }
+    }
+  ];
+  const { filterParams } = useListSearch({ criteria: criteres });
+  const filtresApi = filterParams as BalanceFilters;
 
   const {
     data,
@@ -74,42 +96,14 @@ export const BalanceClients: React.FC = () => {
     error: erreurRequete,
     refetch
   } = useQuery({
-    queryKey: queryKey('clients-balance', tenantId, filtresApi),
+    queryKey: queryKey('clients-balance', tenantId, filterParams),
     queryFn: () => getClientsBalance(tenantId as string, filtresApi),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
   });
 
-  /**
-   * Options du filtre « Bien », lues sur le parc et non sur la balance.
-   *
-   * Deux raisons, dans cet ordre d'importance.
-   *
-   * D'abord l'exactitude : l'API attend un **identifiant** de bien, et une
-   * ligne de balance ne porte que des libellés (`propertyLabels`). Envoyer un
-   * libellé ne filtrerait rien. Le parc, lui, donne les deux.
-   *
-   * Ensuite la complétude : choisir un bien ne doit pas faire disparaître les
-   * autres de la liste déroulante, sinon on ne peut plus défiltrer. Dériver
-   * les options de la balance obligeait à la charger une seconde fois, sans
-   * filtre, pour ce seul besoin. Une requête de moins.
-   */
-  const { data: parc } = useQuery({
-    queryKey: queryKey('finance-parc', tenantId, {}),
-    queryFn: () => listProperties(tenantId as string, { page: 1, limit: 200 }),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
-  });
-
-  const optionsBiens = React.useMemo(
-    () =>
-      (parc?.properties ?? [])
-        .map(bien => ({ value: bien.id, label: bien.title }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [parc]
-  );
-
-  const lignes = data?.lines ?? [];
+  const local = useLocalListSearch<ClientsBalanceLine>(data?.lines, { criteria: criteres });
+  const lignes = local.filtered;
 
   const handleExport = () => {
     exportToCSV(
@@ -183,73 +177,26 @@ export const BalanceClients: React.FC = () => {
         primaryAction={{ label: t('Exporter'), icon: <DownloadOutlined />, onClick: handleExport }}
       />
 
-      <FilterSheet
-        activeCount={Object.keys(list.filters).length}
-        onClear={list.clearFilters}
-        title={t('Filtrer la balance')}
-      >
-        <div style={{ minWidth: 260 }}>
-          <label htmlFor="filtre-periode-balance">{t('Période')}</label>
-          <RangePicker
-            id="filtre-periode-balance"
-            style={{ width: '100%' }}
-            format="DD/MM/YYYY"
-            value={[
-              list.filters.from ? dayjs(list.filters.from) : null,
-              list.filters.to ? dayjs(list.filters.to) : null
-            ]}
-            onChange={dates =>
-              list.setFilters({
-                from: dates?.[0] ? dates[0].format('YYYY-MM-DD') : undefined,
-                to: dates?.[1] ? dates[1].format('YYYY-MM-DD') : undefined
-              })
-            }
-          />
-        </div>
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-bien-balance">{t('Bien')}</label>
-          <Select
-            id="filtre-bien-balance"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les biens')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            value={list.filters.propertyId || undefined}
-            onChange={value => list.setFilters({ propertyId: value })}
-            options={optionsBiens}
-          />
-        </div>
-      </FilterSheet>
-
-      {(filtresPeriode.from || filtresPeriode.to) && (
+      {(filtresApi.from || filtresApi.to) && (
         <p role="note" style={{ margin: '0 0 12px', opacity: 0.75 }}>
           {t('Période filtrée : le solde est celui à la fin de la période.')}
         </p>
       )}
 
       <DataView<ClientsBalanceLine>
-        // La balance n'est pas paginée : l'API la rend entière, comme les
-        // pénalités (`pages/rental/Penalties.tsx`). `total` est donc le
-        // compte réel des lignes reçues, pas un artifice.
-        paginated={false}
-        items={lignes}
-        total={lignes.length}
-        page={1}
-        pageSize={Math.max(lignes.length, 1)}
-        onPageChange={() => {}}
+        // Pagination locale de la liste reçue : l'API rend la balance
+        // entière et ses totaux (ceux du serveur, jamais recalculés ici).
+        {...local.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger la balance clients.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={list.isFiltered}
-        onClearFilters={list.clearFilters}
         emptyDescription={t('Aucun compte de locataire enregistré.')}
         columns={colonnes}
         rowKey={l => l.accountId}
         aria-label={t('Balance clients')}
-        export={{ filename: t('Balance clients') }}
+        export={{ filename: t('Balance clients'), fetchAll: local.exportAll }}
         renderCard={l => (
           <DataCard
             title={l.label}

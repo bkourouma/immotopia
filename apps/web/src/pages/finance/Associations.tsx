@@ -8,6 +8,8 @@ import { createPartnership, listPartnerships } from '../../services/finance-part
 import type { Partnership } from '../../types/finance-partnerships-types';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, DataView, DataCard, StatusTag } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -36,6 +38,22 @@ function pourcentage(valeur: number): string {
   return `${valeur.toLocaleString(activeLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
 }
 
+// Champ libre : libellé, noms des associés, biens rattachés (constantes de module : filtrage mémoïsé).
+const TEXTE_RECHERCHE = [
+  (a: Partnership) => a.label,
+  (a: Partnership) => a.shares.map(s => s.partnerName),
+  (a: Partnership) => a.properties.map(p => p.propertyLabel)
+];
+
+const ACCESSEURS = {
+  actif: (a: Partnership) => a.isActive
+};
+
+// « Quotes-parts incomplètes » : lit le total déjà calculé par le serveur, aucun nouveau calcul.
+const PREDICATS = {
+  incompletes: (a: Partnership) => a.totalSharePercent !== 100
+};
+
 export const Associations: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -60,6 +78,39 @@ export const Associations: React.FC = () => {
   });
 
   const associations = data ?? [];
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Association, associé, bien rattaché…')
+    },
+    {
+      key: 'actif',
+      type: 'boolean',
+      label: t('Statut'),
+      primary: true,
+      tristate: true,
+      trueLabel: t('Active'),
+      falseLabel: t('Inactive')
+    },
+    {
+      key: 'incompletes',
+      type: 'boolean',
+      label: t('Quotes-parts incomplètes'),
+      primary: true,
+      help: t('Total des quotes-parts différent de 100 %.')
+    }
+  ];
+  // Liste reçue en entier : filtrage et pagination locaux, rien ne part au serveur.
+  const local = useLocalListSearch<Partnership>(data, {
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS,
+    predicates: PREDICATS
+  });
 
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
@@ -153,14 +204,9 @@ export const Associations: React.FC = () => {
       />
 
       <DataView<Partnership>
-        // Le contrat de `listPartnerships` ne pagine pas.
-        paginated={false}
+        // Le contrat de `listPartnerships` ne pagine pas : recherche et découpe locales.
         scrollX={1200}
-        items={associations}
-        total={associations.length}
-        page={1}
-        pageSize={Math.max(associations.length, 1)}
-        onPageChange={() => {}}
+        {...local.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les associations.') : null}
@@ -171,7 +217,7 @@ export const Associations: React.FC = () => {
         columns={colonnes}
         rowKey={a => a.id}
         aria-label={t('Associations')}
-        export={{ filename: t('Associations') }}
+        export={{ filename: t('Associations'), fetchAll: local.exportAll }}
         renderCard={a => (
           <DataCard
             title={a.label}

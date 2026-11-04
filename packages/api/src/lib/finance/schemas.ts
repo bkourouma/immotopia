@@ -88,6 +88,12 @@ function withRangeOrderValidation<T extends z.ZodObject<z.ZodRawShape>>(schema: 
   );
 }
 
+/** Recherche libre : trim, 1 à 100 caractères ; chaîne vide = paramètre absent. */
+const searchSchema = z.preprocess(
+  v => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+  z.string().trim().min(1).max(100).optional()
+);
+
 // ---------------------------------------------------------------------------
 // GET clients/balance
 // ---------------------------------------------------------------------------
@@ -95,6 +101,7 @@ function withRangeOrderValidation<T extends z.ZodObject<z.ZodRawShape>>(schema: 
 export const clientsBalanceQuerySchema = withRangeOrderValidation(
   rangeAliasObject.extend({
     propertyId: uuidSchema.optional(),
+    search: searchSchema,
     format: z.enum(['json', 'csv']).optional().default('json')
   })
 );
@@ -108,6 +115,7 @@ export type ClientsBalanceQuery = z.infer<typeof clientsBalanceQuerySchema>;
 export const clientsAgingBalanceQuerySchema = withRangeOrderValidation(
   rangeAliasObject.extend({
     propertyId: uuidSchema.optional(),
+    search: searchSchema,
     asOfDate: z.coerce.date().optional(),
     asOf: z.coerce.date().optional()
   })
@@ -134,7 +142,9 @@ const paginationAliasObject = z.object({
   take: z.coerce.number().int().positive().max(200).optional()
 });
 
-export const accountStatementQuerySchema = withRangeOrderValidation(rangeAliasObject.merge(paginationAliasObject));
+export const accountStatementQuerySchema = withRangeOrderValidation(
+  rangeAliasObject.merge(paginationAliasObject).extend({ search: searchSchema })
+);
 
 export type AccountStatementQuery = z.infer<typeof accountStatementQuerySchema>;
 

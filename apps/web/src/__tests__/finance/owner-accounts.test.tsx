@@ -174,6 +174,9 @@ function mountListe(url = '/tenant/agence-1/finance/owner-accounts') {
   );
 }
 
+/** Les reversements sont dans le deuxième onglet : l'adresse le demande (clé `onglet`). */
+const URL_REVERSEMENTS = '/tenant/agence-1/finance/owner-accounts/owner-1?onglet=reversements';
+
 function mountDetail(url = '/tenant/agence-1/finance/owner-accounts/owner-1') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
@@ -247,7 +250,7 @@ describe('Compte propriétaire — détail', () => {
 
   it('affiche un reversement annulé comme tel, avec son motif', async () => {
     getOwnerAccount.mockResolvedValue(detailCompte());
-    mountDetail();
+    mountDetail(URL_REVERSEMENTS);
 
     await screen.findByText('REV-2026-0002', {}, { timeout: 8000 });
     const ligne = screen.getByText('REV-2026-0002').closest('tr') as HTMLElement;
@@ -322,7 +325,7 @@ describe('Compte propriétaire — annulation d’un reversement', () => {
   it('exige un motif avant de confirmer', async () => {
     getOwnerAccount.mockResolvedValue(detailCompte());
     const user = userEvent.setup({ delay: null });
-    mountDetail();
+    mountDetail(URL_REVERSEMENTS);
 
     await screen.findByText('REV-2026-0001', {}, { timeout: 8000 });
     const ligne = screen.getByText('REV-2026-0001').closest('tr') as HTMLElement;
@@ -363,7 +366,7 @@ describe('Compte propriétaire — annulation réservée à qui peut valider (BU
   it("n'affiche pas « Annuler » à un Comptable sans FINANCE_DOCUMENTS_VALIDATE", async () => {
     permissionsDetenues = new Set(['FINANCE_ACCOUNTS_READ', 'FINANCE_DOCUMENTS_CREATE']);
     getOwnerAccount.mockResolvedValue(detailCompte());
-    mountDetail();
+    mountDetail(URL_REVERSEMENTS);
 
     await screen.findByText('REV-2026-0001', {}, { timeout: 8000 });
     const ligne = screen.getByText('REV-2026-0001').closest('tr') as HTMLElement;
@@ -374,7 +377,7 @@ describe('Compte propriétaire — annulation réservée à qui peut valider (BU
   it('affiche « Annuler » à qui détient FINANCE_DOCUMENTS_VALIDATE', async () => {
     permissionsDetenues = new Set(['FINANCE_DOCUMENTS_VALIDATE']);
     getOwnerAccount.mockResolvedValue(detailCompte());
-    mountDetail();
+    mountDetail(URL_REVERSEMENTS);
 
     await screen.findByText('REV-2026-0001', {}, { timeout: 8000 });
     const ligne = screen.getByText('REV-2026-0001').closest('tr') as HTMLElement;
