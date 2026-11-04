@@ -195,7 +195,8 @@ export const getAccountStatementHandler = asyncHandler(async (req: Request, res:
   const statement = await getAccountStatement(tenantId, accountId, {
     range: range.from || range.to ? range : undefined,
     skip: pagination.skip,
-    take: pagination.take
+    take: pagination.take,
+    asOf: query.asOfDate ?? query.asOf
   });
 
   res

@@ -136,12 +136,23 @@ export async function sumClientBilledSettledByAccount(
   );
 
   const totals = new Map<string, MovementTotals>();
-  for (const group of grouped as any[]) {
-    const reprise = appliedByAccount.get(group.accountId) ?? 0;
-    const annule = voidsByAccount.get(group.accountId) ?? { debit: 0, credit: 0 };
-    totals.set(group.accountId, {
-      billed: roundMoney(toAmountOrZero(group._sum.debit) - reprise - annule.credit),
-      settled: roundMoney(toAmountOrZero(group._sum.credit) - reprise - annule.debit)
+  // Union des comptes : un compte dont la période ne porte QUE des contre-passations (pièce
+  // d'une période antérieure annulée dans celle-ci) n'a aucune ligne dans `grouped` et
+  // disparaissait du résultat, alors que son annulation pèse sur le solde.
+  const groupedByAccount = new Map<string, { debit: number; credit: number }>(
+    (grouped as any[]).map(g => [
+      g.accountId as string,
+      { debit: toAmountOrZero(g._sum.debit), credit: toAmountOrZero(g._sum.credit) }
+    ])
+  );
+  const accountIds = new Set<string>([...groupedByAccount.keys(), ...voidsByAccount.keys()]);
+  for (const accountId of accountIds) {
+    const brut = groupedByAccount.get(accountId) ?? { debit: 0, credit: 0 };
+    const reprise = appliedByAccount.get(accountId) ?? 0;
+    const annule = voidsByAccount.get(accountId) ?? { debit: 0, credit: 0 };
+    totals.set(accountId, {
+      billed: roundMoney(brut.debit - reprise - annule.credit),
+      settled: roundMoney(brut.credit - reprise - annule.debit)
     });
   }
   return totals;

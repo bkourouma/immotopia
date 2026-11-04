@@ -155,6 +155,23 @@ describe('Relevé de compte — écran agence', () => {
     expect(screen.getByText(/250\s000\sFCFA/)).toBeInTheDocument();
   });
 
+  it('avertit quand le relevé a été tronqué par le plafond de pages', async () => {
+    getAccountStatement.mockResolvedValue({ ...statement({ label: 'Mariam Diomandé' }), tronque: true });
+
+    mountReleve();
+
+    expect(await screen.findByText('Relevé tronqué', {}, { timeout: 8000 })).toBeInTheDocument();
+  });
+
+  it('n’avertit pas quand le relevé est complet', async () => {
+    getAccountStatement.mockResolvedValue({ ...statement({ label: 'Mariam Diomandé' }), tronque: false });
+
+    mountReleve();
+
+    await screen.findByText('Mariam Diomandé', {}, { timeout: 8000 });
+    expect(screen.queryByText('Relevé tronqué')).toBeNull();
+  });
+
   it('respecte l’ordre chronologique des mouvements', async () => {
     getAccountStatement.mockResolvedValue(
       statement({

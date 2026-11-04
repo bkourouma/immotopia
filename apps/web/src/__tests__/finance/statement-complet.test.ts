@@ -56,6 +56,30 @@ describe('getFullAccountStatement', () => {
     expect(get.mock.calls[1][0]).toContain('from=2026-01-01');
   });
 
+  it('fige le même asOf sur toutes les pages', async () => {
+    serveur(450);
+    await getFullAccountStatement('t1', 'a');
+    const asOfs = get.mock.calls.map(c => new URL(c[0], 'http://x').searchParams.get('asOf'));
+    expect(asOfs).toHaveLength(3);
+    expect(asOfs[0]).toBeTruthy();
+    expect(new Set(asOfs).size).toBe(1);
+  });
+
+  it('signale la troncature quand le plafond de 50 pages est atteint', async () => {
+    serveur(10_500);
+    const releve = await getFullAccountStatement('t1', 'a');
+    expect(get).toHaveBeenCalledTimes(50);
+    expect(releve.movements).toHaveLength(10_000);
+    expect(releve.tronque).toBe(true);
+  });
+
+  it('pas de troncature quand tout est lu, même à 50 pages pleines', async () => {
+    serveur(10_000);
+    const releve = await getFullAccountStatement('t1', 'a');
+    expect(releve.movements).toHaveLength(10_000);
+    expect(releve.tronque).toBe(false);
+  });
+
   it('ne demande qu’une page quand le relevé est court', async () => {
     serveur(12);
     const releve = await getFullAccountStatement('t1', 'a');

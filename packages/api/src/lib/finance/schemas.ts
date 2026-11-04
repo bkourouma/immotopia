@@ -134,7 +134,14 @@ const paginationAliasObject = z.object({
   take: z.coerce.number().int().positive().max(200).optional()
 });
 
-export const accountStatementQuerySchema = withRangeOrderValidation(rangeAliasObject.merge(paginationAliasObject));
+export const accountStatementQuerySchema = withRangeOrderValidation(
+  rangeAliasObject.merge(paginationAliasObject).extend({
+    // Instant de référence FIXE, repris à l'identique d'une page à l'autre : sans lui, chaque page
+    // coupait le grand livre à « maintenant » et les soldes cumulés dérivaient entre deux pages.
+    asOfDate: z.coerce.date().optional(),
+    asOf: z.coerce.date().optional()
+  })
+);
 
 export type AccountStatementQuery = z.infer<typeof accountStatementQuerySchema>;
 

@@ -98,26 +98,39 @@ export async function getFullAccountStatement(
   tenantId: string,
   accountId: string,
   filters?: Pick<StatementFilters, 'from' | 'to'>
-): Promise<AccountStatement> {
+): Promise<FullAccountStatement> {
+  // Instant de référence figé à la première page et repris à l'identique pour
+  // toutes les suivantes : sinon chaque page coupe le grand livre à « maintenant »
+  // et les soldes cumulés dérivent d'une page à l'autre (la route accepte `asOf`).
+  const asOf = new Date().toISOString();
   const first = await getAccountStatement(tenantId, accountId, {
     ...filters,
+    asOf,
     skip: 0,
     take: STATEMENT_PAGE_SIZE
   });
   const movements = [...first.movements];
+  let pagesLues = 1;
 
   for (let page = 1; page < STATEMENT_MAX_PAGES && movements.length < first.total; page += 1) {
     const next = await getAccountStatement(tenantId, accountId, {
       ...filters,
+      asOf,
       skip: page * STATEMENT_PAGE_SIZE,
       take: STATEMENT_PAGE_SIZE
     });
+    pagesLues += 1;
     if (next.movements.length === 0) break;
     movements.push(...next.movements);
   }
 
-  return { ...first, movements };
+  // Plafond atteint avec des lignes encore à lire : on le dit, on ne coupe pas en silence.
+  const tronque = pagesLues >= STATEMENT_MAX_PAGES && movements.length < first.total;
+  return { ...first, movements, tronque };
 }
+
+/** Relevé complet, avec un drapeau quand le plafond de pages a coupé la lecture. */
+export type FullAccountStatement = AccountStatement & { tronque: boolean };
 
 /**
  * URL du relevé imprimable.

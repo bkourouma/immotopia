@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import { DatePicker } from 'antd';
+import { Alert, DatePicker } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PrinterOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
@@ -205,6 +205,18 @@ export const Releve: React.FC = () => {
         }
         primaryAction={{ label: t('Imprimer'), icon: <PrinterOutlined />, onClick: imprimer }}
       />
+
+      {data?.tronque && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={t('Relevé tronqué')}
+          description={t(
+            'Ce compte compte plus de 10 000 mouvements : seuls les premiers sont affichés. Restreignez la période pour voir la suite.'
+          )}
+        />
+      )}
 
       <FilterSheet
         activeCount={[list.filters.from, list.filters.to].filter(Boolean).length}

@@ -179,6 +179,8 @@ export interface BalanceFilters {
 export interface StatementFilters {
   from?: string;
   to?: string;
+  /** Instant de référence fixe, repris à l'identique d'une page à l'autre. */
+  asOf?: string;
   skip?: number;
   take?: number;
 }
