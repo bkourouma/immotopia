@@ -83,6 +83,8 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
     }
 
     setIsSubmitting(true);
+    // Le refus précédent ne vaut plus pour cette nouvelle tentative.
+    setErrors({});
     try {
       const submitData: AllocatePaymentRequest = {
         installmentIds,

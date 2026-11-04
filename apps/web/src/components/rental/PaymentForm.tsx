@@ -6,6 +6,19 @@ import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
 
+/** Champs que le formulaire affiche toujours ; ceux de Mobile Money s'y ajoutent selon le moyen choisi. */
+const CHAMPS_AFFICHES = [
+  'method',
+  'treasuryAccountId',
+  'amount',
+  'paidAt',
+  'currency',
+  'pspName',
+  'pspTransactionId',
+  'pspReference'
+];
+const CHAMPS_MOBILE_MONEY = ['mmOperator', 'mmPhone'];
+
 interface PaymentFormProps {
   tenantId: string;
   leaseId?: string;
@@ -44,6 +57,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
 
   const handleSubmit = async (values: any) => {
     setIsSubmitting(true);
+    setErrors({});
     try {
       const submitData: CreatePaymentRequest = {
         leaseId: leaseId || undefined,
@@ -64,13 +78,27 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
       if (error.response?.data?.errors) {
         const apiErrors: Record<string, string> = {};
         const fieldErrors: { name: string[]; errors: string[] }[] = [];
+        const affiches = new Set([
+          ...CHAMPS_AFFICHES,
+          ...(method === RentalPaymentMethod.MOBILE_MONEY ? CHAMPS_MOBILE_MONEY : [])
+        ]);
+        // Un motif rattaché à un champ absent de l'écran (le bail, par exemple)
+        // n'aurait aucun endroit où s'afficher : il passe dans le bandeau.
+        const sansChamp: string[] = [];
         error.response.data.errors.forEach((err: { field: string; message: string }) => {
+          if (!affiches.has(err.field)) {
+            sansChamp.push(err.message);
+            return;
+          }
           apiErrors[err.field] = err.message;
           fieldErrors.push({
             name: [err.field],
             errors: [err.message]
           });
         });
+        if (sansChamp.length > 0) {
+          apiErrors.submit = sansChamp.join(' ');
+        }
         setErrors(apiErrors);
         form.setFields(fieldErrors);
       } else if (error.response?.data?.message) {

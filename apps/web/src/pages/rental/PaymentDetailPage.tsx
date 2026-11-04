@@ -37,6 +37,7 @@ import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm
 import { OnlineCheckoutStatus } from '../../components/rental/OnlineCheckoutStatus';
 import { t } from '../../i18n/t';
 import { nomDeLaPersonne, codeDeviseIntl } from '../../lib/rental-labels';
+import { libelleStatutPaiement, statutsAtteignables } from '../../lib/rental-payment-status';
 
 import { activeLocale } from '../../i18n/format';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
@@ -53,7 +54,11 @@ export const PaymentDetailPage: React.FC = () => {
   const peutAffecter = permissions === null || permissions.has('RENTAL_PAYMENTS_ALLOCATE');
   const [payment, setPayment] = useState<RentalPayment | null>(null);
   const [loading, setLoading] = useState(true);
+  // Échec du chargement : remplace l'écran, il n'y a rien d'autre à montrer.
   const [error, setError] = useState<string | null>(null);
+  // Refus d'une action (statut, affectation) : s'affiche en bandeau, le paiement
+  // reste à l'écran pour qu'on puisse corriger et recommencer.
+  const [actionError, setActionError] = useState<string | null>(null);
   const [showAllocateForm, setShowAllocateForm] = useState(false);
   const [isAllocating, setIsAllocating] = useState(false);
 
@@ -67,6 +72,7 @@ export const PaymentDetailPage: React.FC = () => {
     if (!tenantId || !paymentId) return;
     setLoading(true);
     setError(null);
+    setActionError(null);
     try {
       const response = await getPayment(tenantId, paymentId);
       if (response.success) {
@@ -83,14 +89,15 @@ export const PaymentDetailPage: React.FC = () => {
 
   const handleStatusChange = async (newStatus: RentalPaymentStatus) => {
     if (!tenantId || !paymentId) return;
+    setActionError(null);
     try {
       await updatePaymentStatus(tenantId, paymentId, newStatus);
       await loadPayment();
       message.success(t('Statut mis à jour avec succès'));
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || t('Erreur lors de la mise à jour du statut');
-      setError(errorMessage);
-      message.error(errorMessage);
+      // Le message de l'API dit pourquoi (« ne peut pas passer à… »), il ne doit
+      // ni être remplacé par un texte générique ni faire disparaître le paiement.
+      setActionError(err.response?.data?.message || t('Erreur lors de la mise à jour du statut'));
     }
   };
 
@@ -117,16 +124,15 @@ export const PaymentDetailPage: React.FC = () => {
   };
 
   const getStatusTag = (status: RentalPaymentStatus) => {
-    const statusMap: Record<RentalPaymentStatus, { label: string; color: string }> = {
-      PENDING: { label: t('En attente'), color: 'default' },
-      SUCCESS: { label: t('Réussi'), color: 'success' },
-      FAILED: { label: t('Échoué'), color: 'error' },
-      CANCELED: { label: t('Annulé'), color: 'default' },
-      REFUNDED: { label: t('Remboursé'), color: 'warning' },
-      PARTIALLY_REFUNDED: { label: t('Partiellement remboursé'), color: 'warning' }
+    const couleurs: Record<RentalPaymentStatus, string> = {
+      PENDING: 'default',
+      SUCCESS: 'success',
+      FAILED: 'error',
+      CANCELED: 'default',
+      REFUNDED: 'warning',
+      PARTIALLY_REFUNDED: 'warning'
     };
-    const config = statusMap[status] || { label: status, color: 'default' };
-    return <Tag color={config.color}>{config.label}</Tag>;
+    return <Tag color={couleurs[status] || 'default'}>{libelleStatutPaiement(status)}</Tag>;
   };
 
   const getMethodLabel = (method: string) => {
@@ -169,18 +175,15 @@ export const PaymentDetailPage: React.FC = () => {
   const handleAllocatePayment = async (data: AllocatePaymentRequest) => {
     if (!tenantId || !paymentId) return;
     setIsAllocating(true);
-    setError(null);
+    setActionError(null);
     try {
       await allocatePayment(tenantId, paymentId, data);
       setShowAllocateForm(false);
       await loadPayment();
       message.success(t('Paiement alloué avec succès'));
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || t("Erreur lors de l'allocation du paiement");
-      setError(errorMessage);
-      message.error(errorMessage);
-      throw err;
     } finally {
+      // Un refus de l'API remonte au formulaire d'affectation, qui affiche son
+      // message dans la fenêtre (restée ouverte) sans toucher à l'écran.
       setIsAllocating(false);
     }
   };
@@ -190,6 +193,8 @@ export const PaymentDetailPage: React.FC = () => {
   const toDeposit = payment?.depositMovements?.reduce((sum, m) => sum + Number(m.amount || 0), 0) || 0;
   const allocatedAmount = toInstallments + toDeposit;
   const availableAmount = (payment?.amount || 0) - allocatedAmount;
+
+  const statutsDisponibles = payment ? statutsAtteignables(payment.status) : [];
 
   if (loading) {
     return (
@@ -212,14 +217,14 @@ export const PaymentDetailPage: React.FC = () => {
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        {error && (
+        {actionError && (
           <Alert
             message={t('Erreur')}
-            description={error}
+            description={actionError}
             type="error"
             showIcon
             closable
-            onClose={() => setError(null)}
+            onClose={() => setActionError(null)}
           />
         )}
         <div className="it-toolbar">
@@ -246,17 +251,19 @@ export const PaymentDetailPage: React.FC = () => {
           </Space>
           <Select
             showSearch
-            optionFilterProp="children"
+            optionFilterProp="label"
+            aria-label={t('Statut')}
             value={payment.status}
-            disabled={!peutAffecter}
+            // Seuls les changements que l'API accepte sont proposés ; « Remboursé »
+            // est définitif, le sélecteur n'a alors plus rien à offrir.
+            disabled={!peutAffecter || statutsDisponibles.length === 0}
+            options={[payment.status, ...statutsDisponibles].map(statut => ({
+              value: statut,
+              label: libelleStatutPaiement(statut)
+            }))}
             onChange={value => demanderChangementStatut(value as RentalPaymentStatus)}
-            style={{ width: 180 }}
-          >
-            <Select.Option value="PENDING">{t('En attente')}</Select.Option>
-            <Select.Option value="SUCCESS">{t('Réussi')}</Select.Option>
-            <Select.Option value="FAILED">{t('Échoué')}</Select.Option>
-            <Select.Option value="CANCELED">{t('Annulé')}</Select.Option>
-          </Select>
+            style={{ width: 220 }}
+          />
         </div>
 
         <Row gutter={16}>
@@ -304,10 +311,11 @@ export const PaymentDetailPage: React.FC = () => {
               }
             >
               <Descriptions column={1} bordered>
+                {/* Le jour où le locataire a payé passe avant le jour de la saisie. */}
+                <Descriptions.Item label={t('Date du règlement')}>
+                  {formatDate(payment.succeeded_at ?? payment.initiated_at)}
+                </Descriptions.Item>
                 <Descriptions.Item label={t("Date d'initiation")}>{formatDate(payment.initiated_at)}</Descriptions.Item>
-                {payment.succeeded_at && (
-                  <Descriptions.Item label={t('Date de succès')}>{formatDate(payment.succeeded_at)}</Descriptions.Item>
-                )}
                 {payment.failed_at && (
                   <Descriptions.Item label={t("Date d'échec")}>{formatDate(payment.failed_at)}</Descriptions.Item>
                 )}

@@ -110,6 +110,15 @@ function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
 }
 
+/**
+ * Date du règlement : le jour où le locataire a payé, pas celui où la ligne a
+ * été saisie. `succeeded_at` la porte pour un paiement encaissé ; un paiement
+ * encore en attente n'a que sa date de saisie.
+ */
+function dateDuReglement(paiement: RentalPayment): string {
+  return dateCourte(paiement.succeeded_at ?? paiement.initiated_at);
+}
+
 export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   const { message } = App.useApp();
   const { tenantId, leaseId: paramLeaseId } = useParams<{ tenantId: string; leaseId?: string }>();
@@ -231,7 +240,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
               nomDeLaPersonne(p.renterClient?.user ?? p.lease?.primaryRenter?.user)
           }
         ]),
-    { title: t('Date'), key: 'date', render: (_, p) => dateCourte(p.initiated_at) },
+    { title: t('Date'), key: 'date', render: (_, p) => dateDuReglement(p) },
     {
       title: t('Montant'),
       key: 'montant',
@@ -373,8 +382,8 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
           return (
             <DataCard
               title={<MoneyValue value={p.amount} currency={deviseAffichee(p.currency)} />}
-              aria-label={t('Paiement du {{value}}', { value: dateCourte(p.initiated_at) })}
-              subtitle={`${dateCourte(p.initiated_at)} · ${METHOD_LABELS[p.method as RentalPaymentMethod] || p.method}`}
+              aria-label={t('Paiement du {{value}}', { value: dateDuReglement(p) })}
+              subtitle={`${dateDuReglement(p)} · ${METHOD_LABELS[p.method as RentalPaymentMethod] || p.method}`}
               status={<StatusTag status={p.status} />}
               fields={[
                 ...(reste > 0
