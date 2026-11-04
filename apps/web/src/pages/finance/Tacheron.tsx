@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { App, Button, Card, DatePicker, Input, InputNumber, Select, Space, Typography } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { App, Button, Card, DatePicker, Input, InputNumber, Select, Space, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { Dayjs } from 'dayjs';
@@ -21,6 +21,7 @@ import { CONTRACTOR_DOCUMENT_STATUS_LABELS } from '../../types/finance-contracto
 import type {
   Contractor,
   ContractorContract,
+  ContractorDocumentStatus,
   ContractorPayment,
   ProgressStatement
 } from '../../types/finance-contractors-types';
@@ -37,6 +38,9 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
+import { localizedList } from '../../i18n/localized';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -111,6 +115,32 @@ const { TextArea } = Input;
 
 const TONE_PIECE: Record<string, StatusTone> = { DRAFT: 'neutral', VALIDATED: 'success', VOIDED: 'danger' };
 
+const OPTIONS_STATUT_PIECE = localizedList(() =>
+  (Object.keys(CONTRACTOR_DOCUMENT_STATUS_LABELS) as ContractorDocumentStatus[]).map(statut => ({
+    value: statut,
+    label: CONTRACTOR_DOCUMENT_STATUS_LABELS[statut]
+  }))
+);
+
+// Marchés : champ libre sur la référence, le chantier et le poste. Constantes de module : identité stable.
+const TEXTE_MARCHES = [
+  (m: ContractorContract) => m.reference,
+  (m: ContractorContract) => m.siteLabel,
+  (m: ContractorContract) => m.costCategoryLabel
+];
+const ACCESSEURS_MARCHES = {
+  siteId: (m: ContractorContract) => m.siteId,
+  signed: (m: ContractorContract) => m.signedDate
+};
+
+// Règlements : champ libre sur « saisi par ».
+const TEXTE_REGLEMENTS = [(r: ContractorPayment) => r.createdByLabel];
+const ACCESSEURS_REGLEMENTS = {
+  status: (r: ContractorPayment) => r.status,
+  date: (r: ContractorPayment) => r.paymentDate,
+  amount: (r: ContractorPayment) => r.amount
+};
+
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
 }
@@ -120,6 +150,16 @@ export const Tacheron: React.FC = () => {
   const { tenantId, contractorId } = useParams<{ tenantId: string; contractorId: string }>();
   const queryClient = useQueryClient();
   const confirmerAction = useConfirmAction();
+
+  // Onglet actif dans l'URL (?onglet=marches|reglements) ; inconnu -> marches.
+  // Les autres paramètres sont conservés.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const onglet = searchParams.get('onglet') === 'reglements' ? 'reglements' : 'marches';
+  const changerOnglet = (cle: string) => {
+    const suivants = new URLSearchParams(searchParams);
+    suivants.set('onglet', cle);
+    setSearchParams(suivants, { replace: true });
+  };
 
   // Le contrat n'expose aucune route de détail d'un tâcheron : la fiche le
   // retrouve dans la liste (voir `findContractor`, et la rubrique
@@ -136,6 +176,8 @@ export const Tacheron: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
+  // Les marchés restent chargés au montage, quel que soit l'onglet :
+  // l'indicateur « Marchés en cours » de l'en-tête les compte.
   const {
     data: marches,
     isPending: marchesEnAttente,
@@ -156,23 +198,30 @@ export const Tacheron: React.FC = () => {
   } = useQuery({
     queryKey: detailKey('contractor-payments', tenantId, contractorId ?? ''),
     queryFn: () => listContractorPayments(tenantId as string, contractorId as string),
-    enabled: Boolean(tenantId && contractorId),
+    // Rien dans l'en-tête n'en dépend : chargés avec l'onglet Règlements.
+    enabled: Boolean(tenantId && contractorId) && onglet === 'reglements',
     staleTime: STALE_TIME.list
   });
 
   // Référentiels du formulaire « convenir d'un marché ». Le poste est exigé par
   // le contrat, jamais deviné : il est choisi ici, à la convention du marché.
+  // Aucun libellé affiché n'en dépend : chargés à l'ouverture d'un des deux
+  // sélecteurs du formulaire.
+  const [referentielsDemandes, setReferentielsDemandes] = useState(false);
+  const demanderReferentiels = (ouvert: boolean) => {
+    if (ouvert) setReferentielsDemandes(true);
+  };
   const { data: chantiers } = useQuery({
     queryKey: queryKey('construction-sites', tenantId, {}),
     queryFn: () => listConstructionSites(tenantId as string),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && referentielsDemandes,
     staleTime: STALE_TIME.reference
   });
 
   const { data: postes } = useQuery({
     queryKey: queryKey('cost-categories', tenantId, {}),
     queryFn: () => listCostCategories(tenantId as string),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && referentielsDemandes,
     staleTime: STALE_TIME.reference
   });
 
@@ -215,6 +264,57 @@ export const Tacheron: React.FC = () => {
     enabled: Boolean(tenantId && marcheConsulte),
     staleTime: STALE_TIME.list
   });
+
+  // ---------------------------------------------------------------------
+  // Recherche des marchés (`mar.*`) et des règlements (`reg.*`)
+  //
+  // Les deux listes arrivent en entier : filtrage local. Chaque tableau a son
+  // préfixe d'URL ; les hooks restent ici parce que les marchés alimentent
+  // aussi l'en-tête et le marché consulté (calculés sur la liste COMPLÈTE).
+  // Un seul onglet est monté à la fois (`destroyOnHidden`) : une seule barre.
+  // ---------------------------------------------------------------------
+
+  const optionsChantiersMarches = useMemo(() => {
+    const parSite = new Map<string, string>();
+    for (const marche of marches ?? []) parSite.set(marche.siteId, marche.siteLabel);
+    return Array.from(parSite, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [marches]);
+
+  const criteresMarches: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Référence, chantier, poste de dépense…')
+    },
+    { key: 'siteId', type: 'select', label: t('Chantier'), primary: true, options: optionsChantiersMarches },
+    { key: 'signed', type: 'dateRange', label: t('Signé le') }
+  ];
+  const marchesLocal = useLocalListSearch<ContractorContract>(marches, {
+    paramPrefix: 'mar',
+    criteria: criteresMarches,
+    text: TEXTE_MARCHES,
+    accessors: ACCESSEURS_MARCHES
+  });
+
+  const criteresReglements: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Saisi par…') },
+    { key: 'status', type: 'select', label: t('Statut'), primary: true, options: OPTIONS_STATUT_PIECE },
+    { key: 'date', type: 'dateRange', label: t('Date') },
+    { key: 'amount', type: 'numberRange', label: t('Montant'), unit: 'FCFA' }
+  ];
+  const reglementsLocal = useLocalListSearch<ContractorPayment>(reglements, {
+    paramPrefix: 'reg',
+    criteria: criteresReglements,
+    text: TEXTE_REGLEMENTS,
+    accessors: ACCESSEURS_REGLEMENTS
+  });
+
+  // Situations d'un marché (détail) : pas de barre, pagination locale.
+  const [pageSituations, setPageSituations] = useState(1);
+  const [taillePageSituations, setTaillePageSituations] = useState(20);
+  const nbSituations = situations?.length ?? 0;
+  useEffect(() => setPageSituations(1), [nbSituations, marcheConsulte?.id]);
 
   // ---------------------------------------------------------------------
   // Convenir d'un marché
@@ -604,392 +704,419 @@ export const Tacheron: React.FC = () => {
         />
       </div>
 
-      <Title level={4}>{t('Marchés')}</Title>
-      <DataView<ContractorContract>
-        export={{ filename: t('Marchés') }}
-        // Le contrat de `listContractorContracts` ne pagine pas.
-        paginated={false}
-        scrollX={1400}
-        items={marches ?? []}
-        total={(marches ?? []).length}
-        page={1}
-        pageSize={Math.max((marches ?? []).length, 1)}
-        onPageChange={() => {}}
-        loading={marchesEnAttente}
-        error={erreurMarches ? t('Impossible de charger les marchés de ce tâcheron.') : null}
-        errorCause={erreurMarches}
-        onRetry={() => refetchMarches()}
-        emptyDescription={t("Aucun marché n'a encore été convenu avec ce tâcheron.")}
-        columns={colonnesMarches}
-        rowKey={m => m.id}
-        aria-label={t('Marchés du tâcheron')}
-        renderCard={m => (
-          <DataCard
-            title={m.reference}
-            aria-label={m.reference}
-            subtitle={t('{{chantier}} — poste « {{poste}} »', {
-              chantier: m.siteLabel,
-              poste: m.costCategoryLabel
-            })}
-            status={m.isOverrun ? <StatusTag status="OVERRUN" tone="warning" label={t('Dépassement')} /> : undefined}
-            highlight={<MoneyValue value={m.agreedAmount} />}
-            fields={[
-              { label: t('Situations validées'), value: <MoneyValue value={m.statementedAmount} /> },
-              { label: t('Marché restant'), value: <MoneyValue value={m.remainingAmount} signed /> },
-              { label: t('Signé le'), value: dateCourte(m.signedDate) }
-            ]}
-            primaryAction={{ label: t('Voir les situations'), onClick: () => setMarcheChoisi(m.id) }}
-          />
-        )}
-      />
+      <Tabs
+        activeKey={onglet}
+        onChange={changerOnglet}
+        destroyOnHidden
+        items={[
+          {
+            key: 'marches',
+            label: t('Marchés'),
+            children: (
+              <>
+                <DataView<ContractorContract>
+                  export={{ filename: t('Marchés'), fetchAll: marchesLocal.exportAll }}
+                  scrollX={1400}
+                  {...marchesLocal.dataViewProps}
+                  loading={marchesEnAttente}
+                  error={erreurMarches ? t('Impossible de charger les marchés de ce tâcheron.') : null}
+                  errorCause={erreurMarches}
+                  onRetry={() => refetchMarches()}
+                  emptyDescription={t("Aucun marché n'a encore été convenu avec ce tâcheron.")}
+                  columns={colonnesMarches}
+                  rowKey={m => m.id}
+                  aria-label={t('Marchés du tâcheron')}
+                  renderCard={m => (
+                    <DataCard
+                      title={m.reference}
+                      aria-label={m.reference}
+                      subtitle={t('{{chantier}} — poste « {{poste}} »', {
+                        chantier: m.siteLabel,
+                        poste: m.costCategoryLabel
+                      })}
+                      status={
+                        m.isOverrun ? <StatusTag status="OVERRUN" tone="warning" label={t('Dépassement')} /> : undefined
+                      }
+                      highlight={<MoneyValue value={m.agreedAmount} />}
+                      fields={[
+                        { label: t('Situations validées'), value: <MoneyValue value={m.statementedAmount} /> },
+                        { label: t('Marché restant'), value: <MoneyValue value={m.remainingAmount} signed /> },
+                        { label: t('Signé le'), value: dateCourte(m.signedDate) }
+                      ]}
+                      primaryAction={{ label: t('Voir les situations'), onClick: () => setMarcheChoisi(m.id) }}
+                    />
+                  )}
+                />
 
-      <Card style={{ marginTop: 'var(--space-4)' }}>
-        <Title level={5} style={{ marginTop: 0 }}>
-          {t("Convenir d'un marché")}
-        </Title>
-        <Space wrap size="middle" align="end">
-          <div style={{ minWidth: 220 }}>
-            <div>
-              <label htmlFor="marche-chantier">{t('Chantier')}</label>
-            </div>
-            <Select
-              id="marche-chantier"
-              style={{ width: 220 }}
-              placeholder={t('Choisir un chantier')}
-              value={chantierMarche}
-              onChange={setChantierMarche}
-              showSearch
-              optionFilterProp="label"
-              options={optionsChantiers}
-              notFoundContent={t('Aucun chantier disponible')}
-            />
-            {/* Le chantier se fige ici, à la convention du marché : chaque
+                <Card style={{ marginTop: 'var(--space-4)' }}>
+                  <Title level={5} style={{ marginTop: 0 }}>
+                    {t("Convenir d'un marché")}
+                  </Title>
+                  <Space wrap size="middle" align="end">
+                    <div style={{ minWidth: 220 }}>
+                      <div>
+                        <label htmlFor="marche-chantier">{t('Chantier')}</label>
+                      </div>
+                      <Select
+                        id="marche-chantier"
+                        style={{ width: 220 }}
+                        placeholder={t('Choisir un chantier')}
+                        value={chantierMarche}
+                        onChange={setChantierMarche}
+                        onOpenChange={demanderReferentiels}
+                        showSearch
+                        optionFilterProp="label"
+                        options={optionsChantiers}
+                        notFoundContent={t('Aucun chantier disponible')}
+                      />
+                      {/* Le chantier se fige ici, à la convention du marché : chaque
                 situation qui en découlera l'hérite sans plus le choisir. Même
                 avertissement que la sortie de stock (Stock.tsx). */}
-            <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-              {t("Un chantier clos n'accepte plus d'imputation : la situation y serait refusée.")}
-            </Text>
-          </div>
-          <div style={{ minWidth: 220 }}>
-            <div>
-              <label htmlFor="marche-poste">{t('Poste de dépense')}</label>
-            </div>
-            {/* Exigé, jamais deviné : c'est ce poste qui recevra les
+                      <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
+                        {t("Un chantier clos n'accepte plus d'imputation : la situation y serait refusée.")}
+                      </Text>
+                    </div>
+                    <div style={{ minWidth: 220 }}>
+                      <div>
+                        <label htmlFor="marche-poste">{t('Poste de dépense')}</label>
+                      </div>
+                      {/* Exigé, jamais deviné : c'est ce poste qui recevra les
                 situations dans le coût du chantier (contrat gelé). */}
-            <Select
-              id="marche-poste"
-              style={{ width: 220 }}
-              placeholder={t('Choisir un poste')}
-              value={posteMarche}
-              onChange={setPosteMarche}
-              showSearch
-              optionFilterProp="label"
-              options={optionsPostes}
-              notFoundContent={t('Aucun poste de dépense disponible')}
-            />
-          </div>
-          <div>
-            <div>
-              <label htmlFor="marche-reference">{t('Référence du marché')}</label>
-            </div>
-            <Input
-              id="marche-reference"
-              style={{ width: 220 }}
-              value={referenceMarche}
-              onChange={event => setReferenceMarche(event.target.value)}
-              placeholder={t('Ex. MAR-2026-014')}
-            />
-          </div>
-          <div>
-            <div>
-              <label htmlFor="marche-montant">{t('Montant convenu')}</label>
-            </div>
-            <InputNumber
-              id="marche-montant"
-              min={0}
-              style={{ width: 180 }}
-              value={montantMarche ?? undefined}
-              onChange={value => setMontantMarche((value as number | null) ?? null)}
-              {...montantSaisiProps}
-            />
-          </div>
-          <div>
-            <div>
-              <label htmlFor="marche-date">{t('Date de signature')}</label>
-            </div>
-            <DatePicker
-              id="marche-date"
-              format="DD/MM/YYYY"
-              value={dateSignature}
-              onChange={v => setDateSignature(v ?? dayjs())}
-            />
-          </div>
-          <Button type="primary" loading={marcheEnCours} disabled={!peutConvenirMarche} onClick={convenirMarche}>
-            {t('Convenir le marché')}
-          </Button>
-        </Space>
-      </Card>
+                      <Select
+                        id="marche-poste"
+                        style={{ width: 220 }}
+                        placeholder={t('Choisir un poste')}
+                        value={posteMarche}
+                        onChange={setPosteMarche}
+                        onOpenChange={demanderReferentiels}
+                        showSearch
+                        optionFilterProp="label"
+                        options={optionsPostes}
+                        notFoundContent={t('Aucun poste de dépense disponible')}
+                      />
+                    </div>
+                    <div>
+                      <div>
+                        <label htmlFor="marche-reference">{t('Référence du marché')}</label>
+                      </div>
+                      <Input
+                        id="marche-reference"
+                        style={{ width: 220 }}
+                        value={referenceMarche}
+                        onChange={event => setReferenceMarche(event.target.value)}
+                        placeholder={t('Ex. MAR-2026-014')}
+                      />
+                    </div>
+                    <div>
+                      <div>
+                        <label htmlFor="marche-montant">{t('Montant convenu')}</label>
+                      </div>
+                      <InputNumber
+                        id="marche-montant"
+                        min={0}
+                        style={{ width: 180 }}
+                        value={montantMarche ?? undefined}
+                        onChange={value => setMontantMarche((value as number | null) ?? null)}
+                        {...montantSaisiProps}
+                      />
+                    </div>
+                    <div>
+                      <div>
+                        <label htmlFor="marche-date">{t('Date de signature')}</label>
+                      </div>
+                      <DatePicker
+                        id="marche-date"
+                        format="DD/MM/YYYY"
+                        value={dateSignature}
+                        onChange={v => setDateSignature(v ?? dayjs())}
+                      />
+                    </div>
+                    <Button
+                      type="primary"
+                      loading={marcheEnCours}
+                      disabled={!peutConvenirMarche}
+                      onClick={convenirMarche}
+                    >
+                      {t('Convenir le marché')}
+                    </Button>
+                  </Space>
+                </Card>
 
-      <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        {marcheConsulte
-          ? t("Situations d'avancement — marché « {{reference}} »", { reference: marcheConsulte.reference })
-          : t("Situations d'avancement")}
-      </Title>
+                <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
+                  {marcheConsulte
+                    ? t("Situations d'avancement — marché « {{reference}} »", { reference: marcheConsulte.reference })
+                    : t("Situations d'avancement")}
+                </Title>
 
-      {marcheConsulte ? (
-        <>
-          <Text type="secondary">
-            {t('Marché restant sur «')} {marcheConsulte.reference} » :{' '}
-            <MoneyValue value={marcheConsulte.remainingAmount} signed />
-            {marcheConsulte.isOverrun
-              ? t('— les situations validées dépassent le montant convenu. Le dépassement est enregistré, pas refusé.')
-              : t('— ce qui reste à exécuter, et non ce qu’on lui doit.')}
-          </Text>
+                {marcheConsulte ? (
+                  <>
+                    <Text type="secondary">
+                      {t('Marché restant sur «')} {marcheConsulte.reference} » :{' '}
+                      <MoneyValue value={marcheConsulte.remainingAmount} signed />
+                      {marcheConsulte.isOverrun
+                        ? t(
+                            '— les situations validées dépassent le montant convenu. Le dépassement est enregistré, pas refusé.'
+                          )
+                        : t('— ce qui reste à exécuter, et non ce qu’on lui doit.')}
+                    </Text>
 
-          <div style={{ marginTop: 'var(--space-3)' }}>
-            <DataView<ProgressStatement>
-              export={{ filename: t("Situations d'avancement du marché") }}
-              paginated={false}
-              scrollX={1000}
-              items={situations ?? []}
-              total={(situations ?? []).length}
-              page={1}
-              pageSize={Math.max((situations ?? []).length, 1)}
-              onPageChange={() => {}}
-              loading={situationsEnAttente}
-              error={erreurSituations ? t('Impossible de charger les situations de ce marché.') : null}
-              errorCause={erreurSituations}
-              onRetry={() => refetchSituations()}
-              emptyDescription={t("Aucune situation n'a encore été saisie sur ce marché.")}
-              columns={colonnesSituations}
-              rowKey={s => s.id}
-              aria-label={t("Situations d'avancement du marché")}
-              renderCard={s => (
-                <DataCard
-                  title={dateCourte(s.statementDate)}
-                  aria-label={t('Situation du {{value}}', { value: dateCourte(s.statementDate) })}
-                  subtitle={s.description}
-                  status={
-                    <StatusTag
-                      status={s.status}
-                      tone={TONE_PIECE[s.status]}
-                      label={CONTRACTOR_DOCUMENT_STATUS_LABELS[s.status]}
-                    />
-                  }
-                  highlight={<MoneyValue value={s.amount} />}
-                  fields={[{ label: t('Saisie par'), value: s.createdByLabel }]}
-                  primaryAction={
-                    s.status === 'DRAFT'
-                      ? {
-                          label: t('Valider'),
-                          onClick: () =>
-                            confirmerAction({
-                              title: t('Valider la situation du {{value}} ?', { value: dateCourte(s.statementDate) }),
-                              description: t(
-                                'Cette opération est irréversible : la situation est constatée, le coût du chantier monte du même montant, et le tâcheron devient créancier de cette somme.'
-                              ),
-                              okText: t('Confirmer la validation'),
-                              onConfirm: () => validerSituation(s)
-                            })
-                        }
-                      : undefined
-                  }
-                />
-              )}
-            />
-          </div>
+                    <div style={{ marginTop: 'var(--space-3)' }}>
+                      <DataView<ProgressStatement>
+                        export={{ filename: t("Situations d'avancement du marché") }}
+                        scrollX={1000}
+                        items={(situations ?? []).slice(
+                          (pageSituations - 1) * taillePageSituations,
+                          pageSituations * taillePageSituations
+                        )}
+                        total={(situations ?? []).length}
+                        page={pageSituations}
+                        pageSize={taillePageSituations}
+                        onPageChange={(page, taille) => {
+                          setPageSituations(page);
+                          setTaillePageSituations(taille);
+                        }}
+                        loading={situationsEnAttente}
+                        error={erreurSituations ? t('Impossible de charger les situations de ce marché.') : null}
+                        errorCause={erreurSituations}
+                        onRetry={() => refetchSituations()}
+                        emptyDescription={t("Aucune situation n'a encore été saisie sur ce marché.")}
+                        columns={colonnesSituations}
+                        rowKey={s => s.id}
+                        aria-label={t("Situations d'avancement du marché")}
+                        renderCard={s => (
+                          <DataCard
+                            title={dateCourte(s.statementDate)}
+                            aria-label={t('Situation du {{value}}', { value: dateCourte(s.statementDate) })}
+                            subtitle={s.description}
+                            status={
+                              <StatusTag
+                                status={s.status}
+                                tone={TONE_PIECE[s.status]}
+                                label={CONTRACTOR_DOCUMENT_STATUS_LABELS[s.status]}
+                              />
+                            }
+                            highlight={<MoneyValue value={s.amount} />}
+                            fields={[{ label: t('Saisie par'), value: s.createdByLabel }]}
+                            primaryAction={
+                              s.status === 'DRAFT'
+                                ? {
+                                    label: t('Valider'),
+                                    onClick: () =>
+                                      confirmerAction({
+                                        title: t('Valider la situation du {{value}} ?', {
+                                          value: dateCourte(s.statementDate)
+                                        }),
+                                        description: t(
+                                          'Cette opération est irréversible : la situation est constatée, le coût du chantier monte du même montant, et le tâcheron devient créancier de cette somme.'
+                                        ),
+                                        okText: t('Confirmer la validation'),
+                                        onConfirm: () => validerSituation(s)
+                                      })
+                                  }
+                                : undefined
+                            }
+                          />
+                        )}
+                      />
+                    </div>
 
-          <Card style={{ marginTop: 'var(--space-4)' }}>
-            <Title level={5} style={{ marginTop: 0 }}>
-              {t('Saisir une situation')}
-            </Title>
-            <Space wrap size="middle" align="end">
-              <div>
-                <div>
-                  <label htmlFor="situation-date">{t('Date de la situation')}</label>
-                </div>
-                <DatePicker
-                  id="situation-date"
-                  format="DD/MM/YYYY"
-                  value={dateSituation}
-                  onChange={v => setDateSituation(v ?? dayjs())}
-                />
-              </div>
-              <div>
-                <div>
-                  <label htmlFor="situation-montant">{t('Montant de la situation')}</label>
-                </div>
-                {/* Aucune borne haute : un dépassement de marché est accepté
+                    <Card style={{ marginTop: 'var(--space-4)' }}>
+                      <Title level={5} style={{ marginTop: 0 }}>
+                        {t('Saisir une situation')}
+                      </Title>
+                      <Space wrap size="middle" align="end">
+                        <div>
+                          <div>
+                            <label htmlFor="situation-date">{t('Date de la situation')}</label>
+                          </div>
+                          <DatePicker
+                            id="situation-date"
+                            format="DD/MM/YYYY"
+                            value={dateSituation}
+                            onChange={v => setDateSituation(v ?? dayjs())}
+                          />
+                        </div>
+                        <div>
+                          <div>
+                            <label htmlFor="situation-montant">{t('Montant de la situation')}</label>
+                          </div>
+                          {/* Aucune borne haute : un dépassement de marché est accepté
                     par le serveur, et le refuser ici empêcherait d'enregistrer
                     un travail réellement fait. */}
-                <InputNumber
-                  id="situation-montant"
-                  min={0}
-                  style={{ width: 180 }}
-                  value={montantSituation ?? undefined}
-                  onChange={value => setMontantSituation((value as number | null) ?? null)}
-                  {...montantSaisiProps}
-                />
-              </div>
-              <div style={{ minWidth: 320 }}>
-                <div>
-                  <label htmlFor="situation-description">{t('Description des travaux')}</label>
-                </div>
-                <TextArea
-                  id="situation-description"
-                  rows={2}
-                  style={{ width: 320 }}
-                  value={descriptionSituation}
-                  onChange={event => setDescriptionSituation(event.target.value)}
-                  placeholder={t('Ex. Élévation des murs du rez-de-chaussée, 60 %')}
-                />
-              </div>
-              <Button
-                type="primary"
-                loading={situationEnCours}
-                disabled={!peutSaisirSituation}
-                onClick={saisirSituation}
-              >
-                {t('Saisir la situation')}
-              </Button>
-            </Space>
+                          <InputNumber
+                            id="situation-montant"
+                            min={0}
+                            style={{ width: 180 }}
+                            value={montantSituation ?? undefined}
+                            onChange={value => setMontantSituation((value as number | null) ?? null)}
+                            {...montantSaisiProps}
+                          />
+                        </div>
+                        <div style={{ minWidth: 320 }}>
+                          <div>
+                            <label htmlFor="situation-description">{t('Description des travaux')}</label>
+                          </div>
+                          <TextArea
+                            id="situation-description"
+                            rows={2}
+                            style={{ width: 320 }}
+                            value={descriptionSituation}
+                            onChange={event => setDescriptionSituation(event.target.value)}
+                            placeholder={t('Ex. Élévation des murs du rez-de-chaussée, 60 %')}
+                          />
+                        </div>
+                        <Button
+                          type="primary"
+                          loading={situationEnCours}
+                          disabled={!peutSaisirSituation}
+                          onClick={saisirSituation}
+                        >
+                          {t('Saisir la situation')}
+                        </Button>
+                      </Space>
 
-            {/* Dit AVANT l'envoi, pas après un 400 : le serveur refuse une
+                      {/* Dit AVANT l'envoi, pas après un 400 : le serveur refuse une
                 description vide, et une situation sans description est un
                 chiffre que personne ne saura justifier six mois plus tard. */}
-            <div style={{ marginTop: 'var(--space-2)' }}>
-              <Text type={descriptionManquante ? 'danger' : 'secondary'}>
-                {t('La description est obligatoire : sans elle, personne ne saura justifier ce montant dans six mois.')}
-              </Text>
-            </div>
+                      <div style={{ marginTop: 'var(--space-2)' }}>
+                        <Text type={descriptionManquante ? 'danger' : 'secondary'}>
+                          {t(
+                            'La description est obligatoire : sans elle, personne ne saura justifier ce montant dans six mois.'
+                          )}
+                        </Text>
+                      </div>
 
-            {situationDepasseLeMarche && (
-              <div style={{ marginTop: 'var(--space-2)' }}>
-                {/* Un avertissement, jamais un blocage. */}
-                <Text type="warning">
-                  {t(
-                    'Ce montant dépasse le marché restant. La situation sera tout de même enregistrée : le marché apparaîtra en dépassement, ce qui est une information, pas une erreur.'
+                      {situationDepasseLeMarche && (
+                        <div style={{ marginTop: 'var(--space-2)' }}>
+                          {/* Un avertissement, jamais un blocage. */}
+                          <Text type="warning">
+                            {t(
+                              'Ce montant dépasse le marché restant. La situation sera tout de même enregistrée : le marché apparaîtra en dépassement, ce qui est une information, pas une erreur.'
+                            )}
+                          </Text>
+                        </div>
+                      )}
+                    </Card>
+                  </>
+                ) : (
+                  <StateBlock
+                    variant="empty"
+                    description={t(
+                      "Convenez d'abord un marché : les situations d'avancement se rattachent à un marché, jamais au tâcheron seul."
+                    )}
+                  />
+                )}
+              </>
+            )
+          },
+          {
+            key: 'reglements',
+            label: t('Règlements'),
+            children: (
+              <>
+                <DataView<ContractorPayment>
+                  export={{ filename: t('Règlements'), fetchAll: reglementsLocal.exportAll }}
+                  scrollX={900}
+                  {...reglementsLocal.dataViewProps}
+                  loading={reglementsEnAttente}
+                  error={erreurReglements ? t('Impossible de charger les règlements de ce tâcheron.') : null}
+                  errorCause={erreurReglements}
+                  onRetry={() => refetchReglements()}
+                  emptyDescription={t("Aucun règlement n'a encore été enregistré pour ce tâcheron.")}
+                  columns={colonnesReglements}
+                  rowKey={r => r.id}
+                  aria-label={t('Règlements du tâcheron')}
+                  renderCard={r => (
+                    <DataCard
+                      title={dateCourte(r.paymentDate)}
+                      aria-label={t('Règlement du {{value}}', { value: dateCourte(r.paymentDate) })}
+                      status={
+                        <StatusTag
+                          status={r.status}
+                          tone={TONE_PIECE[r.status]}
+                          label={CONTRACTOR_DOCUMENT_STATUS_LABELS[r.status]}
+                        />
+                      }
+                      highlight={<MoneyValue value={r.amount} />}
+                      fields={[{ label: t('Saisi par'), value: r.createdByLabel }]}
+                      primaryAction={
+                        r.status === 'DRAFT'
+                          ? {
+                              label: t('Valider'),
+                              onClick: () =>
+                                confirmerAction({
+                                  title: t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) }),
+                                  description: t(
+                                    "Cette opération est irréversible : la somme sort de la caisse et vient en diminution de ce qu'on doit au tâcheron."
+                                  ),
+                                  okText: t('Confirmer la validation'),
+                                  onConfirm: () => validerReglement(r)
+                                })
+                            }
+                          : undefined
+                      }
+                    />
                   )}
-                </Text>
-              </div>
-            )}
-          </Card>
-        </>
-      ) : (
-        <StateBlock
-          variant="empty"
-          description={t(
-            "Convenez d'abord un marché : les situations d'avancement se rattachent à un marché, jamais au tâcheron seul."
-          )}
-        />
-      )}
+                />
 
-      <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        {t('Règlements')}
-      </Title>
-      <DataView<ContractorPayment>
-        export={{ filename: t('Règlements') }}
-        paginated={false}
-        scrollX={900}
-        items={reglements ?? []}
-        total={(reglements ?? []).length}
-        page={1}
-        pageSize={Math.max((reglements ?? []).length, 1)}
-        onPageChange={() => {}}
-        loading={reglementsEnAttente}
-        error={erreurReglements ? t('Impossible de charger les règlements de ce tâcheron.') : null}
-        errorCause={erreurReglements}
-        onRetry={() => refetchReglements()}
-        emptyDescription={t("Aucun règlement n'a encore été enregistré pour ce tâcheron.")}
-        columns={colonnesReglements}
-        rowKey={r => r.id}
-        aria-label={t('Règlements du tâcheron')}
-        renderCard={r => (
-          <DataCard
-            title={dateCourte(r.paymentDate)}
-            aria-label={t('Règlement du {{value}}', { value: dateCourte(r.paymentDate) })}
-            status={
-              <StatusTag
-                status={r.status}
-                tone={TONE_PIECE[r.status]}
-                label={CONTRACTOR_DOCUMENT_STATUS_LABELS[r.status]}
-              />
-            }
-            highlight={<MoneyValue value={r.amount} />}
-            fields={[{ label: t('Saisi par'), value: r.createdByLabel }]}
-            primaryAction={
-              r.status === 'DRAFT'
-                ? {
-                    label: t('Valider'),
-                    onClick: () =>
-                      confirmerAction({
-                        title: t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) }),
-                        description: t(
-                          "Cette opération est irréversible : la somme sort de la caisse et vient en diminution de ce qu'on doit au tâcheron."
-                        ),
-                        okText: t('Confirmer la validation'),
-                        onConfirm: () => validerReglement(r)
-                      })
-                  }
-                : undefined
-            }
-          />
-        )}
-      />
-
-      <Card style={{ marginTop: 'var(--space-4)' }}>
-        <Title level={5} style={{ marginTop: 0 }}>
-          {t('Enregistrer un règlement')}
-        </Title>
-        <Space wrap size="middle" align="end">
-          <div>
-            <div>
-              <label htmlFor="reglement-date">{t('Date du règlement')}</label>
-            </div>
-            <DatePicker
-              id="reglement-date"
-              format="DD/MM/YYYY"
-              value={dateReglement}
-              onChange={v => setDateReglement(v ?? dayjs())}
-            />
-          </div>
-          <div>
-            <div>
-              <label htmlFor="reglement-montant">{t('Montant du règlement')}</label>
-            </div>
-            {/* Aucune borne haute non plus : un règlement supérieur à ce qu'on
+                <Card style={{ marginTop: 'var(--space-4)' }}>
+                  <Title level={5} style={{ marginTop: 0 }}>
+                    {t('Enregistrer un règlement')}
+                  </Title>
+                  <Space wrap size="middle" align="end">
+                    <div>
+                      <div>
+                        <label htmlFor="reglement-date">{t('Date du règlement')}</label>
+                      </div>
+                      <DatePicker
+                        id="reglement-date"
+                        format="DD/MM/YYYY"
+                        value={dateReglement}
+                        onChange={v => setDateReglement(v ?? dayjs())}
+                      />
+                    </div>
+                    <div>
+                      <div>
+                        <label htmlFor="reglement-montant">{t('Montant du règlement')}</label>
+                      </div>
+                      {/* Aucune borne haute non plus : un règlement supérieur à ce qu'on
                 doit est un acompte, que le contrat prévoit explicitement. */}
-            <InputNumber
-              id="reglement-montant"
-              min={0}
-              style={{ width: 180 }}
-              value={montantReglement ?? undefined}
-              onChange={value => setMontantReglement((value as number | null) ?? null)}
-              {...montantSaisiProps}
-            />
-          </div>
-          <Button
-            type="primary"
-            loading={reglementEnCours}
-            disabled={!peutEnregistrerReglement}
-            onClick={enregistrerReglement}
-          >
-            {t('Enregistrer le règlement')}
-          </Button>
-        </Space>
+                      <InputNumber
+                        id="reglement-montant"
+                        min={0}
+                        style={{ width: 180 }}
+                        value={montantReglement ?? undefined}
+                        onChange={value => setMontantReglement((value as number | null) ?? null)}
+                        {...montantSaisiProps}
+                      />
+                    </div>
+                    <Button
+                      type="primary"
+                      loading={reglementEnCours}
+                      disabled={!peutEnregistrerReglement}
+                      onClick={enregistrerReglement}
+                    >
+                      {t('Enregistrer le règlement')}
+                    </Button>
+                  </Space>
 
-        {reglementDepasseCeQuOnDoit && (
-          <div style={{ marginTop: 'var(--space-2)' }}>
-            {/* Averti, jamais bloqué : c'est un acompte, et le contrat le
+                  {reglementDepasseCeQuOnDoit && (
+                    <div style={{ marginTop: 'var(--space-2)' }}>
+                      {/* Averti, jamais bloqué : c'est un acompte, et le contrat le
                 prévoit. */}
-            <Text type="warning">
-              {t(
-                "Ce règlement dépasse ce qu'on lui doit aujourd'hui. Il sera enregistré comme une avance, que ses prochaines situations validées résorberont."
-              )}
-            </Text>
-          </div>
-        )}
-      </Card>
+                      <Text type="warning">
+                        {t(
+                          "Ce règlement dépasse ce qu'on lui doit aujourd'hui. Il sera enregistré comme une avance, que ses prochaines situations validées résorberont."
+                        )}
+                      </Text>
+                    </div>
+                  )}
+                </Card>
+              </>
+            )
+          }
+        ]}
+      />
     </>
   );
 };

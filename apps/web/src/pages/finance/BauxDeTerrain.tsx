@@ -10,6 +10,8 @@ import { listCostCategories } from '../../services/finance-lot2-service';
 import type { LandLease } from '../../types/finance-lot4-types';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatusTag } from '../../components/primitives';
 import { t } from '../../i18n/t';
 
@@ -18,9 +20,11 @@ import { t } from '../../i18n/t';
  * (`specs/019-finance-baux-terrain/data-model.md` §5).
  *
  * Construit sur le même modèle que `pages/finance/Chantiers.tsx` : mêmes
- * primitives, une seule modale de création, un `<DataView>` non paginé
- * puisque le contrat de `listLandLeases` rend l'ensemble des baux du tenant
- * (au plus quelques dizaines, comme les chantiers).
+ * primitives, une seule modale de création. Le contrat de `listLandLeases`
+ * rend l'ensemble des baux du tenant (au plus quelques dizaines, comme les
+ * chantiers) : la recherche (champ libre, statut, poste) et la pagination
+ * (20 par page) sont locales (`useLocalListSearch`), l'export reprend toute la
+ * liste filtrée.
  *
  * **Ce que cette liste rend visible en un coup d'œil.** Chaque bail affiche
  * son loyer annuel, sa mensualité (calculée par le serveur, jamais divisée
@@ -39,6 +43,20 @@ import { t } from '../../i18n/t';
  * produire aucune imputation. Le référentiel des postes est celui du lot 2
  * (`listCostCategories`), repris tel quel plutôt que redéfini ici.
  */
+
+// Champ libre : bailleur, terrain, poste et chantiers rattachés, tels qu'affichés.
+const TEXTE_RECHERCHE = [
+  (b: LandLease) => b.landlordName,
+  (b: LandLease) => b.landLabel,
+  (b: LandLease) => b.costCategoryLabel,
+  (b: LandLease) => b.sites.map(s => s.siteLabel)
+];
+
+// Valeur lue par les critères non textuels, par clé de critère.
+const ACCESSEURS = {
+  actif: (b: LandLease) => b.isActive,
+  poste: (b: LandLease) => b.costCategoryId
+};
 
 /**
  * Traduit le solde du compte de tiers en « ce qu'il reste à consommer ».
@@ -102,6 +120,38 @@ export const BauxDeTerrain: React.FC = () => {
   );
 
   const baux = data ?? [];
+
+  // Postes réellement portés par les baux : le filtre ne propose que ceux-là.
+  const postesDesBaux = useMemo(() => {
+    const parId = new Map<string, string>();
+    for (const b of data ?? []) if (!parId.has(b.costCategoryId)) parId.set(b.costCategoryId, b.costCategoryLabel);
+    return Array.from(parId, ([value, label]) => ({ value, label }));
+  }, [data]);
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Bailleur, terrain, poste, chantier…')
+    },
+    {
+      key: 'actif',
+      type: 'boolean',
+      label: t('Statut'),
+      primary: true,
+      tristate: true,
+      trueLabel: t('Actif'),
+      falseLabel: t('Terminé')
+    },
+    { key: 'poste', type: 'select', label: t('Poste de dépense'), options: postesDesBaux }
+  ];
+  const local = useLocalListSearch<LandLease>(data, {
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
@@ -221,14 +271,10 @@ export const BauxDeTerrain: React.FC = () => {
       />
 
       <DataView<LandLease>
-        // Le contrat de `listLandLeases` ne pagine pas (data-model.md §5).
-        paginated={false}
+        // Le contrat de `listLandLeases` ne pagine pas (data-model.md §5) :
+        // recherche et pagination sont locales.
         scrollX={1200}
-        items={baux}
-        total={baux.length}
-        page={1}
-        pageSize={Math.max(baux.length, 1)}
-        onPageChange={() => {}}
+        {...local.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les baux de terrain.') : null}
@@ -239,7 +285,7 @@ export const BauxDeTerrain: React.FC = () => {
         columns={colonnes}
         rowKey={b => b.id}
         aria-label={t('Baux de terrain')}
-        export={{ filename: t('Baux de terrain') }}
+        export={{ filename: t('Baux de terrain'), fetchAll: local.exportAll }}
         renderCard={b => (
           <DataCard
             title={b.landLabel}

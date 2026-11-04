@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, App, Button, Checkbox, Form, Input, Modal, Select, Space, Typography } from 'antd';
+import { Alert, App, Button, Form, Input, Modal, Select, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { MenuProps } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -21,6 +21,8 @@ import {
 } from '../../components/primitives';
 import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -41,6 +43,21 @@ const { Text } = Typography;
  */
 
 const TAKERS_ENTITY = 'stock-takers';
+
+// La liste du carnet arrive en entier (actifs et désactivés) : tout le filtrage est local.
+const FILTRES_CARNET = { onlyActive: false };
+
+// Champ libre : nom, équipe ou entreprise, téléphone, personne liée.
+const TEXTE_RECHERCHE = [
+  (taker: StockTakerView) => taker.fullName,
+  (taker: StockTakerView) => taker.teamOrCompany,
+  (taker: StockTakerView) => taker.phone,
+  (taker: StockTakerView) => taker.linkedPersonLabel
+];
+
+const ACCESSEURS = {
+  actif: (taker: StockTakerView) => taker.isActive
+};
 
 interface ErreurServeur {
   status?: number;
@@ -288,27 +305,48 @@ const CarnetDesPreneurs: React.FC<CarnetProps> = ({ tenantId, canManage, people 
   const queryClient = useQueryClient();
   const confirmer = useConfirmAction();
 
-  const [saisie, setSaisie] = useState('');
-  const [recherche, setRecherche] = useState('');
-  const [avecDesactives, setAvecDesactives] = useState(false);
   /** Preneur mis en avant après un doublon refusé (« Voir ce preneur »). */
   const [focus, setFocus] = useState<string | null>(null);
   const [creation, setCreation] = useState(false);
   const [correction, setCorrection] = useState<StockTakerView | null>(null);
   const [enCours, setEnCours] = useState<string | null>(null);
 
-  const filtres = { onlyActive: avecDesactives ? false : undefined, search: recherche || undefined };
   const liste = useQuery({
-    queryKey: queryKey(TAKERS_ENTITY, tenantId, filtres),
-    queryFn: () => listStockTakers(tenantId, filtres),
+    queryKey: queryKey(TAKERS_ENTITY, tenantId, FILTRES_CARNET),
+    queryFn: () => listStockTakers(tenantId, FILTRES_CARNET),
     staleTime: STALE_TIME.list,
     placeholderData: previous => previous
   });
 
+  // « Voir ce preneur » restreint d'abord la liste ; la recherche locale s'applique ensuite.
   const preneurs = useMemo(() => {
     const tous = liste.data ?? [];
     return focus ? tous.filter(taker => taker.id === focus) : tous;
   }, [liste.data, focus]);
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Nom, équipe, téléphone, personne liée…')
+    },
+    {
+      key: 'actif',
+      type: 'boolean',
+      label: t('Statut'),
+      primary: true,
+      tristate: true,
+      trueLabel: t('Actif'),
+      falseLabel: t('Désactivé')
+    }
+  ];
+  const local = useLocalListSearch<StockTakerView>(preneurs, {
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   /** Après une écriture : le carnet ET le contexte terrain (qui porte les preneurs). */
   const recharger = async () => {
@@ -422,8 +460,6 @@ const CarnetDesPreneurs: React.FC<CarnetProps> = ({ tenantId, canManage, people 
     );
   };
 
-  const filtre = Boolean(recherche) || avecDesactives || Boolean(focus);
-
   return (
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
       <Alert
@@ -436,24 +472,6 @@ const CarnetDesPreneurs: React.FC<CarnetProps> = ({ tenantId, canManage, people 
 
       <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
         <Space wrap>
-          <Input.Search
-            allowClear
-            value={saisie}
-            onChange={event => {
-              setSaisie(event.target.value);
-              if (!event.target.value) setRecherche('');
-            }}
-            onSearch={value => {
-              setFocus(null);
-              setRecherche(value.trim());
-            }}
-            placeholder={t('Rechercher un nom ou une équipe')}
-            aria-label={t('Rechercher un nom ou une équipe')}
-            style={{ minWidth: 240 }}
-          />
-          <Checkbox checked={avecDesactives} onChange={event => setAvecDesactives(event.target.checked)}>
-            {t('Afficher les preneurs désactivés')}
-          </Checkbox>
           {focus ? (
             <Button type="link" onClick={() => setFocus(null)}>
               {t('Afficher tout le carnet')}
@@ -469,23 +487,16 @@ const CarnetDesPreneurs: React.FC<CarnetProps> = ({ tenantId, canManage, people 
 
       <DataView<StockTakerView>
         aria-label={t('Carnet des preneurs')}
-        export={{ filename: t('Carnet des preneurs') }}
-        items={preneurs}
-        total={preneurs.length}
-        page={1}
-        pageSize={Math.max(preneurs.length, 1)}
-        paginated={false}
-        onPageChange={() => undefined}
+        {...local.dataViewProps}
+        export={{ filename: t('Carnet des preneurs'), fetchAll: local.exportAll }}
         loading={liste.isLoading}
         isReloading={liste.isFetching && !liste.isLoading}
         error={liste.error ? lireErreur(liste.error).message || t('Le carnet n’a pas pu être chargé.') : null}
         errorCause={liste.error}
         onRetry={() => void liste.refetch()}
-        isFiltered={filtre}
+        isFiltered={local.isFiltered || Boolean(focus)}
         onClearFilters={() => {
-          setSaisie('');
-          setRecherche('');
-          setAvecDesactives(false);
+          local.clear();
           setFocus(null);
         }}
         emptyDescription={t(
@@ -516,8 +527,7 @@ const CarnetDesPreneurs: React.FC<CarnetProps> = ({ tenantId, canManage, people 
           onDuplicate={existingTakerId => {
             // « Voir ce preneur » : le carnet se restreint au preneur existant.
             setCreation(false);
-            setSaisie('');
-            setRecherche('');
+            local.clear();
             setFocus(existingTakerId);
           }}
           onCancel={() => setCreation(false)}

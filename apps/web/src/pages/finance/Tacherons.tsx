@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { App, Button, Checkbox, Input, Modal, Space, Typography } from 'antd';
+import { App, Button, Input, Modal, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -8,6 +8,8 @@ import { createContractor, listContractors } from '../../services/finance-contra
 import type { Contractor } from '../../types/finance-contractors-types';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, DataView, DataCard, MoneyValue, StatusTag } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t as translate } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -57,6 +59,15 @@ const { Text } = Typography;
  * « crédit ».
  */
 
+// Champ libre : nom et corps de métier, tels qu'affichés. Constantes de module : identité stable.
+const TEXTE_RECHERCHE = [(c: Contractor) => c.fullName, (c: Contractor) => c.trade];
+
+// Valeur lue par les critères non textuels, par clé de critère.
+const ACCESSEURS = {
+  actifs: (c: Contractor) => c.isActive,
+  metier: (c: Contractor) => c.trade
+};
+
 /** Ce qu'on doit au tâcheron, nommé en toutes lettres et jamais recalculé. */
 function CeQuOnLuiDoit({ contractor }: { contractor: Contractor }): React.ReactElement {
   return (
@@ -77,16 +88,10 @@ export const Tacherons: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // Filtre « actifs seulement ». Décoché par défaut : un tâcheron désactivé
-  // peut rester créancier, et le masquer d'office ferait disparaître une dette.
-  const [actifsSeulement, setActifsSeulement] = useState(false);
-
   const [modalOuvert, setModalOuvert] = useState(false);
   const [creationEnCours, setCreationEnCours] = useState(false);
   const [nomComplet, setNomComplet] = useState('');
   const [metier, setMetier] = useState('');
-
-  const filtres = actifsSeulement ? { onlyActive: true } : {};
 
   const {
     data,
@@ -95,13 +100,42 @@ export const Tacherons: React.FC = () => {
     error: erreurRequete,
     refetch
   } = useQuery({
-    queryKey: queryKey('contractors', tenantId, filtres),
-    queryFn: () => listContractors(tenantId as string, actifsSeulement ? { onlyActive: true } : undefined),
+    queryKey: queryKey('contractors', tenantId, {}),
+    queryFn: () => listContractors(tenantId as string),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
   });
 
-  const tacherons = data ?? [];
+  const tacherons = useMemo(() => data ?? [], [data]);
+
+  // Corps de métier présents dans la liste, triés : options du critère.
+  const optionsMetier = useMemo(
+    () =>
+      Array.from(new Set(tacherons.map(c => c.trade).filter((m): m is string => Boolean(m))))
+        .sort((a, b) => a.localeCompare(b))
+        .map(m => ({ value: m, label: m })),
+    [tacherons]
+  );
+
+  // La liste arrive en entier : tous les critères sont locaux, rien ne part au
+  // serveur. « Actifs uniquement » est décoché par défaut (donc la liste
+  // complète, comme avant) : un tâcheron désactivé peut rester créancier, et le
+  // masquer d'office ferait disparaître une dette.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: translate('Rechercher'),
+      placeholder: translate('Nom, corps de métier…')
+    },
+    { key: 'actifs', type: 'boolean', label: translate('Tâcherons actifs uniquement'), primary: true },
+    { key: 'metier', type: 'select', label: translate('Corps de métier'), options: optionsMetier }
+  ];
+  const local = useLocalListSearch<Contractor>(data, {
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   if (!tenantId) {
     return <StateBlock variant="empty" title={translate('Aucune agence sélectionnée')} />;
@@ -190,29 +224,15 @@ export const Tacherons: React.FC = () => {
         primaryAction={{ label: translate('Nouveau tâcheron'), icon: <PlusOutlined />, onClick: ouvrirCreation }}
       />
 
-      <div style={{ marginBottom: 'var(--space-3)' }}>
-        <Checkbox checked={actifsSeulement} onChange={event => setActifsSeulement(event.target.checked)}>
-          {translate('Tâcherons actifs uniquement')}
-        </Checkbox>
-      </div>
-
       <DataView<Contractor>
-        export={{ filename: translate('Tâcherons') }}
-        // Le contrat de `listContractors` ne pagine pas.
-        paginated={false}
         scrollX={1000}
-        items={tacherons}
-        total={tacherons.length}
-        page={1}
-        pageSize={Math.max(tacherons.length, 1)}
-        onPageChange={() => {}}
+        {...local.dataViewProps}
+        export={{ filename: translate('Tâcherons'), fetchAll: local.exportAll }}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? translate('Impossible de charger les tâcherons.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={actifsSeulement}
-        onClearFilters={() => setActifsSeulement(false)}
         emptyDescription={translate("Aucun tâcheron n'est encore enregistré.")}
         emptyAction={{ label: translate('Nouveau tâcheron'), onClick: ouvrirCreation }}
         columns={colonnes}

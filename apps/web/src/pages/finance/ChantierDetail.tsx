@@ -1,6 +1,6 @@
-import React from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Typography } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Button, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
 import { getSiteDetail } from '../../services/finance-lot2-service';
@@ -8,6 +8,9 @@ import { SITE_STATUS_LABELS } from '../../types/finance-lot2-types';
 import { libelleNatureImputation } from '../../types/finance-natures-imputation';
 import type { SiteAllocationLine, SiteDetail } from '../../types/finance-lot2-types';
 import { detailKey, STALE_TIME } from '../../lib/query-keys';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
+import { localizedList } from '../../i18n/localized';
 import {
   PageHeader,
   StateBlock,
@@ -20,7 +23,7 @@ import {
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 /**
  * Détail d'un chantier — récits B8 et B9 du lot 2
@@ -46,8 +49,14 @@ const { Title, Text } = Typography;
  * n'est jamais recalculé : une seule source de vérité.
  *
  * Construit sur le modèle de `Releve.tsx` : un en-tête qui porte les totaux,
- * `<DataView>` pour chaque tableau, aucune pagination puisque le contrat rend
- * le détail entier d'un chantier (au plus quelques dizaines d'imputations).
+ * `<DataView>` pour chaque tableau, en onglets (`?onglet=postes|imputations`).
+ * Le contrat rend le détail entier d'un chantier en une requête : la
+ * pagination (20 par page) est locale.
+ *
+ * **Recherche.** Les imputations ont leur barre (`useLocalListSearch`, préfixe
+ * d'URL `imp`) dans `SectionImputations`, montée avec son onglet. Les
+ * sous-totaux par poste restent sans barre : un récapitulatif de quelques
+ * lignes, déjà agrégé par le serveur.
  */
 
 function dateCourte(iso: string): string {
@@ -74,9 +83,120 @@ function libelleNature(type: SiteAllocationLine['sourceType']): string {
 
 type LignePoste = SiteDetail['byCostCategory'][number];
 
+// Natures d'une imputation (les sept sources du schéma), dans l'ordre d'usage.
+const NATURES_IMPUTATION = localizedList(() =>
+  [
+    'SUPPLIER_INVOICE',
+    'SUPPLIER_PAYMENT',
+    'CASH_VOUCHER',
+    'SALARY_NOTE',
+    'PROGRESS_STATEMENT',
+    'STOCK_ISSUE',
+    'LAND_LEASE_ACCRUAL'
+  ].map(value => ({ value, label: libelleNatureImputation(value) }))
+);
+
+// Champ libre : poste, nature (libellé affiché) et pièce d'origine.
+const TEXTE_IMPUTATIONS = [
+  (l: SiteAllocationLine) => l.costCategoryLabel,
+  (l: SiteAllocationLine) => libelleNature(l.sourceType),
+  (l: SiteAllocationLine) => l.sourceLabel
+];
+
+// Valeur lue par les critères non textuels, par clé de critère.
+const ACCESSEURS_IMPUTATIONS = {
+  nature: (l: SiteAllocationLine) => l.sourceType,
+  poste: (l: SiteAllocationLine) => l.costCategoryId,
+  date: (l: SiteAllocationLine) => l.allocationDate,
+  montant: (l: SiteAllocationLine) => l.amount
+};
+
+/**
+ * Tableau des imputations d'un chantier, avec sa barre de recherche.
+ * Monté seulement quand son onglet est affiché (`destroyOnHidden`).
+ */
+const SectionImputations: React.FC<{ allocations: SiteAllocationLine[] }> = ({ allocations }) => {
+  const postes = useMemo(() => {
+    const parId = new Map<string, string>();
+    for (const l of allocations) if (!parId.has(l.costCategoryId)) parId.set(l.costCategoryId, l.costCategoryLabel);
+    return Array.from(parId, ([value, label]) => ({ value, label }));
+  }, [allocations]);
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Poste, nature, pièce d’origine…')
+    },
+    { key: 'nature', type: 'select', label: t('Nature'), primary: true, options: NATURES_IMPUTATION },
+    { key: 'poste', type: 'select', label: t('Poste'), primary: true, options: postes },
+    { key: 'date', type: 'dateRange', label: t('Date') },
+    { key: 'montant', type: 'numberRange', label: t('Montant'), unit: 'FCFA' }
+  ];
+  const local = useLocalListSearch<SiteAllocationLine>(allocations, {
+    paramPrefix: 'imp',
+    criteria: criteres,
+    text: TEXTE_IMPUTATIONS,
+    accessors: ACCESSEURS_IMPUTATIONS
+  });
+
+  const colonnes: ColumnsType<SiteAllocationLine> = [
+    { title: t('Date'), key: 'date', width: 120, render: (_, l) => dateCourte(l.allocationDate) },
+    { title: t('Poste'), key: 'poste', render: (_, l) => l.costCategoryLabel },
+    { title: t('Nature'), key: 'nature', render: (_, l) => libelleNature(l.sourceType) },
+    // Libellé lisible, jamais l'identifiant de la pièce (l.sourceId).
+    { title: t('Pièce d’origine'), key: 'piece', render: (_, l) => l.sourceLabel },
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      exportValue: l => l.amount,
+      render: (_, l) => <MoneyValue value={l.amount} />
+    }
+  ];
+
+  return (
+    <DataView<SiteAllocationLine>
+      scrollX={880}
+      {...local.dataViewProps}
+      emptyDescription={t('Aucune imputation n’a encore été enregistrée sur ce chantier.')}
+      columns={colonnes}
+      rowKey={l => l.id}
+      aria-label={t('Imputations du chantier')}
+      export={{ filename: t('Imputations du chantier'), fetchAll: local.exportAll }}
+      renderCard={l => (
+        <DataCard
+          title={l.costCategoryLabel}
+          aria-label={`${l.costCategoryLabel}, ${dateCourte(l.allocationDate)}`}
+          subtitle={`${dateCourte(l.allocationDate)} · ${libelleNature(l.sourceType)}`}
+          highlight={<MoneyValue value={l.amount} />}
+          fields={[{ label: t('Pièce d’origine'), value: l.sourceLabel }]}
+        />
+      )}
+    />
+  );
+};
+
 export const ChantierDetail: React.FC = () => {
   const { tenantId, siteId } = useParams<{ tenantId: string; siteId: string }>();
   const navigate = useNavigate();
+
+  // Onglet actif dans l'URL (?onglet=postes|imputations) ; inconnu -> postes.
+  // Une seule requête alimente les deux : changer d'onglet n'en lance aucune.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const onglet = searchParams.get('onglet') === 'imputations' ? 'imputations' : 'postes';
+  const changerOnglet = (cle: string) => {
+    const suivants = new URLSearchParams(searchParams);
+    suivants.set('onglet', cle);
+    setSearchParams(suivants, { replace: true });
+  };
+
+  // Pagination locale (20 par page) du récapitulatif par poste : le contrat
+  // rend le détail entier. Les imputations paginent avec leur barre de recherche.
+  const [pagePostes, setPagePostes] = useState(1);
+  const [taillePagePostes, setTaillePagePostes] = useState(20);
 
   const {
     data,
@@ -90,6 +210,9 @@ export const ChantierDetail: React.FC = () => {
     enabled: Boolean(tenantId && siteId),
     staleTime: STALE_TIME.list
   });
+
+  const nbPostes = data?.byCostCategory.length;
+  useEffect(() => setPagePostes(1), [nbPostes]);
 
   if (!tenantId || !siteId) {
     return <StateBlock variant="empty" title={t('Aucun chantier sélectionné')} />;
@@ -127,21 +250,6 @@ export const ChantierDetail: React.FC = () => {
       align: 'end',
       exportValue: p => p.amount,
       render: (_, p) => <MoneyValue value={p.amount} />
-    }
-  ];
-
-  const colonnesImputations: ColumnsType<SiteAllocationLine> = [
-    { title: t('Date'), key: 'date', width: 120, render: (_, l) => dateCourte(l.allocationDate) },
-    { title: t('Poste'), key: 'poste', render: (_, l) => l.costCategoryLabel },
-    { title: t('Nature'), key: 'nature', render: (_, l) => libelleNature(l.sourceType) },
-    // Libellé lisible, jamais l'identifiant de la pièce (l.sourceId).
-    { title: t('Pièce d’origine'), key: 'piece', render: (_, l) => l.sourceLabel },
-    {
-      title: t('Montant'),
-      key: 'montant',
-      align: 'end',
-      exportValue: l => l.amount,
-      render: (_, l) => <MoneyValue value={l.amount} />
     }
   ];
 
@@ -221,47 +329,44 @@ export const ChantierDetail: React.FC = () => {
         />
       </div>
 
-      <Title level={4}>{t('Sous-totaux par poste')}</Title>
-      <DataView<LignePoste>
-        paginated={false}
-        items={byCostCategory}
-        total={byCostCategory.length}
-        page={1}
-        pageSize={Math.max(byCostCategory.length, 1)}
-        onPageChange={() => {}}
-        emptyDescription={t('Aucune imputation n’a encore été enregistrée sur ce chantier.')}
-        columns={colonnesPostes}
-        rowKey={p => p.costCategoryId}
-        aria-label={t('Sous-totaux par poste')}
-        export={{ filename: t('Sous-totaux par poste') }}
-        renderCard={p => <DataCard title={p.label} aria-label={p.label} highlight={<MoneyValue value={p.amount} />} />}
-      />
-
-      <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        {t('Imputations')}
-      </Title>
-      <DataView<SiteAllocationLine>
-        paginated={false}
-        scrollX={880}
-        items={allocations}
-        total={allocations.length}
-        page={1}
-        pageSize={Math.max(allocations.length, 1)}
-        onPageChange={() => {}}
-        emptyDescription={t('Aucune imputation n’a encore été enregistrée sur ce chantier.')}
-        columns={colonnesImputations}
-        rowKey={l => l.id}
-        aria-label={t('Imputations du chantier')}
-        export={{ filename: t('Imputations du chantier') }}
-        renderCard={l => (
-          <DataCard
-            title={l.costCategoryLabel}
-            aria-label={`${l.costCategoryLabel}, ${dateCourte(l.allocationDate)}`}
-            subtitle={`${dateCourte(l.allocationDate)} · ${libelleNature(l.sourceType)}`}
-            highlight={<MoneyValue value={l.amount} />}
-            fields={[{ label: t('Pièce d’origine'), value: l.sourceLabel }]}
-          />
-        )}
+      <Tabs
+        activeKey={onglet}
+        onChange={changerOnglet}
+        destroyOnHidden
+        items={[
+          {
+            key: 'postes',
+            label: t('Sous-totaux par poste'),
+            children: (
+              <DataView<LignePoste>
+                items={byCostCategory.slice((pagePostes - 1) * taillePagePostes, pagePostes * taillePagePostes)}
+                total={byCostCategory.length}
+                page={pagePostes}
+                pageSize={taillePagePostes}
+                onPageChange={(p, taille) => {
+                  setPagePostes(taille !== taillePagePostes ? 1 : p);
+                  setTaillePagePostes(taille);
+                }}
+                emptyDescription={t('Aucune imputation n’a encore été enregistrée sur ce chantier.')}
+                columns={colonnesPostes}
+                rowKey={p => p.costCategoryId}
+                aria-label={t('Sous-totaux par poste')}
+                export={{
+                  filename: t('Sous-totaux par poste'),
+                  fetchAll: async () => ({ items: byCostCategory, truncated: false })
+                }}
+                renderCard={p => (
+                  <DataCard title={p.label} aria-label={p.label} highlight={<MoneyValue value={p.amount} />} />
+                )}
+              />
+            )
+          },
+          {
+            key: 'imputations',
+            label: t('Imputations'),
+            children: <SectionImputations allocations={allocations} />
+          }
+        ]}
       />
     </>
   );

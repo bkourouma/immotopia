@@ -21,6 +21,8 @@ import {
   StatusTag
 } from '../../components/primitives';
 import { StockQuantityCell } from '../../components/finance/stock/StockQuantityCell';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -167,6 +169,17 @@ function quantite(valeur: number, unite: string): string {
   return unite ? `${nombre} ${unite}` : nombre;
 }
 
+// Champ libre : référence et désignation de l'article.
+const TEXTE_RECHERCHE = [
+  (ligne: SiteStockReconciliationLine) => ligne.itemReference,
+  (ligne: SiteStockReconciliationLine) => ligne.itemLabel
+];
+
+// « Restant non nul » : lu dans la ligne, sans calcul nouveau. Un restant masqué (comptage en cours) n'y figure pas.
+const ACCESSEURS = {
+  restant: (ligne: SiteStockReconciliationLine) => ligne.remainingQuantity !== null && ligne.remainingQuantity !== 0
+};
+
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
 }
@@ -232,6 +245,23 @@ export const StockChantier: React.FC = () => {
   });
 
   const rapprochement = rapprochementLu?.data;
+
+  // Les hooks passent avant les retours anticipés ci-dessous. Déclarés dans le corps : libellés vivants.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Référence, désignation…')
+    },
+    { key: 'restant', type: 'boolean', label: t('Restant non nul'), primary: true }
+  ];
+  const local = useLocalListSearch<SiteStockReconciliationLine>(rapprochement?.lines, {
+    paramPrefix: 'rap',
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   const invaliderTout = async () => {
     await queryClient.invalidateQueries({ queryKey: detailKey('site-stock-reconciliation', tenantId, siteId ?? '') });
@@ -687,16 +717,11 @@ export const StockChantier: React.FC = () => {
       </Paragraph>
 
       <DataView<SiteStockReconciliationLine>
-        export={{ filename: t('Articles du chantier'), columns: colonnesExport }}
         // Le contrat de `getSiteStockReconciliation` ne pagine pas : il rend le
-        // rapprochement entier d'un chantier.
-        paginated={false}
+        // rapprochement entier d'un chantier, filtré et paginé ici.
+        {...local.dataViewProps}
+        export={{ filename: t('Articles du chantier'), columns: colonnesExport, fetchAll: local.exportAll }}
         scrollX={1400}
-        items={rapprochement.lines}
-        total={rapprochement.lines.length}
-        page={1}
-        pageSize={Math.max(rapprochement.lines.length, 1)}
-        onPageChange={() => {}}
         emptyDescription={t('Aucun mouvement de stock ne concerne encore ce chantier.')}
         columns={colonnes}
         rowKey={ligne => ligne.itemId}

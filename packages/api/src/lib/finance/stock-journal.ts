@@ -33,7 +33,7 @@ import { toCsvString } from '../csv';
 import type { CsvValue } from '../csv';
 import { roundMoneyXof, roundQuantity } from './money';
 import { toAmount, toAmountOrZero } from './types';
-import { formatSlipNumber } from './stock-bons';
+import { formatSlipNumber, SLIP_PREFIX } from './stock-bons';
 import { buildStockMeta, entryLagDays, loadBlindLocationIds, maskMovementView, stockError } from './stock-controles';
 import { formatTakerLabel } from './stock-preneurs';
 import type { MovementView, PrismaLike, StockCallerContext, StockMeta, StockMovementType } from './types-040-controle';
@@ -67,6 +67,8 @@ export interface StockMovementFilters {
   createdByUserId?: string;
   /** Filtre par personne (contient, insensible à la casse) : STOCK_VALUES_VIEW. */
   requestedBy?: string;
+  /** Recherche libre (contient, insensible à la casse). Les colonnes de personne exigent STOCK_VALUES_VIEW. */
+  search?: string;
   /** Date de mouvement, borne incluse (jour UTC). */
   from?: Date;
   /** Date de mouvement, borne incluse (jour UTC). */
@@ -100,6 +102,40 @@ function startOfUtcDay(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
+/** `BS-2026-00042` ou `42` : le numéro de bon est calculé, on retrouve ses composantes. */
+function slipNumberCondition(search: string): Prisma.StockMovementWhereInput[] {
+  const full = /^(BR|BS|PVI)-(\d{4})-(\d{1,9})$/i.exec(search);
+  if (full) {
+    const prefix = full[1].toUpperCase();
+    const kind = (Object.keys(SLIP_PREFIX) as Array<keyof typeof SLIP_PREFIX>).find(key => SLIP_PREFIX[key] === prefix);
+    return kind ? [{ slip: { is: { kind, year: Number(full[2]), number: Number(full[3]) } } }] : [];
+  }
+  if (/^\d{1,9}$/.test(search)) {
+    return [{ slip: { is: { number: Number(search) } } }];
+  }
+  return [];
+}
+
+/**
+ * Recherche libre : article (référence, désignation), lieu, chantier, numéro du
+ * bon, motif, et, pour qui voit les valeurs (même réserve que les filtres par
+ * personne), preneur et demandeur. Toujours combinée en ET avec le reste.
+ */
+function buildSearchClause(search: string, includePersons: boolean): Prisma.StockMovementWhereInput {
+  const like = { contains: search, mode: 'insensitive' as const };
+  return {
+    OR: [
+      { item: { is: { reference: like } } },
+      { item: { is: { label: like } } },
+      { location: { is: { label: like } } },
+      { site: { is: { name: like } } },
+      { reason: like },
+      ...slipNumberCondition(search),
+      ...(includePersons ? [{ taker: { is: { fullName: like } } }, { requestedBy: like }] : [])
+    ]
+  };
+}
+
 /**
  * Le `where` Prisma des filtres. `null` quand aucun mouvement ne peut
  * correspondre (mouvement demandé introuvable dans l'agence) : la réponse est
@@ -108,9 +144,14 @@ function startOfUtcDay(date: Date): Date {
 export async function buildMovementWhere(
   db: PrismaLike,
   tenantId: string,
-  filters: StockMovementFilters
+  filters: StockMovementFilters,
+  options: { searchPersons?: boolean } = {}
 ): Promise<Prisma.StockMovementWhereInput | null> {
   const and: Prisma.StockMovementWhereInput[] = [];
+
+  if (filters.search) {
+    and.push(buildSearchClause(filters.search, options.searchPersons === true));
+  }
 
   if (filters.movementId) {
     const target = await db.stockMovement.findFirst({
@@ -310,7 +351,7 @@ export async function listStockMovementsPage(
   assertPersonFiltersAllowed(filters, ctx);
   const cursor = page.cursor ? decodeMovementCursor(page.cursor) : null;
   const [where, blind] = await Promise.all([
-    buildMovementWhere(prisma, tenantId, filters),
+    buildMovementWhere(prisma, tenantId, filters, { searchPersons: ctx.valuesVisible }),
     loadBlindLocationIds(prisma, tenantId, ctx)
   ]);
   if (!where) {
@@ -414,7 +455,7 @@ export async function exportStockMovementsCsv(
 ): Promise<string> {
   assertPersonFiltersAllowed(filters, ctx);
   const [where, blind] = await Promise.all([
-    buildMovementWhere(prisma, tenantId, filters),
+    buildMovementWhere(prisma, tenantId, filters, { searchPersons: ctx.valuesVisible }),
     loadBlindLocationIds(prisma, tenantId, ctx)
   ]);
 

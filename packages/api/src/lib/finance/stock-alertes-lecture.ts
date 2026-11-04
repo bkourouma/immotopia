@@ -498,6 +498,8 @@ export interface ListStockAlertsQuery {
   from?: Date;
   /** Jour UTC inclus. */
   to?: Date;
+  /** Recherche libre sur le lieu et le chantier (contient, insensible à la casse). */
+  search?: string;
   cursor?: string;
   limit: number;
 }
@@ -547,6 +549,11 @@ export async function listStockAlerts(
         ...(query.to ? { lt: new Date(startOfUtcDay(query.to).getTime() + DAY_MS) } : {})
       }
     });
+  }
+  if (query.search) {
+    // Une alerte ne stocke ni article ni texte : seuls lieu et chantier sont des colonnes cherchables.
+    const like = { contains: query.search, mode: 'insensitive' as const };
+    and.push({ OR: [{ location: { is: { label: like } } }, { site: { is: { name: like } } }] });
   }
   if (query.cursor) {
     const cursor = decodeAlertCursor(query.cursor);

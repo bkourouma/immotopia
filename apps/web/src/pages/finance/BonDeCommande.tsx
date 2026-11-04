@@ -135,6 +135,10 @@ export const BonDeCommande: React.FC = () => {
   const location = useLocation();
   const queryClient = useQueryClient();
 
+  // Lignes du bon : pas de barre de recherche (détail), mais un plafond de pagination locale.
+  const [pageLignes, setPageLignes] = useState(1);
+  const [taillePageLignes, setTaillePageLignes] = useState(50);
+
   const modeCreation = !orderId || orderId === 'nouveau';
   const chantierPreselectionne = searchParams.get('chantierId') || undefined;
 
@@ -562,6 +566,9 @@ export const BonDeCommande: React.FC = () => {
     }
   ];
 
+  // Page ramenée dans les bornes si le nombre de lignes diminue.
+  const pageLignesEffective = Math.min(pageLignes, Math.max(1, Math.ceil(bon.lines.length / taillePageLignes)));
+
   return (
     <>
       <PageHeader
@@ -656,17 +663,19 @@ export const BonDeCommande: React.FC = () => {
 
       <Title level={4}>{t('Lignes du bon')}</Title>
       <DataView<PurchaseOrder['lines'][number]>
-        paginated={false}
-        items={bon.lines}
+        items={bon.lines.slice((pageLignesEffective - 1) * taillePageLignes, pageLignesEffective * taillePageLignes)}
         total={bon.lines.length}
-        page={1}
-        pageSize={Math.max(bon.lines.length, 1)}
-        onPageChange={() => {}}
+        page={pageLignesEffective}
+        pageSize={taillePageLignes}
+        onPageChange={(page, taille) => {
+          setPageLignes(page);
+          setTaillePageLignes(taille);
+        }}
         emptyDescription={t('Ce bon ne porte encore aucune ligne.')}
         columns={colonnesLignes}
         rowKey={l => l.id}
         aria-label={t('Lignes du bon de commande')}
-        export={{ filename: t('Lignes du bon') }}
+        export={{ filename: t('Lignes du bon'), fetchAll: async () => bon.lines }}
         renderCard={l => (
           <DataCard
             title={l.label}
