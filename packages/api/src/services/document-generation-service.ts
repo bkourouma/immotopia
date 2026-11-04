@@ -215,7 +215,8 @@ export async function generateDocument(
         endDate?: Date;
       }
     | undefined,
-  actorUserId: string
+  actorUserId: string,
+  details?: { title?: string | null; description?: string | null }
 ) {
   logger.info('generateDocument: Starting document generation', {
     tenantId,
@@ -359,6 +360,9 @@ export async function generateDocument(
         installment_id: installmentId,
         payment_id: paymentId,
         document_number: documentNumber,
+        // BUG-2026-11-04-030 : titre et description saisis au formulaire.
+        title: details?.title?.trim() || null,
+        description: details?.description?.trim() || null,
         file_path: filePath,
         file_hash: fileHash,
         template_id: template.id,

@@ -93,7 +93,13 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
   const confirmAction = useConfirmAction();
   const { isDesktop } = useBreakpoint();
 
-  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS, defaultPageSize: 50 });
+  // En onglet d'un bail, l'onglet Échéances reste monté et lit la même URL : les
+  // paramètres des documents portent un préfixe (BUG-2026-11-04-031).
+  const list = useListParams<Filters>({
+    filterKeys: FILTER_KEYS,
+    defaultPageSize: 50,
+    paramPrefix: propLeaseId ? 'doc_' : ''
+  });
   const [formulaireOuvert, setFormulaireOuvert] = useState(false);
   const [telechargementEnCours, setTelechargementEnCours] = useState<string | null>(null);
 

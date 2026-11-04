@@ -831,6 +831,9 @@ export interface GenerateDocumentRequest {
   title?: string;
   description?: string;
   templateId?: string;
+  /** Période du relevé (AAAA-MM-JJ), requise pour le type STATEMENT. */
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface DocumentFilters {
@@ -882,12 +885,14 @@ export async function generateDocument(
   const docTypeMap: Record<RentalDocumentType, string> = {
     // L'API choisit le modele (habitation ou commercial) d'apres le type du bien.
     LEASE_CONTRACT: 'LEASE_CONTRACT',
-    LEASE_ADDENDUM: 'LEASE_HABITATION',
+    LEASE_ADDENDUM: 'LEASE_ADDENDUM',
     RENT_RECEIPT: 'RENT_RECEIPT',
-    RENT_QUITTANCE: 'RENT_RECEIPT',
-    DEPOSIT_RECEIPT: 'RENT_RECEIPT',
+    // Pas de générateur : envoyés tels quels, l'API les refuse par une 400 explicite
+    // (ils ne doivent plus être ramenés en silence à un reçu de loyer).
+    RENT_QUITTANCE: 'RENT_QUITTANCE',
+    DEPOSIT_RECEIPT: 'DEPOSIT_RECEIPT',
     STATEMENT: 'RENT_STATEMENT',
-    OTHER: 'RENT_RECEIPT'
+    OTHER: 'OTHER'
   };
 
   const docType = docTypeMap[data.type] || 'RENT_RECEIPT';
@@ -906,7 +911,10 @@ export async function generateDocument(
     docType,
     sourceKey,
     templateId: data.templateId,
-    installmentId: data.installmentId
+    installmentId: data.installmentId,
+    title: data.title,
+    description: data.description,
+    ...(docType === 'RENT_STATEMENT' ? { startDate: data.startDate, endDate: data.endDate } : {})
   };
 
   console.log('🔵 [rental-service] generateDocument: Sending request', {

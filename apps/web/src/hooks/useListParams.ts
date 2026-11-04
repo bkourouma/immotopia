@@ -43,6 +43,12 @@ export interface UseListParamsOptions<F extends Record<string, string>> {
   defaultPageSize?: number;
   /** Tri par défaut. Absent de l'URL tant qu'il n'est pas modifié. */
   defaultSort?: Sort | null;
+  /**
+   * Préfixe des paramètres d'URL de cette liste (`doc_` → `doc_status`,
+   * `doc_page`…). À poser quand deux listes partagent la même URL, comme les
+   * onglets d'une fiche : un onglet monté mais masqué lit toujours l'URL.
+   */
+  paramPrefix?: string;
 }
 
 export interface UseListParamsResult<F extends Record<string, string>> extends ListParams<F> {
@@ -58,9 +64,9 @@ export interface UseListParamsResult<F extends Record<string, string>> extends L
   queryParams: Record<string, string | number>;
 }
 
-const PAGE_KEY = 'page';
-const SIZE_KEY = 'limit';
-const SORT_KEY = 'sort';
+const BASE_PAGE_KEY = 'page';
+const BASE_SIZE_KEY = 'limit';
+const BASE_SORT_KEY = 'sort';
 
 function parseSort(raw: string | null): Sort | null {
   if (!raw) return null;
@@ -76,19 +82,26 @@ function formatSort(sort: Sort | null): string | null {
 export function useListParams<F extends Record<string, string>>(
   options: UseListParamsOptions<F>
 ): UseListParamsResult<F> {
-  const { filterKeys, defaultPageSize = 20, defaultSort = null } = options;
+  const { filterKeys, defaultPageSize = 20, defaultSort = null, paramPrefix = '' } = options;
   const [searchParams, setSearchParams] = useSearchParams();
+  // Avec un préfixe, les clés d'URL propres à cette liste (filtres, page, taille,
+  // tri) ne se confondent pas avec celles d'une autre liste montée dans la même
+  // page (onglets d'une fiche) ; les noms vus par l'appelant restent inchangés.
+  const PAGE_KEY = `${paramPrefix}${BASE_PAGE_KEY}`;
+  const SIZE_KEY = `${paramPrefix}${BASE_SIZE_KEY}`;
+  const SORT_KEY = `${paramPrefix}${BASE_SORT_KEY}`;
+  const urlKey = useCallback((key: string) => `${paramPrefix}${key}`, [paramPrefix]);
 
   const filters = useMemo(() => {
     const result = {} as F;
     for (const key of filterKeys) {
-      const value = searchParams.get(key);
+      const value = searchParams.get(urlKey(key));
       // Un paramètre présent mais vide vaut absent : `?q=` ne doit pas filtrer
       // sur la chaîne vide, sinon vider un champ ne ramène aucun résultat.
       if (value) (result as Record<string, string>)[key] = value;
     }
     return result;
-  }, [searchParams, filterKeys]);
+  }, [searchParams, filterKeys, urlKey]);
 
   const page = Math.max(1, Number(searchParams.get(PAGE_KEY)) || 1);
   const pageSize = Math.max(1, Number(searchParams.get(SIZE_KEY)) || defaultPageSize);
@@ -113,15 +126,15 @@ export function useListParams<F extends Record<string, string>>(
 
       setSearchParams(next, { replace: options?.replace ?? false });
     },
-    [searchParams, setSearchParams, defaultPageSize, defaultSort]
+    [searchParams, setSearchParams, defaultPageSize, defaultSort, PAGE_KEY, SIZE_KEY, SORT_KEY]
   );
 
   const setFilters = useCallback<UseListParamsResult<F>['setFilters']>(
     updates => {
       write(next => {
         for (const [key, value] of Object.entries(updates)) {
-          if (value === undefined || value === '') next.delete(key);
-          else next.set(key, value);
+          if (value === undefined || value === '') next.delete(urlKey(key));
+          else next.set(urlKey(key), value);
         }
         // Changer un filtre remet à la page 1. Sans cela, quelqu'un qui filtre
         // depuis la page 7 atterrit sur une liste vide alors que des résultats
@@ -129,21 +142,21 @@ export function useListParams<F extends Record<string, string>>(
         next.delete(PAGE_KEY);
       });
     },
-    [write]
+    [write, urlKey, PAGE_KEY]
   );
 
   const clearFilters = useCallback(() => {
     write(next => {
-      for (const key of filterKeys) next.delete(key);
+      for (const key of filterKeys) next.delete(urlKey(key));
       next.delete(PAGE_KEY);
     });
-  }, [write, filterKeys]);
+  }, [write, filterKeys, urlKey, PAGE_KEY]);
 
   const setPage = useCallback(
     (value: number) => {
       write(next => next.set(PAGE_KEY, String(Math.max(1, value))));
     },
-    [write]
+    [write, PAGE_KEY]
   );
 
   const setPageSize = useCallback(
@@ -154,7 +167,7 @@ export function useListParams<F extends Record<string, string>>(
         next.delete(PAGE_KEY);
       });
     },
-    [write]
+    [write, PAGE_KEY, SIZE_KEY]
   );
 
   const setSort = useCallback(
@@ -166,7 +179,7 @@ export function useListParams<F extends Record<string, string>>(
         next.delete(PAGE_KEY);
       });
     },
-    [write]
+    [write, PAGE_KEY, SORT_KEY]
   );
 
   const queryParams = useMemo(() => {
