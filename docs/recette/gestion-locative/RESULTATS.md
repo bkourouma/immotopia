@@ -280,3 +280,36 @@ sur baux, incidents, documents, échéances, paiements et revenus.
 réussis hors dépôt, total égal aux revenus), GL-12-060/064/065 (pas
 d'honoraires ni de TVA dans le compte du seed), GL-12-081 (date pré-remplie,
 message « Veuillez sélectionner une date » inaccessible).
+
+### 04 — États des lieux, documents, signature (Playwright, révision `34694924`, ~70 cas sur 123)
+
+Aucun cas Bloquant échoué. Envoi du **contrat de bail** en signature bloqué
+par l'environnement : l'API de recette avait la conversion Word → PDF
+désactivée (`DOCX_PDF_CONVERTER=disabled`, 503). Toute la chaîne de
+signature (jeton, code, signature, scellé, droits, isolation) a été jouée
+sur les états des lieux, qui produisent leur PDF eux-mêmes. Conversion
+activée ensuite sur l'API de recette pour rejouer la section D.
+
+| Cas                                                                                                                                                                               | Résultat        | Anomalie / remarque                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------- |
+| GL-04-001, 002, 004 à 006, 009, 010, 012, 014 à 016, 018 à 020                                                                                                                    | passé           | Modèles vide et meublé, photos JPEG/PNG/WebP, 409 sur un état finalisé, isolation                        |
+| GL-04-025, 027, 028, 031 à 038                                                                                                                                                    | passé           | Sortie : rappels d'entrée, retenues (total 475 000), compteurs                                           |
+| GL-04-046 à 052, 055, 062, 065, 067, 070                                                                                                                                          | passé           | Contrat `.docx` complet sans `{{…}}`, `-A2`, régénération, reçu, export CSV                              |
+| GL-04-072, 075, 076, 080, 082, 083, 096, 099, 100, 103, 104, 106, 108, 121, 122                                                                                                   | passé           | Signature d'état des lieux (e-mail, sur place, tracé), PDF scellé, jetons invalides, droits et isolation |
+| GL-04-011                                                                                                                                                                         | passé (écart)   | Bandeau de restauration réaffiché après « Retour » (écart annoncé par le scénario)                       |
+| GL-04-023, 064                                                                                                                                                                    | passé (écart)   | LECTEUR_A 403 dès la lecture ; COMPTABLE_A sans accès aux documents (voir H26)                           |
+| GL-04-013                                                                                                                                                                         | échoué          | BUG-2026-11-04-026 (photo vide, faux JPEG, HTML acceptés), corrigé dans 1ea65367                         |
+| GL-04-053, 054                                                                                                                                                                    | échoué          | BUG-2026-11-04-029 (types ramenés à « Reçu de loyer »), corrigé dans b8a62aae                            |
+| GL-04-056                                                                                                                                                                         | échoué          | BUG-2026-11-04-028 (Avenant = contrat complet), corrigé dans b8a62aae (H22)                              |
+| GL-04-057                                                                                                                                                                         | échoué          | BUG-2026-11-04-027 (période du relevé absente), corrigé dans b8a62aae                                    |
+| GL-04-058                                                                                                                                                                         | échoué          | BUG-2026-11-04-030 (titre et description ignorés), corrigé dans b8a62aae                                 |
+| GL-04-061                                                                                                                                                                         | échoué          | BUG-2026-11-04-031 (filtre `status` partagé entre onglets), corrigé dans b8a62aae                        |
+| GL-04-105                                                                                                                                                                         | échoué          | BUG-2026-11-04-032 (fenêtre Signatures d'un état signé réduite au 409)                                   |
+| GL-04-078, 079, 084, 085, 107, 109, 116, 119                                                                                                                                      | passé (partiel) | 429 et expirations non joués                                                                             |
+| GL-04-072, 073, 075 (contrat de bail)                                                                                                                                             | bloqué          | Conversion PDF désactivée sur l'API de recette (503), réactivée depuis                                   |
+| GL-04-003, 007, 008, 017, 021, 022, 024, 026, 029, 030, 040 à 045, 059, 060, 063, 066, 068, 069, 071, 074, 077, 081, 086 à 095, 097, 098, 101, 102, 110 à 115, 117, 118, 120, 123 | non joué        | Reprendre à GL-04-045 ; cas du prestataire externe (Yousign) non testables                               |
+
+Écarts de scénario : baux du seed déjà dotés de documents (jouer 046 et 048
+sur un bail neuf) ; nom du PDF signé
+`etat-des-lieux-d-entree-bail-<numéro>-signe.pdf` ; le premier bouton
+« Retour » du formulaire d'état des lieux ramène à la liste des baux.
