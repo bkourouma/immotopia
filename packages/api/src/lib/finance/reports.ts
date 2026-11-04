@@ -229,6 +229,12 @@ function toUtcMidnight(date: Date): number {
 export type ClientsAgingBalanceLineWithGap = ClientsAgingBalanceLine & {
   agedTotal: number;
   ledgerBalance: number;
+  /**
+   * Avance reçue et pas encore affectée à une échéance (trop-perçu). Elle
+   * pèse au crédit du grand livre mais n'est dans aucune tranche : elle est
+   * présentée à part et ne compte pas dans l'écart.
+   */
+  unallocatedAdvance: number;
   gap: number;
 };
 
@@ -239,8 +245,30 @@ export interface ClientsAgingBalanceWithGap {
   currency: string;
   /** Solde comptable (grand livre) total. */
   ledgerTotalBalance: number;
-  /** ledgerTotalBalance - totalBalance. */
+  /** Somme des avances non affectées (voir la ligne). */
+  unallocatedAdvance: number;
+  /** Écart réel : solde comptable + avances non affectées − (total âgé − à échoir). */
   gap: number;
+}
+
+/**
+ * Borne haute du grand livre pour la balance âgée.
+ *
+ * L'écran envoie un jour (`YYYY-MM-DD`), lu comme minuit UTC. Or les tranches
+ * reflètent l'état des échéances à l'instant de la requête, y compris les
+ * pénalités ajustées dans la journée, dont les mouvements portent l'heure de
+ * l'ajustement. Couper le grand livre à minuit les en exclurait : un écart
+ * fantôme apparaissait jusqu'au lendemain. Un jour entier est donc compté
+ * jusqu'à sa dernière milliseconde (les loyers futurs, datés d'un jour
+ * ultérieur, restent exclus comme avant).
+ */
+function ledgerCutoff(asOf: Date): Date {
+  const isDateOnly =
+    asOf.getUTCHours() === 0 &&
+    asOf.getUTCMinutes() === 0 &&
+    asOf.getUTCSeconds() === 0 &&
+    asOf.getUTCMilliseconds() === 0;
+  return isDateOnly ? new Date(asOf.getTime() + MS_PER_DAY - 1) : asOf;
 }
 
 export type GetClientsAgingBalanceWithGap = (
@@ -262,10 +290,45 @@ export type GetClientsAgingBalanceWithGap = (
 export const getClientsAgingBalance: GetClientsAgingBalanceWithGap = async (tenantId, filters) => {
   const asOf = filters?.asOf ?? new Date();
 
-  const base = await getClientsBalance(tenantId, { range: filters?.range, propertyId: filters?.propertyId });
+  const cutoff = ledgerCutoff(asOf);
+  const base = await getClientsBalance(tenantId, {
+    range: filters?.range,
+    propertyId: filters?.propertyId,
+    asOf: cutoff
+  });
   if (base.lines.length === 0) {
-    return { lines: [], totalBalance: 0, currency: base.currency, ledgerTotalBalance: 0, gap: 0 };
+    return {
+      lines: [],
+      totalBalance: 0,
+      currency: base.currency,
+      ledgerTotalBalance: 0,
+      unallocatedAdvance: 0,
+      gap: 0
+    };
   }
+
+  // Avances non affectées : une avance encaissée crédite le compte
+  // (`ADVANCE_RECEIVED`), chaque affectation à une échéance la reprend par un
+  // débit `ADVANCE_APPLIED`. Le reste est un trop-perçu : au grand livre, mais
+  // dans aucune échéance impayée. Même borne de date que le solde comptable.
+  const rangeEnd = buildMovementDateFilter(filters?.range)?.lte;
+  const advanceUpTo = rangeEnd && rangeEnd < cutoff ? rangeEnd : cutoff;
+  const advanceSums = await prisma.thirdPartyMovement.groupBy({
+    by: ['accountId'],
+    where: {
+      tenantId,
+      accountId: { in: base.lines.map(line => line.accountId) },
+      type: { in: ['ADVANCE_RECEIVED', 'ADVANCE_APPLIED'] },
+      movementDate: { lte: advanceUpTo }
+    },
+    _sum: { debit: true, credit: true }
+  });
+  const advanceByAccount = new Map(
+    advanceSums.map(g => [
+      g.accountId,
+      Math.max(0, roundMoney(toAmountOrZero(g._sum.credit) - toAmountOrZero(g._sum.debit)))
+    ])
+  );
 
   let leaseIdFilter: string[] | undefined;
   if (filters?.propertyId) {
@@ -340,25 +403,31 @@ export const getClientsAgingBalance: GetClientsAgingBalanceWithGap = async (tena
     const agedTotal = roundMoney(
       buckets.notYetDue + buckets.days0To30 + buckets.days30To60 + buckets.days60To90 + buckets.daysOver90
     );
+    const unallocatedAdvance = advanceByAccount.get(line.accountId) ?? 0;
     return {
       ...line,
       ...buckets,
       agedTotal,
       ledgerBalance: line.balance,
+      unallocatedAdvance,
       // Le grand livre ne compte un loyer qu'à sa date d'échéance : on
       // compare donc au solde âgé HORS « À échoir » (grandeurs comparables).
-      gap: roundMoney(line.balance - (agedTotal - buckets.notYetDue))
+      // Le trop-perçu, au crédit du grand livre mais hors des tranches, est
+      // remis du côté des tranches : il se lit à part, pas comme un écart.
+      gap: roundMoney(line.balance + unallocatedAdvance - (agedTotal - buckets.notYetDue))
     };
   });
 
   const totalBalance = roundMoney(lines.reduce((sum, line) => sum + line.agedTotal, 0));
   const totalNotYetDue = roundMoney(lines.reduce((sum, line) => sum + line.notYetDue, 0));
+  const totalAdvance = roundMoney(lines.reduce((sum, line) => sum + line.unallocatedAdvance, 0));
   return {
     lines,
     totalBalance,
     currency: base.currency,
     ledgerTotalBalance: base.totalBalance,
-    gap: roundMoney(base.totalBalance - (totalBalance - totalNotYetDue))
+    unallocatedAdvance: totalAdvance,
+    gap: roundMoney(base.totalBalance + totalAdvance - (totalBalance - totalNotYetDue))
   };
 };
 
