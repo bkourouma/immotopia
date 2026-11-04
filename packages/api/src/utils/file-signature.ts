@@ -18,6 +18,21 @@ export function detectDocumentKind(buffer: Buffer): DocumentKind | null {
   return null;
 }
 
+export type ImageKind = 'png' | 'jpg' | 'webp';
+
+/** Image JPEG, PNG ou WebP (`RIFF....WEBP`) d'après ses octets magiques, sinon `null`. */
+export function detectImageKind(buffer: Buffer): ImageKind | null {
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString('latin1') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('latin1') === 'WEBP'
+  ) {
+    return 'webp';
+  }
+  const kind = detectMandateScanKind(buffer);
+  return kind === 'png' || kind === 'jpg' ? kind : null;
+}
+
 const DECLARED_KIND: Record<string, DocumentKind> = {
   'application/pdf': 'pdf',
   'application/msword': 'doc',
