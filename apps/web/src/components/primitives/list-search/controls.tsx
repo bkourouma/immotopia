@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Button, Checkbox, DatePicker, Input, InputNumber, Select, Spin } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -156,7 +156,9 @@ function SelectControl({ criterion, value, onChange, labels, remember, compact, 
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const lastTerm = useRef('');
-  // Les écrans redéclarent leurs critères à chaque rendu : on garde la dernière.
+  // On lit toujours la dernière `loadOptions` reçue ; un changement d'identité
+  // (nouvelle agence) n'a rien à redemander, la prochaine ouverture ou
+  // recherche utilise la nouvelle fonction.
   const loadRef = useRef(criterion.loadOptions);
   loadRef.current = criterion.loadOptions;
   const rememberRef = useRef(remember);
@@ -313,13 +315,37 @@ function asRange<R>(value: SearchValue): R {
   return (value && typeof value === 'object' && !Array.isArray(value) ? value : {}) as R;
 }
 
+/** Libellé lu par les lecteurs d'écran mais invisible (équivalent de `sr-only`). */
+const HIDDEN_LABEL: React.CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  margin: -1,
+  padding: 0,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  whiteSpace: 'nowrap',
+  border: 0
+};
+
 function DateRangeControl({ criterion, value, onChange, compact, touch }: ControlOf<DateRangeCriterion>) {
   const range = asRange<DateRangeValue>(value);
   const from = range.from ? dayjs(range.from) : null;
   const to = range.to ? dayjs(range.to) : null;
+  // Chaque champ a son nom accessible : un `<label>` masqué relié par `id`.
+  const baseId = useId();
+  const startId = `${baseId}-start`;
+  const endId = `${baseId}-end`;
   return (
     <div role="group" aria-label={criterion.label} style={compact ? { minWidth: 250 } : fill}>
+      <label htmlFor={startId} style={HIDDEN_LABEL}>
+        {t('{{label}}, date de début', { label: criterion.label })}
+      </label>
+      <label htmlFor={endId} style={HIDDEN_LABEL}>
+        {t('{{label}}, date de fin', { label: criterion.label })}
+      </label>
       <DatePicker.RangePicker
+        id={{ start: startId, end: endId }}
         value={[from && from.isValid() ? from : null, to && to.isValid() ? to : null]}
         allowEmpty={[true, true]}
         allowClear
@@ -402,7 +428,7 @@ function NumberRangeControl({ criterion, value, onChange, compact, touch }: Cont
     size,
     suffix: criterion.unit,
     controls: false as const,
-    inputMode: 'numeric' as const,
+    inputMode: 'decimal' as const,
     formatter: formatInput,
     parser: parseInput,
     style: boxStyle

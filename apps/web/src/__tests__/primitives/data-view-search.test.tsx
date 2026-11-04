@@ -159,4 +159,18 @@ describe('DataView — prop search', () => {
     expect(screen.getByRole('search')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
+
+  it('recadre une page hors bornes sur la dernière page, sans état vide trompeur', () => {
+    const onPageChange = vi.fn();
+    view({ search: binding(), items: [], total: 25, page: 9, onPageChange } as never);
+    expect(onPageChange).toHaveBeenCalledWith(2, 20);
+    expect(screen.queryByText('Aucune donnée')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('ne recadre rien sans search', () => {
+    const onPageChange = vi.fn();
+    view({ items: [], total: 25, page: 9, onPageChange } as never);
+    expect(onPageChange).not.toHaveBeenCalled();
+  });
 });
