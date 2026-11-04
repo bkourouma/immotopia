@@ -1,10 +1,10 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button, Card, Select, Tag, Typography } from 'antd';
+import { Button, Card, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { DataView, MoneyValue, StateBlock } from '../../../components/primitives';
-import { useListParams } from '../../../hooks/useListParams';
+import { DataView, ListSearch, MoneyValue, StateBlock } from '../../../components/primitives';
+import { useListSearch } from '../../../hooks/useListSearch';
 import { getJournal } from '../../../services/accounting-exports-service';
 import type { JournalEntry } from '../../../services/accounting-exports-service';
 import { t } from '../../../i18n/t';
@@ -23,8 +23,6 @@ import { FiltreTexte } from './journal/FiltreTexte';
 
 const { Text } = Typography;
 
-const FILTER_KEYS = ['journal', 'account', 'q'] as const;
-type JournalFilters = { journal: string; account: string; q: string };
 const MAX_PAGE_SIZE = 100;
 
 /**
@@ -36,18 +34,35 @@ const MAX_PAGE_SIZE = 100;
 export const JournalPage: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const { from, to } = useAccountingPeriod();
-  const { page, pageSize, filters, isFiltered, setFilters, clearFilters, setPage, setPageSize } =
-    useListParams<JournalFilters>({ filterKeys: FILTER_KEYS, defaultPageSize: ACCOUNTING_PAGE_SIZE });
-  const limit = Math.min(pageSize, MAX_PAGE_SIZE);
-  const { journal = '', account = '', q = '' } = filters;
-
   const meta = useAccountingMeta(tenantId);
+  const journaux = meta.data?.journals;
+
+  const search = useListSearch({
+    defaultPageSize: ACCOUNTING_PAGE_SIZE,
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Libellé, pièce ou description') },
+      {
+        key: 'journal',
+        type: 'select',
+        label: t('Journal'),
+        primary: true,
+        // Options statiques arrivées après le premier rendu : la barre les suit (signature d'affichage du hook).
+        options: (journaux ?? []).map(j => ({ value: j.code, label: `${j.code} — ${j.label}` }))
+      },
+      // Numéro ou début de numéro : saisie libre, portée par le hook (URL, effacement, API)
+      // mais rendue hors des contrôles de la barre (voir `compteField`).
+      { key: 'account', type: 'select', label: t('Compte') }
+    ]
+  });
+  const { page, filterParams } = search;
+  const limit = Math.min(search.pageSize, MAX_PAGE_SIZE);
+
   const { exportEnCours, exporter } = useAccountingExport(tenantId);
   const [depliees, setDepliees] = useState<ReadonlySet<string>>(() => new Set());
 
   const query = useQuery({
-    queryKey: accountingQueryKey('journal', tenantId, { from, to, page, limit, journal, account, q }),
-    queryFn: () => getJournal(tenantId as string, { from, to, page, limit, journal, account, search: q }),
+    queryKey: accountingQueryKey('journal', tenantId, { from, to, page, limit, ...filterParams }),
+    queryFn: () => getJournal(tenantId as string, { from, to, page, limit, ...filterParams }),
     enabled: Boolean(tenantId),
     placeholderData: keepPreviousData
   });
@@ -128,41 +143,24 @@ export const JournalPage: React.FC = () => {
 
   if (!tenantId) return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
 
-  const exportParams = { from, to, journal, account, search: q };
-  const options = (meta.data?.journals ?? []).map(j => ({ value: j.code, label: `${j.code} — ${j.label}` }));
+  // Mêmes filtres que la liste, sans page (la période vient du cadre commun).
+  const exportParams = { from, to, ...filterParams };
+
+  // `account` n'est pas un contrôle de la barre : aucun type de critère ne convient à une
+  // seconde saisie libre (un seul `text` par barre). Elle se loge à l'extrémité de la ligne.
+  const criteresBarre = search.searchProps.criteria.filter(c => c.key !== 'account');
+  const compteField = (
+    <FiltreTexte
+      id="comptabilite-filtre-compte"
+      label={t('Compte')}
+      placeholder={t('Numéro ou début de numéro')}
+      value={typeof search.values.account === 'string' ? search.values.account : ''}
+      onCommit={valeur => search.setValues({ account: valeur })}
+    />
+  );
 
   const filtres = (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'flex-end' }}>
-      <div style={{ minWidth: 220 }}>
-        <label htmlFor="comptabilite-filtre-journal">{t('Journal')}</label>
-        <Select
-          id="comptabilite-filtre-journal"
-          style={{ width: '100%' }}
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          placeholder={t('Tous les journaux')}
-          value={journal || undefined}
-          onChange={valeur => setFilters({ journal: valeur })}
-          options={options}
-        />
-      </div>
-      <FiltreTexte
-        id="comptabilite-filtre-compte"
-        label={t('Compte')}
-        placeholder={t('Numéro ou début de numéro')}
-        value={account}
-        onCommit={valeur => setFilters({ account: valeur })}
-      />
-      <FiltreTexte
-        id="comptabilite-filtre-recherche"
-        label={t('Rechercher')}
-        placeholder={t('Libellé, pièce ou description')}
-        value={q}
-        onCommit={valeur => setFilters({ q: valeur })}
-        width={300}
-      />
-    </div>
+    <ListSearch {...search.searchProps} criteria={criteresBarre} resultCount={data?.total} extra={compteField} />
   );
 
   return (
@@ -183,13 +181,15 @@ export const JournalPage: React.FC = () => {
         total={data?.total ?? 0}
         page={page}
         pageSize={limit}
-        onPageChange={(nextPage, nextSize) => (nextSize !== limit ? setPageSize(nextSize) : setPage(nextPage))}
+        onPageChange={(nextPage, nextSize) =>
+          nextSize !== limit ? search.setPageSize(nextSize) : search.setPage(nextPage)
+        }
         loading={query.isPending}
         isReloading={query.isFetching && !query.isPending}
         error={query.isError ? t('Impossible de charger le journal.') : null}
         onRetry={() => void query.refetch()}
-        isFiltered={isFiltered}
-        onClearFilters={clearFilters}
+        isFiltered={search.isFiltered}
+        onClearFilters={search.clear}
         emptyDescription={t('Aucune écriture sur cette période.')}
         renderCard={renderCard}
         rowKey={e => e.id}

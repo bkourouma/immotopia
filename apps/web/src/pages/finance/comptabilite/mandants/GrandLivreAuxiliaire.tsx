@@ -3,14 +3,14 @@ import { useParams } from 'react-router-dom';
 import { Button, Card, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { DataView, MoneyValue, StateBlock } from '../../../../components/primitives';
-import { useListParams } from '../../../../hooks/useListParams';
+import { DataView, ListSearch, MoneyValue, StateBlock } from '../../../../components/primitives';
+import { useListSearch } from '../../../../hooks/useListSearch';
 import {
   getMandantOwnerLedger,
   getMandantOwners,
   UNASSIGNED_OWNER
 } from '../../../../services/accounting-exports-service';
-import type { MandantOwnerRow } from '../../../../services/accounting-exports-service';
+import type { MandantFundsNature, MandantOwnerRow } from '../../../../services/accounting-exports-service';
 import { t } from '../../../../i18n/t';
 import {
   AccountingFrame,
@@ -19,7 +19,6 @@ import {
   useAccountingExport,
   useAccountingPeriod
 } from '../shared';
-import { FiltreTexte } from '../journal/FiltreTexte';
 import { ControleMandants } from './ControleMandants';
 import { DetailMandant } from './DetailMandant';
 import { SelecteurVue } from './SelecteurVue';
@@ -27,8 +26,6 @@ import { LIMITE_LIGNES, LIMITE_PROPRIETAIRES, useMandantUrl } from './useMandant
 
 const { Text } = Typography;
 
-type MandantFilters = { q: string };
-const FILTER_KEYS = ['q'] as const;
 const MAX_PAGE_SIZE = 100;
 
 /** Libellé affiché d'un propriétaire : les lignes sans compte de tiers sont « Non réparti ». */
@@ -43,16 +40,38 @@ const libelleProprietaire = (row: MandantOwnerRow) =>
 export const GrandLivreAuxiliaire: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const { from, to } = useAccountingPeriod();
-  const { vue, owner, nature, pageLignes, maj } = useMandantUrl();
-  const { page, pageSize, filters, isFiltered, setFilters, clearFilters, setPage, setPageSize } =
-    useListParams<MandantFilters>({ filterKeys: FILTER_KEYS, defaultPageSize: LIMITE_PROPRIETAIRES });
-  const limit = Math.min(pageSize, MAX_PAGE_SIZE);
-  const { q = '' } = filters;
+  const { vue, owner, pageLignes, maj } = useMandantUrl();
+  // Liste des propriétaires : recherche par nom (paramètre d'API `search`).
+  const search = useListSearch({
+    criteria: [{ key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom du mandant') }],
+    defaultPageSize: LIMITE_PROPRIETAIRES,
+    apiNames: { sort: false }
+  });
+  // Détail d'un propriétaire : filtre de nature. La pagination du détail
+  // (`page-lignes`) reste gérée par `maj` ; le hook ne sert qu'à lire la valeur.
+  const detailSearch = useListSearch({
+    criteria: [
+      {
+        key: 'nature',
+        type: 'select',
+        label: t('Nature'),
+        primary: true,
+        options: [
+          { value: 'CURRENT', label: t('Compte courant') },
+          { value: 'DEPOSIT', label: t('Dépôt de garantie') },
+          { value: 'UNALLOCATED', label: t('À affecter') }
+        ]
+      }
+    ],
+    apiNames: { sort: false }
+  });
+  const nature = detailSearch.filterParams.nature as MandantFundsNature | undefined;
+  const limit = Math.min(search.pageSize, MAX_PAGE_SIZE);
   const { exportEnCours, exporter } = useAccountingExport(tenantId);
 
   const liste = useQuery({
-    queryKey: accountingQueryKey('mandant-owners', tenantId, { from, to, page, limit, search: q }),
-    queryFn: () => getMandantOwners(tenantId as string, { from, to, page, limit, search: q }),
+    queryKey: accountingQueryKey('mandant-owners', tenantId, { from, to, ...search.apiParams, limit }),
+    queryFn: () => getMandantOwners(tenantId as string, { from, to, ...search.apiParams, limit }),
     enabled: Boolean(tenantId) && !owner,
     placeholderData: keepPreviousData
   });
@@ -71,6 +90,19 @@ export const GrandLivreAuxiliaire: React.FC = () => {
     enabled: Boolean(tenantId) && Boolean(owner),
     placeholderData: keepPreviousData
   });
+
+  // Le changement de nature remet `page-lignes` à zéro (et non `page`, celle de la liste).
+  const detailBinding = useMemo(
+    () => ({
+      ...detailSearch.searchProps,
+      'aria-label': t('Filtrer les lignes du mandant'),
+      resultCount: detail.data?.total,
+      onChange: (next: Record<string, unknown>) =>
+        maj({ nature: (next.nature as string | undefined) || undefined, 'page-lignes': undefined }),
+      onClear: () => maj({ nature: undefined, 'page-lignes': undefined })
+    }),
+    [detailSearch.searchProps, detail.data?.total, maj]
+  );
 
   const ouvrir = useCallback(
     (ownerKey: string) => maj({ owner: ownerKey, nature: undefined, 'page-lignes': undefined }),
@@ -137,19 +169,17 @@ export const GrandLivreAuxiliaire: React.FC = () => {
   if (!tenantId) return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
 
   const data = liste.data;
-  const exportParams = owner ? { from, to, owner, nature } : { from, to, search: q || undefined };
+  const exportParams = owner ? { from, to, owner, nature } : { from, to, ...search.filterParams };
 
   const filtres = (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'flex-end' }}>
-      <SelecteurVue vue={vue} maj={maj} />
-      {!owner && (
-        <FiltreTexte
-          id="comptabilite-mandants-recherche"
-          label={t('Rechercher')}
-          placeholder={t('Nom du mandant')}
-          value={q}
-          onCommit={valeur => setFilters({ q: valeur })}
-        />
+    <div>
+      <div style={{ marginBlockEnd: 'var(--space-3)' }}>
+        <SelecteurVue vue={vue} maj={maj} />
+      </div>
+      {owner ? (
+        <ListSearch {...detailBinding} />
+      ) : (
+        <ListSearch {...search.searchProps} aria-label={t('Rechercher un mandant')} resultCount={data?.total} />
       )}
     </div>
   );
@@ -168,7 +198,13 @@ export const GrandLivreAuxiliaire: React.FC = () => {
       }
     >
       {owner ? (
-        <DetailMandant query={detail} nature={nature} pageLignes={pageLignes} maj={maj} onBack={retour} />
+        <DetailMandant
+          query={detail}
+          pageLignes={pageLignes}
+          maj={maj}
+          onBack={retour}
+          isFiltered={detailSearch.isFiltered}
+        />
       ) : (
         <>
           <ControleMandants
@@ -183,15 +219,15 @@ export const GrandLivreAuxiliaire: React.FC = () => {
             columns={columns}
             items={data?.items ?? []}
             total={data?.total ?? 0}
-            page={page}
+            page={search.page}
             pageSize={limit}
-            onPageChange={(nextPage, nextSize) => (nextSize !== limit ? setPageSize(nextSize) : setPage(nextPage))}
+            onPageChange={search.dataViewProps.onPageChange}
             loading={liste.isPending}
             isReloading={liste.isFetching && !liste.isPending}
             error={liste.isError ? t('Impossible de charger le grand livre auxiliaire des mandants.') : null}
             onRetry={() => void liste.refetch()}
-            isFiltered={isFiltered}
-            onClearFilters={clearFilters}
+            isFiltered={search.isFiltered}
+            onClearFilters={search.clear}
             emptyDescription={t('Aucun mouvement de mandant sur cette période.')}
             renderCard={renderCard}
             rowKey={r => r.ownerKey}

@@ -211,10 +211,13 @@ describe('Mandants — grand livre auxiliaire', () => {
       from: '2026-01-01',
       to: '2026-09-23',
       page: 1,
-      limit: 50,
-      search: ''
+      limit: 50
     });
     expect(getMandantOwnerLedger).not.toHaveBeenCalled();
+    // La barre commune : zone de recherche nommée, champ libre, compteur du total serveur.
+    const barre = screen.getByRole('search', { name: 'Rechercher un mandant' });
+    expect(within(barre).getByPlaceholderText('Nom du mandant')).toBeInTheDocument();
+    expect(within(barre).getByText(/120 résultats/)).toBeInTheDocument();
     const totaux = screen.getByTestId('totaux-mandants');
     expect(totaux.textContent).toMatch(/777\s?000/);
     expect(totaux.textContent).toContain('Solde de clôture');
@@ -235,6 +238,19 @@ describe('Mandants — grand livre auxiliaire', () => {
     await waitFor(() => expect(dernier(getMandantOwners)[1]).toMatchObject({ search: 'Kon', page: 1 }));
     expect(url()).toContain('q=Kon');
     expect(url()).not.toContain('page=');
+  });
+
+  it('une URL avec q pré-remplit la barre et part à l’API', async () => {
+    renderPage(`?${PERIODE}&q=dupont&page=2`);
+    await screen.findByRole('button', { name: 'Propriétaire 1' });
+    expect(screen.getByLabelText('Rechercher')).toHaveValue('dupont');
+    expect(dernier(getMandantOwners)[1]).toEqual({
+      from: '2026-01-01',
+      to: '2026-09-23',
+      search: 'dupont',
+      page: 2,
+      limit: 50
+    });
   });
 
   it('le clic sur un propriétaire pose owner dans l’URL et charge alors son détail', async () => {
@@ -273,10 +289,33 @@ describe('Mandants — grand livre auxiliaire', () => {
     renderPage(`?${PERIODE}&owner=own-1&page-lignes=2`);
     await screen.findByText('PIECE-1');
     expect(dernier(getMandantOwnerLedger)[1]).toMatchObject({ page: 2, limit: 100 });
-    fireEvent.click(screen.getByRole('radio', { name: 'Dépôt de garantie' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Nature' }));
+    await userEvent.click(
+      await screen.findByText('Dépôt de garantie', { selector: '.ant-select-item-option-content' })
+    );
     await waitFor(() => expect(dernier(getMandantOwnerLedger)[1]).toMatchObject({ nature: 'DEPOSIT', page: 1 }));
     expect(url()).toContain('nature=DEPOSIT');
     expect(url()).not.toContain('page-lignes');
+  });
+
+  it('une URL avec owner et nature pré-remplit le filtre et part à l’API', async () => {
+    renderPage(`?${PERIODE}&owner=own-1&nature=DEPOSIT`);
+    await screen.findByText('PIECE-1');
+    expect(dernier(getMandantOwnerLedger)[1]).toEqual({
+      from: '2026-01-01',
+      to: '2026-09-23',
+      owner: 'own-1',
+      nature: 'DEPOSIT',
+      page: 1,
+      limit: 100
+    });
+    const barre = screen.getByRole('search', { name: 'Filtrer les lignes du mandant' });
+    expect(within(barre).getByText('Nature : Dépôt de garantie')).toBeInTheDocument();
+    expect(within(barre).getByText(/250 résultats/)).toBeInTheDocument();
+    // Effacer les critères de la barre : nature et page du détail retombent.
+    await userEvent.click(within(barre).getByRole('button', { name: 'Effacer les critères' }));
+    await waitFor(() => expect(url()).not.toContain('nature='));
+    await waitFor(() => expect(dernier(getMandantOwnerLedger)[1]).toMatchObject({ nature: undefined, page: 1 }));
   });
 
   it('pagine les lignes du détail côté serveur (page-lignes)', async () => {
@@ -382,16 +421,17 @@ describe('Mandants — balance auxiliaire', () => {
   it('date d’arrêté par défaut = fin de la période', async () => {
     renderPage(`?${PERIODE}&vue=balance`);
     expect(await screen.findByText('Propriétaire 1')).toBeInTheDocument();
-    expect(dernier(getMandantTrialBalance)[1]).toEqual({ date: '2026-09-23', page: 1, limit: 50, search: '' });
+    expect(dernier(getMandantTrialBalance)[1]).toEqual({ date: '2026-09-23', page: 1, limit: 50 });
     expect(getMandantOwners).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Date d’arrêté')).toHaveValue('23/09/2026');
   });
 
   it('respecte date-mandants, la recherche et la page de l’URL', async () => {
-    renderPage(`?${PERIODE}&vue=balance&date-mandants=2026-06-30&q=Kon&page=2`);
+    renderPage(`?${PERIODE}&vue=balance&date-mandants=2026-06-30&q=dupont&page=2`);
     await screen.findByText('Propriétaire 1');
-    expect(dernier(getMandantTrialBalance)[1]).toEqual({ date: '2026-06-30', page: 2, limit: 50, search: 'Kon' });
+    expect(dernier(getMandantTrialBalance)[1]).toEqual({ date: '2026-06-30', page: 2, limit: 50, search: 'dupont' });
     expect(screen.getByLabelText('Date d’arrêté')).toHaveValue('30/06/2026');
+    expect(screen.getByLabelText('Rechercher')).toHaveValue('dupont');
   });
 
   it('affiche les soldes par nature, « Non réparti » et la ligne de totaux', async () => {
@@ -431,9 +471,7 @@ describe('Mandants — balance auxiliaire', () => {
   it('la recherche remet la page à 1', async () => {
     renderPage(`?${PERIODE}&vue=balance&page=2`);
     await screen.findByText('Propriétaire 1');
-    const champ = screen.getByLabelText('Rechercher');
-    await userEvent.type(champ, 'Kon');
-    fireEvent.blur(champ);
+    await userEvent.type(screen.getByLabelText('Rechercher'), 'Kon{Enter}');
     await waitFor(() => expect(dernier(getMandantTrialBalance)[1]).toMatchObject({ search: 'Kon', page: 1 }));
   });
 

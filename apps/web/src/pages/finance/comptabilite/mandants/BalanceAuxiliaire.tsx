@@ -4,21 +4,18 @@ import { Card, DatePicker, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { DataView, MoneyValue, StateBlock } from '../../../../components/primitives';
-import { useListParams } from '../../../../hooks/useListParams';
+import { DataView, ListSearch, MoneyValue, StateBlock } from '../../../../components/primitives';
+import { useListSearch } from '../../../../hooks/useListSearch';
 import { getMandantTrialBalance, UNASSIGNED_OWNER } from '../../../../services/accounting-exports-service';
 import type { MandantTrialBalanceRow } from '../../../../services/accounting-exports-service';
 import { t } from '../../../../i18n/t';
 import { AccountingFrame, ExportButtons, accountingQueryKey, useAccountingExport } from '../shared';
-import { FiltreTexte } from '../journal/FiltreTexte';
 import { ControleMandants } from './ControleMandants';
 import { SelecteurVue } from './SelecteurVue';
 import { LIMITE_PROPRIETAIRES, useMandantUrl } from './useMandantUrl';
 
 const { Text } = Typography;
 
-type MandantFilters = { q: string };
-const FILTER_KEYS = ['q'] as const;
 const MAX_PAGE_SIZE = 100;
 const ISO = 'YYYY-MM-DD';
 
@@ -33,15 +30,17 @@ const libelleProprietaire = (row: MandantTrialBalanceRow) =>
 export const BalanceAuxiliaire: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const { vue, dateArrete, maj } = useMandantUrl();
-  const { page, pageSize, filters, isFiltered, setFilters, clearFilters, setPage, setPageSize } =
-    useListParams<MandantFilters>({ filterKeys: FILTER_KEYS, defaultPageSize: LIMITE_PROPRIETAIRES });
-  const limit = Math.min(pageSize, MAX_PAGE_SIZE);
-  const { q = '' } = filters;
+  const search = useListSearch({
+    criteria: [{ key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom du mandant') }],
+    defaultPageSize: LIMITE_PROPRIETAIRES,
+    apiNames: { sort: false }
+  });
+  const limit = Math.min(search.pageSize, MAX_PAGE_SIZE);
   const { exportEnCours, exporter } = useAccountingExport(tenantId);
 
   const query = useQuery({
-    queryKey: accountingQueryKey('mandant-trial-balance', tenantId, { date: dateArrete, page, limit, search: q }),
-    queryFn: () => getMandantTrialBalance(tenantId as string, { date: dateArrete, page, limit, search: q }),
+    queryKey: accountingQueryKey('mandant-trial-balance', tenantId, { date: dateArrete, ...search.apiParams, limit }),
+    queryFn: () => getMandantTrialBalance(tenantId as string, { date: dateArrete, ...search.apiParams, limit }),
     enabled: Boolean(tenantId),
     placeholderData: keepPreviousData
   });
@@ -98,28 +97,34 @@ export const BalanceAuxiliaire: React.FC = () => {
 
   if (!tenantId) return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
 
+  // La date d'arrêté est une date unique : `ListSearch` n'a que `dateRange`, le
+  // sélecteur reste donc à côté de la barre (clé d'URL `date-mandants`).
   const filtres = (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'flex-end' }}>
-      <SelecteurVue vue={vue} maj={maj} />
-      <div>
+    <div>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 'var(--space-3)',
+          alignItems: 'flex-end',
+          marginBlockEnd: 'var(--space-3)'
+        }}
+      >
+        <SelecteurVue vue={vue} maj={maj} />
         <div>
-          <label htmlFor="comptabilite-mandants-date">{t('Date d’arrêté')}</label>
+          <div>
+            <label htmlFor="comptabilite-mandants-date">{t('Date d’arrêté')}</label>
+          </div>
+          <DatePicker
+            id="comptabilite-mandants-date"
+            format="DD/MM/YYYY"
+            value={dayjs(dateArrete)}
+            onChange={date => date && maj({ 'date-mandants': date.format(ISO), page: undefined })}
+            allowClear={false}
+          />
         </div>
-        <DatePicker
-          id="comptabilite-mandants-date"
-          format="DD/MM/YYYY"
-          value={dayjs(dateArrete)}
-          onChange={date => date && maj({ 'date-mandants': date.format(ISO), page: undefined })}
-          allowClear={false}
-        />
       </div>
-      <FiltreTexte
-        id="comptabilite-mandants-recherche"
-        label={t('Rechercher')}
-        placeholder={t('Nom du mandant')}
-        value={q}
-        onCommit={valeur => setFilters({ q: valeur })}
-      />
+      <ListSearch {...search.searchProps} aria-label={t('Rechercher un mandant')} resultCount={data?.total} />
     </div>
   );
 
@@ -134,7 +139,7 @@ export const BalanceAuxiliaire: React.FC = () => {
             exporter(
               'mandant-trial-balance',
               format,
-              { date: dateArrete, search: q || undefined },
+              { date: dateArrete, ...search.filterParams },
               `${t('Balance auxiliaire des mandants')}.${format}`
             )
           }
@@ -153,15 +158,15 @@ export const BalanceAuxiliaire: React.FC = () => {
         columns={columns}
         items={data?.items ?? []}
         total={data?.total ?? 0}
-        page={page}
+        page={search.page}
         pageSize={limit}
-        onPageChange={(nextPage, nextSize) => (nextSize !== limit ? setPageSize(nextSize) : setPage(nextPage))}
+        onPageChange={search.dataViewProps.onPageChange}
         loading={query.isPending}
         isReloading={query.isFetching && !query.isPending}
         error={query.isError ? t('Impossible de charger la balance auxiliaire des mandants.') : null}
         onRetry={() => void query.refetch()}
-        isFiltered={isFiltered}
-        onClearFilters={clearFilters}
+        isFiltered={search.isFiltered}
+        onClearFilters={search.clear}
         emptyDescription={t('Aucun solde de mandant à cette date.')}
         renderCard={renderCard}
         rowKey={r => r.ownerKey}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, configure } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent, configure } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -119,18 +119,40 @@ describe('Balance générale — comptabilité de l’agence', () => {
       hideZero: true,
       search: 'client'
     });
+    expect(screen.getByPlaceholderText('Numéro ou intitulé')).toHaveValue('client');
+    expect(screen.getByRole('checkbox', { name: /Masquer les comptes soldés/ })).toBeChecked();
+  });
+
+  it('URL existante ?class=4&hideZero=1&q=41 : barre pré-remplie et bon appel', async () => {
+    renderPage(`?${PERIODE}&class=4&hideZero=1&q=41`);
+    await screen.findByText('Compte test 1');
+    expect(dernierAppel()[1]).toEqual({
+      from: '2026-01-01',
+      to: '2026-09-23',
+      accountClass: 4,
+      hideZero: true,
+      search: '41'
+    });
+    expect(screen.getByPlaceholderText('Numéro ou intitulé')).toHaveValue('41');
+    expect(screen.getByText('2 résultats')).toBeInTheDocument();
   });
 
   it('sans filtre : ni classe, ni comptes soldés masqués', async () => {
     renderPage();
     await screen.findByText('Compte test 1');
-    expect(dernierAppel()[1]).toMatchObject({ accountClass: undefined, hideZero: undefined });
+    expect(dernierAppel()[1]).toEqual({
+      from: '2026-01-01',
+      to: '2026-09-23',
+      accountClass: undefined,
+      hideZero: undefined,
+      search: undefined
+    });
   });
 
   it('case « Masquer les comptes soldés » : paramètre hideZero', async () => {
     renderPage();
     await screen.findByText('Compte test 1');
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Masquer les comptes soldés' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /Masquer les comptes soldés/ }));
     await waitFor(() => expect(dernierAppel()[1]).toMatchObject({ hideZero: true }));
     expect(screen.getByTestId('recherche').textContent).toContain('hideZero=1');
   });
@@ -138,7 +160,7 @@ describe('Balance générale — comptabilité de l’agence', () => {
   it('filtre classe : paramètre accountClass', async () => {
     renderPage();
     await screen.findByText('Compte test 1');
-    fireEvent.mouseDown(screen.getByLabelText('Classe'));
+    fireEvent.mouseDown(within(screen.getByRole('search')).getByRole('combobox'));
     fireEvent.click(await screen.findByText('Classe 7'));
     await waitFor(() => expect(dernierAppel()[1]).toMatchObject({ accountClass: 7 }));
     expect(screen.getByTestId('recherche').textContent).toContain('class=7');
@@ -147,7 +169,8 @@ describe('Balance générale — comptabilité de l’agence', () => {
   it('recherche numéro ou intitulé validée par Entrée', async () => {
     renderPage();
     await screen.findByText('Compte test 1');
-    await userEvent.type(screen.getByLabelText('Rechercher'), 'banque{Enter}');
+    await userEvent.type(screen.getByPlaceholderText('Numéro ou intitulé'), 'banque{Enter}');
+    expect(screen.getByTestId('recherche').textContent).toContain('q=banque');
     await waitFor(() => expect(dernierAppel()[1]).toMatchObject({ search: 'banque' }));
   });
 
@@ -207,6 +230,15 @@ describe('Balance générale — comptabilité de l’agence', () => {
       search: 'client'
     });
     expect(screen.getAllByRole('button', { name: /Exporter/ })).toHaveLength(2);
+  });
+
+  it('aucun résultat avec critère : propose d’effacer les critères', async () => {
+    getTrialBalance.mockResolvedValue(reponse({ lines: [] }));
+    renderPage(`?${PERIODE}&q=zzz`);
+    expect(await screen.findByText('0 résultat')).toBeInTheDocument();
+    const effacer = await screen.findAllByRole('button', { name: 'Effacer les critères' });
+    await userEvent.click(effacer[effacer.length - 1]);
+    await waitFor(() => expect(screen.getByTestId('recherche').textContent).not.toContain('q=zzz'));
   });
 
   it('erreur : message et Réessayer', async () => {

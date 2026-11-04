@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, configure } from '@testing-library/react';
+import { render, screen, waitFor, within, configure } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -126,6 +126,7 @@ function renderPage(search = `?${PERIODE}`) {
   );
 }
 
+const champRecherche = () => within(screen.getByRole('search')).getByRole('textbox');
 const dernierRecap = () => getLedgerSummary.mock.calls[getLedgerSummary.mock.calls.length - 1];
 const dernierCompte = () => getAccountLedger.mock.calls[getAccountLedger.mock.calls.length - 1];
 
@@ -180,10 +181,31 @@ describe('Grand livre — sans compte (récapitulatif)', () => {
   it('recherche passée au service, page remise à 1', async () => {
     renderPage(`?${PERIODE}&page=2`);
     await screen.findByRole('button', { name: '411000' });
-    const champ = screen.getByLabelText('Rechercher');
-    await userEvent.type(champ, 'banq');
-    fireEvent.blur(champ);
+    await userEvent.type(champRecherche(), 'banq');
     await waitFor(() => expect(dernierRecap()[1]).toMatchObject({ search: 'banq', page: 1 }));
+    expect(screen.getByTestId('recherche').textContent).toContain('q=banq');
+    expect(screen.getByTestId('recherche').textContent).not.toContain('page=');
+  });
+
+  it('la barre dit où l’on cherche et ne propose pas le journal sans compte', async () => {
+    renderPage();
+    await screen.findByRole('button', { name: '411000' });
+    expect(champRecherche()).toHaveAttribute('placeholder', 'Numéro ou intitulé');
+    expect(screen.queryByRole('combobox', { name: 'Journal' })).not.toBeInTheDocument();
+  });
+
+  it('URL existante : barre pré-remplie et bon appel, effacer revient à la liste complète', async () => {
+    getLedgerSummary.mockImplementation(async (_t: string, p: { search?: string }) =>
+      p.search ? recap({ items: [], total: 0 }) : recap()
+    );
+    renderPage(`?${PERIODE}&q=zzz`);
+    await screen.findByText('Aucun élément ne correspond aux filtres appliqués.');
+    expect(champRecherche()).toHaveValue('zzz');
+    expect(dernierRecap()[1]).toMatchObject({ search: 'zzz', page: 1 });
+    const effacer = screen.getAllByRole('button', { name: /Effacer les/ });
+    await userEvent.click(effacer[effacer.length - 1]);
+    expect(await screen.findByRole('button', { name: '411000' })).toBeInTheDocument();
+    expect(screen.getByTestId('recherche').textContent).not.toContain('q=');
   });
 
   it('exporte le grand livre complet sans compte ni page', async () => {
@@ -273,13 +295,41 @@ describe('Grand livre — avec compte', () => {
     expect(screen.getByText(/Lignes filtrées/).textContent).toMatch(/123\s?456/);
     expect(screen.getByText(/Le solde affiché reste celui du compte/)).toBeInTheDocument();
 
-    const champ = screen.getByLabelText('Libellé ou pièce');
-    await userEvent.type(champ, 'loyer{Enter}');
+    expect(champRecherche()).toHaveAttribute('placeholder', 'Libellé ou pièce');
+    await userEvent.type(champRecherche(), 'loyer{Enter}');
     await waitFor(() => expect(dernierCompte()[1]).toMatchObject({ search: 'loyer', page: 1 }));
+    expect(screen.getByTestId('recherche').textContent).toContain('account=411000');
+    expect(screen.getByTestId('recherche').textContent).not.toContain('page=');
 
-    fireEvent.mouseDown(document.getElementById('comptabilite-grand-livre-journal') as HTMLElement);
-    fireEvent.click(await screen.findByText('OP-CASH — Caisse'));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Journal' }));
+    await userEvent.click(await screen.findByText('OP-CASH — Caisse'));
     await waitFor(() => expect(dernierCompte()[1]).toMatchObject({ journal: 'OP-CASH', search: 'loyer', page: 1 }));
+    expect(screen.getByTestId('recherche').textContent).toContain('journal=OP-CASH');
+  });
+
+  it('URL existante : barre pré-remplie (libellé, journal) et bon appel', async () => {
+    renderPage(`?${PERIODE}&account=411000&q=loyer&journal=OP-CASH`);
+    await screen.findByText('PIECE-001');
+    expect(champRecherche()).toHaveValue('loyer');
+    await waitFor(() =>
+      expect(dernierCompte()[1]).toMatchObject({ account: '411000', search: 'loyer', journal: 'OP-CASH', page: 1 })
+    );
+    await waitFor(() => expect(within(screen.getByRole('search')).getAllByText(/OP-CASH/).length).toBeGreaterThan(0));
+  });
+
+  it('changer de compte remet recherche, journal et page à zéro', async () => {
+    renderPage(`?${PERIODE}&account=411000&q=loyer&journal=OP-CASH&page=2`);
+    await screen.findByText('PIECE-001');
+    await userEvent.click(screen.getByRole('button', { name: /Compte suivant/ }));
+    await waitFor(() =>
+      expect(dernierCompte()[1]).toMatchObject({ account: '412000', search: '', journal: '', page: 1 })
+    );
+    const url = screen.getByTestId('recherche').textContent as string;
+    expect(url).toContain('account=412000');
+    expect(url).not.toContain('q=');
+    expect(url).not.toContain('journal=');
+    expect(url).not.toContain('page=');
+    expect(champRecherche()).toHaveValue('');
   });
 
   it('exporte avec les filtres et sans page', async () => {

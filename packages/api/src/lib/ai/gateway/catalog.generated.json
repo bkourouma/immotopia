@@ -3878,7 +3878,7 @@
       "path": "/api/tenants/:tenantId/users",
       "pathParams": [],
       "module": "users",
-      "summary": "list members (users)",
+      "summary": "users",
       "permissions": ["USERS_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false

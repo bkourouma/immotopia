@@ -1,20 +1,17 @@
 import React, { useCallback, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Alert, Card, Checkbox, Select, Typography } from 'antd';
+import { Alert, Card, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { DataView, MoneyValue, StateBlock } from '../../../components/primitives';
-import { useListParams } from '../../../hooks/useListParams';
+import { DataView, ListSearch, MoneyValue, StateBlock } from '../../../components/primitives';
+import { useListSearch } from '../../../hooks/useListSearch';
 import { getTrialBalance } from '../../../services/accounting-exports-service';
 import type { TrialBalanceLine } from '../../../services/accounting-exports-service';
 import { t } from '../../../i18n/t';
 import { AccountingFrame, ExportButtons, accountingQueryKey, useAccountingExport, useAccountingPeriod } from './shared';
-import { FiltreTexte } from './journal/FiltreTexte';
 
 const { Text } = Typography;
 
-const FILTER_KEYS = ['class', 'hideZero', 'q'] as const;
-type BalanceFilters = { class: string; hideZero: string; q: string };
 /** La réponse porte toutes les lignes : la pagination est locale, 100 comptes par page au plus. */
 const LOCAL_PAGE_SIZE = 100;
 
@@ -26,28 +23,49 @@ const LOCAL_PAGE_SIZE = 100;
 export const BalancePage: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const { from, to } = useAccountingPeriod();
-  const { page, pageSize, filters, isFiltered, setFilters, clearFilters, setPage, setPageSize } =
-    useListParams<BalanceFilters>({ filterKeys: FILTER_KEYS, defaultPageSize: LOCAL_PAGE_SIZE });
-  const size = Math.min(pageSize, LOCAL_PAGE_SIZE);
-  const { class: accountClass = '', hideZero: soldes = '', q = '' } = filters;
-  const hideZero = soldes === '1';
+  const search = useListSearch({
+    defaultPageSize: LOCAL_PAGE_SIZE,
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Numéro ou intitulé') },
+      {
+        key: 'class',
+        type: 'select',
+        label: t('Classe'),
+        primary: true,
+        options: [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({ value: String(n), label: t('Classe {{n}}', { n }) }))
+      },
+      { key: 'hideZero', type: 'boolean', label: t('Masquer les comptes soldés'), primary: true }
+    ]
+  });
+  const { page, filterParams } = search;
+  const size = Math.min(search.pageSize, LOCAL_PAGE_SIZE);
+  const classe = Number(filterParams.class);
 
   const { exportEnCours, exporter } = useAccountingExport(tenantId);
 
+  // Le serveur filtre (recherche, classe, comptes soldés) : la réponse et ses totaux sont ceux du filtre.
+  // Seule la pagination (100 comptes par page) est locale.
   const query = useQuery({
-    queryKey: accountingQueryKey('trial-balance', tenantId, { from, to, accountClass, hideZero, q }),
+    queryKey: accountingQueryKey('trial-balance', tenantId, { from, to, ...filterParams }),
     queryFn: () =>
       getTrialBalance(tenantId as string, {
         from,
         to,
-        accountClass: accountClass ? Number(accountClass) : undefined,
-        hideZero: hideZero || undefined,
-        search: q
+        accountClass: Number.isInteger(classe) && classe >= 1 && classe <= 9 ? classe : undefined,
+        hideZero: filterParams.hideZero === 'true' || undefined,
+        search: typeof filterParams.search === 'string' ? filterParams.search : undefined
       }),
     enabled: Boolean(tenantId),
     placeholderData: keepPreviousData
   });
   const data = query.data;
+  const lines = useMemo(() => data?.lines ?? [], [data]);
+  const pages = Math.max(1, Math.ceil(lines.length / size));
+  const pageCourante = Math.min(page, pages);
+  const visibles = useMemo(
+    () => lines.slice((pageCourante - 1) * size, pageCourante * size),
+    [lines, pageCourante, size]
+  );
 
   const lienCompte = useCallback(
     (numero: string) => (
@@ -151,39 +169,11 @@ export const BalancePage: React.FC = () => {
 
   if (!tenantId) return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
 
-  const lines = data?.lines ?? [];
-  const pages = Math.max(1, Math.ceil(lines.length / size));
-  const pageCourante = Math.min(page, pages);
-  const visibles = lines.slice((pageCourante - 1) * size, pageCourante * size);
-  const exportParams = { from, to, class: accountClass, hideZero: hideZero ? 'true' : undefined, search: q };
+  // Mêmes filtres que la liste (class, hideZero, search) ; la période vient du cadre commun.
+  const exportParams = { from, to, ...filterParams };
   const totals = data?.totals;
 
-  const filtres = (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'flex-end' }}>
-      <div style={{ minWidth: 200 }}>
-        <label htmlFor="comptabilite-filtre-classe">{t('Classe')}</label>
-        <Select
-          id="comptabilite-filtre-classe"
-          style={{ width: '100%' }}
-          allowClear
-          placeholder={t('Toutes les classes')}
-          value={accountClass || undefined}
-          onChange={valeur => setFilters({ class: valeur })}
-          options={[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({ value: String(n), label: t('Classe {{n}}', { n }) }))}
-        />
-      </div>
-      <FiltreTexte
-        id="comptabilite-filtre-numero-intitule"
-        label={t('Rechercher')}
-        placeholder={t('Numéro ou intitulé')}
-        value={q}
-        onCommit={valeur => setFilters({ q: valeur })}
-      />
-      <Checkbox checked={hideZero} onChange={event => setFilters({ hideZero: event.target.checked ? '1' : undefined })}>
-        {t('Masquer les comptes soldés')}
-      </Checkbox>
-    </div>
-  );
+  const filtres = <ListSearch {...search.searchProps} resultCount={lines.length} />;
 
   return (
     <AccountingFrame
@@ -212,13 +202,15 @@ export const BalancePage: React.FC = () => {
         total={lines.length}
         page={pageCourante}
         pageSize={size}
-        onPageChange={(nextPage, nextSize) => (nextSize !== size ? setPageSize(nextSize) : setPage(nextPage))}
+        onPageChange={(nextPage, nextSize) =>
+          nextSize !== size ? search.setPageSize(nextSize) : search.setPage(nextPage)
+        }
         loading={query.isPending}
         isReloading={query.isFetching && !query.isPending}
         error={query.isError ? t('Impossible de charger la balance générale.') : null}
         onRetry={() => void query.refetch()}
-        isFiltered={isFiltered}
-        onClearFilters={clearFilters}
+        isFiltered={search.isFiltered}
+        onClearFilters={search.clear}
         emptyDescription={t('Aucune ligne dans la balance générale.')}
         renderCard={renderCard}
         rowKey={l => l.accountNumber}

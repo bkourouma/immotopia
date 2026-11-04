@@ -1,10 +1,9 @@
 import React, { useCallback, useMemo } from 'react';
-import { Button, Card, Segmented, Typography } from 'antd';
+import { Button, Card, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import type { UseQueryResult } from '@tanstack/react-query';
 import type {
-  MandantFundsNature,
   MandantLine,
   MandantNatureSummary,
   MandantOwnerLedgerPage,
@@ -20,17 +19,17 @@ const { Text } = Typography;
 
 interface DetailMandantProps {
   query: UseQueryResult<WithSync<MandantOwnerLedgerPage>>;
-  nature: MandantFundsNature | undefined;
+  isFiltered: boolean;
   pageLignes: number;
   maj: MajUrl;
   onBack: () => void;
 }
 
 /**
- * Détail d'un propriétaire : synthèse par nature, filtre de nature et lignes
+ * Détail d'un propriétaire : synthèse par nature et lignes (le filtre de nature est dans la barre du cadre)
  * paginées par le serveur (le solde progressif vient du serveur).
  */
-export const DetailMandant: React.FC<DetailMandantProps> = ({ query, nature, pageLignes, maj, onBack }) => {
+export const DetailMandant: React.FC<DetailMandantProps> = ({ query, isFiltered, pageLignes, maj, onBack }) => {
   const data = query.data;
   const statut = (query.error as { response?: { status?: number } } | null)?.response?.status;
 
@@ -119,20 +118,6 @@ export const DetailMandant: React.FC<DetailMandantProps> = ({ query, nature, pag
         </div>
       )}
 
-      <div style={{ marginBlockEnd: 'var(--space-4)' }}>
-        <Segmented<string>
-          value={nature ?? ''}
-          aria-label={t('Filtrer par nature')}
-          options={[
-            { value: '', label: t('Toutes') },
-            { value: 'CURRENT', label: t('Compte courant') },
-            { value: 'DEPOSIT', label: t('Dépôt de garantie') },
-            { value: 'UNALLOCATED', label: t('À affecter') }
-          ]}
-          onChange={valeur => maj({ nature: valeur || undefined, 'page-lignes': undefined })}
-        />
-      </div>
-
       <DataView<MandantLine>
         aria-label={t('Grand livre auxiliaire des mandants')}
         columns={columns}
@@ -145,7 +130,7 @@ export const DetailMandant: React.FC<DetailMandantProps> = ({ query, nature, pag
         isReloading={query.isFetching && !query.isPending}
         error={query.isError ? t('Impossible de charger le grand livre auxiliaire des mandants.') : null}
         onRetry={() => void query.refetch()}
-        isFiltered={Boolean(nature)}
+        isFiltered={isFiltered}
         onClearFilters={() => maj({ nature: undefined, 'page-lignes': undefined })}
         emptyDescription={t('Aucun mouvement pour ce mandant sur cette période.')}
         renderCard={renderCard}

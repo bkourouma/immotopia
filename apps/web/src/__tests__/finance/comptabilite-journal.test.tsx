@@ -171,10 +171,20 @@ describe('Journal — comptabilité de l’agence', () => {
     });
   });
 
-  it('sans paramètre : page 1, 50 lignes', async () => {
+  it('sans paramètre : page 1, 50 lignes, aucun critère envoyé', async () => {
     renderPage();
     await screen.findByText('JRN-0001');
-    expect(dernierAppel()[1]).toMatchObject({ page: 1, limit: 50, journal: '', account: '', search: '' });
+    expect(dernierAppel()[1]).toEqual({ from: '2026-01-01', to: '2026-09-23', page: 1, limit: 50 });
+    expect(screen.getByRole('search')).toBeInTheDocument();
+    expect(screen.getByText('120 résultats')).toBeInTheDocument();
+  });
+
+  it('une URL existante pré-remplit la barre et le champ compte', async () => {
+    renderPage(`?${PERIODE}&journal=OP-CASH&account=411&q=loyer`);
+    await screen.findByText('JRN-0001');
+    expect(screen.getByPlaceholderText('Libellé, pièce ou description')).toHaveValue('loyer');
+    expect(screen.getByLabelText('Compte')).toHaveValue('411');
+    expect(await screen.findByTitle('OP-CASH — Caisse')).toBeInTheDocument();
   });
 
   it('plafonne la taille de page à 100', async () => {
@@ -194,28 +204,28 @@ describe('Journal — comptabilité de l’agence', () => {
   it('filtre compte validé par Entrée : paramètres d’appel et page remise à 1', async () => {
     renderPage(`?${PERIODE}&page=2`);
     await screen.findByText('JRN-0001');
-    const champ = screen.getByLabelText('Compte');
-    await userEvent.type(champ, '411{Enter}');
+    await userEvent.type(screen.getByLabelText('Compte'), '411{Enter}');
     await waitFor(() => expect(dernierAppel()[1]).toMatchObject({ account: '411', page: 1 }));
     expect(screen.getByTestId('recherche').textContent).not.toContain('page=');
     expect(screen.getByTestId('recherche').textContent).toContain('account=411');
   });
 
-  it('recherche validée à la perte du focus', async () => {
+  it('recherche libre : appel après le délai de frappe, page remise à 1, clé q dans l’URL', async () => {
     renderPage(`?${PERIODE}&page=2`);
     await screen.findByText('JRN-0001');
-    const champ = screen.getByLabelText('Rechercher');
-    await userEvent.type(champ, 'loyer');
-    fireEvent.blur(champ);
+    await userEvent.type(screen.getByPlaceholderText('Libellé, pièce ou description'), 'loyer');
     await waitFor(() => expect(dernierAppel()[1]).toMatchObject({ search: 'loyer', page: 1 }));
+    expect(screen.getByTestId('recherche').textContent).toContain('q=loyer');
+    expect(screen.getByTestId('recherche').textContent).not.toContain('page=');
   });
 
   it('filtre journal : paramètre d’appel et page remise à 1', async () => {
     renderPage(`?${PERIODE}&page=2`);
     await screen.findByText('JRN-0001');
-    fireEvent.mouseDown(document.getElementById('comptabilite-filtre-journal') as HTMLElement);
+    fireEvent.mouseDown(within(screen.getByRole('search')).getByRole('combobox'));
     fireEvent.click(await screen.findByText('OP-CASH — Caisse'));
     await waitFor(() => expect(dernierAppel()[1]).toMatchObject({ journal: 'OP-CASH', page: 1 }));
+    expect(screen.getByTestId('recherche').textContent).toContain('journal=OP-CASH');
   });
 
   it('affiche les totaux du filtre entier', async () => {
@@ -260,8 +270,13 @@ describe('Journal — comptabilité de l’agence', () => {
   it('aucun résultat avec filtre : propose d’effacer les filtres', async () => {
     getJournal.mockResolvedValue(reponse({ items: [], total: 0 }));
     renderPage(`?${PERIODE}&q=zzz`);
-    await userEvent.click(await screen.findByRole('button', { name: 'Effacer les filtres' }));
+    expect(await screen.findByText('0 résultat')).toBeInTheDocument();
+    const effacer = await screen.findAllByRole('button', { name: 'Effacer les critères' });
+    await userEvent.click(effacer[effacer.length - 1]);
     await waitFor(() => expect(screen.getByTestId('recherche').textContent).not.toContain('q=zzz'));
+    await waitFor(() =>
+      expect(dernierAppel()[1]).toEqual({ from: '2026-01-01', to: '2026-09-23', page: 1, limit: 50 })
+    );
   });
 
   it('erreur : message et bouton Réessayer', async () => {

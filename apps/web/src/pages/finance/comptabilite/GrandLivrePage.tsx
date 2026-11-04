@@ -1,11 +1,13 @@
 import React, { useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button, Card, Col, Row, Select, Tooltip, Typography } from 'antd';
+import { Button, Card, Col, Row, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { DataView, MoneyValue, StatCard, StateBlock } from '../../../components/primitives';
+import { DataView, ListSearch, MoneyValue, StatCard, StateBlock } from '../../../components/primitives';
 import { useListParams } from '../../../hooks/useListParams';
+import { useListSearch } from '../../../hooks/useListSearch';
+import type { SearchCriterion } from '../../../utils/list-search';
 import { getAccountLedger, getLedgerSummary } from '../../../services/accounting-exports-service';
 import type { AccountBalanceRow, GeneralLedgerLine } from '../../../services/accounting-exports-service';
 import { t } from '../../../i18n/t';
@@ -18,7 +20,6 @@ import {
   useAccountingMeta,
   useAccountingPeriod
 } from './shared';
-import { FiltreTexte } from './journal/FiltreTexte';
 import { SelecteurCompte } from './grand-livre/SelecteurCompte';
 
 const { Text } = Typography;
@@ -38,14 +39,31 @@ const estIntrouvable = (err: unknown) => (err as { response?: { status?: number 
 export const GrandLivrePage: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const { from, to } = useAccountingPeriod();
-  const { page, filters, isFiltered, setFilters, clearFilters, setPage } = useListParams<GrandLivreFilters>({
+  // `useListParams` ne sert qu'à CHANGER DE VUE : une seule écriture d'URL pose le compte et remet
+  // critères et page à zéro. Les critères (q, journal) et la page sont ceux de `useListSearch`.
+  const { filters, setFilters } = useListParams<GrandLivreFilters>({
     filterKeys: FILTER_KEYS,
     defaultPageSize: PAGE_SUMMARY
   });
-  const { account = '', q = '', journal = '' } = filters;
+  const { account = '' } = filters;
   const limit = account ? PAGE_ACCOUNT : PAGE_SUMMARY;
 
   const meta = useAccountingMeta(tenantId);
+  const optionsJournaux = (meta.data?.journals ?? []).map(j => ({ value: j.code, label: `${j.code} — ${j.label}` }));
+
+  // Une seule barre : sans compte, le champ libre seul ; avec un compte, le champ libre et le journal.
+  // La période reste dans le cadre commun (aucun critère de dates ici).
+  const criteres: SearchCriterion[] = account
+    ? [
+        { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Libellé ou pièce') },
+        { key: 'journal', type: 'select', label: t('Journal'), primary: true, options: optionsJournaux }
+      ]
+    : [{ key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Numéro ou intitulé') }];
+  const search = useListSearch({ criteria: criteres, defaultPageSize: PAGE_SUMMARY });
+  const { page, setPage, isFiltered } = search;
+  const q = (search.values.q as string | undefined) ?? '';
+  const journal = (search.values.journal as string | undefined) ?? '';
+
   const { exportEnCours, exporter } = useAccountingExport(tenantId);
 
   const resume = useQuery({
@@ -188,54 +206,20 @@ export const GrandLivrePage: React.FC = () => {
 
   const exportParams = account ? { from, to, account, search: q, journal } : q ? { from, to, search: q } : { from, to };
   const nomFichier = `${t('Grand livre')}${account ? ` ${account}` : ''}`;
-  const optionsJournaux = (meta.data?.journals ?? []).map(j => ({ value: j.code, label: `${j.code} — ${j.label}` }));
-
   const filtres = (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'flex-end' }}>
-      <SelecteurCompte
-        tenantId={tenantId}
-        from={from}
-        to={to}
-        value={account}
-        currentName={grandLivre?.account.accountName}
-        onChange={numero => (numero ? ouvrir(numero) : retourRecap())}
-      />
-      {account ? (
-        <>
-          <FiltreTexte
-            id="comptabilite-grand-livre-recherche"
-            label={t('Libellé ou pièce')}
-            placeholder={t('Libellé ou pièce')}
-            value={q}
-            onCommit={valeur => setFilters({ q: valeur })}
-            width={280}
-          />
-          <div style={{ minWidth: 220 }}>
-            <label htmlFor="comptabilite-grand-livre-journal">{t('Journal')}</label>
-            <Select
-              id="comptabilite-grand-livre-journal"
-              style={{ width: '100%' }}
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder={t('Tous les journaux')}
-              value={journal || undefined}
-              onChange={valeur => setFilters({ journal: valeur })}
-              options={optionsJournaux}
-            />
-          </div>
-        </>
-      ) : (
-        <FiltreTexte
-          id="comptabilite-grand-livre-recherche"
-          label={t('Rechercher')}
-          placeholder={t('Numéro ou intitulé')}
-          value={q}
-          onCommit={valeur => setFilters({ q: valeur })}
-          width={280}
+    <>
+      <div style={{ marginBlockEnd: 'var(--space-3)' }}>
+        <SelecteurCompte
+          tenantId={tenantId}
+          from={from}
+          to={to}
+          value={account}
+          currentName={grandLivre?.account.accountName}
+          onChange={numero => (numero ? ouvrir(numero) : retourRecap())}
         />
-      )}
-    </div>
+      </div>
+      <ListSearch {...search.searchProps} aria-label={t('Rechercher dans le grand livre')} resultCount={data?.total} />
+    </>
   );
 
   const actions = (
@@ -327,8 +311,8 @@ export const GrandLivrePage: React.FC = () => {
           isReloading={compte.isFetching && !compte.isPending}
           error={compte.isError ? t('Impossible de charger le grand livre.') : null}
           onRetry={() => void compte.refetch()}
-          isFiltered={Boolean(q || journal)}
-          onClearFilters={() => setFilters({ q: undefined, journal: undefined })}
+          isFiltered={isFiltered}
+          onClearFilters={search.clear}
           emptyDescription={t('Aucun mouvement sur ce compte pour cette période.')}
           renderCard={carteLigne}
           rowKey={l => l.id}
@@ -361,7 +345,7 @@ export const GrandLivrePage: React.FC = () => {
           error={resume.isError ? t('Impossible de charger le grand livre.') : null}
           onRetry={() => void resume.refetch()}
           isFiltered={isFiltered}
-          onClearFilters={clearFilters}
+          onClearFilters={search.clear}
           emptyDescription={t('Aucun compte mouvementé sur cette période.')}
           renderCard={carteResume}
           rowKey={r => r.id}
