@@ -17,9 +17,26 @@ import {
   updateMandatingAgency,
   uploadMandantImage
 } from '../../services/document-branding-service';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Text, Title } = Typography;
+
+// Accesseurs stables (hors du composant) : le filtrage reste mémoïsé.
+const TEXTE_RECHERCHE = [
+  (agency: MandatingAgency) => agency.name,
+  (agency: MandatingAgency) => agency.legalName,
+  (agency: MandatingAgency) => agency.address,
+  (agency: MandatingAgency) => agency.email,
+  (agency: MandatingAgency) => agency.phone,
+  (agency: MandatingAgency) => agency.rccm,
+  (agency: MandatingAgency) => agency.taxId
+];
+const ACCESSEURS = {
+  copro: (agency: MandatingAgency) => agency.syndicateCount > 0,
+  logo: (agency: MandatingAgency) => agency.hasLogo
+};
 
 interface MandatingAgencyFormValues {
   name: string;
@@ -195,6 +212,39 @@ export const SyndicMandatingAgencies: React.FC = () => {
     setItems(prev => prev.map(item => (item.id === updated.id ? updated : item)));
   };
 
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Nom, raison sociale, adresse, e-mail, téléphone, RCCM…')
+    },
+    {
+      key: 'copro',
+      type: 'boolean',
+      label: t('Copropriétés gérées'),
+      primary: true,
+      tristate: true,
+      trueLabel: t('Avec copropriétés'),
+      falseLabel: t('Sans copropriété')
+    },
+    {
+      key: 'logo',
+      type: 'boolean',
+      label: t('Logo'),
+      tristate: true,
+      trueLabel: t('Avec logo'),
+      falseLabel: t('Sans logo')
+    }
+  ];
+
+  const local = useLocalListSearch<MandatingAgency>(items, {
+    ariaLabel: t('Rechercher une agence mandante'),
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
+
   const columns: ColumnsType<MandatingAgency> = useMemo(
     () => [
       {
@@ -289,11 +339,12 @@ export const SyndicMandatingAgencies: React.FC = () => {
           <Empty description={t('Aucune agence mandante enregistrée')} />
         ) : (
           <Table<MandatingAgency>
+            {...local.tableProps}
+            aria-label={t('Agences mandantes')}
             exportFilename={t('Agences mandantes')}
+            exportFetchAll={local.exportAll}
             rowKey="id"
             columns={columns}
-            dataSource={items}
-            pagination={false}
           />
         )}
       </Space>

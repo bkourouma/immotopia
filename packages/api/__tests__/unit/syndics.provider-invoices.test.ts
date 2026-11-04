@@ -516,7 +516,7 @@ describe('paiements', () => {
 
     const detail = await getProviderInvoice(TENANT, SYND, invoice.id);
     expect(detail.payments).toHaveLength(1);
-    const list = await listProviderInvoices(TENANT, SYND, { status: 'PARTIALLY_PAID', page: 1, limit: 20 } as any);
+    const list = await listProviderInvoices(TENANT, SYND, { status: ['PARTIALLY_PAID'], page: 1, limit: 20 } as any);
     expect(list.total).toBe(1);
   });
 });

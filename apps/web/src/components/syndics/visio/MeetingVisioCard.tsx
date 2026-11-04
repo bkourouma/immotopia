@@ -1,6 +1,9 @@
-import React, { Suspense, useState } from 'react';
-import { Alert, Button, Card, Checkbox, Modal, Popconfirm, Space, Spin, Switch, Table, Tag, Typography } from 'antd';
+import React, { Suspense, useMemo, useState } from 'react';
+import { Alert, Button, Card, Checkbox, Modal, Popconfirm, Space, Spin, Switch, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { Table } from '../../primitives';
+import { useLocalListSearch } from '../../../utils/list-search';
+import type { SearchCriterion } from '../../../utils/list-search';
 import { AudioMutedOutlined, AudioOutlined, BellFilled, StopOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import type {
   MeetingRecordingView,
@@ -56,6 +59,29 @@ export function trackLabel(
   if (!allowed) return { text: t('{{name}} interdit', { name }), color: 'red' };
   return { text: t('{{name}} inactif', { name }) };
 }
+
+/** État du micro tel qu'affiché (voir `trackLabel`) : actif, coupé, interdit ou inactif. */
+function micState(participant: MeetingVisioParticipant): 'ACTIVE' | 'MUTED' | 'FORBIDDEN' | 'INACTIVE' {
+  const track = participant.mic;
+  if (track?.published) return track.muted ? 'MUTED' : 'ACTIVE';
+  return isMediaAllowed(participant) ? 'INACTIVE' : 'FORBIDDEN';
+}
+
+function roleLabel(participant: MeetingVisioParticipant): string {
+  return participant.kind === 'MANAGER' ? t('Gestionnaire') : t('Copropriétaire');
+}
+
+// Recherche LOCALE sur les participants de la salle (relus par la console à chaque cycle) :
+// accesseurs stables, hors du composant. Le filtre ne change que l'AFFICHAGE.
+const TEXTE_RECHERCHE = [
+  (participant: MeetingVisioParticipant) => participant.name,
+  (participant: MeetingVisioParticipant) => roleLabel(participant)
+];
+const ACCESSEURS = {
+  role: (participant: MeetingVisioParticipant) => participant.kind,
+  hand: (participant: MeetingVisioParticipant) => Boolean(participant.handRaisedAt),
+  mic: (participant: MeetingVisioParticipant) => micState(participant)
+};
 
 const MediaIndicator: React.FC<{ participant: MeetingVisioParticipant }> = ({ participant }) => {
   const allowed = isMediaAllowed(participant);
@@ -349,6 +375,51 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
   busyWritingParticipantId = null
 }) => {
   const [removing, setRemoving] = useState<MeetingVisioParticipant | null>(null);
+  // Liste triée mémoïsée : la recherche locale (état dans l'URL, préfixe « vp ») survit aux relectures de la salle.
+  const sortedParticipants = useMemo(() => sortVisioParticipants(visio.participants), [visio.participants]);
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Nom, rôle…')
+    },
+    {
+      key: 'role',
+      type: 'multiSelect',
+      label: t('Rôle'),
+      primary: true,
+      options: [
+        { value: 'COOWNER', label: t('Copropriétaire') },
+        { value: 'MANAGER', label: t('Gestionnaire') }
+      ]
+    },
+    {
+      key: 'hand',
+      type: 'boolean',
+      label: t('Main levée'),
+      primary: true
+    },
+    {
+      key: 'mic',
+      type: 'multiSelect',
+      label: t('Micro'),
+      options: [
+        { value: 'ACTIVE', label: trackLabel('mic', { published: true, muted: false }, true).text },
+        { value: 'MUTED', label: trackLabel('mic', { published: true, muted: true }, true).text },
+        { value: 'FORBIDDEN', label: trackLabel('mic', undefined, false).text },
+        { value: 'INACTIVE', label: trackLabel('mic', undefined, true).text }
+      ]
+    }
+  ];
+  const local = useLocalListSearch<MeetingVisioParticipant>(sortedParticipants, {
+    paramPrefix: 'vp',
+    ariaLabel: t('Rechercher dans les participants à la visio'),
+    defaultPageSize: 20,
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
   const recording = visio.recording;
   const activeRecording = (recording?.enabled ? recording.active : null) ?? listActiveRecording;
 
@@ -439,9 +510,11 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
         ) : null}
 
         <Table<MeetingVisioParticipant>
+          {...local.tableProps}
+          aria-label={t('Participants à la visio')}
+          exportable={false}
           size="small"
           rowKey="identity"
-          dataSource={sortVisioParticipants(visio.participants)}
           columns={participantColumns(
             frozen,
             busyParticipantId,
@@ -452,8 +525,8 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
             busyWritingParticipantId
           )}
           scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false }}
-          locale={{ emptyText: t("Personne n'est en visio pour le moment") }}
+          pagination={{ ...local.tableProps.pagination, hideOnSinglePage: true, showSizeChanger: false }}
+          locale={local.isFiltered ? undefined : { emptyText: t("Personne n'est en visio pour le moment") }}
         />
       </Space>
 

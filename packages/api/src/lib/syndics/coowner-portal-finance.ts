@@ -310,10 +310,17 @@ export async function listCoOwnerReceipts(scope: CoOwnerPortalScope, query: CoOw
   if (lotIds.length === 0) return empty;
 
   const period = periodWhere(query.from, query.to);
+  // La recherche est un ET de plus : le périmètre du copropriétaire (`visibleReceiptsWhere`) reste intact.
+  const and: Prisma.SyndicChargeReceiptWhereInput[] = [];
+  if (period) and.push(period);
+  if (query.search) {
+    const contains = { contains: query.search, mode: 'insensitive' as const };
+    and.push({ OR: [{ number: contains }, { periodLabel: contains }, { lot: { lotNumber: contains } }] });
+  }
   const where: Prisma.SyndicChargeReceiptWhereInput = {
     ...visibleReceiptsWhere(scope, lotIds),
     ...(query.kind ? { kind: query.kind } : {}),
-    ...(period ? { AND: [period] } : {})
+    ...(and.length > 0 ? { AND: and } : {})
   };
   const [rows, total] = await Promise.all([
     prisma.syndicChargeReceipt.findMany({

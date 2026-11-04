@@ -17,6 +17,10 @@ vi.mock('../../services/syndic-service', () => service);
 const feedbackMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
 vi.mock('../../lib/feedback', () => ({ feedback: feedbackMock }));
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 vi.mock('../../hooks/useMenuAccess', () => ({
   useMyMenuAccess: () => ({ permissions: null, ready: true, disabled: new Set(), enabled: new Set() })
 }));
@@ -122,7 +126,9 @@ describe('DocumentVault : portail des copropriétaires', () => {
     const onChanged = vi.fn();
     render(
       <App>
-        <DocumentVault documents={[doc()]} tenantId="tenant-1" syndicId="syndic-1" canEdit onChanged={onChanged} />
+        <MemoryRouter>
+          <DocumentVault documents={[doc()]} tenantId="tenant-1" syndicId="syndic-1" canEdit onChanged={onChanged} />
+        </MemoryRouter>
       </App>
     );
 
@@ -144,7 +150,9 @@ describe('DocumentVault : portail des copropriétaires', () => {
   it("masque l'action de visibilité sans droit d'édition", () => {
     render(
       <App>
-        <DocumentVault documents={[doc()]} tenantId="tenant-1" syndicId="syndic-1" />
+        <MemoryRouter>
+          <DocumentVault documents={[doc()]} tenantId="tenant-1" syndicId="syndic-1" />
+        </MemoryRouter>
       </App>
     );
     expect(screen.queryByRole('button', { name: 'Retirer du portail' })).toBeNull();

@@ -830,7 +830,7 @@ export async function getCoOwnerDeclaration(
  */
 export async function listCoOwnerDeclarations(
   scope: CoOwnerPortalScope,
-  params: { status?: DeclarationStatus; page?: number; limit?: number }
+  params: { status?: DeclarationStatus; search?: string; page?: number; limit?: number }
 ): Promise<{ items: CoOwnerDeclaration[]; pagination: Pagination }> {
   const page = clampPage(params.page);
   const limit = clampLimit(params.limit, DEFAULT_PORTAL_LIMIT, MAX_PORTAL_LIMIT);
@@ -838,7 +838,20 @@ export async function listCoOwnerDeclarations(
 
   const where: Prisma.SyndicPaymentDeclarationWhereInput = {
     ...coOwnerScopeWhere(scope),
-    ...(params.status ? { status: params.status } : {})
+    ...(params.status ? { status: params.status } : {}),
+    // ET de plus : le périmètre (`coOwnerScopeWhere`) n'est jamais remplacé par la recherche.
+    ...(params.search
+      ? {
+          AND: [
+            {
+              OR: [
+                { transactionReference: insensitiveContains(params.search) },
+                { lines: { some: { lot: { lotNumber: insensitiveContains(params.search) } } } }
+              ]
+            }
+          ]
+        }
+      : {})
   };
   const [total, sources] = await Promise.all([
     prisma.syndicPaymentDeclaration.count({ where }),
