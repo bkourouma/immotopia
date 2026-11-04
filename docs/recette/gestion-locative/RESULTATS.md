@@ -340,6 +340,35 @@ créé directement « Actif » ; libellé « Date du règlement » ; échéances
 futures « À échoir » (pas « Brouillon ») après annulation ; compte « Cartes à
 encaisser » absent du seed.
 
+#### 06 — suite (Playwright, révision `a4a82969`, 22 cas)
+
+Aucun cas Bloquant échoué. Déclarations jouées de bout en bout sur un bail
+créé pour l'occasion (BAIL-2026-0112, locataire « REC-GL Locataire
+Déclarant ») : déclaration, preuve (image et PDF, aucun `/uploads` direct),
+approbation avec compte, double clic (une seule requête), surplus en
+avance, rejet motivé, rejeu en 404, isolation entre agences (404 sans
+fuite). Paiement en ligne simulé : réussite et échec « Solde insuffisant »,
+réconciliation par rappel. Compte propriétaire : encaissement de 160 000
+→ +145 840 (honoraires 8 % et TVA), annulation → retour exact.
+
+| Cas                                                                | Résultat        | Anomalie / remarque                                                                                |
+| ------------------------------------------------------------------ | --------------- | -------------------------------------------------------------------------------------------------- |
+| GL-06-016, 017, 021, 022, 043, 044, 046, 048 à 051, 053 à 055, 058 | passé           | Lecture seule du comptable (403), cartes mobiles, messages de saisie, preuves, approbation, rejet  |
+| GL-06-018                                                          | passé           | Écart : filtres Remboursé et Partiellement remboursé présents (voulu, H24)                         |
+| GL-06-019                                                          | passé (réserve) | BUG-2026-11-04-050 (« Date d'annulation » sur un paiement réactivé), BUG-040 revu                  |
+| GL-06-042                                                          | passé (réserve) | BUG-2026-11-04-051 (opérateur Mobile Money en code brut)                                           |
+| GL-06-045                                                          | passé (réserve) | BUG-2026-11-04-049 (second bail actif invisible au portail), BUG-2026-11-04-052 (montant conservé) |
+| GL-06-047                                                          | passé (réserve) | BUG-2026-11-04-053 (« 9/2026 » sans zéro), BUG-2026-11-04-054 (échéances échues « Brouillon »)     |
+| GL-06-052                                                          | passé (partiel) | Échéance soldée : aucun bouton Payer au portail, volet non jouable                                 |
+| GL-06-056                                                          | passé           | Écart : type « Quittance » retiré (H22), numérotation `RCU-AAAAMM-NNNN`                            |
+| GL-06-057                                                          | échoué          | BUG-2026-11-04-048 (relevé du locataire tronqué à 50 lignes sur 73)                                |
+| GL-06-059                                                          | passé (partiel) | Tableau de bord conforme ; volet caisse non joué (caisse du jour fermée)                           |
+
+Écarts de scénario : action « Payer » au portail (pas « Déclarer un
+paiement »), onglet « Déclarations en attente » dans la liste globale
+seulement, PDF de preuve renommé, compte portail créé avec le bail (pas
+d'invitation), taux d'honoraires de 8 % dans la base.
+
 #### 04 — suite (Playwright, révision `9820fdd7`)
 
 Retests : BUG-2026-11-04-026 à 032 passés (photos refusées sur leur
@@ -354,3 +383,30 @@ signé consultable). Conversion PDF active : chaîne de signature du
 | GL-04-079, 084                                                            | passé (partiel) | Expiration du code et épuisement des essais non joués                                                                                                                                   |
 | GL-04-089                                                                 | indéterminé     | Envoi SMS 201 par l'API ; à l'écran « Impossible d'envoyer » : BUG-2026-11-04-042 (délai client de 20 s)                                                                                |
 | GL-04-045, 063, 092 à 095, 097, 101, 102, 109 à 115, 117, 118, 120        | non joué        | Contexte du testeur épuisé ; coupures de la base pendant la session                                                                                                                     |
+
+### 14 — Transverse : langues, mobile, robustesse (Playwright, révision `4aafcceb`, ~17 cas sur 40)
+
+Aucun cas Bloquant échoué. Arabe : `dir=rtl`, colonnes inversées, aucun
+débordement. 375 px et 768 px : aucun défilement horizontal de page sur
+les trois espaces (28 écrans). Session : cookies supprimés, déconnexion
+dans un autre onglet et « Précédent » renvoient tous à la connexion avec
+stockage vidé. Aucune clé interne ni chemin disque dans les réponses des
+portails relues.
+
+| Cas                                                                | Résultat        | Anomalie / remarque                                                                 |
+| ------------------------------------------------------------------ | --------------- | ----------------------------------------------------------------------------------- |
+| GL-14-002, 013, 025, 042                                           | passé           | RTL, mobile propriétaire, session expirée, retour après déconnexion                 |
+| GL-14-001                                                          | passé (réserve) | BUG-2026-11-04-046 (« 1076 paiements », « Simulateur de paiement opérationnel. »)   |
+| GL-14-003, 005, 010 à 012, 014, 024, 026, 040, 041                 | passé (partiel) | Fenêtres, zoom 200 %, fenêtres privées et lien de paiement valide non joués         |
+| GL-14-004                                                          | échoué          | BUG-2026-11-04-046 (« Locataire: », « Loyer: », « / mois » au portail propriétaire) |
+| GL-14-009, 036                                                     | échoué          | BUG-2026-11-04-045 (XOF, CFA, F CFA au lieu de FCFA)                                |
+| GL-14-020                                                          | échoué          | BUG-2026-11-04-044 (panne réseau au chargement : connexion ou « aucune agence »)    |
+| GL-14-034                                                          | échoué          | BUG-2026-11-04-043 (déclaration : -1, 1e9, 0,01 enregistrés en 1, 19, 1)            |
+| GL-14-039                                                          | échoué          | BUG-2026-11-04-047 (avertissement React « same key » au portail locataire)          |
+| GL-14-032                                                          | à confirmer     | Référence de 256 et notes de 1001 caractères acceptées sans message                 |
+| GL-14-021, 023, 031                                                | non concluant   | Simulation de coupure (`page.route`) inopérante sur le POST                         |
+| GL-14-006 à 008, 016, 022, 027, 030, 033, 035, 037, 038, 043 à 046 | non joué        | Reprendre à GL-14-006                                                               |
+
+Remarques : la langue suit le compte (deux sessions du même compte se la
+transmettent) ; « Choisir un compte de test » de la page de connexion reste
+en français (outil de développement).
