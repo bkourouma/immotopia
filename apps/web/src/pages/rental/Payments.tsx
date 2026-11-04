@@ -77,7 +77,7 @@ const METHOD_LABELS: Record<string, string> = localizedRecord(() => ({
   MOBILE_MONEY: t('Mobile Money'),
   DIRECT_DEBIT: t('Prélèvement bancaire'),
   CARD: t('Carte bancaire'),
-  OTHER: 'Autre'
+  OTHER: t('Autre')
 }));
 
 const STATUS_OPTIONS = localizedList(() => [

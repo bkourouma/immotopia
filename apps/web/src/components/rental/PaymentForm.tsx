@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { App, Form, Input, Select, Button, Row, Col, Alert, InputNumber, DatePicker, Space } from 'antd';
 import dayjs from 'dayjs';
 import { CreatePaymentRequest, RentalPaymentMethod } from '../../services/rental-service';
-import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { montantSaisiProps } from '../../utils/montant-saisi';
+import { LeaseSelectField } from './LeaseSelectField';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
 
@@ -60,7 +61,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
     setErrors({});
     try {
       const submitData: CreatePaymentRequest = {
-        leaseId: leaseId || undefined,
+        leaseId: leaseId || values.leaseId || undefined,
         method: values.method,
         amount: values.amount || 0,
         currency: values.currency || 'FCFA',
@@ -139,6 +140,25 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
       )}
 
       <Row gutter={16}>
+        {/* Depuis la liste globale, aucun bail n'est imposé : le choisir fixe le locataire. */}
+        {!leaseId && (
+          <Col xs={24}>
+            <Form.Item
+              label={t('Bail')}
+              name="leaseId"
+              required
+              rules={[{ required: true, message: t('Choisissez le bail concerné par ce paiement') }]}
+            >
+              <LeaseSelectField
+                tenantId={tenantId}
+                onLeaseChange={bail => {
+                  if (bail?.currency) form.setFieldValue('currency', bail.currency);
+                }}
+              />
+            </Form.Item>
+          </Col>
+        )}
+
         <Col xs={24} md={12}>
           <Form.Item
             label={t('Méthode de paiement')}
@@ -189,15 +209,8 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
               style={{ width: '100%' }}
               min={0}
               step={1000}
-              formatter={value => formatNumberWithSpaces(value?.toString() || '')}
-              parser={
-                (value => {
-                  if (!value) return 0;
-                  const parsed = parseFormattedNumber(value);
-                  const num = parseFloat(parsed);
-                  return isNaN(num) ? 0 : num;
-                }) as (displayValue: string | undefined) => number
-              }
+              // Séparateur décimal de la langue : « 1500,5 » vaut 1 500,50 (BUG-2026-11-04-034).
+              {...montantSaisiProps}
               placeholder={t('Ex: 150000')}
             />
           </Form.Item>

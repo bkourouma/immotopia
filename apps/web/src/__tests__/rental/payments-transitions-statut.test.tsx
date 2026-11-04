@@ -138,3 +138,27 @@ describe('Détail d’un paiement — statuts proposés', () => {
     expect(screen.getByRole('combobox')).toBeDisabled();
   });
 });
+
+describe('Détail d’un paiement — montant disponible (BUG-2026-11-04-040)', () => {
+  /** Valeur affichée en face du libellé « Montant disponible » du cadre financier. */
+  const montantDisponible = () =>
+    screen.getByText('Montant disponible').closest('.ant-descriptions-row')?.textContent ?? '';
+
+  it('un paiement annulé n’a rien de disponible', async () => {
+    await monter('CANCELED');
+    // Le libellé et la valeur sont collés (« Montant disponible0 F CFA ») : pas de frontière de mot.
+    expect(montantDisponible()).toMatch(/(^|\D)0(\D|$)/);
+    expect(montantDisponible()).not.toMatch(/300\D000/);
+  });
+
+  it('un paiement échoué n’a rien de disponible', async () => {
+    await monter('FAILED');
+    expect(montantDisponible()).toMatch(/(^|\D)0(\D|$)/);
+    expect(montantDisponible()).not.toMatch(/300\D000/);
+  });
+
+  it('un paiement réussi non affecté garde tout son montant disponible', async () => {
+    await monter('SUCCESS');
+    expect(montantDisponible()).toMatch(/300\D000/);
+  });
+});

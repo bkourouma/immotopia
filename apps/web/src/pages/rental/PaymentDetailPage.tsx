@@ -37,7 +37,7 @@ import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm
 import { OnlineCheckoutStatus } from '../../components/rental/OnlineCheckoutStatus';
 import { t } from '../../i18n/t';
 import { nomDeLaPersonne, codeDeviseIntl } from '../../lib/rental-labels';
-import { libelleStatutPaiement, statutsAtteignables } from '../../lib/rental-payment-status';
+import { libelleMethodePaiement, libelleStatutPaiement, statutsAtteignables } from '../../lib/rental-payment-status';
 
 import { activeLocale } from '../../i18n/format';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
@@ -135,18 +135,7 @@ export const PaymentDetailPage: React.FC = () => {
     return <Tag color={couleurs[status] || 'default'}>{libelleStatutPaiement(status)}</Tag>;
   };
 
-  const getMethodLabel = (method: string) => {
-    const methodMap: Record<string, string> = {
-      CASH: t('Espèces'),
-      BANK_TRANSFER: t('Virement bancaire'),
-      CHECK: t('Chèque'),
-      MOBILE_MONEY: t('Mobile Money'),
-      DIRECT_DEBIT: t('Prélèvement bancaire'),
-      CARD: t('Carte bancaire'),
-      OTHER: 'Autre'
-    };
-    return methodMap[method] || method;
-  };
+  const getMethodLabel = libelleMethodePaiement;
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return '-';
@@ -192,7 +181,9 @@ export const PaymentDetailPage: React.FC = () => {
   const toInstallments = payment?.allocations?.reduce((sum, alloc) => sum + Number(alloc.amount || 0), 0) || 0;
   const toDeposit = payment?.depositMovements?.reduce((sum, m) => sum + Number(m.amount || 0), 0) || 0;
   const allocatedAmount = toInstallments + toDeposit;
-  const availableAmount = (payment?.amount || 0) - allocatedAmount;
+  // Un paiement échoué ou annulé n'a encaissé aucun argent : rien de disponible (comme la liste).
+  const sansEncaissement = payment?.status === 'FAILED' || payment?.status === 'CANCELED';
+  const availableAmount = sansEncaissement ? 0 : (payment?.amount || 0) - allocatedAmount;
 
   const statutsDisponibles = payment ? statutsAtteignables(payment.status) : [];
 

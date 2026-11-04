@@ -9,7 +9,7 @@ import {
 } from '../../services/rental-service';
 import { Checkbox } from '../ui/checkbox';
 import { Input } from '../ui/input';
-import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { formatterMontant, parserMontant } from '../../utils/montant-saisi';
 import { t } from '../../i18n/t';
 import { codeDeviseIntl } from '../../lib/rental-labels';
 
@@ -30,7 +30,8 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
   loading = false
 }) => {
   const [installments, setInstallments] = useState<RentalInstallment[]>([]);
-  const [loadingInstallments, setLoadingInstallments] = useState(true);
+  // Sans bail (anciennes données), il n'y a rien à charger : ne pas rester sur « Chargement… ».
+  const [loadingInstallments, setLoadingInstallments] = useState(Boolean(payment.lease_id));
   const [selectedInstallments, setSelectedInstallments] = useState<Record<string, boolean>>({});
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -90,7 +91,7 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
         installmentIds,
         amounts: Object.keys(amounts).reduce(
           (acc, id) => {
-            const parsedAmount = parseFormattedNumber(amounts[id]);
+            const parsedAmount = parserMontant(amounts[id]);
             if (parsedAmount && parseFloat(parsedAmount) > 0) {
               acc[id] = parseFloat(parsedAmount);
             }
@@ -166,7 +167,11 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
 
       {errors.submit && <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-md">{errors.submit}</div>}
 
-      {loadingInstallments ? (
+      {!payment.lease_id ? (
+        <div className="text-center py-4 text-muted-foreground">
+          {t("Ce paiement n'est rattaché à aucun bail : il ne peut pas être affecté à des échéances.")}
+        </div>
+      ) : loadingInstallments ? (
         <div className="text-center py-4">{t('Chargement des échéances...')}</div>
       ) : installments.length === 0 ? (
         <div className="text-center py-4 text-muted-foreground">{t('Aucune échéance impayée trouvée')}</div>
@@ -197,9 +202,10 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
                       </label>
                       <Input
                         type="text"
-                        value={formatNumberWithSpaces(amounts[installment.id] || '')}
+                        value={formatterMontant(amounts[installment.id] || '')}
                         onChange={e => {
-                          const cleaned = parseFormattedNumber(e.target.value);
+                          // Décimales conservées : « 1500,5 » vaut 1 500,50 (BUG-2026-11-04-034).
+                          const cleaned = parserMontant(e.target.value);
                           // Validate max value
                           const numValue = parseFloat(cleaned);
                           if (!cleaned || (numValue >= 0 && numValue <= remaining)) {
@@ -211,7 +217,7 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
                         }}
                         placeholder={`Max: ${formatCurrency(remaining, installment.currency)}`}
                         className="w-full"
-                        inputMode="numeric"
+                        inputMode="decimal"
                       />
                     </div>
                   )}

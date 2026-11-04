@@ -8,7 +8,8 @@ import {
   RentalPaymentStatus,
   listPayments
 } from '../../services/rental-service';
-import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { libelleMethodePaiement } from '../../lib/rental-payment-status';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
 
@@ -202,7 +203,8 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
                       style: 'currency',
                       currency: payment.currency === 'FCFA' ? 'XOF' : payment.currency
                     }).format(payment.amount)}{' '}
-                    - {payment.method} - {new Date(payment.created_at).toLocaleDateString(activeLocale())}
+                    - {libelleMethodePaiement(payment.method)} -{' '}
+                    {new Date(payment.created_at).toLocaleDateString(activeLocale())}
                   </Select.Option>
                 ))}
               </Select>
@@ -228,15 +230,7 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
               style={{ width: '100%' }}
               min={0}
               step={1000}
-              formatter={value => formatNumberWithSpaces(value?.toString() || '')}
-              parser={
-                (value => {
-                  if (!value) return 0;
-                  const parsed = parseFormattedNumber(value);
-                  const num = parseFloat(parsed);
-                  return isNaN(num) ? 0 : num;
-                }) as (displayValue: string | undefined) => number
-              }
+              {...montantSaisiProps}
               placeholder={t('Ex: 500 000')}
             />
           </Form.Item>

@@ -9,7 +9,8 @@ import {
 } from '../services/rental-payment-service';
 import { RentalPaymentStatus, RentalPaymentMethod } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
-import { asyncHandler, NotFoundError, UnauthorizedError } from '../middleware/error-middleware';
+import { asyncHandler, BadRequestError, NotFoundError, UnauthorizedError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 import { getCheckoutForPayment, reconcileCheckout, toOnlineCheckoutSummaryDto } from '../lib/payment-gateway/checkout';
 import { parsePagination } from '../utils/pagination-helper';
 import { parseEnumParam } from '../utils/query-params';
@@ -44,6 +45,13 @@ export const createPaymentHandler = asyncHandler(async (req: Request, res: Respo
 
   // Validate request body
   const validatedData = createPaymentSchema.parse(req.body);
+
+  // Un encaissement manuel sans bail n'a ni locataire ni échéance à laquelle
+  // s'affecter (BUG-2026-11-04-033). Le service vérifie que le bail appartient
+  // à l'agence (`findFirst` filtré par `tenant_id`, NotFoundError sinon).
+  if (!validatedData.leaseId) {
+    throw new BadRequestError(t('Choisissez le bail concerné par ce paiement'));
+  }
 
   // Generate idempotency key if not provided
   const idempotencyKey = validatedData.idempotencyKey || uuidv4();

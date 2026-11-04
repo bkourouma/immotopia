@@ -30,6 +30,28 @@ export function statutsAtteignables(statut: string): StatutPaiement[] {
   return [...(TRANSITIONS[statut as StatutPaiement] ?? [])];
 }
 
+/** Libellé d'un moyen de paiement, évalué au rendu (jamais le code brut `BANK_TRANSFER`). */
+export function libelleMethodePaiement(methode: string): string {
+  switch (methode) {
+    case 'CASH':
+      return t('Espèces');
+    case 'BANK_TRANSFER':
+      return t('Virement bancaire');
+    case 'CHECK':
+      return t('Chèque');
+    case 'MOBILE_MONEY':
+      return t('Mobile Money');
+    case 'DIRECT_DEBIT':
+      return t('Prélèvement bancaire');
+    case 'CARD':
+      return t('Carte bancaire');
+    case 'OTHER':
+      return t('Autre');
+    default:
+      return methode;
+  }
+}
+
 /** Libellé d'un statut, évalué au rendu pour suivre la langue affichée. */
 export function libelleStatutPaiement(statut: string): string {
   switch (statut) {

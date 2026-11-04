@@ -227,11 +227,19 @@ describe('Liste des paiements — encaissement refusé', () => {
   it('affiche le message de l’API (devise différente de celle du bail) et garde le formulaire', async () => {
     const motif = 'La devise du paiement (EUR) est différente de celle du bail (FCFA).';
     createPayment.mockRejectedValue(refus(400, motif));
+    // Depuis la liste globale, le bail est obligatoire (BUG-2026-11-04-033).
+    listLeases.mockResolvedValue({
+      success: true,
+      data: [{ id: 'bail-1', lease_number: 'BAIL-1', currency: 'FCFA', property: { title: 'Villa' } }],
+      pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
+    });
     mountListe([]);
 
     const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: /Nouveau paiement/ }, DELAI));
     const boite = await screen.findByRole('dialog', {}, DELAI);
+    await user.click(await within(boite).findByRole('combobox', { name: /Bail/ }, DELAI));
+    await user.click(await screen.findByText(/BAIL-1 — Villa/, {}, DELAI));
     await user.type(await within(boite).findByPlaceholderText('Ex: 150000'), '150000');
     await user.click(within(boite).getByRole('button', { name: 'Enregistrer le paiement' }));
 

@@ -14,6 +14,7 @@ import {
   RentalPenalty
 } from '../../services/rental-service';
 import { saveBlob } from '../../utils/save-blob';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
@@ -338,17 +339,13 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
         rules={[{ required: true, message: t('Indiquez le montant retenu.') }]}
         style={{ marginTop: 'var(--space-4)' }}
       >
-        <InputNumber<number>
+        <InputNumber
           min={0}
           max={9999999999.99}
           style={{ width: '100%' }}
-          inputMode="numeric"
-          formatter={valeur => (valeur == null ? '' : String(valeur).replace(/\B(?=(\d{3})+(?!\d))/g, ' '))}
+          inputMode="decimal"
           // Champ vidé : aucune valeur (et non 0), pour que « Indiquez le montant retenu. » s'affiche.
-          parser={texte => {
-            const net = (texte || '').replace(/\s/g, '');
-            return (net === '' ? null : Number(net)) as unknown as 0;
-          }}
+          {...montantSaisiProps}
         />
       </Form.Item>
       <Form.Item
