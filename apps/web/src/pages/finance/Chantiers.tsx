@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { App, Button, DatePicker, Input, Modal, Select, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -78,6 +78,14 @@ export const Chantiers: React.FC = () => {
   const [nom, setNom] = useState('');
   const [zone, setZone] = useState('');
   const [propertyId, setPropertyId] = useState<string | undefined>(undefined);
+  // Sélecteur « Bien » à recherche distante : la saisie est temporisée, et le
+  // libellé du bien choisi est gardé à part pour rester lisible quand il sort
+  // des 20 résultats de la recherche courante.
+  const [saisieBien, setSaisieBien] = useState('');
+  const [rechercheBien, setRechercheBien] = useState('');
+  const [bienChoisi, setBienChoisi] = useState<{ value: string; label: string } | undefined>(undefined);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [dateDebut, setDateDebut] = useState<Dayjs | null>(null);
   const [dateFinPrevue, setDateFinPrevue] = useState<Dayjs | null>(null);
 
@@ -94,25 +102,32 @@ export const Chantiers: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  // Options du bien, facultatif : mêmes raisons qu'au filtre « Bien » de
-  // `BalanceClients.tsx` — il faut un identifiant, et la liste des chantiers
-  // n'en porte pas dans ses libellés.
-  const { data: parc } = useQuery({
-    queryKey: queryKey('finance-parc', tenantId, {}),
-    queryFn: () => listProperties(tenantId as string, { page: 1, limit: 200 }),
-    enabled: Boolean(tenantId),
+  useEffect(() => {
+    const minuteur = setTimeout(() => setRechercheBien(saisieBien.trim()), 300);
+    return () => clearTimeout(minuteur);
+  }, [saisieBien]);
+
+  // Options du bien, facultatif : recherche distante (20 résultats au plus),
+  // lancée seulement quand le formulaire de création est ouvert. Il faut un
+  // identifiant, et la liste des chantiers n'en porte pas dans ses libellés.
+  const { data: parc, isFetching: rechercheBienEnCours } = useQuery({
+    queryKey: queryKey('finance-parc', tenantId, { q: rechercheBien, limit: 20 }),
+    queryFn: () => listProperties(tenantId as string, { q: rechercheBien, page: 1, limit: 20 }),
+    enabled: Boolean(tenantId) && modalOuvert,
     staleTime: STALE_TIME.reference
   });
 
-  const optionsBiens = useMemo(
-    () =>
-      (parc?.properties ?? [])
-        .map(bien => ({ value: bien.id, label: bien.title }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [parc]
-  );
+  const optionsBiens = useMemo(() => {
+    const options = (parc?.properties ?? []).map(bien => ({ value: bien.id, label: bien.title }));
+    if (bienChoisi && !options.some(o => o.value === bienChoisi.value)) options.unshift(bienChoisi);
+    return options;
+  }, [parc, bienChoisi]);
 
   const chantiers = data ?? [];
+
+  // Pagination locale : l'API rend l'ensemble des chantiers du tenant.
+  useEffect(() => setPage(1), [chantiers.length]);
+  const chantiersPage = chantiers.slice((page - 1) * pageSize, page * pageSize);
 
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
@@ -122,6 +137,9 @@ export const Chantiers: React.FC = () => {
     setNom('');
     setZone('');
     setPropertyId(undefined);
+    setBienChoisi(undefined);
+    setSaisieBien('');
+    setRechercheBien('');
     setDateDebut(null);
     setDateFinPrevue(null);
   };
@@ -226,15 +244,17 @@ export const Chantiers: React.FC = () => {
       </FilterSheet>
 
       <DataView<ConstructionSite>
-        // Le contrat de `listConstructionSites` ne pagine pas : l'API rend
-        // l'ensemble des chantiers du tenant (au plus une dizaine, cf. spec).
-        paginated={false}
+        // Le contrat de `listConstructionSites` ne pagine pas : la pagination
+        // est locale (20 par page) ; l'export reprend toute la liste.
         scrollX={960}
-        items={chantiers}
+        items={chantiersPage}
         total={chantiers.length}
-        page={1}
-        pageSize={Math.max(chantiers.length, 1)}
-        onPageChange={() => {}}
+        page={page}
+        pageSize={pageSize}
+        onPageChange={(p, taille) => {
+          setPage(taille !== pageSize ? 1 : p);
+          setPageSize(taille);
+        }}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les chantiers.') : null}
@@ -247,7 +267,7 @@ export const Chantiers: React.FC = () => {
         columns={colonnes}
         rowKey={c => c.id}
         aria-label={t('Chantiers')}
-        export={{ filename: t('Chantiers') }}
+        export={{ filename: t('Chantiers'), fetchAll: async () => ({ items: chantiers, truncated: false }) }}
         renderCard={c => (
           <DataCard
             title={c.name}
@@ -300,10 +320,16 @@ export const Chantiers: React.FC = () => {
               style={{ width: '100%' }}
               allowClear
               showSearch
-              optionFilterProp="label"
+              filterOption={false}
+              onSearch={setSaisieBien}
+              loading={rechercheBienEnCours}
               placeholder={t('Aucun bien — pourra en recevoir un à la clôture')}
               value={propertyId}
-              onChange={setPropertyId}
+              onChange={(valeur, option) => {
+                setPropertyId(valeur);
+                const libelle = (option as { label?: unknown } | undefined)?.label;
+                setBienChoisi(valeur && typeof libelle === 'string' ? { value: valeur, label: libelle } : undefined);
+              }}
               options={optionsBiens}
             />
           </div>

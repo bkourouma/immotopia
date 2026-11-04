@@ -523,7 +523,10 @@ async function choisir(etiquette: RegExp, texteOption: RegExp) {
  */
 async function fenetreOuverturePrerempli(): Promise<HTMLElement> {
   const fenetre = await screen.findByRole('dialog', {}, TIMEOUT);
-  await waitFor(() => expect(within(fenetre).queryByText('Choisir un lieu de stockage')).not.toBeInTheDocument(), TIMEOUT);
+  await waitFor(
+    () => expect(within(fenetre).queryByText('Choisir un lieu de stockage')).not.toBeInTheDocument(),
+    TIMEOUT
+  );
   return fenetre;
 }
 
@@ -1065,5 +1068,38 @@ describe('Les captures WhatsApp de l’inventaire (lot 041)', () => {
     );
     expect(screen.queryByTestId('whatsapp-count-badge')).not.toBeInTheDocument();
     expect(screen.queryByTestId('whatsapp-line-badge')).not.toBeInTheDocument();
+  }, 40000);
+});
+
+describe('Onglets paresseux et pagination locale', () => {
+  it('la liste des inventaires n’est demandée qu’à l’ouverture de l’onglet Inventaire physique', async () => {
+    monter();
+    await screen.findByRole('tab', { name: 'Inventaire physique' }, TIMEOUT);
+    const appelsListe = () => get.mock.calls.filter(c => /\/stock\/counts(\?|$)/.test(String(c[0]))).length;
+    expect(appelsListe()).toBe(0);
+    await ongletInventaire();
+    await waitFor(() => expect(appelsListe()).toBeGreaterThan(0), TIMEOUT);
+  }, 40000);
+
+  it('25 inventaires : 20 lignes sur la première page, 5 sur la seconde', async () => {
+    const liste = Array.from({ length: 25 }, (_, i) => ({ ...valide(), id: `comptage-${i}`, lines: [] }));
+    configurerGet({ liste });
+    monter(`/tenant/${TENANT}/finance/stock/inventaire?onglet=inventaire`);
+    await waitFor(() => expect(document.querySelectorAll('tbody tr.ant-table-row').length).toBe(20), TIMEOUT);
+    fireEvent.click(screen.getByTitle('2'));
+    await waitFor(() => expect(document.querySelectorAll('tbody tr.ant-table-row').length).toBe(5), TIMEOUT);
+  }, 40000);
+
+  it('60 lignes de comptage : 50 sur la première page, 10 sur la seconde', async () => {
+    // L'inventaire parent reste dans le DOM : on ne compte que les lignes d'article.
+    const lignesCiment = () =>
+      Array.from(document.querySelectorAll('tbody tr.ant-table-row')).filter(r => /CIM-42/.test(r.textContent ?? ''))
+        .length;
+    const lignes = Array.from({ length: 60 }, (_, i) => ligne(`l-${i}`, CIMENT, { countedQuantity: i }));
+    configurerGet({ liste: [{ ...enCours(), lines: lignes }] });
+    monterDetail(EN_COURS);
+    await waitFor(() => expect(lignesCiment()).toBe(50), TIMEOUT);
+    fireEvent.click(screen.getByTitle('2'));
+    await waitFor(() => expect(lignesCiment()).toBe(10), TIMEOUT);
   }, 40000);
 });

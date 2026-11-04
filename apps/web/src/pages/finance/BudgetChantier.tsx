@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { App, Button, Card, DatePicker, Input, InputNumber, Select, Space, Typography } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { App, Button, Card, DatePicker, Input, InputNumber, Select, Space, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -145,6 +145,16 @@ export const BudgetChantier: React.FC = () => {
   const queryClient = useQueryClient();
   const confirmerAction = useConfirmAction();
 
+  // Onglet actif dans l'URL (?onglet=lignes|avenants) ; inconnu -> lignes.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const ongletBrut = searchParams.get('onglet');
+  const onglet = ongletBrut === 'avenants' ? 'avenants' : 'lignes';
+  const changerOnglet = (cle: string) => {
+    const suivants = new URLSearchParams(searchParams);
+    suivants.set('onglet', cle);
+    setSearchParams(suivants, { replace: true });
+  };
+
   const {
     data: budget,
     isPending: budgetEnAttente,
@@ -166,10 +176,12 @@ export const BudgetChantier: React.FC = () => {
     staleTime: STALE_TIME.reference
   });
 
+  // Les postes ne servent qu'aux formulaires : création du budget (quand il
+  // n'existe pas) et saisie d'un avenant (onglet Avenants).
   const { data: postes } = useQuery({
     queryKey: queryKey('cost-categories', tenantId, {}),
     queryFn: () => listCostCategories(tenantId as string),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && !budgetEnAttente && (!budget || onglet === 'avenants'),
     staleTime: STALE_TIME.reference
   });
 
@@ -188,9 +200,19 @@ export const BudgetChantier: React.FC = () => {
   } = useQuery({
     queryKey: detailKey('budget-amendments', tenantId, budget?.id ?? ''),
     queryFn: () => listBudgetAmendments(tenantId as string, budget?.id as string),
-    enabled: Boolean(tenantId && budget?.id),
+    enabled: Boolean(tenantId && budget?.id) && onglet === 'avenants',
     staleTime: STALE_TIME.list
   });
+
+  // Pagination locale (20 par page) des deux tableaux.
+  const [pageLignes, setPageLignes] = useState(1);
+  const [taillePageLignes, setTaillePageLignes] = useState(20);
+  const [pageAvenants, setPageAvenants] = useState(1);
+  const [taillePageAvenants, setTaillePageAvenants] = useState(20);
+  const nbLignes = budget?.lines.length ?? 0;
+  const nbAvenants = avenants?.length ?? 0;
+  useEffect(() => setPageLignes(1), [nbLignes]);
+  useEffect(() => setPageAvenants(1), [nbAvenants]);
 
   const chantier = useMemo(() => chantiers?.find(c => c.id === siteId), [chantiers, siteId]);
 
@@ -599,192 +621,225 @@ export const BudgetChantier: React.FC = () => {
             </div>
           )}
 
-          <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-            {t('Lignes du budget')}
-          </Title>
-          <DataView<SiteBudget['lines'][number]>
-            paginated={false}
-            items={budget.lines}
-            total={budget.lines.length}
-            page={1}
-            pageSize={Math.max(budget.lines.length, 1)}
-            onPageChange={() => {}}
-            emptyDescription={t('Ce budget ne porte encore aucune ligne.')}
-            columns={colonnesLignes}
-            rowKey={l => l.id}
-            aria-label={t('Lignes du budget')}
-            export={{ filename: t('Lignes du budget') }}
-            renderCard={l => (
-              <DataCard
-                title={l.label}
-                aria-label={l.label}
-                subtitle={l.costCategoryLabel}
-                highlight={<MoneyValue value={l.amountForecast} />}
-                fields={
-                  l.quantity != null || l.unitPrice != null
-                    ? [
-                        {
-                          label: t('Quantité'),
-                          value: l.quantity == null ? '' : l.quantity.toLocaleString(activeLocale())
-                        },
-                        {
-                          label: t('Prix unitaire'),
-                          value: l.unitPrice == null ? '' : <MoneyValue value={l.unitPrice} />
-                        }
-                      ]
-                    : undefined
-                }
-              />
-            )}
+          <Tabs
+            activeKey={onglet}
+            onChange={changerOnglet}
+            destroyOnHidden
+            items={[
+              {
+                key: 'lignes',
+                label: t('Lignes du budget'),
+                children: (
+                  <>
+                    <DataView<SiteBudget['lines'][number]>
+                      items={budget.lines.slice((pageLignes - 1) * taillePageLignes, pageLignes * taillePageLignes)}
+                      total={budget.lines.length}
+                      page={pageLignes}
+                      pageSize={taillePageLignes}
+                      onPageChange={(page, taille) => {
+                        setPageLignes(page);
+                        setTaillePageLignes(taille);
+                      }}
+                      emptyDescription={t('Ce budget ne porte encore aucune ligne.')}
+                      columns={colonnesLignes}
+                      rowKey={l => l.id}
+                      aria-label={t('Lignes du budget')}
+                      export={{ filename: t('Lignes du budget') }}
+                      renderCard={l => (
+                        <DataCard
+                          title={l.label}
+                          aria-label={l.label}
+                          subtitle={l.costCategoryLabel}
+                          highlight={<MoneyValue value={l.amountForecast} />}
+                          fields={
+                            l.quantity != null || l.unitPrice != null
+                              ? [
+                                  {
+                                    label: t('Quantité'),
+                                    value: l.quantity == null ? '' : l.quantity.toLocaleString(activeLocale())
+                                  },
+                                  {
+                                    label: t('Prix unitaire'),
+                                    value: l.unitPrice == null ? '' : <MoneyValue value={l.unitPrice} />
+                                  }
+                                ]
+                              : undefined
+                          }
+                        />
+                      )}
+                    />
+                  </>
+                )
+              },
+              {
+                key: 'avenants',
+                label: t('Avenants'),
+                children: (
+                  <>
+                    <DataView<BudgetAmendment>
+                      items={(avenants ?? []).slice(
+                        (pageAvenants - 1) * taillePageAvenants,
+                        pageAvenants * taillePageAvenants
+                      )}
+                      total={nbAvenants}
+                      page={pageAvenants}
+                      pageSize={taillePageAvenants}
+                      onPageChange={(page, taille) => {
+                        setPageAvenants(page);
+                        setTaillePageAvenants(taille);
+                      }}
+                      loading={avenantsEnAttente}
+                      error={erreurAvenants ? t('Impossible de charger les avenants de ce budget.') : null}
+                      errorCause={erreurAvenants}
+                      onRetry={() => refetchAvenants()}
+                      emptyDescription={t("Aucun avenant n'a encore été saisi sur ce budget.")}
+                      columns={colonnesAvenants}
+                      rowKey={a => a.id}
+                      aria-label={t('Avenants du budget')}
+                      export={{ filename: t('Avenants') }}
+                      renderCard={a => (
+                        <DataCard
+                          title={dateCourte(a.amendmentDate)}
+                          aria-label={t('Avenant du {{value}}', { value: dateCourte(a.amendmentDate) })}
+                          subtitle={a.reason}
+                          status={
+                            <StatusTag
+                              status={a.status}
+                              tone={TONE_BUDGET[a.status]}
+                              label={SITE_BUDGET_STATUS_LABELS[a.status]}
+                            />
+                          }
+                          highlight={<MoneyValue value={a.totalDelta} signed />}
+                          fields={[{ label: t('Saisi par'), value: a.createdByLabel }]}
+                          primaryAction={
+                            a.status === 'DRAFT'
+                              ? {
+                                  label: t('Valider'),
+                                  onClick: () =>
+                                    confirmerAction({
+                                      title: t("Valider l'avenant du {{value}} ?", {
+                                        value: dateCourte(a.amendmentDate)
+                                      }),
+                                      description: t(
+                                        "Cette opération est irréversible : un avenant validé ne peut plus être modifié, et son écart s'ajoute alors au budget révisé du chantier."
+                                      ),
+                                      okText: t('Confirmer la validation'),
+                                      onConfirm: () => validerAvenant(a)
+                                    })
+                                }
+                              : undefined
+                          }
+                        />
+                      )}
+                    />
+
+                    <Card style={{ marginTop: 'var(--space-6)' }}>
+                      <Title level={4} style={{ marginTop: 0 }}>
+                        {t('Nouvel avenant')}
+                      </Title>
+
+                      <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-4)', width: '100%' }}>
+                        <div>
+                          <div>
+                            <label htmlFor="avenant-date">{t('Date')}</label>
+                          </div>
+                          <DatePicker
+                            id="avenant-date"
+                            format="DD/MM/YYYY"
+                            value={dateAvenant}
+                            onChange={v => setDateAvenant(v ?? dayjs())}
+                          />
+                        </div>
+                        <div style={{ minWidth: 320, flex: 1 }}>
+                          <div>
+                            <label htmlFor="avenant-motif">{t('Motif')}</label>
+                          </div>
+                          <Input
+                            id="avenant-motif"
+                            value={motifAvenant}
+                            onChange={event => setMotifAvenant(event.target.value)}
+                            placeholder={t('Ex. Renchérissement du ciment')}
+                          />
+                        </div>
+                      </Space>
+
+                      <Space
+                        orientation="vertical"
+                        size="small"
+                        style={{ width: '100%', marginBottom: 'var(--space-4)' }}
+                      >
+                        {lignesAvenant.map(ligne => (
+                          <Space key={ligne.id} align="start" wrap>
+                            <Select
+                              aria-label={t('Poste de dépense')}
+                              placeholder={t('Poste')}
+                              style={{ width: 200 }}
+                              value={ligne.costCategoryId}
+                              onChange={value => modifierLigneAvenant(ligne.id, { costCategoryId: value })}
+                              showSearch
+                              optionFilterProp="label"
+                              options={optionsPostes}
+                            />
+                            <InputNumber
+                              aria-label={t('Quantité')}
+                              placeholder={t('Quantité')}
+                              // Jamais négative : c'est le prix unitaire qui porte le
+                              // signe d'un écart en baisse (voir `ecartDeLaLigne`).
+                              min={0}
+                              style={{ width: 120 }}
+                              value={ligne.quantity ?? undefined}
+                              onChange={value =>
+                                modifierLigneAvenant(ligne.id, { quantity: (value as number | null) ?? null })
+                              }
+                            />
+                            <InputNumber
+                              aria-label={t('Prix unitaire')}
+                              placeholder={t('Prix unitaire (+/-)')}
+                              style={{ width: 160 }}
+                              value={ligne.unitPrice ?? undefined}
+                              onChange={value =>
+                                modifierLigneAvenant(ligne.id, { unitPrice: (value as number | null) ?? null })
+                              }
+                              {...montantSaisiProps}
+                            />
+                            <InputNumber
+                              aria-label={t('Écart')}
+                              placeholder={t('Écart (+/-)')}
+                              style={{ width: 180 }}
+                              disabled={montantVerrouille(ligne.quantity, ligne.unitPrice)}
+                              value={ecartDeLaLigne(ligne) ?? undefined}
+                              onChange={value =>
+                                modifierLigneAvenant(ligne.id, { amountDelta: (value as number | null) ?? null })
+                              }
+                              {...montantSaisiProps}
+                            />
+                            <Button
+                              aria-label={t('Retirer la ligne')}
+                              icon={<DeleteOutlined />}
+                              disabled={lignesAvenant.length <= 1}
+                              onClick={() => retirerLigneAvenant(ligne.id)}
+                            />
+                          </Space>
+                        ))}
+                        <Button icon={<PlusOutlined />} onClick={ajouterLigneAvenant}>
+                          {t('Ajouter une ligne')}
+                        </Button>
+                      </Space>
+
+                      <Button
+                        type="primary"
+                        loading={enregistrementAvenant}
+                        disabled={!peutEnregistrerAvenant}
+                        onClick={enregistrerAvenant}
+                      >
+                        {t("Enregistrer l'avenant")}
+                      </Button>
+                    </Card>
+                  </>
+                )
+              }
+            ]}
           />
-
-          <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-            {t('Avenants')}
-          </Title>
-          <DataView<BudgetAmendment>
-            paginated={false}
-            items={avenants ?? []}
-            total={(avenants ?? []).length}
-            page={1}
-            pageSize={Math.max((avenants ?? []).length, 1)}
-            onPageChange={() => {}}
-            loading={avenantsEnAttente}
-            error={erreurAvenants ? t('Impossible de charger les avenants de ce budget.') : null}
-            errorCause={erreurAvenants}
-            onRetry={() => refetchAvenants()}
-            emptyDescription={t("Aucun avenant n'a encore été saisi sur ce budget.")}
-            columns={colonnesAvenants}
-            rowKey={a => a.id}
-            aria-label={t('Avenants du budget')}
-            export={{ filename: t('Avenants') }}
-            renderCard={a => (
-              <DataCard
-                title={dateCourte(a.amendmentDate)}
-                aria-label={t('Avenant du {{value}}', { value: dateCourte(a.amendmentDate) })}
-                subtitle={a.reason}
-                status={
-                  <StatusTag
-                    status={a.status}
-                    tone={TONE_BUDGET[a.status]}
-                    label={SITE_BUDGET_STATUS_LABELS[a.status]}
-                  />
-                }
-                highlight={<MoneyValue value={a.totalDelta} signed />}
-                fields={[{ label: t('Saisi par'), value: a.createdByLabel }]}
-                primaryAction={
-                  a.status === 'DRAFT'
-                    ? {
-                        label: t('Valider'),
-                        onClick: () =>
-                          confirmerAction({
-                            title: t("Valider l'avenant du {{value}} ?", { value: dateCourte(a.amendmentDate) }),
-                            description: t(
-                              "Cette opération est irréversible : un avenant validé ne peut plus être modifié, et son écart s'ajoute alors au budget révisé du chantier."
-                            ),
-                            okText: t('Confirmer la validation'),
-                            onConfirm: () => validerAvenant(a)
-                          })
-                      }
-                    : undefined
-                }
-              />
-            )}
-          />
-
-          <Card style={{ marginTop: 'var(--space-6)' }}>
-            <Title level={4} style={{ marginTop: 0 }}>
-              {t('Nouvel avenant')}
-            </Title>
-
-            <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-4)', width: '100%' }}>
-              <div>
-                <div>
-                  <label htmlFor="avenant-date">{t('Date')}</label>
-                </div>
-                <DatePicker
-                  id="avenant-date"
-                  format="DD/MM/YYYY"
-                  value={dateAvenant}
-                  onChange={v => setDateAvenant(v ?? dayjs())}
-                />
-              </div>
-              <div style={{ minWidth: 320, flex: 1 }}>
-                <div>
-                  <label htmlFor="avenant-motif">{t('Motif')}</label>
-                </div>
-                <Input
-                  id="avenant-motif"
-                  value={motifAvenant}
-                  onChange={event => setMotifAvenant(event.target.value)}
-                  placeholder={t('Ex. Renchérissement du ciment')}
-                />
-              </div>
-            </Space>
-
-            <Space orientation="vertical" size="small" style={{ width: '100%', marginBottom: 'var(--space-4)' }}>
-              {lignesAvenant.map(ligne => (
-                <Space key={ligne.id} align="start" wrap>
-                  <Select
-                    aria-label={t('Poste de dépense')}
-                    placeholder={t('Poste')}
-                    style={{ width: 200 }}
-                    value={ligne.costCategoryId}
-                    onChange={value => modifierLigneAvenant(ligne.id, { costCategoryId: value })}
-                    showSearch
-                    optionFilterProp="label"
-                    options={optionsPostes}
-                  />
-                  <InputNumber
-                    aria-label={t('Quantité')}
-                    placeholder={t('Quantité')}
-                    // Jamais négative : c'est le prix unitaire qui porte le
-                    // signe d'un écart en baisse (voir `ecartDeLaLigne`).
-                    min={0}
-                    style={{ width: 120 }}
-                    value={ligne.quantity ?? undefined}
-                    onChange={value => modifierLigneAvenant(ligne.id, { quantity: (value as number | null) ?? null })}
-                  />
-                  <InputNumber
-                    aria-label={t('Prix unitaire')}
-                    placeholder={t('Prix unitaire (+/-)')}
-                    style={{ width: 160 }}
-                    value={ligne.unitPrice ?? undefined}
-                    onChange={value => modifierLigneAvenant(ligne.id, { unitPrice: (value as number | null) ?? null })}
-                    {...montantSaisiProps}
-                  />
-                  <InputNumber
-                    aria-label={t('Écart')}
-                    placeholder={t('Écart (+/-)')}
-                    style={{ width: 180 }}
-                    disabled={montantVerrouille(ligne.quantity, ligne.unitPrice)}
-                    value={ecartDeLaLigne(ligne) ?? undefined}
-                    onChange={value =>
-                      modifierLigneAvenant(ligne.id, { amountDelta: (value as number | null) ?? null })
-                    }
-                    {...montantSaisiProps}
-                  />
-                  <Button
-                    aria-label={t('Retirer la ligne')}
-                    icon={<DeleteOutlined />}
-                    disabled={lignesAvenant.length <= 1}
-                    onClick={() => retirerLigneAvenant(ligne.id)}
-                  />
-                </Space>
-              ))}
-              <Button icon={<PlusOutlined />} onClick={ajouterLigneAvenant}>
-                {t('Ajouter une ligne')}
-              </Button>
-            </Space>
-
-            <Button
-              type="primary"
-              loading={enregistrementAvenant}
-              disabled={!peutEnregistrerAvenant}
-              onClick={enregistrerAvenant}
-            >
-              {t("Enregistrer l'avenant")}
-            </Button>
-          </Card>
         </>
       )}
     </>

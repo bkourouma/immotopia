@@ -172,6 +172,25 @@ describe('GET /stock/movements', () => {
     expect(listStockMovementsPage).not.toHaveBeenCalled();
   });
 
+  it('transmet `search` rogné ; vide, il est ignoré ; au-delà de 120 caractères, 400', async () => {
+    listStockMovementsPage.mockResolvedValue({ movements: [], meta: META });
+
+    await request(app).get(`${base}/stock/movements?search=%20ciment%20`);
+    expect(listStockMovementsPage).toHaveBeenLastCalledWith(
+      TENANT_A,
+      CTX,
+      expect.objectContaining({ search: 'ciment' }),
+      expect.any(Object)
+    );
+
+    await request(app).get(`${base}/stock/movements?search=`);
+    expect(listStockMovementsPage.mock.calls[1][2].search).toBeUndefined();
+
+    const res = await request(app).get(`${base}/stock/movements?search=${'x'.repeat(121)}`);
+    expect(res.status).toBe(400);
+    expect(listStockMovementsPage).toHaveBeenCalledTimes(2);
+  });
+
   it('relaie le 403 STOCK_VALUE_FIELD_FORBIDDEN du service pour un filtre par personne', async () => {
     listStockMovementsPage.mockRejectedValue(
       new AppError('Le filtre par personne est réservé.', 403, 'STOCK_VALUE_FIELD_FORBIDDEN')
@@ -202,6 +221,16 @@ describe('GET /stock/movements/export.csv', () => {
     expect(res.headers['content-type']).toContain('text/csv');
     expect(res.headers['content-disposition']).toMatch(/attachment; filename="journal-stock-\d{4}-\d{2}-\d{2}\.csv"/);
     expect(exportStockMovementsCsv).toHaveBeenCalledWith(TENANT_A, CTX, expect.objectContaining({ type: 'ISSUE' }));
+  });
+
+  it('l’export reçoit `search` comme la liste ; 400 au-delà de 120 caractères', async () => {
+    exportStockMovementsCsv.mockResolvedValue('x');
+    const ok = await request(app).get(`${base}/stock/movements/export.csv?search=ciment`);
+    expect(ok.status).toBe(200);
+    expect(exportStockMovementsCsv).toHaveBeenCalledWith(TENANT_A, CTX, expect.objectContaining({ search: 'ciment' }));
+
+    const trop = await request(app).get(`${base}/stock/movements/export.csv?search=${'x'.repeat(121)}`);
+    expect(trop.status).toBe(400);
   });
 
   it('refuse un curseur sur l’export (400) : l’export ne se pagine pas', async () => {

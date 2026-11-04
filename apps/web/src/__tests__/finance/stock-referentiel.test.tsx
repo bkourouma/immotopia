@@ -914,7 +914,6 @@ describe('Les corps de création n’emportent que ce que le schéma `.strict()`
     await screen.findByText('CIM-42', {}, { timeout: 8000 });
     // Sans filtre, aucun paramètre de requête.
     expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items`);
-    expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/locations`);
 
     await user.click(screen.getByRole('checkbox', { name: /Articles actifs uniquement/ }));
     await waitFor(() => expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items?onlyActive=true`));
@@ -1189,5 +1188,71 @@ describe('Lot 040 — changer l’unité ne convertit rien', () => {
     await user.type(unite, 'tonne');
 
     expect(await within(dialogue).findByText(phrase)).toBeInTheDocument();
+  }, 30000);
+});
+
+describe('Onglets paresseux et pagination locale', () => {
+  const appelsVers = (fragment: string) => get.mock.calls.filter(([url]) => String(url).includes(fragment)).length;
+
+  it('ne lit les lieux et les réglages qu’à l’ouverture de leur onglet, et inscrit l’onglet dans l’URL', async () => {
+    const user = userEvent.setup({ delay: null });
+    monter();
+
+    await screen.findByText('CIM-42', {}, { timeout: 8000 });
+    expect(appelsVers('/finance/stock/locations')).toBe(0);
+    expect(appelsVers('/finance/stock/settings')).toBe(0);
+    // Ni postes ni chantiers : aucun formulaire n'est ouvert.
+    expect(appelsVers('/finance/cost-categories')).toBe(0);
+    expect(appelsVers('/finance/sites')).toBe(0);
+
+    await user.click(screen.getByRole('tab', { name: 'Lieux de stockage' }));
+    await screen.findByText("Magasin central d'Angré", {}, { timeout: 8000 });
+    expect(appelsVers('/finance/stock/locations')).toBeGreaterThan(0);
+    expect(appelsVers('/finance/stock/settings')).toBe(0);
+    expect(screen.getByRole('tab', { name: 'Lieux de stockage' })).toHaveAttribute('aria-selected', 'true');
+  }, 30000);
+
+  it('ouvre l’onglet demandé par l’URL sans lire les articles', async () => {
+    monter(`/tenant/${TENANT}/finance/stock/parametrage?onglet=valorisation`);
+    await screen.findByText('La décision en vigueur', {}, { timeout: 8000 });
+    expect(appelsVers('/finance/stock/items')).toBe(0);
+  }, 30000);
+
+  it('un onglet inconnu retombe sur les articles', async () => {
+    monter(`/tenant/${TENANT}/finance/stock/parametrage?onglet=nimporte`);
+    await screen.findByText('CIM-42', {}, { timeout: 8000 });
+    expect(appelsVers('/finance/stock/locations')).toBe(0);
+  }, 30000);
+
+  it('charge les postes à l’ouverture du formulaire d’article seulement', async () => {
+    const user = userEvent.setup({ delay: null });
+    monter();
+    await screen.findByText('CIM-42', {}, { timeout: 8000 });
+    expect(appelsVers('/finance/cost-categories')).toBe(0);
+
+    await user.click((await screen.findAllByRole('button', { name: /Nouvel article/ }))[0]);
+    await waitFor(() => expect(appelsVers('/finance/cost-categories')).toBeGreaterThan(0));
+  }, 30000);
+
+  it('pagine localement les articles : 20 puis 5', async () => {
+    const articles = Array.from({ length: 25 }, (_, n) =>
+      ciment({
+        id: `article-${n + 1}`,
+        reference: `REF-${String(n + 1).padStart(2, '0')}`,
+        label: `Désignation ${n + 1}`
+      })
+    );
+    configurerGet({ articles });
+    const user = userEvent.setup({ delay: null });
+    monter();
+
+    await screen.findByText('REF-01', {}, { timeout: 8000 });
+    expect(screen.getAllByText(/^REF-[0-9]{2}$/)).toHaveLength(20);
+    expect(screen.queryByText('REF-21')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTitle('2'));
+
+    await screen.findByText('REF-21', {}, { timeout: 8000 });
+    expect(screen.getAllByText(/^REF-[0-9]{2}$/)).toHaveLength(5);
   }, 30000);
 });

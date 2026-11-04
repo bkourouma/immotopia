@@ -315,7 +315,7 @@ describe('Fiche du bail — les trois chiffres qui rendent le mécanisme lisible
 
   it('affiche un message explicite quand une constatation n’a aucune imputation, jamais un blanc', async () => {
     listLandLeaseAccruals.mockResolvedValue([constatation({ allocations: [] })]);
-    mountFiche();
+    mountFiche('/tenant/agence-1/finance/baux-terrain/bail-1?onglet=constatations');
 
     await screen.findByRole('heading', { name: 'Terrain de la Riviera, 800 m²' }, { timeout: 8000 });
     expect(
@@ -345,7 +345,7 @@ describe('Fiche du bail — paiements', () => {
     listLandLeasePayments.mockResolvedValue([paiement({ status: 'DRAFT', validatedAt: null })]);
     validateLandLeasePayment.mockResolvedValue(paiement());
     const user = userEvent.setup({ delay: null });
-    mountFiche();
+    mountFiche('/tenant/agence-1/finance/baux-terrain/bail-1?onglet=paiements');
 
     await screen.findByRole('button', { name: 'Valider' }, { timeout: 8000 });
     await user.click(screen.getByRole('button', { name: 'Valider' }));
@@ -361,7 +361,7 @@ describe('Fiche du bail — paiements', () => {
   it('enregistre un nouveau paiement en brouillon avec les champs du contrat gelé', async () => {
     createLandLeasePayment.mockResolvedValue(paiement({ id: 'paiement-2', status: 'DRAFT' }));
     const user = userEvent.setup({ delay: null });
-    mountFiche();
+    mountFiche('/tenant/agence-1/finance/baux-terrain/bail-1?onglet=paiements');
 
     await screen.findByText('Nouveau paiement annuel', {}, { timeout: 8000 });
     await user.type(screen.getByLabelText('Montant'), '4000000');
@@ -421,6 +421,62 @@ describe('Fiche du bail — rattachement des chantiers', () => {
 
     await waitFor(() => expect(setSiteLandLease).toHaveBeenCalledWith('agence-1', 'chantier-1', null));
   }, 15000);
+});
+
+describe('Fiche du bail — onglets paresseux et pagination locale', () => {
+  it('ne charge la liste des chantiers qu’à l’ouverture du sélecteur de rattachement', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    await screen.findByRole('heading', { name: 'Terrain de la Riviera, 800 m²' }, { timeout: 8000 });
+    await screen.findByLabelText('Rattacher un chantier existant', {}, { timeout: 8000 });
+    expect(listConstructionSites).not.toHaveBeenCalled();
+
+    await user.click(screen.getByLabelText('Rattacher un chantier existant'));
+
+    await waitFor(() => expect(listConstructionSites).toHaveBeenCalledTimes(1));
+  }, 20000);
+
+  it('n’affiche que l’onglet demandé, et passer d’un onglet à l’autre met `?onglet=` dans l’adresse', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    await screen.findByRole('heading', { name: 'Terrain de la Riviera, 800 m²' }, { timeout: 8000 });
+    // Onglet par défaut : les chantiers rattachés, pas le formulaire de paiement.
+    expect(await screen.findByText('Terrain loué — Riviera', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText('Nouveau paiement annuel')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Paiements annuels' }));
+    expect(await screen.findByText('Nouveau paiement annuel', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText('Terrain loué — Riviera')).not.toBeInTheDocument();
+  }, 20000);
+
+  it('un `?onglet=` inconnu retombe sur le premier onglet, les chantiers rattachés', async () => {
+    mountFiche('/tenant/agence-1/finance/baux-terrain/bail-1?onglet=nimporte');
+
+    expect(await screen.findByText('Terrain loué — Riviera', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText('Nouveau paiement annuel')).not.toBeInTheDocument();
+    expect(screen.queryByText('Constater un mois à la main')).not.toBeInTheDocument();
+  }, 15000);
+
+  it('pagine les constatations en local : 20 lignes, puis 5 à la page 2', async () => {
+    const user = userEvent.setup({ delay: null });
+    listLandLeaseAccruals.mockResolvedValue(
+      Array.from({ length: 25 }, (_, i) =>
+        constatation({ id: `constat-${i + 1}`, periodYear: 2001 + i, periodMonth: 1, amount: 1000 + i })
+      )
+    );
+    mountFiche('/tenant/agence-1/finance/baux-terrain/bail-1?onglet=constatations');
+
+    await screen.findByText('Janvier 2001', {}, { timeout: 8000 });
+    expect(document.querySelectorAll('.ant-table-tbody tr.ant-table-row')).toHaveLength(20);
+    expect(screen.queryByText('Janvier 2021')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTitle('2'));
+
+    expect(await screen.findByText('Janvier 2021', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(document.querySelectorAll('.ant-table-tbody tr.ant-table-row')).toHaveLength(5);
+  }, 30000);
 });
 
 describe('Vocabulaire (P-1 du PRD)', () => {

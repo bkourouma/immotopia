@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { App, Button, Card, Checkbox, Input, Modal, Radio, Select, Space, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
@@ -222,6 +222,17 @@ export const StockReferentiel: React.FC = () => {
   // la marchandise bien réelle de l'écran qui la paramètre.
   // ---------------------------------------------------------------------
 
+  // Onglet actif dans l'URL (?onglet=articles|lieux|valorisation) ; inconnu -> articles.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const ongletBrut = searchParams.get('onglet');
+  const onglet: 'articles' | 'lieux' | 'valorisation' =
+    ongletBrut === 'lieux' || ongletBrut === 'valorisation' ? ongletBrut : 'articles';
+  const changerOnglet = (cle: string) => {
+    const suivants = new URLSearchParams(searchParams);
+    suivants.set('onglet', cle);
+    setSearchParams(suivants, { replace: true });
+  };
+
   const [articlesActifsSeulement, setArticlesActifsSeulement] = useState(false);
   const [recherche, setRecherche] = useState('');
   const [lieuxActifsSeulement, setLieuxActifsSeulement] = useState(false);
@@ -242,7 +253,7 @@ export const StockReferentiel: React.FC = () => {
   } = useQuery({
     queryKey: queryKey('stock-items', tenantId, filtresArticles),
     queryFn: () => listStockItems(tenantId as string, filtresArticles),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && onglet === 'articles',
     staleTime: STALE_TIME.list
   });
 
@@ -254,7 +265,7 @@ export const StockReferentiel: React.FC = () => {
   } = useQuery({
     queryKey: queryKey('stock-locations', tenantId, filtresLieux),
     queryFn: () => listStockLocations(tenantId as string, filtresLieux),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && onglet === 'lieux',
     staleTime: STALE_TIME.list
   });
 
@@ -266,41 +277,9 @@ export const StockReferentiel: React.FC = () => {
   } = useQuery({
     queryKey: queryKey('stock-settings', tenantId, {}),
     queryFn: () => getStockSettings(tenantId as string),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && onglet === 'valorisation',
     staleTime: STALE_TIME.reference
   });
-
-  // Référentiels des formulaires. Les postes servent la PROPOSITION d'un
-  // article ; les chantiers, le lieu de stockage d'un chantier.
-  // Lot 040 : ces deux lectures exigent un droit financier et ne servent
-  // qu'aux formulaires d'écriture — elles ne partent que pour qui paramètre.
-  const { data: postes } = useQuery({
-    queryKey: queryKey('cost-categories', tenantId, {}),
-    queryFn: () => listCostCategories(tenantId as string),
-    enabled: Boolean(tenantId) && peutParametrer,
-    staleTime: STALE_TIME.reference
-  });
-
-  const { data: chantiers } = useQuery({
-    queryKey: queryKey('construction-sites', tenantId, {}),
-    queryFn: () => listConstructionSites(tenantId as string),
-    enabled: Boolean(tenantId) && peutParametrer,
-    staleTime: STALE_TIME.reference
-  });
-
-  const optionsPostes = useMemo(
-    () =>
-      (postes ?? [])
-        .filter(p => p.isActive)
-        .map(p => ({ value: p.id, label: p.label }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [postes]
-  );
-
-  const optionsChantiers = useMemo(
-    () => (chantiers ?? []).map(c => ({ value: c.id, label: c.name })).sort((a, b) => a.label.localeCompare(b.label)),
-    [chantiers]
-  );
 
   // ---------------------------------------------------------------------
   // Enregistrer un article
@@ -459,6 +438,40 @@ export const StockReferentiel: React.FC = () => {
   const [chantierLieu, setChantierLieu] = useState<string | undefined>(undefined);
   const [creationLieuEnCours, setCreationLieuEnCours] = useState(false);
 
+  // Référentiels des formulaires. Les postes servent la PROPOSITION d'un
+  // article ; les chantiers, le lieu de stockage d'un chantier.
+  // Lot 040 : ces deux lectures exigent un droit financier et ne servent
+  // qu'aux formulaires d'écriture — elles ne partent que pour qui paramètre.
+  // Chargés à l'ouverture du formulaire qui en a besoin (plus au montage).
+  const formulairePostesOuvert = creationArticleOuverte || Boolean(articleCorrige);
+  const { data: postes } = useQuery({
+    queryKey: queryKey('cost-categories', tenantId, {}),
+    queryFn: () => listCostCategories(tenantId as string),
+    enabled: Boolean(tenantId) && peutParametrer && formulairePostesOuvert,
+    staleTime: STALE_TIME.reference
+  });
+
+  const { data: chantiers } = useQuery({
+    queryKey: queryKey('construction-sites', tenantId, {}),
+    queryFn: () => listConstructionSites(tenantId as string),
+    enabled: Boolean(tenantId) && peutParametrer && creationLieuOuverte,
+    staleTime: STALE_TIME.reference
+  });
+
+  const optionsPostes = useMemo(
+    () =>
+      (postes ?? [])
+        .filter(p => p.isActive)
+        .map(p => ({ value: p.id, label: p.label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [postes]
+  );
+
+  const optionsChantiers = useMemo(
+    () => (chantiers ?? []).map(c => ({ value: c.id, label: c.name })).sort((a, b) => a.label.localeCompare(b.label)),
+    [chantiers]
+  );
+
   const ouvrirCreationLieu = () => {
     setNatureLieu('WAREHOUSE');
     setLibelleLieu('');
@@ -593,6 +606,14 @@ export const StockReferentiel: React.FC = () => {
       setDecisionEnCours(false);
     }
   };
+
+  // Pagination locale (20 par page) ; l'export garde toute la liste.
+  const [pageArticles, setPageArticles] = useState(1);
+  const [taillePageArticles, setTaillePageArticles] = useState(20);
+  const [pageLieux, setPageLieux] = useState(1);
+  const [taillePageLieux, setTaillePageLieux] = useState(20);
+  useEffect(() => setPageArticles(1), [articles?.length]);
+  useEffect(() => setPageLieux(1), [lieux?.length]);
 
   // ---------------------------------------------------------------------
 
@@ -736,14 +757,16 @@ export const StockReferentiel: React.FC = () => {
 
       <DataView<StockItem>
         export={{ filename: t('Articles du stock') }}
-        // Le contrat de `listStockItems` ne pagine pas.
-        paginated={false}
+        // Le contrat de `listStockItems` ne pagine pas : pagination locale.
         scrollX={1200}
-        items={listeArticles}
+        items={listeArticles.slice((pageArticles - 1) * taillePageArticles, pageArticles * taillePageArticles)}
         total={listeArticles.length}
-        page={1}
-        pageSize={Math.max(listeArticles.length, 1)}
-        onPageChange={() => {}}
+        page={pageArticles}
+        pageSize={taillePageArticles}
+        onPageChange={(page, taille) => {
+          setPageArticles(page);
+          setTaillePageArticles(taille);
+        }}
         loading={articlesEnAttente || contexteEnAttente}
         isReloading={articlesEnRechargement && !articlesEnAttente}
         error={erreurArticles ? t('Impossible de charger les articles.') : null}
@@ -845,13 +868,15 @@ export const StockReferentiel: React.FC = () => {
 
       <DataView<StockLocationView>
         export={{ filename: t('Lieux de stockage') }}
-        paginated={false}
         scrollX={900}
-        items={listeLieux}
+        items={listeLieux.slice((pageLieux - 1) * taillePageLieux, pageLieux * taillePageLieux)}
         total={listeLieux.length}
-        page={1}
-        pageSize={Math.max(listeLieux.length, 1)}
-        onPageChange={() => {}}
+        page={pageLieux}
+        pageSize={taillePageLieux}
+        onPageChange={(page, taille) => {
+          setPageLieux(page);
+          setTaillePageLieux(taille);
+        }}
         loading={lieuxEnAttente || contexteEnAttente}
         error={erreurLieux ? t('Impossible de charger les lieux de stockage.') : null}
         errorCause={erreurLieux}
@@ -1014,11 +1039,13 @@ export const StockReferentiel: React.FC = () => {
       />
 
       <Tabs
-        defaultActiveKey="articles"
+        activeKey={onglet}
+        onChange={changerOnglet}
+        destroyOnHidden
         items={[
           { key: 'articles', label: t('Articles'), children: ongletArticles },
           { key: 'lieux', label: t('Lieux de stockage'), children: ongletLieux },
-          { key: 'methode', label: t('Méthode de valorisation'), children: ongletMethode }
+          { key: 'valorisation', label: t('Méthode de valorisation'), children: ongletMethode }
         ]}
       />
 

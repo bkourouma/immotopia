@@ -606,3 +606,65 @@ describe('réglages de contrôle — validation des seuils (B7-R3)', () => {
     expect(updateStockControlsSchema.safeParse({ countVarianceAlertPercent: 101 }).success).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Recherche libre (FIN-A/T1)
+// ---------------------------------------------------------------------------
+
+describe('listStockAlerts — recherche libre `search`', () => {
+  const insensible = (valeur: string) => ({ contains: valeur, mode: 'insensitive' });
+
+  async function whereOf(query: Row): Promise<Row> {
+    db.stockAlert.findMany.mockClear();
+    await listStockAlerts(TENANT, ctx(), { limit: 50, ...query } as any);
+    return db.stockAlert.findMany.mock.calls[0][0].where as Row;
+  }
+
+  it('ajoute un OR insensible à la casse sur le lieu et le chantier, sous le tenantId et les autres filtres', async () => {
+    const where = await whereOf({ search: 'magasin', status: 'OPEN' });
+
+    expect(where.tenantId).toBe(TENANT);
+    expect(where.status).toBe('OPEN');
+    const ou = (where.AND as Row[]).find(clause => clause.OR && clause.OR[0]?.location)!.OR as Row[];
+    expect(ou).toEqual([
+      { location: { is: { label: insensible('magasin') } } },
+      { site: { is: { name: insensible('magasin') } } }
+    ]);
+  });
+
+  it('la page suivante garde le filtre de recherche', async () => {
+    seedAlert({ raisedAt: new Date('2026-09-01T10:00:00.000Z') });
+    seedAlert({ raisedAt: new Date('2026-09-02T10:00:00.000Z') });
+    const first = await listStockAlerts(TENANT, ctx(), { limit: 1 });
+    const cursor = first.meta.nextCursor as string;
+
+    const where = await whereOf({ search: 'magasin', cursor, limit: 1 });
+    const ors = (where.AND as Row[]).filter(clause => clause.OR);
+    expect(ors).toHaveLength(2);
+    expect(ors.some(clause => clause.OR[0]?.location)).toBe(true);
+  });
+
+  it('une recherche ne remonte jamais l’alerte d’une autre agence', async () => {
+    seedAlert({ tenantId: OTHER_TENANT });
+    const where = await whereOf({ search: 'magasin' });
+    expect(where.tenantId).toBe(TENANT);
+  });
+
+  it('sans `search`, le where est inchangé', async () => {
+    const where = await whereOf({});
+    expect(where).toEqual({ tenantId: TENANT });
+  });
+});
+
+describe('listStockAlertsQuerySchema — search', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { listStockAlertsQuerySchema } = require('../../src/lib/finance/schemas-stock-pilotage');
+
+  it('rogne la valeur, ignore une valeur vide et refuse plus de 120 caractères (400 par ZodError)', () => {
+    expect(listStockAlertsQuerySchema.parse({ search: '  magasin  ' }).search).toBe('magasin');
+    expect(listStockAlertsQuerySchema.parse({ search: '   ' }).search).toBeUndefined();
+    expect(listStockAlertsQuerySchema.parse({}).search).toBeUndefined();
+    expect(listStockAlertsQuerySchema.safeParse({ search: 'x'.repeat(121) }).success).toBe(false);
+    expect(listStockAlertsQuerySchema.safeParse({ search: 'x'.repeat(120) }).success).toBe(true);
+  });
+});

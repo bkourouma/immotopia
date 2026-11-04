@@ -1034,6 +1034,31 @@ function CarteLigneInventaire(props: {
   );
 }
 
+/** Pagination locale d'une liste déjà chargée en entier. */
+function usePaginationLocale<T>(liste: readonly T[], tailleInitiale: number) {
+  const [page, setPage] = useState(1);
+  const [taille, setTaille] = useState(tailleInitiale);
+  const longueur = liste.length;
+  useEffect(() => setPage(1), [longueur]);
+  return {
+    page,
+    pageSize: taille,
+    items: liste.slice((page - 1) * taille, page * taille),
+    onPageChange: (suivante: number, tailleSuivante: number) => {
+      if (tailleSuivante !== taille) {
+        setTaille(tailleSuivante);
+        setPage(1);
+      } else {
+        setPage(suivante);
+      }
+    }
+  };
+}
+
+/** Plafond d'affichage des lignes d'un comptage et de la liste des inventaires. */
+const LIGNES_PAR_PAGE = 50;
+const INVENTAIRES_PAR_PAGE = 20;
+
 const TableauLignes: React.FC<{
   comptage: StockCount;
   lignes: StockCountLine[];
@@ -1042,23 +1067,26 @@ const TableauLignes: React.FC<{
   actions?: (ligne: StockCountLine) => React.ReactNode;
   actionCarte?: (ligne: StockCountLine) => { label: string; onClick: () => void } | undefined;
   ariaLabel: string;
-}> = ({ comptage, lignes, valuesVisible, vide, actions, actionCarte, ariaLabel }) => (
-  <DataView<StockCountLine>
-    export={{ filename: ariaLabel }}
-    paginated={false}
-    scrollX={1100}
-    items={lignes}
-    total={lignes.length}
-    page={1}
-    pageSize={Math.max(lignes.length, 1)}
-    onPageChange={() => {}}
-    emptyDescription={vide}
-    columns={colonnesLignesInventaire({ comptage, valuesVisible, actions })}
-    rowKey={ligne => ligne.id}
-    aria-label={ariaLabel}
-    renderCard={ligne => <CarteLigneInventaire ligne={ligne} comptage={comptage} action={actionCarte?.(ligne)} />}
-  />
-);
+}> = ({ comptage, lignes, valuesVisible, vide, actions, actionCarte, ariaLabel }) => {
+  // Les saisies (article, quantité) vivent hors du tableau : paginer n'en perd aucune.
+  const pagination = usePaginationLocale(lignes, LIGNES_PAR_PAGE);
+  return (
+    <DataView<StockCountLine>
+      export={{ filename: ariaLabel, fetchAll: async () => lignes }}
+      scrollX={1100}
+      items={pagination.items}
+      total={lignes.length}
+      page={pagination.page}
+      pageSize={pagination.pageSize}
+      onPageChange={pagination.onPageChange}
+      emptyDescription={vide}
+      columns={colonnesLignesInventaire({ comptage, valuesVisible, actions })}
+      rowKey={ligne => ligne.id}
+      aria-label={ariaLabel}
+      renderCard={ligne => <CarteLigneInventaire ligne={ligne} comptage={comptage} action={actionCarte?.(ligne)} />}
+    />
+  );
+};
 
 const grille: React.CSSProperties = {
   display: 'grid',
@@ -1983,6 +2011,7 @@ const OngletInventaire: React.FC<{
     staleTime: STALE_TIME.list
   });
   const comptages = liste.data?.data ?? [];
+  const pagination = usePaginationLocale(comptages, INVENTAIRES_PAR_PAGE);
   const valuesVisible = liste.data?.meta.valuesVisible ?? contexte.abilities.valuesVisible;
 
   const valeurEcart = (comptage: StockCount): React.ReactNode => {
@@ -2121,14 +2150,13 @@ const OngletInventaire: React.FC<{
       </Space>
 
       <DataView<StockCount>
-        export={{ filename: t('Inventaires') }}
-        paginated={false}
+        export={{ filename: t('Inventaires'), fetchAll: async () => comptages }}
         scrollX={1300}
-        items={comptages}
+        items={pagination.items}
         total={comptages.length}
-        page={1}
-        pageSize={Math.max(comptages.length, 1)}
-        onPageChange={() => {}}
+        page={pagination.page}
+        pageSize={pagination.pageSize}
+        onPageChange={pagination.onPageChange}
         loading={liste.isPending}
         isReloading={liste.isFetching && !liste.isPending}
         error={liste.isError ? t('Impossible de charger les inventaires.') : null}

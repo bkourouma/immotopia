@@ -568,3 +568,96 @@ describe('listStockMovementAuthors', () => {
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Recherche libre (FIN-A/T1)
+// ---------------------------------------------------------------------------
+
+describe('recherche libre `search` du journal', () => {
+  /** Le `where` reçu par la lecture, pour un appel qui ne rend rien. */
+  async function whereOf(run: () => Promise<unknown>): Promise<Row> {
+    movementFindMany.mockResolvedValueOnce([]);
+    await run();
+    return movementFindMany.mock.calls[movementFindMany.mock.calls.length - 1][0].where as Row;
+  }
+
+  const insensible = (valeur: string) => ({ contains: valeur, mode: 'insensitive' });
+
+  it('liste : OR insensible à la casse sur article, lieu, chantier et motif, ET tenantId et filtres', async () => {
+    const where = await whereOf(() =>
+      listStockMovementsPage(TENANT, MAGASINIER, { search: 'cim', type: 'ISSUE' }, { limit: 50 })
+    );
+
+    expect(where.tenantId).toBe(TENANT);
+    expect(where.type).toBe('ISSUE');
+    const ou = (where.AND as Row[]).find(clause => clause.OR)!.OR as Row[];
+    expect(ou).toEqual(
+      expect.arrayContaining([
+        { item: { is: { reference: insensible('cim') } } },
+        { item: { is: { label: insensible('cim') } } },
+        { location: { is: { label: insensible('cim') } } },
+        { site: { is: { name: insensible('cim') } } },
+        { reason: insensible('cim') }
+      ])
+    );
+  });
+
+  it('sans STOCK_VALUES_VIEW, preneur et demandeur ne sont pas cherchés ; avec, ils le sont', async () => {
+    const sans = await whereOf(() => listStockMovementsPage(TENANT, MAGASINIER, { search: 'camara' }, { limit: 50 }));
+    expect(JSON.stringify(sans)).not.toContain('requestedBy');
+    expect(JSON.stringify(sans)).not.toContain('fullName');
+
+    jest.clearAllMocks();
+    const avec = await whereOf(() => listStockMovementsPage(TENANT, context(), { search: 'camara' }, { limit: 50 }));
+    const ou = (avec.AND as Row[]).find(clause => clause.OR)!.OR as Row[];
+    expect(ou).toEqual(
+      expect.arrayContaining([
+        { taker: { is: { fullName: insensible('camara') } } },
+        { requestedBy: insensible('camara') }
+      ])
+    );
+  });
+
+  it('le numéro de bon se retrouve par son libellé complet ou son rang', async () => {
+    const complet = await whereOf(() =>
+      listStockMovementsPage(TENANT, MAGASINIER, { search: 'bs-2026-00042' }, { limit: 50 })
+    );
+    expect(JSON.stringify(complet)).toContain(
+      JSON.stringify({ slip: { is: { kind: 'ISSUE', year: 2026, number: 42 } } })
+    );
+
+    jest.clearAllMocks();
+    const rang = await whereOf(() => listStockMovementsPage(TENANT, MAGASINIER, { search: '42' }, { limit: 50 }));
+    expect(JSON.stringify(rang)).toContain(JSON.stringify({ slip: { is: { number: 42 } } }));
+  });
+
+  it('le curseur garde le filtre : page et page suivante portent la même recherche, sous le même tenant', async () => {
+    movementFindMany.mockResolvedValueOnce([]);
+    const first = await listStockMovementsPage(TENANT, MAGASINIER, { search: 'cim' }, { limit: 50 });
+    expect(first.meta.nextCursor).toBeNull();
+
+    const cursor = encodeMovementCursor({
+      movementDate: new Date('2026-03-01T00:00:00.000Z'),
+      createdAt: new Date('2026-03-01T08:00:00.000Z'),
+      id: 'm-0'
+    });
+    const where = await whereOf(() =>
+      listStockMovementsPage(TENANT, MAGASINIER, { search: 'cim' }, { cursor, limit: 50 })
+    );
+    // Avec curseur : AND [where filtré, après-curseur] — le filtre et le tenant restent dans le premier.
+    const [filtre] = where.AND as Row[];
+    expect(filtre.tenantId).toBe(TENANT);
+    expect((filtre.AND as Row[]).some(clause => clause.OR)).toBe(true);
+  });
+
+  it('l’export applique la même recherche', async () => {
+    const where = await whereOf(() => exportStockMovementsCsv(TENANT, MAGASINIER, { search: 'cim' }));
+    expect(where.tenantId).toBe(TENANT);
+    expect(JSON.stringify(where)).toContain('"mode":"insensitive"');
+  });
+
+  it('sans `search`, le where est inchangé : aucun OR', async () => {
+    const where = await whereOf(() => listStockMovementsPage(TENANT, MAGASINIER, { type: 'ISSUE' }, { limit: 50 }));
+    expect(where).toEqual({ tenantId: TENANT, type: 'ISSUE' });
+  });
+});

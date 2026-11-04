@@ -80,6 +80,7 @@ function toFilters(query: StockMovementFilters): StockMovementFilters {
     takerId: query.takerId,
     createdByUserId: query.createdByUserId,
     requestedBy: query.requestedBy,
+    search: query.search,
     from: query.from,
     to: query.to
   };

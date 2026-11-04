@@ -63,7 +63,10 @@ function base(tenantId: string): string {
 function toQuery(filters?: Record<string, string | number | boolean | undefined>): string {
   if (!filters) return '';
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(filters)) {
+  for (const [rawKey, rawValue] of Object.entries(filters)) {
+    // La recherche libre part rognée ; vide, elle n'est pas envoyée.
+    const key = rawKey;
+    const value = key === 'search' && typeof rawValue === 'string' ? rawValue.trim() : rawValue;
     if (value !== undefined && value !== '') {
       params.set(key, String(value));
     }
@@ -261,7 +264,7 @@ export async function removeStockAttachment(
 /** Les alertes, filtrées. Titre et message viennent traduits du serveur. */
 export async function listStockAlerts(
   tenantId: string,
-  filters?: StockAlertsFilters
+  filters?: StockAlertsFilters & { search?: string }
 ): Promise<StockRead<StockAlertView[]>> {
   const response = await apiClient.get<ApiResponseWithMeta<StockAlertView[]>>(
     `${base(tenantId)}/stock/alerts${toQuery(filters as Record<string, string | number | undefined>)}`
@@ -386,7 +389,7 @@ export async function listMovementAuthors(tenantId: string): Promise<StockMoveme
 /** L'export CSV du journal, mêmes filtres que la liste, sans curseur ni limite. */
 export async function exportStockMovementsCsv(
   tenantId: string,
-  filters?: Omit<StockMovementsFilters, 'cursor' | 'limit'>
+  filters?: Omit<StockMovementsFilters, 'cursor' | 'limit'> & { search?: string }
 ): Promise<StockDownload> {
   const sansPagination = { ...(filters ?? {}) } as Record<string, string | number | undefined>;
   delete sansPagination.cursor;

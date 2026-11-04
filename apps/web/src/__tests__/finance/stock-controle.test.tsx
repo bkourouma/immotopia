@@ -731,3 +731,39 @@ describe('Contrôle — vocabulaire', () => {
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(MOTS_INTERDITS);
   }, 25000);
 });
+
+describe('Contrôle — onglets paresseux et plafond des tableaux', () => {
+  it('Indicateurs et Réglages ne sont pas appelés avant leur onglet, puis le sont au clic', async () => {
+    const user = userEvent.setup();
+    monter();
+    await screen.findByText('Sortie importante', {}, { timeout: 8000 });
+    expect(appelsGet(/\/stock\/indicators/)).toEqual([]);
+    expect(appelsGet(/\/stock\/settings\/controls/)).toEqual([]);
+
+    await user.click(screen.getByRole('tab', { name: 'Indicateurs' }));
+    await waitFor(() => expect(appelsGet(/\/stock\/indicators/).length).toBe(1));
+    expect(appelsGet(/\/stock\/settings\/controls/)).toEqual([]);
+
+    await user.click(screen.getByRole('tab', { name: 'Réglages de contrôle' }));
+    await waitFor(() => expect(appelsGet(/\/stock\/settings\/controls/).length).toBe(1));
+  }, 40000);
+
+  it('?onglet inconnu : l’onglet Alertes s’ouvre', async () => {
+    monter(`/tenant/${TENANT}/finance/stock/controle?onglet=nimporte`);
+    expect(await screen.findByText('Sortie importante', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(appelsGet(/\/stock\/indicators/)).toEqual([]);
+  }, 15000);
+
+  it('le tableau par mois est paginé en local : 20 lignes puis 5', async () => {
+    const user = userEvent.setup();
+    const mois = Array.from({ length: 25 }, (_, i) =>
+      ligne(`${2024 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`)
+    );
+    poserMonde({ indicateurs: { from: '2024-01', to: '2026-01', rows: [], totals: mois } });
+    monter(`/tenant/${TENANT}/finance/stock/controle?onglet=indicateurs`);
+    await screen.findByText('Par mois', {}, { timeout: 8000 });
+    await waitFor(() => expect(document.querySelectorAll('tbody tr.ant-table-row').length).toBe(20), { timeout: 8000 });
+    await user.click(screen.getByTitle('2'));
+    await waitFor(() => expect(document.querySelectorAll('tbody tr.ant-table-row').length).toBe(5));
+  }, 40000);
+});

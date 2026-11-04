@@ -93,6 +93,8 @@ export const fieldCountsQuerySchema = z.object({
   locationId: uuid.optional(),
   itemId: uuid.optional(),
   source: z.enum(['WHATSAPP', 'WEB']).optional(),
+  /** Recherche libre (article, lieu, auteur du comptage), sans casse ni accents. Vide = ignorée. */
+  search: z.string().trim().max(120, 'La recherche compte au plus 120 caractères.').optional(),
   cursor: cursor.optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50)
 });

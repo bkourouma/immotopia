@@ -1628,6 +1628,51 @@ describe('Une photo choisie avant l’enregistrement part sur le mouvement cré�
   }, 60000);
 });
 
+describe('Onglets paresseux et pagination locale de l’état du stock', () => {
+  it('ne lit pas le journal tant que son onglet n’est pas affiché, puis le lit après le clic', async () => {
+    const user = userEvent.setup({ delay: null });
+    monter();
+
+    await attendreEtat();
+    expect(appelsGet(/stock\/movements(\?|$)/)).toHaveLength(0);
+    expect(appelsGet(/stock\/movements\/authors/)).toHaveLength(0);
+    expect(appelsGet(/stock\/takers/)).toHaveLength(0);
+
+    await user.click(screen.getByRole('tab', { name: 'Journal des mouvements' }));
+    await screen.findByText('BR-2026-00042', {}, { timeout: 8000 });
+    expect(appelsGet(/stock\/movements(\?|$)/).length).toBeGreaterThan(0);
+  }, 20000);
+
+  it('?onglet=journal ouvre le journal, sans lire les soldes', async () => {
+    monter(`/tenant/${TENANT}/finance/stock?onglet=journal`);
+
+    await screen.findByText('BR-2026-00042', {}, { timeout: 8000 });
+    expect(appelsGet(/stock\/balances/)).toHaveLength(0);
+  }, 20000);
+
+  it('pagine l’état du stock par 20 : 25 soldes donnent 20 lignes, puis les 5 suivantes en page 2', async () => {
+    const user = userEvent.setup({ delay: null });
+    const beaucoup: StockBalanceView[] = Array.from({ length: 25 }, (_, i) => ({
+      ...SOLDES[0],
+      itemId: `article-${i}`,
+      itemReference: `REF-${String(i + 1).padStart(3, '0')}`,
+      itemLabel: `Article numéro ${i + 1}`,
+      locationId: `lieu-${i}`,
+      locationLabel: `Lieu ${i + 1}`
+    }));
+    configurerGet({ soldes: beaucoup });
+    monter();
+
+    await screen.findByText('Article numéro 1', {}, { timeout: 8000 });
+    expect(screen.getAllByText(/^Article numéro \d+$/)).toHaveLength(20);
+    expect(screen.queryByText('Article numéro 21')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTitle('2'));
+    await screen.findByText('Article numéro 21', {}, { timeout: 8000 });
+    expect(screen.getAllByText(/^Article numéro \d+$/)).toHaveLength(5);
+  }, 30000);
+});
+
 describe('Vocabulaire', () => {
   it('n’affiche jamais « débit » ni « crédit », ni aucun mot qui juge une personne', async () => {
     const user = userEvent.setup({ delay: null });

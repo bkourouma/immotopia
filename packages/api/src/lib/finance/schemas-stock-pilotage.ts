@@ -47,6 +47,13 @@ export const listStockAlertsQuerySchema = z.object({
   locationId: z.string().uuid().optional(),
   from: isoDay.optional(),
   to: isoDay.optional(),
+  /** Recherche libre (lieu, chantier), insensible à la casse. Vide = ignorée. */
+  search: z
+    .string()
+    .trim()
+    .max(120, 'La recherche compte au plus 120 caractères.')
+    .optional()
+    .transform(value => (value ? value : undefined)),
   cursor: z.string().min(1).max(512).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50)
 });

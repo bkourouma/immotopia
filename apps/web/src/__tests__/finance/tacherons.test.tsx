@@ -538,7 +538,7 @@ describe('Les gestes de la fiche', () => {
 
   it('enregistre un règlement supérieur à ce qu’on doit : averti, jamais bloqué', async () => {
     const user = userEvent.setup({ delay: null });
-    mountFiche();
+    mountFiche(`/tenant/${TENANT}/finance/tacherons/${TACHERON}?onglet=reglements`);
 
     await screen.findByRole('heading', { name: 'Mamadou Koffi' }, { timeout: 8000 });
     // 900 000 dépasse les 725 000 qu'on lui doit : c'est un acompte, que le
@@ -569,8 +569,73 @@ describe('Navigation — les chemins déclarés par les écrans', () => {
     // requête (la route des marchés est transversale, contrat gelé), et ses
     // règlements avec son identifiant dans le CHEMIN.
     expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/contractor-contracts?contractorId=${TACHERON}`);
-    expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/contractors/${TACHERON}/payments`);
   }, 15000);
+
+  it('la fiche demande les règlements avec l’identifiant du tâcheron dans le CHEMIN', async () => {
+    mountFiche(`/tenant/${TENANT}/finance/tacherons/${TACHERON}?onglet=reglements`);
+
+    await screen.findByRole('heading', { name: 'Mamadou Koffi' }, { timeout: 8000 });
+    await waitFor(() =>
+      expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/contractors/${TACHERON}/payments`)
+    );
+  }, 15000);
+});
+
+describe('Fiche du tâcheron — onglets paresseux et pagination locale', () => {
+  it('ne demande les règlements qu’au clic sur l’onglet Règlements', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    await screen.findByText('MAR-2026-007', {}, { timeout: 8000 });
+    const reglementsDemandes = () => get.mock.calls.some(([url]) => /\/contractors\/[^/?]+\/payments/.test(url));
+    expect(reglementsDemandes()).toBe(false);
+
+    await user.click(screen.getByRole('tab', { name: 'Règlements' }));
+
+    await waitFor(() => expect(reglementsDemandes()).toBe(true));
+    expect(await screen.findByText('Enregistrer un règlement', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText("Convenir d'un marché")).not.toBeInTheDocument();
+  }, 20000);
+
+  it('ne charge chantiers et postes qu’à l’ouverture d’un sélecteur du formulaire de marché', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    await screen.findByText("Convenir d'un marché", {}, { timeout: 8000 });
+    const referentielsDemandes = () => get.mock.calls.some(([url]) => /\/finance\/(sites|cost-categories)/.test(url));
+    expect(referentielsDemandes()).toBe(false);
+
+    await user.click(screen.getByLabelText('Chantier'));
+
+    await waitFor(() => expect(referentielsDemandes()).toBe(true));
+  }, 20000);
+
+  it('un `?onglet=` inconnu retombe sur le premier onglet, les marchés', async () => {
+    mountFiche(`/tenant/${TENANT}/finance/tacherons/${TACHERON}?onglet=nimporte`);
+
+    expect(await screen.findByText("Convenir d'un marché", {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText('Enregistrer un règlement')).not.toBeInTheDocument();
+  }, 15000);
+
+  it('pagine les marchés en local : 20 lignes, puis 5 à la page 2', async () => {
+    const user = userEvent.setup({ delay: null });
+    configurerGet({
+      marches: Array.from({ length: 25 }, (_, i) =>
+        marcheExecute({ id: `marche-${i + 1}`, reference: `MAR-${String(i + 1).padStart(3, '0')}` })
+      ),
+      situations: []
+    });
+    mountFiche();
+
+    await screen.findByText('MAR-001', {}, { timeout: 8000 });
+    expect(document.querySelectorAll('.ant-table-tbody tr.ant-table-row')).toHaveLength(20);
+    expect(screen.queryByText('MAR-025')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTitle('2'));
+
+    expect(await screen.findByText('MAR-025', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(document.querySelectorAll('.ant-table-tbody tr.ant-table-row')).toHaveLength(5);
+  }, 30000);
 });
 
 describe('Vocabulaire (P-1 du PRD)', () => {

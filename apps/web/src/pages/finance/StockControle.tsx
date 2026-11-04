@@ -248,7 +248,7 @@ export function StockControle(): React.ReactElement {
   return (
     <>
       {entete}
-      <Tabs activeKey={actif} onChange={changerOnglet} items={items} />
+      <Tabs activeKey={actif} onChange={changerOnglet} items={items} destroyOnHidden />
     </>
   );
 }
@@ -846,6 +846,27 @@ function carteIndicateur(ligne: StockIndicatorRow, titre: string): React.ReactNo
   );
 }
 
+/** Pagination locale d'une liste déjà chargée en entier (20 lignes par page au départ). */
+function usePaginationLocale<T>(liste: readonly T[], tailleInitiale = 20) {
+  const [page, setPage] = useState(1);
+  const [taille, setTaille] = useState(tailleInitiale);
+  const longueur = liste.length;
+  useEffect(() => setPage(1), [longueur]);
+  return {
+    page,
+    pageSize: taille,
+    items: liste.slice((page - 1) * taille, page * taille),
+    onPageChange: (suivante: number, tailleSuivante: number) => {
+      if (tailleSuivante !== taille) {
+        setTaille(tailleSuivante);
+        setPage(1);
+      } else {
+        setPage(suivante);
+      }
+    }
+  };
+}
+
 const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }> = ({ tenantId, champ }) => {
   const [saisie, setSaisie] = useState<[Dayjs | null, Dayjs | null]>(periodeParDefaut());
   const [periode, setPeriode] = useState<[Dayjs, Dayjs]>(periodeParDefaut());
@@ -872,6 +893,8 @@ const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }
     [indicateurs.data, lieu]
   );
   const dernier = totaux[totaux.length - 1];
+  const pagesMois = usePaginationLocale(totaux);
+  const pagesLieu = usePaginationLocale(lignes);
   const sansValeursFigees = totaux.reduce((somme, ligne) => somme + (ligne.countsWithoutFrozenValues || 0), 0);
 
   const colonnesParMois: ColumnsType<StockIndicatorRow> = [
@@ -960,13 +983,12 @@ const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }
           <Card title={t('Par mois')} size="small">
             <DataView<StockIndicatorRow>
               aria-label={t('Indicateurs par mois')}
-              export={{ filename: t('Indicateurs par mois') }}
-              items={totaux}
+              export={{ filename: t('Indicateurs par mois'), fetchAll: async () => totaux }}
+              items={pagesMois.items}
               total={totaux.length}
-              page={1}
-              pageSize={Math.max(totaux.length, 1)}
-              paginated={false}
-              onPageChange={() => undefined}
+              page={pagesMois.page}
+              pageSize={pagesMois.pageSize}
+              onPageChange={pagesMois.onPageChange}
               emptyDescription={t('Aucun mouvement ni inventaire sur la période.')}
               rowKey={ligne => ligne.month}
               columns={colonnesParMois}
@@ -991,13 +1013,12 @@ const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }
           >
             <DataView<StockIndicatorRow>
               aria-label={t('Indicateurs par lieu et par mois')}
-              export={{ filename: t('Indicateurs par lieu et par mois') }}
-              items={lignes}
+              export={{ filename: t('Indicateurs par lieu et par mois'), fetchAll: async () => lignes }}
+              items={pagesLieu.items}
               total={lignes.length}
-              page={1}
-              pageSize={Math.max(lignes.length, 1)}
-              paginated={false}
-              onPageChange={() => undefined}
+              page={pagesLieu.page}
+              pageSize={pagesLieu.pageSize}
+              onPageChange={pagesLieu.onPageChange}
               isFiltered={Boolean(lieu)}
               onClearFilters={() => setLieu(undefined)}
               emptyDescription={t('Aucun mouvement ni inventaire sur la période.')}

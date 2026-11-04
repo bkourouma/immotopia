@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -268,6 +268,27 @@ describe('Chantiers — liste et création', () => {
     expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument();
   });
 
+  it('le sélecteur « Bien » cherche à distance avec la saisie, 20 résultats au plus', async () => {
+    listConstructionSites.mockResolvedValue([]);
+    const user = userEvent.setup({ delay: null });
+    mountListe();
+
+    await screen.findByText("Aucun chantier n'est encore enregistré.", {}, { timeout: 8000 });
+    // Rien n'est chargé tant que le formulaire est fermé.
+    expect(listProperties).not.toHaveBeenCalled();
+    await user.click(screen.getAllByRole('button', { name: /Nouveau chantier/ })[0]);
+    await screen.findByLabelText('Nom du chantier');
+
+    await user.type(screen.getByLabelText('Bien (facultatif)'), 'Duplex');
+
+    await waitFor(
+      () =>
+        expect(listProperties).toHaveBeenCalledWith('agence-1', expect.objectContaining({ q: 'Duplex', limit: 20 })),
+      { timeout: 8000 }
+    );
+    for (const [, filtres] of listProperties.mock.calls) expect(filtres.limit).toBe(20);
+  }, 15000);
+
   it('n’offre aucun champ pour saisir le coût réel', async () => {
     listConstructionSites.mockResolvedValue([chantier()]);
     const user = userEvent.setup({ delay: null });
@@ -306,7 +327,7 @@ describe('Détail d’un chantier', () => {
 
   it('affiche un libellé lisible pour chaque pièce d’origine, jamais son identifiant', async () => {
     getSiteDetail.mockResolvedValue(detail());
-    mountDetail();
+    mountDetail('/tenant/agence-1/finance/chantiers/chantier-1?onglet=imputations');
 
     await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
 
@@ -330,10 +351,53 @@ describe('Détail d’un chantier', () => {
     getSiteDetail.mockResolvedValue(detail({ allocations: [], byCostCategory: [] }));
     mountDetail();
 
-    expect(
-      await screen.findAllByText('Aucune imputation n’a encore été enregistrée sur ce chantier.', {}, { timeout: 8000 })
-    ).toHaveLength(2);
+    const message = 'Aucune imputation n’a encore été enregistrée sur ce chantier.';
+    // Un onglet à la fois : l'état vide du récapitulatif, puis celui des imputations.
+    expect(await screen.findAllByText(message, {}, { timeout: 8000 })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('tab', { name: 'Imputations' }));
+    await waitFor(() => expect(screen.getAllByText(message)).toHaveLength(1));
+    expect(screen.getByRole('tab', { name: 'Imputations' })).toHaveAttribute('aria-selected', 'true');
   });
+
+  it('?onglet=imputations affiche les imputations, un onglet inconnu retombe sur les postes, sans nouvelle requête', async () => {
+    getSiteDetail.mockResolvedValue(detail());
+    mountDetail('/tenant/agence-1/finance/chantiers/chantier-1?onglet=imputations');
+    await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
+    expect(screen.getByText('Pièce de caisse 2026-0033 — Sable et gravier')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Imputations' })).toHaveAttribute('aria-selected', 'true');
+    expect(getSiteDetail).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    getSiteDetail.mockClear();
+    mountDetail('/tenant/agence-1/finance/chantiers/chantier-1?onglet=inconnu');
+    await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
+    expect(screen.getByRole('tab', { name: 'Sous-totaux par poste' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByText('Pièce de caisse 2026-0033 — Sable et gravier')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Imputations' }));
+    expect(await screen.findByText('Pièce de caisse 2026-0033 — Sable et gravier')).toBeInTheDocument();
+    expect(getSiteDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it('pagine les imputations localement : 20 lignes, puis les 5 suivantes', async () => {
+    const user = userEvent.setup({ delay: null });
+    const base = detail();
+    const allocations = Array.from({ length: 25 }, (_, i) => ({
+      ...base.allocations[0],
+      id: `alloc-${i + 1}`,
+      sourceLabel: `Pièce numéro ${String(i + 1).padStart(2, '0')}`
+    }));
+    getSiteDetail.mockResolvedValue(detail({ allocations }));
+    mountDetail('/tenant/agence-1/finance/chantiers/chantier-1?onglet=imputations');
+
+    await screen.findByText('Pièce numéro 01', {}, { timeout: 8000 });
+    expect(screen.getByText('Pièce numéro 20')).toBeInTheDocument();
+    expect(screen.queryByText('Pièce numéro 21')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTitle('2'));
+    expect(await screen.findByText('Pièce numéro 21')).toBeInTheDocument();
+    expect(screen.getByText('Pièce numéro 25')).toBeInTheDocument();
+    expect(screen.queryByText('Pièce numéro 20')).not.toBeInTheDocument();
+  }, 15000);
 
   it('affiche un état d’erreur avec un moyen de réessayer', async () => {
     getSiteDetail.mockRejectedValue(new Error('panne'));

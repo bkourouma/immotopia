@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Alert,
@@ -1900,7 +1900,14 @@ function OngletEtat(props: {
   const meta = soldes.data?.meta;
   const valeursVisibles = meta?.valuesVisible ?? contexte.abilities.valuesVisible;
   const aveugles = lieuxAveugles(meta, contexte);
-  const liste = soldes.data?.data ?? [];
+  const liste = useMemo(() => soldes.data?.data ?? [], [soldes.data]);
+  // Pagination locale : la liste complète reste en mémoire (et à l'export).
+  const [page, setPage] = useState(1);
+  const taillePage = 20;
+  useEffect(() => {
+    setPage(1);
+  }, [liste.length]);
+  const tranche = useMemo(() => liste.slice((page - 1) * taillePage, page * taillePage), [liste, page]);
   const nbFiltres = (lieuFiltre ? 1 : 0) + (articleFiltre ? 1 : 0) + (masquerZero ? 1 : 0);
   const effacer = () => {
     setLieuFiltre(undefined);
@@ -2023,14 +2030,13 @@ function OngletEtat(props: {
       </FilterSheet>
 
       <DataView<StockBalanceView>
-        export={{ filename: t('État du stock') }}
-        paginated={false}
+        export={{ filename: t('État du stock'), fetchAll: async () => ({ items: liste, truncated: false }) }}
         scrollX={1000}
-        items={liste}
+        items={tranche}
         total={liste.length}
-        page={1}
-        pageSize={Math.max(liste.length, 1)}
-        onPageChange={() => {}}
+        page={page}
+        pageSize={taillePage}
+        onPageChange={p => setPage(p)}
         loading={soldes.isPending}
         isReloading={soldes.isFetching && !soldes.isPending}
         error={soldes.error ? t("Impossible de charger l'état du stock.") : null}
@@ -3042,6 +3048,7 @@ export const Stock: React.FC = () => {
 
       <Tabs
         activeKey={onglet}
+        destroyOnHidden
         onChange={cle =>
           modifierParametres(p => {
             if (cle === 'journal') p.set('onglet', 'journal');
