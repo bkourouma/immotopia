@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import crypto from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { toCsvString } from '../lib/csv';
@@ -122,8 +123,8 @@ export async function listSubscribers(
   else if (statuses.length > 1) where.status = { in: statuses as SubscriberStatus[] };
   if (search) {
     where.OR = [
-      { email: { contains: search, mode: 'insensitive' } },
-      { name: { contains: search, mode: 'insensitive' } }
+      { email: { contains: escapeLike(search), mode: 'insensitive' } },
+      { name: { contains: escapeLike(search), mode: 'insensitive' } }
     ];
   }
 

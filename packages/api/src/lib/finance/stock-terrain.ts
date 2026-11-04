@@ -47,6 +47,7 @@ import type {
   StockMeta,
   StockValuationSource
 } from './types-040-controle';
+import { escapeLike } from '../../utils/like-escape';
 
 const DAY_MS = 86_400_000;
 
@@ -200,8 +201,8 @@ export async function listReceivableInvoices(
   if (search) {
     and.push({
       OR: [
-        { reference: { contains: search, mode: 'insensitive' } },
-        { supplier: { name: { contains: search, mode: 'insensitive' } } }
+        { reference: { contains: escapeLike(search), mode: 'insensitive' } },
+        { supplier: { name: { contains: escapeLike(search), mode: 'insensitive' } } }
       ]
     });
   }

@@ -32,6 +32,7 @@ import type {
   UpdateMandateInput
 } from './schemas';
 import type { PrivateFile } from '../files/private-files';
+import { escapeLike } from '../../utils/like-escape';
 
 /**
  * Mandats de prélèvement bancaire (spec 042, PB2 et PB3).
@@ -106,9 +107,9 @@ export async function listMandates(
   if (query.search) {
     const search = query.search;
     const or: Prisma.DirectDebitMandateWhereInput[] = [
-      { holderName: { contains: search, mode: 'insensitive' } },
-      { lease: { is: { lease_number: { contains: search, mode: 'insensitive' } } } },
-      { debtor: { is: { user: { is: { fullName: { contains: search, mode: 'insensitive' } } } } } }
+      { holderName: { contains: escapeLike(search), mode: 'insensitive' } },
+      { lease: { is: { lease_number: { contains: escapeLike(search), mode: 'insensitive' } } } },
+      { debtor: { is: { user: { is: { fullName: { contains: escapeLike(search), mode: 'insensitive' } } } } } }
     ];
     const reference = /^MDT-(\d{4})-(\d{1,6})$/i.exec(search);
     if (reference) or.push({ year: Number(reference[1]), sequence: Number(reference[2]) });

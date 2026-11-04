@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import type { AuditLog, Prisma } from '@prisma/client';
 import { prisma } from '../utils/database';
 import { BadRequestError } from '../middleware/error-middleware';
@@ -110,10 +111,10 @@ export function buildTenantAuditWhere(
   if (search) {
     and.push({
       OR: [
-        { actionKey: { contains: search, mode: 'insensitive' } },
-        { entityType: { contains: search, mode: 'insensitive' } },
-        { entityId: { contains: search, mode: 'insensitive' } },
-        { actorLabel: { contains: search, mode: 'insensitive' } }
+        { actionKey: { contains: escapeLike(search), mode: 'insensitive' } },
+        { entityType: { contains: escapeLike(search), mode: 'insensitive' } },
+        { entityId: { contains: escapeLike(search), mode: 'insensitive' } },
+        { actorLabel: { contains: escapeLike(search), mode: 'insensitive' } }
       ]
     });
   }

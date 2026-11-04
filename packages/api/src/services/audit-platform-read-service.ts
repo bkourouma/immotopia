@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import type { AuditLog, Prisma } from '@prisma/client';
 import { prisma } from '../utils/database';
 import { enrichAuditLogsWithResourceLabels } from './audit-service';
@@ -94,7 +95,7 @@ export function buildPlatformAuditWhere(
     });
   }
   if (filters.search) {
-    const contains = { contains: filters.search, mode: 'insensitive' as const };
+    const contains = { contains: escapeLike(filters.search), mode: 'insensitive' as const };
     and.push({
       OR: [
         { actionKey: contains },

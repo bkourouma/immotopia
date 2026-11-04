@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { BadRequestError } from '../../middleware/error-middleware';
 import { dayOrderRefinement, dayRange, zDay, zSearch } from '../../utils/list-query-schemas';
 import { t } from '../../i18n';
+import { escapeLike } from '../../utils/like-escape';
 
 export interface DocumentListExtras {
   search?: string;
@@ -46,7 +47,7 @@ export function applyDocumentListExtras(where: any, extras?: DocumentListExtras)
   if (!extras) return;
   const and: any[] = [];
   if (extras.search) {
-    const contains = { contains: extras.search, mode: 'insensitive' };
+    const contains = { contains: escapeLike(extras.search), mode: 'insensitive' };
     and.push({
       OR: [{ document_number: contains }, { title: contains }, { lease: { is: { lease_number: contains } } }]
     });

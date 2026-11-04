@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import { prisma, type PrismaTransactionClient } from '../utils/database';
 import { ClientType, Prisma, TenantStatus, TenantType } from '@prisma/client';
 import { logger } from '../utils/logger';
@@ -317,11 +318,11 @@ export async function listTenants(filters: TenantFilters = {}) {
   }
   if (filters.search) {
     where.OR = [
-      { name: { contains: filters.search, mode: 'insensitive' } },
-      { slug: { contains: filters.search, mode: 'insensitive' } },
-      { legalName: { contains: filters.search, mode: 'insensitive' } },
-      { contactEmail: { contains: filters.search, mode: 'insensitive' } },
-      { city: { contains: filters.search, mode: 'insensitive' } }
+      { name: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+      { slug: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+      { legalName: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+      { contactEmail: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+      { city: { contains: escapeLike(filters.search), mode: 'insensitive' } }
     ];
   }
 

@@ -22,6 +22,7 @@
  * `kind: 'PLATFORM'` et `tenantId`.
  */
 
+import { escapeLike } from '../utils/like-escape';
 import { randomUUID } from 'crypto';
 import {
   InvoiceLineKind,
@@ -1042,8 +1043,8 @@ export async function listPlatformInvoices(tenantId: string, options: ListPlatfo
     ...(search
       ? {
           OR: [
-            { invoiceNumber: { contains: search, mode: 'insensitive' as const } },
-            { paymentReference: { contains: search, mode: 'insensitive' as const } }
+            { invoiceNumber: { contains: escapeLike(search), mode: 'insensitive' as const } },
+            { paymentReference: { contains: escapeLike(search), mode: 'insensitive' as const } }
           ]
         }
       : {})

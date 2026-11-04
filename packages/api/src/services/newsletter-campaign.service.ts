@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import crypto from 'crypto';
 import { JSDOM } from 'jsdom';
 import type { NewsletterCampaignStatus, Prisma } from '@prisma/client';
@@ -508,8 +509,8 @@ export async function listCampaigns(tenantId: string, options: ListCampaignsOpti
   const search = options.search?.trim();
   if (search) {
     where.OR = [
-      { subject: { contains: search, mode: 'insensitive' } },
-      { list: { name: { contains: search, mode: 'insensitive' } } }
+      { subject: { contains: escapeLike(search), mode: 'insensitive' } },
+      { list: { name: { contains: escapeLike(search), mode: 'insensitive' } } }
     ];
   }
   if (options.from || options.to) {

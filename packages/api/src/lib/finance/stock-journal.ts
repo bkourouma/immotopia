@@ -37,6 +37,7 @@ import { formatSlipNumber, SLIP_PREFIX } from './stock-bons';
 import { buildStockMeta, entryLagDays, loadBlindLocationIds, maskMovementView, stockError } from './stock-controles';
 import { formatTakerLabel } from './stock-preneurs';
 import type { MovementView, PrismaLike, StockCallerContext, StockMeta, StockMovementType } from './types-040-controle';
+import { escapeLike } from '../../utils/like-escape';
 
 /** Devise unique du module (décision D9 du plan, actée au lot 1). */
 const DEFAULT_CURRENCY = 'XOF';
@@ -122,7 +123,7 @@ function slipNumberCondition(search: string): Prisma.StockMovementWhereInput[] {
  * personne), preneur et demandeur. Toujours combinée en ET avec le reste.
  */
 function buildSearchClause(search: string, includePersons: boolean): Prisma.StockMovementWhereInput {
-  const like = { contains: search, mode: 'insensitive' as const };
+  const like = { contains: escapeLike(search), mode: 'insensitive' as const };
   return {
     OR: [
       { item: { is: { reference: like } } },
@@ -183,7 +184,9 @@ export async function buildMovementWhere(
     ...(filters.slipId ? { slipId: filters.slipId } : {}),
     ...(filters.takerId ? { takerId: filters.takerId } : {}),
     ...(filters.createdByUserId ? { createdByUserId: filters.createdByUserId } : {}),
-    ...(filters.requestedBy ? { requestedBy: { contains: filters.requestedBy, mode: 'insensitive' as const } } : {}),
+    ...(filters.requestedBy
+      ? { requestedBy: { contains: escapeLike(filters.requestedBy), mode: 'insensitive' as const } }
+      : {}),
     ...(filters.from || filters.to ? { movementDate } : {}),
     ...(and.length > 0 ? { AND: and } : {})
   };

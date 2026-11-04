@@ -21,6 +21,7 @@ import {
   type ThirdPartyMovementRecord,
   type ThirdPartyMovementType
 } from './types';
+import { escapeLike } from '../../utils/like-escape';
 
 export interface SearchAccountStatementOptions {
   range?: PeriodRange;
@@ -78,7 +79,7 @@ export async function searchAccountStatement(
       select: { id: true, debit: true, credit: true }
     }),
     prisma.thirdPartyMovement.findMany({
-      where: { ...movementWhere, label: { contains: search, mode: 'insensitive' } },
+      where: { ...movementWhere, label: { contains: escapeLike(search), mode: 'insensitive' } },
       orderBy: ORDER
     }),
     range?.from ? balanceUpTo(tenantId, accountId, { lt: range.from }) : Promise.resolve(0),

@@ -13,6 +13,7 @@ import { computeOwnerStatement, OWNER_STATEMENT_COMPUTATION_VERSION } from './ow
 import { assertTreasuryAccountUsableTx } from '../treasury/accounts';
 import { syncDirectExpenseEntryTx } from '../finance/rental-direct-ledger';
 import { ensurePropertyAsset, storedPropertyReliability } from './property-asset';
+import { escapeLike } from '../../utils/like-escape';
 
 // `services/audit-service.ts` n'est PAS importe ici bien que la specification
 // (edge case US12) demande une trace d'audit du remplacement d'un cout saisi
@@ -600,7 +601,7 @@ export async function listTenantWorkPrograms(
     };
   }
   if (options.search) {
-    const contains = { contains: options.search, mode: 'insensitive' as const };
+    const contains = { contains: escapeLike(options.search), mode: 'insensitive' as const };
     where.OR = [{ title: contains }, { property: { title: contains } }, { property: { internalReference: contains } }];
   }
 
@@ -1068,14 +1069,14 @@ function buildOwnerStatementsWhere(
   }
 
   if (filters.search) {
-    const contains = { contains: filters.search, mode: 'insensitive' as const };
+    const contains = { contains: escapeLike(filters.search), mode: 'insensitive' as const };
     and.push({
       OR: [
         { owner: { firstName: contains } },
         { owner: { lastName: contains } },
         { owner: { email: contains } },
         { owner: { legalName: contains } },
-        { period: { contains: filters.search } },
+        { period: { contains: escapeLike(filters.search) } },
         { items: { some: { property: { OR: [{ title: contains }, { internalReference: contains }] } } } }
       ]
     });

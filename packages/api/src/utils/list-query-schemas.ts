@@ -38,6 +38,9 @@
 import { z } from 'zod';
 import { t } from '../i18n';
 
+/** Jokers `%` / `_` d'une saisie neutralisés avant `contains` / `startsWith` / `endsWith` (Prisma n'échappe pas). */
+export { escapeLike } from './like-escape';
+
 /** Schéma d'un paramètre de requête : entrée brute (`unknown`), sortie typée. */
 type QueryParamSchema<Out> = z.ZodType<Out, z.ZodTypeDef, unknown>;
 

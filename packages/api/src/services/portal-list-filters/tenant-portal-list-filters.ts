@@ -4,6 +4,7 @@
  * Le périmètre (bail, locataire) vient de la session et reste posé par le
  * service : rien de ce qui est construit ici ne le remplace ni ne l'élargit.
  */
+import { escapeLike } from '../../utils/like-escape';
 import type { Request } from 'express';
 import { z } from 'zod';
 import {
@@ -119,7 +120,7 @@ export function buildInstallmentSearchClauses(search?: string): Prisma.RentalIns
   if (!term) return [];
 
   const clauses: Prisma.RentalInstallmentWhereInput[] = [
-    { items: { some: { label: { contains: term, mode: 'insensitive' } } } }
+    { items: { some: { label: { contains: escapeLike(term), mode: 'insensitive' } } } }
   ];
 
   const yearMonth = /^(\d{4})[-/](\d{1,2})$/.exec(term);
@@ -154,7 +155,7 @@ export function buildTenantInstallmentsSearch(search?: string): { AND?: Prisma.R
   return clauses.length > 0 ? { AND: [{ OR: clauses }] } : {};
 }
 
-const contains = (term: string) => ({ contains: term, mode: 'insensitive' as const });
+const contains = (term: string) => ({ contains: escapeLike(term), mode: 'insensitive' as const });
 
 /** Recherche des paiements (références PSP), à fusionner dans le `where`. */
 export function buildTenantPaymentsSearch(search?: string): { AND?: Prisma.RentalPaymentWhereInput[] } {

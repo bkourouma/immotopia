@@ -50,6 +50,7 @@ import type {
   StockCallerContext,
   StockMeta
 } from './types-040-controle';
+import { escapeLike } from '../../utils/like-escape';
 
 // ---------------------------------------------------------------------------
 // Mise en forme
@@ -552,7 +553,7 @@ export async function listStockAlerts(
   }
   if (query.search) {
     // Une alerte ne stocke ni article ni texte : seuls lieu et chantier sont des colonnes cherchables.
-    const like = { contains: query.search, mode: 'insensitive' as const };
+    const like = { contains: escapeLike(query.search), mode: 'insensitive' as const };
     and.push({ OR: [{ location: { is: { label: like } } }, { site: { is: { name: like } } }] });
   }
   if (query.cursor) {

@@ -30,6 +30,7 @@ import {
   zSearch
 } from '../../utils/list-query-schemas';
 import { t } from '../../i18n';
+import { escapeLike } from '../../utils/like-escape';
 
 export interface PaymentListExtras {
   search?: string;
@@ -130,7 +131,7 @@ function addAnd(where: any, condition: unknown): void {
   where.AND = [...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []), condition];
 }
 
-const contains = (value: string) => ({ contains: value, mode: 'insensitive' as const });
+const contains = (value: string) => ({ contains: escapeLike(value), mode: 'insensitive' as const });
 
 /** Bien et locataire principal d'un bail, tels que la liste les affiche. */
 function leaseColumns(search: string) {

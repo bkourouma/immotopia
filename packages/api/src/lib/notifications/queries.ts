@@ -22,6 +22,7 @@ import type {
   PlatformNotificationFilters,
   PlatformNotificationItem
 } from './types';
+import { escapeLike } from '../../utils/like-escape';
 
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 20;
@@ -103,8 +104,8 @@ export async function listMyNotifications(input: {
     ...(q
       ? {
           OR: [
-            { title: { contains: q, mode: 'insensitive' as const } },
-            { body: { contains: q, mode: 'insensitive' as const } }
+            { title: { contains: escapeLike(q), mode: 'insensitive' as const } },
+            { body: { contains: escapeLike(q), mode: 'insensitive' as const } }
           ]
         }
       : {}),
@@ -244,9 +245,9 @@ function buildAdminWhere(
     ...(q
       ? {
           OR: [
-            { title: { contains: q, mode: 'insensitive' as const } },
-            { body: { contains: q, mode: 'insensitive' as const } },
-            { recipientLabel: { contains: q, mode: 'insensitive' as const } }
+            { title: { contains: escapeLike(q), mode: 'insensitive' as const } },
+            { body: { contains: escapeLike(q), mode: 'insensitive' as const } },
+            { recipientLabel: { contains: escapeLike(q), mode: 'insensitive' as const } }
           ]
         }
       : {}),
@@ -288,7 +289,7 @@ export async function listNotificationRecipients(
       tenantId,
       key: { not: MESSAGE_NOTIFICATION_KEY },
       recipientUserId: { not: null },
-      ...(term ? { recipientLabel: { contains: term, mode: 'insensitive' as const } } : {})
+      ...(term ? { recipientLabel: { contains: escapeLike(term), mode: 'insensitive' as const } } : {})
     },
     select: { recipientUserId: true, recipientLabel: true },
     distinct: ['recipientUserId'],
