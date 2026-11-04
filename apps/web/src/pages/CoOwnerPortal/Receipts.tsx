@@ -4,7 +4,7 @@ import { DownloadOutlined, SyncOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { DataCard, DataView, MoneyValue, StateBlock } from '../../components/primitives';
+import { DataCard, DataView, MoneyValue } from '../../components/primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { useListSearch } from '../../hooks/useListSearch';
 import type { SearchCriterion } from '../../utils/list-search';
@@ -118,54 +118,49 @@ export default function CoOwnerReceipts() {
         </Button>
       </div>
 
-      {receipts.error ? (
-        <StateBlock
-          variant="error"
-          description={portalErrorMessage(receipts.error, t('Impossible de charger vos quittances.'))}
-          actions={[{ label: t('Réessayer'), onClick: () => void receipts.refetch(), primary: true }]}
+      {/* Sur erreur, la barre et ses critères restent affichés : l'erreur s'affiche dessous (DataView). */}
+      <Card>
+        <DataView<CoOwnerReceipt>
+          {...search.dataViewProps}
+          search={search.searchProps}
+          items={receipts.data?.items ?? []}
+          total={receipts.data?.pagination.total ?? 0}
+          loading={receipts.isPending}
+          error={receipts.error ? portalErrorMessage(receipts.error, t('Impossible de charger vos quittances.')) : null}
+          onRetry={() => void receipts.refetch()}
+          isReloading={receipts.isFetching && !receipts.isPending}
+          rowKey={row => row.id}
+          aria-label={t('Mes quittances')}
+          // Toutes les quittances, avec les mêmes filtres que la liste affichée.
+          export={{
+            filename: t('Mes quittances'),
+            fetchAll: () =>
+              collectAllPages<CoOwnerReceipt>(async (exportPage, limit) => {
+                const result = await listMyReceipts({
+                  ...(search.filterParams as CoOwnerReceiptsQuery),
+                  page: exportPage,
+                  limit
+                });
+                return { items: result.items, total: result.pagination.total };
+              })
+          }}
+          emptyDescription={t("Aucun document n'a encore été émis pour vos lots.")}
+          columns={columns}
+          renderCard={row => (
+            <DataCard
+              title={`${receiptKindLabel(row.kind)} ${row.number}`}
+              subtitle={[t('Lot {{lotNumber}}', { lotNumber: row.lot.lotNumber }), row.periodLabel]
+                .filter(Boolean)
+                .join(' · ')}
+              highlight={<MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />}
+              fields={[
+                { label: t('Émise le'), value: dayjs(row.issuedAt).format('DD/MM/YYYY') },
+                { label: t('Téléchargement'), value: <DownloadButton receipt={row} /> }
+              ]}
+            />
+          )}
         />
-      ) : (
-        <Card>
-          <DataView<CoOwnerReceipt>
-            {...search.dataViewProps}
-            search={search.searchProps}
-            items={receipts.data?.items ?? []}
-            total={receipts.data?.pagination.total ?? 0}
-            loading={receipts.isPending}
-            isReloading={receipts.isFetching && !receipts.isPending}
-            rowKey={row => row.id}
-            aria-label={t('Mes quittances')}
-            // Toutes les quittances, avec les mêmes filtres que la liste affichée.
-            export={{
-              filename: t('Mes quittances'),
-              fetchAll: () =>
-                collectAllPages<CoOwnerReceipt>(async (exportPage, limit) => {
-                  const result = await listMyReceipts({
-                    ...(search.filterParams as CoOwnerReceiptsQuery),
-                    page: exportPage,
-                    limit
-                  });
-                  return { items: result.items, total: result.pagination.total };
-                })
-            }}
-            emptyDescription={t("Aucun document n'a encore été émis pour vos lots.")}
-            columns={columns}
-            renderCard={row => (
-              <DataCard
-                title={`${receiptKindLabel(row.kind)} ${row.number}`}
-                subtitle={[t('Lot {{lotNumber}}', { lotNumber: row.lot.lotNumber }), row.periodLabel]
-                  .filter(Boolean)
-                  .join(' · ')}
-                highlight={<MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />}
-                fields={[
-                  { label: t('Émise le'), value: dayjs(row.issuedAt).format('DD/MM/YYYY') },
-                  { label: t('Téléchargement'), value: <DownloadButton receipt={row} /> }
-                ]}
-              />
-            )}
-          />
-        </Card>
-      )}
+      </Card>
     </Space>
   );
 }

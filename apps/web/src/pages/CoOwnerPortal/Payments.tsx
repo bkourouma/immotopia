@@ -4,7 +4,7 @@ import { DownloadOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { DataCard, DataView, MoneyValue, SkeletonList, StateBlock, Table } from '../../components/primitives';
+import { DataCard, DataView, MoneyValue, SkeletonList, Table } from '../../components/primitives';
 import { feedback } from '../../lib/feedback';
 import { useListSearch } from '../../hooks/useListSearch';
 import { filterItems, paginate } from '../../utils/list-search';
@@ -165,12 +165,20 @@ function DeclarationsSection() {
     retry: false
   });
 
-  if (declarations.isError) return null;
+  // Section facultative : une erreur la masque, sauf sous critère actif (il faut pouvoir l'effacer).
+  if (declarations.isError && !search.isFiltered) return null;
   const items = declarations.data?.items ?? [];
   const total = declarations.data?.pagination.total ?? 0;
   // Aucune déclaration et aucun critère : section masquée. Sous critère, elle reste affichée
   // (le critère « Statut » ne doit pas disparaître avec elle quand il ne laisse aucun résultat).
   if (!search.isFiltered && total === 0) return null;
+  const dataViewProps = {
+    ...search.dataViewProps,
+    error: declarations.isError
+      ? portalErrorMessage(declarations.error, t('Impossible de charger vos déclarations.'))
+      : null,
+    onRetry: () => void declarations.refetch()
+  };
 
   return (
     <Card>
@@ -189,7 +197,7 @@ function DeclarationsSection() {
           serverList={{
             search: { ...search.searchProps, 'aria-label': t('Rechercher dans les déclarations') },
             total,
-            dataViewProps: search.dataViewProps,
+            dataViewProps,
             isReloading: declarations.isFetching && !declarations.isPending
           }}
         />
@@ -321,16 +329,15 @@ export default function CoOwnerPayments() {
 
       {payments.isPending ? (
         <SkeletonList rows={3} />
-      ) : payments.error ? (
-        <StateBlock
-          variant="error"
-          description={portalErrorMessage(payments.error, t('Impossible de charger vos paiements.'))}
-          actions={[{ label: t('Réessayer'), onClick: () => void payments.refetch(), primary: true }]}
-        />
       ) : (
+        // Sur erreur, la barre et ses critères restent affichés : l'erreur s'affiche dessous (DataView).
         <Card>
           <DataView<CoOwnerPayment>
             {...search.dataViewProps}
+            error={
+              payments.error ? portalErrorMessage(payments.error, t('Impossible de charger vos paiements.')) : null
+            }
+            onRetry={() => void payments.refetch()}
             page={paymentsPage.page}
             items={paymentsPage.items}
             total={filteredPayments.length}

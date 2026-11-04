@@ -887,6 +887,7 @@ export class OwnerPortalService {
       // Map to LeaseListItem
       const leaseList: LeaseListItem[] = leases.map(lease => ({
         id: lease.id,
+        propertyId: lease.property.id,
         propertyAddress: lease.property.address || 'Adresse non disponible',
         tenantName: lease.primaryRenter.user?.fullName || 'Locataire inconnu',
         startDate: lease.start_date,

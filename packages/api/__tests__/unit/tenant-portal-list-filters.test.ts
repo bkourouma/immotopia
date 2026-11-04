@@ -153,6 +153,29 @@ describe('getPaymentHistory : recherche sur les deux sources', () => {
     await service.getPaymentHistory('TC1', 'L1', 'T1', { leaseId: 'AUTRE' } as any);
     expect(paymentWhere()).toEqual({ lease_id: 'L1', tenant_id: 'T1' });
   });
+
+  it('méthode : appliquée aussi aux déclarations (payment_method, mêmes valeurs d enum)', async () => {
+    await service.getPaymentHistory('TC1', 'L1', 'T1', { method: ['CASH', 'CARD'] });
+    expect(declarationWhere().payment_method).toEqual({ in: ['CASH', 'CARD'] });
+    await service.getPaymentHistory('TC1', 'L1', 'T1', { method: 'CASH' });
+    expect(declarationFindMany.mock.calls[1][0].where.payment_method).toEqual({ in: ['CASH'] });
+  });
+
+  it('période : appliquée aux déclarations (payment_date), bornes exactes du jour', async () => {
+    const { startDate, endDate } = parseTenantPortalPaymentsQuery({ startDate: '2026-01-01', endDate: '2026-03-31' });
+    await service.getPaymentHistory('TC1', 'L1', 'T1', { startDate, endDate });
+    const expected = {
+      gte: new Date('2026-01-01T00:00:00.000Z'),
+      lte: new Date('2026-03-31T23:59:59.999Z')
+    };
+    expect(declarationWhere().payment_date).toEqual(expected);
+    expect(paymentWhere().succeeded_at).toEqual(expected);
+  });
+
+  it('sans méthode ni période : les déclarations ne reçoivent ni payment_method ni payment_date', async () => {
+    await service.getPaymentHistory('TC1', 'L1', 'T1', {});
+    expect(declarationWhere()).toEqual({ lease_id: 'L1', tenant_id: 'T1', declared_by: 'TC1' });
+  });
 });
 
 describe('getMaintenanceTickets : where', () => {
