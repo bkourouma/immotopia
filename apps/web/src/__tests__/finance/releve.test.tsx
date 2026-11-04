@@ -437,3 +437,41 @@ describe('Relevé de compte — le vocabulaire suit le tiers', () => {
     expect(screen.getByText('Clients')).toBeInTheDocument();
   });
 });
+
+describe('Relevé — pagination serveur', () => {
+  const vingtMouvements = () =>
+    Array.from({ length: 20 }, (_, i) =>
+      mouvement({ id: `mvt-${i + 1}`, label: `Mouvement ${String(i + 1).padStart(2, '0')}` })
+    );
+
+  it('demande la première tranche (skip 0, take 20), affiche le total du serveur et envoie skip=pageSize en page 2', async () => {
+    getAccountStatement.mockResolvedValue(statement({ movements: vingtMouvements(), total: 45 }));
+    const user = userEvent.setup({ delay: null });
+    mountReleve();
+
+    await screen.findByText('Mouvement 01', {}, { timeout: 8000 });
+    expect(getAccountStatement.mock.calls[0][2]).toMatchObject({ skip: 0, take: 20 });
+    expect(screen.getByText('1–20 sur 45')).toBeInTheDocument();
+
+    await user.click(screen.getByTitle('2'));
+
+    await waitFor(
+      () =>
+        expect(getAccountStatement.mock.calls.some(call => call[2]?.skip === 20 && call[2]?.take === 20)).toBe(true),
+      { timeout: 8000 }
+    );
+  }, 20000);
+
+  it('relit la page depuis l’URL (?page=3 → skip 40) en gardant la période', async () => {
+    getAccountStatement.mockResolvedValue(statement({ movements: vingtMouvements(), total: 45 }));
+    mountReleve('/tenant/agence-1/finance/comptes/cpt-1?page=3&from=2026-01-01&to=2026-03-31');
+
+    await waitFor(() => expect(getAccountStatement).toHaveBeenCalled(), { timeout: 8000 });
+    expect(getAccountStatement.mock.calls[0][2]).toMatchObject({
+      from: '2026-01-01',
+      to: '2026-03-31',
+      skip: 40,
+      take: 20
+    });
+  }, 20000);
+});

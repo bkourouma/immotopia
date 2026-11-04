@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Button, DatePicker, InputNumber, Select, Space, Typography } from 'antd';
+import { App, Button, DatePicker, InputNumber, Select, Space, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { Dayjs } from 'dayjs';
@@ -18,6 +18,7 @@ import type { SalaryNote, SalaryPayment } from '../../types/finance-salaries-typ
 import { salaryStatusLabels } from '../../types/finance-salaries-types';
 import type { SalaryDocumentStatus } from '../../types/finance-salaries-types';
 import { detailKey, entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
+import { useListParams } from '../../hooks/useListParams';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import {
   PageHeader,
@@ -89,6 +90,13 @@ const { Title, Text } = Typography;
  * salaire, courante, et la refuser empêcherait d'enregistrer un versement qui
  * a bien eu lieu. L'écran avertit, il ne bloque pas.
  *
+ * **Deux onglets, chargés à la demande.** Notes de salaire et règlements sont
+ * deux onglets (`destroyOnHidden`, onglet actif dans l'URL, clé `onglet`) ;
+ * la liste des règlements n'est demandée qu'à l'affichage de son onglet, et les
+ * référentiels du formulaire de note (chantiers, postes de dépense) qu'au
+ * premier geste dans ce formulaire. Chaque tableau est paginé localement
+ * (20 par page) et s'exporte en entier.
+ *
  * **Aucun montant n'est calculé ici** : le solde arrive tout fait du serveur,
  * et n'est jamais recomposé à partir des notes et des règlements affichés —
  * ceux-ci sont bornés à ce que l'écran a chargé, le solde court sur toute
@@ -98,6 +106,10 @@ const { Title, Text } = Typography;
  * *règle* un salarié, la charge s'*impute* à un chantier — jamais « débit » ni
  * « crédit ».
  */
+
+/** Onglets de la fiche, dans l'URL (clé `onglet`) ; valeur inconnue → notes. */
+type OngletFiche = 'notes' | 'reglements';
+const FILTER_KEYS = ['onglet'] as const;
 
 const TONE_STATUT: Record<SalaryDocumentStatus, StatusTone> = {
   DRAFT: 'neutral',
@@ -165,6 +177,11 @@ export const Salarie: React.FC = () => {
   const { tenantId, employeeId } = useParams<{ tenantId: string; employeeId: string }>();
   const queryClient = useQueryClient();
   const confirmerAction = useConfirmAction();
+  const list = useListParams<{ onglet: string }>({ filterKeys: FILTER_KEYS });
+  const onglet: OngletFiche = list.filters.onglet === 'reglements' ? 'reglements' : 'notes';
+  // Les référentiels du formulaire de note ne sont lus qu'au premier geste dans
+  // ce formulaire (focus ou clic), pas à l'ouverture de la fiche.
+  const [referentielsDemandes, setReferentielsDemandes] = useState(false);
 
   const {
     data: salarie,
@@ -199,22 +216,27 @@ export const Salarie: React.FC = () => {
   } = useQuery({
     queryKey: detailKey('salary-payments', tenantId, employeeId ?? ''),
     queryFn: () => listSalaryPayments(tenantId as string, employeeId as string),
-    enabled: Boolean(tenantId && employeeId),
+    // Seulement à l'affichage de l'onglet « Règlements » : aucun calcul de la
+    // fiche (le solde vient du serveur) ne dépend de cette liste.
+    enabled: Boolean(tenantId && employeeId) && onglet === 'reglements',
     staleTime: STALE_TIME.list
   });
 
   // Référentiels du lot 2, repris tels quels plutôt que redéfinis ici.
-  const { data: chantiers } = useQuery({
+  // Aucune colonne ne s'en sert (les tableaux affichent `siteLabel` et
+  // `costCategoryLabel`, portés par chaque note) : ils ne partent qu'au premier
+  // geste dans le formulaire de saisie d'une note.
+  const { data: chantiers, isFetching: chantiersEnChargement } = useQuery({
     queryKey: queryKey('construction-sites', tenantId, {}),
     queryFn: () => listConstructionSites(tenantId as string),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && referentielsDemandes,
     staleTime: STALE_TIME.reference
   });
 
-  const { data: postes } = useQuery({
+  const { data: postes, isFetching: postesEnChargement } = useQuery({
     queryKey: queryKey('cost-categories', tenantId, {}),
     queryFn: () => listCostCategories(tenantId as string),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && referentielsDemandes,
     staleTime: STALE_TIME.reference
   });
 
@@ -269,6 +291,12 @@ export const Salarie: React.FC = () => {
       setPosteId(postePropose.id);
     }
   };
+
+  // Les postes peuvent arriver après le choix du chantier (lecture à la demande) :
+  // la proposition est alors faite à leur arrivée, sous la même condition.
+  useEffect(() => {
+    if (chantierId && !posteId && postePropose) setPosteId(postePropose.id);
+  }, [chantierId, posteId, postePropose]);
 
   const posteExige = Boolean(chantierId);
   const posteManquant = posteExige && !posteId;
@@ -410,6 +438,17 @@ export const Salarie: React.FC = () => {
     );
   }
 
+  // Pagination locale de chaque tableau (un seul est monté à la fois : la page
+  // de l'URL se remet à 1 au changement d'onglet), bornée à la liste reçue.
+  const listeNotes = notes ?? [];
+  const listeReglements = reglements ?? [];
+  const pageNotes = Math.min(list.page, Math.max(1, Math.ceil(listeNotes.length / list.pageSize)));
+  const pageReglements = Math.min(list.page, Math.max(1, Math.ceil(listeReglements.length / list.pageSize)));
+  const notesPage = listeNotes.slice((pageNotes - 1) * list.pageSize, pageNotes * list.pageSize);
+  const reglementsPage = listeReglements.slice((pageReglements - 1) * list.pageSize, pageReglements * list.pageSize);
+  const changerPage = (page: number, taille: number) =>
+    taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page);
+
   const nousLuiDevons = salarie.accountBalance > 0;
   const ilNousDoit = salarie.accountBalance < 0;
 
@@ -536,145 +575,181 @@ export const Salarie: React.FC = () => {
         />
       </div>
 
-      <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        {t('Notes de salaire')}
-      </Title>
-      <DataView<SalaryNote>
-        // Le contrat de `listSalaryNotes` ne pagine pas.
-        paginated={false}
-        scrollX={1000}
-        items={notes ?? []}
-        total={(notes ?? []).length}
-        page={1}
-        pageSize={Math.max((notes ?? []).length, 1)}
-        onPageChange={() => {}}
-        loading={notesEnAttente}
-        error={erreurNotes ? t('Impossible de charger les notes de salaire.') : null}
-        emptyDescription={t("Aucune note de salaire n'a encore été saisie pour ce salarié.")}
-        columns={colonnesNotes}
-        rowKey={n => n.id}
-        aria-label={t('Notes de salaire du salarié')}
-        renderCard={n => (
-          <DataCard
-            title={libellePeriode(n.periodYear, n.periodMonth)}
-            aria-label={libellePeriode(n.periodYear, n.periodMonth)}
-            subtitle={n.siteLabel ?? t('Aucun chantier')}
-            status={<StatusTag status={n.status} tone={TONE_STATUT[n.status]} label={salaryStatusLabels()[n.status]} />}
-            highlight={<MoneyValue value={n.amount} />}
-            fields={[
-              { label: t('Poste de dépense'), value: n.costCategoryLabel ?? '—' },
-              { label: t('Saisi par'), value: n.createdByLabel }
-            ]}
-            secondaryActions={
-              n.status === 'DRAFT'
-                ? [
-                    {
-                      key: 'valider',
-                      label: t('Valider'),
-                      onClick: () =>
-                        confirmerAction({
-                          title: t('Valider la note de {{value}} ?', {
-                            value: libellePeriode(n.periodYear, n.periodMonth)
-                          }),
-                          description: n.siteLabel
-                            ? t(
-                                "Cette opération est irréversible : la charge est constatée, ce que nous devons à ce salarié augmente d'autant, et le coût du chantier « {{siteLabel}} » monte du même montant.",
-                                { siteLabel: n.siteLabel }
-                              )
-                            : t(
-                                "Cette opération est irréversible : la charge est constatée, et ce que nous devons à ce salarié augmente d'autant."
-                              ),
-                          okText: t('Confirmer la validation'),
-                          onConfirm: () => validerNote(n)
-                        })
-                    }
-                  ]
-                : undefined
-            }
-          />
-        )}
-      />
+      <Tabs
+        destroyOnHidden
+        style={{ marginTop: 'var(--space-6)' }}
+        activeKey={onglet}
+        onChange={cle => list.setFilters({ onglet: cle === 'reglements' ? 'reglements' : undefined })}
+        items={[
+          {
+            key: 'notes',
+            label: t('Notes de salaire'),
+            children: (
+              <>
+                <DataView<SalaryNote>
+                  // Le contrat de `listSalaryNotes` ne pagine pas : pagination locale.
+                  paginated
+                  export={{ filename: t('Notes de salaire du salarié'), fetchAll: async () => listeNotes }}
+                  scrollX={1000}
+                  items={notesPage}
+                  total={listeNotes.length}
+                  page={pageNotes}
+                  pageSize={list.pageSize}
+                  onPageChange={changerPage}
+                  loading={notesEnAttente}
+                  error={erreurNotes ? t('Impossible de charger les notes de salaire.') : null}
+                  emptyDescription={t("Aucune note de salaire n'a encore été saisie pour ce salarié.")}
+                  columns={colonnesNotes}
+                  rowKey={n => n.id}
+                  aria-label={t('Notes de salaire du salarié')}
+                  renderCard={n => (
+                    <DataCard
+                      title={libellePeriode(n.periodYear, n.periodMonth)}
+                      aria-label={libellePeriode(n.periodYear, n.periodMonth)}
+                      subtitle={n.siteLabel ?? t('Aucun chantier')}
+                      status={
+                        <StatusTag
+                          status={n.status}
+                          tone={TONE_STATUT[n.status]}
+                          label={salaryStatusLabels()[n.status]}
+                        />
+                      }
+                      highlight={<MoneyValue value={n.amount} />}
+                      fields={[
+                        { label: t('Poste de dépense'), value: n.costCategoryLabel ?? '—' },
+                        { label: t('Saisi par'), value: n.createdByLabel }
+                      ]}
+                      secondaryActions={
+                        n.status === 'DRAFT'
+                          ? [
+                              {
+                                key: 'valider',
+                                label: t('Valider'),
+                                onClick: () =>
+                                  confirmerAction({
+                                    title: t('Valider la note de {{value}} ?', {
+                                      value: libellePeriode(n.periodYear, n.periodMonth)
+                                    }),
+                                    description: n.siteLabel
+                                      ? t(
+                                          "Cette opération est irréversible : la charge est constatée, ce que nous devons à ce salarié augmente d'autant, et le coût du chantier « {{siteLabel}} » monte du même montant.",
+                                          { siteLabel: n.siteLabel }
+                                        )
+                                      : t(
+                                          "Cette opération est irréversible : la charge est constatée, et ce que nous devons à ce salarié augmente d'autant."
+                                        ),
+                                    okText: t('Confirmer la validation'),
+                                    onConfirm: () => validerNote(n)
+                                  })
+                              }
+                            ]
+                          : undefined
+                      }
+                    />
+                  )}
+                />
 
-      <Carte_SaisirNote
-        annee={annee}
-        setAnnee={setAnnee}
-        mois={mois}
-        setMois={setMois}
-        montant={montantNote}
-        setMontant={setMontantNote}
-        optionsChantiers={optionsChantiers}
-        chantierId={chantierId}
-        onChangerChantier={changerChantier}
-        optionsPostes={optionsPostes}
-        posteId={posteId}
-        setPosteId={setPosteId}
-        posteExige={posteExige}
-        posteManquant={posteManquant}
-        posteEstUneProposition={posteEstUneProposition}
-        peutSaisir={peutSaisirNote}
-        enCours={saisieNoteEnCours}
-        onSaisir={saisirNote}
-      />
+                <Carte_SaisirNote
+                  annee={annee}
+                  setAnnee={setAnnee}
+                  mois={mois}
+                  setMois={setMois}
+                  montant={montantNote}
+                  setMontant={setMontantNote}
+                  optionsChantiers={optionsChantiers}
+                  chantierId={chantierId}
+                  onChangerChantier={changerChantier}
+                  referentielsEnChargement={chantiersEnChargement || postesEnChargement}
+                  onActiverReferentiels={() => setReferentielsDemandes(true)}
+                  optionsPostes={optionsPostes}
+                  posteId={posteId}
+                  setPosteId={setPosteId}
+                  posteExige={posteExige}
+                  posteManquant={posteManquant}
+                  posteEstUneProposition={posteEstUneProposition}
+                  peutSaisir={peutSaisirNote}
+                  enCours={saisieNoteEnCours}
+                  onSaisir={saisirNote}
+                />
+              </>
+            )
+          },
+          {
+            key: 'reglements',
+            label: t('Règlements'),
+            children: (
+              <>
+                <DataView<SalaryPayment>
+                  // Le contrat de `listSalaryPayments` ne pagine pas : pagination locale.
+                  paginated
+                  export={{ filename: t('Règlements du salarié'), fetchAll: async () => listeReglements }}
+                  scrollX={800}
+                  items={reglementsPage}
+                  total={listeReglements.length}
+                  page={pageReglements}
+                  pageSize={list.pageSize}
+                  onPageChange={changerPage}
+                  loading={reglementsEnAttente}
+                  error={erreurReglements ? t('Impossible de charger les règlements.') : null}
+                  emptyDescription={t("Aucun règlement n'a encore été enregistré pour ce salarié.")}
+                  columns={colonnesReglements}
+                  rowKey={r => r.id}
+                  aria-label={t('Règlements du salarié')}
+                  renderCard={r => (
+                    <DataCard
+                      title={dateCourte(r.paymentDate)}
+                      aria-label={t('Règlement du {{value}}', { value: dateCourte(r.paymentDate) })}
+                      status={
+                        <StatusTag
+                          status={r.status}
+                          tone={TONE_STATUT[r.status]}
+                          label={salaryStatusLabels()[r.status]}
+                        />
+                      }
+                      highlight={<MoneyValue value={r.amount} />}
+                      fields={[{ label: t('Saisi par'), value: r.createdByLabel }]}
+                      secondaryActions={
+                        r.status === 'DRAFT'
+                          ? [
+                              {
+                                key: 'valider',
+                                label: t('Valider'),
+                                onClick: () =>
+                                  confirmerAction({
+                                    title: t('Valider le règlement du {{value}} ?', {
+                                      value: dateCourte(r.paymentDate)
+                                    }),
+                                    description: t(
+                                      "Cette opération est irréversible : le versement est constaté, et ce que nous devons à ce salarié diminue d'autant. Un montant supérieur à ce qui lui est dû est accepté — le reste devient une avance sur salaire."
+                                    ),
+                                    okText: t('Confirmer la validation'),
+                                    onConfirm: () => validerReglement(r)
+                                  })
+                              }
+                            ]
+                          : undefined
+                      }
+                    />
+                  )}
+                />
 
-      <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        {t('Règlements')}
-      </Title>
-      <DataView<SalaryPayment>
-        paginated={false}
-        scrollX={800}
-        items={reglements ?? []}
-        total={(reglements ?? []).length}
-        page={1}
-        pageSize={Math.max((reglements ?? []).length, 1)}
-        onPageChange={() => {}}
-        loading={reglementsEnAttente}
-        error={erreurReglements ? t('Impossible de charger les règlements.') : null}
-        emptyDescription={t("Aucun règlement n'a encore été enregistré pour ce salarié.")}
-        columns={colonnesReglements}
-        rowKey={r => r.id}
-        aria-label={t('Règlements du salarié')}
-        renderCard={r => (
-          <DataCard
-            title={dateCourte(r.paymentDate)}
-            aria-label={t('Règlement du {{value}}', { value: dateCourte(r.paymentDate) })}
-            status={<StatusTag status={r.status} tone={TONE_STATUT[r.status]} label={salaryStatusLabels()[r.status]} />}
-            highlight={<MoneyValue value={r.amount} />}
-            fields={[{ label: t('Saisi par'), value: r.createdByLabel }]}
-            secondaryActions={
-              r.status === 'DRAFT'
-                ? [
-                    {
-                      key: 'valider',
-                      label: t('Valider'),
-                      onClick: () =>
-                        confirmerAction({
-                          title: t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) }),
-                          description: t(
-                            "Cette opération est irréversible : le versement est constaté, et ce que nous devons à ce salarié diminue d'autant. Un montant supérieur à ce qui lui est dû est accepté — le reste devient une avance sur salaire."
-                          ),
-                          okText: t('Confirmer la validation'),
-                          onConfirm: () => validerReglement(r)
-                        })
-                    }
-                  ]
-                : undefined
-            }
-          />
-        )}
-      />
-
-      <Carte_EnregistrerReglement
-        tenantId={tenantId}
-        compte={compteReglement}
-        setCompte={setCompteReglement}
-        date={dateReglement}
-        setDate={setDateReglement}
-        montant={montantReglement}
-        setMontant={setMontantReglement}
-        estUneAvance={estUneAvance}
-        peutEnregistrer={peutEnregistrerReglement}
-        enCours={reglementEnCours}
-        onEnregistrer={enregistrerReglement}
+                <Carte_EnregistrerReglement
+                  tenantId={tenantId}
+                  compte={compteReglement}
+                  setCompte={setCompteReglement}
+                  date={dateReglement}
+                  setDate={setDateReglement}
+                  montant={montantReglement}
+                  setMontant={setMontantReglement}
+                  estUneAvance={estUneAvance}
+                  peutEnregistrer={peutEnregistrerReglement}
+                  enCours={reglementEnCours}
+                  onEnregistrer={enregistrerReglement}
+                />
+              </>
+            )
+          }
+        ]}
       />
     </>
   );
@@ -696,6 +771,10 @@ function Carte_SaisirNote(props: {
   montant: number | null;
   setMontant: (v: number | null) => void;
   optionsChantiers: { value: string; label: string }[];
+  /** Les référentiels (chantiers, postes) sont en cours de lecture. */
+  referentielsEnChargement: boolean;
+  /** Premier geste dans le formulaire : déclenche la lecture des référentiels. */
+  onActiverReferentiels: () => void;
   chantierId: string | undefined;
   onChangerChantier: (v: string | undefined) => void;
   optionsPostes: { value: string; label: string }[];
@@ -710,6 +789,10 @@ function Carte_SaisirNote(props: {
 }) {
   return (
     <div
+      onFocusCapture={props.onActiverReferentiels}
+      onPointerDownCapture={props.onActiverReferentiels}
+      onMouseDownCapture={props.onActiverReferentiels}
+      onKeyDownCapture={props.onActiverReferentiels}
       style={{
         marginTop: 'var(--space-4)',
         border: '1px solid var(--border-default)',
@@ -782,6 +865,7 @@ function Carte_SaisirNote(props: {
               value={props.chantierId}
               onChange={value => props.onChangerChantier((value as string | undefined) ?? undefined)}
               options={props.optionsChantiers}
+              loading={props.referentielsEnChargement}
               notFoundContent={t('Aucun chantier disponible')}
             />
             {/* Même avertissement que la sortie de stock (Stock.tsx) : dit au
@@ -810,6 +894,7 @@ function Carte_SaisirNote(props: {
                 showSearch
                 optionFilterProp="label"
                 options={props.optionsPostes}
+                loading={props.referentielsEnChargement}
                 notFoundContent={t('Aucun poste de dépense')}
               />
             </div>

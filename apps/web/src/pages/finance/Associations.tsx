@@ -36,6 +36,8 @@ function pourcentage(valeur: number): string {
   return `${valeur.toLocaleString(activeLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
 }
 
+const TAILLE_PAGE = 20;
+
 export const Associations: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -60,6 +62,10 @@ export const Associations: React.FC = () => {
   });
 
   const associations = data ?? [];
+
+  // Pagination locale : `listPartnerships` rend la liste entière.
+  const [page, setPage] = useState(1);
+  const pageEffective = Math.min(page, Math.max(Math.ceil(associations.length / TAILLE_PAGE), 1));
 
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
@@ -153,14 +159,13 @@ export const Associations: React.FC = () => {
       />
 
       <DataView<Partnership>
-        // Le contrat de `listPartnerships` ne pagine pas.
-        paginated={false}
+        // Le contrat de `listPartnerships` ne pagine pas : découpe locale.
         scrollX={1200}
-        items={associations}
+        items={associations.slice((pageEffective - 1) * TAILLE_PAGE, pageEffective * TAILLE_PAGE)}
         total={associations.length}
-        page={1}
-        pageSize={Math.max(associations.length, 1)}
-        onPageChange={() => {}}
+        page={pageEffective}
+        pageSize={TAILLE_PAGE}
+        onPageChange={p => setPage(p)}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les associations.') : null}
@@ -171,7 +176,7 @@ export const Associations: React.FC = () => {
         columns={colonnes}
         rowKey={a => a.id}
         aria-label={t('Associations')}
-        export={{ filename: t('Associations') }}
+        export={{ filename: t('Associations'), fetchAll: async () => associations }}
         renderCard={a => (
           <DataCard
             title={a.label}

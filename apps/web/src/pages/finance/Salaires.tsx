@@ -7,10 +7,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createEmployee, listEmployees } from '../../services/finance-salaries-service';
 import type { Employee } from '../../types/finance-salaries-types';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
+import { useListParams } from '../../hooks/useListParams';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatusTag } from '../../components/primitives';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
+
+// Aucun filtre dans l'URL : l'écran n'y porte que la page et la taille de page.
+const FILTER_KEYS = [] as const;
 
 /**
  * Salaires — la liste des salariés, et l'enregistrement d'un salarié. Lot 4,
@@ -25,8 +29,8 @@ const { Text } = Typography;
  *
  * Construite sur le même modèle que `pages/finance/Associations.tsx` : mêmes
  * primitives, une seule modale de création, un `<DataView>` non paginé
- * puisque `listEmployees` rend l'ensemble des salariés du tenant (au plus
- * quelques dizaines).
+ * paginé localement (20 par page, page dans l'URL) : `listEmployees` rend
+ * l'ensemble des salariés du tenant ; l'export porte la liste complète.
  *
  * ---------------------------------------------------------------------------
  * Ce que cette liste rend visible en un coup d'œil
@@ -68,6 +72,7 @@ export const Salaires: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const list = useListParams<Record<string, string>>({ filterKeys: FILTER_KEYS });
 
   // Le filtre est posé par défaut : la question courante est « qui dois-je
   // payer ce mois-ci », et un ancien salarié soldé n'y répond pas. Il reste
@@ -94,6 +99,12 @@ export const Salaires: React.FC = () => {
   });
 
   const salaries = data ?? [];
+
+  // Page demandée ramenée dans les bornes de la liste (l'URL peut en viser une
+  // qui n'existe plus après un changement de périmètre).
+  const pageMax = Math.max(1, Math.ceil(salaries.length / list.pageSize));
+  const pageCourante = Math.min(list.page, pageMax);
+  const salariesPage = salaries.slice((pageCourante - 1) * list.pageSize, pageCourante * list.pageSize);
 
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
@@ -180,7 +191,11 @@ export const Salaires: React.FC = () => {
             <Switch
               id="salaries-actifs-seulement"
               checked={actifsSeulement}
-              onChange={setActifsSeulement}
+              onChange={actif => {
+                setActifsSeulement(actif);
+                // Périmètre différent : retour à la première page.
+                list.setPage(1);
+              }}
               aria-label={t('Actifs seulement')}
             />
             <label htmlFor="salaries-actifs-seulement">{t('Actifs seulement')}</label>
@@ -189,26 +204,30 @@ export const Salaires: React.FC = () => {
       />
 
       <DataView<Employee>
-        // Le contrat de `listEmployees` ne pagine pas.
-        paginated={false}
+        // Le contrat de `listEmployees` ne pagine pas : pagination locale.
+        paginated
         scrollX={900}
-        items={salaries}
+        items={salariesPage}
         total={salaries.length}
-        page={1}
-        pageSize={Math.max(salaries.length, 1)}
-        onPageChange={() => {}}
+        page={pageCourante}
+        pageSize={list.pageSize}
+        onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les salariés.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
         isFiltered={actifsSeulement}
-        onClearFilters={() => setActifsSeulement(false)}
+        onClearFilters={() => {
+          setActifsSeulement(false);
+          list.setPage(1);
+        }}
         emptyDescription={t("Aucun salarié n'est encore enregistré.")}
         emptyAction={{ label: t('Nouveau salarié'), onClick: ouvrirCreation }}
         columns={colonnes}
         rowKey={e => e.id}
         aria-label={t('Salariés')}
+        export={{ filename: t('Salariés'), fetchAll: async () => salaries }}
         renderCard={e => (
           <DataCard
             title={e.fullName}

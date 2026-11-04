@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -342,4 +342,90 @@ describe('File de validation — jeter un brouillon de pièce de caisse', () => 
 
     expect(await screen.findByText(/elle ne se supprime pas/i, {}, { timeout: 8000 })).toBeInTheDocument();
   });
+});
+
+describe('File de validation — filtre par nature envoyé au serveur', () => {
+  it('choisir une nature envoie documentType à getValidationQueue, sans filtrage côté client', async () => {
+    mount();
+    await screen.findByText('Quincaillerie Treichville — Facture FA-2026-0142', {}, { timeout: 8000 });
+
+    fireEvent.mouseDown(screen.getByLabelText('Nature'));
+    fireEvent.click(await screen.findByTitle('Règlement fournisseur', {}, { timeout: 8000 }));
+
+    await waitFor(
+      () =>
+        expect(getValidationQueue).toHaveBeenCalledWith('agence-1', {
+          createdByUserId: undefined,
+          documentType: 'SUPPLIER_PAYMENT'
+        }),
+      { timeout: 8000 }
+    );
+    // Le mock rend les trois pièces quelle que soit la requête : si l'écran
+    // filtrait encore côté client, la facture aurait disparu.
+    // La nouvelle requête repasse par l'état de chargement : on attend le retour des lignes.
+    expect(
+      await screen.findByText('Quincaillerie Treichville — Facture FA-2026-0142', {}, { timeout: 8000 })
+    ).toBeInTheDocument();
+  }, 20000);
+
+  it('relit la nature dans l’URL et l’envoie avec le saisisseur ; une nature inconnue n’est pas envoyée', async () => {
+    const { unmount } = mount('/tenant/agence-1/finance/validation?nature=CASH_VOUCHER&saisisseur=user-mariam-kouadio');
+    await waitFor(
+      () =>
+        expect(getValidationQueue).toHaveBeenCalledWith('agence-1', {
+          createdByUserId: 'user-mariam-kouadio',
+          documentType: 'CASH_VOUCHER'
+        }),
+      { timeout: 8000 }
+    );
+    unmount();
+
+    getValidationQueue.mockClear();
+    mount('/tenant/agence-1/finance/validation?nature=PAS_UNE_NATURE');
+    await screen.findByText('Quincaillerie Treichville — Facture FA-2026-0142', {}, { timeout: 8000 });
+    for (const [, filtres] of getValidationQueue.mock.calls) {
+      expect((filtres as { documentType?: string }).documentType).toBeUndefined();
+    }
+  }, 20000);
+
+  it('garde les compteurs par nature de la file complète du saisisseur quand une nature est filtrée', async () => {
+    getValidationQueue.mockImplementation(async (_t: string, filtres?: { documentType?: string }) =>
+      fileTypique().filter(p => !filtres?.documentType || p.documentType === filtres.documentType)
+    );
+    mount('/tenant/agence-1/finance/validation?nature=CASH_VOUCHER');
+
+    await screen.findByText('Pièce de caisse 2026-0031 — Ousmane Touré', {}, { timeout: 8000 });
+    expect(screen.queryByText('Quincaillerie Treichville — Facture FA-2026-0142')).not.toBeInTheDocument();
+    // Sous-titre : 3 pièces en attente, pas 1.
+    expect(await screen.findByText('3 pièces en attente', {}, { timeout: 8000 })).toBeInTheDocument();
+  }, 20000);
+});
+
+describe('File de validation — pagination locale et sélection', () => {
+  const vingtCinq = () =>
+    Array.from({ length: 25 }, (_, i) =>
+      piece({
+        documentId: `facture-${i + 1}`,
+        label: `Pièce ${String(i + 1).padStart(2, '0')}`
+      })
+    );
+
+  it('affiche 20 pièces sur 25 avec le compteur ; « Tout sélectionner » ne vise que la page affichée', async () => {
+    getValidationQueue.mockResolvedValue(vingtCinq());
+    const user = userEvent.setup({ delay: null });
+    mount();
+
+    await screen.findByText('Pièce 01', {}, { timeout: 8000 });
+    expect(screen.getByText('Pièce 20')).toBeInTheDocument();
+    expect(screen.queryByText('Pièce 21')).not.toBeInTheDocument();
+    expect(screen.getByText('1–20 sur 25')).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Tout sélectionner'));
+    expect(await screen.findByText('20 pièces sélectionnées')).toBeInTheDocument();
+
+    // Changer de page vide la sélection : on ne valide jamais des pièces invisibles.
+    await user.click(screen.getByTitle('2'));
+    expect(await screen.findByText('Pièce 21', {}, { timeout: 8000 })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/pièces? sélectionnées?/)).not.toBeInTheDocument());
+  }, 30000);
 });

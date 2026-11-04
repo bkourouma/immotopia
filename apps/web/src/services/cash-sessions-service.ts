@@ -89,6 +89,9 @@ export interface ValidateCashSessionInput {
 export interface ListCashSessionsFilters {
   status?: CashSessionStatus;
   cashierUserId?: string;
+  from?: string;
+  to?: string;
+  treasuryAccountId?: string;
 }
 
 /** La session OUVERTE de l'utilisateur connecté — `GET /current`. `null` si aucune. */
@@ -129,7 +132,13 @@ export async function listCashSessions(
   filters: ListCashSessionsFilters = {}
 ): Promise<CashSession[]> {
   const response = await apiClient.get(BASE(tenantId), {
-    params: { status: filters.status || undefined, cashierUserId: filters.cashierUserId || undefined }
+    params: {
+      status: filters.status || undefined,
+      cashierUserId: filters.cashierUserId || undefined,
+      from: filters.from || undefined,
+      to: filters.to || undefined,
+      treasuryAccountId: filters.treasuryAccountId || undefined
+    }
   });
   return response.data.data;
 }

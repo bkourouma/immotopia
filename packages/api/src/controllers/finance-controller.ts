@@ -143,7 +143,8 @@ export const getClientsBalanceHandler = asyncHandler(async (req: Request, res: R
 
   const result = await getClientsBalance(tenantId, {
     range: range.from || range.to ? range : undefined,
-    propertyId: query.propertyId
+    propertyId: query.propertyId,
+    search: query.search
   });
 
   if (query.format === 'csv') {
@@ -169,6 +170,7 @@ export const getClientsAgingBalanceHandler = asyncHandler(async (req: Request, r
   const result = await getClientsAgingBalance(tenantId, {
     range: range.from || range.to ? range : undefined,
     propertyId: query.propertyId,
+    search: query.search,
     asOf
   });
 

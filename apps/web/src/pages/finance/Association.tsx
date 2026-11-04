@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Button, DatePicker, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
+import { App, Button, DatePicker, Input, InputNumber, Modal, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { Dayjs } from 'dayjs';
@@ -11,7 +11,6 @@ import {
   removePartnershipShare,
   setPropertyPartnership
 } from '../../services/finance-partnerships-service';
-import { listProperties } from '../../services/property-service';
 import type {
   Partnership,
   PartnershipPropertyRef,
@@ -31,10 +30,14 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { PropertyRemoteSelect } from '../../components/finance/PropertyRemoteSelect';
 import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 const { Title } = Typography;
+
+/** Taille de page des listes locales de la fiche. */
+const TAILLE_PAGE = 20;
 const { RangePicker } = DatePicker;
 
 /**
@@ -114,26 +117,8 @@ export const Association: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  // Référentiel des biens, pour le seul sélecteur de rattachement ci-dessous.
-  // `Property` (module biens, gelé) n'expose pas l'association à laquelle il
-  // appartient déjà : ce référentiel ne permet donc d'exclure que les biens
-  // déjà listés dans `association.properties`, pas ceux rattachés à une AUTRE
-  // association — voir la rubrique « Hypothèses » du rapport de cet agent, et
-  // le même point relevé pour les chantiers dans `BailDeTerrain.tsx`.
-  const { data: biensReferentiel } = useQuery({
-    queryKey: queryKey('properties', tenantId, { limit: 100 }),
-    queryFn: () => listProperties(tenantId as string, { limit: 100 }),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.reference
-  });
-
-  const optionsRattachement = useMemo(() => {
-    const idsRattaches = new Set((association?.properties ?? []).map(p => p.propertyId));
-    return (biensReferentiel?.properties ?? [])
-      .filter(bien => !idsRattaches.has(bien.id))
-      .map(bien => ({ value: bien.id, label: bien.title }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [biensReferentiel, association]);
+  // Pagination locale (20) des biens rattachés : la liste arrive entière.
+  const [pageBiens, setPageBiens] = useState(1);
 
   // ---------------------------------------------------------------------
   // Ajout d'un associé
@@ -219,6 +204,12 @@ export const Association: React.FC = () => {
 
   const [associeConsulte, setAssocieConsulte] = useState<PartnershipShare | null>(null);
   const [plageReleve, setPlageReleve] = useState<[Dayjs, Dayjs] | null>(null);
+  const [pageReleve, setPageReleve] = useState(1);
+
+  // Un autre associé ou une autre période : retour à la première page.
+  useEffect(() => {
+    setPageReleve(1);
+  }, [associeConsulte?.id, plageReleve]);
 
   const {
     data: releve,
@@ -361,6 +352,10 @@ export const Association: React.FC = () => {
 
   // Rien ne reste à l'agence sur cette association : voir l'en-tête, ce
   // n'est pas un cas d'erreur, seulement un fait à ne pas taire.
+  const pageBiensEffective = Math.min(pageBiens, Math.max(Math.ceil(association.properties.length / TAILLE_PAGE), 1));
+  const lignesReleve = releve?.lines ?? [];
+  const pageReleveEffective = Math.min(pageReleve, Math.max(Math.ceil(lignesReleve.length / TAILLE_PAGE), 1));
+
   const rienPourLAgence = association.companySharePercent === 0;
 
   return (
@@ -454,17 +449,16 @@ export const Association: React.FC = () => {
         {t('Biens rattachés')}
       </Title>
       <DataView<PartnershipPropertyRef>
-        paginated={false}
-        items={association.properties}
+        items={association.properties.slice((pageBiensEffective - 1) * TAILLE_PAGE, pageBiensEffective * TAILLE_PAGE)}
         total={association.properties.length}
-        page={1}
-        pageSize={Math.max(association.properties.length, 1)}
-        onPageChange={() => {}}
+        page={pageBiensEffective}
+        pageSize={TAILLE_PAGE}
+        onPageChange={page => setPageBiens(page)}
         emptyDescription={t("Aucun bien n'est encore rattaché à cette association.")}
         columns={colonnesBiens}
         rowKey={p => p.propertyId}
         aria-label={t("Biens rattachés à l'association")}
-        export={{ filename: t('Biens rattachés') }}
+        export={{ filename: t('Biens rattachés'), fetchAll: async () => association.properties }}
         renderCard={p => (
           <DataCard
             title={p.propertyLabel}
@@ -486,7 +480,8 @@ export const Association: React.FC = () => {
       />
 
       <Card_RattacherBien
-        options={optionsRattachement}
+        tenantId={tenantId}
+        excludeIds={association.properties.map(p => p.propertyId)}
         valeur={bienARattacher}
         onChange={setBienARattacher}
         enCours={rattachementEnCours}
@@ -528,18 +523,17 @@ export const Association: React.FC = () => {
             <StateBlock variant="error" description={t("Impossible de charger l'état de quote-part de cet associé.")} />
           ) : (
             <DataView<PartnerStatementLine>
-              paginated={false}
-              items={releve?.lines ?? []}
-              total={(releve?.lines ?? []).length}
-              page={1}
-              pageSize={Math.max((releve?.lines ?? []).length, 1)}
-              onPageChange={() => {}}
+              items={lignesReleve.slice((pageReleveEffective - 1) * TAILLE_PAGE, pageReleveEffective * TAILLE_PAGE)}
+              total={lignesReleve.length}
+              page={pageReleveEffective}
+              pageSize={TAILLE_PAGE}
+              onPageChange={page => setPageReleve(page)}
               loading={releveEnAttente}
               emptyDescription={t('Aucun loyer réparti sur cette période.')}
               columns={colonnesReleve}
               rowKey={l => `${l.propertyLabel}-${l.periodYear}-${l.periodMonth}`}
               aria-label={t("Lignes de l'état de quote-part")}
-              export={{ filename: t('État de quote-part') }}
+              export={{ filename: t('État de quote-part'), fetchAll: async () => lignesReleve }}
               renderCard={l => (
                 <DataCard
                   title={libellePeriode(l.periodYear, l.periodMonth)}
@@ -643,7 +637,8 @@ function Card_AjoutAssocie(props: {
 
 /** Même remarque que `Card_AjoutAssocie` : un bloc de saisie, extrait par lisibilité. */
 function Card_RattacherBien(props: {
-  options: { value: string; label: string }[];
+  tenantId: string;
+  excludeIds: readonly string[];
   valeur: string | undefined;
   onChange: (v: string | undefined) => void;
   enCours: boolean;
@@ -663,16 +658,14 @@ function Card_RattacherBien(props: {
           <div>
             <label htmlFor="rattacher-bien">{t('Rattacher un bien existant')}</label>
           </div>
-          <Select
+          <PropertyRemoteSelect
             id="rattacher-bien"
+            tenantId={props.tenantId}
             style={{ width: '100%' }}
             placeholder={t('Choisir un bien')}
             value={props.valeur}
             onChange={props.onChange}
-            showSearch
-            optionFilterProp="label"
-            options={props.options}
-            notFoundContent={t('Aucun bien disponible')}
+            excludeIds={props.excludeIds}
           />
         </div>
         <Button type="primary" loading={props.enCours} disabled={!props.valeur} onClick={props.onRattacher}>

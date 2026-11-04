@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { App, Button, Card, Input, Select, Space, Typography } from 'antd';
+import { App, Button, Card, Input, Select, Space, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ThunderboltOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -174,6 +174,131 @@ const COLONNES_AVANCES: ColumnsType<LigneAvance> = localizedList(() => [
   }
 ]);
 
+const TAILLE_PAGE = 20;
+const ONGLETS_DETAIL = ['factures', 'exclus', 'avances'] as const;
+type OngletDetail = (typeof ONGLETS_DETAIL)[number];
+
+function tranche<T>(liste: T[], page: number, taille: number): T[] {
+  return liste.slice((page - 1) * taille, page * taille);
+}
+
+/**
+ * Le détail d'un compte rendu en trois onglets paresseux (`destroyOnHidden`) :
+ * un seul tableau est monté à la fois. L'onglet actif vit dans l'URL
+ * (`?detail=factures|exclus|avances`), chaque tableau pagine localement par 20.
+ * Le parent le monte avec `key={run.id}` : changer de campagne remet les pages à 1.
+ */
+function DetailCompteRendu({ resume }: { resume: BillingRunSummary }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const brut = searchParams.get('detail');
+  const onglet: OngletDetail = (ONGLETS_DETAIL as readonly string[]).includes(brut ?? '')
+    ? (brut as OngletDetail)
+    : 'factures';
+
+  const [pageFactures, setPageFactures] = useState(1);
+  const [pageExclus, setPageExclus] = useState(1);
+  const [pageAvances, setPageAvances] = useState(1);
+
+  const changerOnglet = (cle: string) => {
+    setSearchParams(
+      prev => {
+        const next = new URLSearchParams(prev);
+        next.set('detail', cle);
+        return next;
+      },
+      { replace: true }
+    );
+  };
+
+  const tableauFactures = (
+    <DataView<LigneFacturee>
+      paginated
+      items={tranche(resume.billed, pageFactures, TAILLE_PAGE)}
+      total={resume.billed.length}
+      page={pageFactures}
+      pageSize={TAILLE_PAGE}
+      onPageChange={page => setPageFactures(page)}
+      emptyDescription={t('Aucun bail facturé pour cette période.')}
+      columns={COLONNES_FACTUREES}
+      rowKey={ligne => ligne.installmentId}
+      aria-label={t('Baux facturés')}
+      export={{ filename: t('Baux facturés'), fetchAll: async () => resume.billed }}
+      renderCard={ligne => (
+        <DataCard
+          title={ligne.leaseLabel}
+          aria-label={t('Bail {{leaseLabel}} facturé', { leaseLabel: ligne.leaseLabel })}
+          highlight={<MoneyValue value={ligne.amount} />}
+        />
+      )}
+    />
+  );
+
+  // Une campagne sans exclusion est une bonne campagne : la phrase d'état vide
+  // le dit, elle ne constate pas une absence.
+  const tableauExclus = (
+    <DataView<LigneExclue>
+      paginated
+      items={tranche(resume.excluded, pageExclus, TAILLE_PAGE)}
+      total={resume.excluded.length}
+      page={pageExclus}
+      pageSize={TAILLE_PAGE}
+      onPageChange={page => setPageExclus(page)}
+      emptyDescription={t("Aucun bail exclu : la campagne a facturé l'ensemble des baux éligibles.")}
+      columns={COLONNES_EXCLUES}
+      rowKey={ligne => ligne.leaseId}
+      aria-label={t('Baux exclus')}
+      export={{ filename: t('Baux exclus'), fetchAll: async () => resume.excluded }}
+      renderCard={ligne => (
+        <DataCard
+          title={ligne.leaseLabel}
+          aria-label={t('Bail {{leaseLabel}} exclu', { leaseLabel: ligne.leaseLabel })}
+          fields={[{ label: t('Motif'), value: libelleMotif(ligne.reason) }]}
+        />
+      )}
+    />
+  );
+
+  const tableauAvances = (
+    <DataView<LigneAvance>
+      paginated
+      items={tranche(resume.advancesApplied, pageAvances, TAILLE_PAGE)}
+      total={resume.advancesApplied.length}
+      page={pageAvances}
+      pageSize={TAILLE_PAGE}
+      onPageChange={page => setPageAvances(page)}
+      emptyDescription={t('Aucune avance à imputer sur cette période.')}
+      columns={COLONNES_AVANCES}
+      rowKey={ligne => `${ligne.installmentId}-${ligne.sourcePaymentId}`}
+      aria-label={t('Avances imputées')}
+      export={{ filename: t('Avances imputées'), fetchAll: async () => resume.advancesApplied }}
+      renderCard={ligne => (
+        <DataCard
+          title={ligne.tenantLabel}
+          aria-label={t('Avance imputée pour {{tenantLabel}}', { tenantLabel: ligne.tenantLabel })}
+          highlight={<MoneyValue value={ligne.amount} />}
+        />
+      )}
+    />
+  );
+
+  return (
+    <Tabs
+      activeKey={onglet}
+      onChange={changerOnglet}
+      destroyOnHidden
+      items={[
+        { key: 'factures', label: `${t('Baux facturés')} (${resume.billed.length})`, children: tableauFactures },
+        { key: 'exclus', label: `${t('Baux exclus')} (${resume.excluded.length})`, children: tableauExclus },
+        {
+          key: 'avances',
+          label: `${t('Avances imputées')} (${resume.advancesApplied.length})`,
+          children: tableauAvances
+        }
+      ]}
+    />
+  );
+}
+
 interface CompteRenduProps {
   run: BillingRun | null;
   loading: boolean;
@@ -249,77 +374,7 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             <StatCard label={t('Avances imputées')} value={String(resume.advancesApplied.length)} tone="positive" />
           </div>
 
-          <Title level={5}>{t('Détail des baux facturés')}</Title>
-          <DataView<LigneFacturee>
-            paginated={false}
-            items={resume.billed}
-            total={resume.billed.length}
-            page={1}
-            pageSize={Math.max(resume.billed.length, 1)}
-            onPageChange={() => {}}
-            emptyDescription={t('Aucun bail facturé pour cette période.')}
-            columns={COLONNES_FACTUREES}
-            rowKey={ligne => ligne.installmentId}
-            aria-label={t('Baux facturés')}
-            export={{ filename: t('Baux facturés') }}
-            renderCard={ligne => (
-              <DataCard
-                title={ligne.leaseLabel}
-                aria-label={t('Bail {{leaseLabel}} facturé', { leaseLabel: ligne.leaseLabel })}
-                highlight={<MoneyValue value={ligne.amount} />}
-              />
-            )}
-          />
-
-          <Title level={5} style={{ marginTop: 'var(--space-6)' }}>
-            {t('Détail des baux exclus')}
-          </Title>
-          {/* Une campagne sans exclusion est une bonne campagne : la phrase
-              d'état vide le dit, elle ne constate pas une absence. */}
-          <DataView<LigneExclue>
-            paginated={false}
-            items={resume.excluded}
-            total={resume.excluded.length}
-            page={1}
-            pageSize={Math.max(resume.excluded.length, 1)}
-            onPageChange={() => {}}
-            emptyDescription={t("Aucun bail exclu : la campagne a facturé l'ensemble des baux éligibles.")}
-            columns={COLONNES_EXCLUES}
-            rowKey={ligne => ligne.leaseId}
-            aria-label={t('Baux exclus')}
-            export={{ filename: t('Baux exclus') }}
-            renderCard={ligne => (
-              <DataCard
-                title={ligne.leaseLabel}
-                aria-label={t('Bail {{leaseLabel}} exclu', { leaseLabel: ligne.leaseLabel })}
-                fields={[{ label: t('Motif'), value: libelleMotif(ligne.reason) }]}
-              />
-            )}
-          />
-
-          <Title level={5} style={{ marginTop: 'var(--space-6)' }}>
-            {t('Détail des avances imputées')}
-          </Title>
-          <DataView<LigneAvance>
-            paginated={false}
-            items={resume.advancesApplied}
-            total={resume.advancesApplied.length}
-            page={1}
-            pageSize={Math.max(resume.advancesApplied.length, 1)}
-            onPageChange={() => {}}
-            emptyDescription={t('Aucune avance à imputer sur cette période.')}
-            columns={COLONNES_AVANCES}
-            rowKey={ligne => `${ligne.installmentId}-${ligne.sourcePaymentId}`}
-            aria-label={t('Avances imputées')}
-            export={{ filename: t('Avances imputées') }}
-            renderCard={ligne => (
-              <DataCard
-                title={ligne.tenantLabel}
-                aria-label={t('Avance imputée pour {{tenantLabel}}', { tenantLabel: ligne.tenantLabel })}
-                highlight={<MoneyValue value={ligne.amount} />}
-              />
-            )}
-          />
+          <DetailCompteRendu key={run.id} resume={resume} />
         </>
       )}
     </Card>
@@ -368,6 +423,7 @@ export const Facturation: React.FC = () => {
   });
 
   const campagnes = campagnesData ?? [];
+  const [pageHistoriqueCampagnes, setPageHistoriqueCampagnes] = useState(1);
   const campagneExistante = campagnes.find(c => c.periodYear === anneeChoisie && c.periodMonth === moisChoisi);
 
   const {
@@ -562,12 +618,12 @@ export const Facturation: React.FC = () => {
 
       <Title level={4}>{t('Historique des campagnes')}</Title>
       <DataView<BillingRun>
-        paginated={false}
-        items={campagnes}
+        paginated
+        items={tranche(campagnes, pageHistoriqueCampagnes, TAILLE_PAGE)}
         total={campagnes.length}
-        page={1}
-        pageSize={Math.max(campagnes.length, 1)}
-        onPageChange={() => {}}
+        page={pageHistoriqueCampagnes}
+        pageSize={TAILLE_PAGE}
+        onPageChange={page => setPageHistoriqueCampagnes(page)}
         loading={historiqueEnAttente}
         isReloading={historiqueEnCours && !historiqueEnAttente}
         error={erreurHistorique ? t("Impossible de charger l'historique des campagnes.") : null}
@@ -577,7 +633,7 @@ export const Facturation: React.FC = () => {
         columns={colonnesHistorique}
         rowKey={c => c.id}
         aria-label={t('Historique des campagnes')}
-        export={{ filename: t('Historique des campagnes') }}
+        export={{ filename: t('Historique des campagnes'), fetchAll: async () => campagnes }}
         renderCard={c => {
           const s = STATUT_CAMPAGNE[c.status];
           return (

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, DatePicker, Select } from 'antd';
+import { Button, DatePicker } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
@@ -8,9 +8,9 @@ import dayjs from 'dayjs';
 import { getClientsBalance } from '../../services/finance-service';
 import type { ClientsBalanceLine } from '../../types/finance-types';
 import { useListParams } from '../../hooks/useListParams';
-import { listProperties } from '../../services/property-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { exportToCSV } from '../../utils/export-utils';
+import { PropertyRemoteSelect } from '../../components/finance/PropertyRemoteSelect';
 import {
   PageHeader,
   StateBlock,
@@ -34,10 +34,10 @@ import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded
  * mêmes primitives, même état de liste porté par l'URL, mêmes trois états
  * (chargement, vide, erreur) délégués à `<DataView>`.
  *
- * **Aucune pagination.** `ClientsBalance` ne porte pas d'enveloppe de
- * pagination : l'API rend la balance entière, comme le fait déjà l'écran
- * des pénalités (`pages/rental/Penalties.tsx`). `paginated={false}` le dit
- * explicitement plutôt que de le laisser deviner.
+ * **Pagination locale.** `ClientsBalance` ne porte pas d'enveloppe de
+ * pagination : l'API rend la balance entière avec ses totaux. L'écran en
+ * affiche 20 lignes par page (page et taille dans l'URL) ; les totaux restent
+ * ceux du serveur et l'export porte la liste complète.
  *
  * **Vocabulaire (P-1 du PRD).** Les colonnes disent « Facturé » et
  * « Réglé » — jamais « débit » ni « crédit ». Un test dédié
@@ -80,36 +80,13 @@ export const BalanceClients: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  /**
-   * Options du filtre « Bien », lues sur le parc et non sur la balance.
-   *
-   * Deux raisons, dans cet ordre d'importance.
-   *
-   * D'abord l'exactitude : l'API attend un **identifiant** de bien, et une
-   * ligne de balance ne porte que des libellés (`propertyLabels`). Envoyer un
-   * libellé ne filtrerait rien. Le parc, lui, donne les deux.
-   *
-   * Ensuite la complétude : choisir un bien ne doit pas faire disparaître les
-   * autres de la liste déroulante, sinon on ne peut plus défiltrer. Dériver
-   * les options de la balance obligeait à la charger une seconde fois, sans
-   * filtre, pour ce seul besoin. Une requête de moins.
-   */
-  const { data: parc } = useQuery({
-    queryKey: queryKey('finance-parc', tenantId, {}),
-    queryFn: () => listProperties(tenantId as string, { page: 1, limit: 200 }),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
-  });
-
-  const optionsBiens = React.useMemo(
-    () =>
-      (parc?.properties ?? [])
-        .map(bien => ({ value: bien.id, label: bien.title }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [parc]
-  );
-
   const lignes = data?.lines ?? [];
+
+  // Page demandée ramenée dans les bornes de la liste reçue (une URL partagée
+  // peut viser une page qui n'existe plus après un filtre).
+  const pageMax = Math.max(1, Math.ceil(lignes.length / list.pageSize));
+  const pageCourante = Math.min(list.page, pageMax);
+  const lignesPage = lignes.slice((pageCourante - 1) * list.pageSize, pageCourante * list.pageSize);
 
   const handleExport = () => {
     exportToCSV(
@@ -208,16 +185,13 @@ export const BalanceClients: React.FC = () => {
         </div>
         <div style={{ minWidth: 220 }}>
           <label htmlFor="filtre-bien-balance">{t('Bien')}</label>
-          <Select
+          <PropertyRemoteSelect
             id="filtre-bien-balance"
+            tenantId={tenantId}
             style={{ width: '100%' }}
             placeholder={t('Tous les biens')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
             value={list.filters.propertyId || undefined}
-            onChange={value => list.setFilters({ propertyId: value })}
-            options={optionsBiens}
+            onChange={id => list.setFilters({ propertyId: id })}
           />
         </div>
       </FilterSheet>
@@ -229,15 +203,14 @@ export const BalanceClients: React.FC = () => {
       )}
 
       <DataView<ClientsBalanceLine>
-        // La balance n'est pas paginée : l'API la rend entière, comme les
-        // pénalités (`pages/rental/Penalties.tsx`). `total` est donc le
-        // compte réel des lignes reçues, pas un artifice.
-        paginated={false}
-        items={lignes}
+        // Pagination locale de la liste reçue : l'API rend la balance
+        // entière et ses totaux (ceux du serveur, jamais recalculés ici).
+        paginated
+        items={lignesPage}
         total={lignes.length}
-        page={1}
-        pageSize={Math.max(lignes.length, 1)}
-        onPageChange={() => {}}
+        page={pageCourante}
+        pageSize={list.pageSize}
+        onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger la balance clients.') : null}
@@ -249,7 +222,7 @@ export const BalanceClients: React.FC = () => {
         columns={colonnes}
         rowKey={l => l.accountId}
         aria-label={t('Balance clients')}
-        export={{ filename: t('Balance clients') }}
+        export={{ filename: t('Balance clients'), fetchAll: async () => lignes }}
         renderCard={l => (
           <DataCard
             title={l.label}

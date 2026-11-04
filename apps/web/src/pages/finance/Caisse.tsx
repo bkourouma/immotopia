@@ -105,6 +105,17 @@ function totalBilletage(compteurs: Partial<Record<DenominationValue, number>>): 
   return TOUTES_DENOMINATIONS.reduce((somme, valeur) => somme + Number(valeur) * (compteurs[valeur] ?? 0), 0);
 }
 
+const TAILLE_PAGE = 20;
+
+/** Pagination locale des « lignes attendues » : le tableau garde la liste complète (export compris). */
+const PAGINATION_LIGNES = {
+  pageSize: TAILLE_PAGE,
+  hideOnSinglePage: true,
+  showSizeChanger: false,
+  showTotal: (total: number, range: [number, number]) =>
+    t('{{start}}–{{end}} sur {{total}}', { start: range[0], end: range[1], total })
+};
+
 export const Caisse: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -140,6 +151,8 @@ export const Caisse: React.FC = () => {
 
   // --- Historique --------------------------------------------------------
   const [filtreStatut, setFiltreStatut] = useState<CashSessionStatus | undefined>(undefined);
+  const [pageHistorique, setPageHistorique] = useState(1);
+  const [tailleHistorique, setTailleHistorique] = useState(TAILLE_PAGE);
   const [sessionOuverteId, setSessionOuverteId] = useState<string | null>(null);
   const [commentaireValidation, setCommentaireValidation] = useState('');
   const [validationEnCours, setValidationEnCours] = useState(false);
@@ -374,7 +387,7 @@ export const Caisse: React.FC = () => {
             dataSource={session.expected.lines}
             columns={colonnesOperations}
             rowKey={(l, index) => `${l.kind}-${index}-${l.at}`}
-            pagination={false}
+            pagination={PAGINATION_LIGNES}
             size="small"
             aria-label={t('Opérations de la caisse')}
             exportFilename={t('Opérations de la caisse')}
@@ -482,7 +495,10 @@ export const Caisse: React.FC = () => {
           allowClear
           placeholder={t('Tous les statuts')}
           value={filtreStatut}
-          onChange={valeur => setFiltreStatut(valeur)}
+          onChange={valeur => {
+            setFiltreStatut(valeur);
+            setPageHistorique(1);
+          }}
           options={[
             { value: 'OPEN', label: t('Ouverte') },
             { value: 'CLOSED', label: t('À valider') },
@@ -492,12 +508,15 @@ export const Caisse: React.FC = () => {
       </div>
 
       <DataView<CashSession>
-        items={sessions}
+        items={sessions.slice((pageHistorique - 1) * tailleHistorique, pageHistorique * tailleHistorique)}
         total={sessions.length}
-        page={1}
-        pageSize={sessions.length || 1}
-        paginated={false}
-        onPageChange={() => undefined}
+        page={pageHistorique}
+        pageSize={tailleHistorique}
+        paginated
+        onPageChange={(page, taille) => {
+          setPageHistorique(page);
+          setTailleHistorique(taille);
+        }}
         loading={historiqueQuery.isPending}
         error={historiqueQuery.error ? t('Impossible de charger les sessions de caisse.') : null}
         errorCause={historiqueQuery.error}
@@ -505,7 +524,7 @@ export const Caisse: React.FC = () => {
         emptyDescription={t('Aucune session de caisse.')}
         rowKey={s => s.id}
         aria-label={t('Historique des caisses')}
-        export={{ filename: t('Historique des caisses') }}
+        export={{ filename: t('Historique des caisses'), fetchAll: async () => sessions }}
         columns={colonnesHistorique}
         renderCard={s => (
           <DataCard
@@ -785,7 +804,7 @@ export const Caisse: React.FC = () => {
                   }
                 ]}
                 rowKey={(l, index) => `${l.kind}-${index}`}
-                pagination={false}
+                pagination={PAGINATION_LIGNES}
                 size="small"
                 aria-label={t('Opérations de la caisse')}
                 exportFilename={t('Opérations de la caisse')}

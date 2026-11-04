@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { DatePicker, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -47,6 +47,12 @@ const { Text } = Typography;
  */
 
 const PERIOD_KEY = 'period';
+const TAILLE_PAGE = 20;
+const TAILLE_PAGE_DETAIL = 10;
+
+/** Compteur « 1–20 sur 25 », même texte que `<DataView>`. */
+const afficherTotal = (total: number, range: [number, number]) =>
+  t('{{start}}–{{end}} sur {{total}}', { start: range[0], end: range[1], total });
 
 function periodeCourante(): string {
   return dayjs().format('YYYY-MM');
@@ -69,6 +75,8 @@ export const CommissionsAgents: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const period = searchParams.get(PERIOD_KEY) || periodeCourante();
+  // Pagination locale du tableau principal (la liste des agents arrive entière).
+  const [page, setPage] = useState(1);
 
   const {
     data,
@@ -84,6 +92,7 @@ export const CommissionsAgents: React.FC = () => {
   });
 
   const handlePeriodChange = (date: dayjs.Dayjs | null) => {
+    setPage(1);
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
       // `null` (bouton d'effacement) ne doit pas laisser un écran sans
@@ -233,7 +242,13 @@ export const CommissionsAgents: React.FC = () => {
                 dataSource={agents}
                 columns={colonnesAgents}
                 rowKey={agent => agent.agentUserId ?? 'sans-gestionnaire'}
-                pagination={false}
+                pagination={{
+                  current: Math.min(page, Math.max(Math.ceil(agents.length / TAILLE_PAGE), 1)),
+                  pageSize: TAILLE_PAGE,
+                  showSizeChanger: false,
+                  showTotal: afficherTotal,
+                  onChange: p => setPage(p)
+                }}
                 loading={isFetching && !isPending}
                 scroll={{ x: 'max-content' }}
                 aria-label={t('Commissions des agents')}
@@ -247,7 +262,11 @@ export const CommissionsAgents: React.FC = () => {
                         dataSource={agent.lines}
                         columns={colonnesDetail}
                         rowKey={ligne => ligne.id}
-                        pagination={false}
+                        pagination={
+                          agent.lines.length > TAILLE_PAGE_DETAIL
+                            ? { pageSize: TAILLE_PAGE_DETAIL, showSizeChanger: false, showTotal: afficherTotal }
+                            : false
+                        }
                         size="small"
                         // Sous-tableau d'une ligne dépliée : il ne s'exporte pas seul.
                         exportable={false}

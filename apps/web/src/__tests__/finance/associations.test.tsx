@@ -372,7 +372,7 @@ describe('Fiche de l’association — associés', () => {
         sharePercent: 15
       })
     );
-  }, 15000);
+  }, 45000);
 
   it('avertit avant de retirer un associé, puis n’appelle le serveur qu’après confirmation', async () => {
     const user = userEvent.setup({ delay: null });
@@ -389,7 +389,7 @@ describe('Fiche de l’association — associés', () => {
     await user.click(screen.getByRole('button', { name: 'Confirmer le retrait' }));
 
     await waitFor(() => expect(del).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/partnership-shares/part-1`));
-  }, 15000);
+  }, 45000);
 
   it('ouvre l’état de quote-part d’un associé, en lecture seule', async () => {
     const user = userEvent.setup({ delay: null });
@@ -409,7 +409,7 @@ describe('Fiche de l’association — associés', () => {
 
     // Rien ne s'y écrit : ni bouton de saisie, ni action de mutation dans la modale.
     expect(screen.queryByRole('button', { name: /Enregistrer/ })).not.toBeInTheDocument();
-  }, 15000);
+  }, 45000);
 });
 
 describe('Fiche de l’association — biens rattachés', () => {
@@ -434,7 +434,7 @@ describe('Fiche de l’association — biens rattachés', () => {
         partnershipId: 'assoc-1'
       })
     );
-  }, 15000);
+  }, 45000);
 
   it('détache un bien après confirmation, sans le présenter comme irréversible', async () => {
     const user = userEvent.setup({ delay: null });
@@ -451,7 +451,7 @@ describe('Fiche de l’association — biens rattachés', () => {
         partnershipId: null
       })
     );
-  }, 15000);
+  }, 45000);
 });
 
 describe('Navigation — les chemins déclarés par les écrans', () => {

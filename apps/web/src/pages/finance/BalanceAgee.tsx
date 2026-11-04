@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, DatePicker, Select } from 'antd';
+import { Button, DatePicker } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
 import { DownloadOutlined } from '@ant-design/icons';
@@ -9,9 +9,9 @@ import dayjs from 'dayjs';
 import { getClientsAgingBalance, getClientsBalance } from '../../services/finance-service';
 import type { ClientsAgingBalanceLine } from '../../types/finance-types';
 import { useListParams, type Sort } from '../../hooks/useListParams';
-import { listProperties } from '../../services/property-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { exportToCSV } from '../../utils/export-utils';
+import { PropertyRemoteSelect } from '../../components/finance/PropertyRemoteSelect';
 import {
   PageHeader,
   StateBlock,
@@ -100,24 +100,13 @@ export const BalanceAgee: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  /** Options du filtre « Bien » — même construction que `BalanceClients.tsx`,
-   *  lues sur le parc : l'API attend un identifiant, pas un libellé. */
-  const { data: parc } = useQuery({
-    queryKey: queryKey('finance-parc', tenantId, {}),
-    queryFn: () => listProperties(tenantId as string, { page: 1, limit: 200 }),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
-  });
-
-  const optionsBiens = React.useMemo(
-    () =>
-      (parc?.properties ?? [])
-        .map(bien => ({ value: bien.id, label: bien.title }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [parc]
-  );
-
   const lignes = React.useMemo(() => trierLignes(data?.lines ?? [], list.sort), [data, list.sort]);
+
+  // Page demandée ramenée dans les bornes de la liste reçue (une URL partagée
+  // peut viser une page qui n'existe plus après un filtre).
+  const pageMax = Math.max(1, Math.ceil(lignes.length / list.pageSize));
+  const pageCourante = Math.min(list.page, pageMax);
+  const lignesPage = lignes.slice((pageCourante - 1) * list.pageSize, pageCourante * list.pageSize);
 
   const handleExport = () => {
     exportToCSV(
@@ -236,27 +225,26 @@ export const BalanceAgee: React.FC = () => {
         </div>
         <div style={{ minWidth: 220 }}>
           <label htmlFor="filtre-bien-balance-agee">{t('Bien')}</label>
-          <Select
+          <PropertyRemoteSelect
             id="filtre-bien-balance-agee"
+            tenantId={tenantId}
             style={{ width: '100%' }}
             placeholder={t('Tous les biens')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
             value={list.filters.propertyId || undefined}
-            onChange={value => list.setFilters({ propertyId: value })}
-            options={optionsBiens}
+            onChange={id => list.setFilters({ propertyId: id })}
           />
         </div>
       </FilterSheet>
 
       <DataView<ClientsAgingBalanceLine>
-        paginated={false}
-        items={lignes}
+        // Pagination locale de la liste reçue : l'API rend la balance
+        // entière et ses totaux (ceux du serveur, jamais recalculés ici).
+        paginated
+        items={lignesPage}
         total={lignes.length}
-        page={1}
-        pageSize={Math.max(lignes.length, 1)}
-        onPageChange={() => {}}
+        page={pageCourante}
+        pageSize={list.pageSize}
+        onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger la balance âgée.') : null}
@@ -268,7 +256,7 @@ export const BalanceAgee: React.FC = () => {
         columns={colonnes}
         rowKey={l => l.accountId}
         aria-label={t('Balance âgée')}
-        export={{ filename: t('Balance âgée') }}
+        export={{ filename: t('Balance âgée'), fetchAll: async () => lignes }}
         sort={list.sort}
         onSortChange={list.setSort}
         // Neuf colonnes hors « Actions » : elles ne tiennent pas dans les

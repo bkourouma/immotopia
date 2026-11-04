@@ -113,9 +113,18 @@ function dateCourte(iso: string): string {
 type Filters = { from: string; to: string };
 const FILTER_KEYS = ['from', 'to'] as const;
 
+/** Plafond de lignes par requête accepté par l'API (`accountStatementQuerySchema`). */
+const TAKE_MAX = 200;
+
 export const Releve: React.FC = () => {
   const { tenantId, accountId } = useParams<{ tenantId: string; accountId: string }>();
   const list = useListParams<Filters>({ filterKeys: FILTER_KEYS });
+
+  // Pagination SERVEUR : l'API borne déjà le relevé (50 lignes par défaut) ;
+  // l'écran demande la tranche de la page affichée (`skip`/`take`). Le solde
+  // « après » de chaque ligne reste celui calculé par le serveur.
+  const taillePage = Math.min(list.pageSize, TAKE_MAX);
+  const skip = (list.page - 1) * taillePage;
 
   const {
     data,
@@ -127,12 +136,16 @@ export const Releve: React.FC = () => {
     queryKey: queryKey('account-statement', tenantId, {
       accountId: accountId ?? '',
       from: list.filters.from ?? '',
-      to: list.filters.to ?? ''
+      to: list.filters.to ?? '',
+      skip,
+      take: taillePage
     }),
     queryFn: () =>
       getAccountStatement(tenantId as string, accountId as string, {
         from: list.filters.from || undefined,
-        to: list.filters.to || undefined
+        to: list.filters.to || undefined,
+        skip,
+        take: taillePage
       }),
     enabled: Boolean(tenantId && accountId),
     staleTime: STALE_TIME.list
@@ -146,6 +159,24 @@ export const Releve: React.FC = () => {
 
   const plage: [Dayjs, Dayjs] | null =
     list.filters.from && list.filters.to ? [dayjs(list.filters.from), dayjs(list.filters.to)] : null;
+
+  /** Export : relit le relevé entier (même période) par tranches de 200. */
+  const toutLeReleve = async (): Promise<ThirdPartyMovementLine[]> => {
+    const lignes: ThirdPartyMovementLine[] = [];
+    let total = Infinity;
+    while (lignes.length < total) {
+      const tranche = await getAccountStatement(tenantId, accountId, {
+        from: list.filters.from || undefined,
+        to: list.filters.to || undefined,
+        skip: lignes.length,
+        take: TAKE_MAX
+      });
+      total = tranche.total;
+      if (tranche.movements.length === 0) break;
+      lignes.push(...tranche.movements);
+    }
+    return lignes;
+  };
 
   const imprimer = () => {
     const url = getAccountStatementPdfUrl(tenantId, accountId, {
@@ -230,16 +261,16 @@ export const Releve: React.FC = () => {
       </FilterSheet>
 
       <DataView<ThirdPartyMovementLine>
-        export={{ filename: data?.label ?? t('Relevé de compte') }}
-        // Une chronologie se lit d'un bloc : pas de pagination, le serveur
-        // rend déjà le relevé borné par les dates choisies.
-        paginated={false}
+        export={{ filename: data?.label ?? t('Relevé de compte'), fetchAll: toutLeReleve }}
+        // Pagination serveur (`skip`/`take`) : `total` est celui du serveur
+        // pour la période choisie.
+        paginated
         scrollX={960}
         items={mouvements}
-        total={mouvements.length}
-        page={1}
-        pageSize={mouvements.length || 20}
-        onPageChange={() => {}}
+        total={data?.total ?? mouvements.length}
+        page={list.page}
+        pageSize={taillePage}
+        onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger le relevé.') : null}

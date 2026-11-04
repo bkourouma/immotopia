@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { App, Button, DatePicker, Input, InputNumber, Modal, Select, Typography } from 'antd';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { App, Button, DatePicker, Input, InputNumber, Modal, Select, Tabs, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
@@ -31,7 +31,11 @@ import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { writeErrorMessage } from '../../utils/error-handler';
 import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
+
+const ONGLET_KEY = 'onglet';
+type Onglet = 'mouvements' | 'reversements';
+const TAILLE_PAGE = 20;
 const { TextArea } = Input;
 
 /**
@@ -100,6 +104,22 @@ function bienOuBail(m: OwnerMovement): string {
 export const CompteProprietaire: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId, ownerClientId } = useParams<{ tenantId: string; ownerClientId: string }>();
+
+  // Onglet actif dans l'URL (`?onglet=reversements`) ; valeur inconnue : Mouvements.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const onglet: Onglet = searchParams.get(ONGLET_KEY) === 'reversements' ? 'reversements' : 'mouvements';
+  const changerOnglet = (cle: string) =>
+    setSearchParams(
+      prev => {
+        const next = new URLSearchParams(prev);
+        if (cle === 'reversements') next.set(ONGLET_KEY, cle);
+        else next.delete(ONGLET_KEY);
+        return next;
+      },
+      { replace: true }
+    );
+  const [pageMouvements, setPageMouvements] = useState(1);
+  const [pageReversements, setPageReversements] = useState(1);
 
   // Annuler un reversement exige FINANCE_DOCUMENTS_VALIDATE (l'API répond 403
   // sinon, après saisie du motif). `permissions` nul = aucune restriction
@@ -224,6 +244,12 @@ export const CompteProprietaire: React.FC = () => {
   if (isPending || !data) {
     return <StateBlock variant="loading" />;
   }
+
+  const pageMouvementsEffective = Math.min(pageMouvements, Math.max(Math.ceil(data.movements.length / TAILLE_PAGE), 1));
+  const pageReversementsEffective = Math.min(
+    pageReversements,
+    Math.max(Math.ceil(data.payouts.length / TAILLE_PAGE), 1)
+  );
 
   const colonnesMouvements: ColumnsType<OwnerMovement> = [
     { title: t('Date'), key: 'date', width: 120, render: (_, m) => dateCourte(m.date) },
@@ -362,78 +388,110 @@ export const CompteProprietaire: React.FC = () => {
         <StatCard label={t('Reversements')} value={<MoneyValue value={data.totals.payouts} />} />
       </div>
 
-      <Title level={4}>{t('Mouvements du compte')}</Title>
-      <DataView<OwnerMovement>
-        paginated={false}
-        scrollX={960}
-        items={data.movements}
-        total={data.movements.length}
-        page={1}
-        pageSize={Math.max(data.movements.length, 1)}
-        onPageChange={() => {}}
-        isReloading={isFetching}
-        emptyDescription={t('Aucun mouvement sur ce compte.')}
-        columns={colonnesMouvements}
-        rowKey={m => m.id}
-        aria-label={t('Mouvements du compte')}
-        export={{ filename: t('Mouvements du compte') }}
-        renderCard={m => (
-          <DataCard
-            title={MOVEMENT_LABELS[m.type]}
-            subtitle={`${dateCourte(m.date)} · ${m.label}`}
-            highlight={<MoneyValue value={m.balanceAfter} />}
-            fields={[
-              { label: t('Débit'), value: <MoneyValue value={m.debit} /> },
-              { label: t('Crédit'), value: <MoneyValue value={m.credit} /> },
-              { label: t('Bien ou bail'), value: bienOuBail(m) }
-            ]}
-          />
-        )}
-      />
-
-      <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        {t('Reversements')}
-      </Title>
-      <DataView<OwnerPayout>
-        paginated={false}
-        scrollX={880}
-        items={data.payouts}
-        total={data.payouts.length}
-        page={1}
-        pageSize={Math.max(data.payouts.length, 1)}
-        onPageChange={() => {}}
-        isReloading={isFetching}
-        emptyDescription={t('Aucun reversement enregistré.')}
-        columns={colonnesReversements}
-        rowKey={p => p.id}
-        aria-label={t('Reversements')}
-        export={{ filename: t('Reversements') }}
-        renderCard={p => (
-          <DataCard
-            title={p.number}
-            subtitle={`${dateCourte(p.paidAt)} · ${METHOD_LABELS[p.method]}`}
-            highlight={<MoneyValue value={p.amount} />}
-            status={
-              p.status === 'VOIDED' ? (
-                <StatusTag status={p.status} tone="danger" label={t('Annulé')} />
-              ) : (
-                <StatusTag status={p.status} tone="success" label={t('Validé')} />
-              )
-            }
-            fields={[{ label: t('Référence'), value: p.reference ?? '—' }]}
-            primaryAction={
-              p.status === 'VALIDATED' && peutAnnuler
-                ? {
-                    label: t('Annuler'),
-                    onClick: () => {
-                      setPayoutAAnnuler(p);
-                      setMotifAnnulation('');
-                    }
-                  }
-                : undefined
-            }
-          />
-        )}
+      {/* Deux sections, une seule requête (`getOwnerAccount`) : seul l'onglet
+          affiché est monté, l'autre est détruit (`destroyOnHidden`). */}
+      <Tabs
+        activeKey={onglet}
+        onChange={changerOnglet}
+        destroyOnHidden
+        items={[
+          {
+            key: 'mouvements',
+            label: (
+              <span>
+                {t('Mouvements du compte')} <span>({data.movements.length})</span>
+              </span>
+            ),
+            children: (
+              <>
+                <DataView<OwnerMovement>
+                  scrollX={960}
+                  items={data.movements.slice(
+                    (pageMouvementsEffective - 1) * TAILLE_PAGE,
+                    pageMouvementsEffective * TAILLE_PAGE
+                  )}
+                  total={data.movements.length}
+                  page={pageMouvementsEffective}
+                  pageSize={TAILLE_PAGE}
+                  onPageChange={p => setPageMouvements(p)}
+                  isReloading={isFetching}
+                  emptyDescription={t('Aucun mouvement sur ce compte.')}
+                  columns={colonnesMouvements}
+                  rowKey={m => m.id}
+                  aria-label={t('Mouvements du compte')}
+                  export={{ filename: t('Mouvements du compte'), fetchAll: async () => data.movements }}
+                  renderCard={m => (
+                    <DataCard
+                      title={MOVEMENT_LABELS[m.type]}
+                      subtitle={`${dateCourte(m.date)} · ${m.label}`}
+                      highlight={<MoneyValue value={m.balanceAfter} />}
+                      fields={[
+                        { label: t('Débit'), value: <MoneyValue value={m.debit} /> },
+                        { label: t('Crédit'), value: <MoneyValue value={m.credit} /> },
+                        { label: t('Bien ou bail'), value: bienOuBail(m) }
+                      ]}
+                    />
+                  )}
+                />
+              </>
+            )
+          },
+          {
+            key: 'reversements',
+            label: (
+              <span>
+                {t('Reversements')} <span>({data.payouts.length})</span>
+              </span>
+            ),
+            children: (
+              <>
+                <DataView<OwnerPayout>
+                  scrollX={880}
+                  items={data.payouts.slice(
+                    (pageReversementsEffective - 1) * TAILLE_PAGE,
+                    pageReversementsEffective * TAILLE_PAGE
+                  )}
+                  total={data.payouts.length}
+                  page={pageReversementsEffective}
+                  pageSize={TAILLE_PAGE}
+                  onPageChange={p => setPageReversements(p)}
+                  isReloading={isFetching}
+                  emptyDescription={t('Aucun reversement enregistré.')}
+                  columns={colonnesReversements}
+                  rowKey={p => p.id}
+                  aria-label={t('Reversements')}
+                  export={{ filename: t('Reversements'), fetchAll: async () => data.payouts }}
+                  renderCard={p => (
+                    <DataCard
+                      title={p.number}
+                      subtitle={`${dateCourte(p.paidAt)} · ${METHOD_LABELS[p.method]}`}
+                      highlight={<MoneyValue value={p.amount} />}
+                      status={
+                        p.status === 'VOIDED' ? (
+                          <StatusTag status={p.status} tone="danger" label={t('Annulé')} />
+                        ) : (
+                          <StatusTag status={p.status} tone="success" label={t('Validé')} />
+                        )
+                      }
+                      fields={[{ label: t('Référence'), value: p.reference ?? '—' }]}
+                      primaryAction={
+                        p.status === 'VALIDATED' && peutAnnuler
+                          ? {
+                              label: t('Annuler'),
+                              onClick: () => {
+                                setPayoutAAnnuler(p);
+                                setMotifAnnulation('');
+                              }
+                            }
+                          : undefined
+                      }
+                    />
+                  )}
+                />
+              </>
+            )
+          }
+        ]}
       />
 
       <Modal

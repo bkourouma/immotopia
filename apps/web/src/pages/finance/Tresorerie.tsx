@@ -158,12 +158,26 @@ interface FormulaireVersement {
   reference?: string;
 }
 
+const TAILLE_PAGE = 20;
+
+function tranche<T>(liste: T[], page: number, taille: number): T[] {
+  return liste.slice((page - 1) * taille, page * taille);
+}
+
 export const Tresorerie: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
   const queryClient = useQueryClient();
 
   const [onglet, setOnglet] = useState<Onglet>('comptes');
+
+  // Pagination locale : les trois listes arrivent en entier de l'API.
+  const [pageComptes, setPageComptes] = useState(1);
+  const [pageVirements, setPageVirements] = useState(1);
+  const [pageVersements, setPageVersements] = useState(1);
+  const [tailleComptes, setTailleComptes] = useState(TAILLE_PAGE);
+  const [tailleVirements, setTailleVirements] = useState(TAILLE_PAGE);
+  const [tailleVersements, setTailleVersements] = useState(TAILLE_PAGE);
 
   // --- Comptes ---------------------------------------------------------------
   const [modalCompteOuvert, setModalCompteOuvert] = useState(false);
@@ -366,13 +380,16 @@ export const Tresorerie: React.FC = () => {
       </div>
 
       <DataView<TreasuryAccountDto>
-        export={{ filename: t('Comptes de trésorerie') }}
-        paginated={false}
-        items={comptes}
+        export={{ filename: t('Comptes de trésorerie'), fetchAll: async () => comptes }}
+        paginated
+        items={tranche(comptes, pageComptes, tailleComptes)}
         total={comptes.length}
-        page={1}
-        pageSize={Math.max(comptes.length, 1)}
-        onPageChange={() => undefined}
+        page={pageComptes}
+        pageSize={tailleComptes}
+        onPageChange={(page, taille) => {
+          setPageComptes(page);
+          setTailleComptes(taille);
+        }}
         loading={comptesQuery.isPending}
         isReloading={comptesQuery.isFetching && !comptesQuery.isPending}
         error={comptesQuery.error ? t('Impossible de charger les comptes de trésorerie.') : null}
@@ -515,13 +532,16 @@ export const Tresorerie: React.FC = () => {
       </div>
 
       <DataView<TreasuryTransferDto>
-        export={{ filename: t('Virements internes') }}
-        paginated={false}
-        items={virements}
+        export={{ filename: t('Virements internes'), fetchAll: async () => virements }}
+        paginated
+        items={tranche(virements, pageVirements, tailleVirements)}
         total={virements.length}
-        page={1}
-        pageSize={Math.max(virements.length, 1)}
-        onPageChange={() => undefined}
+        page={pageVirements}
+        pageSize={tailleVirements}
+        onPageChange={(page, taille) => {
+          setPageVirements(page);
+          setTailleVirements(taille);
+        }}
         loading={virementsQuery.isPending}
         isReloading={virementsQuery.isFetching && !virementsQuery.isPending}
         error={virementsQuery.error ? t('Impossible de charger les virements internes.') : null}
@@ -698,13 +718,16 @@ export const Tresorerie: React.FC = () => {
           </div>
 
           <DataView<TaxRemittanceDto>
-            export={{ filename: t('Versements à la DGI') }}
-            paginated={false}
-            items={versements}
+            export={{ filename: t('Versements à la DGI'), fetchAll: async () => versements }}
+            paginated
+            items={tranche(versements, pageVersements, tailleVersements)}
             total={versements.length}
-            page={1}
-            pageSize={Math.max(versements.length, 1)}
-            onPageChange={() => undefined}
+            page={pageVersements}
+            pageSize={tailleVersements}
+            onPageChange={(page, taille) => {
+              setPageVersements(page);
+              setTailleVersements(taille);
+            }}
             loading={versementsQuery.isPending}
             isReloading={versementsQuery.isFetching && !versementsQuery.isPending}
             error={versementsQuery.error ? t('Impossible de charger les versements à la DGI.') : null}
@@ -748,6 +771,7 @@ export const Tresorerie: React.FC = () => {
 
       <Tabs
         activeKey={onglet}
+        destroyOnHidden
         onChange={valeur => setOnglet(valeur as Onglet)}
         items={[
           { key: 'comptes', label: t('Comptes'), children: ongletComptes },

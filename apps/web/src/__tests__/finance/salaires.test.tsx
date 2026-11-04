@@ -259,6 +259,9 @@ function mountListe(url = `/tenant/${TENANT}/finance/salaires`) {
   );
 }
 
+/** La fiche ouverte sur l'onglet des règlements (clé `onglet` de l'URL). */
+const URL_REGLEMENTS = `/tenant/${TENANT}/finance/salaires/${SALARIE}?onglet=reglements`;
+
 function mountFiche(url = `/tenant/${TENANT}/finance/salaires/${SALARIE}`) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
@@ -469,11 +472,14 @@ describe('Salaires — liste et enregistrement', () => {
 
 describe('Navigation — les chemins déclarés par les écrans', () => {
   it('la fiche lit `tenantId` et `employeeId` dans le CHEMIN, pas en paramètre de requête', async () => {
-    mountFiche();
+    // Les règlements sont lus à la demande : on ouvre leur onglet (clé `onglet`).
+    mountFiche(URL_REGLEMENTS);
 
     await screen.findByRole('heading', { name: 'Ibrahima Koffi' }, { timeout: 8000 });
     expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/employees/${SALARIE}`);
-    expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/employees/${SALARIE}/salary-payments`);
+    await waitFor(() =>
+      expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/employees/${SALARIE}/salary-payments`)
+    );
   });
 });
 
@@ -653,7 +659,7 @@ describe('Fiche du salarié — régler', () => {
   it('enregistre un règlement : ni employé ni affectation dans le corps', async () => {
     const user = userEvent.setup({ delay: null });
     post.mockResolvedValue({ data: { data: reglement() } });
-    mountFiche();
+    mountFiche(URL_REGLEMENTS);
 
     await screen.findByText('Enregistrer un règlement', {}, { timeout: 8000 });
     const montant = screen.getByLabelText('Montant versé');
@@ -673,7 +679,7 @@ describe('Fiche du salarié — régler', () => {
   it('propose un compte de trésorerie facultatif ; sans choix, la clé `treasuryAccountId` est absente', async () => {
     const user = userEvent.setup({ delay: null });
     post.mockResolvedValue({ data: { data: reglement() } });
-    mountFiche();
+    mountFiche(URL_REGLEMENTS);
 
     await screen.findByText('Enregistrer un règlement', {}, { timeout: 8000 });
     expect(screen.getByLabelText('Compte de trésorerie')).toBeInTheDocument();
@@ -691,7 +697,7 @@ describe('Fiche du salarié — régler', () => {
   it('transmet le compte de trésorerie choisi sous `treasuryAccountId`', async () => {
     const user = userEvent.setup({ delay: null });
     post.mockResolvedValue({ data: { data: reglement() } });
-    mountFiche();
+    mountFiche(URL_REGLEMENTS);
 
     await screen.findByText('Enregistrer un règlement', {}, { timeout: 8000 });
     await choisirDansSelect('Compte de trésorerie', 'Banque Atlantique · 521');
@@ -711,7 +717,7 @@ describe('Fiche du salarié — régler', () => {
   it('avertit qu’un règlement supérieur au solde est une avance — SANS jamais le bloquer', async () => {
     const user = userEvent.setup({ delay: null });
     post.mockResolvedValue({ data: { data: reglement({ amount: 900_000 }) } });
-    mountFiche();
+    mountFiche(URL_REGLEMENTS);
 
     await screen.findByText('Enregistrer un règlement', {}, { timeout: 8000 });
     const montant = screen.getByLabelText('Montant versé');
@@ -734,7 +740,7 @@ describe('Fiche du salarié — régler', () => {
 
   it('avertit avant de valider un règlement, puis n’appelle le serveur qu’après confirmation', async () => {
     const user = userEvent.setup({ delay: null });
-    mountFiche();
+    mountFiche(URL_REGLEMENTS);
 
     await screen.findByText('Règlements', {}, { timeout: 8000 });
     const ligne = (await screen.findByText('03/09/2026', {}, { timeout: 8000 })).closest('tr') as HTMLElement;
@@ -798,7 +804,9 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     await choisirDansSelect('Chantier (facultatif)', 'Villa de la Riviera — gros œuvre');
     await screen.findByLabelText('Poste de dépense', {}, { timeout: 8000 });
 
-    // Et l'avertissement d'avance sur salaire.
+    // Et l'avertissement d'avance sur salaire, dans l'onglet des règlements.
+    await user.click(screen.getByRole('tab', { name: 'Règlements' }));
+    await screen.findByText('Enregistrer un règlement', {}, { timeout: 8000 });
     const montant = screen.getByLabelText('Montant versé');
     await user.clear(montant);
     await user.type(montant, '900000');
@@ -817,4 +825,88 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
   });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('Salaires — pagination locale', () => {
+  it('affiche 20 salariés sur 25, avec le compteur, et exporte la liste complète', async () => {
+    const employes = Array.from({ length: 25 }, (_, i) =>
+      salarie({ id: `emp-${i + 1}`, fullName: `Salarié numéro ${String(i + 1).padStart(2, '0')}` })
+    );
+    configurerGet({ employes });
+    mountListe();
+
+    await screen.findByText('Salarié numéro 01', {}, { timeout: 8000 });
+    expect(screen.getByText('Salarié numéro 20')).toBeInTheDocument();
+    expect(screen.queryByText('Salarié numéro 21')).not.toBeInTheDocument();
+    expect(screen.getByText('1–20 sur 25')).toBeInTheDocument();
+  }, 20000);
+});
+
+describe('Fiche du salarié — onglets et requêtes à la demande', () => {
+  const appelsVers = (motif: RegExp) => get.mock.calls.filter(([url]) => motif.test(String(url)));
+
+  it('ne lit pas les règlements avant l’affichage de leur onglet', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    await screen.findByRole('heading', { name: 'Ibrahima Koffi' }, { timeout: 8000 });
+    await screen.findByText('Août 2026', {}, { timeout: 8000 });
+    expect(appelsVers(/salary-payments/)).toHaveLength(0);
+
+    await user.click(screen.getByRole('tab', { name: 'Règlements' }));
+
+    expect(await screen.findByText('03/09/2026', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(appelsVers(/salary-payments/).length).toBeGreaterThan(0);
+  }, 20000);
+
+  it('relit l’onglet dans l’URL : ?onglet=reglements lit les règlements, une valeur inconnue retombe sur les notes', async () => {
+    const { unmount } = mountFiche(URL_REGLEMENTS);
+    expect(await screen.findByText('03/09/2026', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(appelsVers(/salary-payments/).length).toBeGreaterThan(0);
+    unmount();
+
+    get.mockClear();
+    mountFiche(`/tenant/${TENANT}/finance/salaires/${SALARIE}?onglet=n-importe-quoi`);
+    expect(await screen.findByText('Août 2026', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(appelsVers(/salary-payments/)).toHaveLength(0);
+  }, 20000);
+
+  it('ne lit chantiers et postes de dépense qu’au premier geste dans le formulaire de note', async () => {
+    mountFiche();
+
+    await screen.findByText('Saisir une note de salaire', {}, { timeout: 8000 });
+    await screen.findByText('Août 2026', {}, { timeout: 8000 });
+    expect(appelsVers(/\/finance\/sites/)).toHaveLength(0);
+    expect(appelsVers(/\/finance\/cost-categories/)).toHaveLength(0);
+
+    // Les tableaux affichent les noms portés par les notes elles-mêmes.
+    expect(screen.getByText('Villa de la Riviera — gros œuvre')).toBeInTheDocument();
+
+    await choisirDansSelect('Chantier (facultatif)', 'Extension Bingerville');
+
+    expect(appelsVers(/\/finance\/sites/).length).toBeGreaterThan(0);
+    await waitFor(() => expect(appelsVers(/\/finance\/cost-categories/).length).toBeGreaterThan(0));
+    // Et la proposition de poste se fait même si les postes arrivent après le choix.
+    expect(await screen.findByText(/Poste proposé d'après son nom/i, {}, { timeout: 8000 })).toBeInTheDocument();
+  }, 20000);
+
+  it('pagine localement les notes : 20 lignes sur 25, compteur affiché', async () => {
+    const notes = Array.from({ length: 25 }, (_, i) =>
+      note({
+        id: `note-${i + 1}`,
+        periodYear: 2020 + Math.floor(i / 12),
+        periodMonth: (i % 12) + 1,
+        amount: 100_000 + i
+      })
+    );
+    configurerGet({ notes });
+    mountFiche();
+
+    await screen.findByText('Janvier 2020', {}, { timeout: 8000 });
+    expect(screen.getByText('1–20 sur 25')).toBeInTheDocument();
+    // 25 notes : de janvier 2020 à janvier 2022 ; la 21e (septembre 2021) est sur la page 2.
+    expect(screen.queryByText('Janvier 2022')).not.toBeInTheDocument();
+  }, 20000);
 });

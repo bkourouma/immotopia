@@ -497,15 +497,50 @@ export async function validateSession(tenantId: string, userId: string, sessionI
   return toDto(updated);
 }
 
-export async function listSessions(tenantId: string, filters: { status?: unknown; cashierUserId?: unknown }) {
-  const status =
-    typeof filters.status === 'string' && (Object.values(CashSessionStatus) as string[]).includes(filters.status)
-      ? (filters.status as CashSessionStatus)
+const emptyToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
+const ymdDate = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ.');
+
+const listSessionsFilterSchema = z
+  .object({
+    status: z.preprocess(emptyToUndefined, z.nativeEnum(CashSessionStatus).optional()),
+    cashierUserId: z.preprocess(emptyToUndefined, z.string().trim().min(1).optional()),
+    treasuryAccountId: z.preprocess(emptyToUndefined, z.string().trim().uuid().optional()),
+    from: z.preprocess(emptyToUndefined, ymdDate.optional()),
+    to: z.preprocess(emptyToUndefined, ymdDate.optional())
+  })
+  .superRefine((v, ctx) => {
+    const start = v.from ? new Date(`${v.from}T00:00:00.000Z`) : undefined;
+    const end = v.to ? new Date(`${v.to}T23:59:59.999Z`) : undefined;
+    if ((start && Number.isNaN(start.getTime())) || (end && Number.isNaN(end.getTime()))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Date invalide.' });
+    } else if (start && end && start > end) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'La date de début doit précéder la date de fin.' });
+    }
+  });
+
+export async function listSessions(
+  tenantId: string,
+  filters: { status?: unknown; cashierUserId?: unknown; treasuryAccountId?: unknown; from?: unknown; to?: unknown } = {}
+) {
+  const f = listSessionsFilterSchema.parse(filters);
+  const openedAt =
+    f.from || f.to
+      ? {
+          ...(f.from ? { gte: new Date(`${f.from}T00:00:00.000Z`) } : {}),
+          ...(f.to ? { lte: new Date(`${f.to}T23:59:59.999Z`) } : {})
+        }
       : undefined;
-  const cashierUserId =
-    typeof filters.cashierUserId === 'string' && filters.cashierUserId ? filters.cashierUserId : undefined;
   const sessions = await prisma.cashSession.findMany({
-    where: { tenantId, ...(status ? { status } : {}), ...(cashierUserId ? { cashierUserId } : {}) },
+    where: {
+      tenantId,
+      ...(f.status ? { status: f.status } : {}),
+      ...(f.cashierUserId ? { cashierUserId: f.cashierUserId } : {}),
+      ...(f.treasuryAccountId ? { treasuryAccountId: f.treasuryAccountId } : {}),
+      ...(openedAt ? { openedAt } : {})
+    },
     orderBy: [{ openedAt: 'desc' }],
     take: 200
   });

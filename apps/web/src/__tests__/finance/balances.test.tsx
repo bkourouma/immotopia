@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -33,14 +33,17 @@ vi.mock('../../services/finance-service', () => ({
   getClientsAgingBalance: (...a: unknown[]) => getClientsAgingBalance(...a)
 }));
 
-// Les options du filtre « Bien » viennent du parc, et non de la balance :
-// l'API attend un identifiant de bien, qu'une ligne de balance ne porte pas.
-// Sans ce mock, la liste deroulante serait vide et le filtre ne serait pas
-// reellement couvert.
+// Les options du filtre « Bien » viennent d'un sélecteur à recherche distante
+// (`PropertyRemoteSelect`) : l'API attend un identifiant de bien, qu'une ligne
+// de balance ne porte pas. Sans ce mock, la liste déroulante serait vide et le
+// filtre ne serait pas réellement couvert. `getProperty` relit un bien choisi
+// qui ne figure pas dans les résultats.
 const listProperties = vi.fn();
+const getProperty = vi.fn();
 
 vi.mock('../../services/property-service', () => ({
-  listProperties: (...a: unknown[]) => listProperties(...a)
+  listProperties: (...a: unknown[]) => listProperties(...a),
+  getProperty: (...a: unknown[]) => getProperty(...a)
 }));
 
 vi.mock('../../hooks/useBreakpoint', () => ({
@@ -115,6 +118,11 @@ function mountAgee(url = '/tenant/agence-1/finance/balance-agee') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  listProperties.mockResolvedValue({
+    properties: [{ id: 'bien-7', title: 'Villa 4 pièces - Cocody Angré' }],
+    pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
+  });
+  getProperty.mockResolvedValue({ id: 'bien-7', title: 'Villa 4 pièces - Cocody Angré' });
 });
 
 describe('Balance clients — rendu', () => {
@@ -176,7 +184,7 @@ describe('Balance clients — état dans l’URL', () => {
     getClientsBalance.mockResolvedValue({ lines: [ligne()], totalBalance: 600_000, currency: 'XOF' });
     listProperties.mockResolvedValue({
       properties: [{ id: 'bien-7', title: 'Villa 4 pièces - Cocody Angré' }],
-      pagination: { page: 1, limit: 200, total: 1, totalPages: 1 }
+      pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
     });
 
     mountClients('/tenant/agence-1/finance/balance-clients?from=2026-01-01&to=2026-01-31&propertyId=bien-7');
@@ -396,4 +404,77 @@ describe('Vocabulaire — principe P-1 du PRD', () => {
 
     expect(c2.textContent).not.toMatch(motsInterdits);
   });
+});
+
+describe('Balances — sélecteur de bien à recherche distante', () => {
+  it('choisir un bien envoie son identifiant à la balance clients', async () => {
+    getClientsBalance.mockResolvedValue({ lines: [ligne()], totalBalance: 600_000, currency: 'XOF' });
+    mountClients();
+    await screen.findByText('Mariam Diomandé', {}, { timeout: 8000 });
+
+    fireEvent.mouseDown(screen.getByLabelText('Bien'));
+    fireEvent.click(await screen.findByTitle('Villa 4 pièces - Cocody Angré', {}, { timeout: 8000 }));
+
+    await waitFor(
+      () => expect(getClientsBalance.mock.calls.some(call => call[1]?.propertyId === 'bien-7')).toBe(true),
+      { timeout: 8000 }
+    );
+    expect(screen.getByTestId('adresse')).toHaveTextContent('propertyId=bien-7');
+    // Plus de parc chargé d'avance : la recherche est distante, 20 résultats.
+    expect(listProperties.mock.calls.every(call => call[1]?.limit === 20)).toBe(true);
+  }, 20000);
+
+  it('choisir un bien envoie son identifiant à la balance âgée', async () => {
+    getClientsAgingBalance.mockResolvedValue({
+      lines: [ligneAgee()],
+      totalBalance: 600_000,
+      currency: 'XOF'
+    });
+    mountAgee();
+    await screen.findByText('Mariam Diomandé', {}, { timeout: 8000 });
+
+    fireEvent.mouseDown(screen.getByLabelText('Bien'));
+    fireEvent.click(await screen.findByTitle('Villa 4 pièces - Cocody Angré', {}, { timeout: 8000 }));
+
+    await waitFor(
+      () => expect(getClientsAgingBalance.mock.calls.some(call => call[1]?.propertyId === 'bien-7')).toBe(true),
+      { timeout: 8000 }
+    );
+  }, 20000);
+});
+
+describe('Balances — pagination locale', () => {
+  const vingtCinq = () =>
+    Array.from({ length: 25 }, (_, i) =>
+      ligne({
+        accountId: `compte-${i + 1}`,
+        label: `Locataire ${String(i + 1).padStart(2, '0')}`,
+        balance: 1000 * (i + 1)
+      })
+    );
+
+  it('balance clients : 20 lignes sur 25, compteur affiché, total de contrôle du serveur intact', async () => {
+    getClientsBalance.mockResolvedValue({ lines: vingtCinq(), totalBalance: 9_999_000, currency: 'XOF' });
+    mountClients();
+
+    await screen.findByText('Locataire 01', {}, { timeout: 8000 });
+    expect(screen.getByText('Locataire 20')).toBeInTheDocument();
+    expect(screen.queryByText('Locataire 21')).not.toBeInTheDocument();
+    expect(screen.getByText('1–20 sur 25')).toBeInTheDocument();
+    // Le total de contrôle est celui du serveur, pas la somme des 20 lignes affichées.
+    expect(screen.getByText(/9\s?999\s?000/)).toBeInTheDocument();
+  }, 20000);
+
+  it('balance âgée : 20 lignes sur 25 et compteur affiché', async () => {
+    getClientsAgingBalance.mockResolvedValue({
+      lines: vingtCinq().map(l => ({ ...l, notYetDue: 0, days0To30: 0, days30To60: 0, days60To90: 0, daysOver90: 0 })),
+      totalBalance: 0,
+      currency: 'XOF'
+    });
+    mountAgee();
+
+    await screen.findByText('Locataire 01', {}, { timeout: 8000 });
+    expect(screen.queryByText('Locataire 21')).not.toBeInTheDocument();
+    expect(screen.getByText('1–20 sur 25')).toBeInTheDocument();
+  }, 20000);
 });

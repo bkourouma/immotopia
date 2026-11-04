@@ -173,6 +173,7 @@ export interface BalanceFilters {
   from?: string;
   to?: string;
   propertyId?: string;
+  search?: string;
 }
 
 /** Filtres du relevé, reflétés dans l'URL de l'écran. */
