@@ -14,19 +14,21 @@ vi.setConfig({ testTimeout: 60000 });
 const getMe = vi.fn();
 const apiGet = vi.fn();
 const refreshSession = vi.fn();
+const loginApi = vi.fn();
+const logoutApi = vi.fn();
 
 vi.mock('../../services/auth-service', () => ({
   getMe: (...args: unknown[]) => getMe(...args),
-  login: vi.fn(),
+  login: (...args: unknown[]) => loginApi(...args),
   refreshToken: vi.fn(),
-  logout: vi.fn()
+  logout: (...args: unknown[]) => logoutApi(...args)
 }));
 vi.mock('../../utils/api-client', () => ({
   default: { get: (...args: unknown[]) => apiGet(...args) },
   refreshSession: (...args: unknown[]) => refreshSession(...args)
 }));
 
-import { AuthProvider } from '../../context/AuthContext';
+import AuthContext, { AuthProvider } from '../../context/AuthContext';
 import { ProtectedRoute } from '../../components/ProtectedRoute';
 
 const networkError = () => Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' });
@@ -61,6 +63,71 @@ describe('panne réseau au chargement', () => {
     getMe.mockReset();
     apiGet.mockReset();
     refreshSession.mockReset();
+    loginApi.mockReset();
+    logoutApi.mockReset();
+    logoutApi.mockResolvedValue(undefined);
+  });
+
+  describe('refresh() : une panne n’est pas une perte de session', () => {
+    const lancerRefresh = async (erreur: unknown) => {
+      getMe.mockResolvedValue({ success: true, user: { id: 'sa', email: 'sa@b.c', globalRole: 'SUPER_ADMIN' } });
+      refreshSession.mockRejectedValue(erreur);
+      let auth: any;
+      const Temoin: React.FC = () => {
+        auth = React.useContext(AuthContext as React.Context<any>);
+        return <span>{auth.isAuthenticated ? 'CONNECTE' : 'ANONYME'}</span>;
+      };
+      render(
+        <AuthProvider>
+          <Temoin />
+        </AuthProvider>
+      );
+      await screen.findByText('CONNECTE');
+      await auth.refreshToken().catch(() => undefined);
+    };
+
+    it.each([
+      ['réseau coupé', networkError()],
+      ['5xx', httpError(503)],
+      ['429', httpError(429)]
+    ])('%s : pas de déconnexion', async (_nom, erreur) => {
+      await lancerRefresh(erreur);
+      expect(logoutApi).not.toHaveBeenCalled();
+    });
+
+    it('401 : déconnexion', async () => {
+      await lancerRefresh(httpError(401));
+      expect(logoutApi).toHaveBeenCalledTimes(1);
+    });
+
+    it('403 : déconnexion', async () => {
+      await lancerRefresh(httpError(403));
+      expect(logoutApi).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('panne au chargement puis connexion d’un SUPER_ADMIN : plus d’écran d’erreur', async () => {
+    getMe.mockRejectedValueOnce(networkError());
+    const Temoin: React.FC = () => {
+      const auth = React.useContext(AuthContext as React.Context<any>);
+      return (
+        <div>
+          <span>{auth.loadError ? 'ERREUR-CHARGEMENT' : 'SANS-ERREUR'}</span>
+          <button onClick={() => auth.login({ email: 'a@b.c', password: 'x' })}>SE-CONNECTER</button>
+        </div>
+      );
+    };
+    render(
+      <AuthProvider>
+        <Temoin />
+      </AuthProvider>
+    );
+    expect(await screen.findByText('ERREUR-CHARGEMENT')).toBeTruthy();
+    const superAdmin = { id: 'sa', email: 'sa@b.c', globalRole: 'SUPER_ADMIN' };
+    loginApi.mockResolvedValue({ success: true, user: superAdmin });
+    getMe.mockResolvedValue({ success: true, user: superAdmin });
+    fireEvent.click(screen.getByText('SE-CONNECTER'));
+    await waitFor(() => expect(screen.getByText('SANS-ERREUR')).toBeTruthy());
   });
 
   it('API coupée : message et Réessayer, pas de renvoi vers la connexion', async () => {

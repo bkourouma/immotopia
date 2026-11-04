@@ -209,7 +209,7 @@ apiClient.interceptors.response.use(
         // un 5xx ne prouve pas que la session est perdue : pas de renvoi vers
         // la connexion, l'appelant affiche son erreur (BUG-2026-11-04-044).
         const status = (refreshError as AxiosError)?.response?.status;
-        if (status !== undefined && status < 500) {
+        if (status === 401 || status === 403) {
           redirectToLogin();
         }
         return Promise.reject(refreshError);

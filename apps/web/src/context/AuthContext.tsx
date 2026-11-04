@@ -90,6 +90,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Fetch tenant membership and client status
   const refreshMembership = async (): Promise<void> => {
+    // Une panne précédente ne doit pas survivre à cette relecture, même pour un
+    // compte qui n'a pas d'appartenance à charger (SUPER_ADMIN).
+    setLoadError(false);
     if (!user || user.globalRole === 'SUPER_ADMIN') {
       setTenantMembership(null);
       setTenantClient(null);
@@ -308,9 +311,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         try {
           await refreshSession();
         } catch (error: any) {
-          // Only logout if refresh fails and we're still authenticated
-          // Don't logout if it's just a 401 (already logged out)
-          if (isAuthenticated && error.response?.status !== 401) {
+          // Seul un refus d'authentification (401/403) prouve la perte de la
+          // session. Réseau coupé, 5xx ou 429 : on réessaiera au tour suivant.
+          const status = error?.response?.status;
+          if (isAuthenticated && (status === 401 || status === 403)) {
             await logout();
           }
         }
@@ -340,6 +344,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } catch {
           // Repli sur la réponse de connexion.
         }
+        setLoadError(false);
         setUser(loggedUser);
         setIsAuthenticated(true);
       } else {
@@ -390,9 +395,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       await refreshSession();
     } catch (error: any) {
-      // Only logout if we're actually authenticated
-      // Don't logout on 401 if we're already logged out
-      if (isAuthenticated && error.response?.status !== 401) {
+      // Déconnexion seulement si le serveur refuse la session (401/403) ;
+      // une panne ou un 429 n'est pas une perte de session.
+      const status = error?.response?.status;
+      if (isAuthenticated && (status === 401 || status === 403)) {
         await logout();
       }
       throw error;

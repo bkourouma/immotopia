@@ -111,14 +111,14 @@ export async function login(req: Request, res: Response): Promise<void> {
  * POST /api/auth/refresh
  */
 export async function refresh(req: Request, res: Response): Promise<void> {
+  const refreshToken = req.cookies?.refreshToken;
+
+  if (!refreshToken) {
+    res.status(401).json({ success: false, message: 'Refresh token manquant.' });
+    return;
+  }
+
   try {
-    const refreshToken = req.cookies?.refreshToken;
-
-    if (!refreshToken) {
-      res.status(401).json({ success: false, message: 'Refresh token manquant.' });
-      return;
-    }
-
     const result = await refreshAccessToken(refreshToken, req.headers['user-agent']);
 
     // The refresh token is rotated on every use: both cookies must be replaced.
@@ -126,10 +126,13 @@ export async function refresh(req: Request, res: Response): Promise<void> {
 
     res.status(200).json({ success: true, message: 'Token rafraîchi avec succès.' });
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : 'Une erreur est survenue lors du rafraîchissement du token.';
+    // Seul un refus d'authentification (erreur typée) efface les cookies et
+    // répond 401. Une panne (base indisponible...) remonte au middleware
+    // d'erreurs (500) sans toucher aux cookies : le client réessaiera au lieu
+    // de perdre une session valable.
+    if (!(error instanceof UnauthorizedError)) throw error;
     clearAuthCookies(res);
-    res.status(401).json({ success: false, message: errorMessage });
+    res.status(401).json({ success: false, message: error.message });
   }
 }
 
@@ -138,18 +141,13 @@ export async function refresh(req: Request, res: Response): Promise<void> {
  * GET /api/auth/me
  */
 export async function getMe(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user || !req.user.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const user = await getCurrentUser(req.user.userId);
-    res.status(200).json({ success: true, user });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
+  if (!req.user || !req.user.userId) {
+    res.status(401).json({ success: false, message: 'Authentification requise.' });
+    return;
   }
+
+  const user = await getCurrentUser(req.user.userId);
+  res.status(200).json({ success: true, user });
 }
 
 /**
