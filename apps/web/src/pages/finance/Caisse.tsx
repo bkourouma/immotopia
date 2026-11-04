@@ -180,8 +180,12 @@ export const Caisse: React.FC = () => {
   };
 
   const ouvrirLaCaisse = async () => {
-    if (fondDeCaisse === null || fondDeCaisse < 0) {
+    if (fondDeCaisse === null) {
       message.error(t('Indiquez le fond de caisse.'));
+      return;
+    }
+    if (fondDeCaisse < 0) {
+      message.error(t('Le fond de caisse ne peut pas être négatif.'));
       return;
     }
     setOuvertureEnCours(true);
@@ -286,7 +290,7 @@ export const Caisse: React.FC = () => {
             id="caisse-fond"
             size="large"
             style={{ width: '100%' }}
-            min={0}
+            // Pas de `min` : InputNumber recadrerait -1 en 0 sans rien dire.
             step={1000}
             value={fondDeCaisse ?? undefined}
             onChange={valeur => setFondDeCaisse(typeof valeur === 'number' ? valeur : null)}

@@ -14,6 +14,7 @@ import { StateBlock, formatMoney } from '../primitives';
 import { formatRelativeDate, safeFormatDate } from '../../utils/date-utils';
 import type { DashboardActivity, DashboardTask, DashboardTaskKind } from '../../services/dashboard-service';
 import { t } from '../../i18n/t';
+import { bucketLabel } from './dashboard-viz';
 
 import { localizedRecord } from '../../i18n/localized';
 const { Text } = Typography;
@@ -117,7 +118,11 @@ export const WorkQueue: React.FC<WorkQueueProps> = ({ tasks, loading, link }) =>
                 <span style={{ minWidth: 0, flex: 1 }}>
                   <span style={{ display: 'block', fontWeight: 600, color: 'var(--text-primary)' }}>{tache.title}</span>
                   <span style={{ display: 'block', color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-                    {ligneSecondaire(tache.amount, tache.description)}
+                    {ligneSecondaire(
+                      tache.amount,
+                      // L'API envoie le code du moyen de paiement (MOBILE_MONEY) : on l'écrit comme la carte « Moyens de paiement ».
+                      tache.kind === 'PENDING_DECLARATION' ? bucketLabel(tache.description) : tache.description
+                    )}
                   </span>
                 </span>
                 <Tooltip title={safeFormatDate(tache.occurredAt)}>

@@ -113,6 +113,15 @@ describe('computeExpected — filtrage par caisse (lot 10)', () => {
   });
 });
 
+describe('openSession — fond de caisse (BUG-2026-11-04-023)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { openSession } = require('../../src/lib/cash-sessions/service');
+
+  it('refuse un fond négatif avant toute écriture (400 via ZodError)', async () => {
+    await expect(openSession('t1', 'u1', { openingFloat: -1 })).rejects.toThrow();
+  });
+});
+
 // Module, pas script : sans cela ses declarations entrent en collision avec
 // celles des autres fichiers de test sous ts-jest.
 export {};

@@ -573,7 +573,7 @@ describe('Échéance devenue exigible', () => {
       sourceType: 'RENTAL_INSTALLMENT',
       sourceId: echeance.id,
       leaseId: LEASE_ID,
-      label: 'Loyer de fevrier 2026'
+      label: 'Loyer de février 2026'
     });
     expect(compte()?.balance).toBe(107500);
   });
@@ -849,7 +849,7 @@ describe('Pénalité', () => {
       debit: 7500,
       sourceType: 'RENTAL_PENALTY',
       sourceId: penalty.id,
-      label: "Pénalité de retard sur l'échéance de fevrier 2026"
+      label: "Pénalité de retard sur l'échéance de février 2026"
     });
     // L'échéance n'était pas encore facturée : seule la pénalité pèse au compte.
     expect(compte()?.balance).toBe(7500);

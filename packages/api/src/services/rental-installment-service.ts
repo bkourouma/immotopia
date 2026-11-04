@@ -44,20 +44,20 @@ import { BadRequestError, ConflictError, NotFoundError } from '../middleware/err
  */
 const MOIS_FR = [
   'janvier',
-  'fevrier',
+  'février',
   'mars',
   'avril',
   'mai',
   'juin',
   'juillet',
-  'aout',
+  'août',
   'septembre',
   'octobre',
   'novembre',
-  'decembre'
+  'décembre'
 ];
 
-const MOIS_AVEC_ELISION = new Set(['avril', 'aout', 'octobre']);
+const MOIS_AVEC_ELISION = new Set(['avril', 'août', 'octobre']);
 
 /** « de fevrier 2026 » ou « d'octobre 2026 », prêt à suivre « Loyer » ou « l'échéance ». */
 export function libellePeriodeEcheance(periodYear?: number | null, periodMonth?: number | null): string | null {

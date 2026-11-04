@@ -41,17 +41,17 @@ import { BadRequestError, ConflictError, NotFoundError } from '../middleware/err
 
 /** Mêmes intitulés de moyen de paiement que le rétro-remplissage. */
 const MOYEN_PAIEMENT_FR: Record<string, string> = {
-  CASH: 'especes',
+  CASH: 'espèces',
   BANK_TRANSFER: 'virement bancaire',
-  CHECK: 'cheque',
+  CHECK: 'chèque',
   MOBILE_MONEY: 'Mobile Money',
   CARD: 'carte',
-  DIRECT_DEBIT: 'prelevement bancaire',
+  DIRECT_DEBIT: 'prélèvement bancaire',
   OTHER: 'autre moyen'
 };
 
 export function libelleMoyen(method: string | null | undefined): string {
-  return (method && MOYEN_PAIEMENT_FR[method]) || 'moyen non precise';
+  return (method && MOYEN_PAIEMENT_FR[method]) || 'moyen non précisé';
 }
 
 /**

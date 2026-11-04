@@ -231,6 +231,24 @@ describe('gestion locative directe : trésorerie et journal', () => {
     expect(client.thirdPartyAccountId).toBe('acc-locataire');
   });
 
+  it('BUG-2026-11-04-025 : annulé, réactivé puis annulé de nouveau, un règlement écrit des références distinctes', async () => {
+    const pay = payment('pay-1', 160000, day(7, 6));
+    await syncDirectRentPaymentEntryTx(tx, TENANT, 'pay-1');
+    await syncDirectRentPaymentEntryTx(tx, TENANT, 'pay-1'); // rejeu du même événement : rien
+    pay.status = 'CANCELLED';
+    await syncDirectRentPaymentEntryTx(tx, TENANT, 'pay-1');
+    pay.status = 'SUCCESS';
+    await syncDirectRentPaymentEntryTx(tx, TENANT, 'pay-1');
+    pay.status = 'CANCELLED';
+    await syncDirectRentPaymentEntryTx(tx, TENANT, 'pay-1');
+    await syncDirectRentPaymentEntryTx(tx, TENANT, 'pay-1'); // rejeu : rien
+
+    const refs = entries.map(e => e.reference);
+    expect(refs).toEqual(['ENC-PAY-1', 'ANN-ENC-PAY-1', 'ENC-PAY-1-2', 'ANN-ENC-PAY-1-2']);
+    expect(new Set(refs).size).toBe(refs.length);
+    expect(balanceOf('5711')).toBe(0);
+  });
+
   it('un virement va au journal de banque, pas à la caisse', async () => {
     payment('pay-b', 100000, day(7, 6), { method: 'BANK_TRANSFER' });
     await syncDirectRentPaymentEntryTx(tx, TENANT, 'pay-b');

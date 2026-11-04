@@ -36,10 +36,21 @@ jest.mock('@prisma/client', () => {
         return false;
       }
     }
-    if (where.type !== undefined && m.type !== where.type) return false;
+    if (where.type !== undefined) {
+      if (typeof where.type === 'object' && where.type !== null) {
+        if (where.type.not !== undefined && m.type === where.type.not) return false;
+      } else if (m.type !== where.type) {
+        return false;
+      }
+    }
     if (where.leaseId && !inFilter(where.leaseId, m.leaseId)) return false;
-    if (where.type !== undefined && m.type !== where.type) return false;
-    if (where.sourceType !== undefined && m.sourceType !== where.sourceType) return false;
+    if (where.sourceType !== undefined) {
+      if (typeof where.sourceType === 'object' && where.sourceType !== null) {
+        if (where.sourceType.not !== undefined && m.sourceType === where.sourceType.not) return false;
+      } else if (m.sourceType !== where.sourceType) {
+        return false;
+      }
+    }
     if (where.sourceId && typeof where.sourceId === 'object' && !inFilter(where.sourceId, m.sourceId)) return false;
     if (where.movementDate && !matchesMovementDate(m.movementDate, where.movementDate)) return false;
     return true;
@@ -596,8 +607,87 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
       // Le solde comptable reste disponible a part, avec l ecart.
       expect(line.ledgerBalance).toBe(40000);
       expect(result.ledgerTotalBalance).toBe(40000);
-      expect(line.gap).toBe(4000);
-      expect(result.gap).toBe(4000);
+      // L'écart compare des grandeurs comparables : le grand livre ne compte
+      // un loyer qu'à son échéance, donc on retire les 1000 « à échoir ».
+      expect(line.gap).toBe(5000);
+      expect(result.gap).toBe(5000);
+    });
+
+    it('BUG-2026-11-04-021 : un loyer émis non échu (à échoir) ne crée aucun écart avec la comptabilité', async () => {
+      seedLease({
+        id: 'lease-c',
+        property_id: 'prop-c',
+        primary_renter_client_id: 'client-c',
+        property: { title: 'Bien C', internalReference: 'REF-C' }
+      });
+      seedAccount({ id: 'acc-c', tenantClientId: 'client-c', label: 'Locataire C', balance: 640000 });
+      seedMovement({
+        id: 'm-c',
+        accountId: 'acc-c',
+        movementDate: new Date('2026-01-05T00:00:00.000Z'),
+        type: 'INSTALLMENT',
+        debit: 640000,
+        balanceAfter: 640000,
+        label: 'Loyers échus',
+        leaseId: 'lease-c'
+      });
+      const day = 24 * 60 * 60 * 1000;
+      for (const [i, d] of [100, 70, 40, 10].entries()) {
+        seedInstallment({
+          id: `c-${i}`,
+          lease_id: 'lease-c',
+          due_date: new Date(ASOF.getTime() - d * day),
+          amount_rent: 160000
+        });
+      }
+      seedInstallment({
+        id: 'c-futur',
+        lease_id: 'lease-c',
+        due_date: new Date(ASOF.getTime() + 5 * day),
+        amount_rent: 160000
+      });
+
+      const result = await getClientsAgingBalance(TENANT_ID, { asOf: ASOF });
+      const line = result.lines.find(l => l.accountId === 'acc-c')!;
+      expect(line.agedTotal).toBe(800000);
+      expect(line.notYetDue).toBe(160000);
+      expect(line.ledgerBalance).toBe(640000);
+      expect(line.gap).toBe(0);
+    });
+
+    it('un vrai écart reste signalé malgré les loyers à échoir', async () => {
+      seedLease({
+        id: 'lease-d',
+        property_id: 'prop-d',
+        primary_renter_client_id: 'client-d',
+        property: { title: 'Bien D', internalReference: 'REF-D' }
+      });
+      // Le grand livre porte 10 000 de plus que les échéances échues.
+      seedAccount({ id: 'acc-d', tenantClientId: 'client-d', label: 'Locataire D', balance: 170000 });
+      seedMovement({
+        id: 'm-d',
+        accountId: 'acc-d',
+        movementDate: new Date('2026-01-05T00:00:00.000Z'),
+        type: 'INSTALLMENT',
+        debit: 170000,
+        balanceAfter: 170000,
+        label: 'Loyers',
+        leaseId: 'lease-d'
+      });
+      seedInstallment({
+        id: 'd-1',
+        lease_id: 'lease-d',
+        due_date: new Date(ASOF.getTime() - 10 * MS_PER_DAY),
+        amount_rent: 160000
+      });
+      seedInstallment({
+        id: 'd-2',
+        lease_id: 'lease-d',
+        due_date: new Date(ASOF.getTime() + 5 * MS_PER_DAY),
+        amount_rent: 160000
+      });
+      const result = await getClientsAgingBalance(TENANT_ID, { asOf: ASOF });
+      expect(result.lines.find(l => l.accountId === 'acc-d')!.gap).toBe(10000);
     });
 
     it('ne compte que les echeances non soldees, et ignore les autres locataires', async () => {

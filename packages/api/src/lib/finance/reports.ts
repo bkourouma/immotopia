@@ -345,17 +345,20 @@ export const getClientsAgingBalance: GetClientsAgingBalanceWithGap = async (tena
       ...buckets,
       agedTotal,
       ledgerBalance: line.balance,
-      gap: roundMoney(line.balance - agedTotal)
+      // Le grand livre ne compte un loyer qu'à sa date d'échéance : on
+      // compare donc au solde âgé HORS « À échoir » (grandeurs comparables).
+      gap: roundMoney(line.balance - (agedTotal - buckets.notYetDue))
     };
   });
 
   const totalBalance = roundMoney(lines.reduce((sum, line) => sum + line.agedTotal, 0));
+  const totalNotYetDue = roundMoney(lines.reduce((sum, line) => sum + line.notYetDue, 0));
   return {
     lines,
     totalBalance,
     currency: base.currency,
     ledgerTotalBalance: base.totalBalance,
-    gap: roundMoney(base.totalBalance - totalBalance)
+    gap: roundMoney(base.totalBalance - (totalBalance - totalNotYetDue))
   };
 };
 
