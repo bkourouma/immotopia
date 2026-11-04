@@ -68,6 +68,15 @@ describe('déclaration de paiement : montant', () => {
     expect(declarePaymentSchema.safeParse(valid).success).toBe(true);
   });
 
+  // BUG-2026-11-04-043 : un montant négatif, nul, non fini ou à trop de décimales est refusé.
+  it.each([-1, 0, Number.NaN, Number.POSITIVE_INFINITY, 10.005, 0.001])('refuse le montant %p', amount => {
+    expect(declarePaymentSchema.safeParse({ ...valid, amount }).success).toBe(false);
+  });
+
+  it.each([0.01, 1500.5, 1500.55])('accepte le montant %p (au plus 2 décimales)', amount => {
+    expect(declarePaymentSchema.safeParse({ ...valid, amount }).success).toBe(true);
+  });
+
   it('le contrôleur répond 400 sans appeler le service', async () => {
     const res = fakeRes();
     await run(controller.declarePayment, req({ body: { ...valid, amount: '999999999999' } }), res);

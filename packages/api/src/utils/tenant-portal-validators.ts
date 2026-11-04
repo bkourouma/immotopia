@@ -13,6 +13,18 @@ import { detectMandateScanKind } from '../lib/direct-debit/mandate-files';
  */
 export const MAX_DECLARED_AMOUNT = 1_000_000_000;
 
+// Messages de validation : traduits par le middleware d'erreur à l'exécution.
+// @i18n-keys
+const MSG_MONTANT_POSITIF = 'Le montant doit être positif.';
+// @i18n-keys
+const MSG_MONTANT_NOMBRE = 'Le montant doit être un nombre.';
+// @i18n-keys
+const MSG_MONTANT_DECIMALES = 'Le montant ne peut pas avoir plus de deux décimales.';
+// @i18n-keys
+const MSG_MONTANT_TROP_ELEVE = 'Le montant est trop élevé.';
+// @i18n-keys
+const MSG_CONTENU_FICHIER = 'Le contenu du fichier ne correspond pas à son type (JPEG, PNG, WebP ou PDF attendu).';
+
 // Payment Declaration Validation
 export const declarePaymentSchema = z
   .object({
@@ -21,8 +33,10 @@ export const declarePaymentSchema = z
         required_error: 'Le montant est requis.',
         invalid_type_error: 'Le montant doit être un nombre.'
       })
-      .positive('Le montant doit être positif.')
-      .max(MAX_DECLARED_AMOUNT, 'Le montant est trop élevé.'),
+      .positive(MSG_MONTANT_POSITIF)
+      .finite(MSG_MONTANT_NOMBRE)
+      .max(MAX_DECLARED_AMOUNT, MSG_MONTANT_TROP_ELEVE)
+      .refine(v => Math.abs(Math.round(v * 100) - v * 100) < 1e-6, MSG_MONTANT_DECIMALES),
     paymentDate: z
       .string({
         required_error: 'La date de paiement est requise.'
@@ -122,7 +136,7 @@ function validateImageOrPdf(file: Express.Multer.File): FileCheck {
   if (realKind !== declaredKind) {
     return {
       valid: false,
-      error: 'Le contenu du fichier ne correspond pas à son type (JPEG, PNG, WebP ou PDF attendu).'
+      error: MSG_CONTENU_FICHIER
     };
   }
 

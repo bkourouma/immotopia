@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { App, Modal, Form, Input, InputNumber, DatePicker, Select, Upload, Button, Space, Typography } from 'antd';
 import { UploadOutlined, DollarOutlined, CalendarOutlined, FileTextOutlined, PhoneOutlined } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
-import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import dayjs, { Dayjs } from 'dayjs';
 import type { UploadFile } from 'antd';
 import { t } from '../../i18n/t';
 
 const { TextArea } = Input;
+
+/** Chiffres (latins, arabo-indiens, persans), espaces (dont insécables), séparateurs décimaux et signe. */
+const CARACTERES_ADMIS = new RegExp('^[\\d\\s.,\\u066B\\u202F\\u00A0\\u0660-\\u0669\\u06F0-\\u06F9-]$');
 const { Text } = Typography;
 
 interface PaymentDeclarationModalProps {
@@ -34,6 +37,21 @@ export default function PaymentDeclarationModal({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
+
+  // Vrai tant qu'un caractère invalide a été tapé dans le montant : la validation
+  // le refuse même si la suite de la saisie (« 1e9 » → « 19 ») redevient numérique.
+  const caractereRefuse = useRef(false);
+  const messageCaractere = () =>
+    t('Le montant ne doit contenir que des chiffres et une virgule (2 décimales au plus).');
+
+  /** Une touche qui n'est ni un chiffre, ni un séparateur, ni un signe est refusée avec un message (jamais ignorée en silence). */
+  const refuserCaractereInvalide = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (CARACTERES_ADMIS.test(event.key)) return;
+    event.preventDefault();
+    caractereRefuse.current = true;
+    form.setFields([{ name: 'amount', errors: [messageCaractere()] }]);
+  };
 
   const handleSubmit = async (values: any) => {
     try {
@@ -135,18 +153,31 @@ export default function PaymentDeclarationModal({
           name="amount"
           rules={[
             { required: true, message: t('Le montant est requis') },
-            { type: 'number', min: 0.01, message: t('Le montant doit être positif') }
+            { type: 'number', min: 0.01, message: t('Le montant doit être positif') },
+            {
+              validator: () =>
+                caractereRefuse.current ? Promise.reject(new Error(messageCaractere())) : Promise.resolve()
+            }
           ]}
         >
-          <InputNumber<number>
+          {/*
+            BUG-2026-11-04-043 : ni `min` (InputNumber recadrerait -1 en 0,01 sans rien
+            dire : la règle ci-dessus le refuse avec un message), ni `precision={0}`
+            (qui arrondissait 0,01 en 1). La virgule décimale de la langue est lue,
+            deux décimales au plus ; une lettre ou un symbole tapé est refusé avec un message.
+          */}
+          <InputNumber
             prefix={<DollarOutlined />}
             style={{ width: '100%' }}
             placeholder={t('Ex. 150 000')}
-            min={0.01}
             step={1000}
-            precision={0}
-            formatter={value => formatNumberWithSpaces(value?.toString() || '')}
-            parser={(value): number => parseFloat(parseFormattedNumber(value || '')) || 0}
+            inputMode="decimal"
+            onKeyDown={refuserCaractereInvalide}
+            // Champ vidé : on repart de zéro.
+            onChange={valeur => {
+              if (valeur === null || valeur === '') caractereRefuse.current = false;
+            }}
+            {...montantSaisiProps}
           />
         </Form.Item>
 
