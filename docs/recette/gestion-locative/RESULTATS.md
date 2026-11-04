@@ -248,3 +248,35 @@ entre agences. Tranches d'âge recalculées pour le 04/11/2026.
 | GL-09-037                                                                | passé (réserve)  | Paiement réactivé puis annulé de nouveau : références d'écriture en double (BUG-2026-11-04-025)                                    |
 | GL-09-039                                                                | bloqué           | Bail REC-GL-PAY-1 (bloc 06) absent                                                                                                 |
 | GL-09-018, 021, 033, 041 à 048                                           | non joué         | Reprendre à GL-09-041 (exports)                                                                                                    |
+
+### 12 — Portail propriétaire (Playwright, révision `fa868920`, ~38 cas sur 47)
+
+Pas de jeu REC-GL dans la base : joué avec Moussa Koné (PROPRIETAIRE_PORTAIL_2)
+et Sandrine Coulibaly (PROPRIETAIRE_PORTAIL), attendus recalculés côté agence.
+Rejeu de BUG-2026-11-03-001 : corrigé. Un `propertyId` étranger (autre
+propriétaire, agence B, UUID inventé, valeur invalide) donne une liste vide
+sur baux, incidents, documents, échéances, paiements et revenus.
+
+| Cas                                               | Résultat        | Anomalie / remarque                                                                                   |
+| ------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------- |
+| GL-12-003, 011, 022, 030, 032, 033                | passé           | Revenus recalculés (mois 134 000, année 7 564 000, total 16 505 000), 404 identiques                  |
+| GL-12-041, 061, 062, 070, 071, 080, 081           | passé           | Paiement puis annulation : compteurs revenus à l'identique ; exports PDF, CSV, Excel                  |
+| GL-12-085, 090, 100, 102, 120, 121, 123, 124      | passé           | `ownerClientId` forgé ignoré, 404 partout                                                             |
+| GL-12-060                                         | passé (adapté)  | Soldes 276 000 et 247 500, identiques côté agence                                                     |
+| GL-12-010, 012, 020, 021, 040, 125                | passé (partiel) | Passage en maintenance, onglets secondaires, filtre Villa et saisie navigateur non joués              |
+| GL-12-031                                         | échoué          | BUG-2026-11-04-006 (reste à payer avec échéances non échues), corrigé dans 34694924                   |
+| GL-12-034                                         | échoué          | BUG-2026-11-04-011 (montant retenu = montant détenu), corrigé dans 34694924                           |
+| GL-12-064                                         | échoué          | BUG-2026-11-04-003 (indicateurs du compte sans retenue ni dépôt conservé), corrigé                    |
+| GL-12-082                                         | échoué          | BUG-2026-11-04-008 (occupation à une date passée), corrigé dans 34694924                              |
+| GL-12-083                                         | passé (réserve) | BUG-2026-11-04-009 (valeurs techniques anglaises dans les exports), corrigé                           |
+| GL-12-095                                         | échoué          | BUG-2026-11-04-007 (« undefined undefined » pour l'assigné), corrigé dans 34694924                    |
+| GL-12-101                                         | échoué          | BUG-2026-11-04-010 (rendement 0,00 % sans valorisation), corrigé dans 34694924                        |
+| GL-12-122                                         | échoué          | BUG-2026-11-04-005 (500 au lieu d'un refus, sans fuite), corrigé dans 34694924                        |
+| GL-12-006                                         | bloqué          | Aucun propriétaire client de l'agence B dans le seed                                                  |
+| GL-12-002                                         | passé (partiel) | Barre mobile non vérifiée                                                                             |
+| GL-12-001, 004, 005, 063, 065, 084, 096, 110, 126 | non joué        | Exigent des biens, mandats, baux ou comptes REC-GL ; 084 : neutralisation CSV relue dans `lib/csv.ts` |
+
+Écarts de scénario : GL-12-033 (l'écran Paiements ne liste que les paiements
+réussis hors dépôt, total égal aux revenus), GL-12-060/064/065 (pas
+d'honoraires ni de TVA dans le compte du seed), GL-12-081 (date pré-remplie,
+message « Veuillez sélectionner une date » inaccessible).
