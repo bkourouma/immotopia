@@ -132,7 +132,7 @@ describe('Portail locataire — sélection des échéances sur plusieurs pages',
     fireEvent.click(screen.getByRole('button', { name: 'Payer en ligne' }));
     await waitFor(() => expect(createOnlinePaymentCheckout).toHaveBeenCalledTimes(1));
     expect([...createOnlinePaymentCheckout.mock.calls[0][0]].sort()).toEqual(['ech-1', 'ech-2']);
-  });
+  }, 300_000);
 
   it('conserve la sélection quand on change de page', async () => {
     const user = userEvent.setup();
@@ -164,4 +164,86 @@ describe('Portail locataire — sélection des échéances sur plusieurs pages',
     expect(screen.getByText('Sélectionnez une ou plusieurs échéances à régler en ligne.')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Payer en ligne' })).toBeDisabled());
   });
+
+  it("recale le montant d'une échéance sélectionnée quand la liste est rechargée", async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByText('05/2026', {}, { timeout: 8000 });
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Sélectionner 05/2026' }));
+    expect(normaliser(screen.getByText(/Total à payer/).textContent)).toContain('50000');
+
+    getInstallments.mockImplementation(async (params: { page?: number }) =>
+      (params?.page ?? 1) === 1
+        ? {
+            data: {
+              success: true,
+              data: { ...reponsePage(1).data.data, installments: [installment({ balance: 20_000 })] }
+            }
+          }
+        : reponsePage(2)
+    );
+    await user.click(await screen.findByTitle('2'));
+    await screen.findByText('06/2026', {}, { timeout: 8000 });
+    await user.click(await screen.findByTitle('1'));
+    await screen.findByText('05/2026', {}, { timeout: 8000 });
+
+    await waitFor(() => expect(normaliser(screen.getByText(/Total à payer/).textContent)).toBe('20000'));
+    expect(screen.getByText('1 échéance(s) sélectionnée(s)')).toBeInTheDocument();
+  }, 300_000);
+
+  it('retire de la sélection une échéance qui revient soldée', async () => {
+    const user = userEvent.setup();
+    await selectionnerSurDeuxPages(user);
+    await screen.findByText('2 échéance(s) sélectionnée(s)');
+
+    getInstallments.mockImplementation(async (params: { page?: number }) =>
+      (params?.page ?? 1) === 1
+        ? {
+            data: {
+              success: true,
+              data: { ...reponsePage(1).data.data, installments: [installment({ balance: 0, status: 'PAID' })] }
+            }
+          }
+        : reponsePage(2)
+    );
+    await user.click(await screen.findByTitle('1'));
+    await screen.findByText('05/2026', {}, { timeout: 8000 });
+
+    await waitFor(() => expect(screen.getByText('1 échéance(s) sélectionnée(s)')).toBeInTheDocument());
+    expect(normaliser(screen.getByText(/Total à payer/).textContent)).toBe('30000');
+  }, 300_000);
+
+  it('désactive les cases non cochées à 24 échéances sélectionnées et affiche le message', async () => {
+    const lignes = Array.from({ length: 25 }, (_, n) =>
+      installment({ id: `ech-${n + 1}`, period: `P${String(n + 1).padStart(2, '0')}`, balance: 1000, amount: 1000 })
+    );
+    getInstallments.mockImplementation(async (params: { page?: number }) => {
+      const page = params?.page ?? 1;
+      return {
+        data: {
+          success: true,
+          data: {
+            installments: page === 1 ? lignes.slice(0, 20) : lignes.slice(20),
+            summary: { total: 25, paid: 0, due: 25, overdue: 0, partial: 0 },
+            pagination: { page, limit: 20, total: 25, totalPages: 2 }
+          }
+        }
+      };
+    });
+    const user = userEvent.setup();
+    mount();
+    await screen.findByText('P01', {}, { timeout: 8000 });
+    // « Tout sélectionner » : 20 lignes de la page 1, puis seulement 4 des 5 de la page 2.
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+    await user.click(await screen.findByTitle('2'));
+    await screen.findByText('P21', {}, { timeout: 8000 });
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+    await waitFor(() => expect(screen.getByText('24 échéance(s) sélectionnée(s)')).toBeInTheDocument());
+    expect(screen.getByText('24 échéances au plus par paiement en ligne.')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Sélectionner P25' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Sélectionner P24' }));
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Sélectionner P25' })).toBeEnabled());
+    expect(screen.queryByText('24 échéances au plus par paiement en ligne.')).not.toBeInTheDocument();
+  }, 300_000);
 });

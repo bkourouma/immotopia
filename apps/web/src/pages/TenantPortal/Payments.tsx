@@ -365,7 +365,7 @@ export default function TenantPayments() {
     staleTime: 60_000,
     retry: false
   });
-  const selection = useSelectionEcheances(echSearch.filterParams);
+  const selection = useSelectionEcheances(echSearch.filterParams, data?.installments);
   const selectedInstallmentIds = selection.ids;
   const [payingOnline, setPayingOnline] = useState(false);
 
@@ -768,6 +768,11 @@ export default function TenantPayments() {
                             {t('{{count}} échéance(s) sélectionnée(s)', { count: selection.count })}
                           </Text>
                         ) : null}
+                        {selection.limiteAtteinte ? (
+                          <Text type="warning" style={{ fontSize: 12 }}>
+                            {t('{{max}} échéances au plus par paiement en ligne.', { max: selection.max })}
+                          </Text>
+                        ) : null}
                         {selectedInstallmentIds.length > 0 && availability.feesPaidBy === 'CLIENT' ? (
                           <Text type="secondary" style={{ fontSize: 12 }}>
                             {t("Des frais de l'agrégateur de paiement peuvent s'ajouter au montant.")}
@@ -815,7 +820,9 @@ export default function TenantPayments() {
                               selectedRowKeys: selectedInstallmentIds,
                               onChange: keys => selection.surChangement(keys, data.installments),
                               getCheckboxProps: (record: InstallmentItem) => ({
-                                disabled: record.balance <= 0,
+                                disabled:
+                                  record.balance <= 0 ||
+                                  (selection.limiteAtteinte && !selectedInstallmentIds.includes(record.id)),
                                 'aria-label': t('Sélectionner {{period}}', { period: record.period })
                               })
                             }
