@@ -190,3 +190,26 @@ lecture (033), retenue au-delà du dépôt refusée (056).
 | GL-03-059                             | passé (partiel) | Téléchargement CSV non déclenché                                                                     |
 | GL-03-060                             | échoué          | BUG-2026-11-04-012 (cible du dépôt non mise à jour avec le bail)                                     |
 | GL-03-016, 036, 062                   | non joué        | 036 relève du fichier 04 ; 062 (portail, e-mails) non tenté                                          |
+
+### 07 — Pénalités (Playwright, révision `fa868920`, 35 cas)
+
+Correctifs du lot pénalités (`e17931a8`) confirmés : taux 0 sur le bail sans
+pénalité, aucune pénalité sur bail annulé ou suspendu, pénalité ajustée non
+recalculée ni doublée, justificatif conservé, refus 404 pour une autre agence.
+Trois anomalies **bloquantes** : le compte du locataire ne suit pas
+l'échéance après un ajustement ou la suppression d'une pénalité ajustée.
+
+| Cas                                                                          | Résultat         | Anomalie / remarque                                                                       |
+| ---------------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------- |
+| GL-07-001 à 012, 015, 016, 020, 022, 023, 025, 027, 028, 030, 032, 034 à 036 | passé            | Calcul, plafonds, taux 0, idempotence, ajustement, justificatif, isolation, exports       |
+| GL-07-013                                                                    | passé (écart)    | Seuil de solde minimum de l'agence (5 000, non affiché) annule la pénalité fixe           |
+| GL-07-014                                                                    | passé (réserve)  | Ligne d'août vue à 5 000 puis 0 au recalcul ; à rejouer sur un bail neuf                  |
+| GL-07-017                                                                    | passé (écart)    | BUG-2026-11-04-013 (10 000 000 000 → 500), BUG-2026-11-04-018 (montant vidé sans message) |
+| GL-07-018                                                                    | échoué           | BUG-2026-11-04-001 (bloquant)                                                             |
+| GL-07-019                                                                    | échoué           | BUG-2026-11-04-002 (bloquant)                                                             |
+| GL-07-021                                                                    | échoué           | BUG-2026-11-04-004 (bloquant)                                                             |
+| GL-07-024                                                                    | passé (anomalie) | BUG-2026-11-04-014 (JSON du justificatif affiché)                                         |
+| GL-07-026                                                                    | échoué           | BUG-2026-11-04-015 (nom accentué), BUG-2026-11-04-019 (faux PNG accepté)                  |
+| GL-07-029                                                                    | passé (anomalie) | BUG-2026-11-04-018 (boutons visibles pour COMPTABLE_A)                                    |
+| GL-07-031                                                                    | échoué           | BUG-2026-11-04-017 (carte mobile sans justificatif)                                       |
+| GL-07-033                                                                    | échoué           | Écart avec la comptabilité dans la balance âgée : conséquence de 001, 002, 004            |
