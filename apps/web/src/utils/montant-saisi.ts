@@ -43,37 +43,120 @@ import { activeLocale } from '../i18n/format';
  *     0 » redevient « 500 000 » dès que ce chiffre est confirmé, etc.).
  *
  * Le `parser`, lui, doit accepter tout ce que le `formatter` a pu poser —
- * espace normale, insécable, insécable étroite, virgule anglaise — et ne
- * garder que les chiffres, le signe et un éventuel point décimal. Balayer
- * large ici coûte moins cher qu'un montant qui refuse de se sauvegarder parce
- * que le caractère de séparation exact ne correspondait pas à celui attendu.
+ * espace normale, insécable, insécable étroite, séparateur de milliers de la
+ * langue — et rendre un nombre au format JavaScript (`1000.5`).
+ *
+ * Le séparateur décimal (BUG-2026-11-03-025) : une version antérieure ne
+ * gardait que « chiffres, point et signe ». En français, la virgule de
+ * « 1 000,5 » tombait et le montant devenait 10 005 — un reversement dix fois
+ * trop élevé. Le parseur dépend maintenant de la langue (séparateurs lus sur
+ * `Intl`) : il retire les milliers, lit `,` (fr), `.` (en) ou `٫` (ar) comme
+ * décimale, accepte aussi le point en français et en arabe, et lit les chiffres
+ * arabo-indiens. Le formateur travaille sur le TEXTE, jamais via `Number`, pour
+ * ne perdre ni la virgule en cours de frappe (`1000,`) ni un zéro final
+ * (`1000,50`). Deux décimales au plus (colonne `Decimal(14,2)`).
  */
 
-/** Transforme un montant (ou un état de saisie en cours) en texte regroupé. */
-export function formatterMontant(value: number | string | undefined): string {
-  if (value === undefined || value === null || value === '') return '';
+/** Le XOF n'a pas de centimes, mais la colonne est `Decimal(14,2)` : au plus deux décimales saisies. */
+const MAX_DECIMALES = 2;
 
-  const brut = String(value);
-  const numerique = Number(brut);
-
-  // Un `-` seul (début de saisie d'un montant négatif) ou tout autre état non
-  // encore numérique : on renvoie la saisie telle quelle plutôt que d'effacer
-  // ce que la personne vient de taper.
-  if (!Number.isFinite(numerique)) return brut;
-
-  return numerique.toLocaleString(activeLocale());
+/** Séparateurs de la langue courante, lus sur `Intl` plutôt que codés en dur. */
+function separateurs(): { groupe: string; decimal: string } {
+  const parts = new Intl.NumberFormat(activeLocale(), { useGrouping: true }).formatToParts(1234567.5);
+  return {
+    groupe: parts.find(part => part.type === 'group')?.value ?? ' ',
+    decimal: parts.find(part => part.type === 'decimal')?.value ?? '.'
+  };
 }
 
-/** Retire tout ce que `formatterMontant` a pu ajouter, pour ne garder qu'un nombre exploitable. */
+/** Chiffres arabo-indiens (٠-٩) et persans (۰-۹) vers ASCII. */
+function chiffresLatins(texte: string): string {
+  return texte
+    .replace(/[٠-٩]/g, c => String(c.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, c => String(c.charCodeAt(0) - 0x06f0));
+}
+
+/**
+ * Texte saisi (ou posé par le formateur) vers `[-]chiffres[.décimales]`, sans
+ * mise en forme. Garde les états transitoires : `''`, `'-'`, `'1000.'` (virgule
+ * tapée, décimales à venir).
+ */
+function normaliser(saisie: string): string {
+  const { groupe, decimal } = separateurs();
+  const texte = chiffresLatins(saisie).replace(/[−‒–]/g, '-');
+
+  // Décimale : celle de la langue, plus `.` et `,` tant qu'ils ne servent pas
+  // de séparateur de milliers (en anglais la virgule groupe, elle n'est
+  // jamais décimale ; en français et en arabe le point est aussi lu décimal).
+  const decimales = new Set<string>([decimal, '.', ',', '٫']);
+  decimales.delete(groupe);
+  decimales.add(decimal);
+
+  let resultat = '';
+  let negatif = false;
+  let aVirgule = false;
+  let apres = 0;
+  for (const caractere of texte) {
+    if (caractere === '-') {
+      if (resultat === '') negatif = true;
+    } else if (caractere >= '0' && caractere <= '9') {
+      if (!aVirgule) resultat += caractere;
+      else if (apres < MAX_DECIMALES) {
+        resultat += caractere;
+        apres += 1;
+      }
+    } else if (decimales.has(caractere) && !aVirgule) {
+      aVirgule = true;
+      resultat += resultat === '' ? '0.' : '.';
+    }
+    // Tout le reste (espaces, insécables, groupe de la langue, lettres) tombe.
+  }
+  return (negatif ? '-' : '') + resultat;
+}
+
+/** Informations passées par `<InputNumber>` à son `formatter` (`input` : le texte brut tapé). */
+interface InfosFormatter {
+  userTyping: boolean;
+  input: string;
+}
+
+/** Transforme un montant (ou un état de saisie en cours) en texte regroupé. */
+export function formatterMontant(value: number | string | undefined, info?: InfosFormatter): string {
+  if (value === undefined || value === null || value === '') return '';
+
+  // Pendant la frappe, le texte tapé fait foi : `value` est déjà passé par
+  // l'analyse numérique et a perdu la virgule finale ou un zéro final.
+  const source = info?.userTyping && typeof info.input === 'string' ? info.input : String(value);
+
+  // Notation scientifique (très grand nombre) : repli sur Intl.
+  if (/e/i.test(source) && Number.isFinite(Number(source))) {
+    return Number(source).toLocaleString(activeLocale());
+  }
+
+  const normalise = normaliser(source);
+
+  // Rien d'exploitable encore (`-` seul au début d'un montant négatif, ou
+  // tout autre état non numérique) : on renvoie la saisie plutôt que d'effacer
+  // ce que la personne vient de taper.
+  if (normalise === '' || normalise === '-') return normalise === '' ? source : normalise;
+
+  const negatif = normalise.startsWith('-');
+  const [entiers, decimales] = normalise.replace('-', '').split('.');
+  const groupes = new Intl.NumberFormat(activeLocale(), { useGrouping: true, maximumFractionDigits: 0 }).format(
+    BigInt(entiers)
+  );
+  const partieDecimale = decimales === undefined ? '' : separateurs().decimal + decimales;
+  return (negatif ? '-' : '') + groupes + partieDecimale;
+}
+
+/**
+ * Remet un texte saisi ou formaté au format `1000.5`. Accepte tout ce que le
+ * formateur a pu poser (espaces normales, insécables, séparateur de milliers de
+ * la langue) et le séparateur décimal de la langue — ou le point.
+ */
 export function parserMontant(value: string | undefined): string {
   if (value === undefined) return '';
-
-  // On ne connaît pas à l'avance le séparateur exact (espace insécable
-  // étroite en français, virgule en anglais...), donc on ne retire pas un
-  // caractère précis : on ne garde que ce qui compose un nombre — chiffres,
-  // point décimal, signe moins — et tout le reste tombe, séparateur de
-  // milliers compris.
-  return value.replace(/[^\d.-]/g, '');
+  return normaliser(value);
 }
 
 /** Prêt à étaler sur un `<InputNumber>` de montant : `<InputNumber {...montantSaisiProps} ... />`. */

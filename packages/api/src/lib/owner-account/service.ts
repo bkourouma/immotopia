@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../../utils/database';
+import { t } from '../../i18n';
 import { badRequest, conflict, notFound } from '../errors';
 import { postDocumentEntryTx } from '../finance/accounting';
 import { appendThirdPartyMovementTx } from '../finance/ledger';
@@ -232,8 +233,22 @@ export async function listOwnerAccounts(tenantId: string) {
   });
 }
 
-const payoutSchema = z.object({
-  amount: z.coerce.number().positive(),
+/** Plus grand montant d'un reversement accepté. */
+const PAYOUT_MAX = 9_999_999_999.99;
+
+/** Au plus deux décimales : la colonne est `Decimal(14,2)`, un 1000,555 serait arrondi en silence. */
+const hasAtMostTwoDecimals = (value: number) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
+
+export const payoutSchema = z.object({
+  // Messages posés à la validation (pas au chargement du module) : `t()` suit la langue de la requête.
+  amount: z.coerce.number().superRefine((value, ctx) => {
+    if (!(value > 0)) ctx.addIssue({ code: 'custom', message: t('Le montant doit être supérieur à 0') });
+    else if (value > PAYOUT_MAX) {
+      ctx.addIssue({ code: 'custom', message: t('Le montant dépasse le maximum autorisé (9 999 999 999,99).') });
+    } else if (!hasAtMostTwoDecimals(value)) {
+      ctx.addIssue({ code: 'custom', message: t('Le montant ne peut avoir plus de 2 décimales.') });
+    }
+  }),
   paidAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ'),
   method: z.enum(['CASH', 'BANK_TRANSFER', 'CHECK', 'MOBILE_MONEY', 'OTHER']),
   // Lot 10 : le compte de trésorerie réellement débité ; vide, celui par défaut du moyen.
@@ -420,7 +435,17 @@ export async function createOwnerPayout(
   return toPayoutDto(payout, names);
 }
 
-const voidSchema = z.object({ reason: z.string().trim().min(3, 'Le motif est requis') });
+export const voidSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .superRefine((value, ctx) => {
+      if (value.length === 0) ctx.addIssue({ code: 'custom', message: t('Le motif est requis') });
+      else if (value.length < 3) {
+        ctx.addIssue({ code: 'custom', message: t('Le motif doit contenir au moins 3 caractères') });
+      }
+    })
+});
 
 export async function voidOwnerPayout(
   tenantId: string,

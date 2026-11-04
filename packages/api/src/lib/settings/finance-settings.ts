@@ -119,7 +119,7 @@ export const updateFinanceSettingsSchema = z
     managementFeeBase: z.nativeEnum(ManagementFeeBase),
     // Absent chez un client antérieur au mode forfait : pourcentage, comme avant.
     managementFeeMode: z.nativeEnum(ManagementFeeMode).default(ManagementFeeMode.PERCENT),
-    managementFeeFixedAmount: z.coerce.number().positive().nullish(),
+    managementFeeFixedAmount: z.coerce.number().positive('Le forfait doit être supérieur à 0').nullish(),
     ownerFundsAccountNumber: accountNumber,
     managementFeeAccountNumber: accountNumber,
     vatCollectedAccountNumber: accountNumber,

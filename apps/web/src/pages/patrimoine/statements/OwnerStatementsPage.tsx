@@ -36,6 +36,19 @@ function sendReasonLabel(reason?: string): string {
   return t('Relevé non envoyé.');
 }
 
+/** « Titre — REF-001 · adresse » : le titre seul ne distingue pas deux biens du même type. */
+export function propertyOptionLabel(property: {
+  title: string;
+  internalReference?: string | null;
+  address?: string | null;
+}): string {
+  const complement = [property.internalReference, property.address]
+    .map(part => (part ?? '').trim())
+    .filter(Boolean)
+    .join(' · ');
+  return complement ? `${property.title} — ${complement}` : property.title;
+}
+
 export const OwnerStatementsPage: React.FC = () => {
   const { message } = App.useApp();
 
@@ -65,7 +78,11 @@ export const OwnerStatementsPage: React.FC = () => {
         listContacts(effectiveTenantId, { page: 1, limit: 500 })
       ]);
       setStatements(statementData);
-      setPropertyOptions(properties.properties.map(property => ({ value: property.id, label: property.title })));
+      // Les titres ne sont pas uniques (plusieurs lots « Appartement F3 ») : la référence
+      // et l'adresse permettent de reconnaître le bon bien. La recherche porte sur ce libellé.
+      setPropertyOptions(
+        properties.properties.map(property => ({ value: property.id, label: propertyOptionLabel(property) }))
+      );
       const owners = contacts.contacts.filter(contact =>
         (contact.roles || []).some(role => role.active && role.role === 'PROPRIETAIRE')
       );

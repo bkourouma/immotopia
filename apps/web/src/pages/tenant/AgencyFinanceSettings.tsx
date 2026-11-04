@@ -394,7 +394,19 @@ export const AgencyFinanceSettings: React.FC = () => {
                       }
                     ]}
                   >
-                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" disabled={!withholdingEnabled} />
+                    <DatePicker
+                      style={{ width: '100%' }}
+                      format="DD/MM/YYYY"
+                      disabled={!withholdingEnabled}
+                      // Texte effacé au clavier : le sélecteur ne signale pas toujours ce vidage
+                      // (onChange), et le formulaire gardait l'ancienne date — envoyée à l'API
+                      // alors que le champ s'affichait vide (BUG-2026-11-03-013).
+                      onBlur={event => {
+                        if (!(event.target as HTMLInputElement).value) {
+                          form.setFieldValue('withholdingStartsOn', null);
+                        }
+                      }}
+                    />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={6}>
