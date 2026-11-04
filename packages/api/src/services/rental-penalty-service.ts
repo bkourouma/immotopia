@@ -140,11 +140,13 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
   // Use lease penalty settings if available, otherwise use tenant rule
   const graceDays = installment.lease.penalty_grace_days ?? penaltyRule.grace_days;
   const mode = installment.lease.penalty_mode ?? penaltyRule.mode;
-  // Un 0 explicite sur le bail veut dire « pas de pénalité » : seul un taux ou
-  // un montant ABSENT (null/undefined) prend la valeur de l'agence. Les deux
-  // taux sont en pourcentage (2 = 2 %).
-  const rate = Number(installment.lease.penalty_rate ?? penaltyRule.rate);
-  const fixedAmount = Number(installment.lease.penalty_fixed_amount ?? penaltyRule.fixed_amount);
+  // Règle de l'agence (H36) : les colonnes du bail sont NOT NULL avec défaut 0,
+  // donc « 0 » veut dire « non renseigné » et prend la valeur de la règle de
+  // l'agence (sinon tous les baux existants à 0 perdaient leurs pénalités). Pour
+  // ne pas pénaliser un bail, on le rend non actif ou on désactive la règle.
+  // Les deux taux sont en pourcentage (2 = 2 %).
+  const rate = Number(installment.lease.penalty_rate) || Number(penaltyRule.rate);
+  const fixedAmount = Number(installment.lease.penalty_fixed_amount) || Number(penaltyRule.fixed_amount);
   const capAmount = installment.lease.penalty_cap_amount
     ? Number(installment.lease.penalty_cap_amount)
     : penaltyRule.cap_amount
@@ -227,7 +229,7 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
     }
 
     let ligne;
-    if (existingPenalty && !existingPenalty.is_manual_override) {
+    if (existingPenalty) {
       // Update existing penalty
       ligne = await tx.rentalPenalty.update({
         where: {
@@ -264,19 +266,17 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
       });
     }
 
-    // Update installment penalty amount only if penalty was actually updated/created
-    // Don't update if existing penalty has manual override (it wasn't recalculated)
-    if (!existingPenalty || !existingPenalty.is_manual_override) {
-      await tx.rentalInstallment.update({
-        where: {
-          id: installmentId,
-          tenant_id: tenantId
-        },
-        data: {
-          penalty_amount: penaltyAmount
-        }
-      });
-    }
+    // Le retour anticipé ci-dessus écarte déjà l'ajustement manuel : ici la
+    // pénalité vient d'être recalculée, l'échéance en garde le miroir.
+    await tx.rentalInstallment.update({
+      where: {
+        id: installmentId,
+        tenant_id: tenantId
+      },
+      data: {
+        penalty_amount: penaltyAmount
+      }
+    });
 
     await inscrirePenaliteTx(tx, {
       tenantId,
@@ -292,8 +292,10 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
     return { skipped: false as const, ligne };
   });
 
+  // Jamais la ligne Prisma brute : `override_reason` porte le JSON du justificatif
+  // (chemin interne, id utilisateur) — voir `presenterPenalite`.
   if (outcome.skipped) {
-    return outcome.ligne;
+    return presenterPenalite(outcome.ligne);
   }
   const penalty = outcome.ligne;
 
@@ -325,7 +327,7 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
     });
   }
 
-  return penalty;
+  return presenterPenalite(penalty);
 }
 
 /**

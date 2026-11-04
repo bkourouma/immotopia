@@ -1,5 +1,5 @@
 /**
- * Règles de calcul des pénalités de retard : taux 0 du bail, justificatif
+ * Règles de calcul des pénalités de retard : repli du bail sur l'agence (H36), justificatif
  * conservé à l'ajustement, bail non actif, absence de doublon.
  */
 const mockPrisma: any = {
@@ -105,18 +105,49 @@ describe('taux de pénalité du bail', () => {
     expect(Number(p.amount)).toBe(3200);
   });
 
-  it("un taux 0 explicite sur le bail ne retombe pas sur le défaut de l'agence", async () => {
+  it("H36 : un taux 0 sur le bail (colonne NOT NULL, défaut 0) prend le taux de l'agence", async () => {
     mockPrisma.rentalInstallment.findFirst.mockResolvedValue(installment({ penalty_rate: 0 }));
-    const p = await calculatePenalty(TENANT, 'inst-1', { ...agencyRule, rate: 0.02 });
-    expect(Number(p.amount)).toBe(0);
+    const p = await calculatePenalty(TENANT, 'inst-1', { ...agencyRule, rate: 5 });
+    // 5 % de 160 000
+    expect(Number(p.amount)).toBe(8000);
   });
 
-  it("un montant fixe 0 explicite en mode FIXED_AMOUNT donne 0, pas le fixe de l'agence", async () => {
+  it("H36 : un montant fixe 0 sur le bail en mode FIXED_AMOUNT prend le fixe de l'agence", async () => {
     mockPrisma.rentalInstallment.findFirst.mockResolvedValue(
       installment({ penalty_mode: 'FIXED_AMOUNT', penalty_fixed_amount: 0 })
     );
     const p = await calculatePenalty(TENANT, 'inst-1', { ...agencyRule, fixed_amount: 5000 });
-    expect(Number(p.amount)).toBe(0);
+    expect(Number(p.amount)).toBe(5000);
+  });
+
+  it('renvoie la pénalité présentée : jamais le justificatif brut (override_reason)', async () => {
+    mockPrisma.rentalInstallment.findFirst.mockResolvedValue(installment());
+    mockPrisma.rentalPenalty.findFirst.mockResolvedValue({
+      id: 'pen-1',
+      amount: 1000,
+      is_manual_override: false,
+      override_reason: JSON.stringify({ justification: { fileUrl: '/uploads/secret.pdf', fileName: 'secret.pdf' } })
+    });
+    mockPrisma.rentalPenalty.update.mockImplementation(async ({ data }: any) => ({
+      id: 'pen-1',
+      calculated_at: new Date(),
+      is_manual_override: false,
+      override_reason: JSON.stringify({ justification: { fileUrl: '/uploads/secret.pdf', fileName: 'secret.pdf' } }),
+      ...data
+    }));
+    const calculee = await calculatePenalty(TENANT, 'inst-1', agencyRule);
+    expect(JSON.stringify(calculee)).not.toContain('/uploads/');
+    expect(calculee.override_reason).toBeNull();
+
+    // Pénalité ajustée à la main, rendue telle quelle : même présentation.
+    mockPrisma.rentalPenalty.findFirst.mockResolvedValue({
+      id: 'pen-2',
+      amount: 1000,
+      is_manual_override: true,
+      override_reason: JSON.stringify({ reason: 'Geste', justification: { fileUrl: '/uploads/secret.pdf' } })
+    });
+    const ajustee = await calculatePenalty(TENANT, 'inst-1', agencyRule);
+    expect(JSON.stringify(ajustee)).not.toContain('/uploads/');
   });
 
   it("un taux absent (null) prend celui de l'agence, exprimé en pourcentage comme le bail", async () => {

@@ -2,6 +2,7 @@ import { prisma } from '../utils/database';
 import type { PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
 import {
+  Prisma,
   RentalPaymentStatus,
   RentalPaymentMethod,
   RentalInstallmentStatus,
@@ -21,6 +22,9 @@ import {
 } from './rental-installment-service';
 import { t } from '../i18n';
 import { recordAuditEvent } from './audit-service';
+import { AuditActionKey } from '../types/audit-types';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { env } from '../config/env';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 
@@ -424,6 +428,18 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
       if (!renterClient) {
         throw new NotFoundError(t('Locataire introuvable'));
       }
+
+      // Avec un bail, le payeur est son locataire principal ou un co-locataire :
+      // un autre client de l'agence ferait inscrire l'argent au compte d'un tiers.
+      if (data.leaseId && data.renterClientId !== locatairePrincipalDuBail) {
+        const coLocataire = await prisma.rentalLeaseCoRenter.findFirst({
+          where: { lease_id: data.leaseId, renter_client_id: data.renterClientId, tenant_id: tenantId },
+          select: { id: true }
+        });
+        if (!coLocataire) {
+          throw new NotFoundError(t('Locataire introuvable'));
+        }
+      }
     }
 
     // Validate invoice exists and belongs to this tenant, if provided.
@@ -566,6 +582,16 @@ export async function allocatePaymentTx(
 
   if (remainingAmount <= 0) {
     throw new ConflictError(t('Le paiement est déjà entièrement alloué'));
+  }
+
+  // Verrou des échéances visées, triées par id (ordre stable : pas d'interblocage
+  // entre deux affectations qui se croisent). Sans lui, deux paiements différents
+  // sur la même échéance lisaient le même « reste dû » et la surpayaient.
+  const idsVerrouilles = [...new Set(data.installmentIds)].filter(id => UUID_RE.test(id));
+  if (idsVerrouilles.length > 0) {
+    await tx.$queryRaw`SELECT id FROM rental_installments WHERE id IN (${Prisma.join(
+      idsVerrouilles.map(id => Prisma.sql`${id}::uuid`)
+    )}) AND tenant_id = ${tenantId} ORDER BY id FOR UPDATE`;
   }
 
   // Get installments to allocate to
@@ -1088,6 +1114,11 @@ export async function updatePaymentStatusTx(
   actorUserId?: string,
   options: { strictTransitions?: boolean } = {}
 ): Promise<any> {
+  // Même verrou que `allocatePaymentTx`, posé AVANT la lecture : un changement
+  // de statut et une affectation simultanés lisaient le même état et
+  // s'écrasaient. Ordre constant partout : le paiement, puis ses échéances.
+  await tx.$queryRaw`SELECT id FROM rental_payments WHERE id = ${paymentId}::uuid AND tenant_id = ${tenantId} FOR UPDATE`;
+
   const payment = await tx.rentalPayment.findFirst({
     where: {
       id: paymentId,
@@ -1168,6 +1199,13 @@ export async function updatePaymentStatusTx(
       await defaireCollectesDepotTx(tx, tenantId, paymentId, actorUserId);
 
       if (installmentIds.length > 0) {
+        // Échéances verrouillées après le paiement, triées par id : même ordre que `allocatePaymentTx`.
+        const idsUuid = installmentIds.filter(id => UUID_RE.test(id));
+        if (idsUuid.length > 0) {
+          await tx.$queryRaw`SELECT id FROM rental_installments WHERE id IN (${Prisma.join(
+            idsUuid.map(id => Prisma.sql`${id}::uuid`)
+          )}) AND tenant_id = ${tenantId} ORDER BY id FOR UPDATE`;
+        }
         await tx.rentalPaymentAllocation.deleteMany({ where: { payment_id: paymentId, tenant_id: tenantId } });
         await reverseInstallmentAllocations(tx, tenantId, installmentIds);
         logger.info(`Payment ${paymentId} ${status}: reversed ${installmentIds.length} installment(s)`);
@@ -1276,6 +1314,24 @@ export async function updatePaymentStatusTx(
 
     // Encaissé : écriture de trésorerie ; annulé ou échoué : contre-passation.
     await syncDirectRentPaymentEntryTx(tx, tenantId, paymentId);
+
+    // Trace du changement manuel, dans la même transaction : annuler ou
+    // réactiver un règlement déplace de l'argent et doit laisser un événement.
+    if (actorUserId && payment.status !== status) {
+      await recordAuditEvent(tx, {
+        actorUserId,
+        tenantId,
+        actionKey: AuditActionKey.RENTAL_PAYMENT_STATUS_CHANGED,
+        entityType: 'RENTAL_PAYMENT',
+        entityId: paymentId,
+        payload: {
+          from: payment.status,
+          to: status,
+          previousCanceledAt: payment.canceled_at ?? null,
+          previousFailedAt: payment.failed_at ?? null
+        }
+      });
+    }
 
     return updated;
   }

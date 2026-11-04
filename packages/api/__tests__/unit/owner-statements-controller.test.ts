@@ -229,6 +229,17 @@ describe('PATCH /owner-statements/:id — mise à jour', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true, data: baseStatement({ status: 'PAID' }) });
   });
+
+  it('400 : `paidAt` n’est plus modifiable (seul le reversement le pose), le service n’est pas appelé', async () => {
+    updateOwnerStatement.mockClear();
+
+    const res = await request(buildApp())
+      .patch(`/tenants/${TENANT}/owner-statements/${STATEMENT_ID}`)
+      .send({ status: 'SENT', paidAt: '2026-10-01' });
+
+    expect(res.status).toBe(400);
+    expect(updateOwnerStatement).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST /owner-statements/:id/recompute — recalcul', () => {

@@ -9,6 +9,7 @@ import { materializeManagementFees } from '../rental-fees/materialize';
 import { getAgencyFinanceSettings } from '../settings/finance-settings';
 import { assertTreasuryAccountUsableTx, resolveTreasuryAccountTx } from '../treasury/accounts';
 import { ensureRentalAccountsTx, journalResolver } from './accounts';
+import { auPlusDeuxDecimales } from '../../utils/montant';
 import {
   getOrCreateOwnerAccountTx,
   listAgencyOwners,
@@ -294,7 +295,7 @@ export async function listOwnerAccounts(tenantId: string) {
 const PAYOUT_MAX = 9_999_999_999.99;
 
 /** Au plus deux décimales : la colonne est `Decimal(14,2)`, un 1000,555 serait arrondi en silence. */
-const hasAtMostTwoDecimals = (value: number) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
+const hasAtMostTwoDecimals = auPlusDeuxDecimales;
 
 export const payoutSchema = z.object({
   // Messages posés à la validation (pas au chargement du module) : `t()` suit la langue de la requête.

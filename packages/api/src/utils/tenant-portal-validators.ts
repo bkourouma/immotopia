@@ -5,6 +5,7 @@
 
 import { z } from 'zod';
 import { detectMandateScanKind } from '../lib/direct-debit/mandate-files';
+import { auPlusDeuxDecimales } from './montant';
 
 /**
  * Plafond d'un montant déclaré : la colonne est un `Decimal(12, 2)` (au plus
@@ -36,7 +37,7 @@ export const declarePaymentSchema = z
       .positive(MSG_MONTANT_POSITIF)
       .finite(MSG_MONTANT_NOMBRE)
       .max(MAX_DECLARED_AMOUNT, MSG_MONTANT_TROP_ELEVE)
-      .refine(v => Math.abs(Math.round(v * 100) - v * 100) < 1e-6, MSG_MONTANT_DECIMALES),
+      .refine(auPlusDeuxDecimales, MSG_MONTANT_DECIMALES),
     paymentDate: z
       .string({
         required_error: 'La date de paiement est requise.'

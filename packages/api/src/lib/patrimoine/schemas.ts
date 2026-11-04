@@ -116,11 +116,14 @@ export const generateStatementSchema = z.object({
   propertyIds: z.array(uuidSchema).min(1)
 });
 
+// `paidAt` n'est plus modifiable ici : seul le reversement (`createOwnerPayout`)
+// pose la date de paiement. `.strict()` rejette un `paidAt` reçu en 400 plutôt
+// que de l'ignorer en silence.
 export const updateStatementSchema = z
   .object({
-    status: z.enum(['DRAFT', 'SENT', 'PAID']).optional(),
-    paidAt: z.coerce.date().optional()
+    status: z.enum(['DRAFT', 'SENT', 'PAID']).optional()
   })
+  .strict()
   .refine(value => Object.keys(value).length > 0, {
     message: 'Au moins un champ est requis pour la mise à jour du relevé'
   });

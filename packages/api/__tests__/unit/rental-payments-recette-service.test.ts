@@ -7,6 +7,11 @@ jest.mock('../../src/utils/database', () => ({ prisma: { $transaction: jest.fn()
 jest.mock('../../src/lib/finance/rental-direct-ledger', () => ({
   syncDirectRentPaymentEntryTx: jest.fn(async () => 'none')
 }));
+const recordAuditEvent = jest.fn(async () => undefined);
+jest.mock('../../src/services/audit-service', () => ({
+  recordAuditEvent: (...a: any[]) => recordAuditEvent(...(a as [])),
+  logAuditEvent: jest.fn()
+}));
 const appendThirdPartyMovementTx = jest.fn();
 jest.mock('../../src/lib/finance/ledger', () => ({
   appendThirdPartyMovementTx: (...a: any[]) => appendThirdPartyMovementTx(...a),
@@ -29,7 +34,7 @@ import {
   updatePaymentStatus,
   updatePaymentStatusTx
 } from '../../src/services/rental-payment-service';
-import { BadRequestError, ConflictError } from '../../src/middleware/error-middleware';
+import { BadRequestError, ConflictError, NotFoundError } from '../../src/middleware/error-middleware';
 
 const TENANT = 'tenant-A';
 type Row = Record<string, any>;
@@ -142,6 +147,27 @@ describe('affectation d’un paiement (GL-06-033 et suivants)', () => {
     expect(order.indexOf('verrou')).toBeLessThan(order.indexOf('lecture'));
   });
 
+  it('verrouille ensuite les échéances visées, triées par id, avant de les lire (ordre : paiement, échéances)', async () => {
+    const A = '00000000-0000-4000-8000-00000000000a';
+    const B = '00000000-0000-4000-8000-00000000000b';
+    const tx = makeTx(payment());
+    const order: string[] = [];
+    tx.$queryRaw.mockImplementation(async (strings: TemplateStringsArray) => {
+      order.push(strings.join('?').includes('rental_installments') ? 'verrou-echeances' : 'verrou-paiement');
+      return [];
+    });
+    tx.rentalInstallment.findMany.mockImplementation(async () => {
+      order.push('lecture-echeances');
+      return [installment({ id: A })];
+    });
+
+    await allocatePaymentTx(tx as any, TENANT, 'pay-1', { installmentIds: [B, A] }, 'u1');
+
+    expect(order.slice(0, 3)).toEqual(['verrou-paiement', 'verrou-echeances', 'lecture-echeances']);
+    const [strings] = tx.$queryRaw.mock.calls[1];
+    expect(strings.join('?')).toMatch(/rental_installments[\s\S]*tenant_id[\s\S]*ORDER BY id FOR UPDATE/);
+  });
+
   it('dit pourquoi une seconde affectation sur la même échéance est refusée', async () => {
     const tx = makeTx(payment({ amount: 150000 }), {
       existingAllocations: [{ payment_id: 'pay-1', installment_id: 'inst-1', amount: 50000 }]
@@ -208,6 +234,65 @@ describe('transitions de statut manuelles (GL-06-034)', () => {
     await expect(promise).resolves.toBeDefined();
     expect(tx.rentalPayment.update).not.toHaveBeenCalled();
     expect(annulerPieceTx).not.toHaveBeenCalled();
+  });
+});
+
+describe('changement de statut : verrou et audit', () => {
+  it('verrouille la ligne du paiement (FOR UPDATE) AVANT de la lire', async () => {
+    const tx = makeTx(payment({ status: 'PENDING' }));
+    const order: string[] = [];
+    tx.$queryRaw.mockImplementation(async () => {
+      order.push('verrou');
+      return [];
+    });
+    tx.rentalPayment.findFirst.mockImplementation(async () => {
+      order.push('lecture');
+      return payment({ status: 'PENDING' });
+    });
+
+    await updatePaymentStatusTx(tx as any, TENANT, 'pay-1', RentalPaymentStatus.SUCCESS, 'u1');
+
+    expect(order.slice(0, 2)).toEqual(['verrou', 'lecture']);
+    const [strings] = tx.$queryRaw.mock.calls[0];
+    expect(strings.join('?')).toMatch(/rental_payments[\s\S]*FOR UPDATE/);
+  });
+
+  it('enregistre RENTAL_PAYMENT_STATUS_CHANGED avec l’état précédent quand un acteur change le statut', async () => {
+    const canceledAt = new Date('2026-10-01T00:00:00.000Z');
+    const tx = makeTx(payment({ status: 'CANCELED', canceled_at: canceledAt, failed_at: null }));
+
+    await updatePaymentStatusTx(tx as any, TENANT, 'pay-1', RentalPaymentStatus.SUCCESS, 'u1');
+
+    expect(recordAuditEvent).toHaveBeenCalledTimes(1);
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        actorUserId: 'u1',
+        tenantId: TENANT,
+        actionKey: 'RENTAL_PAYMENT_STATUS_CHANGED',
+        entityType: 'RENTAL_PAYMENT',
+        entityId: 'pay-1',
+        payload: { from: 'CANCELED', to: 'SUCCESS', previousCanceledAt: canceledAt, previousFailedAt: null }
+      })
+    );
+  });
+
+  it('n’enregistre rien sans acteur (flux automatique) ni quand le statut ne change pas', async () => {
+    await updatePaymentStatusTx(
+      makeTx(payment({ status: 'PENDING' })) as any,
+      TENANT,
+      'pay-1',
+      RentalPaymentStatus.SUCCESS
+    );
+    await updatePaymentStatusTx(
+      makeTx(payment({ status: 'SUCCESS' })) as any,
+      TENANT,
+      'pay-1',
+      RentalPaymentStatus.SUCCESS,
+      'u1'
+    );
+
+    expect(recordAuditEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -291,6 +376,53 @@ describe('devise du paiement (GL-06-012)', () => {
         'u1'
       )
     ).resolves.toBeDefined();
+  });
+
+  describe('renterClientId : locataire principal ou co-locataire du bail', () => {
+    const AUTRE = 'client-autre';
+
+    function prismaWithRenter(coRenter: Row | null) {
+      prismaWithLease('FCFA');
+      (prisma as any).tenantClient = { findFirst: jest.fn(async () => ({ id: AUTRE })) };
+      (prisma as any).rentalLeaseCoRenter = { findFirst: jest.fn(async () => coRenter) };
+    }
+
+    const input = (renterClientId: string) => ({
+      leaseId: 'lease-1',
+      renterClientId,
+      method: 'CASH' as any,
+      amount: 100,
+      idempotencyKey: 'k-renter'
+    });
+
+    it('refuse un client de l’agence qui n’est ni le principal ni un co-locataire du bail', async () => {
+      prismaWithRenter(null);
+
+      const promise = createPayment(TENANT, input(AUTRE), 'u1');
+
+      await expect(promise).rejects.toBeInstanceOf(NotFoundError);
+      await expect(promise).rejects.toThrow('Locataire introuvable');
+      expect((prisma as any).rentalLeaseCoRenter.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { lease_id: 'lease-1', renter_client_id: AUTRE, tenant_id: TENANT }
+        })
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('accepte un co-locataire du bail', async () => {
+      prismaWithRenter({ id: 'co-1' });
+
+      await expect(createPayment(TENANT, input(AUTRE), 'u1')).resolves.toBeDefined();
+    });
+
+    it('accepte le locataire principal sans chercher parmi les co-locataires', async () => {
+      prismaWithRenter(null);
+      (prisma as any).tenantClient.findFirst = jest.fn(async () => ({ id: 'client-1' }));
+
+      await expect(createPayment(TENANT, input('client-1'), 'u1')).resolves.toBeDefined();
+      expect((prisma as any).rentalLeaseCoRenter.findFirst).not.toHaveBeenCalled();
+    });
   });
 
   it('refuse l’EUR sans bail (le compte du locataire est en FCFA)', async () => {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MONTANT_MAX } from './payment-schemas';
+import { auPlusDeuxDecimales } from '../../utils/montant';
 
 /**
  * Schéma Zod du corps de l'ajustement d'une pénalité
@@ -21,6 +22,6 @@ export const updatePenaltySchema = z.object({
     .finite(MSG_MONTANT_NOMBRE)
     .min(0, MSG_MONTANT_NEGATIF)
     .max(MONTANT_MAX, 'Le montant dépasse le maximum autorisé (9 999 999 999,99).')
-    .refine(v => Math.abs(Math.round(v * 100) - v * 100) < 1e-6, MSG_MONTANT_DECIMALES),
+    .refine(auPlusDeuxDecimales, MSG_MONTANT_DECIMALES),
   reason: z.string().trim().min(1, MSG_RAISON_OBLIGATOIRE)
 });

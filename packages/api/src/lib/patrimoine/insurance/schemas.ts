@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { auPlusDeuxDecimales } from '../../../utils/montant';
 
 /**
  * Validation Zod des polices, sinistres et pièces (lot B1, spec 032). Tous les
@@ -62,7 +63,7 @@ export const amountSchema = z
   .finite()
   .min(0, 'Le montant ne peut pas être négatif.')
   .max(1e12, 'Montant trop élevé.')
-  .refine(value => Math.abs(Math.round(value * 100) - value * 100) < 1e-6, 'Deux décimales au plus.');
+  .refine(auPlusDeuxDecimales, 'Deux décimales au plus.');
 
 export const currencySchema = z.string().regex(/^[A-Z]{3}$/, 'La devise doit comporter 3 lettres majuscules.');
 export const idSchema = z.string().trim().min(1).max(64);

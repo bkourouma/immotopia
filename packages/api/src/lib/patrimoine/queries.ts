@@ -1382,7 +1382,6 @@ export async function updateOwnerStatement(
   statementId: string,
   data: {
     status?: 'DRAFT' | 'SENT' | 'PAID';
-    paidAt?: Date;
   }
 ) {
   // Seul un reversement (`createOwnerPayout`) pose « Payé » : le poser à la main
@@ -1405,8 +1404,7 @@ export async function updateOwnerStatement(
   return prisma.ownerStatement.update({
     where: { id: statementId, tenantId },
     data: {
-      status: data.status,
-      paidAt: data.paidAt
+      status: data.status
     },
     include: {
       owner: true,
