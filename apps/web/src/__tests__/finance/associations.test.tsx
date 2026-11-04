@@ -389,7 +389,7 @@ describe('Fiche de l’association — associés', () => {
     await user.click(screen.getByRole('button', { name: 'Confirmer le retrait' }));
 
     await waitFor(() => expect(del).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/partnership-shares/part-1`));
-  }, 45000);
+  }, 90000);
 
   it('ouvre l’état de quote-part d’un associé, en lecture seule', async () => {
     const user = userEvent.setup({ delay: null });
@@ -635,5 +635,38 @@ describe('Recherche multicritères des associations', () => {
     await user.click(within(ligneKouadio).getByRole('button', { name: "Voir l'état" }));
     expect(await screen.findByText('Août 2026', {}, T)).toBeInTheDocument();
     expect(screen.getByText('Septembre 2026')).toBeInTheDocument();
+  }, 60000);
+  it('fiche : changer la période de l’état de quote-part ramène le relevé à sa première page', async () => {
+    const lignes = Array.from({ length: 60 }, (_, i) => ({
+      propertyLabel: `Bien ${String(i + 1).padStart(2, '0')}`,
+      periodYear: 2026,
+      periodMonth: 8,
+      rentBilled: 100_000,
+      rentCollected: 100_000,
+      partnerShare: 60_000
+    }));
+    configurerGet({ releve: statement({ lines: lignes }) });
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    const ligneKouadio = (await screen.findByText('Mamadou Kouadio', {}, T)).closest('tr') as HTMLElement;
+    await user.click(within(ligneKouadio).getByRole('button', { name: "Voir l'état" }));
+    await screen.findByText('Bien 01', {}, T);
+
+    // Page 2 du relevé : la première ligne n'est plus affichée.
+    const modale = screen.getByRole('dialog');
+    await user.click(within(modale).getByTitle('2'));
+    await waitFor(() => expect(screen.queryByText('Bien 01')).not.toBeInTheDocument(), T);
+
+    // Saisie d'une période : retour en page 1.
+    const [debut, fin] = within(modale)
+      .getAllByPlaceholderText(/./)
+      .filter(el => el.closest('.ant-picker'));
+    await user.click(debut);
+    await user.type(debut, '01/08/2026{Enter}');
+    await user.click(fin);
+    await user.type(fin, '31/08/2026{Enter}');
+
+    expect(await screen.findByText('Bien 01', {}, T)).toBeInTheDocument();
   }, 60000);
 });

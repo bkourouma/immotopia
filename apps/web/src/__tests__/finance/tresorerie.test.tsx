@@ -387,4 +387,24 @@ describe('Trésorerie — recherche multicritères', () => {
     },
     40000
   );
+  it.each([
+    ['avec une borne de montant', '?vir.montantMin=100000', true],
+    ['sans borne de montant', '', false]
+  ])(
+    'virements : 500 lignes %s, mention de portée du filtre de montant',
+    async (_libelle, requete, visible) => {
+      const texte = 'Le filtre de montant ne porte que sur ces 500 virements les plus récents.';
+      listTreasuryTransfers.mockResolvedValue(
+        Array.from({ length: 500 }, (_, i) => virement({ id: `v-${i}`, number: `VIR-${i}`, amount: 200_000 }))
+      );
+      const user = userEvent.setup({ delay: null });
+      mount(`/tenant/agence-1/finance/tresorerie${requete}`);
+      await screen.findByText('Caisse agence Cocody', {}, { timeout: 8000 });
+      await user.click(screen.getByRole('tab', { name: 'Virements internes' }));
+      await screen.findByText('VIR-0', {}, { timeout: 8000 });
+      if (visible) expect(screen.getByText(texte)).toBeInTheDocument();
+      else expect(screen.queryByText(texte)).not.toBeInTheDocument();
+    },
+    40000
+  );
 });

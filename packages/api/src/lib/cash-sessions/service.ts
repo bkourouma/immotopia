@@ -572,7 +572,9 @@ export async function listSessions(
     sessions = await prisma.cashSession.findMany({ where, orderBy: [{ openedAt: 'desc' }], take: 200 });
   } else {
     // Le numéro n'est pas stocké : première passe légère, filtre en mémoire, puis plafond.
-    const needle = f.search.toLowerCase();
+    // Comparaison insensible à la casse et aux accents (comme la recherche locale du front).
+    const fold = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const needle = fold(f.search);
     const light = await prisma.cashSession.findMany({
       where,
       orderBy: [{ openedAt: 'desc' }],
@@ -587,7 +589,7 @@ export async function listSessions(
       .filter(s => {
         const label = s.treasuryAccountId ? (labels.get(s.treasuryAccountId) ?? defaultCash.label) : defaultCash.label;
         return [sessionNumber(s.year, s.sequence), label, cashiers.get(s.cashierUserId) ?? ''].some(v =>
-          v.toLowerCase().includes(needle)
+          fold(v).includes(needle)
         );
       })
       .slice(0, 200)

@@ -369,6 +369,12 @@ function OngletVirements({ tenantId, comptes, onNouveau, onAnnuler }: OngletVire
     accessors: ACCESSEURS_VIREMENTS
   });
 
+  // Le montant se filtre ici, sur la liste reçue (plafonnée) : on signale la borne posée.
+  const borneMontant = local.values.montant as { min?: unknown; max?: unknown } | undefined;
+  const borneMontantActive = [borneMontant?.min, borneMontant?.max].some(
+    b => b !== undefined && b !== '' && b !== null
+  );
+
   const colonnes: ColumnsType<TreasuryTransferDto> = [
     { title: t('Numéro'), key: 'numero', render: (_, v) => v.number },
     { title: t('De'), key: 'de', render: (_, v) => v.fromLabel },
@@ -429,6 +435,14 @@ function OngletVirements({ tenantId, comptes, onNouveau, onAnnuler }: OngletVire
           title={t(
             'Seuls les 500 virements les plus récents correspondant aux critères sont affichés. Affinez par période, statut ou compte.'
           )}
+        />
+      )}
+      {(query.data?.length ?? 0) >= PLAFOND_LIGNES_API && borneMontantActive && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--space-4)' }}
+          title={t('Le filtre de montant ne porte que sur ces 500 virements les plus récents.')}
         />
       )}
       <DataView<TreasuryTransferDto>
