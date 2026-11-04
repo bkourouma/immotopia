@@ -332,47 +332,6 @@ export interface Dashboard {
   nextActions: NextBestAction[];
 }
 
-// Contact filters
-export interface ContactFilters {
-  status?: CrmContactStatus;
-  source?: string;
-  assignedTo?: string;
-  tag?: string;
-  search?: string; // Search by name or email
-  startDate?: string; // ISO date string for creation date range start
-  endDate?: string; // ISO date string for creation date range end
-  hasActiveDeal?: boolean; // Filter contacts with active deals
-  hasUpcomingActivity?: boolean; // Filter contacts with upcoming activities
-  page?: number;
-  limit?: number;
-}
-
-// Deal filters
-export interface DealFilters {
-  type?: CrmDealType;
-  stage?: CrmDealStage;
-  assignedTo?: string;
-  contactId?: string;
-  budgetMin?: number;
-  budgetMax?: number;
-  startDate?: string; // ISO date string for creation date range start
-  endDate?: string; // ISO date string for creation date range end
-  page?: number;
-  limit?: number;
-}
-
-// Activity filters
-export interface ActivityFilters {
-  contactId?: string;
-  dealId?: string;
-  type?: CrmActivityType;
-  createdBy?: string; // User ID who created the activity
-  startDate?: string; // ISO date string for period start
-  endDate?: string; // ISO date string for period end
-  page?: number;
-  limit?: number;
-}
-
 // Pagination response
 export interface Pagination {
   page: number;

@@ -33,6 +33,8 @@ const PAGE_SIZE = 30;
 const LIST_PAGE_SIZE = 50;
 /** Plafond de `pageSize` accepté par l'API des conversations. */
 const LIST_MAX_SIZE = 100;
+/** Longueur maximale de la recherche acceptée par l'API (au-delà : 400). */
+const SEARCH_MAX_LENGTH = 120;
 
 interface MessagesPageProps {
   /** Portails : scope imposé. Par défaut, l'agence active de la session. */
@@ -64,7 +66,8 @@ export default function MessagesPage({ scope: scopeProp, basePath = '/messages' 
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   // Taille de la liste lue (50, puis 100 au plus : plafond de l'API) et total côté serveur.
-  const [listSize, setListSize] = useState(LIST_PAGE_SIZE);
+  // La taille étendue est rattachée au terme cherché : un autre terme revient à la taille initiale.
+  const [extended, setExtended] = useState<{ term: string } | null>(null);
   const [listTotal, setListTotal] = useState(0);
   const [listLoading, setListLoading] = useState(true);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
@@ -87,7 +90,8 @@ export default function MessagesPage({ scope: scopeProp, basePath = '/messages' 
       }
     ]
   });
-  const searchTerm = (listSearch.values.q as string | undefined) ?? '';
+  const searchTerm = ((listSearch.values.q as string | undefined) ?? '').slice(0, SEARCH_MAX_LENGTH).trim();
+  const listSize = extended && extended.term === searchTerm ? LIST_MAX_SIZE : LIST_PAGE_SIZE;
 
   const refreshList = useCallback(async () => {
     if (!scope) return;
@@ -237,7 +241,7 @@ export default function MessagesPage({ scope: scopeProp, basePath = '/messages' 
               )}
               {listTotal > conversations.length && listSize < LIST_MAX_SIZE ? (
                 <div style={{ padding: 12 }}>
-                  <Button block onClick={() => setListSize(LIST_MAX_SIZE)}>
+                  <Button block onClick={() => setExtended({ term: searchTerm })}>
                     {t('Afficher plus de conversations')}
                   </Button>
                 </div>

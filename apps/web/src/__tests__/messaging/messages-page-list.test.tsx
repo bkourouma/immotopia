@@ -112,6 +112,26 @@ describe('<MessagesPage> — liste des conversations', () => {
     expect(await screen.findByText('Aucune conversation ne correspond à votre recherche.')).toBeInTheDocument();
   });
 
+  it('une nouvelle recherche revient à 50 conversations après « Afficher plus »', async () => {
+    listConversations.mockImplementation(async (_scope: unknown, params: { pageSize: number }) => ({
+      items: Array.from({ length: Math.min(params.pageSize, 120) }, (_, i) => conversation(i)),
+      total: 120,
+      page: 1,
+      pageSize: params.pageSize
+    }));
+    const user = userEvent.setup();
+    mount();
+
+    await user.click(await screen.findByRole('button', { name: 'Afficher plus de conversations' }));
+    await waitFor(() => expect(listConversations).toHaveBeenLastCalledWith(SCOPE, { page: 1, pageSize: 100 }));
+
+    await user.type(screen.getByPlaceholderText('Titre ou participant…'), 'soleil');
+    await vi.waitFor(
+      () => expect(listConversations).toHaveBeenLastCalledWith(SCOPE, { page: 1, pageSize: 50, search: 'soleil' }),
+      { timeout: 8000 }
+    );
+  });
+
   it('applique la recherche d’une URL partagée', async () => {
     listConversations.mockResolvedValue({ items: [conversation(2)], total: 1, page: 1, pageSize: 50 });
     mount('/messages?q=awa');

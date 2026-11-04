@@ -28,14 +28,15 @@ import {
 import { parsePagination } from '../utils/pagination-helper';
 import { parseEnumParam } from '../utils/query-params';
 import { BadRequestError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 import { dayEnd, dayStart, zDay, zSearch } from '../utils/list-query-schemas';
 
 /** Recherche libre (briques partagées) : rognée, 100 caractères au plus, vide = pas de filtre, sinon 400. */
 function parseSearchQuery(raw: unknown): string | undefined {
   const parsed = zSearch(100).safeParse(raw);
   if (!parsed.success) {
-    throw new BadRequestError('Paramètre invalide : search.', [
-      { field: 'search', message: 'Texte trop long ou mal formé.' }
+    throw new BadRequestError(t('Paramètre invalide : {{name}}.', { name: 'search' }), [
+      { field: 'search', message: t('Texte trop long ou mal formé.') }
     ]);
   }
   return parsed.data;
@@ -48,8 +49,8 @@ function parseSearchQuery(raw: unknown): string | undefined {
 function parseDateQuery(raw: unknown, name: string, endOfDay: boolean): Date | undefined {
   if (raw === undefined || raw === null || raw === '') return undefined;
   const invalid = () =>
-    new BadRequestError(`Paramètre invalide : ${name}.`, [
-      { field: name, message: 'Date invalide (format aaaa-mm-jj).' }
+    new BadRequestError(t('Paramètre invalide : {{name}}.', { name }), [
+      { field: name, message: t('Date invalide (format aaaa-mm-jj).') }
     ]);
   if (typeof raw !== 'string' || raw.length > 40) throw invalid();
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
