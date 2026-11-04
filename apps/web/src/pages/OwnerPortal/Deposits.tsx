@@ -4,6 +4,7 @@ import { DollarOutlined, WalletOutlined, EyeOutlined, SyncOutlined } from '@ant-
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { Table } from '../../components/primitives';
+import { useDepositsSearch } from './search/useDepositsSearch';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
@@ -89,6 +90,8 @@ export default function Deposits() {
     loadDeposits();
   }, []);
 
+  const local = useDepositsSearch(data?.deposits);
+
   const loadDeposits = async () => {
     try {
       setLoading(true);
@@ -172,15 +175,13 @@ export default function Deposits() {
       title: t('Montant du dépôt'),
       dataIndex: 'depositAmount',
       key: 'depositAmount',
-      render: (amount: number) => formatCurrency(amount),
-      sorter: (a: DepositListItem, b: DepositListItem) => a.depositAmount - b.depositAmount
+      render: (amount: number) => formatCurrency(amount)
     },
     {
       title: t('Montant retenu'),
       dataIndex: 'currentHeldAmount',
       key: 'currentHeldAmount',
-      render: (amount: number) => formatCurrency(amount),
-      sorter: (a: DepositListItem, b: DepositListItem) => a.currentHeldAmount - b.currentHeldAmount
+      render: (amount: number) => formatCurrency(amount)
     },
     {
       title: t('Statut'),
@@ -268,13 +269,14 @@ export default function Deposits() {
       <Card title={t('Liste des dépôts de garantie')}>
         {data && data.deposits.length > 0 ? (
           <Table
+            aria-label={t('Liste des dépôts de garantie')}
             exportFilename={t('Liste des dépôts de garantie')}
+            exportFetchAll={local.exportAll}
             scroll={{ x: 'max-content' }}
             columns={columns}
-            dataSource={data.deposits}
+            {...local.tableProps}
             rowKey="id"
             loading={loading}
-            pagination={{ pageSize: 20 }}
           />
         ) : (
           <Empty description={t('Aucun dépôt de garantie trouvé')} />

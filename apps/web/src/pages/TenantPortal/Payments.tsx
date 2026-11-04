@@ -10,8 +10,6 @@ import {
   Tag,
   Button,
   Space,
-  Select,
-  DatePicker,
   Statistic,
   Modal,
   Descriptions,
@@ -19,14 +17,7 @@ import {
   Tabs,
   Collapse
 } from 'antd';
-import {
-  DollarOutlined,
-  CalendarOutlined,
-  EyeOutlined,
-  FilterOutlined,
-  PlusOutlined,
-  CreditCardOutlined
-} from '@ant-design/icons';
+import { DollarOutlined, CalendarOutlined, EyeOutlined, PlusOutlined, CreditCardOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import InstallmentDetails from '../../components/TenantPortal/InstallmentDetails';
@@ -38,6 +29,7 @@ import type { ThirdPartyMovementLine } from '../../types/finance-types';
 import { natureLabel } from '../finance/Releve';
 import { MoneyValue, StateBlock, SkeletonTable, Table } from '../../components/primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
+import { useEcheancesSearch, useHistoriqueSearch, useOngletPaiements, useReleveSearch } from './search/paymentsSearch';
 import {
   OnlineCheckout,
   OnlineCheckoutConflict,
@@ -50,7 +42,6 @@ import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
-const { RangePicker } = DatePicker;
 
 interface InstallmentItem {
   id: string;
@@ -114,6 +105,7 @@ function MonReleve() {
     queryFn: () => getMyStatement(),
     enabled: Boolean(tenantId)
   });
+  const local = useReleveSearch(releve?.movements);
 
   if (!tenantId) {
     return (
@@ -160,10 +152,9 @@ function MonReleve() {
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <Table
+            {...local.tableProps}
             exportFilename={t('Mon relevé')}
             rowKey="id"
-            dataSource={mouvements}
-            pagination={false}
             scroll={{ x: 800 }}
             columns={[
               {
@@ -346,6 +337,7 @@ function SuiviPaiementEnLigne({
 
 export default function TenantPayments() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { ongletActif, ongletRef, changerOnglet } = useOngletPaiements();
   // Capturé une seule fois au montage : le bandeau de suivi reste affiché même
   // après que `onResolved` a retiré `paiement` de l'adresse.
   const [paiementCode] = useState<string | null>(() => searchParams.get('paiement'));
@@ -353,14 +345,17 @@ export default function TenantPayments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<InstallmentsData | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const [selectedInstallment, setSelectedInstallment] = useState<string | null>(null);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [declarationModalVisible, setDeclarationModalVisible] = useState(false);
   // Echeance visee quand la declaration est lancee depuis une ligne du tableau.
   const [declarationFor, setDeclarationFor] = useState<InstallmentItem | null>(null);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+  // Une barre de recherche par onglet (préfixes `ech` et `his`), voir `search/paymentsSearch`.
+  const echSearch = useEcheancesSearch();
+  const hisSearch = useHistoriqueSearch();
+  // Ignore la réponse d'une requête dépassée par une plus récente (frappes successives).
+  const requeteEcheances = useRef(0);
+  const requeteHistorique = useRef(0);
 
   // Paiement en ligne (Lot 7) : disponibilité, échéances choisies, création du checkout.
   const { data: availability } = useQuery({
@@ -376,12 +371,6 @@ export default function TenantPayments() {
   const [paymentHistoryLoading, setPaymentHistoryLoading] = useState(false);
   const [paymentHistoryError, setPaymentHistoryError] = useState<string | null>(null);
   const [paymentHistoryData, setPaymentHistoryData] = useState<any>(null);
-  const [paymentHistoryFilters, setPaymentHistoryFilters] = useState<{
-    startDate?: string;
-    endDate?: string;
-    method?: string;
-  }>({});
-  const [paymentHistoryPagination, setPaymentHistoryPagination] = useState({ current: 1, pageSize: 20 });
 
   const loadRef = useRef<{
     loadInstallments: (silencieux?: boolean) => void;
@@ -395,34 +384,23 @@ export default function TenantPayments() {
    *   à l'écran, sans repasser par le squelette.
    */
   const loadInstallments = async (silencieux = false) => {
+    const numero = ++requeteEcheances.current;
     try {
       if (!silencieux) setLoading(true);
       setError(null);
 
-      const params: any = {
-        page: pagination.current,
-        limit: pagination.pageSize
-      };
-
-      if (statusFilter) {
-        params.status = statusFilter;
-      }
-
-      if (dateRange && dateRange[0] && dateRange[1]) {
-        params.startDate = dateRange[0].format('YYYY-MM-DD');
-        params.endDate = dateRange[1].format('YYYY-MM-DD');
-      }
-
-      const response = await tenantPortalService.getInstallments(params);
+      const response = await tenantPortalService.getInstallments(echSearch.apiParams);
+      if (numero !== requeteEcheances.current) return;
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
         setError(t('Erreur lors du chargement des échéances'));
       }
     } catch (err: any) {
+      if (numero !== requeteEcheances.current) return;
       setError(err.response?.data?.message || t('Erreur lors du chargement des échéances'));
     } finally {
-      setLoading(false);
+      if (numero === requeteEcheances.current) setLoading(false);
     }
   };
 
@@ -461,48 +439,35 @@ export default function TenantPayments() {
     setSelectedInstallment(null);
   };
 
-  const handleTableChange = (newPagination: any) => {
-    setPagination({
-      current: newPagination.current,
-      pageSize: newPagination.pageSize
-    });
-  };
-
   /** @param silencieux Voir `loadInstallments`. */
   const loadPaymentHistory = async (silencieux = false) => {
+    const numero = ++requeteHistorique.current;
     try {
       if (!silencieux) setPaymentHistoryLoading(true);
       setPaymentHistoryError(null);
 
-      const params: any = {
-        page: paymentHistoryPagination.current,
-        limit: paymentHistoryPagination.pageSize
-      };
-
-      if (paymentHistoryFilters.startDate) {
-        params.startDate = paymentHistoryFilters.startDate;
-      }
-      if (paymentHistoryFilters.endDate) {
-        params.endDate = paymentHistoryFilters.endDate;
-      }
-      if (paymentHistoryFilters.method) {
-        params.method = paymentHistoryFilters.method;
-      }
-
-      const response = await tenantPortalService.getPaymentHistory(params);
+      const response = await tenantPortalService.getPaymentHistory(hisSearch.apiParams);
+      if (numero !== requeteHistorique.current) return;
       if (response.data?.success && response.data?.data) {
         setPaymentHistoryData(response.data.data);
       } else {
         setPaymentHistoryError(t("Erreur lors du chargement de l'historique"));
       }
     } catch (err: any) {
+      if (numero !== requeteHistorique.current) return;
       setPaymentHistoryError(err.response?.data?.message || t("Erreur lors du chargement de l'historique"));
     } finally {
-      setPaymentHistoryLoading(false);
+      if (numero === requeteHistorique.current) setPaymentHistoryLoading(false);
     }
   };
 
   loadRef.current = { loadInstallments, loadPaymentHistory };
+
+  /** Recharge la seule liste affichée ; l'autre se recharge à l'ouverture de son onglet. */
+  const rechargerListeAffichee = (silencieux = false) => {
+    if (ongletRef.current === 'echeances') void loadRef.current?.loadInstallments(silencieux);
+    else if (ongletRef.current === 'historique') void loadRef.current?.loadPaymentHistory(silencieux);
+  };
 
   /**
    * Crée le checkout PaySecureHub pour les échéances choisies, puis redirige
@@ -535,13 +500,16 @@ export default function TenantPayments() {
     }
   };
 
+  // Chaque liste ne se charge que lorsque son onglet est affiché.
   useEffect(() => {
+    if (ongletActif !== 'echeances') return;
     loadInstallments();
-  }, [statusFilter, dateRange, pagination.current, pagination.pageSize]);
+  }, [ongletActif, echSearch.apiParams]);
 
   useEffect(() => {
+    if (ongletActif !== 'historique') return;
     loadPaymentHistory();
-  }, [paymentHistoryFilters, paymentHistoryPagination.current, paymentHistoryPagination.pageSize]);
+  }, [ongletActif, hisSearch.apiParams]);
 
   /**
    * Retour sur l'onglet : revalidation en arrière-plan (REFONTE_UI_UX.md §8.4).
@@ -565,8 +533,7 @@ export default function TenantPayments() {
       const maintenant = Date.now();
       if (maintenant - derniereRevalidation.current < REVALIDATION_MIN_MS) return;
       derniereRevalidation.current = maintenant;
-      void loadRef.current?.loadInstallments(true);
-      void loadRef.current?.loadPaymentHistory(true);
+      rechargerListeAffichee(true);
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -584,13 +551,6 @@ export default function TenantPayments() {
       OTHER: 'Autre'
     };
     return labels[method] || method;
-  };
-
-  const handlePaymentHistoryTableChange = (newPagination: any) => {
-    setPaymentHistoryPagination({
-      current: newPagination.current,
-      pageSize: newPagination.pageSize
-    });
   };
 
   const columns = [
@@ -611,32 +571,28 @@ export default function TenantPayments() {
           <CalendarOutlined />
           {formatDate(date)}
         </Space>
-      ),
-      sorter: (a: InstallmentItem, b: InstallmentItem) => dayjs(a.dueDate).unix() - dayjs(b.dueDate).unix()
+      )
     },
     {
       title: t('Montant total'),
       dataIndex: 'amount',
       key: 'amount',
       width: 150,
-      render: (amount: number) => <Text strong>{formatCurrency(amount)}</Text>,
-      sorter: (a: InstallmentItem, b: InstallmentItem) => a.amount - b.amount
+      render: (amount: number) => <Text strong>{formatCurrency(amount)}</Text>
     },
     {
       title: t('Payé'),
       dataIndex: 'paid',
       key: 'paid',
       width: 130,
-      render: (paid: number) => formatCurrency(paid),
-      sorter: (a: InstallmentItem, b: InstallmentItem) => a.paid - b.paid
+      render: (paid: number) => formatCurrency(paid)
     },
     {
       title: t('Solde'),
       dataIndex: 'balance',
       key: 'balance',
       width: 140,
-      render: (balance: number) => <Text type={balance > 0 ? 'danger' : 'success'}>{formatCurrency(balance)}</Text>,
-      sorter: (a: InstallmentItem, b: InstallmentItem) => a.balance - b.balance
+      render: (balance: number) => <Text type={balance > 0 ? 'danger' : 'success'}>{formatCurrency(balance)}</Text>
     },
     {
       title: t('Statut'),
@@ -676,7 +632,7 @@ export default function TenantPayments() {
     .filter(installment => selectedInstallmentIds.includes(installment.id))
     .reduce((somme, installment) => somme + installment.balance, 0);
 
-  if (loading && !data) {
+  if (ongletActif === 'echeances' && loading && !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
         <Spin size="large" tip={t('Chargement des échéances...')} />
@@ -684,7 +640,7 @@ export default function TenantPayments() {
     );
   }
 
-  if (error && !data) {
+  if (ongletActif === 'echeances' && error && !data) {
     return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
@@ -703,10 +659,7 @@ export default function TenantPayments() {
               { replace: true }
             )
           }
-          onSuccess={() => {
-            void loadRef.current?.loadInstallments();
-            void loadRef.current?.loadPaymentHistory();
-          }}
+          onSuccess={() => rechargerListeAffichee()}
         />
       ) : null}
 
@@ -741,7 +694,7 @@ export default function TenantPayments() {
       </div>
 
       {/* Summary Cards (T054) */}
-      {data?.summary && (
+      {ongletActif === 'echeances' && data?.summary && (
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <Card>
@@ -781,53 +734,14 @@ export default function TenantPayments() {
         </Row>
       )}
 
-      {/* Filters (T052, T053) */}
-      <Card>
-        <div className="it-toolbar__actions">
-          <Space>
-            <FilterOutlined />
-            <Text strong>{t('Filtres :')}</Text>
-          </Space>
-          <Select
-            showSearch
-            optionFilterProp="children"
-            placeholder={t('Statut')}
-            allowClear
-            style={{ width: 150 }}
-            value={statusFilter}
-            onChange={value => setStatusFilter(value)}
-          >
-            <Select.Option value="PAID">{t('Payé')}</Select.Option>
-            <Select.Option value="DUE">{t('Dû')}</Select.Option>
-            <Select.Option value="OVERDUE">{t('En retard')}</Select.Option>
-            <Select.Option value="PARTIAL">{t('Partiel')}</Select.Option>
-            <Select.Option value="DRAFT">{t('Brouillon')}</Select.Option>
-          </Select>
-          <RangePicker
-            placeholder={[t('Date début'), t('Date fin')]}
-            value={dateRange}
-            onChange={dates => setDateRange(dates as [dayjs.Dayjs, dayjs.Dayjs] | null)}
-            format="DD/MM/YYYY"
-          />
-          {(statusFilter || dateRange) && (
-            <Button
-              onClick={() => {
-                setStatusFilter(undefined);
-                setDateRange(null);
-              }}
-            >
-              {t('Réinitialiser')}
-            </Button>
-          )}
-        </div>
-      </Card>
-
       {/* Tabs for Installments and Payment History */}
       <Tabs
-        defaultActiveKey="installments"
+        activeKey={ongletActif}
+        onChange={changerOnglet}
+        destroyOnHidden
         items={[
           {
-            key: 'installments',
+            key: 'echeances',
             label: t('Échéances'),
             children: (
               <Card
@@ -867,20 +781,19 @@ export default function TenantPayments() {
                     </div>
                   </Space>
                 ) : null}
-                {data && data.installments.length > 0 ? (
+                {data ? (
                   <div style={{ overflowX: 'auto' }}>
                     <Table
+                      search={echSearch.barre}
                       exportFilename={t('Liste des échéances')}
                       // Export de TOUTES les échéances, avec les mêmes filtres que la liste affichée.
                       exportFetchAll={() =>
                         collectAllPages<InstallmentItem>(async (page, limit) => {
-                          const params: any = { page, limit };
-                          if (statusFilter) params.status = statusFilter;
-                          if (dateRange && dateRange[0] && dateRange[1]) {
-                            params.startDate = dateRange[0].format('YYYY-MM-DD');
-                            params.endDate = dateRange[1].format('YYYY-MM-DD');
-                          }
-                          const reponse = await tenantPortalService.getInstallments(params);
+                          const reponse = await tenantPortalService.getInstallments({
+                            ...echSearch.filterParams,
+                            page,
+                            limit
+                          });
                           const donnees = reponse.data?.data;
                           return { items: donnees?.installments ?? [], total: donnees?.pagination?.total ?? 0 };
                         })
@@ -904,13 +817,10 @@ export default function TenantPayments() {
                           : undefined
                       }
                       pagination={{
-                        current: pagination.current,
-                        pageSize: pagination.pageSize,
-                        total: data.pagination.total,
-                        showSizeChanger: true,
+                        ...echSearch.tablePagination(data.pagination.total),
                         showTotal: total => t('Total: {{total}} échéances', { total: total })
                       }}
-                      onChange={handleTableChange}
+                      locale={echSearch.locale}
                     />
                   </div>
                 ) : (
@@ -920,64 +830,10 @@ export default function TenantPayments() {
             )
           },
           {
-            key: 'payments',
+            key: 'historique',
             label: t('Historique des paiements'),
             children: (
               <Space direction="vertical" size="large" style={{ width: '100%' }}>
-                {/* Payment History Filters (T075) */}
-                <Card>
-                  <div className="it-toolbar__actions">
-                    <Space>
-                      <FilterOutlined />
-                      <Text strong>{t('Filtres :')}</Text>
-                    </Space>
-                    <Select
-                      showSearch
-                      optionFilterProp="children"
-                      placeholder={t('Méthode de paiement')}
-                      allowClear
-                      style={{ width: 200 }}
-                      value={paymentHistoryFilters.method}
-                      onChange={value => setPaymentHistoryFilters({ ...paymentHistoryFilters, method: value })}
-                    >
-                      <Select.Option value="CASH">{t('Espèces')}</Select.Option>
-                      <Select.Option value="BANK_TRANSFER">{t('Virement bancaire')}</Select.Option>
-                      <Select.Option value="MOBILE_MONEY">{t('Mobile Money')}</Select.Option>
-                      <Select.Option value="CHECK">{t('Chèque')}</Select.Option>
-                      <Select.Option value="CARD">{t('Carte bancaire')}</Select.Option>
-                      <Select.Option value="OTHER">{t('Autre')}</Select.Option>
-                    </Select>
-                    <RangePicker
-                      placeholder={[t('Date début'), t('Date fin')]}
-                      onChange={dates => {
-                        if (dates && dates[0] && dates[1]) {
-                          setPaymentHistoryFilters({
-                            ...paymentHistoryFilters,
-                            startDate: dates[0].format('YYYY-MM-DD'),
-                            endDate: dates[1].format('YYYY-MM-DD')
-                          });
-                        } else {
-                          setPaymentHistoryFilters({
-                            ...paymentHistoryFilters,
-                            startDate: undefined,
-                            endDate: undefined
-                          });
-                        }
-                      }}
-                      format="DD/MM/YYYY"
-                    />
-                    {(paymentHistoryFilters.method || paymentHistoryFilters.startDate) && (
-                      <Button
-                        onClick={() => {
-                          setPaymentHistoryFilters({});
-                        }}
-                      >
-                        {t('Réinitialiser')}
-                      </Button>
-                    )}
-                  </div>
-                </Card>
-
                 {/* Payment History Table (T073, T074) */}
                 <Card
                   title={
@@ -987,19 +843,27 @@ export default function TenantPayments() {
                   }
                 >
                   {paymentHistoryError ? (
-                    <Alert message={t('Erreur')} description={paymentHistoryError} type="error" showIcon />
-                  ) : paymentHistoryData && paymentHistoryData.payments.length > 0 ? (
+                    <Alert
+                      message={t('Erreur')}
+                      description={paymentHistoryError}
+                      type="error"
+                      showIcon
+                      style={{ marginBottom: 16 }}
+                    />
+                  ) : null}
+                  {paymentHistoryData || paymentHistoryError ? (
                     <div style={{ overflowX: 'auto' }}>
                       <Table
+                        search={hisSearch.barre}
                         exportFilename={t('Historique des paiements')}
                         // Export de TOUT l'historique, avec les mêmes filtres que la liste affichée.
                         exportFetchAll={() =>
                           collectAllPages<any>(async (page, limit) => {
-                            const params: any = { page, limit };
-                            if (paymentHistoryFilters.startDate) params.startDate = paymentHistoryFilters.startDate;
-                            if (paymentHistoryFilters.endDate) params.endDate = paymentHistoryFilters.endDate;
-                            if (paymentHistoryFilters.method) params.method = paymentHistoryFilters.method;
-                            const reponse = await tenantPortalService.getPaymentHistory(params);
+                            const reponse = await tenantPortalService.getPaymentHistory({
+                              ...hisSearch.filterParams,
+                              page,
+                              limit
+                            });
                             const donnees = reponse.data?.data;
                             return { items: donnees?.payments ?? [], total: donnees?.pagination?.total ?? 0 };
                           })
@@ -1023,21 +887,13 @@ export default function TenantPayments() {
                                   )}
                                 </Space>
                               );
-                            },
-                            sorter: (a: any, b: any) => {
-                              const dateA =
-                                a.succeededAt || a.initiatedAt ? dayjs(a.succeededAt || a.initiatedAt).unix() : 0;
-                              const dateB =
-                                b.succeededAt || b.initiatedAt ? dayjs(b.succeededAt || b.initiatedAt).unix() : 0;
-                              return dateA - dateB;
                             }
                           },
                           {
                             title: t('Montant'),
                             dataIndex: 'amount',
                             key: 'amount',
-                            render: (amount: number) => <Text strong>{formatCurrency(amount)}</Text>,
-                            sorter: (a: any, b: any) => a.amount - b.amount
+                            render: (amount: number) => <Text strong>{formatCurrency(amount)}</Text>
                           },
                           {
                             title: t('Méthode'),
@@ -1093,21 +949,21 @@ export default function TenantPayments() {
                             align: 'end' as const
                           }
                         ]}
-                        dataSource={paymentHistoryData.payments}
+                        dataSource={paymentHistoryData?.payments ?? []}
                         rowKey={(r: any) => (r.isDeclaration ? `decl-${r.id}` : r.id)}
                         loading={paymentHistoryLoading}
                         pagination={{
-                          current: paymentHistoryPagination.current,
-                          pageSize: paymentHistoryPagination.pageSize,
-                          total: paymentHistoryData.pagination?.total ?? paymentHistoryData.payments.length,
-                          showSizeChanger: true,
+                          ...hisSearch.tablePagination(
+                            paymentHistoryData?.pagination?.total ?? paymentHistoryData?.payments?.length ?? 0
+                          ),
                           showTotal: total =>
                             t('Total: {{total}} élément{{value}} (paiements et déclarations)', {
                               total: total,
                               value: total !== 1 ? 's' : ''
                             })
                         }}
-                        onChange={handlePaymentHistoryTableChange}
+                        // En erreur, l'alerte ci-dessus parle seule.
+                        locale={paymentHistoryError ? { emptyText: <span /> } : hisSearch.locale}
                         expandable={{
                           expandedRowRender: (record: any) => {
                             if (!record.allocations || record.allocations.length === 0) {
@@ -1204,8 +1060,7 @@ export default function TenantPayments() {
         }}
         onSuccess={() => {
           setDeclarationFor(null);
-          loadInstallments();
-          loadPaymentHistory();
+          rechargerListeAffichee();
         }}
       />
     </Space>

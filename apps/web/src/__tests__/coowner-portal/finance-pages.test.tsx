@@ -247,7 +247,7 @@ describe('Mes paiements', () => {
       await mountWithPayments();
       expect(await screen.findByText('Mes déclarations', {}, WAIT)).toBeInTheDocument();
       expect((await screen.findAllByText('En vérification', {}, WAIT)).length).toBeGreaterThan(0);
-      expect(listMyDeclarations).toHaveBeenCalledWith({ status: 'ALL', limit: 50 });
+      expect(listMyDeclarations).toHaveBeenCalledWith({ page: 1, limit: 20 });
     });
   });
 });
@@ -482,7 +482,9 @@ describe("Avis d'appel", () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
     return render(
       <QueryClientProvider client={queryClient}>
-        <ChargeCallsTable calls={calls} />
+        <MemoryRouter>
+          <ChargeCallsTable calls={calls} />
+        </MemoryRouter>
       </QueryClientProvider>
     );
   }

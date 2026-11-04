@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Alert, Button, Card, Descriptions, List, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Descriptions, List, Pagination, Space, Tag, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { SkeletonList, StateBlock } from '../../components/primitives';
+import { ListSearch, SkeletonList, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import {
   listMyMeetings,
@@ -12,8 +12,22 @@ import {
 } from '../../services/coowner-portal-service';
 import { majorityRuleLabel, meetingStatusLabel, meetingTypeLabel, ResolutionResultTag, voteLabel } from './labels';
 import { portalErrorMessage } from './portal-error';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 
 const { Title, Text, Paragraph } = Typography;
+
+// Champ libre : type d'assemblée, copropriété, lieu et ordre du jour. Constantes de module : filtrage mémoïsé.
+const TEXTE_RECHERCHE = [
+  (meeting: CoOwnerMeeting) => meetingTypeLabel(meeting.type),
+  (meeting: CoOwnerMeeting) => meeting.syndicate,
+  (meeting: CoOwnerMeeting) => meeting.location,
+  (meeting: CoOwnerMeeting) => meeting.agenda.map(item => item.title)
+];
+const ACCESSEURS = {
+  status: (meeting: CoOwnerMeeting) => meeting.status,
+  date: (meeting: CoOwnerMeeting) => meeting.scheduledAt
+};
 
 /**
  * Assemblées générales des copropriétés du copropriétaire : date, lieu,
@@ -160,6 +174,32 @@ export default function CoOwnerMeetings() {
     queryFn: () => listMyMeetings()
   });
 
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Type, copropriété, lieu, ordre du jour…')
+    },
+    {
+      key: 'status',
+      type: 'multiSelect',
+      label: t('Statut'),
+      primary: true,
+      options: (['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const).map(status => ({
+        value: status,
+        label: meetingStatusLabel(status)
+      }))
+    },
+    { key: 'date', type: 'dateRange', label: t('Date'), primary: true }
+  ];
+  const local = useLocalListSearch<CoOwnerMeeting>(meetings, {
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
+
   if (isPending) return <SkeletonList rows={3} />;
 
   if (error || !meetings) {
@@ -181,7 +221,28 @@ export default function CoOwnerMeetings() {
       {meetings.length === 0 ? (
         <StateBlock variant="empty" description={t("Aucune assemblée générale n'est programmée.")} />
       ) : (
-        meetings.map(meeting => <MeetingCard key={meeting.id} meeting={meeting} />)
+        <>
+          <ListSearch {...local.searchProps} />
+          {local.total === 0 ? (
+            <StateBlock
+              variant="no-results"
+              description={t('Aucun élément ne correspond aux filtres appliqués.')}
+              actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
+            />
+          ) : (
+            local.pageItems.map(meeting => <MeetingCard key={meeting.id} meeting={meeting} />)
+          )}
+          {local.total > local.pageSize ? (
+            <Pagination
+              current={local.page}
+              pageSize={local.pageSize}
+              total={local.total}
+              showSizeChanger={false}
+              onChange={(nextPage, nextSize) => local.dataViewProps.onPageChange(nextPage, nextSize)}
+              style={{ alignSelf: 'center' }}
+            />
+          ) : null}
+        </>
       )}
     </Space>
   );

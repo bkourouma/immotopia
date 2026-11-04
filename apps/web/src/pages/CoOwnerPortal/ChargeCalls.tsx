@@ -274,7 +274,8 @@ export default function CoOwnerChargeCalls() {
                 <Text>
                   {selectedCalls.length > 0 ? (
                     <>
-                      {t('Total à payer :')} <MoneyValue value={selectedTotal} />
+                      {t('Total à payer :')} <MoneyValue value={selectedTotal} />{' '}
+                      <Text type="secondary">({t('{{count}} appel(s)', { count: selectedCalls.length })})</Text>
                     </>
                   ) : (
                     t('Cochez un ou plusieurs appels d’un même lot pour les régler en ligne.')

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { App, Button, Card, Col, Descriptions, List, Row, Space, Statistic, Typography } from 'antd';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { App, Button, Card, Col, Descriptions, List, Row, Space, Statistic, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -12,7 +12,9 @@ import {
   type PatrimoineValuationHistoryEntry,
   type PatrimoineWork
 } from '../../services/owner-portal-patrimoine-service';
-import { StateBlock, Table, formatMoney } from '../../components/primitives';
+import { ListSearch, StateBlock, Table, formatMoney } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import {
   DASH,
   deviseAffichee,
@@ -39,10 +41,159 @@ function errorMessage(error: unknown, fallback: string): string {
 
 const formatDate = (value: string | null | undefined): string => (value ? dayjs(value).format('DD/MM/YYYY') : DASH);
 
+// Stables : déclarés HORS des composants (le filtrage local reste mémoïsé).
+const TEXTE_TRAVAUX = [(work: PatrimoineWork) => work.title];
+const ACCESSEURS_TRAVAUX = { status: (work: PatrimoineWork) => work.status };
+const TEXTE_DOCUMENTS = [
+  (doc: PatrimoineDocument) => doc.fileName,
+  (doc: PatrimoineDocument) => documentTypeLabel(doc.documentType)
+];
+
+/** Onglet « Travaux » : un programme peut s'allonger sur des années, d'où la barre locale. */
+function WorksTab({ works }: { works: PatrimoineWork[] }) {
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Libellé des travaux…') },
+    {
+      key: 'status',
+      type: 'multiSelect',
+      label: t('Statut'),
+      primary: true,
+      options: [
+        { value: 'PLANNED', label: t('Prévu') },
+        { value: 'IN_PROGRESS', label: t('En cours') },
+        { value: 'COMPLETED', label: t('Terminé') },
+        { value: 'CANCELLED', label: t('Annulé') }
+      ]
+    }
+  ];
+  const local = useLocalListSearch<PatrimoineWork>(works, {
+    paramPrefix: 'trv',
+    criteria,
+    text: TEXTE_TRAVAUX,
+    accessors: ACCESSEURS_TRAVAUX
+  });
+
+  const workColumns: ColumnsType<PatrimoineWork> = [
+    { title: t('Travaux'), dataIndex: 'title', key: 'title' },
+    { title: t('Statut'), dataIndex: 'status', key: 'status', render: workStatusTag },
+    { title: t('Date prévue'), dataIndex: 'plannedDate', key: 'plannedDate', render: formatDate },
+    { title: t('Date de fin'), dataIndex: 'completedDate', key: 'completedDate', render: formatDate },
+    {
+      title: t('Coût estimé'),
+      key: 'estimatedCost',
+      exportValue: record => record.estimatedCost,
+      render: (_: unknown, record) =>
+        record.estimatedCost === null
+          ? t('Non renseigné')
+          : formatMoney(record.estimatedCost, { currency: deviseAffichee(record.currency) })
+    },
+    {
+      title: t('Coût réel'),
+      key: 'actualCost',
+      exportValue: record => record.actualCost,
+      render: (_: unknown, record) =>
+        record.actualCost === null
+          ? t('Non renseigné')
+          : formatMoney(record.actualCost, { currency: deviseAffichee(record.currency) })
+    }
+  ];
+
+  return (
+    <Table
+      aria-label={t('Travaux')}
+      {...local.tableProps}
+      search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les travaux') }}
+      exportFilename={t('Travaux')}
+      exportFetchAll={local.exportAll}
+      scroll={{ x: 'max-content' }}
+      columns={workColumns}
+      rowKey="id"
+      locale={local.isFiltered ? undefined : { emptyText: t('Aucun programme de travaux.') }}
+    />
+  );
+}
+
+/** Onglet « Documents » : les pièces d'un bien s'accumulent, d'où la barre locale. */
+function DocumentsTab({
+  documents,
+  downloadingId,
+  onDownload
+}: {
+  documents: PatrimoineDocument[];
+  downloadingId: string | null;
+  onDownload: (doc: PatrimoineDocument) => void;
+}) {
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom du fichier, type…') }
+  ];
+  const local = useLocalListSearch<PatrimoineDocument>(documents, {
+    paramPrefix: 'doc',
+    criteria,
+    text: TEXTE_DOCUMENTS
+  });
+
+  return (
+    <>
+      <ListSearch {...local.searchProps} aria-label={t('Rechercher dans les documents')} />
+      {local.total > 0 ? (
+        <List
+          pagination={{
+            current: local.page,
+            pageSize: local.pageSize,
+            total: local.total,
+            onChange: local.dataViewProps.onPageChange,
+            showSizeChanger: true,
+            hideOnSinglePage: true
+          }}
+          dataSource={local.pageItems}
+          renderItem={doc => (
+            <List.Item
+              actions={[
+                <Button
+                  key="download"
+                  type="link"
+                  icon={<DownloadOutlined />}
+                  onClick={() => onDownload(doc)}
+                  loading={downloadingId === doc.id}
+                >
+                  {t('Télécharger')}
+                </Button>
+              ]}
+            >
+              <List.Item.Meta
+                title={doc.fileName}
+                description={
+                  <Space direction="vertical" size={0}>
+                    <Text type="secondary">{documentTypeLabel(doc.documentType)}</Text>
+                    <Text type="secondary">
+                      {t('Ajouté le')} {formatDate(doc.createdAt)}
+                    </Text>
+                    {doc.expirationDate && (
+                      <Text type="secondary">
+                        {t('Expire le')} {formatDate(doc.expirationDate)}
+                      </Text>
+                    )}
+                  </Space>
+                }
+              />
+            </List.Item>
+          )}
+        />
+      ) : (
+        <StateBlock
+          variant="no-results"
+          actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
+        />
+      )}
+    </>
+  );
+}
+
 export default function PatrimoinePropertyDetails() {
   const { propertyId } = useParams<{ propertyId: string }>();
   const navigate = useNavigate();
   const { message } = App.useApp();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [hidden, setHidden] = useState(false);
@@ -172,30 +323,90 @@ export default function PatrimoinePropertyDetails() {
     { title: t('Statut'), dataIndex: 'status', key: 'status', render: loanStatusTag }
   ];
 
-  const workColumns: ColumnsType<PatrimoineWork> = [
-    { title: t('Travaux'), dataIndex: 'title', key: 'title' },
-    { title: t('Statut'), dataIndex: 'status', key: 'status', render: workStatusTag },
-    { title: t('Date prévue'), dataIndex: 'plannedDate', key: 'plannedDate', render: formatDate },
-    { title: t('Date de fin'), dataIndex: 'completedDate', key: 'completedDate', render: formatDate },
-    {
-      title: t('Coût estimé'),
-      key: 'estimatedCost',
-      exportValue: record => record.estimatedCost,
-      render: (_: unknown, record) =>
-        record.estimatedCost === null
-          ? t('Non renseigné')
-          : formatMoney(record.estimatedCost, { currency: deviseAffichee(record.currency) })
-    },
-    {
-      title: t('Coût réel'),
-      key: 'actualCost',
-      exportValue: record => record.actualCost,
-      render: (_: unknown, record) =>
-        record.actualCost === null
-          ? t('Non renseigné')
-          : formatMoney(record.actualCost, { currency: deviseAffichee(record.currency) })
-    }
-  ];
+  const changerOnglet = (cle: string) =>
+    setSearchParams(
+      precedent => {
+        const suivant = new URLSearchParams(precedent);
+        suivant.set('tab', cle);
+        return suivant;
+      },
+      { replace: true }
+    );
+
+  const onglets: Array<{ key: string; label: string; vide: boolean; children: React.ReactNode }> = [];
+  if (sections.valuation && valuations && valuations.length > 0) {
+    onglets.push({
+      key: 'valorisations',
+      label: t('Historique des valorisations'),
+      vide: false,
+      children: (
+        <Table
+          exportFilename={t('Historique des valorisations')}
+          scroll={{ x: 'max-content' }}
+          columns={valuationColumns}
+          dataSource={valuations}
+          rowKey="id"
+          pagination={{ pageSize: 20, hideOnSinglePage: true }}
+        />
+      )
+    });
+  }
+  if (sections.loans) {
+    onglets.push({
+      key: 'emprunts',
+      label: t('Emprunts'),
+      vide: !(loans && loans.length > 0),
+      children:
+        loans && loans.length > 0 ? (
+          <Table
+            exportFilename={t('Emprunts')}
+            scroll={{ x: 'max-content' }}
+            columns={loanColumns}
+            dataSource={loans}
+            rowKey="id"
+            pagination={{ pageSize: 20, hideOnSinglePage: true }}
+          />
+        ) : (
+          <StateBlock variant="empty" description={t('Aucun emprunt enregistré.')} />
+        )
+    });
+  }
+  if (sections.works) {
+    onglets.push({
+      key: 'travaux',
+      label: t('Travaux'),
+      vide: !(works && works.length > 0),
+      children:
+        works && works.length > 0 ? (
+          <WorksTab works={works} />
+        ) : (
+          <StateBlock variant="empty" description={t('Aucun programme de travaux.')} />
+        )
+    });
+  }
+  if (sections.documents) {
+    onglets.push({
+      key: 'documents',
+      label: t('Documents'),
+      vide: !(documents && documents.length > 0),
+      children:
+        documents && documents.length > 0 ? (
+          <DocumentsTab
+            documents={documents}
+            downloadingId={downloadingId}
+            onDownload={doc => void handleDownload(doc)}
+          />
+        ) : (
+          <StateBlock variant="empty" description={t('Aucun document disponible.')} />
+        )
+    });
+  }
+
+  // Onglet de l'adresse s'il existe ; sinon le premier non vide, à défaut le premier.
+  const ongletParam = searchParams.get('tab');
+  const ongletActif =
+    onglets.find(onglet => onglet.key === ongletParam)?.key ??
+    (onglets.find(onglet => !onglet.vide) ?? onglets[0])?.key;
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -239,20 +450,6 @@ export default function PatrimoinePropertyDetails() {
           ) : (
             <StateBlock variant="empty" description={t('Aucune valorisation enregistrée.')} />
           )}
-
-          {valuations && valuations.length > 0 && (
-            <div style={{ marginTop: 24 }}>
-              <Title level={4}>{t('Historique des valorisations')}</Title>
-              <Table
-                exportFilename={t('Historique des valorisations')}
-                scroll={{ x: 'max-content' }}
-                columns={valuationColumns}
-                dataSource={valuations}
-                rowKey="id"
-                pagination={{ pageSize: 10 }}
-              />
-            </div>
-          )}
         </Card>
       )}
 
@@ -283,82 +480,13 @@ export default function PatrimoinePropertyDetails() {
         </Card>
       )}
 
-      {sections.loans && (
-        <Card title={t('Emprunts')}>
-          {loans && loans.length > 0 ? (
-            <Table
-              exportFilename={t('Emprunts')}
-              scroll={{ x: 'max-content' }}
-              columns={loanColumns}
-              dataSource={loans}
-              rowKey="id"
-              pagination={{ pageSize: 10 }}
-            />
-          ) : (
-            <StateBlock variant="empty" description={t('Aucun emprunt enregistré.')} />
-          )}
-        </Card>
-      )}
-
-      {sections.works && (
-        <Card title={t('Travaux')}>
-          {works && works.length > 0 ? (
-            <Table
-              exportFilename={t('Travaux')}
-              scroll={{ x: 'max-content' }}
-              columns={workColumns}
-              dataSource={works}
-              rowKey="id"
-              pagination={{ pageSize: 10 }}
-            />
-          ) : (
-            <StateBlock variant="empty" description={t('Aucun programme de travaux.')} />
-          )}
-        </Card>
-      )}
-
-      {sections.documents && (
-        <Card title={t('Documents')}>
-          {documents && documents.length > 0 ? (
-            <List
-              dataSource={documents}
-              renderItem={doc => (
-                <List.Item
-                  actions={[
-                    <Button
-                      key="download"
-                      type="link"
-                      icon={<DownloadOutlined />}
-                      onClick={() => void handleDownload(doc)}
-                      loading={downloadingId === doc.id}
-                    >
-                      {t('Télécharger')}
-                    </Button>
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={doc.fileName}
-                    description={
-                      <Space direction="vertical" size={0}>
-                        <Text type="secondary">{documentTypeLabel(doc.documentType)}</Text>
-                        <Text type="secondary">
-                          {t('Ajouté le')} {formatDate(doc.createdAt)}
-                        </Text>
-                        {doc.expirationDate && (
-                          <Text type="secondary">
-                            {t('Expire le')} {formatDate(doc.expirationDate)}
-                          </Text>
-                        )}
-                      </Space>
-                    }
-                  />
-                </List.Item>
-              )}
-            />
-          ) : (
-            <StateBlock variant="empty" description={t('Aucun document disponible.')} />
-          )}
-        </Card>
+      {onglets.length > 0 && (
+        <Tabs
+          activeKey={ongletActif}
+          onChange={changerOnglet}
+          destroyOnHidden
+          items={onglets.map(({ key, label, children }) => ({ key, label, children }))}
+        />
       )}
     </Space>
   );

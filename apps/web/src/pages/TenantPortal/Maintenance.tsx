@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   App,
   Card,
@@ -6,7 +6,6 @@ import {
   Button,
   Space,
   Tag,
-  Select,
   Spin,
   Alert,
   Empty,
@@ -24,7 +23,6 @@ import {
   ToolOutlined,
   PlusOutlined,
   EyeOutlined,
-  FilterOutlined,
   MessageOutlined,
   UserOutlined,
   CalendarOutlined
@@ -37,11 +35,24 @@ import {
 } from '../../components/maintenance/AttachmentList';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import { Table } from '../../components/primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
+import { useListSearch } from '../../hooks/useListSearch';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+
+/** Libellé d'une catégorie de ticket (lu au moment de l'appel, pour suivre la langue). */
+function getCategoryLabel(category: string) {
+  const labels: Record<string, string> = {
+    PLUMBING: 'Plomberie',
+    ELECTRICITY: t('Électricité'),
+    AC: 'Climatisation',
+    OTHER: 'Autre'
+  };
+  return labels[category] || category;
+}
 
 interface MaintenanceTicket {
   id: string;
@@ -115,7 +126,6 @@ export default function TenantMaintenance() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<MaintenanceTicketsData | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [modalVisible, setModalVisible] = useState(false);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<TicketDetails | null>(null);
@@ -123,28 +133,71 @@ export default function TenantMaintenance() {
   const [commentText, setCommentText] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
 
+  // Liste paginée par le serveur : tous les critères partent à l'API (qui ne trie pas).
+  const search = useListSearch({
+    apiNames: { sort: false },
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Titre, description…') },
+      {
+        key: 'status',
+        type: 'multiSelect',
+        label: t('Statut'),
+        primary: true,
+        options: [
+          { value: 'DECLARED', label: t('Déclaré') },
+          { value: 'IN_PROGRESS', label: t('En cours') },
+          { value: 'ASSIGNED', label: t('Assigné') },
+          { value: 'RESOLVED', label: t('Résolu') },
+          { value: 'CANCELED', label: t('Annulé') }
+        ]
+      },
+      {
+        key: 'priority',
+        type: 'multiSelect',
+        label: t('Priorité'),
+        primary: true,
+        options: [
+          { value: 'LOW', label: t('Basse') },
+          { value: 'MEDIUM', label: t('Moyenne') },
+          { value: 'HIGH', label: t('Haute') },
+          { value: 'URGENT', label: t('Urgente') }
+        ]
+      },
+      {
+        key: 'category',
+        type: 'multiSelect',
+        label: t('Catégorie'),
+        options: ['PLUMBING', 'ELECTRICITY', 'AC', 'OTHER'].map(value => ({
+          value,
+          label: getCategoryLabel(value)
+        }))
+      }
+    ]
+  });
+  // Ignore la réponse d'une requête dépassée par une plus récente (frappes successives).
+  const derniereRequete = useRef(0);
+
   useEffect(() => {
     loadTickets();
-  }, [statusFilter]);
+  }, [search.apiParams]);
 
   const loadTickets = async () => {
+    const numero = ++derniereRequete.current;
     try {
       setLoading(true);
       setError(null);
-      const params: any = {};
-      if (statusFilter) {
-        params.status = statusFilter;
-      }
-      const response = await tenantPortalService.getMaintenanceTickets(params);
+      const response = await tenantPortalService.getMaintenanceTickets(search.apiParams);
+      if (numero !== derniereRequete.current) return;
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
         setError(t('Erreur lors du chargement des tickets'));
       }
     } catch (err: any) {
+      if (numero !== derniereRequete.current) return;
       setError(err.response?.data?.message || t('Erreur lors du chargement des tickets'));
     } finally {
-      setLoading(false);
+      if (numero === derniereRequete.current) setLoading(false);
     }
   };
 
@@ -207,16 +260,6 @@ export default function TenantMaintenance() {
     };
     const config = priorityMap[priority] || { label: priority, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
-  };
-
-  const getCategoryLabel = (category: string) => {
-    const labels: Record<string, string> = {
-      PLUMBING: 'Plomberie',
-      ELECTRICITY: t('Électricité'),
-      AC: 'Climatisation',
-      OTHER: 'Autre'
-    };
-    return labels[category] || category;
   };
 
   const columns = [
@@ -320,32 +363,6 @@ export default function TenantMaintenance() {
         </Row>
       )}
 
-      {/* Filters (T099) */}
-      <Card>
-        <div className="it-toolbar__actions">
-          <Space>
-            <FilterOutlined />
-            <Text strong>{t('Filtres :')}</Text>
-          </Space>
-          <Select
-            showSearch
-            optionFilterProp="children"
-            placeholder={t('Statut')}
-            allowClear
-            style={{ width: 200 }}
-            value={statusFilter}
-            onChange={value => setStatusFilter(value)}
-          >
-            <Select.Option value="DECLARED">{t('Déclaré')}</Select.Option>
-            <Select.Option value="IN_PROGRESS">{t('En cours')}</Select.Option>
-            <Select.Option value="ASSIGNED">{t('Assigné')}</Select.Option>
-            <Select.Option value="RESOLVED">{t('Résolu')}</Select.Option>
-            <Select.Option value="CANCELED">{t('Annulé')}</Select.Option>
-          </Select>
-          {statusFilter && <Button onClick={() => setStatusFilter(undefined)}>{t('Réinitialiser')}</Button>}
-        </div>
-      </Card>
-
       {/* Tickets Table (T098, T099) */}
       <Card
         title={
@@ -354,30 +371,38 @@ export default function TenantMaintenance() {
           </>
         }
       >
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px' }}>
-            <Spin size="large" tip={t('Chargement des tickets...')} />
-          </div>
-        ) : error ? (
-          <Alert message={t('Erreur')} description={error} type="error" showIcon />
-        ) : data && data.tickets.length > 0 ? (
-          <Table
-            exportFilename={t('Liste des tickets')}
-            scroll={{ x: 'max-content' }}
-            columns={columns}
-            dataSource={data.tickets}
-            rowKey="id"
-            pagination={{
-              current: data.pagination.page,
-              pageSize: data.pagination.limit,
-              total: data.pagination.total,
-              showSizeChanger: true,
-              showTotal: total => t('Total: {{total}} tickets', { total: total })
-            }}
-          />
-        ) : (
-          <Empty description={t('Aucun ticket trouvé')} />
-        )}
+        {error ? (
+          <Alert message={t('Erreur')} description={error} type="error" showIcon style={{ marginBottom: 16 }} />
+        ) : null}
+        <Table
+          search={search.searchProps}
+          exportFilename={t('Liste des tickets')}
+          // Export de TOUS les tickets, avec les mêmes critères que la liste affichée.
+          exportFetchAll={() =>
+            collectAllPages<MaintenanceTicket>(async (page, limit) => {
+              const reponse = await tenantPortalService.getMaintenanceTickets({
+                ...search.filterParams,
+                page,
+                limit
+              });
+              const donnees = reponse.data?.data;
+              return { items: donnees?.tickets ?? [], total: donnees?.pagination?.total ?? 0 };
+            })
+          }
+          scroll={{ x: 'max-content' }}
+          columns={columns}
+          dataSource={data?.tickets ?? []}
+          rowKey="id"
+          loading={loading}
+          pagination={{
+            ...search.tablePagination(data?.pagination?.total ?? 0),
+            showTotal: total => t('Total: {{total}} tickets', { total: total })
+          }}
+          // Sous critère, la Table affiche seule son bloc « Aucun résultat » et « Effacer les critères ».
+          locale={
+            search.isFiltered || error ? undefined : { emptyText: <Empty description={t('Aucun ticket trouvé')} /> }
+          }
+        />
       </Card>
 
       {/* Create Ticket Modal */}
