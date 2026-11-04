@@ -1279,5 +1279,6 @@
   "Votre valeur nette année par année, selon des hypothèses que vous pouvez modifier": "صافي قيمتكم سنة بعد سنة، وفق فرضيات يمكنكم تعديلها",
   "Vous avez atteint la limite du palier gratuit : passez au palier payant pour ajouter d’autres actifs.": "بلغت حدّ الفئة المجانية: انتقل إلى الفئة المدفوعة لإضافة أصول أخرى.",
   "Vous avez atteint le maximum de {{max}} opérations.": "لقد بلغتم الحد الأقصى وهو {{max}} عملية.",
+  "Vous n'avez pas accès aux relevés de gérance.": "ليس لديك صلاحية الوصول إلى كشوف الإدارة.",
   "Vue consolidée du portefeuille immobilier": "عرض مجمَّع للمحفظة العقارية"
 }
