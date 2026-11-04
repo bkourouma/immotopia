@@ -503,7 +503,18 @@ export const Association: React.FC = () => {
               style={{ width: '100%' }}
               format="DD/MM/YYYY"
               value={plageReleve}
-              onChange={dates => setPlageReleve(dates && dates[0] && dates[1] ? [dates[0], dates[1]] : null)}
+              onChange={dates => {
+                setPlageReleve(dates && dates[0] && dates[1] ? [dates[0], dates[1]] : null);
+                // Nouvelle période : le relevé repart de sa première page (la taille de page reste).
+                setSearchParams(
+                  prev => {
+                    const next = new URLSearchParams(prev);
+                    next.delete('rel.page');
+                    return next;
+                  },
+                  { replace: true }
+                );
+              }}
             />
           </div>
 

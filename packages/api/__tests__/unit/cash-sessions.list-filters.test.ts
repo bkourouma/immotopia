@@ -181,6 +181,26 @@ describe('listSessions — search', () => {
     });
   });
 
+  it('insensible aux accents dans les deux sens', async () => {
+    const res = await listSessions('t1', { search: 'kone' });
+    expect(res[0].cashierName).toBe('Awa Koné');
+    userFindMany.mockImplementation(async () => [{ id: 'u1', fullName: 'Awa Kone', email: 'awa@x.ci' }]);
+    const res2 = await listSessions('t1', { search: 'KONÉ' });
+    expect(res2[0].cashierName).toBe('Awa Kone');
+  });
+
+  it('ordre de la première passe conservé, id étranger à la première passe ignoré', async () => {
+    const first = [row(3, { id: 'x3' }), row(2, { id: 'x2' }), row(1, { id: 'x1' })];
+    const intruder = row(9, { id: 'x9' });
+    sessionFindMany.mockImplementation(async (arg: any) => {
+      if (arg.select) return first;
+      return [first[2], intruder, first[0], first[1]];
+    });
+    const res = await listSessions('t1', { search: 'koné' });
+    expect(res.map((s: any) => s.id)).toEqual(['x3', 'x2', 'x1']);
+    expect(res.map((s: any) => s.id)).not.toContain('x9');
+  });
+
   it('search vide : chemin inchangé, une requête, take 200', async () => {
     await listSessions('t1', { search: '   ' });
     expect(sessionFindMany).toHaveBeenCalledTimes(1);
