@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SaleMandates } from '../../pages/sales/SaleMandates';
@@ -27,8 +27,17 @@ vi.mock('../../services/sales-service', () => ({
 }));
 
 const listProperties = vi.fn();
+const getProperty = vi.fn();
 vi.mock('../../services/property-service', () => ({
-  listProperties: (...a: unknown[]) => listProperties(...a)
+  listProperties: (...a: unknown[]) => listProperties(...a),
+  getProperty: (...a: unknown[]) => getProperty(...a)
+}));
+
+// `selectors.tsx` importe aussi le CRM (acquéreur, affaire) : mock complet des exports utilisés.
+vi.mock('../../services/crm-service', () => ({
+  listContacts: vi.fn(),
+  getContact: vi.fn(),
+  listDeals: vi.fn()
 }));
 
 const getOwnerClients = vi.fn();
@@ -89,12 +98,17 @@ async function optionParLibelle(libelle: string): Promise<HTMLElement> {
   });
 }
 
+function Adresse() {
+  return <div data-testid="adresse">{useLocation().search}</div>;
+}
+
 function mount(url = '/tenant/agence-1/sales/mandates') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Adresse />
           <Routes>
             <Route path="/tenant/:tenantId/sales/mandates" element={<SaleMandates />} />
           </Routes>
@@ -234,5 +248,80 @@ describe('Mandats de vente — nouveau mandat', () => {
         commissionRate: 4
       })
     );
+  });
+});
+
+describe('Mandats de vente — recherche locale', () => {
+  const T = { timeout: 8000 };
+  const PLACEHOLDER = 'Numéro, bien, vendeur, négociateur…';
+
+  beforeEach(() => {
+    listSaleMandates.mockResolvedValue([
+      mandat(),
+      mandat({
+        id: 'mandate-2',
+        number: 'MV-2026-0002',
+        propertyLabel: 'REF-002 · Appartement Plateau',
+        sellerName: 'Kouadio Yao',
+        mandateType: 'SIMPLE',
+        status: 'REVOKED',
+        askingPrice: 20_000_000
+      }),
+      mandat({
+        id: 'mandate-3',
+        number: 'MV-2026-0003',
+        propertyLabel: 'REF-003 · Terrain Bingerville',
+        sellerName: 'Fatou Diallo',
+        askingPrice: 80_000_000
+      })
+    ]);
+  });
+
+  it('charge la liste entière sans paramètre serveur', async () => {
+    mount();
+    expect(await screen.findByText('MV-2026-0001', {}, T)).toBeInTheDocument();
+    expect(listSaleMandates).toHaveBeenCalledWith('agence-1');
+  });
+
+  it('cherche sans accent ni casse dans le bien et le vendeur, et garde le terme dans l’URL', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await user.type(await screen.findByPlaceholderText(PLACEHOLDER, {}, T), 'APPARTEMENT');
+    await waitFor(() => expect(screen.queryByText('MV-2026-0001')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('MV-2026-0002')).toBeInTheDocument();
+    expect(screen.queryByText('MV-2026-0003')).not.toBeInTheDocument();
+    expect(screen.getByTestId('adresse')).toHaveTextContent('q=APPARTEMENT');
+  });
+
+  it('filtre par statut depuis l’URL partagée', async () => {
+    mount('/tenant/agence-1/sales/mandates?status=REVOKED');
+    expect(await screen.findByText('MV-2026-0002', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('MV-2026-0001')).not.toBeInTheDocument();
+    expect(listSaleMandates).toHaveBeenCalledTimes(1);
+  });
+
+  it('filtre par prix demandé (min/max) depuis l’URL', async () => {
+    mount('/tenant/agence-1/sales/mandates?priceMin=60000000');
+    expect(await screen.findByText('MV-2026-0003', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('MV-2026-0001')).not.toBeInTheDocument();
+    expect(screen.queryByText('MV-2026-0002')).not.toBeInTheDocument();
+  });
+
+  it('« Effacer les critères » ramène toute la liste', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount('/tenant/agence-1/sales/mandates?q=zzz');
+    const barre = await screen.findByRole('search', {}, T);
+    expect(await within(barre).findByText('0 résultat', {}, T)).toBeInTheDocument();
+    await user.click(within(barre).getByRole('button', { name: 'Effacer les critères' }));
+    expect(await screen.findByText('MV-2026-0003', {}, T)).toBeInTheDocument();
+    expect(screen.getByTestId('adresse')).not.toHaveTextContent('q=');
+  });
+
+  it('avertit que la liste est tronquée au plafond de 500 mandats', async () => {
+    listSaleMandates.mockResolvedValue(
+      Array.from({ length: 500 }, (_, i) => mandat({ id: `m-${i}`, number: `MV-${i}` }))
+    );
+    mount();
+    expect(await screen.findByText(/La liste est limitée aux 500 mandats/, {}, T)).toBeInTheDocument();
   });
 });

@@ -1,16 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { App, DatePicker, Form, Input, InputNumber, Modal, Radio, Select, Space } from 'antd';
+import { Alert, App, DatePicker, Form, Input, InputNumber, Modal, Radio, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useQuery } from '@tanstack/react-query';
 import { createSaleMandate, listSaleMandates } from '../../services/sales-service';
-import type {
-  CreateSaleMandateInput,
-  SaleCommissionMode,
-  SaleMandateDto,
-  SaleMandateStatus
-} from '../../services/sales-service';
+import type { CreateSaleMandateInput, SaleCommissionMode, SaleMandateDto } from '../../services/sales-service';
+import { useLocalListSearch } from '../../utils/list-search';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatusTag } from '../../components/primitives';
 import { montantSaisiProps } from '../../utils/montant-saisi';
@@ -19,13 +15,7 @@ import { COMMISSION_PAYER_LABELS, MANDATE_TYPE_LABELS } from './helpers';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
-
-import { localizedList } from '../../i18n/localized';
-const STATUS_OPTIONS: { value: SaleMandateStatus; label: string }[] = localizedList(() => [
-  { value: 'ACTIVE', label: t('Actif') },
-  { value: 'REVOKED', label: t('Révoqué') },
-  { value: 'COMPLETED', label: t('Terminé') }
-]);
+import { MANDATE_ACCESSORS, MANDATE_TEXT, MANDATES_LIMIT, mandateCriteria } from './mandate-search';
 
 interface MandateFormValues {
   propertyId: string;
@@ -46,10 +36,16 @@ interface MandateFormValues {
 /**
  * Mandats de vente — lot 9 (PRD §5.2).
  *
- * Liste filtrable (statut, recherche) et modale « Nouveau mandat » avec ses
+ * Liste recherchable (champ libre, statut, type, dates, prix) et modale « Nouveau mandat » avec ses
  * sélecteurs cherchables. `?new=1[&propertyId=…]` ouvre la modale directement,
  * préremplie — c'est le lien que pose l'encart « Vente » de la fiche bien
  * quand aucun mandat n'existe encore.
+ *
+ * Recherche LOCALE : l'API renvoie tous les mandats de l'agence d'un bloc
+ * (500 au plus, sans pagination ni total). On charge la liste entière et
+ * `useLocalListSearch` la filtre et la pagine ; filtrer côté serveur ne
+ * servirait à rien (la recherche de l'API s'appliquait après le plafond). Au
+ * plafond, un bandeau prévient que la liste est tronquée.
  */
 export const SaleMandates: React.FC = () => {
   const { message } = App.useApp();
@@ -58,8 +54,6 @@ export const SaleMandates: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [form] = Form.useForm<MandateFormValues>();
 
-  const [status, setStatus] = useState<SaleMandateStatus | undefined>(undefined);
-  const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -70,10 +64,16 @@ export const SaleMandates: React.FC = () => {
     error: erreurRequete,
     refetch
   } = useQuery({
-    queryKey: queryKey('sale-mandates', tenantId, { status, search }),
-    queryFn: () => listSaleMandates(tenantId as string, { status, search: search || undefined }),
+    queryKey: queryKey('sale-mandates', tenantId, {}),
+    queryFn: () => listSaleMandates(tenantId as string),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
+  });
+
+  const local = useLocalListSearch<SaleMandateDto>(data, {
+    criteria: mandateCriteria({ withStatus: true }),
+    text: MANDATE_TEXT,
+    accessors: MANDATE_ACCESSORS
   });
 
   useEffect(() => {
@@ -135,9 +135,6 @@ export const SaleMandates: React.FC = () => {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
-  const items = data ?? [];
-  const estFiltre = Boolean(status || search);
-
   const colonnes: ColumnsType<SaleMandateDto> = [
     {
       title: t('Numéro'),
@@ -176,47 +173,28 @@ export const SaleMandates: React.FC = () => {
         title={t('Mandats de vente')}
         breadcrumbs={[{ label: t('Ventes'), to: `/tenant/${tenantId}/sales` }, { label: t('Mandats de vente') }]}
         primaryAction={{ label: t('Nouveau mandat'), onClick: ouvrirModale }}
-        extra={
-          <Space wrap>
-            <Input.Search
-              allowClear
-              placeholder={t('Rechercher un bien ou un vendeur')}
-              style={{ width: 260 }}
-              onSearch={value => setSearch(value)}
-            />
-            <Select
-              allowClear
-              placeholder={t('Statut')}
-              style={{ width: 160 }}
-              value={status}
-              onChange={value => setStatus(value)}
-              showSearch
-              optionFilterProp="label"
-              options={STATUS_OPTIONS}
-            />
-          </Space>
-        }
       />
 
+      {(data?.length ?? 0) >= MANDATES_LIMIT && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBlockEnd: 16 }}
+          message={t('La liste est limitée aux {{limit}} mandats les plus récents : d’autres existent.', {
+            limit: MANDATES_LIMIT
+          })}
+        />
+      )}
+
       <DataView<SaleMandateDto>
-        // L'API ne pagine pas : tout est déjà chargé.
-        export={{ filename: t('Mandats de vente') }}
-        paginated={false}
-        items={items}
-        total={items.length}
-        page={1}
-        pageSize={Math.max(items.length, 1)}
-        onPageChange={() => {}}
+        {...local.dataViewProps}
+        // Liste reçue en entier : l'export couvre tous les mandats filtrés, pas la seule page.
+        export={{ filename: t('Mandats de vente'), fetchAll: local.exportAll }}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les mandats de vente.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={estFiltre}
-        onClearFilters={() => {
-          setStatus(undefined);
-          setSearch('');
-        }}
         emptyDescription={t('Aucun mandat de vente enregistré.')}
         emptyAction={{ label: t('Nouveau mandat'), onClick: ouvrirModale }}
         columns={colonnes}
