@@ -17,6 +17,36 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## Branche `orch/2026-11-03-recette-locatif` — 2026-11-04
+
+Recette complète de la gestion locative : scénario de 852 cas (`docs/recette/gestion-locative/`), exécution Playwright et correctifs délégués. PR brouillon [#193](https://github.com/bkourouma/immotopia/pull/193) vers `main`, à fusionner par l'utilisateur. Worktree : `.claude/worktrees/recette-locatif`.
+
+- **Fait** :
+  - 96 anomalies au bus `.agent-bus/` : 83 passées, 11 prêtes au retest (008, 036, 047, 055 à 062), 2 bloquées (11-03-016, 11-03-028).
+  - Les lots D1 à D30 sont commités par thème.
+  - Le classeur des fonctionnalités et les catalogues i18n sont complets (web 12 783, API 2 531).
+  - Les résultats par bloc sont dans `RESULTATS.md`.
+- **Reste** :
+  - Retester les 11 anomalies prêtes : bail (056 à 059), devises (055, 060), exports (061, 062), notifications (047), balance âgée (036), rapport d'occupation (008).
+  - Cas non joués : 02 (027, 049), 04 (une vingtaine), 08 (9), 09 (046 à 048, 018, 033, 041, 042), 10 (4), 11 et 12 (testeur P21 en cours le 04/11), 14 (une quinzaine).
+  - Remplir le tableau « Bilan par fichier » de `RESULTATS.md`.
+  - Nettoyer les données REC-GL par l'interface.
+  - Faire passer la PR en revue.
+  - Dette restante, listée dans la PR :
+    - autres `throw new Error` d'`auth-service` ;
+    - `'-` dans environ 25 exports ;
+    - formatage XOF des écrans Dashboard, Bail et Paiements du portail locataire ;
+    - `psp_transaction_id` non unique.
+- **Pièges** :
+  - Serveurs de recette : API 8820 (ts-node-dev du worktree), web 3320, SMTP 2525. `scratchpad/rec/rec-env.cjs` (pas un `.env`) règle signature interne et LibreOffice.
+  - Agence A : `7ea5ae5e-ccfa-45cb-bebb-899262cbd719`.
+  - `set-state` du bus refuse « échoué au retest » : utiliser « en correction » avec une note.
+  - Les messages Zod et les messages hors erreurs typées doivent être annotés `// @i18n-keys`, sinon ils ne sont pas extraits.
+  - Ne jamais commiter pendant qu'un agent écrit (sauvegarde et restauration de lint-staged).
+  - Push : en cas de refus réseau, `git push -v`.
+  - Balance âgée : les écarts « Locataire Pénalités » (+3 200, +2 000) sont des données orphelines d'avant 739ca2c3, pas un défaut du calcul.
+- **Dernier commit** : `2f3556ff` (poussé), plus ce commit de passation.
+
 ## État des lieux (pilote) — 2026-10-31
 
 **État :** constat, puis mise en application des PR ouvertes (planning du 2026-10-31) : #175 et #191 fusionnées par l'utilisateur, staging puis production déployés sur `dd5b61c3` ; restent les actions de l'étape 5. Le classifieur du mode auto refuse `gh pr merge` à l'agent (« Merge Without Review ») : les fusions restent à l'utilisateur.
