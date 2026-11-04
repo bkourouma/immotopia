@@ -1,33 +1,25 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Button, Select, Modal, Drawer, Space, Dropdown } from 'antd';
+import { App, Button, Modal, Drawer, Space, Dropdown } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, DownloadOutlined, MoreOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listDocuments,
   generateDocument,
   regenerateDocument,
   downloadDocument,
   RentalDocument,
-  RentalDocumentType,
-  RentalDocumentStatus,
   GenerateDocumentRequest
 } from '../../services/rental-service';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { DocumentForm } from '../../components/rental/DocumentForm';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { useListParams } from '../../hooks/useListParams';
+import { useListSearch } from '../../hooks/useListSearch';
+import { documentCriteria } from './document-search-criteria';
+import type { DocumentSearchParams } from './document-search-criteria';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import {
-  PageHeader,
-  StateBlock,
-  StatusTag,
-  DataView,
-  DataCard,
-  FilterSheet,
-  useConfirmAction
-} from '../../components/primitives';
+import { PageHeader, StateBlock, StatusTag, DataView, DataCard, useConfirmAction } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { localizedList, localizedRecord } from '../../i18n/localized';
 
@@ -62,9 +54,6 @@ interface DocumentsProps {
   leaseId?: string;
 }
 
-type Filters = { type: string; status: string };
-const FILTER_KEYS = ['type', 'status'] as const;
-
 const TYPE_LABELS: Record<string, string> = localizedRecord(() => ({
   LEASE_CONTRACT: t('Contrat de bail'),
   LEASE_ADDENDUM: 'Avenant',
@@ -93,7 +82,16 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
   const confirmAction = useConfirmAction();
   const { isDesktop } = useBreakpoint();
 
-  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS, defaultPageSize: 50 });
+  // Recherche multicritères (serveur). Préfixe `doc` quand l'écran est un onglet du bail.
+  const search = useListSearch({
+    criteria: documentCriteria(
+      Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label })),
+      STATUS_OPTIONS
+    ),
+    defaultPageSize: 50,
+    apiNames: { sort: false },
+    ...(propLeaseId ? { paramPrefix: 'doc', ariaLabel: t('Rechercher dans les documents') } : {})
+  });
   const [formulaireOuvert, setFormulaireOuvert] = useState(false);
   const [telechargementEnCours, setTelechargementEnCours] = useState<string | null>(null);
 
@@ -104,17 +102,11 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
     error: erreurRequete,
     refetch
   } = useQuery({
-    queryKey: queryKey('documents', tenantId, { ...list.queryParams, leaseId: leaseId ?? '' }),
-    queryFn: () =>
-      listDocuments(tenantId as string, {
-        leaseId,
-        type: (list.filters.type as RentalDocumentType) || undefined,
-        status: (list.filters.status as RentalDocumentStatus) || undefined,
-        page: list.page,
-        limit: list.pageSize
-      }),
+    queryKey: queryKey('documents', tenantId, { ...search.apiParams, leaseId: leaseId ?? '' }),
+    queryFn: () => listDocuments(tenantId as string, { leaseId, ...search.apiParams } as DocumentSearchParams),
     enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
 
   const documents = data?.data ?? [];
@@ -280,39 +272,6 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
         }}
       />
 
-      <FilterSheet
-        activeCount={Object.keys(list.filters).length}
-        onClear={list.clearFilters}
-        title={t('Filtrer les documents')}
-      >
-        <div style={{ minWidth: 200 }}>
-          <label htmlFor="filtre-type-document">{t('Type')}</label>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            id="filtre-type-document"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les types')}
-            allowClear
-            value={list.filters.type || undefined}
-            onChange={valeur => list.setFilters({ type: valeur })}
-            options={Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label }))}
-          />
-        </div>
-        <div style={{ minWidth: 200 }}>
-          <label htmlFor="filtre-statut-document">{t('Statut')}</label>
-          <Select
-            id="filtre-statut-document"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les statuts')}
-            allowClear
-            value={list.filters.status || undefined}
-            onChange={valeur => list.setFilters({ status: valeur })}
-            options={STATUS_OPTIONS}
-          />
-        </div>
-      </FilterSheet>
-
       <DataView<RentalDocument>
         // Export de TOUS les documents, avec les mêmes filtres que la liste affichée.
         export={{
@@ -321,26 +280,22 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
             collectAllPages<RentalDocument>(async (page, limit) => {
               const reponse = await listDocuments(tenantId, {
                 leaseId,
-                type: (list.filters.type as RentalDocumentType) || undefined,
-                status: (list.filters.status as RentalDocumentStatus) || undefined,
+                ...search.filterParams,
                 page,
                 limit
-              });
+              } as DocumentSearchParams);
               return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
             })
         }}
         items={documents}
         total={total}
-        page={list.page}
-        pageSize={list.pageSize}
-        onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
+        search={search.searchProps}
+        {...search.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les documents.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={list.isFiltered}
-        onClearFilters={list.clearFilters}
         emptyDescription={
           leaseId
             ? t('Aucun document pour ce bail. Générez-en un depuis l’action ci-dessus.')

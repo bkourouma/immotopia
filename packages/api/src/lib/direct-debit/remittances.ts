@@ -4,6 +4,7 @@ import { BadRequestError, ConflictError, NotFoundError } from '../../middleware/
 import { recordAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { prisma } from '../../utils/database';
+import { dayRange } from '../../utils/list-query-schemas';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { nextSequenceTx } from '../sales/numbering';
 import { checkCollectionDate, formatFrenchDate, prenotificationDeadline, todayUtc, toIsoDate } from './business-days';
@@ -409,6 +410,18 @@ export async function listRemittances(
   const where: Prisma.DirectDebitRemittanceWhereInput = { tenantId, ...scopeWhere(ctx) };
   if (query.creditorId) where.creditorId = query.creditorId;
   if (query.status) where.status = query.status;
+  const collectionDate = dayRange(query.collectionFrom, query.collectionTo);
+  if (collectionDate) where.collectionDate = collectionDate;
+  if (query.search) {
+    const search = query.search;
+    const or: Prisma.DirectDebitRemittanceWhereInput[] = [
+      { creditor: { is: { label: { contains: search, mode: 'insensitive' } } } }
+    ];
+    const reference = /^PRL-(\d{4})-(\d{1,6})$/i.exec(search);
+    if (reference) or.push({ year: Number(reference[1]), sequence: Number(reference[2]) });
+    else if (/^PRL-(\d{4})$/i.test(search)) or.push({ year: Number(search.slice(4)) });
+    where.OR = or;
+  }
   const [total, rows] = await Promise.all([
     prisma.directDebitRemittance.count({ where }),
     prisma.directDebitRemittance.findMany({

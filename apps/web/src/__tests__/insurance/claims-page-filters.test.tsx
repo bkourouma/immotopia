@@ -1,7 +1,8 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import InsuranceClaimsPage from '../../pages/insurance/InsuranceClaimsPage';
@@ -23,12 +24,45 @@ const POLICES = [
   { id: 'pol-2', propertyId: 'prop-2', propertyReference: 'BIEN-0002', insurer: 'NSIA', policyNumber: '456' }
 ];
 
+function Adresse() {
+  return <div data-testid="adresse">{useLocation().search}</div>;
+}
+
+const T = { timeout: 8000 };
+const PLACEHOLDER = 'Bien, police, assureur, description…';
+
+function sinistre(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    propertyId: 'prop-1',
+    propertyReference: 'BIEN-0001',
+    policyId: 'pol-1',
+    policyLabel: 'Saham · n° 123',
+    occurredAt: '2026-08-10T00:00:00.000Z',
+    declaredAt: '2026-08-11T00:00:00.000Z',
+    cause: 'WATER_DAMAGE',
+    description: 'Fuite',
+    status: 'DECLARED',
+    claimedAmount: 500000,
+    indemnifiedAmount: null,
+    outOfPocketAmount: null,
+    currency: 'XOF',
+    ...overrides
+  };
+}
+
+/** Adresses des appels « liste des sinistres ». */
+function appelsSinistres(): string[] {
+  return get.mock.calls.map(call => String(call[0])).filter(url => url.includes('/insurance/claims'));
+}
+
 function monter(url: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Adresse />
           <Routes>
             <Route path="/tenant/:tenantId/patrimoine/claims" element={<InsuranceClaimsPage />} />
           </Routes>
@@ -45,21 +79,70 @@ beforeEach(() => {
   );
 });
 
-describe('Page Sinistres : filtres bien et police (BUG-2026-10-02-012)', () => {
-  it('propose les filtres Bien et Police en plus du statut', async () => {
+describe('Page Sinistres : recherche multicritères (BUG-2026-10-02-012)', () => {
+  it('propose le champ libre, le statut et le bien en ligne, la police sous « Plus de critères »', async () => {
+    const user = userEvent.setup({ delay: null });
     monter('/tenant/agence-1/patrimoine/claims');
-    expect(await screen.findByLabelText('Bien', {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByLabelText('Police')).toBeInTheDocument();
-    expect(screen.getByLabelText('Statut')).toBeInTheDocument();
+    const barre = await screen.findByRole('search', {}, T);
+    expect(within(barre).getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    expect(within(barre).getByLabelText('Statut')).toBeInTheDocument();
+    expect(within(barre).getByLabelText('Bien')).toBeInTheDocument();
+    await user.click(within(barre).getByRole('button', { name: /Plus de critères/ }));
+    expect(await within(barre).findByLabelText('Police', {}, T)).toBeInTheDocument();
   });
 
-  it('transmet le bien et la police de l’URL à l’API', async () => {
+  it('transmet le bien, la police et le statut de l’URL à l’API', async () => {
     monter('/tenant/agence-1/patrimoine/claims?propertyId=prop-1&policyId=pol-1');
     await waitFor(() =>
-      expect(get).toHaveBeenCalledWith(
+      expect(appelsSinistres()).toContain(
         '/tenants/agence-1/patrimoine/insurance/claims?propertyId=prop-1&policyId=pol-1&limit=500'
       )
     );
+  });
+
+  it('envoie le champ libre à l’API après le debounce et le met dans l’URL', async () => {
+    const user = userEvent.setup({ delay: null });
+    monter('/tenant/agence-1/patrimoine/claims');
+    await user.type(await screen.findByPlaceholderText(PLACEHOLDER, {}, T), 'fuite');
+    await waitFor(
+      () => expect(appelsSinistres()).toContain('/tenants/agence-1/patrimoine/insurance/claims?search=fuite&limit=500'),
+      T
+    );
+    expect(screen.getByTestId('adresse')).toHaveTextContent('q=fuite');
+  });
+
+  it('pagine la liste reçue en local (25 par page) avec le total de la liste reçue', async () => {
+    get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: {
+          success: true,
+          data: url.includes('/insurance/policies')
+            ? POLICES
+            : Array.from({ length: 30 }, (_, i) => sinistre(`sin-${i}`))
+        }
+      })
+    );
+    monter('/tenant/agence-1/patrimoine/claims');
+    const barre = await screen.findByRole('search', {}, T);
+    expect(await within(barre).findByText('30 résultats', {}, T)).toBeInTheDocument();
+    expect(screen.getAllByRole('row').slice(1)).toHaveLength(25);
+  });
+
+  it('« Effacer les critères » retire le champ libre de l’URL et relance la liste complète', async () => {
+    const user = userEvent.setup({ delay: null });
+    get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: {
+          success: true,
+          data: url.includes('/insurance/policies') ? POLICES : url.includes('search=') ? [] : [sinistre('sin-1')]
+        }
+      })
+    );
+    monter('/tenant/agence-1/patrimoine/claims?q=zzz');
+    const barre = await screen.findByRole('search', {}, T);
+    await user.click(await within(barre).findByRole('button', { name: 'Effacer les critères' }, T));
+    expect(await screen.findByText('Saham · n° 123', {}, T)).toBeInTheDocument();
+    expect(screen.getByTestId('adresse')).not.toHaveTextContent('q=');
   });
 });
 

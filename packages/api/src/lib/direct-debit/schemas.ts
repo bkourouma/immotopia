@@ -1,6 +1,7 @@
 import { t } from '../../i18n';
 import { z } from 'zod';
 import { parseIbanInput } from './iban';
+import { zDay, zSearch } from '../../utils/list-query-schemas';
 
 /**
  * Validation des corps et requêtes du prélèvement bancaire (spec 042, P1).
@@ -119,7 +120,10 @@ export const listMandatesQuerySchema = z.object({
   debtorClientId: z.string().trim().min(1).max(64).optional(),
   creditorId: z.string().uuid().optional(),
   status: z.enum(MANDATE_STATUSES).optional(),
-  search: z.string().trim().min(1).max(100).optional(),
+  search: zSearch(100),
+  /** Période de signature (jours réels aaaa-mm-jj, bornes incluses). */
+  signedFrom: zDay,
+  signedTo: zDay,
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20)
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { App, Button, Card, Tag, Tabs, Select, Descriptions, Space, Row, Col, Spin, Alert, Typography } from 'antd';
 import {
   EditOutlined,
@@ -28,6 +28,7 @@ import { SignaturesPanel } from '../../components/signature/SignaturesPanel';
 import type { SignerInput } from '../../types/signature-types';
 import { LeaseDirectDebitPanel } from '../../components/rental/direct-debit/LeaseDirectDebitPanel';
 import { t as translate } from '../../i18n/t';
+import { LEASE_TAB_PARAM, defaultLeaseTab, resolveLeaseTab, withLeaseTab, withTabLifecycle } from './lease-detail-tabs';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -37,6 +38,7 @@ export const LeaseDetailPage: React.FC = () => {
 
   const { tenantId, leaseId } = useParams<{ tenantId: string; leaseId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [lease, setLease] = useState<RentalLease | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -609,10 +611,18 @@ export const LeaseDetailPage: React.FC = () => {
 
             return (
               <Tabs
-                defaultActiveKey={isSaleOnly ? 'documents' : 'installments'}
+                // Onglet dans l'URL (`?onglet=`), validé contre les onglets présents ;
+                // `destroyOnHidden` par onglet (withTabLifecycle) : les listes lourdes sont démontées,
+                // le dépôt de garantie (formulaire en ligne) reste monté une fois ouvert.
+                activeKey={resolveLeaseTab(
+                  searchParams.get(LEASE_TAB_PARAM),
+                  tabItems.map(item => item.key),
+                  defaultLeaseTab(isSaleOnly)
+                )}
+                onChange={key => setSearchParams(previous => withLeaseTab(previous, key), { replace: true })}
                 type="line"
                 size="large"
-                items={tabItems}
+                items={withTabLifecycle(tabItems)}
               />
             );
           })()}

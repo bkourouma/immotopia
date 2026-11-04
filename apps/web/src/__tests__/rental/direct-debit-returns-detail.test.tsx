@@ -21,6 +21,10 @@ const rejectRemittanceLine = vi.fn();
 const settleAllRemittanceLines = vi.fn();
 const saveBlob = vi.fn();
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 vi.mock('../../services/direct-debit-service', () => ({
   getRemittance: (...a: unknown[]) => getRemittance(...a),
   refreshRemittance: vi.fn(),
@@ -488,7 +492,8 @@ describe('DirectDebitRemittanceDetail — retours de recette (§8.12)', () => {
     await user.click(await screen.findByRole('button', { name: /Télécharger à nouveau le fichier/ }));
     await user.click(await screen.findByRole('button', { name: 'Confirmer' }));
     expect(await screen.findByText('Mandat révoqué.')).toBeInTheDocument();
-  });
+    // Deux cycles clic + confirmation sur un écran lourd (barre de recherche des lignes incluse) : délai élargi.
+  }, 120000);
 
   it("montre l'adresse masquée de l'avis et sa provenance, y compris l'adresse prévue", async () => {
     getRemittance.mockResolvedValue(

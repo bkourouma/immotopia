@@ -7,8 +7,25 @@ import apiClient from '../../utils/api-client';
 import { useNavigate } from 'react-router-dom';
 import { uploadMedia } from '../../services/property-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
-import { DataCard, DataView, MoneyValue, StatusTag } from '../primitives';
+import { DataCard, DataView, MoneyValue, StatusTag, statusLabel } from '../primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
+
+// Accesseurs de la recherche locale : constantes de module (identité stable).
+const TEXTE_RECHERCHE = [
+  (lot: Property) => lot.title,
+  (lot: Property) => lot.internalReference,
+  (lot: Property) => lot.address,
+  (lot: Property) => lot.locationZone,
+  (lot: Property) => statusLabel(lot.status)
+];
+const ACCESSEURS = {
+  status: (lot: Property) => lot.status,
+  price: (lot: Property) => lot.price,
+  rooms: (lot: Property) => lot.rooms
+};
+const STATUTS_DES_LOTS = ['AVAILABLE', 'RESERVED', 'UNDER_OFFER', 'RENTED', 'SOLD', 'ARCHIVED'];
 
 interface PropertyApartmentsProps {
   propertyId: string;
@@ -23,16 +40,38 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  /**
-   * Pagination en memoire, et c'est assume : l'endpoint des sous-biens rend
-   * la liste complete d'un immeuble, sans enveloppe de pagination. Decouper
-   * ici evite d'afficher quarante lignes d'un coup ; le jour ou l'API
-   * paginera, seules ces deux lignes changent.
-   */
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [form] = Form.useForm();
   const navigate = useNavigate();
+
+  /**
+   * Recherche locale : l'endpoint des sous-biens rend la liste complète d'un
+   * immeuble, sans pagination (volume borné). Filtre, tri et pagination (20 par
+   * page) se font ici ; l'état vit dans l'URL sous le préfixe « lot ».
+   */
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Titre, référence, adresse…')
+    },
+    {
+      key: 'status',
+      type: 'multiSelect',
+      label: t('Statut'),
+      primary: true,
+      options: STATUTS_DES_LOTS.map(value => ({ value, label: statusLabel(value) ?? value }))
+    },
+    { key: 'price', type: 'numberRange', label: t('Prix'), unit: 'FCFA' },
+    { key: 'rooms', type: 'numberRange', label: t('Pièces') }
+  ];
+  const local = useLocalListSearch<Property>(apartments, {
+    paramPrefix: 'lot',
+    ariaLabel: t('Rechercher dans les lots'),
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   const parseNumber = (value: string): string => {
     return value.replace(/\s/g, '');
@@ -321,8 +360,6 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
     return null;
   }
 
-  const pageCourante = apartments.slice((page - 1) * pageSize, page * pageSize);
-
   return (
     <Card>
       {/* En-tete dans le corps et non dans `title`/`extra` : la barre d'en-tete
@@ -351,16 +388,9 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
           defile plus horizontalement : sous ce palier, ce sont des cartes. */}
       <DataView
         aria-label={t("Appartements de l'immeuble")}
-        // La liste entière est déjà chargée : l'export couvre tous les appartements, pas la seule page affichée.
-        export={{ filename: t('Appartements'), fetchAll: async () => apartments }}
-        items={pageCourante}
-        total={apartments.length}
-        page={page}
-        pageSize={pageSize}
-        onPageChange={(pageSuivante, taille) => {
-          setPage(pageSuivante);
-          setPageSize(taille);
-        }}
+        // La liste entière est déjà chargée : l'export couvre les appartements filtrés, pas la seule page affichée.
+        export={{ filename: t('Appartements'), fetchAll: local.exportAll }}
+        {...local.dataViewProps}
         loading={loading}
         rowKey={appartement => appartement.id}
         columns={colonnes}

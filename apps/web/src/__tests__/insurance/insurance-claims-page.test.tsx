@@ -54,6 +54,11 @@ function sinistre(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Adresses des appels « liste des sinistres » (la page lit aussi les polices et les biens). */
+function appelsSinistres(): string[] {
+  return get.mock.calls.map(call => String(call[0])).filter(url => url.includes('/insurance/claims'));
+}
+
 function monter(url = '/tenant/agence-1/patrimoine/claims') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
@@ -80,7 +85,7 @@ describe('Page Sinistres', () => {
     expect(await screen.findByText('Saham · n° 123', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByText('Dégât des eaux')).toBeInTheDocument();
     expect(screen.getByText('Déclaré')).toBeInTheDocument();
-    expect(get.mock.calls[0][0]).toBe('/tenants/agence-1/patrimoine/insurance/claims?limit=500');
+    expect(appelsSinistres()[0]).toBe('/tenants/agence-1/patrimoine/insurance/claims?limit=500');
     expect(screen.getByRole('link', { name: 'BIEN-0001' })).toHaveAttribute(
       'href',
       '/tenant/agence-1/properties/prop-1'
@@ -89,8 +94,8 @@ describe('Page Sinistres', () => {
 
   it('transmet le statut de l’URL à l’API', async () => {
     monter('/tenant/agence-1/patrimoine/claims?status=SETTLED');
-    await waitFor(() => expect(get).toHaveBeenCalled());
-    expect(get.mock.calls[0][0]).toBe('/tenants/agence-1/patrimoine/insurance/claims?status=SETTLED&limit=500');
+    await waitFor(() => expect(appelsSinistres().length).toBeGreaterThan(0));
+    expect(appelsSinistres()[0]).toBe('/tenants/agence-1/patrimoine/insurance/claims?status=SETTLED&limit=500');
   });
 
   it('avertit que la liste est tronquée au plafond de 500 sinistres', async () => {

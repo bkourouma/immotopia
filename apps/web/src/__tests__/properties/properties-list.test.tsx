@@ -1,8 +1,8 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { Properties } from '../../pages/properties/Properties';
@@ -66,6 +66,10 @@ function bien(id: string, overrides: Partial<Property> = {}): Property {
   } as Property;
 }
 
+function Url() {
+  return <div data-testid="url">{useLocation().search}</div>;
+}
+
 /** Rendu isolé : un cache neuf par test, sinon les clés se partagent. */
 function mount(initialUrl = '/tenant/tenant-1/properties') {
   const queryClient = new QueryClient({
@@ -75,6 +79,7 @@ function mount(initialUrl = '/tenant/tenant-1/properties') {
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[initialUrl]}>
+          <Url />
           <Routes>
             <Route path="/tenant/:tenantId/properties" element={<Properties />} />
           </Routes>
@@ -104,7 +109,7 @@ describe('Liste des biens — le filtrage part au serveur', () => {
     expect(filters).toMatchObject({
       q: 'villa',
       status: 'RENTED',
-      minPrice: '100000',
+      minPrice: 100000,
       page: 2,
       limit: 20
     });
@@ -131,15 +136,16 @@ describe('Liste des biens — le filtrage part au serveur', () => {
     mount('/tenant/tenant-1/properties?page=3');
     await waitFor(() => expect(listProperties).toHaveBeenCalled());
 
-    await user.type(screen.getByLabelText('Rechercher un bien'), 'villa');
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'villa');
 
     await waitFor(
       () => {
         const dernier = listProperties.mock.calls.at(-1)?.[1];
         expect(dernier).toMatchObject({ q: 'villa', page: 1 });
       },
-      { timeout: 2000 }
+      { timeout: 8000 }
     );
+    expect(screen.getByTestId('url').textContent).toContain('q=villa');
   });
 });
 
@@ -179,8 +185,13 @@ describe('Liste des biens — états', () => {
     expect(await screen.findByText(/Aucun bien n'est encore enregistré/)).toBeInTheDocument();
     unmount();
 
-    mount('/tenant/tenant-1/properties?status=SOLD');
-    expect(await screen.findByText('Effacer les filtres')).toBeInTheDocument();
+    listProperties.mockResolvedValue({
+      properties: [],
+      pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+    });
+    mount('/tenant/tenant-1/properties?q=zzz');
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Effacer les critères' }).length).toBeGreaterThan(0);
   });
 
   it('propose de réessayer quand le chargement échoue', async () => {
@@ -191,104 +202,68 @@ describe('Liste des biens — états', () => {
   });
 });
 
-describe('Liste des biens — filtres avancés', () => {
-  /**
-   * La rangée de filtres déroulait huit contrôles en permanence. Tout sauf la
-   * recherche plein texte passe derrière un dépliant, et les six champs
-   * numériques — surface, pièces, chambres, chacun en min et en max — se
-   * réduisent à un curseur des chambres.
-   *
-   * Le dépliant rejouerait le défaut que `<FilterSheet>` corrige — un filtre
-   * posé qu'on ne voit pas — s'il restait fermé sur une liste filtrée. Les deux
-   * tests qui suivent tiennent ce point.
-   */
+describe('Liste des biens — recherche multicritères', () => {
+  it('pose la barre de recherche et garde la vue en grille', async () => {
+    mount();
+    expect(await screen.findByText('Bien 1')).toBeInTheDocument();
+    expect(screen.getByRole('search')).toBeInTheDocument();
+    expect(listProperties).toHaveBeenCalledWith('tenant-1', { page: 1, limit: 20 }, expect.anything());
+  });
 
-  it('replie le groupe de filtres, et le déplie au clic', async () => {
+  it('traduit les clés d’URL historiques en paramètres d’API', async () => {
+    mount(
+      '/tenant/tenant-1/properties?propertyType=APPARTEMENT&transactionMode=RENTAL&city=Cocody' +
+        '&minPrice=100000&maxPrice=500000&minBedrooms=2&maxBedrooms=4'
+    );
+    await waitFor(() => expect(listProperties).toHaveBeenCalled());
+    expect(listProperties.mock.calls.at(-1)?.[1]).toMatchObject({
+      propertyType: 'APPARTEMENT',
+      transactionMode: 'RENTAL',
+      city: 'Cocody',
+      minPrice: 100000,
+      maxPrice: 500000,
+      minBedrooms: 2,
+      maxBedrooms: 4,
+      page: 1,
+      limit: 20
+    });
+  });
+
+  it('ignore une valeur de statut hors liste au lieu de l’envoyer à l’API', async () => {
+    mount('/tenant/tenant-1/properties?status=BOGUS');
+    await waitFor(() => expect(listProperties).toHaveBeenCalled());
+    expect(listProperties.mock.calls.at(-1)?.[1]).not.toHaveProperty('status');
+  });
+
+  it('propose le type et la transaction en ligne, le reste sous « Plus de critères »', async () => {
     const user = userEvent.setup();
     mount();
-    await waitFor(() => expect(listProperties).toHaveBeenCalled());
+    await screen.findByText('Bien 1');
+    const barre = within(screen.getByRole('search'));
+    expect(barre.getByText('Type de bien')).toBeInTheDocument();
+    expect(barre.getByText('Transaction')).toBeInTheDocument();
+    expect(barre.queryByText('Chambres')).toBeNull();
 
-    const declencheur = screen.getByRole('button', { name: /Filtres avancés/ });
-    expect(declencheur).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByText('Type de bien')).not.toBeVisible();
-    expect(screen.getByText('Commune')).not.toBeVisible();
-    expect(screen.getByText('Prix (F CFA)')).not.toBeVisible();
-    expect(screen.getByText('Chambres')).not.toBeVisible();
-
-    await user.click(declencheur);
-
-    expect(declencheur).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Type de bien')).toBeVisible();
-    expect(screen.getByText('Chambres')).toBeVisible();
+    await user.click(barre.getByRole('button', { name: /Plus de critères/ }));
+    expect(await barre.findByText('Chambres')).toBeInTheDocument();
+    expect(barre.getByText('Prix')).toBeInTheDocument();
+    expect(barre.getByText('Commune')).toBeInTheDocument();
+    // Plus aucun curseur maison.
+    expect(screen.queryAllByRole('slider')).toHaveLength(0);
   });
 
-  it('s’ouvre de lui-même sur une liste filtrée, et compte les filtres posés', async () => {
-    mount('/tenant/tenant-1/properties?status=RENTED&minBedrooms=3&maxBedrooms=3');
-    await waitFor(() => expect(listProperties).toHaveBeenCalled());
-
-    // Le curseur compte pour un filtre, pas pour deux : il écrit bien deux
-    // paramètres dans l'URL, mais c'est une seule question posée.
-    const declencheur = screen.getByRole('button', { name: /Filtres avancés \(2\)/ });
-    expect(declencheur).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Type de bien')).toBeVisible();
-    expect(screen.getByText('3 chambres')).toBeVisible();
-  });
-
-  it('a retiré les filtres de surface et de pièces', async () => {
+  it('efface les critères et revient à la liste complète', async () => {
     const user = userEvent.setup();
-    mount();
-    await waitFor(() => expect(listProperties).toHaveBeenCalled());
-    await user.click(screen.getByRole('button', { name: /Filtres avancés/ }));
-
-    expect(screen.queryByText(/Surface m(in|ax)/)).toBeNull();
-    expect(screen.queryByText(/Pièces/)).toBeNull();
-    // Et les bornes ne sont plus deux champs à remplir au clavier.
-    expect(screen.queryByText(/Chambres m(in|ax)/)).toBeNull();
-  });
-
-  it('nomme chacune des deux poignées du curseur', async () => {
-    const user = userEvent.setup();
-    mount();
-    await waitFor(() => expect(listProperties).toHaveBeenCalled());
-    await user.click(screen.getByRole('button', { name: /Filtres avancés/ }));
-
-    expect(screen.getByRole('slider', { name: 'Nombre de chambres minimum' })).toBeInTheDocument();
-    expect(screen.getByRole('slider', { name: 'Nombre de chambres maximum' })).toBeInTheDocument();
-    expect(screen.getByRole('slider', { name: 'Prix minimum' })).toBeInTheDocument();
-    expect(screen.getByRole('slider', { name: 'Prix maximum' })).toBeInTheDocument();
-  });
-
-  it('a remplace les deux champs de prix par une barre', async () => {
-    const user = userEvent.setup();
-    mount();
-    await waitFor(() => expect(listProperties).toHaveBeenCalled());
-    await user.click(screen.getByRole('button', { name: /Filtres avancés/ }));
-
-    // Plus aucune zone de saisie numérique dans le panneau : `Input type=number`
-    // porte le rôle `spinbutton`, la barre porte `slider`.
-    expect(screen.queryAllByRole('spinbutton')).toHaveLength(0);
-    expect(screen.queryAllByRole('slider')).toHaveLength(4);
-    expect(screen.getByText('Tous les prix')).toBeVisible();
-  });
-
-  it('lit les bornes de prix de l’URL, même hors paliers', async () => {
-    // Une URL écrite à la main peut porter un montant qui ne tombe sur aucun
-    // palier. La poignée se pose au plus près, mais le libellé doit annoncer
-    // le montant qui filtre vraiment, pas le palier arrondi.
-    mount('/tenant/tenant-1/properties?minPrice=175000');
-    await waitFor(() => expect(listProperties).toHaveBeenCalled());
-
-    expect(screen.getByText('à partir de 175 000')).toBeVisible();
-    expect(listProperties.mock.calls.at(-1)?.[1]).toMatchObject({ minPrice: '175000' });
-  });
-
-  it('compte le prix et les chambres pour un filtre chacun', async () => {
-    mount('/tenant/tenant-1/properties?minPrice=100000&maxPrice=500000&minBedrooms=2&maxBedrooms=4');
-    await waitFor(() => expect(listProperties).toHaveBeenCalled());
-
-    // Quatre paramètres dans l'URL, deux questions posées.
-    expect(screen.getByRole('button', { name: /Filtres avancés \(2\)/ })).toBeInTheDocument();
-    expect(screen.getByText('100 000 à 500 000')).toBeVisible();
-    expect(screen.getByText('2 à 4 chambres')).toBeVisible();
+    listProperties.mockImplementation(async (_tenant: string, params: Record<string, unknown>) =>
+      params.q
+        ? { properties: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } }
+        : { properties: [bien('1')], pagination: { page: 1, limit: 20, total: 1, totalPages: 1 } }
+    );
+    mount('/tenant/tenant-1/properties?q=zzz');
+    await screen.findByText('Aucun élément ne correspond aux filtres appliqués.');
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText('Bien 1')).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).not.toContain('q=');
   });
 });

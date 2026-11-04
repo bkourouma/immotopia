@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Alert, App, Button, Select, Space, Table } from 'antd';
+import { Alert, App, Button, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, UploadOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listCreditors,
   listRemittances,
-  RemittanceStatus,
+  RemittanceListFilters,
   RemittanceSummaryDto
 } from '../../services/direct-debit-service';
-import { PageHeader, formatMoney } from '../../components/primitives';
+import { PageHeader, Table, formatMoney } from '../../components/primitives';
 import { DirectDebitTabs } from '../../components/rental/direct-debit/DirectDebitTabs';
 import { PrepareRemittanceModal } from '../../components/rental/direct-debit/PrepareRemittanceModal';
 import { invalidateRentalCollections } from '../../components/rental/direct-debit/ReturnConstatModals';
@@ -24,23 +24,25 @@ import {
   remittanceStatusLabel,
   RemittanceStatusTag
 } from '../../components/rental/direct-debit/direct-debit-shared';
+import { useListSearch } from '../../hooks/useListSearch';
 import { detailKey, entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
-
-const PAGE_SIZE = 20;
 
 /**
  * Location › Prélèvements › Remises (spec 042, P2, §7.10) : les remises de
  * loyers de l'agence, et le bouton « Préparer une remise ».
+ *
+ * Recherche multicritères paginée par le serveur (guide recherche-listes.md) :
+ * `?q=…&status=EXPORTED&creditorId=…&collectionFrom=…&page=2`. L'API nomme la
+ * taille de page `pageSize` et ne trie pas. L'historique des retours, plus bas,
+ * a sa propre barre (préfixe `ret`).
  */
 export const DirectDebitRemittances: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { message } = App.useApp();
-  const [status, setStatus] = useState<RemittanceStatus | undefined>();
-  const [creditorId, setCreditorId] = useState<string | undefined>();
-  const [page, setPage] = useState(1);
   const [preparing, setPreparing] = useState(false);
   const [importing, setImporting] = useState(false);
 
@@ -51,13 +53,48 @@ export const DirectDebitRemittances: React.FC = () => {
     staleTime: STALE_TIME.reference
   });
 
-  const filters = { status, creditorId, page, pageSize: PAGE_SIZE };
-  const { data, isPending, error } = useQuery({
-    queryKey: queryKey('direct-debit-remittances', tenantId, filters),
-    queryFn: () => listRemittances(tenantId as string, filters),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
+  const search = useListSearch({
+    ariaLabel: t('Rechercher dans les remises'),
+    apiNames: { limit: 'pageSize', sort: false },
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Référence de la remise, créancier…')
+      },
+      {
+        key: 'status',
+        type: 'select',
+        label: t('Statut'),
+        primary: true,
+        options: REMITTANCE_STATUSES.map(value => ({ value, label: remittanceStatusLabel(value) }))
+      },
+      {
+        key: 'creditorId',
+        type: 'select',
+        label: t('Créancier'),
+        primary: true,
+        options: creditors.map(creditor => ({ value: creditor.id, label: creditor.label }))
+      },
+      {
+        key: 'collection',
+        type: 'dateRange',
+        label: t('Date de prélèvement'),
+        api: ['collectionFrom', 'collectionTo']
+      }
+    ]
   });
+  const creditorId = search.values.creditorId as string | undefined;
+
+  const { data, isFetching, error } = useQuery({
+    queryKey: queryKey('direct-debit-remittances', tenantId, search.apiParams),
+    queryFn: () => listRemittances(tenantId as string, search.apiParams as RemittanceListFilters),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
+  });
+  const total = data?.total ?? 0;
 
   const detailPath = (remittanceId: string) => `/tenant/${tenantId}/rental/direct-debit/remittances/${remittanceId}`;
 
@@ -111,28 +148,6 @@ export const DirectDebitRemittances: React.FC = () => {
       <DirectDebitTabs />
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <Space wrap size={[12, 12]}>
-          <Select
-            allowClear
-            placeholder={t('Créancier')}
-            style={{ minWidth: 200 }}
-            value={creditorId}
-            onChange={value => {
-              setCreditorId(value);
-              setPage(1);
-            }}
-            options={creditors.map(creditor => ({ value: creditor.id, label: creditor.label }))}
-          />
-          <Select
-            allowClear
-            placeholder={t('Statut')}
-            style={{ minWidth: 200 }}
-            value={status}
-            onChange={value => {
-              setStatus(value);
-              setPage(1);
-            }}
-            options={REMITTANCE_STATUSES.map(value => ({ value, label: remittanceStatusLabel(value) }))}
-          />
           <Button icon={<UploadOutlined />} onClick={() => setImporting(true)}>
             {t('Importer un retour de la banque')}
           </Button>
@@ -141,20 +156,28 @@ export const DirectDebitRemittances: React.FC = () => {
           <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement des remises'))} />
         )}
         <Table<RemittanceSummaryDto>
+          aria-label={t('Remises de prélèvement')}
           rowKey="id"
           size="middle"
-          loading={isPending}
+          search={search.searchProps}
+          exportFilename={t('Remises de prélèvement')}
+          exportFetchAll={() =>
+            collectAllPages<RemittanceSummaryDto>(async (page, limit) => {
+              const response = await listRemittances(tenantId as string, {
+                ...(search.filterParams as RemittanceListFilters),
+                page,
+                pageSize: limit
+              });
+              return { items: response.items, total: response.total };
+            })
+          }
+          loading={isFetching}
           columns={columns}
           dataSource={data?.items ?? []}
           scroll={{ x: 'max-content' }}
-          pagination={{
-            current: page,
-            pageSize: PAGE_SIZE,
-            total: data?.total ?? 0,
-            showSizeChanger: false,
-            onChange: next => setPage(next)
-          }}
-          locale={{ emptyText: t('Aucune remise de prélèvement') }}
+          pagination={search.tablePagination(total)}
+          // Sous critère, la Table affiche seule son bloc « Aucun résultat » + « Effacer les critères ».
+          locale={search.isFiltered ? undefined : { emptyText: t('Aucune remise de prélèvement') }}
         />
         <ReturnImportsHistory tenantId={tenantId as string} />
       </Space>

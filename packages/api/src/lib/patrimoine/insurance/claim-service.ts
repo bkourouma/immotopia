@@ -60,12 +60,22 @@ async function findClaimOrThrow(tenantId: string, claimId: string) {
 
 export async function listClaims(
   tenantId: string,
-  filters: { propertyId?: string; policyId?: string; status?: ClaimStatus; limit?: number }
+  filters: { propertyId?: string; policyId?: string; status?: ClaimStatus; search?: string; limit?: number }
 ): Promise<InsuranceClaimDto[]> {
   const where: Prisma.InsuranceClaimWhereInput = { tenantId };
   if (filters.propertyId) where.propertyId = filters.propertyId;
   if (filters.policyId) where.policyId = filters.policyId;
   if (filters.status) where.status = filters.status;
+  if (filters.search) {
+    const contains = { contains: filters.search, mode: 'insensitive' as const };
+    where.OR = [
+      { description: contains },
+      { property: { internalReference: contains } },
+      { property: { title: contains } },
+      { policy: { insurer: contains } },
+      { policy: { policyNumber: contains } }
+    ];
+  }
 
   const rows = await prisma.insuranceClaim.findMany({
     where,

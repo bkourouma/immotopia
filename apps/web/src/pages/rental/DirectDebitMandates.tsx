@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Alert, Input, Select, Space, Table } from 'antd';
+import { Alert, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useQuery } from '@tanstack/react-query';
-import { listCreditors, listMandates, MandateDto, MandateStatus } from '../../services/direct-debit-service';
-import { PageHeader, formatMoney } from '../../components/primitives';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { listCreditors, listMandates, MandateDto, MandateListFilters } from '../../services/direct-debit-service';
+import { PageHeader, Table, formatMoney } from '../../components/primitives';
 import {
   apiErrorMessage,
   formatDate,
@@ -13,32 +13,24 @@ import {
   MandateStatusTag
 } from '../../components/rental/direct-debit/direct-debit-shared';
 import { DirectDebitTabs } from '../../components/rental/direct-debit/DirectDebitTabs';
+import { useListSearch } from '../../hooks/useListSearch';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
-
-const PAGE_SIZE = 20;
 
 /**
  * Location › Prélèvements (spec 042, PB2) : tous les mandats de l'agence.
  * Les actions (activer, suspendre, révoquer…) se font depuis l'onglet
  * « Prélèvements » du bail, que chaque ligne ouvre.
+ *
+ * Recherche multicritères paginée par le serveur (guide recherche-listes.md) :
+ * `?q=…&status=ACTIVE&creditorId=…&signedFrom=…&page=2`. L'API nomme la taille
+ * de page `pageSize` et ne trie pas.
  */
 export const DirectDebitMandates: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
-  const [status, setStatus] = useState<MandateStatus | undefined>();
-  const [creditorId, setCreditorId] = useState<string | undefined>();
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    const handle = setTimeout(() => {
-      setSearch(searchInput.trim());
-      setPage(1);
-    }, 300);
-    return () => clearTimeout(handle);
-  }, [searchInput]);
-
+  // Créanciers de l'agence : liste courte (quelques lignes), chargée une fois.
   const { data: creditors = [] } = useQuery({
     queryKey: queryKey('direct-debit-creditors', tenantId),
     queryFn: () => listCreditors(tenantId as string),
@@ -46,13 +38,46 @@ export const DirectDebitMandates: React.FC = () => {
     staleTime: STALE_TIME.reference
   });
 
-  const filters = { status, creditorId, search, page, pageSize: PAGE_SIZE };
-  const { data, isPending, error } = useQuery({
-    queryKey: queryKey('direct-debit-mandates', tenantId, filters),
-    queryFn: () => listMandates(tenantId as string, filters),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
+  const search = useListSearch({
+    apiNames: { limit: 'pageSize', sort: false },
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Référence, débiteur, titulaire, bail…')
+      },
+      {
+        key: 'status',
+        type: 'select',
+        label: t('Statut'),
+        primary: true,
+        options: MANDATE_STATUSES.map(value => ({ value, label: mandateStatusLabel(value) }))
+      },
+      {
+        key: 'creditorId',
+        type: 'select',
+        label: t('Créancier'),
+        primary: true,
+        options: creditors.map(creditor => ({ value: creditor.id, label: creditor.label }))
+      },
+      {
+        key: 'signed',
+        type: 'dateRange',
+        label: t('Signé le'),
+        api: ['signedFrom', 'signedTo']
+      }
+    ]
   });
+
+  const { data, isFetching, error } = useQuery({
+    queryKey: queryKey('direct-debit-mandates', tenantId, search.apiParams),
+    queryFn: () => listMandates(tenantId as string, search.apiParams as MandateListFilters),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
+  });
+  const total = data?.total ?? 0;
 
   const columns: ColumnsType<MandateDto> = [
     { title: t('Référence'), dataIndex: 'reference', key: 'reference' },
@@ -92,55 +117,32 @@ export const DirectDebitMandates: React.FC = () => {
       <PageHeader title={t('Prélèvements')} subtitle={data ? `${data.total}` : undefined} />
       <DirectDebitTabs />
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
-        <Space wrap size={[12, 12]}>
-          <Input.Search
-            allowClear
-            value={searchInput}
-            onChange={event => setSearchInput(event.target.value)}
-            placeholder={t('Rechercher (référence, débiteur, titulaire)')}
-            style={{ minWidth: 260 }}
-          />
-          <Select
-            allowClear
-            placeholder={t('Statut')}
-            style={{ minWidth: 160 }}
-            value={status}
-            onChange={value => {
-              setStatus(value);
-              setPage(1);
-            }}
-            options={MANDATE_STATUSES.map(value => ({ value, label: mandateStatusLabel(value) }))}
-          />
-          <Select
-            allowClear
-            placeholder={t('Créancier')}
-            style={{ minWidth: 200 }}
-            value={creditorId}
-            onChange={value => {
-              setCreditorId(value);
-              setPage(1);
-            }}
-            options={creditors.map(creditor => ({ value: creditor.id, label: creditor.label }))}
-          />
-        </Space>
         {error && (
           <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement des mandats'))} />
         )}
         <Table<MandateDto>
+          aria-label={t('Mandats de prélèvement')}
           rowKey="id"
           size="middle"
-          loading={isPending}
+          search={search.searchProps}
+          exportFilename={t('Mandats de prélèvement')}
+          exportFetchAll={() =>
+            collectAllPages<MandateDto>(async (page, limit) => {
+              const response = await listMandates(tenantId as string, {
+                ...(search.filterParams as MandateListFilters),
+                page,
+                pageSize: limit
+              });
+              return { items: response.items, total: response.total };
+            })
+          }
+          loading={isFetching}
           columns={columns}
           dataSource={data?.items ?? []}
           scroll={{ x: 'max-content' }}
-          pagination={{
-            current: page,
-            pageSize: PAGE_SIZE,
-            total: data?.total ?? 0,
-            showSizeChanger: false,
-            onChange: next => setPage(next)
-          }}
-          locale={{ emptyText: t('Aucun mandat de prélèvement') }}
+          pagination={search.tablePagination(total)}
+          // Sous critère, la Table affiche seule son bloc « Aucun résultat » + « Effacer les critères ».
+          locale={search.isFiltered ? undefined : { emptyText: t('Aucun mandat de prélèvement') }}
         />
       </Space>
     </>

@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Select, Space, Typography, Empty, Spin, Tag, Button } from 'antd';
-import { EyeOutlined } from '@ant-design/icons';
+import { Space, Typography, Empty, Tag, Button } from 'antd';
 import { Table } from '../primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { TicketStatusBadge } from '../maintenance/TicketStatusBadge';
 import { propertyMaintenanceService } from '../../services/maintenance-service';
-import { Ticket, MaintenanceTicketStatus, MaintenanceTicketCategory } from '../../types/maintenance-types';
+import { Ticket, MaintenanceTicketStatus } from '../../types/maintenance-types';
 import { safeFormatDate } from '../../utils/date-utils';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
 
-const { Title, Text } = Typography;
-const { Option } = Select;
+const { Title } = Typography;
 
 const categoryLabels: Record<string, string> = localizedRecord(() => ({
   PLUMBING: 'Plomberie',
@@ -34,6 +34,20 @@ const priorityColors: Record<string, string> = {
   URGENT: 'error'
 };
 
+// Accesseurs de la recherche locale : constantes de module (identité stable).
+const TEXTE_RECHERCHE = [
+  (ticket: Ticket) => ticket.title,
+  (ticket: Ticket) => ticket.description,
+  (ticket: Ticket) => ticket.assignedVendor?.name,
+  (ticket: Ticket) => ticket.lease?.leaseNumber
+];
+const ACCESSEURS = {
+  status: (ticket: Ticket) => ticket.status,
+  category: (ticket: Ticket) => ticket.category,
+  priority: (ticket: Ticket) => ticket.priority,
+  created: (ticket: Ticket) => ticket.createdAt
+};
+
 interface PropertyMaintenanceTabProps {
   propertyId: string;
   tenantId: string;
@@ -43,23 +57,74 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
   const navigate = useNavigate();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({
-    status: undefined as MaintenanceTicketStatus | undefined,
-    category: undefined as MaintenanceTicketCategory | undefined
-  });
 
   useEffect(() => {
     if (tenantId && propertyId) {
       loadHistory();
     }
-  }, [tenantId, propertyId, filters]);
+  }, [tenantId, propertyId]);
+
+  // L'API rend tout l'historique du bien (volume borné) : la recherche est
+  // locale, pagination de 20 lignes, état dans l'URL sous le préfixe « mnt ».
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Titre, description, prestataire…')
+    },
+    {
+      key: 'status',
+      type: 'multiSelect',
+      label: t('Statut'),
+      primary: true,
+      options: [
+        { value: 'DECLARED', label: t('Déclaré') },
+        { value: 'IN_PROGRESS', label: t('En cours') },
+        { value: 'ASSIGNED', label: t('Assigné') },
+        { value: 'RESOLVED', label: t('Résolu') },
+        { value: 'CANCELED', label: t('Annulé') }
+      ]
+    },
+    {
+      key: 'category',
+      type: 'multiSelect',
+      label: t('Catégorie'),
+      primary: true,
+      options: [
+        { value: 'PLUMBING', label: t('Plomberie') },
+        { value: 'ELECTRICITY', label: t('Électricité') },
+        { value: 'AC', label: t('Climatisation') },
+        { value: 'OTHER', label: t('Autre') }
+      ]
+    },
+    {
+      key: 'priority',
+      type: 'multiSelect',
+      label: t('Priorité'),
+      options: [
+        { value: 'LOW', label: t('Faible') },
+        { value: 'MEDIUM', label: t('Moyenne') },
+        { value: 'HIGH', label: t('Élevée') },
+        { value: 'URGENT', label: t('Urgente') }
+      ]
+    },
+    { key: 'created', type: 'dateRange', label: t('Date de création') }
+  ];
+  const local = useLocalListSearch<Ticket>(tickets, {
+    paramPrefix: 'mnt',
+    ariaLabel: t('Rechercher dans la maintenance'),
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   const loadHistory = async () => {
     if (!tenantId || !propertyId) return;
 
     setLoading(true);
     try {
-      const response = await propertyMaintenanceService.getHistory(tenantId, propertyId, filters);
+      const response = await propertyMaintenanceService.getHistory(tenantId, propertyId);
       if (response.success) {
         setTickets(response.data);
       }
@@ -68,10 +133,6 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleFilterChange = (key: string, value: any) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
   };
 
   const columns = [
@@ -124,38 +185,6 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
           <Title level={5} className="it-toolbar__title" style={{ margin: 0 }}>
             {t('Historique de maintenance')}
           </Title>
-          <div className="it-toolbar__actions">
-            <Select
-              showSearch
-              optionFilterProp="children"
-              placeholder={t('Filtrer par statut')}
-              allowClear
-              style={{ width: 200 }}
-              value={filters.status}
-              onChange={value => handleFilterChange('status', value)}
-            >
-              <Option value="DECLARED">{t('Déclaré')}</Option>
-              <Option value="IN_PROGRESS">{t('En cours')}</Option>
-              <Option value="ASSIGNED">{t('Assigné')}</Option>
-              <Option value="RESOLVED">{t('Résolu')}</Option>
-              <Option value="CANCELED">{t('Annulé')}</Option>
-            </Select>
-
-            <Select
-              showSearch
-              optionFilterProp="children"
-              placeholder={t('Filtrer par catégorie')}
-              allowClear
-              style={{ width: 200 }}
-              value={filters.category}
-              onChange={value => handleFilterChange('category', value)}
-            >
-              <Option value="PLUMBING">{t('Plomberie')}</Option>
-              <Option value="ELECTRICITY">{t('Électricité')}</Option>
-              <Option value="AC">{t('Climatisation')}</Option>
-              <Option value="OTHER">{t('Autre')}</Option>
-            </Select>
-          </div>
         </div>
 
         {tickets.length === 0 && !loading ? (
@@ -166,11 +195,12 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
         ) : (
           <Table
             exportFilename={t('Historique de maintenance')}
+            {...local.tableProps}
+            exportFetchAll={local.exportAll}
+            aria-label={t('Historique de maintenance')}
             columns={columns}
-            dataSource={tickets}
             rowKey="id"
             loading={loading}
-            pagination={false}
             size="middle"
             // Six colonnes ne tiennent pas sous 992 px : le tableau defile
             // horizontalement plutot que de comprimer ses colonnes.

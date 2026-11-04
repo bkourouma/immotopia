@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, App, Button, Card, Empty, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Empty, Input, Modal, Select, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { CheckCircleOutlined } from '@ant-design/icons';
 import { PropertyVisit, PropertyVisitGoal, PropertyVisitStatus } from '../../types/property-types';
+import { Table } from '../primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { getPropertyVisits, updateVisitStatus, completePropertyVisit } from '../../services/property-service';
 import { writeErrorMessage } from '../../utils/error-handler';
 import { activeLocale } from '../../i18n/format';
@@ -72,6 +75,20 @@ const MANUAL_STATUSES = [
   PropertyVisitStatus.CANCELED
 ];
 
+// Accesseurs de la recherche locale : constantes de module (identité stable).
+const TEXTE_RECHERCHE = [
+  (v: PropertyVisit) => (v.contact ? `${v.contact.firstName} ${v.contact.lastName}` : undefined),
+  (v: PropertyVisit) => v.assignedTo?.fullName,
+  (v: PropertyVisit) => v.assignedTo?.email,
+  (v: PropertyVisit) => v.notes,
+  (v: PropertyVisit) => v.location
+];
+const ACCESSEURS = {
+  status: (v: PropertyVisit) => v.status,
+  goal: (v: PropertyVisit) => v.goal,
+  period: (v: PropertyVisit) => v.scheduledAt
+};
+
 export const PropertyVisitsList: React.FC<PropertyVisitsListProps> = ({ propertyId, tenantId, refreshKey }) => {
   const { message } = App.useApp();
   const [visits, setVisits] = useState<PropertyVisit[]>([]);
@@ -80,6 +97,38 @@ export const PropertyVisitsList: React.FC<PropertyVisitsListProps> = ({ property
   const [busyId, setBusyId] = useState<string | null>(null);
   const [closing, setClosing] = useState<PropertyVisit | null>(null);
   const [report, setReport] = useState('');
+
+  // L'API rend toutes les visites du bien (volume borné) : recherche locale,
+  // 20 lignes par page, état dans l'URL sous le préfixe « vis ».
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Contact, assigné à, notes…')
+    },
+    {
+      key: 'status',
+      type: 'multiSelect',
+      label: t('Statut'),
+      primary: true,
+      options: Object.values(PropertyVisitStatus).map(value => ({ value, label: visitStatusLabel(value) }))
+    },
+    { key: 'period', type: 'dateRange', label: t('Date de la visite'), primary: true },
+    {
+      key: 'goal',
+      type: 'multiSelect',
+      label: t('Objectif'),
+      options: Object.values(PropertyVisitGoal).map(value => ({ value, label: visitGoalLabel(value) }))
+    }
+  ];
+  const local = useLocalListSearch<PropertyVisit>(visits, {
+    paramPrefix: 'vis',
+    ariaLabel: t('Rechercher dans les visites'),
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -200,16 +249,23 @@ export const PropertyVisitsList: React.FC<PropertyVisitsListProps> = ({ property
     <Card title={t('Visites du bien')}>
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />}
       <Table<PropertyVisit>
+        {...local.tableProps}
+        exportFetchAll={local.exportAll}
+        exportFilename={t('Visites du bien')}
+        aria-label={t('Visites du bien')}
         rowKey="id"
         size="small"
         loading={loading}
         columns={columns}
-        dataSource={visits}
-        pagination={false}
         scroll={{ x: 'max-content' }}
-        locale={{
-          emptyText: <Empty description={t('Aucune visite pour ce bien')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
-        }}
+        // Sous critère, la Table affiche seule son bloc « Aucun résultat ».
+        locale={
+          local.isFiltered
+            ? undefined
+            : {
+                emptyText: <Empty description={t('Aucune visite pour ce bien')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              }
+        }
       />
       <Modal
         open={closing !== null}
