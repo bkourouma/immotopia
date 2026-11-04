@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigationType } from 'react-router-dom';
 import { useListParams } from '../../hooks/useListParams';
 
 /**
@@ -140,5 +140,101 @@ describe('useListParams — écriture dans l’URL', () => {
     expect(url).toContain('utm_source=whatsapp');
     expect(url).not.toContain('q=');
     expect(url).not.toContain('status=');
+  });
+});
+
+describe('useListParams — préfixe et remplacement', () => {
+  function Prefixed({ prefix, label }: { prefix: string; label: string }) {
+    const list = useListParams<F>({ filterKeys: FILTER_KEYS, paramPrefix: prefix, defaultPageSize: 10 });
+    return (
+      <div>
+        <span data-testid={`${label}-q`}>{list.filters.q ?? '(aucun)'}</span>
+        <span data-testid={`${label}-page`}>{list.page}</span>
+        <span data-testid={`${label}-size`}>{list.pageSize}</span>
+        <span data-testid={`${label}-sort`}>{list.sort ? `${list.sort.field}:${list.sort.order}` : '(aucun)'}</span>
+        <span data-testid={`${label}-query`}>{JSON.stringify(list.queryParams)}</span>
+        <button onClick={() => list.setFilters({ q: 'villa' })}>{`${label} filtrer`}</button>
+        <button onClick={() => list.setPage(1)}>{`${label} page 1`}</button>
+        <button onClick={() => list.setPage(2)}>{`${label} page 2`}</button>
+        <button onClick={() => list.setPageSize(10)}>{`${label} taille défaut`}</button>
+        <button onClick={() => list.setSort({ field: 'price', order: 'asc' })}>{`${label} trier`}</button>
+        <button onClick={list.clearFilters}>{`${label} effacer`}</button>
+      </div>
+    );
+  }
+
+  const Two = () => (
+    <>
+      <span data-testid="url2">{useLocation().search || '(vide)'}</span>
+      <Prefixed prefix="a" label="a" />
+      <Prefixed prefix="b" label="b" />
+    </>
+  );
+
+  it('lit les clés préfixées et expose filtres et queryParams non préfixés', () => {
+    at('?a.q=villa&a.page=3&a.limit=5&a.sort=price:desc&q=autre', <Two />);
+    expect(screen.getByTestId('a-q')).toHaveTextContent('villa');
+    expect(screen.getByTestId('a-page')).toHaveTextContent('3');
+    expect(screen.getByTestId('a-size')).toHaveTextContent('5');
+    expect(screen.getByTestId('a-sort')).toHaveTextContent('price:desc');
+    expect(JSON.parse(screen.getByTestId('a-query').textContent as string)).toEqual({
+      q: 'villa',
+      page: 3,
+      limit: 5,
+      sort: 'price:desc'
+    });
+    // L'autre instance ne voit rien de ce qui est préfixé « a. ».
+    expect(screen.getByTestId('b-q')).toHaveTextContent('(aucun)');
+  });
+
+  it('écrit en clés préfixées sans écraser l’autre instance', async () => {
+    const user = userEvent.setup();
+    at('', <Two />);
+    await user.click(screen.getByText('a filtrer'));
+    await user.click(screen.getByText('b page 2'));
+    const url = screen.getByTestId('url2').textContent as string;
+    expect(url).toContain('a.q=villa');
+    expect(url).toContain('b.page=2');
+    expect(screen.getByTestId('a-page')).toHaveTextContent('1');
+    expect(screen.getByTestId('b-page')).toHaveTextContent('2');
+  });
+
+  it('retire les valeurs par défaut des clés préfixées', async () => {
+    const user = userEvent.setup();
+    at('?a.page=2&a.limit=5', <Two />);
+    await user.click(screen.getByText('a page 1'));
+    expect(screen.getByTestId('url2').textContent).not.toContain('a.page');
+    await user.click(screen.getByText('a taille défaut'));
+    expect(screen.getByTestId('url2').textContent).not.toContain('a.limit');
+  });
+
+  it('clearFilters n’efface que les clés de son instance', async () => {
+    const user = userEvent.setup();
+    at('?a.q=x&b.q=y&utm=1', <Two />);
+    await user.click(screen.getByText('a effacer'));
+    const url = screen.getByTestId('url2').textContent as string;
+    expect(url).not.toContain('a.q');
+    expect(url).toContain('b.q=y');
+    expect(url).toContain('utm=1');
+  });
+
+  it('setFilters(…, { replace: true }) remplace l’entrée d’historique', async () => {
+    function Replace() {
+      const list = useListParams<F>({ filterKeys: FILTER_KEYS });
+      const navType = useNavigationType();
+      return (
+        <div>
+          <span data-testid="nav">{navType}</span>
+          <button onClick={() => list.setFilters({ q: 'a' }, { replace: true })}>remplacer</button>
+          <button onClick={() => list.setFilters({ q: 'b' })}>empiler</button>
+        </div>
+      );
+    }
+    const user = userEvent.setup();
+    at('', <Replace />);
+    await user.click(screen.getByText('remplacer'));
+    expect(screen.getByTestId('nav')).toHaveTextContent('REPLACE');
+    await user.click(screen.getByText('empiler'));
+    expect(screen.getByTestId('nav')).toHaveTextContent('PUSH');
   });
 });
