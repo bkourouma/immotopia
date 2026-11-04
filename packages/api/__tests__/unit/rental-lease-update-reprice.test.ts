@@ -16,6 +16,8 @@ jest.mock('../../src/lib/finance/ledger', () => ({
   appendThirdPartyMovementTx: jest.fn(async () => ({ id: 'mv' })),
   getOrCreateTenantAccountTx: jest.fn(async () => ({ id: 'acc-1' }))
 }));
+// Le contrôle de chevauchement a son propre test (lease-period-overlap.test.ts).
+jest.mock('../../src/lib/lease-lifecycle/period-overlap', () => ({ assertNoLeaseOverlapTx: jest.fn() }));
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(), recordAuditEvent: jest.fn() }));
 jest.mock('../../src/services/lot-registry-service', () => ({ syncLotActivationsTx: jest.fn() }));
 jest.mock('../../src/services/email-service', () => ({ emailService: {} }));

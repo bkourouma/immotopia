@@ -47,6 +47,32 @@ describe('parserMontant — français', () => {
   it('ignore les lettres', () => {
     expect(parserMontant('12abc3')).toBe('123');
   });
+
+  // Hypothèse H38 : plusieurs séparateurs, la forme du texte tranche.
+  it.each([
+    ['1.000.000', '1000000'],
+    ['1,000,000', '1000000'],
+    ['1.000.000,5', '1000000.5'],
+    ['1,234.56', '1234.56'],
+    ['1.234,56', '1234.56'],
+    ['1,234,567.5', '1234567.5'],
+    ['-1.250.000', '-1250000'],
+    ['1.000.', '1000'],
+    ['1.000.00', '100000']
+  ])('H38 : « %s » devient %s', (saisie, attendu) => {
+    expect(parserMontant(saisie)).toBe(attendu);
+  });
+
+  it('H38 : un seul séparateur garde la règle de la langue', () => {
+    expect(parserMontant('1.000')).toBe('1.00');
+    expect(parserMontant('1,234')).toBe('1.23');
+    expect(parserMontant('1000,5')).toBe('1000.5');
+  });
+
+  it('H38 : le collage « 1,234.56 » ne devient plus 1,23', () => {
+    expect(Number(parserMontant('1,234.56'))).toBe(1234.56);
+    expect(Number(parserMontant('1.000.000'))).toBe(1_000_000);
+  });
 });
 
 describe('formatterMontant — français', () => {
@@ -90,6 +116,8 @@ describe('anglais', () => {
     await i18next.changeLanguage('en');
     expect(parserMontant('1,000.5')).toBe('1000.5');
     expect(parserMontant('50,000,000')).toBe('50000000');
+    expect(parserMontant('1.000.000')).toBe('1000000');
+    expect(parserMontant('1.234,56')).toBe('1234.56');
     expect(parserMontant('2500.75')).toBe('2500.75');
     expect(formatterMontant(1000.5)).toBe('1,000.5');
     expect(formatterMontant(50000000)).toBe('50,000,000');
@@ -104,6 +132,8 @@ describe('arabe', () => {
     expect(parserMontant('١٠٠٠٫٥')).toBe('1000.5');
     expect(parserMontant('٢٬٥٠٠٫٧٥')).toBe('2500.75');
     expect(parserMontant('٥٠٬٠٠٠٬٠٠٠')).toBe('50000000');
+    expect(parserMontant('1,234.56')).toBe('1234.56');
+    expect(parserMontant('1.000.000')).toBe('1000000');
   });
 
   it('aller-retour avec ce que produit Intl', async () => {

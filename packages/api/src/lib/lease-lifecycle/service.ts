@@ -17,7 +17,9 @@ import { logger } from '../../utils/logger';
 import { updatePropertyStatus } from '../../services/property-status-service';
 import { runWithTenantContext } from '../../utils/tenant-context';
 import { effectiveRentAt } from './effective-rent';
+import { assertNoLeaseOverlapTx } from './period-overlap';
 import { t } from '../../i18n';
+import { auPlusDeuxDecimales } from '../../utils/montant';
 
 /**
  * Vie d'un bail : révision du loyer, renouvellement, avenant, résiliation, et
@@ -48,8 +50,8 @@ const MSG_DECIMALES = 'Le montant ne peut pas avoir plus de deux décimales.';
 const MSG_CHARGES_NEGATIVES = 'Les charges ne peuvent pas être négatives';
 // @i18n-keys
 const MSG_LOYER_POSITIF = 'Le loyer doit être supérieur à 0';
-/** Au plus deux décimales, tolérance flottante comprise. */
-const deuxDecimales = (value: number) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
+/** Au plus deux décimales (utilitaire commun `utils/montant`). */
+const deuxDecimales = auPlusDeuxDecimales;
 
 const money = z.coerce
   .number()
@@ -286,6 +288,7 @@ async function reprice(
     orderBy: { createdAt: 'asc' },
     select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
   });
+  let repriced = 0;
   for (const inst of targets) {
     const effective = effectiveRentAt(
       { rent_amount: rent, service_charge_amount: charges },
@@ -294,6 +297,16 @@ async function reprice(
     );
     const periodRent = effective.rent;
     const periodCharges = effective.charges;
+    // Une échéance dont le loyer EFFECTIF ne change pas (une révision existante
+    // l'emporte sur le loyer de base de la fiche) n'est ni écrite ni comptée :
+    // annoncer « N échéances recalculées » pour rien trompait l'utilisateur.
+    if (
+      roundMoney(periodRent) === roundMoney(Number(inst.amount_rent)) &&
+      roundMoney(periodCharges) === roundMoney(Number(inst.amount_service))
+    ) {
+      continue;
+    }
+    repriced++;
     const before = installmentTotal(inst);
     await tx.rentalInstallment.update({
       where: { id: inst.id, tenant_id: tenantId },
@@ -327,7 +340,7 @@ async function reprice(
       movementDate: inst.due_date
     } as any);
   }
-  return targets.length;
+  return repriced;
 }
 
 /**
@@ -487,6 +500,14 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
   const plannedPrice = priceChanges && renewalEffective.getTime() > Date.now();
 
   const result = await prisma.$transaction(async tx => {
+    // La fin repoussée (ou le bail terminé qui repart) ne doit pas empiéter sur un autre bail du bien (H39).
+    await assertNoLeaseOverlapTx(tx, {
+      tenantId,
+      propertyId: lease.property_id,
+      startDate: lease.start_date,
+      endDate: newEnd,
+      excludeLeaseId: leaseId
+    });
     const updatedLease = await tx.rentalLease.update({
       where: { id: leaseId, tenant_id: tenantId },
       data: {

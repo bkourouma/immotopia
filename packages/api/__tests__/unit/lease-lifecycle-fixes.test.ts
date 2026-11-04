@@ -73,6 +73,8 @@ const mockPrisma: Row = {
 jest.mock('../../src/utils/database', () => ({
   prisma: new Proxy({}, { get: (_t, prop) => (mockPrisma as any)[prop] })
 }));
+// Le contrôle de chevauchement a son propre test (lease-period-overlap.test.ts).
+jest.mock('../../src/lib/lease-lifecycle/period-overlap', () => ({ assertNoLeaseOverlapTx: jest.fn() }));
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(), recordAuditEvent: jest.fn() }));
 jest.mock('../../src/services/lot-registry-service', () => ({ syncLotActivationsTx: jest.fn() }));
 jest.mock('../../src/services/rental-installment-service', () => ({

@@ -21,6 +21,7 @@ import { t } from '../i18n';
 import { generateLeaseNumber, isLeaseNumberCollision } from './rental-lease-number';
 import { toRentalDocumentDto } from './rental-document-service';
 import { repriceUnstartedInstallmentsTx } from '../lib/lease-lifecycle/service';
+import { assertNoLeaseOverlapTx } from '../lib/lease-lifecycle/period-overlap';
 import { env } from '../config/env';
 
 /**
@@ -233,6 +234,14 @@ export async function createLease(
             user: result.user
           };
         }
+        // Un seul bail en cours par période et par bien (H39) : contrôlé ici, bien
+        // verrouillé, sans se fier au statut « Loué » du bien.
+        await assertNoLeaseOverlapTx(tx, {
+          tenantId,
+          propertyId: data.propertyId,
+          startDate: data.startDate,
+          endDate: data.endDate ?? null
+        });
         const createdLease = await tx.rentalLease.create({
           data: {
             tenant_id: tenantId,
@@ -855,8 +864,20 @@ export async function listLeases(
     where.primary_renter_client_id = filters.primaryRenterClientId;
   }
 
-  if (filters?.search) {
-    where.OR = [{ lease_number: { contains: filters.search, mode: 'insensitive' } }];
+  // Recherche « numéro, bien ou locataire » (le sélecteur de bail l'annonce ainsi) :
+  // numéro du bail, référence/titre/adresse du bien, nom ou e-mail du locataire
+  // principal. Insensible à la casse ; le filtre `tenant_id` ci-dessus reste en vigueur.
+  const search = filters?.search?.trim();
+  if (search) {
+    const contient = { contains: search, mode: 'insensitive' as const };
+    where.OR = [
+      { lease_number: contient },
+      { property: { title: contient } },
+      { property: { address: contient } },
+      { property: { internalReference: contient } },
+      { primaryRenter: { user: { fullName: contient } } },
+      { primaryRenter: { user: { email: contient } } }
+    ];
   }
 
   const page = pagination?.page || 1;
@@ -956,6 +977,19 @@ export async function updateLease(
     notes: data.notes !== undefined ? data.notes : undefined
   };
   const { lease, installmentsRepriced } = await prisma.$transaction(async tx => {
+    // Dates d'un bail en cours repoussées : elles ne doivent pas empiéter sur un autre bail du bien (H39).
+    if (
+      data.endDate !== undefined &&
+      (existingLease.status === RentalLeaseStatus.ACTIVE || existingLease.status === RentalLeaseStatus.SUSPENDED)
+    ) {
+      await assertNoLeaseOverlapTx(tx, {
+        tenantId,
+        propertyId: existingLease.property_id,
+        startDate: existingLease.start_date,
+        endDate: data.endDate,
+        excludeLeaseId: leaseId
+      });
+    }
     // Le dépôt déjà créé suit le montant du bail (BUG-2026-11-04-012). Fait avant
     // la mise à jour du bail pour que sa relation `deposit` relue porte la
     // nouvelle cible. Son statut (Complet / En attente) est dérivé du solde et de
@@ -1099,6 +1133,17 @@ export async function updateLeaseStatus(
   // Update status — activation ou fin du bail : decompte du logement (D1)
   // recalcule dans la meme transaction.
   const lease = await prisma.$transaction(async tx => {
+    // Activation d'un brouillon ou reprise d'un bail suspendu : la période ne doit
+    // pas empiéter sur un autre bail en cours du bien (H39).
+    if (newStatus === RentalLeaseStatus.ACTIVE) {
+      await assertNoLeaseOverlapTx(tx, {
+        tenantId,
+        propertyId: existingLease.property_id,
+        startDate: existingLease.start_date,
+        endDate: existingLease.end_date,
+        excludeLeaseId: leaseId
+      });
+    }
     const updatedLease = await tx.rentalLease.update({
       where: {
         id: leaseId,

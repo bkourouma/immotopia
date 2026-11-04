@@ -25,6 +25,8 @@ jest.mock('../../src/utils/database', () => ({
   }
 }));
 
+// Le contrôle de chevauchement a son propre test (lease-period-overlap.test.ts).
+jest.mock('../../src/lib/lease-lifecycle/period-overlap', () => ({ assertNoLeaseOverlapTx: jest.fn() }));
 jest.mock('../../src/lib/subscription/enforcement', () => ({ getSubscriptionEnforcement: () => 'off' }));
 jest.mock('../../src/services/subscription-v2-service', () => ({
   getEntitlements: jest.fn(async () => ({ ownAssetsOnly: false }))

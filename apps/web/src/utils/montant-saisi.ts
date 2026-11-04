@@ -77,11 +77,21 @@ function chiffresLatins(texte: string): string {
 }
 
 /**
+ * Un même séparateur répété est un séparateur de milliers quand les groupes qu'il
+ * ouvre en comptent trois chiffres (« 1.000.000 », « 1,000,000 »), le dernier
+ * pouvant être en cours de frappe. « 1,2,3 » n'en a pas la forme : règle de la langue.
+ */
+function ressembleAuxMilliers(texte: string, separateur: string): boolean {
+  const groupes = texte.replace(new RegExp('[\\s\\u00a0\\u202f-]', 'g'), '').split(separateur).slice(1);
+  return groupes.every((groupe, i) => (i === groupes.length - 1 ? groupe.length <= 3 : groupe.length === 3));
+}
+
+/**
  * Texte saisi (ou posé par le formateur) vers `[-]chiffres[.décimales]`, sans
  * mise en forme. Garde les états transitoires : `''`, `'-'`, `'1000.'` (virgule
  * tapée, décimales à venir).
  */
-function normaliser(saisie: string): string {
+function normaliser(saisie: string, maxDecimales: number = MAX_DECIMALES): string {
   const { groupe, decimal } = separateurs();
   const texte = chiffresLatins(saisie).replace(/[−‒–]/g, '-');
 
@@ -92,16 +102,39 @@ function normaliser(saisie: string): string {
   decimales.delete(groupe);
   decimales.add(decimal);
 
+  // Hypothèse H38 : quand le texte porte PLUSIEURS séparateurs (collage, ou
+  // « 1.000.000 »), la langue ne tranche plus, la forme du texte le fait :
+  //   - `,` et `.` ensemble : le plus à droite est la décimale, les autres
+  //     sont des milliers (« 1,234.56 » = 1234,56 ; « 1.234,56 » aussi) ;
+  //   - un même séparateur répété : ce sont des milliers (« 1.000.000 » = un million) ;
+  //   - un seul séparateur : règle de la langue ci-dessus (BUG-2026-11-03-025).
+  const caracteres = Array.from(texte);
+  const positionsSeparateurs = caracteres.flatMap((c, i) => (c === '.' || c === ',' || c === '٫' ? [i] : []));
+  const typesSeparateurs = new Set(positionsSeparateurs.map(i => caracteres[i]));
+  let positionDecimale: number | null | undefined; // undefined : règle de la langue
+  if (typesSeparateurs.size >= 2) positionDecimale = positionsSeparateurs[positionsSeparateurs.length - 1];
+  else if (positionsSeparateurs.length > 1 && ressembleAuxMilliers(texte, [...typesSeparateurs][0])) {
+    positionDecimale = null;
+  }
+
   let resultat = '';
   let negatif = false;
   let aVirgule = false;
   let apres = 0;
-  for (const caractere of texte) {
+  for (let index = 0; index < caracteres.length; index += 1) {
+    const caractere = caracteres[index];
+    if (positionDecimale !== undefined && positionsSeparateurs.includes(index)) {
+      if (index === positionDecimale && !aVirgule) {
+        aVirgule = true;
+        resultat += resultat === '' ? '0.' : '.';
+      }
+      continue;
+    }
     if (caractere === '-') {
       if (resultat === '') negatif = true;
     } else if (caractere >= '0' && caractere <= '9') {
       if (!aVirgule) resultat += caractere;
-      else if (apres < MAX_DECIMALES) {
+      else if (apres < maxDecimales) {
         resultat += caractere;
         apres += 1;
       }
@@ -121,7 +154,11 @@ interface InfosFormatter {
 }
 
 /** Transforme un montant (ou un état de saisie en cours) en texte regroupé. */
-export function formatterMontant(value: number | string | undefined, info?: InfosFormatter): string {
+export function formatterMontant(
+  value: number | string | undefined,
+  info?: InfosFormatter,
+  maxDecimales: number = MAX_DECIMALES
+): string {
   if (value === undefined || value === null || value === '') return '';
 
   // Pendant la frappe, le texte tapé fait foi : `value` est déjà passé par
@@ -133,7 +170,7 @@ export function formatterMontant(value: number | string | undefined, info?: Info
     return Number(source).toLocaleString(activeLocale());
   }
 
-  const normalise = normaliser(source);
+  const normalise = normaliser(source, maxDecimales);
 
   // Rien d'exploitable encore (`-` seul au début d'un montant négatif, ou
   // tout autre état non numérique) : on renvoie la saisie plutôt que d'effacer
@@ -154,9 +191,23 @@ export function formatterMontant(value: number | string | undefined, info?: Info
  * formateur a pu poser (espaces normales, insécables, séparateur de milliers de
  * la langue) et le séparateur décimal de la langue — ou le point.
  */
-export function parserMontant(value: string | undefined): string {
+export function parserMontant(value: string | undefined, maxDecimales: number = MAX_DECIMALES): string {
   if (value === undefined) return '';
-  return normaliser(value);
+  return normaliser(value, maxDecimales);
+}
+
+/**
+ * Paire `formatter`/`parser` pour un nombre à `maxDecimales` décimales au plus.
+ * Le parseur garde la virgule saisie : « 5,5 » reste 5,5 (et non 55), pour qu'un
+ * contrôle en aval puisse le refuser au lieu de le convertir en silence. Un taux
+ * à quatre décimales : `saisieNombreProps(4)` ; un entier à contrôler : `(2)`.
+ */
+export function saisieNombreProps(maxDecimales: number) {
+  return {
+    formatter: (value: number | string | undefined, info?: InfosFormatter) =>
+      formatterMontant(value, info, maxDecimales),
+    parser: (value: string | undefined) => parserMontant(value, maxDecimales)
+  };
 }
 
 /** Prêt à étaler sur un `<InputNumber>` de montant : `<InputNumber {...montantSaisiProps} ... />`. */
