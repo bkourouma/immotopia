@@ -32,11 +32,6 @@ interface DepositMovement {
     id: string;
     period: string;
   } | null;
-  createdBy: {
-    id: string;
-    fullName: string | null;
-    email: string;
-  } | null;
 }
 
 interface DepositInfoData {
@@ -322,15 +317,6 @@ export default function TenantDeposit() {
                 dataIndex: 'note',
                 key: 'note',
                 render: (note: string | null) => note || '-'
-              },
-              {
-                title: t('Créé par'),
-                dataIndex: ['createdBy', 'fullName'],
-                key: 'createdBy',
-                render: (fullName: string | null, record: DepositMovement) => {
-                  if (!record.createdBy) return '-';
-                  return record.createdBy.fullName || record.createdBy.email;
-                }
               }
             ]}
             dataSource={movements}

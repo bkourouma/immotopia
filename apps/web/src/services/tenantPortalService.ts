@@ -25,9 +25,12 @@ export const tenantPortalService = {
   getPaymentHistory: (params?: { startDate?: string; endDate?: string; method?: string }) =>
     api.get('/portal/tenant/payments', { params }),
 
-  declarePayment: (data: FormData) =>
+  // `leaseId` (paramètre d'URL lu par l'API) désigne le bail quand le paiement n'est
+  // rattaché à aucune échéance et que le locataire a plusieurs baux actifs.
+  declarePayment: (data: FormData, leaseId?: string) =>
     api.post('/portal/tenant/payments/declare', data, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params: leaseId ? { leaseId } : undefined
     }),
 
   // Deposit

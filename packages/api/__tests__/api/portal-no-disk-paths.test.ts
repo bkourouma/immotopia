@@ -239,8 +239,42 @@ describe('portail locataire — aucune réponse ne porte de chemin disque', () =
       amount_other_fees: 0,
       penalty_amount: 5000,
       amount_paid: 40000,
-      items: [],
-      payments: [],
+      invoice_id: 'invoice-interne',
+      items: [
+        {
+          id: id(56),
+          tenant_id: TENANT_A,
+          installment_id: INSTALLMENT,
+          charge_type: 'RENT',
+          label: 'Loyer',
+          amount: 100000,
+          currency: 'FCFA',
+          metadata: { source: 'interne' },
+          created_at: new Date('2026-04-01')
+        }
+      ],
+      payments: [
+        {
+          id: id(57),
+          tenant_id: TENANT_A,
+          payment_id: id(53),
+          installment_id: INSTALLMENT,
+          amount: 40000,
+          currency: 'FCFA',
+          created_at: new Date('2026-04-10'),
+          payment: {
+            id: id(53),
+            amount: 40000,
+            method: 'MOBILE_MONEY',
+            status: 'SUCCESS',
+            currency: 'FCFA',
+            initiated_at: new Date('2026-04-10'),
+            succeeded_at: new Date('2026-04-10'),
+            psp_reference: 'REF-1',
+            psp_transaction_id: 'TX-INTERNE'
+          }
+        }
+      ],
       penalties: [
         {
           id: id(52),
@@ -281,6 +315,24 @@ describe('portail locataire — aucune réponse ne porte de chemin disque', () =
     expect(penalty).toMatchObject({ id: id(52), amount: 5000, days_late: 10 });
     expect(penalty).not.toHaveProperty('override_reason');
     expect(penalty).not.toHaveProperty('created_by_user_id');
+
+    // Échéance, lignes et affectations : `select` explicite, aucun champ interne.
+    expect(data.installment).not.toHaveProperty('tenant_id');
+    expect(data.installment).not.toHaveProperty('invoice_id');
+    expect(data.installment.items[0]).toMatchObject({
+      id: id(56),
+      charge_type: 'RENT',
+      label: 'Loyer',
+      amount: 100000
+    });
+    for (const key of ['tenant_id', 'installment_id', 'metadata']) {
+      expect(data.installment.items[0]).not.toHaveProperty(key);
+    }
+    expect(data.installment.payments[0]).toMatchObject({ id: id(57), amount: 40000, currency: 'FCFA' });
+    for (const key of ['tenant_id', 'payment_id', 'installment_id']) {
+      expect(data.installment.payments[0]).not.toHaveProperty(key);
+    }
+    expect(data.installment.payments[0].payment).not.toHaveProperty('psp_transaction_id');
     const related = data.relatedPayments[0];
     expect(related).toMatchObject({ id: id(53), amount: 40000 });
     for (const key of [

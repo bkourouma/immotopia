@@ -72,7 +72,27 @@ function installmentRemaining(inst: {
   return installmentTotal(inst) - Math.max(fromAllocations, Number(inst.amount_paid || 0));
 }
 
-/** Un identifiant qui n'a pas la forme d'un UUID ne désigne rien : 404, jamais une erreur de base. */
+/**
+ * Colonnes d'une ligne d'échéance exposées au portail : ni `tenant_id`, ni
+ * `metadata`, ni `installment_id`.
+ */
+const PORTAL_ITEM_SELECT = {
+  id: true,
+  charge_type: true,
+  label: true,
+  amount: true,
+  currency: true,
+  created_at: true
+} as const;
+
+/** Colonnes d'une affectation exposées au portail : ni `tenant_id`, ni `payment_id`, ni `installment_id`. */
+const PORTAL_ALLOCATION_SELECT = {
+  id: true,
+  amount: true,
+  currency: true,
+  created_at: true
+} as const;
+
 /** « •••• 1234 » : seuls les 4 derniers chiffres d'un numéro (H34). */
 function maskPhoneTail(phone: string | null | undefined): string | null {
   const digits = (phone ?? '').replace(/\D/g, '');
@@ -80,6 +100,7 @@ function maskPhoneTail(phone: string | null | undefined): string | null {
   return `•••• ${digits.slice(-4)}`;
 }
 
+/** Un identifiant qui n'a pas la forme d'un UUID ne désigne rien : 404, jamais une erreur de base. */
 function assertKnownId(id: string | undefined, message: string): string {
   if (!id || !isUuid(id)) {
     throw new NotFoundError(message);
@@ -242,7 +263,6 @@ export class TenantPortalService {
         }
       });
 
-      const todayStart = today;
       let currentBalance = 0;
       let overdueInstallmentsCount = 0;
       const perLease = new Map<string, { balance: number; overdue: number }>();
@@ -252,7 +272,7 @@ export class TenantPortalService {
         currentBalance += remaining;
         const dueDate = new Date(inst.due_date);
         dueDate.setHours(0, 0, 0, 0);
-        const late = inst.status === RentalInstallmentStatus.OVERDUE || dueDate < todayStart;
+        const late = inst.status === RentalInstallmentStatus.OVERDUE || dueDate < today;
         if (late) {
           overdueInstallmentsCount++;
         }
@@ -614,10 +634,11 @@ export class TenantPortalService {
         prisma.rentalInstallment.findMany({
           where,
           include: {
-            items: true,
+            items: { select: PORTAL_ITEM_SELECT, orderBy: { created_at: 'asc' } },
             lease: { select: { lease_number: true } },
             payments: {
-              include: {
+              select: {
+                ...PORTAL_ALLOCATION_SELECT,
                 payment: {
                   select: {
                     id: true,
@@ -843,14 +864,30 @@ export class TenantPortalService {
           lease_id: { in: leaseIds && leaseIds.length > 0 ? leaseIds : [leaseId] },
           tenant_id: tenantId
         },
-        include: {
+        // `select` explicite : ni `tenant_id`, ni `invoice_id`, ni `metadata` des lignes.
+        select: {
+          id: true,
+          lease_id: true,
+          period_year: true,
+          period_month: true,
+          due_date: true,
+          status: true,
+          currency: true,
+          amount_rent: true,
+          amount_service: true,
+          amount_other_fees: true,
+          penalty_amount: true,
+          amount_paid: true,
+          paid_at: true,
           items: {
+            select: PORTAL_ITEM_SELECT,
             orderBy: {
               created_at: 'asc'
             }
           },
           payments: {
-            include: {
+            select: {
+              ...PORTAL_ALLOCATION_SELECT,
               payment: {
                 select: {
                   id: true,
@@ -860,8 +897,7 @@ export class TenantPortalService {
                   currency: true,
                   initiated_at: true,
                   succeeded_at: true,
-                  psp_reference: true,
-                  psp_transaction_id: true
+                  psp_reference: true
                 }
               }
             },
@@ -1657,8 +1693,8 @@ export class TenantPortalService {
                 id: movement.installment.id,
                 period: `${movement.installment.period_year}-${String(movement.installment.period_month).padStart(2, '0')}`
               }
-            : null,
-          createdBy: movement.createdBy
+            : null
+          // `createdBy` (id, e-mail et nom de l'agent) n'est pas destiné au locataire.
         })),
         currentHeldAmount
       };

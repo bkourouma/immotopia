@@ -41,8 +41,31 @@ export default function PaymentDeclarationModal({
   // Vrai tant qu'un caractère invalide a été tapé dans le montant : la validation
   // le refuse même si la suite de la saisie (« 1e9 » → « 19 ») redevient numérique.
   const caractereRefuse = useRef(false);
+  // Le drapeau ne retombe que quand le champ est vidé : le message le dit.
   const messageCaractere = () =>
-    t('Le montant ne doit contenir que des chiffres et une virgule (2 décimales au plus).');
+    `${t('Le montant ne doit contenir que des chiffres et une virgule (2 décimales au plus).')} ${t(
+      'Caractère refusé : effacez le montant puis saisissez-le de nouveau.'
+    )}`;
+
+  // Plusieurs baux actifs et aucune échéance visée : le bail doit être choisi.
+  const [leases, setLeases] = useState<Array<{ id: string; leaseNumber: string; propertyAddress?: string }>>([]);
+  useEffect(() => {
+    if (!open || installmentId) return;
+    let annule = false;
+    (async () => {
+      try {
+        const response = await tenantPortalService.getLeases();
+        if (!annule) setLeases(Array.isArray(response?.data?.data) ? response.data.data : []);
+      } catch {
+        // Sans liste, la fenêtre se comporte comme pour un seul bail : le serveur retient le bail par défaut.
+        if (!annule) setLeases([]);
+      }
+    })();
+    return () => {
+      annule = true;
+    };
+  }, [open, installmentId]);
+  const doitChoisirUnBail = !installmentId && leases.length > 1;
 
   /** Une touche qui n'est ni un chiffre, ni un séparateur, ni un signe est refusée avec un message (jamais ignorée en silence). */
   const refuserCaractereInvalide = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -81,7 +104,7 @@ export default function PaymentDeclarationModal({
         formData.append('proof', fileList[0].originFileObj);
       }
 
-      await tenantPortalService.declarePayment(formData);
+      await tenantPortalService.declarePayment(formData, doitChoisirUnBail ? values.leaseId : undefined);
 
       message.success({
         content: t("Déclaration de paiement créée avec succès. Elle est en attente d'approbation par le gestionnaire."),
@@ -168,6 +191,24 @@ export default function PaymentDeclarationModal({
           // ouverture par l'effet ci-dessus (BUG-2026-11-04-052).
         }}
       >
+        {doitChoisirUnBail && (
+          <Form.Item
+            label={t('Bail concerné')}
+            name="leaseId"
+            rules={[{ required: true, message: t('Le bail concerné est requis') }]}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder={t('Sélectionner le bail')}
+              options={leases.map(bail => ({
+                value: bail.id,
+                label: bail.propertyAddress ? `${bail.leaseNumber} — ${bail.propertyAddress}` : bail.leaseNumber
+              }))}
+            />
+          </Form.Item>
+        )}
+
         <Form.Item
           label={t('Montant')}
           name="amount"
