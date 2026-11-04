@@ -363,3 +363,10 @@ describe('paginate', () => {
     expect(paginate([], 3, 10)).toEqual({ items: [], page: 1 });
   });
 });
+
+describe('normalizeText — arabe', () => {
+  it('retire les diacritiques arabes (tachkîl)', () => {
+    expect(normalizeText('مُحَمَّد')).toBe(normalizeText('محمد'));
+    expect(normalizeText('مُحَمَّد')).toContain('محمد');
+  });
+});

@@ -340,3 +340,141 @@ describe('useListSearch — props dérivées', () => {
     expect(latest.apiParams).not.toBe(first.apiParams); // la page a changé
   });
 });
+
+describe('useListSearch — fermetures à jour', () => {
+  function Dyn({ tenant, factor }: { tenant: string; factor: number }) {
+    const search = useListSearch({
+      criteria: [
+        {
+          key: 'bien',
+          type: 'select',
+          label: 'Bien',
+          loadOptions: async q => [{ value: `${tenant}-${q}`, label: tenant }],
+          resolveLabel: v => `${tenant}:${v}`
+        },
+        { key: 'n', type: 'text', label: 'N', placeholder: 'n', api: false },
+        {
+          key: 'm',
+          type: 'select',
+          label: 'M',
+          options: OPTIONS,
+          api: v => ({ calc: Number(factor) * String(v).length })
+        }
+      ]
+    });
+    latest = search;
+    return <span data-testid="api">{JSON.stringify(search.apiParams)}</span>;
+  }
+
+  it('loadOptions / resolveLabel exposés lisent la fermeture courante, avec une identité stable', async () => {
+    const view = render(
+      <MemoryRouter initialEntries={['/l?bien=x&m=A']}>
+        <Dyn tenant="A" factor={1} />
+      </MemoryRouter>
+    );
+    const firstCriterion = latest.searchProps.criteria[0] as Extract<SearchCriterion, { type: 'select' }>;
+    const firstLoad = firstCriterion.loadOptions;
+    expect(await firstLoad?.('z')).toEqual([{ value: 'A-z', label: 'A' }]);
+
+    view.rerender(
+      <MemoryRouter initialEntries={['/l?bien=x&m=A']}>
+        <Dyn tenant="B" factor={5} />
+      </MemoryRouter>
+    );
+    const next = latest.searchProps.criteria[0] as Extract<SearchCriterion, { type: 'select' }>;
+    expect(next.loadOptions).toBe(firstLoad);
+    expect(await next.loadOptions?.('z')).toEqual([{ value: 'B-z', label: 'B' }]);
+    expect(next.resolveLabel?.('x')).toBe('B:x');
+    // `api` fonction : recalculée avec l'état courant.
+    expect(json('api').calc).toBe(5);
+  });
+});
+
+describe('useListSearch — options statiques et URL', () => {
+  it('ignore une valeur d’URL absente des options statiques (select et multiSelect)', () => {
+    at('?statut=BOGUS&types=A,ZZ');
+    expect(json('values').statut).toBeUndefined();
+    expect(json('values').types).toEqual(['A']);
+    expect(json('filter')).toEqual({ types: 'A' });
+  });
+
+  it('un tableau d’options vide ne filtre rien, puis filtre une fois les options arrivées', () => {
+    const make = (options: { value: string; label: string }[]): SearchCriterion[] => [
+      { key: 'statut', type: 'select', label: 'Statut', options }
+    ];
+    const view = render(
+      <MemoryRouter initialEntries={['/l?statut=A']}>
+        <Probe criteria={make([])} />
+      </MemoryRouter>
+    );
+    expect(json('values').statut).toBe('A');
+    view.rerender(
+      <MemoryRouter initialEntries={['/l?statut=A']}>
+        <Probe criteria={make([{ value: 'B', label: 'Bravo' }])} />
+      </MemoryRouter>
+    );
+    expect(json('values').statut).toBeUndefined();
+    view.rerender(
+      <MemoryRouter initialEntries={['/l?statut=A']}>
+        <Probe criteria={make(OPTIONS)} />
+      </MemoryRouter>
+    );
+    expect(json('values').statut).toBe('A');
+  });
+
+  it('avec loadOptions, la valeur d’URL est conservée', () => {
+    const criteria: SearchCriterion[] = [
+      { key: 'statut', type: 'select', label: 'Statut', options: OPTIONS, loadOptions: async () => [] }
+    ];
+    at('?statut=BOGUS', <Probe criteria={criteria} />);
+    expect(json('values').statut).toBe('BOGUS');
+  });
+});
+
+describe('useListSearch — ariaLabel et clampPage', () => {
+  it('ariaLabel est reporté dans searchProps', () => {
+    at('', <Probe extra={{ ariaLabel: 'Rechercher un bien' }} />);
+    expect(latest.searchProps['aria-label']).toBe('Rechercher un bien');
+  });
+
+  it('sans ariaLabel, searchProps n’a pas de clé aria-label', () => {
+    at('');
+    expect('aria-label' in latest.searchProps).toBe(false);
+  });
+
+  it('clampPage ramène à la dernière page sans empiler d’historique', async () => {
+    at('?page=9&limit=10');
+    await act(() => latest.clampPage?.(25));
+    expect(url()).toBe('?page=3&limit=10');
+    expect(screen.getByTestId('nav').textContent).toBe('REPLACE');
+  });
+
+  it('clampPage ne fait rien si total = 0 ou si la page est valide', async () => {
+    at('?page=9');
+    await act(() => latest.clampPage?.(0));
+    expect(url()).toBe('?page=9');
+    await act(() => latest.clampPage?.(1000));
+    expect(url()).toBe('?page=9');
+  });
+});
+
+describe('useListSearch — signature d’affichage', () => {
+  it('un changement de placeholder ou d’aide met à jour les critères exposés', () => {
+    const make = (placeholder: string, help: string): SearchCriterion[] => [
+      { key: 'q', type: 'text', label: 'Recherche', placeholder, help }
+    ];
+    const view = render(
+      <MemoryRouter>
+        <Probe criteria={make('a', 'h1')} />
+      </MemoryRouter>
+    );
+    const first = latest.criteria;
+    view.rerender(
+      <MemoryRouter>
+        <Probe criteria={make('a', 'h2')} />
+      </MemoryRouter>
+    );
+    expect(latest.criteria).not.toBe(first);
+    expect(latest.criteria[0].help).toBe('h2');
+  });
+});
