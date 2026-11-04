@@ -610,7 +610,14 @@ export class TenantPortalService {
         } else if (calculatedStatus === RentalInstallmentStatus.OVERDUE) {
           overdueCount++;
         } else if (calculatedStatus === RentalInstallmentStatus.PARTIAL) {
+          // Même règle que l'accueil (BUG-2026-11-03-005) : une partielle échue
+          // est en retard, sinon en attente — chaque échéance tombe dans une carte.
           partialCount++;
+          if (dueDate < today) {
+            overdueCount++;
+          } else {
+            dueCount++;
+          }
         }
       }
 

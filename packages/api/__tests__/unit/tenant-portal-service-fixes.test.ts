@@ -168,3 +168,38 @@ describe('historique — motif de rejet (BUG-2026-11-03-008)', () => {
     expect(byId).toEqual({ r: 'Justificatif illisible', p: null });
   });
 });
+
+describe('liste des échéances — cartes de synthèse et Partielle (BUG-2026-11-03-005, suite)', () => {
+  it('range chaque échéance dans une carte : partielle échue = retard, partielle à venir = attente', async () => {
+    const rows = [
+      { ...base, id: 'paid', status: 'PAID', due_date: daysFromNow(-60), amount_rent: 100_000, amount_paid: 100_000 },
+      {
+        ...base,
+        id: 'late-partial',
+        status: 'PARTIAL',
+        due_date: daysFromNow(-30),
+        amount_rent: 480_000,
+        penalty_amount: 12_000,
+        amount_paid: 240_000
+      },
+      {
+        ...base,
+        id: 'soon-partial',
+        status: 'PARTIAL',
+        due_date: daysFromNow(5),
+        amount_rent: 100_000,
+        amount_paid: 40_000
+      },
+      { ...base, id: 'due', status: 'DUE', due_date: daysFromNow(10), amount_rent: 100_000 }
+    ];
+    prismaMock.rentalInstallment.findMany.mockResolvedValue(rows);
+    prismaMock.rentalInstallment.count.mockResolvedValue(4);
+
+    const { summary } = await service.getInstallments('c', 'l', 't');
+
+    expect(summary.overdue).toBe(1);
+    expect(summary.due).toBe(2);
+    expect(summary.paid).toBe(1);
+    expect(summary.paid + summary.due + summary.overdue).toBe(summary.total);
+  });
+});
