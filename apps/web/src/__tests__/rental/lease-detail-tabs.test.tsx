@@ -128,6 +128,15 @@ describe('withTabLifecycle', () => {
     expect(items[0].destroyOnHidden).toBe(true);
     expect(items[1].destroyOnHidden).toBe(false);
   });
+
+  it('garde aussi monté l’onglet des états des lieux (formulaire d’édition en ligne)', () => {
+    const items = withTabLifecycle<{ key: string; destroyOnHidden?: boolean }>([
+      { key: 'payments' },
+      { key: 'inspections' }
+    ]);
+    expect(items[0].destroyOnHidden).toBe(true);
+    expect(items[1].destroyOnHidden).toBe(false);
+  });
 });
 
 describe('Fiche du bail : onglets paresseux', () => {

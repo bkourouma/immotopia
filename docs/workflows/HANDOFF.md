@@ -17,6 +17,29 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## orch/2026-11-03-ux-recherche — recherche multicritères et ergonomie (2026-11-04)
+
+**État :** chantier arrêté le 2026-11-04 vers 21 h à la demande de l'utilisateur, pour être repris par une autre IA. Détail complet et autonome : [HANDOFF-ux-recherche.md](HANDOFF-ux-recherche.md).
+
+**Fait :** 16 fusions de lots dans `orch/2026-11-03-ux-recherche` (poussée). Les lots sont 0 (fondation `ListSearch`), C (comptabilité agence), DIV, POR, FIN-B, FIN-A, LOC, SYN-A, PAT et RET. Typecheck web et API : 0 erreur. Architecture verte.
+
+**Reste :**
+
+- SYN-B (`…-lot-syn-b`, wip) : à finir et vérifier.
+- JOK (`…-lot-jok`, wip) : finir la phase 1, faire la phase 2 après SYN-B.
+- PERF (`…-lot-perf`, wip, facultatif) : à finir ou abandonner.
+- Lot Z : traductions en/ar, `ai:catalog`, classeur des fonctionnalités, docs.
+- Vérification complète, relecture de code et de sécurité, PR vers `main`. La fusion revient à l'utilisateur.
+
+**Pièges :**
+
+- Jest : toujours `--forceExit`.
+- Les tests jsdom lents expirent sous charge : relancer le fichier seul avant de conclure.
+- Prisma `contains` n'échappe pas `%` ni `_`.
+- La PR #193 touche les mêmes fichiers.
+
+**Branche :** `orch/2026-11-03-ux-recherche` @ `c1249d5a` (dernier commit fonctionnel, avant cette passation). Base `main` @ `6be7f91a`.
+
 ## État des lieux (pilote) — 2026-10-31
 
 **État :** constat, puis mise en application des PR ouvertes (planning du 2026-10-31) : #175 et #191 fusionnées par l'utilisateur, staging puis production déployés sur `dd5b61c3` ; restent les actions de l'étape 5. Le classifieur du mode auto refuse `gh pr merge` à l'agent (« Merge Without Review ») : les fusions restent à l'utilisateur.

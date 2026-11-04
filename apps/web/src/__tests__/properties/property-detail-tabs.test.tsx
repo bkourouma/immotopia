@@ -123,7 +123,7 @@ describe('switchPropertyTab', () => {
   it('retire les clés des autres onglets, garde le reste et pose le nouvel onglet', () => {
     const suivant = switchPropertyTab(
       new URLSearchParams(
-        'onglet=lots&lot.q=a&mnt.page=2&vis.q=x&sin.q=1&val.q=1&dep.q=1&cre.q=1&trv.q=1&doc.q=1&rubrique=x&autre=1'
+        'onglet=lots&lot.q=a&mnt.page=2&vis.q=x&sin.q=1&val.q=1&dep.q=1&cre.q=1&trv.q=1&doc.q=1&pdoc.q=1&rubrique=x&autre=1'
       ),
       'maintenance'
     );

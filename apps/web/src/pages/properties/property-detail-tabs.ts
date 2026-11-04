@@ -16,7 +16,8 @@ export const PROPERTY_TAB_PARAM_PREFIXES: readonly string[] = [
   'dep.',
   'cre.',
   'trv.',
-  'doc.'
+  'doc.',
+  'pdoc.'
 ];
 
 /** Clés isolées posées par un onglet (rubrique de l'onglet patrimoine). */

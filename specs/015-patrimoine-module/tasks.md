@@ -93,6 +93,7 @@
 - [ ] T033 [US2] Etendre les routes property avec endpoints patrimoine dans `packages/api/src/routes/property-routes.ts`
 - [ ] T034 [US2] Ajouter le composant `PropertyPatrimoineTab` dans `apps/web/src/components/patrimoine/PropertyPatrimoineTab.tsx`
 - [ ] T035 [P] [US2] Ajouter `ValuationHistory`, `ExpenseTracker`, `LoanWidget` dans `apps/web/src/components/patrimoine/ValuationHistory.tsx`, `apps/web/src/components/patrimoine/ExpenseTracker.tsx`, `apps/web/src/components/patrimoine/LoanWidget.tsx`
+  - Note : `ValuationHistory`, `ExpenseTracker` et `LoanWidget` ont été retirés (chantier ux-recherche, novembre 2026) : doublons des tableaux de gestion de l'onglet Patrimoine, remplacés par les rubriques de `PropertyPatrimoineTab`.
 - [ ] T036 [P] [US2] Ajouter `DocumentVault` et `YieldCalculator` dans `apps/web/src/components/patrimoine/DocumentVault.tsx` et `apps/web/src/components/patrimoine/YieldCalculator.tsx`
 - [ ] T037 [US2] Integrer l'onglet Patrimoine dans la page detail bien existante `apps/web/src/pages/properties/PropertyDetail.tsx`
 - [ ] T038 [US2] Creer les pages patrimoine par bien dans `apps/web/src/pages/properties/patrimoine/PropertyPatrimoinePage.tsx`, `apps/web/src/pages/properties/patrimoine/ValuationsPage.tsx`, `apps/web/src/pages/properties/patrimoine/ExpensesPage.tsx`, `apps/web/src/pages/properties/patrimoine/LoansPage.tsx`, `apps/web/src/pages/properties/patrimoine/DocumentsPage.tsx`

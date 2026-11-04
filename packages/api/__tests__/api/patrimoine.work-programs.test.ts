@@ -162,10 +162,16 @@ describe('GET /api/tenants/:tenantId/work-programs', () => {
     expect(ids1.some((id: string) => ids3.includes(id))).toBe(false);
   });
 
-  it('plafonne la taille de page à 100', async () => {
+  it('refuse une taille de page supérieure à 100', async () => {
     // Une page plus large signale un appelant qui veut tout charger, ce que
     // cet endpoint remplace precisement.
-    const res = await request(app).get(`/api/tenants/${TENANT_ID}/work-programs?limit=5000`);
+    const res = await request(app).get(`/api/tenants/${TENANT_ID}/work-programs?limit=101`);
+    expect(res.status).toBe(400);
+  });
+
+  it('accepte une taille de page de 100', async () => {
+    const res = await request(app).get(`/api/tenants/${TENANT_ID}/work-programs?limit=100`);
+    expect(res.status).toBe(200);
     expect(res.body.data.limit).toBe(100);
   });
 

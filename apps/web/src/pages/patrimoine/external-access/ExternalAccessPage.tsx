@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Button, Modal, Space, Tag, Typography } from 'antd';
+import { Alert, App, Button, Modal, Space, Tag, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -20,15 +20,53 @@ import { PageHeader, StateBlock, SkeletonList, Table } from '../../../components
 import { apiErrorMessage, isForbiddenError } from '../../../components/patrimoine/patrimoine-labels';
 import { PatrimoineForbidden } from '../../../components/patrimoine/PatrimoineForbidden';
 import { activeLocale } from '../../../i18n/format';
+import { localizedList } from '../../../i18n/localized';
 import { t } from '../../../i18n/t';
+import { useLocalListSearch } from '../../../utils/list-search';
+import type { SearchCriterion } from '../../../utils/list-search';
 import { ExternalAccessLinkReveal, ExternalAccessSendLinkModal, type RevealedLink } from './ExternalAccessLinkModals';
 import { ExternalAccessLogModal } from './ExternalAccessLogModal';
 import { ExternalAccessWizard } from './ExternalAccessWizard';
-import { accessSectionLabel, accessStatusColor, accessStatusLabel, accessTypeLabel } from './external-access-labels';
+import {
+  EXTERNAL_ACCESS_TYPES,
+  accessSectionLabel,
+  accessStatusColor,
+  accessStatusLabel,
+  accessTypeLabel
+} from './external-access-labels';
 
 const { Text } = Typography;
 
 const DEFAULT_MAX_LINK_TTL_DAYS = 30;
+
+/** Plafond de l'API : la liste renvoie au plus les 500 accès les plus récents (création décroissante). */
+const GRANTS_API_CAP = 500;
+
+// Libellés vivants : un `t()` évalué au chargement du module figerait la langue.
+const TYPE_OPTIONS = localizedList(() =>
+  EXTERNAL_ACCESS_TYPES.map(type => ({ value: type, label: accessTypeLabel(type) }))
+);
+const STATUS_OPTIONS = localizedList(() =>
+  (['ACTIVE', 'EXPIRING', 'EXPIRED', 'REVOKED'] as const).map(status => ({
+    value: status,
+    label: accessStatusLabel(status)
+  }))
+);
+
+// Accesseurs stables (hors composant) : le champ libre cherche ce que le tableau affiche.
+const TEXTE_RECHERCHE = [
+  (g: ExternalAccessGrantSummary) => g.recipientName,
+  (g: ExternalAccessGrantSummary) => g.recipientEmail,
+  (g: ExternalAccessGrantSummary) => g.ownerName,
+  (g: ExternalAccessGrantSummary) => accessTypeLabel(g.type),
+  (g: ExternalAccessGrantSummary) => accessStatusLabel(g.status)
+];
+const ACCESSEURS = {
+  type: (g: ExternalAccessGrantSummary) => g.type,
+  statut: (g: ExternalAccessGrantSummary) => g.status,
+  // Un accès permanent n'a pas de date d'expiration : il sort dès qu'un intervalle est posé.
+  expiration: (g: ExternalAccessGrantSummary) => g.expiresAt
+};
 
 type WizardState = { open: false } | { open: true; grant: ExternalAccessGrantDetail | null };
 
@@ -81,6 +119,24 @@ export const ExternalAccessPage: React.FC = () => {
     staleTime: STALE_TIME.reference
   });
   const options: ExternalAccessScopeOptions | undefined = optionsQuery.data;
+
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Bénéficiaire, e-mail, propriétaire, type…')
+    },
+    { key: 'type', type: 'multiSelect', label: t('Type d’accès'), primary: true, options: TYPE_OPTIONS },
+    { key: 'statut', type: 'multiSelect', label: t('Statut'), primary: true, options: STATUS_OPTIONS },
+    { key: 'expiration', type: 'dateRange', label: t('Expiration') }
+  ];
+  const local = useLocalListSearch<ExternalAccessGrantSummary>(grantsQuery.data, {
+    ariaLabel: t('Rechercher dans les accès partagés'),
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: queryKey('external-access', agence) });
 
@@ -167,117 +223,131 @@ export const ExternalAccessPage: React.FC = () => {
           actions={[{ label: t('Nouvel accès'), primary: true, onClick: startCreate }]}
         />
       ) : (
-        <Table<ExternalAccessGrantSummary>
-          exportFilename={t('Accès partagés')}
-          rowKey="id"
-          pagination={false}
-          scroll={{ x: 'max-content' }}
-          dataSource={grants}
-          columns={[
-            {
-              title: t('Statut'),
-              dataIndex: 'status',
-              render: (_: unknown, grant) => (
-                <Tag color={accessStatusColor(grant.status)}>{accessStatusLabel(grant.status)}</Tag>
-              )
-            },
-            {
-              title: t('Bénéficiaire'),
-              exportValue: grant => `${grant.recipientName} — ${accessTypeLabel(grant.type)}`,
-              render: (_: unknown, grant) => (
-                <Space orientation="vertical" size={0}>
-                  <Text strong>{grant.recipientName}</Text>
-                  <Text type="secondary">{accessTypeLabel(grant.type)}</Text>
-                </Space>
-              )
-            },
-            {
-              title: t('Périmètre'),
-              exportValue: grant => (grant.ownerName ? `${scopeLabel(grant)} — ${grant.ownerName}` : scopeLabel(grant)),
-              render: (_: unknown, grant) => (
-                <Space orientation="vertical" size={0}>
-                  <Text>{scopeLabel(grant)}</Text>
-                  {grant.ownerName ? <Text type="secondary">{grant.ownerName}</Text> : null}
-                </Space>
-              )
-            },
-            {
-              title: t('Rubriques'),
-              exportValue: grant => grant.sections.map(accessSectionLabel).join(', '),
-              // Largeur bornée : les étiquettes passent à la ligne au lieu d'allonger le tableau.
-              width: 240,
-              render: (_: unknown, grant) => (
-                <Space size={[4, 4]} wrap>
-                  {grant.sections.map(section => (
-                    <Tag key={section}>{accessSectionLabel(section)}</Tag>
-                  ))}
-                </Space>
-              )
-            },
-            { title: t('Expiration'), render: (_: unknown, grant) => expiryLabel(grant) },
-            {
-              title: t('Dernière consultation'),
-              exportValue: grant =>
-                `${formatDate(grant.lastViewedAt)} — ${t('{{count}} consultation(s)', { count: grant.viewCount })}`,
-              render: (_: unknown, grant) => (
-                <Space orientation="vertical" size={0}>
-                  <Text>{formatDate(grant.lastViewedAt)}</Text>
-                  <Text type="secondary">{t('{{count}} consultation(s)', { count: grant.viewCount })}</Text>
-                </Space>
-              )
-            },
-            {
-              title: t('Actions'),
-              exportable: false,
-              align: 'end' as const,
-              // Épinglée au bord : les actions restent visibles même quand le tableau défile.
-              fixed: 'end' as const,
-              render: (_: unknown, grant) => {
-                const live = grant.status === 'ACTIVE' || grant.status === 'EXPIRING';
-                return (
-                  <Space size="small" wrap>
-                    {grant.status !== 'REVOKED' ? (
-                      <Button
-                        size="small"
-                        aria-label={t('Modifier {{name}}', { name: grant.recipientName })}
-                        disabled={opening || !options}
-                        onClick={() => openEdit(grant)}
-                      >
-                        {t('Modifier')}
-                      </Button>
-                    ) : null}
-                    {live ? (
-                      <Button
-                        size="small"
-                        aria-label={t('Renvoyer un lien à {{name}}', { name: grant.recipientName })}
-                        onClick={() => setSendFor(grant)}
-                      >
-                        {t('Renvoyer un lien')}
-                      </Button>
-                    ) : null}
-                    <Button
-                      size="small"
-                      aria-label={t('Journal de {{name}}', { name: grant.recipientName })}
-                      onClick={() => setLogFor(grant)}
-                    >
-                      {t('Journal')}
-                    </Button>
-                    {grant.status !== 'REVOKED' ? (
-                      <Button
-                        size="small"
-                        danger
-                        aria-label={t('Révoquer {{name}}', { name: grant.recipientName })}
-                        onClick={() => setRevokeFor(grant)}
-                      >
-                        {t('Révoquer')}
-                      </Button>
-                    ) : null}
+        <>
+          {grants.length >= GRANTS_API_CAP ? (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBlockEnd: 12 }}
+              title={t(
+                'Seuls les 500 accès les plus récents sont affichés : affinez la recherche ou révoquez les accès inutiles.'
+              )}
+            />
+          ) : null}
+          <Table<ExternalAccessGrantSummary>
+            {...local.tableProps}
+            aria-label={t('Accès partagés')}
+            exportFilename={t('Accès partagés')}
+            exportFetchAll={local.exportAll}
+            rowKey="id"
+            scroll={{ x: 'max-content' }}
+            columns={[
+              {
+                title: t('Statut'),
+                dataIndex: 'status',
+                render: (_: unknown, grant) => (
+                  <Tag color={accessStatusColor(grant.status)}>{accessStatusLabel(grant.status)}</Tag>
+                )
+              },
+              {
+                title: t('Bénéficiaire'),
+                exportValue: grant => `${grant.recipientName} — ${accessTypeLabel(grant.type)}`,
+                render: (_: unknown, grant) => (
+                  <Space orientation="vertical" size={0}>
+                    <Text strong>{grant.recipientName}</Text>
+                    <Text type="secondary">{accessTypeLabel(grant.type)}</Text>
                   </Space>
-                );
+                )
+              },
+              {
+                title: t('Périmètre'),
+                exportValue: grant =>
+                  grant.ownerName ? `${scopeLabel(grant)} — ${grant.ownerName}` : scopeLabel(grant),
+                render: (_: unknown, grant) => (
+                  <Space orientation="vertical" size={0}>
+                    <Text>{scopeLabel(grant)}</Text>
+                    {grant.ownerName ? <Text type="secondary">{grant.ownerName}</Text> : null}
+                  </Space>
+                )
+              },
+              {
+                title: t('Rubriques'),
+                exportValue: grant => grant.sections.map(accessSectionLabel).join(', '),
+                // Largeur bornée : les étiquettes passent à la ligne au lieu d'allonger le tableau.
+                width: 240,
+                render: (_: unknown, grant) => (
+                  <Space size={[4, 4]} wrap>
+                    {grant.sections.map(section => (
+                      <Tag key={section}>{accessSectionLabel(section)}</Tag>
+                    ))}
+                  </Space>
+                )
+              },
+              { title: t('Expiration'), render: (_: unknown, grant) => expiryLabel(grant) },
+              {
+                title: t('Dernière consultation'),
+                exportValue: grant =>
+                  `${formatDate(grant.lastViewedAt)} — ${t('{{count}} consultation(s)', { count: grant.viewCount })}`,
+                render: (_: unknown, grant) => (
+                  <Space orientation="vertical" size={0}>
+                    <Text>{formatDate(grant.lastViewedAt)}</Text>
+                    <Text type="secondary">{t('{{count}} consultation(s)', { count: grant.viewCount })}</Text>
+                  </Space>
+                )
+              },
+              {
+                title: t('Actions'),
+                exportable: false,
+                align: 'end' as const,
+                // Épinglée au bord : les actions restent visibles même quand le tableau défile.
+                fixed: 'end' as const,
+                render: (_: unknown, grant) => {
+                  const live = grant.status === 'ACTIVE' || grant.status === 'EXPIRING';
+                  return (
+                    <Space size="small" wrap>
+                      {grant.status !== 'REVOKED' ? (
+                        <Button
+                          size="small"
+                          aria-label={t('Modifier {{name}}', { name: grant.recipientName })}
+                          disabled={opening || !options}
+                          onClick={() => openEdit(grant)}
+                        >
+                          {t('Modifier')}
+                        </Button>
+                      ) : null}
+                      {live ? (
+                        <Button
+                          size="small"
+                          aria-label={t('Renvoyer un lien à {{name}}', { name: grant.recipientName })}
+                          onClick={() => setSendFor(grant)}
+                        >
+                          {t('Renvoyer un lien')}
+                        </Button>
+                      ) : null}
+                      <Button
+                        size="small"
+                        aria-label={t('Journal de {{name}}', { name: grant.recipientName })}
+                        onClick={() => setLogFor(grant)}
+                      >
+                        {t('Journal')}
+                      </Button>
+                      {grant.status !== 'REVOKED' ? (
+                        <Button
+                          size="small"
+                          danger
+                          aria-label={t('Révoquer {{name}}', { name: grant.recipientName })}
+                          onClick={() => setRevokeFor(grant)}
+                        >
+                          {t('Révoquer')}
+                        </Button>
+                      ) : null}
+                    </Space>
+                  );
+                }
               }
-            }
-          ]}
-        />
+            ]}
+          />
+        </>
       )}
 
       {wizard.open && options ? (

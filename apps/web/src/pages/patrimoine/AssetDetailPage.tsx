@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Tabs, Tag } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAsset, listAssetValuations, type AssetDto } from '../../services/patrimoine-assets-service';
@@ -43,6 +43,7 @@ export const AssetDetailPage: React.FC = () => {
   const { tenantMembership } = useAuth();
   const agence = tenantId || tenantMembership?.tenantId;
   const [editOpen, setEditOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const assetQuery = useQuery({
     queryKey: detailKey('patrimoine-asset', agence, assetId ?? ''),
@@ -107,6 +108,14 @@ export const AssetDetailPage: React.FC = () => {
     }
   ];
 
+  // Onglet actif porté par l'URL (?onglet=) ; une valeur inconnue (ou « holdings » sur un bien immobilier) ouvre « Valeurs ».
+  const requested = searchParams.get('onglet');
+  const activeKey = items.some(item => item.key === requested) ? (requested as string) : 'valuations';
+  const changeTab = (key: string) => {
+    // Les critères de recherche d'un onglet (val.*, det.*) n'ont pas de sens dans l'autre : on repart d'une URL propre.
+    setSearchParams(key === 'valuations' ? {} : { onglet: key }, { replace: true });
+  };
+
   return (
     <>
       <PageHeader
@@ -159,7 +168,7 @@ export const AssetDetailPage: React.FC = () => {
         />
       )}
 
-      <Tabs items={items} />
+      <Tabs destroyOnHidden items={items} activeKey={activeKey} onChange={changeTab} />
 
       <AssetFormDrawer
         open={editOpen}
