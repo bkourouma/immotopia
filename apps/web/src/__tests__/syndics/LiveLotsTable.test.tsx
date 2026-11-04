@@ -1,8 +1,12 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as baseRender, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { LiveLotsTable } from '../../components/syndics/live/LiveLotsTable';
 import type { LiveLotRow } from '../../types/syndic-live-types';
+
+// La recherche locale garde son état dans l'URL : un routeur est nécessaire.
+const render = (ui: React.ReactElement) => baseRender(<MemoryRouter>{ui}</MemoryRouter>);
 
 const lots: LiveLotRow[] = [
   {

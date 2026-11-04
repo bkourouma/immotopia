@@ -48,7 +48,6 @@ export const SyndicDocuments: React.FC = () => {
   const [documents, setDocuments] = useState<SyndicateDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
   const [openCreate, setOpenCreate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -73,14 +72,14 @@ export const SyndicDocuments: React.FC = () => {
       return;
     }
     void loadDocuments();
-  }, [effectiveTenantId, syndicId, typeFilter]);
+  }, [effectiveTenantId, syndicId]);
 
   const loadDocuments = async () => {
     if (!effectiveTenantId || !syndicId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await listSyndicDocuments(effectiveTenantId, syndicId, { type: typeFilter });
+      const data = await listSyndicDocuments(effectiveTenantId, syndicId);
       setDocuments(data);
     } catch (err: any) {
       setError(err.response?.data?.error || t('Impossible de charger les documents'));
@@ -134,19 +133,6 @@ export const SyndicDocuments: React.FC = () => {
         </Space>
 
         {error ? <Alert type="error" message={error} showIcon /> : null}
-
-        <Card>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            allowClear
-            placeholder={t('Filtrer par type')}
-            style={{ minWidth: 260 }}
-            value={typeFilter}
-            onChange={value => setTypeFilter(value)}
-            options={documentTypeOptions()}
-          />
-        </Card>
 
         {loading ? (
           <div style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

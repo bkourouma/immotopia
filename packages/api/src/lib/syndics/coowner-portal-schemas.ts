@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isoDaySchema } from './charge-allocation-schemas';
+import { zSearch } from '../../utils/list-query-schemas';
 
 /**
  * Paramètres des routes du portail copropriétaire enrichi (lot S5). Toute
@@ -26,9 +27,11 @@ export const coOwnerPaymentsQuerySchema = z.object({
   year: yearSchema.optional()
 });
 
-/** `GET /quittances?lotId=&kind=&from=&to=&page=&limit=` */
+/** `GET /quittances?search=&lotId=&kind=&from=&to=&page=&limit=` */
 export const coOwnerReceiptsQuerySchema = z
   .object({
+    /** Numéro du reçu/de la quittance, numéro de lot, libellé de période. */
+    search: zSearch(),
     lotId: optionalUuid,
     kind: z.enum(['RECEIPT', 'QUITTANCE']).optional(),
     from: isoDaySchema.optional(),

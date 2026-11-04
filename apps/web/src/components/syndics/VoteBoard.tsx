@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Button, Card, Col, Popconfirm, Progress, Row, Statistic, Tag, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { Table } from '../primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { MeetingAttendance, MeetingResolution } from '../../types/syndic-types';
 import { majorityRuleLabel, normalizeMajorityRule } from './meeting-governance';
 import { t } from '../../i18n/t';
@@ -39,6 +41,10 @@ function formatCount(lots: number, shares?: number) {
   return t('{{lots}} lot(s) · {{shares}} tantièmes', { lots, shares });
 }
 
+// Recherche LOCALE (résolutions reçues en entier, préfixe d'URL « vb »). Le filtre ne change que
+// l'AFFICHAGE : ni décompte, ni quorum, ni résultat ne sont recalculés.
+const TEXTE_RECHERCHE = [(resolution: MeetingResolution) => resolution.title];
+
 export const VoteBoard: React.FC<VoteBoardProps> = ({
   quorum,
   resolutions,
@@ -57,6 +63,45 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({
     DEFERRED: t('Reportée')
   };
   const resultColors: Record<string, string> = { APPROVED: 'green', REJECTED: 'red', DEFERRED: 'orange' };
+
+  // Le critère « Résultat » porte sur la valeur AFFICHÉE dans la colonne : « Vote en cours » masque
+  // la décision provisoire tant que l'AG n'est pas figée.
+  const searchAccessors = useMemo(
+    () => ({
+      result: (resolution: MeetingResolution) =>
+        !frozen && resolution.voteStatus === 'OPEN' ? 'OPEN' : (resolution.result ?? 'PENDING')
+    }),
+    [frozen]
+  );
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Titre de la résolution…')
+    },
+    {
+      key: 'result',
+      type: 'multiSelect',
+      label: t('Résultat'),
+      primary: true,
+      options: [
+        { value: 'OPEN', label: t('Vote en cours') },
+        { value: 'PENDING', label: resultLabels.PENDING },
+        { value: 'APPROVED', label: resultLabels.APPROVED },
+        { value: 'REJECTED', label: resultLabels.REJECTED },
+        { value: 'DEFERRED', label: resultLabels.DEFERRED }
+      ]
+    }
+  ];
+  const local = useLocalListSearch<MeetingResolution>(resolutions, {
+    paramPrefix: 'vb',
+    ariaLabel: t('Rechercher dans les résolutions'),
+    defaultPageSize: 8,
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: searchAccessors
+  });
 
   const columns: ColumnsType<MeetingResolution> = [
     {
@@ -143,14 +188,16 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({
       </Col>
       <Col xs={24} md={16}>
         <Card title={t('Résultats des résolutions')}>
-          <Table
+          <Table<MeetingResolution>
+            {...local.tableProps}
+            aria-label={t('Résultats des résolutions')}
             exportFilename={t('Resultats des resolutions')}
+            exportFetchAll={local.exportAll}
             scroll={{ x: 'max-content' }}
             rowKey="id"
-            dataSource={resolutions}
             columns={columns}
-            pagination={{ pageSize: 8, hideOnSinglePage: true }}
-            locale={{ emptyText: t('Aucun vote enregistré') }}
+            pagination={{ ...local.tableProps.pagination, hideOnSinglePage: true, showSizeChanger: false }}
+            locale={local.isFiltered ? undefined : { emptyText: t('Aucun vote enregistré') }}
           />
         </Card>
       </Col>

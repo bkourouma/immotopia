@@ -4,6 +4,7 @@
  */
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { VoteBoard } from '../../components/syndics/VoteBoard';
 import { MeetingAgenda } from '../../components/syndics/MeetingAgenda';
 import type { MeetingResolution, ResolutionVoteStatus } from '../../types/syndic-types';
@@ -27,7 +28,11 @@ function resolution(voteStatus: ResolutionVoteStatus): MeetingResolution {
 
 describe('VoteBoard — vote ouvert', () => {
   it('masque la decision provisoire et affiche « Vote en cours », decomptes conserves', () => {
-    render(<VoteBoard quorum={50} resolutions={[resolution('OPEN')]} />);
+    render(
+      <MemoryRouter>
+        <VoteBoard quorum={50} resolutions={[resolution('OPEN')]} />
+      </MemoryRouter>
+    );
 
     expect(screen.getByText('Vote en cours')).toBeTruthy();
     expect(screen.queryByText('Approuvée')).toBeNull();
@@ -37,14 +42,22 @@ describe('VoteBoard — vote ouvert', () => {
   });
 
   it.each<ResolutionVoteStatus>(['PENDING', 'CLOSED'])('affiche la decision quand le vote est %s', status => {
-    render(<VoteBoard quorum={50} resolutions={[resolution(status)]} />);
+    render(
+      <MemoryRouter>
+        <VoteBoard quorum={50} resolutions={[resolution(status)]} />
+      </MemoryRouter>
+    );
 
     expect(screen.getByText('Approuvée')).toBeTruthy();
     expect(screen.queryByText('Vote en cours')).toBeNull();
   });
 
   it('affiche la decision quand l AG est figee, meme si le vote est reste ouvert', () => {
-    render(<VoteBoard quorum={50} resolutions={[resolution('OPEN')]} frozen />);
+    render(
+      <MemoryRouter>
+        <VoteBoard quorum={50} resolutions={[resolution('OPEN')]} frozen />
+      </MemoryRouter>
+    );
 
     expect(screen.getByText('Approuvée')).toBeTruthy();
     expect(screen.queryByText('Vote en cours')).toBeNull();

@@ -42,6 +42,8 @@ vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => nul
 
 vi.mock('antd', async () => {
   const React = await vi.importActual<typeof import('react')>('react');
+  // Le vrai antd sert de base : la barre de recherche (ListSearch) en utilise les contrôles ; les doublures ci-dessous priment.
+  const actualAntd = await vi.importActual<Record<string, unknown>>('antd');
   // Rend les enfants sans transmettre au DOM les props propres à Ant Design.
   const Wrap =
     (Tag: keyof JSX.IntrinsicElements = 'div') =>
@@ -67,6 +69,7 @@ vi.mock('antd', async () => {
   const InputComp: any = () => <input />;
   InputComp.TextArea = () => <textarea />;
   return {
+    ...actualAntd,
     Alert: ({ message }: any) => <div role="alert">{message}</div>,
     Button: ({ children, onClick, disabled }: any) => (
       <button type="button" onClick={onClick} disabled={disabled}>
