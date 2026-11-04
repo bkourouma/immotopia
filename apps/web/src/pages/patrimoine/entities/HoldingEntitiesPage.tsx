@@ -1,23 +1,18 @@
-import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { App, Card, Select, Space, Tag, Typography } from 'antd';
+import React, { useMemo, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { App, Card, Pagination, Space, Tag, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createHoldingEntity,
   deleteHoldingEntity,
   listHoldingEntities,
   updateHoldingEntity
 } from '../../../services/patrimoine-entities-service';
-import type {
-  CreateHoldingEntityInput,
-  FiscalCountry,
-  HoldingEntityForm as HoldingEntityFormValue,
-  HoldingEntitySummary
-} from '../../../types/patrimoine-entities-types';
+import type { CreateHoldingEntityInput, HoldingEntitySummary } from '../../../types/patrimoine-entities-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
-import { PageHeader, StateBlock, SkeletonList, ConfirmAction } from '../../../components/primitives';
+import { ListSearch, PageHeader, StateBlock, SkeletonList, ConfirmAction } from '../../../components/primitives';
 import { HoldingEntityFormModal } from '../../../components/patrimoine/entities/HoldingEntityFormModal';
 import {
   fiscalCountryLabel,
@@ -25,10 +20,31 @@ import {
   legalFormLabel,
   legalFormOptions
 } from '../../../components/patrimoine/entities/tax-labels';
+import { useLocalListSearch } from '../../../utils/list-search';
+import type { SearchCriterion } from '../../../utils/list-search';
 import { t } from '../../../i18n/t';
 import { apiErrorMessage } from '../../../components/patrimoine/patrimoine-labels';
 
 const { Text } = Typography;
+
+const ENTITES_PAR_PAGE = 12;
+
+// Accesseurs stables (hors composant) : le filtrage local reste mémoïsé.
+// Champ libre : nom, immatriculation (RCCM), identifiant fiscal, société mère, contact,
+// forme juridique et pays tels qu'affichés.
+const TEXTE_RECHERCHE = [
+  (e: HoldingEntitySummary) => e.name,
+  (e: HoldingEntitySummary) => e.rccm,
+  (e: HoldingEntitySummary) => e.taxId,
+  (e: HoldingEntitySummary) => e.parentEntity?.name,
+  (e: HoldingEntitySummary) => e.contact?.displayName,
+  (e: HoldingEntitySummary) => legalFormLabel(e.legalForm),
+  (e: HoldingEntitySummary) => fiscalCountryLabel(e.country)
+];
+const ACCESSEURS = {
+  forme: (e: HoldingEntitySummary) => e.legalForm,
+  pays: (e: HoldingEntitySummary) => e.country
+};
 
 /**
  * `<HoldingEntitiesPage>` — liste des entités détentrices (SCI, holdings…)
@@ -42,18 +58,43 @@ export const HoldingEntitiesPage: React.FC = () => {
   const queryClient = useQueryClient();
   const agence = tenantId || tenantMembership?.tenantId;
 
-  const [legalForm, setLegalForm] = useState<HoldingEntityFormValue | undefined>();
-  const [country, setCountry] = useState<FiscalCountry | undefined>();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<HoldingEntitySummary | null>(null);
 
-  const filters = { legalForm, country };
+  // L'API n'envoie pas les entités inactives par défaut : « Inclure les inactives » part à l'API
+  // (lu dans l'URL avant d'avoir la liste, comme le critère de la barre). Le reste se filtre ici.
+  const [urlParams] = useSearchParams();
+  const includeInactive = urlParams.get('inactives') === '1';
 
   const entitiesQuery = useQuery({
-    queryKey: queryKey('holding-entities', agence, filters),
-    queryFn: () => listHoldingEntities(agence as string, filters),
+    queryKey: queryKey('holding-entities', agence, { includeInactive }),
+    queryFn: () => listHoldingEntities(agence as string, { includeInactive }),
     enabled: Boolean(agence),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
+  });
+
+  const entities = useMemo(() => entitiesQuery.data ?? [], [entitiesQuery.data]);
+  // Parents possibles : les entités actives (comportement d'avant l'option « inactives »).
+  const parentCandidates = useMemo(() => entities.filter(entity => entity.isActive), [entities]);
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom, RCCM, identifiant fiscal, contact…') },
+    { key: 'forme', type: 'multiSelect', label: t('Forme juridique'), primary: true, options: legalFormOptions() },
+    { key: 'pays', type: 'multiSelect', label: t('Pays'), primary: true, options: fiscalCountryOptions() },
+    {
+      key: 'inactives',
+      type: 'boolean',
+      label: t('Inclure les inactives'),
+      api: false,
+      help: t('Affiche aussi les entités désactivées.')
+    }
+  ];
+  const local = useLocalListSearch<HoldingEntitySummary>(entities, {
+    ariaLabel: t('Rechercher dans les entités'),
+    defaultPageSize: ENTITES_PAR_PAGE,
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: queryKey('holding-entities', agence) });
@@ -104,26 +145,6 @@ export const HoldingEntitiesPage: React.FC = () => {
             setModalOpen(true);
           }
         }}
-        extra={
-          <Space wrap>
-            <Select
-              allowClear
-              placeholder={t('Forme juridique')}
-              style={{ width: 180 }}
-              value={legalForm}
-              options={legalFormOptions()}
-              onChange={setLegalForm}
-            />
-            <Select
-              allowClear
-              placeholder={t('Pays')}
-              style={{ width: 160 }}
-              value={country}
-              options={fiscalCountryOptions()}
-              onChange={setCountry}
-            />
-          </Space>
-        }
       />
 
       {entitiesQuery.error ? (
@@ -134,7 +155,7 @@ export const HoldingEntitiesPage: React.FC = () => {
         />
       ) : entitiesQuery.isPending ? (
         <SkeletonList rows={5} aria-label={t('Entités en cours de chargement')} />
-      ) : (entitiesQuery.data ?? []).length === 0 ? (
+      ) : entities.length === 0 && !local.isFiltered ? (
         <StateBlock
           variant="empty"
           description={t('Aucune entité détentrice pour le moment.')}
@@ -151,46 +172,63 @@ export const HoldingEntitiesPage: React.FC = () => {
         />
       ) : (
         <Space orientation="vertical" style={{ width: '100%' }} size="middle">
-          {(entitiesQuery.data ?? []).map(entity => (
-            <Card
-              key={entity.id}
-              title={
-                <span>
-                  {entity.name} {!entity.isActive && <Tag>{t('Inactive')}</Tag>}
-                </span>
-              }
-              extra={
-                <Space>
-                  <a onClick={() => navigate(`/tenant/${agence}/patrimoine/entities/${entity.id}`)}>{t('Voir')}</a>
-                  <a
-                    onClick={() => {
-                      setEditing(entity);
-                      setModalOpen(true);
-                    }}
-                  >
-                    {t('Modifier')}
-                  </a>
-                  <ConfirmAction
-                    title={t('Supprimer {{nom}} ?', { nom: entity.name })}
-                    danger
-                    onConfirm={() => handleDelete(entity)}
-                  >
-                    <a>{t('Supprimer')}</a>
-                  </ConfirmAction>
+          <ListSearch {...local.searchProps} />
+          {local.total === 0 ? (
+            <StateBlock
+              variant="no-results"
+              actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
+            />
+          ) : (
+            local.pageItems.map(entity => (
+              <Card
+                key={entity.id}
+                title={
+                  <span>
+                    {entity.name} {!entity.isActive && <Tag>{t('Inactive')}</Tag>}
+                  </span>
+                }
+                extra={
+                  <Space>
+                    <a onClick={() => navigate(`/tenant/${agence}/patrimoine/entities/${entity.id}`)}>{t('Voir')}</a>
+                    <a
+                      onClick={() => {
+                        setEditing(entity);
+                        setModalOpen(true);
+                      }}
+                    >
+                      {t('Modifier')}
+                    </a>
+                    <ConfirmAction
+                      title={t('Supprimer {{nom}} ?', { nom: entity.name })}
+                      danger
+                      onConfirm={() => handleDelete(entity)}
+                    >
+                      <a>{t('Supprimer')}</a>
+                    </ConfirmAction>
+                  </Space>
+                }
+              >
+                <Space orientation="vertical" size={4}>
+                  <Text>
+                    {legalFormLabel(entity.legalForm)} — {fiscalCountryLabel(entity.country)}
+                  </Text>
+                  <Text type="secondary">
+                    {t('{{count}} bien(s) rattaché(s)', { count: entity.propertiesCount })}
+                    {entity.parentEntity && <> — {t('filiale de {{parent}}', { parent: entity.parentEntity.name })}</>}
+                  </Text>
                 </Space>
-              }
-            >
-              <Space orientation="vertical" size={4}>
-                <Text>
-                  {legalFormLabel(entity.legalForm)} — {fiscalCountryLabel(entity.country)}
-                </Text>
-                <Text type="secondary">
-                  {t('{{count}} bien(s) rattaché(s)', { count: entity.propertiesCount })}
-                  {entity.parentEntity && <> — {t('filiale de {{parent}}', { parent: entity.parentEntity.name })}</>}
-                </Text>
-              </Space>
-            </Card>
-          ))}
+              </Card>
+            ))
+          )}
+          <Pagination
+            current={local.page}
+            pageSize={local.pageSize}
+            total={local.total}
+            showSizeChanger={false}
+            hideOnSinglePage
+            onChange={page => local.setPage(page)}
+            aria-label={t('Pagination des entités')}
+          />
         </Space>
       )}
 
@@ -198,7 +236,7 @@ export const HoldingEntitiesPage: React.FC = () => {
         open={modalOpen}
         tenantId={agence}
         entity={editing}
-        entities={entitiesQuery.data ?? []}
+        entities={parentCandidates}
         onClose={() => {
           setModalOpen(false);
           setEditing(null);

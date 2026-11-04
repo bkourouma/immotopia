@@ -1,7 +1,8 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WorkProgramsPage } from '../../pages/patrimoine/work-programs/WorkProgramsPage';
@@ -19,6 +20,7 @@ const listTenantWorkPrograms = vi.fn();
 const getPatrimoineOverview = vi.fn();
 const listWorkPrograms = vi.fn();
 const listProperties = vi.fn();
+const getProperty = vi.fn();
 
 vi.mock('../../services/patrimoine-service', () => ({
   listTenantWorkPrograms: (...a: unknown[]) => listTenantWorkPrograms(...a),
@@ -27,7 +29,8 @@ vi.mock('../../services/patrimoine-service', () => ({
 }));
 
 vi.mock('../../services/property-service', () => ({
-  listProperties: (...a: unknown[]) => listProperties(...a)
+  listProperties: (...a: unknown[]) => listProperties(...a),
+  getProperty: (...a: unknown[]) => getProperty(...a)
 }));
 
 vi.mock('../../hooks/useAuth', () => ({
@@ -54,12 +57,17 @@ function programme(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function Url() {
+  return <div data-testid="url">{useLocation().search}</div>;
+}
+
 function monter(ui: React.ReactNode, chemin: string, url: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Url />
           <Routes>
             <Route path={chemin} element={ui} />
           </Routes>
@@ -78,6 +86,7 @@ beforeEach(() => {
     limit: 25,
     totalPages: 1
   });
+  getProperty.mockResolvedValue({ id: 'prop-1', title: 'Villa Angré', internalReference: 'BIEN-0001' });
   getPatrimoineOverview.mockResolvedValue({
     totalProperties: 57,
     occupiedProperties: 49,
@@ -115,6 +124,19 @@ describe('Programmes de travaux — une requête, filtrée au serveur', () => {
     expect(listTenantWorkPrograms.mock.calls[0][1]).toMatchObject({ status: 'IN_PROGRESS', page: 1, limit: 25 });
   });
 
+  it('plafonne à 100 la taille de page envoyée, sans erreur, pour un lien limit=500', async () => {
+    monter(
+      <WorkProgramsPage />,
+      '/tenant/:tenantId/patrimoine/work-programs',
+      '/tenant/agence-1/patrimoine/work-programs?limit=500'
+    );
+
+    await waitFor(() => expect(listTenantWorkPrograms).toHaveBeenCalled());
+    expect(listTenantWorkPrograms.mock.calls[0][1]).toMatchObject({ limit: 100 });
+    expect(await screen.findByText('Villa Angré', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText(/Impossible de charger|Erreur/i)).not.toBeInTheDocument();
+  });
+
   it('affiche le bien joint, sans appel supplémentaire', async () => {
     // La jointure serveur évite de charger les biens pour leurs seuls titres.
     monter(
@@ -125,6 +147,84 @@ describe('Programmes de travaux — une requête, filtrée au serveur', () => {
 
     expect(await screen.findByText('Villa Angré', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(listProperties).not.toHaveBeenCalled();
+  });
+});
+
+describe('Programmes de travaux — recherche multicritères', () => {
+  const CHEMIN = '/tenant/:tenantId/patrimoine/work-programs';
+  const URL_PAGE = '/tenant/agence-1/patrimoine/work-programs';
+  const T = { timeout: 8000 };
+
+  it('envoie la saisie au serveur après le debounce et la met dans l’URL', async () => {
+    const user = userEvent.setup();
+    monter(<WorkProgramsPage />, CHEMIN, URL_PAGE);
+    await screen.findByText('Villa Angré', {}, T);
+
+    await user.type(within(screen.getByRole('search')).getByPlaceholderText('Programme, bien, référence…'), 'toiture');
+
+    await waitFor(
+      () =>
+        expect(listTenantWorkPrograms).toHaveBeenLastCalledWith('agence-1', { search: 'toiture', page: 1, limit: 25 }),
+      T
+    );
+    expect(screen.getByTestId('url').textContent).toContain('q=toiture');
+  });
+
+  it('applique les critères d’une URL partagée : statuts, bien, date prévue et coût estimé', async () => {
+    monter(
+      <WorkProgramsPage />,
+      CHEMIN,
+      `${URL_PAGE}?status=PLANNED,IN_PROGRESS&propertyId=prop-1&plannedFrom=2026-01-01&plannedTo=2026-12-31&costMin=1000000&costMax=20000000`
+    );
+
+    await screen.findByText('Villa Angré', {}, T);
+    expect(listTenantWorkPrograms).toHaveBeenCalledWith('agence-1', {
+      status: 'PLANNED,IN_PROGRESS',
+      propertyId: 'prop-1',
+      plannedFrom: '2026-01-01',
+      plannedTo: '2026-12-31',
+      minCost: 1000000,
+      maxCost: 20000000,
+      page: 1,
+      limit: 25
+    });
+    // Le libellé de la puce du bien vient de la même source que la liste d’options.
+    await waitFor(() => expect(getProperty).toHaveBeenCalledWith('agence-1', 'prop-1'), T);
+  });
+
+  it('n’envoie pas une borne de coût négative', async () => {
+    monter(<WorkProgramsPage />, CHEMIN, `${URL_PAGE}?costMin=-5&costMax=100`);
+
+    await screen.findByText('Villa Angré', {}, T);
+    expect(listTenantWorkPrograms).toHaveBeenCalledWith('agence-1', { maxCost: 100, page: 1, limit: 25 });
+    expect(listTenantWorkPrograms.mock.calls.every(([, params]) => !('minCost' in (params as object)))).toBe(true);
+  });
+
+  it('propose d’effacer les critères quand rien ne correspond, puis revient à la liste complète', async () => {
+    const user = userEvent.setup();
+    listTenantWorkPrograms.mockImplementation(async (_agence: string, params: Record<string, unknown>) => ({
+      items: params.search ? [] : [programme()],
+      total: params.search ? 0 : 1,
+      page: 1,
+      limit: 25,
+      totalPages: 1
+    }));
+    monter(<WorkProgramsPage />, CHEMIN, `${URL_PAGE}?q=zzz`);
+
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', {}, T)).toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+
+    expect(await screen.findByText('Villa Angré', {}, T)).toBeInTheDocument();
+    expect(listTenantWorkPrograms).toHaveBeenLastCalledWith('agence-1', { page: 1, limit: 25 });
+    expect(screen.getByTestId('url').textContent).not.toContain('q=');
+  });
+
+  it('le sous-titre annonce le total du serveur, pas la longueur de la page', async () => {
+    listTenantWorkPrograms.mockResolvedValue({ items: [programme()], total: 42, page: 1, limit: 25, totalPages: 2 });
+    monter(<WorkProgramsPage />, CHEMIN, URL_PAGE);
+
+    expect(await screen.findByText('42 programmes', {}, T)).toBeInTheDocument();
   });
 });
 

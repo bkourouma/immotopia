@@ -12,12 +12,21 @@ import type { Property } from '../../../types/property-types';
 import { listProperties } from '../../../services/property-service';
 import { ConfirmAction, Table } from '../../primitives';
 import { t } from '../../../i18n/t';
+import { useLocalListSearch } from '../../../utils/list-search';
+import type { SearchCriterion } from '../../../utils/list-search';
 import { apiErrorMessage } from '../patrimoine-labels';
 
 /**
  * `<EntityHoldingsTable>` — biens rattachés à une entité détentrice, avec
  * leur quote-part. Ajout, modification et retrait.
  */
+
+// Accesseurs stables (hors composant). Champ libre : bien, référence, notes.
+const TEXTE_RECHERCHE = [
+  (h: EntityHolding) => h.property.title,
+  (h: EntityHolding) => h.property.internalReference,
+  (h: EntityHolding) => h.notes
+];
 
 export interface EntityHoldingsTableProps {
   tenantId: string;
@@ -63,6 +72,15 @@ export const EntityHoldingsTable: React.FC<EntityHoldingsTableProps> = ({
       cancelled = true;
     };
   }, [modalOpen, tenantId]);
+
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Bien, référence, notes…') }
+  ];
+  const local = useLocalListSearch<EntityHolding>(holdings, {
+    ariaLabel: t('Rechercher dans les biens rattachés'),
+    criteria,
+    text: TEXTE_RECHERCHE
+  });
 
   const openCreate = () => {
     setEditing(null);
@@ -173,14 +191,14 @@ export const EntityHoldingsTable: React.FC<EntityHoldingsTableProps> = ({
         </Button>
       </Space>
       <Table
+        {...local.tableProps}
         exportFilename={t('Biens rattachés')}
+        exportFetchAll={local.exportAll}
         rowKey={holding => holding.id}
         columns={columns}
-        dataSource={holdings}
-        pagination={false}
         size="middle"
         aria-label={t('Biens rattachés')}
-        locale={{ emptyText: t('Aucun bien rattaché') }}
+        locale={local.isFiltered ? undefined : { emptyText: t('Aucun bien rattaché') }}
       />
 
       <Modal
@@ -194,7 +212,7 @@ export const EntityHoldingsTable: React.FC<EntityHoldingsTableProps> = ({
         confirmLoading={submitting}
         okText={t('Enregistrer')}
         cancelText={t('Annuler')}
-        destroyOnClose
+        destroyOnHidden
       >
         {errorMessage && (
           <div role="alert" style={{ color: 'var(--color-error-text)', marginBottom: 'var(--space-3)' }}>

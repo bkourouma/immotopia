@@ -97,8 +97,3 @@ export function formatLandDate(iso?: string | null): string {
 export function toDateInput(iso?: string | null): string {
   return iso ? iso.slice(0, 10) : '';
 }
-
-/** Un `?status=` inconnu dans l'URL est ignoré : il ne part jamais à l'API. */
-export function parseRegularizationStatus(value: string | null): LandRegularizationStatus | undefined {
-  return value === 'EN_COURS' || value === 'TERMINEE' || value === 'ABANDONNEE' ? value : undefined;
-}
