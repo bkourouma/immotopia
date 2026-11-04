@@ -16,6 +16,7 @@ import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { FeeTermsFields } from './FeeTermsFields';
 import { ModuleNotIncluded } from '../primitives/ModuleNotIncluded';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
+import { useLocalListSearch } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
 
@@ -55,6 +56,14 @@ function summarizeTerms(terms: FeeTerms | null): string {
     : t('{{rate}} % du loyer seul', { rate: terms.managementFeeRate });
 }
 
+// Stables : déclarés hors du composant (filtrage mémoïsé).
+const OWNER_TEXT = [(owner: OwnerFeeTerms) => owner.ownerName, (owner: OwnerFeeTerms) => owner.email];
+const OWNER_ACCESSORS = {
+  // « Suit l'agence » quand le propriétaire n'a pas de conditions particulières.
+  mode: (owner: OwnerFeeTerms) => (owner.terms ? owner.terms.managementFeeMode : 'AGENCY'),
+  taxStatus: (owner: OwnerFeeTerms) => owner.ownerTaxStatus ?? 'UNSET'
+};
+
 export interface OwnerFeeTermsCardProps {
   tenantId: string;
 }
@@ -70,6 +79,37 @@ export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }
   const { message } = App.useApp();
   const [form] = Form.useForm<OwnerFeeTermsInput>();
   const [owners, setOwners] = useState<OwnerFeeTerms[]>([]);
+  // Propriétaires reçus en entier : recherche et pagination locales, préfixe d'URL « prop ».
+  const local = useLocalListSearch<OwnerFeeTerms>(owners, {
+    paramPrefix: 'prop',
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom ou e-mail du propriétaire…') },
+      {
+        key: 'mode',
+        type: 'multiSelect',
+        label: t('Conditions'),
+        primary: true,
+        options: [
+          { value: 'AGENCY', label: t("Suit l'agence") },
+          { value: 'PERCENT', label: t('Pourcentage') },
+          { value: 'FIXED', label: t('Forfait') }
+        ]
+      },
+      {
+        key: 'taxStatus',
+        type: 'multiSelect',
+        label: t('Statut fiscal'),
+        options: [
+          { value: 'INDIVIDUAL', label: t('Personne physique') },
+          { value: 'COMPANY', label: t('Personne morale') },
+          { value: 'EXEMPT', label: t('Exonéré') },
+          { value: 'UNSET', label: t('Non renseigné') }
+        ]
+      }
+    ],
+    text: OWNER_TEXT,
+    accessors: OWNER_ACCESSORS
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notIncluded, setNotIncluded] = useState(false);
@@ -219,12 +259,13 @@ export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }
       </Text>
       {error ? <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} /> : null}
       <Table
+        {...local.tableProps}
+        aria-label={t('Conditions par propriétaire')}
         exportFilename={t('Conditions par propriétaire')}
+        exportFetchAll={local.exportAll}
         rowKey="ownerClientId"
         columns={columns}
-        dataSource={owners}
         loading={loading}
-        pagination={false}
       />
 
       <Modal

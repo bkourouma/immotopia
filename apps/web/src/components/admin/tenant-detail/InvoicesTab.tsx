@@ -28,6 +28,7 @@ import {
   issuePlatformInvoice,
   listAdminPlatformInvoices,
   recordManualPayment,
+  type AdminInvoiceFilters,
   type ManualPaymentMethod,
   type PlatformCheckout,
   type PlatformInvoice,
@@ -36,6 +37,8 @@ import {
 import { setSubscriptionManualReadOnly } from '../../../services/subscription-v2-service';
 import { formatMoney, StatusTag, Table, useConfirmAction } from '../../primitives';
 import { collectAllPages } from '../../../utils/table-export/collect';
+import { useListSearch } from '../../../hooks/useListSearch';
+import { platformInvoiceCriteria } from '../../subscription/platform-invoice-criteria';
 import {
   INVOICE_NATURE_LABEL,
   INVOICE_STATUS_LABEL,
@@ -98,7 +101,11 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const confirmAction = useConfirmAction();
   const [invoices, setInvoices] = useState<PlatformInvoice[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0 });
+  const [total, setTotal] = useState(0);
+
+  // Recherche multicritères (état dans l'URL, préfixe `fac` : l'onglet partage l'écran de l'agence).
+  const search = useListSearch({ paramPrefix: 'fac', criteria: platformInvoiceCriteria(true) });
+  const paramsKey = JSON.stringify(search.apiParams);
 
   const [generateOpen, setGenerateOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -123,24 +130,21 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     checkouts: PlatformCheckout[];
   } | null>(null);
 
-  const load = useCallback(
-    async (page = 1) => {
-      setLoading(true);
-      try {
-        const result = await listAdminPlatformInvoices(tenantId, { page, limit: 20 });
-        setInvoices(result.invoices);
-        setPagination({ page: result.pagination.page, limit: result.pagination.limit, total: result.pagination.total });
-      } catch (err: any) {
-        message.error(errorMessage(err, t('Erreur lors du chargement des factures')));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [tenantId, message]
-  );
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await listAdminPlatformInvoices(tenantId, JSON.parse(paramsKey));
+      setInvoices(result.invoices);
+      setTotal(result.pagination.total);
+    } catch (err: any) {
+      message.error(errorMessage(err, t('Erreur lors du chargement des factures')));
+    } finally {
+      setLoading(false);
+    }
+  }, [tenantId, message, paramsKey]);
 
   useEffect(() => {
-    load(1);
+    void load();
   }, [load]);
 
   const handleGenerate = async (values: GenerateValues) => {
@@ -151,7 +155,7 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       if (!result.invoice) message.info(t('Rien à facturer pour cette période'));
       else if (!result.created) message.info(t('Cette facture existe déjà'));
       else message.success(t('Facture générée'));
-      load(1);
+      load();
     } catch (err: any) {
       message.error(errorMessage(err, t('Erreur lors de la génération de la facture')));
     } finally {
@@ -168,7 +172,7 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         try {
           await issuePlatformInvoice(tenantId, invoice.id);
           message.success(t('Facture émise'));
-          load(pagination.page);
+          load();
         } catch (err: any) {
           message.error(errorMessage(err, t("Erreur lors de l'émission")));
         }
@@ -198,7 +202,7 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         result.subscription === 'RENEWED' ? t('Paiement enregistré : abonnement réactivé') : t('Paiement enregistré')
       );
       setPaying(null);
-      load(pagination.page);
+      load();
     } catch (err: any) {
       message.error(errorMessage(err, t("Erreur lors de l'enregistrement du paiement")));
     } finally {
@@ -213,7 +217,7 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       await issueCreditNote(tenantId, crediting.id, { reason: values.reason, reissuePending: values.reissuePending });
       message.success(t('Avoir émis'));
       setCrediting(null);
-      load(pagination.page);
+      load();
     } catch (err: any) {
       message.error(errorMessage(err, t("Erreur lors de l'émission de l'avoir")));
     } finally {
@@ -354,10 +358,15 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       </div>
 
       <Table<PlatformInvoice>
+        search={search.searchProps}
         exportFilename={t('Factures')}
         exportFetchAll={() =>
           collectAllPages<PlatformInvoice>(async (page, limit) => {
-            const result = await listAdminPlatformInvoices(tenantId, { page, limit });
+            const result = await listAdminPlatformInvoices(tenantId, {
+              ...(search.filterParams as AdminInvoiceFilters),
+              page,
+              limit
+            });
             return { items: result.invoices, total: result.pagination.total };
           })
         }
@@ -367,13 +376,8 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         loading={loading}
         scroll={{ x: 'max-content' }}
         aria-label={t('Factures')}
-        pagination={{
-          current: pagination.page,
-          pageSize: pagination.limit,
-          total: pagination.total,
-          onChange: page => load(page)
-        }}
-        locale={{ emptyText: t('Aucune facture pour cette agence') }}
+        pagination={search.tablePagination(total)}
+        locale={search.isFiltered ? undefined : { emptyText: t('Aucune facture pour cette agence') }}
       />
 
       <Modal

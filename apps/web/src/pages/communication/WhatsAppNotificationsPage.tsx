@@ -9,9 +9,22 @@ import {
   type UpdateWhatsappNotificationPayload
 } from '../../services/whatsapp-notification-config-service';
 import { WHATSAPP_VARIABLES_BY_KEY, getVariablePlaceholder } from '../../constants/whatsapp-notification-variables';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
+
+// Stables (hors du composant) : le filtrage local reste mémoïsé.
+const TEXTE_RECHERCHE = [
+  (item: WhatsappNotificationConfigItem) => item.label,
+  (item: WhatsappNotificationConfigItem) => item.description,
+  (item: WhatsappNotificationConfigItem) => item.recipientLabel
+];
+const ACCESSEURS = {
+  recipient: (item: WhatsappNotificationConfigItem) => item.recipientLabel,
+  enabled: (item: WhatsappNotificationConfigItem) => item.enabled
+};
 const { TextArea } = Input;
 
 export function WhatsAppNotificationsPage() {
@@ -23,6 +36,29 @@ export function WhatsAppNotificationsPage() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
+
+  // Liste reçue en entier (32 lignes au plus) : recherche et critères en local, 20 par page.
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Événement, description, destinataire…')
+    },
+    {
+      key: 'recipient',
+      type: 'select',
+      label: t('Destinataire'),
+      primary: true,
+      options: Array.from(new Set(items.map(item => item.recipientLabel))).map(label => ({ value: label, label }))
+    },
+    { key: 'enabled', type: 'boolean', label: t('Activer'), primary: true, tristate: true }
+  ];
+  const local = useLocalListSearch<WhatsappNotificationConfigItem>(items, {
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   const load = async () => {
     if (!tenantId) return;
@@ -300,11 +336,11 @@ export function WhatsAppNotificationsPage() {
         <Spin spinning={loading}>
           <Table
             exportFilename={t('Liste des notifications WhatsApp')}
+            {...local.tableProps}
+            exportFetchAll={local.exportAll}
             scroll={{ x: 'max-content' }}
             rowKey="key"
             columns={columns}
-            dataSource={items}
-            pagination={false}
             size="middle"
           />
         </Spin>

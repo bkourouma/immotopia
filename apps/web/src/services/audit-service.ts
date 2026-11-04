@@ -55,6 +55,8 @@ export interface PlatformAuditExportFilters {
   entityType?: string;
   entityId?: string;
   requestId?: string;
+  /** Recherche libre (action, ressource, acteur, requête, source), 120 caractères au plus. */
+  search?: string;
   /** `YYYY-MM-DD`, borne incluse. */
   startDate?: string;
   /** `YYYY-MM-DD`, borne incluse. */

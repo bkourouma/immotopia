@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { AuditLogs } from '../../pages/admin/AuditLogs';
 import type { PlatformAuditLog } from '../../services/audit-service';
 
@@ -26,7 +27,12 @@ vi.mock('../../services/audit-service', () => ({
 }));
 
 vi.mock('../../services/tenant-service', () => ({
-  listTenants: (...a: unknown[]) => listTenants(...a)
+  listTenants: (...a: unknown[]) => listTenants(...a),
+  getTenantAdmin: vi.fn(async () => ({ data: { name: 'Agence Soleil' } }))
+}));
+
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
 vi.mock('../../utils/save-blob', () => ({
@@ -106,13 +112,23 @@ const SECONDE_PAGE = {
   data: { logs: [makeLog({ id: 'log-4', resourceLabel: 'Appartement Cocody' })], nextCursor: null }
 };
 
-function mount() {
+function Url() {
+  return <div data-testid="url">{useLocation().search}</div>;
+}
+
+function mount(initial = '/admin/audit') {
   return render(
     <AntApp>
-      <AuditLogs />
+      <MemoryRouter initialEntries={[initial]}>
+        <Url />
+        <AuditLogs />
+      </MemoryRouter>
     </AntApp>
   );
 }
+
+const searchBox = () => screen.getByPlaceholderText('Action, ressource, acteur, identifiant de requête…');
+const T = { timeout: 8000 };
 
 async function pickFilter(name: string, option: string) {
   fireEvent.mouseDown(await screen.findByRole('combobox', { name }));
@@ -187,12 +203,11 @@ describe('AuditLogs (console plateforme)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Charger plus' }));
     await screen.findByText('Appartement Cocody');
 
-    await pickFilter('Visibilité', 'Réservées à la plateforme');
+    await userEvent.type(searchBox(), 'bail');
 
-    expect(await screen.findByText('Bail filtré')).toBeInTheDocument();
-    expect(getAuditLogs.mock.calls[2][0]).toEqual(
-      expect.objectContaining({ visibility: 'PLATFORM_ONLY', cursor: undefined })
-    );
+    expect(await screen.findByText('Bail filtré', undefined, T)).toBeInTheDocument();
+    expect(getAuditLogs.mock.calls[2][0]).toEqual(expect.objectContaining({ search: 'bail', cursor: undefined }));
+    expect(screen.getByTestId('url').textContent).toContain('q=bail');
     expect(screen.queryByText('Villa Les Palmiers')).not.toBeInTheDocument();
     expect(screen.queryByText('Appartement Cocody')).not.toBeInTheDocument();
   });
@@ -208,17 +223,30 @@ describe('AuditLogs (console plateforme)', () => {
     );
   });
 
-  it("convertit l'action en MAJUSCULES et n'envoie rien quand le champ est vide", async () => {
+  it("envoie la recherche libre (action, ressource, requête…) et n'envoie rien quand le champ est vide", async () => {
     mount();
     await screen.findByText('Villa Les Palmiers');
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Action' }), 'property_created');
+    await userEvent.type(searchBox(), 'PROPERTY_CREATED');
 
-    await waitFor(() =>
-      expect(getAuditLogs).toHaveBeenLastCalledWith(expect.objectContaining({ actionKey: 'PROPERTY_CREATED' }))
+    await vi.waitFor(
+      () => expect(getAuditLogs).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'PROPERTY_CREATED' })),
+      T
     );
-    await userEvent.clear(screen.getByRole('textbox', { name: 'Action' }));
-    await waitFor(() => expect(getAuditLogs.mock.calls.at(-1)?.[0]).toEqual({}));
+    await userEvent.clear(searchBox());
+    await vi.waitFor(() => expect(getAuditLogs.mock.calls.at(-1)?.[0]).toEqual({}), T);
+  });
+
+  it("applique les critères d'une URL partagée (visibilité, période, résultat)", async () => {
+    mount('/admin/audit?visibility=PLATFORM_ONLY&outcome=FAILURE&periodFrom=2026-09-01&periodTo=2026-09-30');
+    await screen.findByText('Villa Les Palmiers');
+
+    expect(getAuditLogs.mock.calls[0][0]).toEqual({
+      visibility: 'PLATFORM_ONLY',
+      outcome: 'FAILURE',
+      startDate: '2026-09-01',
+      endDate: '2026-09-30'
+    });
   });
 
   it("ignore la réponse d'une requête périmée quand le filtre change entre-temps", async () => {
@@ -231,8 +259,8 @@ describe('AuditLogs (console plateforme)', () => {
       });
     mount();
 
-    await pickFilter('Résultat', 'Échouée');
-    expect(await screen.findByText('Ligne récente')).toBeInTheDocument();
+    await userEvent.type(searchBox(), 'x');
+    expect(await screen.findByText('Ligne récente', undefined, T)).toBeInTheDocument();
 
     resoudrePremiere(PREMIERE_PAGE);
     await waitFor(() => expect(getAuditLogs).toHaveBeenCalledTimes(2));
@@ -255,18 +283,16 @@ describe('AuditLogs (console plateforme)', () => {
 
     await userEvent.click(within(modale).getByRole('button', { name: 'Voir toute la requête' }));
 
-    await waitFor(() =>
-      expect(getAuditLogs).toHaveBeenLastCalledWith(expect.objectContaining({ requestId: 'req-123' }))
-    );
+    await waitFor(() => expect(getAuditLogs).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'req-123' })));
     expect(await screen.findByText('Appartement Cocody')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Identifiant de requête' })).toHaveValue('req-123');
+    expect(searchBox()).toHaveValue('req-123');
   });
 
   it("montre l'état vide", async () => {
     getAuditLogs.mockResolvedValue({ success: true, data: { logs: [], nextCursor: null } });
     mount();
 
-    expect(await screen.findByText('Aucune activité enregistrée pour ces critères')).toBeInTheDocument();
+    expect(await screen.findByText('Aucune activité enregistrée')).toBeInTheDocument();
   });
 
   it("montre l'erreur de l'API et « Réessayer » relance la requête", async () => {

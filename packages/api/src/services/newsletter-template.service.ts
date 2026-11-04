@@ -30,9 +30,10 @@ export async function getTemplate(tenantId: string, templateId: string) {
   });
 }
 
-export async function listTemplates(tenantId: string) {
+export async function listTemplates(tenantId: string, options: { search?: string } = {}) {
+  const search = options.search?.trim();
   return prisma.newsletterTemplate.findMany({
-    where: { tenantId },
+    where: { tenantId, ...(search ? { name: { contains: search, mode: 'insensitive' as const } } : {}) },
     orderBy: { name: 'asc' }
   });
 }

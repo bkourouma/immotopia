@@ -27,9 +27,23 @@ import {
 } from '../../services/email-notification-config-service';
 import { VARIABLES_BY_EVENT_KEY, getEventGroupKey } from '../../constants/email-notification-events';
 import { getVariablePlaceholder } from '../../constants/template-variables';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
+
+// Stables (hors du composant) : le filtrage local reste mémoïsé.
+const TEXTE_RECHERCHE = [
+  (item: EmailNotificationConfigItem) => item.label,
+  (item: EmailNotificationConfigItem) => item.description,
+  (item: EmailNotificationConfigItem) => item.recipientLabel
+];
+const ACCESSEURS = {
+  recipient: (item: EmailNotificationConfigItem) => item.recipientLabel,
+  enabled: (item: EmailNotificationConfigItem) => item.enabled,
+  event: (item: EmailNotificationConfigItem) => getEventGroupKey(item.key)
+};
 
 /** Un événement déclencheur unique (sans doublon par groupe). */
 interface UniqueEventOption {
@@ -82,6 +96,35 @@ export function EmailNotificationsUnifiedPage() {
     }
     return result;
   }, [items]);
+
+  // Liste reçue en entier (57 lignes au plus) : recherche et critères en local, 20 par page.
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Événement, description, destinataire…')
+    },
+    {
+      key: 'recipient',
+      type: 'select',
+      label: t('Destinataire'),
+      primary: true,
+      options: Array.from(new Set(items.map(item => item.recipientLabel))).map(label => ({ value: label, label }))
+    },
+    { key: 'enabled', type: 'boolean', label: t('Activer'), primary: true, tristate: true },
+    {
+      key: 'event',
+      type: 'select',
+      label: t('Événement déclencheur'),
+      options: uniqueEvents.map(event => ({ value: event.eventGroupKey, label: event.label }))
+    }
+  ];
+  const local = useLocalListSearch<EmailNotificationConfigItem>(items, {
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   const recipientsForSelectedEvent = useMemo(() => {
     if (!selectedEventGroup) return [];
@@ -462,11 +505,11 @@ export function EmailNotificationsUnifiedPage() {
         <Spin spinning={loading}>
           <Table
             exportFilename={t('Liste des notifications email')}
+            {...local.tableProps}
+            exportFetchAll={local.exportAll}
             scroll={{ x: 'max-content' }}
             rowKey="key"
             columns={columns}
-            dataSource={items}
-            pagination={false}
             size="middle"
           />
         </Spin>

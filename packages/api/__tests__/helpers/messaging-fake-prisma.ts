@@ -14,6 +14,7 @@ type Table = Row[];
 const RELATIONS: Record<string, Record<string, { table: string; local: string; foreign: string; many?: boolean }>> = {
   membership: { user: { table: 'user', local: 'userId', foreign: 'id' } },
   tenantClient: { user: { table: 'user', local: 'userId', foreign: 'id' } },
+  user: { memberships: { table: 'membership', local: 'id', foreign: 'userId', many: true } },
   conversationParticipant: {
     user: { table: 'user', local: 'userId', foreign: 'id' },
     conversation: { table: 'conversation', local: 'conversationId', foreign: 'id' }

@@ -4,14 +4,14 @@ import {
   ContactDetail,
   CreateContactRequest,
   UpdateContactRequest,
-  ContactFilters,
+  ContactFilters as BaseContactFilters,
   Deal,
   CreateDealRequest,
   UpdateDealRequest,
-  DealFilters,
+  DealFilters as BaseDealFilters,
   Activity,
   CreateActivityRequest,
-  ActivityFilters,
+  ActivityFilters as BaseActivityFilters,
   Tag,
   PropertyMatch,
   UpdatePropertyMatchStatusRequest,
@@ -27,6 +27,11 @@ import {
   CrmActivity,
   CreateCrmActivityRequest,
   CrmTag,
+  CrmContactStatus,
+  CrmDealStage,
+  CrmDealType,
+  CrmActivityType,
+  CrmActivityDirection
 } from '../types/crm-types';
 
 // Note: All functions require tenantId as a parameter
@@ -38,22 +43,63 @@ export type {
   CrmContactDetail,
   CreateCrmContactRequest,
   UpdateCrmContactRequest,
-  ContactFilters,
   CrmDeal,
   CrmDealDetail,
   CreateCrmDealRequest,
   UpdateCrmDealRequest,
-  DealFilters,
   CrmActivity,
   CreateCrmActivityRequest,
-  ActivityFilters,
   CrmTag,
   PropertyMatch,
   UpdatePropertyMatchStatusRequest,
   Dashboard,
   NextBestAction,
-  CrmDealPropertyStatus,
+  CrmDealPropertyStatus
 } from '../types/crm-types';
+
+// ==================== CRITÈRES DES LISTES ====================
+
+/**
+ * Critères des listes (contacts, affaires, activités). Tous partent à l'API :
+ * jamais de filtrage côté client d'une page reçue du serveur. Un critère à
+ * plusieurs valeurs part en `a,b` (voir `versParametres`).
+ */
+export interface ContactFilters extends Omit<BaseContactFilters, 'status'> {
+  status?: CrmContactStatus | CrmContactStatus[];
+  contactType?: ('PERSON' | 'COMPANY')[];
+  maturityLevel?: ('COLD' | 'WARM' | 'HOT')[];
+}
+
+export interface DealFilters extends Omit<BaseDealFilters, 'stage' | 'type'> {
+  stage?: CrmDealStage | CrmDealStage[];
+  type?: CrmDealType | CrmDealType[];
+  /** Contact (nom, raison sociale, e-mail, téléphones), zone, collaborateur. */
+  search?: string;
+}
+
+export interface ActivityFilters extends Omit<BaseActivityFilters, 'type'> {
+  type?: CrmActivityType | CrmActivityType[];
+  direction?: CrmActivityDirection | CrmActivityDirection[];
+  /** true : avec une prochaine action planifiée ; false : sans. */
+  hasNextAction?: boolean;
+  /** Sujet, contenu, résultat, contact, auteur. */
+  search?: string;
+}
+
+/** Tableaux en `a,b`, valeurs vides retirées : ce que les routes de liste attendent. */
+function versParametres(filters?: object): Record<string, unknown> | undefined {
+  if (!filters) return undefined;
+  const params: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined || value === null || value === '') continue;
+    if (Array.isArray(value)) {
+      if (value.length > 0) params[key] = value.join(',');
+    } else {
+      params[key] = value;
+    }
+  }
+  return params;
+}
 
 // ==================== CONTACTS ====================
 
@@ -73,34 +119,20 @@ export interface ContactResponse {
   data: CrmContactDetail;
 }
 
-export async function listContacts(
-  tenantId: string,
-  filters?: ContactFilters
-): Promise<ContactListResponse> {
+export async function listContacts(tenantId: string, filters?: ContactFilters): Promise<ContactListResponse> {
   const response = await apiClient.get(`/tenants/${tenantId}/crm/contacts`, {
-    params: filters,
+    params: versParametres(filters)
   });
   return response.data;
 }
 
-export async function getContact(
-  tenantId: string,
-  contactId: string
-): Promise<ContactResponse> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/crm/contacts/${contactId}`
-  );
+export async function getContact(tenantId: string, contactId: string): Promise<ContactResponse> {
+  const response = await apiClient.get(`/tenants/${tenantId}/crm/contacts/${contactId}`);
   return response.data;
 }
 
-export async function createContact(
-  tenantId: string,
-  data: CreateCrmContactRequest
-): Promise<ContactResponse> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/crm/contacts`,
-    data
-  );
+export async function createContact(tenantId: string, data: CreateCrmContactRequest): Promise<ContactResponse> {
+  const response = await apiClient.post(`/tenants/${tenantId}/crm/contacts`, data);
   return response.data;
 }
 
@@ -109,10 +141,7 @@ export async function updateContact(
   contactId: string,
   data: UpdateCrmContactRequest
 ): Promise<ContactResponse> {
-  const response = await apiClient.patch(
-    `/tenants/${tenantId}/crm/contacts/${contactId}`,
-    data
-  );
+  const response = await apiClient.patch(`/tenants/${tenantId}/crm/contacts/${contactId}`, data);
   return response.data;
 }
 
@@ -120,9 +149,7 @@ export async function deleteContact(
   tenantId: string,
   contactId: string
 ): Promise<{ success: boolean; message?: string }> {
-  const response = await apiClient.delete(
-    `/tenants/${tenantId}/crm/contacts/${contactId}`
-  );
+  const response = await apiClient.delete(`/tenants/${tenantId}/crm/contacts/${contactId}`);
   return response.data;
 }
 
@@ -130,9 +157,7 @@ export async function getContactTags(
   tenantId: string,
   contactId: string
 ): Promise<{ success: boolean; data: CrmTag[] }> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/crm/contacts/${contactId}/tags`
-  );
+  const response = await apiClient.get(`/tenants/${tenantId}/crm/contacts/${contactId}/tags`);
   return response.data;
 }
 
@@ -141,10 +166,7 @@ export async function assignTag(
   contactId: string,
   tagId: string
 ): Promise<{ success: boolean; message: string }> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/crm/contacts/${contactId}/tags`,
-    { tagId }
-  );
+  const response = await apiClient.post(`/tenants/${tenantId}/crm/contacts/${contactId}/tags`, { tagId });
   return response.data;
 }
 
@@ -153,18 +175,12 @@ export async function removeTag(
   contactId: string,
   tagId: string
 ): Promise<{ success: boolean; message: string }> {
-  const response = await apiClient.delete(
-    `/tenants/${tenantId}/crm/contacts/${contactId}/tags/${tagId}`
-  );
+  const response = await apiClient.delete(`/tenants/${tenantId}/crm/contacts/${contactId}/tags/${tagId}`);
   return response.data;
 }
 
-export async function listTags(
-  tenantId: string
-): Promise<{ success: boolean; data: CrmTag[] }> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/crm/tags`
-  );
+export async function listTags(tenantId: string): Promise<{ success: boolean; data: CrmTag[] }> {
+  const response = await apiClient.get(`/tenants/${tenantId}/crm/tags`);
   return response.data;
 }
 
@@ -173,22 +189,12 @@ export async function createTag(
   name: string,
   color?: string
 ): Promise<{ success: boolean; data: CrmTag }> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/crm/tags`,
-    { name, color }
-  );
+  const response = await apiClient.post(`/tenants/${tenantId}/crm/tags`, { name, color });
   return response.data;
 }
 
-export async function convertContact(
-  tenantId: string,
-  contactId: string,
-  roles: string[]
-): Promise<ContactResponse> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/crm/contacts/${contactId}/convert`,
-    { roles }
-  );
+export async function convertContact(tenantId: string, contactId: string, roles: string[]): Promise<ContactResponse> {
+  const response = await apiClient.post(`/tenants/${tenantId}/crm/contacts/${contactId}/convert`, { roles });
   return response.data;
 }
 
@@ -197,9 +203,7 @@ export async function removeContactRole(
   contactId: string,
   roleId: string
 ): Promise<{ success: boolean; data: any }> {
-  const response = await apiClient.delete(
-    `/tenants/${tenantId}/crm/contacts/${contactId}/roles/${roleId}`
-  );
+  const response = await apiClient.delete(`/tenants/${tenantId}/crm/contacts/${contactId}/roles/${roleId}`);
   return response.data;
 }
 
@@ -208,10 +212,7 @@ export async function updateContactRoles(
   contactId: string,
   roles: string[]
 ): Promise<ContactResponse> {
-  const response = await apiClient.patch(
-    `/tenants/${tenantId}/crm/contacts/${contactId}/roles`,
-    { roles }
-  );
+  const response = await apiClient.patch(`/tenants/${tenantId}/crm/contacts/${contactId}/roles`, { roles });
   return response.data;
 }
 
@@ -233,46 +234,25 @@ export interface DealResponse {
   data: CrmDeal;
 }
 
-export async function listDeals(
-  tenantId: string,
-  filters?: DealFilters
-): Promise<DealListResponse> {
+export async function listDeals(tenantId: string, filters?: DealFilters): Promise<DealListResponse> {
   const response = await apiClient.get(`/tenants/${tenantId}/crm/deals`, {
-    params: filters,
+    params: versParametres(filters)
   });
   return response.data;
 }
 
-export async function getDeal(
-  tenantId: string,
-  dealId: string
-): Promise<DealResponse> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/crm/deals/${dealId}`
-  );
+export async function getDeal(tenantId: string, dealId: string): Promise<DealResponse> {
+  const response = await apiClient.get(`/tenants/${tenantId}/crm/deals/${dealId}`);
   return response.data;
 }
 
-export async function createDeal(
-  tenantId: string,
-  data: CreateCrmDealRequest
-): Promise<DealResponse> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/crm/deals`,
-    data
-  );
+export async function createDeal(tenantId: string, data: CreateCrmDealRequest): Promise<DealResponse> {
+  const response = await apiClient.post(`/tenants/${tenantId}/crm/deals`, data);
   return response.data;
 }
 
-export async function updateDeal(
-  tenantId: string,
-  dealId: string,
-  data: UpdateCrmDealRequest
-): Promise<DealResponse> {
-  const response = await apiClient.patch(
-    `/tenants/${tenantId}/crm/deals/${dealId}`,
-    data
-  );
+export async function updateDeal(tenantId: string, dealId: string, data: UpdateCrmDealRequest): Promise<DealResponse> {
+  const response = await apiClient.patch(`/tenants/${tenantId}/crm/deals/${dealId}`, data);
   return response.data;
 }
 
@@ -294,24 +274,15 @@ export interface ActivityResponse {
   data: CrmActivity;
 }
 
-export async function listActivities(
-  tenantId: string,
-  filters?: ActivityFilters
-): Promise<ActivityListResponse> {
+export async function listActivities(tenantId: string, filters?: ActivityFilters): Promise<ActivityListResponse> {
   const response = await apiClient.get(`/tenants/${tenantId}/crm/activities`, {
-    params: filters,
+    params: versParametres(filters)
   });
   return response.data;
 }
 
-export async function createActivity(
-  tenantId: string,
-  data: CreateCrmActivityRequest
-): Promise<ActivityResponse> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/crm/activities`,
-    data
-  );
+export async function createActivity(tenantId: string, data: CreateCrmActivityRequest): Promise<ActivityResponse> {
+  const response = await apiClient.post(`/tenants/${tenantId}/crm/activities`, data);
   return response.data;
 }
 
@@ -335,20 +306,12 @@ export async function matchProperties(
   threshold?: number,
   limit?: number
 ): Promise<MatchPropertiesResponse> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/crm/deals/${dealId}/match`,
-    { threshold, limit }
-  );
+  const response = await apiClient.post(`/tenants/${tenantId}/crm/deals/${dealId}/match`, { threshold, limit });
   return response.data;
 }
 
-export async function getMatches(
-  tenantId: string,
-  dealId: string
-): Promise<PropertyMatchesResponse> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/crm/deals/${dealId}/matches`
-  );
+export async function getMatches(tenantId: string, dealId: string): Promise<PropertyMatchesResponse> {
+  const response = await apiClient.get(`/tenants/${tenantId}/crm/deals/${dealId}/matches`);
   return response.data;
 }
 
@@ -359,10 +322,11 @@ export async function addPropertyToShortlist(
   matchScore: number,
   matchExplanation: any
 ): Promise<{ success: boolean; data: any }> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/crm/deals/${dealId}/properties`,
-    { propertyId, matchScore, matchExplanation }
-  );
+  const response = await apiClient.post(`/tenants/${tenantId}/crm/deals/${dealId}/properties`, {
+    propertyId,
+    matchScore,
+    matchExplanation
+  });
   return response.data;
 }
 
@@ -372,10 +336,9 @@ export async function updatePropertyStatus(
   propertyId: string,
   status: UpdatePropertyMatchStatusRequest['status']
 ): Promise<{ success: boolean; data: any }> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/crm/deals/${dealId}/properties/${propertyId}/status`,
-    { status }
-  );
+  const response = await apiClient.post(`/tenants/${tenantId}/crm/deals/${dealId}/properties/${propertyId}/status`, {
+    status
+  });
   return response.data;
 }
 
@@ -386,16 +349,10 @@ export interface DashboardResponse {
   data: Dashboard;
 }
 
-export async function getDashboard(
-  tenantId: string,
-  assignedToUserId?: string
-): Promise<DashboardResponse> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/crm/dashboard`,
-    {
-      params: assignedToUserId ? { assignedTo: assignedToUserId } : {},
-    }
-  );
+export async function getDashboard(tenantId: string, assignedToUserId?: string): Promise<DashboardResponse> {
+  const response = await apiClient.get(`/tenants/${tenantId}/crm/dashboard`, {
+    params: assignedToUserId ? { assignedTo: assignedToUserId } : {}
+  });
   return response.data;
 }
 
@@ -438,17 +395,14 @@ export interface CalendarFilters {
   types?: ('appointments' | 'followups' | 'propertyVisits')[];
 }
 
-export async function getCalendarEvents(
-  tenantId: string,
-  filters: CalendarFilters
-): Promise<CalendarResponse> {
+export async function getCalendarEvents(tenantId: string, filters: CalendarFilters): Promise<CalendarResponse> {
   const response = await apiClient.get(`/tenants/${tenantId}/crm/calendar`, {
     params: {
       from: filters.from.toISOString(),
       to: filters.to.toISOString(),
       scope: filters.scope || 'GLOBAL',
-      types: filters.types ? filters.types.join(',') : undefined,
-    },
+      types: filters.types ? filters.types.join(',') : undefined
+    }
   });
   return response.data;
 }
@@ -462,22 +416,13 @@ export async function rescheduleFollowUp(
   activityId: string,
   data: RescheduleFollowUpRequest
 ): Promise<ActivityResponse> {
-  const response = await apiClient.patch(
-    `/tenants/${tenantId}/crm/activities/${activityId}/next-action`,
-    {
-      nextActionAt: data.nextActionAt.toISOString(),
-    }
-  );
+  const response = await apiClient.patch(`/tenants/${tenantId}/crm/activities/${activityId}/next-action`, {
+    nextActionAt: data.nextActionAt.toISOString()
+  });
   return response.data;
 }
 
-export async function markFollowUpDone(
-  tenantId: string,
-  activityId: string
-): Promise<ActivityResponse> {
-  const response = await apiClient.patch(
-    `/tenants/${tenantId}/crm/activities/${activityId}/mark-done`
-  );
+export async function markFollowUpDone(tenantId: string, activityId: string): Promise<ActivityResponse> {
+  const response = await apiClient.patch(`/tenants/${tenantId}/crm/activities/${activityId}/mark-done`);
   return response.data;
 }
-

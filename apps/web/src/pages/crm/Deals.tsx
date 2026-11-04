@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { DealForm } from '../../components/crm/DealForm';
 import { ActivityForm } from '../../components/crm/ActivityForm';
 import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
 import {
   listDeals,
   createDeal,
@@ -17,21 +16,13 @@ import {
   DealFilters
 } from '../../services/crm-service';
 import { CrmDealStage } from '../../types/crm-types';
-import {
-  Briefcase,
-  Plus,
-  Search,
-  Edit,
-  Eye,
-  LayoutGrid,
-  Activity,
-  Calendar,
-  X,
-  Download,
-  FileSpreadsheet
-} from 'lucide-react';
+import { Briefcase, Plus, Edit, Eye, LayoutGrid, Activity, Calendar, Download, FileSpreadsheet } from 'lucide-react';
 import { DealKanban } from '../../components/crm/DealKanban';
-import { AdvancedFilters, AdvancedFilters as AdvancedFiltersType } from '../../components/crm/AdvancedFilters';
+import { useDealKanban } from '../../components/crm/use-deal-kanban';
+import { ListSearch } from '../../components/primitives/ListSearch';
+import { useListSearch } from '../../hooks/useListSearch';
+import { listAssignableMembers } from '../../services/membership-service';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { exportToCSV, exportToExcel } from '../../utils/export-utils';
 import { App } from 'antd';
 import { t } from '../../i18n/t';
@@ -48,45 +39,92 @@ export const Deals: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingDeal, setEditingDeal] = useState<CrmDeal | null>(null);
-  const [filters, setFilters] = useState<DealFilters>({
-    page: 1,
-    limit: 20
-  });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
     total: 0,
     totalPages: 0
   });
-  const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('kanban');
-  const [showFilters, setShowFilters] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [selectedDealForActivity, setSelectedDealForActivity] = useState<CrmDeal | null>(null);
-  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFiltersType>({});
+  const [members, setMembers] = useState<{ value: string; label: string }[]>([]);
 
+  // Collaborateurs de l'agence (liste bornée) : options du critère « Collaborateur ».
   useEffect(() => {
-    if (tenantId) {
+    if (!tenantId) return;
+    listAssignableMembers(tenantId)
+      .then(response => {
+        if (response.success) {
+          setMembers(
+            (response.data?.members ?? []).map(member => ({
+              value: member.user.id,
+              label: member.user.fullName || member.user.email
+            }))
+          );
+        }
+      })
+      .catch(() => undefined);
+  }, [tenantId]);
+
+  // Recherche multicritères : l'état vit dans l'URL, tout part à l'API (liste et colonnes du pipeline).
+  const search = useListSearch({
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Contact, e-mail, téléphone, zone, collaborateur…')
+      },
+      {
+        key: 'stage',
+        type: 'multiSelect',
+        label: t('Étape'),
+        primary: true,
+        options: (['NEW', 'QUALIFIED', 'VISIT', 'NEGOTIATION', 'WON', 'LOST'] as const).map(stage => ({
+          value: stage,
+          label: dealStageLabel(stage)
+        }))
+      },
+      {
+        key: 'type',
+        type: 'multiSelect',
+        label: t('Type'),
+        primary: true,
+        options: (['ACHAT', 'LOCATION', 'VENTE', 'GESTION', 'MANDAT'] as const).map(type => ({
+          value: type,
+          label: dealTypeLabel(type)
+        }))
+      },
+      { key: 'assignedTo', type: 'select', label: t('Collaborateur'), primary: true, options: members },
+      { key: 'created', type: 'dateRange', label: t('Date de création'), api: ['startDate', 'endDate'] },
+      { key: 'budget', type: 'numberRange', label: t('Budget'), unit: 'FCFA', api: ['budgetMin', 'budgetMax'] }
+    ]
+  });
+
+  const isKanban = viewMode === 'kanban';
+  // Le pipeline interroge une colonne par étape : le critère « Étape » devient la liste des colonnes demandées.
+  const { stage: _stageParam, ...kanbanCriteria } = search.filterParams;
+  const kanban = useDealKanban({
+    tenantId,
+    enabled: isKanban,
+    criteria: kanbanCriteria,
+    stages: (search.values.stage as string[] | undefined) ?? []
+  });
+
+  // Vue Liste : une page serveur. Le pipeline charge ses colonnes lui-même.
+  useEffect(() => {
+    if (tenantId && !isKanban) {
       loadDeals();
     }
-  }, [tenantId, filters, viewMode, advancedFilters]);
+  }, [tenantId, isKanban, search.apiParams]);
 
   const loadDeals = async () => {
     if (!tenantId) return;
     setLoading(true);
     setError(null);
     try {
-      // For kanban view, load all deals (no pagination)
-      const filtersToUse = viewMode === 'kanban' ? { ...filters, limit: 1000, page: 1 } : filters;
-
-      const response = await listDeals(tenantId, {
-        ...filtersToUse,
-        budgetMin: advancedFilters.budgetMin,
-        budgetMax: advancedFilters.budgetMax,
-        startDate: advancedFilters.startDate,
-        endDate: advancedFilters.endDate,
-        assignedTo: advancedFilters.assignedTo
-      });
+      const response = await listDeals(tenantId, search.apiParams as DealFilters);
       if (response.success) {
         setDeals(response.deals);
         setPagination(response.pagination);
@@ -100,46 +138,48 @@ export const Deals: React.FC = () => {
     }
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Client-side filtering will be applied in the filtered deals
-    loadDeals();
+  /** Recharge la vue affichée (après création ou modification). */
+  const refresh = async () => {
+    if (isKanban) kanban.reloadAll();
+    else await loadDeals();
   };
 
-  // Filter deals client-side based on search term
-  const filteredDeals = React.useMemo(() => {
-    if (!searchTerm.trim()) {
-      return deals;
+  const resultCount = isKanban ? kanban.total : pagination.total;
+  const isLoading = isKanban ? kanban.loading : loading;
+  const hasNoDeals = isKanban ? kanban.total === 0 : deals.length === 0;
+  const loadError = error ?? (isKanban && kanban.hasError ? t('Erreur lors du chargement des affaires') : null);
+
+  const exportRow = (deal: CrmDeal) => {
+    const contact = (deal as CrmDealDetail).contact;
+    return {
+      Type: dealTypeLabel(deal.type),
+      Contact: contact
+        ? `${contact.firstName} ${contact.lastName}`
+        : t('Contact ID: {{contactId}}', { contactId: deal.contactId }),
+      Email: contact?.email || '',
+      Téléphone: contact?.phone || '',
+      Stade: getStageLabel(deal.stage),
+      'Budget min': deal.budgetMin ? deal.budgetMin.toLocaleString() + ' FCFA' : '',
+      'Budget max': deal.budgetMax ? deal.budgetMax.toLocaleString() + ' FCFA' : '',
+      Localisation: deal.locationZone || '',
+      'Date de création': new Date(deal.createdAt).toLocaleDateString(activeLocale())
+    };
+  };
+
+  /** Exporte TOUTES les affaires qui répondent aux critères affichés, pas seulement la page chargée. */
+  const exportDeals = async (format: 'csv' | 'excel') => {
+    if (!tenantId) return;
+    try {
+      const { items } = await collectAllPages<CrmDeal>(async (page, limit) => {
+        const response = await listDeals(tenantId, { ...search.filterParams, page, limit } as DealFilters);
+        return { items: response.deals ?? [], total: response.pagination?.total ?? 0 };
+      });
+      const rows = items.map(exportRow);
+      if (format === 'csv') exportToCSV(rows, 'affaires');
+      else exportToExcel(rows, 'affaires', 'Affaires');
+    } catch (err: any) {
+      message.error(err.response?.data?.message || t('Erreur lors du chargement des affaires'));
     }
-
-    const searchLower = searchTerm.toLowerCase();
-    return deals.filter(deal => {
-      const dealDetail = deal as CrmDealDetail;
-      const contact = dealDetail.contact;
-
-      // Search in contact name
-      if (contact) {
-        const fullName = `${contact.firstName} ${contact.lastName}`.toLowerCase();
-        if (fullName.includes(searchLower)) return true;
-        if (contact.email?.toLowerCase().includes(searchLower)) return true;
-      }
-
-      // Search in location
-      if (deal.locationZone?.toLowerCase().includes(searchLower)) return true;
-
-      // Search in deal type
-      if (deal.type.toLowerCase().includes(searchLower)) return true;
-
-      return false;
-    });
-  }, [deals, searchTerm]);
-
-  const handleTypeFilter = (type: 'ACHAT' | 'LOCATION' | '') => {
-    setFilters({ ...filters, page: 1, type: type || undefined });
-  };
-
-  const handleStageFilter = (stage: string) => {
-    setFilters({ ...filters, page: 1, stage: (stage || undefined) as CrmDealStage | undefined });
   };
 
   const handleCreate = async (data: CreateCrmDealRequest | UpdateCrmDealRequest) => {
@@ -147,7 +187,7 @@ export const Deals: React.FC = () => {
     try {
       await createDeal(tenantId, data as CreateCrmDealRequest);
       setShowForm(false);
-      await loadDeals();
+      await refresh();
     } catch (err: any) {
       throw err;
     }
@@ -158,7 +198,7 @@ export const Deals: React.FC = () => {
     try {
       await updateDeal(tenantId, editingDeal.id, data as UpdateCrmDealRequest);
       setEditingDeal(null);
-      await loadDeals();
+      await refresh();
     } catch (err: any) {
       throw err;
     }
@@ -216,59 +256,11 @@ export const Deals: React.FC = () => {
             <p className="text-gray-600 mt-0.5 text-sm">{t('Gérez votre pipeline de ventes')}</p>
           </div>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              onClick={() => {
-                const exportData = filteredDeals.map(deal => {
-                  const dealDetail = deal as CrmDealDetail;
-                  const contact = dealDetail.contact;
-                  return {
-                    Type: dealTypeLabel(deal.type),
-                    Contact: contact
-                      ? `${contact.firstName} ${contact.lastName}`
-                      : t('Contact ID: {{contactId}}', { contactId: deal.contactId }),
-                    Email: contact?.email || '',
-                    Téléphone: contact?.phone || '',
-                    Stade: getStageLabel(deal.stage),
-                    'Budget min': deal.budgetMin ? deal.budgetMin.toLocaleString() + ' FCFA' : '',
-                    'Budget max': deal.budgetMax ? deal.budgetMax.toLocaleString() + ' FCFA' : '',
-                    Localisation: deal.locationZone || '',
-                    'Date de création': new Date(deal.createdAt).toLocaleDateString(activeLocale())
-                  };
-                });
-                exportToCSV(exportData, 'affaires');
-              }}
-            >
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => exportDeals('csv')}>
               <Download className="h-3 w-3 me-1" />
               CSV
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              onClick={() => {
-                const exportData = filteredDeals.map(deal => {
-                  const dealDetail = deal as CrmDealDetail;
-                  const contact = dealDetail.contact;
-                  return {
-                    Type: dealTypeLabel(deal.type),
-                    Contact: contact
-                      ? `${contact.firstName} ${contact.lastName}`
-                      : t('Contact ID: {{contactId}}', { contactId: deal.contactId }),
-                    Email: contact?.email || '',
-                    Téléphone: contact?.phone || '',
-                    Stade: getStageLabel(deal.stage),
-                    'Budget min': deal.budgetMin ? deal.budgetMin.toLocaleString() + ' FCFA' : '',
-                    'Budget max': deal.budgetMax ? deal.budgetMax.toLocaleString() + ' FCFA' : '',
-                    Localisation: deal.locationZone || '',
-                    'Date de création': new Date(deal.createdAt).toLocaleDateString(activeLocale())
-                  };
-                });
-                exportToExcel(exportData, 'affaires', 'Affaires');
-              }}
-            >
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => exportDeals('excel')}>
               <FileSpreadsheet className="h-3 w-3 me-1" />
               {'Excel'}
             </Button>
@@ -314,47 +306,12 @@ export const Deals: React.FC = () => {
           </div>
         )}
 
-        {/* Search and Filters Bar */}
-        <div className="bg-white rounded-lg shadow p-3 mb-3">
-          <div className="flex gap-2 items-center mb-2">
-            {/* Search Input */}
-            <form onSubmit={handleSearch} className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  type="text"
-                  placeholder={t('Rechercher par nom, email, localisation...')}
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="ps-8 pe-8 h-8 text-xs"
-                />
-                {searchTerm && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchTerm('')}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            </form>
-
-            {/* Results Count */}
-            {searchTerm && (
-              <span className="text-xs text-gray-500 whitespace-nowrap">
-                {filteredDeals.length} {t('résultat')}
-                {filteredDeals.length !== 1 ? 's' : ''}
-              </span>
-            )}
-
-            {/* Filter Toggle */}
-            <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => setShowFilters(!showFilters)}>
-              {t('Filtres')}
-            </Button>
-
-            {/* View Toggle */}
-            <div className="flex gap-1 border-s ps-2 ms-2">
+        {/* Recherche multicritères (champ libre + critères) et choix de la vue */}
+        <ListSearch
+          {...search.searchProps}
+          resultCount={isLoading ? undefined : resultCount}
+          extra={
+            <div className="flex gap-1">
               <Button
                 variant={viewMode === 'list' ? 'default' : 'outline'}
                 size="sm"
@@ -373,89 +330,26 @@ export const Deals: React.FC = () => {
                 {t('Pipeline')}
               </Button>
             </div>
-          </div>
-
-          {/* Filters Panel */}
-          {showFilters && (
-            <div className="border-t pt-2 mt-2 space-y-2">
-              <div className="flex gap-2 flex-wrap">
-                <span className="text-xs font-medium text-gray-700 self-center">Type:</span>
-                <Button
-                  variant={!filters.type ? 'default' : 'outline'}
-                  size="sm"
-                  className="text-xs h-7"
-                  onClick={() => handleTypeFilter('')}
-                >
-                  {t('Tous')}
-                </Button>
-                <Button
-                  variant={filters.type === 'ACHAT' ? 'default' : 'outline'}
-                  size="sm"
-                  className="text-xs h-7"
-                  onClick={() => handleTypeFilter('ACHAT')}
-                >
-                  {t('Achat')}
-                </Button>
-                <Button
-                  variant={filters.type === 'LOCATION' ? 'default' : 'outline'}
-                  size="sm"
-                  className="text-xs h-7"
-                  onClick={() => handleTypeFilter('LOCATION')}
-                >
-                  {t('Location')}
-                </Button>
-              </div>
-
-              <div className="flex gap-2 flex-wrap">
-                <span className="text-xs font-medium text-gray-700 self-center">{t('Stade :')}</span>
-                <Button
-                  variant={!filters.stage ? 'default' : 'outline'}
-                  size="sm"
-                  className="text-xs h-7"
-                  onClick={() => handleStageFilter('')}
-                >
-                  {t('Tous')}
-                </Button>
-                {['NEW', 'QUALIFIED', 'APPOINTMENT', 'VISIT', 'NEGOTIATION', 'WON', 'LOST'].map(stage => (
-                  <Button
-                    key={stage}
-                    variant={filters.stage === stage ? 'default' : 'outline'}
-                    size="sm"
-                    className="text-xs h-7"
-                    onClick={() => handleStageFilter(stage)}
-                  >
-                    {getStageLabel(stage)}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Advanced Filters */}
-          <div className="mt-3">
-            <AdvancedFilters
-              tenantId={tenantId}
-              config={{
-                showDateRange: true,
-                showAssignedTo: true,
-                showBudget: true,
-                dateRangeLabel: t('Date de création')
-              }}
-              filters={advancedFilters}
-              onFiltersChange={setAdvancedFilters}
-            />
-          </div>
-        </div>
+          }
+        />
 
         {/* Deals View */}
-        {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{error}</div>}
+        {loadError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{loadError}</div>}
 
-        {loading ? (
+        {isLoading && (!isKanban || hasNoDeals) ? (
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
             <p className="mt-2 text-gray-600">{t('Chargement des affaires...')}</p>
           </div>
-        ) : deals.length === 0 ? (
+        ) : hasNoDeals && (search.isFiltered || search.page > 1) ? (
+          <div className="bg-white rounded-lg shadow p-12 text-center">
+            <Briefcase className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-4">{t('Aucun résultat')}</h3>
+            <Button variant="outline" onClick={search.clear}>
+              {t('Effacer les critères')}
+            </Button>
+          </div>
+        ) : hasNoDeals ? (
           <div className="bg-white rounded-lg shadow p-12 text-center">
             <Briefcase className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">{t('Aucune affaire trouvée')}</h3>
@@ -465,22 +359,22 @@ export const Deals: React.FC = () => {
               {t('Créer une affaire')}
             </Button>
           </div>
-        ) : viewMode === 'kanban' ? (
+        ) : isKanban ? (
           <div className="bg-white rounded-lg shadow p-3 w-full overflow-x-auto">
             <DealKanban
-              deals={filteredDeals}
-              loading={loading}
+              columns={kanban.columns}
+              onLoadMore={kanban.loadMore}
               onDealClick={deal => navigate(`/tenant/${tenantId}/crm/deals/${deal.id}`)}
               onStageChange={async (dealId, newStage) => {
-                const deal = filteredDeals.find(d => d.id === dealId) || deals.find(d => d.id === dealId);
+                const deal = kanban.findDeal(dealId);
                 if (deal && tenantId) {
                   try {
                     await updateDeal(tenantId, dealId, {
                       stage: newStage,
                       version: deal.version
                     });
-                    // Reload deals
-                    await loadDeals();
+                    // Les deux colonnes touchées (départ et arrivée) sont rechargées.
+                    kanban.reloadStages([deal.stage, newStage]);
                   } catch (err: any) {
                     message.error(
                       err.response?.data?.message || t("Erreur lors de la mise à jour du stade de l'affaire")
@@ -509,7 +403,7 @@ export const Deals: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredDeals.map(deal => (
+                {deals.map(deal => (
                   <tr key={deal.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{dealTypeLabel(deal.type)}</div>
@@ -587,7 +481,7 @@ export const Deals: React.FC = () => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setFilters({ ...filters, page: pagination.page - 1 })}
+                    onClick={() => search.setPage(pagination.page - 1)}
                     disabled={pagination.page === 1}
                   >
                     {t('Précédent')}
@@ -595,7 +489,7 @@ export const Deals: React.FC = () => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setFilters({ ...filters, page: pagination.page + 1 })}
+                    onClick={() => search.setPage(pagination.page + 1)}
                     disabled={pagination.page === pagination.totalPages}
                   >
                     {t('Suivant')}

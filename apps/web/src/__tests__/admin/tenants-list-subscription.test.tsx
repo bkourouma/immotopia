@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { TenantsList } from '../../pages/admin/TenantsList';
 
 /**
@@ -19,6 +19,10 @@ vi.mock('../../utils/api-client', () => ({
     put: vi.fn(),
     delete: vi.fn()
   }
+}));
+
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
 import apiClient from '../../utils/api-client';
@@ -84,9 +88,14 @@ const CATALOG = [
   }
 ];
 
-function mount() {
+function Url() {
+  return <div data-testid="url">{useLocation().search}</div>;
+}
+
+function mount(initial = '/admin/tenants') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initial]}>
+      <Url />
       <TenantsList />
     </MemoryRouter>
   );
@@ -94,10 +103,15 @@ function mount() {
 
 beforeEach(() => {
   get.mockReset();
-  get.mockImplementation((url: string) => {
+  get.mockImplementation((url: string, config?: { params?: { nearLimit?: boolean } }) => {
     if (url === '/admin/tenants') {
+      // Comme l'API : « proche de la limite » filtre AVANT la pagination et le total.
+      const tenants = config?.params?.nearLimit ? TENANTS.filter(tenant => tenant.id === 'tenant-proche') : TENANTS;
       return Promise.resolve({
-        data: { success: true, data: { tenants: TENANTS, pagination: { page: 1, limit: 20, total: 2, totalPages: 1 } } }
+        data: {
+          success: true,
+          data: { tenants, pagination: { page: 1, limit: 20, total: tenants.length, totalPages: 1 } }
+        }
       });
     }
     if (url === '/admin/catalog') return Promise.resolve({ data: { success: true, data: CATALOG } });
@@ -143,19 +157,46 @@ describe('<TenantsList> — abonnements par packs', () => {
     expect(get.mock.calls.some(([url]) => String(url).endsWith('/entitlements'))).toBe(false);
   });
 
-  it('le filtre « proche de la limite » ne garde que les agences à 80 % ou plus', async () => {
-    const user = userEvent.setup();
-    mount();
+  it('« proche de la limite » (URL) part à l’API et le total affiché est celui de l’API', async () => {
+    mount('/admin/tenants?nearLimit=1');
 
     await screen.findByText('Agence Proche Limite');
+    expect(screen.queryByText('Agence Large')).not.toBeInTheDocument();
+    const last = get.mock.calls.filter(([url]) => url === '/admin/tenants').at(-1)!;
+    expect(last[1].params).toMatchObject({ nearLimit: 'true', page: 1 });
+    expect(screen.getAllByText(/1 résultat/).length).toBeGreaterThan(0);
+  });
+
+  it('cocher « Proche de la limite » écrit nearLimit dans l’URL et relance la lecture ; décocher le retire', async () => {
+    const user = userEvent.setup();
+    mount();
     await screen.findByText('Agence Large');
-    await waitFor(() => expect(screen.getByText('95%')).toBeInTheDocument());
-
+    const box = screen.getByRole('checkbox', { name: 'Proche de la limite' });
+    await user.click(box);
+    await waitFor(() => expect(screen.queryByText('Agence Large')).not.toBeInTheDocument());
+    expect(screen.getByTestId('url').textContent).toContain('nearLimit=1');
     await user.click(screen.getByRole('checkbox', { name: 'Proche de la limite' }));
+    expect(await screen.findByText('Agence Large')).toBeInTheDocument();
+    const last = get.mock.calls.filter(([url]) => url === '/admin/tenants').at(-1)!;
+    expect(last[1].params.nearLimit).toBeUndefined();
+  });
 
-    await waitFor(() => {
-      expect(screen.getByText('Agence Proche Limite')).toBeInTheDocument();
-      expect(screen.queryByText('Agence Large')).not.toBeInTheDocument();
-    });
+  it('la recherche libre part à l’API après la temporisation', async () => {
+    const user = userEvent.setup();
+    mount();
+    await screen.findByText('Agence Large');
+    await user.type(screen.getByPlaceholderText('Nom, identifiant, e-mail, ville…'), 'cocody');
+    await vi.waitFor(
+      () => expect(get.mock.calls.filter(([url]) => url === '/admin/tenants').at(-1)![1].params.search).toBe('cocody'),
+      { timeout: 8000 }
+    );
+    expect(screen.getByTestId('url').textContent).toContain('q=cocody');
+  });
+
+  it('propose seulement Actif et Suspendu comme statut (« Inactif » n’existe pas côté API)', async () => {
+    mount('/admin/tenants?status=SUSPENDED');
+    await screen.findByText('Agence Large');
+    const last = get.mock.calls.filter(([url]) => url === '/admin/tenants').at(-1)!;
+    expect(last[1].params.status).toBe('SUSPENDED');
   });
 });

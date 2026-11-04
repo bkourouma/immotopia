@@ -1,23 +1,26 @@
 import { contactDisplayName } from '../../utils/contact-display';
 import React, { useState } from 'react';
-import { CrmDeal, CrmDealDetail, CrmDealStage } from '../../types/crm-types';
+import { CrmDealDetail, CrmDealStage } from '../../types/crm-types';
 import { Button } from '../ui/button';
 import { Plus } from 'lucide-react';
 import { t } from '../../i18n/t';
 import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
 import { formatFcfa } from '../../utils/crm-utils';
+import { KANBAN_STAGES, type KanbanColumns, type KanbanDeal } from './use-deal-kanban';
 
 import { activeLocale } from '../../i18n/format';
 interface DealKanbanProps {
-  deals: (CrmDeal | CrmDealDetail)[];
-  onDealClick?: (deal: CrmDeal | CrmDealDetail) => void;
+  /** Une entrée par étape : cartes chargées, total de l'étape et état de chargement. */
+  columns: KanbanColumns;
+  onDealClick?: (deal: KanbanDeal) => void;
   onStageChange?: (dealId: string, newStage: CrmDealStage) => void;
   onAddDeal?: (stage: CrmDealStage) => void;
-  loading?: boolean;
+  /** Charge la page suivante d'UNE colonne. */
+  onLoadMore?: (stage: CrmDealStage) => void;
 }
 
 // Pipeline stages - excluding WON and LOST from main pipeline
-const pipelineStages: CrmDealStage[] = ['NEW', 'QUALIFIED', 'VISIT', 'NEGOTIATION'];
+const pipelineStages: CrmDealStage[] = KANBAN_STAGES;
 
 // Get contact initials for avatar
 const getInitials = (firstName?: string, lastName?: string): string => {
@@ -44,22 +47,15 @@ const formatDate = (date: Date | string): string => {
 };
 
 export const DealKanban: React.FC<DealKanbanProps> = ({
-  deals,
+  columns,
   onDealClick,
   onStageChange,
   onAddDeal,
-  loading = false
+  onLoadMore
 }) => {
+  const deals: KanbanDeal[] = pipelineStages.flatMap(stage => columns[stage]?.deals ?? []);
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<CrmDealStage | null>(null);
-
-  const dealsByStage = pipelineStages.reduce(
-    (acc, stage) => {
-      acc[stage] = deals.filter(deal => deal.stage === stage);
-      return acc;
-    },
-    {} as Record<CrmDealStage, (CrmDeal | CrmDealDetail)[]>
-  );
 
   const handleDragStart = (e: React.DragEvent, dealId: string) => {
     setDraggedDealId(dealId);
@@ -103,15 +99,6 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
     setDraggedDealId(null);
   };
 
-  if (loading) {
-    return (
-      <div className="text-center py-12">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-        <p className="mt-2 text-gray-600">{t('Chargement des affaires...')}</p>
-      </div>
-    );
-  }
-
   // Calculate minimum width needed for all stages (256px column + 12px gap)
   const minWidth = pipelineStages.length * 268;
 
@@ -126,7 +113,8 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
     >
       <div className="flex gap-3 pb-2" style={{ width: 'max-content', minWidth: `${minWidth}px` }}>
         {pipelineStages.map(stage => {
-          const stageDeals = dealsByStage[stage] || [];
+          const column = columns[stage];
+          const stageDeals = column?.deals ?? [];
           const isDragOver = dragOverStage === stage;
 
           return (
@@ -141,7 +129,15 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
             >
               {/* Stage Header */}
               <div className="p-2 border-b border-gray-200 bg-white rounded-t">
-                <h3 className="font-semibold text-gray-900 text-sm">{dealStageLabel(stage)}</h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-semibold text-gray-900 text-sm">{dealStageLabel(stage)}</h3>
+                  <span
+                    className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
+                    data-testid={`kanban-total-${stage}`}
+                  >
+                    {column?.total ?? 0}
+                  </span>
+                </div>
                 {onAddDeal && (
                   <Button
                     variant="ghost"
@@ -157,7 +153,11 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
 
               {/* Stage Content */}
               <div className="p-2 space-y-2 flex-1 overflow-y-auto">
-                {stageDeals.length === 0 ? (
+                {column?.loading && stageDeals.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400 text-xs">
+                    <p>{t('Chargement des affaires...')}</p>
+                  </div>
+                ) : stageDeals.length === 0 ? (
                   <div className="text-center py-8 text-gray-400 text-xs">
                     <p>{t('Il semble que cette étape soit vide')}</p>
                   </div>
@@ -215,6 +215,18 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
                       </div>
                     );
                   })
+                )}
+
+                {onLoadMore && stageDeals.length > 0 && stageDeals.length < (column?.total ?? 0) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-7 text-xs"
+                    disabled={column?.loadingMore}
+                    onClick={() => onLoadMore(stage)}
+                  >
+                    {column?.loadingMore ? t('Chargement...') : t('Afficher plus')}
+                  </Button>
                 )}
               </div>
             </div>

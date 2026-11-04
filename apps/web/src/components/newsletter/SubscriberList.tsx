@@ -2,7 +2,7 @@ import React from 'react';
 import { Tag, Button, Space, Typography } from 'antd';
 import { DeleteOutlined, DownloadOutlined, UploadOutlined } from '@ant-design/icons';
 import type { NewsletterSubscriber } from '../../services/newsletter.service';
-import { Table, type ExportFetchAllResult } from '../primitives';
+import { Table, type ExportFetchAllResult, type ListSearchBinding } from '../primitives';
 import { t as translate } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -11,6 +11,10 @@ interface SubscriberListProps {
   loading?: boolean;
   pagination: { total: number; page: number; limit: number; totalPages: number };
   onPageChange: (page: number, limit?: number) => void;
+  /** Recherche multicritères (barre au-dessus du tableau). */
+  search?: ListSearchBinding;
+  /** Au moins un critère actif : le tableau vide dit « aucun résultat » et non « aucun abonné ». */
+  isFiltered?: boolean;
   onRemove: (sub: NewsletterSubscriber) => void;
   onImport: () => void;
   onExport: () => void;
@@ -39,6 +43,8 @@ export function SubscriberList({
   loading,
   pagination,
   onPageChange,
+  search,
+  isFiltered = false,
   onRemove,
   onImport,
   onExport,
@@ -98,6 +104,9 @@ export function SubscriberList({
         </Button>
       </div>
       <Table
+        aria-label={translate('Abonnés')}
+        search={search}
+        locale={isFiltered ? undefined : { emptyText: translate('Aucun abonné pour le moment.') }}
         exportFilename={translate('Abonnés')}
         exportFetchAll={exportFetchAll}
         scroll={{ x: 'max-content' }}

@@ -16,6 +16,8 @@ export interface NotificationListProps {
   onOpen?: (item: NotificationItem) => void;
   /** Version resserrée pour le tiroir de la cloche. */
   compact?: boolean;
+  /** Texte de l'état vide (par exemple « aucun résultat » sous critères). */
+  emptyText?: string;
 }
 
 /**
@@ -30,13 +32,14 @@ export const NotificationList: React.FC<NotificationListProps> = ({
   loading = false,
   onMarkRead,
   onOpen,
-  compact = false
+  compact = false,
+  emptyText
 }) => {
   if (loading && items.length === 0) {
     return <Skeleton active paragraph={{ rows: compact ? 3 : 5 }} />;
   }
   if (items.length === 0) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('Aucune notification')} />;
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText ?? t('Aucune notification')} />;
   }
 
   return (

@@ -16,6 +16,8 @@ import {
   type MessagingScope,
   type ThreadMessage
 } from '../../services/messaging-service';
+import { ListSearch } from '../../components/primitives';
+import { useListSearch } from '../../hooks/useListSearch';
 import { ConversationList } from '../../components/messaging/ConversationList';
 import { MessageComposer } from '../../components/messaging/MessageComposer';
 import { MessageThread } from '../../components/messaging/MessageThread';
@@ -28,6 +30,9 @@ const { Title, Text } = Typography;
 /** Interrogation de la liste et du fil ouvert (suspendue quand l'onglet est masqué). */
 export const MESSAGING_POLL_MS = 30_000;
 const PAGE_SIZE = 30;
+const LIST_PAGE_SIZE = 50;
+/** Plafond de `pageSize` accepté par l'API des conversations. */
+const LIST_MAX_SIZE = 100;
 
 interface MessagesPageProps {
   /** Portails : scope imposé. Par défaut, l'agence active de la session. */
@@ -58,6 +63,9 @@ export default function MessagesPage({ scope: scopeProp, basePath = '/messages' 
   const scopeKey = scope ? (scope.kind === 'agency' ? `a:${scope.tenantId}` : `p:${scope.portal}`) : 'none';
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  // Taille de la liste lue (50, puis 100 au plus : plafond de l'API) et total côté serveur.
+  const [listSize, setListSize] = useState(LIST_PAGE_SIZE);
+  const [listTotal, setListTotal] = useState(0);
   const [listLoading, setListLoading] = useState(true);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -68,22 +76,40 @@ export default function MessagesPage({ scope: scopeProp, basePath = '/messages' 
   const activeIdRef = useRef<string | undefined>(conversationId);
   activeIdRef.current = conversationId;
 
+  // Recherche des conversations (état dans l'URL : ?q=) : titre, et participants pour le personnel.
+  const listSearch = useListSearch({
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher une conversation'),
+        placeholder: t('Titre ou participant…')
+      }
+    ]
+  });
+  const searchTerm = (listSearch.values.q as string | undefined) ?? '';
+
   const refreshList = useCallback(async () => {
     if (!scope) return;
     try {
-      const page = await listConversations(scope, { page: 1, pageSize: 50 });
+      const page = await listConversations(scope, {
+        page: 1,
+        pageSize: listSize,
+        ...(searchTerm ? { search: searchTerm } : {})
+      });
       setConversations(page.items);
+      setListTotal(page.total);
     } catch {
       // Silencieux : la prochaine interrogation réessaie.
     } finally {
       setListLoading(false);
     }
-  }, [scope]);
+  }, [scope, listSize, searchTerm]);
 
   const listPolling = useVisiblePolling(refreshList, {
     intervalMs: MESSAGING_POLL_MS,
     enabled: !!scope,
-    resetKey: scopeKey
+    resetKey: `${scopeKey}|${listSize}|${searchTerm}`
   });
 
   const threadTask = useCallback(async () => {
@@ -191,14 +217,31 @@ export default function MessagesPage({ scope: scopeProp, basePath = '/messages' 
                 {t('Nouvelle conversation')}
               </Button>
             </div>
+            <div style={{ paddingInline: 12, paddingBlockEnd: 8 }}>
+              <ListSearch {...listSearch.searchProps} resultCount={listTotal} />
+            </div>
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              <ConversationList
-                conversations={conversations}
-                selectedId={conversationId}
-                currentUserId={userId}
-                loading={listLoading}
-                onSelect={open}
-              />
+              {listSearch.isFiltered && !listLoading && conversations.length === 0 ? (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={t('Aucune conversation ne correspond à votre recherche.')}
+                />
+              ) : (
+                <ConversationList
+                  conversations={conversations}
+                  selectedId={conversationId}
+                  currentUserId={userId}
+                  loading={listLoading}
+                  onSelect={open}
+                />
+              )}
+              {listTotal > conversations.length && listSize < LIST_MAX_SIZE ? (
+                <div style={{ padding: 12 }}>
+                  <Button block onClick={() => setListSize(LIST_MAX_SIZE)}>
+                    {t('Afficher plus de conversations')}
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </section>
         ) : null}

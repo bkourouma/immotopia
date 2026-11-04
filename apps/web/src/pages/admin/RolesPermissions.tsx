@@ -48,6 +48,8 @@ import type { MenuCatalogEntry } from '../../navigation/menu-catalog';
 import type { PersonaId } from '../../navigation/model';
 import { getNavigation } from '../../navigation/model';
 import { getPermissionLabelFr, getPermissionGroupLabelFr, getRoleLabelFr } from '../../constants/permissions-labels';
+import { ListSearch } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
 import { MenuTenantSelect, MenuScopeChoice, sameMenuScope } from '../../components/admin/MenuTenantSelect';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
@@ -75,6 +77,25 @@ const { Title, Text } = Typography;
  * pas un contrôle d'accès — c'est d'ailleurs pourquoi l'état **par défaut**
  * d'un menu est déduit des permissions du rôle.
  */
+
+/** Une entrée de menu et la section qui la porte (liste à plat pour la recherche locale). */
+interface MenuRow {
+  sectionId: string;
+  entry: MenuCatalogEntry;
+}
+
+// Accesseurs de la recherche locale : constantes de module (identité stable).
+const PERMISSION_TEXT = [
+  (p: Permission) => p.key,
+  (p: Permission) => getPermissionLabelFr(p.key, p.description ?? undefined).label,
+  (p: Permission) => getPermissionLabelFr(p.key, p.description ?? undefined).description,
+  (p: Permission) => getPermissionGroupLabelFr(p.key.split('_')[0])
+];
+const MENU_TEXT = [
+  (row: MenuRow) => row.entry.label,
+  (row: MenuRow) => row.entry.href,
+  (row: MenuRow) => row.entry.children.map(child => child.label)
+];
 
 /** Rôle tel que cet écran le manipule : ligne de `roles` **ou** pseudo-rôle de portail. */
 interface ManagedRole {
@@ -409,15 +430,71 @@ export const RolesPermissions: React.FC = () => {
     }
   };
 
+  // Recherche locale dans les permissions (état dans l'URL, préfixe `perm`).
+  const permissionList = useMemo(
+    () => permissions.filter(perm => !perm.key.startsWith('COMMUNICATION_')),
+    [permissions]
+  );
+  const permissionSearch = useLocalListSearch<Permission>(permissionList, {
+    paramPrefix: 'perm',
+    defaultPageSize: 1000,
+    text: PERMISSION_TEXT,
+    predicates: { granted: (perm, wanted) => rolePermissionIds.has(perm.id) === wanted },
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Permission, description, groupe…')
+      },
+      {
+        key: 'granted',
+        type: 'boolean',
+        label: t('Accordée au rôle'),
+        primary: true,
+        tristate: true,
+        trueLabel: t('Accordées'),
+        falseLabel: t('Non accordées')
+      }
+    ]
+  });
+
   const groupedPermissions = useMemo(() => {
-    return permissions
-      .filter(perm => !perm.key.startsWith('COMMUNICATION_'))
-      .reduce<Record<string, Permission[]>>((acc, perm) => {
-        const prefix = perm.key.split('_')[0];
-        (acc[prefix] ||= []).push(perm);
-        return acc;
-      }, {});
-  }, [permissions]);
+    return permissionSearch.filtered.reduce<Record<string, Permission[]>>((acc, perm) => {
+      const prefix = perm.key.split('_')[0];
+      (acc[prefix] ||= []).push(perm);
+      return acc;
+    }, {});
+  }, [permissionSearch.filtered]);
+
+  // Recherche locale dans les entrées de menu (préfixe `menu`).
+  const menuRows = useMemo<MenuRow[]>(
+    () => sections.flatMap(section => section.entries.map(entry => ({ sectionId: section.id, entry }))),
+    [sections]
+  );
+  const menuSearch = useLocalListSearch<MenuRow>(menuRows, {
+    paramPrefix: 'menu',
+    defaultPageSize: 1000,
+    text: MENU_TEXT,
+    predicates: { active: (row, wanted) => Boolean(menuDraft[row.entry.menuKey]) === wanted },
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Menu ou sous-menu…')
+      },
+      {
+        key: 'active',
+        type: 'boolean',
+        label: t('État du menu'),
+        primary: true,
+        tristate: true,
+        trueLabel: t('Actifs'),
+        falseLabel: t('Inactifs')
+      }
+    ]
+  });
 
   if (loading) {
     return (
@@ -615,24 +692,34 @@ export const RolesPermissions: React.FC = () => {
             <Spin />
           </div>
         ) : (
-          sections.map(section => (
-            <div key={section.id}>
-              <Text
-                strong
-                style={{
-                  display: 'block',
-                  marginBottom: 10,
-                  fontSize: 12,
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                  color: 'var(--ant-color-text-tertiary, rgba(0,0,0,0.45))'
-                }}
-              >
-                {section.label}
-              </Text>
-              {section.entries.map(renderMenuEntry)}
-            </div>
-          ))
+          <>
+            <ListSearch {...menuSearch.searchProps} aria-label={t('Rechercher dans les menus')} />
+            {menuSearch.isFiltered && menuSearch.filtered.length === 0 && (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('Aucun menu ne correspond aux critères.')} />
+            )}
+            {sections.map(section => {
+              const rows = menuSearch.filtered.filter(row => row.sectionId === section.id);
+              if (rows.length === 0) return null;
+              return (
+                <div key={section.id}>
+                  <Text
+                    strong
+                    style={{
+                      display: 'block',
+                      marginBottom: 10,
+                      fontSize: 12,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: 'var(--ant-color-text-tertiary, rgba(0,0,0,0.45))'
+                    }}
+                  >
+                    {section.label}
+                  </Text>
+                  {rows.map(row => renderMenuEntry(row.entry))}
+                </div>
+              );
+            })}
+          </>
         )}
       </Space>
     </Card>
@@ -681,10 +768,14 @@ export const RolesPermissions: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
           <Spin />
         </div>
-      ) : Object.keys(groupedPermissions).length === 0 ? (
+      ) : permissionList.length === 0 ? (
         <Empty description={t('Aucune permission disponible')} />
       ) : (
         <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+          <ListSearch {...permissionSearch.searchProps} aria-label={t('Rechercher dans les permissions')} />
+          {permissionSearch.isFiltered && Object.keys(groupedPermissions).length === 0 && (
+            <Empty description={t('Aucune permission ne correspond aux critères.')} />
+          )}
           {Object.entries(groupedPermissions).map(([prefix, perms]) => (
             <div key={prefix}>
               <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 12 }}>

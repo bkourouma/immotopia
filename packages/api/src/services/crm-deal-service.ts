@@ -3,8 +3,9 @@ import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { diffForAudit } from '../lib/audit/changes';
 import { CRM_ENTITY_TYPES } from '../types/audit-types';
-import { CreateDealRequest, UpdateDealRequest, DealFilters, DealDetail } from '../types/crm-types';
+import { CreateDealRequest, UpdateDealRequest, DealDetail } from '../types/crm-types';
 import { CrmDealStage, Prisma } from '@prisma/client';
+import { buildDealListWhere, type DealListFilters } from './crm-list-where';
 import { assertActiveMember } from './crm-contact-service';
 import { t } from '../i18n';
 import { NotFoundError, ConflictError } from '../middleware/error-middleware';
@@ -168,75 +169,12 @@ export async function getDealById(tenantId: string, dealId: string): Promise<Dea
  * @param filters - Filter criteria
  * @returns Paginated deals
  */
-export async function listDeals(tenantId: string, filters: DealFilters) {
+export async function listDeals(tenantId: string, filters: DealListFilters) {
   const page = filters.page || 1;
   const limit = filters.limit || 20;
   const skip = (page - 1) * limit;
 
-  // Build where clause
-  const where: any = {
-    tenantId // Always enforce tenant isolation
-  };
-
-  if (filters.type) {
-    where.type = filters.type;
-  }
-
-  if (filters.stage) {
-    where.stage = filters.stage;
-  }
-
-  if (filters.assignedTo) {
-    where.assignedToUserId = filters.assignedTo;
-  }
-
-  if (filters.contactId) {
-    where.contactId = filters.contactId;
-  }
-
-  if (filters.budgetMin || filters.budgetMax) {
-    const budgetConditions: any[] = [];
-
-    if (filters.budgetMin && filters.budgetMax) {
-      // Deal budget overlaps with filter range if:
-      // - budgetMin is within range OR
-      // - budgetMax is within range OR
-      // - deal range contains filter range
-      budgetConditions.push({
-        AND: [{ budgetMin: { lte: filters.budgetMax } }, { budgetMax: { gte: filters.budgetMin } }]
-      });
-      // Also include deals with only budgetMin or budgetMax
-      budgetConditions.push({
-        AND: [{ budgetMin: { gte: filters.budgetMin, lte: filters.budgetMax } }, { budgetMax: null }]
-      });
-      budgetConditions.push({
-        AND: [{ budgetMin: null }, { budgetMax: { gte: filters.budgetMin, lte: filters.budgetMax } }]
-      });
-    } else if (filters.budgetMin) {
-      // Deal has budgetMax >= filterMin OR budgetMin >= filterMin
-      budgetConditions.push({ budgetMax: { gte: filters.budgetMin } });
-      budgetConditions.push({ budgetMin: { gte: filters.budgetMin } });
-    } else if (filters.budgetMax) {
-      // Deal has budgetMin <= filterMax OR budgetMax <= filterMax
-      budgetConditions.push({ budgetMin: { lte: filters.budgetMax } });
-      budgetConditions.push({ budgetMax: { lte: filters.budgetMax } });
-    }
-
-    if (budgetConditions.length > 0) {
-      where.AND = where.AND || [];
-      where.AND.push({ OR: budgetConditions });
-    }
-  }
-
-  if (filters.startDate || filters.endDate) {
-    where.createdAt = {};
-    if (filters.startDate) {
-      where.createdAt.gte = new Date(filters.startDate);
-    }
-    if (filters.endDate) {
-      where.createdAt.lte = new Date(filters.endDate);
-    }
-  }
+  const where = buildDealListWhere(tenantId, filters);
 
   // Get total count
   const total = await prisma.crmDeal.count({ where });

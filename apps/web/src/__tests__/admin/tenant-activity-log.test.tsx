@@ -14,6 +14,10 @@ import type { TenantAuditLog } from '../../services/tenant-audit-service';
  * reprises du vrai module.
  */
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 const getTenantAuditLogs = vi.fn();
 
 vi.mock('../../services/tenant-audit-service', async importOriginal => {
@@ -86,10 +90,10 @@ const SECONDE_PAGE = {
   }
 };
 
-function mount() {
+function mount(initial = '/tenant/tenant-1/activity') {
   return render(
     <AntApp>
-      <MemoryRouter initialEntries={['/tenant/tenant-1/activity']}>
+      <MemoryRouter initialEntries={[initial]}>
         <Routes>
           <Route path="/tenant/:tenantId/activity" element={<TenantActivityLog />} />
         </Routes>
@@ -98,15 +102,11 @@ function mount() {
   );
 }
 
-/** Le `<Select>` d'AntD s'ouvre sur `mousedown` ; ses options se lisent dans `.ant-select-item`. */
-async function pickFilter(name: string, option: string) {
-  fireEvent.mouseDown(await screen.findByRole('combobox', { name }));
-  const item = await waitFor(() => {
-    const candidat = screen.getAllByText(option).find(el => el.closest('.ant-select-item'));
-    if (!candidat) throw new Error(`Option « ${option} » introuvable`);
-    return candidat;
-  });
-  fireEvent.click(item);
+const T = { timeout: 8000 };
+
+/** Saisie dans le champ libre de la barre de recherche (appliquée après le debounce). */
+async function tapeRecherche(texte: string) {
+  await userEvent.type(within(screen.getByRole('search')).getAllByRole('textbox')[0], texte);
 }
 
 describe('TenantActivityLog', () => {
@@ -129,9 +129,7 @@ describe('TenantActivityLog', () => {
     expect(screen.getAllByText('Réussie')).toHaveLength(2);
     expect(screen.getByText('Échouée')).toBeInTheDocument();
     // Pas de filtre vide dans la première requête.
-    expect(getTenantAuditLogs.mock.calls[0][1]).toEqual(
-      expect.objectContaining({ category: undefined, outcome: undefined, cursor: undefined })
-    );
+    expect(getTenantAuditLogs.mock.calls[0][1]).toEqual({});
   });
 
   it('affiche « Support ImmoTopia » pour un acteur SUPER_ADMIN, sans identité', async () => {
@@ -156,7 +154,21 @@ describe('TenantActivityLog', () => {
     expect(screen.queryByRole('button', { name: 'Charger plus' })).not.toBeInTheDocument();
   });
 
-  it('un changement de filtre repart de zéro, sans curseur', async () => {
+  it('relit les critères de l’URL et les envoie à l’API', async () => {
+    mount(
+      '/tenant/tenant-1/activity?category=AUTH&outcome=DENIED&periodFrom=2026-09-01&periodTo=2026-09-30&actionKey=AUTH_LOGIN_FAILED'
+    );
+    await screen.findByText('Villa Les Palmiers', undefined, T);
+    expect(getTenantAuditLogs.mock.calls[0][1]).toEqual({
+      category: 'AUTH',
+      outcome: 'DENIED',
+      startDate: '2026-09-01',
+      endDate: '2026-09-30',
+      actionKey: 'AUTH_LOGIN_FAILED'
+    });
+  });
+
+  it('une recherche repart de zéro, sans curseur, et envoie le texte à l’API', async () => {
     getTenantAuditLogs
       .mockResolvedValueOnce(PREMIERE_PAGE)
       .mockResolvedValueOnce(SECONDE_PAGE)
@@ -165,21 +177,20 @@ describe('TenantActivityLog', () => {
         data: { logs: [makeLog({ id: 'log-5', resourceLabel: 'Bail filtré' })], nextCursor: null }
       });
     mount();
-    await screen.findByText('Villa Les Palmiers');
+    await screen.findByText('Villa Les Palmiers', undefined, T);
     await userEvent.click(screen.getByRole('button', { name: 'Charger plus' }));
-    await screen.findByText('Appartement Cocody');
+    await screen.findByText('Appartement Cocody', undefined, T);
 
-    await pickFilter('Catégorie', 'Authentification');
+    await tapeRecherche('login');
 
-    expect(await screen.findByText('Bail filtré')).toBeInTheDocument();
-    const dernierAppel = getTenantAuditLogs.mock.calls[2];
-    expect(dernierAppel[1]).toEqual(expect.objectContaining({ category: 'AUTH', cursor: undefined }));
+    expect(await screen.findByText('Bail filtré', undefined, T)).toBeInTheDocument();
+    expect(getTenantAuditLogs.mock.calls[2][1]).toEqual({ search: 'login', cursor: undefined });
     // Les lignes des pages précédentes ont disparu.
     expect(screen.queryByText('Villa Les Palmiers')).not.toBeInTheDocument();
     expect(screen.queryByText('Appartement Cocody')).not.toBeInTheDocument();
   });
 
-  it("ignore la réponse d'une requête périmée quand le filtre change entre-temps", async () => {
+  it("ignore la réponse d'une requête périmée quand la recherche change entre-temps", async () => {
     let resoudrePremiere: (value: unknown) => void = () => undefined;
     getTenantAuditLogs
       .mockImplementationOnce(() => new Promise(resolve => (resoudrePremiere = resolve)))
@@ -189,8 +200,8 @@ describe('TenantActivityLog', () => {
       });
     mount();
 
-    await pickFilter('Résultat', 'Échouée');
-    expect(await screen.findByText('Ligne récente')).toBeInTheDocument();
+    await tapeRecherche('x');
+    expect(await screen.findByText('Ligne récente', undefined, T)).toBeInTheDocument();
 
     resoudrePremiere(PREMIERE_PAGE);
     await waitFor(() => expect(getTenantAuditLogs).toHaveBeenCalledTimes(2));
@@ -198,24 +209,22 @@ describe('TenantActivityLog', () => {
     expect(screen.queryByText('Villa Les Palmiers')).not.toBeInTheDocument();
   });
 
-  it('« Réinitialiser » efface les filtres et recharge sans critère', async () => {
-    mount();
-    await screen.findByText('Villa Les Palmiers');
-    await pickFilter('Résultat', 'Refusée');
-    await waitFor(() => expect(getTenantAuditLogs).toHaveBeenCalledTimes(2));
-    expect(getTenantAuditLogs.mock.calls[1][1]).toEqual(expect.objectContaining({ outcome: 'DENIED' }));
+  it('« Effacer les critères » recharge sans critère', async () => {
+    mount('/tenant/tenant-1/activity?outcome=DENIED');
+    await screen.findByText('Villa Les Palmiers', undefined, T);
+    expect(getTenantAuditLogs.mock.calls[0][1]).toEqual({ outcome: 'DENIED' });
 
-    await userEvent.click(screen.getByRole('button', { name: /Réinitialiser/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Effacer les critères' }));
 
-    await waitFor(() => expect(getTenantAuditLogs).toHaveBeenCalledTimes(3));
-    expect(getTenantAuditLogs.mock.calls[2][1]).toEqual(expect.objectContaining({ outcome: undefined }));
+    await waitFor(() => expect(getTenantAuditLogs).toHaveBeenCalledTimes(2), T);
+    expect(getTenantAuditLogs.mock.calls[1][1]).toEqual({});
   });
 
   it("affiche un état vide quand le journal n'a aucune ligne", async () => {
     getTenantAuditLogs.mockResolvedValue({ success: true, data: { logs: [], nextCursor: null } });
     mount();
 
-    expect(await screen.findByText('Aucune activité enregistrée pour ces critères')).toBeInTheDocument();
+    expect(await screen.findByText('Aucune activité enregistrée', undefined, T)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Charger plus' })).not.toBeInTheDocument();
   });
 
@@ -224,7 +233,7 @@ describe('TenantActivityLog', () => {
     mount();
 
     expect(await screen.findByText('Accès refusé au journal')).toBeInTheDocument();
-    expect(screen.queryByText('Aucune activité enregistrée pour ces critères')).not.toBeInTheDocument();
+    expect(screen.queryByText('Aucune activité enregistrée')).not.toBeInTheDocument();
   });
 
   it("affiche un texte par défaut quand l'erreur n'a pas de message", async () => {

@@ -32,6 +32,8 @@ export interface TenantAuditFilters {
   actorUserId?: string;
   entityType?: string;
   entityId?: string;
+  /** Recherche libre (insensible à la casse) sur l'action, la ressource et l'acteur. */
+  search?: string;
   startDate?: Date;
   endDate?: Date;
   cursor?: string;
@@ -102,6 +104,17 @@ export function buildTenantAuditWhere(
         ...(filters.startDate ? { gte: filters.startDate } : {}),
         ...(filters.endDate ? { lte: filters.endDate } : {})
       }
+    });
+  }
+  const search = filters.search?.trim();
+  if (search) {
+    and.push({
+      OR: [
+        { actionKey: { contains: search, mode: 'insensitive' } },
+        { entityType: { contains: search, mode: 'insensitive' } },
+        { entityId: { contains: search, mode: 'insensitive' } },
+        { actorLabel: { contains: search, mode: 'insensitive' } }
+      ]
     });
   }
   if (cursor) {

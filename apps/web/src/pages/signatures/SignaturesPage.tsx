@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, App, Button, DatePicker, Empty, Input, Popconfirm, Select, Space, Tag, Typography } from 'antd';
+import { Alert, App, Button, Empty, Popconfirm, Space, Tag, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { SorterResult } from 'antd/es/table/interface';
-import type { Dayjs } from 'dayjs';
 import { Table } from '../../components/primitives';
+import { useListSearch } from '../../hooks/useListSearch';
 import {
   cancelSignatureRequest,
   fetchSignatureFile,
@@ -27,7 +27,6 @@ import { SignatureDetailDrawer } from './SignatureDetailDrawer';
 import { SIGNATURE_KINDS, SIGNATURE_STATUSES, kindLabel } from './signature-admin-labels';
 
 const { Title, Text } = Typography;
-const { RangePicker } = DatePicker;
 const PAGE_SIZE = 25;
 
 function dateLabel(iso?: string | null): string {
@@ -49,11 +48,39 @@ function fileSlug(title: string): string {
 /** Page « Signatures » : suivi de toutes les demandes de signature de l'agence. */
 const SignaturesPage: React.FC = () => {
   const { message } = App.useApp();
-  const [status, setStatus] = useState<SignatureRequestStatus | undefined>();
-  const [kind, setKind] = useState<string | undefined>();
-  const [q, setQ] = useState('');
-  const [range, setRange] = useState<[string, string] | undefined>();
-  const [page, setPage] = useState(1);
+  // Recherche multicritères (état dans l'URL). La rangée de compteurs par statut
+  // reste au-dessus : elle pilote le même critère « Statut ».
+  const search = useListSearch({
+    defaultPageSize: PAGE_SIZE,
+    apiNames: { limit: 'pageSize', sort: false },
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Titre du document, nom du signataire…'),
+        api: 'q'
+      },
+      {
+        key: 'status',
+        type: 'select',
+        label: t('Statut'),
+        primary: true,
+        options: SIGNATURE_STATUSES.map(value => ({ value, label: requestStatusLabel(value).label }))
+      },
+      {
+        key: 'kind',
+        type: 'select',
+        label: t('Type de document'),
+        primary: true,
+        options: SIGNATURE_KINDS.map(value => ({ value, label: kindLabel(value) }))
+      },
+      { key: 'period', type: 'dateRange', label: t('Période de création'), api: ['from', 'to'] }
+    ]
+  });
+  const status = search.values.status as SignatureRequestStatus | undefined;
+  const paramsKey = JSON.stringify(search.apiParams);
+  const filterKey = JSON.stringify(search.filterParams);
   const [sortBy, setSortBy] = useState<SignatureSortField>('createdAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
@@ -71,15 +98,8 @@ const SignaturesPage: React.FC = () => {
     const current = ++sequence.current;
     setLoading(true);
     setError(null);
-    const common = { kind, q: q.trim() || undefined, from: range?.[0], to: range?.[1] };
-    const filters: SignatureAdminFilters = {
-      ...common,
-      status,
-      page,
-      pageSize: PAGE_SIZE,
-      sortBy,
-      sortDir
-    };
+    const { status: _status, ...common } = JSON.parse(filterKey) as Record<string, string>;
+    const filters = { ...JSON.parse(paramsKey), sortBy, sortDir } as SignatureAdminFilters;
     try {
       const [result, counts] = await Promise.all([
         listSignaturesPage(filters),
@@ -95,7 +115,7 @@ const SignaturesPage: React.FC = () => {
     } finally {
       if (current === sequence.current) setLoading(false);
     }
-  }, [status, kind, q, range, page, sortBy, sortDir]);
+  }, [paramsKey, filterKey, sortBy, sortDir]);
 
   useEffect(() => {
     void load();
@@ -229,12 +249,12 @@ const SignaturesPage: React.FC = () => {
       setSortBy('createdAt');
       setSortDir('desc');
     }
-    setPage(pagination.current ?? 1);
+    // Un changement de tri repart de la première page ; la pagination vient de la barre.
+    if (!pagination || pagination.current === search.page) search.setPage(1);
   };
 
   const pick = (next: SignatureRequestStatus | undefined) => {
-    setStatus(next);
-    setPage(1);
+    search.setValues({ status: next });
   };
 
   const countOf = (value: SignatureRequestStatus) => summary?.byStatus?.[value] ?? 0;
@@ -265,39 +285,6 @@ const SignaturesPage: React.FC = () => {
         ))}
       </Space>
 
-      <Space wrap size="small">
-        <Select
-          allowClear
-          placeholder={t('Type de document')}
-          aria-label={t('Type de document')}
-          style={{ minWidth: 200 }}
-          value={kind}
-          onChange={value => {
-            setKind(value);
-            setPage(1);
-          }}
-          options={SIGNATURE_KINDS.map(value => ({ value, label: kindLabel(value) }))}
-        />
-        <Input.Search
-          allowClear
-          placeholder={t('Rechercher un document ou un signataire')}
-          aria-label={t('Rechercher')}
-          style={{ minWidth: 240 }}
-          onSearch={value => {
-            setQ(value);
-            setPage(1);
-          }}
-        />
-        <RangePicker
-          onChange={(values: null | (Dayjs | null)[]) => {
-            setRange(
-              values?.[0] && values?.[1] ? [values[0].format('YYYY-MM-DD'), values[1].format('YYYY-MM-DD')] : undefined
-            );
-            setPage(1);
-          }}
-        />
-      </Space>
-
       {error && (
         <Alert
           type="error"
@@ -320,10 +307,14 @@ const SignaturesPage: React.FC = () => {
         exportable={false}
         scroll={{ x: 'max-content' }}
         onChange={handleTableChange as any}
-        pagination={{ current: page, pageSize: PAGE_SIZE, total, showSizeChanger: false }}
-        locale={{
-          emptyText: <Empty description={<Text type="secondary">{t('Aucune demande de signature')}</Text>} />
-        }}
+        aria-label={t('Demandes de signature')}
+        search={search.searchProps}
+        pagination={search.tablePagination(total)}
+        locale={
+          search.isFiltered
+            ? undefined
+            : { emptyText: <Empty description={<Text type="secondary">{t('Aucune demande de signature')}</Text>} /> }
+        }
       />
 
       <SignatureDetailDrawer requestId={detailId} onClose={() => setDetailId(null)} />

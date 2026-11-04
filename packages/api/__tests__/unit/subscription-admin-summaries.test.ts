@@ -26,7 +26,10 @@ const mockPrisma = {
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(), AuditActionKey: {} }));
 
-import { listSubscriptionSummaries } from '../../src/services/subscription-admin-extras-service';
+import {
+  listSubscriptionSummaries,
+  selectNearLimitTenantIds
+} from '../../src/services/subscription-admin-extras-service';
 
 describe('listSubscriptionSummaries : ACTIFS', () => {
   it('additionne actifs non archives et biens sans actif lie, chaque groupBy filtre par tenantId', async () => {
@@ -45,5 +48,41 @@ describe('listSubscriptionSummaries : ACTIFS', () => {
         where: { tenantId: { in: ['t1', 't2'] }, status: { not: 'ARCHIVED' }, asset: { is: null } }
       })
     );
+  });
+});
+
+describe('selectNearLimitTenantIds : filtre « proches de la limite » de la liste des agences', () => {
+  const override = (tenantId: string, delta: number) => ({
+    tenantId,
+    capacityKey: 'ACTIFS',
+    delta,
+    startsAt: new Date('2020-01-01'),
+    expiresAt: null,
+    revokedAt: null
+  });
+
+  it("garde les agences dont une capacité atteint 80 % de sa limite (même règle que le résumé), dans l'ordre reçu", async () => {
+    // t1 : 7 actifs sur 8 (87,5 %) ; t2 : 1 sur 100 ; t3 : aucune limite (jamais « proche »).
+    (mockPrisma.capacityOverride.findMany as jest.Mock).mockResolvedValueOnce([override('t1', 8), override('t2', 100)]);
+    expect(await selectNearLimitTenantIds(['t3', 't2', 't1'])).toEqual(['t1']);
+  });
+
+  it('exactement 80 % et plus compte ; en dessous non', async () => {
+    // t1 : 7 sur 9 (77,8 %) ; t2 : 1 sur 1 (100 %).
+    (mockPrisma.capacityOverride.findMany as jest.Mock).mockResolvedValueOnce([override('t1', 9), override('t2', 1)]);
+    expect(await selectNearLimitTenantIds(['t1', 't2'])).toEqual(['t2']);
+  });
+
+  it('calcule les résumés par lots de 100 agences', async () => {
+    const ids = Array.from({ length: 250 }, (_, i) => `x${i}`);
+    (mockPrisma.subscription.findMany as jest.Mock).mockClear();
+    expect(await selectNearLimitTenantIds(ids)).toEqual([]);
+    expect(mockPrisma.subscription.findMany).toHaveBeenCalledTimes(3);
+  });
+
+  it('liste vide : aucune requête', async () => {
+    (mockPrisma.subscription.findMany as jest.Mock).mockClear();
+    expect(await selectNearLimitTenantIds([])).toEqual([]);
+    expect(mockPrisma.subscription.findMany).not.toHaveBeenCalled();
   });
 });

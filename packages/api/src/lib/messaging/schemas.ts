@@ -12,7 +12,9 @@ const userIds = z.array(z.string().trim().min(1).max(64)).min(1).max(MAX_PARTICI
 export const listConversationsQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).max(10000).default(1),
-    pageSize: z.coerce.number().int().min(1).max(100).default(20)
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+    /** Titre de la conversation ; noms et e-mails des participants pour le personnel. */
+    search: z.string().trim().min(1).max(120).optional()
   })
   .strict();
 

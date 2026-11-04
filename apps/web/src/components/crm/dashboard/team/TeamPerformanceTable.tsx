@@ -1,11 +1,24 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { Pagination } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { TeamPerformance, TeamMemberPerformance } from '../../../../types/crmDashboard';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../ui/table';
 import { Badge } from '../../../ui/badge';
 import { TrendingUp, TrendingDown, Award } from 'lucide-react';
 import { ExportMenu } from '../../../primitives/ExportMenu';
+import { ListSearch } from '../../../primitives/ListSearch';
+import { useLocalListSearch } from '../../../../utils/list-search';
+import type { SearchCriterion } from '../../../../utils/list-search';
 import { t } from '../../../../i18n/t';
+
+// Stables (hors du composant) : le filtrage local reste mémoïsé.
+const TEXTE_RECHERCHE = [
+  (member: TeamMemberPerformance) => member.userName,
+  (member: TeamMemberPerformance) => member.userEmail
+];
+
+/** Au-delà de ce nombre de membres, la barre de recherche s'affiche (en dessous, le tableau est un récapitulatif). */
+const SEUIL_BARRE = 10;
 
 interface TeamPerformanceTableProps {
   data: TeamPerformance;
@@ -14,7 +27,22 @@ interface TeamPerformanceTableProps {
 
 export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data, onMemberClick }) => {
   // Sort members by performance (won deals count)
-  const sortedMembers = [...data.members].sort((a, b) => b.wonDealsCount - a.wonDealsCount);
+  const sortedMembers = useMemo(
+    () => [...data.members].sort((a, b) => b.wonDealsCount - a.wonDealsCount),
+    [data.members]
+  );
+  // Le rang reste celui du classement complet, même quand la recherche ne garde que quelques membres.
+  const rankOf = useMemo(() => new Map(sortedMembers.map((member, index) => [member.userId, index])), [sortedMembers]);
+
+  // Liste reçue en entier : recherche et pagination en local (20 par page). Préfixe d'URL : le tableau de bord a d'autres clés.
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom ou e-mail du membre…') }
+  ];
+  const local = useLocalListSearch<TeamMemberPerformance>(sortedMembers, {
+    criteria,
+    text: TEXTE_RECHERCHE,
+    paramPrefix: 'team'
+  });
 
   const formatTime = (hours?: number) => {
     if (!hours) return 'N/A';
@@ -62,11 +90,15 @@ export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data
           )}
           <ExportMenu<TeamMemberPerformance>
             columns={colonnesExport}
-            rows={sortedMembers}
+            rows={local.filtered}
             filename={t("Performance de l'équipe")}
           />
         </div>
       </div>
+
+      {sortedMembers.length > SEUIL_BARRE || local.isFiltered ? (
+        <ListSearch {...local.searchProps} aria-label={t('Rechercher un membre')} />
+      ) : null}
 
       <div className="border rounded-lg overflow-x-auto">
         {/* Six colonnes ne tiennent pas sous 768 px : le tableau garde sa
@@ -83,17 +115,24 @@ export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedMembers.map((member, index) => (
+            {local.pageItems.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-6 text-slate-500">
+                  {t('Aucun résultat')}
+                </TableCell>
+              </TableRow>
+            ) : null}
+            {local.pageItems.map(member => (
               <TableRow
                 key={member.userId}
                 className={`hover:bg-slate-50 transition-colors ${onMemberClick ? 'cursor-pointer' : ''}`}
                 onClick={() => onMemberClick?.(member.userId)}
               >
                 <TableCell>
-                  {index === 0 ? (
+                  {rankOf.get(member.userId) === 0 ? (
                     <Award className="h-4 w-4 text-yellow-500" />
                   ) : (
-                    <span className="text-slate-500">#{index + 1}</span>
+                    <span className="text-slate-500">#{(rankOf.get(member.userId) ?? 0) + 1}</span>
                   )}
                 </TableCell>
                 <TableCell>
@@ -130,6 +169,16 @@ export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data
           </TableBody>
         </Table>
       </div>
+
+      {local.total > local.pageSize ? (
+        <Pagination
+          current={local.page}
+          pageSize={local.pageSize}
+          total={local.total}
+          showSizeChanger={false}
+          onChange={p => local.setPage(p)}
+        />
+      ) : null}
     </div>
   );
 };

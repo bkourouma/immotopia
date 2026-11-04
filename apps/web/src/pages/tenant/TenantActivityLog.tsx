@@ -1,31 +1,32 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Button, Card, Col, DatePicker, Empty, Row, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Empty, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { EyeOutlined, ReloadOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
+import { EyeOutlined } from '@ant-design/icons';
 import {
   getTenantAuditLogs,
   TENANT_AUDIT_CATEGORIES,
   TENANT_AUDIT_OUTCOMES,
-  type TenantAuditCategory,
   type TenantAuditFilters,
-  type TenantAuditLog,
-  type TenantAuditOutcome
+  type TenantAuditLog
 } from '../../services/tenant-audit-service';
-import { getAuditActionLabelFr, getAuditCategoryLabelFr, getAuditOutcomeLabelFr } from '../../constants/audit-labels';
+import {
+  AUDIT_ACTION_LABELS_FR,
+  getAuditActionLabelFr,
+  getAuditCategoryLabelFr,
+  getAuditOutcomeLabelFr
+} from '../../constants/audit-labels';
+import { useListSearch } from '../../hooks/useListSearch';
 import { getAuditActorDisplay, getAuditOutcomeColor } from '../../utils/tenant-audit-display';
 import { AuditResourceCell } from '../../components/audit/AuditResourceCell';
 import { ActivityLogDetailModal } from '../../components/tenant/ActivityLogDetailModal';
 import { Table } from '../../components/primitives';
 import { EXPORT_MAX_ROWS } from '../../utils/table-export/collect';
-import { activeLocale, dateFormat } from '../../i18n/format';
+import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
-const { RangePicker } = DatePicker;
 
-type DateRange = [string, string] | null;
 type ApiError = { response?: { data?: { message?: string } } };
 
 function formatDate(iso: string): string {
@@ -72,9 +73,6 @@ function buildColumns(onOpen: (log: TenantAuditLog) => void): ColumnsType<Tenant
 
 export const TenantActivityLog: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
-  const [category, setCategory] = useState<TenantAuditCategory | undefined>();
-  const [outcome, setOutcome] = useState<TenantAuditOutcome | undefined>();
-  const [range, setRange] = useState<DateRange>(null);
   const [logs, setLogs] = useState<TenantAuditLog[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,10 +83,43 @@ export const TenantActivityLog: React.FC = () => {
   // dernière attendue (filtre changé entre-temps, page quittée) est ignorée.
   const latestRequest = useRef(0);
 
-  const filters = useMemo<TenantAuditFilters>(
-    () => ({ category, outcome, startDate: range?.[0], endDate: range?.[1] }),
-    [category, outcome, range]
-  );
+  // Critères portés par l'URL (?q=…&category=AUTH&periodFrom=…). Le curseur « Charger plus »
+  // reste local : un changement de critère repart de la première page.
+  const search = useListSearch({
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Action (code), ressource, identifiant ou acteur…')
+      },
+      {
+        key: 'category',
+        type: 'select',
+        label: t('Catégorie'),
+        primary: true,
+        options: TENANT_AUDIT_CATEGORIES.map(value => ({ value, label: getAuditCategoryLabelFr(value) }))
+      },
+      { key: 'period', type: 'dateRange', label: t('Période'), primary: true, api: ['startDate', 'endDate'] },
+      {
+        key: 'outcome',
+        type: 'select',
+        label: t('Résultat'),
+        options: TENANT_AUDIT_OUTCOMES.map(value => ({ value, label: getAuditOutcomeLabelFr(value) }))
+      },
+      {
+        key: 'actionKey',
+        type: 'select',
+        label: t('Action'),
+        options: Object.entries(AUDIT_ACTION_LABELS_FR)
+          .map(([value, label]) => ({ value, label }))
+          .sort((x, y) => x.label.localeCompare(y.label, activeLocale()))
+      }
+    ]
+  });
+  // Les filtres envoyés à l'API : critères seuls, sans page ni tri (pagination par curseur).
+  const filterKey = JSON.stringify(search.filterParams);
+  const filters = useMemo(() => search.filterParams as TenantAuditFilters, [filterKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchPage = useCallback(
     async (cursor?: string) => {
@@ -151,18 +182,6 @@ export const TenantActivityLog: React.FC = () => {
   }, [tenantId, filters]);
 
   const columns = useMemo(() => buildColumns(setSelected), []);
-  const hasFilters = Boolean(category || outcome || range);
-
-  const resetFilters = () => {
-    setCategory(undefined);
-    setOutcome(undefined);
-    setRange(null);
-  };
-
-  const handleRange = (dates: [dayjs.Dayjs | null, dayjs.Dayjs | null] | null) => {
-    setRange(dates?.[0] && dates[1] ? [dates[0].format('YYYY-MM-DD'), dates[1].format('YYYY-MM-DD')] : null);
-  };
-
   const retry = () => {
     // Un échec en cours de liste ne perd pas les lignes déjà reçues.
     void fetchPage(logs.length > 0 && nextCursor ? nextCursor : undefined);
@@ -176,55 +195,6 @@ export const TenantActivityLog: React.FC = () => {
         </Title>
         <Text type="secondary">{t('Qui a fait quoi, et quand, dans votre agence.')}</Text>
       </div>
-
-      <Card>
-        <Row gutter={[16, 16]} align="bottom">
-          <Col xs={24} sm={12} md={6}>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>
-              {t('Catégorie')}
-            </Text>
-            <Select
-              style={{ width: '100%' }}
-              placeholder={t('Toutes les catégories')}
-              aria-label={t('Catégorie')}
-              value={category}
-              onChange={setCategory}
-              allowClear
-              options={TENANT_AUDIT_CATEGORIES.map(value => ({ value, label: getAuditCategoryLabelFr(value) }))}
-            />
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>
-              {t('Résultat')}
-            </Text>
-            <Select
-              style={{ width: '100%' }}
-              placeholder={t('Tous les résultats')}
-              aria-label={t('Résultat')}
-              value={outcome}
-              onChange={setOutcome}
-              allowClear
-              options={TENANT_AUDIT_OUTCOMES.map(value => ({ value, label: getAuditOutcomeLabelFr(value) }))}
-            />
-          </Col>
-          <Col xs={24} sm={16} md={8}>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>
-              {t('Période')}
-            </Text>
-            <RangePicker
-              style={{ width: '100%' }}
-              value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
-              onChange={handleRange}
-              format={dateFormat('short')}
-            />
-          </Col>
-          <Col xs={24} sm={8} md={4}>
-            <Button icon={<ReloadOutlined />} onClick={resetFilters} disabled={!hasFilters} block>
-              {t('Réinitialiser')}
-            </Button>
-          </Col>
-        </Row>
-      </Card>
 
       {error && (
         <Alert
@@ -242,6 +212,8 @@ export const TenantActivityLog: React.FC = () => {
 
       <Card>
         <Table<TenantAuditLog>
+          aria-label={t("Journal d'activité")}
+          search={search.searchProps}
           exportFilename={t("Journal d'activité")}
           exportFetchAll={fetchAllLogs}
           rowKey="id"
@@ -251,10 +223,13 @@ export const TenantActivityLog: React.FC = () => {
           pagination={false}
           scroll={{ x: 'max-content' }}
           onRow={log => ({ onClick: () => setSelected(log), style: { cursor: 'pointer' } })}
-          locale={{
-            emptyText:
-              loading || error ? <span /> : <Empty description={t('Aucune activité enregistrée pour ces critères')} />
-          }}
+          locale={
+            search.isFiltered
+              ? loading || error
+                ? { emptyText: <span /> }
+                : undefined
+              : { emptyText: loading || error ? <span /> : <Empty description={t('Aucune activité enregistrée')} /> }
+          }
         />
         {nextCursor && (
           <div style={{ textAlign: 'center', marginTop: 16 }}>

@@ -25,6 +25,10 @@ vi.mock('../../utils/api-client', () => ({
   }
 }));
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 import apiClient from '../../utils/api-client';
 
 const get = apiClient.get as unknown as ReturnType<typeof vi.fn>;
@@ -99,8 +103,9 @@ describe('<TenantDetail> — libellés accentués', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Collaborateurs' }));
 
-    expect(await screen.findByText('Rôles')).toBeInTheDocument();
-    expect(screen.getByText('Dernière connexion')).toBeInTheDocument();
+    // Le tableau antd (défilement horizontal) peut répéter son en-tête pour mesurer les colonnes.
+    expect((await screen.findAllByText('Rôles')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Dernière connexion').length).toBeGreaterThan(0);
     expect(screen.getByTitle('Voir les détails')).toBeInTheDocument();
     expect(screen.getByTitle('Désactiver')).toBeInTheDocument();
     expect(screen.queryByTitle('Voir les details')).not.toBeInTheDocument();

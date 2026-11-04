@@ -31,7 +31,9 @@ vi.mock('../../services/crm-service', () => ({
 }));
 
 vi.mock('../../components/crm/ActivityForm', () => ({ ActivityForm: () => null }));
-vi.mock('../../components/crm/AdvancedFilters', () => ({ AdvancedFilters: () => <div>filtres avancés</div> }));
+vi.mock('../../services/membership-service', () => ({
+  listAssignableMembers: vi.fn(async () => ({ success: true, data: { members: [] } }))
+}));
 vi.mock('../../utils/export-utils', () => ({ exportToCSV: vi.fn(), exportToExcel: vi.fn() }));
 
 const estDesktop = vi.hoisted(() => ({ value: false }));
@@ -236,5 +238,20 @@ describe('Calendrier — une seule action primaire', () => {
     await screen.findByText('Rappeler le client', {}, { timeout: 8000 });
     expect(screen.queryByRole('button', { name: /Nouvelle activité/ })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /Nouvelle relance/ })).toHaveLength(1);
+  });
+});
+
+describe('Calendrier — recherche multicritères', () => {
+  it('le champ libre garde les événements dont le titre, le client, l’affaire ou le lieu correspondent', async () => {
+    // « Aissatou » est dans le nom du client, pas dans le titre : le champ libre cherche aussi là.
+    mount('/tenant/agence-1/crm/calendar?ev.q=aissatou');
+    expect(await screen.findByText('Rappeler le client', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
+  });
+
+  it('un texte qui ne correspond à rien masque l’événement et le dit (« 0 résultat »)', async () => {
+    mount('/tenant/agence-1/crm/calendar?ev.q=zzz');
+    expect(await screen.findByText('0 résultat', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText('Rappeler le client')).not.toBeInTheDocument();
   });
 });
