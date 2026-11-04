@@ -139,6 +139,7 @@ describe('Fiche compromis — passage à l’acte', () => {
 });
 
 describe('Fiche compromis — rafraîchissement après signature (BUG-072)', () => {
+  // Plafond relevé : rendu jsdom lent sous charge (mesure du 04/11, plus de 40 s sous charge)
   it('propose « Passer à l’acte » et masque « Signer le compromis » sans rechargement', async () => {
     const brouillon = agreement({ status: 'DRAFT', signedAt: null, pendingConditionsCount: 0, conditions: [] });
     const signe = agreement({ status: 'SIGNED', signedAt: '2026-09-30', pendingConditionsCount: 0, conditions: [] });
@@ -152,5 +153,5 @@ describe('Fiche compromis — rafraîchissement après signature (BUG-072)', () 
 
     expect(await screen.findByRole('button', { name: 'Passer à l’acte' }, { timeout: 8000 })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Signer le compromis' })).not.toBeInTheDocument());
-  });
+  }, 120000);
 });

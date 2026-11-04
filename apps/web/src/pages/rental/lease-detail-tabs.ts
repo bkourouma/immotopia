@@ -25,9 +25,9 @@ export function withLeaseTab(previous: URLSearchParams, key: string): URLSearchP
 /**
  * Onglets qui restent montés une fois ouverts : ils portent un formulaire en
  * ligne dont la saisie serait perdue au changement d'onglet (mouvement de dépôt
- * de garantie). Les autres, à gros tableaux, sont démontés quand on les quitte.
+ * de garantie, mode édition d'un état des lieux). Les autres, à gros tableaux, sont démontés quand on les quitte.
  */
-export const LEASE_KEEP_MOUNTED_TABS: readonly string[] = ['deposit'];
+export const LEASE_KEEP_MOUNTED_TABS: readonly string[] = ['deposit', 'inspections'];
 
 /**
  * Pose `destroyOnHidden` par onglet (la prop globale de `<Tabs>` l'emporterait
