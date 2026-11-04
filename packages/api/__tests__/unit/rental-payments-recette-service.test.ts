@@ -70,6 +70,7 @@ function installment(overrides: Row = {}): Row {
 function makeTx(pay: Row, opts: { existingAllocations?: Row[]; movements?: Row[] } = {}): Row {
   const existing = opts.existingAllocations ?? [];
   return {
+    $queryRaw: jest.fn(async () => []),
     rentalPayment: {
       findFirst: jest.fn(async () => pay),
       update: jest.fn(async ({ data }: Row) => ({ ...pay, ...data, allocations: [] }))
@@ -120,6 +121,27 @@ describe('affectation d’un paiement (GL-06-033 et suivants)', () => {
     expect(result.allocations).toHaveLength(1);
   });
 
+  it('verrouille la ligne du paiement (FOR UPDATE) avant de lire le solde disponible', async () => {
+    const tx = makeTx(payment());
+    const order: string[] = [];
+    tx.$queryRaw.mockImplementation(async () => {
+      order.push('verrou');
+      return [];
+    });
+    tx.rentalPayment.findFirst.mockImplementation(async () => {
+      order.push('lecture');
+      return payment();
+    });
+
+    await allocatePaymentTx(tx as any, TENANT, 'pay-1', { installmentIds: ['inst-1'] }, 'u1');
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    const [strings] = tx.$queryRaw.mock.calls[0];
+    expect(strings.join('?')).toMatch(/rental_payments[\s\S]*FOR UPDATE/);
+    expect(order[0]).toBe('verrou');
+    expect(order.indexOf('verrou')).toBeLessThan(order.indexOf('lecture'));
+  });
+
   it('dit pourquoi une seconde affectation sur la même échéance est refusée', async () => {
     const tx = makeTx(payment({ amount: 150000 }), {
       existingAllocations: [{ payment_id: 'pay-1', installment_id: 'inst-1', amount: 50000 }]
@@ -156,6 +178,8 @@ describe('transitions de statut manuelles (GL-06-034)', () => {
     ['REFUNDED', RentalPaymentStatus.SUCCESS],
     ['REFUNDED', RentalPaymentStatus.CANCELED],
     ['PENDING', RentalPaymentStatus.REFUNDED],
+    ['SUCCESS', RentalPaymentStatus.REFUNDED],
+    ['SUCCESS', RentalPaymentStatus.PARTIALLY_REFUNDED],
     ['FAILED', RentalPaymentStatus.PENDING],
     ['CANCELED', RentalPaymentStatus.PENDING]
   ])('refuse %s -> %s', async (from, to) => {
@@ -170,8 +194,6 @@ describe('transitions de statut manuelles (GL-06-034)', () => {
     ['PENDING', RentalPaymentStatus.CANCELED],
     ['SUCCESS', RentalPaymentStatus.CANCELED],
     ['SUCCESS', RentalPaymentStatus.FAILED],
-    ['SUCCESS', RentalPaymentStatus.REFUNDED],
-    ['SUCCESS', RentalPaymentStatus.PARTIALLY_REFUNDED],
     ['PARTIALLY_REFUNDED', RentalPaymentStatus.REFUNDED],
     ['CANCELED', RentalPaymentStatus.SUCCESS],
     ['FAILED', RentalPaymentStatus.SUCCESS]

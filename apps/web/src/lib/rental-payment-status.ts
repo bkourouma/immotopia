@@ -8,8 +8,8 @@ import { t } from '../i18n/t';
  * qu'elle accepte, au lieu de laisser choisir un statut voué au refus.
  *
  * - un paiement attendu devient réussi, échoué ou annulé ;
- * - un paiement encaissé ne revient jamais « en attente » (annulé, rejeté,
- *   remboursé) ;
+ * - un paiement encaissé ne revient jamais « en attente » (annulé ou rejeté ;
+ *   pas de remboursement à la main, aucun flux de remboursement n'existe) ;
  * - un paiement annulé ou échoué se réactive en « Réussi » (correction d'une
  *   annulation faite par erreur) ;
  * - un remboursement est définitif.
@@ -18,7 +18,7 @@ export type StatutPaiement = 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELED' | 'RE
 
 const TRANSITIONS: Record<StatutPaiement, readonly StatutPaiement[]> = {
   PENDING: ['SUCCESS', 'FAILED', 'CANCELED'],
-  SUCCESS: ['CANCELED', 'FAILED', 'REFUNDED', 'PARTIALLY_REFUNDED'],
+  SUCCESS: ['CANCELED', 'FAILED'],
   FAILED: ['SUCCESS'],
   CANCELED: ['SUCCESS'],
   PARTIALLY_REFUNDED: ['REFUNDED', 'CANCELED'],

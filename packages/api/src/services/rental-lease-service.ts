@@ -21,6 +21,7 @@ import { t } from '../i18n';
 import { generateLeaseNumber, isLeaseNumberCollision } from './rental-lease-number';
 import { toRentalDocumentDto } from './rental-document-service';
 import { repriceUnstartedInstallmentsTx } from '../lib/lease-lifecycle/service';
+import { env } from '../config/env';
 
 /**
  * Les documents d'un bail sortent via `toRentalDocumentDto` : jamais de chemin
@@ -352,10 +353,7 @@ export async function createLease(
   try {
     // Get tenant information for emails
     const tenant = await getTenantById(tenantId);
-    const frontendUrl = (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(
-      /\/$/,
-      ''
-    );
+    const frontendUrl = env.FRONTEND_URL.replace(/\/$/, '');
 
     const sendPortalAccountCreatedWhatsapp = async (params: {
       email?: string | null;
@@ -567,10 +565,7 @@ export async function createLease(
       const emailConfig = await getEmailNotificationConfig(tenantId, 'LEASE_ACTIVATED');
       const { getCrmContactIdForWhatsApp } = await import('./whatsapp-contact-resolve');
       const { sendWhatsappNotification } = await import('./whatsapp-notification-send-service');
-      const frontendUrl = (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(
-        /\/$/,
-        ''
-      );
+      const frontendUrl = env.FRONTEND_URL.replace(/\/$/, '');
       const loginUrl = `${frontendUrl}/login`;
       const forgotPasswordUrl = `${frontendUrl}/forgot-password`;
 

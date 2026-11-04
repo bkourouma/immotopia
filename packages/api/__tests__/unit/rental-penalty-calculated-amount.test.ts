@@ -49,6 +49,7 @@ const mockPrisma: Row = {
     })
   },
   rentalLease: { findFirst: jest.fn(async () => ({ primary_renter_client_id: 'client-1' })) },
+  $queryRaw: jest.fn(async () => []),
   $transaction: jest.fn(async (cb: (tx: Row) => Promise<any>) => cb(mockPrisma))
 };
 

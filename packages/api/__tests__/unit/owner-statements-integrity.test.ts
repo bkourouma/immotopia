@@ -124,12 +124,19 @@ describe('updateOwnerStatement : sortie de PAID', () => {
 
   it.each([
     ['DRAFT', 'SENT'],
-    ['SENT', 'PAID'],
-    ['SENT', 'DRAFT'],
-    ['PAID', 'PAID']
+    ['SENT', 'DRAFT']
   ] as const)('conserve la transition %s -> %s', async (from, to) => {
     statementFindFirst.mockResolvedValue({ id: 's1', tenantId: TENANT, status: from });
     await updateOwnerStatement(TENANT, 's1', { status: to });
     expect(statementUpdate).toHaveBeenCalled();
+  });
+
+  it.each(['DRAFT', 'SENT', 'PAID'])('refuse de poser « Payé » à la main (depuis %s) : 400', async from => {
+    statementFindFirst.mockResolvedValue({ id: 's1', tenantId: TENANT, status: from });
+    await expect(updateOwnerStatement(TENANT, 's1', { status: 'PAID' })).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining('reversement')
+    });
+    expect(statementUpdate).not.toHaveBeenCalled();
   });
 });

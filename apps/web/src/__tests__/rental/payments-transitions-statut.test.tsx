@@ -86,7 +86,7 @@ beforeEach(() => {
 describe('statutsAtteignables', () => {
   it('reprend exactement les changements permis par l’API', () => {
     expect(statutsAtteignables('PENDING')).toEqual(['SUCCESS', 'FAILED', 'CANCELED']);
-    expect(statutsAtteignables('SUCCESS')).toEqual(['CANCELED', 'FAILED', 'REFUNDED', 'PARTIALLY_REFUNDED']);
+    expect(statutsAtteignables('SUCCESS')).toEqual(['CANCELED', 'FAILED']);
     expect(statutsAtteignables('FAILED')).toEqual(['SUCCESS']);
     expect(statutsAtteignables('CANCELED')).toEqual(['SUCCESS']);
     expect(statutsAtteignables('PARTIALLY_REFUNDED')).toEqual(['REFUNDED', 'CANCELED']);
@@ -105,7 +105,7 @@ describe('Détail d’un paiement — statuts proposés', () => {
     await monter('SUCCESS');
     const options = await optionsProposees();
     expect(options).not.toContain('En attente');
-    expect(options).toEqual(['Réussi', 'Annulé', 'Échoué', 'Remboursé', 'Partiellement remboursé']);
+    expect(options).toEqual(['Réussi', 'Annulé', 'Échoué']);
   });
 
   it('« Annulé » : seulement la réactivation en « Réussi »', async () => {

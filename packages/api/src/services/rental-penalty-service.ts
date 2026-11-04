@@ -15,7 +15,7 @@ import * as fs from 'fs/promises';
 import { getProjectRoot } from '../utils/project-root';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { t } from '../i18n';
-import { contentMatchesDeclaredType } from '../utils/file-signature';
+import { contentMatchesDeclaredType, detectDocumentKind, extensionForKind } from '../utils/file-signature';
 import { NotFoundError, BadRequestError } from '../middleware/error-middleware';
 
 // ---------------------------------------------------------------------------
@@ -200,29 +200,32 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
     }
   }
 
-  // Get or create penalty record
-  const existingPenalty = await prisma.rentalPenalty.findFirst({
-    where: {
-      installment_id: installmentId,
-      tenant_id: tenantId
-    },
-    orderBy: {
-      calculated_at: 'desc'
-    }
-  });
-
-  // Une pénalité ajustée à la main n'est pas recalculée (comme dans le calcul de
-  // masse) : on la rend telle quelle plutôt que d'en créer une seconde pour la
-  // même échéance, qui doublerait le débit au compte du locataire.
-  if (existingPenalty?.is_manual_override) {
-    return existingPenalty;
-  }
-
   // La pénalité, le miroir qu'en garde l'échéance et le mouvement qui la
   // facture au locataire naissent ensemble ou pas du tout : une pénalité
   // enregistrée sans son mouvement resterait invisible du relevé, et un
   // mouvement sans sa pénalité ferait payer une dette sans pièce.
-  const penalty = await prisma.$transaction(async tx => {
+  const outcome = await prisma.$transaction(async tx => {
+    // Verrou de l'échéance, puis relecture de la pénalité existante DANS la
+    // transaction : deux calculs simultanés lisaient « aucune pénalité » et en
+    // créaient chacun une, doublant le débit au compte du locataire.
+    await tx.$queryRaw`SELECT id FROM rental_installments WHERE id = ${installmentId}::uuid AND tenant_id = ${tenantId} FOR UPDATE`;
+    const existingPenalty = await tx.rentalPenalty.findFirst({
+      where: {
+        installment_id: installmentId,
+        tenant_id: tenantId
+      },
+      orderBy: {
+        calculated_at: 'desc'
+      }
+    });
+
+    // Une pénalité ajustée à la main n'est pas recalculée (comme dans le calcul de
+    // masse) : on la rend telle quelle plutôt que d'en créer une seconde pour la
+    // même échéance, qui doublerait le débit au compte du locataire.
+    if (existingPenalty?.is_manual_override) {
+      return { skipped: true as const, ligne: existingPenalty };
+    }
+
     let ligne;
     if (existingPenalty && !existingPenalty.is_manual_override) {
       // Update existing penalty
@@ -286,8 +289,13 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
       movementDate: ligne.calculated_at
     });
 
-    return ligne;
+    return { skipped: false as const, ligne };
   });
+
+  if (outcome.skipped) {
+    return outcome.ligne;
+  }
+  const penalty = outcome.ligne;
 
   // Update installment status
   await updateInstallmentStatus(tenantId, installmentId);
@@ -906,8 +914,14 @@ export async function uploadPenaltyJustification(
   const uploadDir = path.join(projectRoot, 'uploads', 'rental', 'penalties', penaltyId);
   await fs.mkdir(uploadDir, { recursive: true });
 
-  const fileExtension = path.extname(file.originalname);
-  const fileName = `justification-${Date.now()}-${Math.random().toString(36).substring(7)}${fileExtension}`;
+  // L'extension vient du type détecté par signature, jamais du nom envoyé.
+  const detectedKind = detectDocumentKind(file.buffer);
+  if (!detectedKind) {
+    throw new BadRequestError(
+      t('Le contenu du fichier ne correspond pas à son type. Envoyez un vrai PDF, DOC, DOCX, JPEG ou PNG.')
+    );
+  }
+  const fileName = `justification-${Date.now()}-${Math.random().toString(36).substring(7)}${extensionForKind(detectedKind)}`;
   const filePath = path.join(uploadDir, fileName);
 
   // Save file
@@ -929,6 +943,9 @@ export async function uploadPenaltyJustification(
     }
   }
 
+  // Ancien justificatif, supprimé une fois le nouveau enregistré.
+  const previousFileUrl: unknown = justificationInfo?.justification?.fileUrl;
+
   justificationInfo.justification = {
     fileUrl,
     fileName: nomFichier,
@@ -936,15 +953,33 @@ export async function uploadPenaltyJustification(
     uploadedBy: actorUserId
   };
 
-  const updatedPenalty = await prisma.rentalPenalty.update({
-    where: {
-      id: penaltyId,
-      tenant_id: tenantId
-    },
-    data: {
-      override_reason: JSON.stringify(justificationInfo)
-    }
-  });
+  let updatedPenalty;
+  try {
+    updatedPenalty = await prisma.rentalPenalty.update({
+      where: {
+        id: penaltyId,
+        tenant_id: tenantId
+      },
+      data: {
+        override_reason: JSON.stringify(justificationInfo)
+      }
+    });
+  } catch (dbError) {
+    // Écriture en base échouée : le fichier qu'on vient d'écrire n'est référencé nulle part.
+    await fs.unlink(filePath).catch(() => undefined);
+    throw dbError;
+  }
+
+  // Seulement un fichier de CETTE pénalité (même dossier), jamais un chemin libre.
+  const previousPrefix = `/uploads/rental/penalties/${penaltyId}/`;
+  if (
+    typeof previousFileUrl === 'string' &&
+    previousFileUrl.startsWith(previousPrefix) &&
+    previousFileUrl !== fileUrl
+  ) {
+    const previousName = path.basename(previousFileUrl);
+    await fs.unlink(path.join(uploadDir, previousName)).catch(() => undefined);
+  }
 
   logger.info('Penalty justification uploaded', {
     penaltyId,

@@ -400,6 +400,7 @@ const mockPrisma: Row = {
     count: jest.fn(async ({ where }: Row) => store.movements.filter(m => matchRow(m, where)).length)
   },
 
+  $queryRaw: jest.fn(async () => []),
   $transaction: jest.fn(async (callback: (tx: Row) => Promise<any>) => {
     const snapshot = structuredClone({
       leases: store.leases,

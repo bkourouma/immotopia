@@ -7,6 +7,7 @@ const mockPrisma: any = {
   rentalPenalty: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
   rentalPenaltyRule: { findFirst: jest.fn(), create: jest.fn() },
   rentalLease: { findFirst: jest.fn() },
+  $queryRaw: jest.fn(async () => []),
   $transaction: jest.fn()
 };
 
@@ -195,5 +196,27 @@ describe('pas de doublon', () => {
     await calculatePenalty(TENANT, 'inst-1', agencyRule);
     expect(mockPrisma.rentalPenalty.create).not.toHaveBeenCalled();
     expect(mockPrisma.rentalPenalty.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('concurrence : verrou de l’échéance', () => {
+  it('verrouille l’échéance (FOR UPDATE) puis relit la pénalité existante dans la transaction', async () => {
+    mockPrisma.rentalInstallment.findFirst.mockResolvedValue(installment({ penalty_rate: 2 }));
+    const order: string[] = [];
+    mockPrisma.$queryRaw.mockImplementation(async () => {
+      order.push('verrou');
+      return [];
+    });
+    mockPrisma.rentalPenalty.findFirst.mockImplementation(async () => {
+      order.push('relecture');
+      return null;
+    });
+
+    await calculatePenalty(TENANT, 'inst-1', agencyRule);
+
+    expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(1);
+    const [strings] = mockPrisma.$queryRaw.mock.calls[0];
+    expect(strings.join('?')).toMatch(/rental_installments[\s\S]*FOR UPDATE/);
+    expect(order).toEqual(['verrou', 'relecture']);
   });
 });

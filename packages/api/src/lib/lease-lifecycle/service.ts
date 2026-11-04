@@ -250,6 +250,7 @@ async function reprice(
   const { tenantId, leaseId, eventId, from, rent, charges } = params;
   const targets = await tx.rentalInstallment.findMany({
     where: {
+      tenant_id: tenantId,
       lease_id: leaseId,
       status: { in: UNPAID_STATUSES },
       amount_paid: 0,
@@ -293,11 +294,11 @@ async function reprice(
       data: { amount_rent: new Prisma.Decimal(periodRent), amount_service: new Prisma.Decimal(periodCharges) }
     });
     await tx.rentalInstallmentItem.updateMany({
-      where: { installment_id: inst.id, charge_type: 'RENT' },
+      where: { tenant_id: tenantId, installment_id: inst.id, charge_type: 'RENT' },
       data: { amount: new Prisma.Decimal(periodRent) }
     });
     await tx.rentalInstallmentItem.updateMany({
-      where: { installment_id: inst.id, charge_type: 'SERVICE_CHARGE' },
+      where: { tenant_id: tenantId, installment_id: inst.id, charge_type: 'SERVICE_CHARGE' },
       data: { amount: new Prisma.Decimal(periodCharges) }
     });
 

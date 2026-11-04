@@ -21,6 +21,7 @@ import {
 } from './rental-installment-service';
 import { t } from '../i18n';
 import { recordAuditEvent } from './audit-service';
+import { env } from '../config/env';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 
 // ---------------------------------------------------------------------------
@@ -286,13 +287,15 @@ const LIBELLE_STATUT: Record<RentalPaymentStatus, string> = {
  * Changements de statut permis à la main.
  *
  * Un paiement attendu devient réussi, échoué ou annulé ; un paiement encaissé
- * ne revient jamais « en attente » (il peut être annulé, rejeté, remboursé).
+ * ne revient jamais « en attente » (il peut être annulé ou rejeté).
  * Un paiement annulé ou échoué peut être réactivé (« Réussi ») : c'est la
  * correction d'une annulation faite par erreur. Un remboursement est définitif.
  */
 const TRANSITIONS_STATUT: Record<RentalPaymentStatus, RentalPaymentStatus[]> = {
   PENDING: ['SUCCESS', 'FAILED', 'CANCELED'],
-  SUCCESS: ['CANCELED', 'FAILED', 'REFUNDED', 'PARTIALLY_REFUNDED'],
+  // Pas de REFUNDED / PARTIALLY_REFUNDED à la main : aucun flux de remboursement
+  // n'existe, ce passage laisserait affectations et compte client incohérents.
+  SUCCESS: ['CANCELED', 'FAILED'],
   FAILED: ['SUCCESS'],
   CANCELED: ['SUCCESS'],
   PARTIALLY_REFUNDED: ['REFUNDED', 'CANCELED'],
@@ -527,6 +530,10 @@ export async function allocatePaymentTx(
   data: AllocatePaymentData,
   _actorUserId: string
 ): Promise<{ allocations: any[]; totalAllocated: number; payment: any; installments: any[] }> {
+  // Verrou de ligne du paiement AVANT de lire le solde disponible : deux
+  // affectations simultanées lisaient le même reliquat et le dépassaient à deux.
+  await tx.$queryRaw`SELECT id FROM rental_payments WHERE id = ${paymentId}::uuid AND tenant_id = ${tenantId} FOR UPDATE`;
+
   // Get payment with allocations
   const payment = await tx.rentalPayment.findFirst({
     where: {
@@ -798,7 +805,7 @@ export async function allocatePayment(
           .filter(i => allocations.some(a => a.installment_id === i.id))
           .map(i => `${String(i.period_month).padStart(2, '0')}/${i.period_year}`);
 
-        const baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
+        const baseUrl = env.FRONTEND_URL;
         const portalPath = '/tenant/payments';
         const portalUrl = `${baseUrl}/login?redirect=${encodeURIComponent(portalPath)}`;
 

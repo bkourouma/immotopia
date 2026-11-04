@@ -9,6 +9,7 @@ import { syncDirectDepositMovementEntryTx, syncDirectRentPaymentEntryTx } from '
 import { annulerPieceTx, compteLocataireDuBailTx, compteLocataireTx } from './rental-installment-service';
 import { NotFoundError, ConflictError, BadRequestError } from '../middleware/error-middleware';
 import { montantDisponibleTx } from './rental-payment-service';
+import { env } from '../config/env';
 
 /**
  * Create security deposit for a lease
@@ -644,7 +645,7 @@ async function sendDepositMovementNotifications(
     select: { name: true }
   });
   const agencyName = tenant?.name || undefined;
-  const baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
+  const baseUrl = env.FRONTEND_URL;
   const portalUrl = `${baseUrl}/tenant/deposit`;
 
   const { getEmailNotificationConfig } = await import('./email-notification-config-service');

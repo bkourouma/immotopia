@@ -1385,6 +1385,12 @@ export async function updateOwnerStatement(
     paidAt?: Date;
   }
 ) {
+  // Seul un reversement (`createOwnerPayout`) pose « Payé » : le poser à la main
+  // laisserait un relevé payé sans mouvement de trésorerie ni écriture.
+  if (data.status === StatementStatus.PAID) {
+    throw badRequest(t('Un relevé passe en « Payé » par un reversement, pas par une modification.'));
+  }
+
   const existing = await prisma.ownerStatement.findFirst({
     where: { id: statementId, tenantId }
   });
@@ -1392,7 +1398,7 @@ export async function updateOwnerStatement(
 
   // Un relevé payé ne repasse ni en brouillon ni en envoyé : annuler le
   // reversement qui l'a réglé est le seul chemin.
-  if (existing.status === StatementStatus.PAID && data.status && data.status !== StatementStatus.PAID) {
+  if (existing.status === StatementStatus.PAID && data.status) {
     throw conflict(t('Ce relevé est déjà payé : son statut ne peut plus être modifié.'));
   }
 

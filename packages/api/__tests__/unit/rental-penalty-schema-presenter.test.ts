@@ -86,12 +86,18 @@ describe('signature du justificatif (019)', () => {
     expect(contentMatchesDeclaredType(Buffer.from('%PDF-1.4 x'), 'application/pdf')).toBe(true);
     expect(
       contentMatchesDeclaredType(
-        Buffer.from([0x50, 0x4b, 0x03, 0x04, 1]),
+        Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04, 1]), Buffer.from('[Content_Types].xmlword/document.xml')]),
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       )
     ).toBe(true);
     expect(
-      contentMatchesDeclaredType(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]), 'application/msword')
+      contentMatchesDeclaredType(
+        Buffer.concat([
+          Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+          Buffer.from('WordDocument', 'utf16le')
+        ]),
+        'application/msword'
+      )
     ).toBe(true);
   });
 });
