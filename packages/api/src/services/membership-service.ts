@@ -58,7 +58,8 @@ async function revokeUserSessionsInTx(tx: PrismaTransactionClient, userId: strin
 export interface ListMembersFilters {
   tenantId: string;
   search?: string;
-  status?: MembershipStatus;
+  /** Un ou plusieurs statuts (OU). Vide ou absent : tous les statuts. */
+  status?: MembershipStatus[];
   roleId?: string;
   page?: number;
   limit?: number;
@@ -85,8 +86,8 @@ export async function listMembers(filters: ListMembersFilters) {
     tenantId: filters.tenantId
   };
 
-  if (filters.status) {
-    where.status = filters.status;
+  if (filters.status && filters.status.length > 0) {
+    where.status = filters.status.length === 1 ? filters.status[0] : { in: filters.status };
   }
 
   // Build user filter conditions
