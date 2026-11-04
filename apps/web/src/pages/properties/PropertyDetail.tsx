@@ -53,6 +53,7 @@ import { PropertySaleCard } from '../../components/properties/PropertySaleCard';
 import { PropertyDocumentsTab } from '../../components/properties/PropertyDocumentsTab';
 import { PropertyMandatesTab } from '../../components/properties/PropertyMandatesTab';
 import { API_URL } from '../../config/api';
+import { switchPropertyTab, withTabLifecycle } from './property-detail-tabs';
 
 import { PageHeader, StatusTag } from '../../components/primitives';
 import { t } from '../../i18n/t';
@@ -776,20 +777,16 @@ export const PropertyDetail: React.FC = () => {
         </Card>
 
         <Tabs
+          // `destroyOnHidden` par onglet (withTabLifecycle) : les visites, qui portent un
+          // formulaire en ligne, restent montées une fois ouvertes.
           activeKey={ongletActif}
-          items={onglets}
+          items={withTabLifecycle(onglets ?? [])}
           // `replace` : parcourir les onglets ne doit pas remplir l'historique,
           // sinon le retour arrière rejoue les onglets un à un au lieu de
           // ramener à la liste des biens.
           onChange={key =>
-            setSearchParams(
-              previous => {
-                const suivant = new URLSearchParams(previous);
-                suivant.set('onglet', key);
-                return suivant;
-              },
-              { replace: true }
-            )
+            // Les paramètres des listes des autres onglets sont retirés de l'URL.
+            setSearchParams(previous => switchPropertyTab(previous, key), { replace: true })
           }
         />
       </Space>
