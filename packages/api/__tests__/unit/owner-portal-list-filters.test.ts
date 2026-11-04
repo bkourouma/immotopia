@@ -310,6 +310,12 @@ describe('pagination optionnelle', () => {
     expect(result.summary).toEqual({ active: 1, ended: 1, suspended: 1 });
   });
 
+  it('baux : l élément porte l identifiant du bien (deux lots d une même adresse se distinguent)', async () => {
+    findManyLeases.mockResolvedValue([lease('a')]);
+    const result = await service.getLeases(MINE, T, {});
+    expect(result.leases[0].propertyId).toBe(property.id);
+  });
+
   it('documents : groupedByType sur toutes les lignes, documents tranchés', async () => {
     findManyDocuments.mockResolvedValue([document('a'), document('b'), document('c', 'STATEMENT')]);
     const result = await service.getDocuments(MINE, T, { page: 1, limit: 2 });

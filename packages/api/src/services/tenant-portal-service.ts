@@ -38,7 +38,7 @@ import {
 import { NotFoundError } from '../middleware/error-middleware';
 import { PORTAL_RENTAL_DOCUMENT_SELECT, toPortalAttachment, toPortalRentalDocument } from '../lib/files/portal-files';
 import {
-  buildTenantDeclarationsSearch,
+  buildTenantDeclarationsFilters,
   buildTenantInstallmentsSearch,
   buildTenantPaymentsSearch,
   buildTenantTicketsWhere,
@@ -1268,7 +1268,7 @@ export class TenantPortalService {
             lease_id: leaseId,
             tenant_id: tenantId,
             declared_by: tenantClientId,
-            ...buildTenantDeclarationsSearch(filters?.search)
+            ...buildTenantDeclarationsFilters(filters)
           },
           orderBy: { created_at: 'desc' }
         })

@@ -525,6 +525,40 @@ describe('Paiements et déclarations : préfixes « pa » et « dec »', () => {
     expect(await screen.findByText('Mes déclarations', {}, WAIT)).toBeInTheDocument();
     expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', {}, WAIT)).toBeInTheDocument();
   });
+
+  it('garde la barre quand les paiements échouent, et « Effacer » relance sans le lot', async () => {
+    listMyPayments.mockImplementation(async (params: { lotId?: string }) => {
+      if (params.lotId) throw new Error('lot refusé');
+      return payments;
+    });
+    mount('/copropriete/paiements?pa.lot=lot-1');
+
+    expect(await screen.findByText('Impossible de charger vos paiements.', {}, WAIT)).toBeInTheDocument();
+    expect(screen.getByRole('search', { name: 'Rechercher dans les paiements' })).toBeInTheDocument();
+
+    await clearCriteria();
+    expect(await screen.findByText('REF-BETA', {}, WAIT)).toBeInTheDocument();
+    expect(listMyPayments).toHaveBeenLastCalledWith({ lotId: undefined, year: undefined });
+    expect(url()).not.toContain('pa.lot');
+  });
+
+  it('garde les déclarations sous critère quand leur appel échoue, et « Effacer » relance sans statut', async () => {
+    listMyDeclarations.mockImplementation(async (params: { status?: string }) => {
+      if (params.status) throw new Error('statut invalide');
+      return {
+        items: [declaration('d1', 'PENDING', 'MP-ATTENTE')],
+        pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
+      };
+    });
+    mount('/copropriete/paiements?dec.status=REJECTED');
+
+    expect(await screen.findByText('Impossible de charger vos déclarations.', {}, WAIT)).toBeInTheDocument();
+    const bar = within(screen.getByRole('search', { name: 'Rechercher dans les déclarations' }));
+    await userEvent.click(bar.getByRole('button', { name: 'Effacer les critères' }));
+    expect(await screen.findByText('MP-ATTENTE', {}, WAIT)).toBeInTheDocument();
+    expect(listMyDeclarations).toHaveBeenLastCalledWith({ page: 1, limit: 20 });
+    expect(url()).not.toContain('dec.status');
+  });
 });
 
 describe('Quittances : critères envoyés au serveur', () => {
@@ -585,5 +619,23 @@ describe('Quittances : critères envoyés au serveur', () => {
     expect(await screen.findByText('QT-001', {}, WAIT)).toBeInTheDocument();
     expect(listMyReceipts).toHaveBeenLastCalledWith({ page: 1, limit: 20 });
     expect(url()).not.toContain('kind=');
+  });
+
+  it('garde la barre et ses critères quand l’appel échoue, et « Effacer » relance sans le critère', async () => {
+    listMyReceipts.mockImplementation(async (params: { kind?: string }) => {
+      if (params.kind) throw new Error('requête invalide');
+      return reponse([receipt]);
+    });
+    mount('/copropriete/quittances?kind=RECEIPT');
+
+    expect(await screen.findByText('Impossible de charger vos quittances.', {}, WAIT)).toBeInTheDocument();
+    expect(screen.getByRole('search')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument();
+
+    await clearCriteria();
+    expect(await screen.findByText('QT-001', {}, WAIT)).toBeInTheDocument();
+    expect(listMyReceipts).toHaveBeenLastCalledWith({ page: 1, limit: 20 });
+    expect(url()).not.toContain('kind=');
+    expect(screen.queryByText('Impossible de charger vos quittances.')).not.toBeInTheDocument();
   });
 });

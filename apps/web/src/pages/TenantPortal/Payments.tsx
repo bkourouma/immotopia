@@ -30,6 +30,7 @@ import { natureLabel } from '../finance/Releve';
 import { MoneyValue, StateBlock, SkeletonTable, Table } from '../../components/primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { useEcheancesSearch, useHistoriqueSearch, useOngletPaiements, useReleveSearch } from './search/paymentsSearch';
+import { useSelectionEcheances } from './search/useSelectionEcheances';
 import {
   OnlineCheckout,
   OnlineCheckoutConflict,
@@ -364,7 +365,8 @@ export default function TenantPayments() {
     staleTime: 60_000,
     retry: false
   });
-  const [selectedInstallmentIds, setSelectedInstallmentIds] = useState<string[]>([]);
+  const selection = useSelectionEcheances(echSearch.filterParams);
+  const selectedInstallmentIds = selection.ids;
   const [payingOnline, setPayingOnline] = useState(false);
 
   // Payment history state
@@ -628,9 +630,7 @@ export default function TenantPayments() {
     }
   ];
 
-  const totalSelectionOnline = (data?.installments ?? [])
-    .filter(installment => selectedInstallmentIds.includes(installment.id))
-    .reduce((somme, installment) => somme + installment.balance, 0);
+  const totalSelectionOnline = selection.total;
 
   if (ongletActif === 'echeances' && loading && !data) {
     return (
@@ -763,6 +763,11 @@ export default function TenantPayments() {
                             ? t('Total à payer : {{value}}', { value: formatCurrency(totalSelectionOnline) })
                             : t('Sélectionnez une ou plusieurs échéances à régler en ligne.')}
                         </Text>
+                        {selectedInstallmentIds.length > 0 ? (
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {t('{{count}} échéance(s) sélectionnée(s)', { count: selection.count })}
+                          </Text>
+                        ) : null}
                         {selectedInstallmentIds.length > 0 && availability.feesPaidBy === 'CLIENT' ? (
                           <Text type="secondary" style={{ fontSize: 12 }}>
                             {t("Des frais de l'agrégateur de paiement peuvent s'ajouter au montant.")}
@@ -808,7 +813,7 @@ export default function TenantPayments() {
                         availability?.available
                           ? {
                               selectedRowKeys: selectedInstallmentIds,
-                              onChange: keys => setSelectedInstallmentIds(keys as string[]),
+                              onChange: keys => selection.surChangement(keys, data.installments),
                               getCheckboxProps: (record: InstallmentItem) => ({
                                 disabled: record.balance <= 0,
                                 'aria-label': t('Sélectionner {{period}}', { period: record.period })

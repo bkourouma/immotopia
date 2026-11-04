@@ -94,7 +94,10 @@ describe('Baux propriétaire : recherche locale', () => {
     status
   });
   const reponse = ok({
-    leases: [bail('l1', 'Villa Angré', 'Awa Traoré'), bail('l2', 'Studio Plateau', 'Koffi Yao', 'ENDED')],
+    leases: [
+      { ...bail('l1', 'Villa Angré', 'Awa Traoré'), propertyId: 'p1' },
+      { ...bail('l2', 'Studio Plateau', 'Koffi Yao', 'ENDED'), propertyId: 'p2' }
+    ],
     summary: { active: 1, ended: 1, suspended: 0 }
   });
 
@@ -122,8 +125,32 @@ describe('Baux propriétaire : recherche locale', () => {
     expect(screen.getByTestId('url').textContent).not.toContain('status=');
   });
 
-  it('filtre par bien (adresse de l’option choisie)', async () => {
+  it('filtre par bien (identifiant)', async () => {
     getLeases.mockResolvedValue(reponse);
+    renderPage(<Leases />, '/owner/leases?propertyId=p2');
+    expect(await screen.findByText(/Koffi Yao/, undefined, T)).toBeInTheDocument();
+    expect(screen.queryByText(/Awa Traoré/)).not.toBeInTheDocument();
+  });
+
+  it('filtre par bien sur l’identifiant : deux lots de même adresse ne se confondent pas', async () => {
+    getProperties.mockResolvedValue(
+      ok({
+        properties: [
+          { id: 'p1', address: 'Résidence Soleil' },
+          { id: 'p2', address: 'Résidence Soleil' }
+        ],
+        summary: { total: 2, rented: 2, available: 0, inMaintenance: 0 }
+      })
+    );
+    getLeases.mockResolvedValue(
+      ok({
+        leases: [
+          { ...bail('l1', 'Résidence Soleil', 'Awa Traoré'), propertyId: 'p1' },
+          { ...bail('l2', 'Résidence Soleil', 'Koffi Yao'), propertyId: 'p2' }
+        ],
+        summary: { active: 2, ended: 0, suspended: 0 }
+      })
+    );
     renderPage(<Leases />, '/owner/leases?propertyId=p2');
     expect(await screen.findByText(/Koffi Yao/, undefined, T)).toBeInTheDocument();
     expect(screen.queryByText(/Awa Traoré/)).not.toBeInTheDocument();

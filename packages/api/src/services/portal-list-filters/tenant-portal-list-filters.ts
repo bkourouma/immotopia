@@ -168,6 +168,34 @@ export function buildTenantDeclarationsSearch(search?: string): { AND?: Prisma.R
   return term ? { AND: [{ OR: [{ reference: contains(term) }, { notes: contains(term) }] }] } : {};
 }
 
+export interface TenantDeclarationsFilters {
+  method?: string | string[];
+  startDate?: string | Date;
+  endDate?: string | Date;
+  search?: string;
+}
+
+/**
+ * Filtres de l'historique appliqués aussi aux déclarations de paiement : recherche,
+ * méthode (`payment_method`, même enum `RentalPaymentMethod` que `method` des paiements)
+ * et période (`payment_date`, mêmes bornes que `succeeded_at` des paiements).
+ * Sans cela une déclaration resterait affichée malgré le filtre.
+ */
+export function buildTenantDeclarationsFilters(
+  filters?: TenantDeclarationsFilters
+): Prisma.RentalPaymentDeclarationWhereInput {
+  const where: Prisma.RentalPaymentDeclarationWhereInput = { ...buildTenantDeclarationsSearch(filters?.search) };
+  const method = tenantEnumClause(filters?.method as RentalPaymentMethod | RentalPaymentMethod[] | undefined);
+  if (method) where.payment_method = method;
+  if (filters?.startDate || filters?.endDate) {
+    where.payment_date = {
+      ...(filters.startDate ? { gte: new Date(filters.startDate) } : {}),
+      ...(filters.endDate ? { lte: new Date(filters.endDate) } : {})
+    };
+  }
+  return where;
+}
+
 export interface TenantTicketsFilters {
   status?: string | string[];
   category?: string[];

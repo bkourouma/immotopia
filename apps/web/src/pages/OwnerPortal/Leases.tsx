@@ -15,6 +15,7 @@ const { Title, Text } = Typography;
 
 interface LeaseItem {
   id: string;
+  propertyId?: string;
   propertyAddress: string;
   tenantName: string;
   startDate: string;
@@ -115,14 +116,12 @@ export default function Leases() {
     { key: 'period', type: 'dateRange', label: t('Début du bail') }
   ];
 
-  // L'élément ne porte pas l'identifiant du bien : le critère « Propriété » (un id) se compare à l'adresse
-  // de l'option choisie, qui est celle renvoyée par l'API (`propertyAddress`).
+  // Le critère « Propriété » compare l’identifiant du bien (deux lots d’un même immeuble partagent l’adresse).
   const predicates = useMemo(
     () => ({
-      propertyId: (lease: LeaseItem, value: unknown) =>
-        propertyOptions.find(option => option.value === value)?.label === lease.propertyAddress
+      propertyId: (lease: LeaseItem, value: unknown) => lease.propertyId === value
     }),
-    [propertyOptions]
+    []
   );
 
   const local = useLocalListSearch<LeaseItem>(data?.leases, {
