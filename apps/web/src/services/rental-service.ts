@@ -1,4 +1,4 @@
-import apiClient from '../utils/api-client';
+import apiClient, { FILE_DOWNLOAD_TIMEOUT_MS } from '../utils/api-client';
 import { filenameFromDisposition } from '../utils/save-blob';
 import type { OnlineCheckoutSummary } from './payment-gateway-service';
 
@@ -923,7 +923,10 @@ export async function generateDocument(
   });
 
   try {
-    const response = await apiClient.post(`/tenants/${tenantId}/documents/generate`, requestBody);
+    // Génération et conversion PDF côté serveur : délai long (BUG-2026-11-04-042).
+    const response = await apiClient.post(`/tenants/${tenantId}/documents/generate`, requestBody, {
+      timeout: FILE_DOWNLOAD_TIMEOUT_MS
+    });
 
     console.log('✅ [rental-service] generateDocument: Success', {
       success: response.data.success,
@@ -956,7 +959,11 @@ export async function regenerateDocument(
   documentId: string,
   templateId?: string
 ): Promise<{ success: boolean; data: RentalDocument; message: string }> {
-  const response = await apiClient.post(`/tenants/${tenantId}/documents/${documentId}/regenerate`, { templateId });
+  const response = await apiClient.post(
+    `/tenants/${tenantId}/documents/${documentId}/regenerate`,
+    { templateId },
+    { timeout: FILE_DOWNLOAD_TIMEOUT_MS }
+  );
   return response.data;
 }
 

@@ -15,6 +15,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const post = vi.fn();
 const get = vi.fn();
 vi.mock('../../utils/api-client', () => ({
+  FILE_DOWNLOAD_TIMEOUT_MS: 120_000,
   default: {
     get: (...a: unknown[]) => get(...a),
     post: (...a: unknown[]) => post(...a)
@@ -53,7 +54,9 @@ describe('generateDocument (service)', () => {
         description: 'Ma description',
         startDate: '2026-01-01',
         endDate: '2026-03-31'
-      })
+      }),
+      // Génération et conversion PDF : délai long (BUG-2026-11-04-042).
+      expect.objectContaining({ timeout: 120_000 })
     );
   });
 
