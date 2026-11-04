@@ -19,14 +19,14 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 ## orch/2026-11-03-ux-recherche — recherche multicritères et ergonomie (2026-11-04)
 
-**État :** repris dans Codex le 2026-11-04 ; tous les lots retenus sont intégrés et les contrôles locaux sont verts. PR et suites complètes de CI à suivre. Passation d'origine et décisions métier : [HANDOFF-ux-recherche.md](HANDOFF-ux-recherche.md).
+**État :** tous les lots retenus sont intégrés et les contrôles locaux sont verts. [PR #195](https://github.com/bkourouma/immotopia/pull/195) ouverte ; les suites complètes backend/web et leur verdict sont attachés à cette PR. Elle est maintenue en brouillon tant que sa validation automatique n'est pas terminée. Passation d'origine et décisions métier : [HANDOFF-ux-recherche.md](HANDOFF-ux-recherche.md).
 
 **Fait :** lots initiaux conservés ; SYN-B terminé, relu et fusionné (`949b1ece`, lot `36d5da6d`). JOK intégré par `d7843e87` (lot `fde5b12b`) : caractères LIKE cherchés littéralement, recherches du journal respectant l'identité plateforme masquée, budget CRM égal à zéro, suppression de quatre anciens lecteurs comptables et deux schémas sans appelant runtime. Corrections de reprise `7048a197` : purge des filtres des onglets du bail ; étapes gagnées/perdues et export cohérent du Kanban ; PDF du relevé aligné sur la recherche avec vrais soldes et libellés adaptés au tiers. Traductions EN/AR et libellés hérités traités (1 304 entrées modifiées contrôlées sans vide ni désaccord de paramètres) ; classeur et miroir actualisés (1 154 sous-fonctionnalités). Catalogue IA régénéré : 785 routes, contenu déjà cohérent.
 
 **Reste :**
 
-- Ouvrir la PR vers `main`, suivre les suites complètes backend et web (la CI actuelle comprend quatre lots web), et corriger les échecs éventuels. Les suites complètes n'ont pas été exécutées en local pendant la reprise ; elles sont déléguées à la CI après les tests ciblés ci-dessous.
-- Mettre à jour le lien et le verdict CI dans cette section. La fusion et le déploiement restent à l'utilisateur.
+- Avant la fusion, consulter les checks de la PR #195 (la CI actuelle comprend quatre lots web, l'API et l'isolation réelle) et résoudre les échecs éventuels. Les suites complètes n'ont pas été exécutées en local pendant la reprise ; leur exécution de référence est celle de GitHub Actions sur le dernier SHA de la PR.
+- La fusion et le déploiement restent à l'utilisateur. Les limites de couverture manuelle et les points d'attention métier/migration sont documentés dans la PR et ci-dessous.
 
 Vérifications locales terminées :
 

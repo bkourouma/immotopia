@@ -4,6 +4,7 @@
 > (`949b1ece`, `d7843e87`), les traductions et le classeur du lot Z sont faits.
 > Compilations, lint, architecture, i18n, wiki, budget et contrastes locaux verts ;
 > recette ciblée navigateur/CSV/PDF et isolation réelle 129/129 réussies. PERF est écarté.
+> Livraison et CI complète : [PR #195](https://github.com/bkourouma/immotopia/pull/195).
 > L'état courant, les tests et la suite figurent dans [HANDOFF.md](HANDOFF.md).
 > Les sections ci-dessous conservent le contexte et les décisions de la
 > passation initiale ; leurs listes « à faire » décrivent l'arrêt de Claude.
