@@ -143,8 +143,9 @@ export const LeaseDetailPage: React.FC = () => {
       message.success(translate('Statut mis à jour avec succès'));
       loadLease();
     } catch (err: any) {
+      // Le refus n'est pas une erreur de chargement : la fiche reste affichée
+      // (BUG-2026-11-03-019), le message de l'API est montré en toast.
       const errorMsg = err.response?.data?.message || translate('Erreur lors de la mise à jour du statut');
-      setError(errorMsg);
       message.error(errorMsg);
     }
   };
@@ -186,17 +187,10 @@ export const LeaseDetailPage: React.FC = () => {
       return '0.00';
     }
 
-    // The rate can be stored either as:
-    // - A decimal (0.05 for 5%) - need to multiply by 100
-    // - A percentage (5 for 5%) - use as is
-    // We check: if rate < 1, it's a decimal, otherwise it's already a percentage
-    if (numRate < 1) {
-      // Stored as decimal (0.05), convert to percentage
-      return (numRate * 100).toFixed(2);
-    } else {
-      // Already stored as percentage (5), use as is
-      return numRate.toFixed(2);
-    }
+    // L'API stocke un pourcentage (2 = 2 %, 0,5 = 0,5 %), cf. rental-penalty-service :
+    // aucune conversion. Multiplier par 100 sous 1 affichait 0,5 % en « 50.00 % »
+    // (BUG-2026-11-03-017).
+    return numRate.toFixed(2);
   };
 
   if (loading) {

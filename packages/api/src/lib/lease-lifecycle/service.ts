@@ -293,6 +293,29 @@ async function reprice(
   return targets.length;
 }
 
+/**
+ * Modification du loyer ou des charges par la fiche du bail : recalcule, dans
+ * la transaction de l'appelant, les échéances NON COMMENCÉES (période après le
+ * mois courant) et sans aucun paiement. Les échéances payées, partielles,
+ * échues ou du mois en cours ne bougent pas (BUG-2026-11-03-018). Retourne le
+ * nombre d'échéances recalculées.
+ */
+export async function repriceUnstartedInstallmentsTx(
+  tx: PrismaTransactionClient,
+  params: { tenantId: string; leaseId: string; rent: number; charges: number; now?: Date }
+) {
+  const now = params.now ?? new Date();
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  return reprice(tx, {
+    tenantId: params.tenantId,
+    leaseId: params.leaseId,
+    eventId: `EDIT-${now.getTime()}`,
+    from: { year: next.getUTCFullYear(), month: next.getUTCMonth() + 1 },
+    rent: params.rent,
+    charges: params.charges
+  });
+}
+
 export async function reviseRent(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
   const input = revisionSchema.parse(body);
   const lease = await loadLease(tenantId, leaseId);

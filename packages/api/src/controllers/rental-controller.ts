@@ -166,7 +166,9 @@ export const updateLeaseHandler = asyncHandler(async (req: Request, res: Respons
 
   res.json({
     success: true,
-    data: lease
+    data: lease,
+    // Échéances non commencées recalculées au nouveau loyer (BUG-2026-11-03-018).
+    installmentsRepriced: lease.installmentsRepriced
   });
 });
 

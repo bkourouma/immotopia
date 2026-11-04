@@ -20,6 +20,7 @@ import { assertThirdPartyAllowedForTenant } from './own-assets-barrier-service';
 import { t } from '../i18n';
 import { generateLeaseNumber, isLeaseNumberCollision } from './rental-lease-number';
 import { toRentalDocumentDto } from './rental-document-service';
+import { repriceUnstartedInstallmentsTx } from '../lib/lease-lifecycle/service';
 
 /**
  * Les documents d'un bail sortent via `toRentalDocumentDto` : jamais de chemin
@@ -930,7 +931,7 @@ export async function updateLease(
   leaseId: string,
   data: UpdateLeaseRequest,
   actorUserId: string
-): Promise<LeaseDetail> {
+): Promise<LeaseDetail & { installmentsRepriced: number }> {
   // Verify lease exists and belongs to tenant
   const existingLease = await prisma.rentalLease.findFirst({
     where: {
@@ -959,31 +960,49 @@ export async function updateLease(
     billing_frequency: data.billingFrequency !== undefined ? data.billingFrequency : undefined,
     notes: data.notes !== undefined ? data.notes : undefined
   };
-  const lease = await prisma.rentalLease.update({
-    where: {
-      id: leaseId,
-      tenant_id: tenantId
-    },
-    data: leaseUpdate,
-    include: {
-      property: {
-        select: {
-          id: true,
-          internalReference: true,
-          address: true
-        }
+  const { lease, installmentsRepriced } = await prisma.$transaction(async tx => {
+    const lease = await tx.rentalLease.update({
+      where: {
+        id: leaseId,
+        tenant_id: tenantId
       },
-      primaryRenter: {
-        select: {
-          id: true,
-          userId: true,
-          clientType: true
-        }
-      },
-      coRenters: true,
-      deposit: true,
-      documents: true
-    }
+      data: leaseUpdate,
+      include: {
+        property: {
+          select: {
+            id: true,
+            internalReference: true,
+            address: true
+          }
+        },
+        primaryRenter: {
+          select: {
+            id: true,
+            userId: true,
+            clientType: true
+          }
+        },
+        coRenters: true,
+        deposit: true,
+        documents: true
+      }
+    });
+
+    // Loyer ou charges modifiés : les échéances non commencées et impayées
+    // suivent (BUG-2026-11-03-018). Les autres gardent leur montant facturé.
+    const priceChanged =
+      (data.rentAmount !== undefined && Number(data.rentAmount) !== Number(existingLease.rent_amount)) ||
+      (data.serviceChargeAmount !== undefined &&
+        Number(data.serviceChargeAmount) !== Number(existingLease.service_charge_amount));
+    const installmentsRepriced = priceChanged
+      ? await repriceUnstartedInstallmentsTx(tx, {
+          tenantId,
+          leaseId,
+          rent: Number(data.rentAmount ?? existingLease.rent_amount),
+          charges: Number(data.serviceChargeAmount ?? existingLease.service_charge_amount)
+        })
+      : 0;
+    return { lease, installmentsRepriced };
   });
 
   logger.info('Rental lease updated', {
@@ -1003,7 +1022,9 @@ export async function updateLease(
     changes: diffForAudit(existingLease as unknown as Record<string, unknown>, leaseUpdate)
   });
 
-  return withPublicDocuments(lease) as unknown as LeaseDetail;
+  return { ...withPublicDocuments(lease), installmentsRepriced } as unknown as LeaseDetail & {
+    installmentsRepriced: number;
+  };
 }
 
 /**

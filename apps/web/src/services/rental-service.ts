@@ -129,6 +129,7 @@ export interface RentalLease {
     userId: string;
     clientType: string;
     crmContactId?: string;
+    displayName?: string | null;
     user?: {
       id: string;
       fullName: string;
@@ -140,6 +141,7 @@ export interface RentalLease {
     userId: string;
     clientType: string;
     crmContactId?: string;
+    displayName?: string | null;
     user?: {
       id: string;
       fullName: string;
@@ -185,9 +187,10 @@ export interface CreateLeaseRequest {
 }
 
 export interface UpdateLeaseRequest {
-  endDate?: string;
-  moveInDate?: string;
-  moveOutDate?: string;
+  /** `null` retire la date (bail sans fin) ; absent la laisse inchangée. */
+  endDate?: string | null;
+  moveInDate?: string | null;
+  moveOutDate?: string | null;
   rentAmount?: number;
   serviceChargeAmount?: number;
   securityDepositAmount?: number;
@@ -218,6 +221,8 @@ export interface LeaseListResponse {
 export interface LeaseResponse {
   success: boolean;
   data: RentalLease;
+  /** Modification du bail : échéances non commencées recalculées au nouveau loyer. */
+  installmentsRepriced?: number;
 }
 
 // ==================== LEASES ====================

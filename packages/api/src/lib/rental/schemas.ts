@@ -57,10 +57,11 @@ export const createLeaseSchema = z
     path: ['primaryRenterClientId']
   });
 
+// `null` retire la date (bail sans fin) ; absent la laisse inchangée.
 export const updateLeaseSchema = z.object({
-  endDate: datetimeSchema.optional(),
-  moveInDate: datetimeSchema.optional(),
-  moveOutDate: datetimeSchema.optional(),
+  endDate: datetimeSchema.nullable().optional(),
+  moveInDate: datetimeSchema.nullable().optional(),
+  moveOutDate: datetimeSchema.nullable().optional(),
   rentAmount: z.number().positive().optional(),
   serviceChargeAmount: z.number().nonnegative().optional(),
   securityDepositAmount: z.number().nonnegative().optional(),
