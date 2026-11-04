@@ -54,19 +54,29 @@ export const InspectionSignaturesModal: React.FC<InspectionSignaturesModalProps>
 }) => {
   const [signers, setSigners] = React.useState<SignerInput[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [blockedReason, setBlockedReason] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!open) return undefined;
     let canceled = false;
     setSigners(null);
     setError(null);
+    setBlockedReason(null);
     fetchSignatureContext('LEASE_INSPECTION', inspectionId)
       .then(context => {
-        if (!canceled) setSigners(toSignerInputs(context.signers ?? [], tenantPresent));
+        if (canceled) return;
+        // Déjà signé : l'envoi est fermé, mais les demandes et leurs PDF restent consultables.
+        if (context.canSend === false) {
+          setBlockedReason(context.reason || t('Cet état des lieux est déjà signé.'));
+        }
+        setSigners(toSignerInputs(context.signers ?? [], tenantPresent));
       })
       .catch((err: any) => {
         if (!canceled) {
           setError(err?.response?.data?.message || t('Impossible de charger les signataires de cet état des lieux'));
+          // L'historique reste lisible même sans contexte d'envoi.
+          setBlockedReason(t('Envoi impossible pour le moment.'));
+          setSigners([]);
         }
       });
     return () => {
@@ -92,10 +102,20 @@ export const InspectionSignaturesModal: React.FC<InspectionSignaturesModalProps>
           description={t('Chaque signataire présent dessine sa signature ; les absents reçoivent un lien par e-mail.')}
         />
       )}
-      {error && <Alert type="error" showIcon message={error} />}
+      {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
+      {!error && blockedReason && (
+        <Alert
+          type="info"
+          showIcon
+          data-testid="inspection-signature-blocked"
+          message={blockedReason}
+          style={{ marginBottom: 12 }}
+        />
+      )}
       {!signers && !error && <Spin />}
       {signers && (
         <SignaturesPanel
+          sendDisabled={blockedReason !== null}
           kind="LEASE_INSPECTION"
           targetType="LeaseInspection"
           targetId={inspectionId}

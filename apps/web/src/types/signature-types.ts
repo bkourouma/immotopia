@@ -129,6 +129,10 @@ export interface DefaultSignerDto {
 export interface SignatureTargetContext {
   kind: SignatureKind;
   targetType: string;
+  /** Faux quand la cible est déjà signée : l'envoi est fermé, les demandes restent consultables. */
+  canSend?: boolean;
+  /** Motif (traduit) pour lequel `canSend` est faux. */
+  reason?: string | null;
   providerRequired: boolean;
   externalProvider?: boolean;
   /** Faux quand le fournisseur SMS n'est pas configuré sur ce serveur. */
