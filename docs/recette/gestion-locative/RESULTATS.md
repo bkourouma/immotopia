@@ -115,3 +115,78 @@ Aucune fuite entre agences ni entre portails, aucune écriture hors droits (43 �
 | GL-13-049       | non testable           | Journal de l'API non lu                                                                              |
 | GL-13-060 à 063 | non testable           | Aucun compte Syndic/Promoteur/Patrimoine ni agence suspendue                                         |
 | GL-13-070, 071  | passé                  | Portails croisés et routes agence refusés sans donnée                                                |
+
+### 02 — Baux (Playwright, environ 55 cas sur 101)
+
+| Cas                                                                                     | Résultat         | Remarque                                                             |
+| --------------------------------------------------------------------------------------- | ---------------- | -------------------------------------------------------------------- |
+| GL-02-003, 056, 064, 075                                                                | passé (écart)    | LECTEUR_A refusé partout (403) ; le scénario attendait une lecture   |
+| GL-02-004, 005                                                                          | passé (écarts)   | L1 = BAIL-2026-0070 ; « CFA » au lieu de « FCFA », bien sans adresse |
+| GL-02-008, 014, 015, 054                                                                | passé            | Échéances générées, refus de doublon (400)                           |
+| GL-02-016                                                                               | échoué           | BUG-2026-11-03-017 (taux 0,5 affiché 50 %)                           |
+| GL-02-018                                                                               | passé            | Dates incohérentes acceptées (constat attendu)                       |
+| GL-02-057                                                                               | passé            |                                                                      |
+| GL-02-058                                                                               | passé (remarque) | Loyer vide : « doit être supérieur à 0 » au lieu de « est requis »   |
+| GL-02-059                                                                               | échoué           | BUG-2026-11-03-022 (date de fin impossible à retirer)                |
+| GL-02-060                                                                               | échoué           | BUG-2026-11-03-023 (jour d'échéance et devise non enregistrés)       |
+| GL-02-061                                                                               | échoué           | BUG-2026-11-03-018 (loyer modifié, échéances inchangées)             |
+| GL-02-062                                                                               | échoué           | BUG-2026-11-03-021 (locataire en identifiant brut)                   |
+| GL-02-065                                                                               | passé (écart)    | Agence B : 404 au lieu du 400 attendu                                |
+| GL-02-066 à 069                                                                         | passé            | Suspendu, réactivé, terminé et annulé (bien libéré)                  |
+| GL-02-070                                                                               | échoué           | BUG-2026-11-03-019 (fiche remplacée par un bloc Erreur)              |
+| GL-02-071 à 073                                                                         | passé            | Transitions interdites refusées (400)                                |
+| GL-02-076 à 079                                                                         | passé            | Suppression, refus si paiements alloués                              |
+| GL-02-080                                                                               | passé (partiel)  | Hors scénario : BUG-2026-11-03-020 (onglet Dépôt : GET 409)          |
+| GL-02-081, 082                                                                          | passé            | Numéro réutilisé, refus LECTEUR_A et agence B, double clic           |
+| GL-02-083 à 087                                                                         | passé            | Co-locataires (API)                                                  |
+| GL-02-089, 092, 093, 095                                                                | passé            | Conditions et dérogations d'honoraires                               |
+| GL-02-096                                                                               | passé (partiel)  |                                                                      |
+| GL-02-098, 099                                                                          | passé            | Honoraires, TVA et commission calculés et figés                      |
+| GL-02-100                                                                               | passé (partiel)  | COMPTABLE_A non testé                                                |
+| GL-02-001, 002, 006, 007, 009-013, 017, 019-053, 055, 063, 088, 090, 091, 094, 097, 101 | non joué         | Reprendre à GL-02-001                                                |
+
+### 10 — Propriétaires, relevés, reversements (Playwright, révision `2c6a4ddd`)
+
+Le jeu de référence REC-GL (propriétaires P1/P2, baux R1/R2/R3 et leurs
+paiements d'octobre) n'existait pas : l'intention a été jouée sur les
+propriétaires historiques de l'agence A (Koné, Soro, Fofana, Yao, Coulibaly).
+Les correctifs du lot relevés/reversements (`2fd88c40`) sont tous confirmés,
+sauf la garde de statut sur « Envoyer » d'un relevé Payé : le 409 observé
+venait du refus de consentement e-mail, la garde n'est donc pas prouvée en
+direct (elle est couverte par les tests unitaires).
+
+| Cas                                                                    | Résultat       | Anomalie / remarque                                                                                   |
+| ---------------------------------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------- |
+| GL-10-001, 004, 005                                                    | passé          | Taux agence 10 %, TVA 18 %, part du gestionnaire 40 %                                                 |
+| GL-10-002                                                              | échoué         | BUG-2026-11-03-026 (forfait 0 devient 1 FCFA et est enregistré)                                       |
+| GL-10-003                                                              | passé (adapté) | Forfait propriétaire sur REC-GL-Chantal DIALLO                                                        |
+| GL-10-011, 014                                                         | passé (adapté) | Historique et relevé sans encaissement                                                                |
+| GL-10-016 à 019                                                        | passé          | Bien ou contact d'un autre propriétaire ou de l'agence B refusé (404/400)                             |
+| GL-10-025 à 031, 033 à 038                                             | passé          | Envoi, consentement, lien sécurisé, révocation, limitation (429), injection HTML neutralisée          |
+| GL-10-040, 041, 043, 044, 046                                          | passé          | Compte propriétaire, reversement, dépassement refusé (409), double clic                               |
+| GL-10-045                                                              | échoué         | BUG-2026-11-03-025 (montant à virgule multiplié), BUG-2026-11-03-027 (API accepte un montant décimal) |
+| GL-10-048 à 051, 053 à 056                                             | passé          | Annulation, deux onglets, solde négatif, relevé Payé figé                                             |
+| GL-10-061, 063                                                         | passé          | Commissions des agents, abonnement sans associations                                                  |
+| GL-10-007, 010, 012, 013, 015, 020, 042, 047, 052, 060, 062, 070 à 073 | bloqué         | Données de référence REC-GL absentes                                                                  |
+| GL-10-006, 027, 032, 080                                               | non joué       |                                                                                                       |
+
+### 03 — Vie du bail et dépôt de garantie (Playwright, révision `fa868920`, ~50 cas)
+
+Correctifs confirmés : renouvellement avec révision planifiée (015), résiliation
+passée qui libère le bien (027, 028), solde de tout compte dès la première
+lecture (033), retenue au-delà du dépôt refusée (056).
+
+| Cas                                   | Résultat        | Anomalie / remarque                                                                                  |
+| ------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------- |
+| GL-03-001 à 006, 008 à 015            | passé           | Révisions, renouvellement, relevé du compte locataire                                                |
+| GL-03-007                             | échoué          | BUG-2026-11-03-030 (loyer 99 999 999 999 → 500), BUG-2026-11-03-031 (charges négatives ramenées à 0) |
+| GL-03-017                             | passé (écart)   | Date non postérieure vidée par le sélecteur : message « requise »                                    |
+| GL-03-018 à 020, 022 à 035, 037 à 040 | passé           | Avenants, résiliations, solde de tout compte, droits (COMPTABLE_A 403, agence B 404)                 |
+| GL-03-021                             | échoué          | BUG-2026-11-03-029 (l'aide masque le message de validation)                                          |
+| GL-03-041                             | échoué          | BUG-2026-11-03-024 (409 à la première ouverture ; corrigé ensuite dans `fa1319b3`)                   |
+| GL-03-042, 043, 045 à 056, 058, 061   | passé           | Mouvements de dépôt, bornes, refus croisés                                                           |
+| GL-03-044                             | échoué          | BUG-2026-11-03-034 (même cause que 029)                                                              |
+| GL-03-057                             | passé (écart)   | Montant vide : « supérieur à 0 »                                                                     |
+| GL-03-059                             | passé (partiel) | Téléchargement CSV non déclenché                                                                     |
+| GL-03-060                             | échoué          | BUG-2026-11-04-012 (cible du dépôt non mise à jour avec le bail)                                     |
+| GL-03-016, 036, 062                   | non joué        | 036 relève du fichier 04 ; 062 (portail, e-mails) non tenté                                          |
