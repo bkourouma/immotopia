@@ -213,3 +213,38 @@ l'échéance après un ajustement ou la suppression d'une pénalité ajustée.
 | GL-07-029                                                                    | passé (anomalie) | BUG-2026-11-04-018 (boutons visibles pour COMPTABLE_A)                                    |
 | GL-07-031                                                                    | échoué           | BUG-2026-11-04-017 (carte mobile sans justificatif)                                       |
 | GL-07-033                                                                    | échoué           | Écart avec la comptabilité dans la balance âgée : conséquence de 001, 002, 004            |
+
+### 08 — Prélèvement bancaire (Playwright, révision `6dc85c77`, jour J = 04/11/2026)
+
+Aucun cas Bloquant joué en échec. Remises préparées pour le 05/11/2026 (première
+date acceptée) ; les sections G et H (retour banque, GL-08-051 à 066) sont
+reportées au 05/11/2026. Aucun IBAN complet dans les réponses JSON ni les
+e-mails ; seul le fichier de remise et le PDF d'autorisation le portent.
+
+| Cas                                                                 | Résultat      | Anomalie / remarque                                                                                                                         |
+| ------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| GL-08-001 à 026, 028, 029, 031 à 034, 038, 041, 043, 046, 048 à 050 | passé         | Créanciers, contrôle IBAN/RIB, mandats (cycle complet, PDF, scan), remises R1/R2 validées, avis, fichier CSV, déposées, droits et isolation |
+| GL-08-030                                                           | passé (écart) | Date proposée = prochain jour de collecte du créancier, pas J+1                                                                             |
+| GL-08-035                                                           | échoué        | BUG-2026-11-04-020 (ligne annulée non remise à l'actualisation)                                                                             |
+| GL-08-036                                                           | passé (écart) | Une ligne retirée n'est pas ré-ajoutée par l'actualisation                                                                                  |
+| GL-08-027                                                           | bloqué        | Signature électronique non activée sur le serveur de recette (503)                                                                          |
+| GL-08-037, 039, 040, 042, 044, 045, 047, 067, 068                   | non joué      |                                                                                                                                             |
+| GL-08-051 à 066                                                     | reporté       | Retour banque possible à partir du 05/11/2026                                                                                               |
+
+### 09 — Caisse, tableaux de bord, exports (Playwright, révision `6dc85c77`, ~36 cas)
+
+Les 13 cas Bloquant sont passés : aucun montant ni solde faux, aucune fuite
+entre agences. Tranches d'âge recalculées pour le 04/11/2026.
+
+| Cas                                                                      | Résultat         | Anomalie / remarque                                                                                                                |
+| ------------------------------------------------------------------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| GL-09-001 à 010, 012 à 016, 020, 022, 024 à 029, 032, 034, 035, 038, 040 | passé            | Tuiles, graphiques, balance clients, relevé, caisse (ouverture, encaissements, clôture), écritures comptables, droits et isolation |
+| GL-09-003, 008, 019, 031                                                 | passé (adapté)   | Données préparées différemment ; validation de caisse réservée à ADMIN_A                                                           |
+| GL-09-011                                                                | échoué           | BUG-2026-11-04-022 (code MOBILE_MONEY dans la file de travail)                                                                     |
+| GL-09-017                                                                | échoué           | BUG-2026-11-04-021 (écart avec la comptabilité pour un loyer émis non échu)                                                        |
+| GL-09-023                                                                | échoué           | BUG-2026-11-04-023 (fond de caisse négatif ramené à 0 et accepté)                                                                  |
+| GL-09-030                                                                | passé (partiel)  | Cas excédent non joué                                                                                                              |
+| GL-09-036                                                                | passé (anomalie) | BUG-2026-11-04-024 (mois sans accents dans les libellés)                                                                           |
+| GL-09-037                                                                | passé (réserve)  | Paiement réactivé puis annulé de nouveau : références d'écriture en double (BUG-2026-11-04-025)                                    |
+| GL-09-039                                                                | bloqué           | Bail REC-GL-PAY-1 (bloc 06) absent                                                                                                 |
+| GL-09-018, 021, 033, 041 à 048                                           | non joué         | Reprendre à GL-09-041 (exports)                                                                                                    |
