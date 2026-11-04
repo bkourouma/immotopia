@@ -41,18 +41,24 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAA
 /** Plus grand montant que les colonnes Decimal(12,2) savent porter (voir `rental/payment-schemas.ts`). */
 const MONTANT_MAX = 9_999_999_999.99;
 const MSG_TROP_ELEVE = 'Le montant dépasse le maximum autorisé (9 999 999 999,99).';
+// Messages de validation Zod : traduits par le middleware d'erreur à l'exécution.
+// @i18n-keys
 const MSG_DECIMALES = 'Le montant ne peut pas avoir plus de deux décimales.';
+// @i18n-keys
+const MSG_CHARGES_NEGATIVES = 'Les charges ne peuvent pas être négatives';
+// @i18n-keys
+const MSG_LOYER_POSITIF = 'Le loyer doit être supérieur à 0';
 /** Au plus deux décimales, tolérance flottante comprise. */
 const deuxDecimales = (value: number) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
 
 const money = z.coerce
   .number()
-  .nonnegative('Les charges ne peuvent pas être négatives')
+  .nonnegative(MSG_CHARGES_NEGATIVES)
   .max(MONTANT_MAX, MSG_TROP_ELEVE)
   .refine(deuxDecimales, MSG_DECIMALES);
 const positiveMoney = z.coerce
   .number()
-  .positive('Le loyer doit être supérieur à 0')
+  .positive(MSG_LOYER_POSITIF)
   .max(MONTANT_MAX, MSG_TROP_ELEVE)
   .refine(deuxDecimales, MSG_DECIMALES);
 

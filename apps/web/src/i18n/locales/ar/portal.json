@@ -488,6 +488,7 @@
   "Le logo ne doit pas dépasser 2 Mo": "يجب ألا يتجاوز الشعار 2 ميغابايت",
   "Le montant doit être positif": "يجب أن يكون المبلغ موجبًا",
   "Le montant est requis": "المبلغ مطلوب",
+  "Le montant ne doit contenir que des chiffres et une virgule (2 décimales au plus).": "يجب أن يحتوي المبلغ على أرقام وفاصلة عشرية فقط (منزلتان عشريتان كحد أقصى).",
   "Le nom est requis": "الاسم مطلوب",
   "Le numéro de téléphone ayant servi à la transaction est requis": "رقم الهاتف المستخدَم في المعاملة مطلوب",
   "Le numéro ne peut pas dépasser 50 caractères": "لا يمكن أن يتجاوز الرقم 50 حرفًا",

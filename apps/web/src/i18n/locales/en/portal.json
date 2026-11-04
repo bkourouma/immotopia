@@ -488,6 +488,7 @@
   "Le logo ne doit pas dépasser 2 Mo": "The logo must not exceed 2 MB",
   "Le montant doit être positif": "The amount must be positive",
   "Le montant est requis": "The amount is required",
+  "Le montant ne doit contenir que des chiffres et une virgule (2 décimales au plus).": "The amount must only contain digits and a decimal separator (2 decimal places at most).",
   "Le nom est requis": "The name is required",
   "Le numéro de téléphone ayant servi à la transaction est requis": "The phone number used for the transaction is required",
   "Le numéro ne peut pas dépasser 50 caractères": "The number cannot exceed 50 characters",
