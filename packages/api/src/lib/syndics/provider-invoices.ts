@@ -4,6 +4,7 @@ import { ConflictError, NotFoundError } from '../../middleware/error-middleware'
 import { dayRange } from '../../utils/list-query-schemas';
 import { unprocessableEntity } from '../errors';
 import { logger } from '../../utils/logger';
+import { escapeLike } from '../../utils/like-escape';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { roundMoney } from './finance-utils';
@@ -945,6 +946,7 @@ export async function cancelProviderPayment(
 
 export async function listProviderInvoices(tenantId: string, syndicateId: string, query: ListProviderInvoicesQuery) {
   await assertSyndicate(tenantId, syndicateId);
+  const search = query.search ? escapeLike(query.search) : undefined;
   const where: Prisma.SyndicProviderInvoiceWhereInput = {
     tenantId,
     syndicateId,
@@ -954,12 +956,12 @@ export async function listProviderInvoices(tenantId: string, syndicateId: string
     ...(query.status && query.status.length > 0 ? { status: { in: query.status } } : {}),
     ...(query.from || query.to ? { invoiceDate: dayRange(query.from, query.to) } : {}),
     // S'ajoute en ET aux filtres de l'agence et de la copropriété ci-dessus.
-    ...(query.search
+    ...(search
       ? {
           OR: [
-            { number: { contains: query.search, mode: 'insensitive' as const } },
-            { label: { contains: query.search, mode: 'insensitive' as const } },
-            { provider: { name: { contains: query.search, mode: 'insensitive' as const } } }
+            { number: { contains: search, mode: 'insensitive' as const } },
+            { label: { contains: search, mode: 'insensitive' as const } },
+            { provider: { name: { contains: search, mode: 'insensitive' as const } } }
           ]
         }
       : {})

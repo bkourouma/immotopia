@@ -282,10 +282,10 @@ export function buildDealListWhere(tenantId: string, filters: DealListFilters): 
     });
   }
 
-  if (filters.budgetMin || filters.budgetMax) {
+  if (filters.budgetMin !== undefined || filters.budgetMax !== undefined) {
     const budgetConditions: any[] = [];
 
-    if (filters.budgetMin && filters.budgetMax) {
+    if (filters.budgetMin !== undefined && filters.budgetMax !== undefined) {
       // Deal budget overlaps with filter range if:
       // - budgetMin is within range OR
       // - budgetMax is within range OR
@@ -300,11 +300,11 @@ export function buildDealListWhere(tenantId: string, filters: DealListFilters): 
       budgetConditions.push({
         AND: [{ budgetMin: null }, { budgetMax: { gte: filters.budgetMin, lte: filters.budgetMax } }]
       });
-    } else if (filters.budgetMin) {
+    } else if (filters.budgetMin !== undefined) {
       // Deal has budgetMax >= filterMin OR budgetMin >= filterMin
       budgetConditions.push({ budgetMax: { gte: filters.budgetMin } });
       budgetConditions.push({ budgetMin: { gte: filters.budgetMin } });
-    } else if (filters.budgetMax) {
+    } else if (filters.budgetMax !== undefined) {
       // Deal has budgetMin <= filterMax OR budgetMax <= filterMax
       budgetConditions.push({ budgetMin: { lte: filters.budgetMax } });
       budgetConditions.push({ budgetMax: { lte: filters.budgetMax } });

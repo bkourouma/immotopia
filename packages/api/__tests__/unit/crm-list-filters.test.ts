@@ -143,6 +143,19 @@ describe('clause Prisma des listes CRM', () => {
     expect(where.AND).toHaveLength(2);
   });
 
+  it('affaires : zéro est une borne de budget valide', () => {
+    const min = buildDealListWhere('tenant-1', { budgetMin: 0 });
+    expect(min.AND).toEqual([{ OR: [{ budgetMax: { gte: 0 } }, { budgetMin: { gte: 0 } }] }]);
+
+    const max = buildDealListWhere('tenant-1', { budgetMax: 0 });
+    expect(max.AND).toEqual([{ OR: [{ budgetMin: { lte: 0 } }, { budgetMax: { lte: 0 } }] }]);
+
+    const exact = buildDealListWhere('tenant-1', { budgetMin: 0, budgetMax: 0 });
+    expect(exact.AND).toHaveLength(1);
+    expect(exact.AND[0].OR).toHaveLength(3);
+    expect(exact.AND[0].OR[0]).toEqual({ AND: [{ budgetMin: { lte: 0 } }, { budgetMax: { gte: 0 } }] });
+  });
+
   it('affaires : période, jour de fin inclus', () => {
     const where = buildDealListWhere('tenant-1', { startDate: '2026-10-01', endDate: '2026-10-31' });
     expect(where.createdAt.gte.toISOString()).toBe('2026-10-01T00:00:00.000Z');

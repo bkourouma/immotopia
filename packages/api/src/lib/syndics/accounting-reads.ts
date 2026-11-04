@@ -4,6 +4,7 @@ import { dayEnd, dayStart, zDay } from '../../utils/list-query-schemas';
 import { DEFAULT_MAX_PAGE } from '../../utils/pagination-helper';
 import { prisma } from '../../utils/database';
 import { NotFoundError } from '../../middleware/error-middleware';
+import { escapeLike } from '../../utils/like-escape';
 import { tenantIsolationError } from '../errors';
 import { roundMoney } from '../finance/money';
 import { assertSyndicateTenantOwnership } from './queries';
@@ -19,8 +20,7 @@ import { assertSyndicateTenantOwnership } from './queries';
  *   filtre l'affichage, jamais le cumul, et le solde reste juste d'une page a
  *   l'autre ;
  * - balance : un agregat `GROUP BY` compte (jamais les lignes en memoire),
- *   meme semantique que `getTrialBalanceBySyndicate` (mouvements de la
- *   periode, solde = debit - credit) ;
+ *   mouvements de la periode et solde = debit - credit ;
  * - plan comptable : la liste actuelle, avec recherche, classes et plafond.
  *
  * Isolation : la copropriete est verifiee d'abord (`assertSyndicateTenantOwnership`),
@@ -175,7 +175,7 @@ function periodCondition(range: { from?: Date; to?: Date }): Prisma.Sql {
 
 /** Motif ILIKE « contient », `\`, `%` et `_` echappes (echappement par defaut de PostgreSQL : `\`). */
 export function containsPattern(search: string): string {
-  return `%${search.replace(/[\\%_]/g, char => `\\${char}`)}%`;
+  return `%${escapeLike(search)}%`;
 }
 
 // ------------------------------------------------------------------ journal des ecritures
@@ -203,7 +203,7 @@ export function buildJournalEntriesWhere(
   // cote de `journal.syndicateId` : il ne ramene simplement rien.
   if (query.accountId) and.push({ lines: { some: { accountId: query.accountId } } });
   if (query.search) {
-    const contains = { contains: query.search, mode: 'insensitive' as const };
+    const contains = { contains: escapeLike(query.search), mode: 'insensitive' as const };
     and.push({
       OR: [{ reference: contains }, { description: contains }, { lines: { some: { label: contains } } }]
     });
@@ -450,7 +450,7 @@ type TrialBalanceRow = {
 };
 
 /**
- * Mouvements de la periode par compte, comme `getTrialBalanceBySyndicate` :
+ * Mouvements de la periode par compte :
  * lignes des ecritures des journaux de la copropriete, sans solde d'ouverture.
  * Une ligne par compte mouvemente : quelques centaines au plus.
  */
@@ -542,15 +542,15 @@ export function buildChartOfAccountsWhere(
     ...(query.search
       ? {
           OR: [
-            { accountNumber: { startsWith: query.search, mode: 'insensitive' } },
-            { accountName: { contains: query.search, mode: 'insensitive' } }
+            { accountNumber: { startsWith: escapeLike(query.search), mode: 'insensitive' } },
+            { accountName: { contains: escapeLike(query.search), mode: 'insensitive' } }
           ]
         }
       : {})
   };
 }
 
-/** `listChartOfAccountsBySyndicate` + recherche, classes et plafond (meme forme de reponse). */
+/** Plan comptable avec recherche, classes et plafond. */
 export async function searchChartOfAccounts(tenantId: string, syndicateId: string, query: ChartOfAccountsSearchQuery) {
   await assertSyndicateOfTenant(tenantId, syndicateId);
 

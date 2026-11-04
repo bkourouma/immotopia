@@ -836,9 +836,7 @@ maybeDescribe('Lot SYN-A — lectures comptables des copropriétés sur base ré
       expect(led.items.map(i => i.reference)).toEqual(['J-PCT']);
     });
 
-    // DÉFAUT (voir le rapport) : `contains` de Prisma n'échappe pas « % » : la recherche « % » ramène
-    // tout S1 (jamais S2 ni SB, l'isolation tient, mais le filtre est vide).
-    it.failing('liste des écritures : la recherche « % » ne ramène que « 100% payé » de S1', async () => {
+    it('liste des écritures : la recherche « % » ne ramène que « 100% payé » de S1', async () => {
       const list = await entries(S1, { search: '%', limit: 100 });
       expect(list.items.map(i => i.reference)).toEqual(['J-PCT']);
     });
@@ -898,24 +896,21 @@ maybeDescribe('Lot SYN-A — lectures comptables des copropriétés sur base ré
       });
     });
 
-    // DÉFAUT : `contains` / `startsWith` de Prisma ne protègent pas « % » et « _ » (ils les passent
-    // tels quels dans le LIKE). Ces tests restent en `it.failing` tant que `buildJournalEntriesWhere`
-    // et `buildChartOfAccountsWhere` n'échappent pas la saisie (voir le rapport).
     describe('chemins Prisma `contains` (liste des écritures)', () => {
       const refsOf = async (search: string) =>
         (await entries(S1, { search, limit: 100 })).items.map(i => i.reference).sort();
 
-      it.failing('« % » ne trouve que le libellé qui contient « % »', async () => {
+      it('« % » ne trouve que le libellé qui contient « % »', async () => {
         expect(await refsOf('%')).toEqual(['J-PCT']);
         expect(await refsOf('100% p')).toEqual(['J-PCT']);
       });
 
-      it.failing('« _ » ne trouve que « lot_7 », pas « lotA7 »', async () => {
+      it('« _ » ne trouve que « lot_7 », pas « lotA7 »', async () => {
         expect(await refsOf('_')).toEqual(['J-LOT']);
         expect(await refsOf('lot_7')).toEqual(['J-LOT']);
       });
 
-      it.failing('« a_c » ne correspond pas à « abc »', async () => {
+      it('« a_c » ne correspond pas à « abc »', async () => {
         expect(await refsOf('a_c')).toEqual([]);
         expect(await refsOf('abc')).toEqual(['J-ABC']);
       });
@@ -924,17 +919,17 @@ maybeDescribe('Lot SYN-A — lectures comptables des copropriétés sur base ré
     describe('chemins Prisma `contains` (plan comptable, copropriété S3)', () => {
       const namesOf = async (search: string) => (await plan(S3, { search })).map(a => a.accountName).sort();
 
-      it.failing('« % » ne trouve que « 100% payé »', async () => {
+      it('« % » ne trouve que « 100% payé »', async () => {
         expect(await namesOf('%')).toEqual(['100% payé']);
         expect(await namesOf('100% p')).toEqual(['100% payé']);
       });
 
-      it.failing('« _ » ne trouve que « lot_7 », pas « lotA7 »', async () => {
+      it('« _ » ne trouve que « lot_7 », pas « lotA7 »', async () => {
         expect(await namesOf('_')).toEqual(['lot_7']);
         expect(await namesOf('lot_7')).toEqual(['lot_7']);
       });
 
-      it.failing('« a_c » ne correspond pas à « abc »', async () => {
+      it('« a_c » ne correspond pas à « abc »', async () => {
         expect(await namesOf('a_c')).toEqual([]);
         expect(await namesOf('abc')).toEqual(['abc']);
       });
@@ -943,7 +938,7 @@ maybeDescribe('Lot SYN-A — lectures comptables des copropriétés sur base ré
         expect((await plan(S3, { search: '70' })).length).toBe(5);
       });
 
-      it.failing('recherche par préfixe de numéro « 7_ » : « _ » est un caractère littéral', async () => {
+      it('recherche par préfixe de numéro « 7_ » : « _ » est un caractère littéral', async () => {
         expect((await plan(S3, { search: '7_' })).length).toBe(0);
       });
     });

@@ -4,6 +4,7 @@ import { BadRequestError, ConflictError, NotFoundError } from '../../../middlewa
 import { recordAuditEvent } from '../../../services/audit-service';
 import { AuditActionKey } from '../../../types/audit-types';
 import { prisma } from '../../../utils/database';
+import { escapeLike } from '../../../utils/like-escape';
 import type { DbClient } from '../dto';
 import { contactDisplayName, MANDATE_SELECT, referenceOf, toMandateDto, type MandateDto } from '../dto';
 import { encryptIban, isIbanEncryptionAvailable } from '../iban-crypto';
@@ -116,16 +117,17 @@ export async function listSyndicMandates(
   if (query.status) where.status = query.status;
   if (query.search) {
     const search = query.search;
+    const likeSearch = escapeLike(search);
     const or: Prisma.DirectDebitMandateWhereInput[] = [
-      { holderName: { contains: search, mode: 'insensitive' } },
-      { lot: { is: { lotNumber: { contains: search, mode: 'insensitive' } } } },
+      { holderName: { contains: likeSearch, mode: 'insensitive' } },
+      { lot: { is: { lotNumber: { contains: likeSearch, mode: 'insensitive' } } } },
       {
         debtorContact: {
           is: {
             OR: [
-              { firstName: { contains: search, mode: 'insensitive' } },
-              { lastName: { contains: search, mode: 'insensitive' } },
-              { legalName: { contains: search, mode: 'insensitive' } }
+              { firstName: { contains: likeSearch, mode: 'insensitive' } },
+              { lastName: { contains: likeSearch, mode: 'insensitive' } },
+              { legalName: { contains: likeSearch, mode: 'insensitive' } }
             ]
           }
         }

@@ -162,6 +162,12 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         select: { file_path: true }
       });
       await Promise.all(generated.map(row => fs.rm(row.file_path as string, { force: true })));
+      // Le scénario Syndic crée paiements et appels avec FK RESTRICT vers lot/copropriété.
+      // On les retire dans l'ordre avant le nettoyage générique des agences de test.
+      await prisma.chargePayment.deleteMany({ where: { lot: { syndicate: { tenantId: { in: createdTenantIds } } } } });
+      await prisma.chargeCall.deleteMany({ where: { syndicate: { tenantId: { in: createdTenantIds } } } });
+      // La FK des lignes comptables vers les comptes est RESTRICT, même si l'agence possède les deux.
+      await prisma.journalEntryLine.deleteMany({ where: { entry: { tenantId: { in: createdTenantIds } } } });
       // Un echec de nettoyage remonte (il fait echouer la suite) : jamais silencieux.
       await cleanupTenants(createdTenantIds);
       // Apres les agences : leurs documents generes referencent le modele.
@@ -1186,6 +1192,18 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }
     });
 
+    it('la recherche ne révèle ni le nom ni l’identifiant du personnel plateforme', async () => {
+      const byEmail = await readAll(adminA, tenantA.id, '&search=staff%40immotopia.test');
+      expect(byEmail.map(log => log.id)).not.toContain(ids.aStaff);
+
+      const byActorId = await readAll(adminA, tenantA.id, `&actorUserId=${adminB.id}`);
+      expect(byActorId.map(log => log.id)).not.toContain(ids.aStaff);
+
+      // L'événement reste consultable par son action visible.
+      const byAction = await readAll(adminA, tenantA.id, '&search=TENANT_UPDATED');
+      expect(byAction.map(log => log.id)).toContain(ids.aStaff);
+    });
+
     it("le libellé d'une ressource n'est jamais emprunté à une autre agence (témoin : B voit le sien)", async () => {
       const forged = (await readAll(adminA, tenantA.id)).find(log => log.id === ids.aForged);
       expect(forged.resourceLabel).toBeUndefined();
@@ -1311,11 +1329,11 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       ids[key] = row.id;
     }
 
-    async function readAll(user: TestUser, query: string): Promise<any[]> {
+    async function readAll(user: TestUser, query: string, limit = 2): Promise<any[]> {
       const logs: any[] = [];
       let cursor: string | null = null;
       for (let guard = 0; guard < 200; guard++) {
-        const suffix: string = `?limit=2${query}${cursor ? `&cursor=${cursor}` : ''}`;
+        const suffix: string = `?limit=${limit}${query}${cursor ? `&cursor=${cursor}` : ''}`;
         const res: request.Response = await request(app).get(`/api/admin/audit${suffix}`).set(authed(user));
         expect(res.status).toBe(200);
         logs.push(...res.body.data.logs);
@@ -1371,7 +1389,8 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       const read = (await readAll(superAdmin, `&requestId=${requestId}`)).map(log => log.id);
       expect(read.sort()).toEqual([ids.pA, ids.pAInternal].sort());
 
-      const all = await readAll(superAdmin, '');
+      // La base dédiée est partagée par plusieurs suites : une lecture globale peut dépasser 400 événements.
+      const all = await readAll(superAdmin, '', 100);
       const allIds = all.map(log => log.id);
       for (const key of ['pA', 'pAInternal', 'pB', 'pNull', 'pStaff']) expect(allIds).toContain(ids[key]);
     });

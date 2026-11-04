@@ -666,33 +666,9 @@ export const createAccountingJournalSchema = z.object({
   fiscalYear: z.number().int().min(2000)
 });
 
-export const accountingEntriesQuerySchema = z
-  .object({
-    journalId: uuidSchema.optional(),
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional(),
-    page: z.coerce.number().int().positive().optional().default(1),
-    limit: z.coerce.number().int().positive().max(100).optional().default(20)
-  })
-  .refine(value => !value.from || !value.to || value.from <= value.to, {
-    message: 'La date de debut doit etre inferieure ou egale a la date de fin'
-  });
-
 export const lockJournalEntrySchema = z.object({
   lock: z.literal(true).default(true)
 });
-
-export const accountingRangeQuerySchema = z
-  .object({
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional(),
-    accountId: uuidSchema.optional(),
-    page: z.coerce.number().int().positive().optional().default(1),
-    limit: z.coerce.number().int().positive().max(100).optional().default(20)
-  })
-  .refine(value => !value.from || !value.to || value.from <= value.to, {
-    message: 'La date de debut doit etre inferieure ou egale a la date de fin'
-  });
 
 export const ownerAccountStatementQuerySchema = z
   .object({
@@ -863,9 +839,7 @@ export type WaivePenaltyInput = z.infer<typeof waivePenaltySchema>;
 export type CreateScheduleRequestInput = z.infer<typeof createScheduleRequestSchema>;
 export type CreateChartOfAccountInput = z.infer<typeof createChartOfAccountSchema>;
 export type CreateAccountingJournalInput = z.infer<typeof createAccountingJournalSchema>;
-export type AccountingEntriesQueryInput = z.infer<typeof accountingEntriesQuerySchema>;
 export type LockJournalEntryInput = z.infer<typeof lockJournalEntrySchema>;
-export type AccountingRangeQueryInput = z.infer<typeof accountingRangeQuerySchema>;
 export type OwnerAccountStatementQueryInput = z.infer<typeof ownerAccountStatementQuerySchema>;
 export type CreateOwnerAccountAdjustmentInput = z.infer<typeof createOwnerAccountAdjustmentSchema>;
 export type CreateSyndicateFundInput = z.infer<typeof createSyndicateFundSchema>;

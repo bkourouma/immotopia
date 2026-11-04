@@ -79,7 +79,6 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   listOwnerAccountTransactionsByLot: jest.fn(),
   createOwnerAccountAdjustmentByLot: jest.fn(),
   getOwnerAccountStatementByLot: jest.fn(),
-  listChartOfAccountsBySyndicate: jest.fn(),
   createChartOfAccountBySyndicate: jest.fn(async (_tenantId: string, _syndicId: string, data: any) => {
     const created = { id: `acc-${store.accounts.size + 1}`, ...data };
     store.accounts.set(created.id, created);
@@ -91,7 +90,6 @@ jest.mock('../../src/lib/syndics/queries', () => ({
     store.journals.set(created.id, created);
     return created;
   }),
-  listJournalEntriesBySyndicate: jest.fn(),
   createJournalEntryBySyndicate: jest.fn(async (_tenantId: string, _syndicId: string, data: any) => {
     const created = { id: `entry-${store.entries.size + 1}`, ...data, isLocked: false };
     store.entries.set(created.id, created);
@@ -106,9 +104,7 @@ jest.mock('../../src/lib/syndics/queries', () => ({
     }
     found.isLocked = true;
     return found;
-  }),
-  getTrialBalanceBySyndicate: jest.fn(),
-  getGeneralLedgerBySyndicate: jest.fn()
+  })
 }));
 
 // Les lectures (comptes, journal, grand livre, balance) passent par

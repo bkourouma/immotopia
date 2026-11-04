@@ -86,6 +86,17 @@ beforeEach(() => {
 });
 
 describe('GET quittances', () => {
+  it('cherche le pourcentage littéral dans le périmètre de la copropriété', async () => {
+    const res = await request(app).get(`${BASE}/quittances?search=%25`);
+    expect(res.status).toBe(200);
+    const where = prisma.syndicChargeReceipt.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({ tenantId: TENANT, syndicateId: SYNDIC });
+    const or = where.AND[0].OR;
+    expect(or[0].number.contains).toBe('\\%');
+    expect(or[1].lot.lotNumber.contains).toBe('\\%');
+    expect(or[2].contact.OR[0].firstName.contains).toBe('\\%');
+  });
+
   it('construit le where de recherche (numéro, lot, copropriétaire) et de « rattrapé »', async () => {
     const res = await request(app).get(
       `${BASE}/quittances?search=%20Awa%20&backfilled=true&from=2026-01-01&to=2026-02-01`

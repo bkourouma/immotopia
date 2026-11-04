@@ -993,11 +993,7 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
 
       // Si le lot 2 ajoute un update/delete d ecriture, ce test echoue : la decision
       // sur le principe d immuabilite devra alors etre prise explicitement.
-      expect(surface).toEqual([
-        'createJournalEntryBySyndicate',
-        'listJournalEntriesBySyndicate',
-        'lockJournalEntryBySyndicate'
-      ]);
+      expect(surface).toEqual(['createJournalEntryBySyndicate', 'lockJournalEntryBySyndicate']);
     });
 
     it('SURPRISE : une ecriture verrouillee n empeche pas d en creer une autre a la meme reference', async () => {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { t } from '../../i18n';
+import { escapeLike } from '../../utils/like-escape';
 import { isoDaySchema } from './charge-allocation-schemas';
 
 /**
@@ -47,7 +48,7 @@ export function timestampRange(from?: Date, to?: Date): { gte?: Date; lt?: Date 
 }
 
 /** Filtre insensible à la casse « contient » (Prisma). */
-export const insensitiveContains = (value: string) => ({ contains: value, mode: 'insensitive' as const });
+export const insensitiveContains = (value: string) => ({ contains: escapeLike(value), mode: 'insensitive' as const });
 
 /** Nom et e-mail d'un contact CRM, en `OR` insensible à la casse. */
 export function contactSearchOr(value: string) {
