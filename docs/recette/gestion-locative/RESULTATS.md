@@ -313,3 +313,44 @@ activée ensuite sur l'API de recette pour rejouer la section D.
 sur un bail neuf) ; nom du PDF signé
 `etat-des-lieux-d-entree-bail-<numéro>-signe.pdf` ; le premier bouton
 « Retour » du formulaire d'état des lieux ramène à la liste des baux.
+
+### 06 — Paiements, allocations, déclarations (Playwright, révision `afee2ac6`, 41 cas sur 59)
+
+Aucun cas Bloquant échoué. Parcours de référence S1 à S9 rejoué sur
+REC-GL-PAY-1 (BAIL-2026-0108) : soldes conformes à chaque étape (30 000,
+−470 000, −170 000). Plusieurs « anomalies probables » du scénario sont
+absentes (005, plafond de 010, 012, 033, 034, 036, 039).
+
+| Cas                                                       | Résultat        | Anomalie / remarque                                                                   |
+| --------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------- |
+| GL-06-001, 003 à 009, 012, 014, 015, 020, 023, 024        | passé           | Dates du règlement, comptes filtrés par mode, devise refusée, doublon 409, isolation  |
+| GL-06-025 à 031, 034 à 040                                | passé           | Affectation auto et manuelle, 409 explicite, annulation et réactivation, solde        |
+| GL-06-041                                                 | passé (réserve) | BUG-2026-11-04-039 (codes bruts dans « Paiement associé » du dépôt)                   |
+| GL-06-035                                                 | passé (réserve) | BUG-2026-11-04-040 (« Montant disponible » d'un paiement annulé)                      |
+| GL-06-002                                                 | passé (réserve) | BUG-2026-11-04-041 (onglet principal de la fiche bail perdu après F5)                 |
+| GL-06-010                                                 | échoué          | BUG-2026-11-04-034 (« 1500,5 » saisi devient 15 005)                                  |
+| GL-06-013                                                 | échoué          | BUG-2026-11-04-033 (paiement sans bail ni locataire depuis la liste globale)          |
+| GL-06-011                                                 | passé (partiel) | Date vidée ramenée au jour : « date requise » inatteignable                           |
+| GL-06-032, 033                                            | passé           | Pas de désallocation à l'écran ; « En attente » non proposé depuis « Réussi »         |
+| GL-06-045, 047, 049                                       | passé (partiel) | Déclaration jouée sur le bail seed (le bail REC-GL-DECL n'est pas visible au portail) |
+| GL-06-016 à 019, 021, 022, 042 à 044, 046, 048, 050 à 059 | non joué        | Suite confiée à un second passage                                                     |
+
+Écarts de scénario : biens et contacts REC-GL créés pendant le jeu ; bail
+créé directement « Actif » ; libellé « Date du règlement » ; échéances
+futures « À échoir » (pas « Brouillon ») après annulation ; compte « Cartes à
+encaisser » absent du seed.
+
+#### 04 — suite (Playwright, révision `9820fdd7`)
+
+Retests : BUG-2026-11-04-026 à 032 passés (photos refusées sur leur
+contenu, relevé avec période, types sans modèle refusés en 400, titre et
+description enregistrés, filtre `doc_status`, fenêtre Signatures d'un état
+signé consultable). Conversion PDF active : chaîne de signature du
+**contrat de bail** jouée de bout en bout.
+
+| Cas                                                                       | Résultat        | Anomalie / remarque                                                                                                                                                                     |
+| ------------------------------------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GL-04-051, 067, 068, 070 à 073, 075 à 078, 080 à 083, 085 à 088, 090, 091 | passé           | Envoi du contrat (201 en ~20 s), 409 doublon, page publique, codes (429), signature saisie et dessinée, PDF scellé avec certificat, relance, annulation, refus, régénération qui annule |
+| GL-04-079, 084                                                            | passé (partiel) | Expiration du code et épuisement des essais non joués                                                                                                                                   |
+| GL-04-089                                                                 | indéterminé     | Envoi SMS 201 par l'API ; à l'écran « Impossible d'envoyer » : BUG-2026-11-04-042 (délai client de 20 s)                                                                                |
+| GL-04-045, 063, 092 à 095, 097, 101, 102, 109 à 115, 117, 118, 120        | non joué        | Contexte du testeur épuisé ; coupures de la base pendant la session                                                                                                                     |
