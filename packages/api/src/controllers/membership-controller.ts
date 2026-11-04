@@ -12,6 +12,7 @@ import {
 } from '../services/membership-service';
 import { z } from 'zod';
 import { parsePagination } from '../utils/pagination-helper';
+import { zSearch, zCsvEnum, zId } from '../utils/list-query-schemas';
 import { asyncHandler, BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 
@@ -35,34 +36,14 @@ const resetPasswordSchema = z.object({
 
 const MEMBERSHIP_STATUSES = ['ACTIVE', 'PENDING_INVITE', 'DISABLED'] as const;
 
-/** Une valeur vide ou absente donne `undefined` ; un tableau (paramètre répété) est refusé. */
-const emptyToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
-
 /**
  * Paramètres de requête de la liste des collaborateurs.
  * `status` : liste séparée par des virgules (`ACTIVE,DISABLED`), doublons ignorés.
  */
 export const listMembersQuerySchema = z.object({
-  search: z.preprocess(emptyToUndefined, z.string().trim().max(200).optional()),
-  status: z.preprocess(
-    emptyToUndefined,
-    z
-      .string()
-      .transform(value =>
-        Array.from(
-          new Set(
-            value
-              .split(',')
-              .map(item => item.trim())
-              .filter(item => item.length > 0)
-          )
-        )
-      )
-      .pipe(z.array(z.enum(MEMBERSHIP_STATUSES)))
-      .transform(list => (list.length > 0 ? list : undefined))
-      .optional()
-  ),
-  roleId: z.preprocess(emptyToUndefined, z.string().min(1).max(64).optional())
+  search: zSearch(),
+  status: zCsvEnum(MEMBERSHIP_STATUSES),
+  roleId: zId
 });
 
 /** Valide les paramètres de requête ; toute valeur invalide lève une `BadRequestError` (400). */

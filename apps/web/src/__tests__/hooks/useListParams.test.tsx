@@ -238,3 +238,29 @@ describe('useListParams — préfixe et remplacement', () => {
     expect(screen.getByTestId('nav')).toHaveTextContent('PUSH');
   });
 });
+
+describe('useListParams — setPage avec replace', () => {
+  function Replacer() {
+    const list = useListParams<F>({ filterKeys: FILTER_KEYS });
+    const navType = useNavigationType();
+    return (
+      <div>
+        <span data-testid="nav">{navType}</span>
+        <span data-testid="url">{useLocation().search || '(vide)'}</span>
+        <button onClick={() => list.setPage(2, { replace: true })}>page 2 remplace</button>
+      </div>
+    );
+  }
+
+  it('setPage(page, { replace: true }) ne crée pas d’entrée d’historique', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/l?page=9']}>
+        <Replacer />
+      </MemoryRouter>
+    );
+    await user.click(screen.getByText('page 2 remplace'));
+    expect(screen.getByTestId('url')).toHaveTextContent('?page=2');
+    expect(screen.getByTestId('nav')).toHaveTextContent('REPLACE');
+  });
+});
