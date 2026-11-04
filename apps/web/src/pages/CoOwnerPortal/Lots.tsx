@@ -3,13 +3,25 @@ import { Button, Card, Space, Typography } from 'antd';
 import { SyncOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { DataCard, MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
+import { DataCard, ListSearch, MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { listMyLots, type CoOwnerLot } from '../../services/coowner-portal-service';
 import { BalanceDirectionTag, lotTypeLabel } from './labels';
 import { portalErrorMessage } from './portal-error';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 
 const { Title, Text } = Typography;
+
+/** La barre de recherche n'apparaît qu'au-delà de ce nombre de lots : en dessous, tout tient à l'écran. */
+const SEARCH_THRESHOLD = 6;
+
+// Champ libre : numéro de lot et copropriété. Constantes de module : filtrage mémoïsé.
+const TEXTE_RECHERCHE = [
+  (lot: CoOwnerLot) => lot.lotNumber,
+  (lot: CoOwnerLot) => lot.syndicate?.name,
+  (lot: CoOwnerLot) => lot.syndicate?.address
+];
 
 /**
  * « Mes lots » — accueil du portail copropriétaire.
@@ -70,6 +82,11 @@ export default function CoOwnerLots() {
     queryFn: () => listMyLots()
   });
 
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Numéro de lot, copropriété…') }
+  ];
+  const local = useLocalListSearch<CoOwnerLot>(lots, { criteria, text: TEXTE_RECHERCHE });
+
   if (isPending) {
     return <SkeletonList rows={3} />;
   }
@@ -84,6 +101,10 @@ export default function CoOwnerLots() {
     );
   }
 
+  // Sans barre affichée, aucun critère d'URL ne doit masquer des lots.
+  const showSearch = lots.length > SEARCH_THRESHOLD;
+  const visibleLots = showSearch ? local.filtered : lots;
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div className="it-toolbar">
@@ -96,10 +117,18 @@ export default function CoOwnerLots() {
         </Button>
       </div>
 
+      {showSearch ? <ListSearch {...local.searchProps} /> : null}
+
       {lots.length === 0 ? (
         <StateBlock variant="empty" description={t("Aucun lot n'est ouvert à votre compte pour le moment.")} />
+      ) : visibleLots.length === 0 ? (
+        <StateBlock
+          variant="no-results"
+          description={t('Aucun élément ne correspond aux filtres appliqués.')}
+          actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
+        />
       ) : (
-        groupBySyndicate(lots).map(group => (
+        groupBySyndicate(visibleLots).map(group => (
           <Card
             key={group.key}
             title={group.name}

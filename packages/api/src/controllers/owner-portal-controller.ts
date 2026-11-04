@@ -8,6 +8,13 @@ import { OwnerPortalService } from '../services/owner-portal-service';
 import { logger } from '../utils/logger';
 import { parseIntParam } from '../utils/query-params';
 import { respondWithAppError } from '../utils/app-error-response';
+import {
+  parseOwnerPortalDocumentsQuery,
+  parseOwnerPortalInstallmentsQuery,
+  parseOwnerPortalLeasesQuery,
+  parseOwnerPortalMaintenanceQuery,
+  parseOwnerPortalPaymentsQuery
+} from '../services/portal-list-filters/owner-portal-list-filters';
 
 export class OwnerPortalController {
   private service: OwnerPortalService;
@@ -154,13 +161,7 @@ export class OwnerPortalController {
 
       const { propertyIds, tenantId } = req.ownerPortal;
 
-      // Parse query parameters
-      const status = req.query.status as string | undefined;
-      const propertyId = req.query.propertyId as string | undefined;
-
-      const filters: any = {};
-      if (status) filters.status = status;
-      if (propertyId) filters.propertyId = propertyId;
+      const filters = parseOwnerPortalLeasesQuery(req.query);
 
       const leasesData = await this.service.getLeases(propertyIds, tenantId, filters);
 
@@ -169,6 +170,7 @@ export class OwnerPortalController {
         data: leasesData
       });
     } catch (error) {
+      if (respondWithAppError(res, error)) return;
       logger.error('Error getting owner leases:', error);
       res.status(500).json({
         success: false,
@@ -357,18 +359,7 @@ export class OwnerPortalController {
 
       const { propertyIds, tenantId } = req.ownerPortal;
 
-      const status = req.query.status as string | undefined;
-      const propertyId = req.query.propertyId as string | undefined;
-      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
-      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
-
-      const filters: any = {};
-      if (status) {
-        filters.status = status as any;
-      }
-      if (propertyId) filters.propertyId = propertyId;
-      if (startDate) filters.startDate = startDate;
-      if (endDate) filters.endDate = endDate;
+      const filters = parseOwnerPortalInstallmentsQuery(req.query);
 
       logger.info('Getting owner installments', {
         tenantId,
@@ -383,6 +374,7 @@ export class OwnerPortalController {
         data: installmentsData
       });
     } catch (error: any) {
+      if (respondWithAppError(res, error)) return;
       logger.error('Error getting owner installments:', {
         error: error.message,
         stack: error.stack,
@@ -407,16 +399,7 @@ export class OwnerPortalController {
 
       const { propertyIds, tenantId } = req.ownerPortal;
 
-      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
-      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
-      const propertyId = req.query.propertyId as string | undefined;
-      const method = req.query.method as string | undefined;
-
-      const filters: any = {};
-      if (startDate) filters.startDate = startDate;
-      if (endDate) filters.endDate = endDate;
-      if (propertyId) filters.propertyId = propertyId;
-      if (method) filters.method = method as any;
+      const filters = parseOwnerPortalPaymentsQuery(req.query);
 
       const paymentsData = await this.service.getPayments(propertyIds, tenantId, filters);
 
@@ -425,6 +408,7 @@ export class OwnerPortalController {
         data: paymentsData
       });
     } catch (error) {
+      if (respondWithAppError(res, error)) return;
       logger.error('Error getting owner payments:', error);
       res.status(500).json({
         success: false,
@@ -541,16 +525,7 @@ export class OwnerPortalController {
 
       const { propertyIds, tenantId } = req.ownerPortal;
 
-      const status = req.query.status as string | undefined;
-      const propertyId = req.query.propertyId as string | undefined;
-      const category = req.query.category as string | undefined;
-      const priority = req.query.priority as string | undefined;
-
-      const filters: any = {};
-      if (status) filters.status = status as any;
-      if (propertyId) filters.propertyId = propertyId;
-      if (category) filters.category = category as any;
-      if (priority) filters.priority = priority as any;
+      const filters = parseOwnerPortalMaintenanceQuery(req.query);
 
       const ticketsData = await this.service.getMaintenanceTickets(propertyIds, tenantId, filters);
 
@@ -559,6 +534,7 @@ export class OwnerPortalController {
         data: ticketsData
       });
     } catch (error) {
+      if (respondWithAppError(res, error)) return;
       logger.error('Error getting owner maintenance tickets:', error);
       res.status(500).json({
         success: false,
@@ -614,14 +590,7 @@ export class OwnerPortalController {
 
       const { propertyIds, tenantId } = req.ownerPortal;
 
-      const documentType = req.query.documentType as string | undefined;
-      const propertyId = req.query.propertyId as string | undefined;
-      const leaseId = req.query.leaseId as string | undefined;
-
-      const filters: any = {};
-      if (documentType) filters.documentType = documentType as any;
-      if (propertyId) filters.propertyId = propertyId;
-      if (leaseId) filters.leaseId = leaseId;
+      const filters = parseOwnerPortalDocumentsQuery(req.query);
 
       const documentsData = await this.service.getDocuments(propertyIds, tenantId, filters);
 
@@ -630,6 +599,7 @@ export class OwnerPortalController {
         data: documentsData
       });
     } catch (error) {
+      if (respondWithAppError(res, error)) return;
       logger.error('Error getting owner documents:', error);
       res.status(500).json({
         success: false,

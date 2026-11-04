@@ -37,6 +37,14 @@ import {
 } from '../lib/maintenance/portal-visibility';
 import { NotFoundError } from '../middleware/error-middleware';
 import { PORTAL_RENTAL_DOCUMENT_SELECT, toPortalAttachment, toPortalRentalDocument } from '../lib/files/portal-files';
+import {
+  buildTenantDeclarationsSearch,
+  buildTenantInstallmentsSearch,
+  buildTenantPaymentsSearch,
+  buildTenantTicketsWhere,
+  tenantEnumClause,
+  type TenantTicketsFilters
+} from './portal-list-filters/tenant-portal-list-filters';
 
 export class TenantPortalService {
   /**
@@ -448,9 +456,10 @@ export class TenantPortalService {
     leaseId: string,
     tenantId: string,
     filters?: {
-      status?: string;
+      status?: string | string[];
       startDate?: string;
       endDate?: string;
+      search?: string;
     },
     pagination?: {
       page?: number;
@@ -469,8 +478,10 @@ export class TenantPortalService {
       };
 
       if (filters?.status) {
-        where.status = filters.status;
+        where.status = tenantEnumClause(filters.status);
       }
+
+      Object.assign(where, buildTenantInstallmentsSearch(filters?.search));
 
       if (filters?.startDate || filters?.endDate) {
         where.due_date = {};
@@ -1191,7 +1202,8 @@ export class TenantPortalService {
     filters?: {
       startDate?: string;
       endDate?: string;
-      method?: string;
+      method?: string | string[];
+      search?: string;
     },
     pagination?: {
       page?: number;
@@ -1210,8 +1222,10 @@ export class TenantPortalService {
       };
 
       if (filters?.method) {
-        where.method = filters.method;
+        where.method = tenantEnumClause(filters.method);
       }
+
+      Object.assign(where, buildTenantPaymentsSearch(filters?.search));
 
       if (filters?.startDate || filters?.endDate) {
         where.succeeded_at = {};
@@ -1253,7 +1267,8 @@ export class TenantPortalService {
           where: {
             lease_id: leaseId,
             tenant_id: tenantId,
-            declared_by: tenantClientId
+            declared_by: tenantClientId,
+            ...buildTenantDeclarationsSearch(filters?.search)
           },
           orderBy: { created_at: 'desc' }
         })
@@ -1572,9 +1587,7 @@ export class TenantPortalService {
     tenantClientId: string,
     leaseId: string,
     tenantId: string,
-    filters?: {
-      status?: string;
-    },
+    filters?: TenantTicketsFilters,
     pagination?: {
       page?: number;
       limit?: number;
@@ -1586,9 +1599,7 @@ export class TenantPortalService {
       // `tenant_contact_id` a l'identifiant du TenantClient, valeur que la cle
       // etrangere vers `crm_contacts` interdit : la liste restait vide.
       const visibility = await tenantPortalTicketFilter({ tenantId, tenantClientId, leaseId });
-      const where: Prisma.MaintenanceTicketWhereInput = filters?.status
-        ? { AND: [visibility, { status: filters.status as MaintenanceTicketStatus }] }
-        : visibility;
+      const where: Prisma.MaintenanceTicketWhereInput = buildTenantTicketsWhere(visibility, filters);
 
       const page = pagination?.page || 1;
       const limit = Math.min(pagination?.limit || 20, 100);

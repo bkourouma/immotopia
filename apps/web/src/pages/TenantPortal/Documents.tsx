@@ -1,13 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { App, Card, Typography, Spin, Alert, Empty, List, Button, Space, Select, Tag, Divider } from 'antd';
-import {
-  FolderOutlined,
-  DownloadOutlined,
-  FileTextOutlined,
-  FilterOutlined,
-  CalendarOutlined
-} from '@ant-design/icons';
+import { App, Card, Typography, Spin, Alert, Empty, List, Button, Space, Tag, Divider } from 'antd';
+import { FolderOutlined, DownloadOutlined, FileTextOutlined, CalendarOutlined } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
+import { ListSearch } from '../../components/primitives';
+import { DocumentsSansResultat, useDocumentsSearch } from './search/documentsSearch';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
@@ -35,22 +31,18 @@ export default function TenantDocuments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DocumentsData | null>(null);
-  const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
   const [downloading, setDownloading] = useState<string | null>(null);
 
   useEffect(() => {
     loadDocuments();
-  }, [typeFilter]);
+  }, []);
 
   const loadDocuments = async () => {
     try {
       setLoading(true);
       setError(null);
-      const params: any = {};
-      if (typeFilter) {
-        params.type = typeFilter;
-      }
-      const response = await tenantPortalService.getDocuments(params);
+      // Liste reçue en entier (bornée) : la recherche se fait côté client.
+      const response = await tenantPortalService.getDocuments();
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
@@ -125,13 +117,8 @@ export default function TenantDocuments() {
     return <Tag color={config.color}>{config.label}</Tag>;
   };
 
-  // Get all unique document types for filter
-  const allTypes = data ? Array.from(new Set(data.documents.map(doc => doc.type))) : [];
-
-  // Filter grouped documents by type filter
-  const filteredGroupedByType = data
-    ? Object.entries(data.groupedByType).filter(([type]) => (typeFilter ? type === typeFilter : true))
-    : [];
+  // Recherche locale par nom, numéro et type (voir `search/documentsSearch`).
+  const { local, filteredGroupedByType } = useDocumentsSearch(data?.documents, getDocumentTypeLabel);
 
   if (loading) {
     return (
@@ -153,31 +140,8 @@ export default function TenantDocuments() {
         <Text type="secondary">{t('Accédez et téléchargez vos documents de location')}</Text>
       </div>
 
-      {/* Filter (T111) */}
-      <Card>
-        <div className="it-toolbar__actions">
-          <Space>
-            <FilterOutlined />
-            <Text strong>{t('Filtre :')}</Text>
-          </Space>
-          <Select
-            showSearch
-            optionFilterProp="children"
-            placeholder={t('Type de document')}
-            allowClear
-            style={{ width: 250 }}
-            value={typeFilter}
-            onChange={value => setTypeFilter(value)}
-          >
-            {allTypes.map(type => (
-              <Select.Option key={type} value={type}>
-                {getDocumentTypeLabel(type)}
-              </Select.Option>
-            ))}
-          </Select>
-          {typeFilter && <Button onClick={() => setTypeFilter(undefined)}>{t('Réinitialiser')}</Button>}
-        </div>
-      </Card>
+      {/* Recherche (T111) : seulement s'il y a des documents à chercher. */}
+      {(data?.documents.length ?? 0) > 0 ? <ListSearch {...local.searchProps} /> : null}
 
       {/* Documents Grouped by Type (T110) */}
       {filteredGroupedByType.length > 0 ? (
@@ -241,6 +205,8 @@ export default function TenantDocuments() {
             </Card>
           ))}
         </Space>
+      ) : local.isFiltered ? (
+        <DocumentsSansResultat onClear={local.clear} />
       ) : (
         <Card>
           <Empty description={t('Aucun document trouvé')} />

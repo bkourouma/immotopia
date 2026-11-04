@@ -1,25 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Row,
-  Col,
-  Typography,
-  Spin,
-  Alert,
-  Tag,
-  Space,
-  Button,
-  Modal,
-  Descriptions,
-  List,
-  Avatar,
-  Select,
-  Empty
-} from 'antd';
+import React, { useState } from 'react';
+import { Card, Row, Col, Typography, Spin, Tag, Space, Button, Modal, Descriptions, List, Avatar, Empty } from 'antd';
 import {
   ToolOutlined,
   EyeOutlined,
-  FilterOutlined,
   MessageOutlined,
   UserOutlined,
   CalendarOutlined,
@@ -28,6 +11,8 @@ import {
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { Table } from '../../components/primitives';
+import { InlineError } from './search/InlineError';
+import { useMaintenanceTickets } from './search/useMaintenanceTickets';
 import {
   AttachmentList,
   fromPortalAttachment,
@@ -38,7 +23,6 @@ import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
-const { Option } = Select;
 
 interface MaintenanceTicketListItem {
   id: string;
@@ -163,68 +147,19 @@ const getCategoryLabel = (category: string) => {
 };
 
 export default function Maintenance() {
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<MaintenanceTicketsData | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
-  const [propertyFilter, setPropertyFilter] = useState<string | undefined>(undefined);
-  const [categoryFilter, setCategoryFilter] = useState<string | undefined>(undefined);
-  const [priorityFilter, setPriorityFilter] = useState<string | undefined>(undefined);
-  const [properties, setProperties] = useState<Array<{ id: string; address: string }>>([]);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [ticketDetails, setTicketDetails] = useState<TicketDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
 
-  useEffect(() => {
-    loadProperties();
-  }, []);
-
-  useEffect(() => {
-    loadTickets();
-  }, [statusFilter, propertyFilter, categoryFilter, priorityFilter]);
-
-  const loadProperties = async () => {
-    try {
-      const response = await ownerPortalService.getProperties();
-      if (response.data?.success && response.data?.data?.properties) {
-        setProperties(
-          response.data.data.properties.map((p: any) => ({
-            id: p.id,
-            address: p.address
-          }))
-        );
-      }
-    } catch (err) {
-      console.error('Error loading properties:', err);
-    }
-  };
-
-  const loadTickets = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const params: any = {};
-      if (statusFilter) params.status = statusFilter;
-      if (propertyFilter) params.propertyId = propertyFilter;
-      if (categoryFilter) params.category = categoryFilter;
-      if (priorityFilter) params.priority = priorityFilter;
-
-      const response = await ownerPortalService.getMaintenanceTickets(params);
-      if (response.data?.success && response.data?.data) {
-        setData(response.data.data);
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors du chargement des tickets'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { search, data, tickets, total, isPending, loading, loadError, loadTickets, exportAll } =
+    useMaintenanceTickets<MaintenanceTicketsData>();
 
   const handleViewDetails = async (ticketId: string) => {
     try {
       setDetailsLoading(true);
+      setError(null);
       setSelectedTicketId(ticketId);
       const response = await ownerPortalService.getMaintenanceTicketDetails(ticketId);
       if (response.data?.success && response.data?.data?.ticket) {
@@ -281,11 +216,6 @@ export default function Maintenance() {
       render: (date: Date | string) => {
         const dateObj = typeof date === 'string' ? new Date(date) : date;
         return dayjs(dateObj).format('DD/MM/YYYY');
-      },
-      sorter: (a: MaintenanceTicketListItem, b: MaintenanceTicketListItem) => {
-        const dateA = typeof a.createdAt === 'string' ? new Date(a.createdAt) : a.createdAt;
-        const dateB = typeof b.createdAt === 'string' ? new Date(b.createdAt) : b.createdAt;
-        return dateA.getTime() - dateB.getTime();
       }
     },
     {
@@ -304,16 +234,12 @@ export default function Maintenance() {
     }
   ];
 
-  if (loading && !data) {
+  if (isPending && !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
         <Spin size="large" tip={t('Chargement des tickets de maintenance...')} />
       </div>
     );
-  }
-
-  if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   return (
@@ -372,104 +298,22 @@ export default function Maintenance() {
         </Row>
       )}
 
-      {/* Filters (T126) */}
-      <Card
-        title={
-          <Space>
-            <FilterOutlined />
-            <span>{t('Filtres')}</span>
-          </Space>
-        }
-      >
-        <div className="it-filters">
-          <div className="it-filters__field">
-            <Text strong>{t('Statut')}</Text>
-            <Select
-              showSearch
-              optionFilterProp="children"
-              style={{ width: 150 }}
-              placeholder={t('Tous les statuts')}
-              allowClear
-              value={statusFilter}
-              onChange={value => setStatusFilter(value)}
-            >
-              <Option value="DECLARED">{t('Déclaré')}</Option>
-              <Option value="IN_PROGRESS">{t('En cours')}</Option>
-              <Option value="ASSIGNED">{t('Assigné')}</Option>
-              <Option value="RESOLVED">{t('Résolu')}</Option>
-              <Option value="CANCELED">{t('Annulé')}</Option>
-            </Select>
-          </div>
-          <div className="it-filters__field">
-            <Text strong>{t('Propriété')}</Text>
-            <Select
-              showSearch
-              optionFilterProp="children"
-              style={{ width: 200 }}
-              placeholder={t('Toutes les propriétés')}
-              allowClear
-              value={propertyFilter}
-              onChange={value => setPropertyFilter(value)}
-            >
-              {properties.map(prop => (
-                <Option key={prop.id} value={prop.id}>
-                  {prop.address}
-                </Option>
-              ))}
-            </Select>
-          </div>
-          <div className="it-filters__field">
-            <Text strong>{t('Catégorie')}</Text>
-            <Select
-              showSearch
-              optionFilterProp="children"
-              style={{ width: 150 }}
-              placeholder={t('Toutes les catégories')}
-              allowClear
-              value={categoryFilter}
-              onChange={value => setCategoryFilter(value)}
-            >
-              <Option value="PLUMBING">{t('Plomberie')}</Option>
-              <Option value="ELECTRICITY">{t('Électricité')}</Option>
-              <Option value="AC">{t('Climatisation')}</Option>
-              <Option value="OTHER">{t('Autre')}</Option>
-            </Select>
-          </div>
-          <div className="it-filters__field">
-            <Text strong>{t('Priorité')}</Text>
-            <Select
-              showSearch
-              optionFilterProp="children"
-              style={{ width: 150 }}
-              placeholder={t('Toutes les priorités')}
-              allowClear
-              value={priorityFilter}
-              onChange={value => setPriorityFilter(value)}
-            >
-              <Option value="LOW">{t('Basse')}</Option>
-              <Option value="MEDIUM">{t('Moyenne')}</Option>
-              <Option value="HIGH">{t('Haute')}</Option>
-              <Option value="URGENT">{t('Urgente')}</Option>
-            </Select>
-          </div>
-        </div>
-      </Card>
-
       {/* Tickets Table (T126) */}
       <Card title={t('Liste des tickets')}>
-        {data && data.tickets.length > 0 ? (
-          <Table
-            exportFilename={t('Liste des tickets')}
-            scroll={{ x: 'max-content' }}
-            columns={columns}
-            dataSource={data.tickets}
-            rowKey="id"
-            loading={loading}
-            pagination={{ pageSize: 20 }}
-          />
-        ) : (
-          <Empty description={t('Aucun ticket trouvé')} />
-        )}
+        <InlineError message={error || loadError} />
+        <Table
+          aria-label={t('Liste des tickets')}
+          search={search.searchProps}
+          exportFilename={t('Liste des tickets')}
+          exportFetchAll={exportAll}
+          scroll={{ x: 'max-content' }}
+          columns={columns}
+          dataSource={tickets}
+          rowKey="id"
+          loading={loading}
+          pagination={search.tablePagination(total)}
+          locale={search.isFiltered ? undefined : { emptyText: t('Aucun ticket trouvé') }}
+        />
       </Card>
 
       {/* Ticket Details Modal (T128-T129) */}

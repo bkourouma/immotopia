@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Checkbox, Space, Tag } from 'antd';
 import { FileTextOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -13,6 +13,8 @@ import {
 } from '../../services/coowner-portal-service';
 import { formatChargePeriod } from '../../utils/charge-period';
 import { describeDownloadError } from '../../utils/download-error';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { saveBlob } from '../../utils/save-blob';
 import { ChargeCallStatusTag } from './labels';
 import { isNotFound } from './portal-error';
@@ -100,6 +102,20 @@ const OnlineCheckoutTag: React.FC<{ call: CoOwnerChargeCall; onResume?: (call: C
 const PendingDeclarationTag: React.FC<{ call: CoOwnerChargeCall }> = ({ call }) =>
   call.pendingDeclaration ? <Tag color="warning">{t('Paiement déclaré, en vérification')}</Tag> : null;
 
+// Champ libre : période affichée, numéro de lot et copropriété. Constantes de module : filtrage mémoïsé.
+const TEXTE_RECHERCHE = [
+  (call: CoOwnerChargeCall) => formatChargePeriod(call),
+  (call: CoOwnerChargeCall) => call.lot?.lotNumber,
+  (call: CoOwnerChargeCall) => call.syndicate
+];
+
+// Valeur lue par les critères non textuels, par clé de critère.
+const ACCESSEURS = {
+  status: (call: CoOwnerChargeCall) => call.status,
+  lot: (call: CoOwnerChargeCall) => call.lot?.id,
+  due: (call: CoOwnerChargeCall) => call.dueDate
+};
+
 /**
  * Appels de charges d'un copropriétaire, partagé par « Mes appels de
  * charges » et par le détail d'un lot. Sans `selection`, lecture seule ; avec,
@@ -111,7 +127,63 @@ export const ChargeCallsTable: React.FC<{
   selection?: ChargeCallSelection;
   /** Reprend le paiement en cours d'un appel (page du fournisseur) ; absent = pas de bouton. */
   onResume?: (call: CoOwnerChargeCall) => void;
-}> = ({ calls, showLot = true, selection, onResume }) => {
+  /** Préfixe des clés d'URL de la recherche, quand un autre tableau partage l'écran. */
+  paramPrefix?: string;
+  /** Nom accessible de la barre de recherche, quand un autre tableau partage l'écran. */
+  searchAriaLabel?: string;
+}> = ({ calls, showLot = true, selection, onResume, paramPrefix, searchAriaLabel }) => {
+  // Lots présents dans la liste (bornée au copropriétaire) : options du critère « Lot ».
+  const lotOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const call of calls) {
+      if (!call.lot || byId.has(call.lot.id)) continue;
+      const label = t('Lot {{lotNumber}}', { lotNumber: call.lot.lotNumber });
+      byId.set(call.lot.id, call.syndicate ? `${label} · ${call.syndicate}` : label);
+    }
+    return Array.from(byId, ([value, label]) => ({ value, label }));
+  }, [calls]);
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: showLot ? t('Période, lot, copropriété…') : t('Période…')
+    },
+    {
+      key: 'status',
+      type: 'multiSelect',
+      label: t('Statut'),
+      primary: true,
+      options: [
+        { value: 'PENDING', label: t('En attente') },
+        { value: 'PARTIAL', label: t('Partiel') },
+        { value: 'PAID', label: t('Payé') },
+        { value: 'OVERDUE', label: t('En retard') }
+      ]
+    },
+    ...(showLot ? [{ key: 'lot', type: 'select' as const, label: t('Lot'), primary: true, options: lotOptions }] : []),
+    { key: 'due', type: 'dateRange', label: t('Échéance') }
+  ];
+  const local = useLocalListSearch<CoOwnerChargeCall>(calls, {
+    criteria,
+    paramPrefix,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
+
+  // Prudence : un appel coché que le filtre masque quitte la sélection. Le total à payer
+  // ne porte ainsi jamais sur une ligne qui n'est plus affichée sous les critères.
+  const visibleIds = useMemo(() => new Set(local.filtered.map(call => call.id)), [local.filtered]);
+  const selectionIds = selection?.selectedIds;
+  const onSelectionChange = selection?.onChange;
+  useEffect(() => {
+    if (!selectionIds || !onSelectionChange) return;
+    const kept = selectionIds.filter(id => visibleIds.has(id));
+    if (kept.length !== selectionIds.length) onSelectionChange(kept);
+  }, [visibleIds, selectionIds, onSelectionChange]);
+
   const selectedCalls = selection ? calls.filter(call => selection.selectedIds.includes(call.id)) : [];
   const showSelection = Boolean(selection) && calls.some(call => call.onlinePayable || call.pendingDeclaration);
 
@@ -215,15 +287,11 @@ export const ChargeCallsTable: React.FC<{
 
   return (
     <DataView<CoOwnerChargeCall>
-      paginated={false}
-      items={calls}
-      total={calls.length}
-      page={1}
-      pageSize={calls.length || 20}
-      onPageChange={() => {}}
+      {...local.dataViewProps}
+      search={searchAriaLabel ? { ...local.searchProps, 'aria-label': searchAriaLabel } : local.searchProps}
       rowKey={call => call.id}
       aria-label={t('Appels de charges')}
-      export={{ filename: t('Appels de charges') }}
+      export={{ filename: t('Appels de charges'), fetchAll: local.exportAll }}
       emptyDescription={t("Aucun appel de charges n'a été émis pour vos lots.")}
       columns={columns}
       scrollX={1100}
