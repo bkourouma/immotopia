@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { parseIsoDate } from './business-days';
+import { zDay, zSearch } from '../../utils/list-query-schemas';
 
 /**
  * Validation des corps et requêtes des remises de prélèvement (spec 042, P2,
@@ -38,6 +39,11 @@ export const REMITTANCE_STATUSES = ['DRAFT', 'VALIDATED', 'EXPORTED', 'SUBMITTED
 export const listRemittancesQuerySchema = z.object({
   creditorId: z.string().uuid().optional(),
   status: z.enum(REMITTANCE_STATUSES).optional(),
+  /** Référence de la remise (PRL-2026-0001) ou libellé du créancier. */
+  search: zSearch(100),
+  /** Date de prélèvement (jours réels aaaa-mm-jj, bornes incluses). */
+  collectionFrom: zDay,
+  collectionTo: zDay,
   page: z.coerce.number().int().min(1).max(10_000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20)
 });

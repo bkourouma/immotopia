@@ -1,12 +1,13 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Alert, App, Button, Descriptions, Popconfirm, Skeleton, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Descriptions, Popconfirm, Skeleton, Space, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type {
   RejectLineInput,
   RemittanceDto,
   RemittanceLineDto,
+  RemittanceLineStatus,
   RemittanceStatus,
   RemittanceWithPrenotifications,
   RemittanceWithSkipped,
@@ -14,7 +15,9 @@ import type {
   SettleLineInput,
   SkippedMandateDto
 } from '../../../services/direct-debit-service';
-import { formatMoney } from '../../primitives';
+import { formatMoney, Table } from '../../primitives';
+import { useLocalListSearch } from '../../../utils/list-search';
+import type { SearchCriterion } from '../../../utils/list-search';
 import { ReasonModal } from './ReasonModal';
 import {
   DraftSkippedMandatesSection,
@@ -29,6 +32,7 @@ import {
   formatDay,
   formatPeriod,
   inactiveMandateWarning,
+  lineStatusLabel,
   PrenotificationTag,
   recipientSourceLabel,
   RemittanceLineStatusTag,
@@ -37,6 +41,21 @@ import {
 import { saveBlob } from '../../../utils/save-blob';
 import { STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
+
+// Recherche locale dans les lignes de la remise : accesseurs stables, hors du composant.
+const LINE_SEARCH_TEXT = [
+  (line: RemittanceLineDto) => line.reference,
+  (line: RemittanceLineDto) => line.debtor.displayName,
+  (line: RemittanceLineDto) => line.mandate.reference,
+  (line: RemittanceLineDto) => line.mandate.holderName,
+  (line: RemittanceLineDto) => line.lease?.leaseNumber,
+  (line: RemittanceLineDto) => line.lot?.lotNumber
+];
+const LINE_SEARCH_ACCESSORS = {
+  lineStatus: (line: RemittanceLineDto) => line.status,
+  lineAmount: (line: RemittanceLineDto) => line.amount
+};
+const LINE_STATUSES: RemittanceLineStatus[] = ['PENDING', 'SETTLED', 'REJECTED', 'CANCELED'];
 
 const { Text } = Typography;
 
@@ -200,6 +219,35 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
       }
       pollStartedAt.current ??= Date.now();
       return Date.now() - pollStartedAt.current < POLL_MAX_MS ? POLL_INTERVAL_MS : false;
+    }
+  });
+
+  // Recherche locale dans les lignes (liste reçue en entier avec la remise) ; hooks avant tout retour anticipé.
+  const lineCriteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: syndic ? t('Débiteur, référence, mandat, lot…') : t('Débiteur, référence, mandat, bail…')
+    },
+    {
+      key: 'statut',
+      type: 'multiSelect',
+      label: t('Statut de la ligne'),
+      primary: true,
+      options: LINE_STATUSES.map(value => ({ value, label: lineStatusLabel(value) }))
+    },
+    { key: 'montant', type: 'numberRange', label: t('Montant'), unit: 'FCFA', api: false }
+  ];
+  const lineItems = useMemo(() => remittance?.lines ?? [], [remittance?.lines]);
+  const lineSearch = useLocalListSearch<RemittanceLineDto>(lineItems, {
+    paramPrefix: 'lig',
+    ariaLabel: t('Rechercher dans les lignes de la remise'),
+    criteria: lineCriteria,
+    text: LINE_SEARCH_TEXT,
+    accessors: {
+      statut: LINE_SEARCH_ACCESSORS.lineStatus,
+      montant: LINE_SEARCH_ACCESSORS.lineAmount
     }
   });
 
@@ -910,14 +958,16 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
         </Descriptions>
 
         <Table<RemittanceLineDto>
+          {...lineSearch.tableProps}
+          aria-label={t('Lignes de la remise')}
+          exportFilename={t('Lignes de la remise')}
+          exportFetchAll={lineSearch.exportAll}
           rowKey="id"
           size="middle"
           columns={columns}
-          dataSource={remittance.lines}
-          pagination={false}
           scroll={{ x: 'max-content' }}
           onRow={line => ({ style: line.status === 'CANCELED' ? { opacity: 0.55 } : undefined })}
-          locale={{ emptyText: t('Aucune ligne dans cette remise') }}
+          locale={lineSearch.isFiltered ? undefined : { emptyText: t('Aucune ligne dans cette remise') }}
         />
       </Space>
 

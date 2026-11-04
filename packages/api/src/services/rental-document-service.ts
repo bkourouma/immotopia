@@ -5,6 +5,7 @@ import { logAuditEvent } from './audit-service';
 import { RentalDocumentType, RentalDocumentStatus } from '@prisma/client';
 import { t } from '../i18n';
 import { NotFoundError } from '../middleware/error-middleware';
+import { applyDocumentListExtras } from '../lib/rental/document-list-filters';
 
 /** Champs de stockage internes d'un document : jamais renvoyes a un client. */
 const STORAGE_FIELDS = ['file_url', 'file_key', 'file_path', 'file_hash', 'content_hash', 'template_hash'] as const;
@@ -335,6 +336,9 @@ export async function listDocuments(
     leaseId?: string;
     installmentId?: string;
     paymentId?: string;
+    search?: string;
+    from?: string;
+    to?: string;
   },
   pagination?: {
     page?: number;
@@ -364,6 +368,8 @@ export async function listDocuments(
   if (filters?.paymentId) {
     where.payment_id = filters.paymentId;
   }
+
+  applyDocumentListExtras(where, filters); // search, from, to
 
   const page = pagination?.page || 1;
   const limit = pagination?.limit || 50;

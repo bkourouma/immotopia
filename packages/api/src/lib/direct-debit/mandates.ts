@@ -5,6 +5,7 @@ import { logAuditEvent, recordAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { prisma } from '../../utils/database';
 import { assertBelongsToTenant } from '../../utils/tenant-ownership';
+import { dayRange } from '../../utils/list-query-schemas';
 import { logger } from '../../utils/logger';
 import { cancelOpenRequestsForTarget } from '../signature/cancel';
 import { auditScope, RENTAL_CTX, scopeWhere, type DirectDebitScopeCtx } from './syndic/scope';
@@ -100,6 +101,8 @@ export async function listMandates(
   if (query.debtorClientId) where.debtorClientId = query.debtorClientId;
   if (query.creditorId) where.creditorId = query.creditorId;
   if (query.status) where.status = query.status;
+  const signedAt = dayRange(query.signedFrom, query.signedTo);
+  if (signedAt) where.signedAt = signedAt;
   if (query.search) {
     const search = query.search;
     const or: Prisma.DirectDebitMandateWhereInput[] = [

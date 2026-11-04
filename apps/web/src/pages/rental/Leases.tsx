@@ -1,15 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Button, Input, Select, Space, Dropdown } from 'antd';
+import { App, Button, Space, Dropdown } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { PlusOutlined, SearchOutlined, MoreOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { listLeases, deleteLease, RentalLease, RentalLeaseStatus } from '../../services/rental-service';
+import { PlusOutlined, MoreOutlined } from '@ant-design/icons';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { listLeases, deleteLease, RentalLease, LeaseFilters } from '../../services/rental-service';
 import { PropertyTransactionMode } from '../../types/property-types';
-import { useListParams } from '../../hooks/useListParams';
+import { useListSearch } from '../../hooks/useListSearch';
+import { propertyCriterion, renterCriterion } from './rental-search-criteria';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { nomDuBien, nomDeLaPersonne, optionsLocatairesDesBaux } from '../../lib/rental-labels';
+import { nomDuBien, nomDeLaPersonne } from '../../lib/rental-labels';
 import {
   PageHeader,
   StateBlock,
@@ -17,7 +18,6 @@ import {
   MoneyValue,
   DataView,
   DataCard,
-  FilterSheet,
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
@@ -47,9 +47,6 @@ import { activeLocale } from '../../i18n/format';
  * `handleStatusChange`, défini et jamais appelé, est retiré — le troisième de
  * ce lot.
  */
-
-type Filtres = { q: string; status: string; primaryRenterClientId: string };
-const FILTER_KEYS = ['q', 'status', 'primaryRenterClientId'] as const;
 
 const STATUTS = localizedList(() => [
   { value: 'DRAFT', label: t('Brouillon') },
@@ -91,26 +88,16 @@ export const Leases: React.FC = () => {
   const queryClient = useQueryClient();
   const confirmAction = useConfirmAction();
 
-  const list = useListParams<Filtres>({ filterKeys: FILTER_KEYS, defaultPageSize: 20 });
-
-  /**
-   * Le champ de recherche garde son texte le temps de la frappe, et l'URL n'est
-   * écrite qu'après 250 ms de silence. Écrire à chaque caractère empilerait une
-   * entrée d'historique par lettre.
-   */
-  const [saisie, setSaisie] = useState(list.filters.q ?? '');
-
-  useEffect(() => {
-    setSaisie(list.filters.q ?? '');
-  }, [list.filters.q]);
-
-  useEffect(() => {
-    const courant = list.filters.q ?? '';
-    if (saisie === courant) return;
-    const minuteur = setTimeout(() => list.setFilters({ q: saisie || undefined }), 250);
-    return () => clearTimeout(minuteur);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saisie]);
+  const search = useListSearch({
+    // Pas de tri serveur sur cette liste : le paramètre `sort` n'est pas envoyé.
+    apiNames: { sort: false },
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('N° de bail, bien, locataire…'), api: 'search' },
+      { key: 'status', type: 'select', label: t('Statut'), primary: true, options: STATUTS },
+      renterCriterion(tenantId, { api: 'primaryRenterClientId', primary: true }),
+      propertyCriterion(tenantId, { api: 'propertyId' })
+    ]
+  });
 
   const {
     data,
@@ -119,34 +106,12 @@ export const Leases: React.FC = () => {
     error: erreur,
     refetch
   } = useQuery({
-    queryKey: queryKey('leases', tenantId, list.queryParams),
-    queryFn: () =>
-      listLeases(tenantId as string, {
-        search: list.filters.q || undefined,
-        status: (list.filters.status as RentalLeaseStatus) || undefined,
-        primaryRenterClientId: list.filters.primaryRenterClientId || undefined,
-        page: list.page,
-        limit: list.pageSize
-      }),
+    queryKey: queryKey('leases', tenantId, search.apiParams),
+    queryFn: () => listLeases(tenantId as string, search.apiParams as LeaseFilters),
     enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
-
-  /**
-   * Locataires du portefeuille, pour le filtre.
-   *
-   * Requête distincte, volontairement : dériver les options de la liste
-   * affichée les réduirait au fur et à mesure qu'on filtre, et on ne pourrait
-   * plus passer d'un locataire à l'autre sans effacer le filtre d'abord.
-   */
-  const { data: tousLesBaux } = useQuery({
-    queryKey: queryKey('leases', tenantId, { pour: 'filtre-locataire' }),
-    queryFn: () => listLeases(tenantId as string, { limit: 500 }),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
-  });
-
-  const optionsLocataires = React.useMemo(() => optionsLocatairesDesBaux(tousLesBaux?.data), [tousLesBaux]);
 
   const baux = data?.data ?? [];
   const total = data?.pagination?.total ?? 0;
@@ -266,65 +231,13 @@ export const Leases: React.FC = () => {
         }}
       />
 
-      <div style={{ marginBottom: 'var(--space-4)' }}>
-        <Input
-          allowClear
-          prefix={<SearchOutlined aria-hidden="true" />}
-          placeholder={t('Rechercher par numéro de bail')}
-          aria-label={t('Rechercher un bail')}
-          value={saisie}
-          onChange={evenement => setSaisie(evenement.target.value)}
-        />
-      </div>
-
-      <FilterSheet
-        activeCount={[list.filters.status, list.filters.primaryRenterClientId].filter(Boolean).length}
-        onClear={() => list.setFilters({ status: undefined, primaryRenterClientId: undefined })}
-        title={t('Filtrer les baux')}
-      >
-        <div style={{ minWidth: 240 }}>
-          <label htmlFor="filtre-locataire-bail">{t('Locataire')}</label>
-          <Select
-            id="filtre-locataire-bail"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les locataires')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            value={list.filters.primaryRenterClientId || undefined}
-            onChange={valeur => list.setFilters({ primaryRenterClientId: valeur })}
-            options={optionsLocataires}
-          />
-        </div>
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-statut-bail">{t('Statut')}</label>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            id="filtre-statut-bail"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les statuts')}
-            allowClear
-            value={list.filters.status || undefined}
-            onChange={valeur => list.setFilters({ status: valeur })}
-            options={STATUTS}
-          />
-        </div>
-      </FilterSheet>
-
       <DataView<RentalLease>
         // Export de TOUS les baux, avec les mêmes filtres que la liste affichée.
         export={{
           filename: t('Baux'),
           fetchAll: () =>
             collectAllPages<RentalLease>(async (page, limit) => {
-              const reponse = await listLeases(tenantId, {
-                search: list.filters.q || undefined,
-                status: (list.filters.status as RentalLeaseStatus) || undefined,
-                primaryRenterClientId: list.filters.primaryRenterClientId || undefined,
-                page,
-                limit
-              });
+              const reponse = await listLeases(tenantId, { ...search.filterParams, page, limit } as LeaseFilters);
               return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
             })
         }}
@@ -333,16 +246,13 @@ export const Leases: React.FC = () => {
         scrollX={1080}
         items={baux}
         total={total}
-        page={list.page}
-        pageSize={list.pageSize}
-        onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
+        search={search.searchProps}
+        {...search.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreur ? t('Impossible de charger les baux.') : null}
         errorCause={erreur}
         onRetry={() => refetch()}
-        isFiltered={list.isFiltered}
-        onClearFilters={list.clearFilters}
         emptyDescription={t("Aucun bail n'est encore enregistré pour cette agence.")}
         emptyAction={{
           label: t('Créer un bail'),

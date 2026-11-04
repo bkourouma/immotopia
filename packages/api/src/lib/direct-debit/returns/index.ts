@@ -103,7 +103,7 @@ export async function applyReturnFile(
 export async function listReturnImports(
   tenantId: string,
   scope: ReturnScope,
-  query: { page: number; pageSize: number }
+  query: { page: number; pageSize: number; search?: string; from?: string; to?: string }
 ): Promise<{ items: ReturnImportDto[]; total: number; page: number; pageSize: number }> {
   return listReturnImportsFor(tenantId, scope, query);
 }

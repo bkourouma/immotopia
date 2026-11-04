@@ -43,6 +43,8 @@ vi.mock('../../services/rental-service', () => ({
   RentalInstallmentStatus: {}
 }));
 
+vi.mock('../../services/property-service', () => ({ listProperties: vi.fn(), getProperty: vi.fn() }));
+
 vi.mock('../../components/rental/PaymentForm', () => ({ PaymentForm: () => null }));
 
 vi.mock('../../hooks/useBreakpoint', () => ({
@@ -259,13 +261,13 @@ describe('Échéances — ce qui part au montage', () => {
 
 describe('Échéances — filtrage serveur', () => {
   it('transmet le filtre de l’URL au service', async () => {
-    mount('/tenant/agence-1/rental/leases/bail-1/installments?overdue=true&status=OVERDUE');
+    mount('/tenant/agence-1/rental/leases/bail-1/installments?overdue=1&status=OVERDUE');
 
     await waitFor(() => expect(listInstallments).toHaveBeenCalled());
     expect(listInstallments.mock.calls[0][1]).toMatchObject({
       leaseId: 'bail-1',
       status: 'OVERDUE',
-      overdue: true,
+      overdue: 'true',
       page: 1,
       limit: 50
     });

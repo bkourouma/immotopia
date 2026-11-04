@@ -31,6 +31,10 @@ const cancelRemittance = vi.fn();
 const cancelRemittanceLine = vi.fn();
 const saveBlob = vi.fn();
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 vi.mock('../../services/direct-debit-service', () => ({
   getRemittance: (...a: unknown[]) => getRemittance(...a),
   refreshRemittance: (...a: unknown[]) => refreshRemittance(...a),
@@ -159,11 +163,14 @@ describe('DirectDebitRemittanceDetail', () => {
     const user = userEvent.setup();
     const blob = new Blob(['csv']);
     exportRemittance.mockResolvedValue({ blob, filename: 'PRL-2026-0001.csv' });
-    const validated = makeRemittance({ status: 'VALIDATED' });
+    // Avis tous envoyés : pas de relecture automatique toutes les 3 s, qui ferait basculer l'écran en « Produite » avant le clic.
+    const sentNotices = { ...emptyPrenotifications, sent: 2, recipients: { account: 2, contact: 0, none: 0 } };
+    const validated = makeRemittance({ status: 'VALIDATED', prenotificationSummary: sentNotices });
     const exported = makeRemittance({
       status: 'EXPORTED',
       exportCount: 1,
-      firstExportedAt: '2026-10-16T11:00:00.000Z'
+      firstExportedAt: '2026-10-16T11:00:00.000Z',
+      prenotificationSummary: sentNotices
     });
     getRemittance.mockReset();
     getRemittance.mockResolvedValueOnce(validated).mockResolvedValue(exported);
@@ -538,7 +545,10 @@ describe('DirectDebitRemittanceDetail', () => {
 
     expect(await screen.findByText(/Remise annulée le 17\/10\/2026/)).toBeInTheDocument();
     expect(screen.getAllByText('Erreur de période').length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    // Aucune action de la remise : seuls restent la barre de recherche des lignes (Exporter…) et la pagination.
+    expect(screen.queryAllByRole('button').filter(el => !el.closest('[role="search"], .ant-pagination'))).toHaveLength(
+      0
+    );
   });
 
   it('renvoie les avis de prélèvement après confirmation puis relit le résumé', async () => {
