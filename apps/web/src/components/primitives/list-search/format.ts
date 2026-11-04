@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import { dateFormat, formatNumber } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { isActiveValue } from '../../../utils/list-search/filter';
 import type {
   DateRangeValue,
   NumberRangeValue,
@@ -18,21 +19,6 @@ import type {
 
 /** Format des dates échangées avec l'URL et l'API. */
 export const ISO_DAY = 'YYYY-MM-DD';
-
-/** Un critère est actif quand sa valeur filtre réellement quelque chose. */
-export function isActiveValue(value: SearchValue): boolean {
-  if (value === undefined || value === null) return false;
-  if (typeof value === 'string') return value.trim() !== '';
-  if (typeof value === 'boolean') return true;
-  if (Array.isArray(value)) return value.length > 0;
-  const range = value as DateRangeValue & NumberRangeValue;
-  return (
-    (range.from !== undefined && range.from !== '') ||
-    (range.to !== undefined && range.to !== '') ||
-    typeof range.min === 'number' ||
-    typeof range.max === 'number'
-  );
-}
 
 /**
  * Valeur à émettre : une valeur vide devient `undefined`, quel que soit le type

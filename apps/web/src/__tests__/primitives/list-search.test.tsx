@@ -451,14 +451,32 @@ describe('ListSearch — corrections UX', () => {
     expect(loadOptions).toHaveBeenCalledTimes(2);
   });
 
-  it('propose un clavier numérique et applique en nombre', async () => {
+  it('propose un clavier numérique (décimal) et applique en nombre', async () => {
     const user = userEvent.setup();
     const { onChange } = setup();
     await user.click(screen.getByRole('button', { name: /Plus de critères/ }));
     const min = screen.getByRole('spinbutton', { name: 'Montant minimum' });
-    expect(min).toHaveAttribute('inputmode', 'numeric');
+    expect(min).toHaveAttribute('inputmode', 'decimal');
     await user.type(min, '12000');
     await user.tab();
     expect(onChange).toHaveBeenCalledWith({ amount: { min: 12000 } });
+  });
+});
+
+describe('ListSearch — noms accessibles des intervalles', () => {
+  it('donne un nom à chacun des deux champs de date', () => {
+    setup({
+      criteria: [{ key: 'period', type: 'dateRange', label: 'Période', primary: true }]
+    });
+    expect(screen.getByRole('textbox', { name: 'Période, date de début' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Période, date de fin' })).toBeInTheDocument();
+  });
+
+  it('donne un nom à chacun des deux champs numériques', () => {
+    setup({
+      criteria: [{ key: 'amount', type: 'numberRange', label: 'Montant', primary: true }]
+    });
+    expect(screen.getByRole('spinbutton', { name: 'Montant minimum' })).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: 'Montant maximum' })).toBeInTheDocument();
   });
 });

@@ -21,6 +21,8 @@ export function normalizeText(value: unknown): string {
     raw
       .normalize('NFD')
       .replace(/[̀-ͯ]/g, '')
+      // Voyelles brèves et signes arabes (tachkîl, U+064B-065F et U+0670) : « مُحَمَّد » = « محمد ».
+      .replace(/[ً-ٰٟ]/g, '')
       .toLowerCase()
       // Apostrophes typographiques ramenées à l'apostrophe droite : « d'Ivoire »
       // saisi au clavier doit trouver « d’Ivoire » enregistré.
