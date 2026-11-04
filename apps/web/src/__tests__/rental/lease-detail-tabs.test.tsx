@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route, useSearchParams, useLocation } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { LeaseDetailPage } from '../../pages/rental/LeaseDetailPage';
 
@@ -50,7 +50,7 @@ vi.mock('../../pages/rental/Installments', () => ({ Installments: () => <Onglet 
 vi.mock('../../pages/rental/Payments', () => ({ Payments: () => <Onglet nom="paiements" /> }));
 vi.mock('../../pages/rental/Penalties', () => ({ Penalties: () => null }));
 vi.mock('../../pages/rental/Deposits', () => ({ Deposits: () => null }));
-vi.mock('../../pages/rental/Documents', () => ({ Documents: () => null }));
+vi.mock('../../pages/rental/Documents', () => ({ Documents: () => <div>onglet-documents</div> }));
 vi.mock('../../components/rental/LeaseManagementTermsCard', () => ({ LeaseManagementTermsCard: () => null }));
 vi.mock('../../components/rental/LeaseLifecyclePanel', () => ({ LeaseLifecyclePanel: () => null }));
 vi.mock('../../components/rental/inspections/LeaseInspectionsPanel', () => ({ LeaseInspectionsPanel: () => null }));
@@ -123,6 +123,79 @@ describe('Détail du bail — onglet principal dans l’URL (BUG-2026-11-04-041)
     const url = screen.getByTestId('url').textContent ?? '';
     expect(url).toContain('tab=payments');
     expect(url).not.toContain('status=');
+  });
+});
+
+describe('Détail du bail — l’onglet suit l’URL', () => {
+  const BASE = '/tenant/agence-1/rental/leases';
+
+  function Nav() {
+    const navigate = useNavigate();
+    return (
+      <>
+        <button onClick={() => navigate(`${BASE}/bail-1?tab=documents`)}>aller-documents</button>
+        <button onClick={() => navigate(`${BASE}/bail-2`)}>autre-bail</button>
+        <button onClick={() => navigate(-1)}>precedent</button>
+        <button onClick={() => navigate(1)}>suivant</button>
+      </>
+    );
+  }
+
+  function monterAvecNav(url: string) {
+    return render(
+      <AntApp>
+        <MemoryRouter initialEntries={[url]}>
+          <Url />
+          <Nav />
+          <Routes>
+            <Route path="/tenant/:tenantId/rental/leases/:leaseId" element={<LeaseDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </AntApp>
+    );
+  }
+
+  const tabSelectionne = (nom: RegExp) => screen.getByRole('tab', { name: nom }).getAttribute('aria-selected');
+
+  it('suit un lien ?tab=documents sur la même fiche, puis Précédent et Suivant', async () => {
+    monterAvecNav(`${BASE}/bail-1`);
+    await screen.findByText('echeances status=aucun', undefined, { timeout: 8000 });
+
+    fireEvent.click(screen.getByText('aller-documents'));
+    expect(await screen.findByText('onglet-documents')).toBeTruthy();
+    expect(tabSelectionne(/Documents/)).toBe('true');
+
+    fireEvent.click(screen.getByText('precedent'));
+    expect(await screen.findByText('echeances status=aucun')).toBeTruthy();
+    expect(tabSelectionne(/Échéances/)).toBe('true');
+
+    fireEvent.click(screen.getByText('suivant'));
+    expect(await screen.findByText('onglet-documents')).toBeTruthy();
+  });
+
+  it('repart de l’onglet par défaut sur un autre bail sans tab', async () => {
+    monterAvecNav(`${BASE}/bail-1?tab=documents`);
+    await screen.findByText('onglet-documents', undefined, { timeout: 8000 });
+
+    fireEvent.click(screen.getByText('autre-bail'));
+    expect(await screen.findByText('echeances status=aucun')).toBeTruthy();
+    expect(tabSelectionne(/Échéances/)).toBe('true');
+  });
+
+  it('un onglet inconnu dans l’URL retombe sur l’onglet par défaut', async () => {
+    monterAvecNav(`${BASE}/bail-1?tab=n-importe-quoi`);
+    expect(await screen.findByText('echeances status=aucun', undefined, { timeout: 8000 })).toBeTruthy();
+  });
+
+  it('un appui sur l’onglet déjà affiché (absent de l’URL) garde les filtres reçus par lien', async () => {
+    monterAvecNav(`${BASE}/bail-1?status=OVERDUE`);
+    await screen.findByText('echeances status=OVERDUE', undefined, { timeout: 8000 });
+
+    fireEvent.mouseDown(screen.getByText('Échéances'));
+    fireEvent.click(screen.getByRole('tab', { name: /Échéances/ }));
+
+    expect(screen.getByText('echeances status=OVERDUE')).toBeTruthy();
+    expect(screen.getByTestId('url').textContent).toContain('status=OVERDUE');
   });
 });
 

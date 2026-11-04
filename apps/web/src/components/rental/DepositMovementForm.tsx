@@ -9,6 +9,7 @@ import {
   listPayments
 } from '../../services/rental-service';
 import { libelleMethodePaiement } from '../../lib/rental-payment-status';
+import { formatMontantLocatif } from '../../lib/rental-labels';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
@@ -199,12 +200,8 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
               >
                 {payments.map(payment => (
                   <Select.Option key={payment.id} value={payment.id}>
-                    {new Intl.NumberFormat(activeLocale(), {
-                      style: 'currency',
-                      currency: payment.currency === 'FCFA' ? 'XOF' : payment.currency
-                    }).format(payment.amount)}{' '}
-                    - {libelleMethodePaiement(payment.method)} -{' '}
-                    {new Date(payment.created_at).toLocaleDateString(activeLocale())}
+                    {formatMontantLocatif(payment.amount, payment.currency)} - {libelleMethodePaiement(payment.method)}{' '}
+                    - {new Date(payment.created_at).toLocaleDateString(activeLocale())}
                   </Select.Option>
                 ))}
               </Select>

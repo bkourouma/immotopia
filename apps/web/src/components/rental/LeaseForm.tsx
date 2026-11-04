@@ -13,6 +13,7 @@ import { PropertyType } from '../../types/property-types';
 import { listContacts, CrmContact } from '../../services/crm-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
+import { deviseAffichee } from '../../lib/rental-labels';
 import { t } from '../../i18n/t';
 import { formatsSaisieDate } from './lease-date-formats';
 
@@ -637,6 +638,10 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
             extra={lease ? t("Le jour d'échéance et la devise se fixent à la création du bail.") : undefined}
           >
             <Select disabled={!!lease} onChange={value => handleChange('currency', value)}>
+              {/* Devise du bail enregistrée « CFA » ou « XOF » : valeur inchangée, affichage « FCFA ». */}
+              {lease?.currency && !['FCFA', 'EUR', 'USD'].includes(lease.currency) && (
+                <Select.Option value={lease.currency}>{deviseAffichee(lease.currency)}</Select.Option>
+              )}
               <Select.Option value="FCFA">FCFA</Select.Option>
               <Select.Option value="EUR">EUR</Select.Option>
               <Select.Option value="USD">USD</Select.Option>

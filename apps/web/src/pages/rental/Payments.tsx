@@ -28,6 +28,7 @@ import {
   PageHeader,
   StateBlock,
   StatusTag,
+  statusLabel,
   MoneyValue,
   DataView,
   DataCard,
@@ -267,10 +268,21 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       }
     },
     { title: t('Méthode'), key: 'methode', render: (_, p) => METHOD_LABELS[p.method] || p.method },
-    { title: t('Statut'), key: 'statut', render: (_, p) => <StatusTag status={p.status} /> },
+    {
+      title: t('Statut'),
+      key: 'statut',
+      // Le libellé traduit du statut, rien d'autre (BUG-2026-11-04-061).
+      exportValue: p => statusLabel(p.status) ?? p.status,
+      render: (_, p) => <StatusTag status={p.status} />
+    },
     {
       title: t('En ligne'),
       key: 'en-ligne',
+      // Sans cette valeur, l'export lisait le texte rendu de la cellule : les
+      // deux badges mis bout à bout, « En ligneRéussi » (BUG-2026-11-04-061).
+      // La colonne dit seulement si le paiement est passé par le paiement en
+      // ligne ; son statut est celui de la colonne « Statut ».
+      exportValue: p => (p.onlineCheckout ? t('Oui') : t('Non')),
       render: (_, p) =>
         p.onlineCheckout ? (
           <OnlineCheckoutStatus

@@ -1,3 +1,5 @@
+import { formatMoney } from '../components/primitives/MoneyValue';
+
 /**
  * Noms affichés du module locatif — une seule règle pour trois écrans.
  *
@@ -38,8 +40,21 @@ interface PersonneNommable {
  * que soit la façon dont la ligne l'a enregistré (« CFA », « XOF », « F CFA »).
  */
 export function deviseAffichee(devise?: string | null): string {
-  const code = (devise ?? '').replace(/s/g, '').toUpperCase();
+  const code = (devise ?? '').replace(/\s/g, '').toUpperCase();
   return !code || code === 'CFA' || code === 'XOF' || code === 'FCFA' ? 'FCFA' : (devise as string);
+}
+
+/**
+ * Montant exact d'un écran locatif : « 1 500,50 FCFA », « 150 000 FCFA ».
+ * Deux décimales quand il y en a (jamais d'arrondi à l'entier), « FCFA » pour
+ * le franc CFA quel que soit son code (CFA, F CFA, XOF) — par l'utilitaire commun.
+ */
+export function formatMontantLocatif(amount: number | string | null | undefined, devise?: string | null): string {
+  const montant = Number(amount);
+  return formatMoney(montant, {
+    currency: deviseAffichee(devise),
+    fractionDigits: Number.isFinite(montant) && !Number.isInteger(montant) ? 2 : 0
+  });
 }
 
 /** Code ISO pour `Intl.NumberFormat` : le franc CFA d'Afrique de l'Ouest est XOF. */

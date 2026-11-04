@@ -15,7 +15,13 @@ import {
 import { saveBlob } from '../../utils/save-blob';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { Table } from '../primitives';
-import { nomDuBien, nomDeLaPersonne, ABSENT, libellePeriodeEcheance } from '../../lib/rental-labels';
+import {
+  nomDuBien,
+  nomDeLaPersonne,
+  ABSENT,
+  libellePeriodeEcheance,
+  formatMontantLocatif
+} from '../../lib/rental-labels';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
 
@@ -205,23 +211,25 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     });
   };
 
-  const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency
-    }).format(amount);
-  };
+  // Montant exact (BUG-2026-11-04-055) : deux décimales quand il y en a, jamais arrondi
+  // à l'entier ; « FCFA » par l'utilitaire commun.
+  const formatCurrency = (amount: number, currency: string = 'FCFA') => formatMontantLocatif(amount, currency);
 
   const columns: ColumnsType<RentalPaymentDeclaration> = [
     {
       title: t('Date de déclaration'),
       key: 'created_at',
+      // L'écran écrit la date en toutes lettres ; l'export confie la date au
+      // module d'export, qui l'écrit comme les autres exports (04/11/2026) et
+      // en fait une vraie date dans Excel (BUG-2026-11-04-062).
+      exportValue: record => new Date(record.created_at),
       render: (_, record) => formatDate(record.created_at),
       sorter: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     },
     {
       title: t('Date de paiement'),
       key: 'payment_date',
+      exportValue: record => new Date(record.payment_date),
       render: (_, record) => formatDate(record.payment_date)
     },
     {
@@ -250,6 +258,13 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     {
       title: t('Échéance'),
       key: 'installment',
+      // Une échéance absente s'affiche « - » à l'écran mais s'exporte VIDE : le
+      // tiret serait écrit « '- » par la neutralisation des formules
+      // (BUG-2026-11-04-062).
+      exportValue: record =>
+        record.installment
+          ? libellePeriodeEcheance(record.installment.period_month, record.installment.period_year)
+          : null,
       render: (_, record) => {
         if (record.installment) {
           return libellePeriodeEcheance(record.installment.period_month, record.installment.period_year);
@@ -272,6 +287,8 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     {
       title: t('Référence'),
       key: 'reference',
+      // Vide à l'export quand il n'y a pas de référence (voir « Échéance »).
+      exportValue: record => record.reference || null,
       render: (_, record) => record.reference || '-'
     },
     {

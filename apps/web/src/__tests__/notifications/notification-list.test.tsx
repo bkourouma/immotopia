@@ -85,3 +85,23 @@ describe('NotificationList', () => {
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ link: '/tenant/t/rental/leases' }));
   });
 });
+
+describe('NotificationList — clés de ligne (BUG-2026-11-04-047)', () => {
+  it('plusieurs notifications du même type ne produisent aucun avertissement de clé dupliquée', () => {
+    const erreurs = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    render(
+      <NotificationList
+        items={[
+          item({ id: 'n1', key: 'PAYMENT_ALLOCATED_TENANT', title: 'Premier' }),
+          item({ id: 'n2', key: 'PAYMENT_ALLOCATED_TENANT', title: 'Deuxième' })
+        ]}
+        onMarkRead={vi.fn()}
+      />
+    );
+    expect(screen.getByText('Premier')).toBeInTheDocument();
+    expect(screen.getByText('Deuxième')).toBeInTheDocument();
+    const doublons = erreurs.mock.calls.filter(appel => String(appel[0]).includes('same key'));
+    erreurs.mockRestore();
+    expect(doublons).toHaveLength(0);
+  });
+});

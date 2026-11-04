@@ -16,6 +16,7 @@ import {
 import { DepositMovementForm } from '../../components/rental/DepositMovementForm';
 import { Table } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { formatMontantLocatif } from '../../lib/rental-labels';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
@@ -116,12 +117,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
     return new Date(dateString).toLocaleDateString(activeLocale());
   };
 
-  const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number, currency: string = 'FCFA') => formatMontantLocatif(amount, currency);
 
   const getMovementTypeLabel = (type: string) => {
     const typeMap: Record<string, string> = {

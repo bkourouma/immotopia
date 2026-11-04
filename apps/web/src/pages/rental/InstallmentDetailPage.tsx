@@ -5,7 +5,8 @@ import { ArrowLeftOutlined, DollarOutlined, CalendarOutlined } from '@ant-design
 import { getInstallment, RentalInstallment, RentalInstallmentStatus } from '../../services/rental-service';
 import { InstallmentPaymentLinksPanel } from '../../components/rental/InstallmentPaymentLinksPanel';
 import { t } from '../../i18n/t';
-import { libellePeriodeEcheance } from '../../lib/rental-labels';
+import { formatMoney } from '../../components/primitives/MoneyValue';
+import { deviseAffichee, libellePeriodeEcheance } from '../../lib/rental-labels';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -58,12 +59,8 @@ export const InstallmentDetailPage: React.FC = () => {
     return new Date(dateString).toLocaleDateString(activeLocale());
   };
 
-  const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency
-    }).format(amount);
-  };
+  // Utilitaire commun : le franc CFA s'écrit « FCFA », jamais « F CFA » ni « XOF » (H31).
+  const formatCurrency = (amount: number, currency: string = 'FCFA') => formatMoney(amount, { currency });
 
   const calculateTotalDue = (inst: RentalInstallment) => {
     return (
@@ -175,7 +172,8 @@ export const InstallmentDetailPage: React.FC = () => {
                 {installment.paid_at && (
                   <Descriptions.Item label={t('Date de paiement')}>{formatDate(installment.paid_at)}</Descriptions.Item>
                 )}
-                <Descriptions.Item label={t('Devise')}>{installment.currency}</Descriptions.Item>
+                {/* Le code enregistré (« XOF », « CFA ») ne s'affiche jamais tel quel : « FCFA ». */}
+                <Descriptions.Item label={t('Devise')}>{deviseAffichee(installment.currency)}</Descriptions.Item>
                 <Descriptions.Item label={t('Date de création')}>
                   {formatDate(installment.created_at)}
                 </Descriptions.Item>

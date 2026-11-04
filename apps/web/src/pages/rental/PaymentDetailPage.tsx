@@ -36,7 +36,7 @@ import {
 import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm';
 import { OnlineCheckoutStatus } from '../../components/rental/OnlineCheckoutStatus';
 import { t } from '../../i18n/t';
-import { nomDeLaPersonne, codeDeviseIntl, libellePeriodeEcheance } from '../../lib/rental-labels';
+import { nomDeLaPersonne, formatMontantLocatif, libellePeriodeEcheance } from '../../lib/rental-labels';
 import {
   libelleMethodePaiement,
   libelleOperateurMobileMoney,
@@ -147,12 +147,7 @@ export const PaymentDetailPage: React.FC = () => {
     return new Date(dateString).toLocaleDateString(activeLocale());
   };
 
-  const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: codeDeviseIntl(currency)
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number, currency: string = 'FCFA') => formatMontantLocatif(amount, currency);
 
   const getDepositMovementTypeLabel = (type: RentalDepositMovementType | string) => {
     const labels: Record<string, string> = {

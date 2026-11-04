@@ -6,6 +6,7 @@ import { montantSaisiProps } from '../../utils/montant-saisi';
 import { LeaseSelectField } from './LeaseSelectField';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
+import { deviseAffichee } from '../../lib/rental-labels';
 
 /** Champs que le formulaire affiche toujours ; ceux de Mobile Money s'y ajoutent selon le moyen choisi. */
 const CHAMPS_AFFICHES = [
@@ -238,6 +239,10 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
         <Col xs={24} md={12}>
           <Form.Item label={t('Devise')} name="currency">
             <Select>
+              {/* Devise du bail enregistrée « CFA » ou « XOF » : valeur envoyée inchangée, affichage « FCFA ». */}
+              {defaultCurrency && !['FCFA', 'EUR', 'USD'].includes(defaultCurrency) && (
+                <Select.Option value={defaultCurrency}>{deviseAffichee(defaultCurrency)}</Select.Option>
+              )}
               <Select.Option value="FCFA">FCFA</Select.Option>
               <Select.Option value="EUR">EUR</Select.Option>
               <Select.Option value="USD">USD</Select.Option>

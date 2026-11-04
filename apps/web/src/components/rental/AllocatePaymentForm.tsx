@@ -11,7 +11,7 @@ import { Checkbox } from '../ui/checkbox';
 import { Input } from '../ui/input';
 import { formatterMontant, parserMontant } from '../../utils/montant-saisi';
 import { t } from '../../i18n/t';
-import { codeDeviseIntl, libellePeriodeEcheance } from '../../lib/rental-labels';
+import { formatMontantLocatif, libellePeriodeEcheance } from '../../lib/rental-labels';
 
 import { activeLocale } from '../../i18n/format';
 interface AllocatePaymentFormProps {
@@ -129,12 +129,7 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
     return totalDue - Number(installment.amount_paid || 0);
   };
 
-  const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: codeDeviseIntl(currency)
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number, currency: string = 'FCFA') => formatMontantLocatif(amount, currency);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString(activeLocale());

@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons';
 import { getLease, RentalLease, RentalLeaseStatus, updateLeaseStatus } from '../../services/rental-service';
 import { getContact } from '../../services/crm-service';
+import { formatMontantLocatif } from '../../lib/rental-labels';
 import { PropertyTransactionMode } from '../../types/property-types';
 import { Installments } from './Installments';
 import { Payments } from './Payments';
@@ -56,15 +57,18 @@ export const LeaseDetailPage: React.FC = () => {
   // L'onglet principal actif vit dans l'URL (`tab`) : il survit au rechargement
   // (BUG-2026-11-04-041). Il n'est pas dans PARAMS_PROPRES_A_UN_ONGLET, donc la
   // remise à zéro des paramètres d'un onglet ne le retire pas.
-  const handleTabChange = (cle: string) => {
-    // Appui sur l'onglet déjà actif : ses filtres (ex. `onglet=declarations`) restent.
-    if (searchParams.get(ONGLET_PRINCIPAL_PARAM) === cle) return;
+  // L'onglet affiché est DÉRIVÉ de l'URL (liens `?tab=documents`, Précédent,
+  // Suivant, autre bail sans `tab`) : aucun état local à resynchroniser.
+  const handleTabChange = (cle: string, affiche: string) => {
+    // Appui sur l'onglet déjà affiché (même absent de l'URL) : ses filtres
+    // reçus par lien (ex. `status=OVERDUE`, `onglet=declarations`) restent.
+    if (affiche === cle) return;
     const next = new URLSearchParams(searchParams);
     PARAMS_PROPRES_A_UN_ONGLET.forEach(key => next.delete(key));
     next.set(ONGLET_PRINCIPAL_PARAM, cle);
     setSearchParams(next, { replace: true });
   };
-  const [activeTab, setActiveTab] = useState<string | null>(() => searchParams.get(ONGLET_PRINCIPAL_PARAM));
+  const activeTab = searchParams.get(ONGLET_PRINCIPAL_PARAM);
   const [lease, setLease] = useState<RentalLease | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -176,12 +180,7 @@ export const LeaseDetailPage: React.FC = () => {
     return new Date(dateString).toLocaleDateString(activeLocale());
   };
 
-  const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number, currency: string = 'FCFA') => formatMontantLocatif(amount, currency);
 
   const formatPenaltyRate = (rate: number | string | null | undefined): string => {
     // Convert to number if it's a string or handle null/undefined
@@ -642,16 +641,7 @@ export const LeaseDetailPage: React.FC = () => {
             const currentTab = tabItems.some(item => item.key === activeTab) ? (activeTab as string) : defaultTab;
             const itemsWithPress = tabItems.map(item => ({
               ...item,
-              label: (
-                <span
-                  onMouseDown={() => {
-                    setActiveTab(item.key);
-                    handleTabChange(item.key);
-                  }}
-                >
-                  {item.label}
-                </span>
-              )
+              label: <span onMouseDown={() => handleTabChange(item.key, currentTab)}>{item.label}</span>
             }));
 
             return (
@@ -659,10 +649,7 @@ export const LeaseDetailPage: React.FC = () => {
                 activeKey={currentTab}
                 type="line"
                 size="large"
-                onChange={key => {
-                  setActiveTab(key);
-                  handleTabChange(key);
-                }}
+                onChange={key => handleTabChange(key, currentTab)}
                 items={itemsWithPress}
               />
             );
