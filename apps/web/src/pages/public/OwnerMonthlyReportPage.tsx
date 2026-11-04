@@ -1,8 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Button, Card, Descriptions, Result, Space, Spin, Tag, Typography } from 'antd';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { Button, Card, Descriptions, Pagination, Result, Space, Spin, Tag, Typography } from 'antd';
 import { fetchPublicOwnerMonthlyReport } from '../../services/patrimoine-service';
 import type { OwnerMonthlyReportDto } from '../../types/patrimoine-types';
-import { MoneyValue, Table } from '../../components/primitives';
+import { ListSearch, MoneyValue, StateBlock, Table } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
@@ -71,13 +73,128 @@ const PRINT_CSS = `
 }
 `;
 
+type ReportProperty = OwnerMonthlyReportDto['properties'][number];
+
+/** À partir de ce nombre de biens, la recherche et la pagination apparaissent ; en deçà, rendu inchangé. */
+const SEARCH_THRESHOLD = 5;
+const PROPERTIES_PER_PAGE = 10;
+
+// Accesseurs stables (hors composant) : le filtrage reste mémoïsé.
+const TEXTE_RECHERCHE = [(p: ReportProperty) => p.reference, (p: ReportProperty) => p.title];
+const propertyKey = (property: ReportProperty) => `${property.reference}-${property.title}`;
+
 const Money: React.FC<{ value: number; currency: string; signed?: boolean }> = ({ value, currency, signed }) => (
   <bdi dir="ltr">
     <MoneyValue value={value} currency={currency} signed={signed} />
   </bdi>
 );
 
-const ReportView: React.FC<{ report: OwnerMonthlyReportDto }> = ({ report }) => {
+const PropertyLines: React.FC<{ property: ReportProperty; currency: string }> = ({ property, currency }) => (
+  <Card title={`${property.reference} — ${property.title}`}>
+    <Table
+      exportFilename={`${property.reference} — ${property.title}`}
+      scroll={{ x: 'max-content' }}
+      rowKey="key"
+      size="small"
+      pagination={false}
+      dataSource={property.lines.map((line, index) => ({ ...line, key: `${index}` }))}
+      columns={[
+        { title: t('Libellé'), dataIndex: 'label' },
+        {
+          title: t('Type'),
+          dataIndex: 'type',
+          render: (value: string) => <Tag>{lineTypeLabel(value)}</Tag>
+        },
+        {
+          title: t('Montant'),
+          dataIndex: 'amount',
+          align: 'end' as const,
+          render: (value: number) => <Money value={value} currency={currency} />
+        }
+      ]}
+      summary={() => (
+        <Table.Summary.Row>
+          <Table.Summary.Cell index={0} colSpan={2}>
+            <strong>{t('Sous-total')}</strong>
+          </Table.Summary.Cell>
+          <Table.Summary.Cell index={2} align="end">
+            <strong>
+              <Money value={property.subtotal} currency={currency} />
+            </strong>
+          </Table.Summary.Cell>
+        </Table.Summary.Row>
+      )}
+    />
+  </Card>
+);
+
+interface PropertiesProps {
+  properties: ReportProperty[];
+  currency: string;
+  /** Impression en cours : tous les biens, sans barre ni pagination. */
+  printAll: boolean;
+}
+
+/** Plus de 5 biens : recherche locale (référence, titre) et cartes par 10. Rien ne part au serveur. */
+const SearchableProperties: React.FC<PropertiesProps> = ({ properties, currency, printAll }) => {
+  const local = useLocalListSearch<ReportProperty>(properties, {
+    ariaLabel: t('Rechercher dans les biens'),
+    defaultPageSize: PROPERTIES_PER_PAGE,
+    criteria: [{ key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Référence, titre du bien…') }],
+    text: TEXTE_RECHERCHE
+  });
+
+  if (printAll) {
+    return (
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {properties.map(property => (
+          <PropertyLines key={propertyKey(property)} property={property} currency={currency} />
+        ))}
+      </Space>
+    );
+  }
+
+  return (
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <div className="owner-report-no-print">
+        <ListSearch {...local.searchProps} />
+      </div>
+      {local.total === 0 ? (
+        <StateBlock
+          variant="no-results"
+          actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
+        />
+      ) : (
+        local.pageItems.map(property => (
+          <PropertyLines key={propertyKey(property)} property={property} currency={currency} />
+        ))
+      )}
+      <div className="owner-report-no-print" style={{ textAlign: 'center' }}>
+        <Pagination
+          current={local.page}
+          pageSize={local.pageSize}
+          total={local.total}
+          showSizeChanger={false}
+          hideOnSinglePage
+          onChange={page => local.setPage(page)}
+        />
+      </div>
+    </Space>
+  );
+};
+
+const ReportProperties: React.FC<PropertiesProps> = props =>
+  props.properties.length > SEARCH_THRESHOLD ? (
+    <SearchableProperties {...props} />
+  ) : (
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      {props.properties.map(property => (
+        <PropertyLines key={propertyKey(property)} property={property} currency={props.currency} />
+      ))}
+    </Space>
+  );
+
+const ReportView: React.FC<{ report: OwnerMonthlyReportDto; printAll: boolean }> = ({ report, printAll }) => {
   const { totals, currency } = report;
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -129,44 +246,7 @@ const ReportView: React.FC<{ report: OwnerMonthlyReportDto }> = ({ report }) => 
         </Descriptions>
       </Card>
 
-      {report.properties.map(property => (
-        <Card key={`${property.reference}-${property.title}`} title={`${property.reference} — ${property.title}`}>
-          <Table
-            exportFilename={`${property.reference} — ${property.title}`}
-            scroll={{ x: 'max-content' }}
-            rowKey="key"
-            size="small"
-            pagination={false}
-            dataSource={property.lines.map((line, index) => ({ ...line, key: `${index}` }))}
-            columns={[
-              { title: t('Libellé'), dataIndex: 'label' },
-              {
-                title: t('Type'),
-                dataIndex: 'type',
-                render: (value: string) => <Tag>{lineTypeLabel(value)}</Tag>
-              },
-              {
-                title: t('Montant'),
-                dataIndex: 'amount',
-                align: 'end' as const,
-                render: (value: number) => <Money value={value} currency={currency} />
-              }
-            ]}
-            summary={() => (
-              <Table.Summary.Row>
-                <Table.Summary.Cell index={0} colSpan={2}>
-                  <strong>{t('Sous-total')}</strong>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={2} align="end">
-                  <strong>
-                    <Money value={property.subtotal} currency={currency} />
-                  </strong>
-                </Table.Summary.Cell>
-              </Table.Summary.Row>
-            )}
-          />
-        </Card>
-      ))}
+      <ReportProperties properties={report.properties} currency={currency} printAll={printAll} />
 
       <Text type="secondary">
         {t('Ce lien expire le {{date}}.', { date: new Date(report.expiresAt).toLocaleString(activeLocale()) })}
@@ -183,6 +263,8 @@ const ReportView: React.FC<{ report: OwnerMonthlyReportDto }> = ({ report }) => 
  */
 export const OwnerMonthlyReportPage: React.FC = () => {
   const [view, setView] = useState<ViewState>({ kind: 'loading' });
+  // Impression : le temps de l'impression, la page rend TOUS les biens (sans filtre ni pagination).
+  const [printAll, setPrintAll] = useState(false);
   // Le jeton survit au double montage de React.StrictMode : le fragment n'est lu qu'une fois.
   const tokenRef = useRef<string | null | undefined>(undefined);
 
@@ -243,6 +325,51 @@ export const OwnerMonthlyReportPage: React.FC = () => {
     };
   }, []);
 
+  // Impression : Ctrl+P (beforeprint) comme le bouton passent par le même rendu complet, rendu
+  // de façon synchrone (flushSync) avant que le navigateur prenne son instantané ; afterprint
+  // rend l'affichage d'avant (page, filtre et onglets sont tenus par des états qui survivent).
+  const printAllRef = useRef(false);
+  const enterPrintMode = useCallback(() => {
+    if (printAllRef.current) return;
+    printAllRef.current = true;
+    flushSync(() => setPrintAll(true));
+  }, []);
+  const leavePrintMode = useCallback(() => {
+    if (!printAllRef.current) return;
+    printAllRef.current = false;
+    setPrintAll(false);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('beforeprint', enterPrintMode);
+    window.addEventListener('afterprint', leavePrintMode);
+    // Safari n'émet pas toujours « afterprint » : la requête média « print » prévient aussi de la sortie.
+    const mql = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
+    const onPrintMediaChange = (event: { matches: boolean }) => {
+      if (event.matches) enterPrintMode();
+      else leavePrintMode();
+    };
+    if (mql) {
+      if (typeof mql.addEventListener === 'function') mql.addEventListener('change', onPrintMediaChange);
+      else if (typeof mql.addListener === 'function') mql.addListener(onPrintMediaChange);
+    }
+    return () => {
+      window.removeEventListener('beforeprint', enterPrintMode);
+      window.removeEventListener('afterprint', leavePrintMode);
+      if (mql) {
+        if (typeof mql.removeEventListener === 'function') mql.removeEventListener('change', onPrintMediaChange);
+        else if (typeof mql.removeListener === 'function') mql.removeListener(onPrintMediaChange);
+      }
+    };
+  }, [enterPrintMode, leavePrintMode]);
+
+  const handlePrint = () => {
+    enterPrintMode();
+    window.print();
+    // Un navigateur sans l'événement « afterprint » ne préviendrait jamais : retour au mode normal.
+    if (!('onafterprint' in window)) leavePrintMode();
+  };
+
   return (
     <div
       className="owner-report-page"
@@ -270,11 +397,11 @@ export const OwnerMonthlyReportPage: React.FC = () => {
         {view.kind === 'ok' ? (
           <>
             <div className="owner-report-no-print" style={{ textAlign: 'end', marginBlockEnd: 16 }}>
-              <Button type="primary" onClick={() => window.print()}>
+              <Button type="primary" onClick={handlePrint}>
                 {t('Imprimer / enregistrer en PDF')}
               </Button>
             </div>
-            <ReportView report={view.report} />
+            <ReportView report={view.report} printAll={printAll} />
           </>
         ) : null}
       </div>

@@ -209,6 +209,27 @@ export interface TenantWorkProgramsResponse {
 }
 
 /**
+ * Filtres de la liste des programmes de travaux d'une agence. Les noms sont
+ * ceux de l'API ; une valeur vide n'est pas envoyée.
+ */
+export interface TenantWorkProgramsFilters {
+  /** Un ou plusieurs statuts séparés par des virgules (`PLANNED,IN_PROGRESS`). */
+  status?: string;
+  upcoming?: boolean;
+  /** Recherche libre : titre du programme, titre et référence du bien. */
+  search?: string;
+  propertyId?: string;
+  /** Date prévue, bornes incluses (aaaa-mm-jj). */
+  plannedFrom?: string;
+  plannedTo?: string;
+  /** Coût estimé, bornes incluses. */
+  minCost?: string | number;
+  maxCost?: string | number;
+  page?: number;
+  limit?: number;
+}
+
+/**
  * Tous les programmes de travaux d'une agence, en UNE requête (§8.4).
  *
  * Remplace un N+1 que la spécification chiffre : les deux écrans Patrimoine
@@ -222,7 +243,7 @@ export interface TenantWorkProgramsResponse {
  */
 export async function listTenantWorkPrograms(
   tenantId: string,
-  filtres?: { status?: string; upcoming?: boolean; page?: number; limit?: number }
+  filtres?: TenantWorkProgramsFilters
 ): Promise<TenantWorkProgramsResponse> {
   const params = new URLSearchParams();
   for (const [cle, valeur] of Object.entries(filtres ?? {})) {
@@ -261,9 +282,35 @@ export async function deleteWorkProgram(tenantId: string, propertyId: string, pr
   await apiClient.delete(`/tenants/${tenantId}/properties/${propertyId}/work-programs/${programId}`);
 }
 
-export async function listOwnerStatements(tenantId: string): Promise<OwnerStatement[]> {
-  const response = await apiClient.get<ApiResponse<OwnerStatement[]>>(`/tenants/${tenantId}/owner-statements`);
-  return response.data.data;
+/** Une page de relevés propriétaire, avec le total filtré et le nombre de relevés de l'ancien calcul non payés. */
+export interface OwnerStatementsPageResult {
+  items: OwnerStatement[];
+  total: number;
+  /** Toute l'agence (hors critères) : relevés de l'ancien calcul qui ne sont pas payés. */
+  legacyUnpaidCount: number;
+}
+
+/**
+ * Relevés propriétaire filtrés et paginés par le serveur. `params` : critères
+ * de recherche + `page` + `limit` (sans l'un des deux, l'API renvoie la liste
+ * entière et ni `pagination` ni `legacyUnpaidCount`).
+ */
+export async function listOwnerStatementsPage(
+  tenantId: string,
+  params: Record<string, string | number> = {}
+): Promise<OwnerStatementsPageResult> {
+  const response = await apiClient.get<
+    ApiResponse<OwnerStatement[]> & {
+      pagination?: { total?: number };
+      legacyUnpaidCount?: number;
+    }
+  >(`/tenants/${tenantId}/owner-statements`, { params });
+  const items = response.data.data ?? [];
+  return {
+    items,
+    total: response.data.pagination?.total ?? items.length,
+    legacyUnpaidCount: response.data.legacyUnpaidCount ?? 0
+  };
 }
 
 export async function createOwnerStatement(tenantId: string, payload: Record<string, unknown>) {

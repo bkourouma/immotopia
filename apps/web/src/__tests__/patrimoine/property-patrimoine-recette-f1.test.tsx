@@ -4,6 +4,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { PropertyPatrimoineTab } from '../../components/patrimoine/PropertyPatrimoineTab';
 import { queryKey } from '../../lib/query-keys';
 import * as patrimoineService from '../../services/patrimoine-service';
@@ -48,9 +49,10 @@ vi.mock('../../services/treasury-service', () => ({
   listTreasuryAccounts: vi.fn(async () => [])
 }));
 
-vi.mock('../../components/patrimoine/ValuationHistory', () => ({ ValuationHistory: () => null }));
-vi.mock('../../components/patrimoine/ExpenseTracker', () => ({ ExpenseTracker: () => null }));
-vi.mock('../../components/patrimoine/LoanWidget', () => ({ LoanWidget: () => null }));
+// Bureau : la barre de recherche des tableaux s'affiche en ligne.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
 vi.mock('../../components/patrimoine/YieldProjectionChart', () => ({ YieldProjectionChart: () => null }));
 vi.mock('../../components/patrimoine/WorkProgramTimeline', () => ({ WorkProgramTimeline: () => null }));
 vi.mock('../../components/patrimoine/YieldCalculator', () => ({ YieldCalculator: () => null }));
@@ -111,13 +113,15 @@ const ProfilObserver: React.FC<{ fetchProfile: () => Promise<unknown> }> = ({ fe
   return null;
 };
 
-function mount(fetchProfile: () => Promise<unknown> = async () => ({})) {
+function mount(initial: string, fetchProfile: () => Promise<unknown> = async () => ({})) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
-        <ProfilObserver fetchProfile={fetchProfile} />
-        <PropertyPatrimoineTab tenantId="tenant-1" propertyId="property-1" />
+        <MemoryRouter initialEntries={[initial]}>
+          <ProfilObserver fetchProfile={fetchProfile} />
+          <PropertyPatrimoineTab tenantId="tenant-1" propertyId="property-1" />
+        </MemoryRouter>
       </AntApp>
     </QueryClientProvider>
   );
@@ -133,9 +137,9 @@ describe('PropertyPatrimoineTab — recette F1', () => {
     mockLoadAll();
     vi.mocked(patrimoineService.deleteValuation).mockResolvedValue(undefined as never);
     const fetchProfile = vi.fn(async () => ({ marketValue: 100 }));
-    mount(fetchProfile);
+    mount('/biens/property-1?rubrique=valorisations', fetchProfile);
 
-    const titre = await screen.findByText('Gérer les valorisations');
+    const titre = await screen.findByText('Gérer les valorisations', undefined, { timeout: 8000 });
     const carte = titre.closest('.ant-card') as HTMLElement;
     await waitFor(() => expect(fetchProfile).toHaveBeenCalledTimes(1));
     await userEvent.click(await within(carte).findByRole('button', { name: 'Supprimer' }));
@@ -145,11 +149,30 @@ describe('PropertyPatrimoineTab — recette F1', () => {
     await waitFor(() => expect(fetchProfile).toHaveBeenCalledTimes(2));
   });
 
+  it('marque le rendement comme périmé après une valorisation : il se recharge au retour sur la synthèse', async () => {
+    mockLoadAll();
+    vi.mocked(patrimoineService.deleteValuation).mockResolvedValue(undefined as never);
+    mount('/biens/property-1?rubrique=valorisations');
+
+    const titre = await screen.findByText('Gérer les valorisations', undefined, { timeout: 8000 });
+    const carte = titre.closest('.ant-card') as HTMLElement;
+    // Le rendement n'est pas demandé tant que la synthèse n'est pas affichée.
+    expect(patrimoineService.getPropertyYield).not.toHaveBeenCalled();
+    await userEvent.click(await within(carte).findByRole('button', { name: 'Supprimer' }));
+    await userEvent.click(await screen.findByRole('button', { name: /ok/i }));
+    await waitFor(() => expect(patrimoineService.deleteValuation).toHaveBeenCalled());
+    await waitFor(() => expect(patrimoineService.listValuations).toHaveBeenCalledTimes(2));
+    expect(patrimoineService.getPropertyYield).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Synthèse' }));
+    await waitFor(() => expect(patrimoineService.getPropertyYield).toHaveBeenCalledTimes(1));
+  });
+
   it('exclut les dépenses capitalisées du total des charges de l’année', async () => {
     mockLoadAll([depense('charges', 400_000, false), depense('renovation', 5_000_000, true)]);
-    mount();
+    mount('/biens/property-1?rubrique=depenses');
 
-    const alerte = await screen.findByText(/Total des charges de l'année en cours/);
+    const alerte = await screen.findByText(/Total des charges de l'année en cours/, undefined, { timeout: 8000 });
     expect(alerte.textContent).toMatch(/400\D000/);
     expect(alerte.textContent).not.toMatch(/5\D400\D000/);
     expect(alerte.textContent).not.toMatch(/5\D000\D000/);

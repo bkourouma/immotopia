@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Input, Select, Space, Tag, Typography } from 'antd';
+import React, { useMemo, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Alert, Space, Tag, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { listAssets, type AssetClass, type AssetDto, type AssetStatus } from '../../services/patrimoine-assets-service';
 import { useAuth } from '../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
@@ -18,11 +18,41 @@ import { formatAmount, formatDay } from '../../components/patrimoine/actifs/asse
 import { ReliabilityBadge, StaleTag } from '../../components/patrimoine/actifs/ReliabilityBadge';
 import { AssetUsageBanner } from '../../components/patrimoine/AssetUsageBanner';
 import { ASSET_USAGE_QUERY_KEY } from '../../services/personal-space-service';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
-/** Liste des actifs du patrimoine, filtrable par classe, statut et recherche. */
+const STATUTS: readonly AssetStatus[] = ['ACTIVE', 'DISPOSED', 'ARCHIVED'];
+
+// Plafond côté API (LIST_ASSETS_HARD_LIMIT), tri createdAt décroissant : au-delà, les plus anciens sont tronqués.
+const PLAFOND_LISTE_API = 500;
+
+// Accesseurs stables (hors composant) : le filtrage local reste mémoïsé.
+// Champ libre : nom, bien lié, notes, et classe / statut tels qu'affichés.
+const TEXTE_RECHERCHE = [
+  (a: AssetDto) => a.name,
+  (a: AssetDto) => a.property?.internalReference,
+  (a: AssetDto) => a.property?.title,
+  (a: AssetDto) => a.notes,
+  (a: AssetDto) => assetClassLabel(a.assetClass),
+  (a: AssetDto) => assetStatusLabel(a.status)
+];
+// Valeur courante en FCFA ; un actif sans valeur convertible sort dès qu'un intervalle est posé.
+const valeurXof = (a: AssetDto): number | null =>
+  a.currentValue?.valueXof ?? (a.currentValue?.currency === 'XOF' ? a.currentValue.amount : null);
+const ACCESSEURS = {
+  classe: (a: AssetDto) => a.assetClass,
+  status: (a: AssetDto) => a.status,
+  valeur: valeurXof,
+  stale: (a: AssetDto) => a.stale
+};
+
+/**
+ * Liste des actifs du patrimoine, avec recherche multicritères locale (la liste arrive en entier).
+ * Le statut part encore à l'API : sans lui, le serveur exclut les actifs archivés.
+ */
 export const AssetsPage: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
@@ -30,19 +60,39 @@ export const AssetsPage: React.FC = () => {
   const { tenantMembership } = useAuth();
   const agence = tenantId || tenantMembership?.tenantId;
 
-  const [assetClass, setAssetClass] = useState<AssetClass | undefined>();
-  const [status, setStatus] = useState<AssetStatus | undefined>();
-  const [search, setSearch] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const filters = { assetClass, status, search: search.trim() || undefined };
-  const filtered = Boolean(assetClass || status || filters.search);
+  // Le statut conditionne la requête (l'API exclut les archivés quand il est absent) : on le lit
+  // dans l'URL avant d'avoir la liste, comme le fait le critère « Statut » de la barre.
+  const [urlParams] = useSearchParams();
+  const urlStatus = urlParams.get('status');
+  const status = STATUTS.find(value => value === urlStatus);
 
   const assetsQuery = useQuery({
-    queryKey: queryKey('patrimoine-assets', agence, filters),
-    queryFn: () => listAssets(agence as string, filters),
+    queryKey: queryKey('patrimoine-assets', agence, { status }),
+    queryFn: () => listAssets(agence as string, { status }),
     enabled: Boolean(agence),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
+  });
+
+  const items = useMemo(() => assetsQuery.data ?? [], [assetsQuery.data]);
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom, bien lié, référence, notes…') },
+    { key: 'classe', type: 'multiSelect', label: t('Classe'), primary: true, options: assetClassOptions() },
+    { key: 'status', type: 'select', label: t('Statut'), primary: true, options: assetStatusOptions() },
+    { key: 'valeur', type: 'numberRange', label: t('Valeur courante'), unit: 'FCFA' },
+    {
+      key: 'stale',
+      type: 'boolean',
+      label: t('Valeur à actualiser'),
+      help: t('Actifs dont la dernière valorisation est trop ancienne.')
+    }
+  ];
+  const local = useLocalListSearch<AssetDto>(items, {
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
   });
 
   const linkedPropertyIds = useLinkedPropertyIds(agence, drawerOpen);
@@ -58,7 +108,6 @@ export const AssetsPage: React.FC = () => {
   }
 
   const openDrawer = () => setDrawerOpen(true);
-  const rows = assetsQuery.data ?? [];
 
   return (
     <>
@@ -66,38 +115,18 @@ export const AssetsPage: React.FC = () => {
         title={t('Mes actifs')}
         subtitle={t('Tout ce qui compose votre patrimoine, toutes classes confondues')}
         primaryAction={{ label: t('Ajouter un actif'), icon: <PlusOutlined />, onClick: openDrawer }}
-        extra={
-          <Space wrap>
-            <Select
-              allowClear
-              placeholder={t('Classe')}
-              aria-label={t('Filtrer par classe')}
-              style={{ width: 240 }}
-              value={assetClass}
-              options={assetClassOptions()}
-              onChange={value => setAssetClass(value)}
-            />
-            <Select
-              allowClear
-              placeholder={t('Statut')}
-              aria-label={t('Filtrer par statut')}
-              style={{ width: 140 }}
-              value={status}
-              options={assetStatusOptions()}
-              onChange={value => setStatus(value)}
-            />
-            <Input.Search
-              allowClear
-              placeholder={t('Rechercher un actif')}
-              aria-label={t('Rechercher un actif')}
-              style={{ width: 220 }}
-              onSearch={value => setSearch(value)}
-            />
-          </Space>
-        }
       />
 
       <AssetUsageBanner tenantId={agence} />
+
+      {items.length >= PLAFOND_LISTE_API ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--space-4)' }}
+          title={t('Seuls les 500 actifs les plus récents sont affichés : affinez avec le statut.')}
+        />
+      ) : null}
 
       {assetsQuery.error ? (
         <StateBlock
@@ -106,22 +135,19 @@ export const AssetsPage: React.FC = () => {
         />
       ) : assetsQuery.isPending ? (
         <SkeletonList rows={5} aria-label={t('Actifs en cours de chargement')} />
-      ) : rows.length === 0 ? (
-        filtered ? (
-          <StateBlock variant="no-results" description={t('Aucun actif ne correspond à ces filtres.')} />
-        ) : (
-          <StateBlock
-            variant="empty"
-            title={t('Commencez par ajouter votre premier actif')}
-            actions={[{ label: t('Ajouter un actif'), onClick: openDrawer, primary: true }]}
-          />
-        )
+      ) : items.length === 0 && !local.isFiltered ? (
+        <StateBlock
+          variant="empty"
+          title={t('Commencez par ajouter votre premier actif')}
+          actions={[{ label: t('Ajouter un actif'), onClick: openDrawer, primary: true }]}
+        />
       ) : (
         <Table<AssetDto>
+          {...local.tableProps}
+          aria-label={t('Mes actifs')}
           exportFilename={t('Mes actifs')}
+          exportFetchAll={local.exportAll}
           rowKey="id"
-          dataSource={rows}
-          pagination={{ pageSize: 20, hideOnSinglePage: true }}
           scroll={{ x: 'max-content' }}
           columns={[
             {

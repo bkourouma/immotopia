@@ -1,24 +1,15 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Alert, Button, Card, Descriptions, Result, Space, Spin, Typography } from 'antd';
 import {
   downloadPublicExternalAccessDocument,
   fetchPublicExternalAccessView
 } from '../../services/external-access-service';
-import type { ExternalAccessViewDto, ExternalAccessViewProperty } from '../../types/external-access';
-import { MoneyValue, Table, statusLabel } from '../../components/primitives';
-import { accessSectionLabel, accessTypeLabel } from '../patrimoine/external-access/external-access-labels';
-import {
-  documentTypeLabel,
-  expenseCategoryLabel,
-  loanStatusLabel,
-  valuationMethodLabel
-} from '../../components/patrimoine/patrimoine-labels';
-import { legalFormLabel, fiscalCountryLabel } from '../../components/patrimoine/entities/tax-labels';
-import { propertyTypeLabel } from '../../components/copilot/copilot-labels';
-import type { AssetValuation, PropertyExpense, PropertyLoan } from '../../types/patrimoine-types';
-import type { FiscalCountry, HoldingEntityForm } from '../../types/patrimoine-entities-types';
-import { activeLocale, formatNumber, formatPercent } from '../../i18n/format';
+import type { ExternalAccessViewDto } from '../../types/external-access';
+import { accessTypeLabel } from '../patrimoine/external-access/external-access-labels';
 import { t } from '../../i18n/t';
+import { Money, formatDate } from './external-access-view/blocks';
+import { PropertiesSection } from './external-access-view/PropertiesSection';
 
 const { Title, Text } = Typography;
 
@@ -66,389 +57,6 @@ const PRINT_CSS = `
 }
 `;
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString(activeLocale());
-}
-
-/** Clé de ligne stable pour les tableaux dont les lignes n'ont pas d'identifiant propre. */
-function keyed<T extends object>(rows: T[]): Array<T & { rowKey: string }> {
-  return rows.map((row, index) => ({ ...row, rowKey: String(index) }));
-}
-
-function billingFrequencyLabel(frequency: string): string {
-  if (frequency === 'MONTHLY') return t('Mensuelle');
-  if (frequency === 'QUARTERLY') return t('Trimestrielle');
-  if (frequency === 'YEARLY' || frequency === 'ANNUAL') return t('Annuelle');
-  return frequency;
-}
-
-function fileSizeLabel(bytes: number | null): string {
-  if (bytes === null || bytes === undefined) return '—';
-  if (bytes >= 1_048_576) return `${formatNumber(bytes / 1_048_576, { maximumFractionDigits: 1 })} ${t('Mo')}`;
-  return `${formatNumber(Math.max(1, Math.round(bytes / 1024)))} ${t('Ko')}`;
-}
-
-/** Un montant est toujours lu de gauche à droite, même dans une interface arabe. */
-const Money: React.FC<{ value: number | null | undefined; currency: string; signed?: boolean }> = ({
-  value,
-  currency,
-  signed
-}) => (
-  <bdi dir="ltr">
-    <MoneyValue value={value} currency={currency} signed={signed} />
-  </bdi>
-);
-
-const Percent: React.FC<{ value: number | null | undefined; emptyLabel?: string }> = ({ value, emptyLabel }) =>
-  value === null || value === undefined ? <>{emptyLabel ?? '—'}</> : <bdi dir="ltr">{formatPercent(value, 2)}</bdi>;
-
-// --- Rubriques ------------------------------------------------------------------------
-
-const ValuationBlock: React.FC<{ data: NonNullable<ExternalAccessViewProperty['valuation']> }> = ({ data }) => (
-  <Card size="small" title={accessSectionLabel('VALUATIONS')}>
-    <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-      <Descriptions.Item label={t('Valeur estimée')}>
-        <Money value={data.estimatedValue} currency={data.currency} />
-      </Descriptions.Item>
-      <Descriptions.Item label={t('Date d’estimation')}>{formatDate(data.valuatedAt)}</Descriptions.Item>
-      <Descriptions.Item label={t('Coût d’acquisition')}>
-        <Money value={data.acquisitionCost} currency={data.currency} />
-      </Descriptions.Item>
-      <Descriptions.Item label={t('Plus-value latente')}>
-        <Money value={data.latentCapitalGain} currency={data.currency} signed />
-      </Descriptions.Item>
-    </Descriptions>
-    {data.history.length > 0 ? (
-      <Table
-        exportFilename={accessSectionLabel('VALUATIONS')}
-        size="small"
-        rowKey="rowKey"
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        dataSource={keyed(data.history)}
-        columns={[
-          { title: t('Date'), dataIndex: 'valuatedAt', render: (value: string) => formatDate(value) },
-          {
-            title: t('Méthode'),
-            dataIndex: 'method',
-            render: (value: string) => valuationMethodLabel(value as AssetValuation['method'])
-          },
-          {
-            title: t('Valeur estimée'),
-            dataIndex: 'estimatedValue',
-            align: 'end' as const,
-            render: (value: number) => <Money value={value} currency={data.currency} />
-          }
-        ]}
-      />
-    ) : null}
-  </Card>
-);
-
-const YieldBlock: React.FC<{ data: NonNullable<ExternalAccessViewProperty['yield']>; currency: string }> = ({
-  data,
-  currency
-}) => (
-  <Card size="small" title={accessSectionLabel('YIELD_RATIOS')}>
-    <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-      <Descriptions.Item label={t('Rendement brut')}>
-        <Percent value={data.grossYield} emptyLabel={t('Non valorisé')} />
-      </Descriptions.Item>
-      <Descriptions.Item label={t('Rendement net')}>
-        <Percent value={data.netYield} emptyLabel={t('Non valorisé')} />
-      </Descriptions.Item>
-      <Descriptions.Item label={t('Rendement net-net')}>
-        <Percent value={data.netNetYield} />
-      </Descriptions.Item>
-      <Descriptions.Item label={t('Loyers annuels')}>
-        <Money value={data.annualRent} currency={currency} />
-      </Descriptions.Item>
-      <Descriptions.Item label={t('Charges annuelles')}>
-        <Money value={data.annualExpenses} currency={currency} />
-      </Descriptions.Item>
-    </Descriptions>
-  </Card>
-);
-
-const LoansBlock: React.FC<{ loans: NonNullable<ExternalAccessViewProperty['loans']> }> = ({ loans }) => (
-  <Card size="small" title={accessSectionLabel('LOANS')}>
-    {loans.length === 0 ? (
-      <Text type="secondary">{t('Aucun emprunt.')}</Text>
-    ) : (
-      <Table
-        exportFilename={accessSectionLabel('LOANS')}
-        size="small"
-        rowKey="rowKey"
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        dataSource={keyed(loans)}
-        columns={[
-          { title: t('Prêteur'), dataIndex: 'lender' },
-          {
-            title: t('Capital emprunté'),
-            dataIndex: 'capitalAmount',
-            align: 'end' as const,
-            render: (value: number, row) => <Money value={value} currency={row.currency} />
-          },
-          {
-            title: t('Capital restant dû'),
-            dataIndex: 'remainingCapital',
-            align: 'end' as const,
-            render: (value: number, row) => <Money value={value} currency={row.currency} />
-          },
-          { title: t('Taux'), dataIndex: 'interestRate', render: (value: number) => <Percent value={value} /> },
-          {
-            title: t('Mensualité'),
-            dataIndex: 'monthlyPayment',
-            align: 'end' as const,
-            render: (value: number, row) => <Money value={value} currency={row.currency} />
-          },
-          { title: t('Début'), dataIndex: 'startDate', render: (value: string) => formatDate(value) },
-          { title: t('Fin'), dataIndex: 'endDate', render: (value: string | null) => formatDate(value) },
-          {
-            title: t('Statut'),
-            dataIndex: 'status',
-            render: (value: string) => loanStatusLabel(value as PropertyLoan['status'])
-          }
-        ]}
-      />
-    )}
-  </Card>
-);
-
-const ExpensesBlock: React.FC<{ data: NonNullable<ExternalAccessViewProperty['expenses']>; currency: string }> = ({
-  data,
-  currency
-}) => (
-  <Card size="small" title={accessSectionLabel('EXPENSES')}>
-    <div
-      style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        columnGap: 8,
-        rowGap: 2,
-        marginBlockEnd: 8,
-        minWidth: 0,
-        overflowWrap: 'anywhere'
-      }}
-    >
-      <Text type="secondary">{t('Total des 12 derniers mois')} :</Text>
-      <Money value={data.totalLast12Months} currency={currency} />
-    </div>
-    {data.items.length > 0 ? (
-      <Text type="secondary" style={{ display: 'block', marginBlockEnd: 8 }}>
-        {t('(détail sur 24 mois)')}
-      </Text>
-    ) : null}
-    {data.items.length > 0 ? (
-      <Table
-        exportFilename={accessSectionLabel('EXPENSES')}
-        size="small"
-        rowKey="rowKey"
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        dataSource={keyed(data.items)}
-        columns={[
-          { title: t('Date'), dataIndex: 'date', render: (value: string) => formatDate(value) },
-          {
-            title: t('Catégorie'),
-            dataIndex: 'category',
-            render: (value: string) => expenseCategoryLabel(value as PropertyExpense['category'])
-          },
-          {
-            title: t('Montant'),
-            dataIndex: 'amount',
-            align: 'end' as const,
-            render: (value: number) => <Money value={value} currency={currency} />
-          }
-        ]}
-      />
-    ) : null}
-  </Card>
-);
-
-const RentsBlock: React.FC<{ rents: NonNullable<ExternalAccessViewProperty['rents']>; currency: string }> = ({
-  rents,
-  currency
-}) => (
-  <Card size="small" title={accessSectionLabel('RENTS')}>
-    {rents.length === 0 ? (
-      <Text type="secondary">{t('Aucun bail.')}</Text>
-    ) : (
-      <Table
-        exportFilename={accessSectionLabel('RENTS')}
-        size="small"
-        rowKey="rowKey"
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        dataSource={keyed(rents)}
-        columns={[
-          { title: t('Statut'), dataIndex: 'status', render: (value: string) => statusLabel(value) ?? value },
-          { title: t('Début'), dataIndex: 'startDate', render: (value: string) => formatDate(value) },
-          { title: t('Fin'), dataIndex: 'endDate', render: (value: string | null) => formatDate(value) },
-          {
-            title: t('Loyer'),
-            dataIndex: 'rentAmount',
-            align: 'end' as const,
-            render: (value: number) => <Money value={value} currency={currency} />
-          },
-          {
-            title: t('Charges'),
-            dataIndex: 'chargesAmount',
-            align: 'end' as const,
-            render: (value: number | null) => <Money value={value} currency={currency} />
-          },
-          {
-            title: t('Facturation'),
-            dataIndex: 'billingFrequency',
-            render: (value: string) => billingFrequencyLabel(value)
-          }
-        ]}
-      />
-    )}
-  </Card>
-);
-
-const TitlesBlock: React.FC<{ data: NonNullable<ExternalAccessViewProperty['titles']> }> = ({ data }) => (
-  <Card size="small" title={accessSectionLabel('TITLES_OWNERSHIP')}>
-    <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-      <Descriptions.Item label={t('Type de bien')}>{propertyTypeLabel(data.propertyType)}</Descriptions.Item>
-      <Descriptions.Item label={t('Surface')}>
-        {data.surface === null ? '—' : <bdi dir="ltr">{`${formatNumber(data.surface)} m²`}</bdi>}
-      </Descriptions.Item>
-      <Descriptions.Item label={t('Quote-part du propriétaire')}>
-        <Percent value={data.ownerSharePercent} />
-      </Descriptions.Item>
-      {data.otherHoldersSharePercent !== null && data.otherHoldersSharePercent !== undefined ? (
-        <Descriptions.Item label={t('Part des autres détenteurs')}>
-          <Percent value={data.otherHoldersSharePercent} />
-        </Descriptions.Item>
-      ) : null}
-    </Descriptions>
-    {data.holdings.length > 0 ? (
-      <Table
-        exportFilename={accessSectionLabel('TITLES_OWNERSHIP')}
-        size="small"
-        rowKey="rowKey"
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        dataSource={keyed(data.holdings)}
-        columns={[
-          { title: t('Entité détentrice'), dataIndex: 'entityName' },
-          {
-            title: t('Forme juridique'),
-            dataIndex: 'legalForm',
-            render: (value: string) => legalFormLabel(value as HoldingEntityForm)
-          },
-          {
-            title: t('Pays'),
-            dataIndex: 'country',
-            render: (value: string) => fiscalCountryLabel(value as FiscalCountry)
-          },
-          { title: t('RCCM'), dataIndex: 'rccm', render: (value: string | null) => value ?? '—' },
-          { title: t('Numéro fiscal'), dataIndex: 'taxId', render: (value: string | null) => value ?? '—' },
-          { title: t('Quote-part'), dataIndex: 'sharePercent', render: (value: number) => <Percent value={value} /> }
-        ]}
-      />
-    ) : null}
-  </Card>
-);
-
-interface DocumentsBlockProps {
-  documents: NonNullable<ExternalAccessViewProperty['documents']>;
-  busyRef: string | null;
-  onDownload: (documentRef: string) => void;
-}
-
-const DocumentsBlock: React.FC<DocumentsBlockProps> = ({ documents, busyRef, onDownload }) => (
-  <Card size="small" title={accessSectionLabel('DOCUMENTS')}>
-    {documents.length === 0 ? (
-      <Text type="secondary">{t('Aucun document partagé.')}</Text>
-    ) : (
-      <Table
-        exportFilename={accessSectionLabel('DOCUMENTS')}
-        size="small"
-        rowKey="ref"
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        dataSource={documents}
-        columns={[
-          { title: t('Document'), dataIndex: 'fileName' },
-          { title: t('Type'), dataIndex: 'documentType', render: (value: string) => documentTypeLabel(value) },
-          { title: t('Taille'), dataIndex: 'fileSize', render: (value: number | null) => fileSizeLabel(value) },
-          {
-            title: t('Action'),
-            exportable: false,
-            align: 'end' as const,
-            render: (_: unknown, row) => (
-              <span className="external-access-no-print">
-                <Button
-                  size="small"
-                  loading={busyRef === row.ref}
-                  aria-label={t('Télécharger {{name}}', { name: row.fileName })}
-                  onClick={() => onDownload(row.ref)}
-                >
-                  {t('Télécharger')}
-                </Button>
-              </span>
-            )
-          }
-        ]}
-      />
-    )}
-  </Card>
-);
-
-// --- Page ----------------------------------------------------------------------------
-
-interface PropertyViewProps {
-  property: ExternalAccessViewProperty;
-  currency: string;
-  busyRef: string | null;
-  onDownload: (documentRef: string) => void;
-}
-
-/** Une carte par bien : identification, puis SEULES les rubriques présentes dans la réponse. */
-const PropertyView: React.FC<PropertyViewProps> = ({ property, currency, busyRef, onDownload }) => (
-  <Card
-    title={
-      <span
-        style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}
-      >{`${property.reference} — ${property.title}`}</span>
-    }
-    styles={{ header: { height: 'auto', whiteSpace: 'normal' } }}
-  >
-    <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-      <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-        <Descriptions.Item label={t('Adresse')}>
-          {[property.address, property.city].filter(Boolean).join(', ') || '—'}
-        </Descriptions.Item>
-        {property.sharePercent !== null ? (
-          <Descriptions.Item label={t('Quote-part du propriétaire')}>
-            <Percent value={property.sharePercent} />
-          </Descriptions.Item>
-        ) : null}
-      </Descriptions>
-      {property.valuation ? <ValuationBlock data={property.valuation} /> : null}
-      {property.valuation === null ? (
-        <Card size="small" title={accessSectionLabel('VALUATIONS')}>
-          <Text type="secondary">{t('Aucune valorisation.')}</Text>
-        </Card>
-      ) : null}
-      {property.yield ? <YieldBlock data={property.yield} currency={currency} /> : null}
-      {property.loans ? <LoansBlock loans={property.loans} /> : null}
-      {property.expenses ? <ExpensesBlock data={property.expenses} currency={currency} /> : null}
-      {property.rents ? <RentsBlock rents={property.rents} currency={currency} /> : null}
-      {property.titles ? <TitlesBlock data={property.titles} /> : null}
-      {property.documents ? (
-        <DocumentsBlock documents={property.documents} busyRef={busyRef} onDownload={onDownload} />
-      ) : null}
-    </Space>
-  </Card>
-);
-
 const SummaryCard: React.FC<{ view: ExternalAccessViewDto }> = ({ view }) => {
   const { summary, currency } = view;
   return (
@@ -490,9 +98,11 @@ interface ViewProps {
   busyRef: string | null;
   downloadError: string | null;
   onDownload: (documentRef: string) => void;
+  /** Impression en cours : tous les biens et toutes les rubriques, empilés. */
+  printAll: boolean;
 }
 
-const AccessView: React.FC<ViewProps> = ({ view, busyRef, downloadError, onDownload }) => (
+const AccessView: React.FC<ViewProps> = ({ view, busyRef, downloadError, onDownload, printAll }) => (
   <Space orientation="vertical" size="large" style={{ width: '100%' }}>
     <Alert
       type="info"
@@ -512,15 +122,13 @@ const AccessView: React.FC<ViewProps> = ({ view, busyRef, downloadError, onDownl
     </div>
     <SummaryCard view={view} />
     {downloadError ? <Alert type="error" showIcon title={downloadError} /> : null}
-    {view.properties.map(property => (
-      <PropertyView
-        key={`${property.reference}-${property.title}`}
-        property={property}
-        currency={view.currency}
-        busyRef={busyRef}
-        onDownload={onDownload}
-      />
-    ))}
+    <PropertiesSection
+      properties={view.properties}
+      currency={view.currency}
+      busyRef={busyRef}
+      onDownload={onDownload}
+      printAll={printAll}
+    />
     <Text type="secondary">
       {view.accessExpiresAt
         ? t('Cet accès expire le {{date}}.', { date: formatDate(view.accessExpiresAt) })
@@ -552,6 +160,8 @@ export const ExternalAccessViewPage: React.FC = () => {
   const [state, setState] = useState<ViewState>({ kind: 'loading' });
   const [busyRef, setBusyRef] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  // Impression : le temps de l'impression, la page rend TOUT (biens et rubriques empilés).
+  const [printAll, setPrintAll] = useState(false);
   // Le jeton survit au double montage de React.StrictMode : le fragment n'est lu qu'une fois.
   const tokenRef = useRef<string | null | undefined>(undefined);
   // Une seule lecture par jeton : le second passage StrictMode réutilise la promesse
@@ -595,6 +205,51 @@ export const ExternalAccessViewPage: React.FC = () => {
     };
   }, []);
 
+  // Impression : Ctrl+P (beforeprint) comme le bouton passent par le même rendu complet, rendu
+  // de façon synchrone (flushSync) avant que le navigateur prenne son instantané ; afterprint
+  // rend l'affichage d'avant (page, filtre et onglets sont tenus par des états qui survivent).
+  const printAllRef = useRef(false);
+  const enterPrintMode = useCallback(() => {
+    if (printAllRef.current) return;
+    printAllRef.current = true;
+    flushSync(() => setPrintAll(true));
+  }, []);
+  const leavePrintMode = useCallback(() => {
+    if (!printAllRef.current) return;
+    printAllRef.current = false;
+    setPrintAll(false);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('beforeprint', enterPrintMode);
+    window.addEventListener('afterprint', leavePrintMode);
+    // Safari n'émet pas toujours « afterprint » : la requête média « print » prévient aussi de la sortie.
+    const mql = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
+    const onPrintMediaChange = (event: { matches: boolean }) => {
+      if (event.matches) enterPrintMode();
+      else leavePrintMode();
+    };
+    if (mql) {
+      if (typeof mql.addEventListener === 'function') mql.addEventListener('change', onPrintMediaChange);
+      else if (typeof mql.addListener === 'function') mql.addListener(onPrintMediaChange);
+    }
+    return () => {
+      window.removeEventListener('beforeprint', enterPrintMode);
+      window.removeEventListener('afterprint', leavePrintMode);
+      if (mql) {
+        if (typeof mql.removeEventListener === 'function') mql.removeEventListener('change', onPrintMediaChange);
+        else if (typeof mql.removeListener === 'function') mql.removeListener(onPrintMediaChange);
+      }
+    };
+  }, [enterPrintMode, leavePrintMode]);
+
+  const handlePrint = () => {
+    enterPrintMode();
+    window.print();
+    // Un navigateur sans l'événement « afterprint » ne préviendrait jamais : retour au mode normal.
+    if (!('onafterprint' in window)) leavePrintMode();
+  };
+
   const handleDownload = async (documentRef: string) => {
     const token = tokenRef.current;
     if (!token) return;
@@ -629,11 +284,17 @@ export const ExternalAccessViewPage: React.FC = () => {
         {state.kind === 'ok' ? (
           <>
             <div className="external-access-no-print" style={{ textAlign: 'end', marginBlockEnd: 16 }}>
-              <Button type="primary" onClick={() => window.print()}>
+              <Button type="primary" onClick={handlePrint}>
                 {t('Imprimer / enregistrer en PDF')}
               </Button>
             </div>
-            <AccessView view={state.view} busyRef={busyRef} downloadError={downloadError} onDownload={handleDownload} />
+            <AccessView
+              view={state.view}
+              busyRef={busyRef}
+              downloadError={downloadError}
+              onDownload={handleDownload}
+              printAll={printAll}
+            />
           </>
         ) : null}
       </div>

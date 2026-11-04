@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Button, Progress, Select, Tag, Tooltip } from 'antd';
+import React, { useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Progress, Tag, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
-import { DataCard, DataView, FilterSheet, PageHeader, StateBlock } from '../../../components/primitives';
+import { DataCard, DataView, PageHeader, StateBlock } from '../../../components/primitives';
+import { normalizeText, useLocalListSearch } from '../../../utils/list-search';
+import { getProperty } from '../../../services/property-service';
 import { t } from '../../../i18n/t';
 import { isForbiddenError } from '../../../components/patrimoine/patrimoine-labels';
 import { PatrimoineForbidden } from '../../../components/patrimoine/PatrimoineForbidden';
@@ -17,49 +19,104 @@ import {
   formatXof,
   regularizationStatusColor,
   regularizationStatusLabel,
-  parseRegularizationStatus,
   regularizationStatusOptions
 } from './land-labels';
 import type { LandRegularizationSummary } from './land-types';
 
+// Stables : déclarés HORS du composant (le filtrage local reste mémoïsé).
+const TEXTE_RECHERCHE = [
+  (d: LandRegularizationSummary) => d.property.title,
+  (d: LandRegularizationSummary) => d.property.internalReference,
+  (d: LandRegularizationSummary) => d.trackLabel,
+  (d: LandRegularizationSummary) => d.currentStepLabel,
+  (d: LandRegularizationSummary) => regularizationStatusLabel(d.status)
+];
+const ACCESSEURS = {
+  status: (d: LandRegularizationSummary) => d.status,
+  propertyId: (d: LandRegularizationSummary) => d.propertyId
+};
+const NO_DOSSIERS: LandRegularizationSummary[] = [];
+
+const libelleBien = (bien: { internalReference: string | null; title: string }) =>
+  bien.internalReference ? `${bien.internalReference} · ${bien.title}` : bien.title;
+
 /**
  * Dossiers de régularisation foncière (spec 033, lot B2).
  *
- * Le statut et le bien (`?propertyId=`) vivent dans l'URL : la liste des
- * dossiers d'un terrain se partage par lien. Le filtrage se fait côté serveur.
+ * L'API ne pagine pas : la liste arrive en entier et la recherche (texte,
+ * statut, bien) la filtre ici. Les critères vivent dans l'URL (`?status=`,
+ * `?propertyId=`) : la liste des dossiers d'un terrain se partage par lien.
  */
 export const LandRegularizationListPage: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const { tenantMembership } = useAuth();
   const agence = tenantId || tenantMembership?.tenantId;
-  const [searchParams, setSearchParams] = useSearchParams();
   const [creating, setCreating] = useState(false);
 
-  const status = parseRegularizationStatus(searchParams.get('status'));
-  const propertyId = searchParams.get('propertyId') || undefined;
-
   const { data, isPending, isFetching, error, refetch } = useQuery({
-    queryKey: queryKey('land-regularizations', agence, { status, propertyId }),
-    queryFn: () => listLandRegularizations(agence as string, { status, propertyId }),
+    queryKey: queryKey('land-regularizations', agence),
+    queryFn: () => listLandRegularizations(agence as string),
     enabled: Boolean(agence),
     staleTime: STALE_TIME.list
   });
 
+  const dossiers = useMemo(() => data ?? NO_DOSSIERS, [data]);
+  // Les biens qui ont un dossier : les seuls utiles à un filtre local.
+  const biens = useMemo(() => {
+    const parId = new Map<string, { value: string; label: string }>();
+    for (const dossier of dossiers) {
+      if (!parId.has(dossier.propertyId)) {
+        parId.set(dossier.propertyId, { value: dossier.propertyId, label: libelleBien(dossier.property) });
+      }
+    }
+    return [...parId.values()];
+  }, [dossiers]);
+
+  const local = useLocalListSearch<LandRegularizationSummary>(dossiers, {
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Bien, référence, filière, étape…')
+      },
+      {
+        key: 'status',
+        type: 'multiSelect',
+        label: t('Statut'),
+        primary: true,
+        options: regularizationStatusOptions()
+      },
+      {
+        key: 'propertyId',
+        type: 'select',
+        label: t('Bien'),
+        primary: true,
+        loadOptions: async terme => {
+          const mots = normalizeText(terme).split(' ').filter(Boolean);
+          return biens.filter(bien => mots.every(mot => normalizeText(bien.label).includes(mot))).slice(0, 20);
+        },
+        // Un lien `?propertyId=` peut viser un bien sans dossier : on le retrouve alors à la source.
+        resolveLabel: async id => {
+          const connu = biens.find(bien => bien.value === id);
+          if (connu) return connu.label;
+          try {
+            return libelleBien(await getProperty(agence as string, id));
+          } catch {
+            return undefined;
+          }
+        }
+      }
+    ],
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
+  const propertyId = local.values.propertyId as string | undefined;
+
   if (!agence) return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   // Sans droit sur les biens : un refus clair, sans titre ni bouton d'écriture.
   if (isForbiddenError(error)) return <PatrimoineForbidden />;
-
-  const dossiers = data ?? [];
-  const isFiltered = Boolean(status || propertyId);
-
-  const setParam = (key: string, value?: string) => {
-    const next = new URLSearchParams(searchParams);
-    if (value) next.set(key, value);
-    else next.delete(key);
-    setSearchParams(next, { replace: true });
-  };
-  const clearFilters = () => setSearchParams(new URLSearchParams(), { replace: true });
 
   const lien = (dossier: LandRegularizationSummary) => `/tenant/${agence}/patrimoine/land/${dossier.id}`;
 
@@ -140,50 +197,15 @@ export const LandRegularizationListPage: React.FC = () => {
         }}
       />
 
-      {propertyId && (
-        <div style={{ marginBottom: 12 }}>
-          <Tag color="blue">
-            {dossiers[0]?.property.internalReference
-              ? t('Bien : {{reference}}', { reference: dossiers[0].property.internalReference })
-              : t('Filtré sur un bien')}
-          </Tag>
-          <Button type="link" size="small" onClick={() => setParam('propertyId')}>
-            {t('Effacer ce filtre')}
-          </Button>
-        </div>
-      )}
-
-      <FilterSheet activeCount={isFiltered ? 1 : 0} onClear={clearFilters} title={t('Filtrer les dossiers')}>
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-statut-foncier">{t('Statut')}</label>
-          <Select
-            id="filtre-statut-foncier"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les statuts')}
-            allowClear
-            value={status}
-            onChange={valeur => setParam('status', valeur)}
-            options={regularizationStatusOptions()}
-          />
-        </div>
-      </FilterSheet>
-
       <DataView<LandRegularizationSummary>
-        // L'API ne pagine pas : toute la liste est déjà chargée.
-        export={{ filename: t('Dossiers de régularisation foncière') }}
-        items={dossiers}
-        total={dossiers.length}
-        page={1}
-        pageSize={Math.max(dossiers.length, 1)}
-        paginated={false}
-        onPageChange={() => undefined}
+        // L'API ne pagine pas : toute la liste est déjà chargée, la recherche la filtre ici.
+        {...local.dataViewProps}
+        export={{ filename: t('Dossiers de régularisation foncière'), fetchAll: local.exportAll }}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={error ? t('Impossible de charger les dossiers de régularisation.') : null}
         errorCause={error}
         onRetry={() => refetch()}
-        isFiltered={isFiltered}
-        onClearFilters={clearFilters}
         emptyAction={{ label: t('Nouveau dossier'), onClick: () => setCreating(true) }}
         emptyDescription={t("Aucun dossier de régularisation foncière n'est ouvert pour cette agence.")}
         columns={colonnes}

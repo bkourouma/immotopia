@@ -17,7 +17,10 @@ import {
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { ConfirmAction, StateBlock, Table } from '../../primitives';
 import { activeLocale } from '../../../i18n/format';
+import { localizedList } from '../../../i18n/localized';
 import { t } from '../../../i18n/t';
+import { useLocalListSearch } from '../../../utils/list-search';
+import type { SearchCriterion } from '../../../utils/list-search';
 import { apiErrorMessage, formatAmount, formatDay, serverFieldErrors, todayIso } from './asset-format';
 import { detailKeyLabel, reliabilityLabel, VALUATION_METHODS, valuationMethodName } from './asset-classes';
 import { ReliabilityBadge } from './ReliabilityBadge';
@@ -360,6 +363,28 @@ const ValuationCurve: React.FC<{ valuations: AssetValuationDto[] }> = ({ valuati
   );
 };
 
+const OPTIONS_METHODE = localizedList(() =>
+  VALUATION_METHODS.map(method => ({ value: method, label: valuationMethodName(method) }))
+);
+const OPTIONS_FIABILITE = localizedList(() =>
+  (['HIGH', 'MEDIUM', 'LOW'] as const).map(level => ({ value: level, label: reliabilityLabel(level) }))
+);
+
+// Accesseurs stables (hors composant) : le filtrage reste mémoïsé.
+// Champ libre : notes, source et méthode telle qu'affichée (libellé lu au moment de la recherche).
+const TEXTE_RECHERCHE = [
+  (v: AssetValuationDto) => v.notes,
+  (v: AssetValuationDto) => v.source,
+  (v: AssetValuationDto) => valuationMethodName(v.method)
+];
+const ACCESSEURS = {
+  methode: (v: AssetValuationDto) => v.method,
+  // Jour UTC, comme l'affichage (formatDay) : pas de décalage de fuseau sur une date à minuit UTC.
+  date: (v: AssetValuationDto) => v.valuatedAt.slice(0, 10),
+  // Une valorisation antérieure au lot 2 (fiabilité nulle) est traitée comme faible.
+  fiabilite: (v: AssetValuationDto) => v.reliability ?? 'LOW'
+};
+
 /** Onglet « Valeurs » : historique des valorisations avec ajout, modification, suppression et courbe. */
 export const AssetValuationsTab: React.FC<{
   tenantId: string;
@@ -384,6 +409,22 @@ export const AssetValuationsTab: React.FC<{
     queryKey: queryKey('patrimoine-asset-valuations', tenantId, { assetId: asset.id }),
     queryFn: () => listAssetValuations(tenantId, asset.id),
     staleTime: STALE_TIME.list
+  });
+
+  const valuationItems = useMemo(() => valuationsQuery.data ?? [], [valuationsQuery.data]);
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Notes, source, méthode…') },
+    { key: 'methode', type: 'multiSelect', label: t('Méthode'), primary: true, options: OPTIONS_METHODE },
+    { key: 'date', type: 'dateRange', label: t("Date d'évaluation"), primary: true },
+    { key: 'fiabilite', type: 'select', label: t('Fiabilité'), options: OPTIONS_FIABILITE }
+  ];
+  const local = useLocalListSearch<AssetValuationDto>(valuationItems, {
+    paramPrefix: 'val',
+    ariaLabel: t('Rechercher dans les valeurs'),
+    defaultPageSize: 10,
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
   });
 
   const refresh = async () => {
@@ -512,20 +553,24 @@ export const AssetValuationsTab: React.FC<{
         />
       ) : (
         <>
-          <ValuationCurve valuations={valuationsQuery.data ?? []} />
+          <ValuationCurve valuations={valuationItems} />
           <Table<AssetValuationDto>
+            {...local.tableProps}
             exportFilename={t('Historique des valeurs')}
+            exportFetchAll={local.exportAll}
             rowKey="id"
             size="small"
             loading={valuationsQuery.isPending}
-            dataSource={valuationsQuery.data ?? []}
-            pagination={{ pageSize: 10, hideOnSinglePage: true }}
             scroll={{ x: 'max-content' }}
-            locale={{
-              emptyText: t(
-                'Aucune valeur enregistrée : ajoutez-en une pour que cet actif compte dans votre valeur nette.'
-              )
-            }}
+            locale={
+              local.isFiltered
+                ? undefined
+                : {
+                    emptyText: t(
+                      'Aucune valeur enregistrée : ajoutez-en une pour que cet actif compte dans votre valeur nette.'
+                    )
+                  }
+            }
             columns={[
               { title: t('Date'), dataIndex: 'valuatedAt', render: (value: string) => formatDay(value) },
               {

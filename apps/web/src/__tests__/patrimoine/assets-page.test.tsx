@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -11,6 +11,8 @@ import { formatDay } from '../../components/patrimoine/actifs/asset-format';
 /** `<AssetsPage>` — liste des actifs, filtre par classe, pastille de valeur périmée et fiabilité. */
 
 const listAssets = vi.fn();
+
+const T = { timeout: 8000 };
 
 vi.mock('../../services/patrimoine-assets-service', () => ({
   listAssets: (...a: unknown[]) => listAssets(...a),
@@ -62,12 +64,12 @@ function actif(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function monter() {
+function monter(initial = '/tenant/agence-1/patrimoine/actifs') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
-        <MemoryRouter initialEntries={['/tenant/agence-1/patrimoine/actifs']}>
+        <MemoryRouter initialEntries={[initial]}>
           <Routes>
             <Route path="/tenant/:tenantId/patrimoine/actifs" element={<AssetsPage />} />
           </Routes>
@@ -91,28 +93,55 @@ describe('<AssetsPage>', () => {
     expect(screen.getByText('Valeur périmée')).toBeInTheDocument();
     expect(screen.getByText('Faible')).toBeInTheDocument();
     expect(screen.getByText('Sans valeur')).toBeInTheDocument();
-    expect(listAssets).toHaveBeenCalledWith('agence-1', {
-      assetClass: undefined,
-      status: undefined,
-      search: undefined
-    });
+    // Sans statut dans l'URL, rien d'autre ne part à l'API (le serveur exclut alors les archivés).
+    expect(listAssets).toHaveBeenCalledWith('agence-1', { status: undefined });
+    expect(screen.getByRole('search')).toBeInTheDocument();
   });
 
-  it('filtre par classe côté serveur', async () => {
+  it('filtre la liste en local sans accent ni casse, sans rappeler l’API', async () => {
     const user = userEvent.setup();
     monter();
 
-    await screen.findByText('Toyota Hilux');
-    await user.click(screen.getByLabelText('Filtrer par classe'));
-    await user.click(await screen.findByTitle('Véhicules et équipements'));
+    await screen.findByText('Toyota Hilux', undefined, T);
+    await user.type(within(screen.getByRole('search')).getByPlaceholderText(/Nom, bien lié/), 'WAVE');
 
-    await waitFor(() =>
-      expect(listAssets).toHaveBeenCalledWith('agence-1', {
-        assetClass: 'VEHICLE_EQUIPMENT',
-        status: undefined,
-        search: undefined
-      })
-    );
+    await waitFor(() => expect(screen.queryByText('Toyota Hilux')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('Compte Wave')).toBeInTheDocument();
+    expect(listAssets).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
+  });
+
+  it('applique les critères de l’URL (classe, valeur à actualiser) en local', async () => {
+    monter('/tenant/agence-1/patrimoine/actifs?classe=VEHICLE_EQUIPMENT&stale=1');
+
+    expect(await screen.findByText('Toyota Hilux', undefined, T)).toBeInTheDocument();
+    expect(screen.queryByText('Compte Wave')).not.toBeInTheDocument();
+    expect(listAssets).toHaveBeenCalledTimes(1);
+  });
+
+  it('envoie le statut à l’API (sans lui, les archivés sont exclus) et filtre le reste en local', async () => {
+    listAssets.mockResolvedValue([
+      actif({ id: 'a3', name: 'Ancienne remorque', status: 'ARCHIVED', stale: false }),
+      actif({ id: 'a4', name: 'Compte épargne', status: 'ARCHIVED', assetClass: 'CASH', stale: false })
+    ]);
+    monter('/tenant/agence-1/patrimoine/actifs?status=ARCHIVED&classe=CASH');
+
+    expect(await screen.findByText('Compte épargne', undefined, T)).toBeInTheDocument();
+    expect(screen.queryByText('Ancienne remorque')).not.toBeInTheDocument();
+    expect(listAssets).toHaveBeenCalledWith('agence-1', { status: 'ARCHIVED' });
+  });
+
+  it('distingue « aucun résultat » de « aucun actif » et propose d’effacer les critères', async () => {
+    const user = userEvent.setup();
+    monter('/tenant/agence-1/patrimoine/actifs?q=zzzz');
+
+    expect(
+      await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', undefined, T)
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Commencez par ajouter votre premier actif')).not.toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText('Toyota Hilux', undefined, T)).toBeInTheDocument();
   });
 
   it('affiche l’état vide avec le bouton d’ajout quand rien n’existe', async () => {
@@ -153,5 +182,24 @@ describe('<AssetsPage>', () => {
     const rendu = formatDay('2026-09-29T00:00:00.000Z');
     expect(rendu).toContain('29');
     expect(rendu).not.toContain('28');
+  });
+});
+
+describe('<AssetsPage> — plafond de la liste', () => {
+  const NOTE = 'Seuls les 500 actifs les plus récents sont affichés : affinez avec le statut.';
+
+  it('affiche un bandeau quand l’API renvoie 500 actifs (plafond atteint)', async () => {
+    listAssets.mockResolvedValue(Array.from({ length: 500 }, (_, i) => actif({ id: `a${i}`, name: `Actif ${i}` })));
+    monter();
+
+    expect(await screen.findByText(NOTE, undefined, T)).toBeInTheDocument();
+  });
+
+  it('n’affiche aucun bandeau sous le plafond', async () => {
+    listAssets.mockResolvedValue(Array.from({ length: 499 }, (_, i) => actif({ id: `a${i}`, name: `Actif ${i}` })));
+    monter();
+
+    await screen.findByText('Actif 0', undefined, T);
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
   });
 });

@@ -85,6 +85,12 @@ export const listTenantWorkProgramsHandler = asyncHandler(async (req: Request, r
   const query = listTenantWorkProgramsQuerySchema.parse(req.query);
   const data = await listTenantWorkPrograms(tenantId, {
     status: query.status,
+    search: query.search,
+    propertyId: query.propertyId,
+    plannedFrom: query.plannedFrom,
+    plannedTo: query.plannedTo,
+    minCost: query.minCost,
+    maxCost: query.maxCost,
     page: query.page,
     limit: query.limit,
     upcoming: query.upcoming

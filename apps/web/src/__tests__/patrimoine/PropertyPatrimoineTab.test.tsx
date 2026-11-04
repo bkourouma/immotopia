@@ -4,6 +4,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { PropertyPatrimoineTab } from '../../components/patrimoine/PropertyPatrimoineTab';
 import * as patrimoineService from '../../services/patrimoine-service';
 import * as propertyService from '../../services/property-service';
@@ -50,20 +51,9 @@ vi.mock('../../services/treasury-service', () => ({
   listTreasuryAccounts: vi.fn(async () => [])
 }));
 
-vi.mock('../../components/patrimoine/ValuationHistory', () => ({
-  ValuationHistory: ({ valuations }: { valuations: Array<{ id: string }> }) => (
-    <div data-testid="valuation-history">{valuations.length}</div>
-  )
-}));
-
-vi.mock('../../components/patrimoine/ExpenseTracker', () => ({
-  ExpenseTracker: ({ expenses }: { expenses: Array<{ id: string }> }) => (
-    <div data-testid="expense-tracker">{expenses.length}</div>
-  )
-}));
-
-vi.mock('../../components/patrimoine/LoanWidget', () => ({
-  LoanWidget: ({ loans }: { loans: Array<{ id: string }> }) => <div data-testid="loan-widget">{loans.length}</div>
+// Bureau : la barre de recherche des tableaux s'affiche en ligne.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
 vi.mock('../../components/patrimoine/YieldProjectionChart', () => ({
@@ -202,16 +192,27 @@ function mockLoadAll(overrides: { documents?: unknown[]; workPrograms?: unknown[
   }));
 }
 
-function mount() {
+function Url() {
+  return <div data-testid="url">{useLocation().search}</div>;
+}
+
+/** La rubrique affichée vient de l'URL (`?rubrique=…`), comme dans l'écran du bien. */
+function mount(initial = '/biens/property-1?onglet=patrimoine') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
-        <PropertyPatrimoineTab tenantId="tenant-1" propertyId="property-1" />
+        <MemoryRouter initialEntries={[initial]}>
+          <Url />
+          <PropertyPatrimoineTab tenantId="tenant-1" propertyId="property-1" />
+        </MemoryRouter>
       </AntApp>
     </QueryClientProvider>
   );
 }
+
+const T = { timeout: 8000 };
+const ouvrirRubrique = (nom: string) => userEvent.click(screen.getByRole('tab', { name: nom }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -219,17 +220,74 @@ beforeEach(() => {
 });
 
 describe('PropertyPatrimoineTab — chargement et rendement', () => {
-  it('charge chaque section et déclenche le recalcul du rendement', async () => {
+  it('au montage, seule la synthèse charge sa donnée ; chaque autre rubrique charge à son affichage', async () => {
     mockLoadAll();
 
     mount();
 
     await waitFor(() => {
-      expect(patrimoineService.listValuations).toHaveBeenCalledWith('tenant-1', 'property-1');
-      expect(patrimoineService.listExpenses).toHaveBeenCalledWith('tenant-1', 'property-1');
-      expect(patrimoineService.listLoans).toHaveBeenCalledWith('tenant-1', 'property-1');
-      expect(patrimoineService.listWorkPrograms).toHaveBeenCalledWith('tenant-1', 'property-1');
-      expect(propertyService.listPropertyDocuments).toHaveBeenCalledWith('tenant-1', 'property-1');
+      expect(patrimoineService.getPropertyYield).toHaveBeenCalledWith('tenant-1', 'property-1');
+    });
+    expect(patrimoineService.listValuations).not.toHaveBeenCalled();
+    expect(patrimoineService.listExpenses).not.toHaveBeenCalled();
+    expect(patrimoineService.listLoans).not.toHaveBeenCalled();
+    expect(patrimoineService.listWorkPrograms).not.toHaveBeenCalled();
+    expect(propertyService.listPropertyDocuments).not.toHaveBeenCalled();
+
+    await ouvrirRubrique('Valorisations');
+    await waitFor(() => expect(patrimoineService.listValuations).toHaveBeenCalledWith('tenant-1', 'property-1'));
+    expect(screen.getByTestId('url').textContent).toContain('rubrique=valorisations');
+    expect(patrimoineService.listExpenses).not.toHaveBeenCalled();
+
+    await ouvrirRubrique('Dépenses');
+    await waitFor(() => expect(patrimoineService.listExpenses).toHaveBeenCalledWith('tenant-1', 'property-1'));
+    await ouvrirRubrique('Crédits');
+    await waitFor(() => expect(patrimoineService.listLoans).toHaveBeenCalledWith('tenant-1', 'property-1'));
+    await ouvrirRubrique('Travaux');
+    await waitFor(() => expect(patrimoineService.listWorkPrograms).toHaveBeenCalledWith('tenant-1', 'property-1'));
+    await ouvrirRubrique('Documents');
+    await waitFor(() => expect(propertyService.listPropertyDocuments).toHaveBeenCalledWith('tenant-1', 'property-1'));
+  });
+
+  it('ne recharge pas une rubrique déjà chargée quand on y revient', async () => {
+    mockLoadAll();
+    mount();
+    await waitFor(() => expect(patrimoineService.getPropertyYield).toHaveBeenCalledTimes(1));
+
+    await ouvrirRubrique('Valorisations');
+    await waitFor(() => expect(patrimoineService.listValuations).toHaveBeenCalledTimes(1));
+    await ouvrirRubrique('Synthèse');
+    await ouvrirRubrique('Valorisations');
+    await screen.findByText('Gérer les valorisations', undefined, T);
+
+    expect(patrimoineService.listValuations).toHaveBeenCalledTimes(1);
+    expect(patrimoineService.getPropertyYield).toHaveBeenCalledTimes(1);
+  });
+
+  it('applique la rubrique de l’URL et retombe sur la synthèse si elle est inconnue', async () => {
+    mockLoadAll();
+    mount('/biens/property-1?onglet=patrimoine&rubrique=n-importe-quoi');
+    await waitFor(() => expect(patrimoineService.getPropertyYield).toHaveBeenCalled());
+    expect(patrimoineService.listValuations).not.toHaveBeenCalled();
+    expect(screen.getByRole('tab', { name: 'Synthèse' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('change de rubrique sans toucher aux autres paramètres de l’URL', async () => {
+    mockLoadAll();
+    mount('/biens/property-1?onglet=patrimoine');
+    await waitFor(() => expect(patrimoineService.getPropertyYield).toHaveBeenCalled());
+    await ouvrirRubrique('Crédits');
+    const url = screen.getByTestId('url').textContent ?? '';
+    expect(url).toContain('onglet=patrimoine');
+    expect(url).toContain('rubrique=credits');
+  });
+
+  it('charge le rendement et déclenche son recalcul', async () => {
+    mockLoadAll();
+
+    mount();
+
+    await waitFor(() => {
       expect(patrimoineService.getPropertyYield).toHaveBeenCalledWith('tenant-1', 'property-1');
     });
 
@@ -304,8 +362,9 @@ describe('PropertyPatrimoineTab — chargement et rendement', () => {
     await waitFor(() => {
       expect(screen.getByText('Service de rendement indisponible')).toBeInTheDocument();
     });
-    // Les documents, non affectés par l'échec du rendement, sont bien affichés.
-    expect(await screen.findByText('doc.pdf')).toBeInTheDocument();
+    // Les documents, non affectés par l'échec du rendement, sont bien affichés dans leur rubrique.
+    await ouvrirRubrique('Documents');
+    expect(await screen.findByText('doc.pdf', undefined, T)).toBeInTheDocument();
   });
 });
 
@@ -314,10 +373,9 @@ describe('PropertyPatrimoineTab — coffre-fort documentaire', () => {
     mockLoadAll();
     vi.mocked(propertyService.uploadDocument).mockResolvedValue({} as never);
 
-    mount();
+    mount('/biens/property-1?rubrique=documents');
 
-    // Plusieurs cartes ont un bouton « Ajouter » : le coffre-fort documentaire
-    // est le dernier de l'écran.
+    // La rubrique Documents n'affiche que le coffre-fort documentaire.
     const boutonsAjouter = await screen.findAllByRole('button', { name: 'Ajouter' });
     await userEvent.click(boutonsAjouter[boutonsAjouter.length - 1]);
 
@@ -357,7 +415,7 @@ describe('PropertyPatrimoineTab — coffre-fort documentaire', () => {
       response: { data: { error: 'Fichier trop volumineux' } }
     });
 
-    mount();
+    mount('/biens/property-1?rubrique=documents');
 
     const boutonsAjouter = await screen.findAllByRole('button', { name: 'Ajouter' });
     await userEvent.click(boutonsAjouter[boutonsAjouter.length - 1]);
@@ -380,9 +438,9 @@ describe('PropertyPatrimoineTab — coffre-fort documentaire', () => {
       response: { data: { error: 'Suppression refusée' } }
     });
 
-    mount();
+    mount('/biens/property-1?rubrique=documents');
 
-    const titreCarte = await screen.findByText('Coffre-fort documentaire');
+    const titreCarte = await screen.findByText('Coffre-fort documentaire', undefined, T);
     const carte = titreCarte.closest('.ant-card') as HTMLElement;
     await within(carte).findByText('doc.pdf');
     await userEvent.click(within(carte).getByRole('button', { name: 'Supprimer' }));
@@ -414,9 +472,9 @@ describe('PropertyPatrimoineTab — travaux rattachés à un chantier', () => {
     mockLoadAll({ workPrograms: [programmeRattache] });
     vi.mocked(patrimoineService.updateWorkProgram).mockResolvedValue({} as never);
 
-    mount();
+    mount('/biens/property-1?rubrique=travaux');
 
-    const titreCarte = await screen.findByText('Gérer les programmes de travaux');
+    const titreCarte = await screen.findByText('Gérer les programmes de travaux', undefined, T);
     const carte = titreCarte.closest('.ant-card') as HTMLElement;
     await within(carte).findByText('Réfection toiture');
     await userEvent.click(within(carte).getByRole('button', { name: 'Modifier' }));
