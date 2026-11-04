@@ -1,87 +1,92 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Card, Input, Select, Button, Tag, Space, Avatar, Popconfirm, Alert, Empty, Spin, Typography } from 'antd';
-import {
-  UserOutlined,
-  PlusOutlined,
-  SearchOutlined,
-  EyeOutlined,
-  UserDeleteOutlined,
-  CheckCircleOutlined
-} from '@ant-design/icons';
-import { listMembers, Member, MembershipFilters, disableMember, enableMember } from '../../services/membership-service';
+import { App, Card, Button, Tag, Space, Avatar, Popconfirm, Alert, Typography } from 'antd';
+import { UserOutlined, PlusOutlined, EyeOutlined, UserDeleteOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { listMembers, Member, disableMember, enableMember } from '../../services/membership-service';
+import { listRoles } from '../../services/role-service';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
 import type { ColumnsType } from 'antd/es/table';
 import { Table } from '../../components/primitives';
+import { useListSearch } from '../../hooks/useListSearch';
+import { queryKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
+/**
+ * Collaborateurs — exemple « liste paginée serveur » de la recherche
+ * multicritères (guide : `docs/architecture/recherche-listes.md`).
+ *
+ * Le patron en trois gestes :
+ * 1. `useListSearch` déclare les critères (libellés en `t()`, dans le corps du
+ *    composant) ; l'état vit dans l'URL : `?q=kou&status=ACTIVE,DISABLED&role=<id>&page=2`.
+ * 2. `search.apiParams` (critères + page + limite) alimente `useQuery` et sa clé :
+ *    changer un critère relance la requête, `keepPreviousData` garde la page
+ *    affichée pendant ce temps.
+ * 3. `<Table search pagination>` rend la barre, le compteur et l'état « aucun
+ *    résultat ». L'export réutilise `search.filterParams` : mêmes critères que la liste.
+ */
 export const CollaboratorsList: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<MembershipFilters>({
-    page: 1,
-    limit: 20
-  });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0
-  });
-  const [searchTerm, setSearchTerm] = useState('');
-  // Requête de la liste affichée, réutilisée telle quelle par l'export.
-  const lastQueryRef = useRef<MembershipFilters>({});
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (tenantId) {
-      loadMembers();
-    }
-  }, [tenantId, filters]);
+  // Rôles de l'agence, chargés une fois ; un échec laisse simplement le critère sans options.
+  const { data: roles } = useQuery({
+    queryKey: queryKey('roles', tenantId, { scope: 'TENANT' }),
+    queryFn: () => listRoles('TENANT'),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.reference
+  });
 
-  const loadMembers = async () => {
-    if (!tenantId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const query: MembershipFilters = { ...filters, search: searchTerm || undefined };
-      lastQueryRef.current = query;
-      const response = await listMembers(tenantId, query);
-      if (response.success && response.data) {
-        setMembers(response.data.members || []);
-        setPagination(
-          response.data.pagination || {
-            page: 1,
-            limit: 20,
-            total: 0,
-            totalPages: 0
-          }
-        );
-      } else {
-        setError(t('Erreur lors du chargement des collaborateurs'));
+  const search = useListSearch({
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom ou e-mail…') },
+      {
+        key: 'status',
+        type: 'multiSelect',
+        label: t('Statut'),
+        primary: true,
+        options: [
+          { value: 'ACTIVE', label: t('Actif') },
+          { value: 'PENDING_INVITE', label: t('Invitation en attente') },
+          { value: 'DISABLED', label: t('Désactivé') }
+        ]
+      },
+      {
+        key: 'role',
+        type: 'select',
+        label: t('Rôle'),
+        primary: true,
+        api: 'roleId',
+        options: (roles ?? []).map(role => ({ value: role.id, label: getRoleLabelFr(role.key, role.name).name }))
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors du chargement des collaborateurs'));
-    } finally {
-      setLoading(false);
-    }
-  };
+    ]
+  });
 
-  const handleSearch = () => {
-    setFilters({ ...filters, page: 1, search: searchTerm || undefined });
-  };
+  const {
+    data,
+    isFetching,
+    error: queryError
+  } = useQuery({
+    queryKey: queryKey('members', tenantId, search.apiParams),
+    queryFn: () => listMembers(tenantId as string, search.apiParams),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
+  });
 
-  const handleStatusFilter = (status: 'ACTIVE' | 'PENDING_INVITE' | 'DISABLED' | undefined) => {
-    setFilters({ ...filters, page: 1, status });
-  };
+  const members = data?.data?.members ?? [];
+  const total = data?.data?.pagination?.total ?? 0;
+  const error = queryError
+    ? (queryError as { response?: { data?: { message?: string } } }).response?.data?.message ||
+      t('Erreur lors du chargement des collaborateurs')
+    : null;
 
   const handleToggleStatus = async (userId: string, currentStatus: string) => {
     if (!tenantId) return;
@@ -93,7 +98,7 @@ export const CollaboratorsList: React.FC = () => {
         await enableMember(tenantId, userId);
         message.success(t('Collaborateur activé avec succès'));
       }
-      await loadMembers();
+      await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('members', tenantId) });
     } catch (err: any) {
       message.error(err.response?.data?.message || t('Erreur lors de la modification'));
     }
@@ -155,7 +160,7 @@ export const CollaboratorsList: React.FC = () => {
       key: 'lastLogin',
       width: 150,
       render: (_, record) =>
-        record.user.lastLoginAt ? new Date(record.user.lastLoginAt).toLocaleDateString(activeLocale()) : 'Jamais'
+        record.user.lastLoginAt ? new Date(record.user.lastLoginAt).toLocaleDateString(activeLocale()) : t('Jamais')
     },
     {
       title: t('Actions'),
@@ -212,76 +217,30 @@ export const CollaboratorsList: React.FC = () => {
           </Button>
         </div>
 
-        {/* Filters */}
-        <Card>
-          <Space.Compact style={{ width: '100%' }}>
-            <Input
-              placeholder={t('Rechercher un collaborateur...')}
-              prefix={<SearchOutlined />}
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              onPressEnter={handleSearch}
-              style={{ flex: 1 }}
-            />
-            <Select
-              style={{ width: 200 }}
-              placeholder={t('Tous les statuts')}
-              value={filters.status}
-              onChange={handleStatusFilter}
-              allowClear
-            >
-              <Select.Option value="ACTIVE">{t('Actif')}</Select.Option>
-              <Select.Option value="PENDING_INVITE">{t('Invitation en attente')}</Select.Option>
-              <Select.Option value="DISABLED">{t('Désactivé')}</Select.Option>
-            </Select>
-            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
-              {t('Rechercher')}
-            </Button>
-          </Space.Compact>
-        </Card>
-
         {/* Error Message */}
-        {error && (
-          <Alert
-            message={t('Erreur')}
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
-        )}
+        {error && <Alert message={t('Erreur')} description={error} type="error" showIcon />}
 
         {/* Members Table */}
         <Card>
           <div style={{ overflowX: 'auto' }}>
             <Table
+              aria-label={t('Collaborateurs')}
+              search={search.searchProps}
               exportFilename={t('Collaborateurs')}
-              exportFetchAll={() => {
-                const { page: _page, limit: _limit, ...query } = lastQueryRef.current;
-                return collectAllPages<Member>(async (page, limit) => {
-                  const response = await listMembers(tenantId as string, { ...query, page, limit });
+              exportFetchAll={() =>
+                collectAllPages<Member>(async (page, limit) => {
+                  const response = await listMembers(tenantId as string, { ...search.filterParams, page, limit });
                   return { items: response.data?.members ?? [], total: response.data?.pagination?.total ?? 0 };
-                });
-              }}
+                })
+              }
               columns={columns}
               dataSource={members}
               rowKey="id"
-              loading={loading}
+              loading={isFetching}
               scroll={{ x: 'max-content' }}
-              pagination={{
-                current: pagination.page,
-                pageSize: pagination.limit,
-                total: pagination.total,
-                showSizeChanger: true,
-                showTotal: total => t('Total: {{total}} collaborateurs', { total: total }),
-                onChange: (page, pageSize) => {
-                  setFilters({ ...filters, page, limit: pageSize });
-                }
-              }}
-              locale={{
-                emptyText: <Empty description={t('Aucun collaborateur trouvé')} />
-              }}
+              pagination={search.tablePagination(total)}
+              // Sous critère, la Table affiche seule « aucun résultat » + Effacer.
+              locale={search.isFiltered ? undefined : { emptyText: t('Aucun collaborateur pour le moment.') }}
             />
           </div>
         </Card>

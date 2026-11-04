@@ -12,7 +12,8 @@ import {
 } from '../services/membership-service';
 import { z } from 'zod';
 import { parsePagination } from '../utils/pagination-helper';
-import { asyncHandler, UnauthorizedError } from '../middleware/error-middleware';
+import { asyncHandler, BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 
 /**
  * Membres assignables (id, nom d'affichage, roles ; ACTIFS seulement).
@@ -32,49 +33,82 @@ const resetPasswordSchema = z.object({
   newPassword: z.string().min(8).optional()
 });
 
+const MEMBERSHIP_STATUSES = ['ACTIVE', 'PENDING_INVITE', 'DISABLED'] as const;
+
+/** Une valeur vide ou absente donne `undefined` ; un tableau (paramètre répété) est refusé. */
+const emptyToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
+
+/**
+ * Paramètres de requête de la liste des collaborateurs.
+ * `status` : liste séparée par des virgules (`ACTIVE,DISABLED`), doublons ignorés.
+ */
+export const listMembersQuerySchema = z.object({
+  search: z.preprocess(emptyToUndefined, z.string().trim().max(200).optional()),
+  status: z.preprocess(
+    emptyToUndefined,
+    z
+      .string()
+      .transform(value =>
+        Array.from(
+          new Set(
+            value
+              .split(',')
+              .map(item => item.trim())
+              .filter(item => item.length > 0)
+          )
+        )
+      )
+      .pipe(z.array(z.enum(MEMBERSHIP_STATUSES)))
+      .transform(list => (list.length > 0 ? list : undefined))
+      .optional()
+  ),
+  roleId: z.preprocess(emptyToUndefined, z.string().min(1).max(64).optional())
+});
+
+/** Valide les paramètres de requête ; toute valeur invalide lève une `BadRequestError` (400). */
+export function parseListMembersQuery(query: Request['query']) {
+  const parsed = listMembersQuerySchema.safeParse(query);
+  if (!parsed.success) {
+    throw new BadRequestError(
+      t('Paramètres de recherche invalides.'),
+      parsed.error.issues.map(issue => ({ field: issue.path.join('.'), message: issue.message }))
+    );
+  }
+  return parsed.data;
+}
+
 /**
  * List members (collaborators) for a tenant
  * GET /api/tenants/:tenantId/users
+ * Query : search (texte, max 200), status (ACTIVE|PENDING_INVITE|DISABLED, séparés par des virgules),
+ * roleId (max 64), page, limit.
  */
-export async function listMembersHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { tenantId } = req.params;
-
-    const filters: ListMembersFilters = {
-      tenantId,
-      search: req.query.search as string,
-      status: req.query.status as any,
-      roleId: req.query.roleId as string,
-      ...parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 })
-    };
-
-    const result = await listMembers(filters);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        members: result.members,
-        pagination: result.pagination
-      }
-    });
-  } catch (error) {
-    console.error('List members error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    const statusCode = error instanceof Error && errorMessage.includes('introuvable') ? 404 : 500;
-    res.status(statusCode).json({
-      success: false,
-      message: errorMessage,
-      ...(process.env.NODE_ENV !== 'production' && {
-        error: error instanceof Error ? error.stack : undefined
-      })
-    });
+export const listMembersHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError();
   }
-}
+
+  const { tenantId } = req.params;
+  const { search, status, roleId } = parseListMembersQuery(req.query);
+
+  const filters: ListMembersFilters = {
+    tenantId,
+    search,
+    status,
+    roleId,
+    ...parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 })
+  };
+
+  const result = await listMembers(filters);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      members: result.members,
+      pagination: result.pagination
+    }
+  });
+});
 
 /**
  * Get member by ID
