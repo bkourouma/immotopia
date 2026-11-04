@@ -1363,12 +1363,40 @@ export async function deactivateLotTenantAssignmentBySyndicate(
   });
 }
 
+type ChargeCallStatusFilter = 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE';
+
 type ChargeCallListFilters = {
   period?: string;
-  status?: 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE';
+  /** Un statut ou plusieurs (liste « OU »). */
+  status?: ChargeCallStatusFilter | ChargeCallStatusFilter[];
   range?: DateRangeInput;
+  search?: string;
+  lotId?: string;
   pagination?: PaginationInput;
 };
+
+const insensitiveContains = (value: string) => ({ contains: value, mode: 'insensitive' as const });
+
+/** Recherche libre sur le lot (numero) et son copropriétaire (nom, raison sociale, e-mail, téléphone). */
+function lotOwnerSearchClauses(search: string): { lot: Prisma.SyndicateLotWhereInput }[] {
+  const match = insensitiveContains(search);
+  return [
+    { lot: { lotNumber: match } },
+    {
+      lot: {
+        owner: {
+          OR: [
+            { firstName: match },
+            { lastName: match },
+            { legalName: match },
+            { email: match },
+            { phonePrimary: match }
+          ]
+        }
+      }
+    }
+  ];
+}
 
 /**
  * Filtre commun de la liste des appels de charges et de sa synthese : la
@@ -1387,25 +1415,41 @@ function buildChargeCallListWhere(
   // valeur qui n'existe jamais en base ; a l'inverse, un filtre PENDING/PARTIAL
   // exclut ce qui serait maintenant derive OVERDUE, pour rester coherent avec
   // ce que l'ecran affichera.
-  let statusWhere: Prisma.ChargeCallWhereInput = {};
-  if (filters?.status === 'OVERDUE') {
-    statusWhere = { status: { in: ['PENDING', 'PARTIAL'] }, dueDate: { lt: now } };
-  } else if (filters?.status === 'PENDING' || filters?.status === 'PARTIAL') {
-    statusWhere = { status: filters.status, dueDate: { gte: now } };
-  } else if (filters?.status === 'PAID') {
-    statusWhere = { status: 'PAID' };
+  const statuses = filters?.status === undefined ? [] : [filters.status].flat();
+  const statusClauses: Prisma.ChargeCallWhereInput[] = [];
+  for (const status of statuses) {
+    if (status === 'OVERDUE') {
+      statusClauses.push({ status: { in: ['PENDING', 'PARTIAL'] }, dueDate: { lt: now } });
+    } else if (status === 'PENDING' || status === 'PARTIAL') {
+      statusClauses.push({ status, dueDate: { gte: now } });
+    } else if (status === 'PAID') {
+      statusClauses.push({ status: 'PAID' });
+    }
   }
+  const statusWhere: Prisma.ChargeCallWhereInput =
+    statusClauses.length === 0 ? {} : statusClauses.length === 1 ? statusClauses[0] : { OR: statusClauses };
 
   const rangeWhere = buildDateRangeFilter('dueDate', filters?.range);
   const combinedConditions: Prisma.ChargeCallWhereInput[] = [];
   if (Object.keys(statusWhere).length > 0) combinedConditions.push(statusWhere);
   if (Object.keys(rangeWhere).length > 0) combinedConditions.push(rangeWhere);
+  if (filters?.search) {
+    combinedConditions.push({
+      OR: [
+        { period: insensitiveContains(filters.search) },
+        { batch: { label: insensitiveContains(filters.search) } },
+        ...lotOwnerSearchClauses(filters.search)
+      ]
+    });
+  }
 
   return {
     syndicateId,
     syndicate: {
       tenantId
     },
+    // Un lot d'une autre copropriété ou agence reste dans le where : aucun résultat.
+    ...(filters?.lotId ? { lotId: filters.lotId } : {}),
     ...(filters?.period ? { period: filters.period } : {}),
     ...(combinedConditions.length > 0 ? { AND: combinedConditions } : {})
   };
@@ -3334,6 +3378,19 @@ export async function listOverdueDashboardBySyndicate(tenantId: string, syndicat
     orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }]
   });
 
+  // Nombre de relances par appel (compte serveur, sans plafond), borne a l'agence et a la copropriete.
+  const reminderGroups = calls.length
+    ? await prisma.paymentReminder.groupBy({
+        by: ['chargeCallId'],
+        where: {
+          chargeCallId: { in: calls.map(call => call.id) },
+          chargeCall: { syndicateId, syndicate: { tenantId } }
+        },
+        _count: { _all: true }
+      })
+    : [];
+  const remindersByCall = new Map<string, number>(reminderGroups.map(group => [group.chargeCallId, group._count._all]));
+
   const items = calls.flatMap(call => {
     const paid = paidFromAllocations(call.allocations);
     const amount = Number(call.amount);
@@ -3362,7 +3419,8 @@ export async function listOverdueDashboardBySyndicate(tenantId: string, syndicat
       amount,
       paid,
       outstanding,
-      daysLate
+      daysLate,
+      remindersCount: remindersByCall.get(call.id) ?? 0
     };
   });
 
@@ -3387,21 +3445,61 @@ export async function listOverdueDashboardBySyndicate(tenantId: string, syndicat
   };
 }
 
+export type PaymentReminderListFilters = PaginationInput & {
+  search?: string;
+  status?: ('SENT' | 'DELIVERED' | 'FAILED')[];
+  channel?: ('EMAIL' | 'SMS' | 'WHATSAPP' | 'PUSH')[];
+  level?: number;
+  from?: Date;
+  to?: Date;
+  lotId?: string;
+};
+
+function buildPaymentReminderListWhere(
+  tenantId: string,
+  syndicateId: string,
+  filters?: PaymentReminderListFilters
+): Prisma.PaymentReminderWhereInput {
+  return {
+    chargeCall: {
+      syndicateId,
+      syndicate: { tenantId }
+    },
+    ...(filters?.lotId ? { lotId: filters.lotId } : {}),
+    ...(filters?.status?.length ? { status: { in: filters.status } } : {}),
+    ...(filters?.channel?.length ? { channel: { in: filters.channel } } : {}),
+    ...(filters?.level ? { reminderLevel: filters.level } : {}),
+    ...buildDateRangeFilter('sentAt', { from: filters?.from, to: filters?.to }),
+    ...(filters?.search
+      ? {
+          OR: [
+            ...lotOwnerSearchClauses(filters.search),
+            { chargeCall: { period: insensitiveContains(filters.search) } }
+          ]
+        }
+      : {})
+  };
+}
+
+export async function countPaymentRemindersBySyndicate(
+  tenantId: string,
+  syndicateId: string,
+  filters?: PaymentReminderListFilters
+) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+  return prisma.paymentReminder.count({ where: buildPaymentReminderListWhere(tenantId, syndicateId, filters) });
+}
+
 export async function listPaymentRemindersBySyndicate(
   tenantId: string,
   syndicateId: string,
-  pagination?: PaginationInput
+  filters?: PaymentReminderListFilters
 ) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
-  const pager = buildPagination(pagination);
+  const pager = buildPagination(filters);
 
   return prisma.paymentReminder.findMany({
-    where: {
-      chargeCall: {
-        syndicateId,
-        syndicate: { tenantId }
-      }
-    },
+    where: buildPaymentReminderListWhere(tenantId, syndicateId, filters),
     include: {
       chargeCall: true,
       lot: {
@@ -3670,21 +3768,47 @@ export async function runReminderBatchForSyndicate(tenantId: string, syndicateId
   });
 }
 
+export type LatePenaltyListFilters = PaginationInput & {
+  search?: string;
+  waived?: boolean;
+  lotId?: string;
+};
+
+function buildLatePenaltyListWhere(
+  tenantId: string,
+  syndicateId: string,
+  filters?: LatePenaltyListFilters
+): Prisma.LatePaymentPenaltyWhereInput {
+  return {
+    chargeCall: {
+      syndicateId,
+      syndicate: { tenantId }
+    },
+    ...(filters?.lotId ? { lotId: filters.lotId } : {}),
+    ...(filters?.waived !== undefined ? { waived: filters.waived } : {}),
+    ...(filters?.search ? { OR: lotOwnerSearchClauses(filters.search) } : {})
+  };
+}
+
+export async function countLatePaymentPenaltiesBySyndicate(
+  tenantId: string,
+  syndicateId: string,
+  filters?: LatePenaltyListFilters
+) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+  return prisma.latePaymentPenalty.count({ where: buildLatePenaltyListWhere(tenantId, syndicateId, filters) });
+}
+
 export async function listLatePaymentPenaltiesBySyndicate(
   tenantId: string,
   syndicateId: string,
-  pagination?: PaginationInput
+  filters?: LatePenaltyListFilters
 ) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
-  const pager = buildPagination(pagination);
+  const pager = buildPagination(filters);
 
   return prisma.latePaymentPenalty.findMany({
-    where: {
-      chargeCall: {
-        syndicateId,
-        syndicate: { tenantId }
-      }
-    },
+    where: buildLatePenaltyListWhere(tenantId, syndicateId, filters),
     include: {
       chargeCall: true,
       lot: {
@@ -3890,21 +4014,54 @@ export async function createPaymentScheduleForChargeCall(
   });
 }
 
+export type PaymentScheduleListFilters = PaginationInput & {
+  search?: string;
+  status?: ('ACTIVE' | 'COMPLETED' | 'DEFAULTED')[];
+  lotId?: string;
+};
+
+function buildPaymentScheduleListWhere(
+  tenantId: string,
+  syndicateId: string,
+  filters?: PaymentScheduleListFilters
+): Prisma.PaymentScheduleWhereInput {
+  return {
+    chargeCall: {
+      syndicateId,
+      syndicate: { tenantId }
+    },
+    ...(filters?.lotId ? { lotId: filters.lotId } : {}),
+    ...(filters?.status?.length ? { status: { in: filters.status } } : {}),
+    ...(filters?.search
+      ? {
+          OR: [
+            ...lotOwnerSearchClauses(filters.search),
+            { chargeCall: { period: insensitiveContains(filters.search) } }
+          ]
+        }
+      : {})
+  };
+}
+
+export async function countPaymentSchedulesBySyndicate(
+  tenantId: string,
+  syndicateId: string,
+  filters?: PaymentScheduleListFilters
+) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+  return prisma.paymentSchedule.count({ where: buildPaymentScheduleListWhere(tenantId, syndicateId, filters) });
+}
+
 export async function listPaymentSchedulesBySyndicate(
   tenantId: string,
   syndicateId: string,
-  pagination?: PaginationInput
+  filters?: PaymentScheduleListFilters
 ) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
-  const pager = buildPagination(pagination);
+  const pager = buildPagination(filters);
 
   return prisma.paymentSchedule.findMany({
-    where: {
-      chargeCall: {
-        syndicateId,
-        syndicate: { tenantId }
-      }
-    },
+    where: buildPaymentScheduleListWhere(tenantId, syndicateId, filters),
     include: {
       chargeCall: true,
       lot: {
@@ -4079,21 +4236,36 @@ export async function getOwnerAccountByLot(tenantId: string, syndicateId: string
   return account;
 }
 
+export type OwnerAccountTransactionListFilters = {
+  range?: DateRangeInput;
+  type?: ('CHARGE_CALL' | 'PAYMENT' | 'PENALTY' | 'WAIVER' | 'ADJUSTMENT' | 'FUND_TRANSFER')[];
+  search?: string;
+};
+
+function buildOwnerAccountTransactionWhere(
+  accountId: string,
+  filters?: OwnerAccountTransactionListFilters
+): Prisma.OwnerAccountTransactionWhereInput {
+  return {
+    accountId,
+    ...buildDateRangeFilter('transactionDate', filters?.range),
+    ...(filters?.type?.length ? { type: { in: filters.type } } : {}),
+    ...(filters?.search ? { label: insensitiveContains(filters.search) } : {})
+  };
+}
+
 export async function listOwnerAccountTransactionsByLot(
   tenantId: string,
   syndicateId: string,
   lotId: string,
-  filters?: { range?: DateRangeInput; pagination?: PaginationInput }
+  filters?: OwnerAccountTransactionListFilters & { pagination?: PaginationInput }
 ) {
   const account = await getOwnerAccountByLot(tenantId, syndicateId, lotId);
   const pager = buildPagination(filters?.pagination);
 
   const [rows, movements] = await Promise.all([
     prisma.ownerAccountTransaction.findMany({
-      where: {
-        accountId: account.id,
-        ...buildDateRangeFilter('transactionDate', filters?.range)
-      },
+      where: buildOwnerAccountTransactionWhere(account.id, filters),
       skip: pager.skip,
       take: pager.take,
       // Plus récent d'abord ; même critère secondaire (création) que le cumul.
@@ -4115,14 +4287,11 @@ export async function countOwnerAccountTransactionsByLot(
   tenantId: string,
   syndicateId: string,
   lotId: string,
-  filters?: { range?: DateRangeInput }
+  filters?: OwnerAccountTransactionListFilters
 ) {
   const account = await getOwnerAccountByLot(tenantId, syndicateId, lotId);
   return prisma.ownerAccountTransaction.count({
-    where: {
-      accountId: account.id,
-      ...buildDateRangeFilter('transactionDate', filters?.range)
-    }
+    where: buildOwnerAccountTransactionWhere(account.id, filters)
   });
 }
 

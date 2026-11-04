@@ -46,7 +46,6 @@ import {
   activateSyndicMandateSchema,
   createSyndicMandateSchema,
   ibanCheckSchema,
-  listSyndicMandatesQuerySchema,
   revokeMandateSchema,
   suspendMandateSchema,
   updateMandateSchema,
@@ -55,7 +54,12 @@ import {
 import { getSyndicCreditor, upsertSyndicCreditor } from '../lib/direct-debit/syndic/creditors';
 import { createSyndicMandate, listLotDebtors, listSyndicMandates } from '../lib/direct-debit/syndic/mandates';
 import { createSyndicRemittance } from '../lib/direct-debit/syndic/remittances';
-import { createSyndicRemittanceSchema, listSyndicRemittancesQuerySchema } from '../lib/direct-debit/syndic/schemas';
+import { createSyndicRemittanceSchema } from '../lib/direct-debit/syndic/schemas';
+import {
+  listSyndicRemittancesFiltered,
+  syndicMandatesListQuerySchema,
+  syndicRemittancesListQuerySchema
+} from '../lib/syndics/direct-debit-lists';
 import { syndicCtx } from '../lib/direct-debit/syndic/scope';
 
 /**
@@ -117,7 +121,7 @@ export const listLotDebtorsHandler = asyncHandler(async (req: Request, res: Resp
 // --- Mandats ---------------------------------------------------------------
 
 export const listMandatesHandler = asyncHandler(async (req: Request, res: Response) => {
-  const query = listSyndicMandatesQuerySchema.parse(req.query ?? {});
+  const query = syndicMandatesListQuerySchema.parse(req.query ?? {});
   res.json({ success: true, data: await listSyndicMandates(tenantOf(req), syndicOf(req), query) });
 });
 
@@ -185,8 +189,13 @@ export const downloadSignedScanHandler = asyncHandler(async (req: Request, res: 
 // --- Remises ----------------------------------------------------------------
 
 export const listRemittancesHandler = asyncHandler(async (req: Request, res: Response) => {
-  const query = listSyndicRemittancesQuerySchema.parse(req.query ?? {});
-  res.json({ success: true, data: await listRemittances(tenantOf(req), query, ctxOf(req)) });
+  const { search, from, to, ...base } = syndicRemittancesListQuerySchema.parse(req.query ?? {});
+  // Sans critère de recherche, la liste partagée avec la gestion locative reste la seule source.
+  const data =
+    search || from || to
+      ? await listSyndicRemittancesFiltered(tenantOf(req), syndicOf(req), { ...base, search, from, to })
+      : await listRemittances(tenantOf(req), base, ctxOf(req));
+  res.json({ success: true, data });
 });
 
 export const createRemittanceHandler = asyncHandler(async (req: Request, res: Response) => {

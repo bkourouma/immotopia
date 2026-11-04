@@ -33,7 +33,7 @@ const ACCOUNT_2_ID = '44444444-4444-4444-8444-444444444444';
 const store = {
   accounts: new Map<string, any>(),
   journals: new Map<string, any>(),
-  entries: new Map<string, any>(),
+  entries: new Map<string, any>()
 };
 
 jest.mock('../../src/lib/syndics/queries', () => ({
@@ -79,7 +79,7 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   listOwnerAccountTransactionsByLot: jest.fn(),
   createOwnerAccountAdjustmentByLot: jest.fn(),
   getOwnerAccountStatementByLot: jest.fn(),
-  listChartOfAccountsBySyndicate: jest.fn(async () => Array.from(store.accounts.values())),
+  listChartOfAccountsBySyndicate: jest.fn(),
   createChartOfAccountBySyndicate: jest.fn(async (_tenantId: string, _syndicId: string, data: any) => {
     const created = { id: `acc-${store.accounts.size + 1}`, ...data };
     store.accounts.set(created.id, created);
@@ -91,7 +91,7 @@ jest.mock('../../src/lib/syndics/queries', () => ({
     store.journals.set(created.id, created);
     return created;
   }),
-  listJournalEntriesBySyndicate: jest.fn(async () => Array.from(store.entries.values())),
+  listJournalEntriesBySyndicate: jest.fn(),
   createJournalEntryBySyndicate: jest.fn(async (_tenantId: string, _syndicId: string, data: any) => {
     const created = { id: `entry-${store.entries.size + 1}`, ...data, isLocked: false };
     store.entries.set(created.id, created);
@@ -107,30 +107,54 @@ jest.mock('../../src/lib/syndics/queries', () => ({
     found.isLocked = true;
     return found;
   }),
-  getTrialBalanceBySyndicate: jest.fn(async () => ({
-    items: [{ accountNumber: '401', accountName: 'Fournisseurs', totalDebit: 10000, totalCredit: 10000, balance: 0 }],
-    totals: { totalDebit: 10000, totalCredit: 10000, isBalanced: true },
-  })),
-  getGeneralLedgerBySyndicate: jest.fn(async () => [
-    { id: 'line-1', account: { accountNumber: '401' }, entry: { reference: 'JE-1', journal: { code: 'JG' } }, debit: 10000, credit: 0 },
-  ]),
+  getTrialBalanceBySyndicate: jest.fn(),
+  getGeneralLedgerBySyndicate: jest.fn()
+}));
+
+// Les lectures (comptes, journal, grand livre, balance) passent par
+// `accounting-reads` : on garde ses schemas Zod reels (donc les 400) et on
+// remplace seulement les fonctions qui touchent la base.
+jest.mock('../../src/lib/syndics/accounting-reads', () => ({
+  ...jest.requireActual('../../src/lib/syndics/accounting-reads'),
+  searchChartOfAccounts: jest.fn(),
+  listAccountingEntriesPage: jest.fn(),
+  getAccountLedger: jest.fn(),
+  getTrialBalanceAggregated: jest.fn()
 }));
 
 jest.mock('../../src/lib/syndics/notifications', () => ({
   notifyChargeCall: jest.fn().mockResolvedValue({ emailSent: true, whatsappSent: false }),
   notifyMeetingConvocation: jest.fn().mockResolvedValue({ emailSent: 0, whatsappSent: 0 }),
-  notifyChargeCallReminder: jest.fn().mockResolvedValue({ emailSent: true, whatsappSent: false }),
+  notifyChargeCallReminder: jest.fn().mockResolvedValue({ emailSent: true, whatsappSent: false })
 }));
 
 import syndicRoutes from '../../src/routes/syndic-routes';
+import { errorHandler } from '../../src/middleware/error-middleware';
+import {
+  getAccountLedger,
+  getTrialBalanceAggregated,
+  listAccountingEntriesPage,
+  searchChartOfAccounts
+} from '../../src/lib/syndics/accounting-reads';
+
+const mockSearchChartOfAccounts = searchChartOfAccounts as jest.Mock;
+const mockListEntriesPage = listAccountingEntriesPage as jest.Mock;
+const mockGetAccountLedger = getAccountLedger as jest.Mock;
+const mockGetTrialBalance = getTrialBalanceAggregated as jest.Mock;
 
 describe('Syndics accounting routes', () => {
   const app = express();
   app.use(express.json());
   app.use('/api', syndicRoutes);
+  app.use(errorHandler);
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSearchChartOfAccounts.mockImplementation(async () => Array.from(store.accounts.values()));
+    mockListEntriesPage.mockImplementation(async () => {
+      const items = Array.from(store.entries.values());
+      return { items, pagination: { page: 1, limit: 20, total: items.length, totalPages: 1 } };
+    });
     store.accounts.clear();
     store.journals.clear();
     store.entries.clear();
@@ -143,12 +167,11 @@ describe('Syndics accounting routes', () => {
         accountNumber: '401',
         accountName: 'Fournisseurs',
         accountClass: 4,
-        accountType: 'LIABILITY',
+        accountType: 'LIABILITY'
       });
 
     expect(createResponse.status).toBe(201);
-    const listResponse = await request(app)
-      .get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/comptes`);
+    const listResponse = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/comptes`);
     expect(listResponse.status).toBe(200);
     expect(listResponse.body.data).toHaveLength(1);
   });
@@ -160,12 +183,11 @@ describe('Syndics accounting routes', () => {
         journalType: 'GENERAL',
         label: 'Journal general',
         code: 'JG',
-        fiscalYear: 2026,
+        fiscalYear: 2026
       });
 
     expect(createResponse.status).toBe(201);
-    const listResponse = await request(app)
-      .get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/journaux`);
+    const listResponse = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/journaux`);
     expect(listResponse.status).toBe(200);
     expect(listResponse.body.data).toHaveLength(1);
   });
@@ -181,15 +203,16 @@ describe('Syndics accounting routes', () => {
         sourceType: 'MANUAL',
         lines: [
           { accountId: ACCOUNT_1_ID, debit: 10000, credit: 0, label: 'Debit' },
-          { accountId: ACCOUNT_2_ID, debit: 0, credit: 10000, label: 'Credit' },
-        ],
+          { accountId: ACCOUNT_2_ID, debit: 0, credit: 10000, label: 'Credit' }
+        ]
       });
 
     expect(createResponse.status).toBe(201);
     const entryId = createResponse.body.data.id as string;
 
-    const listResponse = await request(app)
-      .get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/ecritures`);
+    const listResponse = await request(app).get(
+      `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/ecritures`
+    );
     expect(listResponse.status).toBe(200);
     expect(listResponse.body.data).toHaveLength(1);
 
@@ -200,15 +223,130 @@ describe('Syndics accounting routes', () => {
     expect(lockResponse.body.data.isLocked).toBe(true);
   });
 
-  it('returns balance and general ledger', async () => {
-    const balanceResponse = await request(app)
-      .get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/balance`);
-    expect(balanceResponse.status).toBe(200);
-    expect(balanceResponse.body.data.totals.isBalanced).toBe(true);
+  it('returns the paginated journal with its pagination block', async () => {
+    store.entries.set('entry-1', { id: 'entry-1', reference: 'JE-1', isLocked: false });
 
-    const ledgerResponse = await request(app)
-      .get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/grand-livre`);
-    expect(ledgerResponse.status).toBe(200);
-    expect(ledgerResponse.body.data).toHaveLength(1);
+    const response = await request(app)
+      .get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/ecritures`)
+      .query({ page: '2', limit: '10', status: 'locked', search: 'JE' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.pagination).toEqual({ page: 1, limit: 20, total: 1, totalPages: 1 });
+    expect(mockListEntriesPage).toHaveBeenCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      expect.objectContaining({ page: 2, limit: 10, status: 'locked', search: 'JE' })
+    );
+  });
+
+  it('passes the search filters of the chart of accounts to the read layer', async () => {
+    const response = await request(app)
+      .get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/comptes`)
+      .query({ search: '401', accountClass: '4,6', limit: '20' });
+
+    expect(response.status).toBe(200);
+    expect(mockSearchChartOfAccounts).toHaveBeenCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      expect.objectContaining({ search: '401', accountClass: [4, 6], limit: 20, onlyActive: true })
+    );
+  });
+
+  it('rejects an invalid page size with 400', async () => {
+    const response = await request(app)
+      .get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/ecritures`)
+      .query({ limit: '1000' });
+
+    expect(response.status).toBe(400);
+    expect(mockListEntriesPage).not.toHaveBeenCalled();
+  });
+
+  it('returns the aggregated balance with its totals and filtered totals', async () => {
+    mockGetTrialBalance.mockResolvedValue({
+      items: [
+        {
+          accountId: ACCOUNT_1_ID,
+          accountNumber: '401',
+          accountName: 'Fournisseurs',
+          accountClass: 4,
+          totalDebit: 10000,
+          totalCredit: 10000,
+          balance: 0
+        }
+      ],
+      totals: { totalDebit: 10000, totalCredit: 10000, isBalanced: true },
+      filteredTotals: { totalDebit: 10000, totalCredit: 10000 }
+    });
+
+    const response = await request(app)
+      .get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/balance`)
+      .query({ hideZero: 'true', accountClass: '4' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.totals.isBalanced).toBe(true);
+    expect(response.body.data.items).toHaveLength(1);
+    expect(response.body.data.filteredTotals).toEqual({ totalDebit: 10000, totalCredit: 10000 });
+    expect(mockGetTrialBalance).toHaveBeenCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      expect.objectContaining({ hideZero: true, accountClass: [4] })
+    );
+  });
+
+  it('returns the ledger of one account with summary, items and pagination', async () => {
+    mockGetAccountLedger.mockResolvedValue({
+      account: {
+        id: ACCOUNT_1_ID,
+        accountNumber: '401',
+        accountName: 'Fournisseurs',
+        accountClass: 4,
+        accountType: 'LIABILITY'
+      },
+      summary: { openingBalance: 0, periodDebit: 10000, periodCredit: 0, closingBalance: 10000, lineCount: 1 },
+      items: [
+        {
+          id: 'line-1',
+          entryId: 'entry-1',
+          reference: 'JE-1',
+          journalCode: 'JG',
+          debit: 10000,
+          credit: 0,
+          runningBalance: 10000
+        }
+      ],
+      pagination: { page: 1, limit: 50, total: 1, totalPages: 1 }
+    });
+
+    const response = await request(app)
+      .get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/grand-livre`)
+      .query({ accountId: ACCOUNT_1_ID });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.account.accountNumber).toBe('401');
+    expect(response.body.data.summary.closingBalance).toBe(10000);
+    expect(response.body.data.items).toHaveLength(1);
+    expect(response.body.data.pagination.total).toBe(1);
+    expect(mockGetAccountLedger).toHaveBeenCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      expect.objectContaining({ accountId: ACCOUNT_1_ID, page: 1, limit: 50 })
+    );
+  });
+
+  it('rejects the general ledger without accountId with 400', async () => {
+    const response = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/grand-livre`);
+
+    expect(response.status).toBe(400);
+    expect(mockGetAccountLedger).not.toHaveBeenCalled();
+  });
+
+  it('rejects the general ledger with a malformed accountId with 400', async () => {
+    const response = await request(app)
+      .get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/comptabilite/grand-livre`)
+      .query({ accountId: 'pas-un-uuid' });
+
+    expect(response.status).toBe(400);
+    expect(mockGetAccountLedger).not.toHaveBeenCalled();
   });
 });

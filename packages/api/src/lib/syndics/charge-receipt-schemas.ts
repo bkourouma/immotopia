@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { isoDaySchema } from './charge-allocation-schemas';
 import { GRID_LIMITS } from './charge-receipt-pdf';
+import { optionalBooleanQuery, searchQuery } from './payment-list-filters';
 
 /**
  * Paramètres des routes des reçus et quittances (lot S3). Toute valeur hors
@@ -34,6 +35,10 @@ export const receiptListQuerySchema = z
     kind: z.enum(['RECEIPT', 'QUITTANCE']).optional(),
     from: isoDaySchema.optional(),
     to: isoDaySchema.optional(),
+    /** Numéro du document, numéro de lot, nom ou e-mail du copropriétaire. */
+    search: searchQuery,
+    /** `true` : seulement les documents rattrapés ; `false` : seulement les autres. */
+    backfilled: optionalBooleanQuery,
     page: z.coerce.number().int().min(1).max(10_000).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20)
   })
