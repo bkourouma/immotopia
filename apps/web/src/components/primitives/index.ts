@@ -52,3 +52,13 @@ export type { StepRailProps, StepRailItem } from './StepRail';
 
 export { PhoneNumber } from './PhoneNumber';
 export type { PhoneNumberProps } from './PhoneNumber';
+
+export { ListSearch } from './ListSearch';
+export type { ListSearchProps } from './ListSearch';
+export type {
+  ListSearchBinding,
+  SearchCriterion,
+  SearchOption,
+  SearchValue,
+  SearchValues
+} from '../../utils/list-search/types';
