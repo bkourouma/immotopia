@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { App, Alert, Button, Card, Form, Input, InputNumber, Modal, Select, Space, Spin, Tag, Typography } from 'antd';
+import { App, Alert, Button, Card, Form, Input, InputNumber, Modal, Select, Space, Tabs, Tag, Typography } from 'antd';
 import {
   CheckOutlined,
   DeleteOutlined,
@@ -31,11 +31,15 @@ import {
   SyndicateFund,
   SyndicateLot
 } from '../../types/syndic-types';
+import { useTabParam } from '../../components/syndics/finances/url-params';
+import { useLocalListSearch } from '../../utils/list-search';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
+
+const BUDGET_TABS = ['budgets', 'repartition', 'campagnes'] as const;
 
 // Libellés évalués au rendu (et non au chargement du module) pour suivre la langue courante.
 function batchTypeLabel(value: ChargeCallBatch['batchType']): string {
@@ -141,11 +145,27 @@ function buildLotDisplayName(allocation: BudgetAllocation, lotDirectoryEntry?: S
   return formatLotLabel(lot, allocation.lotId);
 }
 
+// Accesseurs de la recherche locale : constantes de module, pour garder le filtrage mémoïsé.
+const BUDGET_TEXT = [(budget: SyndicateBudget) => budget.label, (budget: SyndicateBudget) => String(budget.fiscalYear)];
+const BUDGET_ACCESSORS = {
+  fiscalYear: (budget: SyndicateBudget) => String(budget.fiscalYear),
+  status: (budget: SyndicateBudget) => budget.status
+};
+const BATCH_TEXT = [(batch: ChargeCallBatch) => batch.label, (batch: ChargeCallBatch) => batch.period];
+const BATCH_ACCESSORS = {
+  batchType: (batch: ChargeCallBatch) => batch.batchType,
+  status: (batch: ChargeCallBatch) => batch.status,
+  due: (batch: ChargeCallBatch) => batch.dueDate
+};
+
 export const SyndicBudgets: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
 
+  const [tab, setTab] = useTabParam(BUDGET_TABS, 'budgets');
+  // Incrémenté pour relire les données de l'onglet actif après une action ou un clic sur « Actualiser ».
+  const [refresh, setRefresh] = useState(0);
   const [budgets, setBudgets] = useState<SyndicateBudget[]>([]);
   const [batches, setBatches] = useState<ChargeCallBatch[]>([]);
   const [lots, setLots] = useState<SyndicateLot[]>([]);
@@ -173,14 +193,50 @@ export const SyndicBudgets: React.FC = () => {
   const periodTouched = useRef(false);
   const [batchForm] = Form.useForm();
 
+  // Chaque onglet ne charge que ses données (et les recharge à chaque entrée dans l'onglet) :
+  // budgets (+ fonds) ; lots pour la répartition ; campagnes d'appels.
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
       setLoading(false);
       setError(t('Paramètres budget manquants'));
       return;
     }
-    void loadData();
-  }, [effectiveTenantId, syndicId]);
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        if (tab === 'budgets') {
+          const budgetsData = await listBudgets(effectiveTenantId, syndicId);
+          if (cancelled) return;
+          setBudgets(budgetsData);
+          setLinesBudget(current => (current ? (budgetsData.find(item => item.id === current.id) ?? null) : null));
+        } else if (tab === 'repartition') {
+          const lotsData = await listSyndicateLots(effectiveTenantId, syndicId);
+          if (cancelled) return;
+          setLots(lotsData);
+        } else {
+          const batchesData = await listChargeCallBatches(effectiveTenantId, syndicId);
+          if (cancelled) return;
+          setBatches(batchesData);
+        }
+      } catch (err: any) {
+        if (!cancelled) setError(err.response?.data?.error || t('Impossible de charger les budgets'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+      if (tab === 'budgets' && !cancelled) await loadFunds();
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveTenantId, syndicId, tab, refresh]);
+
+  const reload = () => setRefresh(value => value + 1);
+  /** Relit l'onglet visé : sur place s'il est actif, sinon en y basculant (le changement d'onglet recharge). */
+  const reloadTab = (target: (typeof BUDGET_TABS)[number]) => (tab === target ? reload() : setTab(target));
 
   const lotsById = useMemo(
     () =>
@@ -191,27 +247,70 @@ export const SyndicBudgets: React.FC = () => {
     [lots]
   );
 
-  const loadData = async () => {
-    if (!effectiveTenantId || !syndicId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [budgetsData, batchesData, lotsData] = await Promise.all([
-        listBudgets(effectiveTenantId, syndicId),
-        listChargeCallBatches(effectiveTenantId, syndicId),
-        listSyndicateLots(effectiveTenantId, syndicId)
-      ]);
-      setBudgets(budgetsData);
-      setBatches(batchesData);
-      setLots(lotsData);
-      setLinesBudget(current => (current ? (budgetsData.find(item => item.id === current.id) ?? null) : null));
-    } catch (err: any) {
-      setError(err.response?.data?.error || t('Impossible de charger les budgets'));
-    } finally {
-      setLoading(false);
-    }
-    await loadFunds();
-  };
+  // Trois listes reçues en entier et bornées : recherche locale, 20 lignes par page, un préfixe d'URL par onglet.
+  const fiscalYearOptions = useMemo(
+    () =>
+      [...new Set(budgets.map(budget => budget.fiscalYear))]
+        .sort((a, b) => b - a)
+        .map(year => ({ value: String(year), label: String(year) })),
+    [budgets]
+  );
+  const budgetSearch = useLocalListSearch<SyndicateBudget>(budgets, {
+    paramPrefix: 'bud',
+    ariaLabel: t('Rechercher dans les budgets'),
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Libellé, exercice…') },
+      { key: 'fiscalYear', type: 'select', label: t('Exercice'), primary: true, options: fiscalYearOptions },
+      {
+        key: 'status',
+        type: 'multiSelect',
+        label: t('Statut'),
+        primary: true,
+        options: (['DRAFT', 'APPROVED', 'REVISED', 'CLOSED'] as const).map(value => ({
+          value,
+          label: budgetStatusLabel(value)
+        }))
+      }
+    ],
+    text: BUDGET_TEXT,
+    accessors: BUDGET_ACCESSORS
+  });
+
+  const allocationText = useMemo(
+    () => [(row: BudgetAllocation) => buildLotDisplayName(row, row.lotId ? lotsById[row.lotId] : undefined)],
+    [lotsById]
+  );
+  const allocationSearch = useLocalListSearch<BudgetAllocation>(allocationRows, {
+    paramPrefix: 'rep',
+    ariaLabel: t('Rechercher dans la répartition des lots'),
+    criteria: [{ key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Numéro de lot, type…') }],
+    text: allocationText
+  });
+
+  const batchSearch = useLocalListSearch<ChargeCallBatch>(batches, {
+    paramPrefix: 'cam',
+    ariaLabel: t("Rechercher dans les campagnes d'appels"),
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Libellé, période…') },
+      {
+        key: 'batchType',
+        type: 'multiSelect',
+        label: t('Type'),
+        primary: true,
+        options: (['REGULAR', 'EXCEPTIONAL'] as const).map(value => ({ value, label: batchTypeLabel(value) }))
+      },
+      {
+        key: 'status',
+        type: 'multiSelect',
+        label: t('Statut'),
+        primary: true,
+        options: (['DRAFT', 'SENT', 'CLOSED'] as const).map(value => ({ value, label: batchStatusLabel(value) }))
+      },
+      { key: 'due', type: 'dateRange', label: t('Échéance') }
+    ],
+    text: BATCH_TEXT,
+    accessors: BATCH_ACCESSORS
+  });
 
   const loadFunds = async () => {
     if (!effectiveTenantId || !syndicId) return;
@@ -231,7 +330,7 @@ export const SyndicBudgets: React.FC = () => {
     try {
       await assignBudgetLineFund(effectiveTenantId, syndicId, line.budgetId, line.id, { fundId: fundId ?? null });
       message.success(t('Affectation au fonds enregistrée'));
-      await loadData();
+      reload();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Affectation au fonds impossible'));
     } finally {
@@ -266,7 +365,7 @@ export const SyndicBudgets: React.FC = () => {
       });
       message.success(t('Budget créé'));
       closeBudgetModal();
-      await loadData();
+      reloadTab('budgets');
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Création budget impossible'));
     } finally {
@@ -290,7 +389,7 @@ export const SyndicBudgets: React.FC = () => {
     try {
       await updateBudget(effectiveTenantId, syndicId, budgetId, { status });
       message.success(successMessage);
-      await loadData();
+      reload();
     } catch (err: any) {
       message.error(err.response?.data?.error || errorMessage);
     } finally {
@@ -347,7 +446,8 @@ export const SyndicBudgets: React.FC = () => {
       setAllocationRows(allocations);
       setAllocationBudgetLabel(budget ? `${budget.label} (${budget.fiscalYear})` : budgetId);
       message.success(t('Allocations recalculées ({{length}} lot(s))', { length: allocations.length }));
-      await loadData();
+      // Le détail s'affiche dans l'onglet « Répartition des lots » ; les budgets se relisent au retour.
+      setTab('repartition');
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Recalcul impossible'));
     } finally {
@@ -391,7 +491,7 @@ export const SyndicBudgets: React.FC = () => {
       setOpenGenerateModal(false);
       setSelectedBudget(null);
       generateForm.resetFields();
-      await loadData();
+      reload();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Generation des appels impossible'));
     } finally {
@@ -421,7 +521,7 @@ export const SyndicBudgets: React.FC = () => {
       message.success(t('Campagne créée'));
       setOpenBatchModal(false);
       batchForm.resetFields();
-      await loadData();
+      reloadTab('campagnes');
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Création de campagne impossible'));
     } finally {
@@ -448,7 +548,7 @@ export const SyndicBudgets: React.FC = () => {
             <Button icon={<PlusOutlined />} onClick={() => setOpenBatchModal(true)}>
               {t('Nouvelle campagne')}
             </Button>
-            <Button icon={<ReloadOutlined />} onClick={() => void loadData()}>
+            <Button icon={<ReloadOutlined />} onClick={reload}>
               {t('Actualiser')}
             </Button>
           </Space>
@@ -456,191 +556,215 @@ export const SyndicBudgets: React.FC = () => {
 
         {error ? <Alert type="error" message={error} showIcon /> : null}
 
-        {loading ? (
-          <div style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Spin size="large" />
-          </div>
-        ) : (
-          <>
-            <Card title={t('Budgets')}>
-              <Table
-                exportFilename={t('Budgets')}
-                scroll={{ x: 'max-content' }}
-                rowKey="id"
-                dataSource={budgets}
-                pagination={{ pageSize: 8 }}
-                columns={[
-                  { title: t('Exercice'), dataIndex: 'fiscalYear' },
-                  { title: t('Libellé'), dataIndex: 'label' },
-                  {
-                    title: t('Montant'),
-                    dataIndex: 'totalAmount',
-                    align: 'end',
-                    render: (value: number | string) => <MoneyValue value={value} />
-                  },
-                  { title: t('Allocations'), render: (_, budget) => budget.allocations?.length || 0 },
-                  {
-                    title: t('Statut'),
-                    dataIndex: 'status',
-                    render: (status: SyndicateBudget['status']) => (
-                      <Tag color={budgetStatusColors[status]}>{budgetStatusLabel(status)}</Tag>
-                    )
-                  },
-                  {
-                    title: t('Actions'),
-                    exportable: false,
-                    render: (_, budget) => {
-                      const isClosed = budget.status === 'CLOSED';
-                      return (
-                        <Space wrap>
-                          {(budget.status === 'DRAFT' || budget.status === 'REVISED') && (
-                            <Button
-                              size="small"
-                              icon={<CheckOutlined />}
-                              onClick={() => void handleApproveBudget(budget.id)}
-                            >
-                              {t('Approuver')}
-                            </Button>
-                          )}
-                          {budget.status === 'APPROVED' && (
-                            <Button
-                              size="small"
-                              icon={<UndoOutlined />}
-                              onClick={() => void handleReviseBudget(budget.id)}
-                            >
-                              {t('Réviser')}
-                            </Button>
-                          )}
-                          {(budget.status === 'APPROVED' || budget.status === 'REVISED') && (
-                            <Button
-                              size="small"
-                              danger
-                              icon={<LockOutlined />}
-                              onClick={() => handleCloseBudget(budget)}
-                            >
-                              {t('Clôturer')}
-                            </Button>
-                          )}
-                          <Button size="small" disabled={isClosed} onClick={() => void handleRecompute(budget.id)}>
-                            {t('Répartir')}
-                          </Button>
-                          <Button size="small" onClick={() => setLinesBudget(budget)}>
-                            {t('Postes et fonds')}
-                          </Button>
-                          <Button
-                            size="small"
-                            disabled={!budget.allocations || budget.allocations.length === 0}
-                            onClick={() => {
-                              setAllocationRows(budget.allocations || []);
-                              setAllocationBudgetLabel(`${budget.label} (${budget.fiscalYear})`);
-                            }}
-                          >
-                            {t('Voir allocations')}
-                          </Button>
-                          {!isClosed && (
-                            <Button
-                              size="small"
-                              type="primary"
-                              onClick={() => {
-                                setSelectedBudget(budget);
-                                periodTouched.current = false;
-                                setOpenGenerateModal(true);
-                                generateForm.setFieldsValue({
-                                  label: t('Campagne {{fiscalYear}}', { fiscalYear: budget.fiscalYear }),
-                                  period: defaultChargeCallPeriod(budget.fiscalYear, 1, 1),
-                                  batchType: 'REGULAR',
-                                  currency: budget.currency || 'XOF',
-                                  periodsPerYear: 1,
-                                  periodIndex: 1
-                                });
-                              }}
-                            >
-                              {t('Générer appels')}
-                            </Button>
-                          )}
-                        </Space>
-                      );
+        <Tabs
+          activeKey={tab}
+          onChange={key => setTab(key as (typeof BUDGET_TABS)[number])}
+          destroyOnHidden
+          items={[
+            {
+              key: 'budgets',
+              label: t('Budgets'),
+              children: (
+                <>
+                  <Table
+                    {...budgetSearch.tableProps}
+                    aria-label={t('Budgets')}
+                    exportFilename={t('Budgets')}
+                    exportFetchAll={budgetSearch.exportAll}
+                    scroll={{ x: 'max-content' }}
+                    rowKey="id"
+                    loading={loading}
+                    columns={[
+                      { title: t('Exercice'), dataIndex: 'fiscalYear' },
+                      { title: t('Libellé'), dataIndex: 'label' },
+                      {
+                        title: t('Montant'),
+                        dataIndex: 'totalAmount',
+                        align: 'end',
+                        render: (value: number | string) => <MoneyValue value={value} />
+                      },
+                      { title: t('Allocations'), render: (_, budget) => budget.allocations?.length || 0 },
+                      {
+                        title: t('Statut'),
+                        dataIndex: 'status',
+                        render: (status: SyndicateBudget['status']) => (
+                          <Tag color={budgetStatusColors[status]}>{budgetStatusLabel(status)}</Tag>
+                        )
+                      },
+                      {
+                        title: t('Actions'),
+                        exportable: false,
+                        render: (_, budget) => {
+                          const isClosed = budget.status === 'CLOSED';
+                          return (
+                            <Space wrap>
+                              {(budget.status === 'DRAFT' || budget.status === 'REVISED') && (
+                                <Button
+                                  size="small"
+                                  icon={<CheckOutlined />}
+                                  onClick={() => void handleApproveBudget(budget.id)}
+                                >
+                                  {t('Approuver')}
+                                </Button>
+                              )}
+                              {budget.status === 'APPROVED' && (
+                                <Button
+                                  size="small"
+                                  icon={<UndoOutlined />}
+                                  onClick={() => void handleReviseBudget(budget.id)}
+                                >
+                                  {t('Réviser')}
+                                </Button>
+                              )}
+                              {(budget.status === 'APPROVED' || budget.status === 'REVISED') && (
+                                <Button
+                                  size="small"
+                                  danger
+                                  icon={<LockOutlined />}
+                                  onClick={() => handleCloseBudget(budget)}
+                                >
+                                  {t('Clôturer')}
+                                </Button>
+                              )}
+                              <Button size="small" disabled={isClosed} onClick={() => void handleRecompute(budget.id)}>
+                                {t('Répartir')}
+                              </Button>
+                              <Button size="small" onClick={() => setLinesBudget(budget)}>
+                                {t('Postes et fonds')}
+                              </Button>
+                              <Button
+                                size="small"
+                                disabled={!budget.allocations || budget.allocations.length === 0}
+                                onClick={() => {
+                                  setAllocationRows(budget.allocations || []);
+                                  setAllocationBudgetLabel(`${budget.label} (${budget.fiscalYear})`);
+                                }}
+                              >
+                                {t('Voir allocations')}
+                              </Button>
+                              {!isClosed && (
+                                <Button
+                                  size="small"
+                                  type="primary"
+                                  onClick={() => {
+                                    setSelectedBudget(budget);
+                                    periodTouched.current = false;
+                                    setOpenGenerateModal(true);
+                                    generateForm.setFieldsValue({
+                                      label: t('Campagne {{fiscalYear}}', { fiscalYear: budget.fiscalYear }),
+                                      period: defaultChargeCallPeriod(budget.fiscalYear, 1, 1),
+                                      batchType: 'REGULAR',
+                                      currency: budget.currency || 'XOF',
+                                      periodsPerYear: 1,
+                                      periodIndex: 1
+                                    });
+                                  }}
+                                >
+                                  {t('Générer appels')}
+                                </Button>
+                              )}
+                            </Space>
+                          );
+                        }
+                      }
+                    ]}
+                  />
+                </>
+              )
+            },
+            {
+              key: 'repartition',
+              label: t('Répartition des lots'),
+              children: (
+                <>
+                  <Paragraph strong style={{ marginBottom: 12 }}>
+                    {allocationBudgetLabel
+                      ? t('Répartition des lots - {{allocationBudgetLabel}}', {
+                          allocationBudgetLabel: allocationBudgetLabel
+                        })
+                      : t('Répartition des lots')}
+                  </Paragraph>
+                  <Table
+                    {...allocationSearch.tableProps}
+                    aria-label={t('Répartition des lots')}
+                    exportFilename={t('Répartition des lots')}
+                    exportFetchAll={allocationSearch.exportAll}
+                    scroll={{ x: 'max-content' }}
+                    rowKey="id"
+                    loading={loading}
+                    locale={
+                      allocationSearch.isFiltered
+                        ? undefined
+                        : { emptyText: t('Cliquez sur Répartir ou Voir allocations pour afficher le détail.') }
                     }
-                  }
-                ]}
-              />
-            </Card>
-
-            <Card
-              title={
-                allocationBudgetLabel
-                  ? t('Répartition des lots - {{allocationBudgetLabel}}', {
-                      allocationBudgetLabel: allocationBudgetLabel
-                    })
-                  : t('Répartition des lots')
-              }
-            >
-              <Table
-                exportFilename={t('Répartition des lots')}
-                scroll={{ x: 'max-content' }}
-                rowKey="id"
-                dataSource={allocationRows}
-                pagination={{ pageSize: 8 }}
-                locale={{ emptyText: t('Cliquez sur Répartir ou Voir allocations pour afficher le détail.') }}
-                columns={[
-                  {
-                    title: t('Lot'),
-                    render: (_, row) => buildLotDisplayName(row, row.lotId ? lotsById[row.lotId] : undefined)
-                  },
-                  {
-                    title: t('Total alloué'),
-                    dataIndex: 'totalAllocated',
-                    align: 'end',
-                    render: (value: number | string) => <MoneyValue value={value} />
-                  },
-                  {
-                    title: t('Détail lignes'),
-                    render: (_, row) =>
-                      (row.breakdown || [])
-                        .map(line => `${line.category}: ${formatMoney(line.allocated)}`)
-                        .join(' | ') || '-'
-                  }
-                ]}
-              />
-            </Card>
-
-            <Card title={t("Campagnes d'appels")}>
-              <Table
-                exportFilename={t("Campagnes d'appels")}
-                scroll={{ x: 'max-content' }}
-                rowKey="id"
-                dataSource={batches}
-                pagination={{ pageSize: 8 }}
-                columns={[
-                  { title: t('Libellé'), dataIndex: 'label' },
-                  { title: t('Période'), dataIndex: 'period' },
-                  {
-                    title: t('Type'),
-                    dataIndex: 'batchType',
-                    render: (value: ChargeCallBatch['batchType']) => batchTypeLabel(value)
-                  },
-                  {
-                    title: t('Échéance'),
-                    dataIndex: 'dueDate',
-                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
-                  },
-                  {
-                    title: t('Montant'),
-                    dataIndex: 'totalAmount',
-                    align: 'end',
-                    render: (value: number | string) => <MoneyValue value={value} />
-                  },
-                  { title: t('Charges'), render: (_, batch) => batch.chargeCalls?.length || 0 },
-                  {
-                    title: t('Statut'),
-                    dataIndex: 'status',
-                    render: (status: ChargeCallBatch['status']) => <Tag>{batchStatusLabel(status)}</Tag>
-                  }
-                ]}
-              />
-            </Card>
-          </>
-        )}
+                    columns={[
+                      {
+                        title: t('Lot'),
+                        render: (_, row) => buildLotDisplayName(row, row.lotId ? lotsById[row.lotId] : undefined)
+                      },
+                      {
+                        title: t('Total alloué'),
+                        dataIndex: 'totalAllocated',
+                        align: 'end',
+                        render: (value: number | string) => <MoneyValue value={value} />
+                      },
+                      {
+                        title: t('Détail lignes'),
+                        render: (_, row) =>
+                          (row.breakdown || [])
+                            .map(line => `${line.category}: ${formatMoney(line.allocated)}`)
+                            .join(' | ') || '-'
+                      }
+                    ]}
+                  />
+                </>
+              )
+            },
+            {
+              key: 'campagnes',
+              label: t("Campagnes d'appels"),
+              children: (
+                <>
+                  <Table
+                    {...batchSearch.tableProps}
+                    aria-label={t("Campagnes d'appels")}
+                    exportFilename={t("Campagnes d'appels")}
+                    exportFetchAll={batchSearch.exportAll}
+                    scroll={{ x: 'max-content' }}
+                    rowKey="id"
+                    loading={loading}
+                    columns={[
+                      { title: t('Libellé'), dataIndex: 'label' },
+                      { title: t('Période'), dataIndex: 'period' },
+                      {
+                        title: t('Type'),
+                        dataIndex: 'batchType',
+                        render: (value: ChargeCallBatch['batchType']) => batchTypeLabel(value)
+                      },
+                      {
+                        title: t('Échéance'),
+                        dataIndex: 'dueDate',
+                        render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+                      },
+                      {
+                        title: t('Montant'),
+                        dataIndex: 'totalAmount',
+                        align: 'end',
+                        render: (value: number | string) => <MoneyValue value={value} />
+                      },
+                      { title: t('Charges'), render: (_, batch) => batch.chargeCalls?.length || 0 },
+                      {
+                        title: t('Statut'),
+                        dataIndex: 'status',
+                        render: (status: ChargeCallBatch['status']) => <Tag>{batchStatusLabel(status)}</Tag>
+                      }
+                    ]}
+                  />
+                </>
+              )
+            }
+          ]}
+        />
       </Space>
 
       <Modal

@@ -104,6 +104,8 @@ export interface SyndicOnlineCheckoutsQuery {
   lotId?: string;
   from?: string;
   to?: string;
+  /** Recherche serveur : code de paiement, payeur (nom, e-mail), numéro de lot. */
+  search?: string;
   page?: number;
   limit?: number;
 }
@@ -260,6 +262,7 @@ export async function listSyndicOnlineCheckouts(
         lotId: query.lotId || undefined,
         from: query.from || undefined,
         to: query.to || undefined,
+        search: query.search?.trim() || undefined,
         page: query.page,
         limit: query.limit
       }

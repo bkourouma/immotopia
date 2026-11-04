@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { App, Alert, Button, Card, Select, Space, Tag, Typography } from 'antd';
+import React, { useMemo, useState } from 'react';
+import { App, Alert, Button, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined, FileWordOutlined, MailOutlined, PlusOutlined, PrinterOutlined } from '@ant-design/icons';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
+import { useListSearch } from '../../hooks/useListSearch';
 import { MoneyValue, Table } from '../../components/primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { PrintReceiptsModal } from '../../components/syndics/PrintReceiptsModal';
@@ -15,6 +17,7 @@ import {
   resendReceiptEmail
 } from '../../services/syndic-receipt-service';
 import { ReceiptKind, ReceiptView, SyndicateLot } from '../../types/syndic-types';
+import type { ReceiptListParams } from '../../services/syndic-receipt-service';
 import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
@@ -24,7 +27,7 @@ import { displayCurrency } from '../../utils/syndic-currency';
 import { dateFormat } from '../../i18n/format';
 
 import { localizedRecord } from '../../i18n/localized';
-const { Paragraph, Text, Title } = Typography;
+const { Paragraph, Title } = Typography;
 
 const kindLabel: Record<ReceiptKind, string> = localizedRecord(() => ({
   RECEIPT: t('Reçu'),
@@ -60,6 +63,21 @@ function ownerLabelOf(lot: SyndicateLot): string {
   return fullName || coowner.legalName || coowner.fullName || coowner.email || '';
 }
 
+/** Paramètres d'API produits par la barre de recherche -> paramètres typés du service. */
+function toListParams(params: Record<string, string | number>): ReceiptListParams {
+  return {
+    search: params.search as string | undefined,
+    kind: params.kind as ReceiptKind | undefined,
+    lotId: params.lotId as string | undefined,
+    contactId: params.contactId as string | undefined,
+    from: params.from as string | undefined,
+    to: params.to as string | undefined,
+    backfilled: params.backfilled === undefined ? undefined : params.backfilled === 'true',
+    page: params.page as number | undefined,
+    limit: params.limit as number | undefined
+  };
+}
+
 function periodLabelOf(receipt: ReceiptView): string {
   if (receipt.periodLabel) return receipt.periodLabel;
   if (receipt.periodStart && receipt.periodEnd) {
@@ -77,58 +95,24 @@ export const SyndicReceipts: React.FC = () => {
   const { message, modal } = App.useApp();
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
 
-  const [lots, setLots] = useState<SyndicateLot[]>([]);
-  const [items, setItems] = useState<ReceiptView[]>([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [kindFilter, setKindFilter] = useState<ReceiptKind | undefined>(undefined);
-  const [lotFilter, setLotFilter] = useState<string | undefined>(undefined);
-  const [contactFilter, setContactFilter] = useState<string | undefined>(undefined);
+  const ready = Boolean(effectiveTenantId && syndicId);
+  const tenantId = effectiveTenantId ?? '';
+  const syndic = syndicId ?? '';
 
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [backfilling, setBackfilling] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
 
-  useEffect(() => {
-    if (!effectiveTenantId || !syndicId) return;
-    listSyndicateLots(effectiveTenantId, syndicId)
-      .then(setLots)
-      .catch(() => setLots([]));
-  }, [effectiveTenantId, syndicId]);
-
-  const loadReceipts = async (page = 1) => {
-    if (!effectiveTenantId || !syndicId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await listSyndicateReceipts(effectiveTenantId, syndicId, {
-        kind: kindFilter,
-        lotId: lotFilter,
-        contactId: contactFilter,
-        page,
-        limit: pagination.limit
-      });
-      setItems(result.items);
-      setPagination(result.pagination);
-    } catch (err: any) {
-      setError(err.response?.data?.error || t('Impossible de charger les reçus et quittances'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!effectiveTenantId || !syndicId) {
-      setLoading(false);
-      setError(t('Paramètres copropriété manquants'));
-      return;
-    }
-    void loadReceipts(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveTenantId, syndicId, kindFilter, lotFilter, contactFilter]);
+  // Lots de la copropriété (liste bornée d'UNE copropriété) : alimentent les critères « Lot » et
+  // « Copropriétaire » et l'impression groupée. Un échec laisse simplement les critères sans options.
+  const lotsQuery = useQuery({
+    queryKey: ['syndic-receipts', 'lots', tenantId, syndic],
+    queryFn: () => listSyndicateLots(tenantId, syndic),
+    enabled: ready,
+    staleTime: 5 * 60_000
+  });
+  const lots = useMemo<SyndicateLot[]>(() => lotsQuery.data ?? [], [lotsQuery.data]);
 
   const lotOptions = useMemo(() => lots.map(lot => ({ value: lot.id, label: formatLotLabel(lot) })), [lots]);
 
@@ -141,6 +125,74 @@ export const SyndicReceipts: React.FC = () => {
     }
     return Array.from(byContact.entries()).map(([value, label]) => ({ value, label }));
   }, [lots]);
+
+  // Recherche portée par le serveur (GET …/quittances) : search, kind, lotId, contactId,
+  // from/to (la période du document chevauche l'intervalle), backfilled, page, limit.
+  const search = useListSearch({
+    apiNames: { sort: false },
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Numéro, lot, copropriétaire, e-mail…')
+      },
+      {
+        key: 'type',
+        type: 'select',
+        label: t('Type'),
+        primary: true,
+        api: 'kind',
+        options: [
+          { value: 'QUITTANCE', label: t('Quittance') },
+          { value: 'RECEIPT', label: t('Reçu') }
+        ]
+      },
+      {
+        key: 'period',
+        type: 'dateRange',
+        label: t('Période'),
+        primary: true,
+        api: ['from', 'to'],
+        help: t('Documents dont la période chevauche cet intervalle.')
+      },
+      {
+        key: 'lot',
+        type: 'select',
+        label: t('Lot'),
+        api: 'lotId',
+        options: lotOptions
+      },
+      {
+        key: 'owner',
+        type: 'select',
+        label: t('Copropriétaire'),
+        api: 'contactId',
+        options: ownerOptions
+      },
+      {
+        key: 'backfilled',
+        type: 'boolean',
+        label: t('Rattrapé'),
+        tristate: true
+      }
+    ]
+  });
+
+  const receiptsQuery = useQuery({
+    queryKey: ['syndic-receipts', 'list', tenantId, syndic, search.apiParams],
+    queryFn: () => listSyndicateReceipts(tenantId, syndic, toListParams(search.apiParams)),
+    enabled: ready,
+    placeholderData: keepPreviousData
+  });
+  const items = receiptsQuery.data?.items ?? [];
+  const total = receiptsQuery.data?.pagination.total ?? 0;
+  const error = !ready
+    ? t('Paramètres copropriété manquants')
+    : receiptsQuery.error
+      ? (receiptsQuery.error as any).response?.data?.error || t('Impossible de charger les reçus et quittances')
+      : null;
+  const refreshReceipts = () => receiptsQuery.refetch();
 
   const handleDownload = async (receipt: ReceiptView) => {
     if (!effectiveTenantId || !syndicId) return;
@@ -178,7 +230,7 @@ export const SyndicReceipts: React.FC = () => {
     try {
       await resendReceiptEmail(effectiveTenantId, syndicId, receipt.id);
       message.success(t('Document renvoyé par e-mail.'));
-      await loadReceipts(pagination.page);
+      await refreshReceipts();
     } catch (err: any) {
       const status = err.response?.status;
       const code = err.response?.data?.code;
@@ -251,7 +303,7 @@ export const SyndicReceipts: React.FC = () => {
           skipped: totalSkipped
         })
       );
-      await loadReceipts(pagination.page);
+      await refreshReceipts();
     } catch (err: any) {
       message.destroy('backfill-progress');
       message.error(errorMessageOf(err) || t('Le rattrapage des quittances a échoué.'));
@@ -377,80 +429,29 @@ export const SyndicReceipts: React.FC = () => {
           }
         />
 
-        <Card size="small">
-          <Space wrap size={16}>
-            <label>
-              <Text style={{ marginInlineEnd: 8 }}>{t('Type')}</Text>
-              <Select
-                allowClear
-                style={{ minWidth: 160 }}
-                placeholder={t('Tous')}
-                value={kindFilter}
-                onChange={value => setKindFilter(value)}
-                options={[
-                  { value: 'QUITTANCE', label: t('Quittance') },
-                  { value: 'RECEIPT', label: t('Reçu') }
-                ]}
-              />
-            </label>
-            <label>
-              <Text style={{ marginInlineEnd: 8 }}>{t('Lot')}</Text>
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                style={{ minWidth: 200 }}
-                placeholder={t('Tous les lots')}
-                value={lotFilter}
-                onChange={value => setLotFilter(value)}
-                options={lotOptions}
-              />
-            </label>
-            <label>
-              <Text style={{ marginInlineEnd: 8 }}>{t('Copropriétaire')}</Text>
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                style={{ minWidth: 220 }}
-                placeholder={t('Tous les copropriétaires')}
-                value={contactFilter}
-                onChange={value => setContactFilter(value)}
-                options={ownerOptions}
-              />
-            </label>
-          </Space>
-        </Card>
-
         {error ? <Alert type="error" message={error} showIcon /> : null}
 
         <Table<ReceiptView>
+          search={search.searchProps}
           exportFilename={t('Quittances')}
-          // Tous les reçus et quittances, avec les mêmes filtres que la liste affichée.
+          // Tous les reçus et quittances, avec les mêmes critères que la liste affichée.
           exportFetchAll={() =>
             collectAllPages<ReceiptView>(async (exportPage, limit) => {
-              const result = await listSyndicateReceipts(effectiveTenantId ?? '', syndicId ?? '', {
-                kind: kindFilter,
-                lotId: lotFilter,
-                contactId: contactFilter,
-                page: exportPage,
-                limit
-              });
+              const result = await listSyndicateReceipts(
+                tenantId,
+                syndic,
+                toListParams({ ...search.filterParams, page: exportPage, limit })
+              );
               return { items: result.items, total: result.pagination.total };
             })
           }
           rowKey="id"
-          loading={loading}
+          loading={receiptsQuery.isLoading || receiptsQuery.isFetching}
           dataSource={items}
           columns={columns}
           scroll={{ x: 'max-content' }}
-          pagination={{
-            current: pagination.page,
-            pageSize: pagination.limit,
-            total: pagination.total,
-            onChange: page => void loadReceipts(page)
-          }}
-          locale={{ emptyText: t('Aucun reçu ou quittance pour cette copropriété.') }}
+          pagination={search.tablePagination(total)}
+          locale={search.isFiltered ? undefined : { emptyText: t('Aucun reçu ou quittance pour cette copropriété.') }}
         />
       </Space>
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { App as AntApp } from 'antd';
+import { MemoryRouter } from 'react-router-dom';
 import { GatewayConfigCard } from '../../../components/syndics/online-payment/GatewayConfigCard';
 import { ReviewDecisionModal } from '../../../components/syndics/online-payment/ReviewDecisionModal';
 import { PayoutsPanel } from '../../../components/syndics/online-payment/PayoutsPanel';
@@ -12,6 +13,10 @@ import type { SyndicOnlineCheckoutRow } from '../../../services/syndic-online-pa
  * Le service est mocké en entier : chaque export utilisé par les composants
  * doit figurer ci-dessous, Vitest refusant tout import non déclaré.
  */
+
+vi.mock('../../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
 
 const getSyndicGatewaySettings = vi.fn();
 const updateSyndicGatewaySettings = vi.fn();
@@ -85,7 +90,11 @@ function review(kind: SyndicOnlineCheckoutRow['reviewKind'], lateSuccess = false
 }
 
 function wrap(node: React.ReactNode) {
-  return render(<AntApp>{node}</AntApp>);
+  return render(
+    <AntApp>
+      <MemoryRouter>{node}</MemoryRouter>
+    </AntApp>
+  );
 }
 
 beforeEach(() => {

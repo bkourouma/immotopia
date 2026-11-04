@@ -42,6 +42,10 @@ vi.mock('../../services/syndic-direct-debit-service', () => ({
 
 vi.mock('../../services/syndic-service', () => ({ listSyndicateLots: vi.fn().mockResolvedValue([]) }));
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 vi.mock('../../hooks/useAuth', () => ({
   useAuth: () => ({ tenantMembership: { tenantId: 'agence-1' } })
 }));
@@ -114,12 +118,12 @@ const preview = {
   alreadyImported: null
 };
 
-function mount() {
+function mount(tab = 'remises') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
-        <MemoryRouter initialEntries={[`/tenant/${TENANT}/syndics/${SYNDIC}/prelevements`]}>
+        <MemoryRouter initialEntries={[`/tenant/${TENANT}/syndics/${SYNDIC}/prelevements?tab=${tab}`]}>
           <Routes>
             <Route path="/tenant/:tenantId/syndics/:syndicId/prelevements" element={<SyndicDirectDebit />} />
           </Routes>
@@ -309,7 +313,7 @@ describe('SyndicDirectDebit — retours de la banque', () => {
       page: 1,
       pageSize: 20
     });
-    mount();
+    mount('mandats');
     expect(await screen.findByText('MDT-2026-0001')).toBeInTheDocument();
     for (const name of [
       /Modifier|Configurer le compte|Désactiver/,
@@ -321,5 +325,10 @@ describe('SyndicDirectDebit — retours de la banque', () => {
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
     }
     expect(screen.queryByRole('columnheader', { name: 'Actions' })).not.toBeInTheDocument();
+    // Onglet des remises : ni préparation ni import.
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'Remises' }));
+    await screen.findByRole('link', { name: 'PRL-2026-0001' });
+    expect(screen.queryByRole('button', { name: /Préparer une remise/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Importer un retour/ })).not.toBeInTheDocument();
   });
 });

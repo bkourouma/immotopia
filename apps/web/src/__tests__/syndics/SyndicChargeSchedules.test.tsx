@@ -1,6 +1,7 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
@@ -12,6 +13,11 @@ import { SyndicChargeSchedules } from '../../pages/syndics/SyndicChargeSchedules
  * DEUX modules de service que la page appelle — Vitest refuse tout import
  * qu'un `vi.mock` ne déclare pas explicitement (AGENTS.md).
  */
+
+// 992 px et plus : la barre de recherche s'affiche en ligne.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
 
 const listChargeSchedules = vi.fn();
 const getChargeSchedule = vi.fn();
@@ -91,11 +97,16 @@ const authValue: AuthContextType = {
   switchTenant: () => undefined
 };
 
+function Url() {
+  return <div data-testid="url">{decodeURIComponent(useLocation().search)}</div>;
+}
+
 function mount(url = '/tenant/tenant-1/syndics/syndic-1/programmation') {
   return render(
     <AuthContext.Provider value={authValue}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Url />
           <Routes>
             <Route path="/tenant/:tenantId/syndics/:syndicId/programmation" element={<SyndicChargeSchedules />} />
           </Routes>
@@ -178,6 +189,48 @@ beforeEach(() => {
 });
 
 describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
+  const SCHEDULE_FIXED = {
+    ...SCHEDULE_MONTHLY,
+    id: 'sched-2',
+    label: 'Fonds de travaux trimestriel',
+    frequency: 'QUARTERLY',
+    amountSource: 'FIXED',
+    budgetId: null,
+    budget: null,
+    fixedAmount: 75000,
+    active: false,
+    lastRun: null
+  };
+
+  it('filtre les programmations en local par libellé, sans accent ni casse', async () => {
+    listChargeSchedules.mockResolvedValue([SCHEDULE_MONTHLY, SCHEDULE_FIXED]);
+    const user = userEvent.setup();
+    mount();
+    await screen.findByText('Fonds de travaux trimestriel', {}, { timeout: 15000 });
+
+    await user.type(
+      within(screen.getByRole('search', { name: 'Rechercher dans les programmations' })).getByRole('textbox'),
+      'TRAVAUX'
+    );
+    await waitFor(() => expect(screen.queryByText('Charges courantes mensuelles')).toBeNull(), { timeout: 15000 });
+    expect(screen.getByText('Fonds de travaux trimestriel')).toBeTruthy();
+    expect(screen.getByTestId('url').textContent).toContain('prog.q=TRAVAUX');
+  });
+
+  it('applique le statut et la source d’une URL partagée, et propose d’effacer', async () => {
+    listChargeSchedules.mockResolvedValue([SCHEDULE_MONTHLY, SCHEDULE_FIXED]);
+    const user = userEvent.setup();
+    mount('/tenant/tenant-1/syndics/syndic-1/programmation?prog.statut=1&prog.source=FIXED');
+
+    expect(
+      await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', {}, { timeout: 15000 })
+    ).toBeTruthy();
+    const boutons = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(boutons[boutons.length - 1]);
+    expect(await screen.findByText('Charges courantes mensuelles', {}, { timeout: 15000 })).toBeTruthy();
+    expect(screen.getByText('Fonds de travaux trimestriel')).toBeTruthy();
+  });
+
   it('affiche la liste des programmations avec fréquence, prochaine émission et dernière exécution', async () => {
     listChargeSchedules.mockResolvedValue([SCHEDULE_MONTHLY]);
     mount();

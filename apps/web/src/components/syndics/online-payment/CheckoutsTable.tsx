@@ -1,16 +1,20 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { App, Alert, Button, Card, Radio, Select, Space, Table, Tag, Typography } from 'antd';
+import React, { useState } from 'react';
+import { App, Alert, Button, Card, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { SafetyCertificateOutlined, SyncOutlined } from '@ant-design/icons';
-import { MoneyValue, formatMoney } from '../../primitives';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { MoneyValue, Table, formatMoney } from '../../primitives';
 import {
   CheckoutOrigin,
   OnlineCheckoutStatus,
-  Pagination,
   SyndicOnlineCheckoutRow,
+  SyndicOnlineCheckoutsQuery,
   listSyndicOnlineCheckouts,
   verifySyndicOnlineCheckout
 } from '../../../services/syndic-online-payment-service';
+import { useListSearch } from '../../../hooks/useListSearch';
+import { queryKey, STALE_TIME } from '../../../lib/query-keys';
+import { collectAllPages } from '../../../utils/table-export/collect';
 import { displayCurrency } from '../../../utils/syndic-currency';
 import { t } from '../../../i18n/t';
 import { STATUS_COLOR, STATUS_ORDER, apiErrorMessage, formatDateTime, originLabel, statusLabel } from './helpers';
@@ -33,6 +37,15 @@ export interface CheckoutsTableProps {
   canEdit: boolean;
 }
 
+/** Les paramètres de la barre partent tels quels, sauf `status` : le service attend un tableau. */
+function toQuery(params: object): SyndicOnlineCheckoutsQuery {
+  const { status, ...rest } = params as Record<string, string | number | undefined>;
+  return {
+    ...(rest as SyndicOnlineCheckoutsQuery),
+    status: status ? (String(status).split(',') as OnlineCheckoutStatus[]) : undefined
+  };
+}
+
 /** Suivi des paiements en ligne de la copropriété (contrat §1.5 et §1.6). */
 export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
   tenantId,
@@ -43,42 +56,55 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
   canEdit
 }) => {
   const { message } = App.useApp();
-  const [items, setItems] = useState<SyndicOnlineCheckoutRow[]>([]);
-  const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 20, total: 0, totalPages: 1 });
-  const [counts, setCounts] = useState<Counts>(EMPTY_COUNTS);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<OnlineCheckoutStatus | 'ALL'>('ALL');
-  const [originFilter, setOriginFilter] = useState<CheckoutOrigin | undefined>(undefined);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
-  const load = useCallback(
-    async (page = 1, limit = 20) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await listSyndicOnlineCheckouts(tenantId, syndicId, {
-          status: statusFilter === 'ALL' ? undefined : [statusFilter],
-          origin: originFilter,
-          page,
-          limit
-        });
-        setItems(result.items);
-        setPagination(result.pagination);
-        setCounts({ ...EMPTY_COUNTS, ...result.counts });
-      } catch (e) {
-        setError(apiErrorMessage(e, t('Impossible de charger les paiements en ligne')));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [tenantId, syndicId, statusFilter, originFilter]
-  );
+  const search = useListSearch({
+    paramPrefix: 'co',
+    ariaLabel: t('Rechercher dans les paiements en ligne'),
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Code de paiement, lot, payeur…')
+      },
+      {
+        key: 'status',
+        type: 'multiSelect',
+        label: t('Statut'),
+        primary: true,
+        options: STATUS_ORDER.map(status => ({ value: status, label: statusLabel(status) }))
+      },
+      {
+        key: 'origin',
+        type: 'select',
+        label: t('Origine'),
+        primary: true,
+        options: [
+          { value: 'PORTAL', label: originLabel('PORTAL') },
+          { value: 'SECURE_LINK', label: originLabel('SECURE_LINK') }
+        ]
+      },
+      { key: 'period', type: 'dateRange', label: t('Période'), api: ['from', 'to'] }
+    ]
+  });
 
-  useEffect(() => {
-    void load(1, pagination.limit);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load, refreshToken]);
+  const {
+    data,
+    isFetching,
+    error: queryError,
+    refetch
+  } = useQuery({
+    queryKey: queryKey('syndic-online-checkouts', tenantId, { syndicId, refreshToken, ...search.apiParams }),
+    queryFn: () => listSyndicOnlineCheckouts(tenantId, syndicId, toQuery(search.apiParams)),
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
+  });
+  const items = data?.items ?? [];
+  const counts: Counts = { ...EMPTY_COUNTS, ...data?.counts };
+  const error = queryError ? apiErrorMessage(queryError, t('Impossible de charger les paiements en ligne')) : null;
+  const statusValues = search.values.status;
+  const reviewOnly = Array.isArray(statusValues) && statusValues.length === 1 && statusValues[0] === 'REVIEW';
 
   const handleVerify = async (row: SyndicOnlineCheckoutRow) => {
     setVerifyingId(row.id);
@@ -95,7 +121,7 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
       } else {
         message.info(t('Aucun changement chez le fournisseur'));
       }
-      await load(pagination.page, pagination.limit);
+      await refetch();
     } catch (e) {
       message.error(apiErrorMessage(e, t('La vérification a échoué')));
     } finally {
@@ -224,7 +250,7 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
 
   return (
     <Card title={t('Paiements en ligne')}>
-      {counts.REVIEW > 0 && statusFilter !== 'REVIEW' ? (
+      {counts.REVIEW > 0 && !reviewOnly ? (
         <Alert
           type="warning"
           showIcon
@@ -234,39 +260,20 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
             'Ces paiements ont été encaissés chez le fournisseur mais n’ont pas pu être enregistrés automatiquement.'
           )}
           action={
-            <Button size="small" onClick={() => setStatusFilter('REVIEW')}>
+            <Button size="small" onClick={() => search.setValues({ status: ['REVIEW'] })}>
               {t('Voir')}
             </Button>
           }
         />
       ) : null}
 
-      <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Radio.Group
-          value={statusFilter}
-          onChange={event => setStatusFilter(event.target.value)}
-          optionType="button"
-          buttonStyle="solid"
-        >
-          <Radio.Button value="ALL">{t('Tous ({{count}})', { count: totalCount })}</Radio.Button>
-          {STATUS_ORDER.map(status => (
-            <Radio.Button key={status} value={status}>
-              {`${statusLabel(status)} (${counts[status] ?? 0})`}
-            </Radio.Button>
-          ))}
-        </Radio.Group>
-        <Select
-          allowClear
-          aria-label={t('Origine')}
-          placeholder={t('Toutes les origines')}
-          value={originFilter}
-          onChange={value => setOriginFilter(value)}
-          options={[
-            { value: 'PORTAL', label: originLabel('PORTAL') },
-            { value: 'SECURE_LINK', label: originLabel('SECURE_LINK') }
-          ]}
-          style={{ minWidth: 200 }}
-        />
+      <Space wrap size={[4, 4]} style={{ marginBottom: 16 }}>
+        <Tag>{t('Tous ({{count}})', { count: totalCount })}</Tag>
+        {STATUS_ORDER.map(status => (
+          <Tag key={status} color={STATUS_COLOR[status]}>
+            {`${statusLabel(status)} (${counts[status] ?? 0})`}
+          </Tag>
+        ))}
       </Space>
 
       {error ? (
@@ -276,7 +283,7 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
           style={{ marginBottom: 16 }}
           message={error}
           action={
-            <Button size="small" onClick={() => void load(pagination.page, pagination.limit)}>
+            <Button size="small" onClick={() => void refetch()}>
               {t('Réessayer')}
             </Button>
           }
@@ -284,20 +291,27 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
       ) : null}
 
       <Table<SyndicOnlineCheckoutRow>
+        aria-label={t('Paiements en ligne')}
+        search={search.searchProps}
+        exportFilename={t('Paiements en ligne')}
+        exportFetchAll={() =>
+          collectAllPages<SyndicOnlineCheckoutRow>(async (page, limit) => {
+            const response = await listSyndicOnlineCheckouts(
+              tenantId,
+              syndicId,
+              toQuery({ ...search.filterParams, page, limit })
+            );
+            return { items: response.items, total: response.pagination.total };
+          })
+        }
         rowKey="id"
         size="middle"
-        loading={loading}
+        loading={isFetching}
         columns={columns}
         dataSource={items}
         scroll={{ x: 'max-content' }}
-        locale={{ emptyText: t('Aucun paiement en ligne') }}
-        pagination={{
-          current: pagination.page,
-          pageSize: pagination.limit,
-          total: pagination.total,
-          showSizeChanger: false,
-          onChange: (page, pageSize) => void load(page, pageSize)
-        }}
+        locale={search.isFiltered ? undefined : { emptyText: t('Aucun paiement en ligne') }}
+        pagination={search.tablePagination(data?.pagination.total ?? 0)}
       />
     </Card>
   );

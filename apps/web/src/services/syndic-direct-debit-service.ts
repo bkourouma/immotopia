@@ -85,6 +85,12 @@ export interface UpdateSyndicMandateInput {
 
 export interface SyndicRemittanceListFilters {
   status?: RemittanceStatus;
+  /** Référence de la remise (PRL-AAAA-NNNN, ou l'année). */
+  search?: string;
+  /** Date de prélèvement du… (AAAA-MM-JJ). */
+  from?: string;
+  /** … au (AAAA-MM-JJ, incluse). */
+  to?: string;
   page?: number;
   pageSize?: number;
 }

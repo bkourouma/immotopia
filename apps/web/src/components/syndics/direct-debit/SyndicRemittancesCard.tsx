@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Alert, App, Button, Card, Select, Space, Table } from 'antd';
+import { Alert, App, Button, Card, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, UploadOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreditorDto, RemittanceStatus, RemittanceSummaryDto } from '../../../services/direct-debit-service';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { CreditorDto, RemittanceSummaryDto } from '../../../services/direct-debit-service';
 import {
   applySyndicReturnFile,
   listSyndicRemittances,
   listSyndicReturnImports,
   previewSyndicReturnFile
 } from '../../../services/syndic-direct-debit-service';
-import { formatMoney } from '../../primitives';
+import { formatMoney, Table } from '../../primitives';
+import { useListSearch } from '../../../hooks/useListSearch';
+import { collectAllPages } from '../../../utils/table-export/collect';
 import {
   apiErrorMessage,
   formatDay,
@@ -26,8 +28,6 @@ import { useSyndicDirectDebitRights } from './useSyndicDirectDebitRights';
 import { SYNDIC_DD_KEYS } from './keys';
 import { STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
-
-const PAGE_SIZE = 20;
 
 interface SyndicRemittancesCardProps {
   tenantId: string;
@@ -47,17 +47,39 @@ export const SyndicRemittancesCard: React.FC<SyndicRemittancesCardProps> = ({
   const { message } = App.useApp();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [status, setStatus] = useState<RemittanceStatus | undefined>();
-  const [page, setPage] = useState(1);
   const [preparing, setPreparing] = useState(false);
   const [importing, setImporting] = useState(false);
   const { canManage } = useSyndicDirectDebitRights(tenantId);
 
-  const filters = { status, page, pageSize: PAGE_SIZE };
-  const { data, isPending, error } = useQuery({
-    queryKey: SYNDIC_DD_KEYS.remittances(tenantId, syndicId, filters),
-    queryFn: () => listSyndicRemittances(tenantId, syndicId, filters),
-    staleTime: STALE_TIME.list
+  // Liste paginée par l'API (`pageSize`, pas de tri) : les critères partent à l'API.
+  const search = useListSearch({
+    paramPrefix: 'rem',
+    ariaLabel: t('Rechercher dans les remises'),
+    apiNames: { limit: 'pageSize', sort: false },
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Référence de la remise (PRL-…)') },
+      {
+        key: 'status',
+        type: 'select',
+        label: t('Statut'),
+        primary: true,
+        options: REMITTANCE_STATUSES.map(value => ({ value, label: remittanceStatusLabel(value) }))
+      },
+      {
+        key: 'collection',
+        type: 'dateRange',
+        label: t('Date de prélèvement'),
+        primary: true,
+        api: ['from', 'to']
+      }
+    ]
+  });
+
+  const { data, isFetching, error } = useQuery({
+    queryKey: SYNDIC_DD_KEYS.remittances(tenantId, syndicId, search.apiParams),
+    queryFn: () => listSyndicRemittances(tenantId, syndicId, search.apiParams),
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
 
   const detailPath = (remittanceId: string) =>
@@ -115,25 +137,26 @@ export const SyndicRemittancesCard: React.FC<SyndicRemittancesCardProps> = ({
       }
     >
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
-        <Select
-          allowClear
-          placeholder={t('Statut')}
-          aria-label={t('Filtrer les remises par statut')}
-          style={{ minWidth: 200 }}
-          value={status}
-          onChange={value => {
-            setStatus(value);
-            setPage(1);
-          }}
-          options={REMITTANCE_STATUSES.map(value => ({ value, label: remittanceStatusLabel(value) }))}
-        />
         {error && (
           <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement des remises'))} />
         )}
         <Table<RemittanceSummaryDto>
+          aria-label={t('Remises')}
+          search={search.searchProps}
+          exportFilename={t('Remises')}
+          exportFetchAll={() =>
+            collectAllPages<RemittanceSummaryDto>(async (page, limit) => {
+              const response = await listSyndicRemittances(tenantId, syndicId, {
+                ...search.filterParams,
+                page,
+                pageSize: limit
+              });
+              return { items: response.items, total: response.total };
+            })
+          }
           rowKey="id"
           size="middle"
-          loading={isPending}
+          loading={isFetching}
           columns={columns}
           dataSource={data?.items ?? []}
           scroll={{ x: 'max-content' }}
@@ -141,14 +164,8 @@ export const SyndicRemittancesCard: React.FC<SyndicRemittancesCardProps> = ({
             onClick: () => navigate(detailPath(remittance.id)),
             style: { cursor: 'pointer' }
           })}
-          pagination={{
-            current: page,
-            pageSize: PAGE_SIZE,
-            total: data?.total ?? 0,
-            showSizeChanger: false,
-            onChange: next => setPage(next)
-          }}
-          locale={{ emptyText: t('Aucune remise de prélèvement') }}
+          pagination={search.tablePagination(data?.total ?? 0)}
+          locale={search.isFiltered ? undefined : { emptyText: t('Aucune remise de prélèvement') }}
         />
         <ReturnImportsHistory
           tenantId={tenantId}

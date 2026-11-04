@@ -47,7 +47,7 @@ export const ReminderBatchPreview: React.FC<ReminderBatchPreviewProps> = ({
             <Table
               size="small"
               rowKey="chargeCallId"
-              pagination={false}
+              pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false, size: 'small' }}
               scroll={{ y: 240 }}
               dataSource={eligible}
               columns={[

@@ -1,9 +1,8 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   App,
   Alert,
   Button,
-  Card,
   Col,
   DatePicker,
   Form,
@@ -14,85 +13,83 @@ import {
   Select,
   Space,
   Spin,
-  Tag,
+  Tabs,
   Typography
 } from 'antd';
 import { ClockCircleOutlined, ExclamationCircleOutlined, PlusOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
-import { formatMoney, MoneyValue, StatCard, Table } from '../../components/primitives';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { formatMoney, MoneyValue, StatCard } from '../../components/primitives';
 import {
   createLatePaymentPenalty,
   createManualReminder,
   createPaymentSchedule,
   getOverdueDashboard,
   getReminderBatchPreview,
-  listLatePaymentPenalties,
-  listPaymentSchedules,
-  listPaymentReminders,
   runReminderBatch,
   waiveLatePaymentPenalty
 } from '../../services/syndic-service';
 import {
   LatePaymentPenalty,
   OverdueDashboard,
-  OverdueDashboardItem,
-  PaymentReminder,
-  PaymentSchedule,
   ReminderBatchPreview as ReminderBatchPreviewData,
-  ReminderBatchResult,
-  ReminderChannel,
-  ReminderStatus
+  ReminderBatchResult
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
-import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { computeLatePenaltyPreview, MAX_MONTHLY_PENALTY_RATE } from '../../utils/syndic-penalty';
 import { t } from '../../i18n/t';
 import { dateFormat } from '../../i18n/format';
-import { paymentScheduleStatusLabel, reminderChannelLabel } from '../../components/syndics/labels';
 import { reminderExclusionLabel, reminderFailureLabel } from '../../components/syndics/reminder-failure';
 import { ReminderBatchPreview } from '../../components/syndics/ReminderBatchPreview';
+import { financeKeys } from '../../components/syndics/finances/query-keys';
+import { useTabParam } from '../../components/syndics/finances/url-params';
+import { OverdueTableTab, overdueLotLabel } from '../../components/syndics/recovery/OverdueTableTab';
+import { PenaltiesTab, RemindersTab, SchedulesTab } from '../../components/syndics/recovery/RecoveryTabs';
+import { recoveryKeys } from '../../components/syndics/recovery/query-keys';
+import { ownerLabel, reminderChannelOptions } from '../../components/syndics/recovery/recovery-labels';
 
-import { localizedList, localizedRecord } from '../../i18n/localized';
 const { Paragraph, Title, Text } = Typography;
 
-const reminderChannelOptions: Array<{ label: string; value: ReminderChannel }> = localizedList(() => [
-  { label: t('Email'), value: 'EMAIL' },
-  { label: 'SMS', value: 'SMS' },
-  { label: 'WhatsApp', value: 'WHATSAPP' },
-  { label: t('Push'), value: 'PUSH' }
-]);
+/** Onglets de l'écran, dans l'ordre d'affichage (le premier est le défaut de `?tab=`). */
+const RECOVERY_TABS = ['retards', 'relances', 'penalites', 'echeanciers'] as const;
+type RecoveryTab = (typeof RECOVERY_TABS)[number];
 
-const reminderStatusLabels: Record<ReminderStatus, string> = localizedRecord(() => ({
-  SENT: t('Envoyé'),
-  DELIVERED: t('Distribué'),
-  FAILED: t('Échec')
-}));
+const EMPTY_DASHBOARD: OverdueDashboard = { items: [], totals: { overdueCount: 0, overdueAmount: 0 } };
 
-function ownerLabel(owner?: { firstName?: string | null; lastName?: string | null; email?: string | null } | null) {
-  if (!owner) return t('Sans propriétaire');
-  const name = [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim();
-  return name || owner.email || t('Propriétaire');
-}
-
-function lotLabel(item: OverdueDashboardItem): string {
-  return formatLotLabel({ lotNumber: item.lotNumber, property: item.property }, item.lotNumber);
-}
-
+/**
+ * Recouvrement d'une copropriété : cartes de synthèse (tableau de bord des
+ * retards), puis quatre onglets paresseux (`?tab=`) ; chacun porte sa barre de
+ * recherche (préfixes d'URL rt, re, pe, ec). Relances, pénalités et
+ * échéanciers sont paginés par le serveur ; convention d'URL dans
+ * `components/syndics/finances/url-params.ts`.
+ */
 export const SyndicRecovery: React.FC = () => {
   const { message, modal } = App.useApp();
+  const queryClient = useQueryClient();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
+  const [activeTab, setActiveTab] = useTabParam<RecoveryTab>(RECOVERY_TABS, 'retards');
 
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [dashboard, setDashboard] = useState<OverdueDashboard>({
-    items: [],
-    totals: { overdueCount: 0, overdueAmount: 0 }
+  const ready = Boolean(effectiveTenantId && syndicId);
+  const tenantKey = effectiveTenantId ?? '';
+  const syndicKey = syndicId ?? '';
+
+  // Le tableau de bord (borné aux appels en retard) alimente les cartes, l'onglet
+  // Retards et les sélecteurs d'appel des modales : une seule requête.
+  const dashboardQuery = useQuery({
+    queryKey: financeKeys.overdue(tenantKey, syndicKey),
+    queryFn: () => getOverdueDashboard(tenantKey, syndicKey),
+    enabled: ready
   });
-  const [reminders, setReminders] = useState<PaymentReminder[]>([]);
-  const [penalties, setPenalties] = useState<LatePaymentPenalty[]>([]);
-  const [schedules, setSchedules] = useState<PaymentSchedule[]>([]);
+  const dashboard = dashboardQuery.data ?? EMPTY_DASHBOARD;
+  const loading = ready && dashboardQuery.isLoading;
+  const dashboardError = dashboardQuery.error as { response?: { data?: { error?: string } } } | null;
+  const error = ready
+    ? dashboardError
+      ? dashboardError.response?.data?.error || t('Impossible de charger le recouvrement')
+      : null
+    : t('Paramètres recouvrement manquants');
+
+  const [submitting, setSubmitting] = useState(false);
 
   const [manualOpen, setManualOpen] = useState(false);
   const [penaltyOpen, setPenaltyOpen] = useState(false);
@@ -107,15 +104,6 @@ export const SyndicRecovery: React.FC = () => {
   const [scheduleForm] = Form.useForm();
   const [waiveForm] = Form.useForm();
 
-  useEffect(() => {
-    if (!effectiveTenantId || !syndicId) {
-      setLoading(false);
-      setError(t('Paramètres recouvrement manquants'));
-      return;
-    }
-    void loadData();
-  }, [effectiveTenantId, syndicId]);
-
   // Aperçu de la pénalité avant validation : même règle que l'API (taux mensuel au prorata des jours).
   const buildPenaltyPreview = (chargeCallId?: string, rate?: number, daysLate?: number) => {
     const item = dashboard.items.find(candidate => candidate.chargeCallId === chargeCallId);
@@ -129,12 +117,13 @@ export const SyndicRecovery: React.FC = () => {
     };
   };
 
+  // Les appels proposés dans les modales sont ceux du tableau de bord des retards (liste bornée).
   const chargeOptions = useMemo(
     () =>
       dashboard.items.map(item => ({
         value: item.chargeCallId,
         label: t('{{value}} - {{value2}} - reste {{value3}}', {
-          value: lotLabel(item),
+          value: overdueLotLabel(item),
           value2: ownerLabel(item.owner),
           value3: formatMoney(item.outstanding)
         })
@@ -142,26 +131,17 @@ export const SyndicRecovery: React.FC = () => {
     [dashboard.items]
   );
 
-  const loadData = async () => {
-    if (!effectiveTenantId || !syndicId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [dashboardData, remindersData, penaltiesData, schedulesData] = await Promise.all([
-        getOverdueDashboard(effectiveTenantId, syndicId),
-        listPaymentReminders(effectiveTenantId, syndicId, { page: 1, limit: 50 }),
-        listLatePaymentPenalties(effectiveTenantId, syndicId, { page: 1, limit: 50 }),
-        listPaymentSchedules(effectiveTenantId, syndicId, { page: 1, limit: 50 })
-      ]);
-      setDashboard(dashboardData);
-      setReminders(remindersData);
-      setPenalties(penaltiesData);
-      setSchedules(schedulesData);
-    } catch (err: any) {
-      setError(err.response?.data?.error || t('Impossible de charger le recouvrement'));
-    } finally {
-      setLoading(false);
-    }
+  /** Après une écriture : le tableau de bord (cartes, sélecteurs) et la liste de la section touchée. */
+  const refreshAfterWrite = async (scope: 'reminders' | 'penalties' | 'schedules') => {
+    const keys = {
+      reminders: recoveryKeys.reminders(tenantKey, syndicKey),
+      penalties: recoveryKeys.penalties(tenantKey, syndicKey),
+      schedules: recoveryKeys.schedules(tenantKey, syndicKey)
+    };
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: financeKeys.overdue(tenantKey, syndicKey) }),
+      queryClient.invalidateQueries({ queryKey: keys[scope] })
+    ]);
   };
 
   const handleOpenBatchPreview = async () => {
@@ -225,7 +205,7 @@ export const SyndicRecovery: React.FC = () => {
       const result = await runReminderBatch(effectiveTenantId, syndicId);
       setBatchPreview(null);
       showBatchSummary(result);
-      await loadData();
+      await refreshAfterWrite('reminders');
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Envoi des relances groupées impossible'));
     } finally {
@@ -254,7 +234,7 @@ export const SyndicRecovery: React.FC = () => {
       }
       setManualOpen(false);
       manualForm.resetFields();
-      await loadData();
+      await refreshAfterWrite('reminders');
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Création de relance impossible'));
     } finally {
@@ -274,7 +254,7 @@ export const SyndicRecovery: React.FC = () => {
       message.success(t('Pénalité appliquée'));
       setPenaltyOpen(false);
       penaltyForm.resetFields();
-      await loadData();
+      await refreshAfterWrite('penalties');
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Application de pénalité impossible'));
     } finally {
@@ -294,7 +274,7 @@ export const SyndicRecovery: React.FC = () => {
       setWaiveOpen(false);
       setSelectedPenalty(null);
       waiveForm.resetFields();
-      await loadData();
+      await refreshAfterWrite('penalties');
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Remise impossible'));
     } finally {
@@ -318,7 +298,7 @@ export const SyndicRecovery: React.FC = () => {
       message.success(t('Échéancier créé'));
       setScheduleOpen(false);
       scheduleForm.resetFields();
-      await loadData();
+      await refreshAfterWrite('schedules');
     } catch (err: any) {
       message.error(err.response?.data?.error || t("Création d'échéancier impossible"));
     } finally {
@@ -365,189 +345,64 @@ export const SyndicRecovery: React.FC = () => {
         {error ? <Alert type="error" message={error} showIcon /> : null}
 
         {loading ? (
-          <div style={{ minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Spin size="large" />
           </div>
         ) : (
-          <>
-            <Row gutter={[16, 16]}>
-              <Col xs={24} md={12}>
-                <StatCard
-                  label={t('Lots en retard')}
-                  value={dashboard.totals.overdueLotCount ?? dashboard.totals.overdueCount}
-                  tone={dashboard.totals.overdueCount > 0 ? 'danger' : 'neutral'}
-                />
-              </Col>
-              <Col xs={24} md={12}>
-                <StatCard
-                  label={t('Montant restant dû')}
-                  value={<MoneyValue value={dashboard.totals.overdueAmount} />}
-                  tone={dashboard.totals.overdueAmount > 0 ? 'danger' : 'neutral'}
-                />
-              </Col>
-            </Row>
-
-            <Card title={t('Tableau des retards')}>
-              <Table
-                exportFilename={t('Tableau des retards')}
-                scroll={{ x: 'max-content' }}
-                rowKey="chargeCallId"
-                dataSource={dashboard.items}
-                pagination={{ pageSize: 10 }}
-                columns={[
-                  {
-                    title: t('Lot'),
-                    render: (_, item) => lotLabel(item)
-                  },
-                  {
-                    title: t('Propriétaire'),
-                    render: (_, item) => ownerLabel(item.owner)
-                  },
-                  {
-                    title: t('Échéance'),
-                    dataIndex: 'dueDate',
-                    render: (value: string) => dayjs(value).format(dateFormat('short'))
-                  },
-                  { title: t('Jours retard'), dataIndex: 'daysLate' },
-                  {
-                    title: t('Montant'),
-                    dataIndex: 'amount',
-                    align: 'end',
-                    render: (value: number) => <MoneyValue value={value} />
-                  },
-                  {
-                    title: t('Payé'),
-                    dataIndex: 'paid',
-                    align: 'end',
-                    render: (value: number) => <MoneyValue value={value} />
-                  },
-                  {
-                    title: t('Reste'),
-                    dataIndex: 'outstanding',
-                    align: 'end',
-                    render: (value: number) => <MoneyValue value={value} />
-                  }
-                ]}
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}>
+              <StatCard
+                label={t('Lots en retard')}
+                value={dashboard.totals.overdueLotCount ?? dashboard.totals.overdueCount}
+                tone={dashboard.totals.overdueCount > 0 ? 'danger' : 'neutral'}
               />
-            </Card>
-
-            <Card title={t('Historique relances')}>
-              <Table
-                exportFilename={t('Historique relances')}
-                scroll={{ x: 'max-content' }}
-                rowKey="id"
-                dataSource={reminders}
-                pagination={{ pageSize: 10 }}
-                columns={[
-                  { title: t('Niveau'), dataIndex: 'reminderLevel' },
-                  { title: t('Canal'), dataIndex: 'channel', render: (value: string) => reminderChannelLabel(value) },
-                  {
-                    title: t('Statut'),
-                    dataIndex: 'status',
-                    render: (value: ReminderStatus) => <Tag>{reminderStatusLabels[value] ?? value}</Tag>
-                  },
-                  { title: t('Lot'), render: (_, item) => formatLotLabel(item.lot, item.lotId) },
-                  { title: t('Propriétaire'), render: (_, item) => ownerLabel(item.lot?.owner) },
-                  {
-                    title: t('Envoyé le'),
-                    dataIndex: 'sentAt',
-                    render: (value: string) => dayjs(value).format(dateFormat('dateTime'))
-                  },
-                  {
-                    title: t('Cause'),
-                    render: (_, item) =>
-                      item.status === 'FAILED'
-                        ? reminderFailureLabel(item.failureCode, item.failureMessage) || '-'
-                        : '-'
-                  }
-                ]}
+            </Col>
+            <Col xs={24} md={12}>
+              <StatCard
+                label={t('Montant restant dû')}
+                value={<MoneyValue value={dashboard.totals.overdueAmount} />}
+                tone={dashboard.totals.overdueAmount > 0 ? 'danger' : 'neutral'}
               />
-            </Card>
-
-            <Card title={t('Pénalités de retard')}>
-              <Table
-                exportFilename={t('Pénalités de retard')}
-                scroll={{ x: 'max-content' }}
-                rowKey="id"
-                dataSource={penalties}
-                pagination={{ pageSize: 10 }}
-                columns={[
-                  { title: t('Lot'), render: (_, item) => formatLotLabel(item.lot, item.lotId) },
-                  { title: t('Propriétaire'), render: (_, item) => ownerLabel(item.lot?.owner) },
-                  { title: t('Jours retard'), dataIndex: 'daysLate' },
-                  { title: t('Taux'), dataIndex: 'penaltyRate', render: (value: number) => `${value}%` },
-                  {
-                    title: t('Montant'),
-                    dataIndex: 'penaltyAmount',
-                    align: 'end',
-                    render: (value: number) => <MoneyValue value={value} />
-                  },
-                  {
-                    title: t('Statut'),
-                    render: (_, item) =>
-                      item.waived ? <Tag color="orange">{t('Remise')}</Tag> : <Tag color="red">{t('Active')}</Tag>
-                  },
-                  {
-                    title: t('Action'),
-                    exportable: false,
-                    render: (_, item) =>
-                      item.waived ? (
-                        <Text type="secondary">-</Text>
-                      ) : (
-                        <Button
-                          size="small"
-                          onClick={() => {
-                            setSelectedPenalty(item);
-                            setWaiveOpen(true);
-                          }}
-                        >
-                          {t('Remise')}
-                        </Button>
-                      )
-                  }
-                ]}
-              />
-            </Card>
-
-            <Card title={t('Échéanciers')}>
-              <Table
-                exportFilename={t('Échéanciers')}
-                scroll={{ x: 'max-content' }}
-                rowKey="id"
-                dataSource={schedules}
-                pagination={{ pageSize: 10 }}
-                columns={[
-                  { title: t('Lot'), render: (_, item) => formatLotLabel(item.lot, item.lotId) },
-                  { title: t('Propriétaire'), render: (_, item) => ownerLabel(item.lot?.owner) },
-                  { title: t('Appel'), render: (_, item) => item.chargeCall?.period || '-' },
-                  {
-                    title: t('Montant total'),
-                    dataIndex: 'totalAmount',
-                    align: 'end',
-                    render: (value: number | string) => <MoneyValue value={value} />
-                  },
-                  {
-                    title: t('Accord'),
-                    dataIndex: 'agreedAt',
-                    render: (value: string) => dayjs(value).format(dateFormat('short'))
-                  },
-                  {
-                    title: t('Échéances'),
-                    render: (_, item) =>
-                      (item.instalments || [])
-                        .map(inst => `${dayjs(inst.dueDate).format(dateFormat('short'))} (${formatMoney(inst.amount)})`)
-                        .join(' | ') || '-'
-                  },
-                  {
-                    title: t('Statut'),
-                    dataIndex: 'status',
-                    render: (value: string) => <Tag>{paymentScheduleStatusLabel(value)}</Tag>
-                  }
-                ]}
-              />
-            </Card>
-          </>
+            </Col>
+          </Row>
         )}
+
+        <Tabs
+          activeKey={activeTab}
+          onChange={key => setActiveTab(key as RecoveryTab)}
+          destroyOnHidden
+          items={[
+            {
+              key: 'retards',
+              label: t('Tableau des retards'),
+              children: <OverdueTableTab items={dashboard.items} loading={loading} />
+            },
+            {
+              key: 'relances',
+              label: t('Historique relances'),
+              children: ready ? <RemindersTab tenantId={tenantKey} syndicId={syndicKey} /> : null
+            },
+            {
+              key: 'penalites',
+              label: t('Pénalités de retard'),
+              children: ready ? (
+                <PenaltiesTab
+                  tenantId={tenantKey}
+                  syndicId={syndicKey}
+                  onWaive={penalty => {
+                    setSelectedPenalty(penalty);
+                    setWaiveOpen(true);
+                  }}
+                />
+              ) : null
+            },
+            {
+              key: 'echeanciers',
+              label: t('Échéanciers'),
+              children: ready ? <SchedulesTab tenantId={tenantKey} syndicId={syndicKey} /> : null
+            }
+          ]}
+        />
       </Space>
 
       <ReminderBatchPreview

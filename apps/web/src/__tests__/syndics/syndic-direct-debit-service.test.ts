@@ -125,6 +125,13 @@ describe('syndic-direct-debit-service', () => {
     expect(config).toEqual({ headers: { 'Content-Type': 'multipart/form-data' } });
   });
 
+  it('transmet la recherche et la période des remises, sans valeur vide', async () => {
+    await listSyndicRemittances('agence-1', 'syn-1', { search: 'PRL-2026', from: '2026-01-01', to: '', page: 1 });
+    expect(get).toHaveBeenLastCalledWith(`${BASE}/remises`, {
+      params: { search: 'PRL-2026', from: '2026-01-01', page: 1 }
+    });
+  });
+
   it('liste et prépare les remises sans créancier dans le corps', async () => {
     await listSyndicRemittances('agence-1', 'syn-1', { status: 'DRAFT', page: 1, pageSize: 20 });
     expect(get).toHaveBeenCalledWith(`${BASE}/remises`, { params: { status: 'DRAFT', page: 1, pageSize: 20 } });

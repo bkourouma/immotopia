@@ -5,6 +5,8 @@ import type { ColumnsType } from 'antd/es/table';
 import { ConfirmAction, MoneyValue, Table, formatMoney } from '../../primitives';
 import { ChargeSchedule } from '../../../types/syndic-types';
 import { t } from '../../../i18n/t';
+import { useLocalListSearch } from '../../../utils/list-search';
+import type { SearchCriterion } from '../../../utils/list-search';
 import {
   amountSourceLabels,
   describeScheduleError,
@@ -27,6 +29,17 @@ function scheduleAllocationLabel(schedule: ChargeSchedule): string {
   return allocationMethodLabel(schedule.allocationMethod);
 }
 
+// Accesseurs stables (hors composant) : les libellés sont lus dans les fonctions pour suivre la langue.
+const TEXTE_RECHERCHE = [
+  (schedule: ChargeSchedule) => schedule.label,
+  (schedule: ChargeSchedule) => frequencyLabels[schedule.frequency],
+  (schedule: ChargeSchedule) => (schedule.budget ? schedule.budget.label : undefined)
+];
+const ACCESSEURS = {
+  statut: (schedule: ChargeSchedule) => schedule.active,
+  source: (schedule: ChargeSchedule) => schedule.amountSource
+};
+
 export const ScheduleTable: React.FC<{
   tenantId: string | null | undefined;
   syndicId: string | null | undefined;
@@ -39,6 +52,42 @@ export const ScheduleTable: React.FC<{
   onResume: (schedule: ChargeSchedule) => void;
   onDelete: (schedule: ChargeSchedule) => void;
 }> = ({ tenantId, syndicId, onNoticesResent, schedules, busyId, onOpen, onExecute, onPause, onResume, onDelete }) => {
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Libellé, fréquence, budget…')
+    },
+    {
+      key: 'statut',
+      type: 'boolean',
+      label: t('Statut'),
+      primary: true,
+      tristate: true,
+      trueLabel: t('Active'),
+      falseLabel: t('En pause')
+    },
+    {
+      key: 'source',
+      type: 'select',
+      label: t('Source'),
+      primary: true,
+      options: [
+        { value: 'BUDGET', label: amountSourceLabels.BUDGET },
+        { value: 'FIXED', label: amountSourceLabels.FIXED }
+      ]
+    }
+  ];
+  const local = useLocalListSearch<ChargeSchedule>(schedules, {
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS,
+    defaultPageSize: 10,
+    paramPrefix: 'prog',
+    ariaLabel: t('Rechercher dans les programmations')
+  });
+
   const columns: ColumnsType<ChargeSchedule> = [
     {
       title: t('Libellé'),
@@ -206,13 +255,13 @@ export const ScheduleTable: React.FC<{
 
   return (
     <Table
+      {...local.tableProps}
       exportFilename={t('Programmation des appels de charges')}
+      exportFetchAll={local.exportAll}
       rowKey="id"
       scroll={{ x: 'max-content' }}
-      dataSource={schedules}
       columns={columns}
-      pagination={{ pageSize: 10 }}
-      locale={{ emptyText: t('Aucune programmation pour cette copropriété.') }}
+      locale={local.isFiltered ? undefined : { emptyText: t('Aucune programmation pour cette copropriété.') }}
     />
   );
 };

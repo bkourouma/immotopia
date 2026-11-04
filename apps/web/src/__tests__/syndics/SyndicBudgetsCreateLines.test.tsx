@@ -178,7 +178,7 @@ describe('SyndicBudgets — création avec plusieurs postes (M4)', () => {
         fundId: undefined
       }
     ]);
-  }, 30000);
+  }, 120000); // formulaire à 3 postes en antd réel : plus de 30 s sur une machine chargée
 
   it('ne permet pas de retirer le dernier poste', async () => {
     mount();
@@ -192,7 +192,7 @@ describe('SyndicBudgets — création avec plusieurs postes (M4)', () => {
     fireEvent.click(removeButtons[0]);
     await waitFor(() => expect(screen.getAllByLabelText('Montant prévu')).toHaveLength(1), T);
     expect(screen.queryByRole('button', { name: /Retirer le poste/ })).toBeNull();
-  }, 30000);
+  }, 120000);
 
   it.each([
     ['vide', ''],

@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
 import { SyndicOwnerAccount } from '../../pages/syndics/SyndicOwnerAccount';
@@ -26,6 +27,8 @@ vi.mock('@ant-design/icons', async () => {
 
 // Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
 vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
+// La barre de recherche (Popover, DatePicker…) a ses propres tests : ici elle est neutralisée, le filtrage de l'URL reste testé.
+vi.mock('../../components/primitives/ListSearch', () => ({ ListSearch: () => null }));
 
 vi.mock('antd', async () => {
   // importActual reaches the real module from inside a hoisted mock factory;
@@ -55,6 +58,20 @@ vi.mock('antd', async () => {
     Select: passthrough('select'),
     Space: passthrough(),
     Spin: passthrough(),
+    Tabs: ({ items, activeKey, onChange }: any) => (
+      <div>
+        {items.map((item: any) => (
+          <button key={item.key} onClick={() => onChange(item.key)}>
+            {item.label}
+          </button>
+        ))}
+        {items
+          .filter((item: any) => item.key === activeKey)
+          .map((item: any) => (
+            <div key={item.key}>{item.children}</div>
+          ))}
+      </div>
+    ),
     Statistic: ({ title, value }: any) => (
       <div>
         {title}:{value}
@@ -121,15 +138,18 @@ const authValue: AuthContextType = {
   switchTenant: () => undefined
 };
 
-function renderWithRoute() {
+function renderWithRoute(search = '') {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <AuthContext.Provider value={authValue}>
-      <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/lots/lot-1/compte']}>
-        <Routes>
-          <Route path="/tenant/:tenantId/syndics/:syndicId/lots/:lotId/compte" element={<SyndicOwnerAccount />} />
-        </Routes>
-      </MemoryRouter>
-    </AuthContext.Provider>
+    <QueryClientProvider client={queryClient}>
+      <AuthContext.Provider value={authValue}>
+        <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/lots/lot-1/compte' + search]}>
+          <Routes>
+            <Route path="/tenant/:tenantId/syndics/:syndicId/lots/:lotId/compte" element={<SyndicOwnerAccount />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>
+    </QueryClientProvider>
   );
 }
 
@@ -319,5 +339,62 @@ describe('Syndics owner account page', () => {
     });
 
     createElement.mockRestore();
+  });
+});
+
+describe('Syndics owner account page — onglets et pagination serveur', () => {
+  const callsTo = (suffix: string) =>
+    mockApiClient.get.mock.calls.filter((call: unknown[]) => String(call[0]).endsWith(suffix));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiClient.get.mockImplementation((url: string) => {
+      if (url.endsWith('/compte')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: {
+              id: 'acc-1',
+              lotId: 'lot-1',
+              balance: 0,
+              currency: 'XOF',
+              lot: { id: 'lot-1', lotNumber: 'A-01' },
+              contact: null
+            }
+          }
+        });
+      }
+      if (url.endsWith('/compte/transactions')) {
+        return Promise.resolve({ data: { success: true, data: [], summary: { totalCount: 45 } } });
+      }
+      if (url.endsWith('/quittances')) {
+        return Promise.resolve({
+          data: { success: true, data: { items: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } } }
+        });
+      }
+      if (url.endsWith('/avance')) {
+        return Promise.resolve({ data: { success: true, data: { advance: 0, currency: 'XOF' } } });
+      }
+      return Promise.reject(new Error(`Unhandled GET ${url}`));
+    });
+  });
+
+  it("au montage, seul l'onglet des transactions interroge son service", async () => {
+    renderWithRoute();
+    await waitFor(() => expect(callsTo('/compte/transactions').length).toBe(1));
+    expect(callsTo('/quittances').length).toBe(0);
+  });
+
+  it('envoie la page 2 des transactions au service', async () => {
+    renderWithRoute('?tx.page=2');
+    await waitFor(() => expect(callsTo('/compte/transactions').length).toBe(1));
+    expect(callsTo('/compte/transactions')[0][1]).toEqual({ params: expect.objectContaining({ page: 2, limit: 20 }) });
+  });
+
+  it("?tab=recus n'interroge que les reçus, paginés par le serveur", async () => {
+    renderWithRoute('?tab=recus&re.page=3');
+    await waitFor(() => expect(callsTo('/quittances').length).toBe(1));
+    expect(callsTo('/quittances')[0][1]).toEqual({ params: expect.objectContaining({ page: 3, limit: 20 }) });
+    expect(callsTo('/compte/transactions').length).toBe(0);
   });
 });
