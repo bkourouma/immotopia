@@ -249,6 +249,12 @@ mise en page (`<html dir="rtl">`, `<ConfigProvider direction="rtl">`) ; une
 propriété physique ne suit pas ce retournement. Détail :
 [docs/architecture/i18n.md](../architecture/i18n.md).
 
+### 3.5 Listes et recherche
+
+Tout tableau de plus de quelques lignes porte la barre `ListSearch` (via
+`useListSearch` ou `useLocalListSearch`), jamais une barre maison : suivre
+[docs/architecture/recherche-listes.md](../architecture/recherche-listes.md).
+
 ## 4. Gestion des erreurs — contrat de réponse
 
 Le contrat cible, produit par `errorHandler`, est
