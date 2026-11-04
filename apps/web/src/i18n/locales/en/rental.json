@@ -14,6 +14,8 @@
   "{{n}} lignes constatées réglées.": "{{n}} lines recorded as paid.",
   "{{n}} lignes n'ont pas pu être constatées :": "{{n}} lines could not be recorded:",
   "{{n}} locataires n'ont pas reçu l'avis de prélèvement.": "{{n}} tenants have not received the direct debit notice.",
+  "{{n}} paiement": "{{n}} payment",
+  "{{n}} paiements": "{{n}} payments",
   "{{nombre}} à évaluer": "{{nombre}} to assess",
   "{{nombre}} éléments manquants n'ont pas de retenue. Vous pouvez finaliser quand même.": "{{nombre}} missing items have no deduction. You can finalise anyway.",
   "{{nombre}} éléments ne sont pas encore évalués.": "{{nombre}} items have not been assessed yet.",
