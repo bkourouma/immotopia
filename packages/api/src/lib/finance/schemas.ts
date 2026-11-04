@@ -142,7 +142,9 @@ const paginationAliasObject = z.object({
   take: z.coerce.number().int().positive().max(200).optional()
 });
 
-export const accountStatementQuerySchema = withRangeOrderValidation(rangeAliasObject.merge(paginationAliasObject));
+export const accountStatementQuerySchema = withRangeOrderValidation(
+  rangeAliasObject.merge(paginationAliasObject).extend({ search: searchSchema })
+);
 
 export type AccountStatementQuery = z.infer<typeof accountStatementQuerySchema>;
 

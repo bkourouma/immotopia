@@ -305,10 +305,17 @@ function toTransferDto(row: TransferRow, labels: Map<string, string>, names: Map
   };
 }
 
+/** Vrai si `v` (AAAA-MM-JJ) est un vrai jour du calendrier : 2026-02-31 devient le 3 mars, donc refusé. */
+const isRealDay = (v: string) => {
+  const d = new Date(`${v}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
+
 const ymd = z
   .string()
   .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ.');
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ.')
+  .refine(isRealDay, 'Date invalide.');
 const emptyToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
 
 /** Bornes [from 00:00:00, to 23:59:59.999] (UTC). */

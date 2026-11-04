@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
+  Alert,
   App,
   Button,
   Card,
@@ -17,7 +18,8 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { UseQueryResult } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import {
   createTaxRemittance,
@@ -32,12 +34,17 @@ import {
   voidTreasuryTransfer
 } from '../../services/treasury-service';
 import type {
+  ListTaxRemittancesFilters,
+  ListTreasuryTransfersFilters,
   TaxRemittanceDto,
   TreasuryAccountDto,
   TreasuryAccountKind,
   TreasuryTransferDto
 } from '../../services/treasury-service';
 import { queryKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
+import { useListSearch } from '../../hooks/useListSearch';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import {
   PageHeader,
   StateBlock,
@@ -64,6 +71,12 @@ const { TextArea } = Input;
  * fonds d'un compte à l'autre — typiquement une remise de chèques en banque —
  * et la retenue à la source, dont on suit ici ce qui a été collecté sur les
  * loyers, ce qui a été reversé à la DGI, et ce qui reste dû.
+ *
+ * **Recherche.** Comptes : liste locale (préfixe `cpt`). Virements (`vir`) et versements
+ * (`ret`) : listes plafonnées côté API, donc mixtes — statut, période, compte (et
+ * `search` pour les virements) partent au serveur via `filterParams`, le montant des
+ * virements et le champ libre des versements se filtrent ici. Chaque onglet est un
+ * composant monté à son affichage (`destroyOnHidden`) : sa requête ne part pas avant.
  *
  * **Écrit contre le contrat, l'API n'existant pas encore.** `services/
  * treasury-service.ts` porte les types gelés ; les tests (`__tests__/finance/
@@ -158,10 +171,428 @@ interface FormulaireVersement {
   reference?: string;
 }
 
-const TAILLE_PAGE = 20;
+/** Détail d'un compte (opérateur Mobile Money, banque et référence) ; « — » sinon. */
+function detailCompte(c: TreasuryAccountDto): string {
+  return c.kind === 'MOBILE_MONEY'
+    ? libelleOperateur(c.mmOperator)
+    : c.kind === 'BANK'
+      ? [c.bankName, c.bankAccountRef].filter(Boolean).join(' · ') || '—'
+      : '—';
+}
 
-function tranche<T>(liste: T[], page: number, taille: number): T[] {
-  return liste.slice((page - 1) * taille, page * taille);
+/** Libellé d'un compte dans un sélecteur : « Caisse agence (5711) ». */
+function optionsComptesDe(comptes: TreasuryAccountDto[]) {
+  return comptes.map(c => ({ value: c.id, label: `${c.label} (${c.accountNumber})` }));
+}
+
+const OPTIONS_STATUT_DOCUMENT = localizedList(() => [
+  { value: 'VALIDATED', label: t('Validé') },
+  { value: 'VOIDED', label: t('Annulée') }
+]);
+
+// Accesseurs de recherche : constantes de module (identité stable, filtrage mémoïsé).
+// Comptes (liste locale) : libellé, numéro, nature (libellé affiché) et détail.
+const TEXTE_COMPTES = [
+  (c: TreasuryAccountDto) => c.label,
+  (c: TreasuryAccountDto) => c.accountNumber,
+  (c: TreasuryAccountDto) => KIND_LABEL[c.kind],
+  (c: TreasuryAccountDto) => detailCompte(c)
+];
+const ACCESSEURS_COMPTES = {
+  nature: (c: TreasuryAccountDto) => c.kind,
+  actif: (c: TreasuryAccountDto) => c.isActive,
+  defaut: (c: TreasuryAccountDto) => c.isDefault
+};
+// Virements : seul le montant se filtre ici ; le reste part au serveur (aucun accesseur = ignoré en local).
+const ACCESSEURS_VIREMENTS = { montant: (v: TreasuryTransferDto) => v.amount };
+// Versements : le champ libre est local (l'API ne sait pas chercher dans le texte).
+const TEXTE_VERSEMENTS = [
+  (v: TaxRemittanceDto) => v.number,
+  (v: TaxRemittanceDto) => v.periodLabel,
+  (v: TaxRemittanceDto) => v.treasuryLabel,
+  (v: TaxRemittanceDto) => v.reference
+];
+
+interface OngletComptesProps {
+  query: UseQueryResult<TreasuryAccountDto[]>;
+  onNouveau: () => void;
+  onModifier: (compte: TreasuryAccountDto) => void;
+}
+
+/** Onglet « Comptes » : liste locale (quelques dizaines de comptes), préfixe d'URL `cpt`. */
+function OngletComptes({ query, onNouveau, onModifier }: OngletComptesProps) {
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Libellé, numéro, banque, opérateur…') },
+    { key: 'nature', type: 'multiSelect', label: t('Nature'), primary: true, options: OPTIONS_NATURE },
+    {
+      key: 'actif',
+      type: 'boolean',
+      label: t('Statut'),
+      primary: true,
+      tristate: true,
+      trueLabel: t('Actif'),
+      falseLabel: t('Inactif')
+    },
+    { key: 'defaut', type: 'boolean', label: t('Compte par défaut') }
+  ];
+  const local = useLocalListSearch<TreasuryAccountDto>(query.data, {
+    paramPrefix: 'cpt',
+    criteria: criteres,
+    text: TEXTE_COMPTES,
+    accessors: ACCESSEURS_COMPTES
+  });
+
+  const colonnes: ColumnsType<TreasuryAccountDto> = [
+    { title: t('Nature'), key: 'nature', render: (_, c) => KIND_LABEL[c.kind] },
+    { title: t('Numéro'), key: 'numero', render: (_, c) => c.accountNumber },
+    { title: t('Libellé'), key: 'libelle', render: (_, c) => c.label },
+    { title: t('Détail'), key: 'detail', render: (_, c) => detailCompte(c) },
+    { title: t('Défaut'), key: 'defaut', render: (_, c) => (c.isDefault ? t('Oui') : t('Non')) },
+    {
+      title: t('Statut'),
+      key: 'statut',
+      render: (_, c) => (
+        <StatusTag status={c.isActive ? 'ACTIVE' : 'INACTIVE'} tone={c.isActive ? 'success' : 'neutral'} />
+      )
+    },
+    {
+      title: t('Solde'),
+      key: 'solde',
+      align: 'end',
+      render: (_, c) => <MoneyValue value={c.balance} />,
+      exportValue: c => c.balance
+    },
+    {
+      title: t('Actions'),
+      key: 'actions',
+      align: 'end',
+      render: (_, c) => (
+        <Button type="link" onClick={() => onModifier(c)}>
+          {t('Modifier')}
+        </Button>
+      )
+    }
+  ];
+
+  return (
+    <>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 'var(--space-3)',
+          marginBottom: 'var(--space-4)'
+        }}
+      >
+        <Text type="secondary">
+          {t(
+            'Numérotation SYSCOHADA : caisses 5711x, banques 5211x, Mobile Money 552x (5521 Wave, 5522 Orange Money, 5523 MTN), chèques à encaisser 513, cartes 515.'
+          )}
+        </Text>
+        <Button type="primary" icon={<PlusOutlined />} onClick={onNouveau}>
+          {t('Nouveau compte')}
+        </Button>
+      </div>
+
+      <DataView<TreasuryAccountDto>
+        {...local.dataViewProps}
+        search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les comptes de trésorerie') }}
+        export={{ filename: t('Comptes de trésorerie'), fetchAll: local.exportAll }}
+        loading={query.isPending}
+        isReloading={query.isFetching && !query.isPending}
+        error={query.error ? t('Impossible de charger les comptes de trésorerie.') : null}
+        errorCause={query.error}
+        onRetry={() => query.refetch()}
+        emptyDescription={t('Aucun compte de trésorerie.')}
+        emptyAction={{ label: t('Nouveau compte'), onClick: onNouveau }}
+        columns={colonnes}
+        rowKey={c => c.id}
+        aria-label={t('Comptes de trésorerie')}
+        renderCard={c => (
+          <DataCard
+            title={c.label}
+            aria-label={c.label}
+            subtitle={`${KIND_LABEL[c.kind]} · ${c.accountNumber}`}
+            status={<StatusTag status={c.isActive ? 'ACTIVE' : 'INACTIVE'} tone={c.isActive ? 'success' : 'neutral'} />}
+            highlight={<MoneyValue value={c.balance} />}
+            fields={[{ label: t('Défaut'), value: c.isDefault ? t('Oui') : t('Non') }]}
+            primaryAction={{ label: t('Modifier'), onClick: () => onModifier(c) }}
+          />
+        )}
+      />
+    </>
+  );
+}
+
+interface OngletVirementsProps {
+  tenantId: string;
+  comptes: TreasuryAccountDto[];
+  onNouveau: () => void;
+  onAnnuler: (virement: TreasuryTransferDto) => void;
+}
+
+/** Plafond de lignes renvoyé par l'API (`take: 500`) pour les virements et les versements. */
+const PLAFOND_LIGNES_API = 500;
+
+/**
+ * Onglet « Virements internes » : mode mixte, préfixe d'URL `vir`.
+ *
+ * La liste est plafonnée côté API : le champ libre (`search`), le statut, le
+ * compte (de OU vers) et la période partent donc au serveur, dans la clé et
+ * dans l'appel. Seul l'intervalle de montants se filtre ici (`api: false`).
+ * La requête n'existe que lorsque l'onglet est monté (`destroyOnHidden`).
+ */
+function OngletVirements({ tenantId, comptes, onNouveau, onAnnuler }: OngletVirementsProps) {
+  const optionsComptes = useMemo(() => optionsComptesDe(comptes), [comptes]);
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Référence, notes…') },
+    { key: 'status', type: 'multiSelect', label: t('Statut'), primary: true, options: OPTIONS_STATUT_DOCUMENT },
+    { key: 'date', type: 'dateRange', label: t('Date'), primary: true, api: ['from', 'to'] },
+    { key: 'compte', type: 'select', label: t('Compte'), options: optionsComptes, api: 'accountId' },
+    { key: 'montant', type: 'numberRange', label: t('Montant'), unit: 'FCFA', api: false }
+  ];
+  // Paramètres d'API des critères serveur, disponibles avant la requête.
+  const { filterParams } = useListSearch({ paramPrefix: 'vir', criteria: criteres });
+
+  const query = useQuery({
+    queryKey: queryKey('treasury-transfers', tenantId, filterParams),
+    queryFn: () => listTreasuryTransfers(tenantId, filterParams as ListTreasuryTransfersFilters),
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
+  });
+
+  const local = useLocalListSearch<TreasuryTransferDto>(query.data, {
+    paramPrefix: 'vir',
+    criteria: criteres,
+    accessors: ACCESSEURS_VIREMENTS
+  });
+
+  const colonnes: ColumnsType<TreasuryTransferDto> = [
+    { title: t('Numéro'), key: 'numero', render: (_, v) => v.number },
+    { title: t('De'), key: 'de', render: (_, v) => v.fromLabel },
+    { title: t('Vers'), key: 'vers', render: (_, v) => v.toLabel },
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      render: (_, v) => <MoneyValue value={v.amount} />,
+      exportValue: v => v.amount
+    },
+    { title: t('Date'), key: 'date', render: (_, v) => dateJour(v.transferredAt) },
+    {
+      title: t('Statut'),
+      key: 'statut',
+      render: (_, v) => <StatusTag status={v.status} />
+    },
+    {
+      title: t('Actions'),
+      key: 'actions',
+      align: 'end',
+      render: (_, v) =>
+        v.status === 'VALIDATED' ? (
+          <Button type="link" danger onClick={() => onAnnuler(v)}>
+            {t('Annuler')}
+          </Button>
+        ) : null
+    }
+  ];
+
+  return (
+    <>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 'var(--space-3)',
+          marginBottom: 'var(--space-4)'
+        }}
+      >
+        <Text type="secondary">
+          {t(
+            'Un virement interne déplace des fonds d’un compte de trésorerie à un autre sans toucher le résultat — typiquement une remise de chèques en banque.'
+          )}
+        </Text>
+        <Button type="primary" icon={<PlusOutlined />} onClick={onNouveau}>
+          {t('Nouveau virement')}
+        </Button>
+      </div>
+
+      {(query.data?.length ?? 0) >= PLAFOND_LIGNES_API && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--space-4)' }}
+          title={t(
+            'Seuls les 500 virements les plus récents correspondant aux critères sont affichés. Affinez par période, statut ou compte.'
+          )}
+        />
+      )}
+      <DataView<TreasuryTransferDto>
+        {...local.dataViewProps}
+        search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les virements internes') }}
+        export={{ filename: t('Virements internes'), fetchAll: local.exportAll }}
+        loading={query.isPending}
+        isReloading={query.isFetching && !query.isPending}
+        error={query.error ? t('Impossible de charger les virements internes.') : null}
+        errorCause={query.error}
+        onRetry={() => query.refetch()}
+        emptyDescription={t('Aucun virement interne.')}
+        emptyAction={{ label: t('Nouveau virement'), onClick: onNouveau }}
+        columns={colonnes}
+        rowKey={v => v.id}
+        aria-label={t('Virements internes')}
+        renderCard={v => (
+          <DataCard
+            title={v.number}
+            aria-label={v.number}
+            subtitle={`${v.fromLabel} → ${v.toLabel}`}
+            status={<StatusTag status={v.status} />}
+            highlight={<MoneyValue value={v.amount} />}
+            fields={[{ label: t('Date'), value: dateJour(v.transferredAt) }]}
+            primaryAction={v.status === 'VALIDATED' ? { label: t('Annuler'), onClick: () => onAnnuler(v) } : undefined}
+          />
+        )}
+      />
+    </>
+  );
+}
+
+interface TableauVersementsProps {
+  tenantId: string;
+  comptes: TreasuryAccountDto[];
+  peutCreer: boolean;
+  onNouveau: () => void;
+  onAnnuler: (versement: TaxRemittanceDto) => void;
+}
+
+/**
+ * Versements à la DGI : mode mixte, préfixe d'URL `ret`. Statut, période et
+ * compte partent au serveur ; le champ libre (numéro, période, compte,
+ * référence) est local, l'API ne sachant pas chercher dans le texte.
+ */
+function TableauVersements({ tenantId, comptes, peutCreer, onNouveau, onAnnuler }: TableauVersementsProps) {
+  const optionsComptes = useMemo(() => optionsComptesDe(comptes), [comptes]);
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Numéro, période, compte, référence…'),
+      api: false
+    },
+    { key: 'status', type: 'multiSelect', label: t('Statut'), primary: true, options: OPTIONS_STATUT_DOCUMENT },
+    { key: 'date', type: 'dateRange', label: t('Date'), primary: true, api: ['from', 'to'] },
+    { key: 'compte', type: 'select', label: t('Compte'), options: optionsComptes, api: 'treasuryAccountId' }
+  ];
+  const { filterParams } = useListSearch({ paramPrefix: 'ret', criteria: criteres });
+
+  const query = useQuery({
+    queryKey: queryKey('tax-remittances', tenantId, filterParams),
+    queryFn: () => listTaxRemittances(tenantId, filterParams as ListTaxRemittancesFilters),
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
+  });
+
+  const local = useLocalListSearch<TaxRemittanceDto>(query.data, {
+    paramPrefix: 'ret',
+    criteria: criteres,
+    text: TEXTE_VERSEMENTS
+  });
+
+  const colonnes: ColumnsType<TaxRemittanceDto> = [
+    { title: t('Numéro'), key: 'numero', render: (_, v) => v.number },
+    { title: t('Période'), key: 'periode', render: (_, v) => v.periodLabel },
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      render: (_, v) => <MoneyValue value={v.amount} />,
+      exportValue: v => v.amount
+    },
+    { title: t('Date'), key: 'date', render: (_, v) => dateJour(v.paidAt) },
+    { title: t('Compte'), key: 'compte', render: (_, v) => v.treasuryLabel },
+    {
+      title: t('Statut'),
+      key: 'statut',
+      render: (_, v) => <StatusTag status={v.status} />
+    },
+    {
+      title: t('Actions'),
+      key: 'actions',
+      align: 'end',
+      render: (_, v) =>
+        v.status === 'VALIDATED' ? (
+          <Button type="link" danger onClick={() => onAnnuler(v)}>
+            {t('Annuler')}
+          </Button>
+        ) : null
+    }
+  ];
+
+  return (
+    <>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 'var(--space-3)',
+          marginBottom: 'var(--space-4)'
+        }}
+      >
+        <Title level={5} style={{ margin: 0 }}>
+          {t('Versements à la DGI')}
+        </Title>
+        {peutCreer && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={onNouveau}>
+            {t('Nouveau versement')}
+          </Button>
+        )}
+      </div>
+
+      {(query.data?.length ?? 0) >= PLAFOND_LIGNES_API && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--space-4)' }}
+          title={t(
+            'Seuls les 500 versements les plus récents correspondant aux critères sont affichés. Affinez par période, statut ou compte.'
+          )}
+        />
+      )}
+      <DataView<TaxRemittanceDto>
+        {...local.dataViewProps}
+        search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les versements à la DGI') }}
+        export={{ filename: t('Versements à la DGI'), fetchAll: local.exportAll }}
+        loading={query.isPending}
+        isReloading={query.isFetching && !query.isPending}
+        error={query.error ? t('Impossible de charger les versements à la DGI.') : null}
+        errorCause={query.error}
+        onRetry={() => query.refetch()}
+        emptyDescription={t('Aucun versement à la DGI.')}
+        emptyAction={peutCreer ? { label: t('Nouveau versement'), onClick: onNouveau } : undefined}
+        columns={colonnes}
+        rowKey={v => v.id}
+        aria-label={t('Versements à la DGI')}
+        renderCard={v => (
+          <DataCard
+            title={v.number}
+            aria-label={v.number}
+            subtitle={v.periodLabel}
+            status={<StatusTag status={v.status} />}
+            highlight={<MoneyValue value={v.amount} />}
+            fields={[{ label: t('Date'), value: dateJour(v.paidAt) }]}
+            primaryAction={v.status === 'VALIDATED' ? { label: t('Annuler'), onClick: () => onAnnuler(v) } : undefined}
+          />
+        )}
+      />
+    </>
+  );
 }
 
 export const Tresorerie: React.FC = () => {
@@ -170,14 +601,6 @@ export const Tresorerie: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [onglet, setOnglet] = useState<Onglet>('comptes');
-
-  // Pagination locale : les trois listes arrivent en entier de l'API.
-  const [pageComptes, setPageComptes] = useState(1);
-  const [pageVirements, setPageVirements] = useState(1);
-  const [pageVersements, setPageVersements] = useState(1);
-  const [tailleComptes, setTailleComptes] = useState(TAILLE_PAGE);
-  const [tailleVirements, setTailleVirements] = useState(TAILLE_PAGE);
-  const [tailleVersements, setTailleVersements] = useState(TAILLE_PAGE);
 
   // --- Comptes ---------------------------------------------------------------
   const [modalCompteOuvert, setModalCompteOuvert] = useState(false);
@@ -210,23 +633,9 @@ export const Tresorerie: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  const virementsQuery = useQuery({
-    queryKey: queryKey('treasury-transfers', tenantId, {}),
-    queryFn: () => listTreasuryTransfers(tenantId as string),
-    enabled: Boolean(tenantId) && onglet === 'virements',
-    staleTime: STALE_TIME.list
-  });
-
   const retenueQuery = useQuery({
     queryKey: queryKey('treasury-withholding', tenantId, {}),
     queryFn: () => getWithholdingSummary(tenantId as string),
-    enabled: Boolean(tenantId) && onglet === 'retenues',
-    staleTime: STALE_TIME.list
-  });
-
-  const versementsQuery = useQuery({
-    queryKey: queryKey('tax-remittances', tenantId, {}),
-    queryFn: () => listTaxRemittances(tenantId as string),
     enabled: Boolean(tenantId) && onglet === 'retenues',
     staleTime: STALE_TIME.list
   });
@@ -316,103 +725,8 @@ export const Tresorerie: React.FC = () => {
     }
   };
 
-  const colonnesComptes: ColumnsType<TreasuryAccountDto> = [
-    { title: t('Nature'), key: 'nature', render: (_, c) => KIND_LABEL[c.kind] },
-    { title: t('Numéro'), key: 'numero', render: (_, c) => c.accountNumber },
-    { title: t('Libellé'), key: 'libelle', render: (_, c) => c.label },
-    {
-      title: t('Détail'),
-      key: 'detail',
-      render: (_, c) =>
-        c.kind === 'MOBILE_MONEY'
-          ? libelleOperateur(c.mmOperator)
-          : c.kind === 'BANK'
-            ? [c.bankName, c.bankAccountRef].filter(Boolean).join(' · ') || '—'
-            : '—'
-    },
-    { title: t('Défaut'), key: 'defaut', render: (_, c) => (c.isDefault ? t('Oui') : t('Non')) },
-    {
-      title: t('Statut'),
-      key: 'statut',
-      render: (_, c) => (
-        <StatusTag status={c.isActive ? 'ACTIVE' : 'INACTIVE'} tone={c.isActive ? 'success' : 'neutral'} />
-      )
-    },
-    {
-      title: t('Solde'),
-      key: 'solde',
-      align: 'end',
-      render: (_, c) => <MoneyValue value={c.balance} />,
-      exportValue: c => c.balance
-    },
-    {
-      title: t('Actions'),
-      key: 'actions',
-      align: 'end',
-      render: (_, c) => (
-        <Button type="link" onClick={() => ouvrirEditionCompte(c)}>
-          {t('Modifier')}
-        </Button>
-      )
-    }
-  ];
-
   const ongletComptes = (
-    <>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 'var(--space-3)',
-          marginBottom: 'var(--space-4)'
-        }}
-      >
-        <Text type="secondary">
-          {t(
-            'Numérotation SYSCOHADA : caisses 5711x, banques 5211x, Mobile Money 552x (5521 Wave, 5522 Orange Money, 5523 MTN), chèques à encaisser 513, cartes 515.'
-          )}
-        </Text>
-        <Button type="primary" icon={<PlusOutlined />} onClick={ouvrirCreationCompte}>
-          {t('Nouveau compte')}
-        </Button>
-      </div>
-
-      <DataView<TreasuryAccountDto>
-        export={{ filename: t('Comptes de trésorerie'), fetchAll: async () => comptes }}
-        paginated
-        items={tranche(comptes, pageComptes, tailleComptes)}
-        total={comptes.length}
-        page={pageComptes}
-        pageSize={tailleComptes}
-        onPageChange={(page, taille) => {
-          setPageComptes(page);
-          setTailleComptes(taille);
-        }}
-        loading={comptesQuery.isPending}
-        isReloading={comptesQuery.isFetching && !comptesQuery.isPending}
-        error={comptesQuery.error ? t('Impossible de charger les comptes de trésorerie.') : null}
-        errorCause={comptesQuery.error}
-        onRetry={() => comptesQuery.refetch()}
-        emptyDescription={t('Aucun compte de trésorerie.')}
-        emptyAction={{ label: t('Nouveau compte'), onClick: ouvrirCreationCompte }}
-        columns={colonnesComptes}
-        rowKey={c => c.id}
-        aria-label={t('Comptes de trésorerie')}
-        renderCard={c => (
-          <DataCard
-            title={c.label}
-            aria-label={c.label}
-            subtitle={`${KIND_LABEL[c.kind]} · ${c.accountNumber}`}
-            status={<StatusTag status={c.isActive ? 'ACTIVE' : 'INACTIVE'} tone={c.isActive ? 'success' : 'neutral'} />}
-            highlight={<MoneyValue value={c.balance} />}
-            fields={[{ label: t('Défaut'), value: c.isDefault ? t('Oui') : t('Non') }]}
-            primaryAction={{ label: t('Modifier'), onClick: () => ouvrirEditionCompte(c) }}
-          />
-        )}
-      />
-    </>
+    <OngletComptes query={comptesQuery} onNouveau={ouvrirCreationCompte} onModifier={ouvrirEditionCompte} />
   );
 
   // --- Virements internes --------------------------------------------------
@@ -477,102 +791,18 @@ export const Tresorerie: React.FC = () => {
     }
   };
 
-  const virements = virementsQuery.data ?? [];
-
-  const colonnesVirements: ColumnsType<TreasuryTransferDto> = [
-    { title: t('Numéro'), key: 'numero', render: (_, v) => v.number },
-    { title: t('De'), key: 'de', render: (_, v) => v.fromLabel },
-    { title: t('Vers'), key: 'vers', render: (_, v) => v.toLabel },
-    {
-      title: t('Montant'),
-      key: 'montant',
-      align: 'end',
-      render: (_, v) => <MoneyValue value={v.amount} />,
-      exportValue: v => v.amount
-    },
-    { title: t('Date'), key: 'date', render: (_, v) => dateJour(v.transferredAt) },
-    {
-      title: t('Statut'),
-      key: 'statut',
-      render: (_, v) => <StatusTag status={v.status} />
-    },
-    {
-      title: t('Actions'),
-      key: 'actions',
-      align: 'end',
-      render: (_, v) =>
-        v.status === 'VALIDATED' ? (
-          <Button type="link" danger onClick={() => setVirementAAnnuler(v)}>
-            {t('Annuler')}
-          </Button>
-        ) : null
-    }
-  ];
-
   const ongletVirements = (
-    <>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 'var(--space-3)',
-          marginBottom: 'var(--space-4)'
-        }}
-      >
-        <Text type="secondary">
-          {t(
-            'Un virement interne déplace des fonds d’un compte de trésorerie à un autre sans toucher le résultat — typiquement une remise de chèques en banque.'
-          )}
-        </Text>
-        <Button type="primary" icon={<PlusOutlined />} onClick={ouvrirCreationVirement}>
-          {t('Nouveau virement')}
-        </Button>
-      </div>
-
-      <DataView<TreasuryTransferDto>
-        export={{ filename: t('Virements internes'), fetchAll: async () => virements }}
-        paginated
-        items={tranche(virements, pageVirements, tailleVirements)}
-        total={virements.length}
-        page={pageVirements}
-        pageSize={tailleVirements}
-        onPageChange={(page, taille) => {
-          setPageVirements(page);
-          setTailleVirements(taille);
-        }}
-        loading={virementsQuery.isPending}
-        isReloading={virementsQuery.isFetching && !virementsQuery.isPending}
-        error={virementsQuery.error ? t('Impossible de charger les virements internes.') : null}
-        errorCause={virementsQuery.error}
-        onRetry={() => virementsQuery.refetch()}
-        emptyDescription={t('Aucun virement interne.')}
-        emptyAction={{ label: t('Nouveau virement'), onClick: ouvrirCreationVirement }}
-        columns={colonnesVirements}
-        rowKey={v => v.id}
-        aria-label={t('Virements internes')}
-        renderCard={v => (
-          <DataCard
-            title={v.number}
-            aria-label={v.number}
-            subtitle={`${v.fromLabel} → ${v.toLabel}`}
-            status={<StatusTag status={v.status} />}
-            highlight={<MoneyValue value={v.amount} />}
-            fields={[{ label: t('Date'), value: dateJour(v.transferredAt) }]}
-            primaryAction={
-              v.status === 'VALIDATED' ? { label: t('Annuler'), onClick: () => setVirementAAnnuler(v) } : undefined
-            }
-          />
-        )}
-      />
-    </>
+    <OngletVirements
+      tenantId={tenantId}
+      comptes={comptes}
+      onNouveau={ouvrirCreationVirement}
+      onAnnuler={setVirementAAnnuler}
+    />
   );
 
   // --- Retenue à la source --------------------------------------------------
 
   const retenue = retenueQuery.data ?? null;
-  const versements = versementsQuery.data ?? [];
 
   const ouvrirCreationVersement = () => {
     formulaireVersement.resetFields();
@@ -631,36 +861,6 @@ export const Tresorerie: React.FC = () => {
     }
   };
 
-  const colonnesVersements: ColumnsType<TaxRemittanceDto> = [
-    { title: t('Numéro'), key: 'numero', render: (_, v) => v.number },
-    { title: t('Période'), key: 'periode', render: (_, v) => v.periodLabel },
-    {
-      title: t('Montant'),
-      key: 'montant',
-      align: 'end',
-      render: (_, v) => <MoneyValue value={v.amount} />,
-      exportValue: v => v.amount
-    },
-    { title: t('Date'), key: 'date', render: (_, v) => dateJour(v.paidAt) },
-    { title: t('Compte'), key: 'compte', render: (_, v) => v.treasuryLabel },
-    {
-      title: t('Statut'),
-      key: 'statut',
-      render: (_, v) => <StatusTag status={v.status} />
-    },
-    {
-      title: t('Actions'),
-      key: 'actions',
-      align: 'end',
-      render: (_, v) =>
-        v.status === 'VALIDATED' ? (
-          <Button type="link" danger onClick={() => setVersementAAnnuler(v)}>
-            {t('Annuler')}
-          </Button>
-        ) : null
-    }
-  ];
-
   const ongletRetenues = (
     <>
       {retenueQuery.error ? (
@@ -697,62 +897,12 @@ export const Tresorerie: React.FC = () => {
             </Card>
           )}
 
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 'var(--space-3)',
-              marginBottom: 'var(--space-4)'
-            }}
-          >
-            <Title level={5} style={{ margin: 0 }}>
-              {t('Versements à la DGI')}
-            </Title>
-            {retenue?.enabled && (
-              <Button type="primary" icon={<PlusOutlined />} onClick={ouvrirCreationVersement}>
-                {t('Nouveau versement')}
-              </Button>
-            )}
-          </div>
-
-          <DataView<TaxRemittanceDto>
-            export={{ filename: t('Versements à la DGI'), fetchAll: async () => versements }}
-            paginated
-            items={tranche(versements, pageVersements, tailleVersements)}
-            total={versements.length}
-            page={pageVersements}
-            pageSize={tailleVersements}
-            onPageChange={(page, taille) => {
-              setPageVersements(page);
-              setTailleVersements(taille);
-            }}
-            loading={versementsQuery.isPending}
-            isReloading={versementsQuery.isFetching && !versementsQuery.isPending}
-            error={versementsQuery.error ? t('Impossible de charger les versements à la DGI.') : null}
-            errorCause={versementsQuery.error}
-            onRetry={() => versementsQuery.refetch()}
-            emptyDescription={t('Aucun versement à la DGI.')}
-            emptyAction={
-              retenue?.enabled ? { label: t('Nouveau versement'), onClick: ouvrirCreationVersement } : undefined
-            }
-            columns={colonnesVersements}
-            rowKey={v => v.id}
-            aria-label={t('Versements à la DGI')}
-            renderCard={v => (
-              <DataCard
-                title={v.number}
-                aria-label={v.number}
-                subtitle={v.periodLabel}
-                status={<StatusTag status={v.status} />}
-                highlight={<MoneyValue value={v.amount} />}
-                fields={[{ label: t('Date'), value: dateJour(v.paidAt) }]}
-                primaryAction={
-                  v.status === 'VALIDATED' ? { label: t('Annuler'), onClick: () => setVersementAAnnuler(v) } : undefined
-                }
-              />
-            )}
+          <TableauVersements
+            tenantId={tenantId}
+            comptes={comptes}
+            peutCreer={Boolean(retenue?.enabled)}
+            onNouveau={ouvrirCreationVersement}
+            onAnnuler={setVersementAAnnuler}
           />
         </>
       )}

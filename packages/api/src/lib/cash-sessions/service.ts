@@ -1,6 +1,7 @@
 import { CashSessionStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../utils/database';
+import { zSearch } from '../../utils/list-query-schemas';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { hasPermission } from '../../services/permission-service';
 import { badRequest, conflict, forbidden, notFound } from '../errors';
@@ -498,10 +499,17 @@ export async function validateSession(tenantId: string, userId: string, sessionI
 }
 
 const emptyToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
+/** Vrai si `v` (AAAA-MM-JJ) est un vrai jour du calendrier : 2026-02-31 devient le 3 mars, donc refusé. */
+const isRealDay = (v: string) => {
+  const d = new Date(`${v}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
+
 const ymdDate = z
   .string()
   .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ.');
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ.')
+  .refine(isRealDay, 'Date invalide.');
 
 const listSessionsFilterSchema = z
   .object({
@@ -509,7 +517,16 @@ const listSessionsFilterSchema = z
     cashierUserId: z.preprocess(emptyToUndefined, z.string().trim().min(1).optional()),
     treasuryAccountId: z.preprocess(emptyToUndefined, z.string().trim().uuid().optional()),
     from: z.preprocess(emptyToUndefined, ymdDate.optional()),
-    to: z.preprocess(emptyToUndefined, ymdDate.optional())
+    to: z.preprocess(emptyToUndefined, ymdDate.optional()),
+    search: zSearch(),
+    // Seule la valeur 'true' (ou '1') filtre ; 'false'/'0' = pas de filtre ; autre valeur : 400.
+    hasDifference: z.preprocess(
+      emptyToUndefined,
+      z
+        .enum(['true', '1', 'false', '0'])
+        .optional()
+        .transform(v => v === 'true' || v === '1')
+    )
   })
   .superRefine((v, ctx) => {
     const start = v.from ? new Date(`${v.from}T00:00:00.000Z`) : undefined;
@@ -523,7 +540,15 @@ const listSessionsFilterSchema = z
 
 export async function listSessions(
   tenantId: string,
-  filters: { status?: unknown; cashierUserId?: unknown; treasuryAccountId?: unknown; from?: unknown; to?: unknown } = {}
+  filters: {
+    status?: unknown;
+    cashierUserId?: unknown;
+    treasuryAccountId?: unknown;
+    from?: unknown;
+    to?: unknown;
+    search?: unknown;
+    hasDifference?: unknown;
+  } = {}
 ) {
   const f = listSessionsFilterSchema.parse(filters);
   const openedAt =
@@ -533,17 +558,44 @@ export async function listSessions(
           ...(f.to ? { lte: new Date(`${f.to}T23:59:59.999Z`) } : {})
         }
       : undefined;
-  const sessions = await prisma.cashSession.findMany({
-    where: {
-      tenantId,
-      ...(f.status ? { status: f.status } : {}),
-      ...(f.cashierUserId ? { cashierUserId: f.cashierUserId } : {}),
-      ...(f.treasuryAccountId ? { treasuryAccountId: f.treasuryAccountId } : {}),
-      ...(openedAt ? { openedAt } : {})
-    },
-    orderBy: [{ openedAt: 'desc' }],
-    take: 200
-  });
+  const where: Prisma.CashSessionWhereInput = {
+    tenantId,
+    ...(f.status ? { status: f.status } : {}),
+    ...(f.cashierUserId ? { cashierUserId: f.cashierUserId } : {}),
+    ...(f.treasuryAccountId ? { treasuryAccountId: f.treasuryAccountId } : {}),
+    ...(openedAt ? { openedAt } : {}),
+    // `<> 0` exclut aussi les NULL en SQL : seul un écart non nul subsiste.
+    ...(f.hasDifference ? { difference: { not: 0 } } : {})
+  };
+  let sessions: SessionRow[];
+  if (!f.search) {
+    sessions = await prisma.cashSession.findMany({ where, orderBy: [{ openedAt: 'desc' }], take: 200 });
+  } else {
+    // Le numéro n'est pas stocké : première passe légère, filtre en mémoire, puis plafond.
+    const needle = f.search.toLowerCase();
+    const light = await prisma.cashSession.findMany({
+      where,
+      orderBy: [{ openedAt: 'desc' }],
+      select: { id: true, year: true, sequence: true, cashierUserId: true, treasuryAccountId: true, openedAt: true }
+    });
+    const [cashiers, labels, defaultCash] = await Promise.all([
+      names(light.map(s => s.cashierUserId)),
+      treasuryLabels(light.map(s => s.treasuryAccountId)),
+      defaultCashTreasury(tenantId)
+    ]);
+    const ids = light
+      .filter(s => {
+        const label = s.treasuryAccountId ? (labels.get(s.treasuryAccountId) ?? defaultCash.label) : defaultCash.label;
+        return [sessionNumber(s.year, s.sequence), label, cashiers.get(s.cashierUserId) ?? ''].some(v =>
+          v.toLowerCase().includes(needle)
+        );
+      })
+      .slice(0, 200)
+      .map(s => s.id);
+    const rows = ids.length ? await prisma.cashSession.findMany({ where: { tenantId, id: { in: ids } } }) : [];
+    const byId = new Map(rows.map(r => [r.id, r]));
+    sessions = ids.map(id => byId.get(id)).filter((r): r is SessionRow => Boolean(r));
+  }
   const [map, tMap, defaultCash] = await Promise.all([
     names(sessions.flatMap(s => [s.cashierUserId, s.validatedByUserId])),
     treasuryLabels(sessions.map(s => s.treasuryAccountId)),

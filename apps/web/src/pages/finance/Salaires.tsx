@@ -1,20 +1,25 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { App, Button, Input, Modal, Space, Switch, Typography } from 'antd';
+import { App, Button, Input, Modal, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createEmployee, listEmployees } from '../../services/finance-salaries-service';
 import type { Employee } from '../../types/finance-salaries-types';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
-import { useListParams } from '../../hooks/useListParams';
+import { useListSearch } from '../../hooks/useListSearch';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatusTag } from '../../components/primitives';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
-// Aucun filtre dans l'URL : l'écran n'y porte que la page et la taille de page.
-const FILTER_KEYS = [] as const;
+// Accesseurs de recherche : constantes de module (identité stable, filtrage mémoïsé).
+// Champ libre : le nom et le rôle. « On lui doit quelque chose » : solde positif
+// (un solde négatif est une avance à retenir, un solde nul est soldé).
+const TEXTE_RECHERCHE = [(e: Employee) => e.fullName, (e: Employee) => e.role];
+const ACCESSEURS = { du: (e: Employee) => e.accountBalance > 0 };
 
 /**
  * Salaires — la liste des salariés, et l'enregistrement d'un salarié. Lot 4,
@@ -28,9 +33,11 @@ const FILTER_KEYS = [] as const;
  * CHEMIN (`useParams`), jamais en paramètre de requête.
  *
  * Construite sur le même modèle que `pages/finance/Associations.tsx` : mêmes
- * primitives, une seule modale de création, un `<DataView>` non paginé
- * paginé localement (20 par page, page dans l'URL) : `listEmployees` rend
- * l'ensemble des salariés du tenant ; l'export porte la liste complète.
+ * primitives, une seule modale de création, un `<DataView>` filtré et paginé
+ * localement (`useLocalListSearch` : recherche libre sur le nom et le rôle,
+ * « on lui doit quelque chose », 20 par page, critères dans l'URL) : `listEmployees`
+ * rend l'ensemble des salariés du tenant ; l'export porte la liste filtrée complète.
+ * Seul « inclure les anciens salariés » part au serveur (`onlyActive`).
  *
  * ---------------------------------------------------------------------------
  * Ce que cette liste rend visible en un coup d'œil
@@ -72,13 +79,20 @@ export const Salaires: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const list = useListParams<Record<string, string>>({ filterKeys: FILTER_KEYS });
 
-  // Le filtre est posé par défaut : la question courante est « qui dois-je
-  // payer ce mois-ci », et un ancien salarié soldé n'y répond pas. Il reste
-  // visible et désactivable — `<DataView>` a besoin de savoir qu'un filtre est
-  // posé pour distinguer « aucun salarié » de « aucun résultat ».
-  const [actifsSeulement, setActifsSeulement] = useState(true);
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom, rôle…') },
+    // Les salariés actifs sont la liste par défaut (la question courante est
+    // « qui dois-je payer ce mois-ci » : un ancien salarié soldé n'y répond
+    // pas). Le critère est donc l'exception, « avec les anciens salariés » ; il
+    // part au serveur sous la forme `onlyActive=false` (voir la requête).
+    { key: 'anciens', type: 'boolean', label: t('Inclure les anciens salariés'), primary: true, api: false },
+    { key: 'du', type: 'boolean', label: t('On lui doit quelque chose'), primary: true }
+  ];
+  // Valeurs des critères, disponibles avant la requête (`anciens` est un critère serveur).
+  const { values } = useListSearch({ criteria: criteres });
+  const actifsSeulement = values.anciens !== true;
 
   const [modalOuvert, setModalOuvert] = useState(false);
   const [creationEnCours, setCreationEnCours] = useState(false);
@@ -100,11 +114,12 @@ export const Salaires: React.FC = () => {
 
   const salaries = data ?? [];
 
-  // Page demandée ramenée dans les bornes de la liste (l'URL peut en viser une
-  // qui n'existe plus après un changement de périmètre).
-  const pageMax = Math.max(1, Math.ceil(salaries.length / list.pageSize));
-  const pageCourante = Math.min(list.page, pageMax);
-  const salariesPage = salaries.slice((pageCourante - 1) * list.pageSize, pageCourante * list.pageSize);
+  // Liste reçue en entier : filtrage et pagination locaux (20 par page).
+  const local = useLocalListSearch<Employee>(data, {
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
@@ -186,48 +201,27 @@ export const Salaires: React.FC = () => {
             : undefined
         }
         primaryAction={{ label: t('Nouveau salarié'), icon: <PlusOutlined />, onClick: ouvrirCreation }}
-        extra={
-          <Space size="small">
-            <Switch
-              id="salaries-actifs-seulement"
-              checked={actifsSeulement}
-              onChange={actif => {
-                setActifsSeulement(actif);
-                // Périmètre différent : retour à la première page.
-                list.setPage(1);
-              }}
-              aria-label={t('Actifs seulement')}
-            />
-            <label htmlFor="salaries-actifs-seulement">{t('Actifs seulement')}</label>
-          </Space>
-        }
       />
 
       <DataView<Employee>
-        // Le contrat de `listEmployees` ne pagine pas : pagination locale.
-        paginated
+        // Le contrat de `listEmployees` ne pagine pas : recherche et pagination locales.
+        {...local.dataViewProps}
         scrollX={900}
-        items={salariesPage}
-        total={salaries.length}
-        page={pageCourante}
-        pageSize={list.pageSize}
-        onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les salariés.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={actifsSeulement}
-        onClearFilters={() => {
-          setActifsSeulement(false);
-          list.setPage(1);
-        }}
+        // Les actifs seuls sont un périmètre posé par défaut : une liste vide dit
+        // « aucun résultat » (avec un moyen d'inclure les anciens), pas « aucun salarié ».
+        isFiltered={local.isFiltered || actifsSeulement}
+        onClearFilters={() => local.setValues({ q: undefined, du: undefined, anciens: true })}
         emptyDescription={t("Aucun salarié n'est encore enregistré.")}
         emptyAction={{ label: t('Nouveau salarié'), onClick: ouvrirCreation }}
         columns={colonnes}
         rowKey={e => e.id}
         aria-label={t('Salariés')}
-        export={{ filename: t('Salariés'), fetchAll: async () => salaries }}
+        export={{ filename: t('Salariés'), fetchAll: local.exportAll }}
         renderCard={e => (
           <DataCard
             title={e.fullName}

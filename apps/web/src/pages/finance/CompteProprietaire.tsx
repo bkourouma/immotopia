@@ -25,7 +25,9 @@ import {
 import type { StatusTone } from '../../components/primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
-import { localizedRecord } from '../../i18n/localized';
+import { localizedList, localizedRecord } from '../../i18n/localized';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { writeErrorMessage } from '../../utils/error-handler';
@@ -35,7 +37,6 @@ const { Text } = Typography;
 
 const ONGLET_KEY = 'onglet';
 type Onglet = 'mouvements' | 'reversements';
-const TAILLE_PAGE = 20;
 const { TextArea } = Input;
 
 /**
@@ -101,6 +102,156 @@ function bienOuBail(m: OwnerMovement): string {
   return [m.propertyTitle, m.leaseNumber].filter(Boolean).join(' · ') || '—';
 }
 
+// --- Recherche des deux sections --------------------------------------------
+// Constantes de module : leur identité stable garde le filtrage mémoïsé.
+
+const OPTIONS_TYPE_MOUVEMENT = localizedList(() =>
+  (Object.keys(MOVEMENT_LABELS) as OwnerMovementType[]).map(cle => ({ value: cle, label: MOVEMENT_LABELS[cle] }))
+);
+const OPTIONS_MODE = localizedList(() =>
+  (Object.keys(METHOD_LABELS) as PayoutMethod[]).map(cle => ({ value: cle, label: METHOD_LABELS[cle] }))
+);
+const OPTIONS_STATUT_REVERSEMENT = localizedList(() => [
+  { value: 'VALIDATED', label: t('Validé') },
+  { value: 'VOIDED', label: t('Annulé') }
+]);
+
+// Champ libre des mouvements : libellé, bien ou bail.
+const TEXTE_MOUVEMENTS = [
+  (m: OwnerMovement) => m.label,
+  (m: OwnerMovement) => m.propertyTitle,
+  (m: OwnerMovement) => m.leaseNumber
+];
+const ACCESSEURS_MOUVEMENTS = {
+  type: (m: OwnerMovement) => m.type,
+  date: (m: OwnerMovement) => m.date,
+  debit: (m: OwnerMovement) => m.debit,
+  credit: (m: OwnerMovement) => m.credit
+};
+
+// Champ libre des reversements : numéro et référence.
+const TEXTE_REVERSEMENTS = [(p: OwnerPayout) => p.number, (p: OwnerPayout) => p.reference];
+const ACCESSEURS_REVERSEMENTS = {
+  mode: (p: OwnerPayout) => p.method,
+  statut: (p: OwnerPayout) => p.status,
+  date: (p: OwnerPayout) => p.paidAt
+};
+
+/**
+ * Mouvements du compte. La liste vient de l'unique requête `getOwnerAccount` de
+ * l'écran (reçue en entier) : filtrage et pagination locaux, préfixe d'URL `mvt`.
+ * « Solde dû après » reste la valeur serveur de chaque ligne : filtrer ne la recalcule pas.
+ */
+const MouvementsSection: React.FC<{
+  movements: OwnerMovement[];
+  columns: ColumnsType<OwnerMovement>;
+  isFetching: boolean;
+}> = ({ movements, columns, isFetching }) => {
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Libellé, bien ou bail…')
+    },
+    { key: 'type', type: 'multiSelect', label: t('Type'), primary: true, options: OPTIONS_TYPE_MOUVEMENT },
+    { key: 'date', type: 'dateRange', label: t('Date'), primary: true },
+    { key: 'debit', type: 'numberRange', label: t('Débit'), unit: 'FCFA' },
+    { key: 'credit', type: 'numberRange', label: t('Crédit'), unit: 'FCFA' }
+  ];
+  const local = useLocalListSearch<OwnerMovement>(movements, {
+    paramPrefix: 'mvt',
+    criteria: criteres,
+    text: TEXTE_MOUVEMENTS,
+    accessors: ACCESSEURS_MOUVEMENTS
+  });
+
+  return (
+    <DataView<OwnerMovement>
+      scrollX={960}
+      {...local.dataViewProps}
+      search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les mouvements') }}
+      isReloading={isFetching}
+      emptyDescription={t('Aucun mouvement sur ce compte.')}
+      columns={columns}
+      rowKey={m => m.id}
+      aria-label={t('Mouvements du compte')}
+      export={{ filename: t('Mouvements du compte'), fetchAll: local.exportAll }}
+      renderCard={m => (
+        <DataCard
+          title={MOVEMENT_LABELS[m.type]}
+          subtitle={`${dateCourte(m.date)} · ${m.label}`}
+          highlight={<MoneyValue value={m.balanceAfter} />}
+          fields={[
+            { label: t('Débit'), value: <MoneyValue value={m.debit} /> },
+            { label: t('Crédit'), value: <MoneyValue value={m.credit} /> },
+            { label: t('Bien ou bail'), value: bienOuBail(m) }
+          ]}
+        />
+      )}
+    />
+  );
+};
+
+/** Reversements du compte : même donnée que les mouvements, préfixe d'URL `rev`. */
+const ReversementsSection: React.FC<{
+  payouts: OwnerPayout[];
+  columns: ColumnsType<OwnerPayout>;
+  isFetching: boolean;
+  peutAnnuler: boolean;
+  onAnnuler: (payout: OwnerPayout) => void;
+}> = ({ payouts, columns, isFetching, peutAnnuler, onAnnuler }) => {
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Numéro, référence…')
+    },
+    { key: 'statut', type: 'multiSelect', label: t('Statut'), primary: true, options: OPTIONS_STATUT_REVERSEMENT },
+    { key: 'mode', type: 'multiSelect', label: t('Mode'), primary: true, options: OPTIONS_MODE },
+    { key: 'date', type: 'dateRange', label: t('Date') }
+  ];
+  const local = useLocalListSearch<OwnerPayout>(payouts, {
+    paramPrefix: 'rev',
+    criteria: criteres,
+    text: TEXTE_REVERSEMENTS,
+    accessors: ACCESSEURS_REVERSEMENTS
+  });
+
+  return (
+    <DataView<OwnerPayout>
+      scrollX={880}
+      {...local.dataViewProps}
+      search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les reversements') }}
+      isReloading={isFetching}
+      emptyDescription={t('Aucun reversement enregistré.')}
+      columns={columns}
+      rowKey={p => p.id}
+      aria-label={t('Reversements')}
+      export={{ filename: t('Reversements'), fetchAll: local.exportAll }}
+      renderCard={p => (
+        <DataCard
+          title={p.number}
+          subtitle={`${dateCourte(p.paidAt)} · ${METHOD_LABELS[p.method]}`}
+          highlight={<MoneyValue value={p.amount} />}
+          status={
+            p.status === 'VOIDED' ? (
+              <StatusTag status={p.status} tone="danger" label={t('Annulé')} />
+            ) : (
+              <StatusTag status={p.status} tone="success" label={t('Validé')} />
+            )
+          }
+          fields={[{ label: t('Référence'), value: p.reference ?? '—' }]}
+          primaryAction={
+            p.status === 'VALIDATED' && peutAnnuler ? { label: t('Annuler'), onClick: () => onAnnuler(p) } : undefined
+          }
+        />
+      )}
+    />
+  );
+};
+
 export const CompteProprietaire: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId, ownerClientId } = useParams<{ tenantId: string; ownerClientId: string }>();
@@ -118,8 +269,6 @@ export const CompteProprietaire: React.FC = () => {
       },
       { replace: true }
     );
-  const [pageMouvements, setPageMouvements] = useState(1);
-  const [pageReversements, setPageReversements] = useState(1);
 
   // Annuler un reversement exige FINANCE_DOCUMENTS_VALIDATE (l'API répond 403
   // sinon, après saisie du motif). `permissions` nul = aucune restriction
@@ -244,12 +393,6 @@ export const CompteProprietaire: React.FC = () => {
   if (isPending || !data) {
     return <StateBlock variant="loading" />;
   }
-
-  const pageMouvementsEffective = Math.min(pageMouvements, Math.max(Math.ceil(data.movements.length / TAILLE_PAGE), 1));
-  const pageReversementsEffective = Math.min(
-    pageReversements,
-    Math.max(Math.ceil(data.payouts.length / TAILLE_PAGE), 1)
-  );
 
   const colonnesMouvements: ColumnsType<OwnerMovement> = [
     { title: t('Date'), key: 'date', width: 120, render: (_, m) => dateCourte(m.date) },
@@ -403,37 +546,7 @@ export const CompteProprietaire: React.FC = () => {
               </span>
             ),
             children: (
-              <>
-                <DataView<OwnerMovement>
-                  scrollX={960}
-                  items={data.movements.slice(
-                    (pageMouvementsEffective - 1) * TAILLE_PAGE,
-                    pageMouvementsEffective * TAILLE_PAGE
-                  )}
-                  total={data.movements.length}
-                  page={pageMouvementsEffective}
-                  pageSize={TAILLE_PAGE}
-                  onPageChange={p => setPageMouvements(p)}
-                  isReloading={isFetching}
-                  emptyDescription={t('Aucun mouvement sur ce compte.')}
-                  columns={colonnesMouvements}
-                  rowKey={m => m.id}
-                  aria-label={t('Mouvements du compte')}
-                  export={{ filename: t('Mouvements du compte'), fetchAll: async () => data.movements }}
-                  renderCard={m => (
-                    <DataCard
-                      title={MOVEMENT_LABELS[m.type]}
-                      subtitle={`${dateCourte(m.date)} · ${m.label}`}
-                      highlight={<MoneyValue value={m.balanceAfter} />}
-                      fields={[
-                        { label: t('Débit'), value: <MoneyValue value={m.debit} /> },
-                        { label: t('Crédit'), value: <MoneyValue value={m.credit} /> },
-                        { label: t('Bien ou bail'), value: bienOuBail(m) }
-                      ]}
-                    />
-                  )}
-                />
-              </>
+              <MouvementsSection movements={data.movements} columns={colonnesMouvements} isFetching={isFetching} />
             )
           },
           {
@@ -444,51 +557,16 @@ export const CompteProprietaire: React.FC = () => {
               </span>
             ),
             children: (
-              <>
-                <DataView<OwnerPayout>
-                  scrollX={880}
-                  items={data.payouts.slice(
-                    (pageReversementsEffective - 1) * TAILLE_PAGE,
-                    pageReversementsEffective * TAILLE_PAGE
-                  )}
-                  total={data.payouts.length}
-                  page={pageReversementsEffective}
-                  pageSize={TAILLE_PAGE}
-                  onPageChange={p => setPageReversements(p)}
-                  isReloading={isFetching}
-                  emptyDescription={t('Aucun reversement enregistré.')}
-                  columns={colonnesReversements}
-                  rowKey={p => p.id}
-                  aria-label={t('Reversements')}
-                  export={{ filename: t('Reversements'), fetchAll: async () => data.payouts }}
-                  renderCard={p => (
-                    <DataCard
-                      title={p.number}
-                      subtitle={`${dateCourte(p.paidAt)} · ${METHOD_LABELS[p.method]}`}
-                      highlight={<MoneyValue value={p.amount} />}
-                      status={
-                        p.status === 'VOIDED' ? (
-                          <StatusTag status={p.status} tone="danger" label={t('Annulé')} />
-                        ) : (
-                          <StatusTag status={p.status} tone="success" label={t('Validé')} />
-                        )
-                      }
-                      fields={[{ label: t('Référence'), value: p.reference ?? '—' }]}
-                      primaryAction={
-                        p.status === 'VALIDATED' && peutAnnuler
-                          ? {
-                              label: t('Annuler'),
-                              onClick: () => {
-                                setPayoutAAnnuler(p);
-                                setMotifAnnulation('');
-                              }
-                            }
-                          : undefined
-                      }
-                    />
-                  )}
-                />
-              </>
+              <ReversementsSection
+                payouts={data.payouts}
+                columns={colonnesReversements}
+                isFetching={isFetching}
+                peutAnnuler={peutAnnuler}
+                onAnnuler={payout => {
+                  setPayoutAAnnuler(payout);
+                  setMotifAnnulation('');
+                }}
+              />
             )
           }
         ]}

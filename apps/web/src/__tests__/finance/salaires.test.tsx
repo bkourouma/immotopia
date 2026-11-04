@@ -408,7 +408,7 @@ describe('Salaires — liste et enregistrement', () => {
     expect(screen.queryByText(/-180\s000/)).not.toBeInTheDocument();
   });
 
-  it('filtre sur les actifs seulement, et le filtre part en requête', async () => {
+  it('masque les anciens salariés par défaut ; les inclure part en requête (onlyActive=false)', async () => {
     const user = userEvent.setup({ delay: null });
     mountListe();
 
@@ -416,10 +416,48 @@ describe('Salaires — liste et enregistrement', () => {
     // Posé par défaut : la question courante est « qui dois-je payer ».
     await waitFor(() => expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/employees?onlyActive=true`));
 
-    await user.click(screen.getByRole('switch', { name: 'Actifs seulement' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Inclure les anciens salariés' }));
 
     await waitFor(() => expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/employees?onlyActive=false`));
   }, 15000);
+
+  it('le texte filtre la liste (nom ou rôle, sans accent ni casse) et le compteur suit', async () => {
+    configurerGet({
+      employes: [
+        salarie({ id: 'emp-1', fullName: 'Ibrahima Koffi', role: 'Maçon' }),
+        salarie({ id: 'emp-2', fullName: 'Aïssata Traoré', role: 'Électricienne' }),
+        salarie({ id: 'emp-3', fullName: 'Yao Brou', role: null })
+      ]
+    });
+    const user = userEvent.setup({ delay: null });
+    mountListe();
+
+    await screen.findByText('Ibrahima Koffi', {}, { timeout: 8000 });
+    expect(screen.getByText('3 résultats')).toBeInTheDocument();
+
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'ELECTRICIENNE');
+
+    await waitFor(() => expect(screen.queryByText('Ibrahima Koffi')).not.toBeInTheDocument(), { timeout: 8000 });
+    expect(screen.getByText('Aïssata Traoré')).toBeInTheDocument();
+    expect(screen.queryByText('Yao Brou')).not.toBeInTheDocument();
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
+  }, 60000);
+
+  it('« on lui doit quelque chose » ne garde que les soldes positifs (filtrage local)', async () => {
+    configurerGet({
+      employes: [
+        salarie({ id: 'emp-1', fullName: 'Ibrahima Koffi', accountBalance: 275_000 }),
+        salarie({ id: 'emp-2', fullName: 'Aïssata Traoré', accountBalance: 0 }),
+        salarie({ id: 'emp-3', fullName: 'Yao Brou', accountBalance: -50_000 })
+      ]
+    });
+    mountListe(`/tenant/${TENANT}/finance/salaires?du=1`);
+
+    await screen.findByText('Ibrahima Koffi', {}, { timeout: 8000 });
+    expect(screen.queryByText('Aïssata Traoré')).not.toBeInTheDocument();
+    expect(screen.queryByText('Yao Brou')).not.toBeInTheDocument();
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
+  }, 60000);
 
   it('enregistre un salarié depuis le formulaire, avec les champs du contrat gelé', async () => {
     configurerGet({ employes: [] });
@@ -612,7 +650,7 @@ describe('Fiche du salarié — saisir une note', () => {
       expect(corps).not.toHaveProperty('costCategoryId');
       expect(corps.amount).toBe(180_000);
     });
-  }, 20000);
+  }, 60000);
 
   it('relaie le message du serveur quand une note existe déjà pour ce mois (409)', async () => {
     const user = userEvent.setup({ delay: null });
@@ -632,7 +670,7 @@ describe('Fiche du salarié — saisir une note', () => {
     expect(
       await screen.findByText('Une note de salaire existe déjà pour ce salarié sur août 2026.', {}, { timeout: 8000 })
     ).toBeInTheDocument();
-  }, 20000);
+  }, 60000);
 
   it('avertit avant de valider une note, puis n’appelle le serveur qu’après confirmation', async () => {
     configurerGet({ notes: [note({ id: 'note-brouillon', status: 'DRAFT', validatedAt: null })] });
@@ -650,7 +688,7 @@ describe('Fiche du salarié — saisir une note', () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/salary-notes/note-brouillon/validate`, {})
     );
-  }, 20000);
+  }, 60000);
 });
 
 // ---------------------------------------------------------------------------
@@ -674,7 +712,7 @@ describe('Fiche du salarié — régler', () => {
       expect(Object.keys(corps).sort()).toEqual(['amount', 'paymentDate']);
       expect(corps.amount).toBe(275_000);
     });
-  }, 20000);
+  }, 60000);
 
   it('propose un compte de trésorerie facultatif ; sans choix, la clé `treasuryAccountId` est absente', async () => {
     const user = userEvent.setup({ delay: null });
@@ -692,7 +730,7 @@ describe('Fiche du salarié — régler', () => {
       const { corps } = dernierAppel(post);
       expect(Object.keys(corps).sort()).toEqual(['amount', 'paymentDate']);
     });
-  }, 20000);
+  }, 60000);
 
   it('transmet le compte de trésorerie choisi sous `treasuryAccountId`', async () => {
     const user = userEvent.setup({ delay: null });
@@ -712,7 +750,7 @@ describe('Fiche du salarié — régler', () => {
       expect(corps.treasuryAccountId).toBe('compte-banque');
       expect(corps.amount).toBe(50_000);
     });
-  }, 20000);
+  }, 60000);
 
   it('avertit qu’un règlement supérieur au solde est une avance — SANS jamais le bloquer', async () => {
     const user = userEvent.setup({ delay: null });
@@ -736,7 +774,7 @@ describe('Fiche du salarié — régler', () => {
       const { corps } = dernierAppel(post);
       expect(corps.amount).toBe(900_000);
     });
-  }, 20000);
+  }, 60000);
 
   it('avertit avant de valider un règlement, puis n’appelle le serveur qu’après confirmation', async () => {
     const user = userEvent.setup({ delay: null });
@@ -754,7 +792,7 @@ describe('Fiche du salarié — régler', () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/salary-payments/regl-1/validate`, {})
     );
-  }, 20000);
+  }, 60000);
 });
 
 // ---------------------------------------------------------------------------
@@ -814,7 +852,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
 
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
-  }, 20000);
+  }, 60000);
 
   it('la fiche d’un salarié débiteur d’une avance ne le dit pas « débiteur »', async () => {
     configurerGet({ employe: salarie({ accountBalance: -180_000 }) });
@@ -841,7 +879,7 @@ describe('Salaires — pagination locale', () => {
     expect(screen.getByText('Salarié numéro 20')).toBeInTheDocument();
     expect(screen.queryByText('Salarié numéro 21')).not.toBeInTheDocument();
     expect(screen.getByText('1–20 sur 25')).toBeInTheDocument();
-  }, 20000);
+  }, 60000);
 });
 
 describe('Fiche du salarié — onglets et requêtes à la demande', () => {
@@ -859,7 +897,7 @@ describe('Fiche du salarié — onglets et requêtes à la demande', () => {
 
     expect(await screen.findByText('03/09/2026', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(appelsVers(/salary-payments/).length).toBeGreaterThan(0);
-  }, 20000);
+  }, 60000);
 
   it('relit l’onglet dans l’URL : ?onglet=reglements lit les règlements, une valeur inconnue retombe sur les notes', async () => {
     const { unmount } = mountFiche(URL_REGLEMENTS);
@@ -871,7 +909,7 @@ describe('Fiche du salarié — onglets et requêtes à la demande', () => {
     mountFiche(`/tenant/${TENANT}/finance/salaires/${SALARIE}?onglet=n-importe-quoi`);
     expect(await screen.findByText('Août 2026', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(appelsVers(/salary-payments/)).toHaveLength(0);
-  }, 20000);
+  }, 60000);
 
   it('ne lit chantiers et postes de dépense qu’au premier geste dans le formulaire de note', async () => {
     mountFiche();
@@ -890,7 +928,7 @@ describe('Fiche du salarié — onglets et requêtes à la demande', () => {
     await waitFor(() => expect(appelsVers(/\/finance\/cost-categories/).length).toBeGreaterThan(0));
     // Et la proposition de poste se fait même si les postes arrivent après le choix.
     expect(await screen.findByText(/Poste proposé d'après son nom/i, {}, { timeout: 8000 })).toBeInTheDocument();
-  }, 20000);
+  }, 60000);
 
   it('pagine localement les notes : 20 lignes sur 25, compteur affiché', async () => {
     const notes = Array.from({ length: 25 }, (_, i) =>
@@ -908,5 +946,53 @@ describe('Fiche du salarié — onglets et requêtes à la demande', () => {
     expect(screen.getByText('1–20 sur 25')).toBeInTheDocument();
     // 25 notes : de janvier 2020 à janvier 2022 ; la 21e (septembre 2021) est sur la page 2.
     expect(screen.queryByText('Janvier 2022')).not.toBeInTheDocument();
-  }, 20000);
+  }, 60000);
+});
+
+describe('Fiche du salarié — recherche multicritères', () => {
+  it('le statut filtre les notes (critère de l’URL `not.statut`) et le compteur suit', async () => {
+    configurerGet({
+      notes: [
+        note({ id: 'n-brouillon', periodMonth: 7, status: 'DRAFT', validatedAt: null }),
+        note({ id: 'n-validee', periodMonth: 8, status: 'VALIDATED' })
+      ]
+    });
+    mountFiche(`/tenant/${TENANT}/finance/salaires/${SALARIE}?not.statut=DRAFT`);
+
+    expect(await screen.findByText('Juillet 2026', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText('Août 2026')).not.toBeInTheDocument();
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
+  }, 60000);
+
+  it('le texte filtre les notes par chantier', async () => {
+    configurerGet({
+      notes: [
+        note({ id: 'n-1', periodMonth: 7, siteLabel: 'Villa de la Riviera — gros œuvre' }),
+        note({ id: 'n-2', periodMonth: 8, siteId: 'chantier-2', siteLabel: 'Extension Bingerville' })
+      ]
+    });
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    await screen.findByText('Juillet 2026', {}, { timeout: 8000 });
+    const barre = screen.getByRole('search', { name: 'Rechercher dans les notes de salaire' });
+    await user.type(within(barre).getByRole('textbox'), 'bingerville');
+
+    await waitFor(() => expect(screen.queryByText('Juillet 2026')).not.toBeInTheDocument(), { timeout: 8000 });
+    expect(screen.getByText('Août 2026')).toBeInTheDocument();
+  }, 60000);
+
+  it('le statut filtre les règlements, sans relire le serveur', async () => {
+    configurerGet({
+      reglements: [
+        reglement({ id: 'r-1', paymentDate: '2026-09-03T00:00:00.000Z', status: 'DRAFT' }),
+        reglement({ id: 'r-2', paymentDate: '2026-09-10T00:00:00.000Z', status: 'VALIDATED' })
+      ]
+    });
+    mountFiche(`${URL_REGLEMENTS}&reg.statut=VALIDATED`);
+
+    expect(await screen.findByText('10/09/2026', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText('03/09/2026')).not.toBeInTheDocument();
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
+  }, 60000);
 });

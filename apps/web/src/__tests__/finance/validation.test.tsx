@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -148,7 +148,9 @@ describe('File de validation — filtre par saisisseur', () => {
     // libellé et casseraient le filtre — exactement le défaut déjà corrigé
     // au lot 1 sur le filtre par bien. L'argument reçu ne doit jamais
     // ressembler à un nom de personne.
-    const argumentRecu = getValidationQueue.mock.calls[0][1] as { createdByUserId?: string };
+    const argumentRecu = getValidationQueue.mock.calls
+      .map(call => call[1] as { createdByUserId?: string })
+      .find(filtres => filtres?.createdByUserId) as { createdByUserId?: string };
     expect(argumentRecu.createdByUserId).toBe('user-mariam-kouadio');
     expect(argumentRecu.createdByUserId).not.toMatch(/Mariam|Kouadio/);
   });
@@ -349,8 +351,15 @@ describe('File de validation — filtre par nature envoyé au serveur', () => {
     mount();
     await screen.findByText('Quincaillerie Treichville — Facture FA-2026-0142', {}, { timeout: 8000 });
 
-    fireEvent.mouseDown(screen.getByLabelText('Nature'));
-    fireEvent.click(await screen.findByTitle('Règlement fournisseur', {}, { timeout: 8000 }));
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole('combobox', { name: 'Nature' }));
+    await user.click(
+      await screen.findByText(
+        'Règlement fournisseur',
+        { selector: '.ant-select-item-option-content' },
+        { timeout: 8000 }
+      )
+    );
 
     await waitFor(
       () =>
@@ -427,5 +436,46 @@ describe('File de validation — pagination locale et sélection', () => {
     await user.click(screen.getByTitle('2'));
     expect(await screen.findByText('Pièce 21', {}, { timeout: 8000 })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText(/pièces? sélectionnées?/)).not.toBeInTheDocument());
+  }, 30000);
+});
+
+describe('File de validation — recherche multicritères', () => {
+  it('un montant minimum filtre la liste reçue en local, sans nouvelle requête ni paramètre serveur', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await screen.findByText('Pièce de caisse 2026-0031 — Ousmane Touré', {}, { timeout: 8000 });
+    const appelsAvant = getValidationQueue.mock.calls.length;
+
+    await user.click(screen.getByRole('button', { name: /Plus de critères/ }));
+    await user.type(screen.getByRole('spinbutton', { name: 'Montant minimum' }), '400000');
+    await user.tab();
+
+    await waitFor(
+      () => expect(screen.queryByText('Pièce de caisse 2026-0031 — Ousmane Touré')).not.toBeInTheDocument(),
+      { timeout: 8000 }
+    );
+    expect(screen.getByText('Quincaillerie Treichville — Facture FA-2026-0142')).toBeInTheDocument();
+    expect(screen.getByText('Transport Riviera — Règlement du 15/09/2026')).toBeInTheDocument();
+    expect(screen.getByText('2 résultats')).toBeInTheDocument();
+    // Critère local : aucune requête de plus, et le service ne reçoit pas le montant.
+    expect(getValidationQueue.mock.calls.length).toBe(appelsAvant);
+    for (const [, filtres] of getValidationQueue.mock.calls) {
+      expect(Object.keys((filtres ?? {}) as object)).not.toContain('minAmount');
+    }
+  }, 30000);
+
+  it('le champ libre cherche dans la pièce et le saisisseur, en local', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await screen.findByText('Pièce de caisse 2026-0031 — Ousmane Touré', {}, { timeout: 8000 });
+
+    await user.type(within(screen.getByRole('search')).getByRole('textbox', { name: 'Rechercher' }), 'ibrahima');
+
+    await waitFor(
+      () => expect(screen.queryByText('Quincaillerie Treichville — Facture FA-2026-0142')).not.toBeInTheDocument(),
+      { timeout: 8000 }
+    );
+    expect(screen.getByText('Transport Riviera — Règlement du 15/09/2026')).toBeInTheDocument();
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
   }, 30000);
 });

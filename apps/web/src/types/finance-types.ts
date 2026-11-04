@@ -110,6 +110,8 @@ export interface AccountStatement {
   currency: string;
   movements: ThirdPartyMovementLine[];
   total: number;
+  /** Présent quand une recherche est active : totaux facturé / réglé de TOUTES les lignes retenues. */
+  filteredTotals?: { debit: number; credit: number };
 }
 
 /** Pourquoi un bail n'a pas été facturé par une campagne. */
@@ -182,4 +184,6 @@ export interface StatementFilters {
   to?: string;
   skip?: number;
   take?: number;
+  /** Texte cherché dans le libellé des mouvements (soldes « après » inchangés). */
+  search?: string;
 }

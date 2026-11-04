@@ -84,6 +84,7 @@ describe('listTransfers — filtres', () => {
   it.each([
     ['date mal formée', { from: '01/09/2026' }],
     ['date inexistante', { to: '2026-13-45' }],
+    ['31 février (deviendrait le 3 mars)', { from: '2026-02-31' }],
     ['from après to', { from: '2026-10-01', to: '2026-09-01' }],
     ['compte non uuid', { accountId: 'abc' }],
     ['statut inconnu', { status: 'VALIDATED,FOO' }],
@@ -91,6 +92,20 @@ describe('listTransfers — filtres', () => {
   ])('valeur invalide (%s) : ZodError', async (_label, filters) => {
     await expect(listTransfers('t1', filters)).rejects.toMatchObject({ name: 'ZodError' });
     expect(transferFindMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('listTransfers — vraie date', () => {
+  it('2026-02-28 est acceptée', async () => {
+    await listTransfers('t1', { from: '2026-02-28', to: '2026-02-28' });
+    expect(transfersWhere(transferFindMany)).toEqual({
+      tenantId: 't1',
+      transferredAt: { gte: new Date('2026-02-28T00:00:00.000Z'), lte: new Date('2026-02-28T23:59:59.999Z') }
+    });
+  });
+
+  it('2026-02-29 (année non bissextile) est refusée', async () => {
+    await expect(listTransfers('t1', { to: '2026-02-29' })).rejects.toMatchObject({ name: 'ZodError' });
   });
 });
 
@@ -117,10 +132,22 @@ describe('listTaxRemittances — filtres', () => {
 
   it.each([
     ['from après to', { from: '2026-02-01', to: '2026-01-01' }],
+    ['31 février (deviendrait le 3 mars)', { from: '2026-02-31' }],
+    ['mois et jour impossibles', { to: '2026-13-45' }],
     ['statut inconnu', { status: 'PAID' }],
     ['compte non uuid', { treasuryAccountId: '1' }]
   ])('valeur invalide (%s) : ZodError', async (_label, filters) => {
     await expect(listTaxRemittances('t1', filters)).rejects.toMatchObject({ name: 'ZodError' });
     expect(remittanceFindMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('listTaxRemittances — vraie date', () => {
+  it('2026-02-28 est acceptée', async () => {
+    await listTaxRemittances('t1', { from: '2026-02-28' });
+    expect(transfersWhere(remittanceFindMany)).toEqual({
+      tenantId: 't1',
+      paidAt: { gte: new Date('2026-02-28T00:00:00.000Z') }
+    });
   });
 });

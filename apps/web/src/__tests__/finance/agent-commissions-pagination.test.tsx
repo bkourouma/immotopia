@@ -1,8 +1,8 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CommissionsAgents } from '../../pages/finance/CommissionsAgents';
@@ -49,15 +49,21 @@ function rapport(nombreAgents: number, lignesDuPremier = 1) {
   };
 }
 
-function mount() {
+function SondeUrl() {
+  const { search } = useLocation();
+  return <output data-testid="url-search">{search}</output>;
+}
+
+function mount(url = '/tenant/agence-1/finance/commissions?period=2026-09') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
-        <MemoryRouter initialEntries={['/tenant/agence-1/finance/commissions?period=2026-09']}>
+        <MemoryRouter initialEntries={[url]}>
           <Routes>
             <Route path="/tenant/:tenantId/finance/commissions" element={<CommissionsAgents />} />
           </Routes>
+          <SondeUrl />
         </MemoryRouter>
       </AntApp>
     </QueryClientProvider>
@@ -90,4 +96,46 @@ describe('Commissions des agents — pagination locale', () => {
     expect(screen.queryByText('BAIL-11')).not.toBeInTheDocument();
     expect(screen.getByText('1–10 sur 12')).toBeInTheDocument();
   }, 15000);
+});
+
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
+describe('Commissions des agents — recherche par nom', () => {
+  it('filtre le tableau sur le nom de l’agent, avec le compteur, et garde le mois en URL', async () => {
+    getAgentCommissions.mockResolvedValue(rapport(25));
+    const user = userEvent.setup({ delay: null });
+    mount();
+
+    await screen.findByText('Agent 20', {}, { timeout: 8000 });
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'Agent 23');
+
+    await waitFor(() => expect(screen.queryByText('Agent 20')).not.toBeInTheDocument(), { timeout: 8000 });
+    expect(screen.getByText('Agent 23')).toBeInTheDocument();
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
+    // Le filtre est local : le mois n'a pas changé, aucun nouvel appel.
+    expect(getAgentCommissions).toHaveBeenCalledTimes(1);
+    expect(getAgentCommissions).toHaveBeenCalledWith('agence-1', '2026-09');
+  }, 30000);
+});
+
+describe('Commissions des agents — changement de mois', () => {
+  it('revient à la page 1 en changeant de mois, depuis la page 2', async () => {
+    getAgentCommissions.mockResolvedValue(rapport(25));
+    const user = userEvent.setup({ delay: null });
+    mount('/tenant/agence-1/finance/commissions?period=2026-09&page=2');
+
+    await screen.findByText('Agent 21', {}, { timeout: 8000 });
+    expect(screen.getByTestId('url-search').textContent).toContain('page=2');
+
+    await user.click(screen.getByLabelText('Période'));
+    await user.click(await screen.findByTitle('2026-08'));
+
+    await waitFor(() => expect(screen.getByTestId('url-search').textContent).toContain('period=2026-08'), {
+      timeout: 8000
+    });
+    expect(screen.getByTestId('url-search').textContent).not.toContain('page=');
+    expect(await screen.findByText('Agent 20', {}, { timeout: 8000 })).toBeInTheDocument();
+  }, 30000);
 });

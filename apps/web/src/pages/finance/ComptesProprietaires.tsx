@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -7,6 +7,8 @@ import { listOwnerAccounts } from '../../services/owner-accounts-service';
 import type { OwnerAccountSummary } from '../../services/owner-accounts-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatCard } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { activeLocale } from '../../i18n/format';
 import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
@@ -36,13 +38,22 @@ function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
 }
 
-const TAILLE_PAGE = 20;
+// Champ libre : propriétaire et e-mail (constantes de module : filtrage mémoïsé).
+const TEXTE_RECHERCHE = [(c: OwnerAccountSummary) => c.ownerName, (c: OwnerAccountSummary) => c.email];
+
+const ACCESSEURS = {
+  dernierMouvement: (c: OwnerAccountSummary) => c.lastMovementAt
+};
+
+// « Solde dû non nul » : lit le solde déjà fourni par le serveur.
+const PREDICATS = {
+  soldeDu: (c: OwnerAccountSummary) => c.balance !== 0
+};
 
 export const ComptesProprietaires: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const ownAssetsOnly = useOwnAssetsOnly(tenantId, true);
-  const [page, setPage] = useState(1);
 
   const {
     data,
@@ -55,6 +66,34 @@ export const ComptesProprietaires: React.FC = () => {
     queryFn: () => listOwnerAccounts(tenantId as string),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
+  });
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Propriétaire, e-mail…')
+    },
+    {
+      key: 'soldeDu',
+      type: 'boolean',
+      label: t('Solde dû non nul'),
+      primary: true
+    },
+    {
+      key: 'dernierMouvement',
+      type: 'dateRange',
+      label: t('Dernier mouvement')
+    }
+  ];
+  // Liste reçue en entier : filtrage et pagination locaux, rien ne part au serveur.
+  const local = useLocalListSearch<OwnerAccountSummary>(data, {
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS,
+    predicates: PREDICATS
   });
 
   if (!tenantId) {
@@ -74,7 +113,6 @@ export const ComptesProprietaires: React.FC = () => {
   }
 
   const comptes = data ?? [];
-  const pageEffective = Math.min(page, Math.max(Math.ceil(comptes.length / TAILLE_PAGE), 1));
   const totalDu = comptes.reduce((somme, compte) => somme + Math.max(compte.balance, 0), 0);
 
   const ouvrirCompte = (compte: OwnerAccountSummary) =>
@@ -144,11 +182,7 @@ export const ComptesProprietaires: React.FC = () => {
       )}
 
       <DataView<OwnerAccountSummary>
-        items={comptes.slice((pageEffective - 1) * TAILLE_PAGE, pageEffective * TAILLE_PAGE)}
-        total={comptes.length}
-        page={pageEffective}
-        pageSize={TAILLE_PAGE}
-        onPageChange={p => setPage(p)}
+        {...local.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les comptes propriétaires.') : null}
@@ -158,7 +192,7 @@ export const ComptesProprietaires: React.FC = () => {
         columns={colonnes}
         rowKey={c => c.ownerClientId}
         aria-label={t('Comptes propriétaires')}
-        export={{ filename: t('Comptes propriétaires'), fetchAll: async () => comptes }}
+        export={{ filename: t('Comptes propriétaires'), fetchAll: local.exportAll }}
         renderCard={c => (
           <DataCard
             title={c.ownerName}

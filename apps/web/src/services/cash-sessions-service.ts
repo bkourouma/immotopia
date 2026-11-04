@@ -92,6 +92,8 @@ export interface ListCashSessionsFilters {
   from?: string;
   to?: string;
   treasuryAccountId?: string;
+  search?: string;
+  hasDifference?: string;
 }
 
 /** La session OUVERTE de l'utilisateur connecté — `GET /current`. `null` si aucune. */
@@ -137,7 +139,9 @@ export async function listCashSessions(
       cashierUserId: filters.cashierUserId || undefined,
       from: filters.from || undefined,
       to: filters.to || undefined,
-      treasuryAccountId: filters.treasuryAccountId || undefined
+      treasuryAccountId: filters.treasuryAccountId || undefined,
+      search: filters.search || undefined,
+      hasDifference: filters.hasDifference || undefined
     }
   });
   return response.data.data;
