@@ -17,6 +17,16 @@ import { LANGUAGE_STORAGE_KEY } from '../i18n/config';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/**
+ * Le serveur n'a pas pu répondre : pas de réponse du tout (réseau coupé,
+ * délai dépassé) ou une erreur 5xx. À distinguer d'une vraie réponse (401
+ * session invalide, 403, 404...) qui, elle, dit quelque chose du compte.
+ */
+export function isServerUnreachable(error: unknown): boolean {
+  const status = (error as { response?: { status?: number } } | null)?.response?.status;
+  return status === undefined || status >= 500;
+}
+
 interface AuthProviderProps {
   children: ReactNode;
 }
@@ -29,6 +39,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [tenantMembership, setTenantMembership] = useState<TenantMembership | null>(null);
   const [tenantClient, setTenantClient] = useState<TenantClient | null>(null);
   const [isLoadingMembership, setIsLoadingMembership] = useState(false);
+  /**
+   * Vrai quand le compte ou l'agence n'ont pas pu être lus parce que l'API ne
+   * répondait pas (panne réseau, délai dépassé, 5xx). Ce n'est PAS une perte
+   * de session : seule une vraie réponse 401 en est une. L'écran propose alors
+   * « Réessayer » au lieu de renvoyer vers la connexion ou d'annoncer « aucune
+   * agence » (BUG-2026-11-04-044).
+   */
+  const [loadError, setLoadError] = useState(false);
   /**
    * Compte pour lequel l'appartenance (agence, client de portail) a déjà été
    * résolue au moins une fois.
@@ -67,6 +85,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
    */
   const tenantSelectionRef = useRef<typeof import('../utils/tenant-selection') | null>(null);
 
+  /** Relance la lecture de la session (posée par l'effet de montage). */
+  const loadSessionRef = useRef<(() => Promise<void>) | null>(null);
+
   // Fetch tenant membership and client status
   const refreshMembership = async (): Promise<void> => {
     if (!user || user.globalRole === 'SUPER_ADMIN') {
@@ -80,6 +101,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const resolvingFor = user.id;
     setIsLoadingMembership(true);
+    setLoadError(false);
     try {
       const response = await apiClient.get('/tenants/my-memberships');
       if (response.data.success && response.data.data) {
@@ -112,6 +134,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     } catch (error: any) {
       console.error('Error fetching membership:', error);
+      // Sans réponse du serveur (réseau, délai) ou sur un 5xx, on ne sait
+      // pas si le compte a une agence : « aucune agence » serait un mensonge.
+      if (isServerUnreachable(error)) setLoadError(true);
       setTenantMembership(null);
       setTenantClient(null);
       setAvailableTenants([]);
@@ -221,14 +246,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             await refreshSession();
             await lire();
             return;
-          } catch {
-            // Le rafraîchissement a échoué : il n'y avait pas de session à
-            // reprendre. On retombe sur le comportement d'avant, qui est le
-            // bon dans ce cas — et on ne journalise rien, c'est la situation
-            // ordinaire d'un visiteur qui arrive sans être connecté.
+          } catch (refreshError: any) {
+            // Panne réseau / 5xx pendant le rafraîchissement : on ignore si
+            // la session existe encore, donc on ne conclut pas à « pas
+            // connecté » (voir plus bas).
+            if (isServerUnreachable(refreshError)) {
+              setLoadError(true);
+            }
+            // Sinon le rafraîchissement a été refusé : il n'y avait pas de
+            // session à reprendre, situation ordinaire d'un visiteur anonyme,
+            // rien à journaliser.
           }
         } else {
           console.error('Auth check error:', error);
+          // Aucune réponse du serveur ou 5xx : ce n'est pas un 401. Une
+          // panne ne doit pas passer pour une session perdue (BUG-044).
+          if (isServerUnreachable(error)) {
+            setLoadError(true);
+          }
         }
 
         setUser(null);
@@ -236,6 +271,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } finally {
         setIsLoading(false);
       }
+    };
+
+    // Rejouée par « Réessayer » (`retryLoad`) après une panne.
+    loadSessionRef.current = async () => {
+      setLoadError(false);
+      setIsLoading(true);
+      await checkAuth();
     };
 
     // Page publique à jeton : pas d'amorçage d'authentification (aucun 401 inutile).
@@ -357,6 +399,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  /**
+   * « Réessayer » après une panne : relit le compte si la session n'avait pas
+   * pu être lue, sinon seulement l'appartenance (agence).
+   */
+  const retryLoad = async (): Promise<void> => {
+    if (user && isAuthenticated) {
+      await refreshMembership();
+      return;
+    }
+    await loadSessionRef.current?.();
+  };
+
   const clearError = (): void => {
     setError(null);
   };
@@ -369,6 +423,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     tenantMembership,
     tenantClient,
     isLoadingMembership: isLoadingMembership || membershipPending,
+    loadError,
+    retryLoad,
     availableTenants,
     activeTenantId: tenantMembership?.tenantId ?? tenantClient?.tenantId ?? null,
     memberships: user?.memberships ?? [],
