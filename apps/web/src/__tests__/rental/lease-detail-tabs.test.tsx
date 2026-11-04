@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route, useSearchParams } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useSearchParams, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { LeaseDetailPage } from '../../pages/rental/LeaseDetailPage';
 
@@ -57,10 +57,16 @@ vi.mock('../../components/rental/inspections/LeaseInspectionsPanel', () => ({ Le
 vi.mock('../../components/signature/SignaturesPanel', () => ({ SignaturesPanel: () => null }));
 vi.mock('../../components/rental/direct-debit/LeaseDirectDebitPanel', () => ({ LeaseDirectDebitPanel: () => null }));
 
+function Url() {
+  const { search } = useLocation();
+  return <div data-testid="url">{search}</div>;
+}
+
 function monter(url: string) {
   return render(
     <AntApp>
       <MemoryRouter initialEntries={[url]}>
+        <Url />
         <Routes>
           <Route path="/tenant/:tenantId/rental/leases/:leaseId" element={<LeaseDetailPage />} />
         </Routes>
@@ -94,6 +100,29 @@ describe('Détail du bail — onglets', () => {
 
     expect(await screen.findByText('paiements status=aucun')).toBeTruthy();
     expect(screen.getByRole('tab', { name: /Paiements/ }).getAttribute('aria-selected')).toBe('true');
+  });
+});
+
+describe('Détail du bail — onglet principal dans l’URL (BUG-2026-11-04-041)', () => {
+  it('rouvre l’onglet Paiements désigné par ?tab= et garde le sous-onglet ?onglet=', async () => {
+    monter('/tenant/agence-1/rental/leases/bail-1?tab=payments&onglet=declarations');
+
+    expect(await screen.findByText('paiements status=aucun', undefined, { timeout: 8000 })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /Paiements/ }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByTestId('url').textContent).toContain('onglet=declarations');
+  });
+
+  it('écrit l’onglet choisi dans l’URL et retire les filtres de l’onglet quitté', async () => {
+    const user = userEvent.setup({ delay: null });
+    monter('/tenant/agence-1/rental/leases/bail-1?status=OVERDUE');
+    await screen.findByText('echeances status=OVERDUE', undefined, { timeout: 8000 });
+
+    await user.click(screen.getByRole('tab', { name: /Paiements/ }));
+
+    await screen.findByText('paiements status=aucun');
+    const url = screen.getByTestId('url').textContent ?? '';
+    expect(url).toContain('tab=payments');
+    expect(url).not.toContain('status=');
   });
 });
 

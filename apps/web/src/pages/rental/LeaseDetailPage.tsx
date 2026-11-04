@@ -40,6 +40,9 @@ const { Title, Text } = Typography;
  */
 const PARAMS_PROPRES_A_UN_ONGLET = ['status', 'overdue', 'renterClientId', 'onglet', 'page', 'limit', 'sort'];
 
+/** Paramètre d'URL de l'onglet principal de la fiche (Échéances, Paiements, Documents…). */
+const ONGLET_PRINCIPAL_PARAM = 'tab';
+
 export const LeaseDetailPage: React.FC = () => {
   const { message } = App.useApp();
 
@@ -50,13 +53,18 @@ export const LeaseDetailPage: React.FC = () => {
   // Modifier le bail et changer son statut exigent RENTAL_LEASES_EDIT (BUG-2026-11-03-011).
   const peutModifier = permissions === null || permissions.has('RENTAL_LEASES_EDIT');
 
-  const handleTabChange = () => {
-    if (!PARAMS_PROPRES_A_UN_ONGLET.some(key => searchParams.has(key))) return;
+  // L'onglet principal actif vit dans l'URL (`tab`) : il survit au rechargement
+  // (BUG-2026-11-04-041). Il n'est pas dans PARAMS_PROPRES_A_UN_ONGLET, donc la
+  // remise à zéro des paramètres d'un onglet ne le retire pas.
+  const handleTabChange = (cle: string) => {
+    // Appui sur l'onglet déjà actif : ses filtres (ex. `onglet=declarations`) restent.
+    if (searchParams.get(ONGLET_PRINCIPAL_PARAM) === cle) return;
     const next = new URLSearchParams(searchParams);
     PARAMS_PROPRES_A_UN_ONGLET.forEach(key => next.delete(key));
+    next.set(ONGLET_PRINCIPAL_PARAM, cle);
     setSearchParams(next, { replace: true });
   };
-  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string | null>(() => searchParams.get(ONGLET_PRINCIPAL_PARAM));
   const [lease, setLease] = useState<RentalLease | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -634,7 +642,16 @@ export const LeaseDetailPage: React.FC = () => {
             const currentTab = tabItems.some(item => item.key === activeTab) ? (activeTab as string) : defaultTab;
             const itemsWithPress = tabItems.map(item => ({
               ...item,
-              label: <span onMouseDown={() => setActiveTab(item.key)}>{item.label}</span>
+              label: (
+                <span
+                  onMouseDown={() => {
+                    setActiveTab(item.key);
+                    handleTabChange(item.key);
+                  }}
+                >
+                  {item.label}
+                </span>
+              )
             }));
 
             return (
@@ -644,7 +661,7 @@ export const LeaseDetailPage: React.FC = () => {
                 size="large"
                 onChange={key => {
                   setActiveTab(key);
-                  handleTabChange();
+                  handleTabChange(key);
                 }}
                 items={itemsWithPress}
               />
