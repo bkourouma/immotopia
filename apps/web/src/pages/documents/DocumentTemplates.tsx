@@ -17,6 +17,8 @@ import {
 import apiClient from '../../utils/api-client';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { ConfirmAction, DataCard, DataView, StatusTag, useConfirmAction } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t as translate } from '../../i18n/t';
 
 const { Title, Text, Paragraph } = Typography;
@@ -43,6 +45,19 @@ const DOC_TYPES = [
 // Constants for displaying placeholder syntax in JSX
 const OPEN_BRACE = '{';
 const CLOSE_BRACE = '}';
+
+// Stables (hors du composant) : le filtrage local reste mémoïsé.
+const TEXTE_RECHERCHE = [
+  (template: DocumentTemplate) => template.name,
+  (template: DocumentTemplate) => template.original_filename,
+  (template: DocumentTemplate) => libelleType(template.doc_type),
+  (template: DocumentTemplate) => template.placeholders
+];
+const ACCESSEURS = {
+  docType: (template: DocumentTemplate) => template.doc_type,
+  status: (template: DocumentTemplate) => template.status,
+  isDefault: (template: DocumentTemplate) => template.is_default
+};
 
 /** Libellé métier d'un type de document, ou le code brut s'il est inconnu. */
 function libelleType(docType: string): string {
@@ -76,10 +91,6 @@ export function DocumentTemplates() {
   const [loading, setLoading] = useState(true);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [filterDocType, setFilterDocType] = useState<string>('');
-  // L'endpoint rend la collection entière : la tranche est découpée ici.
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [error, setError] = useState<string | null>(null);
   const [errorCause, setErrorCause] = useState<unknown>(null);
   const [form] = Form.useForm();
@@ -89,11 +100,8 @@ export function DocumentTemplates() {
     try {
       setLoading(true);
       setErrorCause(null);
-      const url = filterDocType
-        ? `/tenants/${tenantId}/documents/templates?docType=${filterDocType}`
-        : `/tenants/${tenantId}/documents/templates`;
-
-      const response = await apiClient.get(url);
+      // La collection entière est chargée une fois : la recherche et le filtre par type se font en local.
+      const response = await apiClient.get(`/tenants/${tenantId}/documents/templates`);
       const data = response.data;
 
       if (data.success) {
@@ -113,19 +121,13 @@ export function DocumentTemplates() {
     } finally {
       setLoading(false);
     }
-  }, [tenantId, filterDocType]);
+  }, [tenantId]);
 
   useEffect(() => {
     if (tenantId) {
       loadTemplates();
     }
   }, [tenantId, loadTemplates]);
-
-  // Changer de filtre remet en page 1 : rester en page 3 d'un résultat qui n'en
-  // compte qu'une afficherait une liste vide sur des données présentes.
-  useEffect(() => {
-    setPage(1);
-  }, [filterDocType]);
 
   const handleUpload = async (values: any) => {
     if (!values.file || !Array.isArray(values.file) || values.file.length === 0) {
@@ -355,7 +357,37 @@ export function DocumentTemplates() {
     }
   ];
 
-  const pageCourante = templates.slice((page - 1) * pageSize, page * pageSize);
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: translate('Rechercher'),
+      placeholder: translate('Nom, fichier, type de document…')
+    },
+    {
+      key: 'docType',
+      type: 'multiSelect',
+      label: translate('Type de document'),
+      primary: true,
+      options: DOC_TYPES
+    },
+    {
+      key: 'status',
+      type: 'multiSelect',
+      label: translate('Statut'),
+      primary: true,
+      options: [
+        { value: 'ACTIVE', label: translate('Actif') },
+        { value: 'INACTIVE', label: translate('Inactif') }
+      ]
+    },
+    { key: 'isDefault', type: 'boolean', label: translate('Par défaut') }
+  ];
+  const local = useLocalListSearch<DocumentTemplate>(templates, {
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   return (
     <>
@@ -449,48 +481,15 @@ export function DocumentTemplates() {
           />
         </Card>
 
-        {/* Filter */}
-        <Card>
-          <div className="it-filters">
-            <div className="it-filters__field">
-              <Text strong>{translate('Filtrer par type')}</Text>
-              <Select
-                showSearch
-                optionFilterProp="children"
-                value={filterDocType || undefined}
-                onChange={value => setFilterDocType(value || '')}
-                placeholder={translate('Tous les types')}
-                allowClear
-                style={{ width: 200 }}
-              >
-                {DOC_TYPES.map(type => (
-                  <Option key={type.value} value={type.value}>
-                    {type.label}
-                  </Option>
-                ))}
-              </Select>
-            </div>
-          </div>
-        </Card>
-
         {/* Liste — tableau au-dessus de 992 px, cartes en dessous. */}
         <DataView<DocumentTemplate>
+          {...local.dataViewProps}
           // La collection entière est déjà chargée : l'export couvre tous les modèles filtrés, pas la seule page.
-          export={{ filename: translate('Modèles de documents'), fetchAll: async () => templates }}
-          items={pageCourante}
-          total={templates.length}
-          page={page}
-          pageSize={pageSize}
-          onPageChange={(suivante, taille) => {
-            setPageSize(taille);
-            setPage(taille !== pageSize ? 1 : suivante);
-          }}
+          export={{ filename: translate('Modèles de documents'), fetchAll: local.exportAll }}
           loading={loading}
           error={error}
           errorCause={errorCause}
           onRetry={loadTemplates}
-          isFiltered={Boolean(filterDocType)}
-          onClearFilters={() => setFilterDocType('')}
           emptyDescription={translate("Aucun modèle de document n'est encore enregistré pour cette agence.")}
           emptyAction={{ label: translate('Ajouter un template'), onClick: () => setShowUploadModal(true) }}
           columns={columns}

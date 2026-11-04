@@ -15,7 +15,7 @@ import {
   activateTenant,
   uploadTenantLogo
 } from '../services/tenant-service';
-import { TenantType } from '@prisma/client';
+import { TenantStatus, TenantType } from '@prisma/client';
 import {
   UpdateTenantRequest,
   TenantFilters,
@@ -315,6 +315,20 @@ export async function updateTenantSelfHandler(req: Request, res: Response): Prom
 }
 
 /**
+ * Filtres de GET /api/admin/tenants (la pagination est lue par `parsePagination`).
+ * Une valeur hors liste est refusee en 400 ; un parametre vide est ignore.
+ */
+const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value);
+export const listTenantsQuerySchema = z.object({
+  status: z.preprocess(emptyToUndefined, z.nativeEnum(TenantStatus).optional()),
+  type: z.preprocess(emptyToUndefined, z.nativeEnum(TenantType).optional()),
+  plan: z.preprocess(emptyToUndefined, z.string().max(50).optional()),
+  module: z.preprocess(emptyToUndefined, z.string().max(50).optional()),
+  search: z.preprocess(emptyToUndefined, z.string().trim().max(120).optional()),
+  nearLimit: z.preprocess(emptyToUndefined, z.enum(['true', 'false']).optional()).transform(value => value === 'true')
+});
+
+/**
  * List tenants with filtering (Platform Admin only)
  * GET /api/admin/tenants
  */
@@ -325,12 +339,23 @@ export async function listTenantsHandler(req: Request, res: Response): Promise<v
       return;
     }
 
+    const parsed = listTenantsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        message: t('Données invalides'),
+        errors: parsed.error.errors.map(entry => ({
+          field: entry.path.join('.') || '(racine)',
+          message: entry.message
+        }))
+      });
+      return;
+    }
+
     const filters: TenantFilters = {
-      status: req.query.status as any,
-      type: req.query.type as any,
-      plan: req.query.plan as string,
-      module: req.query.module as string,
-      search: req.query.search as string,
+      ...parsed.data,
+      // L'enum Prisma (PENDING, ACTIVE, SUSPENDED) et celui de `tenant-types` ne se recouvrent que partiellement.
+      status: parsed.data.status as TenantFilters['status'],
       ...parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 })
     };
 

@@ -7,6 +7,7 @@ import * as campaignService from '../services/newsletter-campaign.service';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import { parsePagination } from '../utils/pagination-helper';
+import { dayEnd, dayOrderRefinement, dayStart, zCsvEnum, zDay, zId, zSearch } from '../utils/list-query-schemas';
 
 /**
  * These routes are all mounted behind `requireTenantAccess`, which verifies
@@ -125,8 +126,40 @@ const subscribePublicSchema = z
 const body = (req: Request): Record<string, unknown> =>
   req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
 
-const listOptions = (req: Request) => ({
-  status: typeof req.query.status === 'string' ? req.query.status : undefined,
+const CAMPAIGN_STATUSES = ['DRAFT', 'SCHEDULED', 'SENDING', 'SENT', 'CANCELLED', 'FAILED'] as const;
+const SUBSCRIBER_STATUSES = ['PENDING_CONFIRMATION', 'ACTIVE', 'UNSUBSCRIBED'] as const;
+
+// Briques partagées (utils/list-query-schemas) : recherche, statuts CSV, jours réels, identifiants.
+const campaignListQuerySchema = z
+  .object({
+    status: zCsvEnum(CAMPAIGN_STATUSES),
+    search: zSearch(100),
+    listId: zId,
+    from: zDay,
+    to: zDay
+  })
+  .superRefine(dayOrderRefinement('from', 'to'));
+
+const subscriberListQuerySchema = z.object({
+  status: zCsvEnum(SUBSCRIBER_STATUSES),
+  search: zSearch(100)
+});
+
+const templateListQuerySchema = z.object({ search: zSearch(100) });
+
+const campaignListOptions = (req: Request) => {
+  const { from, to, ...rest } = campaignListQuerySchema.parse(req.query);
+  return {
+    ...rest,
+    // Création du / au : bornes incluses (la fin couvre toute la journée, UTC).
+    from: from ? dayStart(from) : undefined,
+    to: to ? dayEnd(to) : undefined,
+    ...parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 })
+  };
+};
+
+const subscriberListOptions = (req: Request) => ({
+  ...subscriberListQuerySchema.parse(req.query),
   ...parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 })
 });
 
@@ -160,7 +193,7 @@ export const deleteListHandler = asyncHandler(async (req: Request, res: Response
 // ------------------------------------------------------------ subscribers
 
 export const listSubscribersHandler = asyncHandler(async (req: Request, res: Response) => {
-  res.json(await subscriberService.listSubscribers(getTenantId(req), req.params.listId, listOptions(req)));
+  res.json(await subscriberService.listSubscribers(getTenantId(req), req.params.listId, subscriberListOptions(req)));
 });
 
 export const addSubscriberHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -197,7 +230,7 @@ export const removeSubscriberHandler = asyncHandler(async (req: Request, res: Re
 // -------------------------------------------------------------- campaigns
 
 export const listCampaignsHandler = asyncHandler(async (req: Request, res: Response) => {
-  res.json(await campaignService.listCampaigns(getTenantId(req), listOptions(req)));
+  res.json(await campaignService.listCampaigns(getTenantId(req), campaignListOptions(req)));
 });
 
 export const createCampaignHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -260,7 +293,7 @@ export const previewCampaignHandler = asyncHandler(async (req: Request, res: Res
 // -------------------------------------------------------------- templates
 
 export const listTemplatesHandler = asyncHandler(async (req: Request, res: Response) => {
-  res.json(await templateService.listTemplates(getTenantId(req)));
+  res.json(await templateService.listTemplates(getTenantId(req), templateListQuerySchema.parse(req.query)));
 });
 
 export const createTemplateHandler = asyncHandler(async (req: Request, res: Response) => {

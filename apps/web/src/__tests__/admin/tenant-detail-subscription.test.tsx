@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
+import { MemoryRouter } from 'react-router-dom';
 import { SubscriptionTab } from '../../components/admin/tenant-detail/SubscriptionTab';
 
 /**
@@ -21,6 +22,10 @@ const revokeCapacityOverride = vi.fn();
 const updateSubscriptionSettings = vi.fn();
 const updateSubscriptionItem = vi.fn();
 const listExtensionRequests = vi.fn();
+
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
 const handleExtensionRequest = vi.fn();
 const setSubscriptionManualReadOnly = vi.fn();
 const clearSubscriptionManualReadOnly = vi.fn();
@@ -148,10 +153,12 @@ const INVOICE_PREVIEW = {
   amountTotal: 35_282
 };
 
-function mount() {
+function mount(initial = '/admin/tenants/tenant-1?onglet=subscription') {
   return render(
     <AntApp>
-      <SubscriptionTab tenantId="tenant-1" tenantName="Agence Demo" />
+      <MemoryRouter initialEntries={[initial]}>
+        <SubscriptionTab tenantId="tenant-1" tenantName="Agence Demo" />
+      </MemoryRouter>
     </AntApp>
   );
 }
@@ -193,9 +200,27 @@ describe('SubscriptionTab — abonnement par packs', () => {
   it("affiche l'aperçu de la prochaine facture avec TVA et total TTC", async () => {
     mount();
 
-    await screen.findByText('Prochaine facture (aperçu)');
-    expect(screen.getByText('TVA 18 %')).toBeInTheDocument();
+    // Section repliée : l'en-tête est là, l'aperçu n'a pas encore été demandé.
+    fireEvent.click(await screen.findByText('Prochaine facture (aperçu)'));
+    expect(await screen.findByText('TVA 18 %')).toBeInTheDocument();
     expect(screen.getByText('Total TTC')).toBeInTheDocument();
+  });
+
+  it("ne lit ni l'aperçu de facture ni les demandes d'extension tant que leur section est fermée", async () => {
+    mount();
+
+    await screen.findByText('Abonnement');
+    expect(screen.getByText("Demandes d'extension")).toBeInTheDocument();
+    expect(previewNextInvoice).not.toHaveBeenCalled();
+    expect(listExtensionRequests).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("Demandes d'extension"));
+    await waitFor(() => expect(listExtensionRequests).toHaveBeenCalledTimes(1));
+    expect(listExtensionRequests).toHaveBeenCalledWith('tenant-1');
+    expect(previewNextInvoice).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('Prochaine facture (aperçu)'));
+    await waitFor(() => expect(previewNextInvoice).toHaveBeenCalledTimes(1));
   });
 
   it('retire un élément à l’échéance après confirmation', async () => {
@@ -281,11 +306,31 @@ describe('SubscriptionTab — vague 3 : modification d’un élément et demande
     handleExtensionRequest.mockResolvedValue({});
     mount();
 
+    fireEvent.click(await screen.findByText("Demandes d'extension"));
     expect(await screen.findByText('Il nous faut 50 lots de plus')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Marquer traitée' }));
     await waitFor(() =>
       expect(handleExtensionRequest).toHaveBeenCalledWith('tenant-1', 'req-1', { status: 'HANDLED' })
     );
+  });
+});
+
+describe('SubscriptionTab — recherche dans les demandes d’extension (locale)', () => {
+  it('filtre les demandes sans accent ni casse, et propose d’effacer quand rien ne correspond', async () => {
+    mount();
+    fireEvent.click(await screen.findByText("Demandes d'extension"));
+    expect(await screen.findByText('Il nous faut 50 lots de plus')).toBeInTheDocument();
+
+    const box = screen.getByPlaceholderText('Message, demandeur, offre…');
+    fireEvent.change(box, { target: { value: 'KONE' } });
+    fireEvent.keyDown(box, { key: 'Enter', code: 'Enter', keyCode: 13 });
+    // « Awa Koné » (demandeur) correspond sans tenir compte des accents ni de la casse.
+    expect(await screen.findByText('Il nous faut 50 lots de plus')).toBeInTheDocument();
+
+    fireEvent.change(box, { target: { value: 'zzz' } });
+    fireEvent.keyDown(box, { key: 'Enter', code: 'Enter', keyCode: 13 });
+    await waitFor(() => expect(screen.queryByText('Il nous faut 50 lots de plus')).not.toBeInTheDocument());
+    expect(screen.getAllByRole('button', { name: 'Effacer les critères' }).length).toBeGreaterThan(0);
   });
 });
 

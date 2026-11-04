@@ -1,33 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Card, Space, Typography, Button, Input, Select, Alert, Spin, Empty, Tag, Checkbox, Progress } from 'antd';
-import {
-  PlusOutlined,
-  SearchOutlined,
-  FilterOutlined,
-  EyeOutlined,
-  EditOutlined,
-  BankOutlined
-} from '@ant-design/icons';
+import { Space, Typography, Button, Alert, Tag, Progress } from 'antd';
+import { PlusOutlined, EyeOutlined, EditOutlined, BankOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { listTenants, Tenant, TenantFilters, type ProvisionTenantResult } from '../../services/tenant-service';
 import { listCatalog, type CatalogEntry } from '../../services/subscription-v2-service';
 import { getSubscriptionSummaries, type SubscriptionSummary } from '../../services/subscription-extras-service';
 import { CreateTenantDrawer } from '../../components/admin/CreateTenantDrawer';
 import { Table } from '../../components/primitives';
+import { useListSearch } from '../../hooks/useListSearch';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
-import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
-
-const statusOptions = localizedList(() => [
-  { value: '', label: t('Tous les statuts') },
-  { value: 'ACTIVE', label: t('Actif') },
-  { value: 'SUSPENDED', label: t('Suspendu') },
-  { value: 'INACTIVE', label: t('Inactif') }
-]);
 
 const getStatusTag = (status: string) => {
   const config: Record<string, { color: string; text: string }> = {
@@ -45,33 +31,45 @@ export const TenantsList: React.FC = () => {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<TenantFilters>({
-    page: 1,
-    limit: 20
-  });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0
-  });
-  const [searchTerm, setSearchTerm] = useState('');
+  const [total, setTotal] = useState(0);
   // Ouvert directement à l'arrivée depuis /admin/tenants/new (TenantCreate.tsx
   // redirige ici plutôt que de dupliquer le formulaire).
   const [createOpen, setCreateOpen] = useState(
     Boolean((location.state as { openCreate?: boolean } | null)?.openCreate)
   );
 
+  // Recherche multicritères (état dans l'URL). « Proche de la limite » est un
+  // critère de l'API, calculé avant la pagination (jamais sur la page reçue).
+  const search = useListSearch({
+    apiNames: { sort: false },
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Nom, identifiant, e-mail, ville…')
+      },
+      {
+        key: 'status',
+        type: 'select',
+        label: t('Statut'),
+        primary: true,
+        options: [
+          { value: 'ACTIVE', label: t('Actif') },
+          { value: 'SUSPENDED', label: t('Suspendu') }
+        ]
+      },
+      { key: 'nearLimit', type: 'boolean', label: t('Proche de la limite'), primary: true }
+    ]
+  });
+
   // Packs, % de lots utilisés et prochaine échéance : le catalogue est global
   // (chargé une fois), le résumé de toute la page arrive en UNE requête
   // (`GET /admin/subscriptions/summaries`, vague 3) — plus de N+1.
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [summaries, setSummaries] = useState<Record<string, SubscriptionSummary>>({});
-  const [nearLimitOnly, setNearLimitOnly] = useState(false);
 
-  // Export : la requête exacte de la liste affichée (filtres + recherche au
-  // moment du chargement) et les résumés des agences des autres pages.
-  const lastQueryRef = useRef<TenantFilters>({});
+  // Export : les résumés des agences des autres pages.
   const exportSummariesRef = useRef<Record<string, SubscriptionSummary>>({});
   const summaryOf = (tenantId: string): SubscriptionSummary | undefined =>
     exportSummariesRef.current[tenantId] ?? summaries[tenantId];
@@ -82,9 +80,40 @@ export const TenantsList: React.FC = () => {
       .catch(() => setCatalog([]));
   }, []);
 
+  // Une réponse tardive d'une ancienne recherche ne doit pas écraser la dernière.
+  const latest = useRef(0);
+  const paramsKey = JSON.stringify(search.apiParams);
   useEffect(() => {
-    loadTenants();
-  }, [filters]);
+    const request = ++latest.current;
+    const loadTenants = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await listTenants(JSON.parse(paramsKey) as TenantFilters);
+        if (request !== latest.current) return;
+        if (response.success && response.data) {
+          const list = response.data.tenants || [];
+          setTenants(list);
+          setTotal(response.data.pagination?.total ?? list.length);
+          // Un résumé indisponible n'empêche pas d'afficher la liste.
+          const found = await getSubscriptionSummaries(list.map(tenant => tenant.id)).catch(() => ({}));
+          if (request === latest.current) setSummaries(found);
+        } else {
+          setError(t('Erreur lors du chargement des tenants'));
+          setTenants([]);
+          setTotal(0);
+        }
+      } catch (err: any) {
+        if (request !== latest.current) return;
+        setError(err.response?.data?.message || t('Erreur lors du chargement des tenants'));
+        setTenants([]);
+        setTotal(0);
+      } finally {
+        if (request === latest.current) setLoading(false);
+      }
+    };
+    void loadTenants();
+  }, [paramsKey]);
 
   // L'état de navigation ne doit servir qu'une fois : un retour arrière ou un
   // rafraîchissement ne doit pas rouvrir le panneau tout seul.
@@ -95,64 +124,30 @@ export const TenantsList: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadTenants = async () => {
+  const reload = () => {
+    // Même critères, nouvelle lecture (après une création d'agence).
+    latest.current += 1;
     setLoading(true);
-    setError(null);
-    try {
-      const query: TenantFilters = { ...filters, search: searchTerm || undefined };
-      lastQueryRef.current = query;
-      const response = await listTenants(query);
-      if (response.success && response.data) {
-        const list = response.data.tenants || [];
+    listTenants(JSON.parse(paramsKey) as TenantFilters)
+      .then(async response => {
+        const list = response.data?.tenants ?? [];
         setTenants(list);
-        setPagination(
-          response.data.pagination || {
-            page: 1,
-            limit: 20,
-            total: 0,
-            totalPages: 0
-          }
-        );
-        // Un résumé indisponible n'empêche pas d'afficher la liste.
+        setTotal(response.data?.pagination?.total ?? list.length);
         setSummaries(await getSubscriptionSummaries(list.map(tenant => tenant.id)).catch(() => ({})));
-      } else {
-        setError(t('Erreur lors du chargement des tenants'));
-        setTenants([]);
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors du chargement des tenants'));
-      setTenants([]);
-    } finally {
-      setLoading(false);
-    }
+      })
+      .catch(() => setError(t('Erreur lors du chargement des tenants')))
+      .finally(() => setLoading(false));
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFilters({ ...filters, page: 1, search: searchTerm || undefined });
-  };
-
-  const handleStatusFilter = (value: string | null | undefined) => {
-    const status: 'ACTIVE' | 'SUSPENDED' | 'INACTIVE' | undefined =
-      value === 'ACTIVE' || value === 'SUSPENDED' || value === 'INACTIVE' ? value : undefined;
-    setFilters({ ...filters, page: 1, status });
-  };
-
-  const fetchAllTenants = async () => {
-    const { page: _page, limit: _limit, ...query } = lastQueryRef.current;
-    const collected = await collectAllPages<Tenant>(async (page, limit) => {
-      const response = await listTenants({ ...query, page, limit });
+  const fetchAllTenants = () =>
+    collectAllPages<Tenant>(async (page, limit) => {
+      // Mêmes critères que la liste affichée (dont « proche de la limite »).
+      const response = await listTenants({ ...(search.filterParams as TenantFilters), page, limit });
       const list = response.data?.tenants ?? [];
       const pageSummaries = await getSubscriptionSummaries(list.map(tenant => tenant.id)).catch(() => ({}));
       exportSummariesRef.current = { ...exportSummariesRef.current, ...pageSummaries };
       return { items: list, total: response.data?.pagination?.total ?? 0 };
     });
-    // Même filtre « proche de la limite » que la liste affichée.
-    const items = nearLimitOnly ? collected.items.filter(tenant => summaryOf(tenant.id)?.nearLimit) : collected.items;
-    return { items, truncated: collected.truncated };
-  };
-
-  const filteredTenants = nearLimitOnly ? tenants.filter(tenant => summaries[tenant.id]?.nearLimit) : tenants;
 
   const columns: ColumnsType<Tenant> = [
     {
@@ -304,38 +299,6 @@ export const TenantsList: React.FC = () => {
           </Button>
         </div>
 
-        {/* Filters */}
-        <Card>
-          <form onSubmit={handleSearch}>
-            <Space wrap size="middle" style={{ width: '100%' }}>
-              <Input
-                placeholder={t('Rechercher une agence…')}
-                prefix={<SearchOutlined />}
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                style={{ minWidth: 240 }}
-                allowClear
-              />
-              <Select
-                showSearch
-                optionFilterProp="label"
-                placeholder={t('Statut')}
-                value={filters.status || undefined}
-                onChange={v => handleStatusFilter(v)}
-                style={{ minWidth: 140 }}
-                options={statusOptions}
-                allowClear
-              />
-              <Button type="primary" htmlType="submit" icon={<FilterOutlined />}>
-                {t('Filtrer')}
-              </Button>
-              <Checkbox checked={nearLimitOnly} onChange={e => setNearLimitOnly(e.target.checked)}>
-                {t('Proche de la limite')}
-              </Checkbox>
-            </Space>
-          </form>
-        </Card>
-
         {/* Error */}
         {error && (
           <Alert
@@ -348,51 +311,26 @@ export const TenantsList: React.FC = () => {
           />
         )}
 
-        {/* Table */}
-        <Card>
-          <Spin spinning={loading}>
-            {!loading && (!filteredTenants || filteredTenants.length === 0) ? (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={
-                  nearLimitOnly ? t('Aucune agence proche de la limite sur cette page') : t('Aucune agence trouvée')
-                }
-              />
-            ) : (
-              <Table
-                exportFilename={t('Agences')}
-                exportFetchAll={fetchAllTenants}
-                rowKey="id"
-                columns={columns}
-                dataSource={filteredTenants}
-                scroll={{ x: 'max-content' }}
-                pagination={{
-                  current: pagination.page,
-                  pageSize: pagination.limit,
-                  total: pagination.total,
-                  showSizeChanger: true,
-                  showTotal: total => t('Total {{total}} résultat(s)', { total: total }),
-                  pageSizeOptions: ['10', '20', '50'],
-                  onChange: (page, pageSize) => {
-                    setFilters({
-                      ...filters,
-                      page,
-                      limit: pageSize || pagination.limit
-                    });
-                  }
-                }}
-                locale={{ emptyText: 'Aucune donnée' }}
-              />
-            )}
-          </Spin>
-        </Card>
+        <Table<Tenant>
+          aria-label={t('Agences')}
+          search={search.searchProps}
+          exportFilename={t('Agences')}
+          exportFetchAll={fetchAllTenants}
+          rowKey="id"
+          columns={columns}
+          dataSource={tenants}
+          loading={loading}
+          scroll={{ x: 'max-content' }}
+          pagination={search.tablePagination(total)}
+          locale={search.isFiltered ? undefined : { emptyText: t('Aucune agence trouvée') }}
+        />
       </Space>
 
       <CreateTenantDrawer
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={(_result: ProvisionTenantResult) => {
-          loadTenants();
+          reload();
         }}
       />
     </>

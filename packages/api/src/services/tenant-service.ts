@@ -12,6 +12,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import crypto from 'crypto';
 import { t } from '../i18n';
+import { selectNearLimitTenantIds } from './subscription-admin-extras-service';
 
 /** Champs d'une agence exposables sans authentification. */
 const PUBLIC_TENANT_SELECT = {
@@ -317,7 +318,10 @@ export async function listTenants(filters: TenantFilters = {}) {
   if (filters.search) {
     where.OR = [
       { name: { contains: filters.search, mode: 'insensitive' } },
-      { contactEmail: { contains: filters.search, mode: 'insensitive' } }
+      { slug: { contains: filters.search, mode: 'insensitive' } },
+      { legalName: { contains: filters.search, mode: 'insensitive' } },
+      { contactEmail: { contains: filters.search, mode: 'insensitive' } },
+      { city: { contains: filters.search, mode: 'insensitive' } }
     ];
   }
 
@@ -336,6 +340,16 @@ export async function listTenants(filters: TenantFilters = {}) {
         enabled: true
       }
     };
+  }
+
+  // « Proches de la limite » : la regle (une capacite a 80 % de sa limite) se
+  // calcule sur les resumes d'abonnement, pas en SQL. On l'applique donc sur
+  // TOUTES les agences qui correspondent aux autres filtres (identifiants
+  // seulement, par lots de 100), puis on pagine : le total reste exact.
+  if (filters.nearLimit) {
+    const candidates = await prisma.tenant.findMany({ where, select: { id: true }, orderBy: { createdAt: 'desc' } });
+    const nearIds = await selectNearLimitTenantIds(candidates.map(candidate => candidate.id));
+    where.AND = [{ id: { in: nearIds } }];
   }
 
   const [tenants, total] = await Promise.all([

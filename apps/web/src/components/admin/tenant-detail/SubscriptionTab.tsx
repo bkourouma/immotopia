@@ -4,6 +4,7 @@ import {
   Alert,
   Button,
   Card,
+  Collapse,
   Descriptions,
   Divider,
   Form,
@@ -49,6 +50,7 @@ import { StatusTag, MoneyValue, Table, useConfirmAction } from '../../primitives
 import { ReasonPromptModal } from '../ReasonPromptModal';
 import { isExtensionAllowed } from '../../../utils/extension-rules';
 import { activeLocale } from '../../../i18n/format';
+import { useLocalListSearch } from '../../../utils/list-search';
 import { t } from '../../../i18n/t';
 import { localizedList, localizedRecord } from '../../../i18n/localized';
 
@@ -318,13 +320,180 @@ const OverrideModal: React.FC<OverrideModalProps> = ({ open, onClose, onSubmit }
   );
 };
 
+/** Aperçu de la prochaine facture : lu à l'ouverture de la section, pas au chargement de l'onglet. */
+const InvoicePreviewSection: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+  const [invoicePreview, setInvoicePreview] = useState<InvoicePreview | null | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    previewNextInvoice(tenantId)
+      .catch(() => null)
+      .then(preview => {
+        if (!cancelled) setInvoicePreview(preview);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+
+  if (invoicePreview === undefined) {
+    return (
+      <div style={{ textAlign: 'center', padding: 'var(--space-4) 0' }}>
+        <Spin />
+      </div>
+    );
+  }
+  if (!invoicePreview) return <Text type="secondary">{t('Aperçu indisponible.')}</Text>;
+
+  return (
+    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+      <Text type="secondary">
+        {t('Période du {{start}} au {{end}}', {
+          start: formatDateTime(invoicePreview.periodStart),
+          end: formatDateTime(invoicePreview.periodEnd)
+        })}
+      </Text>
+      {invoicePreview.lines.map((line, index) => (
+        <div
+          key={`${line.kind}-${index}`}
+          style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}
+        >
+          <Text style={{ flex: 1 }}>{line.label}</Text>
+          <MoneyValue value={line.amount} signed />
+        </div>
+      ))}
+      <Divider style={{ margin: 'var(--space-2) 0' }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <Text>{t('Total HT')}</Text>
+        <MoneyValue value={invoicePreview.amountExclTax} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <Text>{t('TVA {{value}} %', { value: invoicePreview.taxRate })}</Text>
+        <MoneyValue value={invoicePreview.taxAmount} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <Text strong>{t('Total TTC')}</Text>
+        <Text strong>
+          <MoneyValue value={invoicePreview.amountTotal} />
+        </Text>
+      </div>
+    </Space>
+  );
+};
+
+// Accesseurs de la recherche locale : constantes de module (identité stable).
+const REQUEST_TEXT = [
+  (r: ExtensionRequest) => r.message,
+  (r: ExtensionRequest) => r.requestedByName,
+  (r: ExtensionRequest) => r.catalogName,
+  (r: ExtensionRequest) => REQUEST_STATUS_LABEL[r.status]?.label
+];
+const REQUEST_ACCESSORS = {
+  status: (r: ExtensionRequest) => r.status,
+  period: (r: ExtensionRequest) => r.createdAt
+};
+
+/** Demandes d'extension de l'agence : lues à l'ouverture de la section, recherchées et paginées en local. */
+const ExtensionRequestsSection: React.FC<{
+  tenantId: string;
+  onCloseRequest: (request: ExtensionRequest, status: 'HANDLED' | 'DECLINED') => void;
+}> = ({ tenantId, onCloseRequest }) => {
+  const [requests, setRequests] = useState<ExtensionRequest[] | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    listExtensionRequests(tenantId)
+      .catch(() => [] as ExtensionRequest[])
+      .then(list => {
+        if (!cancelled) setRequests(list);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+
+  const local = useLocalListSearch<ExtensionRequest>(requests, {
+    paramPrefix: 'dem',
+    defaultPageSize: 10,
+    text: REQUEST_TEXT,
+    accessors: REQUEST_ACCESSORS,
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Message, demandeur, offre…')
+      },
+      {
+        key: 'status',
+        type: 'select',
+        label: t('Statut'),
+        primary: true,
+        options: Object.entries(REQUEST_STATUS_LABEL).map(([value, info]) => ({ value, label: info.label }))
+      },
+      { key: 'period', type: 'dateRange', label: t('Période'), primary: true }
+    ]
+  });
+
+  return (
+    <Table<ExtensionRequest>
+      {...local.tableProps}
+      exportFilename={t("Demandes d'extension")}
+      exportFetchAll={local.exportAll}
+      loading={requests === undefined}
+      rowKey="id"
+      size="small"
+      aria-label={t("Demandes d'extension")}
+      locale={local.isFiltered ? undefined : { emptyText: t('Aucune demande') }}
+      columns={[
+        { title: t('Date'), dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => formatDateTime(v) },
+        { title: t('Demandeur'), dataIndex: 'requestedByName', key: 'by', render: (v: string | null) => v ?? '—' },
+        {
+          title: t('Offre'),
+          key: 'offer',
+          render: (_, r) => (r.catalogName ? `${r.catalogName}${r.quantity ? ` × ${r.quantity}` : ''}` : '—')
+        },
+        { title: t('Message'), dataIndex: 'message', key: 'message' },
+        {
+          title: t('Statut'),
+          dataIndex: 'status',
+          key: 'status',
+          render: (status: string) => {
+            const info = REQUEST_STATUS_LABEL[status];
+            return <StatusTag status={status} tone={info?.tone} label={info?.label} />;
+          }
+        },
+        {
+          title: t('Actions'),
+          key: 'actions',
+          render: (_, r) =>
+            r.status === 'OPEN' ? (
+              <Space wrap>
+                <Button size="small" type="primary" onClick={() => onCloseRequest(r, 'HANDLED')}>
+                  {t('Marquer traitée')}
+                </Button>
+                <Button size="small" onClick={() => onCloseRequest(r, 'DECLINED')}>
+                  {t('Refuser')}
+                </Button>
+              </Space>
+            ) : (
+              <Text type="secondary">—</Text>
+            )
+        }
+      ]}
+    />
+  );
+};
+
 export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }> = ({ tenantId, tenantName }) => {
   const { message, modal } = App.useApp();
   const confirmAction = useConfirmAction();
   const [overview, setOverview] = useState<SubscriptionOverview | null>(null);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
-  const [invoicePreview, setInvoicePreview] = useState<InvoicePreview | null>(null);
-  const [requests, setRequests] = useState<ExtensionRequest[]>([]);
+  // Sections repliables : leurs requêtes ne partent qu'à l'ouverture (voir
+  // `LazySections`). L'état d'ouverture reste ici pour survivre au rechargement
+  // de l'onglet après une action (les sections se remontent et se relisent).
+  const [openSections, setOpenSections] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -346,16 +515,12 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
     setLoading(true);
     setError(null);
     try {
-      const [overviewData, catalogData, preview, requestData] = await Promise.all([
+      const [overviewData, catalogData] = await Promise.all([
         getSubscriptionOverview(tenantId),
-        listCatalog(true).catch(() => []),
-        previewNextInvoice(tenantId).catch(() => null),
-        listExtensionRequests(tenantId).catch(() => [] as ExtensionRequest[])
+        listCatalog(true).catch(() => [])
       ]);
       setOverview(overviewData);
       setCatalog(catalogData);
-      setInvoicePreview(preview);
-      setRequests(requestData);
     } catch (err: any) {
       if (err?.response?.status === 404) {
         setOverview(null);
@@ -927,92 +1092,22 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
         </Space>
       </Card>
 
-      <Card title={t('Prochaine facture (aperçu)')}>
-        {invoicePreview ? (
-          <Space direction="vertical" size="small" style={{ width: '100%' }}>
-            <Text type="secondary">
-              {t('Période du {{start}} au {{end}}', {
-                start: formatDateTime(invoicePreview.periodStart),
-                end: formatDateTime(invoicePreview.periodEnd)
-              })}
-            </Text>
-            {invoicePreview.lines.map((line, index) => (
-              <div
-                key={`${line.kind}-${index}`}
-                style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}
-              >
-                <Text style={{ flex: 1 }}>{line.label}</Text>
-                <MoneyValue value={line.amount} signed />
-              </div>
-            ))}
-            <Divider style={{ margin: 'var(--space-2) 0' }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Text>{t('Total HT')}</Text>
-              <MoneyValue value={invoicePreview.amountExclTax} />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Text>{t('TVA {{value}} %', { value: invoicePreview.taxRate })}</Text>
-              <MoneyValue value={invoicePreview.taxAmount} />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Text strong>{t('Total TTC')}</Text>
-              <Text strong>
-                <MoneyValue value={invoicePreview.amountTotal} />
-              </Text>
-            </div>
-          </Space>
-        ) : (
-          <Text type="secondary">{t('Aperçu indisponible.')}</Text>
-        )}
-      </Card>
-
-      <Card title={t("Demandes d'extension")}>
-        <Table<ExtensionRequest>
-          exportFilename={t("Demandes d'extension")}
-          dataSource={requests}
-          rowKey="id"
-          pagination={false}
-          size="small"
-          aria-label={t("Demandes d'extension")}
-          locale={{ emptyText: t('Aucune demande') }}
-          columns={[
-            { title: t('Date'), dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => formatDateTime(v) },
-            { title: t('Demandeur'), dataIndex: 'requestedByName', key: 'by', render: (v: string | null) => v ?? '—' },
-            {
-              title: t('Offre'),
-              key: 'offer',
-              render: (_, r) => (r.catalogName ? `${r.catalogName}${r.quantity ? ` × ${r.quantity}` : ''}` : '—')
-            },
-            { title: t('Message'), dataIndex: 'message', key: 'message' },
-            {
-              title: t('Statut'),
-              dataIndex: 'status',
-              key: 'status',
-              render: (status: string) => {
-                const info = REQUEST_STATUS_LABEL[status];
-                return <StatusTag status={status} tone={info?.tone} label={info?.label} />;
-              }
-            },
-            {
-              title: t('Actions'),
-              key: 'actions',
-              render: (_, r) =>
-                r.status === 'OPEN' ? (
-                  <Space wrap>
-                    <Button size="small" type="primary" onClick={() => handleCloseRequest(r, 'HANDLED')}>
-                      {t('Marquer traitée')}
-                    </Button>
-                    <Button size="small" onClick={() => handleCloseRequest(r, 'DECLINED')}>
-                      {t('Refuser')}
-                    </Button>
-                  </Space>
-                ) : (
-                  <Text type="secondary">—</Text>
-                )
-            }
-          ]}
-        />
-      </Card>
+      <Collapse
+        activeKey={openSections}
+        onChange={keys => setOpenSections(Array.isArray(keys) ? keys.map(String) : [String(keys)])}
+        items={[
+          {
+            key: 'requests',
+            label: t("Demandes d'extension"),
+            children: <ExtensionRequestsSection tenantId={tenantId} onCloseRequest={handleCloseRequest} />
+          },
+          {
+            key: 'invoice-preview',
+            label: t('Prochaine facture (aperçu)'),
+            children: <InvoicePreviewSection tenantId={tenantId} />
+          }
+        ]}
+      />
 
       <AddItemModal
         open={addOpen}

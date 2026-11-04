@@ -455,6 +455,70 @@ describe('messages', () => {
     expect(list.items[0].lastMessage?.body).toBe('deux');
     expect((await listConversations(staff('admin'))).items).toHaveLength(0);
   });
+
+  describe('recherche', () => {
+    let soleil: string;
+    let carolDuo: string;
+    beforeEach(async () => {
+      soleil = (
+        await createConversation(staff('alice'), { participantUserIds: ['bob', 'carol'], title: 'Projet Soleil' })
+      ).id;
+      carolDuo = (await createConversation(staff('alice'), { participantUserIds: ['carol'] })).id;
+    });
+
+    it('cherche dans le titre, sans tenir compte de la casse, et le total suit le filtre', async () => {
+      const page = await listConversations(staff('alice'), { search: 'soleil' });
+      expect(page.items.map(i => i.id)).toEqual([soleil]);
+      expect(page.total).toBe(1);
+    });
+
+    it('le personnel cherche aussi parmi les AUTRES participants (nom ou e-mail), jamais lui-même', async () => {
+      const byName = await listConversations(staff('alice'), { search: 'nom carol' });
+      expect(byName.items.map(i => i.id).sort()).toEqual([carolDuo, soleil].sort());
+      const byEmail = await listConversations(staff('alice'), { search: 'bob@exemple' });
+      // bob est aussi dans le duo créé par le `beforeEach` du bloc « messages ».
+      expect(byEmail.items.map(i => i.id).sort()).toEqual([convId, soleil].sort());
+      // Son propre nom ne fait remonter aucune conversation.
+      expect((await listConversations(staff('alice'), { search: 'nom alice' })).items).toHaveLength(0);
+    });
+
+    it('ne montre jamais la conversation d’un autre participant', async () => {
+      expect((await listConversations(staff('admin'), { search: 'soleil' })).items).toHaveLength(0);
+    });
+
+    describe('client de portail', () => {
+      let dossier: string;
+      beforeEach(async () => {
+        // Un client ne peut pas titrer : c'est le personnel qui ouvre le groupe.
+        dossier = (
+          await createConversation(staff('alice'), { participantUserIds: ['cli', 'bob', 'cli2'], title: 'Mon dossier' })
+        ).id;
+      });
+
+      it('cherche dans le titre', async () => {
+        expect((await listConversations(client('cli'), { search: 'dossier' })).items.map(i => i.id)).toEqual([dossier]);
+      });
+
+      it('retrouve sa conversation par le nom affiché de son interlocuteur', async () => {
+        const page = await listConversations(client('cli'), { search: 'nom bob' });
+        expect(page.items.map(i => i.id)).toEqual([dossier]);
+        expect(page.total).toBe(1);
+      });
+
+      it("ne retrouve pas une conversation dont il n'est pas membre, même si le nom correspond", async () => {
+        // carolDuo et Projet Soleil contiennent « Nom carol » mais pas cli.
+        expect((await listConversations(client('cli'), { search: 'nom carol' })).items).toHaveLength(0);
+        expect((await listConversations(client('cli'), { search: 'soleil' })).items).toHaveLength(0);
+      });
+
+      it("ne cherche ni dans l'e-mail d'un participant ni dans le nom d'un autre client", async () => {
+        expect((await listConversations(client('cli'), { search: 'bob@exemple' })).items).toHaveLength(0);
+        expect((await listConversations(client('cli'), { search: 'exemple.test' })).items).toHaveLength(0);
+        // cli2 est un autre client : son nom est masqué à l'écran, il ne doit pas être cherchable.
+        expect((await listConversations(client('cli'), { search: 'nom cli2' })).items).toHaveLength(0);
+      });
+    });
+  });
 });
 
 describe('non-lus', () => {

@@ -6,6 +6,7 @@ import { resendInvitation, revokeInvitation } from '../../services/invitation-se
 import apiClient from '../../utils/api-client';
 import type { ColumnsType } from 'antd/es/table';
 import { Table } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -19,6 +20,17 @@ interface Invitation {
   expiresAt: string;
   roleIds: string[];
 }
+
+// Statut affiché : une invitation en attente dont la date est passée est « expirée ».
+const effectiveStatus = (invitation: Invitation): string =>
+  invitation.status === 'PENDING' && new Date(invitation.expiresAt) < new Date() ? 'EXPIRED' : invitation.status;
+
+// Stables : déclarés hors du composant (filtrage mémoïsé).
+const INVITATION_TEXT = [(invitation: Invitation) => invitation.email];
+const INVITATION_ACCESSORS = {
+  status: effectiveStatus,
+  invitedAt: (invitation: Invitation) => invitation.invitedAt
+};
 
 export const InvitationsList: React.FC = () => {
   const { message } = App.useApp();
@@ -52,6 +64,28 @@ export const InvitationsList: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Invitations reçues en entier : recherche et pagination locales, état dans l'URL.
+  const local = useLocalListSearch<Invitation>(invitations, {
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Adresse e-mail…') },
+      {
+        key: 'status',
+        type: 'multiSelect',
+        label: t('Statut'),
+        primary: true,
+        options: [
+          { value: 'PENDING', label: t('En attente') },
+          { value: 'ACCEPTED', label: t('Acceptée') },
+          { value: 'REVOKED', label: t('Révoquée') },
+          { value: 'EXPIRED', label: t('Expirée') }
+        ]
+      },
+      { key: 'invited', type: 'dateRange', label: t("Date d'invitation"), primary: true }
+    ],
+    text: INVITATION_TEXT,
+    accessors: { status: INVITATION_ACCESSORS.status, invited: INVITATION_ACCESSORS.invitedAt }
+  });
 
   const handleResend = async (invitationId: string) => {
     if (!tenantId) return;
@@ -188,15 +222,17 @@ export const InvitationsList: React.FC = () => {
         <Card>
           <div style={{ overflowX: 'auto' }}>
             <Table
+              {...local.tableProps}
+              aria-label={t('Invitations')}
               exportFilename={t('Invitations')}
+              exportFetchAll={local.exportAll}
               columns={columns}
-              dataSource={invitations}
               rowKey="id"
               loading={loading}
               scroll={{ x: 'max-content' }}
-              locale={{
-                emptyText: <Empty description={t('Aucune invitation trouvée')} />
-              }}
+              locale={
+                local.isFiltered ? undefined : { emptyText: <Empty description={t('Aucune invitation trouvée')} /> }
+              }
             />
           </div>
         </Card>

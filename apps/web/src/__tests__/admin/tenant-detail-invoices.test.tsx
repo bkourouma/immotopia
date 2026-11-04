@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
+import { MemoryRouter } from 'react-router-dom';
 import { InvoicesTab } from '../../components/admin/tenant-detail/InvoicesTab';
 
 /**
@@ -31,6 +32,10 @@ vi.mock('../../services/platform-billing-service', () => ({
   recordManualPayment: (...a: unknown[]) => recordManualPayment(...a),
   getAdminInvoicePayment: (...a: unknown[]) => getAdminInvoicePayment(...a),
   downloadPaymentProof: (...a: unknown[]) => downloadPaymentProof(...a)
+}));
+
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
 const setSubscriptionManualReadOnly = vi.fn();
@@ -72,10 +77,12 @@ const OVERDUE_OVERAGE = {
   status: 'OVERDUE' as const
 };
 
-function mount() {
+function mount(initial = '/admin/tenants/tenant-1?onglet=invoices') {
   return render(
     <AntApp>
-      <InvoicesTab tenantId="tenant-1" />
+      <MemoryRouter initialEntries={[initial]}>
+        <InvoicesTab tenantId="tenant-1" />
+      </MemoryRouter>
     </AntApp>
   );
 }
@@ -136,7 +143,10 @@ describe('InvoicesTab — factures d’abonnement', () => {
     await user.type(within(dialogue).getByRole('textbox'), 'Erreur de pack');
     await user.click(within(dialogue).getByRole('button', { name: "Émettre l'avoir" }));
     await waitFor(() =>
-      expect(issueCreditNote).toHaveBeenCalledWith('tenant-1', 'inv-1', { reason: 'Erreur de pack', reissuePending: false })
+      expect(issueCreditNote).toHaveBeenCalledWith('tenant-1', 'inv-1', {
+        reason: 'Erreur de pack',
+        reissuePending: false
+      })
     );
   });
 
@@ -156,7 +166,9 @@ describe('InvoicesTab — factures d’abonnement', () => {
     await user.click(screen.getByRole('button', { name: /Générer une facture/ }));
     const dialogue = await screen.findByRole('dialog');
     await user.click(within(dialogue).getByRole('button', { name: 'Générer' }));
-    await waitFor(() => expect(generatePlatformInvoice).toHaveBeenCalledWith('tenant-1', { nature: 'PERIOD', issue: false }));
+    await waitFor(() =>
+      expect(generatePlatformInvoice).toHaveBeenCalledWith('tenant-1', { nature: 'PERIOD', issue: false })
+    );
   });
 
   it('ouvre le détail avec le règlement et les tentatives en ligne', async () => {
@@ -209,5 +221,23 @@ describe('InvoicesTab — factures d’abonnement', () => {
     await waitFor(() =>
       expect(setSubscriptionManualReadOnly).toHaveBeenCalledWith('tenant-1', 'Dépassement impayé, abus répété')
     );
+  });
+
+  it('applique les critères d’une URL partagée (préfixe fac) : recherche, statuts, nature, période, montant', async () => {
+    mount(
+      '/admin/tenants/tenant-1?onglet=invoices&fac.q=IMT&fac.status=ISSUED,PAID&fac.nature=OVERAGE&fac.periodFrom=2026-01-01&fac.periodTo=2026-01-31&fac.amountMin=1000&fac.amountMax=50000'
+    );
+    await screen.findByText('IMT-2026-00001');
+    expect(listAdminPlatformInvoices).toHaveBeenCalledWith('tenant-1', {
+      search: 'IMT',
+      status: 'ISSUED,PAID',
+      nature: 'OVERAGE',
+      from: '2026-01-01',
+      to: '2026-01-31',
+      minAmount: 1000,
+      maxAmount: 50000,
+      page: 1,
+      limit: 20
+    });
   });
 });

@@ -6,6 +6,9 @@ import { t } from '../../i18n/t';
 /** Périmètre choisi : le défaut de toutes les agences, ou une agence précise. */
 export type MenuScopeChoice = { kind: 'default' } | { kind: 'tenant'; id: string };
 
+/** Agences proposées à la fois : la recherche affine, la liste n'est jamais chargée en entier. */
+const TENANT_PAGE_SIZE = 20;
+
 /** Valeur interne de l'option « Toutes les agences » : elle ne sort pas de ce composant. */
 const DEFAULT_OPTION = '__default__';
 
@@ -36,7 +39,7 @@ export const MenuTenantSelect: React.FC<MenuTenantSelectProps> = ({ value, onCha
     const requestId = ++lastRequest.current;
     setLoading(true);
     try {
-      const response = await listTenants({ limit: 50, ...(search ? { search } : {}) });
+      const response = await listTenants({ limit: TENANT_PAGE_SIZE, ...(search ? { search } : {}) });
       if (requestId === lastRequest.current) setTenants(response.data?.tenants ?? []);
     } catch {
       if (requestId === lastRequest.current) setTenants([]);
@@ -50,6 +53,14 @@ export const MenuTenantSelect: React.FC<MenuTenantSelectProps> = ({ value, onCha
   }, [load]);
 
   const selected = value === null ? undefined : value.kind === 'default' ? DEFAULT_OPTION : value.id;
+
+  // L'agence choisie reste affichée avec son nom même quand une nouvelle
+  // recherche (20 résultats au plus) ne la renvoie plus.
+  const [chosen, setChosen] = useState<{ value: string; label: string } | null>(null);
+  const tenantOptions = tenants.map(tenant => ({ value: tenant.id, label: tenant.name }));
+  if (chosen && chosen.value === selected && !tenantOptions.some(option => option.value === chosen.value)) {
+    tenantOptions.unshift(chosen);
+  }
 
   return (
     <Select
@@ -66,12 +77,13 @@ export const MenuTenantSelect: React.FC<MenuTenantSelectProps> = ({ value, onCha
       onChange={(next: string | undefined) => {
         if (!next) onChange(null);
         else if (next === DEFAULT_OPTION) onChange({ kind: 'default' });
-        else onChange({ kind: 'tenant', id: next });
+        else {
+          const found = tenantOptions.find(option => option.value === next);
+          if (found) setChosen(found);
+          onChange({ kind: 'tenant', id: next });
+        }
       }}
-      options={[
-        { value: DEFAULT_OPTION, label: t('Toutes les agences (défaut)') },
-        ...tenants.map(tenant => ({ value: tenant.id, label: tenant.name }))
-      ]}
+      options={[{ value: DEFAULT_OPTION, label: t('Toutes les agences (défaut)') }, ...tenantOptions]}
     />
   );
 };

@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App as AntApp } from 'antd';
+import { MemoryRouter } from 'react-router-dom';
 import { NotificationJournal } from '../../components/notifications/NotificationJournal';
 import type { AdminNotificationItem } from '../../services/notifications-service';
 
@@ -18,7 +19,12 @@ vi.mock('../../services/notifications-service', async importOriginal => ({
 }));
 
 vi.mock('../../services/tenant-service', () => ({
-  listTenants: vi.fn().mockResolvedValue({ success: true, data: { tenants: [], pagination: {} } })
+  listTenants: vi.fn().mockResolvedValue({ success: true, data: { tenants: [], pagination: {} } }),
+  getTenantAdmin: vi.fn()
+}));
+
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
 function row(over: Partial<AdminNotificationItem>): AdminNotificationItem {
@@ -51,10 +57,12 @@ function row(over: Partial<AdminNotificationItem>): AdminNotificationItem {
   };
 }
 
-function renderJournal() {
+function renderJournal(initial = '/notifications/journal') {
   return render(
     <AntApp>
-      <NotificationJournal mode={{ kind: 'agency', tenantId: 'tenant-1' }} />
+      <MemoryRouter initialEntries={[initial]}>
+        <NotificationJournal mode={{ kind: 'agency', tenantId: 'tenant-1' }} />
+      </MemoryRouter>
     </AntApp>
   );
 }
@@ -79,7 +87,7 @@ describe('NotificationJournal', () => {
     renderJournal();
     await screen.findByText('Quittance disponible');
 
-    const input = screen.getByPlaceholderText('Rechercher');
+    const input = screen.getByPlaceholderText('Destinataire, titre, message…');
     fireEvent.change(input, { target: { value: 'quittance' } });
     fireEvent.keyDown(input, { key: 'Enter', code: 'Enter', keyCode: 13 });
 
@@ -125,5 +133,19 @@ describe('NotificationJournal', () => {
     expect(await screen.findByText("Échec de l'envoi")).toBeInTheDocument();
     expect(screen.getAllByText('Numéro invalide').length).toBeGreaterThan(0);
     expect(screen.getByText('Tentatives')).toBeInTheDocument();
+  });
+
+  it('applique les critères d’une URL partagée (statut, canal, période) et les envoie à l’API', async () => {
+    renderJournal('/notifications/journal?status=FAILED&channel=WHATSAPP&periodFrom=2026-10-01&periodTo=2026-10-31');
+    await screen.findByText('Quittance disponible');
+
+    expect(service.listAdminNotifications).toHaveBeenCalledWith('tenant-1', {
+      status: 'FAILED',
+      channel: 'WHATSAPP',
+      from: '2026-10-01',
+      to: '2026-10-31',
+      page: 1,
+      pageSize: 20
+    });
   });
 });

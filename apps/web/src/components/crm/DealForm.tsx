@@ -1,10 +1,9 @@
-import { contactDisplayNameWithEmail } from '../../utils/contact-display';
 import React, { useState, useEffect } from 'react';
 import { Form, Input, Select, Button, Checkbox, InputNumber, Row, Col, Card, Alert, Space, Typography } from 'antd';
 import { LocationSelector } from '../ui/location-selector';
 import { GeographicLocation } from '../../services/geographic-service';
-import { CreateCrmDealRequest, UpdateCrmDealRequest, CrmDeal, CrmContact } from '../../types/crm-types';
-import { listContacts } from '../../services/crm-service';
+import { CreateCrmDealRequest, UpdateCrmDealRequest, CrmDeal } from '../../types/crm-types';
+import { ContactRemoteSelect } from './RemoteSelect';
 import { t } from '../../i18n/t';
 
 const { TextArea } = Input;
@@ -78,8 +77,6 @@ export const DealForm: React.FC<DealFormProps> = ({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [contacts, setContacts] = useState<CrmContact[]>([]);
-  const [loadingContacts, setLoadingContacts] = useState(false);
 
   // Helper functions for number formatting with spaces
   const formatNumber = (value: string): string => {
@@ -139,29 +136,6 @@ export const DealForm: React.FC<DealFormProps> = ({
       });
     }
   }, [deal]);
-
-  useEffect(() => {
-    const loadContacts = async () => {
-      if (!tenantId) return;
-      setLoadingContacts(true);
-      try {
-        // Fetch all contacts with a high limit to get all of them
-        const response = await listContacts(tenantId, {
-          page: 1,
-          limit: 1000 // High limit to get all contacts
-        });
-        if (response.success) {
-          setContacts(response.contacts);
-        }
-      } catch (err) {
-        console.error('Error loading contacts:', err);
-      } finally {
-        setLoadingContacts(false);
-      }
-    };
-
-    loadContacts();
-  }, [tenantId]);
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -346,30 +320,12 @@ export const DealForm: React.FC<DealFormProps> = ({
                   validateStatus={errors.contactId ? 'error' : ''}
                   help={errors.contactId}
                 >
-                  {loadingContacts ? (
-                    <Input placeholder={t('Chargement des contacts...')} disabled />
-                  ) : (
-                    <Select
-                      value={formData.contactId}
-                      onChange={value => handleChange('contactId', value)}
-                      placeholder={t('Sélectionner un contact')}
-                      showSearch
-                      filterOption={(input, option) => {
-                        const label = typeof option?.label === 'string' ? option.label : String(option?.children || '');
-                        return label.toLowerCase().includes(input.toLowerCase());
-                      }}
-                      optionLabelProp="label"
-                    >
-                      {contacts.map(contact => {
-                        const label = contactDisplayNameWithEmail(contact);
-                        return (
-                          <Select.Option key={contact.id} value={contact.id} label={label}>
-                            {label}
-                          </Select.Option>
-                        );
-                      })}
-                    </Select>
-                  )}
+                  <ContactRemoteSelect
+                    tenantId={tenantId}
+                    value={formData.contactId || undefined}
+                    onChange={value => handleChange('contactId', value ?? '')}
+                    placeholder={t('Sélectionner un contact')}
+                  />
                 </Form.Item>
               )}
             </Space>

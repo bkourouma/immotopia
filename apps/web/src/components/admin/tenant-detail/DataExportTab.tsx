@@ -243,7 +243,7 @@ export const DataExportTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         loading={loading}
         scroll={{ x: 'max-content' }}
         aria-label={t('Exports des données')}
-        pagination={false}
+        pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }}
         locale={{ emptyText: t('Aucun export pour cette agence') }}
       />
     </div>

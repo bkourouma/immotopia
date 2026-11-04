@@ -110,6 +110,30 @@ describe('buildPlatformAuditWhere', () => {
       { OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: 'z' } }] }
     ]);
   });
+
+  it('recherche libre : un OU insensible à la casse sur action, ressource, acteur, requête et source', () => {
+    const contains = { contains: 'prop', mode: 'insensitive' };
+    const where = buildPlatformAuditWhere({ search: 'prop', category: 'DATA' });
+    expect(where.category).toBe('DATA');
+    expect(where.AND).toEqual([
+      {
+        OR: [
+          { actionKey: contains },
+          { entityType: contains },
+          { entityId: contains },
+          { actorLabel: contains },
+          { requestId: contains },
+          { source: contains }
+        ]
+      }
+    ]);
+  });
+
+  it('recherche libre + curseur : les deux restent dans le ET (la recherche ne remplace pas le curseur)', () => {
+    const cursor = { createdAt: new Date('2026-10-01T00:00:00.000Z'), id: 'z' };
+    const where = buildPlatformAuditWhere({ search: 'x' }, cursor);
+    expect(where.AND).toHaveLength(2);
+  });
 });
 
 describe('getPlatformAuditLogs', () => {

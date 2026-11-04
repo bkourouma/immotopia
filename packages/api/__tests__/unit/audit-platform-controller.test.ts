@@ -64,6 +64,28 @@ describe('GET /audit', () => {
     expect(filters.endDate.toISOString()).toBe('2026-09-30T23:59:59.999Z');
   });
 
+  it('transmet la recherche libre (rognée) aux lectures de la liste et de l’export', async () => {
+    const list = await request(app).get('/audit?search=%20req-42%20');
+    expect(list.status).toBe(200);
+    expect(getPlatformAuditLogs.mock.calls[0][0]).toMatchObject({ search: 'req-42' });
+
+    const exported = await request(app).get('/audit/export?search=PROPERTY');
+    expect(exported.status).toBe(200);
+    expect(prepare.mock.calls[0][0]).toMatchObject({ search: 'PROPERTY' });
+  });
+
+  it('une recherche vide équivaut à aucune recherche', async () => {
+    const res = await request(app).get('/audit?search=');
+    expect(res.status).toBe(200);
+    expect(getPlatformAuditLogs.mock.calls[0][0].search).toBeUndefined();
+  });
+
+  it.each([`?search=${'x'.repeat(121)}`])('recherche trop longue refusée en 400 : %s', async query => {
+    const res = await request(app).get(`/audit${query}`);
+    expect(res.status).toBe(400);
+    expect(getPlatformAuditLogs).not.toHaveBeenCalled();
+  });
+
   it.each([
     '?page=2',
     '?action=PROPERTY_CREATED',
@@ -74,7 +96,9 @@ describe('GET /audit', () => {
     '?category=NOPE',
     '?requestId=a b',
     '?actionKey=minuscule',
-    '?startDate=hier'
+    '?startDate=hier',
+    '?startDate=2026-02-31',
+    '?endDate=2026-13-45'
   ])('paramètre refusé en 400 : %s', async query => {
     const res = await request(app).get(`/audit${query}`);
     expect(res.status).toBe(400);

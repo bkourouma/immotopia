@@ -90,7 +90,7 @@ function FindingsTable({ rows, tone }: { rows: AuditIntegrityFinding[]; tone: 'e
       rowKey={row => `${row.sealDate}|${row.tenantKey}|${row.visibility}`}
       columns={buildColumns(tone)}
       dataSource={rows}
-      pagination={false}
+      pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false }}
       scroll={{ x: 'max-content' }}
     />
   );

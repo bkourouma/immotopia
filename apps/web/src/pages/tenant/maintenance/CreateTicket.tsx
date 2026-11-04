@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { App, Card, Form, Input, Select, Button, Space, Typography, Spin } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
@@ -29,24 +29,59 @@ export const CreateTicket: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [properties, setProperties] = useState<Property[]>([]);
+  const [propertiesLoading, setPropertiesLoading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  // Bien choisi : son libellé reste affiché même quand une recherche ne le renvoie plus.
+  const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestSearch = useRef(0);
+
+  // Recherche distante (20 biens au plus) : plus de liste de 100 biens chargée d'avance.
+  const loadProperties = useCallback(
+    async (q?: string) => {
+      if (!effectiveTenantId) return;
+      const request = ++latestSearch.current;
+      setPropertiesLoading(true);
+      try {
+        const response = await listProperties(effectiveTenantId, { q: q?.trim() || undefined, limit: 20 });
+        if (request === latestSearch.current) setProperties(response.properties);
+      } catch (error) {
+        console.error('Error loading properties:', error);
+      } finally {
+        if (request === latestSearch.current) setPropertiesLoading(false);
+      }
+    },
+    [effectiveTenantId]
+  );
 
   useEffect(() => {
-    if (effectiveTenantId) {
-      loadProperties();
-    }
-  }, [effectiveTenantId]);
+    void loadProperties();
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+      latestSearch.current += 1;
+    };
+  }, [loadProperties]);
 
-  const loadProperties = async () => {
-    if (!effectiveTenantId) return;
-
-    try {
-      const response = await listProperties(effectiveTenantId, { limit: 100 });
-      setProperties(response.properties);
-    } catch (error) {
-      console.error('Error loading properties:', error);
-    }
+  const handlePropertySearch = (input: string) => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => void loadProperties(input), 300);
   };
+
+  const propertyLabel = (property: Property): string => {
+    const ownerLabel = property.owner?.fullName?.trim() || property.internalReference;
+    return property.containerParent
+      ? `${ownerLabel} - ${property.title} ( ${property.containerParent.title} )`
+      : `${ownerLabel} - ${property.title}`;
+  };
+
+  // Le bien déjà choisi reste dans les options, même hors des 20 résultats courants.
+  const propertyOptions = (() => {
+    const options = properties.map(property => ({ value: property.id, label: propertyLabel(property) }));
+    if (selectedProperty && !options.some(option => option.value === selectedProperty.id)) {
+      options.unshift({ value: selectedProperty.id, label: propertyLabel(selectedProperty) });
+    }
+    return options;
+  })();
 
   const handleSubmit = async (values: any) => {
     if (!effectiveTenantId) return;
@@ -158,24 +193,15 @@ export const CreateTicket: React.FC = () => {
                 <Select
                   placeholder={t('Sélectionner une propriété')}
                   showSearch
-                  filterOption={(input, option) => {
-                    const label = typeof option?.label === 'string' ? option.label : String(option?.children || '');
-                    return label.toLowerCase().includes(input.toLowerCase());
-                  }}
-                  optionFilterProp="label"
-                >
-                  {properties.map(property => {
-                    const ownerLabel = property.owner?.fullName?.trim() || property.internalReference;
-                    const label = property.containerParent
-                      ? `${ownerLabel} - ${property.title} ( ${property.containerParent.title} )`
-                      : `${ownerLabel} - ${property.title}`;
-                    return (
-                      <Option key={property.id} value={property.id} label={label}>
-                        {label}
-                      </Option>
-                    );
-                  })}
-                </Select>
+                  filterOption={false}
+                  onSearch={handlePropertySearch}
+                  onChange={(id: string) =>
+                    setSelectedProperty(properties.find(property => property.id === id) ?? selectedProperty)
+                  }
+                  loading={propertiesLoading}
+                  options={propertyOptions}
+                  notFoundContent={propertiesLoading ? t('Chargement…') : t('Aucun bien trouvé')}
+                />
               </Form.Item>
 
               <Form.Item

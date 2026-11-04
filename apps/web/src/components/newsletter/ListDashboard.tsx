@@ -1,14 +1,21 @@
 import React from 'react';
-import { Card, Row, Col, Statistic, Tag, Button, Typography, Space } from 'antd';
+import { Card, Row, Col, Statistic, Tag, Button, Typography, Space, Empty } from 'antd';
 import { TeamOutlined, UserOutlined, MailOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { NewsletterList } from '../../services/newsletter.service';
+import { ListSearch } from '../primitives';
+import type { ListSearchBinding } from '../primitives';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
 
 const { Title, Text } = Typography;
 
 interface ListDashboardProps {
+  /** Listes affichées (déjà filtrées par la recherche). */
   lists: NewsletterList[];
+  /** Nombre de listes avant filtrage : 0 = « aucune liste », sinon « aucun résultat ». */
+  totalLists?: number;
+  search?: ListSearchBinding;
+  onClearSearch?: () => void;
   loading?: boolean;
   onSelectList: (list: NewsletterList) => void;
   onCreateList: () => void;
@@ -25,6 +32,9 @@ const typeLabels: Record<string, string> = localizedRecord(() => ({
 
 export function ListDashboard({
   lists,
+  totalLists,
+  search,
+  onClearSearch,
   loading,
   onSelectList,
   onCreateList,
@@ -41,6 +51,18 @@ export function ListDashboard({
           {t('Nouvelle liste')}
         </Button>
       </div>
+
+      {search && (totalLists ?? lists.length) > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <ListSearch {...search} aria-label={t('Rechercher une liste de diffusion')} />
+        </div>
+      )}
+
+      {search && lists.length === 0 && (totalLists ?? 0) > 0 && (
+        <Empty description={t('Aucun résultat pour ces critères')}>
+          {onClearSearch && <Button onClick={onClearSearch}>{t('Effacer les critères')}</Button>}
+        </Empty>
+      )}
 
       <Row gutter={[16, 16]}>
         {lists.map(list => (

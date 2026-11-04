@@ -8,7 +8,15 @@ import {
   type PlatformAuditExportFilters,
   type PlatformAuditLog
 } from '../../services/audit-service';
-import { getAuditActionLabelFr, getAuditCategoryLabelFr, getAuditOutcomeLabelFr } from '../../constants/audit-labels';
+import {
+  getAuditActionLabelFr,
+  getAuditActorTypeLabelFr,
+  getAuditCategoryLabelFr,
+  getAuditOutcomeLabelFr
+} from '../../constants/audit-labels';
+import { TENANT_AUDIT_CATEGORIES, TENANT_AUDIT_OUTCOMES } from '../../services/tenant-audit-service';
+import { getTenantAdmin, listTenants } from '../../services/tenant-service';
+import { useListSearch } from '../../hooks/useListSearch';
 import { getAuditOutcomeColor } from '../../utils/tenant-audit-display';
 import { getPlatformActorDisplay } from '../../utils/platform-audit-display';
 import { saveBlob } from '../../utils/save-blob';
@@ -16,11 +24,6 @@ import { useAuth } from '../../hooks/useAuth';
 import { AuditResourceCell } from '../../components/audit/AuditResourceCell';
 import { PlatformAuditDetailModal } from '../../components/admin/PlatformAuditDetailModal';
 import { AuditIntegrityCard } from '../../components/admin/AuditIntegrityCard';
-import {
-  EMPTY_AUDIT_FILTERS,
-  PlatformAuditFilterBar,
-  type PlatformAuditFilterState
-} from '../../components/admin/PlatformAuditFilterBar';
 import { Table } from '../../components/primitives';
 import { EXPORT_MAX_ROWS } from '../../utils/table-export/collect';
 import { activeLocale } from '../../i18n/format';
@@ -30,7 +33,8 @@ const { Title, Text } = Typography;
 
 type ApiError = { response?: { status?: number; data?: { message?: string } } };
 
-const TEXT_FILTER_DELAY_MS = 400;
+const ACTOR_TYPES = ['USER', 'SUPER_ADMIN', 'PORTAL', 'SYSTEM', 'AI'] as const;
+const TENANT_OPTIONS_LIMIT = 20;
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString(activeLocale(), {
@@ -40,16 +44,6 @@ function formatDate(iso: string): string {
     hour: '2-digit',
     minute: '2-digit'
   });
-}
-
-/** Valeur qui ne suit la saisie qu'après une courte pause : un appel à l'API par mot, pas par lettre. */
-function useDebounced<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
 }
 
 function buildColumns(onOpen: (log: PlatformAuditLog) => void): ColumnsType<PlatformAuditLog> {
@@ -96,25 +90,6 @@ function buildColumns(onOpen: (log: PlatformAuditLog) => void): ColumnsType<Plat
   ];
 }
 
-/** Filtres envoyés à l'API (liste et export) : seulement des clés définies. */
-function toApiFilters(
-  state: PlatformAuditFilterState,
-  actionKey: string,
-  requestId: string
-): PlatformAuditExportFilters {
-  return {
-    tenantId: state.tenantId,
-    category: state.category as PlatformAuditExportFilters['category'],
-    outcome: state.outcome as PlatformAuditExportFilters['outcome'],
-    actorType: state.actorType as PlatformAuditExportFilters['actorType'],
-    visibility: state.visibility === 'ALL' ? undefined : state.visibility,
-    startDate: state.range?.[0],
-    endDate: state.range?.[1],
-    actionKey: actionKey.trim().toUpperCase() || undefined,
-    requestId: requestId.trim() || undefined
-  };
-}
-
 interface AuditExportState {
   exporting: boolean;
   truncated: boolean;
@@ -151,7 +126,6 @@ function useAuditExport(filters: PlatformAuditExportFilters): AuditExportState {
 
 export const AuditLogs: React.FC = () => {
   const { user } = useAuth();
-  const [state, setState] = useState<PlatformAuditFilterState>(EMPTY_AUDIT_FILTERS);
   const [logs, setLogs] = useState<PlatformAuditLog[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -162,11 +136,67 @@ export const AuditLogs: React.FC = () => {
   // entre-temps, page quittée) est ignorée.
   const latestRequest = useRef(0);
 
-  const actionKey = useDebounced(state.actionText, TEXT_FILTER_DELAY_MS);
-  const requestId = useDebounced(state.requestIdText, TEXT_FILTER_DELAY_MS);
-  // Clé sérialisée : taper dans un champ texte recalcule les filtres, mais ne
-  // relance la lecture que lorsque leur contenu change vraiment.
-  const filtersKey = JSON.stringify(toApiFilters(state, actionKey, requestId));
+  // Recherche multicritères (état dans l'URL). Liste à curseur : `page` ne sert pas,
+  // seuls les critères (`filterParams`) partent à l'API ; le curseur reste local.
+  const search = useListSearch({
+    apiNames: { sort: false },
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Action, ressource, acteur, identifiant de requête…')
+      },
+      {
+        key: 'tenantId',
+        type: 'select',
+        label: t('Agence'),
+        primary: true,
+        placeholder: t('Toutes les agences'),
+        loadOptions: async term => {
+          const response = await listTenants({
+            search: term.trim() || undefined,
+            page: 1,
+            limit: TENANT_OPTIONS_LIMIT
+          });
+          return response.data.tenants.map(tenant => ({ value: tenant.id, label: tenant.name }));
+        },
+        resolveLabel: async id => (await getTenantAdmin(id)).data?.name
+      },
+      {
+        key: 'category',
+        type: 'select',
+        label: t('Catégorie'),
+        primary: true,
+        options: TENANT_AUDIT_CATEGORIES.map(value => ({ value, label: getAuditCategoryLabelFr(value) }))
+      },
+      {
+        key: 'outcome',
+        type: 'select',
+        label: t('Résultat'),
+        options: TENANT_AUDIT_OUTCOMES.map(value => ({ value, label: getAuditOutcomeLabelFr(value) }))
+      },
+      {
+        key: 'actorType',
+        type: 'select',
+        label: t("Type d'acteur"),
+        options: ACTOR_TYPES.map(value => ({ value, label: getAuditActorTypeLabelFr(value) }))
+      },
+      {
+        key: 'visibility',
+        type: 'select',
+        label: t('Visibilité'),
+        options: [
+          { value: 'TENANT', label: t("Visibles de l'agence") },
+          { value: 'PLATFORM_ONLY', label: t('Réservées à la plateforme') }
+        ]
+      },
+      { key: 'period', type: 'dateRange', label: t('Période'), api: ['startDate', 'endDate'] }
+    ]
+  });
+
+  // Clé sérialisée : la lecture ne se relance que lorsque le contenu des critères change.
+  const filtersKey = JSON.stringify(search.filterParams);
   const filters = useMemo<PlatformAuditExportFilters>(() => JSON.parse(filtersKey), [filtersKey]);
   const auditExport = useAuditExport(filters);
   const canExport = user?.globalRole === 'SUPER_ADMIN' && !auditExport.forbidden;
@@ -231,10 +261,9 @@ export const AuditLogs: React.FC = () => {
   }, [filters]);
 
   const columns = useMemo(() => buildColumns(setSelected), []);
-  const hasFilters = JSON.stringify(state) !== JSON.stringify(EMPTY_AUDIT_FILTERS);
-  const patchState = (patch: Partial<PlatformAuditFilterState>) => setState(previous => ({ ...previous, ...patch }));
+  // Le détail propose de voir toute la requête : l'identifiant devient la recherche libre.
   const filterByRequest = (id: string) => {
-    patchState({ requestIdText: id });
+    search.setValues({ q: id });
     setSelected(null);
   };
   // Un échec en cours de liste ne perd pas les lignes déjà reçues.
@@ -266,13 +295,6 @@ export const AuditLogs: React.FC = () => {
         />
       )}
 
-      <PlatformAuditFilterBar
-        value={state}
-        onChange={patchState}
-        onReset={() => setState(EMPTY_AUDIT_FILTERS)}
-        hasFilters={hasFilters}
-      />
-
       <AuditIntegrityCard />
 
       {error && (
@@ -291,6 +313,8 @@ export const AuditLogs: React.FC = () => {
 
       <Card>
         <Table<PlatformAuditLog>
+          aria-label={t("Journal d'audit")}
+          search={search.searchProps}
           exportFilename={t("Journal d'audit")}
           exportFetchAll={fetchAllLogs}
           rowKey="id"
@@ -300,10 +324,13 @@ export const AuditLogs: React.FC = () => {
           pagination={false}
           scroll={{ x: 'max-content' }}
           onRow={log => ({ onClick: () => setSelected(log), style: { cursor: 'pointer' } })}
-          locale={{
-            emptyText:
-              loading || error ? <span /> : <Empty description={t('Aucune activité enregistrée pour ces critères')} />
-          }}
+          locale={
+            loading || error
+              ? { emptyText: <span /> }
+              : search.isFiltered
+                ? undefined
+                : { emptyText: <Empty description={t('Aucune activité enregistrée')} /> }
+          }
         />
         {nextCursor && (
           <div style={{ textAlign: 'center', marginTop: 16 }}>

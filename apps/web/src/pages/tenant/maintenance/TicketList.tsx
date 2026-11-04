@@ -1,16 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Card, Select, Button, Empty, Spin, Pagination, Space, Typography } from 'antd';
+import { App, Card, Button, Empty, Spin, Pagination, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { TicketCard } from '../../../components/maintenance/TicketCard';
 import { tenantMaintenanceService } from '../../../services/maintenance-service';
-import { Ticket, MaintenanceTicketStatus } from '../../../types/maintenance-types';
+import { getProperty, listProperties } from '../../../services/property-service';
+import { Ticket } from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
-import { useConfirmAction } from '../../../components/primitives';
+import { useListSearch } from '../../../hooks/useListSearch';
+import { ListSearch, useConfirmAction } from '../../../components/primitives';
 import { t } from '../../../i18n/t';
 
 const { Title } = Typography;
-const { Option } = Select;
+
+const propertyOptionLabel = (property: { internalReference?: string; title?: string }) =>
+  [property.internalReference, property.title].filter(Boolean).join(' · ');
 
 export const TicketList: React.FC = () => {
   const { message } = App.useApp();
@@ -23,56 +27,104 @@ export const TicketList: React.FC = () => {
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<MaintenanceTicketStatus | undefined>(undefined);
-  const [propertyFilter, setPropertyFilter] = useState<string | undefined>(undefined);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0
+  const [total, setTotal] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+
+  // `loadOptions` / `resolveLabel` sont figés au premier rendu : l'agence passe par une référence.
+  const tenantRef = useRef(effectiveTenantId);
+  tenantRef.current = effectiveTenantId;
+
+  // Recherche multicritères portée par l'URL (?q=…&status=DECLARED&propertyId=…&page=2).
+  const search = useListSearch({
+    defaultPageSize: 20,
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Titre, description, bien, prestataire…')
+      },
+      {
+        key: 'status',
+        type: 'select',
+        label: t('Statut'),
+        primary: true,
+        options: [
+          { value: 'DECLARED', label: t('Déclaré') },
+          { value: 'IN_PROGRESS', label: t('En cours') },
+          { value: 'ASSIGNED', label: t('Assigné') },
+          { value: 'RESOLVED', label: t('Résolu') },
+          { value: 'CANCELED', label: t('Annulé') }
+        ]
+      },
+      {
+        key: 'propertyId',
+        type: 'select',
+        label: t('Bien'),
+        primary: true,
+        loadOptions: async term => {
+          const { properties } = await listProperties(tenantRef.current as string, { q: term || undefined, limit: 20 });
+          return properties.map(property => ({ value: property.id, label: propertyOptionLabel(property) }));
+        },
+        resolveLabel: async id => propertyOptionLabel(await getProperty(tenantRef.current as string, id))
+      },
+      {
+        key: 'priority',
+        type: 'select',
+        label: t('Priorité'),
+        options: [
+          { value: 'LOW', label: t('Faible') },
+          { value: 'MEDIUM', label: t('Moyenne') },
+          { value: 'HIGH', label: t('Élevée') },
+          { value: 'URGENT', label: t('Urgente') }
+        ]
+      },
+      {
+        key: 'category',
+        type: 'select',
+        label: t('Catégorie'),
+        options: [
+          { value: 'PLUMBING', label: t('Plomberie') },
+          { value: 'ELECTRICITY', label: t('Électricité') },
+          { value: 'AC', label: t('Climatisation') },
+          { value: 'OTHER', label: t('Autre') }
+        ]
+      },
+      { key: 'created', type: 'dateRange', label: t('Créé du / au'), api: ['dateFrom', 'dateTo'] }
+    ]
   });
+  const paramsRef = useRef(search.apiParams);
+  paramsRef.current = search.apiParams;
+  const paramsKey = JSON.stringify(search.apiParams);
 
   useEffect(() => {
     if (effectiveTenantId) {
       loadTickets();
     }
-  }, [effectiveTenantId, statusFilter, propertyFilter, pagination.page]);
+  }, [effectiveTenantId, paramsKey]);
+
+  // Écran sur mesure (cartes + Pagination) : une page hors bornes est recadrée ici.
+  useEffect(() => {
+    if (loaded) search.clampPage?.(total);
+  }, [total, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadTickets = async () => {
     if (!effectiveTenantId) return;
 
     setLoading(true);
     try {
-      const response = await tenantMaintenanceService.listTickets(effectiveTenantId, {
-        status: statusFilter,
-        propertyId: propertyFilter,
-        page: pagination.page,
-        limit: pagination.limit
-      });
+      const response = await tenantMaintenanceService.listTickets(effectiveTenantId, paramsRef.current as never);
 
       if (response.success) {
         setTickets(response.data);
-        setPagination(response.pagination);
+        setTotal(response.pagination?.total ?? response.data.length);
       }
     } catch (error) {
       console.error('Error loading tickets:', error);
     } finally {
       setLoading(false);
+      setLoaded(true);
     }
-  };
-
-  const handleStatusFilterChange = (value: MaintenanceTicketStatus | undefined) => {
-    setStatusFilter(value);
-    setPagination(prev => ({ ...prev, page: 1 }));
-  };
-
-  const handlePropertyFilterChange = (value: string | undefined) => {
-    setPropertyFilter(value);
-    setPagination(prev => ({ ...prev, page: 1 }));
-  };
-
-  const handlePageChange = (page: number) => {
-    setPagination(prev => ({ ...prev, page }));
   };
 
   const handleEdit = (ticketId: string) => {
@@ -106,7 +158,7 @@ export const TicketList: React.FC = () => {
     });
   };
 
-  if (loading && tickets.length === 0) {
+  if (!loaded) {
     return (
       <>
         <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
@@ -129,36 +181,14 @@ export const TicketList: React.FC = () => {
         </div>
 
         <Card style={{ marginBottom: 24 }}>
-          <Space>
-            <Select
-              showSearch
-              optionFilterProp="children"
-              placeholder={t('Filtrer par statut')}
-              allowClear
-              style={{ width: 200 }}
-              value={statusFilter}
-              onChange={handleStatusFilterChange}
-            >
-              <Option value="DECLARED">{t('Déclaré')}</Option>
-              <Option value="IN_PROGRESS">{t('En cours')}</Option>
-              <Option value="ASSIGNED">{t('Assigné')}</Option>
-              <Option value="RESOLVED">{t('Résolu')}</Option>
-              <Option value="CANCELED">{t('Annulé')}</Option>
-            </Select>
-
-            <Select
-              placeholder={t('Filtrer par propriété')}
-              allowClear
-              style={{ width: 200 }}
-              value={propertyFilter}
-              onChange={handlePropertyFilterChange}
-            >
-              {/* TODO: Load properties and populate options */}
-            </Select>
-          </Space>
+          <ListSearch {...search.searchProps} aria-label={t('Rechercher dans mes tickets')} resultCount={total} />
         </Card>
 
-        {tickets.length === 0 ? (
+        {tickets.length === 0 && search.isFiltered ? (
+          <Empty description={t('Aucun ticket ne correspond aux critères')} image={Empty.PRESENTED_IMAGE_SIMPLE}>
+            <Button onClick={search.clear}>{t('Effacer les critères')}</Button>
+          </Empty>
+        ) : tickets.length === 0 && !loading ? (
           <Empty description={t('Aucun ticket de maintenance')} image={Empty.PRESENTED_IMAGE_SIMPLE}>
             <Button
               type="primary"
@@ -180,14 +210,15 @@ export const TicketList: React.FC = () => {
               />
             ))}
 
-            {pagination.totalPages > 1 && (
+            {total > search.pageSize && (
               <div style={{ textAlign: 'center', marginTop: 24 }}>
                 <Pagination
-                  current={pagination.page}
-                  total={pagination.total}
-                  pageSize={pagination.limit}
-                  onChange={handlePageChange}
-                  showTotal={total => t('Total: {{total}} tickets', { total: total })}
+                  current={search.page}
+                  total={total}
+                  pageSize={search.pageSize}
+                  showSizeChanger={false}
+                  onChange={page => search.setPage(page)}
+                  showTotal={count => t('Total: {{total}} tickets', { total: count })}
                 />
               </div>
             )}

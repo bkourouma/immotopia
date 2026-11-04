@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Card, Button, Modal, Tag, Space, Spin, Select, DatePicker, Typography } from 'antd';
+import { App, Card, Button, Modal, Tag, Space, Spin, DatePicker, Typography } from 'antd';
 import {
   PlusOutlined,
   SendOutlined,
@@ -11,8 +11,10 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { CampaignForm } from '../../components/newsletter/CampaignForm';
+import { useListSearch } from '../../hooks/useListSearch';
 import {
   newsletterService,
+  type NewsletterCampaignFilters,
   type NewsletterList,
   type NewsletterTemplate,
   type NewsletterCampaign
@@ -58,26 +60,52 @@ export function NewsletterCampaignsPage() {
   const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
   const [scheduleDate, setScheduleDate] = useState<dayjs.Dayjs | null>(null);
   const [saving, setSaving] = useState(false);
-  // Filtre de statut de la liste affichée, repris tel quel par l'export.
-  const statusFilterRef = useRef<string | undefined>(undefined);
 
-  const loadCampaigns = useCallback(
-    async (page = 1, limit = 20, status?: string) => {
-      if (!tenantId) return;
-      setLoading(true);
-      statusFilterRef.current = status;
-      try {
-        const data = await newsletterService.listCampaigns(tenantId, { page, limit, status });
-        setCampaigns(data.campaigns);
-        setPagination(data.pagination);
-      } catch (e) {
-        message.error((e as Error).message || t('Erreur lors du chargement'));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [tenantId, message]
-  );
+  // Recherche multicritères, portée par l'URL (?q=…&status=DRAFT,SENT&page=2) : le
+  // statut et la page survivent au rechargement, et l'export reprend les mêmes critères.
+  const search = useListSearch({
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Objet de la campagne, nom de la liste…')
+      },
+      {
+        key: 'status',
+        type: 'multiSelect',
+        label: t('Statut'),
+        primary: true,
+        options: Object.entries(statusLabels).map(([value, label]) => ({ value, label }))
+      },
+      {
+        key: 'listId',
+        type: 'select',
+        label: t('Liste de diffusion'),
+        primary: true,
+        options: lists.map(list => ({ value: list.id, label: list.name }))
+      },
+      { key: 'created', type: 'dateRange', label: t('Créée du / au'), api: ['from', 'to'] }
+    ]
+  });
+  // Dernière recherche, relue par les rechargements après une action (envoi, annulation…).
+  const paramsRef = useRef(search.apiParams);
+  paramsRef.current = search.apiParams;
+  const paramsKey = JSON.stringify(search.apiParams);
+
+  const loadCampaigns = useCallback(async () => {
+    if (!tenantId) return;
+    setLoading(true);
+    try {
+      const data = await newsletterService.listCampaigns(tenantId, paramsRef.current as NewsletterCampaignFilters);
+      setCampaigns(data.campaigns);
+      setPagination(data.pagination);
+    } catch (e) {
+      message.error((e as Error).message || t('Erreur lors du chargement'));
+    } finally {
+      setLoading(false);
+    }
+  }, [tenantId, message]);
 
   const loadListsAndTemplates = useCallback(async () => {
     if (!tenantId) return;
@@ -95,8 +123,11 @@ export function NewsletterCampaignsPage() {
 
   useEffect(() => {
     loadCampaigns();
+  }, [loadCampaigns, paramsKey]);
+
+  useEffect(() => {
     loadListsAndTemplates();
-  }, [loadCampaigns, loadListsAndTemplates]);
+  }, [loadListsAndTemplates]);
 
   const handleCreateCampaign = async (values: {
     listId: string;
@@ -341,27 +372,17 @@ export function NewsletterCampaignsPage() {
           </Button>
         </div>
 
-        <Select
-          placeholder={t('Filtrer par statut')}
-          allowClear
-          style={{ width: 200, marginBottom: 16 }}
-          onChange={v => loadCampaigns(1, pagination.limit, v ?? undefined)}
-          options={[
-            { value: 'DRAFT', label: t('Brouillons') },
-            { value: 'SCHEDULED', label: t('Planifiées') },
-            { value: 'SENT', label: t('Envoyées') }
-          ]}
-        />
-
         <Card>
           <Table
+            aria-label={t('Campagnes newsletter')}
+            search={search.searchProps}
             exportFilename={t('Campagnes newsletter')}
             exportFetchAll={() =>
               collectAllPages<NewsletterCampaign>(async (page, limit) => {
                 const data = await newsletterService.listCampaigns(tenantId as string, {
+                  ...(search.filterParams as NewsletterCampaignFilters),
                   page,
-                  limit,
-                  status: statusFilterRef.current
+                  limit
                 });
                 return { items: data.campaigns ?? [], total: data.pagination?.total ?? 0 };
               })
@@ -371,13 +392,8 @@ export function NewsletterCampaignsPage() {
             columns={columns}
             dataSource={campaigns}
             rowKey="id"
-            pagination={{
-              current: pagination.page,
-              pageSize: pagination.limit,
-              total: pagination.total,
-              showSizeChanger: true,
-              onChange: (page, limit) => loadCampaigns(page, limit ?? 20)
-            }}
+            pagination={search.tablePagination(pagination.total)}
+            locale={search.isFiltered ? undefined : { emptyText: t('Aucune campagne pour le moment.') }}
           />
         </Card>
       </div>

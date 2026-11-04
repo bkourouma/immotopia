@@ -2,8 +2,9 @@ import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { CRM_ENTITY_TYPES } from '../types/audit-types';
-import { CreateActivityRequest, ActivityFilters } from '../types/crm-types';
+import { CreateActivityRequest } from '../types/crm-types';
 import { CrmActivityType } from '@prisma/client';
+import { buildActivityListWhere, type ActivityListFilters } from './crm-list-where';
 import { updateLastInteractionAt } from './crm-contact-service';
 import { t } from '../i18n';
 import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
@@ -148,45 +149,12 @@ export async function createActivity(tenantId: string, data: CreateActivityReque
  * @param filters - Filter criteria
  * @returns Paginated activities
  */
-export async function listActivities(tenantId: string, filters: ActivityFilters) {
+export async function listActivities(tenantId: string, filters: ActivityListFilters) {
   const page = filters.page || 1;
   const limit = filters.limit || 20;
   const skip = (page - 1) * limit;
 
-  // Build where clause
-  const where: any = {
-    tenantId // Always enforce tenant isolation
-  };
-
-  if (filters.contactId) {
-    where.contactId = filters.contactId;
-  }
-
-  if (filters.dealId) {
-    where.dealId = filters.dealId;
-  }
-
-  if (filters.type) {
-    where.activityType = filters.type;
-  }
-
-  if (filters.createdBy) {
-    where.createdByUserId = filters.createdBy;
-  }
-
-  // Date range filter for occurredAt
-  if (filters.startDate || filters.endDate) {
-    where.occurredAt = {};
-    if (filters.startDate) {
-      where.occurredAt.gte = new Date(filters.startDate);
-    }
-    if (filters.endDate) {
-      // Add one day to include the entire end date
-      const endDate = new Date(filters.endDate);
-      endDate.setHours(23, 59, 59, 999);
-      where.occurredAt.lte = endDate;
-    }
-  }
+  const where = buildActivityListWhere(tenantId, filters);
 
   // Get total count
   const total = await prisma.crmActivity.count({ where });

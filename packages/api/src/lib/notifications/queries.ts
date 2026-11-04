@@ -87,14 +87,30 @@ export async function listMyNotifications(input: {
   tenantId: string;
   userId: string;
   unreadOnly?: boolean;
+  /** Recherche libre dans le titre et le message. */
+  q?: string;
+  from?: Date;
+  to?: Date;
   page?: number;
   pageSize?: number;
 }): Promise<Paginated<NotificationItem>> {
   const { page, pageSize, skip, take } = paging(input.page, input.pageSize);
+  const q = input.q?.trim();
   const where: Prisma.UserNotificationWhereInput = {
     tenantId: input.tenantId,
     recipientUserId: input.userId,
-    ...(input.unreadOnly ? { readAt: null } : {})
+    ...(input.unreadOnly ? { readAt: null } : {}),
+    ...(q
+      ? {
+          OR: [
+            { title: { contains: q, mode: 'insensitive' as const } },
+            { body: { contains: q, mode: 'insensitive' as const } }
+          ]
+        }
+      : {}),
+    ...(input.from || input.to
+      ? { createdAt: { ...(input.from ? { gte: input.from } : {}), ...(input.to ? { lte: input.to } : {}) } }
+      : {})
   };
   const [rows, total] = await Promise.all([
     prisma.userNotification.findMany({

@@ -4,8 +4,9 @@ import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { diffForAudit } from '../lib/audit/changes';
 import { CRM_ENTITY_TYPES } from '../types/audit-types';
 import { getPortalAccountEmailNotice } from '../lib/crm/portal-email-notice';
-import { CreateContactRequest, UpdateContactRequest, ContactFilters, ContactDetail } from '../types/crm-types';
+import { CreateContactRequest, UpdateContactRequest, ContactDetail } from '../types/crm-types';
 import { CrmContactStatus, MembershipStatus, Prisma } from '@prisma/client';
+import { buildContactListWhere, type ContactListFilters } from './crm-list-where';
 import { autoInviteContactToWhatsappGroup } from './whatsapp-group-automation-service';
 import { ensureOwnerClientIfOwnerRole } from './owner-client-service';
 import { t } from '../i18n';
@@ -317,123 +318,12 @@ export async function getContactById(tenantId: string, contactId: string): Promi
  * @param filters - Filter criteria
  * @returns Paginated contacts
  */
-export async function listContacts(tenantId: string, filters: ContactFilters) {
+export async function listContacts(tenantId: string, filters: ContactListFilters) {
   const page = filters.page || 1;
   const limit = filters.limit || 20;
   const skip = (page - 1) * limit;
 
-  // Build where clause
-  const where: any = {
-    tenantId // Always enforce tenant isolation
-  };
-
-  if (filters.status) {
-    where.status = filters.status;
-  }
-
-  if (filters.source) {
-    where.source = filters.source;
-  }
-
-  if (filters.assignedTo) {
-    where.assignedToUserId = filters.assignedTo;
-  }
-
-  if (filters.startDate || filters.endDate) {
-    where.createdAt = {};
-    if (filters.startDate) {
-      where.createdAt.gte = new Date(filters.startDate);
-    }
-    if (filters.endDate) {
-      where.createdAt.lte = new Date(filters.endDate);
-    }
-  }
-
-  // Build AND conditions array for complex filters
-  const andConditions: any[] = [];
-
-  if (filters.search) {
-    andConditions.push({
-      OR: [
-        { firstName: { contains: filters.search, mode: 'insensitive' } },
-        { lastName: { contains: filters.search, mode: 'insensitive' } },
-        { email: { contains: filters.search, mode: 'insensitive' } }
-      ]
-    });
-  }
-
-  // Handle tag filter
-  if (filters.tag) {
-    andConditions.push({
-      tags: {
-        some: {
-          tag: {
-            name: filters.tag
-          }
-        }
-      }
-    });
-  }
-
-  // Handle hasActiveDeal filter
-  if (filters.hasActiveDeal !== undefined) {
-    if (filters.hasActiveDeal) {
-      andConditions.push({
-        deals: {
-          some: {
-            stage: {
-              notIn: ['WON', 'LOST']
-            }
-          }
-        }
-      });
-    } else {
-      andConditions.push({
-        deals: {
-          none: {
-            stage: {
-              notIn: ['WON', 'LOST']
-            }
-          }
-        }
-      });
-    }
-  }
-
-  // Handle hasUpcomingActivity filter
-  if (filters.hasUpcomingActivity !== undefined) {
-    const now = new Date();
-    if (filters.hasUpcomingActivity) {
-      // Contact must have an activity with nextActionAt in the future
-      andConditions.push({
-        activities: {
-          some: {
-            nextActionAt: {
-              gte: now,
-              not: null
-            }
-          }
-        }
-      });
-    } else {
-      // Contact must NOT have upcoming activities
-      andConditions.push({
-        activities: {
-          none: {
-            nextActionAt: {
-              gte: now,
-              not: null
-            }
-          }
-        }
-      });
-    }
-  }
-
-  // Apply AND conditions if any
-  if (andConditions.length > 0) {
-    where.AND = andConditions;
-  }
+  const where = buildContactListWhere(tenantId, filters);
 
   // Get total count
   const total = await prisma.crmContact.count({ where });

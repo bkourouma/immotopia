@@ -80,9 +80,11 @@ function unwrap<T>(body: unknown): T {
 
 export async function listConversations(
   scope: MessagingScope,
-  params: { page?: number; pageSize?: number } = {}
+  params: { page?: number; pageSize?: number; search?: string } = {}
 ): Promise<ConversationPage> {
-  const response = await apiClient.get(`${basePath(scope)}/conversations`, { params });
+  const response = await apiClient.get(`${basePath(scope)}/conversations`, {
+    params: { ...params, search: params.search?.trim() || undefined }
+  });
   return unwrap<ConversationPage>(response.data);
 }
 
