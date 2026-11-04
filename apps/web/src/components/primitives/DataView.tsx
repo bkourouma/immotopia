@@ -11,6 +11,8 @@ import { ExportMenu, type ExportFetchAllResult } from './ExportMenu';
 import { t } from '../../i18n/t';
 import { AccessDenied } from './AccessDenied';
 import { isPermissionDenied } from '../../utils/error-handler';
+import type { ListSearchBinding } from '../../utils/list-search/types';
+import { ListSearch } from './ListSearch';
 
 /**
  * `<DataView>` — une liste, dans les deux représentations (§5.1, §6, §10.1).
@@ -136,6 +138,17 @@ interface DataViewBase<T> {
    */
   export?: false | DataViewExport<T>;
 
+  /**
+   * Recherche multicritères (`useListSearch(...).searchProps`). La barre
+   * `<ListSearch>` se pose au-dessus de la liste dans TOUS les états
+   * (chargement, vide, aucun résultat, liste) ; le bouton « Exporter » s'y loge.
+   *
+   * `isFiltered` et `onClearFilters` valent par défaut `search.activeCount > 0`
+   * et `search.onClear`. Le compteur vient de `search.resultCount`, sinon de
+   * `total` (liste paginée) ou de `items.length`. Sans `search`, rien ne change.
+   */
+  search?: ListSearchBinding;
+
   /** Nom accessible de la liste. */
   'aria-label': string;
 }
@@ -178,8 +191,9 @@ export function DataView<T>(props: DataViewProps<T>) {
     error = null,
     onRetry,
     errorCause,
-    isFiltered = false,
-    onClearFilters,
+    isFiltered: isFilteredProp,
+    onClearFilters: onClearFiltersProp,
+    search,
     emptyAction,
     emptyDescription,
     renderCard,
@@ -212,48 +226,85 @@ export function DataView<T>(props: DataViewProps<T>) {
   }, []);
   const contexteMontants = useMemo(() => ({ sansDevise: true, signaler }), [signaler]);
 
+  // Avec `search`, l'écran n'a pas à répéter ce que la barre sait déjà.
+  const isFiltered = isFilteredProp ?? (search ? search.activeCount > 0 : false);
+  const onClearFilters = onClearFiltersProp ?? search?.onClear;
+
+  /**
+   * La barre de recherche, au-dessus de tous les états. `counted: false` pour
+   * les états où un compteur mentirait (premier chargement, erreur). Rien du
+   * tout sans `search` : l'arbre DOM reste celui d'avant.
+   */
+  const withSearch = (body: React.ReactNode, options: { extra?: React.ReactNode; counted?: boolean } = {}) => {
+    if (!search) return body;
+    const { extra, counted = true } = options;
+    const resultCount = counted ? (search.resultCount ?? (paginated ? total : items.length)) : undefined;
+    return (
+      <>
+        <ListSearch {...search} resultCount={resultCount} extra={extra} />
+        {body}
+      </>
+    );
+  };
+
   if (isForbiddenCause(errorCause)) {
     return <AccessDenied reason="role" />;
   }
 
   if (error) {
-    return (
+    return withSearch(
       <StateBlock
         variant="error"
         description={error}
         actions={onRetry ? [{ label: t('Réessayer'), onClick: onRetry, primary: true }] : undefined}
-      />
+      />,
+      { counted: false }
     );
   }
 
   // Premier chargement seulement : un rechargement garde la liste à l'écran.
   if (loading && items.length === 0) {
-    return isDesktop && layout === 'table' ? (
-      <SkeletonTable
-        rows={pageSize > 10 ? 8 : pageSize}
-        columns={columns.length}
-        aria-label={`${ariaLabel} en cours de chargement`}
-      />
-    ) : (
-      <SkeletonList rows={5} aria-label={`${ariaLabel} en cours de chargement`} />
+    return withSearch(
+      isDesktop && layout === 'table' ? (
+        <SkeletonTable
+          rows={pageSize > 10 ? 8 : pageSize}
+          columns={columns.length}
+          aria-label={`${ariaLabel} en cours de chargement`}
+        />
+      ) : (
+        <SkeletonList rows={5} aria-label={`${ariaLabel} en cours de chargement`} />
+      ),
+      { counted: false }
     );
   }
 
   if (items.length === 0) {
     // La distinction qui compte : rien n'existe, ou rien ne correspond.
-    return isFiltered ? (
-      <StateBlock
-        variant="no-results"
-        actions={
-          onClearFilters ? [{ label: t('Effacer les filtres'), onClick: onClearFilters, primary: true }] : undefined
-        }
-      />
-    ) : (
-      <StateBlock
-        variant="empty"
-        description={emptyDescription}
-        actions={emptyAction ? [{ label: emptyAction.label, onClick: emptyAction.onClick, primary: true }] : undefined}
-      />
+    return withSearch(
+      isFiltered ? (
+        <StateBlock
+          variant="no-results"
+          actions={
+            onClearFilters
+              ? [
+                  {
+                    label: search ? t('Effacer les critères') : t('Effacer les filtres'),
+                    onClick: onClearFilters,
+                    primary: true
+                  }
+                ]
+              : undefined
+          }
+        />
+      ) : (
+        <StateBlock
+          variant="empty"
+          description={emptyDescription}
+          actions={
+            emptyAction ? [{ label: emptyAction.label, onClick: emptyAction.onClick, primary: true }] : undefined
+          }
+        />
+      )
     );
   }
 
@@ -342,20 +393,24 @@ export function DataView<T>(props: DataViewProps<T>) {
   const exportColumns = exportOption ? (exportOption.columns ?? columns) : columns;
   const showExport = exportOption !== false && exportColumns.length > 0;
 
-  return (
+  const exportMenu = showExport ? (
+    <ExportMenu<T>
+      columns={exportColumns}
+      rows={items}
+      fetchAll={exportOption ? exportOption.fetchAll : undefined}
+      filename={(exportOption && exportOption.filename) || ariaLabel}
+      title={(exportOption && exportOption.title) || ariaLabel}
+      pdf={exportOption ? exportOption.pdf : undefined}
+      total={paginated ? total : undefined}
+    />
+  ) : null;
+
+  const list = (
     <div>
-      {showExport && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-3)' }}>
-          <ExportMenu<T>
-            columns={exportColumns}
-            rows={items}
-            fetchAll={exportOption ? exportOption.fetchAll : undefined}
-            filename={(exportOption && exportOption.filename) || ariaLabel}
-            title={(exportOption && exportOption.title) || ariaLabel}
-            pdf={exportOption ? exportOption.pdf : undefined}
-            total={paginated ? total : undefined}
-          />
-        </div>
+      {/* Sans barre de recherche, le bouton a sa propre ligne ; avec, il se
+          loge à l'extrémité de fin de la barre. */}
+      {!search && exportMenu && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-3)' }}>{exportMenu}</div>
       )}
 
       {/* Rechargement : le contenu reste lisible, l'indicateur dit qu'il
@@ -399,4 +454,6 @@ export function DataView<T>(props: DataViewProps<T>) {
       )}
     </div>
   );
+
+  return withSearch(list, { extra: exportMenu });
 }
