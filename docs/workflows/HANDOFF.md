@@ -19,16 +19,24 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 ## orch/2026-11-03-ux-recherche — recherche multicritères et ergonomie (2026-11-04)
 
-**État :** repris dans Codex le 2026-11-04 ; intégration et vérifications en cours. Passation d'origine et décisions métier : [HANDOFF-ux-recherche.md](HANDOFF-ux-recherche.md).
+**État :** repris dans Codex le 2026-11-04 ; tous les lots retenus sont intégrés et les contrôles locaux sont verts. PR et suites complètes de CI à suivre. Passation d'origine et décisions métier : [HANDOFF-ux-recherche.md](HANDOFF-ux-recherche.md).
 
-**Fait :** lots initiaux conservés ; SYN-B terminé, relu et fusionné localement (`949b1ece`, lot `36d5da6d`). Recherche syndic et portail copropriétaire, chargement des assemblées au-delà des 20 premières, plafonds signalés, pagination des déclarations bornée à 50. Corrections supplémentaires dans l'arbre : purge des filtres des onglets du bail ; étapes gagnées/perdues et export cohérent du Kanban ; impression du relevé alignée sur la recherche avec vrais soldes et libellés lisibles. Traductions EN/AR et libellés hérités traités, contrôles i18n verts ; classeur et miroir actualisés (1 154 sous-fonctionnalités, `wiki:check` vert).
+**Fait :** lots initiaux conservés ; SYN-B terminé, relu et fusionné (`949b1ece`, lot `36d5da6d`). JOK intégré par `d7843e87` (lot `fde5b12b`) : caractères LIKE cherchés littéralement, recherches du journal respectant l'identité plateforme masquée, budget CRM égal à zéro, suppression de quatre anciens lecteurs comptables et deux schémas sans appelant runtime. Corrections de reprise `7048a197` : purge des filtres des onglets du bail ; étapes gagnées/perdues et export cohérent du Kanban ; PDF du relevé aligné sur la recherche avec vrais soldes et libellés adaptés au tiers. Traductions EN/AR et libellés hérités traités (1 304 entrées modifiées contrôlées sans vide ni désaccord de paramètres) ; classeur et miroir actualisés (1 154 sous-fonctionnalités). Catalogue IA régénéré : 785 routes, contenu déjà cohérent.
 
 **Reste :**
 
-- JOK (`…-lot-jok`) : SYN-B fusionné dans son worktree, phase 2 préparée ; tests finaux et intégration encore à faire. Corrige aussi la recherche d'identité plateforme masquée dans le journal et la borne de budget CRM égale à zéro. Deux défauts préexistants de la suite d'isolation sont en correction (permission refusée dans l'audit, nettoyage des appels de fonds de test).
-- Vérifications des correctifs de reprise : API finance/PDF 37 tests verts ; Vitest CRM/bail/relevé 43 tests verts. Rejouer typecheck/lint/architecture/build et tests de l'intégration finale, puis catalogue IA et CI.
-- Finir la recette navigateur sur les lots fusionnés, notamment une assemblée ancienne sur 125 réunions et les recherches `%`/`_`. Déjà vus : bien hors première page, états vides/effacement, export CSV de 55 biens, mobile arabe à 390 px sans débordement, soldes filtrés 1 000 / 1 500 et PDF rendu.
-- Ouvrir la PR vers `main` et suivre la CI. La fusion et le déploiement restent à l'utilisateur.
+- Ouvrir la PR vers `main`, suivre les suites complètes backend et web (la CI actuelle comprend quatre lots web), et corriger les échecs éventuels. Les suites complètes n'ont pas été exécutées en local pendant la reprise ; elles sont déléguées à la CI après les tests ciblés ci-dessous.
+- Mettre à jour le lien et le verdict CI dans cette section. La fusion et le déploiement restent à l'utilisateur.
+
+Vérifications locales terminées :
+
+- Intégration finale : `npm run build` (TypeScript API et web sans erreur, Vite production), lint sans erreur (avertissements conservés), architecture sans violation, `wiki:check`, i18n web/API, contrastes, budget du point d'entrée : 229 699 octets gzip pour 230 400 autorisés.
+- Reprise : 37 tests API finance/PDF, 43 tests web CRM/bail/relevé, test de bascule des libellés des biens en arabe verts.
+- SYN-B : 91 tests Jest et 86 scénarios web verts après correction d'une assertion d'encodage URL (fichier AG rejoué seul : 19/19).
+- JOK : 284 tests unitaires, 58 tests API historiques, trois suites SQL réelles et isolation 129/129, typecheck API, architecture verts. Ces comptes ne s'additionnent pas : certaines suites se recouvrent.
+- Relecture de code et de sécurité indépendantes : constats confirmés corrigés ; relecture ciblée finale sans nouveau défaut confirmé.
+- Recette sur données synthétiques : bien hors première page ; état vide et effacement ; CSV de 55 biens excluant l'autre agence ; mobile arabe 390 px sans débordement et application différée des critères ; vrais soldes 1 000 / 1 500 dans le relevé et le PDF rendu ; recherche d'une assemblée ancienne parmi 125 et CSV filtré d'une ligne ; `%` et `_` retournant uniquement le résultat littéral attendu.
+- Non couvert manuellement : tous les écrans/rôles/combinaisons, volumes réels, vote/quorum en session réelle, paiements réels et déploiement.
 
 **Pièges :**
 
@@ -40,8 +48,9 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 - Le PostgreSQL natif Windows occupe 5432 et masque le port du conteneur de développement. Les tests utilisent un NOUVEAU conteneur dédié `immotopia-ux-codex-test`, lié à `127.0.0.1:55432`, avec bases distinctes `immotopia_ux_codex_test_20261104` et `immotopia_ux_codex_demo_20261104`. Ne jamais utiliser la base réelle pour ces essais ; aucun `.env` lu ou modifié explicitement.
 - Recette synthétique : web 3300, API 8800, scripts temporaires dans `%TEMP%/immotopia-ux-qa-20261104`. L'API est lancée en mode test sans jobs. Recharger après les écritures de catalogues : le HMR de LanguageContext peut provoquer une erreur temporaire en développement.
 - PDF arabe : repli français préexistant imposé par les polices WinAnsi ; les clés AR sont traduites mais le moteur PDF arabe n'a pas été remplacé.
+- Les relances SQL sur une même base de test sont désormais rejouables : nettoyage des appels/paiements et lignes comptables des seuls tenants de la suite avant la suppression ; lecture globale des audits à 100 par page, scénarios de pagination ciblés conservés à 2.
 
-**Branche :** `orch/2026-11-03-ux-recherche` @ `949b1ece` (fusion SYN-B, avant les correctifs/traductions encore non commités). Worktree `D:/APP/Immobillier-worktrees/ux-integ`. Base `origin/main` @ `6be7f91a`, vérifiée le 2026-11-04. Le checkout principal est ancien et contient des modifications d'une autre session : ne pas y travailler.
+**Branche :** `orch/2026-11-03-ux-recherche` @ `d7843e87` (dernier commit fonctionnel, avant cette mise à jour documentaire). Worktree `D:/APP/Immobillier-worktrees/ux-integ`. Base `origin/main` @ `6be7f91a`, revérifiée le 2026-11-04. Le checkout principal est ancien et contient des modifications d'une autre session : ne pas y travailler.
 
 ## État des lieux (pilote) — 2026-10-31
 
