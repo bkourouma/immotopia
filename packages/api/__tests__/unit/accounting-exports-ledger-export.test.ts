@@ -3,6 +3,8 @@
  * du récapitulatif s'applique (numéro en préfixe, intitulé en sous-chaîne).
  */
 
+export {};
+
 const mockPrisma = {
   journalEntryLine: { groupBy: jest.fn(), findMany: jest.fn() },
   chartOfAccount: { findMany: jest.fn() }

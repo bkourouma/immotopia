@@ -85,7 +85,7 @@ jobs:
       - run: npm run lint -w @immotopia/api
 
       # Blocking: the test suite must stay green.
-      - run: npm test -w @immotopia/api
+      - run: npm test -w @immotopia/api -- --forceExit
 
   # Isolation multi-tenant sur base reelle (npm run test:isolation). Le script
   # lit DATABASE_URL_TEST (sans elle il sort en code 0 sans rien tester), execute
@@ -114,6 +114,7 @@ jobs:
       DATABASE_URL: postgresql://immotopia:immotopia@localhost:5432/immotopia_isolation?schema=public
       JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
       NODE_ENV: test
+      NODE_OPTIONS: --max-old-space-size=4096
 
     steps:
       - uses: actions/checkout@v4
@@ -127,12 +128,11 @@ jobs:
 
       - run: npm run prisma:generate -w @immotopia/api
 
-      # continue-on-error : ce job n'a pas pu etre prouve vert en local (pas de
-      # base disponible lors de son ajout). A rendre bloquant des qu'un premier
-      # passage CI est vert.
+      # Bloquant : un badge vert doit prouver que les suites ont vraiment passe.
+      # Le lanceur separe les fichiers en processus successifs pour liberer la
+      # memoire de ts-jest entre les suites, sans paralleliser les compteurs SQL.
       - name: Tests d'isolation
         run: npm run test:isolation -w @immotopia/api
-        continue-on-error: true
 
   # Le runner GitHub n'a que 4 vCPU. Les 78 fichiers de test montent chacun un
   # jsdom et de vrais composants Ant Design : sur une seule machine, avec

@@ -1413,11 +1413,11 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect(ofA).not.toContain(ids.pB);
       expect(ofA).not.toContain(ids.pNull);
 
-      const platformOnly = await readAll(superAdmin, '&visibility=PLATFORM_ONLY');
+      const platformOnly = await readAll(superAdmin, '&visibility=PLATFORM_ONLY', 100);
       expect(platformOnly.every(log => log.visibility === 'PLATFORM_ONLY')).toBe(true);
       expect(platformOnly.map(log => log.id)).toEqual(expect.arrayContaining([ids.pAInternal, ids.pNull]));
 
-      const platformScope = (await readAll(superAdmin, '&scope=PLATFORM')).map(log => log.id);
+      const platformScope = (await readAll(superAdmin, '&scope=PLATFORM', 100)).map(log => log.id);
       expect(platformScope).toContain(ids.pNull);
       expect(platformScope).not.toContain(ids.pA);
     });

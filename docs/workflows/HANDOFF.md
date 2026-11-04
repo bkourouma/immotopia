@@ -34,6 +34,8 @@ Vérifications locales terminées :
 - Reprise : 37 tests API finance/PDF, 43 tests web CRM/bail/relevé, test de bascule des libellés des biens en arabe verts.
 - SYN-B : 91 tests Jest et 86 scénarios web verts après correction d'une assertion d'encodage URL (fichier AG rejoué seul : 19/19).
 - JOK : 284 tests unitaires, 58 tests API historiques, trois suites SQL réelles et isolation 129/129, typecheck API, architecture verts. Ces comptes ne s'additionnent pas : certaines suites se recouvrent.
+- Validation du lanceur isolation sous 4 Go : 16 fichiers / 339 tests verts (fichiers 1–5, puis reprise 6–16 après mise à jour des assertions de permission). Aucun test désactivé ; exécution complète en une commande confiée à la CI bloquante du dernier SHA.
+- Retours de la première CI corrigés et rejoués localement : programmation de charges 27/27 ; contrat des lots et export grand livre 8/8. Le second passage CI doit valider ces corrections avec l'ensemble des suites.
 - Relecture de code et de sécurité indépendantes : constats confirmés corrigés ; relecture ciblée finale sans nouveau défaut confirmé.
 - Recette sur données synthétiques : bien hors première page ; état vide et effacement ; CSV de 55 biens excluant l'autre agence ; mobile arabe 390 px sans débordement et application différée des critères ; vrais soldes 1 000 / 1 500 dans le relevé et le PDF rendu ; recherche d'une assemblée ancienne parmi 125 et CSV filtré d'une ligne ; `%` et `_` retournant uniquement le résultat littéral attendu.
 - Non couvert manuellement : tous les écrans/rôles/combinaisons, volumes réels, vote/quorum en session réelle, paiements réels et déploiement.
@@ -41,6 +43,8 @@ Vérifications locales terminées :
 **Pièges :**
 
 - Jest : toujours `--forceExit`.
+- La CI d'isolation est désormais bloquante : le badge vert précédent masquait un OOM avec `continue-on-error`. Le lanceur conserve les 16 fichiers, un processus séquentiel par fichier avec 4 Go de heap. La suite générale conserve son parallélisme et son budget antérieurs : son premier passage a terminé les 710 fichiers sans OOM (682 verts, 26 ignorés, deux tests corrigés), et utilise désormais `--forceExit`. Le contrôle de dérive Prisma reste le seul step toléré (index SQL/Prisma, explication dans le workflow).
+- Assertions de refus patrimoine : vérifier `requiredPermission`, pas le code dans le message localisé. Les lectures globales d'audit utilisent 100 lignes par page pour rester rejouables lorsque le journal immuable grossit ; les scénarios ciblés à 2 lignes sont conservés.
 - Les tests jsdom lents expirent sous charge : relancer le fichier seul avant de conclure.
 - Prisma `contains` n'échappe pas `%` ni `_`.
 - La PR #193 touche les mêmes fichiers.
