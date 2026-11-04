@@ -423,6 +423,37 @@ describe('Contrôle — onglet Alertes', () => {
     monter();
     expect(await screen.findByText('Aucune alerte à traiter.', {}, { timeout: 8000 })).toBeInTheDocument();
   }, 15000);
+
+  it('recherche : la saisie part au serveur (search) et le statut d’origine reste « À traiter »', async () => {
+    const user = userEvent.setup();
+    monter();
+    await screen.findByText('Sortie importante', {}, { timeout: 8000 });
+    expect(appelsGet(/\/stock\/alerts/)[0]).toContain('status=OPEN');
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'riviera');
+    await waitFor(
+      () => {
+        const dernier = appelsGet(/\/stock\/alerts/).at(-1) ?? '';
+        expect(dernier).toContain('search=riviera');
+        expect(dernier).toContain('status=OPEN');
+      },
+      { timeout: 8000 }
+    );
+  }, 20000);
+
+  it('critères d’une URL initiale : statut « Toutes » (aucun status), nature et chantier envoyés', async () => {
+    monter(`/tenant/${TENANT}/finance/stock/controle?al.statut=ALL&al.kind=LARGE_ISSUE&al.siteId=${CHANTIER}`);
+    await screen.findByText('Sortie importante', {}, { timeout: 8000 });
+    const appel = appelsGet(/\/stock\/alerts/)[0];
+    expect(appel).not.toContain('status=');
+    expect(appel).toContain('kind=LARGE_ISSUE');
+    expect(appel).toContain(`siteId=${CHANTIER}`);
+  }, 20000);
+
+  it('statut « Traitées » d’une URL initiale envoyé au serveur', async () => {
+    monter(`/tenant/${TENANT}/finance/stock/controle?al.statut=ACKNOWLEDGED`);
+    await screen.findByText('Sortie importante', {}, { timeout: 8000 });
+    expect(appelsGet(/\/stock\/alerts/)[0]).toContain('status=ACKNOWLEDGED');
+  }, 20000);
 });
 
 // ---------------------------------------------------------------------------

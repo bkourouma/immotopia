@@ -15,9 +15,16 @@ import {
 } from '../../services/finance-lot4-service';
 import { listConstructionSites } from '../../services/finance-lot2-service';
 import { LAND_LEASE_STATUS_LABELS } from '../../types/finance-lot4-types';
-import type { LandLeaseAccrual, LandLeasePayment, LandLeaseSiteRef } from '../../types/finance-lot4-types';
+import type {
+  LandLeaseAccrual,
+  LandLeaseDocumentStatus,
+  LandLeasePayment,
+  LandLeaseSiteRef
+} from '../../types/finance-lot4-types';
 import { detailKey, entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { DateRangeValue, SearchCriterion } from '../../utils/list-search';
 import {
   PageHeader,
   StateBlock,
@@ -91,6 +98,12 @@ const { Title, Text } = Typography;
  * **Vocabulaire (P-1 du PRD).** On *loue*, on *paie*, on *constate*, on
  * *impute* — jamais « débit » ni « crédit ».
  *
+ * **Recherche.** Les paiements (préfixe d'URL `pai`) et les constatations
+ * (`cst`) ont chacun leur barre (`useLocalListSearch`), dans le composant de
+ * leur onglet. Les sommes de l'en-tête (« Payé à ce jour », « Consommé à ce
+ * jour ») restent calculées sur les listes COMPLÈTES, jamais sur la liste
+ * filtrée. Les chantiers rattachés (quelques-uns par bail) n'ont pas de barre.
+ *
  * **Le poste de dépense du bail (ajout au contrat du 19 septembre 2026).**
  * `costCategoryLabel` est affiché tel quel, jamais `costCategoryId` : c'est
  * le poste qui reçoit le loyer dans le coût des chantiers rattachés.
@@ -138,6 +151,171 @@ function libellePeriode(year: number, month: number): string {
 function resteAConsommer(accountBalance: number): number {
   return -accountBalance;
 }
+
+const OPTIONS_STATUT_PAIEMENT = localizedList(() =>
+  (Object.keys(LAND_LEASE_STATUS_LABELS) as LandLeaseDocumentStatus[]).map(value => ({
+    value,
+    label: LAND_LEASE_STATUS_LABELS[value]
+  }))
+);
+
+function periodeCouverte(p: LandLeasePayment): string {
+  return `${dateCourte(p.coverageStartDate)} – ${dateCourte(p.coverageEndDate)}`;
+}
+
+// Paiements — champ libre : auteur de la saisie et période couverte (telle qu'affichée).
+const TEXTE_PAIEMENTS = [(p: LandLeasePayment) => p.createdByLabel, periodeCouverte];
+const ACCESSEURS_PAIEMENTS = {
+  status: (p: LandLeasePayment) => p.status,
+  date: (p: LandLeasePayment) => p.paymentDate,
+  montant: (p: LandLeasePayment) => p.amount
+};
+
+// Constatations — champ libre : période (libellé affiché) et chantiers imputés.
+const TEXTE_CONSTATATIONS = [
+  (c: LandLeaseAccrual) => libellePeriode(c.periodYear, c.periodMonth),
+  (c: LandLeaseAccrual) => c.allocations.map(a => a.siteLabel)
+];
+
+const deuxChiffres = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * Une constatation couvre un mois entier : elle correspond à un intervalle de
+ * dates dès que ce mois le touche (pas seulement son premier jour).
+ */
+const PREDICATS_CONSTATATIONS = {
+  periode: (c: LandLeaseAccrual, valeur: unknown) => {
+    const { from, to } = valeur as DateRangeValue;
+    const debut = `${c.periodYear}-${deuxChiffres(c.periodMonth)}-01`;
+    const fin = `${c.periodYear}-${deuxChiffres(c.periodMonth)}-${deuxChiffres(new Date(c.periodYear, c.periodMonth, 0).getDate())}`;
+    return (!from || fin >= from) && (!to || debut <= to);
+  }
+};
+
+interface SectionListeProps<T> {
+  lignes: T[] | undefined;
+  colonnes: ColumnsType<T>;
+  loading: boolean;
+  error: unknown;
+  onRetry: () => void;
+}
+
+/** Paiements annuels et leur barre de recherche (préfixe `pai`). Montée avec son onglet. */
+const SectionPaiements: React.FC<
+  SectionListeProps<LandLeasePayment> & { onValider: (p: LandLeasePayment) => void }
+> = ({ lignes, colonnes, loading, error, onRetry, onValider }) => {
+  const confirmerAction = useConfirmAction();
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Saisi par, période couverte…') },
+    { key: 'status', type: 'select', label: t('Statut'), primary: true, options: OPTIONS_STATUT_PAIEMENT },
+    { key: 'date', type: 'dateRange', label: t('Date de paiement') },
+    { key: 'montant', type: 'numberRange', label: t('Montant'), unit: 'FCFA' }
+  ];
+  const local = useLocalListSearch<LandLeasePayment>(lignes, {
+    paramPrefix: 'pai',
+    criteria: criteres,
+    text: TEXTE_PAIEMENTS,
+    accessors: ACCESSEURS_PAIEMENTS
+  });
+
+  return (
+    <DataView<LandLeasePayment>
+      scrollX={900}
+      {...local.dataViewProps}
+      loading={loading}
+      error={error ? t('Impossible de charger les paiements de ce bail.') : null}
+      errorCause={error}
+      onRetry={onRetry}
+      emptyDescription={t("Aucun paiement n'a encore été saisi pour ce bail.")}
+      columns={colonnes}
+      rowKey={p => p.id}
+      aria-label={t('Paiements annuels du bail')}
+      export={{ filename: t('Paiements annuels'), fetchAll: local.exportAll }}
+      renderCard={p => (
+        <DataCard
+          title={dateCourte(p.paymentDate)}
+          aria-label={t('Paiement du {{value}}', { value: dateCourte(p.paymentDate) })}
+          subtitle={periodeCouverte(p)}
+          status={
+            <StatusTag status={p.status} tone={TONE_PAIEMENT[p.status]} label={LAND_LEASE_STATUS_LABELS[p.status]} />
+          }
+          highlight={<MoneyValue value={p.amount} />}
+          fields={[{ label: t('Saisi par'), value: p.createdByLabel }]}
+          primaryAction={
+            p.status === 'DRAFT'
+              ? {
+                  label: t('Valider'),
+                  onClick: () =>
+                    confirmerAction({
+                      title: t('Valider le paiement du {{value}} ?', { value: dateCourte(p.paymentDate) }),
+                      description: t(
+                        "Cette opération est irréversible : une fois validé, ce paiement ne peut plus être modifié, et l'avance versée commence à être consommée mois après mois."
+                      ),
+                      okText: t('Confirmer la validation'),
+                      onConfirm: () => onValider(p)
+                    })
+                }
+              : undefined
+          }
+        />
+      )}
+    />
+  );
+};
+
+/** Constatations mensuelles et leur barre de recherche (préfixe `cst`). Montée avec son onglet. */
+const SectionConstatations: React.FC<SectionListeProps<LandLeaseAccrual>> = ({
+  lignes,
+  colonnes,
+  loading,
+  error,
+  onRetry
+}) => {
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Période, chantier imputé…') },
+    { key: 'periode', type: 'dateRange', label: t('Période') }
+  ];
+  const local = useLocalListSearch<LandLeaseAccrual>(lignes, {
+    paramPrefix: 'cst',
+    criteria: criteres,
+    text: TEXTE_CONSTATATIONS,
+    predicates: PREDICATS_CONSTATATIONS
+  });
+
+  return (
+    <DataView<LandLeaseAccrual>
+      scrollX={800}
+      {...local.dataViewProps}
+      loading={loading}
+      error={error ? t('Impossible de charger les constatations de ce bail.') : null}
+      errorCause={error}
+      onRetry={onRetry}
+      emptyDescription={t("Aucun mois n'a encore été constaté pour ce bail.")}
+      columns={colonnes}
+      rowKey={c => c.id}
+      aria-label={t('Constatations mensuelles du bail')}
+      export={{ filename: t('Constatations mensuelles'), fetchAll: local.exportAll }}
+      renderCard={c => (
+        <DataCard
+          title={libellePeriode(c.periodYear, c.periodMonth)}
+          aria-label={libellePeriode(c.periodYear, c.periodMonth)}
+          highlight={<MoneyValue value={c.amount} />}
+          fields={
+            c.allocations.length > 0
+              ? c.allocations.map(a => ({
+                  label: a.siteLabel,
+                  value: <MoneyValue value={a.amount} />
+                }))
+              : [{ label: t('Imputations'), value: t('Aucun chantier actif sur ce bail à cette date') }]
+          }
+        />
+      )}
+    />
+  );
+};
 
 export const BailDeTerrain: React.FC = () => {
   const { message } = App.useApp();
@@ -229,21 +407,14 @@ export const BailDeTerrain: React.FC = () => {
   const consomme = useMemo(() => (constatations ?? []).reduce((somme, c) => somme + c.amount, 0), [constatations]);
 
   // ---------------------------------------------------------------------
-  // Pagination locale des trois tableaux (20 lignes par page)
+  // Pagination locale des chantiers rattachés (20 lignes par page) ; les
+  // paiements et les constatations paginent avec leur barre de recherche.
   // ---------------------------------------------------------------------
 
   const [pageSites, setPageSites] = useState(1);
   const [taillePageSites, setTaillePageSites] = useState(20);
-  const [pagePaiements, setPagePaiements] = useState(1);
-  const [taillePagePaiements, setTaillePagePaiements] = useState(20);
-  const [pageConstats, setPageConstats] = useState(1);
-  const [taillePageConstats, setTaillePageConstats] = useState(20);
   const nbSites = bail?.sites.length ?? 0;
-  const nbPaiements = paiements?.length ?? 0;
-  const nbConstats = constatations?.length ?? 0;
   useEffect(() => setPageSites(1), [nbSites]);
-  useEffect(() => setPagePaiements(1), [nbPaiements]);
-  useEffect(() => setPageConstats(1), [nbConstats]);
 
   // ---------------------------------------------------------------------
   // Rattachement d'un chantier
@@ -618,60 +789,13 @@ export const BailDeTerrain: React.FC = () => {
             label: t('Paiements annuels'),
             children: (
               <>
-                <DataView<LandLeasePayment>
-                  scrollX={900}
-                  items={(paiements ?? []).slice(
-                    (pagePaiements - 1) * taillePagePaiements,
-                    pagePaiements * taillePagePaiements
-                  )}
-                  total={(paiements ?? []).length}
-                  page={pagePaiements}
-                  pageSize={taillePagePaiements}
-                  onPageChange={(page, taille) => {
-                    setPagePaiements(page);
-                    setTaillePagePaiements(taille);
-                  }}
+                <SectionPaiements
+                  lignes={paiements}
+                  colonnes={colonnesPaiements}
                   loading={paiementsEnAttente}
-                  error={erreurPaiements ? t('Impossible de charger les paiements de ce bail.') : null}
-                  errorCause={erreurPaiements}
+                  error={erreurPaiements}
                   onRetry={() => refetchPaiements()}
-                  emptyDescription={t("Aucun paiement n'a encore été saisi pour ce bail.")}
-                  columns={colonnesPaiements}
-                  rowKey={p => p.id}
-                  aria-label={t('Paiements annuels du bail')}
-                  export={{ filename: t('Paiements annuels') }}
-                  renderCard={p => (
-                    <DataCard
-                      title={dateCourte(p.paymentDate)}
-                      aria-label={t('Paiement du {{value}}', { value: dateCourte(p.paymentDate) })}
-                      subtitle={`${dateCourte(p.coverageStartDate)} – ${dateCourte(p.coverageEndDate)}`}
-                      status={
-                        <StatusTag
-                          status={p.status}
-                          tone={TONE_PAIEMENT[p.status]}
-                          label={LAND_LEASE_STATUS_LABELS[p.status]}
-                        />
-                      }
-                      highlight={<MoneyValue value={p.amount} />}
-                      fields={[{ label: t('Saisi par'), value: p.createdByLabel }]}
-                      primaryAction={
-                        p.status === 'DRAFT'
-                          ? {
-                              label: t('Valider'),
-                              onClick: () =>
-                                confirmerAction({
-                                  title: t('Valider le paiement du {{value}} ?', { value: dateCourte(p.paymentDate) }),
-                                  description: t(
-                                    "Cette opération est irréversible : une fois validé, ce paiement ne peut plus être modifié, et l'avance versée commence à être consommée mois après mois."
-                                  ),
-                                  okText: t('Confirmer la validation'),
-                                  onConfirm: () => validerPaiement(p)
-                                })
-                            }
-                          : undefined
-                      }
-                    />
-                  )}
+                  onValider={validerPaiement}
                 />
 
                 <Card style={{ marginTop: 'var(--space-4)' }}>
@@ -744,43 +868,12 @@ export const BailDeTerrain: React.FC = () => {
             label: t('Constatations mensuelles'),
             children: (
               <>
-                <DataView<LandLeaseAccrual>
-                  scrollX={800}
-                  items={(constatations ?? []).slice(
-                    (pageConstats - 1) * taillePageConstats,
-                    pageConstats * taillePageConstats
-                  )}
-                  total={(constatations ?? []).length}
-                  page={pageConstats}
-                  pageSize={taillePageConstats}
-                  onPageChange={(page, taille) => {
-                    setPageConstats(page);
-                    setTaillePageConstats(taille);
-                  }}
+                <SectionConstatations
+                  lignes={constatations}
+                  colonnes={colonnesConstatations}
                   loading={constatationsEnAttente}
-                  error={erreurConstatations ? t('Impossible de charger les constatations de ce bail.') : null}
-                  errorCause={erreurConstatations}
+                  error={erreurConstatations}
                   onRetry={() => refetchConstatations()}
-                  emptyDescription={t("Aucun mois n'a encore été constaté pour ce bail.")}
-                  columns={colonnesConstatations}
-                  rowKey={c => c.id}
-                  aria-label={t('Constatations mensuelles du bail')}
-                  export={{ filename: t('Constatations mensuelles') }}
-                  renderCard={c => (
-                    <DataCard
-                      title={libellePeriode(c.periodYear, c.periodMonth)}
-                      aria-label={libellePeriode(c.periodYear, c.periodMonth)}
-                      highlight={<MoneyValue value={c.amount} />}
-                      fields={
-                        c.allocations.length > 0
-                          ? c.allocations.map(a => ({
-                              label: a.siteLabel,
-                              value: <MoneyValue value={a.amount} />
-                            }))
-                          : [{ label: t('Imputations'), value: t('Aucun chantier actif sur ce bail à cette date') }]
-                      }
-                    />
-                  )}
                 />
 
                 <Card style={{ marginTop: 'var(--space-4)' }}>

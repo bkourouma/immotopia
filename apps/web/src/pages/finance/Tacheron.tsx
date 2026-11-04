@@ -21,6 +21,7 @@ import { CONTRACTOR_DOCUMENT_STATUS_LABELS } from '../../types/finance-contracto
 import type {
   Contractor,
   ContractorContract,
+  ContractorDocumentStatus,
   ContractorPayment,
   ProgressStatement
 } from '../../types/finance-contractors-types';
@@ -37,6 +38,9 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
+import { localizedList } from '../../i18n/localized';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -110,6 +114,32 @@ const { TextArea } = Input;
  */
 
 const TONE_PIECE: Record<string, StatusTone> = { DRAFT: 'neutral', VALIDATED: 'success', VOIDED: 'danger' };
+
+const OPTIONS_STATUT_PIECE = localizedList(() =>
+  (Object.keys(CONTRACTOR_DOCUMENT_STATUS_LABELS) as ContractorDocumentStatus[]).map(statut => ({
+    value: statut,
+    label: CONTRACTOR_DOCUMENT_STATUS_LABELS[statut]
+  }))
+);
+
+// Marchés : champ libre sur la référence, le chantier et le poste. Constantes de module : identité stable.
+const TEXTE_MARCHES = [
+  (m: ContractorContract) => m.reference,
+  (m: ContractorContract) => m.siteLabel,
+  (m: ContractorContract) => m.costCategoryLabel
+];
+const ACCESSEURS_MARCHES = {
+  siteId: (m: ContractorContract) => m.siteId,
+  signed: (m: ContractorContract) => m.signedDate
+};
+
+// Règlements : champ libre sur « saisi par ».
+const TEXTE_REGLEMENTS = [(r: ContractorPayment) => r.createdByLabel];
+const ACCESSEURS_REGLEMENTS = {
+  status: (r: ContractorPayment) => r.status,
+  date: (r: ContractorPayment) => r.paymentDate,
+  amount: (r: ContractorPayment) => r.amount
+};
 
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
@@ -236,21 +266,55 @@ export const Tacheron: React.FC = () => {
   });
 
   // ---------------------------------------------------------------------
-  // Pagination locale des trois tableaux (20 lignes par page)
+  // Recherche des marchés (`mar.*`) et des règlements (`reg.*`)
+  //
+  // Les deux listes arrivent en entier : filtrage local. Chaque tableau a son
+  // préfixe d'URL ; les hooks restent ici parce que les marchés alimentent
+  // aussi l'en-tête et le marché consulté (calculés sur la liste COMPLÈTE).
+  // Un seul onglet est monté à la fois (`destroyOnHidden`) : une seule barre.
   // ---------------------------------------------------------------------
 
-  const [pageMarches, setPageMarches] = useState(1);
-  const [taillePageMarches, setTaillePageMarches] = useState(20);
+  const optionsChantiersMarches = useMemo(() => {
+    const parSite = new Map<string, string>();
+    for (const marche of marches ?? []) parSite.set(marche.siteId, marche.siteLabel);
+    return Array.from(parSite, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [marches]);
+
+  const criteresMarches: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Référence, chantier, poste de dépense…')
+    },
+    { key: 'siteId', type: 'select', label: t('Chantier'), primary: true, options: optionsChantiersMarches },
+    { key: 'signed', type: 'dateRange', label: t('Signé le') }
+  ];
+  const marchesLocal = useLocalListSearch<ContractorContract>(marches, {
+    paramPrefix: 'mar',
+    criteria: criteresMarches,
+    text: TEXTE_MARCHES,
+    accessors: ACCESSEURS_MARCHES
+  });
+
+  const criteresReglements: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Saisi par…') },
+    { key: 'status', type: 'select', label: t('Statut'), primary: true, options: OPTIONS_STATUT_PIECE },
+    { key: 'date', type: 'dateRange', label: t('Date') },
+    { key: 'amount', type: 'numberRange', label: t('Montant'), unit: 'FCFA' }
+  ];
+  const reglementsLocal = useLocalListSearch<ContractorPayment>(reglements, {
+    paramPrefix: 'reg',
+    criteria: criteresReglements,
+    text: TEXTE_REGLEMENTS,
+    accessors: ACCESSEURS_REGLEMENTS
+  });
+
+  // Situations d'un marché (détail) : pas de barre, pagination locale.
   const [pageSituations, setPageSituations] = useState(1);
   const [taillePageSituations, setTaillePageSituations] = useState(20);
-  const [pageReglements, setPageReglements] = useState(1);
-  const [taillePageReglements, setTaillePageReglements] = useState(20);
-  const nbMarches = marches?.length ?? 0;
   const nbSituations = situations?.length ?? 0;
-  const nbReglements = reglements?.length ?? 0;
-  useEffect(() => setPageMarches(1), [nbMarches]);
   useEffect(() => setPageSituations(1), [nbSituations, marcheConsulte?.id]);
-  useEffect(() => setPageReglements(1), [nbReglements]);
 
   // ---------------------------------------------------------------------
   // Convenir d'un marché
@@ -651,17 +715,9 @@ export const Tacheron: React.FC = () => {
             children: (
               <>
                 <DataView<ContractorContract>
-                  export={{ filename: t('Marchés') }}
-                  // Le contrat de `listContractorContracts` ne pagine pas : tranche locale.
+                  export={{ filename: t('Marchés'), fetchAll: marchesLocal.exportAll }}
                   scrollX={1400}
-                  items={(marches ?? []).slice((pageMarches - 1) * taillePageMarches, pageMarches * taillePageMarches)}
-                  total={(marches ?? []).length}
-                  page={pageMarches}
-                  pageSize={taillePageMarches}
-                  onPageChange={(page, taille) => {
-                    setPageMarches(page);
-                    setTaillePageMarches(taille);
-                  }}
+                  {...marchesLocal.dataViewProps}
                   loading={marchesEnAttente}
                   error={erreurMarches ? t('Impossible de charger les marchés de ce tâcheron.') : null}
                   errorCause={erreurMarches}
@@ -959,19 +1015,9 @@ export const Tacheron: React.FC = () => {
             children: (
               <>
                 <DataView<ContractorPayment>
-                  export={{ filename: t('Règlements') }}
+                  export={{ filename: t('Règlements'), fetchAll: reglementsLocal.exportAll }}
                   scrollX={900}
-                  items={(reglements ?? []).slice(
-                    (pageReglements - 1) * taillePageReglements,
-                    pageReglements * taillePageReglements
-                  )}
-                  total={(reglements ?? []).length}
-                  page={pageReglements}
-                  pageSize={taillePageReglements}
-                  onPageChange={(page, taille) => {
-                    setPageReglements(page);
-                    setTaillePageReglements(taille);
-                  }}
+                  {...reglementsLocal.dataViewProps}
                   loading={reglementsEnAttente}
                   error={erreurReglements ? t('Impossible de charger les règlements de ce tâcheron.') : null}
                   errorCause={erreurReglements}

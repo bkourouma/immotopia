@@ -1,8 +1,8 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BudgetChantier } from '../../pages/finance/BudgetChantier';
@@ -168,12 +168,19 @@ async function optionParLibelle(libelle: string): Promise<HTMLElement> {
   });
 }
 
+/** Sonde d'adresse : révèle l'état de liste porté par l'URL. */
+function Adresse() {
+  const location = useLocation();
+  return <span data-testid="adresse">{location.pathname + location.search}</span>;
+}
+
 function mountBudget(url = '/tenant/agence-1/finance/chantiers/chantier-1/budget') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Adresse />
           <Routes>
             <Route path="/tenant/:tenantId/finance/chantiers/:siteId/budget" element={<BudgetChantier />} />
           </Routes>
@@ -338,8 +345,8 @@ describe('Budget et avenant — quantité et prix unitaire', () => {
     await screen.findByText('Nouvel avenant', {}, { timeout: 8000 });
 
     await user.type(screen.getByLabelText('Motif'), 'Reprise de deux tonnes non livrées');
-    const comboboxes = await screen.findAllByRole('combobox', {}, { timeout: 8000 });
-    await user.click(comboboxes[0]);
+    // La barre de recherche des avenants porte aussi des menus déroulants : on cible celui de la ligne d'avenant.
+    await user.click(await screen.findByRole('combobox', { name: 'Poste de dépense' }, { timeout: 8000 }));
     await user.click(await optionParLibelle('Gros œuvre'));
     await user.type(screen.getByLabelText('Quantité'), '2');
     await user.type(screen.getByLabelText('Prix unitaire'), '-95000');
@@ -428,11 +435,10 @@ describe('Avenants', () => {
     expect(screen.getByRole('button', { name: "Enregistrer l'avenant" })).toBeDisabled();
 
     await user.type(screen.getByLabelText('Motif'), 'Renchérissement du ciment');
-    const comboboxes = await screen.findAllByRole('combobox', {}, { timeout: 8000 });
-    // Le premier menu déroulant est celui de la ligne d'avenant (aucun autre
-    // combobox ne précède, le budget étant déjà validé et sans éditeur de
-    // lignes propre).
-    await user.click(comboboxes[0]);
+    // La barre de recherche des avenants porte aussi des menus déroulants : on
+    // cible celui de la ligne d'avenant (le budget est déjà validé, il n'a pas
+    // d'éditeur de lignes propre).
+    await user.click(await screen.findByRole('combobox', { name: 'Poste de dépense' }, { timeout: 8000 }));
     await user.click(await optionParLibelle('Gros œuvre'));
     await user.type(screen.getByLabelText('Écart'), '1200000');
 
@@ -446,7 +452,7 @@ describe('Avenants', () => {
       reason: 'Renchérissement du ciment',
       lines: [{ costCategoryId: 'poste-gros-oeuvre', amountDelta: 1_200_000 }]
     });
-  }, 30000);
+  }, 60000);
 
   it('avertit avant de valider un avenant, puis appelle le service seulement après confirmation', async () => {
     getSiteBudget.mockResolvedValue(budget());
@@ -478,6 +484,88 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     await screen.findByRole('heading', { name: 'Budget initial 2026' }, { timeout: 8000 });
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
+  });
+});
+
+describe('Lignes du budget — recherche locale (préfixe lig)', () => {
+  const T = { timeout: 8000 };
+  const lignes = () => screen.getAllByRole('row').slice(1);
+
+  it('cherche dans le poste et le libellé, et garde le terme dans l’URL', async () => {
+    getSiteBudget.mockResolvedValue(budget());
+    const user = userEvent.setup({ delay: null });
+    mountBudget();
+
+    await screen.findByText('Charpente', {}, T);
+    expect(lignes()).toHaveLength(2);
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'toiture');
+
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+    expect(screen.getByText('Charpente')).toBeInTheDocument();
+    expect(screen.queryByText('Fondations et murs')).not.toBeInTheDocument();
+    expect(screen.getByTestId('adresse')).toHaveTextContent('lig.q=toiture');
+    expect(getSiteBudget).toHaveBeenCalledTimes(1);
+  }, 30000);
+
+  it('filtre par poste de dépense depuis l’URL, et « Effacer les critères » ramène toutes les lignes', async () => {
+    getSiteBudget.mockResolvedValue(budget());
+    const user = userEvent.setup({ delay: null });
+    mountBudget('/tenant/agence-1/finance/chantiers/chantier-1/budget?lig.poste=poste-toiture');
+
+    expect(await screen.findByText('Charpente', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('Fondations et murs')).not.toBeInTheDocument();
+
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[0]);
+    expect(await screen.findByText('Fondations et murs', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(2);
+    expect(screen.getByTestId('adresse').textContent).not.toContain('lig.poste');
+  }, 30000);
+});
+
+describe('Avenants — recherche locale (préfixe av)', () => {
+  const T = { timeout: 8000 };
+  const lignes = () => screen.getAllByRole('row').slice(1);
+
+  beforeEach(() => {
+    getSiteBudget.mockResolvedValue(budget());
+    listBudgetAmendments.mockResolvedValue([
+      avenant(),
+      avenant({
+        id: 'avenant-2',
+        reason: 'Ajout d’un garde-corps',
+        status: 'VALIDATED',
+        createdByLabel: 'Awa Diallo',
+        amendmentDate: '2026-07-15',
+        totalDelta: 300_000
+      })
+    ]);
+  });
+
+  it('cherche dans le motif et l’auteur de la saisie, sans nouvelle requête', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountBudget(URL_AVENANTS);
+
+    await screen.findByText('Renchérissement du ciment', {}, T);
+    expect(lignes()).toHaveLength(2);
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'diallo');
+
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+    expect(screen.getByText('Ajout d’un garde-corps')).toBeInTheDocument();
+    expect(screen.getByTestId('adresse')).toHaveTextContent('av.q=diallo');
+    expect(listBudgetAmendments).toHaveBeenCalledTimes(1);
+  }, 30000);
+
+  it('filtre par statut depuis l’URL', async () => {
+    mountBudget(`${URL_AVENANTS}&av.status=DRAFT`);
+    expect(await screen.findByText('Renchérissement du ciment', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('Ajout d’un garde-corps')).not.toBeInTheDocument();
+  });
+
+  it('filtre par date (du) depuis l’URL', async () => {
+    mountBudget(`${URL_AVENANTS}&av.dateFrom=2026-07-01`);
+    expect(await screen.findByText('Ajout d’un garde-corps', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('Renchérissement du ciment')).not.toBeInTheDocument();
   });
 });
 

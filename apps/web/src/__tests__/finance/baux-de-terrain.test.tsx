@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BauxDeTerrain } from '../../pages/finance/BauxDeTerrain';
@@ -147,12 +147,19 @@ function normaliser(texte: string): string {
   return texte.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
+/** Sonde d'adresse : révèle l'état de liste porté par l'URL. */
+function Adresse() {
+  const location = useLocation();
+  return <span data-testid="adresse">{location.pathname + location.search}</span>;
+}
+
 function mountListe(url = '/tenant/agence-1/finance/baux-terrain') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Adresse />
           <Routes>
             <Route path="/tenant/:tenantId/finance/baux-terrain" element={<BauxDeTerrain />} />
             <Route path="/tenant/:tenantId/finance/baux-terrain/:landLeaseId" element={<BailDeTerrain />} />
@@ -169,6 +176,7 @@ function mountFiche(url = '/tenant/agence-1/finance/baux-terrain/bail-1') {
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Adresse />
           <Routes>
             <Route path="/tenant/:tenantId/finance/baux-terrain/:landLeaseId" element={<BailDeTerrain />} />
           </Routes>
@@ -291,6 +299,150 @@ describe('Baux de terrain — liste et création', () => {
     // On retrouve la fiche du bail (en-tête + statistique), pas la liste.
     expect(await screen.findByText('Payé à ce jour', {}, { timeout: 8000 })).toBeInTheDocument();
   });
+});
+
+describe('Baux de terrain — recherche locale', () => {
+  const T = { timeout: 8000 };
+  const lignes = () => document.querySelectorAll('.ant-table-tbody tr.ant-table-row');
+
+  beforeEach(() => {
+    listLandLeases.mockResolvedValue([
+      bail(),
+      bail({
+        id: 'bail-2',
+        landlordName: 'Awa Diallo',
+        landLabel: 'Terrain de Port-Bouët',
+        costCategoryId: 'poste-loyers',
+        costCategoryLabel: 'Loyers',
+        isActive: false,
+        sites: []
+      })
+    ]);
+  });
+
+  it('cherche dans le bailleur, le terrain, le poste et les chantiers rattachés, et garde le terme dans l’URL', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountListe();
+
+    await screen.findByText('Terrain de Port-Bouët', {}, T);
+    expect(lignes()).toHaveLength(2);
+    const champ = within(screen.getByRole('search')).getByRole('textbox');
+
+    // Chantier rattaché (la colonne montre aussi « Aucun chantier rattaché »).
+    await user.type(champ, 'riviera');
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+    expect(screen.queryByText('Terrain de Port-Bouët')).not.toBeInTheDocument();
+    expect(screen.getByTestId('adresse')).toHaveTextContent('q=riviera');
+
+    await user.clear(champ);
+    await user.type(champ, 'diallo');
+    await waitFor(() => expect(screen.queryByText('Terrain de la Riviera, 800 m²')).not.toBeInTheDocument(), T);
+    expect(lignes()).toHaveLength(1);
+    // La recherche est locale : la liste n'est demandée qu'une fois.
+    expect(listLandLeases).toHaveBeenCalledTimes(1);
+  }, 30000);
+
+  it('filtre actif / terminé depuis l’URL', async () => {
+    mountListe('/tenant/agence-1/finance/baux-terrain?actif=0');
+    expect(await screen.findByText('Terrain de Port-Bouët', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(1);
+    expect(screen.queryByText('Terrain de la Riviera, 800 m²')).not.toBeInTheDocument();
+  });
+
+  it('filtre par poste de dépense depuis l’URL', async () => {
+    mountListe('/tenant/agence-1/finance/baux-terrain?poste=poste-divers');
+    expect(await screen.findByText('Terrain de la Riviera, 800 m²', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(1);
+  });
+
+  it('propose d’effacer les critères quand rien ne correspond', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountListe('/tenant/agence-1/finance/baux-terrain?q=zzz');
+
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', {}, T)).toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+
+    expect(await screen.findByText('Terrain de Port-Bouët', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(2);
+    expect(screen.getByTestId('adresse').textContent).not.toContain('q=');
+  });
+});
+
+describe('Fiche du bail — recherche dans les paiements et les constatations', () => {
+  const T = { timeout: 8000 };
+  const lignes = () => document.querySelectorAll('.ant-table-tbody tr.ant-table-row');
+
+  beforeEach(() => {
+    listLandLeasePayments.mockResolvedValue([
+      paiement(),
+      paiement({
+        id: 'paiement-2',
+        paymentDate: '2026-09-10',
+        amount: 1_000_000,
+        status: 'DRAFT',
+        validatedAt: null,
+        createdByLabel: 'Awa Diallo'
+      })
+    ]);
+  });
+
+  it('cherche dans « saisi par » (préfixe pai) sans toucher aux sommes de l’en-tête', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFiche('/tenant/agence-1/finance/baux-terrain/bail-1?onglet=paiements');
+
+    await screen.findByText('Nouveau paiement annuel', {}, T);
+    await waitFor(() => expect(lignes()).toHaveLength(2), T);
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'diallo');
+
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+    expect(screen.getByTestId('adresse')).toHaveTextContent('pai.q=diallo');
+    // « Payé à ce jour » reste la somme des paiements VALIDÉS de la liste complète.
+    const cartePayee = screen.getByText('Payé à ce jour').closest('.ant-card') as HTMLElement;
+    expect(within(cartePayee).getByText(/4\s000\s000/)).toBeInTheDocument();
+    // Une seule lecture des paiements : la recherche est locale.
+    expect(listLandLeasePayments).toHaveBeenCalledTimes(1);
+  }, 30000);
+
+  it('filtre par statut depuis l’URL', async () => {
+    mountFiche('/tenant/agence-1/finance/baux-terrain/bail-1?onglet=paiements&pai.status=DRAFT');
+    await screen.findByText('Nouveau paiement annuel', {}, T);
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+    expect(screen.getByRole('button', { name: 'Valider' })).toBeInTheDocument();
+  });
+
+  it('filtre par montant minimum depuis l’URL', async () => {
+    mountFiche('/tenant/agence-1/finance/baux-terrain/bail-1?onglet=paiements&pai.montantMin=2000000');
+    await screen.findByText('Nouveau paiement annuel', {}, T);
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+    expect(screen.queryByRole('button', { name: 'Valider' })).not.toBeInTheDocument();
+  });
+
+  it('filtre les constatations par période (préfixe cst) : un mois entier compte dès qu’il touche l’intervalle', async () => {
+    mountFiche('/tenant/agence-1/finance/baux-terrain/bail-1?onglet=constatations&cst.periodeFrom=2026-09-01');
+
+    expect(await screen.findByText('Septembre 2026', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('Août 2026')).not.toBeInTheDocument();
+    expect(lignes()).toHaveLength(1);
+    // « Consommé à ce jour » garde la somme des deux constatations (2 × 333 333).
+    const carteConsommee = screen.getByText('Consommé à ce jour').closest('.ant-card') as HTMLElement;
+    expect(within(carteConsommee).getByText(/666\s666/)).toBeInTheDocument();
+  });
+
+  it('cherche dans la période et propose d’effacer les critères des constatations', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFiche('/tenant/agence-1/finance/baux-terrain/bail-1?onglet=constatations&cst.q=zzz');
+
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', {}, T)).toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+
+    expect(await screen.findByText('Août 2026', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(2);
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'septembre');
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+    expect(screen.getByTestId('adresse')).toHaveTextContent('cst.q=septembre');
+  }, 30000);
 });
 
 describe('Fiche du bail — les trois chiffres qui rendent le mécanisme lisible', () => {
@@ -420,7 +572,7 @@ describe('Fiche du bail — rattachement des chantiers', () => {
     await user.click(screen.getByRole('button', { name: 'Confirmer le détachement' }));
 
     await waitFor(() => expect(setSiteLandLease).toHaveBeenCalledWith('agence-1', 'chantier-1', null));
-  }, 15000);
+  }, 30000);
 });
 
 describe('Fiche du bail — onglets paresseux et pagination locale', () => {

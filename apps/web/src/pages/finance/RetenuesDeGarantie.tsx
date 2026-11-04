@@ -1,20 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  App,
-  Alert,
-  Button,
-  Checkbox,
-  Col,
-  DatePicker,
-  InputNumber,
-  Modal,
-  Radio,
-  Row,
-  Select,
-  Space,
-  Typography
-} from 'antd';
+import { App, Alert, Button, Col, DatePicker, InputNumber, Modal, Radio, Row, Select, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,7 +13,7 @@ import {
 } from '../../services/finance-retentions-service';
 import { listConstructionSites, listSuppliers, listSupplierInvoices } from '../../services/finance-lot2-service';
 import { listContractorContracts, listProgressStatements } from '../../services/finance-contractors-service';
-import type { RetentionGuarantee, RetentionSourceType, RetentionStatus } from '../../types/finance-retentions-types';
+import type { RetentionGuarantee, RetentionSourceType } from '../../types/finance-retentions-types';
 import { RETENTION_SOURCE_TYPE_LABELS, RETENTION_STATUS_LABELS } from '../../types/finance-retentions-types';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import {
@@ -39,9 +25,11 @@ import {
   StatCard,
   StatusTag,
   ConfirmAction,
-  FilterSheet,
   formatMoney
 } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
+import { localizedList } from '../../i18n/localized';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -153,6 +141,26 @@ function pourcentage(valeur: number): string {
   return `${valeur.toLocaleString(activeLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
 }
 
+const OPTIONS_STATUT = localizedList(() => [
+  { value: 'HELD', label: RETENTION_STATUS_LABELS.HELD },
+  { value: 'RELEASED', label: RETENTION_STATUS_LABELS.RELEASED }
+]);
+
+// Champ libre : pièce retenue, tiers et chantier, tels qu'affichés. Constantes de module : identité stable.
+const TEXTE_RECHERCHE = [
+  (r: RetentionGuarantee) => r.sourceLabel,
+  (r: RetentionGuarantee) => r.thirdPartyLabel,
+  (r: RetentionGuarantee) => r.siteLabel
+];
+
+// Valeur lue par les critères non textuels, par clé de critère.
+const ACCESSEURS = {
+  status: (r: RetentionGuarantee) => r.status,
+  siteId: (r: RetentionGuarantee) => r.siteId,
+  release: (r: RetentionGuarantee) => r.plannedReleaseDate,
+  amount: (r: RetentionGuarantee) => r.baseAmount
+};
+
 /** Une date ISO se lit à la française. Vide plutôt que « Invalid Date ». */
 function date(valeur: string | null): string {
   if (!valeur) return '—';
@@ -168,11 +176,6 @@ export const RetenuesDeGarantie: React.FC = () => {
   // Figé au montage : une date qui bougerait entre deux rendus changerait la
   // clé de requête sans que rien ne l'ait demandé.
   const aujourdhui = useMemo(() => dayjs().format('YYYY-MM-DD'), []);
-
-  // --- Filtres -------------------------------------------------------------
-  const [statut, setStatut] = useState<RetentionStatus | undefined>(undefined);
-  const [chantierId, setChantierId] = useState<string | undefined>(undefined);
-  const [echeanceDepassee, setEcheanceDepassee] = useState(false);
 
   // --- Formulaire de pose --------------------------------------------------
   const [modalOuvert, setModalOuvert] = useState(false);
@@ -195,16 +198,26 @@ export const RetenuesDeGarantie: React.FC = () => {
    */
   const [refusPose, setRefusPose] = useState<string | null>(null);
 
-  const filtresApi = {
-    status: statut,
-    siteId: chantierId,
-    // Le serveur ne garde alors que les retenues dont la date prévue est
-    // passée. Le filtre porte sur la DATE seule : c'est pourquoi la carte
-    // « en retard » pose aussi le statut « détenue », visiblement, plutôt que
-    // de le forcer en sous-main.
-    dueBefore: echeanceDepassee ? aujourdhui : undefined
-  };
+  const { data: chantiers } = useQuery({
+    queryKey: queryKey('finance-chantiers-reference', tenantId, {}),
+    queryFn: () => listConstructionSites(tenantId as string),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.reference
+  });
 
+  const optionsChantiers = useMemo(
+    () =>
+      (chantiers ?? [])
+        .map(chantier => ({ value: chantier.id, label: chantier.name }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [chantiers]
+  );
+
+  // La liste arrive EN ENTIER (le contrat de `listRetentions` ne pagine pas) :
+  // statut, chantier, dates et montants se filtrent ici, aucun n'est envoyé au
+  // serveur. Le filtre d'échéance dépassée (`dueBefore`, strictement avant
+  // aujourd'hui) est devenu l'intervalle « Libération prévue », borne « au »
+  // posée à la veille par la carte « en retard ».
   const {
     data: retenuesData,
     isPending,
@@ -212,10 +225,32 @@ export const RetenuesDeGarantie: React.FC = () => {
     error: erreurRequete,
     refetch
   } = useQuery({
-    queryKey: queryKey('retentions', tenantId, filtresApi),
-    queryFn: () => listRetentions(tenantId as string, filtresApi),
+    queryKey: queryKey('retentions', tenantId, {}),
+    queryFn: () => listRetentions(tenantId as string),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
+  });
+
+  const retenues = useMemo(() => retenuesData ?? [], [retenuesData]);
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Pièce retenue, tiers, chantier…'),
+      api: false
+    },
+    { key: 'status', type: 'select', label: t('Statut'), primary: true, options: OPTIONS_STATUT, api: false },
+    { key: 'siteId', type: 'select', label: t('Chantier'), primary: true, options: optionsChantiers, api: false },
+    { key: 'release', type: 'dateRange', label: t('Libération prévue'), api: false },
+    { key: 'amount', type: 'numberRange', label: t('Montant de la pièce'), unit: 'FCFA', api: false }
+  ];
+  const local = useLocalListSearch<RetentionGuarantee>(retenues, {
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
   });
 
   /**
@@ -224,18 +259,12 @@ export const RetenuesDeGarantie: React.FC = () => {
    * laisserait croire que « détenu » et « libéré » se recalculent avec la
    * liste, alors que ces trois chiffres portent sur l'ensemble.
    */
+  const chantierId = typeof local.values.siteId === 'string' && local.values.siteId ? local.values.siteId : undefined;
   const { data: resume } = useQuery({
     queryKey: queryKey('retentions-summary', tenantId, { siteId: chantierId }),
     queryFn: () => getRetentionSummary(tenantId as string, chantierId ? { siteId: chantierId } : undefined),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
-  });
-
-  const { data: chantiers } = useQuery({
-    queryKey: queryKey('finance-chantiers-reference', tenantId, {}),
-    queryFn: () => listConstructionSites(tenantId as string),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.reference
   });
 
   // --- Les pièces candidates, en cascade -----------------------------------
@@ -272,16 +301,6 @@ export const RetenuesDeGarantie: React.FC = () => {
     enabled: Boolean(tenantId) && Boolean(marcheId) && natureSource === 'PROGRESS_STATEMENT',
     staleTime: STALE_TIME.list
   });
-
-  const retenues = retenuesData ?? [];
-
-  const optionsChantiers = useMemo(
-    () =>
-      (chantiers ?? [])
-        .map(chantier => ({ value: chantier.id, label: chantier.name }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [chantiers]
-  );
 
   const optionsFournisseurs = useMemo(
     () =>
@@ -334,14 +353,6 @@ export const RetenuesDeGarantie: React.FC = () => {
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
-
-  const nbFiltres = (statut ? 1 : 0) + (chantierId ? 1 : 0) + (echeanceDepassee ? 1 : 0);
-
-  const effacerFiltres = () => {
-    setStatut(undefined);
-    setChantierId(undefined);
-    setEcheanceDepassee(false);
-  };
 
   /** Détenue, et la date convenue est passée. Comparaison de DATES, pas de montants. */
   const estEnRetard = (retenue: RetentionGuarantee) =>
@@ -566,8 +577,12 @@ export const RetenuesDeGarantie: React.FC = () => {
               onClick={
                 resume.overdueCount > 0
                   ? () => {
-                      setStatut('HELD');
-                      setEcheanceDepassee(true);
+                      // « Échéance dépassée » = date prévue strictement avant
+                      // aujourd'hui : borne « au » du jour d'hier.
+                      local.setValues({
+                        status: 'HELD',
+                        release: { to: dayjs(aujourdhui).subtract(1, 'day').format('YYYY-MM-DD') }
+                      });
                     }
                   : undefined
               }
@@ -576,62 +591,14 @@ export const RetenuesDeGarantie: React.FC = () => {
         </Row>
       )}
 
-      <FilterSheet activeCount={nbFiltres} onClear={effacerFiltres} title={t('Filtrer les retenues')}>
-        <div style={{ minWidth: 200 }}>
-          <label htmlFor="filtre-statut-retenues">{t('Statut')}</label>
-          <Select
-            id="filtre-statut-retenues"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les statuts')}
-            allowClear
-            value={statut}
-            onChange={valeur => setStatut(valeur as RetentionStatus | undefined)}
-            options={[
-              { value: 'HELD', label: RETENTION_STATUS_LABELS.HELD },
-              { value: 'RELEASED', label: RETENTION_STATUS_LABELS.RELEASED }
-            ]}
-          />
-        </div>
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-chantier-retenues">{t('Chantier')}</label>
-          <Select
-            id="filtre-chantier-retenues"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les chantiers')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            value={chantierId}
-            onChange={valeur => setChantierId(valeur as string | undefined)}
-            options={optionsChantiers}
-          />
-        </div>
-        <div style={{ minWidth: 240 }}>
-          {/* Le filtre porte sur la DATE seule, et le dit : croisé avec
-              « libérée », il montre des retenues rendues en retard, ce qui est
-              une information et non une incohérence. */}
-          <Checkbox checked={echeanceDepassee} onChange={event => setEcheanceDepassee(event.target.checked)}>
-            {t('Échéance de libération dépassée')}
-          </Checkbox>
-        </div>
-      </FilterSheet>
-
       <DataView<RetentionGuarantee>
-        // Le contrat de `listRetentions` ne pagine pas.
-        paginated={false}
         scrollX={1300}
-        items={retenues}
-        total={retenues.length}
-        page={1}
-        pageSize={Math.max(retenues.length, 1)}
-        onPageChange={() => {}}
+        {...local.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les retenues de garantie.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={nbFiltres > 0}
-        onClearFilters={effacerFiltres}
         emptyDescription={t("Aucune retenue de garantie n'a encore été posée.")}
         emptyAction={{ label: t('Poser une retenue'), onClick: ouvrirPose }}
         columns={colonnes}

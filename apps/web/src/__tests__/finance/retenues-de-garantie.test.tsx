@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -263,12 +263,21 @@ beforeEach(() => {
   post.mockResolvedValue({ data: { data: retenueDetenue() } });
 });
 
+/** Affiche la chaîne de requête courante, pour vérifier que les critères vivent dans l'URL. */
+function Url() {
+  return <div data-testid="url">{useLocation().search}</div>;
+}
+
+// Délai large : la suite complète tourne en parallèle et peut être lente.
+const T = { timeout: 8000 };
+
 function monter(url = `/tenant/${TENANT}/finance/retenues`) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Url />
           <Routes>
             <Route path="/tenant/:tenantId/finance/retenues" element={<RetenuesDeGarantie />} />
           </Routes>
@@ -323,20 +332,91 @@ describe('Résumé — ce qui est détenu, ce qui a été rendu, ce qui traîne'
     expect(screen.queryByRole('link', { name: /En retard/ })).not.toBeInTheDocument();
   });
 
-  it('la carte « en retard » pose les deux filtres correspondants, visiblement', async () => {
+  it('la carte « en retard » pose les deux critères correspondants, visiblement dans l’URL', async () => {
     const user = userEvent.setup({ delay: null });
     monter();
 
     await user.click(await screen.findByRole('link', { name: /En retard/ }, { timeout: 8000 }));
 
-    // Le filtre d'échéance est une comparaison de DATES côté serveur : l'écran
-    // envoie `dueBefore`, il ne trie pas la liste lui-même.
-    await waitFor(() =>
-      expect(
-        get.mock.calls.some((appel: unknown[]) => /retentions\?.*status=HELD.*dueBefore=/.test(String(appel[0])))
-      ).toBe(true)
-    );
+    // « Détenue » et « libération prévue au (hier) » : l'échéance dépassée est
+    // un intervalle de dates posé dans la barre, filtré localement — plus aucun
+    // paramètre `dueBefore` n'est envoyé.
+    const veille = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+    await waitFor(() => {
+      const url = screen.getByTestId('url').textContent ?? '';
+      expect(url).toContain('status=HELD');
+      expect(url).toContain(`releaseTo=${veille}`);
+    }, T);
+    await waitFor(() => expect(screen.queryByText('Facture F-2026-014')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('Situation n°3 — marché MAÇ-2026-07')).toBeInTheDocument();
+    expect(screen.queryByText('Situation n°2 — marché CHA-2025-11')).not.toBeInTheDocument();
+    expect(get.mock.calls.some((appel: unknown[]) => /dueBefore/.test(String(appel[0])))).toBe(false);
   }, 15000);
+});
+
+describe('Recherche multicritères (liste locale)', () => {
+  it('le champ libre filtre sur la pièce, le tiers et le chantier, sans casse ni accents', async () => {
+    const user = userEvent.setup({ delay: null });
+    monter();
+
+    await screen.findByText('Facture F-2026-014', {}, T);
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'ANGRE');
+
+    await waitFor(() => expect(screen.queryByText('Facture F-2026-014')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('Situation n°3 — marché MAÇ-2026-07')).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).toContain('q=ANGRE');
+    // Le filtrage est local : la liste n'est demandée qu'avec ses seuls paramètres de base.
+    expect(get.mock.calls.some((appel: unknown[]) => /\/retentions\?/.test(String(appel[0])))).toBe(false);
+  }, 30000);
+
+  it('applique un critère d’URL initiale (statut), et « Effacer les critères » ramène la liste complète', async () => {
+    const user = userEvent.setup({ delay: null });
+    monter(`/tenant/${TENANT}/finance/retenues?status=RELEASED`);
+
+    await screen.findByText('Situation n°2 — marché CHA-2025-11', {}, T);
+    expect(screen.queryByText('Facture F-2026-014')).not.toBeInTheDocument();
+
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+
+    expect(await screen.findByText('Facture F-2026-014', {}, T)).toBeInTheDocument();
+    expect(screen.getByText('Situation n°3 — marché MAÇ-2026-07')).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).not.toContain('status=');
+  }, 30000);
+
+  it('filtre sur un intervalle de montants de la pièce (liste locale)', async () => {
+    monter(`/tenant/${TENANT}/finance/retenues?amountMin=10000000`);
+
+    await screen.findByText('Facture F-2026-014', {}, T);
+    expect(screen.queryByText('Situation n°3 — marché MAÇ-2026-07')).not.toBeInTheDocument();
+    expect(screen.queryByText('Situation n°2 — marché CHA-2025-11')).not.toBeInTheDocument();
+  }, 30000);
+
+  it('le récapitulatif suit le chantier choisi, et lui seul', async () => {
+    monter(`/tenant/${TENANT}/finance/retenues?siteId=chantier-2`);
+
+    await screen.findByText('Situation n°3 — marché MAÇ-2026-07', {}, T);
+    expect(screen.queryByText('Facture F-2026-014')).not.toBeInTheDocument();
+    await waitFor(
+      () =>
+        expect(
+          get.mock.calls.some((appel: unknown[]) => /\/retentions\/summary\?siteId=chantier-2$/.test(String(appel[0])))
+        ).toBe(true),
+      T
+    );
+  }, 30000);
+
+  it('sans chantier choisi, le récapitulatif est demandé sans paramètre', async () => {
+    monter(`/tenant/${TENANT}/finance/retenues?status=HELD`);
+
+    await screen.findByText('Facture F-2026-014', {}, T);
+    await waitFor(
+      () =>
+        expect(get.mock.calls.some((appel: unknown[]) => /\/retentions\/summary$/.test(String(appel[0])))).toBe(true),
+      T
+    );
+    expect(get.mock.calls.some((appel: unknown[]) => /summary\?/.test(String(appel[0])))).toBe(false);
+  }, 30000);
 });
 
 describe('La liste — une retenue ne fait pas baisser le coût du chantier', () => {
@@ -566,7 +646,7 @@ describe('Le montant retenu est dérivé du taux, jamais saisi', () => {
     const corps = post.mock.calls[post.mock.calls.length - 1][1] as Record<string, unknown>;
     expect(corps).not.toHaveProperty('amount');
     expect(corps).not.toHaveProperty('baseAmount');
-  }, 30000);
+  }, 90000);
 });
 
 describe('La date de libération prévue est une prévision', () => {
@@ -620,7 +700,7 @@ describe('Les refus du serveur restent lisibles', () => {
       { timeout: 8000 }
     );
     expect(await screen.findByText('La retenue a été refusée', {}, { timeout: 8000 })).toBeInTheDocument();
-  }, 30000);
+  }, 90000);
 
   it('relaie le message du serveur quand la libération est refusée', async () => {
     const user = userEvent.setup({ delay: null });

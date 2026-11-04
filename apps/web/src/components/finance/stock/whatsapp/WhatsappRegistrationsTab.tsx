@@ -11,6 +11,9 @@ import { DataView } from '../../../primitives/DataView';
 import { DataCard } from '../../../primitives/DataCard';
 import { StatusTag } from '../../../primitives/StatusTag';
 import { handleApiError } from '../../../../utils/error-handler';
+import { useLocalListSearch } from '../../../../utils/list-search';
+import type { SearchCriterion } from '../../../../utils/list-search';
+import { localizedList } from '../../../../i18n/localized';
 import { t } from '../../../../i18n/t';
 import { ActivationCodeModal } from './ActivationCodeModal';
 import { RegistrationForm } from './RegistrationForm';
@@ -35,6 +38,43 @@ export interface WhatsappRegistrationsTabProps {
   /** Numéro du bot de la vue d'ensemble (repli de la fenêtre du code). */
   botNumber?: string | null;
 }
+
+const OPTIONS_ETAT = localizedList(() =>
+  (['PENDING_ACTIVATION', 'ACTIVE', 'REVOKED'] as const).map(status => ({
+    value: status,
+    label: registrationStatusDisplay(status).label
+  }))
+);
+
+// Motifs de blocage d'accès du type ; « OTHER » couvre un blocage sans motif (libellé de repli).
+const OPTIONS_ACCES = localizedList(() =>
+  (
+    ['TENANT_SUSPENDED', 'MEMBERSHIP_NOT_ACTIVE', 'USER_INACTIVE', 'ROLE_MISSING', 'OPTION_MISSING', 'OTHER'] as const
+  ).map(reason => ({
+    value: reason,
+    label: registrationAccessReasonLabel(reason === 'OTHER' ? null : reason)
+  }))
+);
+
+/** Motif de blocage affiché dans la colonne « Accès » ; `undefined` quand rien n'est affiché. */
+const accessReasonOf = (r: RegistrationView): string | undefined =>
+  r.status === 'REVOKED' || r.access?.ok !== false ? undefined : (r.access.reason ?? 'OTHER');
+
+// Identité stable pour « aucune inscription » : le parent passe un `[]` neuf à chaque rendu tant que la requête n'a rien rendu.
+const AUCUNE_INSCRIPTION: RegistrationView[] = [];
+
+// Champ libre : chef, numéro masqué, chantiers et état (libellé affiché).
+const TEXTE_RECHERCHE = [
+  (r: RegistrationView) => r.userLabel,
+  (r: RegistrationView) => r.phoneMasked,
+  (r: RegistrationView) => r.sites.map(site => site.name),
+  (r: RegistrationView) => registrationStatusDisplay(r.status).label
+];
+
+const ACCESSEURS = {
+  status: (r: RegistrationView) => r.status,
+  access: accessReasonOf
+};
 
 const SiteTags: React.FC<{ sites: SiteRef[] }> = ({ sites }) => (
   <Space size={[4, 4]} wrap>
@@ -98,6 +138,24 @@ export const WhatsappRegistrationsTab: React.FC<WhatsappRegistrationsTabProps> =
   const [editing, setEditing] = useState<RegistrationView | null>(null);
   const [revoking, setRevoking] = useState<RegistrationView | null>(null);
   const [conversations, setConversations] = useState<RegistrationView | null>(null);
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Chef, téléphone, chantiers…')
+    },
+    { key: 'status', type: 'multiSelect', label: t('État'), primary: true, options: OPTIONS_ETAT },
+    { key: 'access', type: 'multiSelect', label: t('Accès'), primary: true, options: OPTIONS_ACCES }
+  ];
+  const local = useLocalListSearch<RegistrationView>(registrations.length > 0 ? registrations : AUCUNE_INSCRIPTION, {
+    paramPrefix: 'insc',
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   const reload = () =>
     void queryClient.invalidateQueries({ queryKey: entityKeyPrefix(STOCK_WHATSAPP_REGISTRATIONS_ENTITY, tenantId) });
@@ -184,13 +242,8 @@ export const WhatsappRegistrationsTab: React.FC<WhatsappRegistrationsTabProps> =
 
       <DataView<RegistrationView>
         aria-label={t('Chefs de chantier inscrits')}
-        export={{ filename: t('Chefs de chantier inscrits') }}
-        items={registrations}
-        total={registrations.length}
-        page={1}
-        pageSize={Math.max(registrations.length, 1)}
-        paginated={false}
-        onPageChange={() => undefined}
+        {...local.dataViewProps}
+        export={{ filename: t('Chefs de chantier inscrits'), fetchAll: local.exportAll }}
         loading={loading}
         error={error}
         errorCause={errorCause}

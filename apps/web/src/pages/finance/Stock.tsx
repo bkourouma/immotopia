@@ -1,11 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   App,
   Button,
   Card,
-  Checkbox,
   DatePicker,
   Drawer,
   Dropdown,
@@ -21,7 +20,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, DownOutlined, DownloadOutlined, PaperClipOutlined, PlusOutlined } from '@ant-design/icons';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
   listStockBalances,
@@ -61,6 +60,9 @@ import {
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { useStockFieldContext, STOCK_FIELD_CONTEXT_ENTITY } from '../../hooks/useStockFieldContext';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useListSearch } from '../../hooks/useListSearch';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { ApiParams, SearchCriterion } from '../../utils/list-search';
 import { nouvelIdentifiantDeRequete } from '../../utils/stock-client-request-id';
 import { reponseIncertaine } from '../../components/finance/stock/magasin/useEnvoiTerrain';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
@@ -71,7 +73,6 @@ import { EXPORT_MAX_ROWS } from '../../utils/table-export/collect';
 import {
   DataCard,
   DataView,
-  FilterSheet,
   MoneyValue,
   PageHeader,
   SkeletonDetail,
@@ -1881,16 +1882,65 @@ function FenetreRetour(props: {
 // Onglet « État du stock » (ecrans §5.2)
 // ---------------------------------------------------------------------------
 
+/** Champ libre de l'état : référence, désignation de l'article, libellé du lieu (constante : filtrage mémoïsé). */
+const TEXTE_RECHERCHE_SOLDE = [
+  (b: StockBalanceView) => b.itemReference,
+  (b: StockBalanceView) => b.itemLabel,
+  (b: StockBalanceView) => b.locationLabel
+];
+
+/** Critères envoyés à l'API des soldes (chaînes de l'URL) vers les filtres typés du service. */
+function filtresDuSolde(params: ApiParams): { locationId?: string; itemId?: string; onlyInStock?: boolean } {
+  return {
+    locationId: params.locationId === undefined ? undefined : String(params.locationId),
+    itemId: params.itemId === undefined ? undefined : String(params.itemId),
+    onlyInStock: params.onlyInStock === 'true' ? true : undefined
+  };
+}
+
 function OngletEtat(props: {
   tenantId: string;
   contexte: StockFieldContext;
   onRecevoir: () => void;
 }): React.ReactElement {
   const { tenantId, contexte, onRecevoir } = props;
-  const [lieuFiltre, setLieuFiltre] = useState<string | undefined>(undefined);
-  const [articleFiltre, setArticleFiltre] = useState<string | undefined>(undefined);
-  const [masquerZero, setMasquerZero] = useState(false);
-  const filtres = { locationId: lieuFiltre, itemId: articleFiltre, onlyInStock: masquerZero || undefined };
+  // Mode mixte : lieu, article et « masquer les lignes à zéro » partent à l'API
+  // (le serveur calcule les soldes) ; le champ libre filtre la liste reçue.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Référence, désignation, lieu…'),
+      api: false
+    },
+    {
+      key: 'lieu',
+      type: 'select',
+      label: t('Lieu'),
+      primary: true,
+      api: 'locationId',
+      options: contexte.locations.map(l => ({ value: l.id, label: l.label }))
+    },
+    {
+      key: 'article',
+      type: 'select',
+      label: t('Article'),
+      primary: true,
+      api: 'itemId',
+      options: contexte.items.map(a => ({ value: a.id, label: `${a.reference} — ${a.label}` }))
+    },
+    {
+      key: 'masquerZero',
+      type: 'boolean',
+      label: t('Masquer les lignes à zéro'),
+      api: (valeur): ApiParams => (valeur ? { onlyInStock: 'true' } : {})
+    }
+  ];
+  // Les critères de l'API se lisent dans l'URL avant la requête ; le filtrage
+  // local (plus bas) relit les mêmes clés une fois la liste reçue.
+  const critereApi = useListSearch({ paramPrefix: 'etat', criteria: criteres });
+  const filtres = filtresDuSolde(critereApi.filterParams);
 
   const soldes = useQuery({
     queryKey: queryKey('stock-balances', tenantId, filtres),
@@ -1901,19 +1951,11 @@ function OngletEtat(props: {
   const valeursVisibles = meta?.valuesVisible ?? contexte.abilities.valuesVisible;
   const aveugles = lieuxAveugles(meta, contexte);
   const liste = useMemo(() => soldes.data?.data ?? [], [soldes.data]);
-  // Pagination locale : la liste complète reste en mémoire (et à l'export).
-  const [page, setPage] = useState(1);
-  const taillePage = 20;
-  useEffect(() => {
-    setPage(1);
-  }, [liste.length]);
-  const tranche = useMemo(() => liste.slice((page - 1) * taillePage, page * taillePage), [liste, page]);
-  const nbFiltres = (lieuFiltre ? 1 : 0) + (articleFiltre ? 1 : 0) + (masquerZero ? 1 : 0);
-  const effacer = () => {
-    setLieuFiltre(undefined);
-    setArticleFiltre(undefined);
-    setMasquerZero(false);
-  };
+  const local = useLocalListSearch<StockBalanceView>(liste, {
+    paramPrefix: 'etat',
+    criteria: criteres,
+    text: TEXTE_RECHERCHE_SOLDE
+  });
 
   const pastilleComptage = <StatusTag status="STOCK_COUNT_IN_PROGRESS" tone="info" label={t('Comptage en cours')} />;
   const valeurOuComptage = (b: StockBalanceView, valeur: number | null, unite?: boolean) =>
@@ -1993,57 +2035,15 @@ function OngletEtat(props: {
 
   return (
     <>
-      <FilterSheet activeCount={nbFiltres} onClear={effacer} title={t("Filtrer l'état du stock")}>
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-lieu-stock">{t('Lieu')}</label>
-          <Select
-            id="filtre-lieu-stock"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les lieux')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            value={lieuFiltre}
-            onChange={valeur => setLieuFiltre(valeur as string | undefined)}
-            options={contexte.locations.map(l => ({ value: l.id, label: l.label }))}
-          />
-        </div>
-        <div style={{ minWidth: 260 }}>
-          <label htmlFor="filtre-article-stock">{t('Article')}</label>
-          <Select
-            id="filtre-article-stock"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les articles')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            value={articleFiltre}
-            onChange={valeur => setArticleFiltre(valeur as string | undefined)}
-            options={contexte.items.map(a => ({ value: a.id, label: `${a.reference} — ${a.label}` }))}
-          />
-        </div>
-        <div style={{ minWidth: 240 }}>
-          <Checkbox checked={masquerZero} onChange={event => setMasquerZero(event.target.checked)}>
-            {t('Masquer les lignes à zéro')}
-          </Checkbox>
-        </div>
-      </FilterSheet>
-
       <DataView<StockBalanceView>
-        export={{ filename: t('État du stock'), fetchAll: async () => ({ items: liste, truncated: false }) }}
+        {...local.dataViewProps}
+        export={{ filename: t('État du stock'), fetchAll: local.exportAll }}
         scrollX={1000}
-        items={tranche}
-        total={liste.length}
-        page={page}
-        pageSize={taillePage}
-        onPageChange={p => setPage(p)}
         loading={soldes.isPending}
         isReloading={soldes.isFetching && !soldes.isPending}
         error={soldes.error ? t("Impossible de charger l'état du stock.") : null}
         errorCause={soldes.error}
         onRetry={() => soldes.refetch()}
-        isFiltered={nbFiltres > 0}
-        onClearFilters={effacer}
         emptyDescription={t("Aucun stock n'est encore enregistré.")}
         emptyAction={
           contexte.abilities.canReceive ? { label: t('Enregistrer une réception'), onClick: onRecevoir } : undefined
@@ -2104,33 +2104,95 @@ function OngletJournal(props: {
     props;
   const { message } = App.useApp();
   const abilities: StockAbilities = contexte.abilities;
-  const [article, setArticle] = useState<string | undefined>(undefined);
-  const [lieu, setLieu] = useState<string | undefined>(undefined);
-  const [chantier, setChantier] = useState<string | undefined>(undefined);
-  const [nature, setNature] = useState<StockMovementType | undefined>(undefined);
-  const [du, setDu] = useState<Dayjs | null>(null);
-  const [au, setAu] = useState<Dayjs | null>(null);
-  const [demandeur, setDemandeur] = useState('');
-  const [preneurFiltre, setPreneurFiltre] = useState<string | undefined>(undefined);
-  const [auteur, setAuteur] = useState<string | undefined>(undefined);
   const [exportEnCours, setExportEnCours] = useState(false);
   const [piecesDuMouvement, setPiecesDuMouvement] = useState<StockMovementView | null>(null);
 
-  // Les trois filtres par personne n'existent qu'avec les valeurs (A5-R2) :
+  // Les filtres par personne n'existent qu'avec les valeurs (A5-R2) :
   // sans elles, le serveur répondrait 403.
   const filtresParPersonne = abilities.valuesVisible;
-  const filtres: Omit<StockMovementsFilters, 'cursor' | 'limit'> = {
-    itemId: article,
-    locationId: lieu,
-    siteId: chantier,
-    type: nature,
-    from: du ? du.format('YYYY-MM-DD') : undefined,
-    to: au ? au.format('YYYY-MM-DD') : undefined,
+  const preneurs = useQuery({
+    queryKey: queryKey('stock-takers', tenantId, { onlyActive: false }),
+    queryFn: () => listStockTakers(tenantId, { onlyActive: false }),
+    enabled: filtresParPersonne,
+    staleTime: STALE_TIME.reference
+  });
+  const auteurs = useQuery({
+    queryKey: queryKey('stock-movement-authors', tenantId, {}),
+    queryFn: () => listMovementAuthors(tenantId),
+    enabled: filtresParPersonne,
+    staleTime: STALE_TIME.reference
+  });
+  // « Demandeur ou preneur contient » est couvert par le champ libre (le serveur
+  // y cherche preneur et demandeur quand l'appelant voit les valeurs).
+  const search = useListSearch({
+    paramPrefix: 'jrn',
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Article, bon, lieu, chantier, motif…')
+      },
+      {
+        key: 'type',
+        type: 'select',
+        label: t('Nature'),
+        primary: true,
+        options: (Object.keys(STOCK_MOVEMENT_TYPE_LABELS) as StockMovementType[]).map(code => ({
+          value: code,
+          label: STOCK_MOVEMENT_TYPE_LABELS[code]
+        }))
+      },
+      { key: 'periode', type: 'dateRange', label: t('Période'), primary: true, api: ['from', 'to'] },
+      {
+        key: 'itemId',
+        type: 'select',
+        label: t('Article'),
+        options: contexte.items.map(a => ({ value: a.id, label: `${a.reference} — ${a.label}` }))
+      },
+      {
+        key: 'locationId',
+        type: 'select',
+        label: t('Lieu'),
+        options: contexte.locations.map(l => ({ value: l.id, label: l.label }))
+      },
+      {
+        key: 'siteId',
+        type: 'select',
+        label: t('Chantier'),
+        options: contexte.sites.map(s => ({ value: s.id, label: s.name }))
+      },
+      ...(filtresParPersonne
+        ? ([
+            {
+              key: 'takerId',
+              type: 'select',
+              label: t('Preneur'),
+              options: (preneurs.data ?? []).map(p => ({ value: p.id, label: p.label }))
+            },
+            {
+              key: 'createdByUserId',
+              type: 'select',
+              label: t('Saisi par'),
+              options: (auteurs.data ?? []).map(a => ({ value: a.userId, label: a.label }))
+            }
+          ] as SearchCriterion[])
+        : [])
+    ]
+  });
+  const texte = (valeur: string | number | undefined) => (valeur === undefined ? undefined : String(valeur));
+  const critere = search.filterParams;
+  const filtres: Omit<StockMovementsFilters, 'cursor' | 'limit'> & { search?: string } = {
+    itemId: texte(critere.itemId),
+    locationId: texte(critere.locationId),
+    siteId: texte(critere.siteId),
+    type: texte(critere.type) as StockMovementType | undefined,
+    from: texte(critere.from),
+    to: texte(critere.to),
     slipId: filtreBon?.id,
     movementId: mouvementId ?? undefined,
-    ...(filtresParPersonne
-      ? { requestedBy: demandeur.trim() || undefined, takerId: preneurFiltre, createdByUserId: auteur }
-      : {})
+    search: texte(critere.search),
+    ...(filtresParPersonne ? { takerId: texte(critere.takerId), createdByUserId: texte(critere.createdByUserId) } : {})
   };
   // Le journal se lit par pages (curseur). `useInfiniteQuery` garde les pages
   // dans une seule entrée du cache : quand la première page est relue (écriture
@@ -2152,7 +2214,9 @@ function OngletJournal(props: {
       }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: derniere => derniere.meta.nextCursor ?? undefined,
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    // La barre reste montée (et garde le focus) pendant la requête suivante.
+    placeholderData: keepPreviousData
   });
 
   const mouvements = useMemo(() => (journal.data?.pages ?? []).flatMap(page => page.data), [journal.data]);
@@ -2167,34 +2231,6 @@ function OngletJournal(props: {
   const chargerPlus = () => {
     if (!journal.hasNextPage || journal.isFetchingNextPage) return;
     void journal.fetchNextPage();
-  };
-
-  const preneurs = useQuery({
-    queryKey: queryKey('stock-takers', tenantId, { onlyActive: false }),
-    queryFn: () => listStockTakers(tenantId, { onlyActive: false }),
-    enabled: filtresParPersonne,
-    staleTime: STALE_TIME.reference
-  });
-  const auteurs = useQuery({
-    queryKey: queryKey('stock-movement-authors', tenantId, {}),
-    queryFn: () => listMovementAuthors(tenantId),
-    enabled: filtresParPersonne,
-    staleTime: STALE_TIME.reference
-  });
-
-  const nbFiltres =
-    [article, lieu, chantier, nature, du, au, preneurFiltre, auteur].filter(Boolean).length +
-    (demandeur.trim() ? 1 : 0);
-  const effacer = () => {
-    setArticle(undefined);
-    setLieu(undefined);
-    setChantier(undefined);
-    setNature(undefined);
-    setDu(null);
-    setAu(null);
-    setDemandeur('');
-    setPreneurFiltre(undefined);
-    setAuteur(undefined);
   };
 
   const exporter = async () => {
@@ -2422,117 +2458,6 @@ function OngletJournal(props: {
 
   return (
     <>
-      <FilterSheet activeCount={nbFiltres} onClear={effacer} title={t('Filtrer le journal')}>
-        <div style={{ minWidth: 260 }}>
-          <label htmlFor="journal-article">{t('Article')}</label>
-          <Select
-            id="journal-article"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les articles')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            value={article}
-            onChange={valeur => setArticle(valeur as string | undefined)}
-            options={contexte.items.map(a => ({ value: a.id, label: `${a.reference} — ${a.label}` }))}
-          />
-        </div>
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="journal-lieu">{t('Lieu')}</label>
-          <Select
-            id="journal-lieu"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les lieux')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            value={lieu}
-            onChange={valeur => setLieu(valeur as string | undefined)}
-            options={contexte.locations.map(l => ({ value: l.id, label: l.label }))}
-          />
-        </div>
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="journal-chantier">{t('Chantier')}</label>
-          <Select
-            id="journal-chantier"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les chantiers')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            value={chantier}
-            onChange={valeur => setChantier(valeur as string | undefined)}
-            options={contexte.sites.map(s => ({ value: s.id, label: s.name }))}
-          />
-        </div>
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="journal-nature">{t('Nature')}</label>
-          <Select
-            id="journal-nature"
-            style={{ width: '100%' }}
-            placeholder={t('Toutes les natures')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            value={nature}
-            onChange={valeur => setNature(valeur as StockMovementType | undefined)}
-            options={(Object.keys(STOCK_MOVEMENT_TYPE_LABELS) as StockMovementType[]).map(code => ({
-              value: code,
-              label: STOCK_MOVEMENT_TYPE_LABELS[code]
-            }))}
-          />
-        </div>
-        <div style={{ minWidth: 180 }}>
-          <label htmlFor="journal-du">{t('Du')}</label>
-          <DatePicker id="journal-du" style={{ width: '100%' }} format="DD/MM/YYYY" value={du} onChange={setDu} />
-        </div>
-        <div style={{ minWidth: 180 }}>
-          <label htmlFor="journal-au">{t('Au')}</label>
-          <DatePicker id="journal-au" style={{ width: '100%' }} format="DD/MM/YYYY" value={au} onChange={setAu} />
-        </div>
-        {filtresParPersonne ? (
-          <>
-            <div style={{ minWidth: 220 }}>
-              <label htmlFor="journal-demandeur">{t('Demandeur ou preneur contient')}</label>
-              <Input
-                id="journal-demandeur"
-                allowClear
-                value={demandeur}
-                onChange={event => setDemandeur(event.target.value)}
-              />
-            </div>
-            <div style={{ minWidth: 220 }}>
-              <label htmlFor="journal-preneur">{t('Preneur')}</label>
-              <Select
-                id="journal-preneur"
-                style={{ width: '100%' }}
-                placeholder={t('Tous les preneurs')}
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                value={preneurFiltre}
-                onChange={valeur => setPreneurFiltre(valeur as string | undefined)}
-                options={(preneurs.data ?? []).map(p => ({ value: p.id, label: p.label }))}
-              />
-            </div>
-            <div style={{ minWidth: 220 }}>
-              <label htmlFor="journal-auteur">{t('Saisi par')}</label>
-              <Select
-                id="journal-auteur"
-                style={{ width: '100%' }}
-                placeholder={t('Toutes les personnes')}
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                value={auteur}
-                onChange={valeur => setAuteur(valeur as string | undefined)}
-                options={(auteurs.data ?? []).map(a => ({ value: a.userId, label: a.label }))}
-              />
-            </div>
-          </>
-        ) : null}
-      </FilterSheet>
-
       <Space wrap size="middle" style={{ marginBottom: 'var(--space-3)', alignItems: 'center' }}>
         {filtreBon ? (
           <Tag closable onClose={onEffacerBon}>
@@ -2586,6 +2511,8 @@ function OngletJournal(props: {
             return { items, truncated: tronque };
           }
         }}
+        search={search.searchProps}
+        {...search.dataViewProps}
         paginated={false}
         scrollX={2200}
         items={mouvements}
@@ -2597,9 +2524,9 @@ function OngletJournal(props: {
         isReloading={journal.isFetching && !journal.isPending && !journal.isFetchingNextPage}
         error={erreurJournal ? t('Impossible de charger le journal des mouvements.') : null}
         onRetry={() => journal.refetch()}
-        isFiltered={nbFiltres > 0 || Boolean(filtreBon) || Boolean(mouvementId)}
+        isFiltered={search.isFiltered || Boolean(filtreBon) || Boolean(mouvementId)}
         onClearFilters={() => {
-          effacer();
+          search.clear();
           onEffacerBon();
           onEffacerMouvement();
         }}
@@ -2624,10 +2551,6 @@ function OngletJournal(props: {
           />
         )}
       />
-      {nbFiltres > 0 && !journal.isPending && mouvements.length === 0 && !erreurJournal ? (
-        <Text type="secondary">{t('Aucun mouvement pour ces filtres.')}</Text>
-      ) : null}
-
       {journal.hasNextPage ? (
         <div style={{ marginTop: 'var(--space-3)' }}>
           <Button onClick={chargerPlus} loading={journal.isFetchingNextPage}>

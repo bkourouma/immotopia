@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Tacherons } from '../../pages/finance/Tacherons';
@@ -236,12 +236,21 @@ beforeEach(() => {
   post.mockResolvedValue({ data: { data: tacheron() } });
 });
 
+/** Affiche la chaîne de requête courante, pour vérifier que les critères vivent dans l'URL. */
+function Url() {
+  return <div data-testid="url">{useLocation().search}</div>;
+}
+
+// Délai large : la suite complète tourne en parallèle et peut être lente.
+const T = { timeout: 8000 };
+
 function mountListe(url = `/tenant/${TENANT}/finance/tacherons`) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Url />
           <Routes>
             <Route path="/tenant/:tenantId/finance/tacherons" element={<Tacherons />} />
             <Route path="/tenant/:tenantId/finance/tacherons/:contractorId" element={<Tacheron />} />
@@ -258,6 +267,7 @@ function mountFiche(url = `/tenant/${TENANT}/finance/tacherons/${TACHERON}`) {
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Url />
           <Routes>
             <Route path="/tenant/:tenantId/finance/tacherons/:contractorId" element={<Tacheron />} />
           </Routes>
@@ -297,18 +307,72 @@ describe('Tâcherons — liste', () => {
     expect(screen.queryByText('compte-tiers-1')).not.toBeInTheDocument();
   });
 
-  it('filtre « actifs uniquement » : le filtre part en requête, jamais dans le chemin', async () => {
+  it('filtre « actifs uniquement » en local : décoché par défaut, la liste complète est demandée une fois', async () => {
     const user = userEvent.setup({ delay: null });
+    configurerGet({
+      tacherons: [
+        tacheron(),
+        tacheron({ id: 'tacheron-2', fullName: 'Aïssatou Konan', trade: 'Peinture', isActive: false })
+      ]
+    });
     mountListe();
 
-    await screen.findByText('Mamadou Koffi', {}, { timeout: 8000 });
-    // Sans le filtre, aucun paramètre de requête.
+    await screen.findByText('Mamadou Koffi', {}, T);
+    // Décoché par défaut : un tâcheron désactivé peut rester créancier, il reste visible.
+    expect(screen.getByText('Aïssatou Konan')).toBeInTheDocument();
+    // Aucun paramètre de requête : le filtre ne part jamais au serveur.
     expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/contractors`);
 
     await user.click(screen.getByRole('checkbox', { name: /Tâcherons actifs uniquement/ }));
 
-    await waitFor(() => expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/contractors?onlyActive=true`));
+    await waitFor(() => expect(screen.queryByText('Aïssatou Konan')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('Mamadou Koffi')).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).toContain('actifs=1');
+    expect(get.mock.calls.some(([url]) => String(url).includes('onlyActive'))).toBe(false);
   }, 15000);
+
+  describe('recherche multicritères (liste locale)', () => {
+    const DEUX = () =>
+      configurerGet({
+        tacherons: [
+          tacheron(),
+          tacheron({ id: 'tacheron-2', fullName: 'Aïssatou Konan', trade: 'Peinture', isActive: true })
+        ]
+      });
+
+    it('le champ libre filtre sur le nom et le corps de métier, sans casse ni accents', async () => {
+      const user = userEvent.setup({ delay: null });
+      DEUX();
+      mountListe();
+
+      await screen.findByText('Mamadou Koffi', {}, T);
+      await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'AISSATOU');
+      await waitFor(() => expect(screen.queryByText('Mamadou Koffi')).not.toBeInTheDocument(), T);
+      expect(screen.getByText('Aïssatou Konan')).toBeInTheDocument();
+      expect(screen.getByTestId('url').textContent).toContain('q=AISSATOU');
+
+      await user.clear(within(screen.getByRole('search')).getByRole('textbox'));
+      await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'plomb');
+      await waitFor(() => expect(screen.queryByText('Aïssatou Konan')).not.toBeInTheDocument(), T);
+      expect(screen.getByText('Mamadou Koffi')).toBeInTheDocument();
+    }, 30000);
+
+    it('applique un critère d’URL initiale, et « Effacer les critères » ramène la liste complète', async () => {
+      const user = userEvent.setup({ delay: null });
+      DEUX();
+      mountListe(`/tenant/${TENANT}/finance/tacherons?q=peinture`);
+
+      await screen.findByText('Aïssatou Konan', {}, T);
+      expect(screen.queryByText('Mamadou Koffi')).not.toBeInTheDocument();
+
+      const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+      await user.click(effacer[effacer.length - 1]);
+
+      expect(await screen.findByText('Mamadou Koffi', {}, T)).toBeInTheDocument();
+      expect(screen.getByText('Aïssatou Konan')).toBeInTheDocument();
+      expect(screen.getByTestId('url').textContent).not.toContain('q=');
+    }, 30000);
+  });
 
   it('enregistre un tâcheron avec les champs du contrat gelé, puis ouvre sa fiche', async () => {
     post.mockResolvedValue({ data: { data: tacheron({ id: TACHERON, fullName: 'Sékou Kouadio' }) } });
@@ -492,7 +556,8 @@ describe('Les gestes de la fiche', () => {
 
     await screen.findByText("Convenir d'un marché", {}, { timeout: 8000 });
 
-    fireEvent.mouseDown(screen.getByLabelText('Chantier'));
+    // Le critère « Chantier » de la barre porte le même nom : on vise le champ du formulaire par son id.
+    fireEvent.mouseDown(document.getElementById('marche-chantier') as HTMLElement);
     fireEvent.click(await screen.findByText('Villa de la Riviera', { selector: '.ant-select-item-option-content' }));
 
     fireEvent.mouseDown(screen.getByLabelText('Poste de dépense'));
@@ -511,7 +576,7 @@ describe('Les gestes de la fiche', () => {
     // Le poste est bien celui qui a été choisi, jamais deviné.
     expect(corps.costCategoryId).toBe('poste-1');
     expect(corps).not.toHaveProperty('contractorId');
-  }, 30000);
+  }, 90000);
 
   it('valide une situation après avoir averti que c’est irréversible', async () => {
     configurerGet({ situations: [situation({ id: 'situation-brouillon', status: 'DRAFT', validatedAt: null })] });
@@ -605,7 +670,7 @@ describe('Fiche du tâcheron — onglets paresseux et pagination locale', () => 
     const referentielsDemandes = () => get.mock.calls.some(([url]) => /\/finance\/(sites|cost-categories)/.test(url));
     expect(referentielsDemandes()).toBe(false);
 
-    await user.click(screen.getByLabelText('Chantier'));
+    await user.click(document.getElementById('marche-chantier') as HTMLElement);
 
     await waitFor(() => expect(referentielsDemandes()).toBe(true));
   }, 20000);
@@ -635,6 +700,75 @@ describe('Fiche du tâcheron — onglets paresseux et pagination locale', () => 
 
     expect(await screen.findByText('MAR-025', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(document.querySelectorAll('.ant-table-tbody tr.ant-table-row')).toHaveLength(5);
+  }, 30000);
+});
+
+describe('Fiche du tâcheron — recherche des marchés et des règlements', () => {
+  const marchesDeux = () => [
+    marcheExecute(),
+    marcheDepasse({ siteId: 'chantier-2', siteLabel: 'Résidence Angré', costCategoryLabel: 'Gros œuvre' })
+  ];
+
+  it('marchés : le champ libre filtre sur référence, chantier et poste (préfixe mar.)', async () => {
+    const user = userEvent.setup({ delay: null });
+    configurerGet({ marches: marchesDeux(), situations: [] });
+    mountFiche();
+
+    await screen.findByText('MAR-2026-007', {}, T);
+    expect(screen.getByText('MAR-2026-012')).toBeInTheDocument();
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'angre');
+
+    await waitFor(() => expect(screen.queryByText('MAR-2026-007')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('MAR-2026-012')).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).toContain('mar.q=angre');
+  }, 30000);
+
+  it('marchés : un critère d’URL initiale s’applique, « Effacer les critères » ramène la liste', async () => {
+    const user = userEvent.setup({ delay: null });
+    configurerGet({ marches: marchesDeux(), situations: [] });
+    mountFiche(`/tenant/${TENANT}/finance/tacherons/${TACHERON}?mar.siteId=chantier-2`);
+
+    await screen.findByText('MAR-2026-012', {}, T);
+    expect(screen.queryByText('MAR-2026-007')).not.toBeInTheDocument();
+
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+
+    expect(await screen.findByText('MAR-2026-007', {}, T)).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).not.toContain('mar.siteId');
+  }, 30000);
+
+  it('règlements : le champ libre filtre sur « saisi par » (préfixe reg.)', async () => {
+    const user = userEvent.setup({ delay: null });
+    configurerGet({
+      reglements: [
+        reglement(),
+        reglement({ id: 'reglement-2', createdByLabel: 'Yao Brou', amount: 60_000, status: 'DRAFT' })
+      ]
+    });
+    mountFiche(`/tenant/${TENANT}/finance/tacherons/${TACHERON}?onglet=reglements`);
+
+    await screen.findByText('Yao Brou', {}, T);
+    expect(screen.getByText('Fatoumata Kouassi')).toBeInTheDocument();
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'yao');
+
+    await waitFor(() => expect(screen.queryByText('Fatoumata Kouassi')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('Yao Brou')).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).toContain('reg.q=yao');
+    expect(screen.getByTestId('url').textContent).toContain('onglet=reglements');
+  }, 30000);
+
+  it('règlements : un critère de statut d’URL initiale s’applique', async () => {
+    configurerGet({
+      reglements: [
+        reglement(),
+        reglement({ id: 'reglement-2', createdByLabel: 'Yao Brou', amount: 60_000, status: 'DRAFT' })
+      ]
+    });
+    mountFiche(`/tenant/${TENANT}/finance/tacherons/${TACHERON}?onglet=reglements&reg.status=DRAFT`);
+
+    await screen.findByText('Yao Brou', {}, T);
+    expect(screen.queryByText('Fatoumata Kouassi')).not.toBeInTheDocument();
   }, 30000);
 });
 

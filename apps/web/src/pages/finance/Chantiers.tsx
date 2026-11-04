@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { App, Button, DatePicker, Input, Modal, Select, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -9,17 +9,10 @@ import { createConstructionSite, listConstructionSites } from '../../services/fi
 import { SITE_STATUS_LABELS } from '../../types/finance-lot2-types';
 import type { ConstructionSite } from '../../types/finance-lot2-types';
 import { listProperties } from '../../services/property-service';
-import { useListParams } from '../../hooks/useListParams';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
-import {
-  PageHeader,
-  StateBlock,
-  MoneyValue,
-  DataView,
-  DataCard,
-  FilterSheet,
-  StatusTag
-} from '../../components/primitives';
+import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatusTag } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { localizedList } from '../../i18n/localized';
 
@@ -33,9 +26,12 @@ import { activeLocale } from '../../i18n/format';
  * l'accueillir. `propertyId` reste facultatif à la création — le bien pourra
  * être posé à la clôture, hors périmètre de ce lot.
  *
- * Construit sur le même modèle que `BalanceClients.tsx` et `WorkProgramsPage.tsx` :
- * mêmes primitives, même état de liste porté par l'URL (`useListParams`), mêmes
- * trois états délégués à `<DataView>`. Le parc des biens est chargé pour la
+ * Construit sur le même modèle que `Fournisseurs.tsx` : mêmes primitives, même
+ * recherche multicritères portée par l'URL (`useLocalListSearch`), mêmes trois
+ * états délégués à `<DataView>`. `listConstructionSites` rend tous les chantiers
+ * de l'agence d'un bloc : champ libre, statut, bien et coût réel filtrent la
+ * liste en local (aucun critère n'est envoyé au serveur), et l'export reprend
+ * toute la liste filtrée. Le parc des biens est chargé pour la
  * seule option facultative du formulaire de création, exactement comme
  * `BalanceClients.tsx` le fait pour son filtre « Bien ».
  *
@@ -55,12 +51,24 @@ import { activeLocale } from '../../i18n/format';
  * pas, et aucun autre écran de ce module ne l'offre non plus.
  */
 
-type Filters = { status: string };
-const FILTER_KEYS = ['status'] as const;
-
 const OPTIONS_STATUT = localizedList(() =>
   Object.entries(SITE_STATUS_LABELS).map(([value, label]) => ({ value, label }))
 );
+
+// Champ libre : nom, zone, bien et responsable, tels qu'affichés dans le tableau.
+const TEXTE_RECHERCHE = [
+  (c: ConstructionSite) => c.name,
+  (c: ConstructionSite) => c.zone,
+  (c: ConstructionSite) => c.propertyLabel,
+  (c: ConstructionSite) => c.managerLabel
+];
+
+// Valeur lue par les critères non textuels, par clé de critère.
+const ACCESSEURS = {
+  status: (c: ConstructionSite) => c.status,
+  bien: (c: ConstructionSite) => c.propertyId,
+  cout: (c: ConstructionSite) => c.actualCost
+};
 
 function dateCourte(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString(activeLocale()) : '—';
@@ -71,7 +79,10 @@ export const Chantiers: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS });
+  // `loadOptions` et `resolveLabel` sont gelés au premier rendu par la barre : ils lisent
+  // l'agence et le client de requêtes à jour par cette ref, jamais par fermeture.
+  const contexteRef = useRef({ tenantId, queryClient });
+  contexteRef.current = { tenantId, queryClient };
 
   const [modalOuvert, setModalOuvert] = useState(false);
   const [creationEnCours, setCreationEnCours] = useState(false);
@@ -84,8 +95,6 @@ export const Chantiers: React.FC = () => {
   const [saisieBien, setSaisieBien] = useState('');
   const [rechercheBien, setRechercheBien] = useState('');
   const [bienChoisi, setBienChoisi] = useState<{ value: string; label: string } | undefined>(undefined);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
   const [dateDebut, setDateDebut] = useState<Dayjs | null>(null);
   const [dateFinPrevue, setDateFinPrevue] = useState<Dayjs | null>(null);
 
@@ -96,8 +105,8 @@ export const Chantiers: React.FC = () => {
     error: erreurRequete,
     refetch
   } = useQuery({
-    queryKey: queryKey('construction-sites', tenantId, { status: list.filters.status || '' }),
-    queryFn: () => listConstructionSites(tenantId as string, { status: list.filters.status || undefined }),
+    queryKey: queryKey('construction-sites', tenantId),
+    queryFn: () => listConstructionSites(tenantId as string),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
   });
@@ -125,9 +134,44 @@ export const Chantiers: React.FC = () => {
 
   const chantiers = data ?? [];
 
-  // Pagination locale : l'API rend l'ensemble des chantiers du tenant.
-  useEffect(() => setPage(1), [chantiers.length]);
-  const chantiersPage = chantiers.slice((page - 1) * pageSize, page * pageSize);
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Nom, zone, bien, responsable…')
+    },
+    { key: 'status', type: 'select', label: t('Statut'), primary: true, options: OPTIONS_STATUT },
+    {
+      key: 'bien',
+      type: 'select',
+      label: t('Bien'),
+      primary: true,
+      placeholder: t('Tous les biens'),
+      // Recherche distante : 20 biens au plus, jamais le parc entier.
+      loadOptions: async terme => {
+        const reponse = await listProperties(contexteRef.current.tenantId as string, { q: terme, page: 1, limit: 20 });
+        return reponse.properties.map(bien => ({ value: bien.id, label: bien.title }));
+      },
+      // Libellé d'un bien venu de l'URL : celui que portent déjà les chantiers.
+      resolveLabel: async id => {
+        const { tenantId: agence, queryClient: client } = contexteRef.current;
+        const liste = await client.fetchQuery({
+          queryKey: queryKey('construction-sites', agence),
+          queryFn: () => listConstructionSites(agence as string),
+          staleTime: STALE_TIME.list
+        });
+        return liste.find(c => c.propertyId === id)?.propertyLabel ?? undefined;
+      }
+    },
+    { key: 'cout', type: 'numberRange', label: t('Coût réel'), unit: 'FCFA' }
+  ];
+  const local = useLocalListSearch<ConstructionSite>(data, {
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
@@ -222,52 +266,23 @@ export const Chantiers: React.FC = () => {
         primaryAction={{ label: t('Nouveau chantier'), icon: <PlusOutlined />, onClick: ouvrirCreation }}
       />
 
-      <FilterSheet
-        activeCount={list.filters.status ? 1 : 0}
-        onClear={() => list.setFilters({ status: undefined })}
-        title={t('Filtrer les chantiers')}
-      >
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-statut-chantier">{t('Statut')}</label>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            id="filtre-statut-chantier"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les statuts')}
-            allowClear
-            value={list.filters.status || undefined}
-            onChange={valeur => list.setFilters({ status: valeur })}
-            options={OPTIONS_STATUT}
-          />
-        </div>
-      </FilterSheet>
-
       <DataView<ConstructionSite>
-        // Le contrat de `listConstructionSites` ne pagine pas : la pagination
-        // est locale (20 par page) ; l'export reprend toute la liste.
+        // Le contrat de `listConstructionSites` ne pagine pas : recherche et
+        // pagination (20 par page) sont locales ; l'export reprend toute la
+        // liste filtrée.
         scrollX={960}
-        items={chantiersPage}
-        total={chantiers.length}
-        page={page}
-        pageSize={pageSize}
-        onPageChange={(p, taille) => {
-          setPage(taille !== pageSize ? 1 : p);
-          setPageSize(taille);
-        }}
+        {...local.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les chantiers.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={list.isFiltered}
-        onClearFilters={() => list.setFilters({ status: undefined })}
         emptyDescription={t("Aucun chantier n'est encore enregistré.")}
         emptyAction={{ label: t('Nouveau chantier'), onClick: ouvrirCreation }}
         columns={colonnes}
         rowKey={c => c.id}
         aria-label={t('Chantiers')}
-        export={{ filename: t('Chantiers'), fetchAll: async () => ({ items: chantiers, truncated: false }) }}
+        export={{ filename: t('Chantiers'), fetchAll: local.exportAll }}
         renderCard={c => (
           <DataCard
             title={c.name}

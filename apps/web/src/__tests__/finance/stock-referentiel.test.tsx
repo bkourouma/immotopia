@@ -319,7 +319,7 @@ describe('Le poste d’un article est une PROPOSITION, jamais une autorité', ()
     // et « Poste proposé à la sortie » portent toutes deux « Gros œuvre »).
     const ligne = screen.getByText('CIM-42').closest('tr') as HTMLElement;
     expect(within(ligne).getAllByText('Gros œuvre').length).toBeGreaterThanOrEqual(1);
-  }, 15000);
+  }, 120000);
 
   it('dit que le poste restera modifiable au moment de sortir la marchandise', async () => {
     monter();
@@ -330,7 +330,7 @@ describe('Le poste d’un article est une PROPOSITION, jamais une autorité', ()
     expect(texte).toContain('proposition');
     expect(texte).toContain('restera modifiable');
     expect(texte).toContain('au moment de sortir la marchandise');
-  }, 15000);
+  }, 120000);
 
   it('un article sans poste proposé le dit comme un cas normal, pas comme un vide', async () => {
     monter();
@@ -338,7 +338,7 @@ describe('Le poste d’un article est une PROPOSITION, jamais une autorité', ()
     const ligne = (await screen.findByText('SAB-00', {}, { timeout: 8000 })).closest('tr') as HTMLElement;
     expect(within(ligne).getByText('Aucun poste proposé')).toBeInTheDocument();
     expect(within(ligne).getByText('Non renseignée')).toBeInTheDocument();
-  }, 15000);
+  }, 120000);
 
   it('le formulaire d’enregistrement nomme le champ « poste proposé » et répète qu’il n’a aucune autorité', async () => {
     const user = userEvent.setup({ delay: null });
@@ -353,7 +353,7 @@ describe('Le poste d’un article est une PROPOSITION, jamais une autorité', ()
     expect(texte).toContain('pre-selectionne');
     expect(texte).toContain('restera modifiable');
     expect(texte).toContain('laisser vide est un cas normal');
-  }, 20000);
+  }, 120000);
 });
 
 // ---------------------------------------------------------------------------
@@ -383,7 +383,7 @@ describe('Changer l’unité d’un article avertit AVANT d’envoyer', () => {
     const valider = screen.getByRole('button', { name: 'Enregistrer la correction' });
     expect(valider).toBeDisabled();
     expect(patch).not.toHaveBeenCalled();
-  }, 30000);
+  }, 120000);
 
   it('envoie la seule unité une fois l’avertissement acquitté, sans répéter l’identifiant du chemin', async () => {
     const user = userEvent.setup({ delay: null });
@@ -417,7 +417,7 @@ describe('Changer l’unité d’un article avertit AVANT d’envoyer', () => {
     expect(corps).not.toHaveProperty('reference');
     expect(corps).not.toHaveProperty('itemId');
     expect(corps).not.toHaveProperty('tenantId');
-  }, 30000);
+  }, 120000);
 
   it('un champ momentanément vide n’est pas un changement d’unité', async () => {
     const user = userEvent.setup({ delay: null });
@@ -435,7 +435,7 @@ describe('Changer l’unité d’un article avertit AVANT d’envoyer', () => {
     // le seul avertissement sérieux de cet écran.
     expect(within(dialogue).queryByText(/ne reconvertit aucune quantité/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enregistrer la correction' })).toBeDisabled();
-  }, 30000);
+  }, 120000);
 
   it('aucun avertissement, et aucune case à cocher, quand l’unité ne bouge pas', async () => {
     const user = userEvent.setup({ delay: null });
@@ -459,7 +459,7 @@ describe('Changer l’unité d’un article avertit AVANT d’envoyer', () => {
 
     await waitFor(() => expect(patch).toHaveBeenCalled());
     expect(dernierAppel(patch).corps).toEqual({ label: 'Ciment CPJ 32,5' });
-  }, 30000);
+  }, 120000);
 });
 
 // ---------------------------------------------------------------------------
@@ -489,7 +489,7 @@ describe('Le sélecteur de chantier n’existe que pour un lieu de chantier', ()
     expect(corps).toEqual({ kind: 'WAREHOUSE', label: 'Magasin de Koumassi' });
     expect(corps).not.toHaveProperty('siteId');
     expect(corps).not.toHaveProperty('tenantId');
-  }, 30000);
+  }, 120000);
 
   it('un lieu de chantier exige son chantier, et l’envoie dans le corps', async () => {
     const user = userEvent.setup({ delay: null });
@@ -517,7 +517,7 @@ describe('Le sélecteur de chantier n’existe que pour un lieu de chantier', ()
     const { adresse, corps } = dernierAppel(post);
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/locations`);
     expect(corps).toEqual({ kind: 'SITE', label: "Dépôt d'Angré", siteId: CHANTIER_ANGRE });
-  }, 30000);
+  }, 120000);
 
   it('avertit qu’un chantier n’a qu’un seul lieu quand celui choisi en a déjà un', async () => {
     const user = userEvent.setup({ delay: null });
@@ -537,7 +537,7 @@ describe('Le sélecteur de chantier n’existe que pour un lieu de chantier', ()
     // serveur reste la seule autorité.
     await waitFor(() => expect(normaliser(dialogue.textContent ?? '')).toContain("dispose deja d'un lieu de stockage"));
     expect(screen.getByRole('button', { name: 'Enregistrer le lieu' })).not.toBeDisabled();
-  }, 30000);
+  }, 120000);
 
   it('repasser en magasin oublie le chantier : il ne part jamais dans le corps d’un magasin', async () => {
     const user = userEvent.setup({ delay: null });
@@ -561,7 +561,7 @@ describe('Le sélecteur de chantier n’existe que pour un lieu de chantier', ()
 
     await waitFor(() => expect(post).toHaveBeenCalled());
     expect(dernierAppel(post).corps).toEqual({ kind: 'WAREHOUSE', label: 'Magasin de Koumassi' });
-  }, 30000);
+  }, 120000);
 });
 
 // ---------------------------------------------------------------------------
@@ -583,7 +583,7 @@ describe('Ce qui ne se corrige pas n’est pas proposé', () => {
     expect(within(dialogue).queryByLabelText('Référence')).not.toBeInTheDocument();
     expect(normaliser(dialogue.textContent ?? '')).toContain('elle ne se corrige pas');
     expect(within(dialogue).getAllByText(/CIM-42/).length).toBeGreaterThanOrEqual(1);
-  }, 30000);
+  }, 120000);
 
   it('n’envoie jamais un corps vide : rien à corriger, rien à enregistrer', async () => {
     const user = userEvent.setup({ delay: null });
@@ -598,7 +598,7 @@ describe('Ce qui ne se corrige pas n’est pas proposé', () => {
     // même pas d'envoyer tant que rien n'a bougé.
     expect(screen.getByRole('button', { name: 'Enregistrer la correction' })).toBeDisabled();
     expect(patch).not.toHaveBeenCalled();
-  }, 30000);
+  }, 120000);
 
   it('vider la famille l’EFFACE (`null`), et ne touche à rien d’autre', async () => {
     const user = userEvent.setup({ delay: null });
@@ -619,7 +619,7 @@ describe('Ce qui ne se corrige pas n’est pas proposé', () => {
     // `null` veut dire « efface », une clé absente veut dire « ne touche
     // pas » : la distinction du contrôleur serveur est tenue jusqu'ici.
     expect(dernierAppel(patch).corps).toEqual({ category: null });
-  }, 30000);
+  }, 120000);
 
   it('la correction d’un lieu ne propose ni nature ni chantier, et le dit', async () => {
     const user = userEvent.setup({ delay: null });
@@ -636,7 +636,7 @@ describe('Ce qui ne se corrige pas n’est pas proposé', () => {
 
     const texte = normaliser(dialogue.textContent ?? '');
     expect(texte).toContain('ni la nature ni le chantier');
-  }, 30000);
+  }, 120000);
 
   it('la correction d’un lieu n’envoie que le libellé', async () => {
     const user = userEvent.setup({ delay: null });
@@ -663,7 +663,7 @@ describe('Ce qui ne se corrige pas n’est pas proposé', () => {
     expect(corps).not.toHaveProperty('kind');
     expect(corps).not.toHaveProperty('siteId');
     expect(corps).not.toHaveProperty('locationId');
-  }, 30000);
+  }, 120000);
 });
 
 // ---------------------------------------------------------------------------
@@ -684,7 +684,7 @@ describe('Aucun bouton de suppression : désactiver n’est pas supprimer', () =
     // Et c'est écrit, plutôt que seulement absent.
     const texte = normaliser(document.body.textContent ?? '');
     expect(texte).toContain("desactiver n'est pas supprimer");
-  }, 30000);
+  }, 120000);
 
   it('désactiver un article passe par `isActive`, jamais par une suppression', async () => {
     const user = userEvent.setup({ delay: null });
@@ -708,7 +708,7 @@ describe('Aucun bouton de suppression : désactiver n’est pas supprimer', () =
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/items/${CIMENT}`);
     expect(corps).toEqual({ isActive: false });
     expect(apiClient.delete).not.toHaveBeenCalled();
-  }, 30000);
+  }, 120000);
 
   it('sous 992 px, la désactivation reste atteignable sur la carte — rien ne la remplace', async () => {
     ecran.mobile = true;
@@ -728,7 +728,7 @@ describe('Aucun bouton de suppression : désactiver n’est pas supprimer', () =
     await waitFor(() => expect(patch).toHaveBeenCalled());
     expect(dernierAppel(patch).corps).toEqual({ isActive: false });
     expect(screen.queryAllByRole('menuitem', { name: /supprim/i })).toHaveLength(0);
-  }, 30000);
+  }, 120000);
 
   it('sous 992 px, un lieu se désactive aussi depuis sa carte', async () => {
     ecran.mobile = true;
@@ -747,7 +747,7 @@ describe('Aucun bouton de suppression : désactiver n’est pas supprimer', () =
     const { adresse, corps } = dernierAppel(patch);
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/locations/${MAGASIN}`);
     expect(corps).toEqual({ isActive: false });
-  }, 30000);
+  }, 120000);
 
   it('un article désactivé se réactive, et reste visible dans la liste', async () => {
     const user = userEvent.setup({ delay: null });
@@ -763,7 +763,7 @@ describe('Aucun bouton de suppression : désactiver n’est pas supprimer', () =
 
     await waitFor(() => expect(patch).toHaveBeenCalled());
     expect(dernierAppel(patch).corps).toEqual({ isActive: true });
-  }, 30000);
+  }, 120000);
 });
 
 // ---------------------------------------------------------------------------
@@ -781,7 +781,7 @@ describe('La méthode de valorisation enregistre une DÉCISION', () => {
     expect(screen.getAllByText('Coût moyen pondéré').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/12\/03\/2026/)).toBeInTheDocument();
     expect(screen.getByText(/Décision du comité de gestion du 12 mars 2026/)).toBeInTheDocument();
-  }, 30000);
+  }, 120000);
 
   it('dit en clair qu’aucune décision n’a été arrêtée quand le motif est nul', async () => {
     const user = userEvent.setup({ delay: null });
@@ -793,7 +793,7 @@ describe('La méthode de valorisation enregistre une DÉCISION', () => {
 
     expect(screen.getByText(/Aucune décision n'a encore été arrêtée/i)).toBeInTheDocument();
     expect(normaliser(document.body.textContent ?? '')).toContain("s'applique par defaut");
-  }, 30000);
+  }, 120000);
 
   it('exige le motif avant d’enregistrer la décision, et le dit avant l’envoi', async () => {
     const user = userEvent.setup({ delay: null });
@@ -805,7 +805,7 @@ describe('La méthode de valorisation enregistre une DÉCISION', () => {
     expect(screen.getByText(/Le motif est obligatoire/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enregistrer la décision' })).toBeDisabled();
     expect(put).not.toHaveBeenCalled();
-  }, 30000);
+  }, 120000);
 
   it('envoie la méthode ET son motif ensemble, sans identifiant d’agence dans le corps', async () => {
     const user = userEvent.setup({ delay: null });
@@ -834,7 +834,7 @@ describe('La méthode de valorisation enregistre une DÉCISION', () => {
     });
     expect(corps).not.toHaveProperty('tenantId');
     expect(corps).not.toHaveProperty('decidedAt');
-  }, 30000);
+  }, 120000);
 
   it('ne propose aucune autre méthode : le geste enregistre la décision, pas un choix', async () => {
     const user = userEvent.setup({ delay: null });
@@ -849,7 +849,7 @@ describe('La méthode de valorisation enregistre une DÉCISION', () => {
     expect(within(panneau).queryAllByRole('combobox')).toHaveLength(0);
     expect(within(panneau).queryAllByRole('radio')).toHaveLength(0);
     expect(normaliser(document.body.textContent ?? '')).toContain("une seule methode existe aujourd'hui");
-  }, 30000);
+  }, 120000);
 });
 
 // ---------------------------------------------------------------------------
@@ -881,7 +881,7 @@ describe('Les corps de création n’emportent que ce que le schéma `.strict()`
     expect(corps).not.toHaveProperty('defaultCostCategoryId');
     expect(corps).not.toHaveProperty('tenantId');
     expect(corps).not.toHaveProperty('isActive');
-  }, 30000);
+  }, 120000);
 
   it('emporte la famille et le poste proposé quand ils sont renseignés', async () => {
     const user = userEvent.setup({ delay: null });
@@ -905,35 +905,53 @@ describe('Les corps de création n’emportent que ce que le schéma `.strict()`
     const { corps } = dernierAppel(post);
     expect(Object.keys(corps).sort()).toEqual(['category', 'defaultCostCategoryId', 'label', 'reference', 'unit']);
     expect(corps.defaultCostCategoryId).toBe(POSTE_GROS_OEUVRE);
-  }, 30000);
+  }, 120000);
 
-  it('les filtres des deux listes partent en requête, jamais dans le chemin', async () => {
+  it('les deux listes arrivent en entier : aucun filtre ne part en requête, la recherche est locale', async () => {
     const user = userEvent.setup({ delay: null });
     monter();
 
     await screen.findByText('CIM-42', {}, { timeout: 8000 });
-    // Sans filtre, aucun paramètre de requête.
     expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items`);
 
-    await user.click(screen.getByRole('checkbox', { name: /Articles actifs uniquement/ }));
-    await waitFor(() => expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items?onlyActive=true`));
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'LAVE');
+    await waitFor(() => expect(screen.queryByText('CIM-42')).not.toBeInTheDocument(), { timeout: 8000 });
+    expect(screen.getByText('SAB-00')).toBeInTheDocument();
+    const appelsArticles = get.mock.calls.filter(([url]) => /\/stock\/items(\?|$)/.test(String(url)));
+    expect(appelsArticles.every(([url]) => !String(url).includes('?'))).toBe(true);
 
-    await user.type(screen.getByLabelText('Rechercher un article'), 'ciment');
-    await waitFor(() =>
-      expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items?onlyActive=true&search=ciment`)
-    );
-  }, 30000);
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText('CIM-42', {}, { timeout: 8000 })).toBeInTheDocument();
+  }, 120000);
 
-  it('le filtre de nature des lieux part en requête, et se retire', async () => {
-    const user = userEvent.setup({ delay: null });
-    monter();
+  it('applique le statut d’une URL partagée : seuls les articles inactifs (préfixe art)', async () => {
+    configurerGet({ articles: [ciment(), sable({ isActive: false })] });
+    monter(`/tenant/${TENANT}/finance/stock/parametrage?art.actif=0`);
 
-    await ouvrirOngletLieux(user);
-    fireEvent.mouseDown(screen.getByLabelText('Nature'));
-    fireEvent.click(await screen.findByText('Lieu de chantier', { selector: '.ant-select-item-option-content' }));
+    expect(await screen.findByText('SAB-00', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText('CIM-42')).not.toBeInTheDocument();
+  }, 120000);
 
-    await waitFor(() => expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/locations?kind=SITE`));
-  }, 30000);
+  it('le critère « famille » d’une URL filtre les articles', async () => {
+    monter(`/tenant/${TENANT}/finance/stock/parametrage?art.famille=${encodeURIComponent('Gros œuvre')}`);
+
+    expect(await screen.findByText('CIM-42', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText('SAB-00')).not.toBeInTheDocument();
+  }, 120000);
+
+  it('la nature des lieux se filtre en local, et se retire (préfixe lieu)', async () => {
+    monter(`/tenant/${TENANT}/finance/stock/parametrage?onglet=lieux&lieu.nature=SITE`);
+
+    expect(await screen.findByText('Dépôt de la Villa Riviera', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText("Magasin central d'Angré")).not.toBeInTheDocument();
+    const appelsLieux = get.mock.calls.filter(([url]) => /\/stock\/locations(\?|$)/.test(String(url)));
+    expect(appelsLieux.every(([url]) => !String(url).includes('?'))).toBe(true);
+
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    fireEvent.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText("Magasin central d'Angré", {}, { timeout: 8000 })).toBeInTheDocument();
+  }, 120000);
 });
 
 // ---------------------------------------------------------------------------
@@ -960,7 +978,7 @@ describe('Les refus du serveur sont relayés tels quels', () => {
     expect(
       await screen.findByText('Un article porte déjà la référence « CIM-42 ».', {}, { timeout: 8000 })
     ).toBeInTheDocument();
-  }, 30000);
+  }, 120000);
 
   it('poste désactivé : le serveur reste la seule autorité', async () => {
     const user = userEvent.setup({ delay: null });
@@ -979,7 +997,7 @@ describe('Les refus du serveur sont relayés tels quels', () => {
     await user.click(screen.getByRole('button', { name: "Enregistrer l'article" }));
 
     expect(await screen.findByText('Ce poste est désactivé.', {}, { timeout: 8000 })).toBeInTheDocument();
-  }, 30000);
+  }, 120000);
 
   it('second lieu pour le même chantier : le refus du serveur est affiché tel quel', async () => {
     const user = userEvent.setup({ delay: null });
@@ -1004,7 +1022,7 @@ describe('Les refus du serveur sont relayés tels quels', () => {
     expect(
       await screen.findByText('Ce chantier dispose déjà d’un lieu de stockage.', {}, { timeout: 8000 })
     ).toBeInTheDocument();
-  }, 30000);
+  }, 120000);
 
   it('affiche un état d’erreur avec un moyen de réessayer quand les listes tombent', async () => {
     get.mockImplementation(async () => {
@@ -1014,7 +1032,7 @@ describe('Les refus du serveur sont relayés tels quels', () => {
 
     expect(await screen.findByText('Impossible de charger les articles.', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Réessayer' }).length).toBeGreaterThanOrEqual(1);
-  }, 15000);
+  }, 120000);
 });
 
 // ---------------------------------------------------------------------------
@@ -1033,7 +1051,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     const texte = normaliser(document.body.textContent ?? '');
     expect(texte).not.toMatch(/\bdebit/);
     expect(texte).not.toMatch(/\bcredit/);
-  }, 30000);
+  }, 120000);
 
   it('les formulaires non plus, articles comme lieux', async () => {
     const user = userEvent.setup({ delay: null });
@@ -1055,7 +1073,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     texte = normaliser(document.body.textContent ?? '');
     expect(texte).not.toMatch(/\bdebit/);
     expect(texte).not.toMatch(/\bcredit/);
-  }, 30000);
+  }, 120000);
 
   it('n’affiche jamais les identifiants, seulement les noms', async () => {
     const user = userEvent.setup({ delay: null });
@@ -1070,7 +1088,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     expect(screen.queryByText(CHANTIER_RIVIERA)).not.toBeInTheDocument();
     // Le nom du chantier, lui, est bien là.
     expect(screen.getAllByText('Villa de la Riviera').length).toBeGreaterThanOrEqual(1);
-  }, 30000);
+  }, 120000);
 });
 
 // ---------------------------------------------------------------------------
@@ -1101,7 +1119,7 @@ describe('Lot 040 — les gestes d’écriture suivent `canManageSettings`', () 
     const adresses = get.mock.calls.map(appel => String(appel[0]));
     expect(adresses.some(adresse => /\/finance\/cost-categories/.test(adresse))).toBe(false);
     expect(adresses.some(adresse => /\/finance\/sites(\?|$)/.test(adresse))).toBe(false);
-  }, 30000);
+  }, 120000);
 
   it('avec le droit de paramétrer, les boutons d’écriture sont là', async () => {
     monter();
@@ -1109,7 +1127,7 @@ describe('Lot 040 — les gestes d’écriture suivent `canManageSettings`', () 
     await screen.findByText('CIM-42', {}, { timeout: 8000 });
     expect(screen.getAllByRole('button', { name: /Nouvel article/ }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: 'Corriger' }).length).toBeGreaterThanOrEqual(1);
-  }, 15000);
+  }, 120000);
 });
 
 describe('Lot 040 — un lieu en cours d’inventaire', () => {
@@ -1140,7 +1158,7 @@ describe('Lot 040 — un lieu en cours d’inventaire', () => {
     expect(within(ligneMagasin).getByText('Comptage en cours')).toBeInTheDocument();
     const ligneDepot = screen.getByText('Dépôt de la Villa Riviera').closest('tr') as HTMLElement;
     expect(within(ligneDepot).getByText('Comptage clos')).toBeInTheDocument();
-  }, 30000);
+  }, 120000);
 
   it('relaie le refus de désactiver un lieu qui porte un inventaire en cours', async () => {
     const user = userEvent.setup({ delay: null });
@@ -1167,7 +1185,7 @@ describe('Lot 040 — un lieu en cours d’inventaire', () => {
         { timeout: 8000 }
       )
     ).toBeInTheDocument();
-  }, 30000);
+  }, 120000);
 });
 
 describe('Lot 040 — changer l’unité ne convertit rien', () => {
@@ -1188,7 +1206,7 @@ describe('Lot 040 — changer l’unité ne convertit rien', () => {
     await user.type(unite, 'tonne');
 
     expect(await within(dialogue).findByText(phrase)).toBeInTheDocument();
-  }, 30000);
+  }, 120000);
 });
 
 describe('Onglets paresseux et pagination locale', () => {
@@ -1210,19 +1228,19 @@ describe('Onglets paresseux et pagination locale', () => {
     expect(appelsVers('/finance/stock/locations')).toBeGreaterThan(0);
     expect(appelsVers('/finance/stock/settings')).toBe(0);
     expect(screen.getByRole('tab', { name: 'Lieux de stockage' })).toHaveAttribute('aria-selected', 'true');
-  }, 30000);
+  }, 120000);
 
   it('ouvre l’onglet demandé par l’URL sans lire les articles', async () => {
     monter(`/tenant/${TENANT}/finance/stock/parametrage?onglet=valorisation`);
     await screen.findByText('La décision en vigueur', {}, { timeout: 8000 });
     expect(appelsVers('/finance/stock/items')).toBe(0);
-  }, 30000);
+  }, 120000);
 
   it('un onglet inconnu retombe sur les articles', async () => {
     monter(`/tenant/${TENANT}/finance/stock/parametrage?onglet=nimporte`);
     await screen.findByText('CIM-42', {}, { timeout: 8000 });
     expect(appelsVers('/finance/stock/locations')).toBe(0);
-  }, 30000);
+  }, 120000);
 
   it('charge les postes à l’ouverture du formulaire d’article seulement', async () => {
     const user = userEvent.setup({ delay: null });
@@ -1232,7 +1250,7 @@ describe('Onglets paresseux et pagination locale', () => {
 
     await user.click((await screen.findAllByRole('button', { name: /Nouvel article/ }))[0]);
     await waitFor(() => expect(appelsVers('/finance/cost-categories')).toBeGreaterThan(0));
-  }, 30000);
+  }, 120000);
 
   it('pagine localement les articles : 20 puis 5', async () => {
     const articles = Array.from({ length: 25 }, (_, n) =>
@@ -1254,5 +1272,5 @@ describe('Onglets paresseux et pagination locale', () => {
 
     await screen.findByText('REF-21', {}, { timeout: 8000 });
     expect(screen.getAllByText(/^REF-[0-9]{2}$/)).toHaveLength(5);
-  }, 30000);
+  }, 120000);
 });

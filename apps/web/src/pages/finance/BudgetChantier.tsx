@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { App, Button, Card, DatePicker, Input, InputNumber, Select, Space, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -16,7 +16,7 @@ import {
 } from '../../services/finance-lot3-service';
 import { listConstructionSites, listCostCategories } from '../../services/finance-lot2-service';
 import { SITE_BUDGET_STATUS_LABELS } from '../../types/finance-lot3-types';
-import type { BudgetAmendment, SiteBudget } from '../../types/finance-lot3-types';
+import type { BudgetAmendment, SiteBudget, SiteBudgetStatus } from '../../types/finance-lot3-types';
 import { detailKey, queryKey, STALE_TIME } from '../../lib/query-keys';
 import {
   PageHeader,
@@ -31,6 +31,9 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { localizedList } from '../../i18n/localized';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 
@@ -69,6 +72,11 @@ const { Title, Text } = Typography;
  * **Validation du budget et d'un avenant : irréversibles, dites avant.**
  * Comme au lot 2, `<ConfirmAction>` porte l'avertissement dans sa description,
  * avant tout appel réseau.
+ *
+ * **Recherche.** Chaque tableau a sa barre (`useLocalListSearch`), portée par
+ * l'URL sous son préfixe : `lig` pour les lignes du budget, `av` pour les
+ * avenants. Les deux listes arrivent d'un bloc ; chaque barre vit dans le
+ * composant de son onglet, monté avec lui.
  *
  * **Vocabulaire (P-1).** On *budgète*, on *engage*, jamais « débit » ni
  * « crédit ».
@@ -135,6 +143,160 @@ function ecartDeLaLigne(ligne: LigneAvenantSaisie): number | null {
 
 const TONE_BUDGET: Record<string, StatusTone> = { DRAFT: 'neutral', VALIDATED: 'success' };
 
+type LigneBudget = SiteBudget['lines'][number];
+
+const OPTIONS_STATUT_AVENANT = localizedList(() =>
+  (Object.keys(SITE_BUDGET_STATUS_LABELS) as SiteBudgetStatus[]).map(value => ({
+    value,
+    label: SITE_BUDGET_STATUS_LABELS[value]
+  }))
+);
+
+// Lignes du budget — champ libre : poste et libellé.
+const TEXTE_LIGNES = [(l: LigneBudget) => l.costCategoryLabel, (l: LigneBudget) => l.label];
+const ACCESSEURS_LIGNES = { poste: (l: LigneBudget) => l.costCategoryId };
+
+// Avenants — champ libre : motif et auteur de la saisie.
+const TEXTE_AVENANTS = [(a: BudgetAmendment) => a.reason, (a: BudgetAmendment) => a.createdByLabel];
+const ACCESSEURS_AVENANTS = {
+  status: (a: BudgetAmendment) => a.status,
+  date: (a: BudgetAmendment) => a.amendmentDate
+};
+
+/** Lignes du budget et leur barre de recherche (préfixe `lig`). Montée avec son onglet. */
+const SectionLignes: React.FC<{ lignes: LigneBudget[]; colonnes: ColumnsType<LigneBudget> }> = ({
+  lignes,
+  colonnes
+}) => {
+  const postes = useMemo(() => {
+    const parId = new Map<string, string>();
+    for (const l of lignes) if (!parId.has(l.costCategoryId)) parId.set(l.costCategoryId, l.costCategoryLabel);
+    return Array.from(parId, ([value, label]) => ({ value, label }));
+  }, [lignes]);
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Poste, libellé…') },
+    { key: 'poste', type: 'select', label: t('Poste de dépense'), primary: true, options: postes }
+  ];
+  const local = useLocalListSearch<LigneBudget>(lignes, {
+    paramPrefix: 'lig',
+    criteria: criteres,
+    text: TEXTE_LIGNES,
+    accessors: ACCESSEURS_LIGNES
+  });
+
+  return (
+    <DataView<LigneBudget>
+      {...local.dataViewProps}
+      emptyDescription={t('Ce budget ne porte encore aucune ligne.')}
+      columns={colonnes}
+      rowKey={l => l.id}
+      aria-label={t('Lignes du budget')}
+      export={{ filename: t('Lignes du budget'), fetchAll: local.exportAll }}
+      renderCard={l => (
+        <DataCard
+          title={l.label}
+          aria-label={l.label}
+          subtitle={l.costCategoryLabel}
+          highlight={<MoneyValue value={l.amountForecast} />}
+          fields={
+            l.quantity != null || l.unitPrice != null
+              ? [
+                  {
+                    label: t('Quantité'),
+                    value: l.quantity == null ? '' : l.quantity.toLocaleString(activeLocale())
+                  },
+                  {
+                    label: t('Prix unitaire'),
+                    value: l.unitPrice == null ? '' : <MoneyValue value={l.unitPrice} />
+                  }
+                ]
+              : undefined
+          }
+        />
+      )}
+    />
+  );
+};
+
+interface SectionAvenantsProps {
+  avenants: BudgetAmendment[] | undefined;
+  colonnes: ColumnsType<BudgetAmendment>;
+  loading: boolean;
+  error: unknown;
+  onRetry: () => void;
+  onValider: (avenant: BudgetAmendment) => void;
+}
+
+/** Avenants du budget et leur barre de recherche (préfixe `av`). Montée avec son onglet. */
+const SectionAvenants: React.FC<SectionAvenantsProps> = ({
+  avenants,
+  colonnes,
+  loading,
+  error,
+  onRetry,
+  onValider
+}) => {
+  const confirmerAction = useConfirmAction();
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Motif, saisi par…') },
+    { key: 'status', type: 'select', label: t('Statut'), primary: true, options: OPTIONS_STATUT_AVENANT },
+    { key: 'date', type: 'dateRange', label: t('Date') }
+  ];
+  const local = useLocalListSearch<BudgetAmendment>(avenants, {
+    paramPrefix: 'av',
+    criteria: criteres,
+    text: TEXTE_AVENANTS,
+    accessors: ACCESSEURS_AVENANTS
+  });
+
+  return (
+    <DataView<BudgetAmendment>
+      {...local.dataViewProps}
+      loading={loading}
+      error={error ? t('Impossible de charger les avenants de ce budget.') : null}
+      errorCause={error}
+      onRetry={onRetry}
+      emptyDescription={t("Aucun avenant n'a encore été saisi sur ce budget.")}
+      columns={colonnes}
+      rowKey={a => a.id}
+      aria-label={t('Avenants du budget')}
+      export={{ filename: t('Avenants'), fetchAll: local.exportAll }}
+      renderCard={a => (
+        <DataCard
+          title={dateCourte(a.amendmentDate)}
+          aria-label={t('Avenant du {{value}}', { value: dateCourte(a.amendmentDate) })}
+          subtitle={a.reason}
+          status={
+            <StatusTag status={a.status} tone={TONE_BUDGET[a.status]} label={SITE_BUDGET_STATUS_LABELS[a.status]} />
+          }
+          highlight={<MoneyValue value={a.totalDelta} signed />}
+          fields={[{ label: t('Saisi par'), value: a.createdByLabel }]}
+          primaryAction={
+            a.status === 'DRAFT'
+              ? {
+                  label: t('Valider'),
+                  onClick: () =>
+                    confirmerAction({
+                      title: t("Valider l'avenant du {{value}} ?", { value: dateCourte(a.amendmentDate) }),
+                      description: t(
+                        "Cette opération est irréversible : un avenant validé ne peut plus être modifié, et son écart s'ajoute alors au budget révisé du chantier."
+                      ),
+                      okText: t('Confirmer la validation'),
+                      onConfirm: () => onValider(a)
+                    })
+                }
+              : undefined
+          }
+        />
+      )}
+    />
+  );
+};
+
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
 }
@@ -143,8 +305,6 @@ export const BudgetChantier: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId, siteId } = useParams<{ tenantId: string; siteId: string }>();
   const queryClient = useQueryClient();
-  const confirmerAction = useConfirmAction();
-
   // Onglet actif dans l'URL (?onglet=lignes|avenants) ; inconnu -> lignes.
   const [searchParams, setSearchParams] = useSearchParams();
   const ongletBrut = searchParams.get('onglet');
@@ -203,16 +363,6 @@ export const BudgetChantier: React.FC = () => {
     enabled: Boolean(tenantId && budget?.id) && onglet === 'avenants',
     staleTime: STALE_TIME.list
   });
-
-  // Pagination locale (20 par page) des deux tableaux.
-  const [pageLignes, setPageLignes] = useState(1);
-  const [taillePageLignes, setTaillePageLignes] = useState(20);
-  const [pageAvenants, setPageAvenants] = useState(1);
-  const [taillePageAvenants, setTaillePageAvenants] = useState(20);
-  const nbLignes = budget?.lines.length ?? 0;
-  const nbAvenants = avenants?.length ?? 0;
-  useEffect(() => setPageLignes(1), [nbLignes]);
-  useEffect(() => setPageAvenants(1), [nbAvenants]);
 
   const chantier = useMemo(() => chantiers?.find(c => c.id === siteId), [chantiers, siteId]);
 
@@ -400,7 +550,7 @@ export const BudgetChantier: React.FC = () => {
   // Quantité et prix unitaire ne s'affichent que là où ils existent : une
   // ligne saisie en montant direct montre une case vide plutôt qu'un « 1 »
   // inventé.
-  const colonnesLignes: ColumnsType<SiteBudget['lines'][number]> = [
+  const colonnesLignes: ColumnsType<LigneBudget> = [
     { title: t('Poste'), key: 'poste', render: (_, l) => l.costCategoryLabel },
     { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
     {
@@ -629,108 +779,20 @@ export const BudgetChantier: React.FC = () => {
               {
                 key: 'lignes',
                 label: t('Lignes du budget'),
-                children: (
-                  <>
-                    <DataView<SiteBudget['lines'][number]>
-                      items={budget.lines.slice((pageLignes - 1) * taillePageLignes, pageLignes * taillePageLignes)}
-                      total={budget.lines.length}
-                      page={pageLignes}
-                      pageSize={taillePageLignes}
-                      onPageChange={(page, taille) => {
-                        setPageLignes(page);
-                        setTaillePageLignes(taille);
-                      }}
-                      emptyDescription={t('Ce budget ne porte encore aucune ligne.')}
-                      columns={colonnesLignes}
-                      rowKey={l => l.id}
-                      aria-label={t('Lignes du budget')}
-                      export={{ filename: t('Lignes du budget') }}
-                      renderCard={l => (
-                        <DataCard
-                          title={l.label}
-                          aria-label={l.label}
-                          subtitle={l.costCategoryLabel}
-                          highlight={<MoneyValue value={l.amountForecast} />}
-                          fields={
-                            l.quantity != null || l.unitPrice != null
-                              ? [
-                                  {
-                                    label: t('Quantité'),
-                                    value: l.quantity == null ? '' : l.quantity.toLocaleString(activeLocale())
-                                  },
-                                  {
-                                    label: t('Prix unitaire'),
-                                    value: l.unitPrice == null ? '' : <MoneyValue value={l.unitPrice} />
-                                  }
-                                ]
-                              : undefined
-                          }
-                        />
-                      )}
-                    />
-                  </>
-                )
+                children: <SectionLignes lignes={budget.lines} colonnes={colonnesLignes} />
               },
               {
                 key: 'avenants',
                 label: t('Avenants'),
                 children: (
                   <>
-                    <DataView<BudgetAmendment>
-                      items={(avenants ?? []).slice(
-                        (pageAvenants - 1) * taillePageAvenants,
-                        pageAvenants * taillePageAvenants
-                      )}
-                      total={nbAvenants}
-                      page={pageAvenants}
-                      pageSize={taillePageAvenants}
-                      onPageChange={(page, taille) => {
-                        setPageAvenants(page);
-                        setTaillePageAvenants(taille);
-                      }}
+                    <SectionAvenants
+                      avenants={avenants}
+                      colonnes={colonnesAvenants}
                       loading={avenantsEnAttente}
-                      error={erreurAvenants ? t('Impossible de charger les avenants de ce budget.') : null}
-                      errorCause={erreurAvenants}
+                      error={erreurAvenants}
                       onRetry={() => refetchAvenants()}
-                      emptyDescription={t("Aucun avenant n'a encore été saisi sur ce budget.")}
-                      columns={colonnesAvenants}
-                      rowKey={a => a.id}
-                      aria-label={t('Avenants du budget')}
-                      export={{ filename: t('Avenants') }}
-                      renderCard={a => (
-                        <DataCard
-                          title={dateCourte(a.amendmentDate)}
-                          aria-label={t('Avenant du {{value}}', { value: dateCourte(a.amendmentDate) })}
-                          subtitle={a.reason}
-                          status={
-                            <StatusTag
-                              status={a.status}
-                              tone={TONE_BUDGET[a.status]}
-                              label={SITE_BUDGET_STATUS_LABELS[a.status]}
-                            />
-                          }
-                          highlight={<MoneyValue value={a.totalDelta} signed />}
-                          fields={[{ label: t('Saisi par'), value: a.createdByLabel }]}
-                          primaryAction={
-                            a.status === 'DRAFT'
-                              ? {
-                                  label: t('Valider'),
-                                  onClick: () =>
-                                    confirmerAction({
-                                      title: t("Valider l'avenant du {{value}} ?", {
-                                        value: dateCourte(a.amendmentDate)
-                                      }),
-                                      description: t(
-                                        "Cette opération est irréversible : un avenant validé ne peut plus être modifié, et son écart s'ajoute alors au budget révisé du chantier."
-                                      ),
-                                      okText: t('Confirmer la validation'),
-                                      onConfirm: () => validerAvenant(a)
-                                    })
-                                }
-                              : undefined
-                          }
-                        />
-                      )}
+                      onValider={validerAvenant}
                     />
 
                     <Card style={{ marginTop: 'var(--space-6)' }}>

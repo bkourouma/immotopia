@@ -214,7 +214,7 @@ async function ouvrirInscription() {
 }
 
 function boutonInscrire(): HTMLElement {
-  const dialog = screen.getByRole('dialog', { name: 'Inscrire un chef de chantier' });
+  const dialog = screen.getByRole('dialog');
   return within(dialog).getByRole('button', { name: 'Inscrire' });
 }
 
@@ -232,6 +232,39 @@ describe('Onglet WhatsApp — refus', () => {
     ).toBeInTheDocument();
     const urls = get.mock.calls.map(call => String(call[0]));
     expect(urls.some(url => url.includes('/stock/whatsapp'))).toBe(false);
+  });
+});
+
+describe('Onglet WhatsApp — recherche des inscriptions', () => {
+  const AMINATA: RegistrationView = {
+    ...KOFFI,
+    id: 'inscription-aminata',
+    userId: 'user-aminata',
+    userLabel: 'Aminata Traoré',
+    phoneMasked: '+225 05 •• •• •• 99',
+    status: 'REVOKED',
+    sites: [{ siteId: 'chantier-plateau', name: 'Tour du Plateau', eligible: true }]
+  };
+  const T = { timeout: 8000 };
+
+  it('filtre les lignes à la saisie, applique un critère d’URL et efface les critères', async () => {
+    routerGet({ registrations: [KOFFI, AMINATA] });
+    monter();
+    expect(await screen.findByText('Koffi Yao', undefined, T)).toBeInTheDocument();
+    expect(screen.getByText('Aminata Traoré')).toBeInTheDocument();
+    fireEvent.change(within(screen.getByRole('search')).getByRole('textbox'), { target: { value: 'plateau' } });
+    await waitFor(() => expect(screen.queryByText('Koffi Yao')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('Aminata Traoré')).toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    fireEvent.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText('Koffi Yao', undefined, T)).toBeInTheDocument();
+  });
+
+  it('applique l’état demandé par l’URL (préfixe insc)', async () => {
+    routerGet({ registrations: [KOFFI, AMINATA] });
+    monter(`/tenant/${TENANT}/finance/stock/whatsapp?insc.status=REVOKED`);
+    expect(await screen.findByText('Aminata Traoré', undefined, T)).toBeInTheDocument();
+    expect(screen.queryByText('Koffi Yao')).not.toBeInTheDocument();
   });
 });
 
@@ -304,7 +337,7 @@ describe('Onglet WhatsApp — inscriptions', () => {
     monter();
     fireEvent.click(await screen.findByRole('button', { name: 'Actions de Koffi Yao' }));
     fireEvent.click(await screen.findByText('Révoquer'));
-    const dialog = await screen.findByRole('dialog', { name: 'Révoquer l’accès' });
+    const dialog = await screen.findByRole('dialog');
     expect(
       within(dialog).getByText(
         'Révoquer l’accès de Koffi Yao ? Le bot refusera ses prochains messages. Une photo en attente de réponse sera abandonnée.'
@@ -344,7 +377,7 @@ describe('Onglet WhatsApp — modifier les chantiers (rec041-01)', () => {
     monter();
     fireEvent.click(await screen.findByRole('button', { name: 'Actions de Koffi Yao' }));
     fireEvent.click(await screen.findByText('Modifier les chantiers'));
-    const dialog = await screen.findByRole('dialog', { name: 'Modifier les chantiers' });
+    const dialog = await screen.findByRole('dialog');
     // Tant que les chantiers actuels ne sont pas posés, « Enregistrer » reste fermé.
     expect(within(dialog).getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
 

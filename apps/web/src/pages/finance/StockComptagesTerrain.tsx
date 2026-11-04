@@ -1,14 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Alert, Button, Select, Space, Tooltip, Typography } from 'antd';
+import { Alert, Button, Space, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { PageHeader } from '../../components/primitives/PageHeader';
 import { StateBlock } from '../../components/primitives/StateBlock';
 import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded';
 import { DataView } from '../../components/primitives/DataView';
 import { DataCard } from '../../components/primitives/DataCard';
-import { FilterSheet } from '../../components/primitives/FilterSheet';
 import { MoneyValue } from '../../components/primitives/MoneyValue';
 import { StatusTag } from '../../components/primitives/StatusTag';
 import { SkeletonTable } from '../../components/primitives/Skeleton';
@@ -25,13 +24,15 @@ import {
   inventoryHref,
   isForbiddenError
 } from '../../components/finance/stock/whatsapp/whatsapp-labels';
+import { useListSearch } from '../../hooks/useListSearch';
 import { useStockFieldContext } from '../../hooks/useStockFieldContext';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { listStockFieldCounts, listStockWhatsappRegistrations } from '../../services/finance-stock-whatsapp-service';
-import type { FieldCountRow, StockCountSource } from '../../types/finance-stock-whatsapp-types';
+import type { FieldCountRow, FieldCountsFilters, StockCountSource } from '../../types/finance-stock-whatsapp-types';
 import type { StockMeta } from '../../types/finance-stock-controle-types';
 import { STOCK_COUNT_STATUS_DISPLAY } from '../../types/finance-stock-controle-types';
 import { formatQuantity } from '../../types/finance-stock-inventaire-types';
+import type { ApiParams } from '../../utils/list-search';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { handleApiError } from '../../utils/error-handler';
 import { EXPORT_MAX_ROWS } from '../../utils/table-export/collect';
@@ -39,8 +40,20 @@ import { t } from '../../i18n/t';
 
 const PAGE_SIZE = 50;
 
-function sourceParam(value: string | null): StockCountSource | undefined {
+function sourceParam(value: string | number | null | undefined): StockCountSource | undefined {
   return value === 'WHATSAPP' || value === 'WEB' ? value : undefined;
+}
+
+/** Critères de la barre (déjà traduits pour l'API) vers les filtres typés du service. */
+function toFilters(params: ApiParams): FieldCountsFilters & { search?: string } {
+  const texte = (valeur: string | number | undefined) => (valeur === undefined ? undefined : String(valeur));
+  return {
+    siteId: texte(params.siteId),
+    locationId: texte(params.locationId),
+    itemId: texte(params.itemId),
+    source: sourceParam(params.source),
+    search: texte(params.search)
+  };
 }
 
 /** Les masques valent pour toute la liste : valeurs visibles d'après la 1re page, lieux masqués réunis. */
@@ -103,39 +116,69 @@ const CountedAtCell: React.FC<{ row: FieldCountRow }> = ({ row }) => {
 export function StockComptagesTerrain(): React.ReactElement {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
   const { captureId, openCapture, closeCapture } = useCaptureDrawerParam();
   const contexte = useStockFieldContext(tenantId);
   const ctx = contexte.data?.data;
   const canManage = Boolean(ctx?.abilities.canManageSettings);
 
-  const [siteId, setSiteId] = useState<string | undefined>(undefined);
-  const locationId = params.get('lieu') ?? undefined;
-  const itemId = params.get('article') ?? undefined;
-  const source = sourceParam(params.get('source'));
+  // Chantier, lieu, article et source gardent leurs clés d'URL (`lieu`, `article`,
+  // `source` : des liens d'autres écrans y mènent). Le lieu proposé suit le chantier.
+  const chantierUrl = params.get('chantier') ?? undefined;
+  const sites = ctx?.sites ?? [];
+  const locations = (ctx?.locations ?? []).filter(location => !chantierUrl || location.siteId === chantierUrl);
+  const items = ctx?.items ?? [];
 
-  const setParam = (cle: string, valeur: string | undefined) =>
-    setParams(
-      prev => {
-        const next = new URLSearchParams(prev);
-        if (valeur) next.set(cle, valeur);
-        else next.delete(cle);
-        return next;
+  const search = useListSearch({
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Article, lieu, compté par…') },
+      {
+        key: 'chantier',
+        type: 'select',
+        label: t('Chantier'),
+        primary: true,
+        api: 'siteId',
+        options: sites.map(site => ({ value: site.id, label: site.name }))
       },
-      { replace: true }
-    );
-
-  const filtres = { siteId, locationId, itemId, source };
-  const activeCount = Object.values(filtres).filter(Boolean).length;
+      {
+        key: 'lieu',
+        type: 'select',
+        label: t('Lieu'),
+        primary: true,
+        api: 'locationId',
+        options: locations.map(location => ({ value: location.id, label: location.label }))
+      },
+      {
+        key: 'article',
+        type: 'select',
+        label: t('Article'),
+        api: 'itemId',
+        options: items.map(item => ({ value: item.id, label: `${item.reference} — ${item.label}` }))
+      },
+      {
+        key: 'source',
+        type: 'select',
+        label: t('Source du dernier comptage'),
+        options: [
+          { value: 'WHATSAPP', label: t('WhatsApp') },
+          { value: 'WEB', label: t('Web') }
+        ]
+      }
+    ]
+  });
+  const locationId = typeof search.values.lieu === 'string' ? search.values.lieu : undefined;
+  const filtres = toFilters(search.filterParams);
 
   const liste = useInfiniteQuery({
-    queryKey: queryKey(STOCK_FIELD_COUNTS_ENTITY, tenantId, filtres),
+    queryKey: queryKey(STOCK_FIELD_COUNTS_ENTITY, tenantId, search.filterParams),
     queryFn: ({ pageParam }) =>
       listStockFieldCounts(tenantId as string, { ...filtres, cursor: pageParam ?? undefined, limit: PAGE_SIZE }),
     initialPageParam: null as string | null,
     getNextPageParam: last => last.meta.nextCursor ?? null,
     enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    // La barre reste montée (et garde le focus) pendant la requête suivante.
+    placeholderData: keepPreviousData
   });
 
   const rows = useMemo(() => liste.data?.pages.flatMap(page => page.data) ?? [], [liste.data]);
@@ -175,9 +218,6 @@ export function StockComptagesTerrain(): React.ReactElement {
     );
   }
 
-  const sites = ctx?.sites ?? [];
-  const locations = (ctx?.locations ?? []).filter(location => !siteId || location.siteId === siteId);
-  const items = ctx?.items ?? [];
   const showValues = meta.valuesVisible;
   const rappelNonComptes = rows.some(
     row => row.lastCount?.countStatus === 'COUNTED' && row.lastCount?.countSource === 'WHATSAPP'
@@ -304,66 +344,6 @@ export function StockComptagesTerrain(): React.ReactElement {
         )}
       </Typography.Paragraph>
 
-      <FilterSheet
-        activeCount={activeCount}
-        title={t('Filtrer')}
-        onClear={() => {
-          setSiteId(undefined);
-          setParams(
-            prev => {
-              const next = new URLSearchParams(prev);
-              ['lieu', 'article', 'source'].forEach(cle => next.delete(cle));
-              return next;
-            },
-            { replace: true }
-          );
-        }}
-      >
-        <Select
-          allowClear
-          placeholder={t('Chantier')}
-          aria-label={t('Chantier')}
-          style={{ minWidth: 200 }}
-          value={siteId}
-          onChange={value => setSiteId(value)}
-          options={sites.map(site => ({ value: site.id, label: site.name }))}
-        />
-        <Select
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          placeholder={t('Lieu')}
-          aria-label={t('Lieu')}
-          style={{ minWidth: 200 }}
-          value={locationId}
-          onChange={value => setParam('lieu', value)}
-          options={locations.map(location => ({ value: location.id, label: location.label }))}
-        />
-        <Select
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          placeholder={t('Article')}
-          aria-label={t('Article')}
-          style={{ minWidth: 220 }}
-          value={itemId}
-          onChange={value => setParam('article', value)}
-          options={items.map(item => ({ value: item.id, label: `${item.reference} — ${item.label}` }))}
-        />
-        <Select
-          placeholder={t('Source du dernier comptage')}
-          aria-label={t('Source du dernier comptage')}
-          style={{ minWidth: 200 }}
-          value={source ?? 'ALL'}
-          onChange={value => setParam('source', value === 'ALL' ? undefined : value)}
-          options={[
-            { value: 'ALL', label: t('Toutes les sources') },
-            { value: 'WHATSAPP', label: t('WhatsApp') },
-            { value: 'WEB', label: t('Web') }
-          ]}
-        />
-      </FilterSheet>
-
       {locationId && blind.has(locationId) && (
         <div style={{ marginBlockEnd: 16 }}>
           <StockBlindBanner variant="count" />
@@ -407,6 +387,8 @@ export function StockComptagesTerrain(): React.ReactElement {
               return { items: toutes, truncated: tronque };
             }
           }}
+          search={search.searchProps}
+          {...search.dataViewProps}
           items={rows}
           total={rows.length}
           page={1}
