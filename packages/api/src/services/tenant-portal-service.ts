@@ -955,7 +955,23 @@ export class TenantPortalService {
             status: 'PENDING',
             notes: data.notes || null
           },
-          include: {
+          // `select` explicite : seuls les champs que le locataire doit relire.
+          // `proof_file_url` est lu ici pour l'e-mail à l'agence puis retiré de
+          // la réponse (voir plus bas), jamais renvoyé au portail.
+          select: {
+            id: true,
+            lease_id: true,
+            installment_id: true,
+            amount: true,
+            payment_date: true,
+            payment_method: true,
+            mobile_operator: true,
+            transaction_phone: true,
+            reference: true,
+            proof_file_url: true,
+            status: true,
+            notes: true,
+            created_at: true,
             lease: {
               select: {
                 id: true,

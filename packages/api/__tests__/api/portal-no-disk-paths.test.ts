@@ -42,6 +42,18 @@ jest.mock('../../src/services/audit-service', () => ({
   flushAuditQueue: jest.fn()
 }));
 
+// La déclaration de paiement écrit la preuve sur le disque : rien n'est écrit ici.
+jest.mock('fs/promises', () => ({
+  ...jest.requireActual('fs/promises'),
+  mkdir: jest.fn(async () => undefined),
+  writeFile: jest.fn(async () => undefined),
+  unlink: jest.fn(async () => undefined)
+}));
+
+jest.mock('../../src/services/email-notification-config-service', () => ({
+  getEmailNotificationConfig: jest.fn(async () => ({ enabled: false }))
+}));
+
 import tenantPortalRoutes from '../../src/routes/tenant-portal-routes';
 import ownerPortalRoutes from '../../src/routes/owner-portal-routes';
 import { errorHandler } from '../../src/middleware/error-middleware';
@@ -280,6 +292,33 @@ describe('portail locataire — aucune réponse ne porte de chemin disque', () =
     ]) {
       expect(related).not.toHaveProperty(key);
     }
+  });
+
+  it('déclaration de paiement avec preuve : ni chemin /uploads ni champs internes dans la réponse', async () => {
+    // PNG minimal : l'extension et le type viennent de la signature du contenu.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64'
+    );
+    const res = await request(app)
+      .post('/api/portal/tenant/payments/declare')
+      .set('x-test-user', USER_AWA)
+      .field('amount', '50000')
+      .field('paymentDate', '2026-04-10')
+      .field('paymentMethod', 'MOBILE_MONEY')
+      .field('mobileOperator', 'ORANGE')
+      .field('transactionPhone', '+2250700000000')
+      .attach('proof', png, { filename: 'preuve.png', contentType: 'image/png' });
+
+    expect(`${res.status} ${JSON.stringify(res.body)}`).toMatch(/^201 /);
+    expect(findDiskPathLeaks(res.body)).toEqual([]);
+    const declaration = res.body.data;
+    expect(declaration).toMatchObject({ amount: 50000, status: 'PENDING', hasProof: true });
+    for (const key of ['proof_file_url', 'tenant_id', 'declared_by', 'reviewed_by', 'review_notes']) {
+      expect(declaration).not.toHaveProperty(key);
+    }
+    // La preuve est bien enregistrée côté serveur, mais ne sort pas.
+    expect(mockPrisma.rentalPaymentDeclaration.rows[0].proof_file_url).toMatch(/^\/uploads\/portal\/payments\//);
   });
 
   it('détail d’un ticket : pièces jointes sans URL de stockage', async () => {
