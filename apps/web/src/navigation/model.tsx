@@ -368,7 +368,7 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
           children: [
             financeLeaf('finance-tresorerie', t('Caisse et trésorerie'), 'caisse-tresorerie'),
             financeLeaf('finance-validation', t('Saisie et validation'), 'saisie-validation'),
-            { key: 'finance-comptabilite', label: t('Comptabilité'), href: '/tenant/:tenantId/finance/comptabilite' }
+            financeLeaf('finance-comptabilite', t('Comptabilité'), 'comptabilite')
           ]
         },
         {
