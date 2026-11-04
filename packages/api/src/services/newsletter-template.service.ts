@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import { prisma } from '../utils/database';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
@@ -33,7 +34,7 @@ export async function getTemplate(tenantId: string, templateId: string) {
 export async function listTemplates(tenantId: string, options: { search?: string } = {}) {
   const search = options.search?.trim();
   return prisma.newsletterTemplate.findMany({
-    where: { tenantId, ...(search ? { name: { contains: search, mode: 'insensitive' as const } } : {}) },
+    where: { tenantId, ...(search ? { name: { contains: escapeLike(search), mode: 'insensitive' as const } } : {}) },
     orderBy: { name: 'asc' }
   });
 }

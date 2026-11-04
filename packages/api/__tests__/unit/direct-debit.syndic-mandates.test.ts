@@ -630,6 +630,15 @@ describe('syndic / lecture et étanchéité des périmètres', () => {
     await expect(listSyndicMandates(TENANT, SYN_X, { page: 1, pageSize: 20 })).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  it('la recherche littérale échappe les jokers sans modifier le périmètre', async () => {
+    await listSyndicMandates(TENANT, SYN, { page: 1, pageSize: 20, search: 'lot_7' });
+    const where = lastCall(mockDb.directDebitMandate.findMany)[0].where;
+    expect(where).toMatchObject({ tenantId: TENANT, scope: 'SYNDIC_LOT', syndicateId: SYN });
+    expect(where.OR[0].holderName.contains).toBe('lot\\_7');
+    expect(where.OR[1].lot.is.lotNumber.contains).toBe('lot\\_7');
+    expect(where.OR[2].debtorContact.is.OR[0].firstName.contains).toBe('lot\\_7');
+  });
+
   it('un mandat de copropriété est introuvable côté locatif, et inversement ou depuis un autre syndicat', async () => {
     const mandate = await draft();
     await expect(getMandate(TENANT, mandate.id)).rejects.toBeInstanceOf(NotFoundError);

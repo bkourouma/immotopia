@@ -49,7 +49,7 @@ console.log(
 );
 // --runInBand : isolation.test.ts compare des compteurs GLOBAUX avant/apres ; une suite parallele qui ecrit dans la meme base les fausserait.
 execSync(
-  'npx jest --runInBand __tests__/integration/isolation.test.ts __tests__/integration/external-access.db.test.ts __tests__/integration/patrimoine.property-asset.integration.test.ts __tests__/integration/signup-guard.integration.test.ts __tests__/integration/personal-space.integration.test.ts __tests__/integration/patrimoine.personal-permission.integration.test.ts __tests__/integration/signature.db.test.ts __tests__/integration/accounting-exports-sql.test.ts',
+  'npx jest --runInBand --forceExit __tests__/integration/isolation.test.ts __tests__/integration/external-access.db.test.ts __tests__/integration/patrimoine.property-asset.integration.test.ts __tests__/integration/signup-guard.integration.test.ts __tests__/integration/personal-space.integration.test.ts __tests__/integration/patrimoine.personal-permission.integration.test.ts __tests__/integration/signature.db.test.ts __tests__/integration/accounting-exports-sql.test.ts __tests__/integration/syndic-accounting-reads-sql.test.ts __tests__/integration/like-escape-sql.test.ts',
   { stdio: 'inherit', env }
 );
 
@@ -58,7 +58,7 @@ execSync(
 // transactions simultanees sur la meme base et compte ce qui a ete ecrit.
 console.log('Execution des suites de concurrence du stock...');
 execSync(
-  'npx jest --runInBand __tests__/integration/stock-concurrence.test.ts __tests__/integration/stock-cloture-concurrence.test.ts __tests__/integration/stock-alertes-concurrence.test.ts',
+  'npx jest --runInBand --forceExit __tests__/integration/stock-concurrence.test.ts __tests__/integration/stock-cloture-concurrence.test.ts __tests__/integration/stock-alertes-concurrence.test.ts',
   { stdio: 'inherit', env }
 );
 
@@ -68,7 +68,7 @@ execSync(
 // chacune compte ce que des messages simultanes ont ecrit.
 console.log("Execution des suites de l'inventaire par WhatsApp...");
 execSync(
-  'npx jest --runInBand __tests__/integration/stock-whatsapp-inventaire.test.ts __tests__/integration/stock-whatsapp-quota-concurrence.test.ts',
+  'npx jest --runInBand --forceExit __tests__/integration/stock-whatsapp-inventaire.test.ts __tests__/integration/stock-whatsapp-quota-concurrence.test.ts',
   { stdio: 'inherit', env }
 );
 
@@ -76,4 +76,4 @@ execSync(
 // SEPAREMENT : certains cas desactivent un declencheur de `audit_logs` le temps
 // d'une alteration simulee, ce qui ne doit jamais croiser une autre suite.
 console.log("Execution de la suite integrite du journal d'audit...");
-execSync('npx jest --runInBand __tests__/integration/audit-integrity.test.ts', { stdio: 'inherit', env });
+execSync('npx jest --runInBand --forceExit __tests__/integration/audit-integrity.test.ts', { stdio: 'inherit', env });

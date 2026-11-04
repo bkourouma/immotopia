@@ -88,6 +88,17 @@ describe('GET portal/copropriete/quittances', () => {
     expect(prisma.syndicChargeReceipt.findMany.mock.calls[0][0].where.AND).toBeUndefined();
   });
 
+  it('échappe les jokers SQL dans la recherche des quittances', async () => {
+    const res = await request(app).get(`/portal/copropriete/quittances?search=${encodeURIComponent('Q_%\\1')}`);
+    expect(res.status).toBe(200);
+    const where = prisma.syndicChargeReceipt.findMany.mock.calls[0][0].where;
+    expect(where.AND[0].OR).toEqual([
+      { number: insensitive('Q\\_\\%\\\\1') },
+      { periodLabel: insensitive('Q\\_\\%\\\\1') },
+      { lot: { lotNumber: insensitive('Q\\_\\%\\\\1') } }
+    ]);
+  });
+
   it('search se combine avec la période dans le même AND', async () => {
     await request(app).get('/portal/copropriete/quittances?search=A12&from=2026-01-01&to=2026-03-31');
     const and = prisma.syndicChargeReceipt.findMany.mock.calls[0][0].where.AND;

@@ -34,6 +34,7 @@ import type {
   ReturnScope,
   ReturnSkipReason
 } from './types';
+import { escapeLike } from '../../../utils/like-escape';
 
 /**
  * Import d'un fichier de retour de la banque (spec 042, P3, data-model §8.5) en
@@ -494,7 +495,7 @@ export async function listReturnImportsFor(
   query: { page: number; pageSize: number; search?: string; from?: string; to?: string }
 ): Promise<{ items: ReturnImportDto[]; total: number; page: number; pageSize: number }> {
   const where: Prisma.DirectDebitReturnImportWhereInput = { tenantId, ...returnImportScopeWhere(scope) };
-  if (query.search) where.fileName = { contains: query.search, mode: 'insensitive' };
+  if (query.search) where.fileName = { contains: escapeLike(query.search), mode: 'insensitive' };
   const createdAt = dayRange(query.from, query.to);
   if (createdAt) where.createdAt = createdAt;
   const [total, rows] = await Promise.all([

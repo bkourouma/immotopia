@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import { RESERVED_ROLE_KEYS } from '../lib/patrimoine/personal-permissions';
 import { prisma, PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
@@ -95,8 +96,8 @@ export async function listMembers(filters: ListMembersFilters) {
 
   if (filters.search) {
     userConditions.OR = [
-      { email: { contains: filters.search, mode: 'insensitive' } },
-      { fullName: { contains: filters.search, mode: 'insensitive' } }
+      { email: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+      { fullName: { contains: escapeLike(filters.search), mode: 'insensitive' } }
     ];
   }
 

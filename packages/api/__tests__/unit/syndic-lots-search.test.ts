@@ -87,6 +87,14 @@ describe('GET lots', () => {
     expect(lots.where).toBeUndefined();
   });
 
+  it('traite les jokers SQL comme des caractères du numéro de lot et du propriétaire', async () => {
+    const res = await request(app).get(`${BASE}?search=${encodeURIComponent('A_%\\B')}`);
+    expect(res.status).toBe(200);
+    const or = prisma.syndicate.findFirst.mock.calls[0][0].include.lots.where.OR;
+    expect(or[0]).toEqual({ lotNumber: insensitive('A\\_\\%\\\\B') });
+    expect(or[3].ownerProfiles.some.contact.OR[0]).toEqual({ firstName: insensitive('A\\_\\%\\\\B') });
+  });
+
   it.each(['limit=51', 'limit=0', 'limit=abc', 'limit=1.5', `search=${'a'.repeat(201)}`])(
     'refuse %s avec 400 sans lire la base',
     async query => {

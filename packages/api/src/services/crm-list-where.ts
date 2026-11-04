@@ -7,6 +7,7 @@
  * étiquette) reste DANS ce `where`, donc l'identifiant d'une autre agence ne
  * ramène aucune ligne (même réponse qu'un identifiant inexistant).
  */
+import { escapeLike } from '../utils/like-escape';
 import {
   LeadSource,
   CrmActivityDirection,
@@ -139,14 +140,14 @@ export function buildContactListWhere(tenantId: string, filters: ContactListFilt
   if (filters.search) {
     andConditions.push({
       OR: [
-        { firstName: { contains: filters.search, mode: 'insensitive' } },
-        { lastName: { contains: filters.search, mode: 'insensitive' } },
-        { legalName: { contains: filters.search, mode: 'insensitive' } },
-        { email: { contains: filters.search, mode: 'insensitive' } },
-        { phonePrimary: { contains: filters.search, mode: 'insensitive' } },
-        { phoneSecondary: { contains: filters.search, mode: 'insensitive' } },
-        { whatsappNumber: { contains: filters.search, mode: 'insensitive' } },
-        { source: { contains: filters.search, mode: 'insensitive' } }
+        { firstName: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+        { lastName: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+        { legalName: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+        { email: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+        { phonePrimary: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+        { phoneSecondary: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+        { whatsappNumber: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+        { source: { contains: escapeLike(filters.search), mode: 'insensitive' } }
       ]
     });
   }
@@ -268,23 +269,23 @@ export function buildDealListWhere(tenantId: string, filters: DealListFilters): 
     where.AND = where.AND || [];
     where.AND.push({
       OR: [
-        { locationZone: { contains: search, mode: 'insensitive' } },
-        { closedReason: { contains: search, mode: 'insensitive' } },
-        { contact: { firstName: { contains: search, mode: 'insensitive' } } },
-        { contact: { lastName: { contains: search, mode: 'insensitive' } } },
-        { contact: { legalName: { contains: search, mode: 'insensitive' } } },
-        { contact: { email: { contains: search, mode: 'insensitive' } } },
-        { contact: { phonePrimary: { contains: search, mode: 'insensitive' } } },
-        { contact: { phoneSecondary: { contains: search, mode: 'insensitive' } } },
-        { assignedTo: { fullName: { contains: search, mode: 'insensitive' } } }
+        { locationZone: { contains: escapeLike(search), mode: 'insensitive' } },
+        { closedReason: { contains: escapeLike(search), mode: 'insensitive' } },
+        { contact: { firstName: { contains: escapeLike(search), mode: 'insensitive' } } },
+        { contact: { lastName: { contains: escapeLike(search), mode: 'insensitive' } } },
+        { contact: { legalName: { contains: escapeLike(search), mode: 'insensitive' } } },
+        { contact: { email: { contains: escapeLike(search), mode: 'insensitive' } } },
+        { contact: { phonePrimary: { contains: escapeLike(search), mode: 'insensitive' } } },
+        { contact: { phoneSecondary: { contains: escapeLike(search), mode: 'insensitive' } } },
+        { assignedTo: { fullName: { contains: escapeLike(search), mode: 'insensitive' } } }
       ]
     });
   }
 
-  if (filters.budgetMin || filters.budgetMax) {
+  if (filters.budgetMin !== undefined || filters.budgetMax !== undefined) {
     const budgetConditions: any[] = [];
 
-    if (filters.budgetMin && filters.budgetMax) {
+    if (filters.budgetMin !== undefined && filters.budgetMax !== undefined) {
       // Deal budget overlaps with filter range if:
       // - budgetMin is within range OR
       // - budgetMax is within range OR
@@ -299,11 +300,11 @@ export function buildDealListWhere(tenantId: string, filters: DealListFilters): 
       budgetConditions.push({
         AND: [{ budgetMin: null }, { budgetMax: { gte: filters.budgetMin, lte: filters.budgetMax } }]
       });
-    } else if (filters.budgetMin) {
+    } else if (filters.budgetMin !== undefined) {
       // Deal has budgetMax >= filterMin OR budgetMin >= filterMin
       budgetConditions.push({ budgetMax: { gte: filters.budgetMin } });
       budgetConditions.push({ budgetMin: { gte: filters.budgetMin } });
-    } else if (filters.budgetMax) {
+    } else if (filters.budgetMax !== undefined) {
       // Deal has budgetMin <= filterMax OR budgetMax <= filterMax
       budgetConditions.push({ budgetMin: { lte: filters.budgetMax } });
       budgetConditions.push({ budgetMax: { lte: filters.budgetMax } });
@@ -366,16 +367,16 @@ export function buildActivityListWhere(tenantId: string, filters: ActivityListFi
     where.AND = [
       {
         OR: [
-          { subject: { contains: search, mode: 'insensitive' } },
-          { content: { contains: search, mode: 'insensitive' } },
-          { outcome: { contains: search, mode: 'insensitive' } },
-          { nextActionType: { contains: search, mode: 'insensitive' } },
-          { contact: { firstName: { contains: search, mode: 'insensitive' } } },
-          { contact: { lastName: { contains: search, mode: 'insensitive' } } },
-          { contact: { legalName: { contains: search, mode: 'insensitive' } } },
-          { contact: { email: { contains: search, mode: 'insensitive' } } },
-          { createdBy: { fullName: { contains: search, mode: 'insensitive' } } },
-          { createdBy: { email: { contains: search, mode: 'insensitive' } } }
+          { subject: { contains: escapeLike(search), mode: 'insensitive' } },
+          { content: { contains: escapeLike(search), mode: 'insensitive' } },
+          { outcome: { contains: escapeLike(search), mode: 'insensitive' } },
+          { nextActionType: { contains: escapeLike(search), mode: 'insensitive' } },
+          { contact: { firstName: { contains: escapeLike(search), mode: 'insensitive' } } },
+          { contact: { lastName: { contains: escapeLike(search), mode: 'insensitive' } } },
+          { contact: { legalName: { contains: escapeLike(search), mode: 'insensitive' } } },
+          { contact: { email: { contains: escapeLike(search), mode: 'insensitive' } } },
+          { createdBy: { fullName: { contains: escapeLike(search), mode: 'insensitive' } } },
+          { createdBy: { email: { contains: escapeLike(search), mode: 'insensitive' } } }
         ]
       }
     ];

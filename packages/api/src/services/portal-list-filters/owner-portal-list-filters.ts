@@ -5,6 +5,7 @@
  * session et reste posé par le service : tout identifiant reçu reste à
  * l'intérieur, hors périmètre la liste est vide.
  */
+import { escapeLike } from '../../utils/like-escape';
 import type { Request } from 'express';
 import { z } from 'zod';
 import {
@@ -174,7 +175,7 @@ export function isOwnerListOutOfScope(
 // ---------------------------------------------------------------------------
 
 /** `contains` insensible à la casse. */
-const containsInsensitive = (value: string) => ({ contains: value, mode: 'insensitive' as const });
+const containsInsensitive = (value: string) => ({ contains: escapeLike(value), mode: 'insensitive' as const });
 
 /** Valeur seule ou liste : une liste devient `{ in: [...] }`, une liste vide ne filtre rien. */
 export function ownerEnumClause<T>(value: OneOrMany<T> | undefined): T | { in: T[] } | undefined {

@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/database';
+import { escapeLike } from '../../utils/like-escape';
 import { NotFoundError } from '../../middleware/error-middleware';
 import { sumAllocationsByCall } from './charge-allocation';
 import { fromCents, toCents } from './charge-allocation-plan';
@@ -314,7 +315,7 @@ export async function listCoOwnerReceipts(scope: CoOwnerPortalScope, query: CoOw
   const and: Prisma.SyndicChargeReceiptWhereInput[] = [];
   if (period) and.push(period);
   if (query.search) {
-    const contains = { contains: query.search, mode: 'insensitive' as const };
+    const contains = { contains: escapeLike(query.search), mode: 'insensitive' as const };
     and.push({ OR: [{ number: contains }, { periodLabel: contains }, { lot: { lotNumber: contains } }] });
   }
   const where: Prisma.SyndicChargeReceiptWhereInput = {

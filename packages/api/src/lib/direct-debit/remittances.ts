@@ -31,6 +31,7 @@ import {
 } from './remittance-dto';
 import type { CreateRemittanceInput, ListRemittancesQuery } from './remittance-schemas';
 import { evaluateMandate, roundMoney, sameMoney, type SelectionResult, type SkipReason } from './remittance-selection';
+import { escapeLike } from '../../utils/like-escape';
 
 /**
  * Remises de prélèvement des loyers (spec 042, P2, data-model §7).
@@ -415,7 +416,7 @@ export async function listRemittances(
   if (query.search) {
     const search = query.search;
     const or: Prisma.DirectDebitRemittanceWhereInput[] = [
-      { creditor: { is: { label: { contains: search, mode: 'insensitive' } } } }
+      { creditor: { is: { label: { contains: escapeLike(search), mode: 'insensitive' } } } }
     ];
     const reference = /^PRL-(\d{4})-(\d{1,6})$/i.exec(search);
     if (reference) or.push({ year: Number(reference[1]), sequence: Number(reference[2]) });

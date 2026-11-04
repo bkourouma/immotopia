@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { BadRequestError } from '../../middleware/error-middleware';
 import { dayOrderRefinement, dayRange, zDay, zSearch } from '../../utils/list-query-schemas';
 import { t } from '../../i18n';
+import { escapeLike } from '../../utils/like-escape';
 
 const leaseExtrasSchema = z.object({ search: zSearch() });
 
@@ -59,7 +60,7 @@ function addAnd(where: any, condition: unknown): void {
   where.AND = [...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []), condition];
 }
 
-const contains = (value: string) => ({ contains: value, mode: 'insensitive' as const });
+const contains = (value: string) => ({ contains: escapeLike(value), mode: 'insensitive' as const });
 
 /** Colonnes d'un bail cherchées par `search` (relation `property` / `primaryRenter` du bail). */
 function leaseColumns(search: string) {

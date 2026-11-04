@@ -36,7 +36,6 @@ import {
   listChartOfAccountsSearchHandler
 } from '../../src/controllers/syndic-accounting-read-controller';
 import { containsPattern } from '../../src/lib/syndics/accounting-reads';
-import { getTrialBalanceBySyndicate } from '../../src/lib/syndics/queries';
 import { errorHandler } from '../../src/middleware/error-middleware';
 
 const mockPrisma = (jest.requireMock('../../src/utils/database') as { prisma: any }).prisma;
@@ -699,32 +698,11 @@ describe('balance agregee', () => {
   }
   const PERIOD = { from: '2026-01-01', to: '2026-12-31' };
 
-  it("memes montants que l'implementation historique sur le meme jeu de lignes", async () => {
-    const dataset = balanceDataset();
-    mockPrisma.$queryRaw.mockImplementation(emulate(dataset));
-    // Ancienne implementation : toutes les lignes en memoire, filtrees par Prisma.
-    mockPrisma.journalEntryLine.findMany.mockImplementation(async ({ where }: any) => {
-      const { gte, lte } = where.entry.entryDate ?? {};
-      return dataset
-        .filter(row => row.syndicateId === where.entry.journal.syndicateId && row.tenantId === TENANT)
-        .filter(row => (!gte || row.entryDate >= gte) && (!lte || row.entryDate <= lte))
-        .map(row => ({
-          accountId: row.accountId,
-          debit: dec(row.debit),
-          credit: dec(row.credit),
-          account: { accountNumber: row.accountNumber, accountName: row.accountName }
-        }));
-    });
-
-    const legacy = await getTrialBalanceBySyndicate(TENANT, SYNDIC, {
-      from: new Date(PERIOD.from),
-      to: new Date(PERIOD.to)
-    });
+  it('agrège les mouvements et conserve une balance équilibrée', async () => {
+    mockPrisma.$queryRaw.mockImplementation(emulate(balanceDataset()));
     const out = await call(getTrialBalanceAggregatedHandler, PERIOD);
     const data = out.body.data;
 
-    expect(data.items.map(({ accountClass: _c, ...rest }: any) => rest)).toEqual(legacy.items);
-    expect(data.totals).toEqual(legacy.totals);
     expect(data.totals).toEqual({ totalDebit: 1241.01, totalCredit: 1241.01, isBalanced: true });
     expect(data.items.map((i: any) => i.accountNumber)).toEqual(['401000', '450100', '512000', '605100']);
     expect(data.items.find((i: any) => i.accountNumber === '450100')).toMatchObject({

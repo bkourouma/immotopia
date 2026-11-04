@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
@@ -305,7 +306,7 @@ export async function createTicket(
  * `where` de l'agence, donc sans effet hors d'elle.
  */
 function ticketSearchClause(search: string) {
-  const contains = { contains: search, mode: 'insensitive' as const };
+  const contains = { contains: escapeLike(search), mode: 'insensitive' as const };
   return [
     { title: contains },
     { description: contains },

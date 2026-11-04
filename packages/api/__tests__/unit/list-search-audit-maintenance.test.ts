@@ -44,7 +44,7 @@ describe('journal d’activité — search', () => {
           { actionKey: { contains: 'connexion', mode: 'insensitive' } },
           { entityType: { contains: 'connexion', mode: 'insensitive' } },
           { entityId: { contains: 'connexion', mode: 'insensitive' } },
-          { actorLabel: { contains: 'connexion', mode: 'insensitive' } }
+          { actorLabel: { contains: 'connexion', mode: 'insensitive' }, actorType: { not: 'SUPER_ADMIN' } }
         ]
       }
     ]);

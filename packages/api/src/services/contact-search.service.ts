@@ -3,6 +3,7 @@
  * Supports saved searches, suggestions, and CSV export.
  */
 
+import { escapeLike } from '../utils/like-escape';
 import { toCsvString } from '../lib/csv';
 import { Prisma, type JobStability, type CrmActivityType } from '@prisma/client';
 import { prisma } from '../utils/database';
@@ -110,37 +111,37 @@ function buildWhereClause(tenantId: string, filters: ContactSearchFilters): Pris
     const q = filters.searchQuery.trim();
     and.push({
       OR: [
-        { firstName: { contains: q, mode: 'insensitive' } },
-        { lastName: { contains: q, mode: 'insensitive' } },
-        { email: { contains: q, mode: 'insensitive' } },
-        { phonePrimary: { contains: q, mode: 'insensitive' } },
-        { whatsappNumber: { contains: q, mode: 'insensitive' } },
-        { legalName: { contains: q, mode: 'insensitive' } }
+        { firstName: { contains: escapeLike(q), mode: 'insensitive' } },
+        { lastName: { contains: escapeLike(q), mode: 'insensitive' } },
+        { email: { contains: escapeLike(q), mode: 'insensitive' } },
+        { phonePrimary: { contains: escapeLike(q), mode: 'insensitive' } },
+        { whatsappNumber: { contains: escapeLike(q), mode: 'insensitive' } },
+        { legalName: { contains: escapeLike(q), mode: 'insensitive' } }
       ]
     });
   }
 
   if (filters.firstName?.trim()) {
-    and.push({ firstName: { contains: filters.firstName.trim(), mode: 'insensitive' } });
+    and.push({ firstName: { contains: escapeLike(filters.firstName.trim()), mode: 'insensitive' } });
   }
   if (filters.lastName?.trim()) {
-    and.push({ lastName: { contains: filters.lastName.trim(), mode: 'insensitive' } });
+    and.push({ lastName: { contains: escapeLike(filters.lastName.trim()), mode: 'insensitive' } });
   }
   if (filters.email?.trim()) {
-    and.push({ email: { contains: filters.email.trim(), mode: 'insensitive' } });
+    and.push({ email: { contains: escapeLike(filters.email.trim()), mode: 'insensitive' } });
   }
   if (filters.phone?.trim()) {
-    and.push({ phonePrimary: { contains: filters.phone.trim(), mode: 'insensitive' } });
+    and.push({ phonePrimary: { contains: escapeLike(filters.phone.trim()), mode: 'insensitive' } });
   }
   if (filters.whatsappNumber?.trim()) {
-    and.push({ whatsappNumber: { contains: filters.whatsappNumber.trim(), mode: 'insensitive' } });
+    and.push({ whatsappNumber: { contains: escapeLike(filters.whatsappNumber.trim()), mode: 'insensitive' } });
   }
 
   if (filters.city?.trim()) {
-    and.push({ city: { contains: filters.city.trim(), mode: 'insensitive' } });
+    and.push({ city: { contains: escapeLike(filters.city.trim()), mode: 'insensitive' } });
   }
   if (filters.district?.trim()) {
-    and.push({ district: { contains: filters.district.trim(), mode: 'insensitive' } });
+    and.push({ district: { contains: escapeLike(filters.district.trim()), mode: 'insensitive' } });
   }
   if (filters.communeIds?.length) {
     and.push({ communeId: { in: filters.communeIds } });
@@ -149,7 +150,7 @@ function buildWhereClause(tenantId: string, filters: ContactSearchFilters): Pris
     and.push({ locationZone: { in: filters.locationZones } });
   }
   if (filters.country?.trim()) {
-    and.push({ country: { contains: filters.country.trim(), mode: 'insensitive' } });
+    and.push({ country: { contains: escapeLike(filters.country.trim()), mode: 'insensitive' } });
   }
 
   if (filters.contactTypes?.length) {
@@ -479,7 +480,7 @@ export async function getFieldSuggestions(tenantId: string, field: string, query
     by: [dbField],
     where: {
       tenantId,
-      [dbField]: query ? { contains: query, mode: 'insensitive' } : { not: null }
+      [dbField]: query ? { contains: escapeLike(query), mode: 'insensitive' } : { not: null }
     },
     _count: { id: true },
     orderBy: { _count: { id: 'desc' } },

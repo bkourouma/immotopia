@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
@@ -175,10 +176,10 @@ export async function listVendors(
   const where: any = { tenantId };
   if (filters?.search) {
     where.OR = [
-      { name: { contains: filters.search, mode: 'insensitive' } },
-      { specialty: { contains: filters.search, mode: 'insensitive' } },
-      { email: { contains: filters.search, mode: 'insensitive' } },
-      { phone: { contains: filters.search, mode: 'insensitive' } }
+      { name: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+      { specialty: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+      { email: { contains: escapeLike(filters.search), mode: 'insensitive' } },
+      { phone: { contains: escapeLike(filters.search), mode: 'insensitive' } }
     ];
   }
 

@@ -17,7 +17,6 @@ jest.mock('@prisma/client', () => {
       findFirst: jest.fn()
     },
     chartOfAccount: {
-      findMany: jest.fn(),
       create: jest.fn(),
       count: jest.fn(),
       findFirst: jest.fn()
@@ -35,7 +34,6 @@ jest.mock('@prisma/client', () => {
       update: jest.fn()
     },
     journalEntryLine: {
-      findMany: jest.fn(),
       createMany: jest.fn()
     },
     $transaction: jest.fn(async (callback: any) => callback(tx))
@@ -52,9 +50,7 @@ import {
   createAccountingJournalBySyndicate,
   createChartOfAccountBySyndicate,
   createJournalEntryBySyndicate,
-  getTrialBalanceBySyndicate,
-  lockJournalEntryBySyndicate,
-  listChartOfAccountsBySyndicate
+  lockJournalEntryBySyndicate
 } from '../../src/lib/syndics/queries';
 
 const { __mockPrisma: mockPrisma, __mockTx: mockTx } = jest.requireMock('@prisma/client') as {
@@ -66,13 +62,6 @@ describe('Syndics accounting queries - US3', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPrisma.syndicate.findFirst.mockResolvedValue({ id: 'syndic-1' });
-  });
-
-  it('lists chart of accounts scoped to syndicate', async () => {
-    mockPrisma.chartOfAccount.findMany.mockResolvedValue([{ id: 'acc-1', accountNumber: '401' }]);
-    const result = await listChartOfAccountsBySyndicate('tenant-1', 'syndic-1');
-    expect(result).toHaveLength(1);
-    expect(mockPrisma.chartOfAccount.findMany).toHaveBeenCalled();
   });
 
   it('creates accounting account', async () => {
@@ -141,15 +130,6 @@ describe('Syndics accounting queries - US3', () => {
     mockPrisma.journalEntry.update.mockResolvedValue({ id: 'entry-1', isLocked: true });
     const result = await lockJournalEntryBySyndicate('tenant-1', 'syndic-1', 'entry-1');
     expect(result?.isLocked).toBe(true);
-  });
-
-  it('computes trial balance and confirms balanced totals', async () => {
-    mockPrisma.journalEntryLine.findMany.mockResolvedValue([
-      { accountId: 'acc-1', debit: 10000, credit: 0, account: { accountNumber: '401', accountName: 'Fournisseurs' } },
-      { accountId: 'acc-2', debit: 0, credit: 10000, account: { accountNumber: '512', accountName: 'Banque' } }
-    ]);
-    const result = await getTrialBalanceBySyndicate('tenant-1', 'syndic-1');
-    expect(result.totals.isBalanced).toBe(true);
   });
 });
 

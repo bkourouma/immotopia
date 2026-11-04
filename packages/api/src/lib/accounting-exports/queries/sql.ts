@@ -1,9 +1,8 @@
 import type { PageRequest, Paged } from '../types';
+import { escapeLike } from '../../../utils/like-escape';
 
-/** Échappe `\`, `%` et `_` : le texte saisi est cherché tel quel dans un LIKE / ILIKE. */
-export function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, match => '\\' + match);
-}
+/** Échappement des jokers de LIKE : helper unique, voir `utils/like-escape.ts`. */
+export { escapeLike };
 
 /** Motif « contient » d'un ILIKE, jokers de l'utilisateur neutralisés. */
 export function containsPattern(value: string): string {

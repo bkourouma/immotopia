@@ -48,6 +48,7 @@ import {
   type ThirdPartyMovementRecord,
   type ThirdPartyMovementType
 } from './types';
+import { escapeLike } from '../../utils/like-escape';
 
 /** Devise unique du lot 1 (décision D9 du plan). */
 const DEFAULT_CURRENCY = 'XOF';
@@ -132,7 +133,7 @@ export const getClientsBalance: GetClientsBalance = async (tenantId, filters) =>
     where: {
       tenantId,
       kind: 'TENANT',
-      ...(filters?.search ? { label: { contains: filters.search, mode: 'insensitive' as const } } : {})
+      ...(filters?.search ? { label: { contains: escapeLike(filters.search), mode: 'insensitive' as const } } : {})
     },
     select: { id: true, tenantClientId: true, label: true, balance: true, currency: true }
   });

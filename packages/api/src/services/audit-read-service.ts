@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import type { AuditLog, Prisma } from '@prisma/client';
 import { prisma } from '../utils/database';
 import { BadRequestError } from '../middleware/error-middleware';
@@ -110,10 +111,11 @@ export function buildTenantAuditWhere(
   if (search) {
     and.push({
       OR: [
-        { actionKey: { contains: search, mode: 'insensitive' } },
-        { entityType: { contains: search, mode: 'insensitive' } },
-        { entityId: { contains: search, mode: 'insensitive' } },
-        { actorLabel: { contains: search, mode: 'insensitive' } }
+        { actionKey: { contains: escapeLike(search), mode: 'insensitive' } },
+        { entityType: { contains: escapeLike(search), mode: 'insensitive' } },
+        { entityId: { contains: escapeLike(search), mode: 'insensitive' } },
+        // L'identité du personnel plateforme est masquée dans le DTO : elle ne doit pas non plus servir d'oracle de recherche.
+        { actorLabel: { contains: escapeLike(search), mode: 'insensitive' }, actorType: { not: PLATFORM_STAFF } }
       ]
     });
   }
@@ -129,7 +131,7 @@ export function buildTenantAuditWhere(
     ...(filters.category ? { category: filters.category } : {}),
     ...(filters.outcome ? { outcome: filters.outcome } : {}),
     ...(filters.actionKey ? { actionKey: filters.actionKey } : {}),
-    ...(filters.actorUserId ? { actorUserId: filters.actorUserId } : {}),
+    ...(filters.actorUserId ? { actorUserId: filters.actorUserId, actorType: { not: PLATFORM_STAFF } } : {}),
     ...(filters.entityType ? { entityType: filters.entityType } : {}),
     ...(filters.entityId ? { entityId: filters.entityId } : {}),
     ...(and.length > 0 ? { AND: and } : {})

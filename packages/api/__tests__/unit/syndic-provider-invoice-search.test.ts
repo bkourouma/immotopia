@@ -71,6 +71,16 @@ describe('GET factures-prestataires', () => {
     expect(whereOfCall(1).status).toEqual({ in: ['RECORDED', 'PARTIALLY_PAID'] });
   });
 
+  it('traite les jokers SQL de la recherche comme du texte dans tous les champs', async () => {
+    const res = await request(app).get(`${BASE}?search=${encodeURIComponent('FAC_%\\1')}`);
+    expect(res.status).toBe(200);
+    expect(whereOfCall().OR).toEqual([
+      { number: insensitive('FAC\\_\\%\\\\1') },
+      { label: insensitive('FAC\\_\\%\\\\1') },
+      { provider: { name: insensitive('FAC\\_\\%\\\\1') } }
+    ]);
+  });
+
   it('from/to : jours réels, to inclusif jusqu’à 23:59:59.999', async () => {
     const res = await request(app).get(`${BASE}?from=2026-01-01&to=2026-01-31`);
     expect(res.status).toBe(200);

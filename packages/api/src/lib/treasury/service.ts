@@ -10,6 +10,7 @@ import { reverseDocumentEntryTx } from '../owner-account/sync';
 import { DEFAULT_WITHHOLDING_ACCOUNT, getAgencyFinanceSettings } from '../settings/finance-settings';
 import { ensureChartAccountTx, ensureDefaultTreasuryAccountTx, journalForKind } from './accounts';
 import { assertTreasuryCanPayTx } from './balance';
+import { escapeLike } from '../../utils/like-escape';
 
 /**
  * Trésorerie de l'agence — lot 10 (conformité SYSCOHADA).
@@ -378,8 +379,8 @@ export async function listTransfers(
     where.AND = [
       {
         OR: [
-          { reference: { contains: f.search, mode: 'insensitive' } },
-          { notes: { contains: f.search, mode: 'insensitive' } }
+          { reference: { contains: escapeLike(f.search), mode: 'insensitive' } },
+          { notes: { contains: escapeLike(f.search), mode: 'insensitive' } }
         ]
       }
     ];

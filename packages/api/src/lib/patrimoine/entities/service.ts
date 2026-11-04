@@ -13,6 +13,7 @@ import type {
   UpdateHoldingEntityInput
 } from './schemas';
 import type { EntityHolding, HoldingEntityDetail, HoldingEntitySummary, PropertyHoldingsData } from './dto';
+import { escapeLike } from '../../../utils/like-escape';
 
 /**
  * Service des entités détentrices et de leurs rattachements (lot P4,
@@ -112,7 +113,7 @@ export async function listHoldingEntities(
   if (!filters.includeInactive) where.isActive = true;
   if (filters.legalForm) where.legalForm = filters.legalForm as Prisma.EnumHoldingEntityFormFilter['equals'];
   if (filters.country) where.country = filters.country as Prisma.EnumFiscalCountryFilter['equals'];
-  if (filters.search) where.name = { contains: filters.search, mode: 'insensitive' };
+  if (filters.search) where.name = { contains: escapeLike(filters.search), mode: 'insensitive' };
 
   const entities = await prisma.holdingEntity.findMany({
     where,

@@ -46,6 +46,14 @@ app.get('/api/tenants/:t/denied-permission', (_req, res) => {
 app.get('/api/tenants/:t/denied-typed', (_req, res) => {
   res.status(403).json({ success: false, code: 'FORBIDDEN', message: "Vous n'avez pas accès à cette ressource." });
 });
+app.get('/api/tenants/:t/denied-localized', (_req, res) => {
+  res.status(403).json({
+    success: false,
+    error: 'Forbidden',
+    message: "Vous n'avez pas les droits nécessaires pour effectuer cette action.",
+    requiredPermission: 'TENANT_AUDIT_VIEW'
+  });
+});
 app.get('/api/tenants/:t/suspended', (_req, res) => {
   res.status(403).json({ success: false, code: 'TENANT_SUSPENDED', message: 'Cette agence est suspendue.' });
 });
@@ -114,6 +122,16 @@ describe('refus de droit', () => {
     await request(app).get(`/api/tenants/${T}/denied-typed`).set('x-user', 'u1').set('x-tenant', T);
     await flush();
     expect(lastEntry()).toMatchObject({ actionKey: 'ACCESS_DENIED', entityId: '/api/tenants/:id/denied-typed' });
+  });
+
+  it('un refus traduit conserve la clé technique de permission dans le journal', async () => {
+    await request(app).get(`/api/tenants/${T}/denied-localized`).set('x-user', 'u1').set('x-tenant', T);
+    await flush();
+    expect(lastEntry()).toMatchObject({
+      actionKey: 'ACCESS_DENIED',
+      entityId: 'TENANT_AUDIT_VIEW',
+      payload: { permission: 'TENANT_AUDIT_VIEW' }
+    });
   });
 
   it('un étranger sur l’URL d’une agence : TENANT_ACCESS_DENIED, rattaché à aucune agence', async () => {

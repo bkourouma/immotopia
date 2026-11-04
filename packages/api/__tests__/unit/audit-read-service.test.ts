@@ -90,6 +90,37 @@ describe('buildTenantAuditWhere', () => {
       { OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: 'z' } }] }
     ]);
   });
+
+  it('la recherche par identité ne révèle pas le personnel plateforme', () => {
+    const where = buildTenantAuditWhere('tenant-A', { search: 'staff@immotopia.test' });
+    expect(where).toMatchObject({ tenantId: 'tenant-A', visibility: 'TENANT' });
+    expect(where.AND).toEqual([
+      {
+        OR: [
+          { actionKey: { contains: 'staff@immotopia.test', mode: 'insensitive' } },
+          { entityType: { contains: 'staff@immotopia.test', mode: 'insensitive' } },
+          { entityId: { contains: 'staff@immotopia.test', mode: 'insensitive' } },
+          {
+            actorLabel: { contains: 'staff@immotopia.test', mode: 'insensitive' },
+            actorType: { not: 'SUPER_ADMIN' }
+          }
+        ]
+      }
+    ]);
+    // L'action et la ressource restent cherchables, même pour un événement anonymisé.
+    expect(buildTenantAuditWhere('tenant-A', { search: 'PROPERTY_CREATED' })).toMatchObject({
+      AND: [{ OR: expect.arrayContaining([{ actionKey: { contains: 'PROPERTY\\_CREATED', mode: 'insensitive' } }]) }]
+    });
+  });
+
+  it('le filtre par identifiant ne sert pas non plus d’oracle pour un compte plateforme', () => {
+    expect(buildTenantAuditWhere('tenant-A', { actorUserId: 'staff-1' })).toMatchObject({
+      tenantId: 'tenant-A',
+      visibility: 'TENANT',
+      actorUserId: 'staff-1',
+      actorType: { not: 'SUPER_ADMIN' }
+    });
+  });
 });
 
 describe('curseur', () => {

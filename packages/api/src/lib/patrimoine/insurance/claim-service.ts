@@ -23,6 +23,7 @@ import {
   assertTicketOfProperty
 } from './references';
 import type { AttachClaimDocumentInput, CreateClaimInput, TransitionClaimInput, UpdateClaimInput } from './schemas';
+import { escapeLike } from '../../../utils/like-escape';
 
 /**
  * Service des sinistres (lot B1, spec 032). Aucune `PropertyExpense` n'est
@@ -67,7 +68,7 @@ export async function listClaims(
   if (filters.policyId) where.policyId = filters.policyId;
   if (filters.status) where.status = filters.status;
   if (filters.search) {
-    const contains = { contains: filters.search, mode: 'insensitive' as const };
+    const contains = { contains: escapeLike(filters.search), mode: 'insensitive' as const };
     where.OR = [
       { description: contains },
       { property: { internalReference: contains } },
