@@ -25,10 +25,20 @@ import {
 
 const base = (tenantId: string, syndicId: string) => `/tenants/${tenantId}/syndics/${syndicId}/factures-prestataires`;
 
+/**
+ * Paramètres de la liste : ceux de `ProviderInvoiceListQuery` (types/syndic-types.ts),
+ * élargis à la recherche libre (`search`) et à plusieurs statuts séparés par
+ * des virgules. `from` / `to` : jours `aaaa-mm-jj` (`to` inclusif).
+ */
+export type ProviderInvoiceListParams = Omit<ProviderInvoiceListQuery, 'status'> & {
+  search?: string;
+  status?: string;
+};
+
 export async function listProviderInvoices(
   tenantId: string,
   syndicId: string,
-  query?: ProviderInvoiceListQuery
+  query?: ProviderInvoiceListParams
 ): Promise<ProviderInvoiceListResult> {
   const response = await apiClient.get<{ success: boolean; data: ProviderInvoiceListResult }>(
     base(tenantId, syndicId),

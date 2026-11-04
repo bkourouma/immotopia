@@ -16,7 +16,6 @@ import {
   Space,
   Tag,
   Spin,
-  Switch,
   Typography
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -171,7 +170,6 @@ export const SyndicLots: React.FC = () => {
   const [lotPropertyOptions, setLotPropertyOptions] = useState<PropertySelectOption[]>([]);
   const [importPropertyOptions, setImportPropertyOptions] = useState<PropertySelectOption[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<OwnerSelectOption[]>([]);
-  const [hideInactive, setHideInactive] = useState(false);
   const [referenceWarning, setReferenceWarning] = useState<string | null>(null);
   const [form] = Form.useForm();
   const [importForm] = Form.useForm<{ propertyIds: string[] }>();
@@ -369,10 +367,6 @@ export const SyndicLots: React.FC = () => {
 
   const sharesSum = useMemo(() => lots.reduce((sum, lot) => sum + lot.generalShares, 0), [lots]);
   const referenceShares = syndicate?.totalGeneralShares ?? null;
-  const visibleLots = useMemo(
-    () => (hideInactive ? lots.filter(lot => lot.generalShares !== 0) : lots),
-    [hideInactive, lots]
-  );
 
   const resetModalState = () => {
     setOpen(false);
@@ -705,22 +699,9 @@ export const SyndicLots: React.FC = () => {
               </Col>
             </Row>
 
-            <Card
-              title={t('Tableau des lots')}
-              extra={
-                <Space size={8}>
-                  <Switch
-                    size="small"
-                    checked={hideInactive}
-                    onChange={setHideInactive}
-                    aria-label={t('Masquer les lots inactifs')}
-                  />
-                  <span>{t('Masquer les lots inactifs')}</span>
-                </Space>
-              }
-            >
+            <Card title={t('Tableau des lots')}>
               <LotTable
-                lots={visibleLots}
+                lots={lots}
                 declaredPendingLotIds={declaredPendingLotIds}
                 showMobileHint
                 portalManageHref={`/tenant/${effectiveTenantId}/syndics/${syndicId}/profils-incidents`}

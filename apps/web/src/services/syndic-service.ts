@@ -175,10 +175,24 @@ export async function deleteSyndicate(tenantId: string, syndicId: string): Promi
   return response.data.data;
 }
 
-export async function listSyndicateLots(tenantId: string, syndicId: string): Promise<SyndicateLot[]> {
-  const response = await apiClient.get<{ success: boolean; data: SyndicateLot[] }>(
-    `/tenants/${tenantId}/syndics/${syndicId}/lots`
-  );
+/**
+ * Lots d'une copropriété. Sans `options` : la liste complète, requête sans paramètre
+ * (sélecteurs existants). `search` (numéro, bien, propriétaire) et `limit` (1..50)
+ * servent aux sélecteurs à recherche distante.
+ */
+export async function listSyndicateLots(
+  tenantId: string,
+  syndicId: string,
+  options?: { search?: string; limit?: number }
+): Promise<SyndicateLot[]> {
+  const params: Record<string, string | number> = {};
+  if (options?.search?.trim()) params.search = options.search.trim();
+  if (options?.limit) params.limit = options.limit;
+  const url = `/tenants/${tenantId}/syndics/${syndicId}/lots`;
+  const response =
+    Object.keys(params).length > 0
+      ? await apiClient.get<{ success: boolean; data: SyndicateLot[] }>(url, { params })
+      : await apiClient.get<{ success: boolean; data: SyndicateLot[] }>(url);
   return response.data.data;
 }
 

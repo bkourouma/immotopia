@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { AppError, ErrorCode } from '../../../middleware/error-middleware';
 import { t } from '../../../i18n';
 import { searchQuery } from '../payment-list-filters';
+import { zSearch } from '../../../utils/list-query-schemas';
 
 /**
  * Validation de FORME des requêtes du paiement déclaré (spec 047, contracts §0 et §1/§2).
@@ -77,6 +78,8 @@ export const listDeclarationsQuerySchema = z.object({
 
 /** Liste côté portail (§2.5). */
 export const portalListQuerySchema = z.object({
+  /** Référence de transaction déclarée ou numéro de lot (périmètre du copropriétaire inchangé). */
+  search: zSearch(),
   status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELED', 'ALL']).optional(),
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional()

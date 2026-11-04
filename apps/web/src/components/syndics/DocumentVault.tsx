@@ -9,6 +9,8 @@ import { downloadSyndicDocument, updateSyndicDocument } from '../../services/syn
 import { ConfirmAction } from '../primitives/ConfirmAction';
 import { feedback } from '../../lib/feedback';
 import { saveBlob } from '../../utils/save-blob';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 const { Link, Text } = Typography;
@@ -41,8 +43,35 @@ function documentTypeLabels(): Record<SyndicateDocument['type'], string> {
   };
 }
 
+/** Nom du fichier déposé ou du lien saisi : dernier segment de `fileUrl`, sans paramètres. */
+function fileNameOf(document: SyndicateDocument): string {
+  const last = (document.fileUrl ?? '').split(/[?#]/)[0].split('/').pop() ?? '';
+  try {
+    return decodeURIComponent(last);
+  } catch {
+    return last;
+  }
+}
+
+// Accesseurs stables (hors du composant) : le filtrage reste mémoïsé. Le libellé du type est lu à
+// l'appel, pour suivre la langue.
+const TEXTE_RECHERCHE = [
+  (document: SyndicateDocument) => document.title,
+  fileNameOf,
+  (document: SyndicateDocument) => documentTypeLabels()[document.type]
+];
+const ACCESSEURS = {
+  type: (document: SyndicateDocument) => document.type,
+  portal: (document: SyndicateDocument) => Boolean(document.visibleToCoOwners),
+  added: (document: SyndicateDocument) => document.createdAt,
+  expires: (document: SyndicateDocument) => document.expiresAt
+};
+
 /**
  * Coffre documentaire d'une copropriété.
+ *
+ * La liste arrive en entier (bornée par la copropriété) : recherche et
+ * pagination LOCALES.
  *
  * Un fichier déposé ne s'ouvre plus par un lien direct vers
  * `/uploads/syndics/...` : le service statique le refuse (document privé,
@@ -87,6 +116,33 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({
   };
 
   const typeLabels = documentTypeLabels();
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Titre, nom du fichier, type…') },
+    {
+      key: 'type',
+      type: 'multiSelect',
+      label: t('Type'),
+      primary: true,
+      options: Object.entries(typeLabels).map(([value, label]) => ({ value, label }))
+    },
+    {
+      key: 'portal',
+      type: 'boolean',
+      label: t('Visible au portail'),
+      primary: true,
+      tristate: true,
+      trueLabel: t('Visible au portail'),
+      falseLabel: t('Interne')
+    },
+    { key: 'added', type: 'dateRange', label: t("Date d'ajout") },
+    { key: 'expires', type: 'dateRange', label: t('Expiration') }
+  ];
+  const local = useLocalListSearch<SyndicateDocument>(documents, {
+    ariaLabel: t('Rechercher dans les documents'),
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
   const columns: ColumnsType<SyndicateDocument> = [
     { title: t('Titre'), dataIndex: 'title', key: 'title', render: (value: string) => <Text strong>{value}</Text> },
     {
@@ -160,14 +216,15 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({
 
   return (
     <Table
+      {...local.tableProps}
+      aria-label={t('Documents')}
       exportFilename={t('Documents')}
+      exportFetchAll={local.exportAll}
       scroll={{ x: 'max-content' }}
       rowKey="id"
-      dataSource={documents}
       columns={columns}
       loading={loading}
-      pagination={{ pageSize: 8, hideOnSinglePage: true }}
-      locale={{ emptyText: t('Aucun document disponible') }}
+      locale={local.isFiltered ? undefined : { emptyText: t('Aucun document disponible') }}
     />
   );
 };

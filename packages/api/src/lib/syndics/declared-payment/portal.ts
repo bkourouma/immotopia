@@ -83,9 +83,10 @@ export async function createCoOwnerDeclaration(
 /** §2.5 : déclarations dont toutes les lignes portent sur des lots du périmètre. */
 export async function listCoOwnerDeclarations(
   scope: CoOwnerPortalScope,
-  params: { status?: DeclarationStatus | 'ALL'; page?: number; limit?: number }
+  params: { status?: DeclarationStatus | 'ALL'; search?: string; page?: number; limit?: number }
 ): Promise<{ items: CoOwnerDeclaration[]; pagination: Pagination }> {
   return listCoOwnerDeclarationsQuery(scope, {
+    search: params.search,
     status: params.status && params.status !== 'ALL' ? params.status : undefined,
     page: params.page,
     limit: params.limit

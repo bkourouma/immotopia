@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { dayEnd, dayStart, zDay } from '../../utils/list-query-schemas';
+import { dayEnd, dayStart, zDay, zSearch } from '../../utils/list-query-schemas';
 import { checkPeriodBounds, periodBoundsFields } from './charge-allocation-schemas';
 import { httpUrl } from '../safe-url';
 import { MAX_MONTHLY_PENALTY_RATE } from './finance-utils';
@@ -19,6 +19,20 @@ export const dateRangeQuerySchema = z
   .refine(value => !value.from || !value.to || value.from <= value.to, {
     message: 'La date de debut doit etre inferieure ou egale a la date de fin'
   });
+
+/**
+ * `GET /syndics/:syndicId/lots?search=&limit=` : sans paramètre, la liste
+ * complète (sélecteurs de lots des autres écrans). `limit` (1..50) sert aux
+ * sélecteurs à recherche distante.
+ */
+export const syndicLotsQuerySchema = z.object({
+  search: zSearch(),
+  limit: z.preprocess(
+    value => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.coerce.number().int().min(1).max(50).optional()
+  )
+});
+export type SyndicLotsQuery = z.infer<typeof syndicLotsQuerySchema>;
 
 export const createSyndicateSchema = z.object({
   propertyId: z.string().uuid().optional(),

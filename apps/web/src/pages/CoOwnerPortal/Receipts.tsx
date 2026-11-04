@@ -65,9 +65,16 @@ export default function CoOwnerReceipts() {
     [lots.data]
   );
 
-  // Liste paginée par le serveur : seuls les critères de `/quittances` (lot, nature, période) existent,
-  // sans champ libre (l'API n'a pas de `search`). Aucun filtrage côté client. L'API ne trie pas.
+  // Liste paginée par le serveur : le champ libre part à l'API (`search` : numéro du reçu ou de la
+  // quittance, numéro de lot, libellé de période) avec lot, nature et période. Aucun filtrage côté
+  // client. L'API ne trie pas.
   const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Numéro, lot, période…')
+    },
     { key: 'lotId', type: 'select', label: t('Lot'), primary: true, options: lotOptions },
     {
       key: 'kind',

@@ -259,7 +259,44 @@ export async function listSyndicatesByTenant(tenantId: string, pagination?: Pagi
   };
 }
 
-export async function getSyndicateWithLotsAndStats(tenantId: string, syndicateId: string) {
+/**
+ * Recherche libre sur les lots d'une copropriété (`GET …/lots?search=`) :
+ * numéro du lot, bien lié (titre, adresse) et propriétaire(s) ACTUEL(S)
+ * (nom, prénom, raison sociale, e-mail du contact). Le type de lot est un
+ * enum : Prisma n'y applique pas `contains`.
+ */
+export function buildSyndicateLotsSearchWhere(search: string, now: Date = new Date()): Prisma.SyndicateLotWhereInput {
+  const contains = { contains: search, mode: 'insensitive' as const };
+  return {
+    OR: [
+      { lotNumber: contains },
+      { property: { title: contains } },
+      { property: { address: contains } },
+      {
+        ownerProfiles: {
+          some: {
+            isActive: true,
+            ownedSince: { lte: now },
+            AND: [{ OR: [{ ownedUntil: null }, { ownedUntil: { gt: now } }] }],
+            contact: {
+              OR: [{ firstName: contains }, { lastName: contains }, { legalName: contains }, { email: contains }]
+            }
+          }
+        }
+      }
+    ]
+  };
+}
+
+/**
+ * `lotsOptions` (facultatif) restreint les lots renvoyés : sans lui, la liste
+ * complète et le même ordre qu'avant. Avec `take`, un tri stable (numéro, id).
+ */
+export async function getSyndicateWithLotsAndStats(
+  tenantId: string,
+  syndicateId: string,
+  lotsOptions: { where?: Prisma.SyndicateLotWhereInput; take?: number } = {}
+) {
   return prisma.syndicate.findFirst({
     where: {
       id: syndicateId,
@@ -275,6 +312,10 @@ export async function getSyndicateWithLotsAndStats(tenantId: string, syndicateId
         }
       },
       lots: {
+        ...(lotsOptions.where ? { where: lotsOptions.where } : {}),
+        ...(lotsOptions.take
+          ? { take: lotsOptions.take, orderBy: [{ lotNumber: 'asc' as const }, { id: 'asc' as const }] }
+          : {}),
         include: {
           property: {
             include: {
@@ -1520,7 +1561,7 @@ export async function listChargeCallsBySyndicate(
     },
     skip: pager.skip,
     take: pager.take,
-    orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }]
+    orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }]
   });
 
   // Lot S2 : `payments` est reconstitue a partir des affectations (voir withAllocationPayments).

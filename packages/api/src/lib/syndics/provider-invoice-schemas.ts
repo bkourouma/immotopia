@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { dayOrderRefinement, zCsvEnum, zDay, zSearch } from '../../utils/list-query-schemas';
 
 /**
  * Validation des requetes du lot S6 (factures et paiements des prestataires).
@@ -96,15 +97,17 @@ export const listProviderInvoicesQuerySchema = z
     providerId: z.string().uuid().optional(),
     contractId: z.string().uuid().optional(),
     incidentId: z.string().uuid().optional(),
-    status: z.enum(INVOICE_STATUSES).optional(),
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional(),
+    /** Numéro de facture, libellé ou nom du prestataire. */
+    search: zSearch(),
+    /** Un statut ou une liste séparée par des virgules. */
+    status: zCsvEnum(INVOICE_STATUSES),
+    /** Jours aaaa-mm-jj réels ; `to` inclusif (23:59:59.999). */
+    from: zDay,
+    to: zDay,
     page: z.coerce.number().int().positive().optional().default(1),
     limit: z.coerce.number().int().positive().max(100).optional().default(20)
   })
-  .refine(value => !value.from || !value.to || value.from <= value.to, {
-    message: 'La date de début doit être inférieure ou égale à la date de fin'
-  });
+  .superRefine(dayOrderRefinement('from', 'to'));
 
 export const fundMovementsQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),

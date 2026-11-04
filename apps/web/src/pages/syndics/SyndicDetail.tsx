@@ -14,19 +14,21 @@ import {
   Select,
   Space,
   Spin,
+  Tabs,
   Tag,
   Typography
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ApartmentOutlined, BankOutlined, EditOutlined, FolderOpenOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
 import { LotTable } from '../../components/syndics/LotTable';
 import { LotTypeRatesCard } from '../../components/syndics/LotTypeRatesCard';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { BrandingImageField } from '../../components/documents/BrandingImageField';
-import { DataCard, DataView, MoneyValue, StatCard } from '../../components/primitives';
+import { DataCard, DataView, StatCard } from '../../components/primitives';
+import { ChargeCallsTab } from '../../components/syndics/finances/ChargeCallsTab';
+import { useTabParam } from '../../components/syndics/finances/url-params';
 import { listContacts } from '../../services/crm-service';
-import { getSyndicate, listAllChargeCalls, updateSyndicate } from '../../services/syndic-service';
+import { getSyndicate, listChargeCallsPage, updateSyndicate } from '../../services/syndic-service';
 import {
   fetchSyndicateLogoBlob,
   listMandatingAgencies,
@@ -36,37 +38,22 @@ import {
 } from '../../services/document-branding-service';
 import { CrmContact } from '../../types/crm-types';
 import type { Sort } from '../../hooks/useListParams';
-import {
-  ChargeCall,
-  ChargeCallStatus,
-  Syndicate,
-  SyndicateLot,
-  UpdateSyndicateRequest
-} from '../../types/syndic-types';
+import { Syndicate, SyndicateLot, UpdateSyndicateRequest } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
-import { formatLotLabel } from '../../utils/syndic-lot-label';
-import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
 import { localizedRecord } from '../../i18n/localized';
 const { Paragraph, Title } = Typography;
 
+/** Onglets de la fiche, dans l'ordre d'affichage (le premier est le défaut de `?tab=`). */
+const DETAIL_TABS = ['lots', 'batiments', 'appels', 'tarifs'] as const;
+type DetailTab = (typeof DETAIL_TABS)[number];
+const NO_LOTS: SyndicateLot[] = [];
+
 const statusConfig: Record<Syndicate['status'], { color: string; label: string }> = localizedRecord(() => ({
   ACTIVE: { color: 'green', label: t('Active') },
   IN_LIQUIDATION: { color: 'orange', label: t('En liquidation') },
   IN_DISPUTE: { color: 'red', label: t('En litige') }
-}));
-
-/**
- * Étiquettes de statut d'un appel de charges — mêmes clés que
- * `<SyndicFinances>`, pour ne pas dupliquer la traduction sous une forme
- * légèrement différente.
- */
-const chargeStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = localizedRecord(() => ({
-  PENDING: { color: 'gold', label: t('En attente') },
-  PARTIAL: { color: 'blue', label: t('Partiel') },
-  PAID: { color: 'green', label: t('Payé') },
-  OVERDUE: { color: 'red', label: t('En retard') }
 }));
 
 /**
@@ -82,22 +69,6 @@ type SyndicateWithProperty = Syndicate & {
     typeSpecificData?: Record<string, unknown> | null;
   } | null;
 };
-
-type LotWithOwner = SyndicateLot & {
-  owner?: { id: string; firstName?: string | null; lastName?: string | null; email?: string | null } | null;
-};
-
-function ownerLabel(
-  owner?: { firstName?: string | null; lastName?: string | null; email?: string | null } | null
-): string {
-  if (!owner) return t('Sans copropriétaire');
-  const name = [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim();
-  return name || owner.email || t('Copropriétaire');
-}
-
-function shortReference(id: string): string {
-  return `APPEL-${id.slice(0, 8).toUpperCase()}`;
-}
 
 /**
  * Même construction de libellé que `<SyndicLots>` (nom complet, sinon raison
@@ -133,10 +104,6 @@ interface EditSyndicateFormValues {
   syndicManagerId?: string;
   status?: Syndicate['status'];
   mandatingAgencyId?: string;
-}
-
-function scrollToSection(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 /** Tri et pagination client d'une liste déjà chargée en mémoire (voir `<SyndicFinances>`). */
@@ -197,19 +164,6 @@ interface BuildingRow {
   parkingSpaces?: number;
 }
 
-interface ChargeRow {
-  id: string;
-  reference: string;
-  period: string;
-  lotLabel: string;
-  ownerLabel: string;
-  amount: number;
-  paid: number;
-  outstanding: number;
-  dueDate: string;
-  status: ChargeCallStatus;
-}
-
 function buildBuildingRows(syndicate: SyndicateWithProperty | null): BuildingRow[] {
   const property = syndicate?.property;
   if (!property) return [];
@@ -226,26 +180,6 @@ function buildBuildingRows(syndicate: SyndicateWithProperty | null): BuildingRow
   ];
 }
 
-function buildChargeRows(charges: ChargeCall[]): ChargeRow[] {
-  return charges.map(charge => {
-    const lot = charge.lot as LotWithOwner | undefined;
-    const paid = (charge.payments || []).reduce((sum, payment) => sum + Number(payment.amount), 0);
-    const amount = Number(charge.amount);
-    return {
-      id: charge.id,
-      reference: shortReference(charge.id),
-      period: charge.period,
-      lotLabel: formatLotLabel(lot, charge.lotId),
-      ownerLabel: ownerLabel(lot?.owner),
-      amount,
-      paid,
-      outstanding: Math.max(0, amount - paid),
-      dueDate: charge.dueDate,
-      status: charge.status
-    };
-  });
-}
-
 export const SyndicDetail: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
@@ -254,7 +188,9 @@ export const SyndicDetail: React.FC = () => {
   const canEditSyndic = permissionsReady && (permissions === null || permissions.has('SYNDIC_EDIT'));
 
   const [syndicate, setSyndicate] = useState<SyndicateWithProperty | null>(null);
-  const [charges, setCharges] = useState<ChargeCall[]>([]);
+  // Total des appels de charges (une page d'une ligne suffit) : le détail ne se charge que dans son onglet.
+  const [chargeCount, setChargeCount] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useTabParam<DetailTab>(DETAIL_TABS, 'lots');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [managerOptions, setManagerOptions] = useState<Array<{ value: string; label: string }>>([]);
@@ -288,12 +224,12 @@ export const SyndicDetail: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [syndicateData, chargesData] = await Promise.all([
+      const [syndicateData, chargesPage] = await Promise.all([
         getSyndicate(effectiveTenantId, syndicId),
-        listAllChargeCalls(effectiveTenantId, syndicId)
+        listChargeCallsPage(effectiveTenantId, syndicId, { page: 1, limit: 1 }).catch(() => null)
       ]);
       setSyndicate(syndicateData);
-      setCharges(chargesData);
+      setChargeCount(chargesPage ? chargesPage.pagination.total : null);
     } catch (err: any) {
       setError(err.response?.data?.error || t('Impossible de charger la copropriété'));
     } finally {
@@ -396,10 +332,8 @@ export const SyndicDetail: React.FC = () => {
   };
 
   const buildingRows = useMemo(() => buildBuildingRows(syndicate), [syndicate]);
-  const chargeRows = useMemo(() => buildChargeRows(charges), [charges]);
 
   const buildingsTable = useLocalTable(buildingRows, 10);
-  const chargesTable = useLocalTable(chargeRows, 10);
 
   const buildingColumns: ColumnsType<BuildingRow> = [
     { title: t('Bâtiment'), dataIndex: 'title', key: 'title' },
@@ -412,52 +346,6 @@ export const SyndicDetail: React.FC = () => {
       key: 'parkingSpaces',
       align: 'end',
       render: value => value ?? '—'
-    }
-  ];
-
-  const chargeColumns: ColumnsType<ChargeRow> = [
-    { title: t('Référence'), dataIndex: 'reference', key: 'reference' },
-    { title: t('Période'), dataIndex: 'period', key: 'period', sorter: true },
-    { title: t('Lot'), dataIndex: 'lotLabel', key: 'lotLabel' },
-    { title: t('Copropriétaire'), dataIndex: 'ownerLabel', key: 'ownerLabel' },
-    {
-      title: t('Montant appelé'),
-      dataIndex: 'amount',
-      key: 'amount',
-      align: 'end',
-      sorter: true,
-      render: (_: number, row) => <MoneyValue value={row.amount} />
-    },
-    {
-      title: t('Payé'),
-      dataIndex: 'paid',
-      key: 'paid',
-      align: 'end',
-      sorter: true,
-      render: (_: number, row) => <MoneyValue value={row.paid} />
-    },
-    {
-      title: t('Reste'),
-      dataIndex: 'outstanding',
-      key: 'outstanding',
-      align: 'end',
-      sorter: true,
-      render: (_: number, row) => <MoneyValue value={row.outstanding} />
-    },
-    {
-      title: t('Échéance'),
-      dataIndex: 'dueDate',
-      key: 'dueDate',
-      sorter: true,
-      render: (value: string) => dayjs(value).format(dateFormat('short'))
-    },
-    {
-      title: t('Statut'),
-      dataIndex: 'status',
-      key: 'status',
-      render: (value: ChargeCallStatus) => (
-        <Tag color={chargeStatusConfig[value].color}>{chargeStatusConfig[value].label}</Tag>
-      )
     }
   ];
 
@@ -505,7 +393,7 @@ export const SyndicDetail: React.FC = () => {
             label={t('Lots')}
             value={syndicate.lots?.length ?? syndicate._count?.lots ?? syndicate.totalLots}
             icon={<FolderOpenOutlined />}
-            onClick={() => scrollToSection('fiche-lots')}
+            onClick={() => setActiveTab('lots')}
           />
         </Col>
         <Col xs={24} md={8}>
@@ -513,15 +401,15 @@ export const SyndicDetail: React.FC = () => {
             label={t('Bâtiments')}
             value={syndicate.totalBuildings}
             icon={<ApartmentOutlined />}
-            onClick={() => scrollToSection('fiche-batiments')}
+            onClick={() => setActiveTab('batiments')}
           />
         </Col>
         <Col xs={24} md={8}>
           <StatCard
             label={t('Appels de charges')}
-            value={charges.length}
+            value={chargeCount ?? '—'}
             icon={<BankOutlined />}
-            onClick={() => scrollToSection('fiche-appels')}
+            onClick={() => setActiveTab('appels')}
           />
         </Col>
       </Row>
@@ -583,10 +471,6 @@ export const SyndicDetail: React.FC = () => {
           }}
         />
       </Card>
-
-      {effectiveTenantId && syndicId ? (
-        <LotTypeRatesCard tenantId={effectiveTenantId} syndicId={syndicId} canEdit={canEditSyndic} />
-      ) : null}
 
       <Modal
         title={t('Modifier la copropriété')}
@@ -666,83 +550,74 @@ export const SyndicDetail: React.FC = () => {
         </Form>
       </Modal>
 
-      <div id="fiche-lots">
-        <Card title={t('Résumé des lots')}>
-          <LotTable
-            lots={syndicate.lots || []}
-            portalManageHref={`/tenant/${effectiveTenantId}/syndics/${syndicId}/profils-incidents`}
-          />
-        </Card>
-      </div>
-
-      <div id="fiche-batiments">
-        <Card title={t('Détail des bâtiments')}>
-          <DataView<BuildingRow>
-            items={buildingsTable.pageItems}
-            total={buildingsTable.total}
-            page={buildingsTable.page}
-            pageSize={buildingsTable.pageSize}
-            onPageChange={buildingsTable.onPageChange}
-            sort={buildingsTable.sort}
-            onSortChange={buildingsTable.onSortChange}
-            loading={loading}
-            error={null}
-            emptyDescription={t('Aucun bâtiment renseigné pour cette copropriété.')}
-            columns={buildingColumns}
-            rowKey={row => row.id}
-            aria-label={t('Détail des bâtiments')}
-            export={{ filename: t('Détail des bâtiments'), fetchAll: async () => buildingsTable.allItems }}
-            renderCard={row => (
-              <DataCard
-                title={row.title}
-                aria-label={row.title}
-                subtitle={row.address}
-                fields={[
-                  { label: t('Étages'), value: row.floors ?? '—' },
-                  { label: t('Unités'), value: row.units ?? '—' },
-                  { label: t('Places de parking'), value: row.parkingSpaces ?? '—' }
-                ]}
+      {/* Une requête par onglet, lancée seulement quand l'onglet est affiché (`destroyOnHidden`). */}
+      <Tabs
+        activeKey={activeTab}
+        onChange={key => setActiveTab(key as DetailTab)}
+        destroyOnHidden
+        items={[
+          {
+            key: 'lots',
+            label: t('Résumé des lots'),
+            children: (
+              <LotTable
+                lots={syndicate.lots ?? NO_LOTS}
+                paramPrefix="lo"
+                portalManageHref={`/tenant/${effectiveTenantId}/syndics/${syndicId}/profils-incidents`}
               />
-            )}
-          />
-        </Card>
-      </div>
-
-      <div id="fiche-appels">
-        <Card title={t('Détail des appels de charges')}>
-          <DataView<ChargeRow>
-            items={chargesTable.pageItems}
-            total={chargesTable.total}
-            page={chargesTable.page}
-            pageSize={chargesTable.pageSize}
-            onPageChange={chargesTable.onPageChange}
-            sort={chargesTable.sort}
-            onSortChange={chargesTable.onSortChange}
-            loading={loading}
-            error={null}
-            emptyDescription={t('Aucun appel de charges enregistré pour cette copropriété.')}
-            columns={chargeColumns}
-            rowKey={row => row.id}
-            aria-label={t('Détail des appels de charges')}
-            export={{ filename: t('Détail des appels de charges'), fetchAll: async () => chargesTable.allItems }}
-            scrollX={1100}
-            renderCard={row => (
-              <DataCard
-                title={`${row.lotLabel} — ${row.ownerLabel}`}
-                aria-label={row.reference}
-                subtitle={`${row.reference} · ${row.period}`}
-                highlight={<MoneyValue value={row.amount} />}
-                status={<Tag color={chargeStatusConfig[row.status].color}>{chargeStatusConfig[row.status].label}</Tag>}
-                fields={[
-                  { label: t('Payé'), value: <MoneyValue value={row.paid} /> },
-                  { label: t('Reste'), value: <MoneyValue value={row.outstanding} /> },
-                  { label: t('Échéance'), value: dayjs(row.dueDate).format(dateFormat('short')) }
-                ]}
+            )
+          },
+          {
+            key: 'batiments',
+            label: t('Détail des bâtiments'),
+            // Une copropriété compte une poignée de bâtiments : pas de barre de recherche.
+            children: (
+              <DataView<BuildingRow>
+                items={buildingsTable.pageItems}
+                total={buildingsTable.total}
+                page={buildingsTable.page}
+                pageSize={buildingsTable.pageSize}
+                onPageChange={buildingsTable.onPageChange}
+                sort={buildingsTable.sort}
+                onSortChange={buildingsTable.onSortChange}
+                loading={loading}
+                error={null}
+                emptyDescription={t('Aucun bâtiment renseigné pour cette copropriété.')}
+                columns={buildingColumns}
+                rowKey={row => row.id}
+                aria-label={t('Détail des bâtiments')}
+                export={{ filename: t('Détail des bâtiments'), fetchAll: async () => buildingsTable.allItems }}
+                renderCard={row => (
+                  <DataCard
+                    title={row.title}
+                    aria-label={row.title}
+                    subtitle={row.address}
+                    fields={[
+                      { label: t('Étages'), value: row.floors ?? '—' },
+                      { label: t('Unités'), value: row.units ?? '—' },
+                      { label: t('Places de parking'), value: row.parkingSpaces ?? '—' }
+                    ]}
+                  />
+                )}
               />
-            )}
-          />
-        </Card>
-      </div>
+            )
+          },
+          {
+            key: 'appels',
+            label: t('Détail des appels de charges'),
+            children:
+              effectiveTenantId && syndicId ? <ChargeCallsTab tenantId={effectiveTenantId} syndicId={syndicId} /> : null
+          },
+          {
+            key: 'tarifs',
+            label: t('Barème par type de lot'),
+            children:
+              effectiveTenantId && syndicId ? (
+                <LotTypeRatesCard tenantId={effectiveTenantId} syndicId={syndicId} canEdit={canEditSyndic} />
+              ) : null
+          }
+        ]}
+      />
     </Space>
   );
 };

@@ -1,5 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import apiClient from '../../utils/api-client';
 import { ProviderInvoicesTab } from '../../components/syndics/ProviderInvoicesTab';
 
@@ -41,6 +43,7 @@ const { messageError, messageWarning, messageSuccess } = vi.hoisted(() => ({
 vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
 
 vi.mock('antd', async () => {
+  const actual = await vi.importActual<typeof import('antd')>('antd');
   const React = await vi.importActual<typeof import('react')>('react');
   const passthrough =
     (Tag: keyof JSX.IntrinsicElements = 'div') =>
@@ -49,12 +52,9 @@ vi.mock('antd', async () => {
 
   // Chaque `Form.useForm()` reçoit sa propre instance espionnable, dans
   // l'ORDRE DE MONTAGE : `createForm` (ProviderInvoicesTab) puis `payForm`
-  // (ProviderInvoiceDrawer, toujours monté, même fermé). Contrairement au
-  // mock à compteur global de `ProvidersDocumentsFinancesPages.test.tsx`, on
-  // s'appuie ici sur `useState` : son initialiseur ne s'exécute qu'UNE fois
-  // par instance de composant, quel que soit le nombre de re-rendus qui
-  // suivent — un `<Drawer>` qui se re-rend deux fois de suite dans le même
-  // flush (son propre `load()` state) ne crée donc jamais de deuxième entrée.
+  // (ProviderInvoiceDrawer, toujours monté, même fermé). On s'appuie sur
+  // `useState` : son initialiseur ne s'exécute qu'UNE fois par instance de
+  // composant, quel que soit le nombre de re-rendus.
   let formInstances: any[] = [];
   const Form: any = passthrough('form');
   Form.useForm = () => {
@@ -75,35 +75,6 @@ vi.mock('antd', async () => {
       {label}
       {typeof children === 'function' ? null : children}
     </div>
-  );
-
-  const Table: any = ({ dataSource, columns, rowKey }: any) => (
-    <table>
-      <tbody>
-        {(dataSource || []).map((row: any, rowIndex: number) => (
-          <tr key={typeof rowKey === 'function' ? rowKey(row) : (row[rowKey as string] ?? rowIndex)}>
-            {(columns || []).map((column: any, columnIndex: number) => (
-              <td key={column.key || column.dataIndex || columnIndex}>
-                {column.render
-                  ? column.render(row[column.dataIndex], row, rowIndex)
-                  : String(row[column.dataIndex] ?? '')}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-
-  const Select: any = ({ options, value, onChange, placeholder }: any) => (
-    <select value={value ?? ''} onChange={event => onChange?.(event.target.value || undefined)}>
-      <option value="">{placeholder || ''}</option>
-      {(options || []).map((option: any) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
   );
 
   const Modal: any = ({ children, open, onOk, okText, onCancel, cancelText, title }: any) =>
@@ -144,40 +115,21 @@ vi.mock('antd', async () => {
   };
   Upload.Dragger = passthrough();
 
-  const DatePicker: any = passthrough('input');
-  DatePicker.RangePicker = passthrough('input');
-
-  const antdMock: Record<string, unknown> = {
-    Alert: ({ message }: any) => <div role="alert">{message}</div>,
-    Button: ({ children, onClick, disabled, loading, icon, danger }: any) => (
-      <button onClick={onClick} disabled={disabled || loading} data-danger={danger ? 'true' : undefined}>
-        {icon}
-        {children}
-      </button>
-    ),
-    Card: passthrough(),
-    Col: passthrough(),
-    Row: passthrough(),
-    DatePicker,
+  const message = { success: messageSuccess, error: messageError, warning: messageWarning, info() {} };
+  const appApi = {
+    message,
+    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
+    notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
+  };
+  return {
+    ...actual,
     Descriptions,
     Drawer,
     Form,
-    Input: Object.assign(passthrough('input'), { TextArea: passthrough('textarea') }),
-    InputNumber: passthrough('input'),
     Modal,
-    Select,
-    Space: passthrough(),
-    Spin: passthrough(),
-    Table,
-    Tag: passthrough('span'),
     Upload,
-    message: { success: messageSuccess, error: messageError, warning: messageWarning, info() {} },
-    Typography: {
-      Title: passthrough('h1'),
-      Paragraph: passthrough('p'),
-      Text: passthrough('span'),
-      Link: ({ children, onClick }: any) => <a onClick={onClick}>{children}</a>
-    },
+    message,
+    App: { useApp: () => appApi },
     __mocks: {
       get formInstances() {
         return formInstances;
@@ -191,16 +143,6 @@ vi.mock('antd', async () => {
       }
     }
   };
-  const appApi = {
-    message: antdMock.message,
-    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
-    notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
-  };
-  return {
-    ...antdMock,
-    App: { useApp: () => appApi },
-    Grid: { useBreakpoint: () => ({}) }
-  };
 });
 
 const { __mocks } = (await import('antd')) as unknown as {
@@ -213,74 +155,99 @@ const { __mocks } = (await import('antd')) as unknown as {
 
 const mockApiClient = apiClient as any;
 
-function mockReferenceData() {
-  // Ordre des appels dans `loadReferenceData` (Promise.all) : incidents,
-  // fonds, budgets, soldes.
-  mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: [] } }); // incidents
-  mockApiClient.get.mockResolvedValueOnce({
-    data: { success: true, data: [{ id: 'fund-1', name: 'Compte courant', balance: 1000, currency: 'XOF' }] }
-  }); // fonds
-  mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: [] } }); // budgets
-  mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: [] } }); // soldes
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
+const ok = (data: unknown) => ({ data: { success: true, data } });
+const EMPTY_LIST = { items: [], total: 0, page: 1, limit: 20 };
+
+/** Réponses du faux serveur : la liste et le détail sont ceux que le test pose. */
+const server: { list: any; detail: any } = { list: EMPTY_LIST, detail: null };
+
+/** Route chaque GET par son URL (l'ordre des appels ne compte plus). */
+function installServer() {
+  server.list = EMPTY_LIST;
+  server.detail = null;
+  mockApiClient.get.mockImplementation(async (url: string) => {
+    if (url.endsWith('/incidents')) return ok([]);
+    if (url.endsWith('/fonds')) {
+      return ok([{ id: 'fund-1', name: 'Compte courant', balance: 1000, currency: 'XOF' }]);
+    }
+    if (url.endsWith('/budgets')) return ok([]);
+    if (url.endsWith('/prestataires/soldes')) return ok([]);
+    if (url.endsWith('/factures-prestataires')) return ok(server.list);
+    if (/\/factures-prestataires\/[^/]+$/.test(url)) return ok(server.detail);
+    throw new Error(`GET inattendu : ${url}`);
+  });
 }
+
+function renderTab(props: Partial<React.ComponentProps<typeof ProviderInvoicesTab>> = {}) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <ProviderInvoicesTab tenantId="tenant-1" syndicId="syndic-1" providers={[]} contracts={[]} {...props} />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
+const INVOICE = {
+  id: 'inv-1',
+  provider: { id: 'p1', name: 'Ascenseurs Pro' },
+  number: 'F-2026-001',
+  label: 'Entretien ascenseur',
+  invoiceDate: '2026-01-05T00:00:00.000Z',
+  amountTTC: 118000,
+  amountPaid: 0,
+  amountDue: 118000,
+  currency: 'XOF',
+  hasFile: false,
+  status: 'RECORDED'
+};
+
+const DETAIL = {
+  id: 'inv-1',
+  number: 'F-2026-001',
+  label: 'Entretien ascenseur',
+  invoiceDate: '2026-01-05T00:00:00.000Z',
+  dueDate: null,
+  amountHT: 100000,
+  vatAmount: 18000,
+  amountTTC: 118000,
+  amountPaid: 0,
+  amountDue: 118000,
+  currency: 'XOF',
+  hasFile: false,
+  status: 'RECORDED',
+  provider: { id: 'p1', name: 'Ascenseurs Pro' },
+  contract: null,
+  incident: null,
+  budgetLine: null,
+  fund: null,
+  payments: []
+};
 
 describe('ProviderInvoicesTab', () => {
   beforeEach(() => {
-    // `resetAllMocks` (et non `clearAllMocks`) : un test qui échoue en
-    // laissant des `mockResolvedValueOnce` non consommés ne doit pas les
-    // faire fuiter sur le test suivant.
+    // `resetAllMocks` (et non `clearAllMocks`) : on repart d'un faux serveur propre.
     vi.resetAllMocks();
     __mocks.resetForms();
+    installServer();
   });
 
   it('affiche la liste des factures', async () => {
-    mockReferenceData();
-    mockApiClient.get.mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: {
-          items: [
-            {
-              id: 'inv-1',
-              provider: { id: 'p1', name: 'Ascenseurs Pro' },
-              number: 'F-2026-001',
-              label: 'Entretien ascenseur',
-              invoiceDate: '2026-01-05T00:00:00.000Z',
-              amountTTC: 118000,
-              amountPaid: 0,
-              amountDue: 118000,
-              currency: 'XOF',
-              hasFile: false,
-              status: 'RECORDED'
-            }
-          ],
-          total: 1,
-          page: 1,
-          limit: 20
-        }
-      }
-    });
+    server.list = { items: [INVOICE], total: 1, page: 1, limit: 20 };
 
-    render(<ProviderInvoicesTab tenantId="tenant-1" syndicId="syndic-1" providers={[]} contracts={[]} />);
+    renderTab();
 
     expect(await screen.findByText('F-2026-001')).toBeTruthy();
     expect(await screen.findByText('Ascenseurs Pro')).toBeTruthy();
   });
 
   it('signale un numéro de facture déjà utilisé (409) à la création', async () => {
-    mockReferenceData();
-    mockApiClient.get.mockResolvedValueOnce({
-      data: { success: true, data: { items: [], total: 0, page: 1, limit: 20 } }
-    });
-
-    render(
-      <ProviderInvoicesTab
-        tenantId="tenant-1"
-        syndicId="syndic-1"
-        providers={[{ id: 'p1', tenantId: 't1', name: 'Ascenseurs Pro' }]}
-        contracts={[]}
-      />
-    );
+    renderTab({ providers: [{ id: 'p1', tenantId: 't1', name: 'Ascenseurs Pro' }] });
 
     fireEvent.click(await screen.findByText('Enregistrer une facture'));
 
@@ -311,66 +278,12 @@ describe('ProviderInvoicesTab', () => {
   });
 
   it('avertit quand le paiement laisse le solde du fonds négatif', async () => {
-    mockReferenceData();
-    mockApiClient.get.mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: {
-          items: [
-            {
-              id: 'inv-1',
-              provider: { id: 'p1', name: 'Ascenseurs Pro' },
-              number: 'F-2026-001',
-              label: 'Entretien ascenseur',
-              invoiceDate: '2026-01-05T00:00:00.000Z',
-              amountTTC: 118000,
-              amountPaid: 0,
-              amountDue: 118000,
-              currency: 'XOF',
-              hasFile: false,
-              status: 'RECORDED'
-            }
-          ],
-          total: 1,
-          page: 1,
-          limit: 20
-        }
-      }
-    });
+    server.list = { items: [INVOICE], total: 1, page: 1, limit: 20 };
+    server.detail = DETAIL;
 
-    render(<ProviderInvoicesTab tenantId="tenant-1" syndicId="syndic-1" providers={[]} contracts={[]} />);
+    renderTab();
 
-    // Enregistrée AVANT le clic : ouvrir le tiroir déclenche l'appel GET de
-    // façon synchrone dans le même `act()` que le clic, sans await
-    // intermédiaire côté test pour enregistrer la réponse après coup.
-    mockApiClient.get.mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: {
-          id: 'inv-1',
-          number: 'F-2026-001',
-          label: 'Entretien ascenseur',
-          invoiceDate: '2026-01-05T00:00:00.000Z',
-          dueDate: null,
-          amountHT: 100000,
-          vatAmount: 18000,
-          amountTTC: 118000,
-          amountPaid: 0,
-          amountDue: 118000,
-          currency: 'XOF',
-          hasFile: false,
-          status: 'RECORDED',
-          provider: { id: 'p1', name: 'Ascenseurs Pro' },
-          contract: null,
-          incident: null,
-          budgetLine: null,
-          fund: null,
-          payments: []
-        }
-      }
-    });
     fireEvent.click(await screen.findByText('Ouvrir'));
-
     fireEvent.click(await screen.findByText('Enregistrer un paiement'));
 
     __mocks.formInstances[1].validateFields = async () => ({
@@ -390,16 +303,6 @@ describe('ProviderInvoicesTab', () => {
         }
       }
     });
-    mockApiClient.get.mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: { id: 'inv-1', status: 'PAID', payments: [], amountDue: 0, amountTTC: 118000, amountPaid: 118000 }
-      }
-    });
-    mockApiClient.get.mockResolvedValueOnce({
-      data: { success: true, data: { items: [], total: 0, page: 1, limit: 20 } }
-    });
-    mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: [] } });
 
     fireEvent.click(screen.getByText('Enregistrer'));
 
@@ -409,88 +312,24 @@ describe('ProviderInvoicesTab', () => {
   });
 
   it('annule une facture avec un motif obligatoire', async () => {
-    mockReferenceData();
-    mockApiClient.get.mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: {
-          items: [
-            {
-              id: 'inv-1',
-              provider: { id: 'p1', name: 'Ascenseurs Pro' },
-              number: 'F-2026-001',
-              label: 'Entretien ascenseur',
-              invoiceDate: '2026-01-05T00:00:00.000Z',
-              amountTTC: 118000,
-              amountPaid: 0,
-              amountDue: 118000,
-              currency: 'XOF',
-              hasFile: false,
-              status: 'RECORDED'
-            }
-          ],
-          total: 1,
-          page: 1,
-          limit: 20
-        }
-      }
-    });
+    server.list = { items: [INVOICE], total: 1, page: 1, limit: 20 };
+    server.detail = DETAIL;
 
-    const { container } = render(
-      <ProviderInvoicesTab tenantId="tenant-1" syndicId="syndic-1" providers={[]} contracts={[]} />
-    );
+    const { container } = renderTab();
 
-    mockApiClient.get.mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: {
-          id: 'inv-1',
-          number: 'F-2026-001',
-          label: 'Entretien ascenseur',
-          invoiceDate: '2026-01-05T00:00:00.000Z',
-          dueDate: null,
-          amountHT: 100000,
-          vatAmount: 18000,
-          amountTTC: 118000,
-          amountPaid: 0,
-          amountDue: 118000,
-          currency: 'XOF',
-          hasFile: false,
-          status: 'RECORDED',
-          provider: { id: 'p1', name: 'Ascenseurs Pro' },
-          contract: null,
-          incident: null,
-          budgetLine: null,
-          fund: null,
-          payments: []
-        }
-      }
-    });
     fireEvent.click(await screen.findByText('Ouvrir'));
-
     fireEvent.click(await screen.findByText('Annuler la facture'));
 
     // Le motif est obligatoire : sans texte, l'annulation n'est pas envoyée.
     fireEvent.click(screen.getByText('Confirmer l’annulation'));
     expect(mockApiClient.post).not.toHaveBeenCalled();
 
-    // `getByRole('textbox')` verrait aussi le `<input>` du filtre de période
-    // (RangePicker) : le motif d'annulation est le seul `<textarea>` du DOM.
-    const textarea = container.querySelector('textarea');
+    // Le motif d'annulation est le seul `<textarea>` du DOM.
+    const textarea = container.ownerDocument.querySelector('textarea');
     expect(textarea).toBeTruthy();
     fireEvent.change(textarea!, { target: { value: 'Erreur de saisie' } });
 
     mockApiClient.post.mockResolvedValueOnce({ data: { success: true, data: { id: 'inv-1', status: 'CANCELLED' } } });
-    mockApiClient.get.mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: { id: 'inv-1', status: 'CANCELLED', payments: [], amountDue: 0, amountTTC: 118000, amountPaid: 0 }
-      }
-    });
-    mockApiClient.get.mockResolvedValueOnce({
-      data: { success: true, data: { items: [], total: 0, page: 1, limit: 20 } }
-    });
-    mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: [] } });
 
     fireEvent.click(screen.getByText('Confirmer l’annulation'));
 
@@ -507,85 +346,29 @@ describe('ProviderInvoicesTab', () => {
     // propre POST du fichier vers `action` (l'URL de la page), en clair, sans
     // passer par le service authentifié. Régression corrigée sur signalement
     // de l'audit sécurité — ce test la fige.
-    mockReferenceData();
-    mockApiClient.get.mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: {
-          items: [
-            {
-              id: 'inv-1',
-              provider: { id: 'p1', name: 'Ascenseurs Pro' },
-              number: 'F-2026-001',
-              label: 'Entretien ascenseur',
-              invoiceDate: '2026-01-05T00:00:00.000Z',
-              amountTTC: 118000,
-              amountPaid: 0,
-              amountDue: 118000,
-              currency: 'XOF',
-              hasFile: true,
-              fileName: 'facture.pdf',
-              status: 'RECORDED'
-            }
-          ],
-          total: 1,
-          page: 1,
-          limit: 20
-        }
-      }
-    });
+    const withFile = { ...INVOICE, hasFile: true, fileName: 'facture.pdf' };
+    server.list = { items: [withFile], total: 1, page: 1, limit: 20 };
+    server.detail = { ...DETAIL, hasFile: true, fileName: 'facture.pdf' };
 
-    render(<ProviderInvoicesTab tenantId="tenant-1" syndicId="syndic-1" providers={[]} contracts={[]} />);
+    renderTab();
 
     // Le formulaire « Enregistrer une facture » monte son propre `<Upload>`.
     fireEvent.click(await screen.findByText('Enregistrer une facture'));
 
     // Le tiroir d'une facture déjà pourvue d'une pièce monte le `<Upload>` de
     // « Remplacer » (et non celui d'« Ajouter »).
-    mockApiClient.get.mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: {
-          id: 'inv-1',
-          number: 'F-2026-001',
-          label: 'Entretien ascenseur',
-          invoiceDate: '2026-01-05T00:00:00.000Z',
-          dueDate: null,
-          amountHT: 100000,
-          vatAmount: 18000,
-          amountTTC: 118000,
-          amountPaid: 0,
-          amountDue: 118000,
-          currency: 'XOF',
-          hasFile: true,
-          fileName: 'facture.pdf',
-          status: 'RECORDED',
-          provider: { id: 'p1', name: 'Ascenseurs Pro' },
-          contract: null,
-          incident: null,
-          budgetLine: null,
-          fund: null,
-          payments: []
-        }
-      }
-    });
     fireEvent.click(await screen.findByText('Ouvrir'));
     await screen.findByText('Remplacer');
 
     expect(__mocks.uploadRegistrations.length).toBeGreaterThanOrEqual(2);
     // Copie figée : appeler `beforeUpload` déclenche un re-rendu, qui remonte
-    // le même `<Upload>` et repousse une NOUVELLE entrée dans le tableau —
-    // boucler sur le tableau lui-même (muté pendant l'itération) ne terminerait
-    // jamais.
+    // le même `<Upload>` et repousse une NOUVELLE entrée dans le tableau.
     const registrations = [...__mocks.uploadRegistrations];
     for (const registration of registrations) {
       expect(registration.accept).toBe('.pdf,.png,.jpg,.jpeg');
       expect(typeof registration.beforeUpload).toBe('function');
       const fakeFile = new File(['contenu'], 'facture.pdf', { type: 'application/pdf' });
       let returned: unknown;
-      // `beforeUpload` déclenche par effet de bord `setCreateFile`/`handleReplaceFile`
-      // (mise à jour d'état) : englober dans `act` pour ne garder que le bruit de
-      // test pertinent, la valeur de retour elle-même reste synchrone.
       act(() => {
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         returned = registration.beforeUpload!(fakeFile);

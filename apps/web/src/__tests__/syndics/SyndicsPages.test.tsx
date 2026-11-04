@@ -1,5 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
@@ -32,6 +34,8 @@ vi.mock('antd', async () => {
   // importActual reaches the real module from inside a hoisted mock factory;
   // a plain dynamic import here deadlocks the module graph.
   const React = await vi.importActual<typeof import('react')>('react');
+  // Le vrai antd sert de base : la barre de recherche (ListSearch) en utilise les contrôles ; les doublures ci-dessous priment.
+  const actualAntd = await vi.importActual<Record<string, unknown>>('antd');
   const jestObject = vi;
   const passthrough =
     (Tag: keyof JSX.IntrinsicElements = 'div') =>
@@ -120,6 +124,7 @@ vi.mock('antd', async () => {
     notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
   };
   return {
+    ...actualAntd,
     ...antdMock,
     App: { useApp: () => appApi },
     // Aucun palier actif : le rendu par defaut des tests est le mobile.
@@ -169,16 +174,19 @@ const authValue: AuthContextType = {
 };
 
 function renderWithAuthAndRoute(route: string, element: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <AuthContext.Provider value={authValue}>
-      <MemoryRouter initialEntries={[route]}>
-        <Routes>
-          <Route path="/tenant/:tenantId/syndics" element={<SyndicsList />} />
-          <Route path="/tenant/:tenantId/syndics/:syndicId" element={<SyndicDetail />} />
-          <Route path="*" element={element} />
-        </Routes>
-      </MemoryRouter>
-    </AuthContext.Provider>
+    <QueryClientProvider client={queryClient}>
+      <AuthContext.Provider value={authValue}>
+        <MemoryRouter initialEntries={[route]}>
+          <Routes>
+            <Route path="/tenant/:tenantId/syndics" element={<SyndicsList />} />
+            <Route path="/tenant/:tenantId/syndics/:syndicId" element={<SyndicDetail />} />
+            <Route path="*" element={element} />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>
+    </QueryClientProvider>
   );
 }
 
@@ -278,10 +286,9 @@ describe('Syndics pages', () => {
   });
 
   it('renders syndicate detail with lots, its building and its charge calls', async () => {
-    // `<SyndicDetail>` charge désormais la copropriété ET la liste complète des
-    // appels de charges (`listAllChargeCalls`, même service que la Trésorerie),
-    // en parallèle : deux appels HTTP distincts, routés par URL plutôt que par
-    // ordre pour ne pas dépendre de la façon dont `Promise.all` les déclenche.
+    // `<SyndicDetail>` charge la copropriété et le total des appels de charges
+    // (une page d'une ligne) ; le détail des appels ne part qu'à l'ouverture de
+    // son onglet. Appels HTTP routés par URL plutôt que par ordre.
     mockApiClient.get.mockImplementation((url: string) => {
       if (url === '/tenants/tenant-1/syndics/syndic-1') {
         return Promise.resolve({
@@ -372,16 +379,17 @@ describe('Syndics pages', () => {
 
     const names = await screen.findAllByText('Résidence Les Palmiers');
     expect(names.length).toBeGreaterThan(0);
-    // « A-101 » apparaît deux fois : dans le tableau des lots (LotTable) et
-    // dans la carte du tableau des appels de charges qui cite ce même lot.
+    // Onglet par défaut : le tableau des lots (LotTable).
     expect((await screen.findAllByText(/A-101/)).length).toBeGreaterThan(0);
 
-    // Tableau « Détail des bâtiments » : le bien IMMEUBLE du syndic, avec ses
+    // Onglet « Détail des bâtiments » : le bien IMMEUBLE du syndic, avec ses
     // caractéristiques déclarées (typeSpecificData).
+    await userEvent.click(screen.getByRole('tab', { name: 'Détail des bâtiments' }));
     expect(await screen.findByText('Immeuble R+3 Les Palmiers')).toBeTruthy();
 
-    // Tableau « Détail des appels de charges » : montant en FCFA, jamais XOF —
+    // Onglet « Détail des appels de charges » : montant en FCFA, jamais XOF —
     // `<MoneyValue>` est seul responsable de l'affichage de la devise.
+    await userEvent.click(screen.getByRole('tab', { name: 'Détail des appels de charges' }));
     expect(await screen.findByText(/Fabrice Aka/)).toBeTruthy();
     expect(container.textContent).not.toMatch(/XOF/);
     // Le montant appelé ET le payé valent 203 450 (charge soldée) : deux
@@ -431,7 +439,7 @@ describe('Syndics pages', () => {
       return Promise.reject(new Error(`Unhandled GET ${url}`));
     });
 
-    renderWithAuthAndRoute('/tenant/tenant-1/syndics/syndic-1', <SyndicDetail />);
+    renderWithAuthAndRoute('/tenant/tenant-1/syndics/syndic-1?tab=batiments', <SyndicDetail />);
 
     expect(await screen.findAllByText('Résidence Les Rôniers')).toBeTruthy();
     expect((await screen.findAllByText('Aucune donnée')).length).toBeGreaterThan(0);

@@ -38,6 +38,8 @@ vi.mock('antd', async () => {
   // importActual doit être atteint depuis l'intérieur de la factory hoistée ;
   // un import dynamique classique ici bloque le graphe de modules.
   const React = await vi.importActual<typeof import('react')>('react');
+  // Le vrai antd sert de base : la barre de recherche (ListSearch) en utilise les contrôles ; les doublures ci-dessous priment.
+  const actualAntd = await vi.importActual<Record<string, unknown>>('antd');
   const passthrough =
     (Tag: keyof JSX.IntrinsicElements = 'div') =>
     ({ children, ...props }: any) =>
@@ -153,6 +155,7 @@ vi.mock('antd', async () => {
     notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
   };
   return {
+    ...actualAntd,
     ...antdMock,
     App: { useApp: () => appApi }
   };
@@ -220,7 +223,11 @@ describe('LotTable — bien lié sans propriétaire', () => {
       updatedAt: new Date().toISOString()
     } as unknown as SyndicateLot;
 
-    render(<LotTable lots={[lot]} />);
+    render(
+      <MemoryRouter>
+        <LotTable lots={[lot]} />
+      </MemoryRouter>
+    );
 
     // Le bien seul.
     expect(screen.getByText('Appartement 12B')).toBeTruthy();
@@ -340,7 +347,11 @@ describe('LotTable — désactiver, réactiver, locataires', () => {
   it('propose « Désactiver » sur un lot actif et confirme avant d’appeler le rappel', () => {
     const onDeactivate = vi.fn();
     const onReactivate = vi.fn();
-    render(<LotTable lots={[baseLot({})]} onDeactivate={onDeactivate} onReactivate={onReactivate} />);
+    render(
+      <MemoryRouter>
+        <LotTable lots={[baseLot({})]} onDeactivate={onDeactivate} onReactivate={onReactivate} />
+      </MemoryRouter>
+    );
 
     expect(screen.queryByText('Réactiver')).toBeNull();
     fireEvent.click(screen.getByText('ok : Désactiver ce lot ?'));
@@ -352,7 +363,11 @@ describe('LotTable — désactiver, réactiver, locataires', () => {
     const onDeactivate = vi.fn();
     const onReactivate = vi.fn();
     const lot = baseLot({ generalShares: 0 });
-    render(<LotTable lots={[lot]} onDeactivate={onDeactivate} onReactivate={onReactivate} />);
+    render(
+      <MemoryRouter>
+        <LotTable lots={[lot]} onDeactivate={onDeactivate} onReactivate={onReactivate} />
+      </MemoryRouter>
+    );
 
     expect(screen.queryByText('ok : Désactiver ce lot ?')).toBeNull();
     fireEvent.click(screen.getByText('Réactiver'));
@@ -387,7 +402,11 @@ describe('LotTable — désactiver, réactiver, locataires', () => {
         }
       ]
     });
-    render(<LotTable lots={[lot]} onEndTenantAssignment={onEnd} />);
+    render(
+      <MemoryRouter>
+        <LotTable lots={[lot]} onEndTenantAssignment={onEnd} />
+      </MemoryRouter>
+    );
 
     expect(screen.getAllByText('Awa Koné')).toHaveLength(1);
     expect(screen.getByText('Ibrahim Sy')).toBeTruthy();
@@ -397,7 +416,11 @@ describe('LotTable — désactiver, réactiver, locataires', () => {
   });
 
   it('affiche « Non renseigné » dans la colonne Locataire sans affectation ni profil', () => {
-    render(<LotTable lots={[baseLot({})]} />);
+    render(
+      <MemoryRouter>
+        <LotTable lots={[baseLot({})]} />
+      </MemoryRouter>
+    );
     expect(screen.getAllByText('Non renseigné').length).toBeGreaterThan(0);
   });
 });

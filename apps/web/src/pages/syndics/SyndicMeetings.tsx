@@ -7,6 +7,7 @@ import {
   Card,
   Checkbox,
   DatePicker,
+  Empty,
   Form,
   Input,
   Modal,
@@ -31,6 +32,8 @@ import {
 } from '../../services/syndic-service';
 import { GeneralMeeting, MeetingConvocationResult, MeetingStatus, MeetingType } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 import { localizedList } from '../../i18n/localized';
@@ -49,6 +52,19 @@ const meetingTypeOptions: Array<{ label: string; value: MeetingType }> = localiz
   { label: t('Ordinaire'), value: 'ORDINARY' },
   { label: t('Extraordinaire'), value: 'EXTRAORDINARY' }
 ]);
+
+// Recherche LOCALE (la liste des assemblées d'une copropriété arrive en entier) : accesseurs
+// stables, hors du composant. Libellés lus à l'appel pour suivre la langue.
+const TEXTE_RECHERCHE = [
+  (meeting: GeneralMeeting) => meetingTypeLabels[meeting.type] ?? meeting.type,
+  (meeting: GeneralMeeting) => meeting.location,
+  (meeting: GeneralMeeting) => meetingStatusLabels[meeting.status] ?? meeting.status
+];
+const ACCESSEURS = {
+  status: (meeting: GeneralMeeting) => meeting.status,
+  type: (meeting: GeneralMeeting) => meeting.type,
+  date: (meeting: GeneralMeeting) => meeting.scheduledAt
+};
 
 export const SyndicMeetings: React.FC = () => {
   const { message } = App.useApp();
@@ -73,6 +89,38 @@ export const SyndicMeetings: React.FC = () => {
   const fingerprintRef = useRef<string | null>(null);
   const submittingRef = useRef(false);
   const [form] = Form.useForm();
+
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Type, lieu, statut…')
+    },
+    {
+      key: 'status',
+      type: 'multiSelect',
+      label: t('Statut'),
+      primary: true,
+      options: (['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const).map(status => ({
+        value: status,
+        label: meetingStatusLabels[status]
+      }))
+    },
+    { key: 'date', type: 'dateRange', label: t('Date'), primary: true },
+    {
+      key: 'type',
+      type: 'multiSelect',
+      label: t('Type'),
+      options: meetingTypeOptions.map(option => ({ value: option.value, label: option.label }))
+    }
+  ];
+  const local = useLocalListSearch<GeneralMeeting>(meetings, {
+    defaultPageSize: 20,
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
@@ -268,11 +316,25 @@ export const SyndicMeetings: React.FC = () => {
           </div>
         ) : (
           <Card title={t('Liste des assemblées')}>
-            <Table
+            <Table<GeneralMeeting>
+              {...local.tableProps}
+              aria-label={t('Liste des assemblées')}
               exportFilename={t('Liste des assemblées')}
+              exportFetchAll={local.exportAll}
+              pagination={{ ...local.tableProps.pagination, hideOnSinglePage: true, showSizeChanger: false }}
+              locale={
+                local.isFiltered
+                  ? undefined
+                  : {
+                      emptyText: (
+                        <Empty
+                          description={t('Aucune assemblée pour le moment : créez-en une avec « Nouvelle assemblée ».')}
+                        />
+                      )
+                    }
+              }
               scroll={{ x: 'max-content' }}
               rowKey="id"
-              dataSource={meetings}
               columns={[
                 {
                   title: t('Type'),

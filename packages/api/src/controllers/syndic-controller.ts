@@ -6,6 +6,7 @@ import * as fs from 'fs/promises';
 import {
   listSyndicatesByTenant,
   getSyndicateWithLotsAndStats,
+  buildSyndicateLotsSearchWhere,
   createSyndicateWithDefaults,
   createSyndicateLot,
   computeLotSharesWarnings,
@@ -148,7 +149,8 @@ import {
   lockJournalEntrySchema,
   createSyndicateFundSchema,
   renameSyndicateFundSchema,
-  adjustSyndicateFundBalanceSchema
+  adjustSyndicateFundBalanceSchema,
+  syndicLotsQuerySchema
 } from '../lib/syndics/schemas';
 import { notifyChargeCall, notifyMeetingConvocation } from '../lib/syndics/notifications';
 import { hasMeetingConvocationBeenSent } from '../lib/syndics/meeting-convocation-status';
@@ -295,7 +297,12 @@ export const listSyndicLotsHandler = asyncHandler(async (req: Request, res: Resp
     throw badRequest('TenantId manquant pour la liste des lots');
   }
 
-  const syndic = await getSyndicateWithLotsAndStats(tenantId, syndicId);
+  // `search` / `limit` : facultatifs (400 si invalides) ; sans eux, la liste complète comme avant.
+  const { search, limit } = syndicLotsQuerySchema.parse(req.query ?? {});
+  const syndic = await getSyndicateWithLotsAndStats(tenantId, syndicId, {
+    ...(search ? { where: buildSyndicateLotsSearchWhere(search) } : {}),
+    ...(limit ? { take: limit } : {})
+  });
 
   if (!syndic) {
     throw notFound(t('Copropriété introuvable ou inaccessible'));

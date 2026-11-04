@@ -127,7 +127,7 @@ describe('SyndicsList — pagination écran (lot syndic-ecarts, tâche 1)', () =
     expect(await screen.findByText('Résidence 25')).toBeInTheDocument();
 
     // La recherche filtre depuis n'importe quelle page et revient à la page 1.
-    await user.type(screen.getByPlaceholderText('Rechercher par nom, adresse ou référence cadastrale'), 'Résidence 25');
+    await user.type(screen.getByPlaceholderText('Nom, adresse, référence cadastrale, mandant…'), 'Résidence 25');
     expect(await screen.findByText('Résidence 25')).toBeInTheDocument();
     expect(screen.queryByText('Résidence 01')).not.toBeInTheDocument();
 

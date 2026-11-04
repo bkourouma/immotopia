@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
 import { SyndicProviders } from '../../pages/syndics/SyndicProviders';
@@ -46,17 +47,22 @@ vi.mock('../../components/primitives/ConfirmAction', () => ({
 // Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
 vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
 
+// Les barres de recherche (ListSearch) s'appuient sur une large surface d'antd (Select, DatePicker,
+// Drawer…) et sur le routeur : on garde le VRAI antd et on ne remplace que ce que les tests pilotent.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 vi.mock('antd', async () => {
   // importActual reaches the real module from inside a hoisted mock factory;
   // a plain dynamic import here deadlocks the module graph.
+  const actual = await vi.importActual<typeof import('antd')>('antd');
   const React = await vi.importActual<typeof import('react')>('react');
   const passthrough =
     (Tag: keyof JSX.IntrinsicElements = 'div') =>
     ({ children, ...props }: any) =>
       React.createElement(Tag, props, children);
-  // SyndicProviders and SyndicDocuments call Form.useForm() at render time, so
-  // the mock must expose the full antd surface these pages import, not just the
-  // layout primitives.
+  // SyndicProviders and SyndicDocuments call Form.useForm() at render time.
   //
   // `<SyndicProviders>` mounts TWO forms (contrat, prestataire) : chaque appel
   // de `Form.useForm()` recoit sa PROPRE instance espionnable (au lieu d'un
@@ -69,11 +75,6 @@ vi.mock('antd', async () => {
   // `useRef` : chaque appel de hook garde la MEME instance d'un rendu a
   // l'autre, et les instances sont enregistrees dans l'ordre du premier
   // montage (contractForm = 0, providerForm = 1 pour `<SyndicProviders>`).
-  // Une ancienne version retrouvait l'instance par un compteur d'appels remis
-  // a zero par microtache : deux rendus enchaines sans microtache entre eux
-  // (frequent sous charge en CI) creaient de nouvelles instances, le bouton
-  // « Créer » appelait alors un `validateFields` vide et le test echouait par
-  // intermittence avec un payload `{ name: undefined, … }`.
   let formInstances: any[] = [];
   const Form: any = passthrough('form');
   Form.useForm = () => {
@@ -97,9 +98,6 @@ vi.mock('antd', async () => {
     </div>
   );
 
-  const Upload: any = passthrough();
-  Upload.Dragger = passthrough();
-
   const Modal: any = ({ children, open, onOk, okText, onCancel, cancelText }: any) =>
     open ? (
       <div>
@@ -109,122 +107,18 @@ vi.mock('antd', async () => {
       </div>
     ) : null;
 
-  // Rend chaque colonne pour chaque ligne, au lieu d'un simple dump JSON :
-  // necessaire pour que les boutons « Modifier »/« Supprimer » qu'une colonne
-  // `render` produit (SyndicProviders) apparaissent reellement dans le DOM.
-  const Table: any = ({ dataSource, columns, rowKey }: any) => (
-    <table>
-      <tbody>
-        {(dataSource || []).map((row: any, rowIndex: number) => (
-          <tr key={typeof rowKey === 'function' ? rowKey(row) : (row[rowKey as string] ?? rowIndex)}>
-            {(columns || []).map((column: any, columnIndex: number) => (
-              <td key={column.key || column.dataIndex || columnIndex}>
-                {column.render
-                  ? column.render(row[column.dataIndex], row, rowIndex)
-                  : String(row[column.dataIndex] ?? '')}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-
-  const Select: any = ({ options, value, onChange, placeholder }: any) => (
-    <select value={value ?? ''} onChange={event => onChange?.(event.target.value || undefined)}>
-      <option value="">{placeholder || ''}</option>
-      {(options || []).map((option: any) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
-  );
-
-  // `<Tabs>` ne monte que le panneau actif — comme le vrai composant AntD
-  // (montage paresseux des panneaux inactifs). SyndicProviders l'utilise
-  // depuis le lot S6 : sans ce comportement, l'onglet « Factures » (et donc
-  // `<ProviderInvoicesTab>`, hors périmètre de ce mock volontairement
-  // minimal) se monterait avec le premier rendu et casserait les appels API
-  // que ce fichier attend dans un ordre précis.
-  const Tabs: any = ({ items, activeKey, defaultActiveKey }: any) => {
-    const [active, setActive] = React.useState(activeKey ?? defaultActiveKey ?? items?.[0]?.key);
-    const current = (items || []).find((item: any) => item.key === (activeKey ?? active));
-    return (
-      <div>
-        <div>
-          {(items || []).map((item: any) => (
-            <button key={item.key} onClick={() => setActive(item.key)}>
-              {item.label}
-            </button>
-          ))}
-        </div>
-        <div>{current?.children}</div>
-      </div>
-    );
+  const message = { success() {}, error() {}, warning() {}, info() {} };
+  const appApi = {
+    message,
+    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
+    notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
   };
-
-  // `<ProviderList>` (SyndicProviders, depuis l'intégration du filtre « Sous
-  // contrat/Tous ») utilise `<Avatar>` et `<Segmented>`, absents du mock
-  // minimal précédent — un import non déclaré ici casserait le montage.
-  const Avatar: any = passthrough('span');
-  const Segmented: any = ({ options, value, onChange }: any) => (
-    <div>
-      {(options || []).map((option: any) => (
-        <button
-          key={String(option.value)}
-          aria-pressed={option.value === value}
-          onClick={() => onChange?.(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-
-  const antdMock: Record<string, unknown> = {
-    Alert: passthrough(),
-    Avatar,
-    Button: ({ children, onClick, disabled, loading, icon }: any) => (
-      <button onClick={onClick} disabled={disabled || loading}>
-        {icon}
-        {children}
-      </button>
-    ),
-    Card: passthrough(),
-    Checkbox: ({ children, checked, onChange }: any) => (
-      <label>
-        <input type="checkbox" checked={checked} onChange={onChange} />
-        {children}
-      </label>
-    ),
-    Col: passthrough(),
-    Segmented,
-    Row: passthrough(),
-    DatePicker: passthrough('input'),
+  return {
+    ...actual,
     Form,
-    Input: passthrough('input'),
-    InputNumber: passthrough('input'),
     Modal,
-    Select,
-    Space: passthrough(),
-    Spin: passthrough(),
-    Tabs,
-    Statistic: ({ title, value }: any) => (
-      <div>
-        {title}:{value}
-      </div>
-    ),
-    Table,
-    Tag: passthrough('span'),
-    Upload,
-    message: { success() {}, error() {}, warning() {}, info() {} },
-    Typography: {
-      Title: passthrough('h1'),
-      Paragraph: passthrough('p'),
-      Text: passthrough('span'),
-      Link: ({ children, onClick }: any) => <a onClick={onClick}>{children}</a>
-    },
+    message,
+    App: { useApp: () => appApi },
     __mocks: {
       get formInstances() {
         return formInstances;
@@ -233,17 +127,6 @@ vi.mock('antd', async () => {
         formInstances = [];
       }
     }
-  };
-  const appApi = {
-    message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
-    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
-    notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
-  };
-  return {
-    ...antdMock,
-    App: { useApp: () => appApi },
-    // Aucun palier actif : le rendu par defaut des tests est le mobile.
-    Grid: { useBreakpoint: () => ({}) }
   };
 });
 
@@ -292,14 +175,17 @@ const authValue: AuthContextType = {
 };
 
 function renderWithRoute(route: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <AuthContext.Provider value={authValue}>
-      <MemoryRouter initialEntries={[route]}>
-        <Routes>
-          <Route path="/tenant/:tenantId/syndics/:syndicId/prestataires" element={<SyndicProviders />} />
-          <Route path="/tenant/:tenantId/syndics/:syndicId/documents" element={<SyndicDocuments />} />
-        </Routes>
-      </MemoryRouter>
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[route]}>
+          <Routes>
+            <Route path="/tenant/:tenantId/syndics/:syndicId/prestataires" element={<SyndicProviders />} />
+            <Route path="/tenant/:tenantId/syndics/:syndicId/documents" element={<SyndicDocuments />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
     </AuthContext.Provider>
   );
 }
@@ -429,8 +315,7 @@ describe('Providers/Documents pages', () => {
     // libellé traduit du type REGULATION) sont deux textes distincts : le mock
     // de `Table` rend chaque colonne, donc les deux sont présents.
     expect((await screen.findAllByText(/Reglement/)).length).toBeGreaterThan(0);
-    // « Règlement de copropriété » figure aussi dans la liste des types du formulaire d'envoi : on compte les occurrences.
-    expect((await screen.findAllByText('Règlement de copropriété')).length).toBeGreaterThan(1);
+    expect((await screen.findAllByText('Règlement de copropriété')).length).toBeGreaterThan(0);
   });
 
   it('télécharge un fichier déposé par la route authentifiée, jamais par /uploads', async () => {

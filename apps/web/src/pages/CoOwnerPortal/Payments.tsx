@@ -145,8 +145,14 @@ function PaymentDetail({ payment }: { payment: CoOwnerPayment }) {
  */
 function DeclarationsSection() {
   const queryClient = useQueryClient();
-  // Pas de champ libre : `/paiements-declares` n'accepte que `status`, `page` et `limit`.
+  // Champ libre serveur (`search` : référence de transaction déclarée, numéro de lot) + statut.
   const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Référence de transaction, lot…')
+    },
     {
       key: 'status',
       type: 'select',
@@ -160,7 +166,9 @@ function DeclarationsSection() {
     queryKey: ['coowner-portal', 'declarations', search.apiParams],
     staleTime: 30_000,
     queryFn: () =>
-      listMyDeclarations(search.apiParams as { status?: DeclarationStatus; page?: number; limit?: number }),
+      listMyDeclarations(
+        search.apiParams as { status?: DeclarationStatus; search?: string; page?: number; limit?: number }
+      ),
     placeholderData: keepPreviousData,
     retry: false
   });
@@ -170,7 +178,7 @@ function DeclarationsSection() {
   const items = declarations.data?.items ?? [];
   const total = declarations.data?.pagination.total ?? 0;
   // Aucune déclaration et aucun critère : section masquée. Sous critère, elle reste affichée
-  // (le critère « Statut » ne doit pas disparaître avec elle quand il ne laisse aucun résultat).
+  // (la recherche et le critère « Statut » ne doivent pas disparaître avec elle quand il ne laisse aucun résultat).
   if (!search.isFiltered && total === 0) return null;
   const dataViewProps = {
     ...search.dataViewProps,

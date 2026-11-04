@@ -1,7 +1,8 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { App } from 'antd';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render as baseRender, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { MeetingLiveConsole } from '../../components/syndics/MeetingLiveConsole';
 import type {
   LiveMeetingAdminView,
@@ -231,6 +232,9 @@ const participants: MeetingParticipantView[] = [
     activeLinks: 0
   }
 ];
+
+// La recherche locale des tableaux garde son état dans l'URL : un routeur est nécessaire (aussi au rerender).
+const render = (ui: React.ReactElement) => baseRender(ui, { wrapper: MemoryRouter });
 
 function mount(
   status: MeetingStatus = 'IN_PROGRESS',

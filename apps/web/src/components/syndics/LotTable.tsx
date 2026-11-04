@@ -1,9 +1,12 @@
-﻿import React from 'react';
+﻿import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Popconfirm, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Table } from '../primitives';
 import { SyndicateLot } from '../../types/syndic-types';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion, SearchOption } from '../../utils/list-search';
+import { localizedList } from '../../i18n/localized';
 import { t } from '../../i18n/t';
 import { getLotTypeLabel } from '../../utils/syndic-lot-label';
 
@@ -60,6 +63,60 @@ function buildPropertyLabel(property: NonNullable<SyndicateLot['property']>): st
   return property.title?.trim() || property.internalReference || property.id || t('Sans libellé');
 }
 
+/** Propriétaires d'un lot tels que la colonne « Propriétaire » les affiche (indivision : « Nom 1 (50 %), Nom 2 (50 %) »). */
+function lotOwnerLabel(
+  lot: SyndicateLot,
+  ownerLabelById?: Record<string, string>,
+  ownerLabelByEmail?: Record<string, string>
+): string {
+  // Propriétaires calculés par l'API à partir des profils actuels du lot (indivision : « Nom 1 (50 %), Nom 2 (50 %) »).
+  if (lot.ownersLabel) {
+    return lot.ownersLabel;
+  }
+  const coowner = lot.coowner;
+  if (coowner) {
+    const fullName = coowner.fullName?.trim();
+    if (fullName) {
+      return fullName;
+    }
+    const firstLast = `${coowner.firstName || ''} ${coowner.lastName || ''}`.trim();
+    if (firstLast) {
+      return firstLast;
+    }
+    if (coowner.legalName) {
+      return coowner.legalName;
+    }
+    if (coowner.email) {
+      return coowner.email;
+    }
+  }
+
+  if (lot.ownerContactId) {
+    return ownerLabelById?.[lot.ownerContactId] || lot.ownerContactId;
+  }
+
+  const ownerEmail = lot.property?.owner?.email?.trim().toLowerCase();
+  if (ownerEmail && ownerLabelByEmail?.[ownerEmail]) {
+    return ownerLabelByEmail[ownerEmail];
+  }
+
+  return t('Non renseigné');
+}
+
+/** Bien lié d'un lot tel que la colonne « Bien lié » l'affiche. */
+function lotPropertyLabel(lot: SyndicateLot, propertyLabelById?: Record<string, string>): string {
+  if (!lot.propertyId) {
+    return t('Non lié');
+  }
+  if (propertyLabelById?.[lot.propertyId]) {
+    return propertyLabelById[lot.propertyId];
+  }
+  if (lot.property) {
+    return buildPropertyLabel(lot.property);
+  }
+  return lot.propertyId;
+}
+
 /**
  * Libellé de l'accès au portail copropriétaire d'un lot (même vocabulaire que la
  * colonne « Portail » de « Profils et incidents »). `null` quand l'API n'a pas
@@ -93,8 +150,33 @@ function portalAccessDetail(lot: SyndicateLot): string | undefined {
   return lot.owners.map(owner => `${owner.name} : ${owner.portalAccessEnabled ? t('Actif') : t('Inactif')}`).join('\n');
 }
 
+const LOT_TYPES = ['APARTMENT', 'PARKING', 'CELLAR', 'OFFICE', 'COMMERCIAL', 'OTHER'] as const;
+
+// Libellés vivants : un `t()` évalué au chargement du module figerait la langue.
+const LOT_TYPE_OPTIONS = localizedList((): SearchOption[] =>
+  LOT_TYPES.map(value => ({ value, label: getLotTypeLabel(value) ?? value }))
+);
+const PORTAL_OPTIONS = localizedList((): SearchOption[] => [
+  { value: 'ACTIVE', label: t('Actif') },
+  { value: 'PARTIAL', label: t('Partiel') },
+  { value: 'INACTIVE', label: t('Inactif') },
+  { value: 'NONE', label: t('Sans profil') }
+]);
+
+// Stables (hors du composant) : le filtrage reste mémoïsé.
+const ACCESSEURS = {
+  lotType: (lot: SyndicateLot) => lot.lotType,
+  portal: (lot: SyndicateLot) => lot.portalAccess?.status,
+  tenant: (lot: SyndicateLot) => mergeTenants(lot).length > 0,
+  active: (lot: SyndicateLot) => lot.generalShares !== 0
+};
+
 interface LotTableProps {
   lots: SyndicateLot[];
+  /** Préfixe d'URL de la recherche (sans point) : à poser quand l'écran porte un autre tableau filtrable. */
+  paramPrefix?: string;
+  /** Nom accessible de la zone de recherche (défaut : « Rechercher dans les lots »). */
+  ariaLabel?: string;
   loading?: boolean;
   showMobileHint?: boolean;
   /**
@@ -122,6 +204,8 @@ interface LotTableProps {
 
 export const LotTable: React.FC<LotTableProps> = ({
   lots,
+  paramPrefix,
+  ariaLabel,
   loading = false,
   showMobileHint = false,
   portalManageHref,
@@ -137,6 +221,53 @@ export const LotTable: React.FC<LotTableProps> = ({
   onReactivate,
   onEndTenantAssignment
 }) => {
+  // Le champ libre cherche ce que les colonnes affichent (les libellés dépendent des annuaires reçus en props).
+  const searchText = useMemo(
+    () => [
+      (lot: SyndicateLot) => lot.lotNumber,
+      (lot: SyndicateLot) => lotOwnerLabel(lot, ownerLabelById, ownerLabelByEmail),
+      (lot: SyndicateLot) => lotPropertyLabel(lot, propertyLabelById),
+      (lot: SyndicateLot) => mergeTenants(lot).map(entry => entry.name)
+    ],
+    [ownerLabelById, ownerLabelByEmail, propertyLabelById]
+  );
+
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('N° de lot, propriétaire, bien lié, locataire…')
+    },
+    { key: 'lotType', type: 'multiSelect', label: t('Type'), primary: true, options: LOT_TYPE_OPTIONS },
+    { key: 'portal', type: 'multiSelect', label: t('Portail'), primary: true, options: PORTAL_OPTIONS },
+    {
+      key: 'tenant',
+      type: 'boolean',
+      label: t('Locataire'),
+      tristate: true,
+      trueLabel: t('Occupé'),
+      falseLabel: t('Non occupé')
+    },
+    {
+      key: 'active',
+      type: 'boolean',
+      label: t('Statut du lot'),
+      tristate: true,
+      trueLabel: t('Actif'),
+      falseLabel: t('Inactif')
+    }
+  ];
+
+  const local = useLocalListSearch<SyndicateLot>(lots, {
+    paramPrefix,
+    ariaLabel: ariaLabel ?? t('Rechercher dans les lots'),
+    defaultPageSize: 20,
+    criteria,
+    text: searchText,
+    accessors: ACCESSEURS
+  });
+
   const columns: ColumnsType<SyndicateLot> = [
     {
       title: t('Lot'),
@@ -183,38 +314,7 @@ export const LotTable: React.FC<LotTableProps> = ({
       width: 250,
       ellipsis: true,
       render: (_value: string | null | undefined, lot: SyndicateLot) => {
-        // Propriétaires calculés par l'API à partir des profils actuels du lot (indivision : « Nom 1 (50 %), Nom 2 (50 %) »).
-        if (lot.ownersLabel) {
-          return lot.ownersLabel;
-        }
-        const coowner = lot.coowner;
-        if (coowner) {
-          const fullName = coowner.fullName?.trim();
-          if (fullName) {
-            return fullName;
-          }
-          const firstLast = `${coowner.firstName || ''} ${coowner.lastName || ''}`.trim();
-          if (firstLast) {
-            return firstLast;
-          }
-          if (coowner.legalName) {
-            return coowner.legalName;
-          }
-          if (coowner.email) {
-            return coowner.email;
-          }
-        }
-
-        if (lot.ownerContactId) {
-          return ownerLabelById?.[lot.ownerContactId] || lot.ownerContactId;
-        }
-
-        const ownerEmail = lot.property?.owner?.email?.trim().toLowerCase();
-        if (ownerEmail && ownerLabelByEmail?.[ownerEmail]) {
-          return ownerLabelByEmail[ownerEmail];
-        }
-
-        return t('Non renseigné');
+        return lotOwnerLabel(lot, ownerLabelById, ownerLabelByEmail);
       }
     },
     {
@@ -301,19 +401,7 @@ export const LotTable: React.FC<LotTableProps> = ({
       ellipsis: true,
       responsive: ['lg'],
       render: (_value: string | null | undefined, lot: SyndicateLot) => {
-        if (!lot.propertyId) {
-          return t('Non lié');
-        }
-
-        if (propertyLabelById?.[lot.propertyId]) {
-          return propertyLabelById[lot.propertyId];
-        }
-
-        if (lot.property) {
-          return buildPropertyLabel(lot.property);
-        }
-
-        return lot.propertyId;
+        return lotPropertyLabel(lot, propertyLabelById);
       }
     },
     ...(onEdit || onDelete || onViewAccount || onAssignTenant || onDeactivate || onReactivate
@@ -380,15 +468,16 @@ export const LotTable: React.FC<LotTableProps> = ({
   return (
     <div>
       <Table
+        {...local.tableProps}
+        aria-label={t('Tableau des lots')}
         exportFilename={t('Lots')}
+        exportFetchAll={local.exportAll}
         className="lot-table"
         rowKey="id"
         size="middle"
         columns={columns}
-        dataSource={lots}
         loading={loading}
-        pagination={{ pageSize: 8, hideOnSinglePage: true }}
-        locale={{ emptyText: t('Aucun lot enregistré') }}
+        locale={local.isFiltered ? undefined : { emptyText: t('Aucun lot enregistré') }}
         scroll={{ x: 1400 }}
         sticky
       />
