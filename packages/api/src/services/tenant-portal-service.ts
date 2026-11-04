@@ -37,6 +37,8 @@ import {
 } from '../lib/maintenance/portal-visibility';
 import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { isUuid } from '../lib/signature/sources/guards';
+import { detectDocumentKind, detectImageKind, extensionForKind } from '../utils/file-signature';
+import { env } from '../config/env';
 import { PORTAL_RENTAL_DOCUMENT_SELECT, toPortalAttachment, toPortalRentalDocument } from '../lib/files/portal-files';
 
 /** Montant exigé d'une échéance : loyer, charges, autres frais et pénalité. */
@@ -755,7 +757,18 @@ export class TenantPortalService {
               created_at: 'desc'
             }
           },
+          // Champs affichables seulement : jamais override_reason (motif interne,
+          // parfois un chemin /uploads) ni created_by_user_id.
           penalties: {
+            select: {
+              id: true,
+              amount: true,
+              currency: true,
+              days_late: true,
+              calculated_at: true,
+              is_manual_override: true,
+              created_at: true
+            },
             orderBy: {
               created_at: 'desc'
             }
@@ -786,10 +799,22 @@ export class TenantPortalService {
           tenant_id: tenantId,
           status: 'SUCCESS'
         },
-        include: {
+        select: {
+          id: true,
+          amount: true,
+          currency: true,
+          method: true,
+          status: true,
+          succeeded_at: true,
+          psp_reference: true,
           allocations: {
             where: {
               installment_id: installmentId
+            },
+            select: {
+              id: true,
+              amount: true,
+              currency: true
             }
           }
         },
@@ -887,6 +912,7 @@ export class TenantPortalService {
 
       // Handle file upload if provided (T061)
       let proofFileUrl: string | null = null;
+      let writtenProofPath: string | null = null;
       if (file) {
         const cwd = process.cwd();
         const projectRoot =
@@ -896,47 +922,61 @@ export class TenantPortalService {
         const uploadDir = path.join(projectRoot, 'uploads', 'portal', 'payments', tenantId);
         await fs.mkdir(uploadDir, { recursive: true });
 
-        const fileExtension = path.extname(file.originalname);
-        const fileName = `payment-proof-${Date.now()}-${Math.random().toString(36).substring(7)}${fileExtension}`;
+        // L'extension vient du type détecté par signature, jamais du nom envoyé.
+        const detectedKind = file.buffer ? (detectDocumentKind(file.buffer) ?? detectImageKind(file.buffer)) : null;
+        if (!detectedKind) {
+          throw new BadRequestError('Le contenu du fichier ne correspond pas à un type accepté.');
+        }
+        const fileName = `payment-proof-${Date.now()}-${Math.random().toString(36).substring(7)}${extensionForKind(detectedKind)}`;
         const filePath = path.join(uploadDir, fileName);
 
         await fs.writeFile(filePath, file.buffer);
+        writtenProofPath = filePath;
         proofFileUrl = `/uploads/portal/payments/${tenantId}/${fileName}`;
       }
 
-      // Create payment declaration (T060)
-      const paymentDeclaration = await prisma.rentalPaymentDeclaration.create({
-        data: {
-          tenant_id: tenantId,
-          lease_id: leaseId,
-          installment_id: data.installmentId || null,
-          declared_by: tenantClientId,
-          amount: data.amount,
-          payment_date: new Date(data.paymentDate),
-          payment_method: data.paymentMethod as any,
-          mobile_operator: data.mobileOperator ? (data.mobileOperator as any) : null,
-          transaction_phone: data.transactionPhone?.trim() || null,
-          reference: data.reference || null,
-          proof_file_url: proofFileUrl,
-          status: 'PENDING',
-          notes: data.notes || null
-        },
-        include: {
-          lease: {
-            select: {
-              id: true,
-              lease_number: true
-            }
+      // Create payment declaration (T060). Si l'écriture en base échoue, le
+      // fichier déjà écrit est supprimé : pas de pièce orpheline sur le disque.
+      let paymentDeclaration;
+      try {
+        paymentDeclaration = await prisma.rentalPaymentDeclaration.create({
+          data: {
+            tenant_id: tenantId,
+            lease_id: leaseId,
+            installment_id: data.installmentId || null,
+            declared_by: tenantClientId,
+            amount: data.amount,
+            payment_date: new Date(data.paymentDate),
+            payment_method: data.paymentMethod as any,
+            mobile_operator: data.mobileOperator ? (data.mobileOperator as any) : null,
+            transaction_phone: data.transactionPhone?.trim() || null,
+            reference: data.reference || null,
+            proof_file_url: proofFileUrl,
+            status: 'PENDING',
+            notes: data.notes || null
           },
-          installment: {
-            select: {
-              id: true,
-              period_year: true,
-              period_month: true
+          include: {
+            lease: {
+              select: {
+                id: true,
+                lease_number: true
+              }
+            },
+            installment: {
+              select: {
+                id: true,
+                period_year: true,
+                period_month: true
+              }
             }
           }
+        });
+      } catch (dbError) {
+        if (writtenProofPath) {
+          await fs.unlink(writtenProofPath).catch(() => undefined);
         }
-      });
+        throw dbError;
+      }
 
       logger.info('Payment declaration created', {
         tenantClientId,
@@ -1004,7 +1044,7 @@ export class TenantPortalService {
             leaseLabel = getPropertyDisplayLabel(leaseWithProperty.property);
           }
 
-          const baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
+          const baseUrl = env.FRONTEND_URL;
           const targetPath = `/tenant/${tenantId}/rental/leases/${leaseId}`;
           const validationUrl = `${baseUrl}/login?redirect=${encodeURIComponent(targetPath)}`;
 

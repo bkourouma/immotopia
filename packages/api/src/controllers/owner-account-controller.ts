@@ -36,5 +36,5 @@ export const voidOwnerPayoutHandler = asyncHandler(async (req: Request, res: Res
 export const getMyOwnerAccountHandler = asyncHandler(async (req: Request, res: Response) => {
   const context = req.ownerPortal;
   if (!context) throw new ForbiddenError('Accès au portail propriétaire requis.');
-  res.json({ success: true, data: await getOwnerAccount(context.tenantId, context.tenantClientId) });
+  res.json({ success: true, data: await getOwnerAccount(context.tenantId, context.tenantClientId, { portal: true }) });
 });

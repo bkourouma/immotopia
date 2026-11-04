@@ -84,6 +84,38 @@ function toPayoutDto(
   };
 }
 
+/**
+ * Variante portail d'un reversement : seulement ce que le propriétaire lit.
+ * Ni notes internes, ni compte de trésorerie, ni motif d'annulation, ni nom de
+ * l'agent qui l'a saisi (la vue agence garde `toPayoutDto`).
+ */
+function toPortalPayoutDto(payout: {
+  id: string;
+  year: number;
+  sequence: number;
+  amount: Decimalish;
+  paidAt: Date;
+  method: string;
+  reference: string | null;
+  statementId: string | null;
+  status: string;
+  voidedAt: Date | null;
+  createdAt: Date;
+}) {
+  return {
+    id: payout.id,
+    number: payoutNumber(payout.year, payout.sequence),
+    amount: amount(payout.amount),
+    paidAt: payout.paidAt.toISOString(),
+    method: payout.method,
+    reference: payout.reference,
+    statementId: payout.statementId,
+    status: payout.status,
+    voidedAt: payout.voidedAt ? payout.voidedAt.toISOString() : null,
+    createdAt: payout.createdAt.toISOString()
+  };
+}
+
 /** Pour les totaux, une contre-passation compte au débit de sa nature d'origine. */
 const TOTAL_BY_SOURCE: Record<string, 'rentCollected' | 'fees' | 'vat' | 'expenses' | 'payouts'> = {
   [OWNER_SOURCE.RENT]: 'rentCollected',
@@ -104,7 +136,7 @@ const EXTRA_TOTAL_BY_SOURCE: Record<string, 'withholdingTax' | 'depositRetained'
   [OWNER_SOURCE.DEPOSIT_RETAINED]: 'depositRetained'
 };
 
-async function buildAccountDetail(tenantId: string, ownerClientId: string) {
+async function buildAccountDetail(tenantId: string, ownerClientId: string, options: { portal?: boolean } = {}) {
   const owner = await prisma.tenantClient.findFirst({
     where: { id: ownerClientId, tenantId },
     select: { id: true, user: { select: { fullName: true, email: true } } }
@@ -194,13 +226,13 @@ async function buildAccountDetail(tenantId: string, ownerClientId: string) {
       otherMovements: roundMoney(otherMovements)
     },
     movements: rows,
-    payouts: payouts.map(p => toPayoutDto(p, names))
+    payouts: payouts.map(p => (options.portal ? toPortalPayoutDto(p) : toPayoutDto(p, names)))
   };
 }
 
-export async function getOwnerAccount(tenantId: string, ownerClientId: string) {
+export async function getOwnerAccount(tenantId: string, ownerClientId: string, options: { portal?: boolean } = {}) {
   await syncOwnerAccount(tenantId, ownerClientId);
-  return buildAccountDetail(tenantId, ownerClientId);
+  return buildAccountDetail(tenantId, ownerClientId, options);
 }
 
 /**

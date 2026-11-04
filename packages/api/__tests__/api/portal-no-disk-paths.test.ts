@@ -212,6 +212,76 @@ describe('portail locataire — aucune réponse ne porte de chemin disque', () =
     expect(data.documents[0].downloadPath).toBe(`/portal/tenant/documents/${id(31)}/download`);
   });
 
+  it('détail d’une échéance : ni motif interne de pénalité ni champs techniques de paiement', async () => {
+    const INSTALLMENT = id(51);
+    mockPrisma.rentalInstallment.rows.push({
+      id: INSTALLMENT,
+      tenant_id: TENANT_A,
+      lease_id: LEASE,
+      period_year: 2026,
+      period_month: 4,
+      due_date: new Date('2026-04-05'),
+      status: 'PARTIAL',
+      amount_rent: 100000,
+      amount_service: 0,
+      amount_other_fees: 0,
+      penalty_amount: 5000,
+      amount_paid: 40000,
+      items: [],
+      payments: [],
+      penalties: [
+        {
+          id: id(52),
+          tenant_id: TENANT_A,
+          installment_id: INSTALLMENT,
+          amount: 5000,
+          currency: 'FCFA',
+          days_late: 10,
+          calculated_at: new Date('2026-04-15'),
+          created_at: new Date('2026-04-15'),
+          is_manual_override: true,
+          override_reason: `Justificatif ${'/uploads/documents/tenant-a/penalites/geste.pdf'}`,
+          created_by_user_id: 'user-agent'
+        }
+      ],
+      lease: { id: LEASE, lease_number: 'BAIL-1', property: { id: P1, address: 'Cocody' } }
+    });
+    mockPrisma.rentalPayment.rows.push({
+      id: id(53),
+      tenant_id: TENANT_A,
+      lease_id: LEASE,
+      status: 'SUCCESS',
+      amount: 40000,
+      currency: 'FCFA',
+      method: 'MOBILE_MONEY',
+      succeeded_at: new Date('2026-04-10'),
+      psp_reference: 'REF-1',
+      mm_phone: '+2250700000000',
+      treasury_account_id: id(54),
+      idempotency_key: 'idem-1',
+      raw_event_payload: { secret: 'x' },
+      created_by_user_id: 'user-agent',
+      allocations: [{ id: id(55), installment_id: INSTALLMENT, amount: 40000, currency: 'FCFA', tenant_id: TENANT_A }]
+    });
+
+    const data = await expectClean(USER_AWA, `/api/portal/tenant/installments/${INSTALLMENT}`);
+    const penalty = data.installment.penalties[0];
+    expect(penalty).toMatchObject({ id: id(52), amount: 5000, days_late: 10 });
+    expect(penalty).not.toHaveProperty('override_reason');
+    expect(penalty).not.toHaveProperty('created_by_user_id');
+    const related = data.relatedPayments[0];
+    expect(related).toMatchObject({ id: id(53), amount: 40000 });
+    for (const key of [
+      'mm_phone',
+      'treasury_account_id',
+      'idempotency_key',
+      'raw_event_payload',
+      'created_by_user_id'
+    ]) {
+      expect(related).not.toHaveProperty(key);
+    }
+  });
+
   it('détail d’un ticket : pièces jointes sans URL de stockage', async () => {
     const data = await expectClean(USER_AWA, `/api/portal/tenant/maintenance/${TICKET}`);
     expect(data.attachments).toEqual([

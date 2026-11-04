@@ -88,3 +88,51 @@ describe('getOwnerAccount — totaux', () => {
     expect(account.balance).toBe(276000);
   });
 });
+
+describe('getOwnerAccount — variante portail des reversements', () => {
+  const payout = {
+    id: 'p1',
+    year: 2026,
+    sequence: 3,
+    amount: 50000,
+    paidAt: new Date('2026-02-01'),
+    method: 'BANK_TRANSFER',
+    treasuryAccountId: 'treso-1',
+    reference: 'VIR-1',
+    notes: 'note interne agence',
+    statementId: null,
+    status: 'VOIDED',
+    voidReason: 'erreur de saisie',
+    voidedAt: new Date('2026-02-02'),
+    createdAt: new Date('2026-02-01'),
+    createdByUserId: 'u1'
+  };
+
+  beforeEach(() => {
+    mockDb.tenantClient.findFirst.mockResolvedValue({ id: 'o1', user: { fullName: 'Moussa', email: 'm@x' } });
+    mockDb.thirdPartyAccount.findUnique.mockResolvedValue({ id: 'a1', balance: 0 });
+    mockDb.thirdPartyMovement.findMany.mockResolvedValue([]);
+    mockDb.ownerPayout.findMany.mockResolvedValue([payout]);
+    mockDb.rentalLease.findMany.mockResolvedValue([]);
+    mockDb.user.findMany.mockResolvedValue([{ id: 'u1', fullName: 'Agent Awa', email: 'a@x' }]);
+  });
+
+  it('le portail ne reçoit ni notes, ni compte de trésorerie, ni motif d’annulation, ni nom de l’agent', async () => {
+    const account: any = await getOwnerAccount('t1', 'o1', { portal: true });
+    const dto = account.payouts[0];
+    expect(dto).toMatchObject({ number: expect.any(String), amount: 50000, reference: 'VIR-1', status: 'VOIDED' });
+    for (const key of ['notes', 'treasuryAccountId', 'voidReason', 'createdByName', 'createdByUserId']) {
+      expect(dto).not.toHaveProperty(key);
+    }
+  });
+
+  it('la vue agence garde le DTO complet', async () => {
+    const account: any = await getOwnerAccount('t1', 'o1');
+    expect(account.payouts[0]).toMatchObject({
+      notes: 'note interne agence',
+      treasuryAccountId: 'treso-1',
+      voidReason: 'erreur de saisie',
+      createdByName: 'Agent Awa'
+    });
+  });
+});

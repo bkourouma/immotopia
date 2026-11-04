@@ -910,10 +910,29 @@ export class OwnerPortalService {
           tenant_id: tenantId,
           property_id: { in: propertyIds }
         },
-        include: {
-          property: true,
+        // Select explicite : ni notes internes, ni terms_json, ni created_by_user_id,
+        // ni le JSON `details` des fiches client.
+        select: {
+          id: true,
+          property_id: true,
+          lease_number: true,
+          status: true,
+          start_date: true,
+          end_date: true,
+          move_in_date: true,
+          move_out_date: true,
+          billing_frequency: true,
+          due_day_of_month: true,
+          currency: true,
+          rent_amount: true,
+          service_charge_amount: true,
+          security_deposit_amount: true,
+          signed_at: true,
+          created_at: true,
+          property: { select: { id: true, address: true, title: true } },
           primaryRenter: {
-            include: {
+            select: {
+              id: true,
               user: {
                 select: {
                   fullName: true,
@@ -923,7 +942,8 @@ export class OwnerPortalService {
             }
           },
           ownerClient: {
-            include: {
+            select: {
+              id: true,
               user: {
                 select: {
                   fullName: true,
@@ -945,9 +965,10 @@ export class OwnerPortalService {
           lease_id: leaseId,
           tenant_id: tenantId
         },
-        include: {
+        select: {
           renterClient: {
-            include: {
+            select: {
+              id: true,
               user: {
                 select: {
                   fullName: true,
@@ -965,6 +986,20 @@ export class OwnerPortalService {
           lease_id: leaseId,
           tenant_id: tenantId
         },
+        select: {
+          id: true,
+          period_year: true,
+          period_month: true,
+          due_date: true,
+          status: true,
+          currency: true,
+          amount_rent: true,
+          amount_service: true,
+          amount_other_fees: true,
+          penalty_amount: true,
+          amount_paid: true,
+          paid_at: true
+        },
         orderBy: [{ period_year: 'desc' }, { period_month: 'desc' }]
       });
 
@@ -975,8 +1010,22 @@ export class OwnerPortalService {
           tenant_id: tenantId,
           status: RentalPaymentStatus.SUCCESS
         },
-        include: {
-          allocations: true
+        select: {
+          id: true,
+          amount: true,
+          currency: true,
+          method: true,
+          status: true,
+          succeeded_at: true,
+          psp_reference: true,
+          allocations: {
+            select: {
+              id: true,
+              amount: true,
+              currency: true,
+              installment: { select: { id: true, period_year: true, period_month: true } }
+            }
+          }
         },
         orderBy: {
           succeeded_at: 'desc'
@@ -1057,6 +1106,14 @@ export class OwnerPortalService {
         },
         include: {
           movements: {
+            select: {
+              id: true,
+              type: true,
+              amount: true,
+              currency: true,
+              note: true,
+              created_at: true
+            },
             orderBy: {
               created_at: 'desc'
             }
@@ -1133,11 +1190,24 @@ export class OwnerPortalService {
         }
       }
 
+      // Select explicite : pas de raw_event_payload, mm_phone, treasury_account_id,
+      // idempotency_key ni created_by_user_id dans la réponse du portail.
       const payments = await prisma.rentalPayment.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          lease_id: true,
+          amount: true,
+          currency: true,
+          method: true,
+          status: true,
+          initiated_at: true,
+          succeeded_at: true,
+          psp_reference: true,
           lease: {
-            include: {
+            select: {
+              id: true,
+              lease_number: true,
               property: {
                 select: {
                   id: true,
@@ -1816,23 +1886,47 @@ export class OwnerPortalService {
             property_id: { in: propertyIds }
           }
         },
-        include: {
+        // Select explicite : pas de raw_event_payload, mm_phone (téléphone du
+        // locataire), treasury_account_id, idempotency_key ni created_by_user_id.
+        select: {
+          id: true,
+          amount: true,
+          currency: true,
+          method: true,
+          status: true,
+          initiated_at: true,
+          succeeded_at: true,
+          failed_at: true,
+          canceled_at: true,
+          psp_transaction_id: true,
+          psp_reference: true,
+          mm_operator: true,
           lease: {
-            include: {
-              property: true,
+            select: {
+              id: true,
+              lease_number: true,
+              property: { select: { id: true, address: true, title: true } },
               primaryRenter: {
-                include: {
+                select: {
+                  id: true,
                   user: { select: { fullName: true } }
                 }
               }
             }
           },
           allocations: {
-            include: {
+            select: {
+              id: true,
+              amount: true,
+              currency: true,
               installment: {
-                include: {
+                select: {
+                  id: true,
+                  period_year: true,
+                  period_month: true,
                   lease: {
-                    include: {
+                    select: {
+                      id: true,
                       property: {
                         select: {
                           id: true,
