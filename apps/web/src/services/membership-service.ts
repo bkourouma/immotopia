@@ -32,7 +32,12 @@ export interface MembershipFilters {
   search?: string;
   /** Un ou plusieurs statuts séparés par des virgules (ex. `ACTIVE,DISABLED`). */
   status?: 'ACTIVE' | 'PENDING_INVITE' | 'DISABLED' | (string & {});
+  /**
+   * @deprecated L’API lit `roleId` : `role` est traduit en `roleId` par `listMembers`
+   * (ancien nom, gardé pour ne casser aucun appelant).
+   */
   role?: string;
+  /** Identifiant du rôle (filtre `roleId` de l’API). */
   roleId?: string;
   page?: number;
   limit?: number;
@@ -66,7 +71,10 @@ export interface MemberResponse {
 
 // List members (collaborators) for a tenant
 export async function listMembers(tenantId: string, filters?: MembershipFilters): Promise<MemberListResponse> {
-  const response = await apiClient.get(`/tenants/${tenantId}/users`, { params: filters });
+  // L’API ne connaît que `roleId` : un `role` envoyé tel quel serait ignoré en silence.
+  const { role, ...rest } = filters ?? {};
+  const params = !filters ? undefined : role && !rest.roleId ? { ...rest, roleId: role } : rest;
+  const response = await apiClient.get(`/tenants/${tenantId}/users`, { params });
   return response.data;
 }
 

@@ -136,3 +136,19 @@ describe('useLocalListSearch', () => {
     expect(latest.tableProps).toBe(first.tableProps);
   });
 });
+
+describe('useLocalListSearch — ariaLabel', () => {
+  it('est reporté dans searchProps', () => {
+    function Aria() {
+      latest = useLocalListSearch(ROWS, {
+        criteria: [{ key: 'q', type: 'text', label: 'Recherche', placeholder: 'Nom…' }],
+        ariaLabel: 'Rechercher un client',
+        text: TEXT
+      });
+      return null;
+    }
+    at('', <Aria />);
+    expect(latest.searchProps['aria-label']).toBe('Rechercher un client');
+    expect(latest.dataViewProps.search['aria-label']).toBe('Rechercher un client');
+  });
+});

@@ -4,7 +4,8 @@ import { FilterOutlined } from '@ant-design/icons';
 import { t } from '../../../i18n/t';
 import type { SearchCriterion, SearchOption, SearchValue, SearchValues } from '../../../utils/list-search/types';
 import { CriterionControl } from './controls';
-import { emitValue, isActiveValue } from './format';
+import { isActiveValue } from '../../../utils/list-search/filter';
+import { emitValue } from './format';
 import './list-search.css';
 
 /**
