@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { BrowserRouter } from 'react-router-dom';
 import { ExternalAccessViewPage } from '../../pages/public/ExternalAccessViewPage';
 import apiClient from '../../utils/api-client';
 
@@ -9,6 +10,11 @@ import apiClient from '../../utils/api-client';
 vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() }
+}));
+
+// La barre de recherche des biens choisit sa mise en page selon la largeur : bureau.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
 const mockPost = (apiClient as unknown as { post: ReturnType<typeof vi.fn> }).post;
@@ -51,6 +57,20 @@ function makeView(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** La page publique vit sous le routeur de l'application : la recherche des biens écrit dans l'URL. */
+function renderPage() {
+  return render(
+    <BrowserRouter>
+      <ExternalAccessViewPage />
+    </BrowserRouter>
+  );
+}
+
+// Délai large : la suite complète tourne en parallèle et peut être lente.
+const T = { timeout: 8000 };
+
+const openTab = (name: string) => userEvent.click(screen.getByRole('tab', { name }));
+
 function setHash(hash: string) {
   window.history.replaceState(null, '', `/acces-partage${hash}`);
 }
@@ -69,7 +89,7 @@ describe('ExternalAccessViewPage', () => {
     setHash('#jeton-abc');
     mockPost.mockResolvedValueOnce({ status: 200, data: { success: true, data: makeView() } });
 
-    const { container } = render(<ExternalAccessViewPage />);
+    const { container } = renderPage();
 
     expect(await screen.findByText('Accès en lecture seule accordé par Agence Soleil')).toBeInTheDocument();
     expect(window.location.hash).toBe('');
@@ -89,7 +109,9 @@ describe('ExternalAccessViewPage', () => {
 
     render(
       <React.StrictMode>
-        <ExternalAccessViewPage />
+        <BrowserRouter>
+          <ExternalAccessViewPage />
+        </BrowserRouter>
       </React.StrictMode>
     );
 
@@ -100,9 +122,13 @@ describe('ExternalAccessViewPage', () => {
   it('est en lecture seule : aucun champ de saisie ni lien sortant', async () => {
     setHash('#jeton-abc');
     mockPost.mockResolvedValueOnce({ status: 200, data: { success: true, data: makeView() } });
-    const { container } = render(<ExternalAccessViewPage />);
+    const { container } = renderPage();
     await screen.findByText(/Accès en lecture seule accordé par/);
-    expect(container.querySelectorAll('input, textarea, select, form')).toHaveLength(0);
+    // Seule saisie : le champ de recherche local des biens (aucun formulaire, rien n'est envoyé).
+    expect(container.querySelectorAll('form, textarea')).toHaveLength(0);
+    for (const field of Array.from(container.querySelectorAll('input, select'))) {
+      expect(field.closest('[role="search"]')).not.toBeNull();
+    }
     expect(container.querySelectorAll('a[href]')).toHaveLength(0);
     expect(screen.getByRole('button', { name: 'Imprimer / enregistrer en PDF' })).toBeInTheDocument();
   });
@@ -110,7 +136,7 @@ describe('ExternalAccessViewPage', () => {
   it('pose noindex et no-referrer le temps du montage', async () => {
     setHash('#jeton-abc');
     mockPost.mockResolvedValueOnce({ status: 200, data: { success: true, data: makeView() } });
-    const { unmount } = render(<ExternalAccessViewPage />);
+    const { unmount } = renderPage();
     await screen.findByText(/Accès en lecture seule accordé par/);
     expect(document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, nofollow');
     expect(document.querySelector('meta[name="referrer"]')?.getAttribute('content')).toBe('no-referrer');
@@ -122,7 +148,7 @@ describe('ExternalAccessViewPage', () => {
   it('ne rend que les rubriques présentes dans la réponse', async () => {
     setHash('#jeton-abc');
     mockPost.mockResolvedValueOnce({ status: 200, data: { success: true, data: makeView() } });
-    render(<ExternalAccessViewPage />);
+    renderPage();
 
     expect(await screen.findByText('Valorisations')).toBeInTheDocument();
     expect(screen.getByText('Plus-value latente')).toBeInTheDocument();
@@ -204,22 +230,30 @@ describe('ExternalAccessViewPage', () => {
       ]
     });
     mockPost.mockResolvedValueOnce({ status: 200, data: { success: true, data: view } });
-    render(<ExternalAccessViewPage />);
+    renderPage();
 
-    for (const heading of [
+    // Une rubrique par onglet, dans l'ordre ; « Aperçu » d'abord.
+    await screen.findByRole('tab', { name: 'Aperçu' }, T);
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+      'Aperçu',
       'Rendement et ratios',
       'Emprunts',
       'Dépenses',
       'Baux et loyers',
-      'Documents partageables',
-      'Titres et propriété'
-    ]) {
-      expect(await screen.findByText(heading)).toBeInTheDocument();
-    }
-    expect(screen.getByText('Banque Atlantique')).toBeInTheDocument();
-    expect(screen.getByText('SCI Les Palmiers')).toBeInTheDocument();
-    expect(screen.getByText('acte.pdf')).toBeInTheDocument();
-    expect(screen.queryByText('Valorisations')).not.toBeInTheDocument();
+      'Titres et propriété',
+      'Documents partageables'
+    ]);
+    expect(screen.queryByText('Banque Atlantique')).not.toBeInTheDocument();
+
+    await openTab('Emprunts');
+    expect(await screen.findByText('Banque Atlantique')).toBeInTheDocument();
+    await openTab('Titres et propriété');
+    expect(await screen.findByText('SCI Les Palmiers')).toBeInTheDocument();
+    // Le contenu de l'onglet quitté est démonté (destroyOnHidden).
+    expect(screen.queryByText('Banque Atlantique')).not.toBeInTheDocument();
+    await openTab('Documents partageables');
+    expect(await screen.findByText('acte.pdf')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Valorisations' })).not.toBeInTheDocument();
   });
 
   it('télécharge un document en POST corps, jeton gardé en mémoire', async () => {
@@ -257,7 +291,8 @@ describe('ExternalAccessViewPage', () => {
       savedAs = this.download;
     });
 
-    render(<ExternalAccessViewPage />);
+    renderPage();
+    await userEvent.click(await screen.findByRole('tab', { name: 'Documents partageables' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Télécharger acte.pdf' }));
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledWith(blob));
@@ -292,7 +327,8 @@ describe('ExternalAccessViewPage', () => {
     });
     mockPost.mockResolvedValueOnce({ status: 200, data: { success: true, data: view } });
     mockPost.mockResolvedValueOnce({ status: 404, data: new Blob(['{}']) });
-    render(<ExternalAccessViewPage />);
+    renderPage();
+    await userEvent.click(await screen.findByRole('tab', { name: 'Documents partageables' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Télécharger acte.pdf' }));
     expect(await screen.findByText(INVALID)).toBeInTheDocument();
   });
@@ -300,14 +336,14 @@ describe('ExternalAccessViewPage', () => {
   it('affiche l’erreur uniforme sur 404 (lien inconnu, expiré ou révoqué)', async () => {
     setHash('#expire');
     mockPost.mockResolvedValueOnce({ status: 404, data: { success: false } });
-    render(<ExternalAccessViewPage />);
+    renderPage();
     expect(await screen.findByText(INVALID)).toBeInTheDocument();
   });
 
   it('distingue la panne du service de l’écran de lien invalide', async () => {
     setHash('#jeton');
     mockPost.mockResolvedValueOnce({ status: 503, data: { success: false } });
-    render(<ExternalAccessViewPage />);
+    renderPage();
     expect(
       await screen.findByText('Service momentanément indisponible, réessayez dans quelques minutes.')
     ).toBeInTheDocument();
@@ -316,7 +352,7 @@ describe('ExternalAccessViewPage', () => {
 
   it('affiche l’erreur uniforme sans appel réseau quand le jeton manque', async () => {
     setHash('');
-    render(<ExternalAccessViewPage />);
+    renderPage();
     await waitFor(() => expect(screen.getByText(INVALID)).toBeInTheDocument());
     expect(mockPost).not.toHaveBeenCalled();
   });
@@ -374,18 +410,27 @@ describe('ExternalAccessViewPage', () => {
       ]
     });
     mockPost.mockResolvedValueOnce({ status: 200, data: { success: true, data: view } });
-    const { container } = render(<ExternalAccessViewPage />);
+    const { container } = renderPage();
+
+    const RAW = ['EXPERT_APPRAISAL', 'DEFAULTED', 'PROPERTY_TAX', 'APPARTEMENT', 'CLIENT'];
+    const expectNoRawCode = () => {
+      for (const raw of RAW) expect(container.textContent).not.toContain(raw);
+    };
 
     expect(await screen.findByText('Expertise')).toBeInTheDocument();
-    expect(screen.getByText('Défaillant')).toBeInTheDocument();
-    expect(screen.getByText('Taxe foncière')).toBeInTheDocument();
-    expect(screen.getByText('Appartement')).toBeInTheDocument();
+    expectNoRawCode();
+    await openTab('Emprunts');
+    expect(await screen.findByText('Défaillant')).toBeInTheDocument();
+    expectNoRawCode();
+    await openTab('Dépenses');
+    expect(await screen.findByText('Taxe foncière')).toBeInTheDocument();
     expect(screen.getByText('(détail sur 24 mois)')).toBeInTheDocument();
-    expect(screen.getByText('Part des autres détenteurs')).toBeInTheDocument();
+    expectNoRawCode();
+    await openTab('Titres et propriété');
+    expect(await screen.findByText('Part des autres détenteurs')).toBeInTheDocument();
+    expect(screen.getAllByText('Appartement').length).toBeGreaterThan(0);
     expect(screen.queryByText('Mode de détention')).not.toBeInTheDocument();
-    for (const raw of ['EXPERT_APPRAISAL', 'DEFAULTED', 'PROPERTY_TAX', 'APPARTEMENT', 'CLIENT']) {
-      expect(container.textContent).not.toContain(raw);
-    }
+    expectNoRawCode();
   });
 
   it('affiche les rubriques sans donnée : aucune valorisation, rendement non valorisé', async () => {
@@ -401,9 +446,10 @@ describe('ExternalAccessViewPage', () => {
       ]
     });
     mockPost.mockResolvedValueOnce({ status: 200, data: { success: true, data: view } });
-    render(<ExternalAccessViewPage />);
+    renderPage();
     expect(await screen.findByText('Aucune valorisation.')).toBeInTheDocument();
-    expect(screen.getAllByText('Non valorisé')).toHaveLength(2);
+    await openTab('Rendement et ratios');
+    expect(await screen.findAllByText('Non valorisé')).toHaveLength(2);
   });
 
   it('signale la quote-part appliquée et la troncature du périmètre', async () => {
@@ -412,7 +458,7 @@ describe('ExternalAccessViewPage', () => {
       summary: { propertyCount: 100, totalEstimatedValue: 10, ownerShareApplied: true, truncated: true }
     });
     mockPost.mockResolvedValueOnce({ status: 200, data: { success: true, data: view } });
-    render(<ExternalAccessViewPage />);
+    renderPage();
     expect(await screen.findByText('Totaux calculés selon la quote-part de Awa Konan')).toBeInTheDocument();
     expect(screen.getByText('Seuls les 100 premiers biens du périmètre sont affichés.')).toBeInTheDocument();
   });
@@ -420,7 +466,7 @@ describe('ExternalAccessViewPage', () => {
   it('n’affiche aucune note quand la quote-part n’est pas appliquée', async () => {
     setHash('#jeton-abc');
     mockPost.mockResolvedValueOnce({ status: 200, data: { success: true, data: makeView() } });
-    render(<ExternalAccessViewPage />);
+    renderPage();
     await screen.findByText(/Accès en lecture seule accordé par/);
     expect(screen.queryByText(/Totaux calculés selon/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Seuls les 100 premiers/)).not.toBeInTheDocument();
