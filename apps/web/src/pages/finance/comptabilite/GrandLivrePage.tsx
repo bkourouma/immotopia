@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button, Card, Col, Row, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -79,6 +79,16 @@ export const GrandLivrePage: React.FC = () => {
     placeholderData: keepPreviousData,
     retry: false
   });
+
+  // Lien partagé hors bornes : recadrage une fois la vraie réponse reçue (le `limit` varie selon la vue,
+  // d'où un calcul local plutôt que `search.clampPage`, qui suit la taille de page par défaut).
+  const reponse = account ? compte : resume;
+  const totalLignes = reponse.isPlaceholderData ? undefined : reponse.data?.total;
+  useEffect(() => {
+    if (!totalLignes) return;
+    const derniere = Math.max(1, Math.ceil(totalLignes / limit));
+    if (page > derniere) setPage(derniere, { replace: true });
+  }, [totalLignes, limit, page, setPage]);
 
   const ouvrir = useCallback(
     (numero: string) => setFilters({ account: numero, q: undefined, journal: undefined }),

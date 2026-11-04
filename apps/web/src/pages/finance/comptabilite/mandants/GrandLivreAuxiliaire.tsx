@@ -1,16 +1,17 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button, Card, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { DataView, ListSearch, MoneyValue, StateBlock } from '../../../../components/primitives';
 import { useListSearch } from '../../../../hooks/useListSearch';
+import type { ListSearchBinding } from '../../../../utils/list-search/types';
 import {
   getMandantOwnerLedger,
   getMandantOwners,
   UNASSIGNED_OWNER
 } from '../../../../services/accounting-exports-service';
-import type { MandantFundsNature, MandantOwnerRow } from '../../../../services/accounting-exports-service';
+import type { MandantOwnerRow } from '../../../../services/accounting-exports-service';
 import { t } from '../../../../i18n/t';
 import {
   AccountingFrame,
@@ -40,32 +41,15 @@ const libelleProprietaire = (row: MandantOwnerRow) =>
 export const GrandLivreAuxiliaire: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const { from, to } = useAccountingPeriod();
-  const { vue, owner, pageLignes, maj } = useMandantUrl();
+  const { vue, owner, nature, pageLignes, maj } = useMandantUrl();
   // Liste des propriétaires : recherche par nom (paramètre d'API `search`).
   const search = useListSearch({
     criteria: [{ key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom du mandant') }],
     defaultPageSize: LIMITE_PROPRIETAIRES,
     apiNames: { sort: false }
   });
-  // Détail d'un propriétaire : filtre de nature. La pagination du détail
-  // (`page-lignes`) reste gérée par `maj` ; le hook ne sert qu'à lire la valeur.
-  const detailSearch = useListSearch({
-    criteria: [
-      {
-        key: 'nature',
-        type: 'select',
-        label: t('Nature'),
-        primary: true,
-        options: [
-          { value: 'CURRENT', label: t('Compte courant') },
-          { value: 'DEPOSIT', label: t('Dépôt de garantie') },
-          { value: 'UNALLOCATED', label: t('À affecter') }
-        ]
-      }
-    ],
-    apiNames: { sort: false }
-  });
-  const nature = detailSearch.filterParams.nature as MandantFundsNature | undefined;
+  // Détail d'un propriétaire : le filtre de nature vit directement dans l'URL (`nature`, déjà lu par
+  // `useMandantUrl`) ; un second `useListSearch` partagerait `page` et `limit` avec la liste ci-dessus.
   const limit = Math.min(search.pageSize, MAX_PAGE_SIZE);
   const { exportEnCours, exporter } = useAccountingExport(tenantId);
 
@@ -92,17 +76,43 @@ export const GrandLivreAuxiliaire: React.FC = () => {
   });
 
   // Le changement de nature remet `page-lignes` à zéro (et non `page`, celle de la liste).
-  const detailBinding = useMemo(
+  const detailBinding = useMemo<ListSearchBinding>(
     () => ({
-      ...detailSearch.searchProps,
+      criteria: [
+        {
+          key: 'nature',
+          type: 'select',
+          label: t('Nature'),
+          primary: true,
+          options: [
+            { value: 'CURRENT', label: t('Compte courant') },
+            { value: 'DEPOSIT', label: t('Dépôt de garantie') },
+            { value: 'UNALLOCATED', label: t('À affecter') }
+          ]
+        }
+      ],
+      values: { nature },
+      activeCount: nature ? 1 : 0,
       'aria-label': t('Filtrer les lignes du mandant'),
       resultCount: detail.data?.total,
-      onChange: (next: Record<string, unknown>) =>
-        maj({ nature: (next.nature as string | undefined) || undefined, 'page-lignes': undefined }),
+      onChange: next => maj({ nature: (next.nature as string | undefined) || undefined, 'page-lignes': undefined }),
       onClear: () => maj({ nature: undefined, 'page-lignes': undefined })
     }),
-    [detailSearch.searchProps, detail.data?.total, maj]
+    [nature, detail.data?.total, maj]
   );
+
+  // Liens partagés hors bornes : liste (`page`) et détail (`page-lignes`), recadrés une fois la vraie réponse reçue.
+  const totalListe = liste.isPlaceholderData ? undefined : liste.data?.total;
+  const { clampPage } = search;
+  useEffect(() => {
+    if (totalListe !== undefined) clampPage?.(totalListe);
+  }, [totalListe, clampPage]);
+  const totalDetail = detail.isPlaceholderData ? undefined : detail.data?.total;
+  useEffect(() => {
+    if (!totalDetail) return;
+    const derniere = Math.max(1, Math.ceil(totalDetail / LIMITE_LIGNES));
+    if (pageLignes > derniere) maj({ 'page-lignes': derniere > 1 ? String(derniere) : undefined });
+  }, [totalDetail, pageLignes, maj]);
 
   const ouvrir = useCallback(
     (ownerKey: string) => maj({ owner: ownerKey, nature: undefined, 'page-lignes': undefined }),
@@ -203,7 +213,7 @@ export const GrandLivreAuxiliaire: React.FC = () => {
           pageLignes={pageLignes}
           maj={maj}
           onBack={retour}
-          isFiltered={detailSearch.isFiltered}
+          isFiltered={nature !== undefined}
         />
       ) : (
         <>

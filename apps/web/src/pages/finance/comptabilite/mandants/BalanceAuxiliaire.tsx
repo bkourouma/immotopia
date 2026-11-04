@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { Card, DatePicker, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -45,6 +45,13 @@ export const BalanceAuxiliaire: React.FC = () => {
     placeholderData: keepPreviousData
   });
   const data = query.data;
+
+  // Lien partagé hors bornes : recadrage une fois la vraie réponse reçue.
+  const totalMandants = query.isPlaceholderData ? undefined : data?.total;
+  const { clampPage } = search;
+  useEffect(() => {
+    if (totalMandants !== undefined) clampPage?.(totalMandants);
+  }, [totalMandants, clampPage]);
 
   const columns = useMemo<ColumnsType<MandantTrialBalanceRow>>(
     () => [
