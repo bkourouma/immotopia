@@ -5,7 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { PrinterOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs, { Dayjs } from 'dayjs';
-import { getAccountStatement, getAccountStatementPdfUrl } from '../../services/finance-service';
+import { getFullAccountStatement, getAccountStatementPdfUrl } from '../../services/finance-service';
 import type { ThirdPartyKind, ThirdPartyMovementLine, ThirdPartyMovementType } from '../../types/finance-types';
 import { useListParams } from '../../hooks/useListParams';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
@@ -130,7 +130,7 @@ export const Releve: React.FC = () => {
       to: list.filters.to ?? ''
     }),
     queryFn: () =>
-      getAccountStatement(tenantId as string, accountId as string, {
+      getFullAccountStatement(tenantId as string, accountId as string, {
         from: list.filters.from || undefined,
         to: list.filters.to || undefined
       }),
@@ -231,8 +231,10 @@ export const Releve: React.FC = () => {
 
       <DataView<ThirdPartyMovementLine>
         export={{ filename: data?.label ?? t('Relevé de compte') }}
-        // Une chronologie se lit d'un bloc : pas de pagination, le serveur
-        // rend déjà le relevé borné par les dates choisies.
+        // Une chronologie se lit d'un bloc : pas de pagination à l'écran.
+        // `getFullAccountStatement` enchaîne toutes les pages du serveur
+        // (50 par défaut) pour que la dernière ligne porte le solde de
+        // clôture annoncé en en-tête, et que l'export couvre tout le relevé.
         paginated={false}
         scrollX={960}
         items={mouvements}

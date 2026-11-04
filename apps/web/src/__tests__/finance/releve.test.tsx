@@ -28,6 +28,9 @@ const getMyStatement = vi.fn();
 
 vi.mock('../../services/finance-service', () => ({
   getAccountStatement: (...a: unknown[]) => getAccountStatement(...a),
+  // L'écran agence lit le relevé complet (toutes les pages) ; l'enchaînement
+  // des pages est couvert par statement-complet.test.ts.
+  getFullAccountStatement: (...a: unknown[]) => getAccountStatement(...a),
   getAccountStatementPdfUrl: (...a: unknown[]) => getAccountStatementPdfUrl(...a),
   getMyStatement: (...a: unknown[]) => getMyStatement(...a)
 }));
