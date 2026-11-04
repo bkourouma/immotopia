@@ -30,8 +30,10 @@ export interface Member {
 
 export interface MembershipFilters {
   search?: string;
-  status?: 'ACTIVE' | 'PENDING_INVITE' | 'DISABLED';
+  /** Un ou plusieurs statuts séparés par des virgules (ex. `ACTIVE,DISABLED`). */
+  status?: 'ACTIVE' | 'PENDING_INVITE' | 'DISABLED' | (string & {});
   role?: string;
+  roleId?: string;
   page?: number;
   limit?: number;
 }

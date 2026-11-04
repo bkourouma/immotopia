@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -296,8 +296,8 @@ describe('Fournisseurs — liste et création', () => {
 
     await user.type(await screen.findByLabelText('Raison sociale'), 'Nouveau Fournisseur SARL');
 
-    // La modale ne porte qu'un seul menu déroulant : la nature.
-    await user.click(screen.getByRole('combobox'));
+    // La barre de recherche porte aussi des menus déroulants : on cible celui de la modale (la nature).
+    await user.click(within(screen.getByRole('dialog')).getByRole('combobox'));
     await user.click(await screen.findByText('Prestation'));
 
     await user.click(screen.getByRole('button', { name: 'Créer' }));
@@ -332,6 +332,115 @@ describe('Fournisseurs — liste et création', () => {
       await screen.findByText('Impossible de charger les fournisseurs.', {}, { timeout: 8000 })
     ).toBeInTheDocument();
     expect(screen.getByText('Réessayer')).toBeInTheDocument();
+  });
+});
+
+describe('Fournisseurs — recherche locale', () => {
+  const T = { timeout: 8000 };
+  const PLACEHOLDER = 'Raison sociale, contact, téléphone, e-mail…';
+
+  beforeEach(() => {
+    listSuppliers.mockResolvedValue([
+      fournisseur(),
+      fournisseur({
+        id: 'frs-02',
+        name: 'Électricité Générale Bamako',
+        kind: 'SERVICES',
+        contactName: 'Boubacar Traoré',
+        contactEmail: 'btraore@elec-bamako.ml'
+      }),
+      fournisseur({ id: 'frs-03', name: 'Quincaillerie du Plateau', kind: 'MIXED', isActive: false })
+    ]);
+  });
+
+  /** Lignes de données du tableau (l'en-tête est exclu). */
+  const lignes = () => screen.getAllByRole('row').slice(1);
+
+  it('cherche sans tenir compte des accents ni de la casse, et garde le terme dans l’URL', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFournisseurs();
+
+    await user.type(await screen.findByPlaceholderText(PLACEHOLDER, {}, T), 'MATERIAUX');
+
+    // Le champ s'applique après ~300 ms sans frappe.
+    await waitFor(() => expect(screen.queryByText('Électricité Générale Bamako')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('Matériaux du Bandama SARL')).toBeInTheDocument();
+    expect(screen.getByTestId('adresse')).toHaveTextContent('q=MATERIAUX');
+  });
+
+  it('cherche aussi dans le contact, l’e-mail et le libellé de la nature', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFournisseurs();
+
+    const champ = await screen.findByPlaceholderText(PLACEHOLDER, {}, T);
+    await user.type(champ, 'btraore@elec');
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+    expect(screen.getByText('Électricité Générale Bamako')).toBeInTheDocument();
+
+    await user.clear(champ);
+    await user.type(champ, 'materiaux et prestation');
+    expect(await screen.findByText('Quincaillerie du Plateau', {}, T)).toBeInTheDocument();
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+  });
+
+  it('filtre par nature depuis l’URL (lien partagé)', async () => {
+    mountFournisseurs('/tenant/agence-1/finance/fournisseurs?nature=SERVICES');
+
+    expect(await screen.findByText('Électricité Générale Bamako', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('Matériaux du Bandama SARL')).not.toBeInTheDocument();
+    expect(screen.queryByText('Quincaillerie du Plateau')).not.toBeInTheDocument();
+  });
+
+  it('filtre les fournisseurs inactifs depuis l’URL', async () => {
+    mountFournisseurs('/tenant/agence-1/finance/fournisseurs?actif=0');
+
+    expect(await screen.findByText('Quincaillerie du Plateau', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('Matériaux du Bandama SARL')).not.toBeInTheDocument();
+    expect(lignes()).toHaveLength(1);
+  });
+
+  it('annonce le nombre de résultats dans la barre, et garde le total non filtré en sous-titre', async () => {
+    mountFournisseurs();
+
+    const barre = await screen.findByRole('search', {}, T);
+    expect(await within(barre).findByText('3 résultats', {}, T)).toBeInTheDocument();
+    expect(screen.getByText('3 fournisseurs')).toBeInTheDocument();
+  });
+
+  it('compte les résultats filtrés sans changer le sous-titre', async () => {
+    mountFournisseurs('/tenant/agence-1/finance/fournisseurs?actif=1');
+
+    const barre = await screen.findByRole('search', {}, T);
+    expect(await within(barre).findByText('2 résultats', {}, T)).toBeInTheDocument();
+    expect(screen.getByText('3 fournisseurs')).toBeInTheDocument();
+  });
+
+  it('pagine localement : 20 lignes en page 1 sur 25 fournisseurs', async () => {
+    listSuppliers.mockResolvedValue(
+      Array.from({ length: 25 }, (_, i) =>
+        fournisseur({ id: `frs-${i + 1}`, name: `Fournisseur ${String(i + 1).padStart(2, '0')}` })
+      )
+    );
+    mountFournisseurs();
+
+    expect(await screen.findByText('Fournisseur 01', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(20);
+    expect(screen.queryByText('Fournisseur 21')).not.toBeInTheDocument();
+    const barre = screen.getByRole('search');
+    expect(within(barre).getByText('25 résultats')).toBeInTheDocument();
+  });
+
+  it('« Effacer les critères » ramène toute la liste', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFournisseurs('/tenant/agence-1/finance/fournisseurs?q=zzz');
+
+    // Aucun résultat : le bloc d'état et la barre proposent chacun d'effacer.
+    const barre = await screen.findByRole('search', {}, T);
+    await user.click(await within(barre).findByRole('button', { name: 'Effacer les critères' }, T));
+
+    expect(await screen.findByText('Matériaux du Bandama SARL', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(3);
+    expect(screen.getByTestId('adresse')).not.toHaveTextContent('q=');
   });
 });
 

@@ -1,0 +1,24 @@
+/* États de survol et de focus clavier de <ListSearch> (impossibles en style en ligne). */
+.list-search-chip-remove:hover {
+  background: var(--surface-hover, rgba(0, 0, 0, 0.06));
+  color: var(--text-primary, inherit);
+}
+
+.list-search-chip-remove:focus-visible {
+  outline: 2px solid var(--color-primary, #1677ff);
+  outline-offset: 1px;
+}
+
+/* Cibles tactiles de 44 px : feuille « Filtres » et champ libre sous 992 px. */
+.list-search-touch .ant-select,
+.list-search-touch .ant-select-selector,
+.list-search-touch .ant-picker,
+.list-search-touch .ant-input-affix-wrapper,
+.list-search-touch .ant-input-number,
+.list-search-touch .ant-input-number-input {
+  min-height: 44px;
+}
+
+.list-search-touch .ant-select-selector {
+  align-items: center;
+}
