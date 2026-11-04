@@ -61,7 +61,8 @@ export interface UseListParamsResult<F extends Record<string, string>> extends L
   setFilters: (next: Partial<Record<keyof F & string, string | undefined>>, options?: { replace?: boolean }) => void;
   /** Efface tous les filtres reconnus. Remet la page à 1. */
   clearFilters: () => void;
-  setPage: (page: number) => void;
+  /** `replace: true` remplace l'entrée d'historique (ramener une page hors bornes sans empiler). */
+  setPage: (page: number, options?: { replace?: boolean }) => void;
   setPageSize: (size: number) => void;
   /** Change le tri. Remet la page à 1 : la page 3 d'un autre ordre n'a pas de sens. */
   setSort: (sort: Sort | null) => void;
@@ -157,8 +158,8 @@ export function useListParams<F extends Record<string, string>>(
   }, [write, filterKeys, urlKey, pageKey]);
 
   const setPage = useCallback(
-    (value: number) => {
-      write(next => next.set(pageKey, String(Math.max(1, value))));
+    (value: number, setOptions?: { replace?: boolean }) => {
+      write(next => next.set(pageKey, String(Math.max(1, value))), setOptions);
     },
     [write, pageKey]
   );

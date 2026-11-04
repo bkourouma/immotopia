@@ -110,6 +110,11 @@ déplié et feuille mobile).
 Une valeur mal formée dans l'URL (date impossible, nombre non fini, `retard=oui`)
 est ignorée. Un critère inactif n'est NI dans l'URL NI dans les paramètres d'API.
 
+Une valeur de `select` ou de `multiSelect` absente des `options` **statiques**
+est ignorée aussi : `?status=BOGUS` ne part pas à l'API. Avec des options
+chargées plus tard, un tableau vide veut dire « aucun filtrage » tant qu'elles
+ne sont pas là.
+
 ### `primary` : 2 critères en ligne, 3 au plus
 
 - Marquer `primary: true` **2 critères**, 3 au plus : ceux que l'on utilise le
@@ -159,7 +164,8 @@ colonnes (§ g) ; la liste de ce que le serveur cherche se met dans le
 `placeholder` (`t('Référence, bien, locataire…')`).
 
 Plusieurs mots : en local, chaque mot doit apparaître quelque part (ET entre les
-mots, OU entre les colonnes), sans tenir compte de la casse ni des accents.
+mots, OU entre les colonnes), sans tenir compte de la casse ni des accents (diacritiques arabes compris :
+« مُحَمَّد » est trouvé par « محمد »).
 
 ## Recettes
 
@@ -559,6 +565,7 @@ export const LotPage: React.FC = () => (
 const InvoicesSection: React.FC = () => {
   const search = useListSearch({
     paramPrefix: "fac",
+    ariaLabel: t("Rechercher dans les factures"),
     criteria: [
       {
         key: "q",
@@ -583,6 +590,7 @@ const InvoicesSection: React.FC = () => {
 const PaymentsSection: React.FC = () => {
   const search = useListSearch({
     paramPrefix: "reg",
+    ariaLabel: t("Rechercher dans les règlements"),
     criteria: [
       {
         key: "q",
@@ -611,6 +619,10 @@ s'écrasent pas ; « Effacer » n'efface que les clés de son préfixe ; un para
 étranger (`tab`, ancre) reste intact. Les préfixes sont courts, uniques dans
 l'écran, sans point.
 
+`ariaLabel` (facultatif, repris dans `searchProps['aria-label']`) nomme la zone
+`role="search"` de l'instance. Sans lui, toutes s'appellent « Rechercher » et un
+lecteur d'écran ne les distingue pas. Même option sur `useLocalListSearch`.
+
 Rappel de la charte § 2, écran lourd :
 
 - Sections en onglets ou sous-pages paresseuses ; `destroyOnHidden` sur les
@@ -631,8 +643,10 @@ options. Le contrôle appelle `loadOptions(saisie)` à l'ouverture puis à la fr
 - `resolveLabel(value)` retrouve le libellé d'une valeur **venue de l'URL**
   (lien partagé, rechargement) absente des options chargées. Il est appelé une fois par
   valeur. Sans lui, la puce affiche l'identifiant brut.
-- Les deux peuvent être redéclarés à chaque rendu ; le composant garde la dernière
-  version.
+- `loadOptions`, `resolveLabel` (et `api` quand c'est une fonction) peuvent fermer
+  sur un état du composant (`tenantId`, un autre critère) : le hook passe des
+  enveloppes stables et appelle toujours la version COURANTE. Les redéclarer à
+  chaque rendu est correct.
 - Si `loadOptions` échoue (rejet), le contrôle affiche l'erreur avec un bouton
   « Réessayer » : ne pas attraper l'erreur dans `loadOptions`, la laisser remonter.
 
@@ -748,6 +762,25 @@ Règles (charte § 3 et `AGENTS.md`) :
 - Réutiliser le message existant `t('Paramètres de recherche invalides.')`
   (`import { t } from '../i18n'`) : pas de nouvelle chaîne d'API à traduire.
 
+**Helpers partagés** : `packages/api/src/utils/list-query-schemas.ts` (import
+`../utils/list-query-schemas` depuis un contrôleur). **Ne réécris pas ces
+helpers dans ton contrôleur.**
+
+| Helper                    | Rôle                                                                                |
+| ------------------------- | ----------------------------------------------------------------------------------- |
+| `emptyToUndefined`        | une valeur vide ou absente donne `undefined`                                        |
+| `zSearch(max = 200)`      | recherche libre : `trim`, `max` caractères, vide = absent                           |
+| `zCsvEnum(VALUES)`        | CSV (`A,B`) validé contre l'énumération, doublons ignorés, vide = absent            |
+| `zDay`                    | jour `aaaa-mm-jj` RÉEL (contrôle aller-retour) : `2026-13-45`, `2026-02-31` rejetés |
+| `dayStart(day)`           | `Date` à 00:00:00.000 UTC                                                           |
+| `dayEnd(day)`             | `Date` à 23:59:59.999 UTC (fin inclusive)                                           |
+| `dayRange(from, to)`      | `{ gte?, lte? }`, ou `undefined` si aucun jour                                      |
+| `zAmount({ min?, max? })` | nombre fini ; négatif accepté par défaut (avoirs, soldes), `{ min: 0 }` l'interdit  |
+| `zId`                     | identifiant de 1 à 64 caractères                                                    |
+
+Exemple réel : `listMembersQuerySchema` de `membership-controller.ts`
+(`zSearch`, `zCsvEnum`, `zId`).
+
 **Contrôleur** (modèle : `membership-controller.ts`) :
 
 ```ts
@@ -759,56 +792,27 @@ import {
   UnauthorizedError,
 } from "../middleware/error-middleware";
 import { parsePagination } from "../utils/pagination-helper";
+import {
+  zSearch,
+  zCsvEnum,
+  zDay,
+  zAmount,
+  zId,
+} from "../utils/list-query-schemas";
 import { listInvoices } from "../services/invoice-service";
 import { t } from "../i18n";
 
 const INVOICE_STATUSES = ["DRAFT", "SENT", "PAID"] as const;
 
-/** Une valeur vide ou absente donne `undefined`. */
-const emptyToUndefined = (v: unknown) =>
-  typeof v === "string" && v.trim() === "" ? undefined : v;
-
-const day = z.preprocess(
-  emptyToUndefined,
-  z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-);
-const amount = z.preprocess(
-  emptyToUndefined,
-  z.coerce.number().finite().min(0).optional(),
-);
-
 /** `status` : liste séparée par des virgules (`SENT,PAID`), doublons ignorés. */
 export const listInvoicesQuerySchema = z.object({
-  search: z.preprocess(emptyToUndefined, z.string().trim().max(200).optional()),
-  status: z.preprocess(
-    emptyToUndefined,
-    z
-      .string()
-      .transform((value) =>
-        Array.from(
-          new Set(
-            value
-              .split(",")
-              .map((item) => item.trim())
-              .filter(Boolean),
-          ),
-        ),
-      )
-      .pipe(z.array(z.enum(INVOICE_STATUSES)))
-      .transform((list) => (list.length > 0 ? list : undefined))
-      .optional(),
-  ),
-  from: day,
-  to: day,
-  minAmount: amount,
-  maxAmount: amount,
-  propertyId: z.preprocess(
-    emptyToUndefined,
-    z.string().min(1).max(64).optional(),
-  ),
+  search: zSearch(), // 200 caractères au plus par défaut
+  status: zCsvEnum(INVOICE_STATUSES),
+  from: zDay, // jour réel : `2026-13-45` et `2026-02-31` donnent un 400
+  to: zDay,
+  minAmount: zAmount({ min: 0 }),
+  maxAmount: zAmount({ min: 0 }),
+  propertyId: zId, // 1 à 64 caractères
 });
 
 /** Valide les paramètres de requête ; toute valeur invalide lève une `BadRequestError` (400). */
@@ -838,12 +842,10 @@ export const listInvoicesHandler = asyncHandler(
       ...parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 }),
     });
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        data: { invoices: result.invoices, pagination: result.pagination },
-      });
+    res.status(200).json({
+      success: true,
+      data: { invoices: result.invoices, pagination: result.pagination },
+    });
   },
 );
 ```
@@ -852,6 +854,7 @@ export const listInvoicesHandler = asyncHandler(
 
 ```ts
 import { prisma } from "../utils/database";
+import { dayRange } from "../utils/list-query-schemas";
 
 export interface ListInvoicesFilters {
   tenantId: string;
@@ -880,14 +883,8 @@ export async function listInvoices(filters: ListInvoicesFilters) {
   }
   if (filters.propertyId) where.propertyId = filters.propertyId;
 
-  if (filters.from || filters.to) {
-    where.issuedAt = {
-      ...(filters.from
-        ? { gte: new Date(`${filters.from}T00:00:00.000Z`) }
-        : {}),
-      ...(filters.to ? { lte: new Date(`${filters.to}T23:59:59.999Z`) } : {}),
-    };
-  }
+  const issuedAt = dayRange(filters.from, filters.to); // UTC, fin incluse
+  if (issuedAt) where.issuedAt = issuedAt;
   if (filters.minAmount !== undefined || filters.maxAmount !== undefined) {
     where.amount = {
       ...(filters.minAmount !== undefined ? { gte: filters.minAmount } : {}),
@@ -929,8 +926,9 @@ export async function listInvoices(filters: ListInvoicesFilters) {
 
 Points d'attention :
 
-- Les dates : l'extrait lit les jours en UTC (agences d'Abidjan, UTC+0). Pour un fuseau
-  différent, adapter les bornes.
+- Les dates : `dayRange` lit les jours en UTC (agences d'Abidjan, UTC+0) et la
+  borne `to` est inclusive (23:59:59.999). Pour un autre fuseau, adapter les
+  bornes dans le module partagé, pas dans l'écran.
 - Si le `where` de la route a déjà un `OR` (droits, périmètre), combiner avec
   `AND: [{ OR: … }, { OR: … }]` : ne pas écraser.
 - Les noms de modèles, champs et relations ci-dessus sont fictifs ; reprendre ceux
@@ -1014,6 +1012,9 @@ describe("parseListInvoicesQuery", () => {
       BadRequestError,
     );
     expect(() => parseListInvoicesQuery({ from: "hier" })).toThrow(
+      BadRequestError,
+    );
+    expect(() => parseListInvoicesQuery({ from: "2026-02-31" })).toThrow(
       BadRequestError,
     );
     expect(() => parseListInvoicesQuery({ minAmount: "abc" })).toThrow(
@@ -1257,7 +1258,8 @@ it("filtre la liste locale sans accent ni casse", async () => {
 - [ ] `tenantId` dans le `where` ; ids reçus dans le même `where` ; pas de nouvelle
       route, pas de migration.
 - [ ] L'URL porte l'état (recharger la page ou ouvrir le lien restitue la liste) ;
-      `paramPrefix` si plusieurs tableaux sur l'écran.
+      `paramPrefix` si plusieurs tableaux sur l'écran, avec un `ariaLabel` propre
+      à chaque instance (`t('Rechercher dans les factures')`).
 - [ ] Plus de barre ni de filtre maison (`Input.Search`, `FilterSheet`,
       `Collapse` de filtres, `useListParams` seul) ; imports devenus inutiles retirés.
 - [ ] Export aligné : `fetchAll` / `exportFetchAll` avec `search.filterParams`
@@ -1274,13 +1276,34 @@ it("filtre la liste locale sans accent ni casse", async () => {
       section est affichée, pas de `limit: 500`.
 - [ ] Tests : au moins un test de recherche par écran (§ h) ; tests existants
       mis à jour ; fichier lancé seul au moins une fois.
+- [ ] Pièges du § 10 relus (clés réservées, virgules, mémoïsation, état vide).
 - [ ] Typecheck et lint propres sur les fichiers touchés.
 - [ ] Rapport du lot : par écran, critères posés, mode serveur/local ; liste des
       textes `t('…')` ajoutés (pour le lot final i18n) ; écrans laissés sans barre
       (petits tableaux de détail ≤ 10 lignes) avec la raison ; paramètres d'API
       ajoutés par route.
 
-## 10. Questions fréquentes et limites connues
+## 10. Pièges, questions fréquentes et limites connues
+
+### Pièges à éviter
+
+- **Clés réservées.** Pas de critère nommé `page`, `limit` ni `sort` (l'URL les
+  utilise), pas deux critères de même clé, un seul critère `text` par instance.
+  Sinon les clés d'URL se marchent dessus.
+- **Virgule dans une valeur de `multiSelect`.** La virgule sépare les valeurs
+  dans l'URL : une valeur qui en contient est coupée en deux. Utiliser des codes.
+- **Point dans `paramPrefix`.** Le séparateur est `.` : un préfixe qui en contient
+  rend les clés ambiguës. Préfixe court, sans point.
+- **Liste locale : `items` non mémoïsé.** Un `items` recréé à chaque rendu (ou des
+  accesseurs définis dans le composant) recalcule filtre, tri et pagination à
+  chaque rendu. Mémoïser `items` (`useMemo`) et les accesseurs.
+- **Mode serveur : `emptyAction` n'est pas le seul état vide.** Avec des critères
+  actifs, l'écran montre « Aucun résultat » + « Effacer les critères », pas
+  l'invite à créer. Tester les deux états.
+- **Fichiers de test lourds** (ex. `__tests__/finance/fournisseurs.test.tsx`) : les
+  lancer SEULS. Un timeout dans une suite chargée ne prouve rien.
+
+### Questions fréquentes
 
 **Une valeur de `multiSelect` contient une virgule.** L'URL sépare par des
 virgules : `A,B` donne deux valeurs. Une valeur qui contient elle-même une
@@ -1323,8 +1346,12 @@ catalogues, ne pas lancer `npm run i18n:extract` ni `npm run ai:catalog`.
 `undefined` pour la clé (`''`, `[]`, `{}` sont équivalents). `setValues` fusionne
 et remet la page à 1 ; `clear()` n'efface ni le tri ni la taille de page.
 
-**Page hors bornes (local).** Une page 7 devenue vide après filtrage rend la
-dernière page non vide, sans réécrire l'URL.
+**Page hors bornes.** Une `?page=7` au-delà de la dernière page est recadrée.
+Liste locale : la dernière page non vide s'affiche, sans réécrire l'URL.
+`DataView` et `Table`, quand `search` leur est passé, recadrent SEULS : ils
+appellent `onPageChange` vers la dernière page. Un écran sur mesure (sans
+`DataView` ni `Table`) pose lui-même
+`useEffect(() => search.clampPage(total), [total])`.
 
 **Sélecteurs d'une autre partie de l'écran.** Un `Select` de formulaire (hors
 liste) n'est pas un critère : ne pas le passer par `ListSearch`.

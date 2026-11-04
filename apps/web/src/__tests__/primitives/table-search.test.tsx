@@ -91,6 +91,14 @@ describe('Table — prop search', () => {
     expect(search.onClear).toHaveBeenCalledTimes(1);
   });
 
+  it('ne montre pas « aucun résultat » pendant un chargement', () => {
+    // Premier chargement sous critères : la liste n'est pas encore connue, et le
+    // bouton serait recouvert par l'indicateur d'AntD (pointer-events: none).
+    table({ search: binding({ values: { q: 'zzz' }, activeCount: 1 }), dataSource: [], loading: true });
+    expect(screen.queryByText('Aucun élément ne correspond aux filtres appliqués.')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Effacer les critères' })).toHaveLength(1);
+  });
+
   it("garde le texte vide d'Ant Design sans critère actif", () => {
     table({ search: binding(), dataSource: [] });
     expect(screen.queryByText('Aucun élément ne correspond aux filtres appliqués.')).not.toBeInTheDocument();
@@ -105,5 +113,22 @@ describe('Table — prop search', () => {
     });
     expect(screen.getByText('Aucun locataire pour ce bien')).toBeInTheDocument();
     expect(screen.queryByText('Aucun élément ne correspond aux filtres appliqués.')).not.toBeInTheDocument();
+  });
+
+  it('recadre une page hors bornes via pagination.onChange', () => {
+    const onChange = vi.fn();
+    table({
+      search: binding(),
+      dataSource: [],
+      pagination: { total: 25, current: 9, pageSize: 20, onChange }
+    });
+    expect(onChange).toHaveBeenCalledWith(2, 20);
+    expect(screen.queryByText('Aucun élément ne correspond aux filtres appliqués.')).not.toBeInTheDocument();
+  });
+
+  it('ne recadre rien sans search', () => {
+    const onChange = vi.fn();
+    table({ dataSource: [], pagination: { total: 25, current: 9, pageSize: 20, onChange } });
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
