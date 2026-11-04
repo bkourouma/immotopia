@@ -91,7 +91,28 @@ Les correctifs des échéances (commit `fa35f706`) étaient en service pendant c
 | GL-05-026 à 028 | passé                    | Filtres, URL, pagination                                                                                                                  |
 | GL-05-029       | passé (constat)          | Pas de recherche texte ni de filtre de période                                                                                            |
 | GL-05-030       | échoué                   | BUG-2026-11-03-010 (filtre Statut repris par l'onglet Paiements, 400)                                                                     |
-| GL-05-031 à 052 | non joué                 | Reprendre à GL-05-031                                                                                                                     |
+| GL-05-031 à 052 | voir suite               | Joués dans « 05 — suite »                                                                                                                 |
+
+#### 05 — suite (Playwright, révision `33647d31`, 23 cas)
+
+Aucun cas Bloquant échoué. Détail d'échéance, encaissement rapide et
+complément, recalcul idempotent, suppression des échéances (bail sans
+paiement, refus en 409 avec paiements alloués, bail terminé), lien de
+paiement partageable de bout en bout (création, jeton affiché une fois,
+page publique sans donnée personnelle, paiement simulé réussi puis
+lien invalidé, échec et annulation sans effet sur l'échéance).
+
+| Cas                                                           | Résultat        | Anomalie / remarque                                                                |
+| ------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------- |
+| GL-05-031, 034, 035, 037, 039 à 045, 047 à 049, 051, 052, 018 | passé           | Bail annulé : génération refusée (409) ; suppression : annulations au relevé       |
+| GL-05-032, 033, 046, 050                                      | passé (écart)   | Bouton « Voir » présent, 404 au lieu de 500, échéances échues créées « En retard » |
+| GL-05-036                                                     | passé (réserve) | Double clic : deux POST, un seul paiement créé (idempotence serveur)               |
+| GL-05-038                                                     | passé (adapté)  | Totaux dus avec les pénalités déjà calculées (162 000 et 163 200)                  |
+
+Écarts de scénario : les pénalités sont déjà calculées quand les cas
+031 et 038 se jouent ; le fragment du lien de paiement est retiré de
+l'adresse après le premier chargement, donc F5 affiche « Lien invalide
+ou expiré » et ne compte pas de consultation (050).
 
 ### 13 — Rôles, permissions, isolation (Playwright + API)
 
@@ -143,7 +164,35 @@ Aucune fuite entre agences ni entre portails, aucune écriture hors droits (43 �
 | GL-02-096                                                                               | passé (partiel)  |                                                                      |
 | GL-02-098, 099                                                                          | passé            | Honoraires, TVA et commission calculés et figés                      |
 | GL-02-100                                                                               | passé (partiel)  | COMPTABLE_A non testé                                                |
-| GL-02-001, 002, 006, 007, 009-013, 017, 019-053, 055, 063, 088, 090, 091, 094, 097, 101 | non joué         | Reprendre à GL-02-001                                                |
+| GL-02-001, 002, 006, 007, 009-013, 017, 019-053, 055, 063, 088, 090, 091, 094, 097, 101 | voir suite       | Joués dans « 02 — suite » (sauf 027, 049)                            |
+
+#### 02 — suite (Playwright, révision `2400cd6e`, 46 cas)
+
+Aucun cas Bloquant échoué. Création jouée sur des biens dédiés « REC-GL Bien
+B02-n » : périodicités mensuelle, trimestrielle et annuelle, repli en fin de
+mois (31/01 → 28/02, 29/02/2028), société locataire, notes de 4 098
+caractères, pénalité fixe avec délai de grâce, mails « bail activé » sans mail
+de création de compte, puis premier accès du locataire au portail.
+
+| Cas                                                                | Résultat      | Anomalie / remarque                                                                        |
+| ------------------------------------------------------------------ | ------------- | ------------------------------------------------------------------------------------------ |
+| GL-02-001, 006, 007, 009 à 013, 017, 019 à 023, 025, 028, 030, 037 | passé         | Baux 0113 à 0119, échéances justes, propriétaire prérempli, aucun champ « Numéro de bail » |
+| GL-02-038, 040, 042, 044 à 046, 048, 050, 052, 053, 055, 063       | passé         | Liste, filtres dans l'URL, pagination, exports (121 lignes), 404 propre, double clic       |
+| GL-02-091, 094, 097, 101                                           | passé         | Conditions du propriétaire, bornes du taux, gestionnaire inactif refusé, bien vendu        |
+| GL-02-002, 024, 026, 029, 041, 043, 047, 051, 088, 090             | passé (écart) | Voir les écarts de scénario ci-dessous                                                     |
+| GL-02-031, 034                                                     | échoué        | BUG-2026-11-04-056 (signe moins et virgule supprimés sans message)                         |
+| GL-02-033, 035                                                     | passé (écart) | BUG-2026-11-04-056 (« 5,5 » devient 31, « 0,0001 » devient 1)                              |
+| GL-02-032                                                          | échoué        | BUG-2026-11-04-057 (loyer de 99 999 999 999 : 500)                                         |
+| GL-02-036                                                          | échoué        | BUG-2026-11-04-058 (erreur serveur invisible à l'étape Notes)                              |
+| GL-02-039                                                          | échoué        | BUG-2026-11-04-059 (second bail actif sur un bien déjà loué, via la fiche du bien)         |
+| GL-02-027, 049                                                     | non joué      | Mobile 375 px de l'assistant non joué                                                      |
+
+Écarts de scénario : biens P1-P14 remplacés par « REC-GL Bien B02-n » ; la
+liste « Propriété » ne propose que les biens libres ; saisie d'une date
+antérieure vidée sans message (029) ; pied « Tous les montants sont en
+FCFA. » absent (041) ; l'onglet du bail reste après F5 (051, voulu depuis
+BUG-2026-11-04-041) ; LECTEUR_A refusé sur les co-locataires (088) ; taux
+de l'agence modifié par un autre cas (090) ; aucune colonne triable (047).
 
 ### 10 — Propriétaires, relevés, reversements (Playwright, révision `2c6a4ddd`)
 
@@ -247,7 +296,20 @@ entre agences. Tranches d'âge recalculées pour le 04/11/2026.
 | GL-09-036                                                                | passé (anomalie) | BUG-2026-11-04-024 (mois sans accents dans les libellés)                                                                           |
 | GL-09-037                                                                | passé (réserve)  | Paiement réactivé puis annulé de nouveau : références d'écriture en double (BUG-2026-11-04-025)                                    |
 | GL-09-039                                                                | bloqué           | Bail REC-GL-PAY-1 (bloc 06) absent                                                                                                 |
-| GL-09-018, 021, 033, 041 à 048                                           | non joué         | Reprendre à GL-09-041 (exports)                                                                                                    |
+| GL-09-018, 021, 033, 041 à 048                                           | voir suite       | Exports joués dans « 09 — suite »                                                                                                  |
+
+#### 09 — suite (Playwright, révision `33647d31`, exports)
+
+Fichiers relus : nombre de lignes égal au compteur de l'écran, BOM UTF-8,
+séparateur « ; », montants numériques, statuts en français, accents.
+
+| Cas                                                 | Résultat        | Anomalie / remarque                                                                            |
+| --------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------- |
+| GL-09-043                                           | passé           | Échéances : 1 995 lignes en CSV et Excel, 12 lignes filtrées (CSV, Excel, PDF)                 |
+| GL-09-044                                           | échoué          | BUG-2026-11-04-061 (« En ligneRéussi »), BUG-2026-11-04-062 (dates longues, « '- »)            |
+| GL-09-045                                           | passé (partiel) | Pénalités conformes ; Dépôt et Documents sans données sur le bail choisi                       |
+| GL-09-021                                           | non concluant   | Deux boutons « Exporter » sur la balance âgée ; aucun téléchargement observé depuis le premier |
+| GL-09-018, 033, 041, 042, 046 à 048, 030 (excédent) | non joué        | Reprendre à GL-09-046                                                                          |
 
 ### 12 — Portail propriétaire (Playwright, révision `fa868920`, ~38 cas sur 47)
 
@@ -333,7 +395,7 @@ absentes (005, plafond de 010, 012, 033, 034, 036, 039).
 | GL-06-011                                                 | passé (partiel) | Date vidée ramenée au jour : « date requise » inatteignable                           |
 | GL-06-032, 033                                            | passé           | Pas de désallocation à l'écran ; « En attente » non proposé depuis « Réussi »         |
 | GL-06-045, 047, 049                                       | passé (partiel) | Déclaration jouée sur le bail seed (le bail REC-GL-DECL n'est pas visible au portail) |
-| GL-06-016 à 019, 021, 022, 042 à 044, 046, 048, 050 à 059 | non joué        | Suite confiée à un second passage                                                     |
+| GL-06-016 à 019, 021, 022, 042 à 044, 046, 048, 050 à 059 | voir suite      | Joués dans « 06 — suite »                                                             |
 
 Écarts de scénario : biens et contacts REC-GL créés pendant le jeu ; bail
 créé directement « Actif » ; libellé « Date du règlement » ; échéances
@@ -410,3 +472,21 @@ portails relues.
 Remarques : la langue suit le compte (deux sessions du même compte se la
 transmettent) ; « Choisir un compte de test » de la page de connexion reste
 en français (outil de développement).
+
+### Retests des correctifs (Playwright, révisions `87785af9` et `b0bec1dd`)
+
+Deux passages de retest sur les anomalies déclarées corrigées, chacune
+rejouée au moins deux fois.
+
+| Anomalie                                                              | Verdict         | Observé                                                                                   |
+| --------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------- |
+| BUG-2026-11-04-034, 035, 040, 041, 042, 044 à 046, 048, 050, 051, 053 | passé           | Décimales, onglets mobiles et F5, signature (201 en 30-43 s), panne réseau avec Réessayer |
+| BUG-2026-11-04-032                                                    | passé           | Fenêtre Signatures d'un état des lieux signé complète                                     |
+| BUG-2026-11-04-033, 039                                               | passé (réserve) | Ancien paiement sans bail non affectable (seul cas : annulé) ; virement non rejoué        |
+| BUG-2026-11-04-037, 038, 043, 049, 052, 054, BUG-2026-11-03-005       | passé           | Portail locataire : détail d'échéance, aucun chemin `/uploads`, plusieurs baux, montants  |
+| BUG-2026-11-04-036                                                    | échoué          | Balance âgée : 55 lignes sur 63 encore en « Écart avec la comptabilité »                  |
+| BUG-2026-11-04-047                                                    | échoué          | Clé React `PAYMENT_ALLOCATED_TENANT` dupliquée sur `/notifications`                       |
+
+Nouvelles anomalies des retests : BUG-2026-11-04-055 (déclarations de
+l'agence arrondies, « F CFA ») et BUG-2026-11-04-060 (« CFA » et « F CFA »
+sur la fiche bail, le paiement et l'affectation).
