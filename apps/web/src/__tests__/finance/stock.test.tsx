@@ -1319,6 +1319,7 @@ describe('Un réessai après une coupure ne double rien (B3-R2)', () => {
 });
 
 describe('Une réponse incertaine garde l’identifiant de requête ; un refus définitif le renouvelle', () => {
+  // Plafond relevé : rendu jsdom lent sous charge (mesure du 04/11, durée isolée 51 à 65 s)
   it('503 et 429 : même `clientRequestId` ; après un 409, un nouveau', async () => {
     const user = userEvent.setup({ delay: null });
     post
@@ -1351,7 +1352,7 @@ describe('Une réponse incertaine garde l’identifiant de requête ; un refus d
     expect(ids[2]).toBe(ids[0]);
     expect(String(ids[3])).toMatch(UUID);
     expect(ids[3]).not.toBe(ids[2]);
-  }, 60000);
+  }, 120000);
 });
 
 describe('Le poste est exigé, et la proposition de l’article n’a aucune autorité', () => {
@@ -1403,6 +1404,7 @@ describe('La réception : facture du contexte, prix facultatif, contrôles (A8, 
     expect(appelsGet(/supplier-invoices\/facture-0142\/receipts/).length).toBeGreaterThan(0);
   }, 45000);
 
+  // Plafond relevé : rendu jsdom lent sous charge (mesure du 04/11, durée isolée 37 à 52 s)
   it('envoie `supplierInvoiceLineId`, omet `unitCost` laissé tel quel, et porte un `clientRequestId`', async () => {
     const user = userEvent.setup({ delay: null });
     post.mockResolvedValue(
@@ -1462,7 +1464,7 @@ describe('La réception : facture du contexte, prix facultatif, contrôles (A8, 
     // L'écran de confirmation : le bon, et les contrôles du serveur.
     expect(await screen.findByText('Réception enregistrée — BR-2026-00043', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByText('La valeur reçue dépasse le montant de la facture.')).toBeInTheDocument();
-  }, 60000);
+  }, 90000);
 
   it('le prix est facultatif : une ligne sans prix ne ferme pas l’envoi', async () => {
     monter();

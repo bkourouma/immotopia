@@ -550,6 +550,7 @@ describe('La description d’une situation est obligatoire, et c’est dit avant
 });
 
 describe('Les gestes de la fiche', () => {
+  // Plafond relevé : rendu jsdom lent sous charge (mesure du 04/11, durée isolée 20 à 27 s)
   it('convient d’un marché : le poste de dépense est exigé, et le tâcheron reste dans le chemin', async () => {
     const user = userEvent.setup({ delay: null });
     mountFiche();
@@ -576,8 +577,9 @@ describe('Les gestes de la fiche', () => {
     // Le poste est bien celui qui a été choisi, jamais deviné.
     expect(corps.costCategoryId).toBe('poste-1');
     expect(corps).not.toHaveProperty('contractorId');
-  }, 90000);
+  }, 60000);
 
+  // Plafond relevé : rendu jsdom lent sous charge (mesure du 04/11, durée isolée 17 à 32 s)
   it('valide une situation après avoir averti que c’est irréversible', async () => {
     configurerGet({ situations: [situation({ id: 'situation-brouillon', status: 'DRAFT', validatedAt: null })] });
     const user = userEvent.setup({ delay: null });
@@ -599,7 +601,7 @@ describe('Les gestes de la fiche', () => {
         {}
       )
     );
-  }, 30000);
+  }, 60000);
 
   it('enregistre un règlement supérieur à ce qu’on doit : averti, jamais bloqué', async () => {
     const user = userEvent.setup({ delay: null });
