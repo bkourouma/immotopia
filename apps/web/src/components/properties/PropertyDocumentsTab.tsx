@@ -77,6 +77,7 @@ export const PropertyDocumentsTab: React.FC<Props> = ({ tenantId, propertyId }) 
         propertyId={propertyId}
         onDelete={remove}
         deletingId={deletingId}
+        searchPrefix="pdoc"
         extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setAdding(open => !open)}>
             {adding ? t('Annuler') : t('Ajouter un document')}
