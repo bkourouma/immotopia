@@ -73,11 +73,52 @@ function installmentRemaining(inst: {
 }
 
 /** Un identifiant qui n'a pas la forme d'un UUID ne désigne rien : 404, jamais une erreur de base. */
+/** « •••• 1234 » : seuls les 4 derniers chiffres d'un numéro (H34). */
+function maskPhoneTail(phone: string | null | undefined): string | null {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (!digits) return null;
+  return `•••• ${digits.slice(-4)}`;
+}
+
 function assertKnownId(id: string | undefined, message: string): string {
   if (!id || !isUuid(id)) {
     throw new NotFoundError(message);
   }
   return id;
+}
+
+function startOfToday(): Date {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
+/**
+ * Brouillon dont la date est passée (BUG-2026-11-04-054, H30) : l'agence
+ * l'affiche « En retard » sans attendre la tâche de 02:00
+ * (`rental-installment-service.ts`, statut EFFECTIF). Le portail applique la
+ * même règle à l'affichage ; rien n'est écrit en base. Un brouillon futur
+ * reste un brouillon.
+ */
+function isOverdueDraft(inst: { status: unknown; due_date: Date | string }, today: Date = startOfToday()): boolean {
+  if (inst.status !== RentalInstallmentStatus.DRAFT) return false;
+  const dueDate = new Date(inst.due_date);
+  dueDate.setHours(0, 0, 0, 0);
+  return dueDate < today;
+}
+
+/** Filtre Prisma : échéances exigibles — facturées, ou brouillons déjà échus. */
+function billableWhere(today: Date): Prisma.RentalInstallmentWhereInput {
+  return {
+    OR: [
+      {
+        status: {
+          in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.PARTIAL, RentalInstallmentStatus.OVERDUE]
+        }
+      },
+      { status: RentalInstallmentStatus.DRAFT, due_date: { lt: today } }
+    ]
+  };
 }
 
 export class TenantPortalService {
@@ -94,6 +135,38 @@ export class TenantPortalService {
   }
 
   /**
+   * Baux actifs du locataire connecté (H29) : de quoi alimenter un sélecteur.
+   * `leaseIds` vient de `listPortalLeaseIds` (périmètre du client connecté) ;
+   * la requête reste filtrée par `tenantId`. Aucun champ interne.
+   */
+  async getLeases(tenantId: string, leaseIds: string[], defaultLeaseId: string) {
+    if (leaseIds.length === 0) return [];
+    const rows = await prisma.rentalLease.findMany({
+      where: { id: { in: leaseIds }, tenant_id: tenantId },
+      select: {
+        id: true,
+        lease_number: true,
+        start_date: true,
+        end_date: true,
+        rent_amount: true,
+        service_charge_amount: true,
+        property: { select: { address: true, title: true } }
+      },
+      orderBy: [{ start_date: 'asc' }, { id: 'asc' }]
+    });
+    return rows.map(row => ({
+      id: row.id,
+      leaseNumber: row.lease_number,
+      propertyAddress: row.property?.address || row.property?.title || '',
+      startDate: row.start_date,
+      endDate: row.end_date,
+      monthlyRent: Number(row.rent_amount),
+      serviceCharges: Number(row.service_charge_amount),
+      isDefault: row.id === defaultLeaseId
+    }));
+  }
+
+  /**
    * Get dashboard data for tenant portal
    * Aggregates lease overview, balance, next installment, recent payments, deposit, and maintenance summary
    * @param tenantClientId - Tenant client ID
@@ -101,8 +174,17 @@ export class TenantPortalService {
    * @param tenantId - Tenant ID (for isolation)
    * @returns Dashboard data
    */
-  async getDashboard(tenantClientId: string, leaseId: string, tenantId: string): Promise<DashboardData> {
+  async getDashboard(
+    tenantClientId: string,
+    leaseId: string,
+    tenantId: string,
+    leaseIds?: string[]
+  ): Promise<DashboardData> {
     try {
+      // H29 : soldes, retards, prochaine échéance et paiements cumulent tous les
+      // baux du périmètre ; bail, dépôt et maintenance suivent `leaseId`.
+      const scope = leaseIds && leaseIds.length > 0 ? leaseIds : [leaseId];
+      const today = startOfToday();
       // Get lease with property and primary renter
       const lease = await prisma.rentalLease.findFirst({
         where: {
@@ -151,41 +233,42 @@ export class TenantPortalService {
       // brouillons et les échéances annulées ne sont pas dus.
       const dueInstallments = await prisma.rentalInstallment.findMany({
         where: {
-          lease_id: leaseId,
+          lease_id: { in: scope },
           tenant_id: tenantId,
-          status: {
-            in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.PARTIAL, RentalInstallmentStatus.OVERDUE]
-          }
+          ...billableWhere(today)
         },
         include: {
           payments: { select: { amount: true, payment: { select: { status: true } } } }
         }
       });
 
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
+      const todayStart = today;
       let currentBalance = 0;
       let overdueInstallmentsCount = 0;
+      const perLease = new Map<string, { balance: number; overdue: number }>();
       for (const inst of dueInstallments) {
         const remaining = installmentRemaining(inst);
         if (remaining <= 0) continue;
         currentBalance += remaining;
         const dueDate = new Date(inst.due_date);
         dueDate.setHours(0, 0, 0, 0);
-        if (inst.status === RentalInstallmentStatus.OVERDUE || dueDate < todayStart) {
+        const late = inst.status === RentalInstallmentStatus.OVERDUE || dueDate < todayStart;
+        if (late) {
           overdueInstallmentsCount++;
         }
+        const entry = perLease.get(inst.lease_id) ?? { balance: 0, overdue: 0 };
+        entry.balance += remaining;
+        if (late) entry.overdue++;
+        perLease.set(inst.lease_id, entry);
       }
 
       // Find next installment (T022) - la plus ancienne échéance non soldée :
       // à échoir, partiellement payée ou en retard (BUG-2026-09-28-027).
       const nextInstallmentRecord = await prisma.rentalInstallment.findFirst({
         where: {
-          lease_id: leaseId,
+          lease_id: { in: scope },
           tenant_id: tenantId,
-          status: {
-            in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.PARTIAL, RentalInstallmentStatus.OVERDUE]
-          }
+          ...billableWhere(today)
         },
         orderBy: {
           due_date: 'asc'
@@ -193,13 +276,20 @@ export class TenantPortalService {
       });
 
       const nextInstallment: InstallmentOverview | null = nextInstallmentRecord
-        ? toInstallmentOverview(nextInstallmentRecord)
+        ? {
+            ...toInstallmentOverview(nextInstallmentRecord),
+            leaseId: nextInstallmentRecord.lease_id,
+            // Brouillon échu : « En retard » à l'affichage (H30).
+            status: isOverdueDraft(nextInstallmentRecord, today)
+              ? RentalInstallmentStatus.OVERDUE
+              : nextInstallmentRecord.status
+          }
         : null;
 
       // Get recent payments (T023) - last 5 successful payments
       const recentPaymentsRecords = await prisma.rentalPayment.findMany({
         where: {
-          lease_id: leaseId,
+          lease_id: { in: scope },
           tenant_id: tenantId,
           status: RentalPaymentStatus.SUCCESS
         },
@@ -259,7 +349,7 @@ export class TenantPortalService {
       const maintenanceTicketsCounts = await prisma.maintenanceTicket.groupBy({
         by: ['status'],
         // Meme regle que la liste (lib/maintenance/portal-visibility.ts).
-        where: await tenantPortalTicketFilter({ tenantId, tenantClientId, leaseId }),
+        where: await tenantPortalTicketFilter({ tenantId, tenantClientId, leaseId, leaseIds: scope }),
         _count: true
       });
 
@@ -284,7 +374,25 @@ export class TenantPortalService {
         }
       }
 
+      // Plusieurs baux : un résumé par bail (numéro, adresse, solde, retards).
+      let leasesSummary: DashboardData['leases'];
+      if (scope.length > 1) {
+        const leaseRows = await prisma.rentalLease.findMany({
+          where: { id: { in: scope }, tenant_id: tenantId },
+          select: { id: true, lease_number: true, property: { select: { address: true, title: true } } },
+          orderBy: [{ start_date: 'asc' }, { id: 'asc' }]
+        });
+        leasesSummary = leaseRows.map(row => ({
+          id: row.id,
+          leaseNumber: row.lease_number,
+          propertyAddress: row.property?.address || row.property?.title || '',
+          balance: perLease.get(row.id)?.balance ?? 0,
+          overdueInstallmentsCount: perLease.get(row.id)?.overdue ?? 0
+        }));
+      }
+
       const dashboardData: DashboardData = {
+        leases: leasesSummary,
         lease: leaseOverview,
         currentBalance,
         overdueInstallmentsCount,
@@ -327,46 +435,39 @@ export class TenantPortalService {
           id: leaseId,
           tenant_id: tenantId
         },
-        include: {
+        // Select explicite, sur le modèle du portail propriétaire : ni `terms_json`,
+        // ni `notes` (internes à l'agence, H35), ni `created_by_user_id`, `crm_deal_id`,
+        // `signature_request_id`, `owner_client_id`, `property_id`, ni aucun `userId`.
+        select: {
+          id: true,
+          lease_number: true,
+          status: true,
+          start_date: true,
+          end_date: true,
+          move_in_date: true,
+          move_out_date: true,
+          billing_frequency: true,
+          due_day_of_month: true,
+          currency: true,
+          rent_amount: true,
+          service_charge_amount: true,
+          security_deposit_amount: true,
+          penalty_grace_days: true,
+          penalty_mode: true,
+          penalty_rate: true,
+          penalty_fixed_amount: true,
+          penalty_cap_amount: true,
           property: {
             select: {
-              id: true,
               internalReference: true,
               address: true,
               title: true,
-              propertyType: true,
               owner: { select: { fullName: true } },
               containerParent: { select: { title: true } }
             }
           },
-          primaryRenter: {
-            select: {
-              id: true,
-              userId: true,
-              clientType: true,
-              user: {
-                select: {
-                  id: true,
-                  fullName: true,
-                  email: true
-                }
-              }
-            }
-          },
-          ownerClient: {
-            select: {
-              id: true,
-              userId: true,
-              clientType: true,
-              user: {
-                select: {
-                  id: true,
-                  fullName: true,
-                  email: true
-                }
-              }
-            }
-          }
+          primaryRenter: { select: { user: { select: { fullName: true, email: true } } } },
+          ownerClient: { select: { user: { select: { fullName: true, email: true } } } }
         }
       });
 
@@ -374,31 +475,19 @@ export class TenantPortalService {
         throw new NotFoundError('Bail non trouvé');
       }
 
-      // Get co-renters list (T037)
+      // Get co-renters list (T037) : nom et e-mail seulement.
       const coRentersRecords = await prisma.rentalLeaseCoRenter.findMany({
         where: {
           lease_id: leaseId,
           tenant_id: tenantId
         },
-        include: {
-          renterClient: {
-            select: {
-              id: true,
-              userId: true,
-              clientType: true,
-              user: {
-                select: {
-                  id: true,
-                  fullName: true,
-                  email: true
-                }
-              }
-            }
-          }
+        select: {
+          id: true,
+          renterClient: { select: { user: { select: { fullName: true, email: true } } } }
         }
       });
 
-      const coRenters = coRentersRecords.map(cr => cr.renterClient);
+      const coRenters = coRentersRecords.map(cr => ({ id: cr.id, user: cr.renterClient.user }));
 
       // Get associated documents (T038) - grouped by type. Sans chemin disque
       // ni URL de stockage : `downloadPath` (lib/files/portal-files.ts).
@@ -432,6 +521,7 @@ export class TenantPortalService {
       const lease_label = lease.property ? getPropertyDisplayLabel(lease.property) : '';
 
       const leaseDetailsData = {
+        // Le web lit `lease.id` pour son sélecteur.
         lease: {
           ...lease,
           lease_label,
@@ -483,20 +573,29 @@ export class TenantPortalService {
     pagination?: {
       page?: number;
       limit?: number;
-    }
+    },
+    leaseIds?: string[]
   ): Promise<any> {
     try {
       const page = pagination?.page || 1;
       const limit = pagination?.limit || 20;
       const skip = (page - 1) * limit;
+      // H29 : échéances de tous les baux du périmètre (ou du seul bail demandé).
+      const scope = leaseIds && leaseIds.length > 0 ? leaseIds : [leaseId];
 
       // Build where clause (T045)
       const where: any = {
-        lease_id: leaseId,
+        lease_id: { in: scope },
         tenant_id: tenantId
       };
 
-      if (filters?.status) {
+      if (filters?.status === RentalInstallmentStatus.OVERDUE) {
+        // Les brouillons échus s'affichent « En retard » (H30) : ils répondent aussi au filtre.
+        where.OR = [
+          { status: RentalInstallmentStatus.OVERDUE },
+          { status: RentalInstallmentStatus.DRAFT, due_date: { lt: startOfToday() } }
+        ];
+      } else if (filters?.status) {
         where.status = filters.status;
       }
 
@@ -516,6 +615,7 @@ export class TenantPortalService {
           where,
           include: {
             items: true,
+            lease: { select: { lease_number: true } },
             payments: {
               include: {
                 payment: {
@@ -530,9 +630,7 @@ export class TenantPortalService {
               }
             }
           },
-          orderBy: {
-            due_date: 'asc'
-          },
+          orderBy: [{ due_date: 'asc' }, { id: 'asc' }],
           skip,
           take: limit
         }),
@@ -545,7 +643,7 @@ export class TenantPortalService {
 
       const allInstallments = await prisma.rentalInstallment.findMany({
         where: {
-          lease_id: leaseId,
+          lease_id: { in: scope },
           tenant_id: tenantId
         },
         select: {
@@ -586,8 +684,12 @@ export class TenantPortalService {
         const dueDate = new Date(inst.due_date);
         dueDate.setHours(0, 0, 0, 0);
 
-        // Brouillon (pas encore facturée) et annulée : ni due, ni en retard.
-        if (inst.status === RentalInstallmentStatus.DRAFT || inst.status === RentalInstallmentStatus.CANCELED) {
+        // Brouillon futur (pas encore facturée) et annulée : ni due, ni en retard.
+        // Un brouillon échu compte comme une échéance en retard (H30).
+        if (
+          (inst.status === RentalInstallmentStatus.DRAFT && !isOverdueDraft(inst, today)) ||
+          inst.status === RentalInstallmentStatus.CANCELED
+        ) {
           continue;
         }
 
@@ -625,7 +727,9 @@ export class TenantPortalService {
 
       const summary = {
         total: allInstallments.filter(
-          i => i.status !== RentalInstallmentStatus.DRAFT && i.status !== RentalInstallmentStatus.CANCELED
+          i =>
+            (i.status !== RentalInstallmentStatus.DRAFT || isOverdueDraft(i, today)) &&
+            i.status !== RentalInstallmentStatus.CANCELED
         ).length,
         paid: paidCount,
         due: dueCount,
@@ -654,8 +758,12 @@ export class TenantPortalService {
         const dueDate = new Date(inst.due_date);
         dueDate.setHours(0, 0, 0, 0);
 
-        // Brouillon et annulée gardent leur statut : elles ne sont ni dues ni payables.
-        if (inst.status !== RentalInstallmentStatus.DRAFT && inst.status !== RentalInstallmentStatus.CANCELED) {
+        // Brouillon futur et annulée gardent leur statut : elles ne sont ni dues ni payables.
+        // Un brouillon échu est reclassé comme celles de l'agence (H30, affichage seul).
+        if (
+          (inst.status !== RentalInstallmentStatus.DRAFT || isOverdueDraft(inst, today)) &&
+          inst.status !== RentalInstallmentStatus.CANCELED
+        ) {
           if (amountPaid >= totalAmount && totalAmount > 0) {
             calculatedStatus = RentalInstallmentStatus.PAID;
           } else if (amountPaid > 0 && amountPaid < totalAmount) {
@@ -669,6 +777,8 @@ export class TenantPortalService {
 
         return {
           id: inst.id,
+          leaseId: inst.lease_id,
+          leaseNumber: inst.lease?.lease_number ?? null,
           period: `${inst.period_year}-${String(inst.period_month).padStart(2, '0')}`,
           dueDate: inst.due_date,
           amount: totalAmount,
@@ -720,15 +830,17 @@ export class TenantPortalService {
     tenantClientId: string,
     leaseId: string,
     tenantId: string,
-    installmentId: string
+    installmentId: string,
+    leaseIds?: string[]
   ): Promise<any> {
     try {
       assertKnownId(installmentId, 'Échéance non trouvée');
-      // Get installment with items, allocations, penalties (T047)
+      // Get installment with items, allocations, penalties (T047). L'échéance doit
+      // appartenir à un bail du périmètre du locataire, sinon 404 (H29).
       const installment = await prisma.rentalInstallment.findFirst({
         where: {
           id: installmentId,
-          lease_id: leaseId,
+          lease_id: { in: leaseIds && leaseIds.length > 0 ? leaseIds : [leaseId] },
           tenant_id: tenantId
         },
         include: {
@@ -795,7 +907,7 @@ export class TenantPortalService {
       // Get related payments (T048) - all payments for this lease that could be related
       const relatedPayments = await prisma.rentalPayment.findMany({
         where: {
-          lease_id: leaseId,
+          lease_id: installment.lease_id,
           tenant_id: tenantId,
           status: 'SUCCESS'
         },
@@ -827,6 +939,8 @@ export class TenantPortalService {
       const installmentDetailsData = {
         installment: {
           ...installment,
+          // Brouillon échu : « En retard » à l'affichage, comme à l'agence (H30).
+          status: isOverdueDraft(installment) ? RentalInstallmentStatus.OVERDUE : installment.status,
           totalAmount:
             Number(installment.amount_rent) +
             Number(installment.amount_service) +
@@ -873,7 +987,7 @@ export class TenantPortalService {
    */
   async declarePayment(
     tenantClientId: string,
-    leaseId: string,
+    defaultLeaseId: string,
     tenantId: string,
     data: {
       amount: number;
@@ -885,8 +999,12 @@ export class TenantPortalService {
       installmentId?: string;
       notes?: string;
     },
-    file?: Express.Multer.File
+    file?: Express.Multer.File,
+    leaseIds?: string[]
   ): Promise<any> {
+    // Le bail de la déclaration est celui de l'échéance visée (H29), à condition
+    // qu'elle appartienne au périmètre du locataire ; sinon le bail par défaut.
+    let leaseId = defaultLeaseId;
     try {
       // Validate installment if provided (T060)
       if (data.installmentId) {
@@ -894,7 +1012,7 @@ export class TenantPortalService {
         const installment = await prisma.rentalInstallment.findFirst({
           where: {
             id: data.installmentId,
-            lease_id: leaseId,
+            lease_id: { in: leaseIds && leaseIds.length > 0 ? leaseIds : [defaultLeaseId] },
             tenant_id: tenantId
           }
         });
@@ -902,8 +1020,10 @@ export class TenantPortalService {
         if (!installment) {
           throw new NotFoundError('Échéance non trouvée ou non associée à ce bail');
         }
+        leaseId = installment.lease_id;
+        // Un brouillon échu est exigible (H30) ; un brouillon futur ou une annulée ne l'est pas.
         if (
-          installment.status === RentalInstallmentStatus.DRAFT ||
+          (installment.status === RentalInstallmentStatus.DRAFT && !isOverdueDraft(installment)) ||
           installment.status === RentalInstallmentStatus.CANCELED
         ) {
           throw new BadRequestError("Cette échéance n'est pas exigible : aucun paiement ne peut être déclaré dessus.");
@@ -1080,7 +1200,7 @@ export class TenantPortalService {
             mobileOperator: data.mobileOperator ?? (paymentDeclaration as any).mobile_operator ?? null,
             transactionPhone: data.transactionPhone?.trim() || (paymentDeclaration as any).transaction_phone || null,
             reference: data.reference || (paymentDeclaration as any).reference || null,
-            proofFileUrl: (paymentDeclaration as any).proof_file_url || null,
+            // Pas de `proofFileUrl` : chemin `/uploads` privé, lien mort et fuite de chemin.
             notes: data.notes ?? (paymentDeclaration as any).notes ?? null
           };
 
@@ -1213,7 +1333,8 @@ export class TenantPortalService {
                 ownerUser.fullName || 'Propriétaire',
                 declarerName,
                 leaseNumber,
-                declarationDetails,
+                // H34 : au propriétaire, le téléphone Mobile Money est masqué.
+                { ...declarationDetails, transactionPhone: maskPhoneTail(declarationDetails.transactionPhone) },
                 {
                   leaseLabel,
                   validationUrl,
@@ -1285,16 +1406,19 @@ export class TenantPortalService {
     pagination?: {
       page?: number;
       limit?: number;
-    }
+    },
+    leaseIds?: string[]
   ): Promise<any> {
     try {
       const page = pagination?.page || 1;
       const limit = Math.min(pagination?.limit || 50, 100);
       const skip = (page - 1) * limit;
+      // H29 : historique de tous les baux du périmètre.
+      const scope = leaseIds && leaseIds.length > 0 ? leaseIds : [leaseId];
 
       // Build where clause (T070)
       const where: any = {
-        lease_id: leaseId,
+        lease_id: { in: scope },
         tenant_id: tenantId
       };
 
@@ -1340,7 +1464,7 @@ export class TenantPortalService {
         }),
         prisma.rentalPaymentDeclaration.findMany({
           where: {
-            lease_id: leaseId,
+            lease_id: { in: scope },
             tenant_id: tenantId,
             declared_by: tenantClientId
           },
@@ -1351,7 +1475,7 @@ export class TenantPortalService {
       // Calculate total paid (T071)
       const totalPaidResult = await prisma.rentalPayment.aggregate({
         where: {
-          lease_id: leaseId,
+          lease_id: { in: scope },
           tenant_id: tenantId,
           status: 'SUCCESS'
         },
@@ -1760,13 +1884,14 @@ export class TenantPortalService {
     tenantClientId: string,
     leaseId: string,
     tenantId: string,
-    ticketId: string
+    ticketId: string,
+    leaseIds?: string[]
   ): Promise<any> {
     try {
-      // Visible dans ce portail (bail actif ou fiche CRM), sinon 404 comme un
-      // ticket inexistant ; le detail complet vient ensuite du service.
+      // Visible dans ce portail (un des baux actifs ou fiche CRM), sinon 404 comme
+      // un ticket inexistant ; le detail complet vient ensuite du service.
       assertKnownId(ticketId, 'Ticket introuvable');
-      const visible = await findTenantPortalTicket({ tenantId, tenantClientId, leaseId }, ticketId);
+      const visible = await findTenantPortalTicket({ tenantId, tenantClientId, leaseId, leaseIds }, ticketId);
       if (!visible) {
         throw new NotFoundError('Ticket introuvable');
       }
@@ -1813,14 +1938,15 @@ export class TenantPortalService {
     leaseId: string,
     tenantId: string,
     ticketId: string,
-    comment: string
+    comment: string,
+    leaseIds?: string[]
   ): Promise<any> {
     try {
       // Seulement sur un ticket visible dans ce portail : `addComment` ne
       // verifie que l'agence, et un locataire commentait ainsi le ticket d'un
       // autre en connaissant son identifiant.
       assertKnownId(ticketId, 'Ticket introuvable');
-      const visible = await findTenantPortalTicket({ tenantId, tenantClientId, leaseId }, ticketId);
+      const visible = await findTenantPortalTicket({ tenantId, tenantClientId, leaseId, leaseIds }, ticketId);
       if (!visible) {
         throw new NotFoundError('Ticket introuvable');
       }
@@ -1870,12 +1996,13 @@ export class TenantPortalService {
     tenantId: string,
     filters?: {
       type?: string;
-    }
+    },
+    leaseIds?: string[]
   ): Promise<any> {
     try {
-      // Get documents for lease (T103)
+      // Get documents for lease (T103) — tous les baux du périmètre (H29).
       const where: any = {
-        lease_id: leaseId,
+        lease_id: { in: leaseIds && leaseIds.length > 0 ? leaseIds : [leaseId] },
         tenant_id: tenantId,
         status: {
           not: 'VOID'
@@ -1940,7 +2067,8 @@ export class TenantPortalService {
     tenantClientId: string,
     leaseId: string,
     tenantId: string,
-    documentId: string
+    documentId: string,
+    leaseIds?: string[]
   ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
     try {
       assertKnownId(documentId, 'Document non trouvé ou accès refusé');
@@ -1948,7 +2076,7 @@ export class TenantPortalService {
       const document = await prisma.rentalDocument.findFirst({
         where: {
           id: documentId,
-          lease_id: leaseId,
+          lease_id: { in: leaseIds && leaseIds.length > 0 ? leaseIds : [leaseId] },
           tenant_id: tenantId,
           status: {
             not: 'VOID'

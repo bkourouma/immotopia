@@ -10,6 +10,7 @@ import { t } from '../../i18n';
 import { runWithTenantContext } from '../../utils/tenant-context';
 import { AppError, BadRequestError, ErrorCode, NotFoundError } from '../../middleware/error-middleware';
 import { roundMoney } from '../finance/money';
+import { startOfDay } from '../finance/installment-status';
 import { updatePaymentStatusTx, allocatePaymentTx } from '../../services/rental-payment-service';
 import { credentialsFrom, ensureCollectionAccountTx, isConfigUsable, loadConfig } from './config';
 import { gatewayClientForMode } from './paysecurehub';
@@ -212,10 +213,11 @@ const NOT_EXIGIBLE_MESSAGE = "Cette échéance n'est pas exigible : aucun paieme
 
 interface PrepareCheckoutOptions {
   /**
-   * Portail locataire : une échéance au statut `DRAFT` (pas encore émise) n'est
-   * pas exigible, quelle que soit sa date. Le lien de paiement juge l'exigibilité
-   * lui-même (`installment-payment-link.ts` : un brouillon en retard y est « En
-   * retard »), il ne passe donc pas cette option.
+   * Portail locataire : une échéance au statut `DRAFT` (pas encore émise) dont la
+   * date n'est pas passée n'est pas exigible. Un brouillon échu est « En retard »
+   * (H30, comme à l'agence) et reste payable. Le lien de paiement juge
+   * l'exigibilité lui-même (`installment-payment-link.ts`), il ne passe donc pas
+   * cette option.
    */
   refuseDraft?: boolean;
 }
@@ -249,6 +251,7 @@ async function prepareCheckout(
     select: {
       id: true,
       status: true,
+      due_date: true,
       amount_rent: true,
       amount_service: true,
       amount_other_fees: true,
@@ -267,7 +270,8 @@ async function prepareCheckout(
     if (installment.status === 'CANCELED') {
       throw new BadRequestError('Une échéance sélectionnée est annulée.');
     }
-    if (options.refuseDraft && installment.status === 'DRAFT') {
+    // Un brouillon dont la date est passée est « En retard » (H30, comme à l'agence) : payable.
+    if (options.refuseDraft && installment.status === 'DRAFT' && installment.due_date >= startOfDay(new Date())) {
       throw new BadRequestError(t(NOT_EXIGIBLE_MESSAGE));
     }
     const resteDu = resteDuEcheance(installment);

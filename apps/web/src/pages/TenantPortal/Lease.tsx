@@ -13,7 +13,8 @@ import {
   Button,
   Space,
   Empty,
-  Divider
+  Divider,
+  Select
 } from 'antd';
 import {
   FileTextOutlined,
@@ -51,9 +52,7 @@ interface LeaseDetailsData {
     penalty_rate: number;
     penalty_fixed_amount: number;
     penalty_cap_amount: number | null;
-    notes: string | null;
     property: {
-      id: string;
       address: string;
       title: string | null;
       internalReference: string;
@@ -62,14 +61,12 @@ interface LeaseDetailsData {
       } | null;
     };
     primaryRenter: {
-      id: string;
       user: {
         fullName: string | null;
         email: string;
       };
     };
     ownerClient: {
-      id: string;
       user: {
         fullName: string | null;
         email: string;
@@ -109,16 +106,26 @@ export default function TenantLease() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<LeaseDetailsData | null>(null);
+  // Plusieurs baux actifs (BUG-2026-11-04-049) : liste pour le sélecteur, bail choisi.
+  const [leases, setLeases] = useState<Array<{ id: string; leaseNumber: string; propertyAddress: string }>>([]);
+  const [selectedLeaseId, setSelectedLeaseId] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    tenantPortalService
+      .getLeases()
+      .then(response => setLeases(response.data?.data ?? []))
+      .catch(() => setLeases([]));
+  }, []);
 
   useEffect(() => {
     loadLeaseDetails();
-  }, []);
+  }, [selectedLeaseId]);
 
   const loadLeaseDetails = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await tenantPortalService.getLeaseDetails();
+      const response = await tenantPortalService.getLeaseDetails(selectedLeaseId);
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
@@ -239,7 +246,8 @@ export default function TenantLease() {
     }
   };
 
-  if (loading) {
+  // Au changement de bail, le sélecteur et l'ancien bail restent affichés pendant le rechargement.
+  if (loading && !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
         <Spin size="large" tip={t('Chargement des détails du bail...')} />
@@ -262,6 +270,19 @@ export default function TenantLease() {
         <Title level={2}>{t('Mon bail')}</Title>
         <Text type="secondary">{t('Détails complets de votre contrat de location')}</Text>
       </div>
+
+      {leases.length > 1 && (
+        <Select
+          aria-label={t('Bail')}
+          style={{ minWidth: 280, maxWidth: '100%' }}
+          value={selectedLeaseId ?? data.lease.id}
+          onChange={value => setSelectedLeaseId(value)}
+          options={leases.map(lease => ({
+            value: lease.id,
+            label: lease.propertyAddress ? `${lease.leaseNumber} — ${lease.propertyAddress}` : lease.leaseNumber
+          }))}
+        />
+      )}
 
       {/* Lease Information Display (T041) */}
       <Card
@@ -332,11 +353,6 @@ export default function TenantLease() {
           <Descriptions.Item label={t("Jour d'échéance")}>
             {t('Le')} {data.lease.due_day_of_month} de chaque mois
           </Descriptions.Item>
-          {data.lease.notes && (
-            <Descriptions.Item label={t('Notes')} span={{ xs: 1, md: 2 }}>
-              <Text>{data.lease.notes}</Text>
-            </Descriptions.Item>
-          )}
         </Descriptions>
       </Card>
 
@@ -389,6 +405,7 @@ export default function TenantLease() {
           }
         >
           <List
+            rowKey="id"
             dataSource={data.coRenters}
             renderItem={coRenter => (
               <List.Item>
@@ -420,6 +437,7 @@ export default function TenantLease() {
                   <Tag style={{ marginInlineStart: 8 }}>{docs.length}</Tag>
                 </Title>
                 <List
+                  rowKey="id"
                   dataSource={docs}
                   renderItem={doc => (
                     <List.Item

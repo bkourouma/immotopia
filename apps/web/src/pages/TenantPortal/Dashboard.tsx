@@ -20,6 +20,14 @@ import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 interface DashboardData {
+  /** Présent seulement avec plusieurs baux actifs : un résumé par bail. */
+  leases?: Array<{
+    id: string;
+    leaseNumber: string;
+    propertyAddress: string;
+    balance: number;
+    overdueInstallmentsCount: number;
+  }>;
   lease: {
     id: string;
     propertyAddress: string;
@@ -171,6 +179,35 @@ export default function TenantDashboard() {
           </Button>
         ) : null}
       </div>
+
+      {/* Plusieurs baux actifs (BUG-2026-11-04-049) : solde et retards par bail, cumulés plus bas. */}
+      {data.leases && data.leases.length > 1 ? (
+        <Card
+          title={
+            <>
+              <HomeOutlined /> {t('Vos baux')}
+            </>
+          }
+        >
+          <List
+            rowKey="id"
+            dataSource={data.leases}
+            renderItem={bail => (
+              <List.Item>
+                <List.Item.Meta title={<Text strong>{bail.leaseNumber}</Text>} description={bail.propertyAddress} />
+                <Space size="middle" wrap>
+                  <Text>{formatCurrency(bail.balance)}</Text>
+                  {bail.overdueInstallmentsCount > 0 ? (
+                    <Tag color="error">
+                      {t('En retard')} : {bail.overdueInstallmentsCount}
+                    </Tag>
+                  ) : null}
+                </Space>
+              </List.Item>
+            )}
+          />
+        </Card>
+      ) : null}
 
       {/* Lease Overview Card (T028) */}
       <Card
@@ -327,6 +364,7 @@ export default function TenantDashboard() {
           >
             {data.recentPayments.length > 0 ? (
               <List
+                rowKey="id"
                 dataSource={data.recentPayments}
                 renderItem={payment => (
                   <List.Item>

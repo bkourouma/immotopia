@@ -9,8 +9,11 @@ export const tenantPortalService = {
   // Dashboard
   getDashboard: () => api.get('/portal/tenant/dashboard'),
 
-  // Lease Details
-  getLeaseDetails: () => api.get('/portal/tenant/lease'),
+  // Baux actifs du locataire (plusieurs possibles)
+  getLeases: () => api.get('/portal/tenant/leases'),
+
+  // Lease Details — `leaseId` choisit le bail quand il y en a plusieurs
+  getLeaseDetails: (leaseId?: string) => api.get('/portal/tenant/lease', { params: leaseId ? { leaseId } : undefined }),
 
   // Installments
   getInstallments: (params?: { status?: string; startDate?: string; endDate?: string }) =>
@@ -31,12 +34,14 @@ export const tenantPortalService = {
   getDepositInfo: () => api.get('/portal/tenant/deposit'),
 
   // Maintenance
-  getMaintenanceTickets: (params?: { status?: string }) =>
+  getMaintenanceTickets: (params?: { status?: string; leaseId?: string }) =>
     api.get('/portal/tenant/maintenance', { params }),
 
-  createMaintenanceTicket: (data: FormData) =>
+  // `leaseId` : bail concerné quand le locataire en a plusieurs
+  createMaintenanceTicket: (data: FormData, leaseId?: string) =>
     api.post('/portal/tenant/maintenance', data, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params: leaseId ? { leaseId } : undefined
     }),
 
   getMaintenanceTicketDetails: (id: string) => api.get(`/portal/tenant/maintenance/${id}`),

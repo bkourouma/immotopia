@@ -123,9 +123,20 @@ export default function TenantMaintenance() {
   const [commentText, setCommentText] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
 
+  // Plusieurs baux actifs (H29) : sélecteur, comme sur « Mon bail ».
+  const [leases, setLeases] = useState<Array<{ id: string; leaseNumber: string; propertyAddress: string }>>([]);
+  const [selectedLeaseId, setSelectedLeaseId] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    tenantPortalService
+      .getLeases()
+      .then(response => setLeases(response.data?.data ?? []))
+      .catch(() => setLeases([]));
+  }, []);
+
   useEffect(() => {
     loadTickets();
-  }, [statusFilter]);
+  }, [statusFilter, selectedLeaseId]);
 
   const loadTickets = async () => {
     try {
@@ -134,6 +145,9 @@ export default function TenantMaintenance() {
       const params: any = {};
       if (statusFilter) {
         params.status = statusFilter;
+      }
+      if (selectedLeaseId) {
+        params.leaseId = selectedLeaseId;
       }
       const response = await tenantPortalService.getMaintenanceTickets(params);
       if (response.data?.success && response.data?.data) {
@@ -279,6 +293,19 @@ export default function TenantMaintenance() {
         </Button>
       </div>
 
+      {leases.length > 1 && (
+        <Select
+          aria-label={t('Bail')}
+          style={{ minWidth: 280, maxWidth: '100%' }}
+          value={selectedLeaseId ?? leases[0].id}
+          onChange={value => setSelectedLeaseId(value)}
+          options={leases.map(lease => ({
+            value: lease.id,
+            label: lease.propertyAddress ? `${lease.leaseNumber} — ${lease.propertyAddress}` : lease.leaseNumber
+          }))}
+        />
+      )}
+
       {/* Summary Cards */}
       {data?.summary && (
         <Row gutter={[16, 16]}>
@@ -384,6 +411,7 @@ export default function TenantMaintenance() {
       <MaintenanceTicketModal
         open={modalVisible}
         onCancel={() => setModalVisible(false)}
+        leaseId={selectedLeaseId}
         onSuccess={() => {
           loadTickets();
         }}
@@ -459,6 +487,7 @@ export default function TenantMaintenance() {
               </Title>
               {selectedTicket.comments && selectedTicket.comments.length > 0 ? (
                 <List
+                  rowKey="id"
                   dataSource={selectedTicket.comments}
                   renderItem={comment => (
                     <List.Item>

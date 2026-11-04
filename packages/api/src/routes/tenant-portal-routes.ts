@@ -30,6 +30,9 @@ router.use(requireTenantPortalAccess);
 // Dashboard
 router.get('/dashboard', controller.getDashboard);
 
+// Baux actifs du locataire (sélecteur de bail, H29)
+router.get('/leases', controller.getLeases);
+
 // Lease Details
 router.get('/lease', controller.getLeaseDetails);
 

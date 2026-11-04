@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { App, Modal, Form, Input, InputNumber, DatePicker, Select, Upload, Button, Space, Typography } from 'antd';
 import { UploadOutlined, DollarOutlined, CalendarOutlined, FileTextOutlined, PhoneOutlined } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
@@ -98,6 +98,23 @@ export default function PaymentDeclarationModal({
     }
   };
 
+  // À chaque ouverture : le solde restant de l'échéance visée est proposé (modifiable
+  // pour un paiement partiel) ; sans échéance, le montant est vide. Sans cela le
+  // magasin du formulaire gardait le montant de l'échéance précédente.
+  useEffect(() => {
+    if (!open) return;
+    caractereRefuse.current = false;
+    form.setFieldsValue({ amount: defaultAmount && defaultAmount > 0 ? defaultAmount : undefined });
+  }, [open, installmentId, defaultAmount, form]);
+
+  /** Fermer sans déclarer repart d'un formulaire vierge à la prochaine ouverture. */
+  const handleCancel = () => {
+    form.resetFields();
+    setFileList([]);
+    caractereRefuse.current = false;
+    onCancel();
+  };
+
   const handleFileChange = (info: any) => {
     let newFileList = [...info.fileList];
     newFileList = newFileList.slice(-1); // Only keep the last file
@@ -131,21 +148,24 @@ export default function PaymentDeclarationModal({
         </Space>
       }
       open={open}
-      onCancel={onCancel}
+      onCancel={handleCancel}
       footer={null}
       width={600}
       destroyOnClose
     >
       <Form
         form={form}
+        // BUG-2026-11-04-052 : sans `preserve={false}`, le magasin du formulaire
+        // gardait le montant d'une échéance ouverte puis annulée, et le bouton de
+        // page « Déclarer un paiement » le réaffichait.
+        preserve={false}
         layout="vertical"
         onFinish={handleSubmit}
         initialValues={{
           paymentDate: dayjs(),
-          paymentMethod: 'CASH',
-          // Propose le solde restant quand la declaration part d'une echeance
-          // precise ; reste modifiable pour un paiement partiel.
-          ...(defaultAmount && defaultAmount > 0 ? { amount: defaultAmount } : {})
+          paymentMethod: 'CASH'
+          // Le montant proposé n'est PAS dans `initialValues` : il est posé à chaque
+          // ouverture par l'effet ci-dessus (BUG-2026-11-04-052).
         }}
       >
         <Form.Item
@@ -270,7 +290,7 @@ export default function PaymentDeclarationModal({
 
         <Form.Item>
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={onCancel}>{t('Annuler')}</Button>
+            <Button onClick={handleCancel}>{t('Annuler')}</Button>
             <Button type="primary" htmlType="submit" loading={loading}>
               {t('Déclarer le paiement')}
             </Button>

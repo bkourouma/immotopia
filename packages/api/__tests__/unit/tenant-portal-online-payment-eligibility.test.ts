@@ -92,6 +92,10 @@ const mockPrisma: Row = {
   ),
   rentalPayment: delegate(() => store.payments, 'payment'),
   rentalInstallment: delegate(() => store.installments, 'installment'),
+  // Périmètre de baux du locataire (`listPortalLeaseIds`) : un seul bail actif.
+  rentalLease: {
+    findMany: jest.fn(async () => [{ id: LEASE_ID }])
+  },
   tenantClient: delegate(() => [], 'client'),
   crmContact: delegate(() => [], 'contact'),
   $executeRaw: jest.fn(async () => 1),
@@ -213,6 +217,30 @@ describe('POST /api/portal/tenant/online-payments : échéance non exigible', ()
     expect(store.payments).toHaveLength(0);
     expect(store.checkouts).toHaveLength(0);
     expect(buildAway).not.toHaveBeenCalled();
+  });
+
+  it('accepte (201) un brouillon dont la date est passée : il est « En retard » (H30)', async () => {
+    seedAgency();
+    seedInstallment(ID_DRAFT, { status: 'DRAFT', due_date: new Date('2020-01-05') });
+
+    const { res, error } = await postOnlinePayment([ID_DRAFT]);
+
+    expect(error).toBeUndefined();
+    expect(res.statusCode).toBe(201);
+    expect(res.body.data.amount).toBe(160000);
+    expect(store.checkouts).toHaveLength(1);
+  });
+
+  it('refuse (400) un brouillon à échéance future', async () => {
+    seedAgency();
+    seedInstallment(ID_DRAFT, { status: 'DRAFT', due_date: new Date(Date.now() + 10 * 86400000) });
+
+    const { error } = await postOnlinePayment([ID_DRAFT]);
+
+    expect(error).toBeInstanceOf(BadRequestError);
+    expect(error?.statusCode).toBe(400);
+    expect(error?.message).toBe(NOT_EXIGIBLE);
+    expect(store.checkouts).toHaveLength(0);
   });
 
   it('refuse toute la sélection si un brouillon se glisse parmi des échéances dues', async () => {

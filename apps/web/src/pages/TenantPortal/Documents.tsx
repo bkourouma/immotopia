@@ -188,6 +188,7 @@ export default function TenantDocuments() {
               }
             >
               <List
+                rowKey="id"
                 dataSource={documents}
                 renderItem={doc => (
                   <List.Item

@@ -19,6 +19,7 @@ import {
   validateMaintenanceAttachment,
   validatePaymentProofFile
 } from '../utils/tenant-portal-validators';
+import { listPortalLeaseIds, resolveRequestedLeaseId } from '../utils/tenant-portal-leases';
 import { handleTenantPortalFinanceStatement } from './finance-controller';
 import { parseEnumParam, parseNumberParam } from '../utils/query-params';
 import { parsePagination } from '../utils/pagination-helper';
@@ -30,6 +31,46 @@ function portalContext(req: Request): { tenantClientId: string; leaseId: string;
     throw new ForbiddenError('Accès portail locataire requis.');
   }
   const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
+  return { tenantClientId, leaseId, tenantId };
+}
+
+/**
+ * Contexte multi-baux (H29). `leaseIds` = baux actifs du locataire connecté
+ * (jamais un identifiant fourni par l'appelant). `?leaseId=` restreint à un
+ * seul bail, qui doit appartenir à ce périmètre, sinon 404. Sans lui, `leaseIds`
+ * couvre tous les baux et `leaseId` reste le bail par défaut.
+ */
+async function portalLeaseScope(req: Request): Promise<{
+  tenantClientId: string;
+  leaseId: string;
+  tenantId: string;
+  leaseIds: string[];
+  allLeaseIds: string[];
+  explicit: boolean;
+}> {
+  const { tenantClientId, leaseId, tenantId } = portalContext(req);
+  const all = await listPortalLeaseIds(tenantId, tenantClientId);
+  // Périmètre vide : comme le middleware, aucun bail actif => 403 (pas de repli).
+  if (all.length === 0) {
+    throw new ForbiddenError('Aucun bail actif trouvé.');
+  }
+  const requested = resolveRequestedLeaseId(all, req.query.leaseId, all.includes(leaseId) ? leaseId : all[0]);
+  return {
+    tenantClientId,
+    tenantId,
+    leaseId: requested.leaseId,
+    leaseIds: requested.explicit ? [requested.leaseId] : all,
+    allLeaseIds: all,
+    explicit: requested.explicit
+  };
+}
+
+/** Bail unique : le bail par défaut, ou celui de `?leaseId=` s'il est dans le périmètre. */
+async function portalSingleLease(req: Request): Promise<{ tenantClientId: string; leaseId: string; tenantId: string }> {
+  if (req.query.leaseId === undefined) {
+    return portalContext(req);
+  }
+  const { tenantClientId, leaseId, tenantId } = await portalLeaseScope(req);
   return { tenantClientId, leaseId, tenantId };
 }
 
@@ -61,9 +102,9 @@ export class TenantPortalController {
    * GET /api/portal/tenant/dashboard
    */
   getDashboard = asyncHandler(async (req, res) => {
-    const { tenantClientId, leaseId, tenantId } = portalContext(req);
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
-    const dashboardData = await this.service.getDashboard(tenantClientId, leaseId, tenantId);
+    const dashboardData = await this.service.getDashboard(tenantClientId, leaseId, tenantId, leaseIds);
 
     res.status(200).json({
       success: true,
@@ -72,11 +113,26 @@ export class TenantPortalController {
   });
 
   /**
+   * Baux actifs du locataire connecté (sélecteur de bail)
+   * GET /api/portal/tenant/leases
+   */
+  getLeases = asyncHandler(async (req, res) => {
+    const { leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
+
+    const leases = await this.service.getLeases(tenantId, leaseIds, leaseId);
+
+    res.status(200).json({
+      success: true,
+      data: leases
+    });
+  });
+
+  /**
    * Get lease details
    * GET /api/portal/tenant/lease
    */
   getLeaseDetails = asyncHandler(async (req, res) => {
-    const { tenantClientId, leaseId, tenantId } = portalContext(req);
+    const { tenantClientId, leaseId, tenantId } = await portalSingleLease(req);
 
     const leaseDetailsData = await this.service.getLeaseDetails(tenantClientId, leaseId, tenantId);
 
@@ -91,7 +147,7 @@ export class TenantPortalController {
    * GET /api/portal/tenant/installments
    */
   getInstallments = asyncHandler(async (req, res) => {
-    const { tenantClientId, leaseId, tenantId } = portalContext(req);
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
     const filters: { status?: string; startDate?: string; endDate?: string } = {};
     const status = parseEnumParam(req.query.status, RentalInstallmentStatus, 'status');
@@ -110,7 +166,8 @@ export class TenantPortalController {
       leaseId,
       tenantId,
       orUndefined(filters),
-      paginationFrom(req.query)
+      paginationFrom(req.query),
+      leaseIds
     );
 
     res.status(200).json({
@@ -124,13 +181,14 @@ export class TenantPortalController {
    * GET /api/portal/tenant/installments/:id
    */
   getInstallmentDetails = asyncHandler(async (req, res) => {
-    const { tenantClientId, leaseId, tenantId } = portalContext(req);
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
     const installmentDetailsData = await this.service.getInstallmentDetails(
       tenantClientId,
       leaseId,
       tenantId,
-      req.params.id
+      req.params.id,
+      leaseIds
     );
 
     res.status(200).json({
@@ -144,7 +202,7 @@ export class TenantPortalController {
    * POST /api/portal/tenant/payments/declare
    */
   declarePayment = asyncHandler(async (req, res) => {
-    const { tenantClientId, leaseId, tenantId } = portalContext(req);
+    // Le corps est validé AVANT toute requête en base (400 sans lecture).
     const body = req.body ?? {};
 
     // Un `ZodError` remonte à `errorHandler` : 400 avec le détail par champ.
@@ -164,7 +222,18 @@ export class TenantPortalController {
       throw new BadRequestError(fileValidation.error || 'Fichier invalide.');
     }
 
-    const paymentDeclaration = await this.service.declarePayment(tenantClientId, leaseId, tenantId, data, req.file);
+    // `leaseId` du corps n'est pas lu : le bail est celui de l'échéance, contrôlée
+    // contre les baux du locataire connecté (service).
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
+
+    const paymentDeclaration = await this.service.declarePayment(
+      tenantClientId,
+      leaseId,
+      tenantId,
+      data,
+      req.file,
+      leaseIds
+    );
 
     res.status(201).json({
       success: true,
@@ -178,7 +247,7 @@ export class TenantPortalController {
    * GET /api/portal/tenant/payments
    */
   getPaymentHistory = asyncHandler(async (req, res) => {
-    const { tenantClientId, leaseId, tenantId } = portalContext(req);
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
     const filters: { startDate?: string; endDate?: string; method?: string } = {};
     if (req.query.startDate) {
@@ -196,7 +265,8 @@ export class TenantPortalController {
       leaseId,
       tenantId,
       orUndefined(filters),
-      paginationFrom(req.query)
+      paginationFrom(req.query),
+      leaseIds
     );
 
     res.status(200).json({
@@ -210,7 +280,7 @@ export class TenantPortalController {
    * GET /api/portal/tenant/deposit
    */
   getDepositInfo = asyncHandler(async (req, res) => {
-    const { tenantClientId, leaseId, tenantId } = portalContext(req);
+    const { tenantClientId, leaseId, tenantId } = await portalSingleLease(req);
 
     const depositInfoData = await this.service.getDepositInfo(tenantClientId, leaseId, tenantId);
 
@@ -225,7 +295,7 @@ export class TenantPortalController {
    * POST /api/portal/tenant/maintenance
    */
   createMaintenanceTicket = asyncHandler(async (req, res) => {
-    const { tenantClientId, leaseId, tenantId } = portalContext(req);
+    const { tenantClientId, leaseId, tenantId } = await portalSingleLease(req);
     const body = req.body ?? {};
 
     const data = createMaintenanceTicketSchema.parse({
@@ -266,7 +336,7 @@ export class TenantPortalController {
    * GET /api/portal/tenant/maintenance
    */
   getMaintenanceTickets = asyncHandler(async (req, res) => {
-    const { tenantClientId, leaseId, tenantId } = portalContext(req);
+    const { tenantClientId, leaseId, tenantId } = await portalSingleLease(req);
 
     const filters: { status?: string } = {};
     if (req.query.status) {
@@ -292,13 +362,15 @@ export class TenantPortalController {
    * GET /api/portal/tenant/maintenance/:id
    */
   getMaintenanceTicketDetails = asyncHandler(async (req, res) => {
-    const { tenantClientId, leaseId, tenantId } = portalContext(req);
+    // Un ticket de n'importe quel bail du périmètre (H29), pas seulement du bail choisi.
+    const { tenantClientId, leaseId, tenantId, allLeaseIds } = await portalLeaseScope(req);
 
     const ticketDetails = await this.service.getMaintenanceTicketDetails(
       tenantClientId,
       leaseId,
       tenantId,
-      req.params.id
+      req.params.id,
+      allLeaseIds
     );
 
     res.status(200).json({
@@ -312,11 +384,18 @@ export class TenantPortalController {
    * POST /api/portal/tenant/maintenance/:id/comment
    */
   addTicketComment = asyncHandler(async (req, res) => {
-    const { tenantClientId, leaseId, tenantId } = portalContext(req);
-
     const { comment: text } = addCommentSchema.parse({ comment: req.body?.comment });
 
-    const comment = await this.service.addTicketComment(tenantClientId, leaseId, tenantId, req.params.id, text);
+    const { tenantClientId, leaseId, tenantId, allLeaseIds } = await portalLeaseScope(req);
+
+    const comment = await this.service.addTicketComment(
+      tenantClientId,
+      leaseId,
+      tenantId,
+      req.params.id,
+      text,
+      allLeaseIds
+    );
 
     res.status(201).json({
       success: true,
@@ -330,14 +409,20 @@ export class TenantPortalController {
    * GET /api/portal/tenant/documents
    */
   getDocuments = asyncHandler(async (req, res) => {
-    const { tenantClientId, leaseId, tenantId } = portalContext(req);
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
     const filters: { type?: string } = {};
     if (req.query.type) {
       filters.type = req.query.type as string;
     }
 
-    const documentsData = await this.service.getDocuments(tenantClientId, leaseId, tenantId, orUndefined(filters));
+    const documentsData = await this.service.getDocuments(
+      tenantClientId,
+      leaseId,
+      tenantId,
+      orUndefined(filters),
+      leaseIds
+    );
 
     res.status(200).json({
       success: true,
@@ -350,13 +435,14 @@ export class TenantPortalController {
    * GET /api/portal/tenant/documents/:id/download
    */
   downloadDocument = asyncHandler(async (req, res) => {
-    const { tenantClientId, leaseId, tenantId } = portalContext(req);
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
     const { buffer, fileName, mimeType } = await this.service.downloadDocument(
       tenantClientId,
       leaseId,
       tenantId,
-      req.params.id
+      req.params.id,
+      leaseIds
     );
 
     res.setHeader('Content-Type', mimeType);

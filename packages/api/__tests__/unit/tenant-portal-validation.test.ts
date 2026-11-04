@@ -4,7 +4,10 @@
  * BUG-2026-11-03-009 (signature réelle du justificatif). Les erreurs du
  * contrôleur passent par errorHandler : pas de `stack`, pas de 500.
  */
-jest.mock('../../src/utils/database', () => ({ prisma: {} }));
+// Périmètre de baux du locataire (`listPortalLeaseIds`) : le bail 'l' du contexte.
+jest.mock('../../src/utils/database', () => ({
+  prisma: { rentalLease: { findMany: jest.fn().mockResolvedValue([{ id: 'l' }]) } }
+}));
 const declarePayment = jest.fn();
 jest.mock('../../src/services/tenant-portal-service', () => ({
   TenantPortalService: jest.fn().mockImplementation(() => ({

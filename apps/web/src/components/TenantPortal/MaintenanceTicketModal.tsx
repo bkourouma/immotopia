@@ -12,9 +12,11 @@ interface MaintenanceTicketModalProps {
   open: boolean;
   onCancel: () => void;
   onSuccess: () => void;
+  /** Bail concerné quand le locataire en a plusieurs. */
+  leaseId?: string;
 }
 
-export default function MaintenanceTicketModal({ open, onCancel, onSuccess }: MaintenanceTicketModalProps) {
+export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leaseId }: MaintenanceTicketModalProps) {
   const { message } = App.useApp();
 
   const [form] = Form.useForm();
@@ -42,7 +44,7 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess }: Ma
         }
       });
 
-      await tenantPortalService.createMaintenanceTicket(formData);
+      await tenantPortalService.createMaintenanceTicket(formData, leaseId);
 
       message.success(t('Ticket de maintenance créé avec succès'));
       form.resetFields();

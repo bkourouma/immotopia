@@ -54,6 +54,9 @@ const { RangePicker } = DatePicker;
 
 interface InstallmentItem {
   id: string;
+  /** Bail de l'échéance : plusieurs baux actifs possibles (BUG-2026-11-04-049). */
+  leaseId?: string;
+  leaseNumber?: string | null;
   period: string;
   dueDate: string;
   amount: number;
@@ -372,6 +375,18 @@ export default function TenantPayments() {
   const [selectedInstallmentIds, setSelectedInstallmentIds] = useState<string[]>([]);
   const [payingOnline, setPayingOnline] = useState(false);
 
+  // Plusieurs baux actifs : le numéro de bail est affiché sur chaque échéance.
+  const { data: leases } = useQuery({
+    queryKey: ['tenant-portal-leases'],
+    queryFn: async () => {
+      const response = await tenantPortalService.getLeases();
+      return (response.data?.data ?? []) as Array<{ id: string; leaseNumber: string }>;
+    },
+    staleTime: 60_000,
+    retry: false
+  });
+  const hasSeveralLeases = (leases?.length ?? 0) > 1;
+
   // Payment history state
   const [paymentHistoryLoading, setPaymentHistoryLoading] = useState(false);
   const [paymentHistoryError, setPaymentHistoryError] = useState<string | null>(null);
@@ -608,6 +623,17 @@ export default function TenantPayments() {
       width: 110,
       render: (period: string) => <Text strong>{period}</Text>
     },
+    ...(hasSeveralLeases
+      ? [
+          {
+            title: t('Bail'),
+            dataIndex: 'leaseNumber',
+            key: 'leaseNumber',
+            width: 140,
+            render: (leaseNumber: string | null | undefined) => <Text>{leaseNumber ?? '-'}</Text>
+          }
+        ]
+      : []),
     {
       title: t("Date d'échéance"),
       dataIndex: 'dueDate',
@@ -678,6 +704,8 @@ export default function TenantPayments() {
       )
     }
   ];
+
+  const selectedLeaseId = (data?.installments ?? []).find(i => selectedInstallmentIds.includes(i.id))?.leaseId;
 
   const totalSelectionOnline = (data?.installments ?? [])
     .filter(installment => selectedInstallmentIds.includes(installment.id))
@@ -904,7 +932,13 @@ export default function TenantPayments() {
                               selectedRowKeys: selectedInstallmentIds,
                               onChange: keys => setSelectedInstallmentIds(keys as string[]),
                               getCheckboxProps: (record: InstallmentItem) => ({
-                                disabled: !isPayable(record),
+                                // Un paiement en ligne porte sur un seul bail : une fois une
+                                // échéance choisie, celles d'un autre bail sont grisées.
+                                disabled:
+                                  !isPayable(record) ||
+                                  (selectedLeaseId !== undefined &&
+                                    record.leaseId !== undefined &&
+                                    record.leaseId !== selectedLeaseId),
                                 'aria-label': t('Sélectionner {{period}}', { period: record.period })
                               })
                             }
@@ -1213,7 +1247,13 @@ export default function TenantPayments() {
         open={declarationModalVisible}
         installmentId={declarationFor?.id}
         defaultAmount={declarationFor?.balance}
-        installmentLabel={declarationFor?.period}
+        installmentLabel={
+          declarationFor
+            ? hasSeveralLeases && declarationFor.leaseNumber
+              ? `${declarationFor.period} (${declarationFor.leaseNumber})`
+              : declarationFor.period
+            : undefined
+        }
         onCancel={() => {
           setDeclarationModalVisible(false);
           setDeclarationFor(null);
