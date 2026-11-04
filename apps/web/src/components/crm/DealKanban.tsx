@@ -12,15 +12,13 @@ import { activeLocale } from '../../i18n/format';
 interface DealKanbanProps {
   /** Une entrée par étape : cartes chargées, total de l'étape et état de chargement. */
   columns: KanbanColumns;
+  stages?: readonly CrmDealStage[];
   onDealClick?: (deal: KanbanDeal) => void;
   onStageChange?: (dealId: string, newStage: CrmDealStage) => void;
   onAddDeal?: (stage: CrmDealStage) => void;
   /** Charge la page suivante d'UNE colonne. */
   onLoadMore?: (stage: CrmDealStage) => void;
 }
-
-// Pipeline stages - excluding WON and LOST from main pipeline
-const pipelineStages: CrmDealStage[] = KANBAN_STAGES;
 
 // Get contact initials for avatar
 const getInitials = (firstName?: string, lastName?: string): string => {
@@ -48,6 +46,7 @@ const formatDate = (date: Date | string): string => {
 
 export const DealKanban: React.FC<DealKanbanProps> = ({
   columns,
+  stages: pipelineStages = KANBAN_STAGES,
   onDealClick,
   onStageChange,
   onAddDeal,

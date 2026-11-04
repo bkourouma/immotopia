@@ -73,6 +73,10 @@ Règles :
 
 - **Jamais** de filtre côté client sur une page reçue du serveur : le compteur
   (total serveur) et les lignes se contrediraient.
+- **Liste plafonnée** : lorsqu'une route renvoie au plus N lignes sans total
+  complet, afficher un bandeau dès que N lignes sont reçues. La recherche et
+  l'export peuvent alors ne couvrir qu'une partie des données ; le bandeau doit
+  le dire avant que l'utilisateur n'interprète le compteur comme exhaustif.
 - Une API qui renvoie tout, sans `page`/`limit`, mais pour laquelle le volume peut
   dépasser ~500 lignes : ne pas filtrer en local, la rendre paginée.
 - Une route qui accepte déjà `search` ou un filtre sous un autre nom (`q`,
@@ -625,8 +629,12 @@ lecteur d'écran ne les distingue pas. Même option sur `useLocalListSearch`.
 
 Rappel de la charte § 2, écran lourd :
 
-- Sections en onglets ou sous-pages paresseuses ; `destroyOnHidden` sur les
-  `Tabs` qui portent de gros tableaux.
+- Sections en onglets ou sous-pages paresseuses. Sur les fiches Bien et Bail,
+  `withTabLifecycle` pose `destroyOnHidden` onglet par onglet : les tableaux
+  lourds se démontent, tandis que les onglets contenant une saisie en cours
+  restent montés (`PROPERTY_KEEP_MOUNTED_TABS` et
+  `LEASE_KEEP_MOUNTED_TABS`). Ne pas poser `destroyOnHidden` sur le composant
+  `Tabs` parent : Ant Design 6 ferait perdre ces saisies.
 - Une requête ne part que lorsque la section est affichée : montage conditionnel
   (le cas ci-dessus) ou `enabled: sectionAffichee` sur `useQuery`.
 - Plus de tableau sans pagination ni plafond au-delà de ~50 lignes.
@@ -759,6 +767,10 @@ Règles (charte § 3 et `AGENTS.md`) :
   `routes-inventory`, `route-features`, `ai:catalog`) : ajouter des paramètres
   à une route existante. **Pas de migration.** Un index manquant se signale.
 - Lister dans le rapport, par route, les paramètres ajoutés.
+- Les recherches Prisma `contains`, `startsWith` et `endsWith` portant sur une
+  saisie utilisateur doivent échapper les caractères SQL LIKE `%`, `_` et `\\`
+  avec `utils/like-escape.ts` (`escapeLike`). Ne pas échapper les préfixes
+  calculés par le serveur pour générer des références ou des numéros.
 - Réutiliser le message existant `t('Paramètres de recherche invalides.')`
   (`import { t } from '../i18n'`) : pas de nouvelle chaîne d'API à traduire.
 

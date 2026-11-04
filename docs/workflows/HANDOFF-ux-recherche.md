@@ -1,5 +1,12 @@
 # Passation — chantier « recherche multicritères et ergonomie » (ux-recherche)
 
+> **Reprise Codex le 2026-11-04 :** SYN-B est désormais terminé et fusionné dans
+> l'intégration (`949b1ece`), JOK termine sa vérification après cette fusion,
+> les traductions et le classeur du lot Z sont prêts. PERF est écarté.
+> L'état courant, les tests et la suite figurent dans [HANDOFF.md](HANDOFF.md).
+> Les sections ci-dessous conservent le contexte et les décisions de la
+> passation initiale ; leurs listes « à faire » décrivent l'arrêt de Claude.
+
 Arrêté le **2026-11-04 vers 21 h** à la demande de l'utilisateur, pour être repris par une autre IA, éventuellement sur une autre plateforme. Ce document est autonome : il ne suppose ni Claude Code, ni le poste Windows d'origine, ni les fichiers locaux de la session précédente, qui sont perdus pour le repreneur.
 
 Lire aussi, dans cet ordre :

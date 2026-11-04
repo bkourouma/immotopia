@@ -124,28 +124,28 @@ const formatDate = (dateString: string) => {
 };
 
 const propertyTypeLabels: Record<string, string> = localizedRecord(() => ({
-  APPARTEMENT: 'Appartement',
-  MAISON_VILLA: 'Maison/Villa',
-  STUDIO: 'Studio',
-  DUPLEX_TRIPLEX: 'Duplex/Triplex',
+  APPARTEMENT: t('Appartement'),
+  MAISON_VILLA: t('Maison/Villa'),
+  STUDIO: t('Studio'),
+  DUPLEX_TRIPLEX: t('Duplex/Triplex'),
   CHAMBRE_COLOCATION: t('Chambre en colocation'),
-  BUREAU: 'Bureau',
-  BOUTIQUE_COMMERCIAL: 'Boutique/Commercial',
+  BUREAU: t('Bureau'),
+  BOUTIQUE_COMMERCIAL: t('Boutique/Commercial'),
   ENTREPOT_INDUSTRIEL: t('Entrepôt/Industriel'),
-  TERRAIN: 'Terrain',
-  IMMEUBLE: 'Immeuble',
-  PARKING_BOX: 'Parking/Box',
+  TERRAIN: t('Terrain'),
+  IMMEUBLE: t('Immeuble'),
+  PARKING_BOX: t('Parking/Box'),
   LOT_PROGRAMME_NEUF: t('Lot programme neuf')
 }));
 
 const propertyStatusLabels: Record<string, string> = localizedRecord(() => ({
-  DRAFT: 'Brouillon',
+  DRAFT: t('Brouillon'),
   UNDER_REVIEW: t("En cours d'examen"),
-  AVAILABLE: 'Disponible',
+  AVAILABLE: t('Disponible'),
   RESERVED: t('Réservé'),
   UNDER_OFFER: t('Sous offre'),
   RENTED: t('Loué'),
-  SOLD: 'Vendu',
+  SOLD: t('Vendu'),
   ARCHIVED: t('Archivé')
 }));
 
@@ -154,8 +154,8 @@ const translatePropertyType = (value: string) => propertyTypeLabels[value] || va
 const translatePropertyStatus = (value: string) => propertyStatusLabels[value] || value;
 
 const transactionModeLabels: Record<string, string> = localizedRecord(() => ({
-  SALE: 'Vente',
-  RENTAL: 'Location',
+  SALE: t('Vente'),
+  RENTAL: t('Location'),
   SHORT_TERM: t('Location courte durée')
 }));
 
@@ -218,9 +218,12 @@ function LeaseHistoryList({ leases }: { leases: LeaseHistoryItem[] }) {
                 description={
                   <Space direction="vertical" size={0}>
                     <Text type="secondary">
-                      {t('Du')} {formatDate(lease.start_date)} au {lease.end_date ? formatDate(lease.end_date) : 'N/A'}
+                      {t('Du')} {formatDate(lease.start_date)} {t('au')}{' '}
+                      {lease.end_date ? formatDate(lease.end_date) : 'N/A'}
                     </Text>
-                    <Text type="secondary">Loyer: {formatCurrency(Number(lease.rent_amount))} / mois</Text>
+                    <Text type="secondary">
+                      {t('Loyer :')} {formatCurrency(Number(lease.rent_amount))} {t('/ mois')}
+                    </Text>
                   </Space>
                 }
               />

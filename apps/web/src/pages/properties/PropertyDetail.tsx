@@ -103,23 +103,23 @@ const { Text, Title } = Typography;
  */
 
 const TYPE_LABELS: Record<string, string> = localizedRecord(() => ({
-  APPARTEMENT: 'Appartement',
+  APPARTEMENT: t('Appartement'),
   MAISON_VILLA: t('Maison / Villa'),
-  STUDIO: 'Studio',
+  STUDIO: t('Studio'),
   DUPLEX_TRIPLEX: t('Duplex / Triplex'),
   CHAMBRE_COLOCATION: t('Chambre en colocation'),
-  BUREAU: 'Bureau',
+  BUREAU: t('Bureau'),
   BOUTIQUE_COMMERCIAL: t('Boutique / Local commercial'),
   ENTREPOT_INDUSTRIEL: t('Entrepôt / Local industriel'),
-  TERRAIN: 'Terrain',
-  IMMEUBLE: 'Immeuble',
+  TERRAIN: t('Terrain'),
+  IMMEUBLE: t('Immeuble'),
   PARKING_BOX: t('Parking / Box'),
   LOT_PROGRAMME_NEUF: t('Lot de programme neuf')
 }));
 
 const TRANSACTION_LABELS: Record<string, string> = localizedRecord(() => ({
-  SALE: 'Vente',
-  RENTAL: 'Location',
+  SALE: t('Vente'),
+  RENTAL: t('Location'),
   SHORT_TERM: t('Court terme')
 }));
 
@@ -130,8 +130,8 @@ const FURNISHING_LABELS: Record<string, string> = localizedRecord(() => ({
 }));
 
 const AVAILABILITY_LABELS: Record<string, string> = localizedRecord(() => ({
-  AVAILABLE: 'Disponible',
-  UNAVAILABLE: 'Indisponible',
+  AVAILABLE: t('Disponible'),
+  UNAVAILABLE: t('Indisponible'),
   SOON_AVAILABLE: t('Bientôt disponible')
 }));
 
@@ -151,20 +151,20 @@ function proprietaireAffiche(property: Property): string {
   if (property.ownershipType === 'TENANT') {
     if (property.ownerUserId) return property.owner?.email || t('Propriétaire sélectionné');
     const tenant = (property as unknown as { tenant?: { name?: string } }).tenant;
-    return tenant?.name || 'Agence';
+    return tenant?.name || t('Agence');
   }
 
   if (property.ownershipType === 'PUBLIC') {
     if (property.ownerUserId) return property.owner?.email || property.owner?.fullName || t('Propriétaire privé');
-    return 'Publique';
+    return t('Publique');
   }
 
   if (property.ownershipType === 'CLIENT') {
-    if (property.ownerUserId) return property.owner?.fullName || property.owner?.email || 'Client';
-    return 'Client';
+    if (property.ownerUserId) return property.owner?.fullName || property.owner?.email || t('Client');
+    return t('Client');
   }
 
-  return 'Agence';
+  return t('Agence');
 }
 
 /**

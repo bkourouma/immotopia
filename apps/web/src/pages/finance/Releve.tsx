@@ -30,15 +30,15 @@ import { activeLocale } from '../../i18n/format';
 
 /** Nature d'un mouvement -> libellé français, prêt à afficher (P-1). */
 export const NATURE_LABELS: Record<ThirdPartyMovementType, string> = localizedRecord(() => ({
-  INSTALLMENT: 'Loyer',
+  INSTALLMENT: t('Loyer'),
   PAYMENT: t('Règlement'),
   ADVANCE_RECEIVED: t('Avance reçue'),
   ADVANCE_APPLIED: t('Avance imputée'),
   PENALTY: t('Pénalité'),
-  WAIVER: 'Remise',
-  ADJUSTMENT: 'Ajustement',
+  WAIVER: t('Remise'),
+  ADJUSTMENT: t('Ajustement'),
   OPENING_BALANCE: t('Solde initial'),
-  VOID: 'Annulation'
+  VOID: t('Annulation')
 }));
 
 /**
@@ -205,7 +205,8 @@ export const Releve: React.FC = () => {
   const imprimer = () => {
     const url = getAccountStatementPdfUrl(tenantId, accountId, {
       from: periode.from || undefined,
-      to: periode.to || undefined
+      to: periode.to || undefined,
+      search: periode.search || undefined
     });
     window.open(url, '_blank', 'noopener,noreferrer');
   };

@@ -111,11 +111,15 @@ describe('lease-detail-tabs (logique)', () => {
     expect(resolveLeaseTab(null, cles, 'installments')).toBe('installments');
   });
 
-  it('withLeaseTab conserve les autres paramètres', () => {
-    const suivant = withLeaseTab(new URLSearchParams('ech.q=abc&pai.page=2'), 'penalties');
+  it('withLeaseTab purge les critères des onglets et conserve les paramètres globaux', () => {
+    const precedent = new URLSearchParams(
+      'ech.q=abc&pai.page=2&pen.status=LATE&doc.type=LEASE&origine=crm&origine=biens'
+    );
+    const suivant = withLeaseTab(precedent, 'penalties');
     expect(suivant.get('onglet')).toBe('penalties');
-    expect(suivant.get('ech.q')).toBe('abc');
-    expect(suivant.get('pai.page')).toBe('2');
+    for (const cle of ['ech.q', 'pai.page', 'pen.status', 'doc.type']) expect(suivant.has(cle)).toBe(false);
+    expect(suivant.getAll('origine')).toEqual(['crm', 'biens']);
+    expect(precedent.get('ech.q')).toBe('abc');
   });
 });
 
@@ -158,16 +162,17 @@ describe('Fiche du bail : onglets paresseux', () => {
     expect(montes()).toEqual(['mock-installments']);
   });
 
-  it('changer d’onglet écrit l’URL, démonte l’ancien et garde les autres paramètres', async () => {
+  it('changer d’onglet écrit l’URL, démonte l’ancien et efface ses critères', async () => {
     const user = userEvent.setup();
-    renderPage('?ech.q=abc');
+    renderPage('?ech.q=abc&origine=crm');
     await screen.findByText('mock-installments', undefined, T);
     await user.click(screen.getByRole('tab', { name: /Pénalités/ }));
     expect(await screen.findByText('mock-penalties', undefined, T)).toBeInTheDocument();
     await vi.waitFor(() => expect(montes()).toEqual(['mock-penalties']), T);
     const url = screen.getByTestId('url').textContent ?? '';
     expect(url).toContain('onglet=penalties');
-    expect(url).toContain('ech.q=abc');
+    expect(url).not.toContain('ech.q=abc');
+    expect(url).toContain('origine=crm');
   });
 
   it('expose neuf onglets pour un bail locatif', async () => {

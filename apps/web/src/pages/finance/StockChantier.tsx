@@ -486,7 +486,7 @@ export const StockChantier: React.FC = () => {
                 {t(
                   "Depuis cette date, les factures de matériaux rattachées à ce chantier n'entrent plus directement dans son coût : la marchandise entre en stock, et c'est la"
                 )}{' '}
-                <strong>sortie de magasin</strong>{' '}
+                <strong>{t('sortie de magasin')}</strong>{' '}
                 {t('qui la fait entrer dans le coût du chantier. Les factures imputées avant cette date le restent.')}
               </Paragraph>
               <Paragraph style={{ marginBottom: 0 }}>
@@ -518,7 +518,7 @@ export const StockChantier: React.FC = () => {
                 {t(
                   ", à leur validation. Le faire passer au stock change cela pour la suite : la marchandise facturée entrera en stock, et c'est la"
                 )}{' '}
-                <strong>sortie de magasin</strong> {t('qui la fera entrer dans le coût du chantier.')}
+                <strong>{t('sortie de magasin')}</strong> {t('qui la fera entrer dans le coût du chantier.')}
               </Paragraph>
               {/*
                 Dit ICI, avant même que l'on approche du bouton, et redit dans
@@ -685,9 +685,10 @@ export const StockChantier: React.FC = () => {
               {t(
                 "Il compare ce que les fournisseurs ont facturé à ce chantier depuis son passage au stock à ce qui est réellement entré en stock depuis une facture. Il peut venir de frais que la facture portait sans qu'ils entrent en stock — transport, manutention —"
               )}{' '}
-              <strong>{t("comme d'une quantité facturée qui n'est jamais arrivée sur place")}</strong>. Une soustraction
-              ne distingue pas les deux : cet écran montre le chiffre, et c'est à vous de dire lequel des deux cas vous
-              avez sous les yeux.
+              <strong>{t("comme d'une quantité facturée qui n'est jamais arrivée sur place")}</strong>.{' '}
+              {t(
+                "Une soustraction ne distingue pas les deux : cet écran montre le chiffre, et c'est à vous de dire lequel des deux cas vous avez sous les yeux."
+              )}
             </Paragraph>
             <Paragraph style={{ marginBottom: 0 }}>
               {t("Les livraisons venues d'un autre lieu de l'agence")}{' '}

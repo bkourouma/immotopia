@@ -328,7 +328,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
         <Text type="secondary">
           {t('Montant calculé :')}{' '}
           <MoneyValue value={montantCalcule(ajustePour) ?? ajustePour.amount} currency={ajustePour.currency} /> ·{' '}
-          {ajustePour.days_late} jour{ajustePour.days_late > 1 ? 's' : ''} de retard
+          {ajustePour.days_late} {ajustePour.days_late > 1 ? t('jours') : t('jour')} {t('de retard')}
         </Text>
       )}
       <Form.Item

@@ -313,9 +313,10 @@ export function NewsletterListsPage() {
               ) : (
                 <div style={{ padding: 24, background: '#fafafa', borderRadius: 8 }}>
                   <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-                    {t('Liste dérivée :')} {selectedList.activeCount ?? 0} destinataire(s) potentiel(s) (propriétaires /
-                    locataires / contacts avec consentement). Les abonnés sont résolus à l&apos;envoi de chaque
-                    campagne.
+                    {t('Liste dérivée :')} {selectedList.activeCount ?? 0}{' '}
+                    {t(
+                      "destinataire(s) potentiel(s) (propriétaires / locataires / contacts avec consentement). Les abonnés sont résolus à l'envoi de chaque campagne."
+                    )}
                   </Typography.Paragraph>
                   <Button type="default" icon={<DownloadOutlined />} onClick={handleExport}>
                     {t('Exporter CSV (destinataires actuels)')}

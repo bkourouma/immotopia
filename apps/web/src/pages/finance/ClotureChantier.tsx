@@ -1064,7 +1064,7 @@ export const ClotureChantier: React.FC = () => {
         <>
           {dernierGesteCloture && (
             <Paragraph>
-              {t('Clôturé le')} {dayjs(dernierGesteCloture.closedAt).format('DD/MM/YYYY')} par{' '}
+              {t('Clôturé le')} {dayjs(dernierGesteCloture.closedAt).format('DD/MM/YYYY')} {t('par')}{' '}
               {dernierGesteCloture.closedByLabel}
               {t(', coût figé à')} <MoneyValue value={dernierGesteCloture.finalCost} />.
             </Paragraph>

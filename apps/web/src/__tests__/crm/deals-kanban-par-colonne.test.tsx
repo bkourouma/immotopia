@@ -5,6 +5,7 @@ import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
 import { Deals } from '../../pages/crm/Deals';
+import { exportToCSV } from '../../utils/export-utils';
 
 /**
  * Pipeline des affaires chargé PAR COLONNE (lot DIV-A).
@@ -219,7 +220,31 @@ describe('Affaires — pipeline chargé par colonne', () => {
       expect(filtres).toMatchObject({ type: 'ACHAT', assignedTo: 'u1', page: 1, limit: 30 });
     }
     await waitFor(() => expect(screen.getByTestId('kanban-total-VISIT')).toHaveTextContent('1'));
-    expect(screen.getByTestId('kanban-total-NEW')).toHaveTextContent('0');
+    expect(screen.queryByTestId('kanban-total-NEW')).not.toBeInTheDocument();
+  });
+
+  it.each(['WON', 'LOST'])('une étape clôturée %s sélectionnée affiche ses affaires dans le pipeline', async stage => {
+    listDeals.mockImplementation(async () => page(stage, [deal('closed-1', stage)], 1));
+    mount(`/tenant/agence-1/crm/deals?stage=${stage}`);
+
+    expect(await screen.findByText('Awa Client closed-1')).toBeInTheDocument();
+    expect(screen.getByTestId(`kanban-total-${stage}`)).toHaveTextContent('1');
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
+    expect(listDeals).toHaveBeenCalledTimes(1);
+    expect(listDeals.mock.calls[0][1]).toMatchObject({ stage, page: 1, limit: 30 });
+    expect(screen.queryByText('Aucun résultat')).not.toBeInTheDocument();
+  });
+
+  it('l’export du pipeline sans critère d’étape reste limité aux étapes affichées', async () => {
+    mount();
+    await waitFor(() => expect(screen.getByTestId('kanban-total-NEW')).toHaveTextContent('45'));
+    listDeals.mockClear();
+    listDeals.mockResolvedValue(page('NEW', [deal('export-1', 'NEW')], 1));
+
+    fireEvent.click(screen.getByRole('button', { name: /CSV/ }));
+
+    await waitFor(() => expect(exportToCSV).toHaveBeenCalled());
+    expect(listDeals.mock.calls[0][1]).toMatchObject({ stage: 'NEW,QUALIFIED,VISIT,NEGOTIATION', page: 1 });
   });
 
   it('la vue Liste envoie les mêmes critères à l’API, avec la page du serveur', async () => {

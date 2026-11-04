@@ -392,7 +392,7 @@ export const LeaseDetailPage: React.FC = () => {
                     {lease.billing_frequency === 'ANNUAL' && translate('Annuel')}
                   </Descriptions.Item>
                   <Descriptions.Item label={translate("Jour d'échéance")}>
-                    {translate('Le')} {lease.due_day_of_month} de chaque mois
+                    {translate('Le')} {lease.due_day_of_month} {translate('de chaque mois')}
                   </Descriptions.Item>
                 </Descriptions>
               </Card>
@@ -419,11 +419,13 @@ export const LeaseDetailPage: React.FC = () => {
                   <Descriptions.Item label={translate('Jours de grâce')}>
                     {lease.penalty_grace_days > 0 ? (
                       <>
-                        {lease.penalty_grace_days} jour{lease.penalty_grace_days > 1 ? 's' : ''}
+                        {lease.penalty_grace_days}{' '}
+                        {lease.penalty_grace_days > 1 ? translate('jours') : translate('jour')}
                         <br />
                         <Text type="secondary" style={{ fontSize: '12px' }}>
-                          {translate('Les pénalités seront appliquées après')} {lease.penalty_grace_days} jour
-                          {lease.penalty_grace_days > 1 ? 's' : ''} de retard
+                          {translate('Les pénalités seront appliquées après')} {lease.penalty_grace_days}{' '}
+                          {lease.penalty_grace_days > 1 ? translate('jours') : translate('jour')}{' '}
+                          {translate('de retard')}
                         </Text>
                       </>
                     ) : (

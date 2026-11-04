@@ -10,16 +10,16 @@ import { localizedRecord } from '../../i18n/localized';
  */
 
 export const PROPERTY_TYPE_LABELS: Record<string, string> = localizedRecord(() => ({
-  APPARTEMENT: 'Appartement',
+  APPARTEMENT: t('Appartement'),
   MAISON_VILLA: t('Maison / Villa'),
-  STUDIO: 'Studio',
+  STUDIO: t('Studio'),
   DUPLEX_TRIPLEX: t('Duplex / Triplex'),
   CHAMBRE_COLOCATION: t('Chambre / Colocation'),
-  BUREAU: 'Bureau',
+  BUREAU: t('Bureau'),
   BOUTIQUE_COMMERCIAL: t('Boutique / Commercial'),
   ENTREPOT_INDUSTRIEL: t('Entrepôt / Industriel'),
-  TERRAIN: 'Terrain',
-  IMMEUBLE: 'Immeuble',
+  TERRAIN: t('Terrain'),
+  IMMEUBLE: t('Immeuble'),
   PARKING_BOX: t('Parking / Box'),
   LOT_PROGRAMME_NEUF: t('Lot programme neuf')
 }));
@@ -34,8 +34,8 @@ export const PROPERTY_TYPE_LABELS: Record<string, string> = localizedRecord(() =
 export const TYPES_RETIRES: string[] = ['CHAMBRE_COLOCATION', 'LOT_PROGRAMME_NEUF'];
 
 export const TRANSACTION_MODE_LABELS: Record<string, string> = localizedRecord(() => ({
-  SALE: 'Vente',
-  RENTAL: 'Location',
+  SALE: t('Vente'),
+  RENTAL: t('Location'),
   SHORT_TERM: t('Location courte durée')
 }));
 
@@ -48,7 +48,7 @@ export const TRANSACTION_MODE_LABELS: Record<string, string> = localizedRecord((
  * chaque bien, par `<StatusTag>` ; ils ne sont simplement plus offerts ici.
  */
 export const STATUS_LABELS: Record<string, string> = localizedRecord(() => ({
-  AVAILABLE: 'Disponible',
+  AVAILABLE: t('Disponible'),
   RENTED: t('Loué')
 }));
 

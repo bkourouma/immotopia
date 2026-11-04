@@ -13,18 +13,20 @@ import { t } from '../../i18n';
 import { drawDocumentHeader, fontsOf, resolveDocumentBranding, truncate } from '../documents/document-branding';
 import { FOOTER_RESERVED, drawDocumentFooters, pdfLanguage } from '../documents/document-layout';
 import { sanitizeForPdf } from '../documents/pdf-text';
-import type { ThirdPartyMovementRecord } from './types';
+import type { ThirdPartyMovementRecord, ThirdPartyMovementType } from './types';
 
 export interface AccountStatementPdfPayload {
   /** Agence émettrice : son identité (nom, logo) figure dans l'en-tête. */
   tenantId: string;
   accountLabel: string;
+  kind?: string;
   currency: string;
   openingBalance: number;
   closingBalance: number;
   periodFrom?: Date;
   periodTo?: Date;
   movements: ThirdPartyMovementRecord[];
+  filteredTotals?: { debit: number; credit: number };
 }
 
 /**
@@ -81,7 +83,60 @@ function drawColumnHeaders(page: PDFPage, y: number, bold: PDFFont) {
   page.drawText(t('Libellé', undefined, pdfLanguage()), { x: LEFT + COLUMNS.label, y, size: 9, font: bold });
   drawRightAligned(page, t('Facturé', undefined, pdfLanguage()), AMOUNT_RIGHT.billed, y, 9, bold);
   drawRightAligned(page, t('Réglé', undefined, pdfLanguage()), AMOUNT_RIGHT.settled, y, 9, bold);
-  drawRightAligned(page, t('Solde', undefined, pdfLanguage()), AMOUNT_RIGHT.balance, y, 9, bold);
+  drawRightAligned(page, t('Solde après', undefined, pdfLanguage()), AMOUNT_RIGHT.balance, y, 9, bold);
+}
+
+/** Le vocabulaire dépend du tiers ; les codes techniques restent dans l'API. */
+function movementTypeLabel(
+  type: ThirdPartyMovementType,
+  kind: string | undefined,
+  language: ReturnType<typeof pdfLanguage>
+) {
+  if (type === 'INSTALLMENT') {
+    if (kind === 'SUPPLIER') return t('Facture', undefined, language);
+    if (kind === 'EMPLOYEE') return t('Note de salaire', undefined, language);
+    if (kind === 'CONTRACTOR') return t("Situation d'avancement", undefined, language);
+    if (kind === 'LANDLORD') return t('Loyer de terrain', undefined, language);
+    if (kind === 'PARTNER') return t('Quote-part', undefined, language);
+    return t('Loyer', undefined, language);
+  }
+  if (type === 'ADVANCE_RECEIVED') {
+    if (kind === 'EMPLOYEE') return t('Avance versée', undefined, language);
+    if (kind && kind !== 'TENANT' && kind !== 'OWNER') return t('Acompte versé', undefined, language);
+    return t('Avance reçue', undefined, language);
+  }
+  switch (type) {
+    case 'PAYMENT':
+      return t('Règlement', undefined, language);
+    case 'ADVANCE_APPLIED':
+      return t('Avance imputée', undefined, language);
+    case 'PENALTY':
+      return t('Pénalité', undefined, language);
+    case 'WAIVER':
+      return t('Remise', undefined, language);
+    case 'ADJUSTMENT':
+      return t('Ajustement', undefined, language);
+    case 'OPENING_BALANCE':
+      return t('Solde initial', undefined, language);
+    case 'VOID':
+      return t('Annulation', undefined, language);
+    case 'RENT_COLLECTED':
+      return t('Loyer encaissé', undefined, language);
+    case 'MANAGEMENT_FEE':
+      return t('Honoraires de gestion', undefined, language);
+    case 'MANAGEMENT_FEE_VAT':
+      return t('TVA sur honoraires', undefined, language);
+    case 'EXPENSE':
+      return t('Dépense', undefined, language);
+    case 'PAYOUT':
+      return t('Reversement', undefined, language);
+    case 'WITHHOLDING_TAX':
+      return t('Retenue à la source', undefined, language);
+    case 'DEPOSIT_RETAINED':
+      return t('Dépôt de garantie conservé', undefined, language);
+    default:
+      return type;
+  }
 }
 
 function drawMovementRow(
@@ -89,13 +144,15 @@ function drawMovementRow(
   y: number,
   font: PDFFont,
   movement: ThirdPartyMovementRecord,
-  currency: string
+  currency: string,
+  kind: string | undefined,
+  language: ReturnType<typeof pdfLanguage>
 ) {
   // Seuls les libellés sont abrégés ; les montants sont alignés à droite, entiers.
   const text = (value: string, x: number, width: number) =>
     page.drawText(truncate(value, font, 8, width), { x: LEFT + x, y, size: 8, font });
   text(formatDate(movement.movementDate), 0, COLUMNS.type - 6);
-  text(movement.type, COLUMNS.type, COLUMNS.label - COLUMNS.type - 6);
+  text(movementTypeLabel(movement.type, kind, language), COLUMNS.type, COLUMNS.label - COLUMNS.type - 6);
   text(movement.label, COLUMNS.label, LABEL_WIDTH);
   const amount = (value: number | null, right: number, always = false) =>
     drawRightAligned(page, value || always ? money(value ?? 0, currency) : '-', right, y, 8, font);
@@ -115,27 +172,47 @@ export async function buildAccountStatementPdf(payload: AccountStatementPdfPaylo
   const language = pdfLanguage();
   const period =
     payload.periodFrom || payload.periodTo
-      ? `  -  ${t('Période', undefined, language)} : du ${formatDate(payload.periodFrom)} au ${formatDate(payload.periodTo)}`
+      ? `  -  ${t('Période : du {{from}} au {{to}}', { from: formatDate(payload.periodFrom), to: formatDate(payload.periodTo) }, language)}`
       : '';
   let y = await drawDocumentHeader(pdfDoc, page, branding, {
     title: t('Relevé de compte', undefined, language),
     subtitle: `${t('Compte', undefined, language)} : ${payload.accountLabel}${period}`
   });
 
-  page.drawText(`Solde d'ouverture : ${money(payload.openingBalance, payload.currency)}`, {
+  page.drawText(`${t("Solde d'ouverture", undefined, language)} : ${money(payload.openingBalance, payload.currency)}`, {
     x: LEFT,
     y,
     size: 10,
     font: bold
   });
   y -= 16;
-  page.drawText(`Solde de clôture : ${money(payload.closingBalance, payload.currency)}`, {
+  page.drawText(`${t('Solde de clôture', undefined, language)} : ${money(payload.closingBalance, payload.currency)}`, {
     x: LEFT,
     y,
     size: 10,
     font: bold
   });
-  y -= 24;
+  y -= 16;
+  if (payload.filteredTotals) {
+    page.drawText(t('Lignes filtrées', undefined, language), { x: LEFT, y, size: 9, font: bold });
+    y -= 14;
+    page.drawText(`${t('Facturé', undefined, language)} : ${money(payload.filteredTotals.debit, payload.currency)}`, {
+      x: LEFT,
+      y,
+      size: 9,
+      font
+    });
+    y -= 14;
+    page.drawText(`${t('Réglé', undefined, language)} : ${money(payload.filteredTotals.credit, payload.currency)}`, {
+      x: LEFT,
+      y,
+      size: 9,
+      font
+    });
+    y -= 18;
+  } else {
+    y -= 8;
+  }
   drawColumnHeaders(page, y, bold);
   y -= 12;
 
@@ -147,7 +224,7 @@ export async function buildAccountStatementPdf(payload: AccountStatementPdfPaylo
       drawColumnHeaders(page, y, bold);
       y -= 12;
     }
-    drawMovementRow(page, y, font, movement, payload.currency);
+    drawMovementRow(page, y, font, movement, payload.currency, payload.kind, language);
     y -= 12;
   }
 

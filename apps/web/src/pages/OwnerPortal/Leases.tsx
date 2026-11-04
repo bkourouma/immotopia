@@ -219,12 +219,16 @@ export default function Leases() {
                   }
                   description={
                     <Space direction="vertical" size={0}>
-                      <Text type="secondary">Locataire: {lease.tenantName}</Text>
                       <Text type="secondary">
-                        {t('Du')} {formatDate(lease.startDate)} au{' '}
+                        {t('Locataire :')} {lease.tenantName}
+                      </Text>
+                      <Text type="secondary">
+                        {t('Du')} {formatDate(lease.startDate)} {t('au')}{' '}
                         {lease.endDate ? formatDate(lease.endDate) : t('Non définie')}
                       </Text>
-                      <Text type="secondary">Loyer: {formatCurrency(lease.monthlyRent)} / mois</Text>
+                      <Text type="secondary">
+                        {t('Loyer :')} {formatCurrency(lease.monthlyRent)} {t('/ mois')}
+                      </Text>
                     </Space>
                   }
                 />

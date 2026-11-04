@@ -812,8 +812,9 @@ export const StockReferentiel: React.FC = () => {
         <Text type="secondary">
           {t('Le')} <strong>{t('poste proposé à la sortie')}</strong>{' '}
           {t("n'est qu'une proposition : il sera présenté pré-sélectionné au moment de sortir la marchandise, et")}{' '}
-          <strong>{t('restera modifiable à cet instant')}</strong>. C'est la sortie qui décide du poste, jamais
-          l'article. <strong>{t("L'unité est du texte libre")}</strong>{' '}
+          <strong>{t('restera modifiable à cet instant')}</strong>.{' '}
+          {t("C'est la sortie qui décide du poste, jamais l'article.")}{' '}
+          <strong>{t("L'unité est du texte libre")}</strong>{' '}
           {t("— sac, tonne, barre, m³ — parce que les unités d'une agence ne sont pas celles d'une autre.")}
         </Text>
       </Card>
@@ -893,8 +894,9 @@ export const StockReferentiel: React.FC = () => {
     <>
       <Card style={{ marginBottom: 'var(--space-4)' }}>
         <Text type="secondary">
-          {t('Un')} <strong>magasin</strong> {t("est un lieu de l'agence. Un")} <strong>lieu de chantier</strong>{' '}
-          {t('est rattaché à un chantier, et')} <strong>{t("un chantier n'en a qu'un seul")}</strong>{' '}
+          {t('Un')} <strong>{t('magasin')}</strong> {t("est un lieu de l'agence. Un")}{' '}
+          <strong>{t('lieu de chantier')}</strong> {t('est rattaché à un chantier, et')}{' '}
+          <strong>{t("un chantier n'en a qu'un seul")}</strong>{' '}
           {t(': deux lieux partageraient son stock en deux soldes dont aucun ne dirait la vérité.')}
         </Text>
       </Card>
@@ -1159,7 +1161,7 @@ export const StockReferentiel: React.FC = () => {
               notFoundContent={t('Aucun poste disponible')}
             />
             <Text type="secondary">
-              {t('Simple')} <strong>proposition</strong>{' '}
+              {t('Simple')} <strong>{t('proposition')}</strong>{' '}
               {t(
                 ': ce poste sera pré-sélectionné à la sortie de la marchandise, et restera modifiable à ce moment-là. Laisser vide est un cas normal.'
               )}
@@ -1221,9 +1223,10 @@ export const StockReferentiel: React.FC = () => {
               */}
               <Text type="warning">
                 {t("Changer l'unité de «")} {articleCorrige?.unit} {t('» en «')} {saisieCorrection.unit.trim()} »{' '}
-                <strong>{t('ne reconvertit aucune quantité déjà enregistrée')}</strong>. Les mouvements passés garderont
-                leur nombre, qui voudra désormais dire autre chose. À ne faire que pour réparer une erreur de saisie,
-                jamais pour changer de conditionnement.
+                <strong>{t('ne reconvertit aucune quantité déjà enregistrée')}</strong>.{' '}
+                {t(
+                  'Les mouvements passés garderont leur nombre, qui voudra désormais dire autre chose. À ne faire que pour réparer une erreur de saisie, jamais pour changer de conditionnement.'
+                )}
               </Text>
               <div style={{ marginTop: 'var(--space-2)' }}>
                 <Text type="warning">
@@ -1264,7 +1267,7 @@ export const StockReferentiel: React.FC = () => {
               notFoundContent={t('Aucun poste disponible')}
             />
             <Text type="secondary">
-              {t('Toujours une')} <strong>proposition</strong>{' '}
+              {t('Toujours une')} <strong>{t('proposition')}</strong>{' '}
               {t(": la sortie exigera son poste, et celui-ci n'y sera que pré-sélectionné.")}
             </Text>
           </div>
@@ -1308,8 +1311,10 @@ export const StockReferentiel: React.FC = () => {
             </Radio.Group>
             <div>
               <Text type="secondary">
-                {t('La nature est arrêtée maintenant :')} <strong>elle ne se corrigera plus</strong>. Un magasin qui
-                deviendrait le lieu d'un chantier emporterait avec lui un stock qui n'y a jamais été.
+                {t('La nature est arrêtée maintenant :')} <strong>{t('elle ne se corrigera plus')}</strong>.{' '}
+                {t(
+                  "Un magasin qui deviendrait le lieu d'un chantier emporterait avec lui un stock qui n'y a jamais été."
+                )}
               </Text>
             </div>
           </div>

@@ -99,7 +99,7 @@ export function SavedSearchesList({ onSelectSearch, onClose }: SavedSearchesList
                 description={
                   item.description || (
                     <Typography.Text type="secondary">
-                      {t('Utilisée')} {item.useCount} fois
+                      {t('Utilisée')} {item.useCount} {t('fois')}
                       {item.lastUsedAt &&
                         t('· Dernière utilisation {{value}}', {
                           value: new Date(item.lastUsedAt).toLocaleDateString(activeLocale())

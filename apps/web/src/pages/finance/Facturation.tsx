@@ -645,8 +645,10 @@ export const Facturation: React.FC = () => {
   const descriptionConfirmation = campagneExistante ? (
     <>
       {t('Une campagne a déjà été exécutée pour cette période, le')}{' '}
-      {dateCourte(campagneExistante.finishedAt || campagneExistante.startedAt)}. Relancer ne crée aucun doublon : les
-      baux déjà facturés ressortiront simplement en exclusion, et seuls les baux nouvellement éligibles seront facturés.
+      {dateCourte(campagneExistante.finishedAt || campagneExistante.startedAt)}.{' '}
+      {t(
+        'Relancer ne crée aucun doublon : les baux déjà facturés ressortiront simplement en exclusion, et seuls les baux nouvellement éligibles seront facturés.'
+      )}
     </>
   ) : (
     <>

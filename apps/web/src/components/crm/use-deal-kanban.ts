@@ -4,6 +4,7 @@ import type { CrmDealStage } from '../../types/crm-types';
 
 /** Colonnes affichées du pipeline : les affaires gagnées et perdues n'y figurent pas. */
 export const KANBAN_STAGES: CrmDealStage[] = ['NEW', 'QUALIFIED', 'VISIT', 'NEGOTIATION'];
+const ALL_KANBAN_STAGES: CrmDealStage[] = [...KANBAN_STAGES, 'WON', 'LOST'];
 /** Affaires chargées par colonne, puis par clic sur « Afficher plus ». */
 export const KANBAN_PAGE_SIZE = 30;
 
@@ -32,8 +33,13 @@ function emptyColumn(loading: boolean): KanbanColumn {
   return { deals: [], total: 0, page: 0, loading, loadingMore: false };
 }
 
-function initialColumns(loading: boolean): KanbanColumns {
-  return Object.fromEntries(KANBAN_STAGES.map(stage => [stage, emptyColumn(loading)]));
+function initialColumns(loading: boolean, stages: readonly string[]): KanbanColumns {
+  return Object.fromEntries(
+    ALL_KANBAN_STAGES.map(stage => [
+      stage,
+      emptyColumn(loading && (stages.length ? stages.includes(stage) : KANBAN_STAGES.includes(stage)))
+    ])
+  );
 }
 
 interface UseDealKanbanOptions {
@@ -55,7 +61,7 @@ interface UseDealKanbanOptions {
  */
 export function useDealKanban({ tenantId, enabled, criteria, stages = [] }: UseDealKanbanOptions) {
   // Prêt à charger : les colonnes naissent en « chargement » pour ne pas afficher « aucune affaire » un instant.
-  const [columns, setColumns] = useState<KanbanColumns>(() => initialColumns(enabled && !!tenantId));
+  const [columns, setColumns] = useState<KanbanColumns>(() => initialColumns(enabled && !!tenantId, stages));
   const [error, setError] = useState<string | null>(null);
   // Numéro de la dernière requête de chaque colonne : une réponse en retard est ignorée.
   const sequence = useRef<Record<string, number>>({});
@@ -68,7 +74,7 @@ export function useDealKanban({ tenantId, enabled, criteria, stages = [] }: UseD
 
   const isRequested = useCallback((stage: string) => {
     const wanted = stagesRef.current;
-    return wanted === '' || wanted.split(',').includes(stage);
+    return wanted === '' ? KANBAN_STAGES.includes(stage as CrmDealStage) : wanted.split(',').includes(stage);
   }, []);
 
   const patchColumn = useCallback((stage: string, patch: Partial<KanbanColumn>) => {
@@ -122,11 +128,11 @@ export function useDealKanban({ tenantId, enabled, criteria, stages = [] }: UseD
     if (!tenantId) return;
     setError(null);
     // Les numéros avancent aussi pour les colonnes sans requête : une réponse d'avant les écarte.
-    for (const stage of KANBAN_STAGES) {
+    for (const stage of ALL_KANBAN_STAGES) {
       sequence.current[stage] = (sequence.current[stage] ?? 0) + 1;
     }
-    setColumns(Object.fromEntries(KANBAN_STAGES.map(stage => [stage, emptyColumn(isRequested(stage))])));
-    for (const stage of KANBAN_STAGES) {
+    setColumns(Object.fromEntries(ALL_KANBAN_STAGES.map(stage => [stage, emptyColumn(isRequested(stage))])));
+    for (const stage of ALL_KANBAN_STAGES) {
       if (isRequested(stage)) void fetchColumn(stage, 1, false);
     }
   }, [tenantId, fetchColumn, isRequested]);
@@ -153,7 +159,7 @@ export function useDealKanban({ tenantId, enabled, criteria, stages = [] }: UseD
   const reloadStages = useCallback(
     (toReload: CrmDealStage[]) => {
       for (const stage of new Set(toReload)) {
-        if (!KANBAN_STAGES.includes(stage) || !isRequested(stage)) continue;
+        if (!ALL_KANBAN_STAGES.includes(stage) || !isRequested(stage)) continue;
         void fetchColumn(stage, 1, false);
       }
     },
@@ -162,7 +168,7 @@ export function useDealKanban({ tenantId, enabled, criteria, stages = [] }: UseD
 
   const findDeal = useCallback(
     (dealId: string): KanbanDeal | undefined => {
-      for (const stage of KANBAN_STAGES) {
+      for (const stage of ALL_KANBAN_STAGES) {
         const found = columns[stage]?.deals.find(deal => deal.id === dealId);
         if (found) return found;
       }
@@ -171,8 +177,22 @@ export function useDealKanban({ tenantId, enabled, criteria, stages = [] }: UseD
     [columns]
   );
 
-  const total = useMemo(() => KANBAN_STAGES.reduce((sum, stage) => sum + (columns[stage]?.total ?? 0), 0), [columns]);
-  const loading = useMemo(() => KANBAN_STAGES.some(stage => columns[stage]?.loading), [columns]);
+  const total = useMemo(
+    () => ALL_KANBAN_STAGES.reduce((sum, stage) => sum + (columns[stage]?.total ?? 0), 0),
+    [columns]
+  );
+  const loading = useMemo(() => ALL_KANBAN_STAGES.some(stage => columns[stage]?.loading), [columns]);
+  const visibleStages = stages.length ? ALL_KANBAN_STAGES.filter(stage => stages.includes(stage)) : KANBAN_STAGES;
 
-  return { columns, total, loading, hasError: error !== null, loadMore, reloadStages, reloadAll, findDeal };
+  return {
+    columns,
+    stages: visibleStages,
+    total,
+    loading,
+    hasError: error !== null,
+    loadMore,
+    reloadStages,
+    reloadAll,
+    findDeal
+  };
 }

@@ -34,7 +34,7 @@ const statusColors: Record<string, string> = {
 };
 
 const statusLabels: Record<string, string> = localizedRecord(() => ({
-  DRAFT: 'Brouillon',
+  DRAFT: t('Brouillon'),
   SCHEDULED: t('Planifiée'),
   SENDING: t('En cours'),
   SENT: t('Envoyée'),
@@ -280,7 +280,9 @@ export function NewsletterCampaignsPage() {
             <span title={t('Mails envoyés')}>
               {t('Envoyés:')} {r.sentCount ?? 0}
             </span>
-            <span title={t('Mails ouverts')}>Ouverts: {r.openCount ?? 0}</span>
+            <span title={t('Mails ouverts')}>
+              {t('Ouverts :')} {r.openCount ?? 0}
+            </span>
             {(r.failedCount ?? 0) > 0 && (
               <span style={{ color: '#ff4d4f' }} title={t('Retournés / email invalide')}>
                 {t('Retournés:')} {r.failedCount}
@@ -452,7 +454,7 @@ export function NewsletterCampaignsPage() {
         {preview && (
           <div>
             <p>
-              <strong>Sujet:</strong> {preview.subject}
+              <strong>{t('Sujet :')}</strong> {preview.subject}
             </p>
             {/*
               Campaign HTML is authored by users in the template editor, so it is

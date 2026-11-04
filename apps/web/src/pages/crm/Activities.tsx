@@ -253,7 +253,7 @@ export const Activities: React.FC = () => {
               <Col xs={24} sm={12}>
                 <Text type="secondary">
                   {t('Affichage de')} {(pagination.page - 1) * pagination.limit + 1} à{' '}
-                  {Math.min(pagination.page * pagination.limit, pagination.total)} sur {pagination.total}{' '}
+                  {Math.min(pagination.page * pagination.limit, pagination.total)} {t('sur')} {pagination.total}{' '}
                   {t('activités')}
                 </Text>
               </Col>

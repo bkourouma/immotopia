@@ -19,17 +19,17 @@ import { localizedRecord } from '../../../i18n/localized';
 const { Title } = Typography;
 
 const categoryLabels: Record<string, string> = localizedRecord(() => ({
-  PLUMBING: 'Plomberie',
+  PLUMBING: t('Plomberie'),
   ELECTRICITY: t('Électricité'),
-  AC: 'Climatisation',
-  OTHER: 'Autre'
+  AC: t('Climatisation'),
+  OTHER: t('Autre')
 }));
 
 const priorityLabels: Record<string, string> = localizedRecord(() => ({
-  LOW: 'Faible',
-  MEDIUM: 'Moyenne',
+  LOW: t('Faible'),
+  MEDIUM: t('Moyenne'),
   HIGH: t('Élevée'),
-  URGENT: 'Urgente'
+  URGENT: t('Urgente')
 }));
 
 // Libellés vivants (suivent la langue) pour les listes de critères.

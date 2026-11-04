@@ -214,8 +214,9 @@ export function WhatsAppNotificationsPage() {
           </Title>
         </Space>
         <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-          Gérez les événements déclencheurs et personnalisez les messages WhatsApp (Twilio). Les messages ne sont
-          envoyés qu&apos;aux contacts ayant donné leur consentement (consent_whatsapp) et un numéro WhatsApp renseigné.
+          {t(
+            "Gérez les événements déclencheurs et personnalisez les messages WhatsApp (Twilio). Les messages ne sont envoyés qu'aux contacts ayant donné leur consentement (consent_whatsapp) et un numéro WhatsApp renseigné."
+          )}
         </Text>
         <Alert
           type="info"
@@ -229,7 +230,7 @@ export function WhatsAppNotificationsPage() {
 
         <div id="whatsapp-notif-edit-section">
           <Text strong style={{ display: 'block', marginBottom: 8 }}>
-            Modifier le message d&apos;un événement
+            {t("Modifier le message d'un événement")}
           </Text>
           <Space wrap style={{ marginBottom: 16 }}>
             {items.map(item => (

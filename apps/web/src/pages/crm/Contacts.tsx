@@ -503,8 +503,9 @@ export const Contacts: React.FC = () => {
               <Col xs={24} sm={12}>
                 <Space>
                   <Text strong>
-                    {selectedContacts.length} contact{selectedContacts.length > 1 ? 's' : ''} {translate('sélectionné')}
-                    {selectedContacts.length > 1 ? 's' : ''}
+                    {selectedContacts.length > 1
+                      ? translate('{{count}} contacts sélectionnés', { count: selectedContacts.length })
+                      : translate('{{count}} contact sélectionné', { count: selectedContacts.length })}
                   </Text>
                   <Button size="small" onClick={() => setSelectedContacts([])}>
                     {translate('Désélectionner tout')}

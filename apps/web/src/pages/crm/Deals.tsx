@@ -18,7 +18,7 @@ import {
 import { CrmDealStage } from '../../types/crm-types';
 import { Briefcase, Plus, Edit, Eye, LayoutGrid, Activity, Calendar, Download, FileSpreadsheet } from 'lucide-react';
 import { DealKanban } from '../../components/crm/DealKanban';
-import { useDealKanban } from '../../components/crm/use-deal-kanban';
+import { KANBAN_STAGES, useDealKanban } from '../../components/crm/use-deal-kanban';
 import { ListSearch } from '../../components/primitives/ListSearch';
 import { useListSearch } from '../../hooks/useListSearch';
 import { listAssignableMembers } from '../../services/membership-service';
@@ -171,7 +171,12 @@ export const Deals: React.FC = () => {
     if (!tenantId) return;
     try {
       const { items } = await collectAllPages<CrmDeal>(async (page, limit) => {
-        const response = await listDeals(tenantId, { ...search.filterParams, page, limit } as DealFilters);
+        const response = await listDeals(tenantId, {
+          ...search.filterParams,
+          ...(isKanban && !search.filterParams.stage ? { stage: KANBAN_STAGES.join(',') } : {}),
+          page,
+          limit
+        } as DealFilters);
         return { items: response.deals ?? [], total: response.pagination?.total ?? 0 };
       });
       const rows = items.map(exportRow);
@@ -362,6 +367,7 @@ export const Deals: React.FC = () => {
         ) : isKanban ? (
           <div className="bg-white rounded-lg shadow p-3 w-full overflow-x-auto">
             <DealKanban
+              stages={kanban.stages}
               columns={kanban.columns}
               onLoadMore={kanban.loadMore}
               onDealClick={deal => navigate(`/tenant/${tenantId}/crm/deals/${deal.id}`)}
@@ -474,8 +480,11 @@ export const Deals: React.FC = () => {
             {pagination.totalPages > 1 && (
               <div className="bg-gray-50 px-6 py-3 flex items-center justify-between border-t border-gray-200">
                 <div className="text-sm text-gray-700">
-                  {t('Affichage de')} {(pagination.page - 1) * pagination.limit + 1} à{' '}
-                  {Math.min(pagination.page * pagination.limit, pagination.total)} sur {pagination.total} affaires
+                  {t('Affichage de {{debut}} à {{fin}} sur {{total}} affaires', {
+                    debut: formatNumber((pagination.page - 1) * pagination.limit + 1),
+                    fin: formatNumber(Math.min(pagination.page * pagination.limit, pagination.total)),
+                    total: formatNumber(pagination.total)
+                  })}
                 </div>
                 <div className="flex gap-2">
                   <Button

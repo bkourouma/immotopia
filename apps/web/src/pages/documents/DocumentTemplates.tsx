@@ -449,7 +449,7 @@ export function DocumentTemplates() {
                       {OPEN_BRACE}AGENCE_NOM{CLOSE_BRACE}
                       {CLOSE_BRACE}
                     </Tag>{' '}
-                    ou{' '}
+                    {translate('ou')}{' '}
                     <Tag>
                       {OPEN_BRACE}
                       {OPEN_BRACE}BAIL_LOYER_MENSUEL{CLOSE_BRACE}

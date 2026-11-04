@@ -1,7 +1,7 @@
 /**
  * Onglet actif de la fiche d'un bail, porté par l'URL (`?onglet=payments`),
- * comme la fiche d'un bien. Les autres paramètres (préfixes `ech`, `pai`,
- * `pen`, `doc` des listes intégrées) ne sont jamais touchés.
+ * comme la fiche d'un bien. Les critères des listes intégrées sont purgés
+ * au changement d'onglet ; les paramètres étrangers à ces listes sont conservés.
  */
 export const LEASE_TAB_PARAM = 'onglet';
 
@@ -15,9 +15,14 @@ export function resolveLeaseTab(requested: string | null, availableKeys: readonl
   return requested !== null && availableKeys.includes(requested) ? requested : fallback;
 }
 
-/** Copie des paramètres d'URL avec le nouvel onglet, tout le reste conservé. */
+const LEASE_TAB_PARAM_PREFIXES = ['ech.', 'pai.', 'pen.', 'doc.'];
+
+/** Change d'onglet sans conserver les critères des autres listes intégrées. */
 export function withLeaseTab(previous: URLSearchParams, key: string): URLSearchParams {
-  const next = new URLSearchParams(previous);
+  const next = new URLSearchParams();
+  previous.forEach((value, name) => {
+    if (!LEASE_TAB_PARAM_PREFIXES.some(prefix => name.startsWith(prefix))) next.append(name, value);
+  });
   next.set(LEASE_TAB_PARAM, key);
   return next;
 }

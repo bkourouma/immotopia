@@ -409,7 +409,7 @@ export default function LeaseDetails() {
                           <Text type="secondary">{formatDate(payment.succeeded_at)}</Text>
                           {payment.allocations.length > 0 && (
                             <Text type="secondary" style={{ fontSize: 12 }}>
-                              Allocations:{' '}
+                              {t('Allocations :')}{' '}
                               {payment.allocations.map((allocation, idx) => {
                                 const inst = allocation.installment;
                                 const periodLabel = inst

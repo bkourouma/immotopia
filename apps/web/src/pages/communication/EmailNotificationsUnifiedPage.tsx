@@ -312,8 +312,9 @@ export function EmailNotificationsUnifiedPage() {
           </Title>
         </Space>
         <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-          Gérez les événements déclencheurs et personnalisez les templates d&apos;emails (sujet et corps). Les variables
-          sont remplacées à l&apos;envoi. Canal : Email uniquement.
+          {t(
+            "Gérez les événements déclencheurs et personnalisez les templates d'emails (sujet et corps). Les variables sont remplacées à l'envoi. Canal : Email uniquement."
+          )}
         </Text>
 
         <Divider style={{ margin: '16px 0' }} />
@@ -461,7 +462,7 @@ export function EmailNotificationsUnifiedPage() {
                       >
                         <Space align="center" style={{ marginBottom: 8 }}>
                           <TeamOutlined style={{ color: '#52c41a' }} />
-                          <Text strong>Appliquer ce template à d&apos;autres destinataires</Text>
+                          <Text strong>{t("Appliquer ce template à d'autres destinataires")}</Text>
                         </Space>
                         <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
                           {t(

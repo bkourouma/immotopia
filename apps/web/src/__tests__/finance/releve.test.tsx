@@ -271,6 +271,23 @@ describe('Relevé de compte — écran agence', () => {
 
     ouvrir.mockRestore();
   });
+
+  it('transmet au PDF le texte et la période de la liste affichée', async () => {
+    getAccountStatement.mockResolvedValue(statement({ label: 'Mariam Diomandé' }));
+    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const user = userEvent.setup({ delay: null });
+
+    mountReleve('/tenant/agence-1/finance/comptes/cpt-1?q=loyer&from=2026-01-01&to=2026-03-31');
+    await screen.findByText('Mariam Diomandé', {}, { timeout: 8000 });
+    await user.click(screen.getByRole('button', { name: /Imprimer/ }));
+
+    expect(getAccountStatementPdfUrl).toHaveBeenCalledWith('agence-1', 'cpt-1', {
+      from: '2026-01-01',
+      to: '2026-03-31',
+      search: 'loyer'
+    });
+    ouvrir.mockRestore();
+  });
 });
 
 describe('Relevé de compte — onglet du portail locataire', () => {

@@ -24,9 +24,9 @@ interface ListDashboardProps {
 }
 
 const typeLabels: Record<string, string> = localizedRecord(() => ({
-  MANUAL: 'Manuelle',
+  MANUAL: t('Manuelle'),
   FROM_OWNERS: t('Propriétaires'),
-  FROM_RENTERS: 'Locataires',
+  FROM_RENTERS: t('Locataires'),
   FROM_CRM_CONTACTS: t('Contacts CRM')
 }));
 

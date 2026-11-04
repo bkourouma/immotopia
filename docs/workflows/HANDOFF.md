@@ -19,17 +19,16 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 ## orch/2026-11-03-ux-recherche — recherche multicritères et ergonomie (2026-11-04)
 
-**État :** chantier arrêté le 2026-11-04 vers 21 h à la demande de l'utilisateur, pour être repris par une autre IA. Détail complet et autonome : [HANDOFF-ux-recherche.md](HANDOFF-ux-recherche.md).
+**État :** repris dans Codex le 2026-11-04 ; intégration et vérifications en cours. Passation d'origine et décisions métier : [HANDOFF-ux-recherche.md](HANDOFF-ux-recherche.md).
 
-**Fait :** 16 fusions de lots dans `orch/2026-11-03-ux-recherche` (poussée). Les lots sont 0 (fondation `ListSearch`), C (comptabilité agence), DIV, POR, FIN-B, FIN-A, LOC, SYN-A, PAT et RET. Typecheck web et API : 0 erreur. Architecture verte.
+**Fait :** lots initiaux conservés ; SYN-B terminé, relu et fusionné localement (`949b1ece`, lot `36d5da6d`). Recherche syndic et portail copropriétaire, chargement des assemblées au-delà des 20 premières, plafonds signalés, pagination des déclarations bornée à 50. Corrections supplémentaires dans l'arbre : purge des filtres des onglets du bail ; étapes gagnées/perdues et export cohérent du Kanban ; impression du relevé alignée sur la recherche avec vrais soldes et libellés lisibles. Traductions EN/AR et libellés hérités traités, contrôles i18n verts ; classeur et miroir actualisés (1 154 sous-fonctionnalités, `wiki:check` vert).
 
 **Reste :**
 
-- SYN-B (`…-lot-syn-b`, wip) : à finir et vérifier.
-- JOK (`…-lot-jok`, wip) : finir la phase 1, faire la phase 2 après SYN-B.
-- PERF (`…-lot-perf`, wip, facultatif) : à finir ou abandonner.
-- Lot Z : traductions en/ar, `ai:catalog`, classeur des fonctionnalités, docs.
-- Vérification complète, relecture de code et de sécurité, PR vers `main`. La fusion revient à l'utilisateur.
+- JOK (`…-lot-jok`) : SYN-B fusionné dans son worktree, phase 2 préparée ; tests finaux et intégration encore à faire. Corrige aussi la recherche d'identité plateforme masquée dans le journal et la borne de budget CRM égale à zéro. Deux défauts préexistants de la suite d'isolation sont en correction (permission refusée dans l'audit, nettoyage des appels de fonds de test).
+- Vérifications des correctifs de reprise : API finance/PDF 37 tests verts ; Vitest CRM/bail/relevé 43 tests verts. Rejouer typecheck/lint/architecture/build et tests de l'intégration finale, puis catalogue IA et CI.
+- Finir la recette navigateur sur les lots fusionnés, notamment une assemblée ancienne sur 125 réunions et les recherches `%`/`_`. Déjà vus : bien hors première page, états vides/effacement, export CSV de 55 biens, mobile arabe à 390 px sans débordement, soldes filtrés 1 000 / 1 500 et PDF rendu.
+- Ouvrir la PR vers `main` et suivre la CI. La fusion et le déploiement restent à l'utilisateur.
 
 **Pièges :**
 
@@ -37,8 +36,12 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 - Les tests jsdom lents expirent sous charge : relancer le fichier seul avant de conclure.
 - Prisma `contains` n'échappe pas `%` ni `_`.
 - La PR #193 touche les mêmes fichiers.
+- PERF est écarté : pas de gain démontré, risque de cache de paramètres périmés dans le hook partagé. La PR #194 existe mais n'est pas intégrée ; ni branche ni PR supprimée.
+- Le PostgreSQL natif Windows occupe 5432 et masque le port du conteneur de développement. Les tests utilisent un NOUVEAU conteneur dédié `immotopia-ux-codex-test`, lié à `127.0.0.1:55432`, avec bases distinctes `immotopia_ux_codex_test_20261104` et `immotopia_ux_codex_demo_20261104`. Ne jamais utiliser la base réelle pour ces essais ; aucun `.env` lu ou modifié explicitement.
+- Recette synthétique : web 3300, API 8800, scripts temporaires dans `%TEMP%/immotopia-ux-qa-20261104`. L'API est lancée en mode test sans jobs. Recharger après les écritures de catalogues : le HMR de LanguageContext peut provoquer une erreur temporaire en développement.
+- PDF arabe : repli français préexistant imposé par les polices WinAnsi ; les clés AR sont traduites mais le moteur PDF arabe n'a pas été remplacé.
 
-**Branche :** `orch/2026-11-03-ux-recherche` @ `c1249d5a` (dernier commit fonctionnel, avant cette passation). Base `main` @ `6be7f91a`.
+**Branche :** `orch/2026-11-03-ux-recherche` @ `949b1ece` (fusion SYN-B, avant les correctifs/traductions encore non commités). Worktree `D:/APP/Immobillier-worktrees/ux-integ`. Base `origin/main` @ `6be7f91a`, vérifiée le 2026-11-04. Le checkout principal est ancien et contient des modifications d'une autre session : ne pas y travailler.
 
 ## État des lieux (pilote) — 2026-10-31
 

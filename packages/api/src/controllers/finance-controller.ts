@@ -246,21 +246,33 @@ export const printAccountStatementHandler = asyncHandler(async (req: Request, re
   const query = printAccountStatementQuerySchema.parse(req.query ?? {});
   const range = resolveRange(query);
 
-  const statement = await getAccountStatement(tenantId, accountId, {
-    range: range.from || range.to ? range : undefined,
-    skip: 0,
-    take: PDF_STATEMENT_ROW_LIMIT
-  });
+  const filteredStatement = query.search
+    ? await searchAccountStatement(tenantId, accountId, {
+        range: range.from || range.to ? range : undefined,
+        search: query.search,
+        skip: 0,
+        take: PDF_STATEMENT_ROW_LIMIT
+      })
+    : undefined;
+  const statement =
+    filteredStatement ??
+    (await getAccountStatement(tenantId, accountId, {
+      range: range.from || range.to ? range : undefined,
+      skip: 0,
+      take: PDF_STATEMENT_ROW_LIMIT
+    }));
 
   const pdfBuffer = await buildAccountStatementPdf({
     tenantId,
     accountLabel: statement.label,
+    kind: statement.kind,
     currency: statement.currency,
     openingBalance: statement.openingBalance,
     closingBalance: statement.closingBalance,
     periodFrom: range.from,
     periodTo: range.to,
-    movements: statement.movements
+    movements: statement.movements,
+    filteredTotals: filteredStatement?.filteredTotals
   });
 
   res.setHeader('Content-Type', 'application/pdf');

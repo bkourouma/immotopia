@@ -56,12 +56,12 @@ interface DocumentsProps {
 
 const TYPE_LABELS: Record<string, string> = localizedRecord(() => ({
   LEASE_CONTRACT: t('Contrat de bail'),
-  LEASE_ADDENDUM: 'Avenant',
+  LEASE_ADDENDUM: t('Avenant'),
   RENT_RECEIPT: t('Reçu de loyer'),
   RENT_QUITTANCE: t('Quittance de loyer'),
   DEPOSIT_RECEIPT: t('Reçu de dépôt'),
   STATEMENT: t('Relevé'),
-  OTHER: 'Autre'
+  OTHER: t('Autre')
 }));
 
 const STATUS_OPTIONS = localizedList(() => [

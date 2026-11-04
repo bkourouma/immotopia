@@ -661,10 +661,9 @@ export const RolesPermissions: React.FC = () => {
           title={personaLabel ? t('Navigation « {{personaLabel}} »', { personaLabel: personaLabel }) : t('Navigation')}
           description={
             <Text type="secondary" style={{ fontSize: 13 }}>
-              Les catégories et les entrées ci-dessous sont exactement celles du menu latéral de ce persona. Par défaut,
-              une entrée est active quand les permissions du rôle l'autorisent&nbsp;; la désactiver la retire du menu,
-              de la barre d'onglets mobile et du tiroir de navigation. Ce réglage cache une entrée, il ne remplace pas
-              un contrôle d'accès&nbsp;: les permissions restent réglées dans l'onglet voisin.
+              {t(
+                "Les catégories et les entrées ci-dessous sont exactement celles du menu latéral de ce persona. Par défaut, une entrée est active quand les permissions du rôle l'autorisent ; la désactiver la retire du menu, de la barre d'onglets mobile et du tiroir de navigation. Ce réglage cache une entrée, il ne remplace pas un contrôle d'accès : les permissions restent réglées dans l'onglet voisin."
+              )}
             </Text>
           }
         />
@@ -735,8 +734,10 @@ export const RolesPermissions: React.FC = () => {
         image={Empty.PRESENTED_IMAGE_SIMPLE}
         description={
           <span>
-            {selectedRole.name} n'est pas un rôle RBAC&nbsp;: son périmètre vient du rattachement à l'agence (bail ou
-            bien), pas de permissions. Seuls ses menus se règlent, dans l'onglet voisin.
+            {t(
+              "{{role}} n'est pas un rôle RBAC : son périmètre vient du rattachement à l'agence (bail ou bien), pas de permissions. Seuls ses menus se règlent, dans l'onglet voisin.",
+              { role: selectedRole.name }
+            )}
           </span>
         }
       />

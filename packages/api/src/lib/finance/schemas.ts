@@ -175,7 +175,9 @@ export function resolvePagination(input: {
 // GET accounts/:accountId/statement.pdf (mêmes bornes, jamais paginé)
 // ---------------------------------------------------------------------------
 
-export const printAccountStatementQuerySchema = withRangeOrderValidation(rangeAliasObject);
+export const printAccountStatementQuerySchema = withRangeOrderValidation(
+  rangeAliasObject.extend({ search: searchSchema })
+);
 
 export type PrintAccountStatementQuery = z.infer<typeof printAccountStatementQuerySchema>;
 

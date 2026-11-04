@@ -670,7 +670,7 @@ export const Tacheron: React.FC = () => {
           <strong>{t('Marché restant')}</strong> {t('= montant convenu − situations validées : ce qui reste à')}{' '}
           <strong>{t('exécuter')}</strong>
           {t(', marché par marché.')} <strong>{t("Ce qu'on lui doit")}</strong>{' '}
-          {t('= situations validées − règlements : ce qui reste à')} <strong>payer</strong>
+          {t('= situations validées − règlements : ce qui reste à')} <strong>{t('payer')}</strong>
           {t(
             ", tous marchés confondus. Un tâcheron peut avoir fini son marché et rester créancier, ou n'avoir rien exécuté et avoir déjà reçu une avance."
           )}
