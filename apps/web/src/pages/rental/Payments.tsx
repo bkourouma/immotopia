@@ -444,7 +444,9 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
     <>
       <PageHeader
         title={t('Paiements')}
-        subtitle={total > 0 ? `${total} paiement${total > 1 ? 's' : ''}` : undefined}
+        subtitle={
+          total > 0 ? (total > 1 ? t('{{n}} paiements', { n: total }) : t('{{n}} paiement', { n: total })) : undefined
+        }
         primaryAction={
           peutEncaisser
             ? {

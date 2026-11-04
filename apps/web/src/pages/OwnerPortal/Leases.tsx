@@ -7,7 +7,7 @@ import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { t } from '../../i18n/t';
 import { localizedList } from '../../i18n/localized';
 
-import { activeLocale } from '../../i18n/format';
+import { activeLocale, formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
@@ -37,11 +37,7 @@ const statusOptions = localizedList(() => [
 ]);
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat(activeLocale(), {
-    style: 'currency',
-    currency: 'XOF',
-    minimumFractionDigits: 0
-  }).format(amount);
+  return formatFcfa(amount);
 };
 
 const formatDate = (dateString: string) => {
@@ -200,12 +196,14 @@ export default function Leases() {
                   }
                   description={
                     <Space direction="vertical" size={0}>
-                      <Text type="secondary">Locataire: {lease.tenantName}</Text>
+                      <Text type="secondary">{t('Locataire : {{nom}}', { nom: lease.tenantName })}</Text>
                       <Text type="secondary">
                         {t('Du')} {formatDate(lease.startDate)} au{' '}
                         {lease.endDate ? formatDate(lease.endDate) : t('Non définie')}
                       </Text>
-                      <Text type="secondary">Loyer: {formatCurrency(lease.monthlyRent)} / mois</Text>
+                      <Text type="secondary">
+                        {t('Loyer : {{montant}} / mois', { montant: formatCurrency(lease.monthlyRent) })}
+                      </Text>
                     </Space>
                   }
                 />

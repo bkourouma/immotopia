@@ -30,7 +30,7 @@ import { ownerPortalService } from '../../services/ownerPortalService';
 import { Table } from '../../components/primitives';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
+import { activeLocale, formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 
@@ -112,11 +112,7 @@ interface LeaseDetailsData {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat(activeLocale(), {
-    style: 'currency',
-    currency: 'XOF',
-    minimumFractionDigits: 0
-  }).format(amount);
+  return formatFcfa(amount);
 };
 
 const formatDate = (dateString: string) => {

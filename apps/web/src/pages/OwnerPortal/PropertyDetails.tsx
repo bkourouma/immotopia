@@ -28,7 +28,7 @@ import { ownerPortalService } from '../../services/ownerPortalService';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
 
-import { activeLocale } from '../../i18n/format';
+import { activeLocale, formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 
@@ -104,11 +104,7 @@ interface PropertyDetailsData {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat(activeLocale(), {
-    style: 'currency',
-    currency: 'XOF',
-    minimumFractionDigits: 0
-  }).format(amount);
+  return formatFcfa(amount);
 };
 
 const formatDate = (dateString: string) => {
@@ -352,7 +348,9 @@ export default function PropertyDetails() {
                             {t('Du')} {formatDate(lease.start_date)} au{' '}
                             {lease.end_date ? formatDate(lease.end_date) : 'N/A'}
                           </Text>
-                          <Text type="secondary">Loyer: {formatCurrency(Number(lease.rent_amount))} / mois</Text>
+                          <Text type="secondary">
+                            {t('Loyer : {{montant}} / mois', { montant: formatCurrency(Number(lease.rent_amount)) })}
+                          </Text>
                         </Space>
                       }
                     />

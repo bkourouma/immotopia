@@ -11,7 +11,7 @@ import { Checkbox } from '../ui/checkbox';
 import { Input } from '../ui/input';
 import { formatterMontant, parserMontant } from '../../utils/montant-saisi';
 import { t } from '../../i18n/t';
-import { codeDeviseIntl } from '../../lib/rental-labels';
+import { codeDeviseIntl, libellePeriodeEcheance } from '../../lib/rental-labels';
 
 import { activeLocale } from '../../i18n/format';
 interface AllocatePaymentFormProps {
@@ -187,7 +187,7 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
                   <div className="flex items-center justify-between mb-2">
                     <div>
                       <p className="font-medium">
-                        {installment.period_month}/{installment.period_year} {t('- Échéance du')}{' '}
+                        {libellePeriodeEcheance(installment.period_month, installment.period_year)} {t('- Échéance du')}{' '}
                         {formatDate(installment.due_date)}
                       </p>
                       <p className="text-sm text-muted-foreground">

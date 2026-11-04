@@ -15,7 +15,7 @@ import {
 import { saveBlob } from '../../utils/save-blob';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { Table } from '../primitives';
-import { nomDuBien, nomDeLaPersonne, ABSENT } from '../../lib/rental-labels';
+import { nomDuBien, nomDeLaPersonne, ABSENT, libellePeriodeEcheance } from '../../lib/rental-labels';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
 
@@ -252,7 +252,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
       key: 'installment',
       render: (_, record) => {
         if (record.installment) {
-          return `${record.installment.period_month}/${record.installment.period_year}`;
+          return libellePeriodeEcheance(record.installment.period_month, record.installment.period_year);
         }
         return '-';
       }

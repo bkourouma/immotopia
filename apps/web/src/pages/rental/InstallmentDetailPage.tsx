@@ -5,6 +5,7 @@ import { ArrowLeftOutlined, DollarOutlined, CalendarOutlined } from '@ant-design
 import { getInstallment, RentalInstallment, RentalInstallmentStatus } from '../../services/rental-service';
 import { InstallmentPaymentLinksPanel } from '../../components/rental/InstallmentPaymentLinksPanel';
 import { t } from '../../i18n/t';
+import { libellePeriodeEcheance } from '../../lib/rental-labels';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -110,7 +111,7 @@ export const InstallmentDetailPage: React.FC = () => {
             </Button>
             <div>
               <Title level={3} style={{ margin: 0 }}>
-                {t('Échéance')} {installment.period_month}/{installment.period_year}
+                {t('Échéance')} {libellePeriodeEcheance(installment.period_month, installment.period_year)}
               </Title>
               <Text type="secondary">{t("Détails de l'échéance")}</Text>
             </div>
@@ -167,7 +168,7 @@ export const InstallmentDetailPage: React.FC = () => {
             >
               <Descriptions column={1} bordered size="small">
                 <Descriptions.Item label={t('Période')}>
-                  {installment.period_month}/{installment.period_year}
+                  {libellePeriodeEcheance(installment.period_month, installment.period_year)}
                 </Descriptions.Item>
                 <Descriptions.Item label={t("Date d'échéance")}>{formatDate(installment.due_date)}</Descriptions.Item>
                 <Descriptions.Item label={t('Statut')}>{getStatusTag(installment.status)}</Descriptions.Item>
@@ -192,7 +193,7 @@ export const InstallmentDetailPage: React.FC = () => {
             installmentId={installmentId}
             remaining={remaining}
             status={installment.status}
-            periodLabel={`${installment.period_month}/${installment.period_year}`}
+            periodLabel={libellePeriodeEcheance(installment.period_month, installment.period_year)}
           />
         )}
       </Space>

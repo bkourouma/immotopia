@@ -56,10 +56,22 @@ export interface MoneyValueProps {
   className?: string;
 }
 
+/**
+ * Le franc CFA s'écrit « FCFA » partout (hypothèse H31) : l'API renvoie le code
+ * ISO « XOF » ou « CFA » selon l'enregistrement, et aucun des deux ne doit
+ * s'afficher tel quel. Les autres devises passent inchangées.
+ */
+export function devisePourAffichage(currency: string | null | undefined): string | null | undefined {
+  if (!currency) return currency;
+  const code = currency.replace(/\s/g, '').toUpperCase();
+  return code === 'XOF' || code === 'CFA' || code === 'FCFA' ? DEFAULT_CURRENCY : currency;
+}
+
 export function formatMoney(
   value: number | string | null | undefined,
-  { currency = DEFAULT_CURRENCY, fractionDigits = 0, placeholder = '—' }: Partial<MoneyValueProps> = {}
+  { currency: deviseBrute = DEFAULT_CURRENCY, fractionDigits = 0, placeholder = '—' }: Partial<MoneyValueProps> = {}
 ): string {
+  const currency = devisePourAffichage(deviseBrute);
   if (value === null || value === undefined || value === '') return placeholder;
 
   const numeric = typeof value === 'number' ? value : Number(String(value).replace(/\s/g, ''));

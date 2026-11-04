@@ -25,7 +25,13 @@ import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useListParams } from '../../hooks/useListParams';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { nomDuBien, nomDeLaPersonne, optionsLocatairesDesBaux, deviseAffichee } from '../../lib/rental-labels';
+import {
+  nomDuBien,
+  nomDeLaPersonne,
+  optionsLocatairesDesBaux,
+  deviseAffichee,
+  libellePeriodeEcheance
+} from '../../lib/rental-labels';
 import {
   PageHeader,
   StateBlock,
@@ -98,7 +104,7 @@ function resteAPayer(echeance: RentalInstallment): number {
 }
 
 function periode(echeance: RentalInstallment): string {
-  return `${String(echeance.period_month).padStart(2, '0')}/${echeance.period_year}`;
+  return libellePeriodeEcheance(echeance.period_month, echeance.period_year);
 }
 
 function dateCourte(iso: string): string {

@@ -36,8 +36,13 @@ import {
 import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm';
 import { OnlineCheckoutStatus } from '../../components/rental/OnlineCheckoutStatus';
 import { t } from '../../i18n/t';
-import { nomDeLaPersonne, codeDeviseIntl } from '../../lib/rental-labels';
-import { libelleMethodePaiement, libelleStatutPaiement, statutsAtteignables } from '../../lib/rental-payment-status';
+import { nomDeLaPersonne, codeDeviseIntl, libellePeriodeEcheance } from '../../lib/rental-labels';
+import {
+  libelleMethodePaiement,
+  libelleOperateurMobileMoney,
+  libelleStatutPaiement,
+  statutsAtteignables
+} from '../../lib/rental-payment-status';
 
 import { activeLocale } from '../../i18n/format';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
@@ -283,7 +288,9 @@ export const PaymentDetailPage: React.FC = () => {
                 <Descriptions.Item label={t('Méthode de paiement')}>{getMethodLabel(payment.method)}</Descriptions.Item>
                 <Descriptions.Item label={t('Statut')}>{getStatusTag(payment.status)}</Descriptions.Item>
                 {payment.mm_operator && (
-                  <Descriptions.Item label={t('Opérateur Mobile Money')}>{payment.mm_operator}</Descriptions.Item>
+                  <Descriptions.Item label={t('Opérateur Mobile Money')}>
+                    {libelleOperateurMobileMoney(payment.mm_operator)}
+                  </Descriptions.Item>
                 )}
                 {payment.mm_phone && (
                   <Descriptions.Item label={t('Numéro de téléphone')}>{payment.mm_phone}</Descriptions.Item>
@@ -307,10 +314,12 @@ export const PaymentDetailPage: React.FC = () => {
                   {formatDate(payment.succeeded_at ?? payment.initiated_at)}
                 </Descriptions.Item>
                 <Descriptions.Item label={t("Date d'initiation")}>{formatDate(payment.initiated_at)}</Descriptions.Item>
-                {payment.failed_at && (
+                {/* Chaque date n'a de sens que dans son état : un paiement réactivé garde
+                    parfois la trace de son ancienne annulation (BUG-2026-11-04-050). */}
+                {payment.failed_at && payment.status === 'FAILED' && (
                   <Descriptions.Item label={t("Date d'échec")}>{formatDate(payment.failed_at)}</Descriptions.Item>
                 )}
-                {payment.canceled_at && (
+                {payment.canceled_at && payment.status === 'CANCELED' && (
                   <Descriptions.Item label={t("Date d'annulation")}>
                     {formatDate(payment.canceled_at)}
                   </Descriptions.Item>
@@ -368,8 +377,12 @@ export const PaymentDetailPage: React.FC = () => {
                           {allocation.installment ? (
                             <>
                               <Text strong>
-                                {t('Échéance')} {allocation.installment.period_month}/
-                                {allocation.installment.period_year} – {formatDate(allocation.installment.due_date)}
+                                {t('Échéance')}{' '}
+                                {libellePeriodeEcheance(
+                                  allocation.installment.period_month,
+                                  allocation.installment.period_year
+                                )}{' '}
+                                – {formatDate(allocation.installment.due_date)}
                               </Text>
                               <br />
                               <Text type="secondary">

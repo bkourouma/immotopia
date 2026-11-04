@@ -52,6 +52,27 @@ export function libelleMethodePaiement(methode: string): string {
   }
 }
 
+/**
+ * Opérateur Mobile Money (énum `MobileMoneyOperator`), jamais le code brut
+ * « ORANGE » (BUG-2026-11-04-051). Libellés alignés sur la trésorerie.
+ */
+export function libelleOperateurMobileMoney(operateur?: string | null): string {
+  switch (operateur) {
+    case 'ORANGE':
+      return t('Orange Money');
+    case 'MTN':
+      return t('MTN MoMo');
+    case 'MOOV':
+      return t('Moov Money');
+    case 'WAVE':
+      return t('Wave');
+    case 'OTHER':
+      return t('Autre');
+    default:
+      return operateur ?? '';
+  }
+}
+
 /** Libellé d'un statut, évalué au rendu pour suivre la langue affichée. */
 export function libelleStatutPaiement(statut: string): string {
   switch (statut) {

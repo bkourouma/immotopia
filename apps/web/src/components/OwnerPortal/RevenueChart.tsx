@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
+import { formatFcfa } from '../../i18n/format';
 interface RevenueChartProps {
   data: Array<{
     month?: string;
@@ -28,11 +28,7 @@ interface RevenueChartProps {
 }
 
 const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat(activeLocale(), {
-    style: 'currency',
-    currency: 'XOF',
-    minimumFractionDigits: 0
-  }).format(value);
+  return formatFcfa(value);
 };
 
 const CustomTooltip = ({ active, payload, label }: any) => {

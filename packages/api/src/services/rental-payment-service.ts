@@ -1121,6 +1121,17 @@ export async function updatePaymentStatusTx(
     updateData.canceled_at = new Date();
   }
 
+  // Un paiement qui QUITTE l'état annulé ou échoué (réactivation Annulé ->
+  // Réussi) ne garde pas la date de cet état : un paiement Réussi affichait
+  // sinon une « Date d'annulation » (BUG-2026-11-04-050). `succeeded_at` n'est
+  // pas effacé : c'est une date historique, jamais contredite par un autre état.
+  if (status !== RentalPaymentStatus.CANCELED && payment.canceled_at) {
+    updateData.canceled_at = null;
+  }
+  if (status !== RentalPaymentStatus.FAILED && payment.failed_at) {
+    updateData.failed_at = null;
+  }
+
   // Un paiement annule ou echoue ne doit plus solder quoi que ce soit : sans
   // ce retrait, l'echeance restait PAID et le loyer continuait d'apparaitre
   // encaisse (reversement proprietaire et quittance compris).

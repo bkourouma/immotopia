@@ -11,6 +11,14 @@
  * Une référence interne ne dit rien à personne ; elle ne vaut que comme filet.
  */
 
+/**
+ * Période d'une échéance, mois sur deux chiffres : « 09/2026 », jamais
+ * « 9/2026 » (BUG-2026-11-04-053). Formateur unique des écrans de location.
+ */
+export function libellePeriodeEcheance(mois: number | string, annee: number | string): string {
+  return `${String(mois).padStart(2, '0')}/${annee}`;
+}
+
 /** Ce qu'on affiche quand la donnée manque. Un tiret cadratin, jamais vide. */
 export const ABSENT = '—';
 
