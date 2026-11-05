@@ -14,12 +14,12 @@ import { statementApiErrorMessage } from '../../pages/patrimoine/statements/stat
  * commissions un état « accès refusé », pas « Impossible de charger ces données ».
  */
 
-const listOwnerStatements = vi.fn();
+const listOwnerStatementsPage = vi.fn();
 const getAgentCommissions = vi.fn();
 
 vi.mock('../../services/patrimoine-service', () => ({
   createOwnerStatement: vi.fn(),
-  listOwnerStatements: (...a: unknown[]) => listOwnerStatements(...a),
+  listOwnerStatementsPage: (...a: unknown[]) => listOwnerStatementsPage(...a),
   recomputeOwnerStatement: vi.fn(),
   sendOwnerStatement: vi.fn()
 }));
@@ -58,10 +58,11 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('refus de droits — relevés propriétaires', () => {
   it('affiche le message traduit de l’API, pas « Forbidden »', async () => {
-    listOwnerStatements.mockRejectedValue(erreur403);
+    listOwnerStatementsPage.mockRejectedValue(erreur403);
     mount('/tenant/:tenantId/patrimoine/statements', <OwnerStatementsPage />, '/tenant/agence-1/patrimoine/statements');
     expect(await screen.findByText(REFUS, {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.queryByText('Forbidden')).not.toBeInTheDocument();
+    expect(screen.queryByText('Aucun relevé de gérance pour le moment.')).not.toBeInTheDocument();
   });
 
   it('403 sans message : phrase de repli en français', () => {

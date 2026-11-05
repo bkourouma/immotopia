@@ -4,9 +4,9 @@
  * ne le remplace jamais. Un bien d'un AUTRE propriétaire de la même agence
  * donne une liste vide (baux, incidents, documents, exports).
  *
- * Prisma est remplacé : chaque `findMany` évalue le `where` reçu contre des
- * lignes en mémoire (un petit évaluateur de filtres Prisma), ce qui vérifie le
- * périmètre réellement demandé à la base.
+ * Prisma est remplacé : les demandes hors périmètre s'arrêtent avant la base ;
+ * chaque `findMany` appelé évalue son `where` contre des lignes en mémoire,
+ * pour vérifier le périmètre réellement demandé à la base.
  */
 
 type Row = Record<string, any>;
@@ -14,6 +14,7 @@ type Row = Record<string, any>;
 const TENANT = 'tenant-1';
 const OWN = 'prop-own';
 const FOREIGN = 'prop-foreign';
+const FOREIGN_LEASE = '3f2b8c1e-9d4a-4c55-8a6e-0b1c2d3e4f50';
 
 function matchValue(actual: any, cond: any): boolean {
   if (cond !== null && typeof cond === 'object' && !(cond instanceof Date)) {
@@ -85,7 +86,7 @@ beforeEach(() => {
 
   store.leases = [
     { id: 'lease-own', tenant_id: TENANT, property_id: OWN },
-    { id: 'lease-foreign', tenant_id: TENANT, property_id: FOREIGN }
+    { id: FOREIGN_LEASE, tenant_id: TENANT, property_id: FOREIGN }
   ];
   store.tickets = [
     { id: 'tk-own', tenant_id: TENANT, property_id: OWN },
@@ -104,7 +105,7 @@ beforeEach(() => {
       id: 'doc-foreign-lease',
       tenant_id: TENANT,
       status: 'ISSUED',
-      lease_id: 'lease-foreign',
+      lease_id: FOREIGN_LEASE,
       lease: { property_id: FOREIGN }
     },
     {
@@ -140,14 +141,9 @@ describe('portail propriétaire — le filtre propertyId restreint le périmètr
   const scope = [OWN];
 
   it('baux : un bien étranger ne renvoie aucun bail', async () => {
-    findManyLeases.mockClear();
-    try {
-      await service.getLeases(scope, TENANT, { propertyId: FOREIGN });
-    } catch {
-      // la mise en forme peut échouer sur les lignes factices : seul le where compte
-    }
-    const { where } = findManyLeases.mock.calls[0][0];
-    expect(selectedIds(store.leases, where)).toEqual([]);
+    const result = await service.getLeases(scope, TENANT, { propertyId: FOREIGN });
+    expect(result.leases).toEqual([]);
+    expect(findManyLeases).not.toHaveBeenCalled();
   });
 
   it('baux : son propre bien reste filtrable', async () => {
@@ -161,13 +157,9 @@ describe('portail propriétaire — le filtre propertyId restreint le périmètr
   });
 
   it('incidents : un bien étranger ne renvoie aucun ticket', async () => {
-    try {
-      await service.getMaintenanceTickets(scope, TENANT, { propertyId: FOREIGN });
-    } catch {
-      /* idem */
-    }
-    const { where } = findManyTickets.mock.calls[0][0];
-    expect(selectedIds(store.tickets, where)).toEqual([]);
+    const result = await service.getMaintenanceTickets(scope, TENANT, { propertyId: FOREIGN });
+    expect(result.tickets).toEqual([]);
+    expect(findManyTickets).not.toHaveBeenCalled();
   });
 
   it('incidents : son propre bien reste filtrable', async () => {
@@ -181,13 +173,9 @@ describe('portail propriétaire — le filtre propertyId restreint le périmètr
   });
 
   it('documents : un bien étranger ne renvoie aucun document', async () => {
-    try {
-      await service.getDocuments(scope, TENANT, { propertyId: FOREIGN });
-    } catch {
-      /* idem */
-    }
-    const { where } = findManyDocuments.mock.calls[0][0];
-    expect(selectedIds(store.documents, where)).toEqual([]);
+    const result = await service.getDocuments(scope, TENANT, { propertyId: FOREIGN });
+    expect(result.documents).toEqual([]);
+    expect(findManyDocuments).not.toHaveBeenCalled();
   });
 
   it('documents : son propre bien reste filtrable (bail et échéance)', async () => {
@@ -202,7 +190,7 @@ describe('portail propriétaire — le filtre propertyId restreint le périmètr
 
   it('documents : leaseId étranger ne renvoie rien', async () => {
     try {
-      await service.getDocuments(scope, TENANT, { leaseId: 'lease-foreign' });
+      await service.getDocuments(scope, TENANT, { leaseId: FOREIGN_LEASE });
     } catch {
       /* idem */
     }
@@ -211,12 +199,8 @@ describe('portail propriétaire — le filtre propertyId restreint le périmètr
   });
 
   it('documents : leaseId étranger combiné à un propertyId étranger ne renvoie rien', async () => {
-    try {
-      await service.getDocuments(scope, TENANT, { propertyId: FOREIGN, leaseId: 'lease-foreign' });
-    } catch {
-      /* idem */
-    }
-    const { where } = findManyDocuments.mock.calls[0][0];
-    expect(selectedIds(store.documents, where)).toEqual([]);
+    const result = await service.getDocuments(scope, TENANT, { propertyId: FOREIGN, leaseId: FOREIGN_LEASE });
+    expect(result.documents).toEqual([]);
+    expect(findManyDocuments).not.toHaveBeenCalled();
   });
 });

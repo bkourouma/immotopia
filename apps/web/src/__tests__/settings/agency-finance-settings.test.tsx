@@ -24,6 +24,11 @@ const deleteOwnerFeeTerms = vi.fn();
 const listAgentCommissionShares = vi.fn();
 const updateAgentCommissionShare = vi.fn();
 const getMenuEntitlements = vi.fn();
+const getMyMenuAccess = vi.fn();
+
+vi.mock('../../services/role-menu-service', () => ({
+  getMyMenuAccess: (...a: unknown[]) => getMyMenuAccess(...a)
+}));
 
 vi.mock('../../services/entitlements-service', () => ({
   getMenuEntitlements: (...a: unknown[]) => getMenuEntitlements(...a)
@@ -117,6 +122,11 @@ function mount() {
 beforeEach(() => {
   vi.clearAllMocks();
   getMenuEntitlements.mockResolvedValue({ enforcement: 'off', moduleAccess: {}, readOnly: false, phase: 'ACTIVE' });
+  getMyMenuAccess.mockResolvedValue({
+    disabledMenuKeys: [],
+    enabledMenuKeys: [],
+    permissionKeys: ['TENANT_SETTINGS_VIEW', 'TENANT_SETTINGS_EDIT']
+  });
   getAgencyFinanceSettings.mockResolvedValue(AGENCY_SETTINGS);
   listOwnerFeeTerms.mockResolvedValue(OWNERS);
   listAgentCommissionShares.mockResolvedValue(AGENTS);

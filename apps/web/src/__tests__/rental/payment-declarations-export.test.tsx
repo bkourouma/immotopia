@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
+import { MemoryRouter } from 'react-router-dom';
 import { CSV_BOM, toCsvString } from '../../utils/table-export/csv';
 import { neutralizeFormula } from '../../utils/copilot-artifact';
 import type { ExportTable } from '../../utils/table-export/types';
@@ -75,7 +76,9 @@ beforeEach(() => {
 async function exporterEnCsv(): Promise<ExportTable> {
   render(
     <AntApp>
-      <PaymentDeclarationsList tenantId="agence-1" />
+      <MemoryRouter>
+        <PaymentDeclarationsList tenantId="agence-1" />
+      </MemoryRouter>
     </AntApp>
   );
   await userEvent.click(await screen.findByRole('button', { name: 'Exporter le tableau' }, { timeout: 15000 }));

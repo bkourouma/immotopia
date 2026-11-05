@@ -131,6 +131,43 @@ describe('resolveOwnerPortalPropertyIds', () => {
     const ids = await resolveOwnerPortalPropertyIds({ userId: AWA, tenantClientId: 'tc-awa-a', tenantId: TENANT_A });
     expect(ids.sort()).toEqual(['duplex']);
   });
+
+  it('borne toutes les lectures Property pour le lookup agence sans changer le portail', async () => {
+    mockPrisma.property.rows.push(
+      { id: 'agence-direct', tenantId: TENANT_A, ownerUserId: AWA, ownershipType: 'TENANT' },
+      { ...clientProperty('client-agence-mandat'), tenantId: TENANT_A },
+      { ...clientProperty('client-agence-sans-mandat'), tenantId: TENANT_A },
+      { id: 'agence-loue', tenantId: TENANT_A, ownerUserId: FANTA, ownershipType: 'TENANT' },
+      { id: 'autre-loue', tenantId: TENANT_B, ownerUserId: FANTA, ownershipType: 'TENANT' }
+    );
+    mockPrisma.rentalLease.rows.push(
+      { id: 'bail-agence', tenant_id: TENANT_A, owner_client_id: 'tc-awa-a', property_id: 'agence-loue' },
+      { id: 'bail-autre', tenant_id: TENANT_A, owner_client_id: 'tc-awa-a', property_id: 'autre-loue' },
+      { id: 'bail-client', tenant_id: TENANT_A, owner_client_id: 'tc-awa-a', property_id: 'duplex' }
+    );
+    mockPrisma.propertyMandate.rows.push(mandate('client-agence-mandat'));
+    mockPrisma.rentalLease.rows.push({
+      id: 'bail-client-sans-mandat',
+      tenant_id: TENANT_A,
+      owner_client_id: 'tc-awa-a',
+      property_id: 'client-agence-sans-mandat'
+    });
+
+    mockPrisma.property.findMany.mockClear();
+
+    const ids = await resolveOwnerPortalPropertyIds({
+      userId: AWA,
+      tenantClientId: 'tc-awa-a',
+      tenantId: TENANT_A,
+      restrictToTenantProperties: true
+    });
+
+    expect(ids.sort()).toEqual(['agence-direct', 'agence-loue', 'client-agence-mandat']);
+    expect(mockPrisma.property.findMany).toHaveBeenCalled();
+    for (const [args] of mockPrisma.property.findMany.mock.calls) {
+      expect(args.where.tenantId).toBe(TENANT_A);
+    }
+  });
 });
 
 describe('portail propriétaire — /patrimoine alimenté par le même périmètre', () => {

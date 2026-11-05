@@ -1673,6 +1673,17 @@
       "sensitive": true
     },
     {
+      "id": "GET /api/tenants/:tenantId/owner-statements/eligible-properties",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/owner-statements/eligible-properties",
+      "pathParams": [],
+      "module": "owner-statements",
+      "summary": "owner-statements / eligible-properties",
+      "permissions": ["OWNER_STATEMENTS_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/patrimoine/assets",
       "method": "GET",
       "path": "/api/tenants/:tenantId/patrimoine/assets",

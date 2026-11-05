@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { App as AntApp } from 'antd';
+import { MemoryRouter } from 'react-router-dom';
 
 /**
  * BUG-2026-11-04-055 : l'onglet « Déclarations en attente » arrondissait les
@@ -38,9 +39,11 @@ describe('Déclarations en attente — montants', () => {
       pagination: { page: 1, limit: 100, total: 3, totalPages: 1 }
     });
     render(
-      <AntApp>
-        <PaymentDeclarationsList tenantId="agence-1" />
-      </AntApp>
+      <MemoryRouter>
+        <AntApp>
+          <PaymentDeclarationsList tenantId="agence-1" />
+        </AntApp>
+      </MemoryRouter>
     );
     const texte = async (re: RegExp) => screen.findByText(re, {}, { timeout: 15000 });
     expect(await texte(/^0,01\sFCFA$/)).toBeInTheDocument();

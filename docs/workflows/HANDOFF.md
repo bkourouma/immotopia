@@ -19,36 +19,27 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 ## Branche `orch/2026-11-03-recette-locatif` — 2026-11-05
 
-Recette de la gestion locative : scénario de 852 cas (`docs/recette/gestion-locative/`), exécution Playwright et correctifs délégués. PR [#193](https://github.com/bkourouma/immotopia/pull/193) vers `main`. Autorisation utilisateur du 05/11 vérifiée dans le chat SYNDIC : correction, fusion et staging après validation. Worktree : `.claude/worktrees/recette-locatif`.
+Reprise des travaux Claude Code et de la recette locative, PR [#193](https://github.com/bkourouma/immotopia/pull/193), worktree `.claude/worktrees/recette-locatif`. Le checkout principal ancien et modifié par ailleurs est préservé.
 
-**Reprise par Codex le 05/11, en cours.** Lire `docs/recette/gestion-locative/REPRISE-2026-11-05.md`, les rapports `RETESTS*-2026-11-05.md` et `COMPLEMENT*-2026-11-05.md`, puis `COUVERTURE-A-FINALISER.md`. La passation du 04/11 reste une photographie historique.
+**Autorisation utilisateur vérifiée dans le chat SYNDIC :** corriger la CI, fusionner #193 et déployer sur staging après validation. Aucune autorisation de production.
 
-- **Fait** :
-  - État actualisé des anomalies dans le bus partagé ; ne plus utiliser les compteurs du 04/11. Les trois nouvelles 063–065 sont corrigées et retestées, et RT5 est repris.
-  - D31, maintenance 063–065 et corrections des échecs CI commités et poussés : `7e38ae0f`. Hooks exécutés sans contournement. Rapport de relecture : aucun constat ouvert après corrections d'atomicité et de concurrence.
-  - CI du premier lot `41977138986` : API 11 615 et web 4 261 tests réussis. L'isolation était un faux vert (10 échecs masqués par continue-on-error), corrigé dans ce lot : étape désormais bloquante, permission structurée conservée dans audit, attentes 403 neutres et nettoyage FK ciblé. Rejeu LOCAL final complet : **13 suites / 248 tests, code 0**, base neuve `immotopia_isolation_codex_20261105_0645`, mode warn identique CI. Consulter le nouveau run après push avant de valider la CI.
-  - Écart 036 corrigé et retesté : pour Prisca Yao, total âgé = grand livre = 767 750 FCFA, écart nul ; seuls les orphelins historiques de 3 200 et 2 000 restent. Les 56 tests financiers passent, bornes de période relues.
-  - Nouveaux défauts du 05/11 : tri des signatures corrigé, testé et retesté ; filtre Bien du comptable corrigé dans les deux balances, nouveau lookup limité à id/title et à l'agence, 26 tests API et 14 web, lecture de B depuis A refusée en 403 ; dépôt multibaux corrigé, sélecteur et réessai après erreur, 4 tests web et 12 de garde API, retest C2 positif sur L5. Relectures code/sécurité : aucun constat restant après corrections et wiki.
-  - Le classeur des fonctionnalités et les catalogues i18n sont complets.
-  - Résultats consolidés : 538 cas passés consignés, 62 échecs historiques, 30 bloqués, 156 partiels, 66 non joués explicites et aucun sans verdict. Bus : 105 anomalies passées, 3 bloquées. Ces compteurs ne sont pas interchangeables. Classeur fusionné : 1 157 entrées.
-- **Reste** : par ordre de priorité, détaillé dans `PASSATION.md`, section 2.
-  1. Intégration de `origin/main` (PR #195, `cf6fead9`) résolue et typée : consulter `INTEGRATION-MAIN-2026-11-05.md`. Prochaine étape : CI complète de la tête intégrée, puis fusion/staging autorisés. Le run 41984903824 de `12c477f3` a réellement passé les 13 suites/248 tests d'isolation et 11 620 tests API ; seuls deux tests Signatures ont expiré. Leur attente est corrigée et retestée. BUG005/006 sont passés.
-  2. Continuer les variantes partielles des compléments 04 et 08. L'agence A a atteint 20/20 signatures pendant GL-04-101 ; le 21e envoi a bien été refusé en 409. Cela bloque de nouvelles signatures, notamment GL-08-067, et le scénario GL-04-115 nécessite 26 demandes (configuration insuffisante). Aucun achat ni changement de plafond effectué.
-  3. Consulter les nouveaux compléments 01, 05 et 1112 : sorties P1 historiques retrouvées et distinguées des contrôles actuels. BUG007 (forfait décimal) et 008 (formulaire principal financier lecteur) corrigés, tests et retests passés ; BUG009 (filtres historiques déclarations) corrigé, 14 tests API et retest navigateur passés. Restent les variantes et prérequis de `COUVERTURE-A-FINALISER.md` ; ne pas déclarer 852 réussites.
-  4. Scénario GL-03-016 en conflit avec H39 (interdiction de chevauchement) : BUG-2026-11-05-001 bloqué comme écart de scénario, pas défaut produit confirmé ; conserver le garde.
-  5. Rejouer les prérequis manquants par l'interface sur données REC-GL, suivre les suites complètes en CI et mettre à jour la PR avant clôture.
-- **Pièges** :
-  - Outils de recette (briefs, `rec-env.cjs`, Playwright, lots i18n, journal `suivi.md`) : `D:\APP\Immobillier\.orchestration\2026-11-03-recette-locatif\`, local et exclu de git.
-  - Serveurs : `rec-gl-smtp` (2525), `rec-gl-api` (8820) et `rec-gl-web` (3320) dans le `.claude/launch.json` du checkout principal. La base dédiée est `immotopia_recette_locatif`.
-  - API et puits SMTP ont été relancés depuis les helpers permanents sous `.orchestration/2026-11-03-recette-locatif/outils/rec`. Journaux API : `.orchestration/2026-11-03-recette-locatif/api-reprise.{stdout,stderr}.log`. Le SMTP ancien écrivait dans un scratchpad ; les trois messages manquants ont été copiés dans le dossier permanent sans supprimer les originaux.
-  - Plusieurs autres chats exécutent des tests dans `ux-integ` et `ux-lot-perf` : ne pas arrêter leurs processus ; distinguer les délais sous charge des régressions.
-  - Tests DB : trois bases locales de test créées, non supprimées (`immotopia_isolation_codex_20261105_0635`, `_0640`, `_0645`). Première tentative : mode `enforce` hérité du lanceur de recette, différent de la CI ; deuxième : 213 assertions passées mais erreur de clé étrangère comptable après le test ; troisième : 248 tests, toutes les phases réussies. Aucun effet sur `immotopia_recette_locatif`. Journaux sous `.orchestration/2026-11-03-recette-locatif/isolation-locale*.log`.
-  - `set-state` du bus refuse « échoué au retest » : utiliser « en correction » avec une note.
-  - Messages Zod et messages hors erreurs typées : les annoter `// @i18n-keys`.
-  - Ne jamais commiter pendant qu'un agent écrit.
-  - Pas plus de deux ou trois agents à la fois.
-  - Balance âgée : les écarts « Locataire Pénalités » (+3 200 et +2 000) sont des données orphelines, pas un défaut.
-- **Dernier commit préalable** : `189abda4` (007/008/009 et test Signatures) ; intégration main dans le commit de cette passation. Réglages actifs de recette restaurés à 10 %, TVA 18 % ; forfait inactif 1,5 conservé faute de remise à vide UI. Cartes financières indépendantes et comportement du hook sur panne réseau hors correctif 008, gardes API inchangées.
+**Fait :** D31, maintenance 063–065, onze RT5, balance âgée et grand livre réconciliés, lookup minimal du comptable, signatures et portail Dépôt multibaux corrigés et retestés. Lots `7e38ae0f`, `12c477f3`, `189abda4`, puis intégration de main/#195 par `483df040`. Hooks respectés, aucune suppression de données ni seed destructeur.
+
+La CI d’intégration [41992153460](https://github.com/bkourouma/immotopia/actions/runs/41992153460) a passé le build web, infra et les 339 tests d’isolation bloquants. Elle a révélé 9 échecs API et 15 web : attentes de contrats, mocks de droits, routeurs de tests et régressions de filtres/messages. Corrections et preuves ciblées : `docs/recette/gestion-locative/CI-INTEGRATION-2026-11-05.md`. Signatures 11/11 passe.
+
+BUG028 est maintenant corrigé et passé : lookup des biens éligibles au propriétaire, sélection vidée au changement, option stricte tenant pour toutes les lectures intermédiaires, zéro nouvel avertissement au rejeu. Tests API 126/126 puis scope final 16/16 ; test web 10/10, Chrome et contrôle inter-agences passés. Relectures code/sécurité sans constat restant. Classeur 1 158 entrées et catalogue IA 787 routes, i18n à jour.
+
+**Reste immédiat :** pousser le lot CI/relevés propriétaires, attendre les huit jobs de la CI du nouveau head, vérifier main et head juste avant fusion, puis déployer staging et contrôler version/santé. Les résultats définitifs de CI et déploiement sont dans la PR et les workflows associés.
+
+**Recette manuelle :** 538 succès consignés, 62 échecs historiques, 29 blocages, 157 partiels, 66 non joués explicites et aucun sans verdict, sur 852 cas. Bus : 106 passés et 2 bloqués. Ne pas confondre succès historique, correction d’un défaut et réussite de toutes les variantes. Lire RESULTATS, COUVERTURE-A-FINALISER et les rapports COMPLEMENT/RETESTS. GL-10-020 reste partiel : double clic Générer/F5 non rejoué.
+
+**Deux blocages du bus :** lecture des paramètres financiers contradictoire entre scénarios (BUG-2026-11-03-016, question métier envoyée à l’utilisateur, aucune réponse supposée) ; renouvellement en chevauchement contraire à H39 (BUG-2026-11-05-001). Ne pas changer ces règles sans décision. Quota signatures A à 20/20 ; contrôles J+1 et réconciliation des dates de baux à prévoir.
+
+**Environnement :** web 3320, API 8820, SMTP 2525 ; DB `immotopia_recette_locatif`. Helpers et preuves locales dans `D:/APP/Immobillier/.orchestration/2026-11-03-recette-locatif`. Rechargement API parfois 40–80 s : vérifier santé avant recette. Plusieurs connexions d’un même compte invalident ses sessions. Réglages actifs restaurés à 10 %, TVA 18 % ; forfait inactif 1,5 conservé faute de remise à vide UI.
+
+**Pièges :** un seul runner local Jest/Vitest à la fois ; ne pas arrêter les processus des autres chats. Trois bases d’isolation locales créées et conservées (`..._0635`, `_0640`, `_0645`), sans effet sur la recette. Ne pas commiter pendant une édition concurrente. Serveurs API/SMTP relancés depuis helpers permanents, anciens e-mails copiés sans suppression. Aucun token ni lien personnel dans Git.
+
+**Dernier commit préalable :** `483df040` ; le commit de cette passation porte le lot complémentaire CI et BUG028. Vérifier le dernier SHA avec git log et la PR avant toute reprise.
 
 ## Référence intégrée — PR #195 (2026-11-05)
 

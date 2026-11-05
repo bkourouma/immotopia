@@ -58,7 +58,8 @@ Généré depuis les verdicts explicites de RESULTATS.md. Les retests par anomal
 ## Bloc 10
 
 - échoué historique (2) : GL-10-002, GL-10-045.
-- bloqué (15) : GL-10-007, GL-10-010, GL-10-012, GL-10-013, GL-10-015, GL-10-020, GL-10-042, GL-10-047, GL-10-052, GL-10-060, GL-10-062, GL-10-070, GL-10-071, GL-10-072, GL-10-073.
+- bloqué (14) : GL-10-007, GL-10-010, GL-10-012, GL-10-013, GL-10-015, GL-10-042, GL-10-047, GL-10-052, GL-10-060, GL-10-062, GL-10-070, GL-10-071, GL-10-072, GL-10-073.
+- à finaliser (1) : GL-10-020.
 - non joué (4) : GL-10-006, GL-10-027, GL-10-032, GL-10-080.
 
 ## Bloc 11

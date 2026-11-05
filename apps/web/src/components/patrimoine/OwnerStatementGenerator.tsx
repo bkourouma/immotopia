@@ -16,12 +16,22 @@ interface Payload {
 interface Props {
   ownerOptions: PropertyOption[];
   propertyOptions: PropertyOption[];
+  propertyLoading?: boolean;
   loading?: boolean;
+  onOwnerChange?: (ownerContactId?: string) => void;
   onGenerate: (payload: Payload) => Promise<void> | void;
 }
 
-export const OwnerStatementGenerator: React.FC<Props> = ({ ownerOptions, propertyOptions, loading, onGenerate }) => {
+export const OwnerStatementGenerator: React.FC<Props> = ({
+  ownerOptions,
+  propertyOptions,
+  propertyLoading,
+  loading,
+  onOwnerChange,
+  onGenerate
+}) => {
   const [form] = Form.useForm<Payload>();
+  const ownerContactId = Form.useWatch('ownerContactId', form);
 
   return (
     <Card title={t('Générer un relevé de gérance')}>
@@ -33,9 +43,14 @@ export const OwnerStatementGenerator: React.FC<Props> = ({ ownerOptions, propert
         >
           <Select
             showSearch
+            allowClear
             optionFilterProp="label"
             options={ownerOptions}
             placeholder={t('Sélectionnez le contact propriétaire')}
+            onChange={(value?: string) => {
+              form.setFieldValue('propertyIds', []);
+              onOwnerChange?.(value);
+            }}
           />
         </Form.Item>
         <Form.Item
@@ -58,6 +73,8 @@ export const OwnerStatementGenerator: React.FC<Props> = ({ ownerOptions, propert
             optionFilterProp="label"
             mode="multiple"
             options={propertyOptions}
+            loading={propertyLoading}
+            disabled={!ownerContactId || propertyLoading}
             placeholder={t('Sélectionnez les biens')}
           />
         </Form.Item>

@@ -12,7 +12,7 @@ La recette a repris dans le même worktree avec Codex. D31 et maintenance 063–
 - API et SMTP relancés depuis les helpers permanents. Le puits SMTP écrivait auparavant dans l'ancien scratchpad : les trois messages manquants ont été copiés sans suppression et les nouveaux arrivent dans `outils/rec/mails`. Santé API 8820 avant chaque essai ; HMR peut prendre 40–80 secondes.
 - Sessions : plusieurs connexions simultanées du même compte invalident les anciennes sessions. Répartir ADMIN_A et AGENT_A lorsque les droits le permettent, noter le rôle réellement testé.
 - Le lot complémentaire est commité en `189abda4`. Intégration avec main/#195 (`cf6fead9`) décrite dans [INTEGRATION-MAIN-2026-11-05.md](INTEGRATION-MAIN-2026-11-05.md). Fusion puis staging autorisés après validation par l'utilisateur le 05/11 ; ne pas appliquer cette autorisation à la production.
-- Bilan détaillé : 538 cas passés consignés, 62 échecs historiques, 30 bloqués, 156 partiels, 66 non joués explicites, aucun sans verdict. Le bus compte 105 anomalies passées et 3 bloquées ; ces deux décomptes mesurent des choses différentes.
+- Bilan détaillé : 538 cas passés consignés, 62 échecs historiques, 29 bloqués, 157 partiels, 66 non joués explicites, aucun sans verdict. Le bus compte 106 anomalies passées et 2 bloquées ; ces deux décomptes mesurent des choses différentes.
 
 **Les sections suivantes décrivent la photographie du 4 novembre. Leurs compteurs et priorités sont historiques ; les documents de reprise ci-dessus et HANDOFF priment pour continuer.**
 

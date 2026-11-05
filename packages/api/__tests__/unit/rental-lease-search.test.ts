@@ -36,7 +36,7 @@ describe('listLeases — recherche', () => {
     const where = mockPrisma.rentalLease.findMany.mock.calls[0][0].where;
     expect(where.tenant_id).toBe('tenant-A');
     const contient = { contains: 'Cocody', mode: 'insensitive' };
-    expect(where.OR).toEqual(
+    expect(where.AND[0].OR).toEqual(
       expect.arrayContaining([
         { lease_number: contient },
         { property: { title: contient } },

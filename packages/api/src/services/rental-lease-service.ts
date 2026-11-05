@@ -865,8 +865,9 @@ export async function listLeases(
     where.primary_renter_client_id = filters.primaryRenterClientId;
   }
 
-  if (filters?.search) {
-    applyLeaseSearch(where, filters.search);
+  const search = filters?.search?.trim();
+  if (search) {
+    applyLeaseSearch(where, search);
   }
 
   const page = pagination?.page || 1;

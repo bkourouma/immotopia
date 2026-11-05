@@ -4,13 +4,13 @@ import { App, Alert, Button, Card, Space, Tag, Typography } from 'antd';
 import { OwnerStatementGenerator } from '../../../components/patrimoine/OwnerStatementGenerator';
 import {
   createOwnerStatement,
+  listEligibleOwnerStatementProperties,
   recomputeOwnerStatement,
   sendOwnerStatement
 } from '../../../services/patrimoine-service';
 import { isLegacyStatement, statementStatusLabel } from '../../../components/patrimoine/owner-statement-helpers';
 import { MoneyValue, Table } from '../../../components/primitives';
 import { listContacts } from '../../../services/crm-service';
-import { listProperties } from '../../../services/property-service';
 import type { OwnerStatement } from '../../../types/patrimoine-types';
 import { useOwnerStatementsList } from './useOwnerStatementsList';
 import { useAuth } from '../../../hooks/useAuth';
@@ -66,21 +66,15 @@ export const OwnerStatementsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [ownerOptions, setOwnerOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [propertyOptions, setPropertyOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [selectedOwnerId, setSelectedOwnerId] = useState<string>();
+  const [propertyLoading, setPropertyLoading] = useState(false);
 
   const loadData = async () => {
     if (!effectiveTenantId) return;
     setLoading(true);
     setError(null);
     try {
-      const [properties, contacts] = await Promise.all([
-        listProperties(effectiveTenantId, { page: 1, limit: 100 }),
-        listContacts(effectiveTenantId, { page: 1, limit: 500 })
-      ]);
-      // Les titres ne sont pas uniques (plusieurs lots « Appartement F3 ») : la référence
-      // et l'adresse permettent de reconnaître le bon bien. La recherche porte sur ce libellé.
-      setPropertyOptions(
-        properties.properties.map(property => ({ value: property.id, label: propertyOptionLabel(property) }))
-      );
+      const contacts = await listContacts(effectiveTenantId, { page: 1, limit: 500 });
       const owners = contacts.contacts.filter(contact =>
         (contact.roles || []).some(role => role.active && role.role === 'PROPRIETAIRE')
       );
@@ -100,6 +94,34 @@ export const OwnerStatementsPage: React.FC = () => {
   useEffect(() => {
     void loadData();
   }, [effectiveTenantId]);
+
+  useEffect(() => {
+    if (!effectiveTenantId || !selectedOwnerId) {
+      setPropertyOptions([]);
+      setPropertyLoading(false);
+      return;
+    }
+
+    let current = true;
+    setPropertyLoading(true);
+    void listEligibleOwnerStatementProperties(effectiveTenantId, selectedOwnerId)
+      .then(properties => {
+        if (!current) return;
+        // Les titres ne sont pas uniques : référence et adresse distinguent les lots.
+        setPropertyOptions(properties.map(property => ({ value: property.id, label: propertyOptionLabel(property) })));
+      })
+      .catch(e => {
+        if (!current) return;
+        setPropertyOptions([]);
+        message.error(statementApiErrorMessage(e, t('Erreur de chargement des relevés')));
+      })
+      .finally(() => {
+        if (current) setPropertyLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [effectiveTenantId, selectedOwnerId]);
 
   const handleGenerate = async (payload: { ownerContactId: string; period: string; propertyIds: string[] }) => {
     if (!effectiveTenantId) return;
@@ -152,7 +174,7 @@ export const OwnerStatementsPage: React.FC = () => {
 
   // Toute l'agence, ancien calcul et non payé : compté par le serveur, hors critères et pagination.
   const legacyCount = list.legacyUnpaidCount;
-  const listError = list.error ? t('Erreur de chargement des relevés') : null;
+  const listError = list.error ? statementApiErrorMessage(list.error, t('Erreur de chargement des relevés')) : null;
 
   if (ownAssetsOnly) {
     return (
@@ -191,105 +213,112 @@ export const OwnerStatementsPage: React.FC = () => {
         <OwnerStatementGenerator
           ownerOptions={ownerOptions}
           propertyOptions={propertyOptions}
+          propertyLoading={propertyLoading}
           loading={createLoading}
+          onOwnerChange={ownerContactId => {
+            setPropertyOptions([]);
+            setSelectedOwnerId(ownerContactId);
+          }}
           onGenerate={handleGenerate}
         />
 
         <Card title={t('Historique des relevés')}>
-          <Table
-            exportFilename={t('Historique des relevés')}
-            exportFetchAll={list.exportFetchAll}
-            search={list.search.searchProps}
-            pagination={list.search.tablePagination(list.total)}
-            locale={list.search.isFiltered ? undefined : { emptyText: t('Aucun relevé de gérance pour le moment.') }}
-            scroll={{ x: 'max-content' }}
-            loading={loading || list.isFetching}
-            rowKey="id"
-            dataSource={list.statements}
-            columns={[
-              { title: t('Période'), dataIndex: 'period' },
-              {
-                title: t('Propriétaire'),
-                key: 'owner',
-                render: (_: unknown, record: OwnerStatement) =>
-                  `${record.owner?.firstName || ''} ${record.owner?.lastName || ''}`.trim() ||
-                  record.owner?.email ||
-                  '—'
-              },
-              {
-                title: t('Loyers encaissés'),
-                dataIndex: 'totalRevenue',
-                align: 'end' as const,
-                render: (value: number) => <MoneyValue value={value} />
-              },
-              {
-                title: t('Honoraires et TVA'),
-                key: 'fees',
-                align: 'end' as const,
-                exportValue: (record: OwnerStatement) =>
-                  Number(record.totalManagementFees) + Number(record.totalManagementFeesVat),
-                render: (_: unknown, record: OwnerStatement) => (
-                  <MoneyValue value={Number(record.totalManagementFees) + Number(record.totalManagementFeesVat)} />
-                )
-              },
-              {
-                title: t('Dépenses'),
-                dataIndex: 'totalExpenses',
-                align: 'end' as const,
-                render: (value: number) => <MoneyValue value={value} />
-              },
-              {
-                title: t('Net à reverser'),
-                dataIndex: 'netAmount',
-                align: 'end' as const,
-                render: (value: number) => <MoneyValue value={value} signed />
-              },
-              {
-                title: t('Statut'),
-                dataIndex: 'status',
-                exportValue: (record: OwnerStatement) =>
-                  isLegacyStatement(record)
-                    ? `${statementStatusLabel(record.status)} — ${t('Ancien calcul')}`
-                    : statementStatusLabel(record.status),
-                render: (status: OwnerStatement['status'], record: OwnerStatement) => (
-                  <Space size={4} wrap>
-                    <Tag>{statementStatusLabel(status)}</Tag>
-                    {isLegacyStatement(record) ? <Tag color="warning">{t('Ancien calcul')}</Tag> : null}
-                  </Space>
-                )
-              },
-              {
-                title: t('Actions'),
-                key: 'actions',
-                render: (_: unknown, record: OwnerStatement) => {
-                  const legacy = isLegacyStatement(record);
-                  return (
-                    <Space>
-                      <Button
-                        onClick={() => navigate(`/tenant/${effectiveTenantId}/patrimoine/statements/${record.id}`)}
-                      >
-                        {t('Détails')}
-                      </Button>
-                      {legacy && record.status !== 'PAID' ? (
-                        <Button
-                          type="primary"
-                          loading={recomputeLoadingId === record.id}
-                          onClick={() => handleRecompute(record.id)}
-                        >
-                          {t('Recalculer')}
-                        </Button>
-                      ) : null}
-                      {!legacy ? (
-                        <Button loading={sendLoadingId === record.id} onClick={() => handleSend(record.id)}>
-                          {t('Envoyer')}
-                        </Button>
-                      ) : null}
+          {!listError ? (
+            <Table
+              exportFilename={t('Historique des relevés')}
+              exportFetchAll={list.exportFetchAll}
+              search={list.search.searchProps}
+              pagination={list.search.tablePagination(list.total)}
+              locale={list.search.isFiltered ? undefined : { emptyText: t('Aucun relevé de gérance pour le moment.') }}
+              scroll={{ x: 'max-content' }}
+              loading={loading || list.isFetching}
+              rowKey="id"
+              dataSource={list.statements}
+              columns={[
+                { title: t('Période'), dataIndex: 'period' },
+                {
+                  title: t('Propriétaire'),
+                  key: 'owner',
+                  render: (_: unknown, record: OwnerStatement) =>
+                    `${record.owner?.firstName || ''} ${record.owner?.lastName || ''}`.trim() ||
+                    record.owner?.email ||
+                    '—'
+                },
+                {
+                  title: t('Loyers encaissés'),
+                  dataIndex: 'totalRevenue',
+                  align: 'end' as const,
+                  render: (value: number) => <MoneyValue value={value} />
+                },
+                {
+                  title: t('Honoraires et TVA'),
+                  key: 'fees',
+                  align: 'end' as const,
+                  exportValue: (record: OwnerStatement) =>
+                    Number(record.totalManagementFees) + Number(record.totalManagementFeesVat),
+                  render: (_: unknown, record: OwnerStatement) => (
+                    <MoneyValue value={Number(record.totalManagementFees) + Number(record.totalManagementFeesVat)} />
+                  )
+                },
+                {
+                  title: t('Dépenses'),
+                  dataIndex: 'totalExpenses',
+                  align: 'end' as const,
+                  render: (value: number) => <MoneyValue value={value} />
+                },
+                {
+                  title: t('Net à reverser'),
+                  dataIndex: 'netAmount',
+                  align: 'end' as const,
+                  render: (value: number) => <MoneyValue value={value} signed />
+                },
+                {
+                  title: t('Statut'),
+                  dataIndex: 'status',
+                  exportValue: (record: OwnerStatement) =>
+                    isLegacyStatement(record)
+                      ? `${statementStatusLabel(record.status)} — ${t('Ancien calcul')}`
+                      : statementStatusLabel(record.status),
+                  render: (status: OwnerStatement['status'], record: OwnerStatement) => (
+                    <Space size={4} wrap>
+                      <Tag>{statementStatusLabel(status)}</Tag>
+                      {isLegacyStatement(record) ? <Tag color="warning">{t('Ancien calcul')}</Tag> : null}
                     </Space>
-                  );
+                  )
+                },
+                {
+                  title: t('Actions'),
+                  key: 'actions',
+                  render: (_: unknown, record: OwnerStatement) => {
+                    const legacy = isLegacyStatement(record);
+                    return (
+                      <Space>
+                        <Button
+                          onClick={() => navigate(`/tenant/${effectiveTenantId}/patrimoine/statements/${record.id}`)}
+                        >
+                          {t('Détails')}
+                        </Button>
+                        {legacy && record.status !== 'PAID' ? (
+                          <Button
+                            type="primary"
+                            loading={recomputeLoadingId === record.id}
+                            onClick={() => handleRecompute(record.id)}
+                          >
+                            {t('Recalculer')}
+                          </Button>
+                        ) : null}
+                        {!legacy ? (
+                          <Button loading={sendLoadingId === record.id} onClick={() => handleSend(record.id)}>
+                            {t('Envoyer')}
+                          </Button>
+                        ) : null}
+                      </Space>
+                    );
+                  }
                 }
-              }
-            ]}
-          />
+              ]}
+            />
+          ) : null}
         </Card>
       </Space>
     </>

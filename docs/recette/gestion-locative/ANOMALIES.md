@@ -2,8 +2,8 @@
 
 Photographie du bus partagé lors de la reprise. Le bus local reste la référence vivante ; les preuves du 5 novembre sont dans les rapports RETESTS et COMPLEMENT du même dossier. « Passé » porte sur le défaut retesté, pas sur toutes les variantes du scénario associé. Les écarts de scénario clos sont distingués dans les rapports.
 
-- passé : 105
-- bloqué : 3
+- passé : 106
+- bloqué : 2
 
 | Anomalie           | État   | Priorité  | Titre                                                                                                                                                                  |
 | ------------------ | ------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -34,7 +34,7 @@ Photographie du bus partagé lors de la reprise. Le bus local reste la référen
 | BUG-2026-11-03-025 | passé  | important | Reversement : un montant saisi avec virgule ou point est multiplié (1000,5 devient 10 005)                                                                             |
 | BUG-2026-11-03-026 | passé  | mineur    | Paramètres financiers : forfait 0 devient 1 FCFA et est enregistré sans message d'erreur                                                                               |
 | BUG-2026-11-03-027 | passé  | mineur    | API reversement : un montant décimal (1000,5) est accepté et enregistré tel quel                                                                                       |
-| BUG-2026-11-03-028 | bloqué | mineur    | Formulaire de relevé : la liste des biens propose tous les biens de l'agence, titres non distinguables                                                                 |
+| BUG-2026-11-03-028 | passé  | mineur    | Formulaire de relevé : la liste des biens propose tous les biens de l'agence, titres non distinguables                                                                 |
 | BUG-2026-11-03-029 | passé  | mineur    | Avenant : objet vide, le message de validation est remplace par l'aide (champ rouge sans explication)                                                                  |
 | BUG-2026-11-03-030 | passé  | important | Révision du loyer : un loyer de 99 999 999 999 provoque une erreur 500                                                                                                 |
 | BUG-2026-11-03-031 | passé  | mineur    | Révision du loyer : des charges négatives (-5) sont acceptées puis ramenées silencieusement à 0 (événement créé)                                                       |
