@@ -152,7 +152,8 @@ describe('Génération de relevé : biens du propriétaire', () => {
     const clearOwner = owner.closest('.ant-select')?.querySelector<HTMLElement>('.ant-select-clear');
     expect(clearOwner).toBeTruthy();
     await user.click(clearOwner as HTMLElement);
-    expect(properties).toBeDisabled();
+    // Form.useWatch publie l'effacement après la mise à jour du formulaire.
+    await vi.waitFor(() => expect(properties).toBeDisabled(), T);
     expect(within(selectedProperties).queryByText('Villa — B-2 · Plateau')).not.toBeInTheDocument();
   });
 });
