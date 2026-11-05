@@ -20,7 +20,7 @@ export interface ChipsProps {
 }
 
 /** Une puce par critère actif, SAUF le champ libre (déjà visible dans son champ). */
-export function SearchChips({ criteria, values, labels, onRemove, touch }: ChipsProps) {
+export const SearchChips = React.memo(function SearchChips({ criteria, values, labels, onRemove, touch }: ChipsProps) {
   const chips = criteria
     .map(criterion => ({
       criterion,
@@ -105,7 +105,7 @@ export function SearchChips({ criteria, values, labels, onRemove, touch }: Chips
       })}
     </div>
   );
-}
+});
 
 /**
  * Compteur de résultats. La région `aria-live` est TOUJOURS rendue, vide tant
@@ -113,7 +113,7 @@ export function SearchChips({ criteria, values, labels, onRemove, touch }: Chips
  * change dans une région déjà présente, et la hauteur réservée évite que la
  * mise en page saute à l'arrivée du premier compteur.
  */
-export function ResultCounter({ count }: { count: number | undefined }) {
+export const ResultCounter = React.memo(function ResultCounter({ count }: { count: number | undefined }) {
   let text = '';
   if (count !== undefined) {
     text =
@@ -139,12 +139,18 @@ export function ResultCounter({ count }: { count: number | undefined }) {
       {text}
     </span>
   );
-}
+});
 
-export function ClearCriteriaButton({ onClick, touch }: { onClick: () => void; touch?: boolean }) {
+export const ClearCriteriaButton = React.memo(function ClearCriteriaButton({
+  onClick,
+  touch
+}: {
+  onClick: () => void;
+  touch?: boolean;
+}) {
   return (
     <Button type="text" onClick={onClick} style={touch ? { minHeight: 44 } : undefined}>
       {t('Effacer les critères')}
     </Button>
   );
-}
+});

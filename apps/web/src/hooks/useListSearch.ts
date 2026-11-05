@@ -273,30 +273,40 @@ export function useListSearch(options: UseListSearchOptions): UseListSearchResul
   // mémos de données ; l'identité du tableau `criteria` ne compte pas.
   // Les options statiques entrent dans la signature des données : elles filtrent
   // les valeurs d'URL (voir `readValue`), `values` doit donc suivre leur arrivée.
-  const dataSignature = criteria
-    .map(c => {
-      const known = staticOptionValues(c);
-      return `${c.type}:${c.key}:${criterionUrlKeys(c).join('+')}:${known ? [...known].join(',') : ''}`;
-    })
-    .join('|');
+  // Les chaînes ne sont reconstruites que si la RÉFÉRENCE de `criteria` change ;
+  // les mémos en aval restent pilotés par les chaînes elles-mêmes.
+  const dataSignature = useMemo(
+    () =>
+      criteria
+        .map(c => {
+          const known = staticOptionValues(c);
+          return `${c.type}:${c.key}:${criterionUrlKeys(c).join('+')}:${known ? [...known].join(',') : ''}`;
+        })
+        .join('|'),
+    [criteria]
+  );
   // Signature d'affichage : ajoute libellés, options et textes, pour que la barre
   // suive un changement de langue ou des options chargées sans changer à chaque rendu.
-  const displaySignature = criteria
-    .map(c => {
-      const opts = 'options' in c && c.options ? c.options.map(o => `${o.value}=${o.label}`).join(',') : '';
-      const extras = [
-        'placeholder' in c ? c.placeholder : '',
-        c.help,
-        'unit' in c ? c.unit : '',
-        'trueLabel' in c ? c.trueLabel : '',
-        'falseLabel' in c ? c.falseLabel : '',
-        'tristate' in c && c.tristate ? 1 : 0,
-        'loadOptions' in c && c.loadOptions ? 1 : 0,
-        'resolveLabel' in c && c.resolveLabel ? 1 : 0
-      ].join('~');
-      return `${c.key}:${c.label}:${c.primary ? 1 : 0}:${opts}:${extras}`;
-    })
-    .join('|');
+  const displaySignature = useMemo(
+    () =>
+      criteria
+        .map(c => {
+          const opts = 'options' in c && c.options ? c.options.map(o => `${o.value}=${o.label}`).join(',') : '';
+          const extras = [
+            'placeholder' in c ? c.placeholder : '',
+            c.help,
+            'unit' in c ? c.unit : '',
+            'trueLabel' in c ? c.trueLabel : '',
+            'falseLabel' in c ? c.falseLabel : '',
+            'tristate' in c && c.tristate ? 1 : 0,
+            'loadOptions' in c && c.loadOptions ? 1 : 0,
+            'resolveLabel' in c && c.resolveLabel ? 1 : 0
+          ].join('~');
+          return `${c.key}:${c.label}:${c.primary ? 1 : 0}:${opts}:${extras}`;
+        })
+        .join('|'),
+    [criteria]
+  );
 
   // Version COURANTE des critères : les fonctions (`loadOptions`, `resolveLabel`,
   // `api`) ferment sur l'état du composant et changent d'un rendu à l'autre alors
@@ -347,8 +357,23 @@ export function useListSearch(options: UseListSearchOptions): UseListSearchResul
   // Un paramètre étranger ou d'une autre instance change `filters` sans changer
   // nos valeurs : on garde la même référence tant que leur contenu est identique.
   const valuesSignature = JSON.stringify(rawValues);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- piloté par le contenu
-  const values = useMemo(() => rawValues, [valuesSignature]);
+  const previousValues = useRef<SearchValues>({});
+  const values = useMemo(() => {
+    // Une valeur de critère inchangée (intervalle, liste) garde sa référence :
+    // les contrôles mémoïsés des AUTRES critères ne se re-rendent pas.
+    const shared: SearchValues = {};
+    for (const key of Object.keys(rawValues)) {
+      const before = previousValues.current[key];
+      const now = rawValues[key];
+      shared[key] =
+        before !== undefined && typeof before === 'object' && JSON.stringify(before) === JSON.stringify(now)
+          ? before
+          : now;
+    }
+    previousValues.current = shared;
+    return shared;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- piloté par le contenu
+  }, [valuesSignature]);
 
   const activeCount = useMemo(
     () => stableData.reduce((count, c) => count + (isActiveValue(values[c.key]) ? 1 : 0), 0),
@@ -370,7 +395,7 @@ export function useListSearch(options: UseListSearchOptions): UseListSearchResul
 
   // Recalculé à chaque rendu avec les critères COURANTS (`api` fonction qui ferme
   // sur un état), puis stabilisé par contenu comme `values`.
-  const rawFilterParams = buildFilterParams(criteria, values);
+  const rawFilterParams = useMemo(() => buildFilterParams(criteria, values), [criteria, values]);
   const filterSignature = JSON.stringify(rawFilterParams);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- piloté par le contenu
   const filterParams = useMemo(() => rawFilterParams, [filterSignature]);
