@@ -864,3 +864,14 @@ Application et données :
 - Recette locale : le navigateur intégré refuse les pages servies par adresse IP (utiliser `*.localhost`) et ses captures échouent panneau masqué (preuves par DOM et réseau) ; `preview_start` est limité à 5 serveurs. Les testeurs n'ont pas les mots de passe de recette : les consigner dans les scénarios.
 - Ports : API 8001, web 3000 (3002 sur ce poste), démo 8800/3300 ; sur ce poste le port 3301 est pris par un autre projet (Docker).
 - Les marques anti-doublon des notifications vivent dans la table `notification_markers`, jamais dans `AuditLog`.
+
+## Branche `orch/2026-11-03-ux-recherche-lot-perf` — 2026-11-05
+
+**État :** reprise de la PR #194, validation en cours.
+**Dernier commit avant reprise :** `58ca023e` (optimisations de rendu).
+
+Fait : analyse du lot et de la CI 41923038088 ; seul échec dans la validation asynchrone du formulaire Syndic. Attente ciblée portée à 15 secondes, sans modifier les assertions de payload ni le timeout global. Assertion d'identité API corrigée dans le test de rendu (comparaison avant/après, au lieu de comparer un objet à lui-même).
+
+Reste : terminer tests ciblés, mesure de rendu, contrôles et CI complète. Aucun gain de temps navigateur revendiqué. La langue remonte l'arbre via la clé de LanguageBoundary dans App.tsx ; les mémos des traductions suivent ce remontage.
+
+Pièges : les deux fichiers `zz-profil-*` non suivis préexistent et restent hors commit. Ne pas intervenir dans le worktree recette-locatif (#193). Cette branche contient une ancienne intégration de la recherche ; elle ne remplace pas #195 et ne doit pas être fusionnée sans examiner leur articulation.

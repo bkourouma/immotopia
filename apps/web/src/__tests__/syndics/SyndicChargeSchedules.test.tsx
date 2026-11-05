@@ -582,7 +582,9 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
     fireEvent.change(labelInput, { target: { value: 'Charges renommées' } });
     fireEvent.click(screen.getByText('Enregistrer'));
 
-    await waitFor(() => expect(updateChargeSchedule).toHaveBeenCalled());
+    // La validation asynchrone des champs Ant Design peut dépasser la seconde
+    // par défaut sur le runner CI ; les assertions sur le corps restent strictes.
+    await waitFor(() => expect(updateChargeSchedule).toHaveBeenCalled(), { timeout: 15000 });
     const payload = updateChargeSchedule.mock.calls[0][3] as Record<string, unknown>;
     expect(payload).toMatchObject({ label: 'Charges renommées' });
     expect(payload).not.toHaveProperty('active');

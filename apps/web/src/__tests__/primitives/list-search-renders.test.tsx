@@ -163,10 +163,11 @@ describe('useListSearch — identité de searchProps', () => {
   it('garde la même identité quand criteria garde la même référence', () => {
     const { result, rerender } = renderHook(() => useListSearch({ criteria: STABLE }), { wrapper });
     const first = result.current.searchProps;
+    const params = result.current.apiParams;
     rerender();
     rerender();
     expect(result.current.searchProps).toBe(first);
-    expect(result.current.apiParams).toBe(result.current.apiParams);
+    expect(result.current.apiParams).toBe(params);
   });
 
   it('garde la même identité quand criteria est redéclaré à chaque rendu', () => {
