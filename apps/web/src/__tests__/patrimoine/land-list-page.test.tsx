@@ -1,13 +1,14 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LandRegularizationListPage } from '../../pages/patrimoine/land/LandRegularizationListPage';
 import { resume } from './land-fixtures';
 
+const T = { timeout: 8000 };
 const listLandRegularizations = vi.fn();
 const listLandTracks = vi.fn();
 const createLandRegularization = vi.fn();
@@ -30,12 +31,28 @@ vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
+function Url() {
+  return <div data-testid="url">{useLocation().search}</div>;
+}
+
+const AUTRE_DOSSIER = () =>
+  resume({
+    id: 'reg-2',
+    propertyId: 'bien-2',
+    status: 'TERMINEE',
+    trackLabel: 'Parcours personnalisé',
+    validationStatus: 'NON_APPLICABLE',
+    currentStepLabel: 'Remise du titre',
+    property: { id: 'bien-2', internalReference: 'TER-002', title: 'Parcelle de Yopougon' }
+  });
+
 function monter(url = '/tenant/agence-1/patrimoine/land') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Url />
           <Routes>
             <Route path="/tenant/:tenantId/patrimoine/land" element={<LandRegularizationListPage />} />
             <Route path="/tenant/:tenantId/patrimoine/land/:regularizationId" element={<div>detail-dossier</div>} />
@@ -94,40 +111,67 @@ describe('<LandRegularizationListPage>', () => {
     expect(screen.getByRole('button', { name: /Réessayer/ })).toBeInTheDocument();
   });
 
-  it('pré-filtre par bien avec ?propertyId=, affiche le filtre actif et permet de l’effacer', async () => {
+  it('pré-filtre par bien avec ?propertyId= (lien du bien) et permet d’effacer le critère', async () => {
     const user = userEvent.setup();
+    listLandRegularizations.mockResolvedValue([resume(), AUTRE_DOSSIER()]);
     monter('/tenant/agence-1/patrimoine/land?propertyId=bien-1');
 
-    await screen.findByText('Terrain de Bingerville');
-    expect(listLandRegularizations).toHaveBeenCalledWith('agence-1', { status: undefined, propertyId: 'bien-1' });
-    expect(screen.getByText('Bien : TER-001')).toBeInTheDocument();
+    await screen.findByText('Terrain de Bingerville', undefined, T);
+    // Le filtrage est local : la requête ne porte plus ni statut ni bien.
+    expect(listLandRegularizations).toHaveBeenCalledWith('agence-1');
+    expect(screen.queryByText('Parcelle de Yopougon')).toBeNull();
+    expect(screen.getByTestId('url').textContent).toContain('propertyId=bien-1');
 
-    await user.click(screen.getByRole('button', { name: 'Effacer ce filtre' }));
-    await waitFor(() =>
-      expect(listLandRegularizations).toHaveBeenLastCalledWith('agence-1', { status: undefined, propertyId: undefined })
-    );
-    expect(screen.queryByText('Bien : TER-001')).toBeNull();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText('Parcelle de Yopougon', undefined, T)).toBeInTheDocument();
+    expect(screen.getByText('Terrain de Bingerville')).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).not.toContain('propertyId');
   });
 
-  it('filtre sans résultat : libellé générique « Filtré sur un bien »', async () => {
+  it('un bien sans dossier (?propertyId=) : « aucun résultat » avec l’effacement, pas l’invite à créer', async () => {
     listLandRegularizations.mockResolvedValue([]);
     monter('/tenant/agence-1/patrimoine/land?propertyId=bien-1');
 
-    expect(await screen.findByText('Filtré sur un bien')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', undefined, T)
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Aucun dossier de régularisation foncière n'est ouvert pour cette agence.")).toBeNull();
   });
 
-  it('filtre par statut côté serveur', async () => {
+  it('filtre par statut en local avec ?status=', async () => {
+    listLandRegularizations.mockResolvedValue([resume(), AUTRE_DOSSIER()]);
     monter('/tenant/agence-1/patrimoine/land?status=TERMINEE');
 
-    await screen.findByText('Terrain de Bingerville');
-    expect(listLandRegularizations).toHaveBeenCalledWith('agence-1', { status: 'TERMINEE', propertyId: undefined });
+    expect(await screen.findByText('Parcelle de Yopougon', undefined, T)).toBeInTheDocument();
+    expect(screen.queryByText('Terrain de Bingerville')).toBeNull();
+    expect(listLandRegularizations).toHaveBeenCalledWith('agence-1');
   });
 
-  it('ignore un ?status= invalide : rien n’est envoyé à l’API', async () => {
+  it('ignore un ?status= invalide : tous les dossiers restent affichés', async () => {
+    listLandRegularizations.mockResolvedValue([resume(), AUTRE_DOSSIER()]);
     monter('/tenant/agence-1/patrimoine/land?status=N_IMPORTE_QUOI');
 
-    await screen.findByText('Terrain de Bingerville');
-    expect(listLandRegularizations).toHaveBeenCalledWith('agence-1', { status: undefined, propertyId: undefined });
+    expect(await screen.findByText('Terrain de Bingerville', undefined, T)).toBeInTheDocument();
+    expect(screen.getByText('Parcelle de Yopougon')).toBeInTheDocument();
+  });
+
+  it('cherche sans casse ni accent dans le bien, la référence, la filière et l’étape', async () => {
+    const user = userEvent.setup();
+    listLandRegularizations.mockResolvedValue([resume(), AUTRE_DOSSIER()]);
+    monter();
+    await screen.findByText('Terrain de Bingerville', undefined, T);
+
+    const champ = within(screen.getByRole('search')).getByPlaceholderText('Bien, référence, filière, étape…');
+    await user.type(champ, 'YOPOUGON');
+    await waitFor(() => expect(screen.queryByText('Terrain de Bingerville')).toBeNull(), T);
+    expect(screen.getByText('Parcelle de Yopougon')).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).toContain('q=YOPOUGON');
+
+    await user.clear(champ);
+    await user.type(champ, 'bornage');
+    await waitFor(() => expect(screen.queryByText('Parcelle de Yopougon')).toBeNull(), T);
+    expect(screen.getByText('Terrain de Bingerville')).toBeInTheDocument();
   });
 
   it('ouvre la modale de création depuis « Nouveau dossier »', async () => {

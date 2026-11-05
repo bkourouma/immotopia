@@ -42,6 +42,8 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 
 import { activeLocale, formatNumber } from '../../i18n/format';
 const { Title, Text, Paragraph } = Typography;
@@ -164,6 +166,12 @@ const { TextArea } = Input;
  */
 
 /** Arrondi à deux décimales, la précision à laquelle le serveur stocke et somme. */
+// Champ libre des lots : leur nom.
+const TEXTE_LOTS = [(lot: SiteLot) => lot.name];
+
+// Valeur lue par les critères non textuels, par clé de critère.
+const ACCESSEURS_LOTS = { patrimoine: (lot: SiteLot) => Boolean(lot.propertyId) };
+
 function arrondiDeuxDecimales(valeur: number): number {
   return Math.round(valeur * 100) / 100;
 }
@@ -336,6 +344,18 @@ export const ClotureChantier: React.FC = () => {
   const [dernierGesteCloture, setDernierGesteCloture] = useState<SiteClosure | null>(null);
 
   const lots = useMemo(() => repartition?.lots ?? [], [repartition]);
+
+  // Recherche dans les lots (liste reçue d'un bloc) ; déclarée dans le corps :
+  // les libellés se retraduisent au changement de langue.
+  const criteresLots: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom du lot…') },
+    { key: 'patrimoine', type: 'boolean', label: t('Au patrimoine'), primary: true, tristate: true }
+  ];
+  const rechercheLots = useLocalListSearch<SiteLot>(lots, {
+    criteria: criteresLots,
+    text: TEXTE_LOTS,
+    accessors: ACCESSEURS_LOTS
+  });
   const unLotABascule = useMemo(() => lots.some(lot => lot.propertyId !== null), [lots]);
 
   /**
@@ -757,18 +777,13 @@ export const ClotureChantier: React.FC = () => {
       <Title level={4}>{t('Lots du chantier')}</Title>
 
       <DataView<SiteLot>
-        paginated={false}
         scrollX={980}
-        items={lots}
-        total={lots.length}
-        page={1}
-        pageSize={Math.max(lots.length, 1)}
-        onPageChange={() => {}}
+        {...rechercheLots.dataViewProps}
         emptyDescription={t('Ce chantier ne produit encore aucun lot.')}
         columns={colonnesLots}
         rowKey={lot => lot.id}
         aria-label={t('Lots du chantier')}
-        export={{ filename: t('Lots du chantier') }}
+        export={{ filename: t('Lots du chantier'), fetchAll: rechercheLots.exportAll }}
         renderCard={lot => (
           <DataCard
             title={lot.name}
@@ -1049,7 +1064,7 @@ export const ClotureChantier: React.FC = () => {
         <>
           {dernierGesteCloture && (
             <Paragraph>
-              {t('Clôturé le')} {dayjs(dernierGesteCloture.closedAt).format('DD/MM/YYYY')} par{' '}
+              {t('Clôturé le')} {dayjs(dernierGesteCloture.closedAt).format('DD/MM/YYYY')} {t('par')}{' '}
               {dernierGesteCloture.closedByLabel}
               {t(', coût figé à')} <MoneyValue value={dernierGesteCloture.finalCost} />.
             </Paragraph>

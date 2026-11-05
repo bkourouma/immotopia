@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
@@ -371,7 +372,7 @@ export async function getPublishedProperties(
 
   if (filters?.locationZone) {
     where.locationZone = {
-      contains: filters.locationZone,
+      contains: escapeLike(filters.locationZone),
       mode: 'insensitive'
     };
   }

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
+import { MemoryRouter } from 'react-router-dom';
 import { DocumentVault } from '../../components/patrimoine/DocumentVault';
 import { PaymentDeclarationsList } from '../../components/rental/PaymentDeclarationsList';
 
@@ -120,7 +121,9 @@ describe('PaymentDeclarationsList — preuve de paiement', () => {
 
     const { baseElement } = render(
       <AntApp>
-        <PaymentDeclarationsList tenantId="agence-1" />
+        <MemoryRouter>
+          <PaymentDeclarationsList tenantId="agence-1" />
+        </MemoryRouter>
       </AntApp>
     );
 

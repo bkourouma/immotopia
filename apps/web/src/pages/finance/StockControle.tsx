@@ -20,7 +20,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   acknowledgeStockAlert,
   getStockControls,
@@ -33,12 +33,14 @@ import {
   STOCK_ALERT_SEVERITY_DISPLAY,
   type ControlsSettingsPatch,
   type StockAlertKind,
+  type StockAlertsFilters,
   type StockAlertStatus,
   type StockAlertView,
   type StockControlsSettings,
   type StockFieldContext,
   type StockIndicatorRow
 } from '../../types/finance-stock-controle-types';
+import { useListSearch } from '../../hooks/useListSearch';
 import { STOCK_FIELD_CONTEXT_ENTITY, useStockFieldContext } from '../../hooks/useStockFieldContext';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import {
@@ -53,6 +55,7 @@ import {
   formatMoney
 } from '../../components/primitives';
 import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded';
+import type { ApiParams } from '../../utils/list-search';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { safeFormatDate } from '../../utils/date-utils';
@@ -248,7 +251,7 @@ export function StockControle(): React.ReactElement {
   return (
     <>
       {entete}
-      <Tabs activeKey={actif} onChange={changerOnglet} items={items} />
+      <Tabs activeKey={actif} onChange={changerOnglet} items={items} destroyOnHidden />
     </>
   );
 }
@@ -283,13 +286,23 @@ const EtatContexte: React.FC<{ error: unknown; onRetry: () => void }> = ({ error
 
 type FiltreStatut = StockAlertStatus | 'ALL';
 
-interface FiltresAlertes {
-  statut: FiltreStatut;
-  kind?: StockAlertKind;
-  siteId?: string;
-  locationId?: string;
-  from?: Dayjs | null;
-  to?: Dayjs | null;
+/** Statut choisi dans la barre ; absent = « À traiter » (comportement d'origine de l'écran). */
+function statutChoisi(valeur: unknown): FiltreStatut {
+  return valeur === 'ACKNOWLEDGED' || valeur === 'ALL' ? valeur : 'OPEN';
+}
+
+/** Critères de la barre (déjà traduits pour l'API) vers les filtres typés du service. */
+function toFiltresAlertes(params: ApiParams, statut: FiltreStatut): StockAlertsFilters & { search?: string } {
+  const texte = (valeur: string | number | undefined) => (valeur === undefined ? undefined : String(valeur));
+  return {
+    status: statut === 'ALL' ? undefined : statut,
+    kind: texte(params.kind) as StockAlertKind | undefined,
+    siteId: texte(params.siteId),
+    locationId: texte(params.locationId),
+    from: texte(params.from),
+    to: texte(params.to),
+    search: texte(params.search)
+  };
 }
 
 const ALERTS_ENTITY = 'stock-alerts';
@@ -328,27 +341,70 @@ interface OngletAlertesProps {
 const OngletAlertes: React.FC<OngletAlertesProps> = ({ tenantId, champ, alerteId }) => {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
-  const [filtres, setFiltres] = useState<FiltresAlertes>({ statut: 'OPEN' });
   const [elargi, setElargi] = useState(false);
   const [aTraiter, setATraiter] = useState<StockAlertView | null>(null);
   const [note, setNote] = useState('');
   const [envoi, setEnvoi] = useState(false);
 
-  const requete = {
-    status: filtres.statut === 'ALL' ? undefined : filtres.statut,
-    kind: filtres.kind,
-    siteId: filtres.siteId,
-    locationId: filtres.locationId,
-    from: filtres.from ? filtres.from.format('YYYY-MM-DD') : undefined,
-    to: filtres.to ? filtres.to.format('YYYY-MM-DD') : undefined
-  };
+  const search = useListSearch({
+    paramPrefix: 'al',
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Lieu, chantier…') },
+      {
+        // Absent = « À traiter » ; « Toutes » est un choix explicite. Le statut est
+        // envoyé à l'API par l'écran (api: false ici), pas par la barre.
+        key: 'statut',
+        type: 'select',
+        label: t('Statut'),
+        placeholder: t('À traiter'),
+        primary: true,
+        api: false,
+        options: [
+          { value: 'OPEN', label: t('À traiter') },
+          { value: 'ACKNOWLEDGED', label: t('Traitées') },
+          { value: 'ALL', label: t('Toutes') }
+        ]
+      },
+      {
+        key: 'kind',
+        type: 'select',
+        label: t('Nature'),
+        primary: true,
+        options: (Object.keys(STOCK_ALERT_KIND_LABELS) as StockAlertKind[]).map(kind => ({
+          value: kind,
+          label: STOCK_ALERT_KIND_LABELS[kind]
+        }))
+      },
+      {
+        key: 'siteId',
+        type: 'select',
+        label: t('Chantier'),
+        primary: true,
+        options: champ.sites.map(site => ({ value: site.id, label: site.name }))
+      },
+      {
+        key: 'locationId',
+        type: 'select',
+        label: t('Lieu'),
+        options: champ.locations.map(lieu => ({ value: lieu.id, label: lieu.label }))
+      },
+      { key: 'periode', type: 'dateRange', label: t('Période'), api: ['from', 'to'] }
+    ]
+  });
+  const { setValues } = search;
+  const statutEffectif = statutChoisi(search.values.statut);
+  const requete = toFiltresAlertes(search.filterParams, statutEffectif);
+  // Un critère autre que le statut « À traiter » par défaut.
+  const autresCriteres = search.activeCount - (search.values.statut === undefined ? 0 : 1) > 0;
 
   const liste = useInfiniteQuery({
-    queryKey: queryKey(ALERTS_ENTITY, tenantId, requete),
+    queryKey: queryKey(ALERTS_ENTITY, tenantId, { ...requete }),
     queryFn: ({ pageParam }) => listStockAlerts(tenantId, { ...requete, cursor: pageParam, limit: 50 }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: derniere => derniere.meta?.nextCursor ?? undefined,
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    // La barre reste montée (et garde le focus) pendant la requête suivante.
+    placeholderData: keepPreviousData
   });
 
   const alertes = useMemo(() => (liste.data?.pages ?? []).flatMap(page => page.data), [liste.data]);
@@ -358,11 +414,11 @@ const OngletAlertes: React.FC<OngletAlertesProps> = ({ tenantId, champ, alerteId
   // ou déjà traitée) : la liste s'élargit une fois à « Toutes ».
   useEffect(() => {
     if (!alerteId || elargi || liste.isLoading || liste.error) return;
-    if (filtres.statut !== 'ALL' && !alertes.some(alerte => alerte.id === alerteId)) {
+    if (statutEffectif !== 'ALL' && !alertes.some(alerte => alerte.id === alerteId)) {
       setElargi(true);
-      setFiltres(courant => ({ ...courant, statut: 'ALL' }));
+      setValues({ statut: 'ALL' }, { replace: true });
     }
-  }, [alerteId, elargi, liste.isLoading, liste.error, alertes, filtres.statut]);
+  }, [alerteId, elargi, liste.isLoading, liste.error, alertes, statutEffectif, setValues]);
 
   // Défiler jusqu'à l'alerte mise en évidence une fois rendue.
   useEffect(() => {
@@ -555,13 +611,7 @@ const OngletAlertes: React.FC<OngletAlertesProps> = ({ tenantId, champ, alerteId
     </div>
   );
 
-  const parDefaut =
-    filtres.statut === 'OPEN' &&
-    !filtres.kind &&
-    !filtres.siteId &&
-    !filtres.locationId &&
-    !filtres.from &&
-    !filtres.to;
+  const parDefaut = statutEffectif === 'OPEN' && !autresCriteres;
 
   // L'alerte du lien n'est nulle part (rec040-05) : ni dans « À traiter », ni
   // dans « Toutes », sans filtre et sans page restante. Une alerte d'une autre
@@ -569,12 +619,8 @@ const OngletAlertes: React.FC<OngletAlertesProps> = ({ tenantId, champ, alerteId
   const alerteIntrouvable =
     Boolean(alerteId) &&
     elargi &&
-    filtres.statut === 'ALL' &&
-    !filtres.kind &&
-    !filtres.siteId &&
-    !filtres.locationId &&
-    !filtres.from &&
-    !filtres.to &&
+    statutEffectif === 'ALL' &&
+    !autresCriteres &&
     !liste.isLoading &&
     !liste.error &&
     !liste.hasNextPage &&
@@ -582,93 +628,9 @@ const OngletAlertes: React.FC<OngletAlertesProps> = ({ tenantId, champ, alerteId
 
   return (
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-      <Row gutter={[12, 12]}>
-        <Col xs={24} sm={12} lg={4}>
-          <Select<FiltreStatut>
-            aria-label={t('Statut')}
-            style={{ width: '100%' }}
-            value={filtres.statut}
-            onChange={statut => setFiltres(courant => ({ ...courant, statut }))}
-            options={[
-              { value: 'OPEN', label: t('À traiter') },
-              { value: 'ACKNOWLEDGED', label: t('Traitées') },
-              { value: 'ALL', label: t('Toutes') }
-            ]}
-          />
-        </Col>
-        <Col xs={24} sm={12} lg={5}>
-          <Select<StockAlertKind>
-            aria-label={t('Nature')}
-            placeholder={t('Nature')}
-            allowClear
-            style={{ width: '100%' }}
-            value={filtres.kind}
-            onChange={kind => setFiltres(courant => ({ ...courant, kind }))}
-            options={(Object.keys(STOCK_ALERT_KIND_LABELS) as StockAlertKind[]).map(kind => ({
-              value: kind,
-              label: STOCK_ALERT_KIND_LABELS[kind]
-            }))}
-          />
-        </Col>
-        <Col xs={24} sm={12} lg={5}>
-          <Select<string>
-            aria-label={t('Chantier')}
-            placeholder={t('Chantier')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            style={{ width: '100%' }}
-            value={filtres.siteId}
-            onChange={siteId => setFiltres(courant => ({ ...courant, siteId }))}
-            options={champ.sites.map(site => ({ value: site.id, label: site.name }))}
-          />
-        </Col>
-        <Col xs={24} sm={12} lg={4}>
-          <Select<string>
-            aria-label={t('Lieu')}
-            placeholder={t('Lieu')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            style={{ width: '100%' }}
-            value={filtres.locationId}
-            onChange={locationId => setFiltres(courant => ({ ...courant, locationId }))}
-            options={champ.locations.map(lieu => ({ value: lieu.id, label: lieu.label }))}
-          />
-        </Col>
-        <Col xs={12} lg={3}>
-          <DatePicker
-            aria-label={t('Du')}
-            placeholder={t('Du')}
-            style={{ width: '100%' }}
-            value={filtres.from ?? null}
-            onChange={from => setFiltres(courant => ({ ...courant, from }))}
-          />
-        </Col>
-        <Col xs={12} lg={3}>
-          <DatePicker
-            aria-label={t('Au')}
-            placeholder={t('Au')}
-            style={{ width: '100%' }}
-            value={filtres.to ?? null}
-            onChange={to => setFiltres(courant => ({ ...courant, to }))}
-          />
-        </Col>
-      </Row>
-
       {alerteIntrouvable ? <StateBlock variant="empty" title={t('Cette alerte est introuvable.')} /> : null}
 
-      {alerteIntrouvable && alertes.length === 0 ? null : !liste.isLoading && !liste.error && alertes.length === 0 ? (
-        <StateBlock
-          variant={parDefaut ? 'empty' : 'no-results'}
-          title={parDefaut ? t('Aucune alerte à traiter.') : t('Aucune alerte pour ces filtres.')}
-          actions={
-            parDefaut
-              ? undefined
-              : [{ label: t('Effacer les filtres'), onClick: () => setFiltres({ statut: 'OPEN' }), primary: true }]
-          }
-        />
-      ) : (
+      {alerteIntrouvable && alertes.length === 0 ? null : (
         <DataView<StockAlertView>
           aria-label={t('Alertes du stock')}
           // Liste par curseur : l'export reparcourt toutes les pages, avec les
@@ -692,6 +654,10 @@ const OngletAlertes: React.FC<OngletAlertesProps> = ({ tenantId, champ, alerteId
               return { items: toutes, truncated: tronque };
             }
           }}
+          search={search.searchProps}
+          {...search.dataViewProps}
+          isFiltered={!parDefaut}
+          emptyDescription={t('Aucune alerte à traiter.')}
           items={alertes}
           total={alertes.length}
           page={1}
@@ -846,6 +812,27 @@ function carteIndicateur(ligne: StockIndicatorRow, titre: string): React.ReactNo
   );
 }
 
+/** Pagination locale d'une liste déjà chargée en entier (20 lignes par page au départ). */
+function usePaginationLocale<T>(liste: readonly T[], tailleInitiale = 20) {
+  const [page, setPage] = useState(1);
+  const [taille, setTaille] = useState(tailleInitiale);
+  const longueur = liste.length;
+  useEffect(() => setPage(1), [longueur]);
+  return {
+    page,
+    pageSize: taille,
+    items: liste.slice((page - 1) * taille, page * taille),
+    onPageChange: (suivante: number, tailleSuivante: number) => {
+      if (tailleSuivante !== taille) {
+        setTaille(tailleSuivante);
+        setPage(1);
+      } else {
+        setPage(suivante);
+      }
+    }
+  };
+}
+
 const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }> = ({ tenantId, champ }) => {
   const [saisie, setSaisie] = useState<[Dayjs | null, Dayjs | null]>(periodeParDefaut());
   const [periode, setPeriode] = useState<[Dayjs, Dayjs]>(periodeParDefaut());
@@ -872,6 +859,8 @@ const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }
     [indicateurs.data, lieu]
   );
   const dernier = totaux[totaux.length - 1];
+  const pagesMois = usePaginationLocale(totaux);
+  const pagesLieu = usePaginationLocale(lignes);
   const sansValeursFigees = totaux.reduce((somme, ligne) => somme + (ligne.countsWithoutFrozenValues || 0), 0);
 
   const colonnesParMois: ColumnsType<StockIndicatorRow> = [
@@ -960,13 +949,12 @@ const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }
           <Card title={t('Par mois')} size="small">
             <DataView<StockIndicatorRow>
               aria-label={t('Indicateurs par mois')}
-              export={{ filename: t('Indicateurs par mois') }}
-              items={totaux}
+              export={{ filename: t('Indicateurs par mois'), fetchAll: async () => totaux }}
+              items={pagesMois.items}
               total={totaux.length}
-              page={1}
-              pageSize={Math.max(totaux.length, 1)}
-              paginated={false}
-              onPageChange={() => undefined}
+              page={pagesMois.page}
+              pageSize={pagesMois.pageSize}
+              onPageChange={pagesMois.onPageChange}
               emptyDescription={t('Aucun mouvement ni inventaire sur la période.')}
               rowKey={ligne => ligne.month}
               columns={colonnesParMois}
@@ -991,13 +979,12 @@ const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }
           >
             <DataView<StockIndicatorRow>
               aria-label={t('Indicateurs par lieu et par mois')}
-              export={{ filename: t('Indicateurs par lieu et par mois') }}
-              items={lignes}
+              export={{ filename: t('Indicateurs par lieu et par mois'), fetchAll: async () => lignes }}
+              items={pagesLieu.items}
               total={lignes.length}
-              page={1}
-              pageSize={Math.max(lignes.length, 1)}
-              paginated={false}
-              onPageChange={() => undefined}
+              page={pagesLieu.page}
+              pageSize={pagesLieu.pageSize}
+              onPageChange={pagesLieu.onPageChange}
               isFiltered={Boolean(lieu)}
               onClearFilters={() => setLieu(undefined)}
               emptyDescription={t('Aucun mouvement ni inventaire sur la période.')}

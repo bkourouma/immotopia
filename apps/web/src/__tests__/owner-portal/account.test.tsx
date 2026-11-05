@@ -1,8 +1,9 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import Account from '../../pages/OwnerPortal/Account';
 import type { OwnerAccountDetail } from '../../services/owner-portal-account-service';
 
@@ -56,11 +57,18 @@ function compte(overrides: Partial<OwnerAccountDetail> = {}): OwnerAccountDetail
   };
 }
 
-function mount() {
+function Url() {
+  return <div data-testid="url">{useLocation().search}</div>;
+}
+
+function mount(initial = '/owner/account') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <Account />
+      <MemoryRouter initialEntries={[initial]}>
+        <Url />
+        <Account />
+      </MemoryRouter>
     </QueryClientProvider>
   );
 }
@@ -145,5 +153,85 @@ describe('Mon compte — état d’erreur', () => {
     getOwnerAccount.mockResolvedValueOnce(compte({ balance: 0 }));
     await userEvent.click(bouton);
     expect(await screen.findByText('Votre compte est à jour', {}, { timeout: 8000 })).toBeInTheDocument();
+  });
+});
+
+const T = { timeout: 8000 };
+
+function versement(id: string, number: string, reference: string, method: 'CASH' | 'BANK_TRANSFER' = 'BANK_TRANSFER') {
+  return {
+    id,
+    number,
+    amount: 100_000,
+    paidAt: '2026-02-10',
+    method,
+    reference,
+    notes: null,
+    statementId: null,
+    status: 'VALIDATED' as const,
+    voidReason: null,
+    voidedAt: null,
+    createdAt: '2026-02-10',
+    createdByName: 'Gestionnaire'
+  };
+}
+
+function mouvement(id: string, label: string, bien: string, date = '2026-03-05') {
+  return {
+    id,
+    date,
+    type: 'RENT_COLLECTED' as const,
+    label,
+    debit: 0,
+    credit: 100_000,
+    balanceAfter: 100_000,
+    leaseNumber: null,
+    propertyTitle: bien
+  };
+}
+
+describe('Mon compte — recherche des reversements', () => {
+  const payouts = [versement('p1', 'REV-2026-0001', 'VIR-111'), versement('p2', 'REV-2026-0002', 'ESP-222', 'CASH')];
+
+  it('filtre les reversements en local et écrit la saisie dans l’URL', async () => {
+    const user = userEvent.setup();
+    getOwnerAccount.mockResolvedValue(compte({ payouts }));
+    mount();
+    expect(await screen.findByText('REV-2026-0001', {}, T)).toBeInTheDocument();
+    expect(screen.getByText('REV-2026-0002')).toBeInTheDocument();
+
+    await user.type(
+      within(screen.getByRole('search', { name: 'Rechercher dans les reversements' })).getByRole('textbox'),
+      'ESP-222'
+    );
+    await vi.waitFor(() => expect(screen.queryByText('REV-2026-0001')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('REV-2026-0002')).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).toContain('vs.q=ESP-222');
+  });
+
+  it('applique l’URL initiale et permet d’effacer les critères', async () => {
+    const user = userEvent.setup();
+    getOwnerAccount.mockResolvedValue(compte({ payouts }));
+    mount('/owner/account?vs.q=zzz');
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', {}, T)).toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText('REV-2026-0001', {}, T)).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).not.toContain('vs.q');
+  });
+});
+
+describe('Mon compte — recherche des mouvements', () => {
+  const movements = [
+    mouvement('m1', 'Loyer octobre', 'Villa Angré'),
+    mouvement('m2', 'Loyer novembre', 'Studio Plateau')
+  ];
+
+  it('affiche l’onglet des mouvements d’après l’URL et applique son critère', async () => {
+    getOwnerAccount.mockResolvedValue(compte({ movements }));
+    mount('/owner/account?tab=mouvements&mv.q=plateau');
+    expect(await screen.findByText('Loyer novembre', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('Loyer octobre')).not.toBeInTheDocument();
+    expect(screen.getByRole('search', { name: 'Rechercher dans les mouvements' })).toBeInTheDocument();
   });
 });

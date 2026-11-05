@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import { prisma } from '../utils/database';
 import { PROPERTY_MEDIA_SELECT } from '../utils/property-media-select';
 import { PropertySearchRequest, PropertySearchResponse, PropertyDetail } from '../types/property-types';
@@ -114,7 +115,7 @@ function buildSearchQuery(filters: PropertySearchRequest, tenantId?: string | nu
   // Location zone filter
   if (filters.locationZone) {
     where.locationZone = {
-      contains: filters.locationZone,
+      contains: escapeLike(filters.locationZone),
       mode: 'insensitive'
     };
   }

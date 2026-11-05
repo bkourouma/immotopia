@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { InvoiceStatus, PlatformPaymentMethod } from '@prisma/client';
+import { InvoiceStatus, PlatformInvoiceNature, PlatformPaymentMethod } from '@prisma/client';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
+import { dayEnd, dayStart, zAmount, zCsvEnum, zDay, zSearch } from '../utils/list-query-schemas';
 import {
   generateInvoiceForPeriod,
   getPlatformInvoice,
@@ -43,8 +44,22 @@ const isoDate = z
   .datetime({ offset: true })
   .transform(value => new Date(value));
 
-const listQuerySchema = z.object({
-  status: z.nativeEnum(InvoiceStatus).optional(),
+const INVOICE_STATUSES = Object.values(InvoiceStatus) as [InvoiceStatus, ...InvoiceStatus[]];
+const INVOICE_NATURES = Object.values(PlatformInvoiceNature) as [PlatformInvoiceNature, ...PlatformInvoiceNature[]];
+
+/**
+ * Filtres de la liste (briques partagées `utils/list-query-schemas`) : statuts et
+ * natures en CSV, jours réels (début 00:00:00.000, fin INCLUSE 23:59:59.999 UTC),
+ * montants négatifs acceptés (avoirs), paramètre vide = absent.
+ */
+export const listQuerySchema = z.object({
+  status: zCsvEnum(INVOICE_STATUSES),
+  nature: zCsvEnum(INVOICE_NATURES),
+  search: zSearch(120),
+  from: zDay.transform(day => (day ? dayStart(day) : undefined)),
+  to: zDay.transform(day => (day ? dayEnd(day) : undefined)),
+  minAmount: zAmount({ min: -1e12, max: 1e12 }),
+  maxAmount: zAmount({ min: -1e12, max: 1e12 }),
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(100).optional()
 });

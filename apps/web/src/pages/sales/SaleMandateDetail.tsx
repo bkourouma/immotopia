@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   App,
   Button,
@@ -32,6 +32,9 @@ import type {
   SaleOfferAction,
   SaleOfferDto
 } from '../../services/sales-service';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
+import { localizedList } from '../../i18n/localized';
 import { detailKey, STALE_TIME } from '../../lib/query-keys';
 import { MoneyValue, PageHeader, StateBlock, StatusTag, Table } from '../../components/primitives';
 import { montantSaisiProps } from '../../utils/montant-saisi';
@@ -50,6 +53,40 @@ import { MandateSignatures } from '../../components/signature/MandateSignatures'
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
+
+/** Onglets de la fiche : `?onglet=` les rend partageables. */
+const ONGLETS = ['offres', 'compromis', 'signatures', 'historique'] as const;
+type Onglet = (typeof ONGLETS)[number];
+
+/**
+ * Au-delà de ce nombre d'offres sur un mandat (toutes arrivent avec la fiche),
+ * la table des offres reçoit sa barre de recherche locale (préfixe `off`) et
+ * se pagine ; en deçà, elle reste telle quelle.
+ */
+const OFFRES_SEUIL_RECHERCHE = 10;
+
+const OFFER_STATUS_OPTIONS = localizedList(() => [
+  { value: 'SUBMITTED', label: t('Soumise') },
+  { value: 'COUNTERED', label: t('Contre-offre') },
+  { value: 'ACCEPTED', label: t('Acceptée') },
+  { value: 'REJECTED', label: t('Refusée') },
+  { value: 'WITHDRAWN', label: t('Retirée') }
+]);
+const FINANCING_OPTIONS = localizedList(() =>
+  Object.entries(FINANCING_LABELS).map(([value, label]) => ({ value, label }))
+);
+
+// Constantes de module : l'identité stable garde le filtrage mémoïsé.
+const OFFER_TEXT = [
+  (o: SaleOfferDto) => o.number,
+  (o: SaleOfferDto) => o.buyerName,
+  (o: SaleOfferDto) => FINANCING_LABELS[o.financing]
+];
+const OFFER_ACCESSORS = {
+  status: (o: SaleOfferDto) => o.status,
+  financing: (o: SaleOfferDto) => o.financing,
+  amount: (o: SaleOfferDto) => o.amount
+};
 
 interface OfferFormValues {
   buyerContactId: string;
@@ -79,6 +116,15 @@ export const SaleMandateDetail: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId, id } = useParams<{ tenantId: string; id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const ongletParam = searchParams.get('onglet');
+  const ongletActif: Onglet = ONGLETS.includes(ongletParam as Onglet) ? (ongletParam as Onglet) : 'offres';
+  const changerOnglet = (cle: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (cle === 'offres') next.delete('onglet');
+    else next.set('onglet', cle);
+    setSearchParams(next, { replace: true });
+  };
 
   const {
     data: mandate,
@@ -225,6 +271,25 @@ export const SaleMandateDetail: React.FC = () => {
     }
   };
 
+  const criteresOffres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Numéro, acquéreur, financement…')
+    },
+    { key: 'status', type: 'multiSelect', label: t('Statut'), primary: true, options: OFFER_STATUS_OPTIONS },
+    { key: 'financing', type: 'multiSelect', label: t('Financement'), primary: true, options: FINANCING_OPTIONS },
+    { key: 'amount', type: 'numberRange', label: t('Montant'), unit: 'FCFA' }
+  ];
+  const localOffres = useLocalListSearch<SaleOfferDto>(mandate?.offers, {
+    paramPrefix: 'off',
+    ariaLabel: t('Rechercher dans les offres'),
+    criteria: criteresOffres,
+    text: OFFER_TEXT,
+    accessors: OFFER_ACCESSORS
+  });
+
   if (!tenantId || !id) {
     return <StateBlock variant="empty" title={t('Aucun mandat sélectionné')} />;
   }
@@ -333,11 +398,17 @@ export const SaleMandateDetail: React.FC = () => {
           </div>
           <Table<SaleOfferDto>
             exportFilename={t('Offres')}
-            dataSource={mandate.offers}
             columns={colonnesOffres}
             rowKey={o => o.id}
-            pagination={false}
-            locale={{ emptyText: t('Aucune offre pour ce mandat.') }}
+            {...(mandate.offers.length > OFFRES_SEUIL_RECHERCHE
+              ? { ...localOffres.tableProps, exportFetchAll: localOffres.exportAll, 'aria-label': t('Offres') }
+              : { dataSource: mandate.offers, pagination: false as const })}
+            // Sous critère, la Table affiche seule son bloc « Aucun résultat ».
+            locale={
+              mandate.offers.length > OFFRES_SEUIL_RECHERCHE && localOffres.isFiltered
+                ? undefined
+                : { emptyText: t('Aucune offre pour ce mandat.') }
+            }
           />
         </>
       )
@@ -474,7 +545,7 @@ export const SaleMandateDetail: React.FC = () => {
         )}
       </Card>
 
-      <Tabs items={onglets} />
+      <Tabs activeKey={ongletActif} onChange={changerOnglet} items={onglets} />
 
       {/* Révocation du mandat */}
       <Modal

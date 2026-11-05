@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { AppError, ErrorCode } from '../../../middleware/error-middleware';
 import { t } from '../../../i18n';
+import { searchQuery } from '../payment-list-filters';
+import { zSearch } from '../../../utils/list-query-schemas';
 
 /**
  * Validation de FORME des requêtes du paiement déclaré (spec 047, contracts §0 et §1/§2).
@@ -53,6 +55,8 @@ export const syndicIdFieldSchema = z.object({ syndicId: uuid }).strict();
 
 /** Liste côté gestionnaire (§1.6). */
 export const listDeclarationsQuerySchema = z.object({
+  /** Déclarant, référence de transaction, téléphone du payeur, numéro de lot. */
+  search: searchQuery,
   status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELED', 'ALL']).optional(),
   receivingNumberId: uuid.optional(),
   lotId: uuid.optional(),
@@ -74,6 +78,8 @@ export const listDeclarationsQuerySchema = z.object({
 
 /** Liste côté portail (§2.5). */
 export const portalListQuerySchema = z.object({
+  /** Référence de transaction déclarée ou numéro de lot (périmètre du copropriétaire inchangé). */
+  search: zSearch(),
   status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELED', 'ALL']).optional(),
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional()

@@ -62,7 +62,10 @@ function base(tenantId: string): string {
 function toQuery(filters?: Record<string, string | number | boolean | undefined>): string {
   if (!filters) return '';
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(filters)) {
+  for (const [rawKey, rawValue] of Object.entries(filters)) {
+    // La recherche libre part rognée ; vide, elle n'est pas envoyée.
+    const key = rawKey;
+    const value = key === 'search' && typeof rawValue === 'string' ? rawValue.trim() : rawValue;
     if (value !== undefined && value !== '') {
       params.set(key, String(value));
     }
@@ -208,7 +211,7 @@ export async function revokeStockWhatsappRegistration(
 /** `GET /field-counts` — stock théorique et dernier comptage, sous les masques du lot 040. */
 export async function listStockFieldCounts(
   tenantId: string,
-  filters?: FieldCountsFilters
+  filters?: FieldCountsFilters & { search?: string }
 ): Promise<{ data: FieldCountRow[]; meta: StockMeta }> {
   const response = await apiClient.get<ApiResponseWithMeta<FieldCountRow[], StockMeta>>(
     `${base(tenantId)}/field-counts${toQuery({
@@ -216,6 +219,7 @@ export async function listStockFieldCounts(
       locationId: filters?.locationId,
       itemId: filters?.itemId,
       source: filters?.source,
+      search: filters?.search,
       cursor: filters?.cursor,
       limit: filters?.limit
     })}`

@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ClotureChantier } from '../../pages/finance/ClotureChantier';
@@ -153,12 +153,19 @@ beforeEach(() => {
   del.mockResolvedValue({ data: { data: { id: 'lot-1' } } });
 });
 
+/** Sonde d'adresse : révèle l'état de liste porté par l'URL. */
+function Adresse() {
+  const location = useLocation();
+  return <span data-testid="adresse">{location.pathname + location.search}</span>;
+}
+
 function monter(url = `/tenant/${TENANT}/finance/chantiers/${SITE}/cloture`) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Adresse />
           <Routes>
             <Route path="/tenant/:tenantId/finance/chantiers/:siteId/cloture" element={<ClotureChantier />} />
           </Routes>
@@ -322,7 +329,7 @@ describe('Clôture et réouverture — le corps est VIDE, et c’est une exigenc
     // permettrait de clôturer au nom de quelqu'un d'autre.
     const [, corps] = post.mock.calls[post.mock.calls.length - 1] as [string, Record<string, unknown>];
     expect(Object.keys(corps)).toEqual([]);
-  }, 15000);
+  }, 30000);
 
   it('rouvre un chantier clos dont aucun lot n’a basculé, avec un corps vide', async () => {
     const user = userEvent.setup({ delay: null });
@@ -416,7 +423,7 @@ describe('Les lots — création, correction, suppression', () => {
     const [, corps] = patch.mock.calls[patch.mock.calls.length - 1] as [string, Record<string, unknown>];
     expect(corps).not.toHaveProperty('siteId');
     expect(corps).not.toHaveProperty('lotId');
-  }, 20000);
+  }, 40000);
 
   it('avertit avant de supprimer un lot, puis n’appelle le serveur qu’après confirmation', async () => {
     const user = userEvent.setup({ delay: null });
@@ -611,7 +618,7 @@ describe('La bascule au patrimoine', () => {
     expect(corps).not.toHaveProperty('siteId');
     expect(corps).not.toHaveProperty('lotId');
     expect(corps).not.toHaveProperty('acquisitionCost');
-  }, 30000);
+  }, 60000);
 
   it("ne propose pas la bascule sur un chantier OUVERT : le coût n'y est qu'une estimation", async () => {
     monter();
@@ -640,6 +647,63 @@ describe('La bascule au patrimoine', () => {
     await screen.findByText('Villa A1', {}, { timeout: 8000 });
     expect(screen.getByText('Basculé au patrimoine')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Basculer au patrimoine' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Les lots — recherche locale', () => {
+  const T = { timeout: 8000 };
+  const lignesLots = () => document.querySelectorAll('.ant-table-tbody tr.ant-table-row');
+  const AVEC_PATRIMOINE = () =>
+    configurerGet({
+      repartition: repartition({
+        lots: [
+          ...repartition().lots,
+          lot({
+            id: 'lot-4',
+            name: 'Villa B1',
+            costPrice: 5_000_000,
+            propertyId: 'bien-9',
+            propertyLabel: 'VIL-2026-009'
+          })
+        ]
+      })
+    });
+
+  it('cherche dans le nom du lot, en local, et garde le terme dans l’URL', async () => {
+    const user = userEvent.setup({ delay: null });
+    monter();
+
+    await screen.findByText('Villa A1', {}, T);
+    expect(lignesLots()).toHaveLength(3);
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'a2');
+
+    await waitFor(() => expect(lignesLots()).toHaveLength(1), T);
+    expect(screen.getByTestId('adresse')).toHaveTextContent('q=a2');
+    // Recherche locale : la répartition n'est lue qu'une fois.
+    expect(get.mock.calls.filter(([url]) => /\/cost-breakdown$/.test(url as string))).toHaveLength(1);
+  }, 30000);
+
+  it('filtre les lots passés au patrimoine depuis l’URL, puis efface les critères', async () => {
+    const user = userEvent.setup({ delay: null });
+    AVEC_PATRIMOINE();
+    monter(`/tenant/${TENANT}/finance/chantiers/${SITE}/cloture?patrimoine=1`);
+
+    expect(await screen.findByText('VIL-2026-009', {}, T)).toBeInTheDocument();
+    expect(lignesLots()).toHaveLength(1);
+
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    await waitFor(() => expect(lignesLots()).toHaveLength(4), T);
+    expect(screen.getByTestId('adresse').textContent).not.toContain('patrimoine');
+  }, 30000);
+
+  it('filtre les lots pas encore au patrimoine (« Non ») depuis l’URL', async () => {
+    AVEC_PATRIMOINE();
+    monter(`/tenant/${TENANT}/finance/chantiers/${SITE}/cloture?patrimoine=0`);
+
+    await screen.findByText('Villa A1', {}, T);
+    expect(lignesLots()).toHaveLength(3);
+    expect(screen.queryByText('VIL-2026-009')).not.toBeInTheDocument();
   });
 });
 

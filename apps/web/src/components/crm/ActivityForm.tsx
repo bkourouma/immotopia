@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { Form, Input, Select, Button, DatePicker, Row, Col, Space, Alert } from 'antd';
 import dayjs from 'dayjs';
 import { CreateCrmActivityRequest, CrmActivityType, CrmActivityDirection } from '../../types/crm-types';
-import { listContacts, listDeals, getContact, getDeal, CrmContact, CrmDeal } from '../../services/crm-service';
+import { getContact, getDeal, CrmContact, CrmDeal } from '../../services/crm-service';
+import { ContactRemoteSelect, DealRemoteSelect } from './RemoteSelect';
 import { t } from '../../i18n/t';
 import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
 
@@ -42,10 +43,6 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [contacts, setContacts] = useState<CrmContact[]>([]);
-  const [deals, setDeals] = useState<CrmDeal[]>([]);
-  const [loadingContacts, setLoadingContacts] = useState(false);
-  const [loadingDeals, setLoadingDeals] = useState(false);
   const [selectedContact, setSelectedContact] = useState<CrmContact | null>(null);
   const [selectedDeal, setSelectedDeal] = useState<CrmDeal | null>(null);
 
@@ -84,55 +81,6 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
 
     loadSelectedDeal();
   }, [tenantId, dealId]);
-
-  // Load contacts on mount
-  useEffect(() => {
-    const loadContacts = async () => {
-      if (!tenantId || contactId) return; // Skip if contactId is pre-selected
-
-      setLoadingContacts(true);
-      try {
-        const contactsResponse = await listContacts(tenantId, { page: 1, limit: 500 });
-        if (contactsResponse.success) {
-          setContacts(contactsResponse.contacts);
-        }
-      } catch (err) {
-        console.error('Error loading contacts:', err);
-      } finally {
-        setLoadingContacts(false);
-      }
-    };
-
-    loadContacts();
-  }, [tenantId, contactId]);
-
-  // Load deals - filtered by selected contact (cascade)
-  useEffect(() => {
-    const loadDeals = async () => {
-      if (!tenantId || dealId) return; // Skip if dealId is pre-selected
-
-      setLoadingDeals(true);
-      try {
-        // Filter deals by contactId if a contact is selected
-        const filters: any = { page: 1, limit: 500 };
-        const selectedContactId = formData.contactId || contactId;
-        if (selectedContactId) {
-          filters.contactId = selectedContactId;
-        }
-
-        const dealsResponse = await listDeals(tenantId, filters);
-        if (dealsResponse.success) {
-          setDeals(dealsResponse.deals);
-        }
-      } catch (err) {
-        console.error('Error loading deals:', err);
-      } finally {
-        setLoadingDeals(false);
-      }
-    };
-
-    loadDeals();
-  }, [tenantId, dealId, formData.contactId, contactId]);
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -196,45 +144,13 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
   };
 
   const handleChange = (field: string, value: string) => {
-    // If contact changes, clear deal selection and reload deals for that contact
+    // Changing the contact clears the deal; the deal selector re-queries that contact's deals.
     if (field === 'contactId') {
       setFormData(prev => ({
         ...prev,
         [field]: value,
         dealId: '' // Clear deal when contact changes
       }));
-
-      // Reload deals for the selected contact
-      if (value && !dealId) {
-        setLoadingDeals(true);
-        listDeals(tenantId, { contactId: value, page: 1, limit: 500 })
-          .then(dealsResponse => {
-            if (dealsResponse.success) {
-              setDeals(dealsResponse.deals);
-            }
-          })
-          .catch(err => {
-            console.error('Error loading deals:', err);
-          })
-          .finally(() => {
-            setLoadingDeals(false);
-          });
-      } else if (!value) {
-        // If no contact selected, load all deals
-        setLoadingDeals(true);
-        listDeals(tenantId, { page: 1, limit: 500 })
-          .then(dealsResponse => {
-            if (dealsResponse.success) {
-              setDeals(dealsResponse.deals);
-            }
-          })
-          .catch(err => {
-            console.error('Error loading deals:', err);
-          })
-          .finally(() => {
-            setLoadingDeals(false);
-          });
-      }
     } else {
       setFormData(prev => ({ ...prev, [field]: value }));
     }
@@ -262,30 +178,12 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
               validateStatus={errors.contactId ? 'error' : ''}
               help={errors.contactId}
             >
-              {loadingContacts ? (
-                <Input placeholder={t('Chargement...')} disabled />
-              ) : (
-                <Select
-                  value={formData.contactId}
-                  onChange={value => handleChange('contactId', value)}
-                  placeholder={t('Sélectionner un contact')}
-                  showSearch
-                  filterOption={(input, option) => {
-                    const label = typeof option?.label === 'string' ? option.label : String(option?.children || '');
-                    return label.toLowerCase().includes(input.toLowerCase());
-                  }}
-                  optionLabelProp="label"
-                >
-                  {contacts.map(contact => {
-                    const label = contactDisplayNameWithEmail(contact);
-                    return (
-                      <Select.Option key={contact.id} value={contact.id} label={label}>
-                        {label}
-                      </Select.Option>
-                    );
-                  })}
-                </Select>
-              )}
+              <ContactRemoteSelect
+                tenantId={tenantId}
+                value={formData.contactId || undefined}
+                onChange={value => handleChange('contactId', value ?? '')}
+                placeholder={t('Sélectionner un contact')}
+              />
             </Form.Item>
           </Col>
         ) : (
@@ -306,35 +204,16 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
               validateStatus={errors.dealId ? 'error' : ''}
               help={errors.dealId || (!formData.contactId && !contactId ? t("Sélectionnez d'abord un contact") : '')}
             >
-              {loadingDeals ? (
-                <Input placeholder={t('Chargement...')} disabled />
-              ) : (
-                <Select
-                  showSearch
-                  optionFilterProp="children"
-                  value={formData.dealId}
-                  onChange={value => handleChange('dealId', value)}
-                  disabled={!formData.contactId && !contactId}
-                  placeholder={t('Aucune affaire (optionnel)')}
-                  allowClear
-                >
-                  {deals.length === 0 && (formData.contactId || contactId) ? (
-                    <Select.Option value="" disabled>
-                      {t('Aucune affaire pour ce contact')}
-                    </Select.Option>
-                  ) : (
-                    deals.map(deal => {
-                      const budget = deal.budgetMax ? ` - ${formatMoney(deal.budgetMax)}` : '';
-                      return (
-                        <Select.Option key={deal.id} value={deal.id}>
-                          {dealTypeLabel(deal.type)} - {dealStageLabel(deal.stage)}
-                          {budget}
-                        </Select.Option>
-                      );
-                    })
-                  )}
-                </Select>
-              )}
+              <DealRemoteSelect
+                tenantId={tenantId}
+                contactId={formData.contactId || contactId}
+                value={formData.dealId || undefined}
+                onChange={value => handleChange('dealId', value ?? '')}
+                disabled={!formData.contactId && !contactId}
+                placeholder={t('Aucune affaire (optionnel)')}
+                notFoundContent={t('Aucune affaire pour ce contact')}
+                allowClear
+              />
             </Form.Item>
           </Col>
         ) : (

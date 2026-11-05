@@ -12,6 +12,7 @@ import { withEffectiveAmounts } from '../lib/lease-lifecycle/effective-rent';
 import { logAuditEvent } from './audit-service';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { t } from '../i18n';
+import { applyInstallmentListExtras, type InstallmentListExtras } from '../lib/rental/lease-list-filters';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 
 // ---------------------------------------------------------------------------
@@ -463,7 +464,7 @@ export async function listInstallments(
     year?: number;
     month?: number;
     overdue?: boolean;
-  },
+  } & InstallmentListExtras,
   pagination?: {
     page?: number;
     limit?: number;
@@ -535,6 +536,8 @@ export async function listInstallments(
       ]
     };
   }
+
+  applyInstallmentListExtras(where, filters);
 
   const page = pagination?.page || 1;
   const limit = pagination?.limit || 50;

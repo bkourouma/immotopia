@@ -1,8 +1,8 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Chantiers } from '../../pages/finance/Chantiers';
@@ -164,12 +164,19 @@ function normaliser(texte: string): string {
   return texte.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
+/** Sonde d'adresse : révèle l'état de liste porté par l'URL. */
+function Adresse() {
+  const location = useLocation();
+  return <span data-testid="adresse">{location.pathname + location.search}</span>;
+}
+
 function mountListe(url = '/tenant/agence-1/finance/chantiers') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Adresse />
           <Routes>
             <Route path="/tenant/:tenantId/finance/chantiers" element={<Chantiers />} />
             <Route path="/tenant/:tenantId/finance/chantiers/:siteId" element={<span>détail du chantier</span>} />
@@ -186,6 +193,7 @@ function mountDetail(url = '/tenant/agence-1/finance/chantiers/chantier-1') {
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <Adresse />
           <Routes>
             <Route path="/tenant/:tenantId/finance/chantiers/:siteId" element={<ChantierDetail />} />
             <Route path="/tenant/:tenantId/finance/chantiers/:siteId/stock" element={<span>stock du chantier</span>} />
@@ -268,6 +276,27 @@ describe('Chantiers — liste et création', () => {
     expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument();
   });
 
+  it('le sélecteur « Bien » cherche à distance avec la saisie, 20 résultats au plus', async () => {
+    listConstructionSites.mockResolvedValue([]);
+    const user = userEvent.setup({ delay: null });
+    mountListe();
+
+    await screen.findByText("Aucun chantier n'est encore enregistré.", {}, { timeout: 8000 });
+    // Rien n'est chargé tant que le formulaire est fermé.
+    expect(listProperties).not.toHaveBeenCalled();
+    await user.click(screen.getAllByRole('button', { name: /Nouveau chantier/ })[0]);
+    await screen.findByLabelText('Nom du chantier');
+
+    await user.type(screen.getByLabelText('Bien (facultatif)'), 'Duplex');
+
+    await waitFor(
+      () =>
+        expect(listProperties).toHaveBeenCalledWith('agence-1', expect.objectContaining({ q: 'Duplex', limit: 20 })),
+      { timeout: 8000 }
+    );
+    for (const [, filtres] of listProperties.mock.calls) expect(filtres.limit).toBe(20);
+  }, 15000);
+
   it('n’offre aucun champ pour saisir le coût réel', async () => {
     listConstructionSites.mockResolvedValue([chantier()]);
     const user = userEvent.setup({ delay: null });
@@ -281,6 +310,150 @@ describe('Chantiers — liste et création', () => {
     expect(screen.queryByLabelText(/coût réel/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('spinbutton', { name: /coût/i })).not.toBeInTheDocument();
   });
+});
+
+describe('Chantiers — recherche locale', () => {
+  const T = { timeout: 8000 };
+  const lignes = () => screen.getAllByRole('row').slice(1);
+
+  beforeEach(() => {
+    listConstructionSites.mockResolvedValue([
+      chantier(),
+      chantier({
+        id: 'chantier-2',
+        name: 'Résidence Palmeraie',
+        zone: 'Marcory',
+        propertyId: 'bien-2',
+        propertyLabel: 'Palmeraie bloc A',
+        managerLabel: 'Awa Diallo',
+        status: 'PLANNED',
+        actualCost: 900_000
+      }),
+      chantier({
+        id: 'chantier-3',
+        name: 'Terrain loué — Riviera',
+        zone: null,
+        propertyId: null,
+        propertyLabel: null,
+        managerLabel: null,
+        status: 'CLOSED',
+        actualCost: 12_000_000
+      })
+    ]);
+  });
+
+  it('cherche dans le nom, la zone, le bien et le responsable, et garde le terme dans l’URL', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountListe();
+
+    await screen.findByText('Résidence Palmeraie', {}, T);
+    expect(lignes()).toHaveLength(3);
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'diallo');
+
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+    expect(screen.getByText('Résidence Palmeraie')).toBeInTheDocument();
+    expect(screen.getByTestId('adresse')).toHaveTextContent('q=diallo');
+    // La recherche est locale : la liste n'est demandée qu'une fois, sans critère.
+    expect(listConstructionSites).toHaveBeenCalledTimes(1);
+    expect(listConstructionSites).toHaveBeenCalledWith('agence-1');
+  }, 30000);
+
+  it('filtre par statut depuis l’URL (clé « status » conservée)', async () => {
+    mountListe('/tenant/agence-1/finance/chantiers?status=CLOSED');
+
+    expect(await screen.findByText('Terrain loué — Riviera', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('Résidence Palmeraie')).not.toBeInTheDocument();
+    expect(lignes()).toHaveLength(1);
+  });
+
+  it('filtre par bien depuis l’URL, en retrouvant le libellé du bien porté par les chantiers', async () => {
+    mountListe('/tenant/agence-1/finance/chantiers?bien=bien-2');
+
+    expect(await screen.findByText('Résidence Palmeraie', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(1);
+    // La puce du critère porte le libellé du bien, jamais son identifiant.
+    expect((await screen.findAllByTitle(/Palmeraie bloc A/, {}, T)).length).toBeGreaterThan(0);
+    expect(screen.queryByText('bien-2')).not.toBeInTheDocument();
+  });
+
+  it('filtre par coût réel minimum depuis l’URL', async () => {
+    mountListe('/tenant/agence-1/finance/chantiers?coutMin=1000000');
+
+    expect(await screen.findByText('Terrain loué — Riviera', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(2);
+    expect(screen.queryByText('Résidence Palmeraie')).not.toBeInTheDocument();
+  });
+
+  it('propose d’effacer les critères quand rien ne correspond', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountListe('/tenant/agence-1/finance/chantiers?q=zzz');
+
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', {}, T)).toBeInTheDocument();
+    // Deux boutons du même nom : la barre et le bloc d'état.
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+
+    expect(await screen.findByText('Résidence Palmeraie', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(3);
+    expect(screen.getByTestId('adresse').textContent).not.toContain('q=');
+  });
+});
+
+describe('Détail d’un chantier — recherche dans les imputations', () => {
+  const T = { timeout: 8000 };
+  const lignes = () => screen.getAllByRole('row').slice(1);
+  const URL_IMP = '/tenant/agence-1/finance/chantiers/chantier-1?onglet=imputations';
+
+  beforeEach(() => {
+    getSiteDetail.mockResolvedValue(detail());
+  });
+
+  it('cherche dans le poste, la nature et la pièce d’origine, et garde le terme dans l’URL (préfixe imp)', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountDetail(URL_IMP);
+
+    await screen.findByText('Pièce de caisse 2026-0033 — Sable et gravier', {}, T);
+    expect(lignes()).toHaveLength(4);
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'sable');
+
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+    expect(screen.getByText('Pièce de caisse 2026-0033 — Sable et gravier')).toBeInTheDocument();
+    expect(screen.getByTestId('adresse')).toHaveTextContent('imp.q=sable');
+    // Une seule requête : la recherche est locale.
+    expect(getSiteDetail).toHaveBeenCalledTimes(1);
+  }, 30000);
+
+  it('filtre par poste depuis l’URL', async () => {
+    mountDetail(`${URL_IMP}&imp.poste=poste-main-oeuvre`);
+
+    expect(await screen.findByText('Pièce de caisse 2026-0032 — Salaire équipe maçons', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(2);
+    expect(screen.queryByText("Facture FC-2026-0141 — Ciments d'Afrique CI")).not.toBeInTheDocument();
+  });
+
+  it('filtre par montant minimum depuis l’URL', async () => {
+    mountDetail(`${URL_IMP}&imp.montantMin=1000000`);
+
+    expect(await screen.findByText("Facture FC-2026-0141 — Ciments d'Afrique CI", {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(2);
+    expect(screen.queryByText('Pièce de caisse 2026-0033 — Sable et gravier')).not.toBeInTheDocument();
+  });
+
+  it('propose d’effacer les critères, et le récapitulatif par poste n’a pas de barre', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountDetail(`${URL_IMP}&imp.q=zzz`);
+
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', {}, T)).toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText('Pièce de caisse 2026-0033 — Sable et gravier', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(4);
+
+    cleanup();
+    mountDetail();
+    await screen.findByText('Sous-totaux par poste', {}, T);
+    expect(screen.queryByRole('search')).not.toBeInTheDocument();
+  }, 30000);
 });
 
 describe('Détail d’un chantier', () => {
@@ -306,7 +479,7 @@ describe('Détail d’un chantier', () => {
 
   it('affiche un libellé lisible pour chaque pièce d’origine, jamais son identifiant', async () => {
     getSiteDetail.mockResolvedValue(detail());
-    mountDetail();
+    mountDetail('/tenant/agence-1/finance/chantiers/chantier-1?onglet=imputations');
 
     await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
 
@@ -330,10 +503,53 @@ describe('Détail d’un chantier', () => {
     getSiteDetail.mockResolvedValue(detail({ allocations: [], byCostCategory: [] }));
     mountDetail();
 
-    expect(
-      await screen.findAllByText('Aucune imputation n’a encore été enregistrée sur ce chantier.', {}, { timeout: 8000 })
-    ).toHaveLength(2);
+    const message = 'Aucune imputation n’a encore été enregistrée sur ce chantier.';
+    // Un onglet à la fois : l'état vide du récapitulatif, puis celui des imputations.
+    expect(await screen.findAllByText(message, {}, { timeout: 8000 })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('tab', { name: 'Imputations' }));
+    await waitFor(() => expect(screen.getAllByText(message)).toHaveLength(1));
+    expect(screen.getByRole('tab', { name: 'Imputations' })).toHaveAttribute('aria-selected', 'true');
   });
+
+  it('?onglet=imputations affiche les imputations, un onglet inconnu retombe sur les postes, sans nouvelle requête', async () => {
+    getSiteDetail.mockResolvedValue(detail());
+    mountDetail('/tenant/agence-1/finance/chantiers/chantier-1?onglet=imputations');
+    await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
+    expect(screen.getByText('Pièce de caisse 2026-0033 — Sable et gravier')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Imputations' })).toHaveAttribute('aria-selected', 'true');
+    expect(getSiteDetail).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    getSiteDetail.mockClear();
+    mountDetail('/tenant/agence-1/finance/chantiers/chantier-1?onglet=inconnu');
+    await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
+    expect(screen.getByRole('tab', { name: 'Sous-totaux par poste' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByText('Pièce de caisse 2026-0033 — Sable et gravier')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Imputations' }));
+    expect(await screen.findByText('Pièce de caisse 2026-0033 — Sable et gravier')).toBeInTheDocument();
+    expect(getSiteDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it('pagine les imputations localement : 20 lignes, puis les 5 suivantes', async () => {
+    const user = userEvent.setup({ delay: null });
+    const base = detail();
+    const allocations = Array.from({ length: 25 }, (_, i) => ({
+      ...base.allocations[0],
+      id: `alloc-${i + 1}`,
+      sourceLabel: `Pièce numéro ${String(i + 1).padStart(2, '0')}`
+    }));
+    getSiteDetail.mockResolvedValue(detail({ allocations }));
+    mountDetail('/tenant/agence-1/finance/chantiers/chantier-1?onglet=imputations');
+
+    await screen.findByText('Pièce numéro 01', {}, { timeout: 8000 });
+    expect(screen.getByText('Pièce numéro 20')).toBeInTheDocument();
+    expect(screen.queryByText('Pièce numéro 21')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTitle('2'));
+    expect(await screen.findByText('Pièce numéro 21')).toBeInTheDocument();
+    expect(screen.getByText('Pièce numéro 25')).toBeInTheDocument();
+    expect(screen.queryByText('Pièce numéro 20')).not.toBeInTheDocument();
+  }, 15000);
 
   it('affiche un état d’erreur avec un moyen de réessayer', async () => {
     getSiteDetail.mockRejectedValue(new Error('panne'));

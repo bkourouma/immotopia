@@ -1,13 +1,14 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import { Select } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { listTenantWorkPrograms, WorkProgramAvecBien } from '../../../services/patrimoine-service';
+import { getProperty, listProperties } from '../../../services/property-service';
 import { useAuth } from '../../../hooks/useAuth';
-import { useListParams } from '../../../hooks/useListParams';
+import { useListSearch } from '../../../hooks/useListSearch';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
-import { PageHeader, StateBlock, StatusTag, DataView, DataCard, FilterSheet } from '../../../components/primitives';
+import { PageHeader, StateBlock, StatusTag, DataView, DataCard } from '../../../components/primitives';
+import type { NumberRangeValue } from '../../../utils/list-search';
 import { collectAllPages } from '../../../utils/table-export/collect';
 import { t } from '../../../i18n/t';
 
@@ -20,12 +21,10 @@ import { activeLocale } from '../../../i18n/format';
  * renforcent : on téléchargeait tout pour n'en montrer qu'une partie, et le
  * coût du filtre était payé au chargement plutôt qu'au serveur.
  *
- * Une requête désormais, filtrée et paginée côté serveur. Le statut vit dans
- * l'URL : une liste des travaux en retard se partage par copier-coller.
+ * Une requête désormais, filtrée et paginée côté serveur. Les critères (texte,
+ * statut, bien, date prévue, coût estimé) vivent dans l'URL : une liste des
+ * travaux se partage par copier-coller.
  */
-
-type Filtres = { status: string };
-const FILTER_KEYS = ['status'] as const;
 
 // Une fonction, et non une constante de module : `t()` doit se lire au rendu,
 // dans la langue affichée, et non une fois pour toutes au chargement du module.
@@ -54,7 +53,43 @@ export const WorkProgramsPage: React.FC = () => {
   const { tenantMembership } = useAuth();
   const agence = tenantId || tenantMembership?.tenantId;
 
-  const list = useListParams<Filtres>({ filterKeys: FILTER_KEYS, defaultPageSize: 25 });
+  const libelleBien = (bien: { internalReference: string; title: string }) =>
+    `${bien.internalReference} · ${bien.title}`;
+
+  const search = useListSearch({
+    defaultPageSize: 25,
+    apiNames: { sort: false },
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Programme, bien, référence…') },
+      { key: 'status', type: 'multiSelect', label: t('Statut'), primary: true, options: statuts() },
+      {
+        key: 'propertyId',
+        type: 'select',
+        label: t('Bien'),
+        primary: true,
+        loadOptions: async terme => {
+          const { properties } = await listProperties(agence as string, { q: terme || undefined, limit: 20 });
+          return properties.map(bien => ({ value: bien.id, label: libelleBien(bien) }));
+        },
+        resolveLabel: async id => libelleBien(await getProperty(agence as string, id))
+      },
+      { key: 'planned', type: 'dateRange', label: t('Date prévue'), api: ['plannedFrom', 'plannedTo'] },
+      {
+        key: 'cost',
+        type: 'numberRange',
+        label: t('Coût estimé'),
+        unit: 'FCFA',
+        // Un coût estimé n'est jamais négatif (l'API répond 400) : une borne négative n'est pas envoyée.
+        api: value => {
+          const { min, max } = value as NumberRangeValue;
+          return {
+            ...(min !== undefined && min >= 0 ? { minCost: min } : {}),
+            ...(max !== undefined && max >= 0 ? { maxCost: max } : {})
+          };
+        }
+      }
+    ]
+  });
 
   const {
     data,
@@ -63,15 +98,16 @@ export const WorkProgramsPage: React.FC = () => {
     error: erreur,
     refetch
   } = useQuery({
-    queryKey: queryKey('work-programs', agence, list.queryParams),
+    queryKey: queryKey('work-programs', agence, search.apiParams),
+    // L'API refuse une taille de page > 100 : un lien modifié à la main ne doit pas casser l'écran.
     queryFn: () =>
       listTenantWorkPrograms(agence as string, {
-        status: list.filters.status || undefined,
-        page: list.page,
-        limit: list.pageSize
+        ...search.apiParams,
+        limit: Math.min(Number(search.apiParams.limit) || 25, 100)
       }),
     enabled: Boolean(agence),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
 
   if (!agence) {
@@ -113,53 +149,25 @@ export const WorkProgramsPage: React.FC = () => {
     <>
       <PageHeader title={t('Programmes de travaux')} subtitle={sousTitre(total)} />
 
-      <FilterSheet
-        activeCount={list.filters.status ? 1 : 0}
-        onClear={list.clearFilters}
-        title={t('Filtrer les programmes')}
-      >
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-statut-travaux">{t('Statut')}</label>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            id="filtre-statut-travaux"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les statuts')}
-            allowClear
-            value={list.filters.status || undefined}
-            onChange={valeur => list.setFilters({ status: valeur })}
-            options={statuts()}
-          />
-        </div>
-      </FilterSheet>
-
       <DataView<WorkProgramAvecBien>
-        // Export de TOUS les programmes, avec le même filtre de statut que la liste affichée.
+        // Export de TOUS les programmes, avec les mêmes critères que la liste affichée.
         export={{
           filename: t('Programmes de travaux'),
           fetchAll: () =>
             collectAllPages<WorkProgramAvecBien>(async (page, limit) => {
-              const reponse = await listTenantWorkPrograms(agence, {
-                status: list.filters.status || undefined,
-                page,
-                limit
-              });
+              const reponse = await listTenantWorkPrograms(agence, { ...search.filterParams, page, limit });
               return { items: reponse.items ?? [], total: reponse.total ?? 0 };
             })
         }}
         items={programmes}
         total={total}
-        page={list.page}
-        pageSize={list.pageSize}
-        onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
+        search={search.searchProps}
+        {...search.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreur ? t('Impossible de charger les programmes de travaux.') : null}
         errorCause={erreur}
         onRetry={() => refetch()}
-        isFiltered={list.isFiltered}
-        onClearFilters={list.clearFilters}
         emptyDescription={t("Aucun programme de travaux n'est enregistré pour cette agence.")}
         columns={colonnes}
         rowKey={programme => programme.id}

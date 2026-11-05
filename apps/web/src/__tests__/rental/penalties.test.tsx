@@ -213,13 +213,12 @@ describe('Pénalités — lecture du champ « raison »', () => {
 });
 
 describe('Pénalités — pagination', () => {
-  it('n’affiche aucune pagination : l’API n’en rend pas', async () => {
-    // Le endpoint ignore `page` et `limit` et renvoie tout. L'ancienne version
-    // fabriquait un compteur a partir de `data.length` et une page unique, ce
-    // qui laissait croire a une pagination inexistante.
+  it('pagine localement : l’API rend tout, l’écran découpe en pages de 50', async () => {
+    // Le endpoint ignore `page` et `limit` et renvoie tout. La pagination est
+    // locale (recherche multicritères) ; le compteur reste celui de la liste.
     mount([penalite({ id: 'a' }), penalite({ id: 'b' }), penalite({ id: 'c' })]);
     expect(await screen.findByText('3 pénalités', {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(document.querySelector('.ant-pagination')).toBeNull();
+    expect(document.querySelector('.ant-pagination')).not.toBeNull();
   });
 
   it('n’envoie ni page ni limite au service', async () => {

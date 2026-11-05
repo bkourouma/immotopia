@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
@@ -299,6 +300,22 @@ export async function createTicket(
  * @param pagination - Pagination options (page, limit)
  * @returns List of tickets
  */
+/**
+ * Recherche libre d'une liste de tickets : titre, description, localisation,
+ * bien (titre, adresse, référence) et prestataire. Posée dans le
+ * `where` de l'agence, donc sans effet hors d'elle.
+ */
+function ticketSearchClause(search: string) {
+  const contains = { contains: escapeLike(search), mode: 'insensitive' as const };
+  return [
+    { title: contains },
+    { description: contains },
+    { location_details: contains },
+    { property: { is: { OR: [{ title: contains }, { address: contains }, { internalReference: contains }] } } },
+    { assignedVendor: { is: { name: contains } } }
+  ];
+}
+
 export async function getTenantTickets(
   tenantId: string,
   filters?: {
@@ -306,6 +323,11 @@ export async function getTenantTickets(
     propertyId?: string;
     tenantContactId?: string;
     leaseId?: string;
+    priority?: MaintenanceTicketPriority;
+    category?: MaintenanceTicketCategory;
+    search?: string;
+    dateFrom?: Date;
+    dateTo?: Date;
   },
   pagination?: {
     page?: number;
@@ -334,6 +356,25 @@ export async function getTenantTickets(
 
   if (filters?.leaseId) {
     where.lease_id = filters.leaseId;
+  }
+
+  if (filters?.priority) {
+    where.priority = filters.priority;
+  }
+
+  if (filters?.category) {
+    where.category = filters.category;
+  }
+
+  if (filters?.search) {
+    where.OR = ticketSearchClause(filters.search);
+  }
+
+  if (filters?.dateFrom || filters?.dateTo) {
+    where.created_at = {
+      ...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
+      ...(filters.dateTo ? { lte: filters.dateTo } : {})
+    };
   }
 
   const [tickets, total] = await Promise.all([
@@ -795,6 +836,8 @@ export async function getAllTickets(
     status?: MaintenanceTicketStatus;
     priority?: MaintenanceTicketPriority;
     assignedVendorId?: string;
+    category?: MaintenanceTicketCategory;
+    search?: string;
     dateFrom?: Date;
     dateTo?: Date;
   },
@@ -825,6 +868,14 @@ export async function getAllTickets(
 
   if (filters?.assignedVendorId) {
     where.assigned_vendor_id = filters.assignedVendorId;
+  }
+
+  if (filters?.category) {
+    where.category = filters.category;
+  }
+
+  if (filters?.search) {
+    where.OR = ticketSearchClause(filters.search);
   }
 
   if (filters?.dateFrom || filters?.dateTo) {

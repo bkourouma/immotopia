@@ -29,6 +29,7 @@ import { BadRequestError, ErrorCode, NotFoundError } from '../../middleware/erro
 import { assertBelongsToTenant } from '../../utils/tenant-ownership';
 import { stockError } from './stock-controles';
 import type { PrismaLike, StockCallerContext, TakerView } from './types-040-controle';
+import { escapeLike } from '../../utils/like-escape';
 
 // ---------------------------------------------------------------------------
 // Libellés et normalisation
@@ -146,9 +147,9 @@ export async function listStockTakers(
       ...(search
         ? {
             OR: [
-              { fullName: { contains: search, mode: 'insensitive' as const } },
-              { normalizedName: { contains: normalizeTakerName(search) } },
-              { teamOrCompany: { contains: search, mode: 'insensitive' as const } }
+              { fullName: { contains: escapeLike(search), mode: 'insensitive' as const } },
+              { normalizedName: { contains: escapeLike(normalizeTakerName(search)) } },
+              { teamOrCompany: { contains: escapeLike(search), mode: 'insensitive' as const } }
             ]
           }
         : {})

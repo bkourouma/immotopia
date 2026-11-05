@@ -1,23 +1,8 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  App,
-  Alert,
-  Button,
-  Card,
-  DatePicker,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Spin,
-  Tag,
-  Typography
-} from 'antd';
-import { EditOutlined, PlusOutlined, UserAddOutlined } from '@ant-design/icons';
+import { App, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Alert, Tabs, Typography } from 'antd';
+import { PlusOutlined, UserAddOutlined } from '@ant-design/icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { MoneyValue, Table } from '../../components/primitives';
 import { ContactForm } from '../../components/crm/ContactForm';
 import { createContact, listContacts } from '../../services/crm-service';
 import { listProperties } from '../../services/property-service';
@@ -39,7 +24,24 @@ import {
   updateSyndicIncident
 } from '../../services/syndic-service';
 import { CoOwnerInvitationResult } from '../../components/syndics/CoOwnerInvitationResult';
-import { LinkedProviderInvoices } from '../../components/syndics/LinkedProviderInvoices';
+import { useTabParam } from '../../components/syndics/finances/url-params';
+import { IncidentsTab } from '../../components/syndics/profiles/IncidentsTab';
+import { OwnerProfilesTab } from '../../components/syndics/profiles/OwnerProfilesTab';
+import { TenantProfilesTab } from '../../components/syndics/profiles/TenantProfilesTab';
+import {
+  contactDisplayName,
+  getImputationTypeLabel,
+  getIncidentStatusLabel,
+  getIncidentTypeLabel,
+  getIncidentUrgencyLabel,
+  getLotOptionLabel,
+  IMPUTATION_TYPES,
+  INCIDENT_STATUSES,
+  INCIDENT_TYPES,
+  INCIDENT_URGENCIES,
+  profileContactName
+} from '../../components/syndics/profiles/profile-labels';
+import { profileKeys } from '../../components/syndics/profiles/query-keys';
 import {
   BudgetLineItem,
   CoOwnerPortalInvitation,
@@ -47,19 +49,32 @@ import {
   LotOwnerProfile,
   LotTenantProfile,
   MaintenanceContract,
-  ServiceProvider,
   SyndicateBudget,
   SyndicateIncident,
   SyndicateLot
 } from '../../types/syndic-types';
+import type { ServiceProvider } from '../../types/syndic-types';
 import type { Property } from '../../types/property-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { CreateCrmContactRequest, CrmContact, UpdateCrmContactRequest } from '../../types/crm-types';
-import { formatLotLabel } from '../../utils/syndic-lot-label';
+import { STALE_TIME } from '../../lib/query-keys';
 import { t } from '../../i18n/t';
 import { dateFormat } from '../../i18n/format';
 
 const { Paragraph, Title } = Typography;
+
+/** Onglets de l'écran, dans l'ordre d'affichage (le premier est le défaut de `?tab=`). */
+const PROFILE_TABS = ['proprietaires', 'locataires', 'incidents'] as const;
+type ProfileTab = (typeof PROFILE_TABS)[number];
+
+// Références stables : une liste absente ne doit pas recréer un tableau à chaque rendu (mémoïsation des onglets).
+const NO_LOTS: SyndicateLot[] = [];
+const NO_PROPERTIES: Property[] = [];
+const NO_PROVIDERS: ServiceProvider[] = [];
+const NO_OWNERS: LotOwnerProfile[] = [];
+const NO_TENANTS: LotTenantProfile[] = [];
+const NO_INCIDENTS: SyndicateIncident[] = [];
+const NO_INCOMPLETE: IncompleteOwnerShares[] = [];
 
 type ContactTarget = 'owner' | 'tenant' | 'incident';
 
@@ -81,130 +96,9 @@ function extractOpenOwners(err: any): OpenOwner[] | null {
   return null;
 }
 
-function getIncidentTypeLabel(type: string): string {
-  switch (type) {
-    case 'BREAKDOWN':
-      return t('Panne');
-    case 'LEAK':
-      return t('Fuite');
-    case 'VANDALISM':
-      return t('Vandalisme');
-    case 'SAFETY':
-      return t('Sécurité');
-    case 'OTHER':
-      return t('Autre');
-    default:
-      return type;
-  }
-}
-
-function getIncidentUrgencyLabel(urgency: string): string {
-  switch (urgency) {
-    case 'LOW':
-      return t('Basse');
-    case 'MEDIUM':
-      return t('Moyenne');
-    case 'HIGH':
-      return t('Haute');
-    case 'CRITICAL':
-      return t('Critique');
-    default:
-      return urgency;
-  }
-}
-
-function getIncidentStatusLabel(status: string): string {
-  switch (status) {
-    case 'REPORTED':
-      return t('Signalé');
-    case 'ASSIGNED':
-      return t('Assigné');
-    case 'IN_PROGRESS':
-      return t('En cours');
-    case 'RESOLVED':
-      return t('Résolu');
-    case 'CLOSED':
-      return t('Clôturé');
-    default:
-      return status;
-  }
-}
-
-const incidentStatusColors: Record<string, string> = {
-  REPORTED: 'default',
-  ASSIGNED: 'blue',
-  IN_PROGRESS: 'processing',
-  RESOLVED: 'green',
-  CLOSED: 'default'
-};
-
-const INCIDENT_TYPES = ['BREAKDOWN', 'LEAK', 'VANDALISM', 'SAFETY', 'OTHER'];
-const INCIDENT_URGENCIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
-const INCIDENT_STATUSES = ['REPORTED', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
-const IMPUTATION_TYPES = ['SYNDICATE_BUDGET', 'INSURANCE', 'LOT_OWNER', 'THIRD_PARTY'];
-
-function getImputationTypeLabel(type: string): string {
-  switch (type) {
-    case 'SYNDICATE_BUDGET':
-      return t('Budget syndic');
-    case 'INSURANCE':
-      return t('Assurance');
-    case 'LOT_OWNER':
-      return t('Lot propriétaire');
-    case 'THIRD_PARTY':
-      return t('Tiers');
-    default:
-      return type;
-  }
-}
-
 /** Délai de la recherche de contacts côté serveur (frappe au clavier). */
 const CONTACT_SEARCH_DEBOUNCE_MS = 300;
-
-function contactDisplayName(contact: CrmContact): string {
-  const name = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
-  const label = name || contact.legalName || contact.email || contact.id;
-  return contact.email ? `${label} (${contact.email})` : label;
-}
-
-/** Un profil locataire est « actuel » s'il est marqué ainsi et que sa fin est vide ou à venir. */
-function isTenantProfileCurrent(profile: LotTenantProfile): boolean {
-  if (!profile.isCurrent) return false;
-  return !profile.tenantUntil || dayjs(profile.tenantUntil).isAfter(dayjs());
-}
-
-/**
- * Libellé d'un lot pour les tableaux de profils/incidents.
- *
- * `fallbackProperty` couvre les lots importés dont la relation `property`
- * n'est pas chargée directement : `getLotOptionLabel` la retrouve par
- * référence interne et la transmet ici. Toujours construit par
- * `formatLotLabel` (numéro de lot en tête) — voir ce module pour le pourquoi
- * (constat de recette, module 5.1).
- */
-function getLotDisplayName(
-  lot?: SyndicateLot | null,
-  _profileContact?: {
-    firstName?: string | null;
-    lastName?: string | null;
-    legalName?: string | null;
-    email?: string | null;
-  } | null,
-  fallbackProperty?: {
-    title?: string | null;
-  } | null
-): string {
-  if (!lot) return '-';
-  return formatLotLabel({ ...lot, property: lot.property || fallbackProperty || null });
-}
-
-function getLotOptionLabel(lot: SyndicateLot, propertiesByInternalReference: Record<string, Property>): string {
-  const lotReference = lot.property?.internalReference || lot.lotNumber || '';
-  const propertyByReference = lotReference
-    ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
-    : undefined;
-  return getLotDisplayName(lot, null, propertyByReference);
-}
+const CONTACT_SEARCH_LIMIT = 20;
 
 /** Message d'erreur de l'API : `message` (erreurs typées), à défaut `error`, sinon le repli. */
 function apiErrorMessage(err: unknown, fallback: string): string {
@@ -213,27 +107,83 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 }
 
 function contactLabel(profile: LotOwnerProfile): string {
-  const contact = profile.contact;
-  if (!contact) return profile.contactId;
-  const name = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
-  return name || contact.legalName || contact.email || profile.contactId;
+  return profileContactName(profile.contact, profile.contactId);
 }
 
+/**
+ * Profils lot et incidents d'une copropriété : trois onglets paresseux
+ * (`?tab=`), chacun avec sa barre de recherche (préfixes d'URL po, pl, in).
+ * Une liste n'est demandée qu'à l'affichage de son onglet ; les lots et les
+ * biens (libellés de lot) se chargent une fois pour tous les onglets, les
+ * contacts à l'ouverture d'un formulaire, les prestataires avec l'onglet
+ * Incidents, les budgets et contrats à l'ouverture de la modale d'imputation.
+ */
 export const SyndicProfilesIncidents: React.FC = () => {
   const { message, modal } = App.useApp();
+  const queryClient = useQueryClient();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
+  const [activeTab, setActiveTab] = useTabParam<ProfileTab>(PROFILE_TABS, 'proprietaires');
 
-  const [ownerProfiles, setOwnerProfiles] = useState<LotOwnerProfile[]>([]);
-  // Lots dont les parts totalisent moins de 100 % : calculé par l'API sur tous les profils.
-  const [incompleteShares, setIncompleteShares] = useState<IncompleteOwnerShares[]>([]);
-  const [tenantProfiles, setTenantProfiles] = useState<LotTenantProfile[]>([]);
-  const [incidents, setIncidents] = useState<SyndicateIncident[]>([]);
-  const [lots, setLots] = useState<SyndicateLot[]>([]);
-  const [contacts, setContacts] = useState<CrmContact[]>([]);
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [providers, setProviders] = useState<ServiceProvider[]>([]);
-  const [loading, setLoading] = useState(true);
+  const ready = Boolean(effectiveTenantId && syndicId);
+  const tenantKey = effectiveTenantId ?? '';
+  const syndicKey = syndicId ?? '';
+
+  // Une requête par onglet, lancée seulement quand l'onglet est affiché.
+  const ownersQuery = useQuery({
+    queryKey: profileKeys.owners(tenantKey, syndicKey),
+    queryFn: () => listLotOwnerProfilesWithSummary(tenantKey, syndicKey),
+    enabled: ready && activeTab === 'proprietaires'
+  });
+  const tenantsQuery = useQuery({
+    queryKey: profileKeys.tenants(tenantKey, syndicKey),
+    queryFn: () => listLotTenantProfiles(tenantKey, syndicKey),
+    enabled: ready && activeTab === 'locataires'
+  });
+  const incidentsQuery = useQuery({
+    queryKey: profileKeys.incidents(tenantKey, syndicKey),
+    queryFn: () => listSyndicIncidents(tenantKey, syndicKey),
+    enabled: ready && activeTab === 'incidents'
+  });
+  // Lots et biens : les trois tableaux et les formulaires en tirent leurs libellés de lot.
+  const lotsQuery = useQuery({
+    queryKey: profileKeys.lots(tenantKey, syndicKey),
+    queryFn: () => listSyndicateLots(tenantKey, syndicKey),
+    enabled: ready,
+    staleTime: STALE_TIME.list
+  });
+  const propertiesQuery = useQuery({
+    queryKey: profileKeys.properties(tenantKey),
+    queryFn: async () => (await listProperties(tenantKey, { page: 1, limit: 1000 })).properties || [],
+    enabled: ready,
+    staleTime: STALE_TIME.list
+  });
+  // Prestataires : colonne, critère et formulaire de l'onglet Incidents.
+  const providersQuery = useQuery({
+    queryKey: profileKeys.providers(tenantKey, syndicKey),
+    queryFn: async () => (await listProvidersContracts(tenantKey, syndicKey)).providers || [],
+    enabled: ready && activeTab === 'incidents',
+    staleTime: STALE_TIME.list
+  });
+
+  const lots = lotsQuery.data ?? NO_LOTS;
+  const properties = propertiesQuery.data ?? NO_PROPERTIES;
+  const providers = providersQuery.data ?? NO_PROVIDERS;
+
+  const reload = (list: 'owners' | 'tenants' | 'incidents') =>
+    queryClient.invalidateQueries({ queryKey: profileKeys[list](tenantKey, syndicKey) });
+
+  const activeQuery =
+    activeTab === 'proprietaires' ? ownersQuery : activeTab === 'locataires' ? tenantsQuery : incidentsQuery;
+  const loadError = (activeQuery.error ?? lotsQuery.error) as { response?: { data?: { error?: string } } } | null;
+  const error = ready
+    ? loadError
+      ? loadError.response?.data?.error || t('Impossible de charger profils et incidents')
+      : null
+    : t('Paramètres profils/incidents manquants');
+  const listLoading =
+    ready && (activeQuery.isLoading || lotsQuery.isLoading || (activeTab === 'incidents' && providersQuery.isLoading));
+
   const [submitting, setSubmitting] = useState(false);
   // Soumission du profil propriétaire en cours (anti double clic, voir handleCreateOwner).
   const submittingOwnerRef = useRef(false);
@@ -244,12 +194,32 @@ export const SyndicProfilesIncidents: React.FC = () => {
   const [invitingProfileId, setInvitingProfileId] = useState<string | null>(null);
   const [revokingProfileId, setRevokingProfileId] = useState<string | null>(null);
   const [invitation, setInvitation] = useState<CoOwnerPortalInvitation | null>(null);
-  const [error, setError] = useState<string | null>(null);
   // Création d'un contact depuis un formulaire : le champ d'origine reçoit le contact créé.
   const [createContactFor, setCreateContactFor] = useState<ContactTarget | null>(null);
   const contactSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contactRequestGeneration = useRef(0);
+  const contactSearchSequence = useRef(0);
   // Tous les contacts déjà vus (liste initiale, recherches, créations) : la sélection courante reste affichable.
   const knownContacts = useRef<Record<string, CrmContact>>({});
+  // Contacts des formulaires : chargés à la première ouverture d'un formulaire, pas au montage de la page.
+  const [contacts, setContacts] = useState<CrmContact[]>([]);
+  const contactsRequested = useRef(false);
+
+  // Un changement d'agence invalide les options de contact et les réponses encore en vol.
+  useEffect(() => {
+    contactRequestGeneration.current += 1;
+    contactSearchSequence.current += 1;
+    if (contactSearchTimer.current) clearTimeout(contactSearchTimer.current);
+    contactSearchTimer.current = null;
+    contactsRequested.current = false;
+    knownContacts.current = {};
+    setContacts([]);
+    return () => {
+      contactRequestGeneration.current += 1;
+      contactSearchSequence.current += 1;
+      if (contactSearchTimer.current) clearTimeout(contactSearchTimer.current);
+    };
+  }, [effectiveTenantId]);
   const [budgets, setBudgets] = useState<SyndicateBudget[]>([]);
   const [contracts, setContracts] = useState<MaintenanceContract[]>([]);
   const [endingTenantProfileId, setEndingTenantProfileId] = useState<string | null>(null);
@@ -288,44 +258,25 @@ export const SyndicProfilesIncidents: React.FC = () => {
     [properties]
   );
 
-  useEffect(() => {
-    if (!effectiveTenantId || !syndicId) {
-      setLoading(false);
-      setError(t('Paramètres profils/incidents manquants'));
-      return;
-    }
-    void loadData();
-  }, [effectiveTenantId, syndicId]);
-
-  const loadData = async () => {
-    if (!effectiveTenantId || !syndicId) return;
-    setLoading(true);
-    setError(null);
+  // Charge les contacts des formulaires une seule fois, à la première ouverture d'un formulaire.
+  const ensureContacts = async () => {
+    if (!effectiveTenantId || contactsRequested.current) return;
+    const generation = contactRequestGeneration.current;
+    contactsRequested.current = true;
     try {
-      const [owners, tenants, incidentsData] = await Promise.all([
-        listLotOwnerProfilesWithSummary(effectiveTenantId, syndicId),
-        listLotTenantProfiles(effectiveTenantId, syndicId),
-        listSyndicIncidents(effectiveTenantId, syndicId)
-      ]);
-      const [lotsData, contactsData, propertiesData, providersData] = await Promise.all([
-        listSyndicateLots(effectiveTenantId, syndicId),
-        listContacts(effectiveTenantId, { page: 1, limit: 200 }),
-        listProperties(effectiveTenantId, { page: 1, limit: 1000 }),
-        listProvidersContracts(effectiveTenantId, syndicId)
-      ]);
-      setOwnerProfiles(owners.items);
-      setIncompleteShares(owners.incompleteLots);
-      setTenantProfiles(tenants);
-      setIncidents(incidentsData);
-      setLots(lotsData);
-      rememberContacts(contactsData.contacts || []);
-      setContacts(contactsData.contacts || []);
-      setProperties(propertiesData.properties || []);
-      setProviders(providersData.providers || []);
-    } catch (err: any) {
-      setError(err.response?.data?.error || t('Impossible de charger profils et incidents'));
-    } finally {
-      setLoading(false);
+      const contactsData = await listContacts(effectiveTenantId, { page: 1, limit: CONTACT_SEARCH_LIMIT });
+      if (generation !== contactRequestGeneration.current) return;
+      const found = contactsData.contacts || [];
+      rememberContacts(found);
+      // Les contacts déjà présents (créés ou recherchés entre-temps) restent en tête.
+      setContacts(previous => {
+        const merged = [...previous, ...found];
+        return merged.filter((contact, index) => merged.findIndex(c => c.id === contact.id) === index);
+      });
+    } catch {
+      if (generation !== contactRequestGeneration.current) return;
+      contactsRequested.current = false;
+      message.error(t('Recherche de contacts impossible'));
     }
   };
 
@@ -346,20 +297,28 @@ export const SyndicProfilesIncidents: React.FC = () => {
     return ids.map(id => (id ? knownContacts.current[id] : undefined)).filter((c): c is CrmContact => Boolean(c));
   };
 
-  // Recherche côté serveur (au-delà des 200 premiers contacts), avec un délai après la frappe.
+  // Recherche côté serveur (au-delà des premiers contacts), avec un délai après la frappe.
   const handleContactSearch = (term: string) => {
     if (contactSearchTimer.current) clearTimeout(contactSearchTimer.current);
     if (!effectiveTenantId) return;
+    const generation = contactRequestGeneration.current;
+    const sequence = ++contactSearchSequence.current;
     contactSearchTimer.current = setTimeout(() => {
+      if (generation !== contactRequestGeneration.current || sequence !== contactSearchSequence.current) return;
       const search = term.trim();
-      listContacts(effectiveTenantId, { page: 1, limit: 200, ...(search ? { search } : {}) })
+      listContacts(effectiveTenantId, { page: 1, limit: CONTACT_SEARCH_LIMIT, ...(search ? { search } : {}) })
         .then(result => {
+          if (generation !== contactRequestGeneration.current || sequence !== contactSearchSequence.current) return;
           const found = result.contacts || [];
           rememberContacts(found);
           const merged = [...selectedContacts(), ...found];
           setContacts(merged.filter((contact, index) => merged.findIndex(c => c.id === contact.id) === index));
         })
-        .catch(() => message.error(t('Recherche de contacts impossible')));
+        .catch(() => {
+          if (generation === contactRequestGeneration.current && sequence === contactSearchSequence.current) {
+            message.error(t('Recherche de contacts impossible'));
+          }
+        });
     }, CONTACT_SEARCH_DEBOUNCE_MS);
   };
 
@@ -429,7 +388,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
       message.success(t('Profil propriétaire créé'));
       setOpenOwner(false);
       ownerForm.resetFields();
-      await loadData();
+      await reload('owners');
     } catch (err: any) {
       const openOwners = extractOpenOwners(err);
       if (openOwners) {
@@ -474,7 +433,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
       message.success(t('Profil locataire créé'));
       setOpenTenant(false);
       tenantForm.resetFields();
-      await loadData();
+      await reload('tenants');
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Création profil locataire impossible'));
     } finally {
@@ -497,7 +456,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
       message.success(t('Incident créé'));
       setOpenIncident(false);
       incidentForm.resetFields();
-      await loadData();
+      await reload('incidents');
     } catch (err: any) {
       message.error(err.response?.data?.error || t("Création d'incident impossible"));
     } finally {
@@ -548,7 +507,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
       setOpenImputation(false);
       setSelectedIncidentId(null);
       imputationForm.resetFields();
-      await loadData();
+      await reload('incidents');
     } catch (err: any) {
       message.error(err.response?.data?.error || t("Imputation d'incident impossible"));
     } finally {
@@ -570,7 +529,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
     try {
       await updateSyndicIncident(effectiveTenantId, syndicId, incidentId, { providerId: providerId || null });
       message.success(t('Prestataire assigné à l’incident'));
-      await loadData();
+      await reload('incidents');
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Assignation du prestataire impossible'));
     } finally {
@@ -623,7 +582,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
       setOpenEditIncident(false);
       setEditingIncident(null);
       editIncidentForm.resetFields();
-      await loadData();
+      await reload('incidents');
     } catch (err) {
       message.error(apiErrorMessage(err, t('Mise à jour de l’incident impossible')));
     } finally {
@@ -643,7 +602,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
     try {
       const result = await inviteCoOwnerToPortal(effectiveTenantId, syndicId, profile.id);
       setInvitation(result);
-      await loadData();
+      await reload('owners');
     } catch (err) {
       message.error(apiErrorMessage(err, t('Invitation au portail impossible')));
     } finally {
@@ -657,7 +616,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
     try {
       await revokeCoOwnerPortalAccess(effectiveTenantId, syndicId, profile.id);
       message.success(t('Accès au portail révoqué'));
-      await loadData();
+      await reload('owners');
     } catch (err) {
       message.error(apiErrorMessage(err, t("Révocation de l'accès impossible")));
     } finally {
@@ -675,7 +634,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
         tenantUntil: new Date().toISOString()
       });
       message.success(t('Profil locataire terminé'));
-      await loadData();
+      await reload('tenants');
     } catch (err) {
       message.error(apiErrorMessage(err, t('Fin du profil locataire impossible')));
     } finally {
@@ -706,6 +665,18 @@ export const SyndicProfilesIncidents: React.FC = () => {
     });
   };
 
+  // Ouverture de la modale d'imputation depuis une ligne d'incident.
+  const openImputationModal = (incident: SyndicateIncident) => {
+    setSelectedIncidentId(incident.id);
+    // Le lot de l'incident est pré-rempli, mais reste modifiable :
+    // main permet d'imputer un incident des parties communes à un
+    // lot précis.
+    imputationForm.resetFields();
+    imputationForm.setFieldsValue({ lotId: incident.lotId || undefined });
+    setOpenImputation(true);
+    void loadImputationOptions();
+  };
+
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -719,13 +690,32 @@ export const SyndicProfilesIncidents: React.FC = () => {
             </Paragraph>
           </Space>
           <Space>
-            <Button icon={<PlusOutlined />} onClick={() => setOpenOwner(true)}>
+            <Button
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setOpenOwner(true);
+                void ensureContacts();
+              }}
+            >
               {t('Profil propriétaire')}
             </Button>
-            <Button icon={<PlusOutlined />} onClick={() => setOpenTenant(true)}>
+            <Button
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setOpenTenant(true);
+                void ensureContacts();
+              }}
+            >
               {t('Profil locataire')}
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenIncident(true)}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setOpenIncident(true);
+                void ensureContacts();
+              }}
+            >
               {t('Nouvel incident')}
             </Button>
           </Space>
@@ -733,331 +723,66 @@ export const SyndicProfilesIncidents: React.FC = () => {
 
         {error ? <Alert type="error" message={error} showIcon /> : null}
 
-        {loading ? (
-          <div style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Spin size="large" />
-          </div>
-        ) : (
-          <>
-            <Card title={t('Profils propriétaires')}>
-              {incompleteShares.length > 0 ? (
-                <Alert
-                  type="warning"
-                  showIcon
-                  style={{ marginBottom: 12 }}
-                  message={t('Quotes-parts incomplètes')}
-                  description={incompleteShares
-                    .map(item =>
-                      t('Lot {{lot}} : {{percentage}} % attribués', {
-                        lot: item.lotNumber,
-                        percentage: item.totalPercentage
-                      })
-                    )
-                    .join(' ; ')}
+        <Tabs
+          activeKey={activeTab}
+          onChange={key => setActiveTab(key as ProfileTab)}
+          destroyOnHidden
+          items={[
+            {
+              key: 'proprietaires',
+              label: t('Profils propriétaires'),
+              children: ready ? (
+                <OwnerProfilesTab
+                  items={ownersQuery.data?.items ?? NO_OWNERS}
+                  incompleteShares={ownersQuery.data?.incompleteLots ?? NO_INCOMPLETE}
+                  loading={listLoading}
+                  lots={lots}
+                  lotsById={lotsById}
+                  propertiesByInternalReference={propertiesByInternalReference}
+                  invitingProfileId={invitingProfileId}
+                  revokingProfileId={revokingProfileId}
+                  onInvite={profile => void handleInvite(profile)}
+                  onRevoke={confirmRevoke}
                 />
-              ) : null}
-              <Table
-                exportFilename={t('Profils propriétaires')}
-                scroll={{ x: 'max-content' }}
-                rowKey="id"
-                dataSource={ownerProfiles}
-                pagination={{ pageSize: 8 }}
-                columns={[
-                  {
-                    title: t('Lot'),
-                    render: (_, row) => {
-                      const lot = row.lot || (row.lotId ? lotsById[row.lotId] : undefined);
-                      const lotReference = lot?.property?.internalReference || lot?.lotNumber || '';
-                      const propertyByReference = lotReference
-                        ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
-                        : undefined;
-                      return getLotDisplayName(lot, row.contact || null, propertyByReference);
-                    }
-                  },
-                  {
-                    title: t('Contact'),
-                    render: (_, row) => {
-                      const contact = row.contact;
-                      if (!contact) return row.contactId;
-                      const name = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
-                      return name || contact.legalName || contact.email || row.contactId;
-                    }
-                  },
-                  { title: t('Part (%)'), dataIndex: 'ownershipPercentage' },
-                  {
-                    title: t('Depuis'),
-                    dataIndex: 'ownedSince',
-                    render: (value: string) => dayjs(value).format(dateFormat('short'))
-                  },
-                  {
-                    title: t('Portail'),
-                    render: (_, row) =>
-                      row.portalAccessEnabled ? <Tag color="green">{t('Actif')}</Tag> : <Tag>{t('Inactif')}</Tag>
-                  },
-                  {
-                    title: t('Accès portail'),
-                    key: 'portal-actions',
-                    exportable: false,
-                    render: (_, row) => (
-                      <Space wrap>
-                        <Button
-                          size="small"
-                          loading={invitingProfileId === row.id}
-                          disabled={row.isActive === false}
-                          onClick={() => void handleInvite(row)}
-                        >
-                          {t('Inviter au portail')}
-                        </Button>
-                        {row.portalAccessEnabled ? (
-                          <Button
-                            size="small"
-                            danger
-                            loading={revokingProfileId === row.id}
-                            onClick={() => confirmRevoke(row)}
-                          >
-                            {t("Révoquer l'accès")}
-                          </Button>
-                        ) : null}
-                      </Space>
-                    )
-                  }
-                ]}
-              />
-            </Card>
-
-            <Card title={t('Profils locataires')}>
-              <Table
-                exportFilename={t('Profils locataires')}
-                scroll={{ x: 'max-content' }}
-                rowKey="id"
-                dataSource={tenantProfiles}
-                pagination={{ pageSize: 8 }}
-                columns={[
-                  {
-                    title: t('Lot'),
-                    render: (_, row) => {
-                      const lot = row.lot || (row.lotId ? lotsById[row.lotId] : undefined);
-                      const lotReference = lot?.property?.internalReference || lot?.lotNumber || '';
-                      const propertyByReference = lotReference
-                        ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
-                        : undefined;
-                      return getLotDisplayName(lot, row.contact || null, propertyByReference);
-                    }
-                  },
-                  {
-                    title: t('Contact'),
-                    render: (_, row) => {
-                      const contact = row.contact;
-                      if (!contact) return row.contactId;
-                      const name = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
-                      return name || contact.legalName || contact.email || row.contactId;
-                    }
-                  },
-                  {
-                    title: t('Depuis'),
-                    dataIndex: 'tenantSince',
-                    render: (value: string) => dayjs(value).format(dateFormat('short'))
-                  },
-                  {
-                    title: t('Facture au locataire'),
-                    render: (_, row) => (row.chargesBilledToTenant ? t('Oui') : t('Non'))
-                  },
-                  {
-                    title: t('Statut'),
-                    key: 'status',
-                    render: (_, row) =>
-                      isTenantProfileCurrent(row) ? <Tag color="green">{t('Actuel')}</Tag> : <Tag>{t('Terminé')}</Tag>
-                  },
-                  {
-                    title: t('Actions'),
-                    key: 'tenant-actions',
-                    exportable: false,
-                    render: (_, row) =>
-                      isTenantProfileCurrent(row) ? (
-                        <Button
-                          size="small"
-                          loading={endingTenantProfileId === row.id}
-                          onClick={() => confirmEndTenantProfile(row)}
-                        >
-                          {t('Terminer')}
-                        </Button>
-                      ) : null
-                  }
-                ]}
-              />
-            </Card>
-
-            <Card title={t('Incidents et imputations')}>
-              <Table
-                exportFilename={t('Incidents et imputations')}
-                scroll={{ x: 1000 }}
-                rowKey="id"
-                dataSource={incidents}
-                pagination={{ pageSize: 8 }}
-                expandable={{
-                  expandedRowRender: incident => (
-                    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                      <Table
-                        // Sous-tableau d'une ligne dépliée : pas d'export propre.
-                        exportable={false}
-                        scroll={{ x: 'max-content' }}
-                        rowKey="id"
-                        dataSource={incident.imputations || []}
-                        pagination={false}
-                        size="small"
-                        locale={{ emptyText: t('Aucune imputation pour cet incident.') }}
-                        columns={[
-                          {
-                            title: t('Type'),
-                            dataIndex: 'imputationType',
-                            render: (value: string) => getImputationTypeLabel(value)
-                          },
-                          {
-                            title: t('Montant'),
-                            dataIndex: 'amount',
-                            align: 'end',
-                            render: (value: number | string) => <MoneyValue value={value} />
-                          },
-                          {
-                            title: t('Lot'),
-                            render: (_, row) => {
-                              const lot = row.lot || (row.lotId ? lotsById[row.lotId] : undefined);
-                              const lotReference = lot?.property?.internalReference || lot?.lotNumber || '';
-                              const propertyByReference = lotReference
-                                ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
-                                : undefined;
-                              return getLotDisplayName(lot, null, propertyByReference);
-                            }
-                          },
-                          {
-                            title: t('Notes'),
-                            dataIndex: 'notes',
-                            render: (value: string | undefined | null) => value || '-'
-                          },
-                          {
-                            title: t('Créé le'),
-                            dataIndex: 'createdAt',
-                            render: (value: string) => dayjs(value).format(dateFormat('dateTime'))
-                          }
-                        ]}
-                      />
-                      {effectiveTenantId && syndicId ? (
-                        <div>
-                          <Typography.Text strong>{t('Factures liées')}</Typography.Text>
-                          <LinkedProviderInvoices
-                            tenantId={effectiveTenantId}
-                            syndicId={syndicId}
-                            incidentId={incident.id}
-                          />
-                        </div>
-                      ) : null}
-                    </Space>
-                  ),
-                  rowExpandable: () => true
-                }}
-                columns={[
-                  {
-                    title: t('Lot'),
-                    key: 'lot',
-                    render: (_: unknown, incident: SyndicateIncident) =>
-                      (incident.lotId ? lotsById[incident.lotId]?.lotNumber : undefined) || '-'
-                  },
-                  {
-                    title: t('Type'),
-                    dataIndex: 'incidentType',
-                    width: 100,
-                    render: (value: string) => getIncidentTypeLabel(value)
-                  },
-                  {
-                    title: t('Urgence'),
-                    dataIndex: 'urgency',
-                    width: 90,
-                    render: (value: string) => getIncidentUrgencyLabel(value)
-                  },
-                  {
-                    title: t('Description'),
-                    dataIndex: 'description',
-                    // Texte complet, retourné à la ligne : sans largeur fixe, le
-                    // tableau l'étalerait sur une seule ligne. 240 px laissent
-                    // Statut, Prestataire et Actions visibles sans défilement
-                    // horizontal sur un écran de portable.
-                    width: 240,
-                    render: (value: string) => (
-                      <div style={{ width: 240, maxWidth: '100%', whiteSpace: 'normal' }}>{value}</div>
-                    )
-                  },
-                  {
-                    title: t('Statut'),
-                    dataIndex: 'status',
-                    width: 110,
-                    render: (value: string) => (
-                      <Tag color={incidentStatusColors[value] || 'default'}>{getIncidentStatusLabel(value)}</Tag>
-                    )
-                  },
-                  {
-                    title: t('Imputations'),
-                    width: 100,
-                    render: (_, row) => (
-                      <Tag color={(row.imputations?.length || 0) > 0 ? 'blue' : 'default'}>
-                        {row.imputations?.length || 0}
-                      </Tag>
-                    )
-                  },
-                  {
-                    title: t('Prestataire'),
-                    key: 'providerId',
-                    width: 200,
-                    // Le rendu est un sélecteur : on exporte le nom du prestataire assigné.
-                    exportValue: (row: SyndicateIncident) =>
-                      providers.find(provider => provider.id === row.providerId)?.name ?? '',
-                    render: (_, row) => (
-                      <Select
-                        allowClear
-                        showSearch
-                        style={{ minWidth: 180 }}
-                        placeholder={t('Aucun prestataire')}
-                        optionFilterProp="label"
-                        value={row.providerId || undefined}
-                        loading={assigningProviderIncidentId === row.id}
-                        disabled={assigningProviderIncidentId === row.id}
-                        options={providers.map(provider => ({ value: provider.id, label: provider.name }))}
-                        onChange={value => void handleAssignProvider(row.id, value)}
-                      />
-                    )
-                  },
-                  {
-                    title: t('Actions'),
-                    key: 'actions',
-                    fixed: 'right',
-                    width: 220,
-                    render: (_, row) => (
-                      <Space wrap>
-                        <Button size="small" icon={<EditOutlined />} onClick={() => openEditIncidentModal(row)}>
-                          {t("Modifier l'incident")}
-                        </Button>
-                        <Button
-                          size="small"
-                          onClick={() => {
-                            setSelectedIncidentId(row.id);
-                            // Le lot de l'incident est pré-rempli, mais reste modifiable :
-                            // main permet d'imputer un incident des parties communes à un
-                            // lot précis.
-                            imputationForm.resetFields();
-                            imputationForm.setFieldsValue({ lotId: row.lotId || undefined });
-                            setOpenImputation(true);
-                            void loadImputationOptions();
-                          }}
-                        >
-                          {t('Ajouter imputation')}
-                        </Button>
-                      </Space>
-                    )
-                  }
-                ]}
-              />
-            </Card>
-          </>
-        )}
+              ) : null
+            },
+            {
+              key: 'locataires',
+              label: t('Profils locataires'),
+              children: ready ? (
+                <TenantProfilesTab
+                  items={tenantsQuery.data ?? NO_TENANTS}
+                  loading={listLoading}
+                  lots={lots}
+                  lotsById={lotsById}
+                  propertiesByInternalReference={propertiesByInternalReference}
+                  endingTenantProfileId={endingTenantProfileId}
+                  onEnd={confirmEndTenantProfile}
+                />
+              ) : null
+            },
+            {
+              key: 'incidents',
+              label: t('Incidents et imputations'),
+              children: ready ? (
+                <IncidentsTab
+                  tenantId={tenantKey}
+                  syndicId={syndicKey}
+                  items={incidentsQuery.data ?? NO_INCIDENTS}
+                  loading={listLoading}
+                  lots={lots}
+                  lotsById={lotsById}
+                  propertiesByInternalReference={propertiesByInternalReference}
+                  providers={providers}
+                  assigningProviderIncidentId={assigningProviderIncidentId}
+                  onAssignProvider={(incidentId, providerId) => void handleAssignProvider(incidentId, providerId)}
+                  onEdit={openEditIncidentModal}
+                  onAddImputation={openImputationModal}
+                />
+              ) : null
+            }
+          ]}
+        />
       </Space>
 
       <Modal

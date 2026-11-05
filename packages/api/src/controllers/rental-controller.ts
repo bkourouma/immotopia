@@ -17,6 +17,7 @@ import { asyncHandler, UnauthorizedError, NotFoundError, BadRequestError } from 
 import { parsePagination } from '../utils/pagination-helper';
 import { parseEnumParam } from '../utils/query-params';
 import { createLeaseSchema, updateLeaseSchema } from '../lib/rental/schemas';
+import { parseLeaseListExtras } from '../lib/rental/lease-list-filters';
 
 const updateLeaseStatusSchema = z.object({
   status: z.enum(['DRAFT', 'ACTIVE', 'SUSPENDED', 'ENDED', 'CANCELED'])
@@ -116,7 +117,7 @@ export const listLeasesHandler = asyncHandler(async (req: Request, res: Response
     filters.primaryRenterClientId = primaryRenterClientId as string;
   }
   if (search) {
-    filters.search = search as string;
+    filters.search = parseLeaseListExtras(req.query).search;
   }
 
   const { page, limit } = parsePagination(req.query);

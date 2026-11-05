@@ -116,7 +116,7 @@ describe('navigation filtrée par permission', () => {
     const only = new Set(['FINANCE_REPORTS_READ']);
     const compta = visible(only).find(g => g.key === 'finance-caisse-compta')!;
     expect(compta.children!.map(c => c.key)).toEqual(['finance-comptabilite']);
-    expect(compta.href).toBe('/tenant/:tenantId/finance/comptabilite');
+    expect(compta.href).toBe('/tenant/:tenantId/finance/comptabilite/journal');
   });
 
   it('un rôle sans aucune permission ne garde que les entrées sans exigence', () => {

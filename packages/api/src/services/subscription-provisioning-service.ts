@@ -8,6 +8,7 @@
  * directe. Voir docs/architecture/PLAN-ABONNEMENTS.md.
  */
 
+import { escapeLike } from '../utils/like-escape';
 import {
   BillingCycle,
   CatalogItemKind,
@@ -152,7 +153,10 @@ export async function listTenants(options: { search?: string } = {}, db: Db = pr
   const tenants = await db.tenant.findMany({
     where: search
       ? {
-          OR: [{ slug: { contains: search, mode: 'insensitive' } }, { name: { contains: search, mode: 'insensitive' } }]
+          OR: [
+            { slug: { contains: escapeLike(search), mode: 'insensitive' } },
+            { name: { contains: escapeLike(search), mode: 'insensitive' } }
+          ]
         }
       : {},
     select: { id: true, slug: true, name: true, status: true },

@@ -10,6 +10,7 @@ import { reverseDocumentEntryTx } from '../owner-account/sync';
 import { DEFAULT_WITHHOLDING_ACCOUNT, getAgencyFinanceSettings } from '../settings/finance-settings';
 import { ensureChartAccountTx, ensureDefaultTreasuryAccountTx, journalForKind } from './accounts';
 import { assertTreasuryCanPayTx } from './balance';
+import { escapeLike } from '../../utils/like-escape';
 
 /**
  * Trésorerie de l'agence — lot 10 (conformité SYSCOHADA).
@@ -305,9 +306,87 @@ function toTransferDto(row: TransferRow, labels: Map<string, string>, names: Map
   };
 }
 
-export async function listTransfers(tenantId: string): Promise<TreasuryTransferDto[]> {
+/** Vrai si `v` (AAAA-MM-JJ) est un vrai jour du calendrier : 2026-02-31 devient le 3 mars, donc refusé. */
+const isRealDay = (v: string) => {
+  const d = new Date(`${v}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
+
+const ymd = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ.')
+  .refine(isRealDay, 'Date invalide.');
+const emptyToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
+
+/** Bornes [from 00:00:00, to 23:59:59.999] (UTC). */
+function parseRange(from: string | undefined, to: string | undefined) {
+  const start = from ? new Date(`${from}T00:00:00.000Z`) : undefined;
+  const end = to ? new Date(`${to}T23:59:59.999Z`) : undefined;
+  const invalid = (start && Number.isNaN(start.getTime())) || (end && Number.isNaN(end.getTime()));
+  return { start, end, invalid: Boolean(invalid), reversed: Boolean(start && end && start > end) };
+}
+
+function refineRange(v: { from?: string; to?: string }, ctx: z.RefinementCtx) {
+  const r = parseRange(v.from, v.to);
+  if (r.invalid) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Date invalide.' });
+  else if (r.reversed)
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'La date de début doit précéder la date de fin.' });
+}
+
+const statusListSchema = z.preprocess(
+  v => {
+    const raw = emptyToUndefined(v);
+    return typeof raw === 'string'
+      ? raw
+          .split(',')
+          .map(x => x.trim())
+          .filter(Boolean)
+      : raw;
+  },
+  z.array(z.nativeEnum(TreasuryDocumentStatus)).min(1).optional()
+);
+
+const listTransfersFilterSchema = z
+  .object({
+    from: z.preprocess(emptyToUndefined, ymd.optional()),
+    to: z.preprocess(emptyToUndefined, ymd.optional()),
+    accountId: z.preprocess(emptyToUndefined, z.string().trim().uuid().optional()),
+    status: statusListSchema,
+    search: z.preprocess(emptyToUndefined, z.string().trim().max(100).optional())
+  })
+  .superRefine(refineRange);
+
+export interface ListTransfersFilters {
+  from?: unknown;
+  to?: unknown;
+  accountId?: unknown;
+  status?: unknown;
+  search?: unknown;
+}
+
+export async function listTransfers(
+  tenantId: string,
+  filters: ListTransfersFilters = {}
+): Promise<TreasuryTransferDto[]> {
+  const f = listTransfersFilterSchema.parse(filters);
+  const { start, end } = parseRange(f.from, f.to);
+  const where: Prisma.TreasuryTransferWhereInput = { tenantId };
+  if (start || end) where.transferredAt = { ...(start ? { gte: start } : {}), ...(end ? { lte: end } : {}) };
+  if (f.accountId) where.OR = [{ fromTreasuryAccountId: f.accountId }, { toTreasuryAccountId: f.accountId }];
+  if (f.status) where.status = { in: f.status };
+  if (f.search) {
+    where.AND = [
+      {
+        OR: [
+          { reference: { contains: escapeLike(f.search), mode: 'insensitive' } },
+          { notes: { contains: escapeLike(f.search), mode: 'insensitive' } }
+        ]
+      }
+    ];
+  }
   const transfers = await prisma.treasuryTransfer.findMany({
-    where: { tenantId },
+    where,
     orderBy: { transferredAt: 'desc' },
     take: 500
   });
@@ -526,9 +605,34 @@ function toRemittanceDto(
   };
 }
 
-export async function listTaxRemittances(tenantId: string): Promise<TaxRemittanceDto[]> {
+const listRemittancesFilterSchema = z
+  .object({
+    from: z.preprocess(emptyToUndefined, ymd.optional()),
+    to: z.preprocess(emptyToUndefined, ymd.optional()),
+    status: statusListSchema,
+    treasuryAccountId: z.preprocess(emptyToUndefined, z.string().trim().uuid().optional())
+  })
+  .superRefine(refineRange);
+
+export interface ListTaxRemittancesFilters {
+  from?: unknown;
+  to?: unknown;
+  status?: unknown;
+  treasuryAccountId?: unknown;
+}
+
+export async function listTaxRemittances(
+  tenantId: string,
+  filters: ListTaxRemittancesFilters = {}
+): Promise<TaxRemittanceDto[]> {
+  const f = listRemittancesFilterSchema.parse(filters);
+  const { start, end } = parseRange(f.from, f.to);
+  const where: Prisma.TaxRemittanceWhereInput = { tenantId };
+  if (start || end) where.paidAt = { ...(start ? { gte: start } : {}), ...(end ? { lte: end } : {}) };
+  if (f.status) where.status = { in: f.status };
+  if (f.treasuryAccountId) where.treasuryAccountId = f.treasuryAccountId;
   const remittances = await prisma.taxRemittance.findMany({
-    where: { tenantId },
+    where,
     orderBy: { paidAt: 'desc' },
     take: 500
   });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Space, Typography } from 'antd';
+import { Alert, Space, Tabs, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { getSyndicCreditor } from '../../services/syndic-direct-debit-service';
 import { SyndicCreditorCard } from '../../components/syndics/direct-debit/SyndicCreditorCard';
@@ -7,11 +7,14 @@ import { SyndicMandatesCard } from '../../components/syndics/direct-debit/Syndic
 import { SyndicRemittancesCard } from '../../components/syndics/direct-debit/SyndicRemittancesCard';
 import { SYNDIC_DD_KEYS } from '../../components/syndics/direct-debit/keys';
 import { apiErrorMessage } from '../../components/rental/direct-debit/direct-debit-shared';
+import { useTabParam } from '../../components/syndics/finances/url-params';
 import { STALE_TIME } from '../../lib/query-keys';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
 const { Title, Paragraph } = Typography;
+
+const DD_TABS = ['compte', 'mandats', 'remises'] as const;
 
 /**
  * Onglet « Prélèvements » de Syndic › Finances (spec 042, P4, §9.6) : le
@@ -19,6 +22,7 @@ const { Title, Paragraph } = Typography;
  */
 export const SyndicDirectDebit: React.FC = () => {
   const { tenantId, syndicId } = useSyndicRouteContext();
+  const [tab, setTab] = useTabParam(DD_TABS, 'compte');
 
   const {
     data: creditor,
@@ -48,15 +52,36 @@ export const SyndicDirectDebit: React.FC = () => {
         </Paragraph>
       </Space>
 
-      <SyndicCreditorCard
-        tenantId={tenantId}
-        syndicId={syndicId}
-        creditor={creditor}
-        loading={isPending}
-        error={error ? apiErrorMessage(error, t('Erreur lors du chargement du compte de prélèvement')) : null}
+      <Tabs
+        activeKey={tab}
+        onChange={key => setTab(key as (typeof DD_TABS)[number])}
+        destroyOnHidden
+        items={[
+          {
+            key: 'compte',
+            label: t('Compte de prélèvement du syndicat'),
+            children: (
+              <SyndicCreditorCard
+                tenantId={tenantId}
+                syndicId={syndicId}
+                creditor={creditor}
+                loading={isPending}
+                error={error ? apiErrorMessage(error, t('Erreur lors du chargement du compte de prélèvement')) : null}
+              />
+            )
+          },
+          {
+            key: 'mandats',
+            label: t('Mandats de prélèvement'),
+            children: <SyndicMandatesCard tenantId={tenantId} syndicId={syndicId} creditor={creditor} />
+          },
+          {
+            key: 'remises',
+            label: t('Remises'),
+            children: <SyndicRemittancesCard tenantId={tenantId} syndicId={syndicId} creditor={creditor} />
+          }
+        ]}
       />
-      <SyndicMandatesCard tenantId={tenantId} syndicId={syndicId} creditor={creditor} />
-      <SyndicRemittancesCard tenantId={tenantId} syndicId={syndicId} creditor={creditor} />
     </Space>
   );
 };

@@ -1,7 +1,11 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Badge, Button, Select, Space, Table, Tag, Typography } from 'antd';
+import { Badge, Button, Select, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { Table } from '../../primitives';
 import type { LiveLotRow } from '../../../types/syndic-live-types';
+import { useLocalListSearch } from '../../../utils/list-search';
+import type { SearchCriterion } from '../../../utils/list-search';
+import type { Sort } from '../../../hooks/useListParams';
 import { attendanceLabel } from './live-labels';
 import { t } from '../../../i18n/t';
 
@@ -56,6 +60,25 @@ function lotProxyHolder(lot: LiveLotRow, proxyHolders?: Record<string, ContactOp
 
 const NO_BUSY_LOTS: ReadonlySet<string> = new Set();
 
+// Recherche LOCALE (la console reçoit déjà tous les lots et se rafraîchit toute seule) :
+// accesseurs stables, hors du composant. Le filtre ne change que l'AFFICHAGE.
+const TEXTE_RECHERCHE = [
+  (lot: LiveLotRow) => lot.lotNumber,
+  (lot: LiveLotRow) => lot.voters.map(voter => voter.name),
+  (lot: LiveLotRow) => lot.attendance?.representedByName
+];
+const ACCESSEURS = {
+  presence: (lot: LiveLotRow) => lot.attendance?.status ?? 'ABSENT',
+  online: (lot: LiveLotRow) => lot.online
+};
+
+/** Tri global par numéro de lot (ordre naturel), avant la pagination. */
+function sortLots(lots: LiveLotRow[], sort: Sort | null): LiveLotRow[] {
+  if (!sort || sort.field !== 'lot') return lots;
+  const direction = sort.order === 'desc' ? -1 : 1;
+  return lots.slice().sort((a, b) => direction * a.lotNumber.localeCompare(b.lotNumber, undefined, { numeric: true }));
+}
+
 const LiveLotsTableInner: React.FC<LiveLotsTableProps> = ({
   lots,
   contacts,
@@ -67,6 +90,46 @@ const LiveLotsTableInner: React.FC<LiveLotsTableProps> = ({
   onBulk
 }) => {
   const [selected, setSelected] = useState<string[]>([]);
+
+  // Recherche locale : la saisie, les critères, le tri et la page vivent dans l'URL (préfixe « ll ») :
+  // ils survivent au rafraîchissement périodique des lots.
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('N° de lot, copropriétaire, mandataire…')
+    },
+    {
+      key: 'presence',
+      type: 'multiSelect',
+      label: t('Présence'),
+      primary: true,
+      options: (['PRESENT', 'REPRESENTED', 'ABSENT'] as const).map(status => ({
+        value: status,
+        label: attendanceLabel(status)
+      }))
+    },
+    {
+      key: 'online',
+      type: 'boolean',
+      label: t('En ligne'),
+      primary: true,
+      tristate: true,
+      trueLabel: t('En ligne'),
+      falseLabel: t('Hors ligne')
+    }
+  ];
+  const local = useLocalListSearch<LiveLotRow>(lots, {
+    paramPrefix: 'll',
+    ariaLabel: t('Rechercher dans les lots de la séance'),
+    defaultPageSize: 25,
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS,
+    sortItems: sortLots
+  });
+  const lotSortOrder = local.sort?.field === 'lot' ? (local.sort.order === 'desc' ? 'descend' : 'ascend') : null;
 
   const contactOptions = useMemo(
     () => contacts.map(contact => ({ value: `${REP_PREFIX}${contact.contactId}`, label: contact.name })),
@@ -134,7 +197,8 @@ const LiveLotsTableInner: React.FC<LiveLotsTableProps> = ({
         title: t('Lot'),
         dataIndex: 'lotNumber',
         key: 'lot',
-        sorter: (a, b) => a.lotNumber.localeCompare(b.lotNumber, undefined, { numeric: true })
+        sorter: true,
+        sortOrder: lotSortOrder
       },
       { title: t('Tantièmes'), dataIndex: 'generalShares', key: 'shares', align: 'end' },
       {
@@ -184,7 +248,7 @@ const LiveLotsTableInner: React.FC<LiveLotsTableProps> = ({
         )
       }
     ],
-    [optionsByLot, readOnly, busyLotIds, onMenuOpenChange, handleChange]
+    [optionsByLot, readOnly, busyLotIds, onMenuOpenChange, handleChange, lotSortOrder]
   );
 
   const selectionBusy = selected.some(id => busyLotIds.has(id));
@@ -211,12 +275,19 @@ const LiveLotsTableInner: React.FC<LiveLotsTableProps> = ({
         </Space>
       )}
       <Table<LiveLotRow>
+        {...local.tableProps}
+        aria-label={t('Lots de la séance')}
+        exportable={false}
         size="small"
         rowKey="lotId"
-        dataSource={lots}
         columns={columns}
         scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 25, hideOnSinglePage: true, showSizeChanger: false }}
+        pagination={{ ...local.tableProps.pagination, hideOnSinglePage: true, showSizeChanger: false }}
+        onChange={(_pagination, _filters, sorter, extra) => {
+          if (extra.action !== 'sort') return;
+          const one = Array.isArray(sorter) ? sorter[0] : sorter;
+          local.setSort(one?.order ? { field: 'lot', order: one.order === 'descend' ? 'desc' : 'asc' } : null);
+        }}
         rowSelection={
           readOnly
             ? undefined
@@ -226,7 +297,7 @@ const LiveLotsTableInner: React.FC<LiveLotsTableProps> = ({
                 preserveSelectedRowKeys: true
               }
         }
-        locale={{ emptyText: t('Aucun lot') }}
+        locale={local.isFiltered ? undefined : { emptyText: t('Aucun lot') }}
       />
     </Space>
   );

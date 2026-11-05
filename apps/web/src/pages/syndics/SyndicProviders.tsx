@@ -28,10 +28,15 @@ import {
   updateProvider
 } from '../../services/syndic-service';
 import { ServiceProvider, SyndicProvidersPayload } from '../../types/syndic-types';
+import { useTabParam } from '../../components/syndics/finances/url-params';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Title, Link: TypographyLink } = Typography;
+
+/** Onglets de l'écran (le premier est le défaut de `?tab=`). */
+const PROVIDER_TABS = ['prestataires', 'factures'] as const;
+type ProviderTab = (typeof PROVIDER_TABS)[number];
 
 interface ProviderFormValues {
   name: string;
@@ -45,6 +50,7 @@ export const SyndicProviders: React.FC = () => {
   const confirmAction = useConfirmAction();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
+  const [activeTab, setActiveTab] = useTabParam<ProviderTab>(PROVIDER_TABS, 'prestataires');
 
   const [payload, setPayload] = useState<SyndicProvidersPayload>({
     providers: [],
@@ -268,6 +274,9 @@ export const SyndicProviders: React.FC = () => {
   return (
     <>
       <Tabs
+        destroyOnHidden
+        activeKey={activeTab}
+        onChange={key => setActiveTab(key as ProviderTab)}
         items={[
           { key: 'prestataires', label: t('Prestataires'), children: providersPanel },
           {

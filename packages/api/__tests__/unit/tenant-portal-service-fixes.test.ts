@@ -201,10 +201,10 @@ describe('historique — filtres des paiements et déclarations (BUG-2026-11-05-
         declaration('declaration-check', 'CHECK')
       ];
       prismaMock.rentalPayment.findMany.mockImplementation(async ({ where }: any) =>
-        payments.filter(row => row.method === where.method)
+        payments.filter(row => where.method.in.includes(row.method))
       );
       prismaMock.rentalPaymentDeclaration.findMany.mockImplementation(async ({ where }: any) =>
-        declarations.filter(row => row.payment_method === where.payment_method)
+        declarations.filter(row => where.payment_method.in.includes(row.payment_method))
       );
       prismaMock.rentalPayment.aggregate.mockResolvedValue({ _sum: { amount: 200 } });
 
@@ -215,7 +215,11 @@ describe('historique — filtres des paiements et déclarations (BUG-2026-11-05-
 
       expect(prismaMock.rentalPayment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ lease_id: { in: ['lease-1', 'lease-2'] }, tenant_id: 'tenant', method })
+          where: expect.objectContaining({
+            lease_id: { in: ['lease-1', 'lease-2'] },
+            tenant_id: 'tenant',
+            method: { in: [method] }
+          })
         })
       );
       expect(prismaMock.rentalPaymentDeclaration.findMany).toHaveBeenCalledWith(
@@ -224,7 +228,7 @@ describe('historique — filtres des paiements et déclarations (BUG-2026-11-05-
             lease_id: { in: ['lease-1', 'lease-2'] },
             tenant_id: 'tenant',
             declared_by: 'client',
-            payment_method: method
+            payment_method: { in: [method] }
           }
         })
       );
@@ -236,17 +240,39 @@ describe('historique — filtres des paiements et déclarations (BUG-2026-11-05-
     }
   );
 
+  it('combine plusieurs méthodes sans laisser passer les déclarations Espèces', async () => {
+    prismaMock.rentalPayment.findMany.mockResolvedValue([]);
+    prismaMock.rentalPaymentDeclaration.findMany.mockImplementation(async ({ where }: any) =>
+      [
+        declaration('declaration-cash', 'CASH'),
+        declaration('declaration-bank', 'BANK_TRANSFER'),
+        declaration('declaration-check', 'CHECK')
+      ].filter(row => where.payment_method.in.includes(row.payment_method))
+    );
+    prismaMock.rentalPayment.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
+
+    const out = await service.getPaymentHistory('client', 'lease-1', 'tenant', {
+      method: ['BANK_TRANSFER', 'CHECK']
+    });
+
+    expect(prismaMock.rentalPayment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ method: { in: ['BANK_TRANSFER', 'CHECK'] } }) })
+    );
+    expect(out.payments.map((row: any) => row.method).sort()).toEqual(['BANK_TRANSFER', 'CHECK']);
+    expect(out.pagination.total).toBe(2);
+  });
+
   it('filtre la journée entière sur la date affichée des deux sources', async () => {
     prismaMock.rentalPayment.findMany.mockResolvedValue([]);
     prismaMock.rentalPaymentDeclaration.findMany.mockResolvedValue([]);
     prismaMock.rentalPayment.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
 
     await service.getPaymentHistory('client', 'lease-1', 'tenant', {
-      startDate: '2026-11-04',
-      endDate: '2026-11-04'
+      startDate: '2026-11-04T00:00:00.000Z',
+      endDate: '2026-11-04T23:59:59.999Z'
     });
 
-    const dateRange = { gte: new Date('2026-11-04T00:00:00Z'), lt: new Date('2026-11-05T00:00:00Z') };
+    const dateRange = { gte: new Date('2026-11-04T00:00:00Z'), lte: new Date('2026-11-04T23:59:59.999Z') };
     expect(prismaMock.rentalPayment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

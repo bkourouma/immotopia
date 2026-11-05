@@ -925,6 +925,50 @@ describe('field-counts', () => {
     expect(web.body.data.map((row: any) => row.itemId)).toEqual([ITEM_SABLE]);
   });
 
+  it('recherche : restreint aux lignes correspondantes, sans casse ni accents', async () => {
+    as([...COMPTABLE, 'STOCK_COUNT_VALIDATE']);
+    const all = await call('get', '/field-counts');
+    const ciment = await call('get', '/field-counts?search=CIMENT');
+    expect(ciment.status).toBe(200);
+    expect(ciment.body.data.map((row: any) => row.itemId)).toEqual([ITEM_CIMENT, ITEM_CIMENT]);
+    // Référence, lieu et « compté par » (accent ignoré : Koné).
+    expect((await call('get', '/field-counts?search=cim-45')).body.data).toHaveLength(2);
+    expect((await call('get', '/field-counts?search=magasin%20CENTRAL')).body.data).toHaveLength(2);
+    const kone = await call('get', '/field-counts?search=kone');
+    expect(kone.body.data.map((row: any) => [row.locationId, row.itemId])).toEqual([[LOC_BLIND, ITEM_CIMENT]]);
+    expect((await call('get', `/field-counts?search=${encodeURIComponent('KONÉ')}`)).body.data).toHaveLength(1);
+    expect((await call('get', '/field-counts?search=introuvable')).body.data).toEqual([]);
+    // Jamais une ligne d'une autre agence.
+    expect(ciment.body.data.some((row: any) => row.locationId === LOC_B)).toBe(false);
+    // Vide ou absent : comportement inchangé.
+    expect((await call('get', '/field-counts?search=')).body.data).toEqual(all.body.data);
+    expect((await call('get', '/field-counts?search=%20%20')).body.data).toEqual(all.body.data);
+  });
+
+  it('recherche combinée à la source du dernier comptage', async () => {
+    as([...COMPTABLE, 'STOCK_COUNT_VALIDATE']);
+    const res = await call('get', '/field-counts?search=ciment&source=WHATSAPP');
+    expect(res.body.data.map((row: any) => [row.locationId, row.itemId])).toEqual([[LOC_BLIND, ITEM_CIMENT]]);
+    const none = await call('get', '/field-counts?search=sable&source=WHATSAPP');
+    expect(none.body.data).toEqual([]);
+  });
+
+  it('recherche : le curseur reste cohérent d’une page à l’autre', async () => {
+    as([...COMPTABLE, 'STOCK_COUNT_VALIDATE']);
+    const first = await call('get', '/field-counts?search=ciment&limit=1');
+    expect(first.body.data.map((row: any) => row.locationId)).toEqual([LOC_BLIND]);
+    expect(first.body.meta.nextCursor).toEqual(expect.any(String));
+    const second = await call('get', `/field-counts?search=ciment&limit=1&cursor=${first.body.meta.nextCursor}`);
+    expect(second.body.data.map((row: any) => row.locationId)).toEqual([LOC_OPEN]);
+    expect(second.body.meta.nextCursor).toBeNull();
+  });
+
+  it('recherche de plus de 120 caractères : 400', async () => {
+    const res = await call('get', `/field-counts?search=${'a'.repeat(121)}`);
+    expect(res.status).toBe(400);
+    expect((await call('get', `/field-counts?search=${'a'.repeat(120)}`)).status).toBe(200);
+  });
+
   it('pagine par curseur opaque, tri lieu puis référence', async () => {
     as([...COMPTABLE, 'STOCK_COUNT_VALIDATE']);
     const first = await call('get', '/field-counts?limit=2');

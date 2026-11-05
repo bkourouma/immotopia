@@ -1,17 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Spin, Alert, Tag, Space, Select, DatePicker, Button, Empty } from 'antd';
-import { DollarOutlined, FilterOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
+import React, { useState } from 'react';
+import { Card, Row, Col, Typography, Spin, Alert, Tag, Space, Button } from 'antd';
+import { DollarOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ownerPortalService } from '../../services/ownerPortalService';
+import type { OwnerPortalPagination } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { PaymentDetailsModal } from '../../components/OwnerPortal/PaymentDetailsModal';
 import { Table } from '../../components/primitives';
+import { useListSearch } from '../../hooks/useListSearch';
+import { STALE_TIME } from '../../lib/query-keys';
+import { collectAllPages } from '../../utils/table-export/collect';
+import { useOwnerPropertyOptions } from './useOwnerPropertyOptions';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
 import { formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
-const { Option } = Select;
-const { RangePicker } = DatePicker;
 
 interface PaymentListItem {
   id: string;
@@ -33,6 +37,7 @@ interface PaymentSummary {
 interface PaymentsData {
   payments: PaymentListItem[];
   summary: PaymentSummary;
+  pagination?: OwnerPortalPagination;
 }
 
 const formatCurrency = (amount: number) => {
@@ -64,69 +69,69 @@ const getMethodLabel = (method: string) => {
 };
 
 export default function Payments() {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<PaymentsData | null>(null);
-  const [propertyFilter, setPropertyFilter] = useState<string | undefined>(undefined);
-  const [methodFilter, setMethodFilter] = useState<string | undefined>(undefined);
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
-  const [properties, setProperties] = useState<Array<{ id: string; address: string }>>([]);
+  const { options: propertyOptions } = useOwnerPropertyOptions();
+  const [actionError, setActionError] = useState<string | null>(null);
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
   const [paymentDetails, setPaymentDetails] = useState<any>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
 
-  useEffect(() => {
-    loadProperties();
-  }, []);
+  // Liste paginée par le serveur ; l'API ne trie pas (`sort: false`).
+  const search = useListSearch({
+    apiNames: { sort: false },
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Bien, locataire, référence…') },
+      {
+        key: 'propertyId',
+        type: 'select',
+        label: t('Propriété'),
+        primary: true,
+        options: propertyOptions
+      },
+      {
+        key: 'method',
+        type: 'multiSelect',
+        label: t('Méthode'),
+        primary: true,
+        options: [
+          { value: 'MOBILE_MONEY', label: t('Mobile Money') },
+          { value: 'DIRECT_DEBIT', label: t('Prélèvement bancaire') },
+          { value: 'BANK_TRANSFER', label: t('Virement bancaire') },
+          { value: 'CASH', label: t('Espèces') },
+          { value: 'CHECK', label: t('Chèque') },
+          { value: 'CARD', label: t('Carte bancaire') }
+        ]
+      },
+      { key: 'period', type: 'dateRange', label: t('Période'), api: ['startDate', 'endDate'] }
+    ]
+  });
 
-  useEffect(() => {
-    loadPayments();
-  }, [propertyFilter, methodFilter, dateRange]);
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: queryError,
+    refetch
+  } = useQuery({
+    queryKey: ['owner-portal', 'payments', search.apiParams],
+    queryFn: async (): Promise<PaymentsData | null> => {
+      const response = await ownerPortalService.getPayments(search.apiParams);
+      return response.data?.success && response.data?.data ? (response.data.data as PaymentsData) : null;
+    },
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
+  });
 
-  const loadProperties = async () => {
-    try {
-      const response = await ownerPortalService.getProperties();
-      if (response.data?.success && response.data?.data?.properties) {
-        setProperties(
-          response.data.data.properties.map((p: any) => ({
-            id: p.id,
-            address: p.address
-          }))
-        );
-      }
-    } catch (err) {
-      console.error('Error loading properties:', err);
-    }
-  };
-
-  const loadPayments = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const params: any = {};
-      if (propertyFilter) params.propertyId = propertyFilter;
-      if (methodFilter) params.method = methodFilter;
-      if (dateRange[0] && dateRange[1]) {
-        params.startDate = dateRange[0].format('YYYY-MM-DD');
-        params.endDate = dateRange[1].format('YYYY-MM-DD');
-      }
-
-      const response = await ownerPortalService.getPayments(params);
-      if (response.data?.success && response.data?.data) {
-        setData(response.data.data);
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors du chargement des paiements'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const error: string | null =
+    actionError ||
+    (queryError ? (queryError as any).response?.data?.message || t('Erreur lors du chargement des paiements') : null);
+  const payments = data?.payments ?? [];
+  const total = data?.pagination?.total ?? payments.length;
 
   const handleViewDetails = async (paymentId: string) => {
     try {
       setDetailsLoading(true);
+      setActionError(null);
       setSelectedPaymentId(paymentId);
       const response = await ownerPortalService.getPaymentDetails(paymentId);
       if (response.data?.success && response.data?.data?.payment) {
@@ -134,12 +139,13 @@ export default function Payments() {
         setDetailsModalVisible(true);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors du chargement des détails'));
+      setActionError(err.response?.data?.message || t('Erreur lors du chargement des détails'));
     } finally {
       setDetailsLoading(false);
     }
   };
 
+  // Pas de tri d'en-tête : l'API ne trie pas et le tri antd ne porterait que sur la page reçue.
   const columns = [
     {
       title: t('Propriété'),
@@ -155,8 +161,7 @@ export default function Payments() {
       title: t('Montant'),
       dataIndex: 'amount',
       key: 'amount',
-      render: (amount: number) => formatCurrency(amount),
-      sorter: (a: PaymentListItem, b: PaymentListItem) => a.amount - b.amount
+      render: (amount: number) => formatCurrency(amount)
     },
     {
       title: t('Date'),
@@ -165,27 +170,13 @@ export default function Payments() {
       render: (date: Date | string) => {
         const dateObj = typeof date === 'string' ? new Date(date) : date;
         return dayjs(dateObj).format('DD/MM/YYYY HH:mm');
-      },
-      sorter: (a: PaymentListItem, b: PaymentListItem) => {
-        const dateA = typeof a.date === 'string' ? new Date(a.date) : a.date;
-        const dateB = typeof b.date === 'string' ? new Date(b.date) : b.date;
-        return dateA.getTime() - dateB.getTime();
       }
     },
     {
       title: t('Méthode'),
       dataIndex: 'method',
       key: 'method',
-      render: (method: string) => getMethodLabel(method),
-      filters: [
-        { text: t('Mobile Money'), value: 'MOBILE_MONEY' },
-        { text: t('Prélèvement bancaire'), value: 'DIRECT_DEBIT' },
-        { text: t('Virement bancaire'), value: 'BANK_TRANSFER' },
-        { text: t('Espèces'), value: 'CASH' },
-        { text: t('Chèque'), value: 'CHECK' },
-        { text: t('Carte bancaire'), value: 'CARD' }
-      ],
-      onFilter: (value: any, record: PaymentListItem) => record.method === value
+      render: (method: string) => getMethodLabel(method)
     },
     {
       title: t('Statut'),
@@ -209,16 +200,12 @@ export default function Payments() {
     }
   ];
 
-  if (loading && !data) {
+  if (isPending && !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
         <Spin size="large" tip={t('Chargement des paiements...')} />
       </div>
     );
-  }
-
-  if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   return (
@@ -231,15 +218,15 @@ export default function Payments() {
         </div>
         <Button
           icon={<SyncOutlined />}
-          onClick={loadPayments}
-          loading={loading}
+          onClick={() => refetch()}
+          loading={isFetching}
           aria-label={t('Rafraîchir les paiements')}
         >
           {t('Actualiser')}
         </Button>
       </div>
 
-      {/* Summary Cards (T107) */}
+      {/* Summary Cards (T107) : calculées par le serveur sur toutes les lignes filtrées */}
       {data?.summary && (
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
@@ -277,79 +264,36 @@ export default function Payments() {
         </Row>
       )}
 
-      {/* Filters (T106) */}
-      <Card
-        title={
-          <Space>
-            <FilterOutlined />
-            <span>{t('Filtres')}</span>
-          </Space>
-        }
-      >
-        <div className="it-filters">
-          <div className="it-filters__field">
-            <Text strong>{t('Propriété')}</Text>
-            <Select
-              showSearch
-              optionFilterProp="children"
-              style={{ width: 200 }}
-              placeholder={t('Toutes les propriétés')}
-              allowClear
-              value={propertyFilter}
-              onChange={value => setPropertyFilter(value)}
-            >
-              {properties.map(prop => (
-                <Option key={prop.id} value={prop.id}>
-                  {prop.address}
-                </Option>
-              ))}
-            </Select>
-          </div>
-          <div className="it-filters__field">
-            <Text strong>{t('Méthode')}</Text>
-            <Select
-              showSearch
-              optionFilterProp="children"
-              style={{ width: 150 }}
-              placeholder={t('Toutes les méthodes')}
-              allowClear
-              value={methodFilter}
-              onChange={value => setMethodFilter(value)}
-            >
-              <Option value="MOBILE_MONEY">{t('Mobile Money')}</Option>
-              <Option value="DIRECT_DEBIT">{t('Prélèvement bancaire')}</Option>
-              <Option value="BANK_TRANSFER">{t('Virement bancaire')}</Option>
-              <Option value="CASH">{t('Espèces')}</Option>
-              <Option value="CHECK">{t('Chèque')}</Option>
-              <Option value="CARD">{t('Carte bancaire')}</Option>
-            </Select>
-          </div>
-          <div className="it-filters__field">
-            <Text strong>{t('Période')}</Text>
-            <RangePicker
-              value={dateRange}
-              onChange={dates => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
-              format="DD/MM/YYYY"
-            />
-          </div>
-        </div>
-      </Card>
-
       {/* Payments Table (T106) */}
       <Card title={t('Historique des paiements')}>
-        {data && data.payments.length > 0 ? (
-          <Table
-            exportFilename={t('Historique des paiements')}
-            scroll={{ x: 'max-content' }}
-            columns={columns}
-            dataSource={data.payments}
-            rowKey="id"
-            loading={loading}
-            pagination={{ pageSize: 20 }}
+        {error && (
+          <Alert
+            message={t('Erreur')}
+            description={error}
+            type="error"
+            showIcon
+            style={{ marginBottom: 'var(--space-4)' }}
           />
-        ) : (
-          <Empty description={t('Aucun paiement trouvé')} />
         )}
+        <Table
+          aria-label={t('Historique des paiements')}
+          search={search.searchProps}
+          exportFilename={t('Historique des paiements')}
+          exportFetchAll={() =>
+            collectAllPages<PaymentListItem>(async (page, limit) => {
+              const response = await ownerPortalService.getPayments({ ...search.filterParams, page, limit });
+              const result = response.data?.data as PaymentsData | undefined;
+              return { items: result?.payments ?? [], total: result?.pagination?.total ?? 0 };
+            })
+          }
+          scroll={{ x: 'max-content' }}
+          columns={columns}
+          dataSource={payments}
+          rowKey="id"
+          loading={isFetching}
+          pagination={search.tablePagination(total)}
+          locale={search.isFiltered ? undefined : { emptyText: t('Aucun paiement trouvé') }}
+        />
       </Card>
 
       {/* Payment Details Modal (T108) */}

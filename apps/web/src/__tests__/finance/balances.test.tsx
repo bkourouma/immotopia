@@ -19,8 +19,8 @@ import { BalanceAgee } from '../../pages/finance/BalanceAgee';
  * explicites de 8 s sur les `findBy*` pour survivre à la charge parallèle de
  * la suite complète.
  *
- * Le mock de `services/finance-service` couvre les DEUX exports que les deux
- * écrans utilisent (`getClientsBalance` ET `getClientsAgingBalance`) : Vitest
+ * Le mock de `services/finance-service` couvre les exports des deux
+ * écrans (balances et lookup des biens) : Vitest
  * refuse tout import qu'un `vi.mock` ne déclare pas explicitement, là où Jest
  * renvoyait `undefined` en silence (AGENTS.md).
  */
@@ -107,7 +107,7 @@ function mountAgee(url = '/tenant/agence-1/finance/balance-agee') {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  listClientBalanceProperties.mockResolvedValue([]);
+  listClientBalanceProperties.mockResolvedValue([{ id: 'bien-7', title: 'Villa 4 pièces - Cocody Angré' }]);
 });
 
 describe('Balance clients — rendu', () => {
@@ -157,10 +157,13 @@ describe('Balance clients — rendu', () => {
     getClientsBalance.mockResolvedValue({ lines: [], totalBalance: 0, currency: 'XOF' });
     mountClients('/tenant/agence-1/finance/balance-clients?propertyId=bien-inexistant');
 
-    // Le bouton apparaît deux fois : une fois posé par `<FilterSheet>` à côté
-    // des contrôles, une fois par le bloc « aucun résultat » de `<DataView>`.
-    // Peu importe lequel : c'est sa présence qui prouve la distinction.
-    expect((await screen.findAllByText('Effacer les filtres', {}, { timeout: 8000 })).length).toBeGreaterThan(0);
+    // Le bouton apparaît deux fois : dans la barre de recherche, et dans le
+    // bloc « aucun résultat » de `<DataView>`. C'est sa présence qui prouve la
+    // distinction avec l'état « aucun compte ».
+    expect(
+      (await screen.findAllByRole('button', { name: 'Effacer les critères' }, { timeout: 8000 })).length
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText('Aucun compte de locataire enregistré.')).not.toBeInTheDocument();
   });
 });
 
@@ -178,7 +181,7 @@ describe('Balance clients — état dans l’URL', () => {
       to: '2026-01-31',
       // Un IDENTIFIANT de bien, jamais son libelle : c'est ce que l'API
       // attend, et un libelle ne filtrerait rien. La liste deroulante le tire
-      // du parc, seule source qui porte les deux.
+      // du lookup financier, seule source qui porte les deux pour ce rôle.
       propertyId: 'bien-7'
     });
   });
@@ -205,7 +208,8 @@ describe('Balance clients — état dans l’URL', () => {
     await screen.findByText('Mariam Diomandé', {}, { timeout: 8000 });
     expect(screen.getByTestId('adresse')).toHaveTextContent('from=2026-01-01');
 
-    await user.click(screen.getByText('Effacer les filtres'));
+    const effacer = await screen.findAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
 
     await waitFor(() => expect(screen.getByTestId('adresse')).not.toHaveTextContent('from=2026-01-01'));
   });
@@ -386,4 +390,116 @@ describe('Vocabulaire — principe P-1 du PRD', () => {
 
     expect(c2.textContent).not.toMatch(motsInterdits);
   });
+});
+
+describe('Balances — recherche multicritères', () => {
+  const choisirLeBien = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole('combobox', { name: 'Bien' }));
+    await user.click(
+      await screen.findByText(
+        'Villa 4 pièces - Cocody Angré',
+        { selector: '.ant-select-item-option-content' },
+        { timeout: 8000 }
+      )
+    );
+  };
+
+  it('balance clients : choisir un bien envoie son identifiant depuis le lookup financier', async () => {
+    getClientsBalance.mockResolvedValue({ lines: [ligne()], totalBalance: 600_000, currency: 'XOF' });
+    const user = userEvent.setup({ delay: null });
+    mountClients();
+    await screen.findByText('Mariam Diomandé', {}, { timeout: 8000 });
+
+    await choisirLeBien(user);
+
+    await waitFor(
+      () => expect(getClientsBalance.mock.calls.some(call => call[1]?.propertyId === 'bien-7')).toBe(true),
+      { timeout: 8000 }
+    );
+    expect(screen.getByTestId('adresse')).toHaveTextContent('propertyId=bien-7');
+    expect(listClientBalanceProperties).toHaveBeenCalledWith('agence-1');
+  }, 20000);
+
+  it('balance âgée : choisir un bien envoie son identifiant', async () => {
+    getClientsAgingBalance.mockResolvedValue({ lines: [ligneAgee()], totalBalance: 600_000, currency: 'XOF' });
+    const user = userEvent.setup({ delay: null });
+    mountAgee();
+    await screen.findByText('Mariam Diomandé', {}, { timeout: 8000 });
+
+    await choisirLeBien(user);
+
+    await waitFor(
+      () => expect(getClientsAgingBalance.mock.calls.some(call => call[1]?.propertyId === 'bien-7')).toBe(true),
+      { timeout: 8000 }
+    );
+  }, 20000);
+
+  it('balance clients : le texte saisi part au serveur (search) et se lit dans l’URL', async () => {
+    getClientsBalance.mockResolvedValue({ lines: [ligne()], totalBalance: 600_000, currency: 'XOF' });
+    const user = userEvent.setup({ delay: null });
+    mountClients();
+    await screen.findByText('Mariam Diomandé', {}, { timeout: 8000 });
+
+    await user.type(within(screen.getByRole('search')).getByRole('textbox', { name: 'Rechercher' }), 'Diomandé');
+
+    await waitFor(() => expect(getClientsBalance.mock.calls.some(call => call[1]?.search === 'Diomandé')).toBe(true), {
+      timeout: 8000
+    });
+    expect(screen.getByTestId('adresse')).toHaveTextContent(/q=Diomand/);
+  }, 20000);
+
+  it('balance âgée : le texte saisi part au serveur (search), la période garde from et to', async () => {
+    getClientsAgingBalance.mockResolvedValue({ lines: [ligneAgee()], totalBalance: 600_000, currency: 'XOF' });
+    const user = userEvent.setup({ delay: null });
+    mountAgee('/tenant/agence-1/finance/balance-agee?from=2026-01-01&to=2026-01-31');
+    await screen.findByText('Mariam Diomandé', {}, { timeout: 8000 });
+
+    await user.type(within(screen.getByRole('search')).getByRole('textbox', { name: 'Rechercher' }), 'Traoré');
+
+    await waitFor(
+      () =>
+        expect(
+          getClientsAgingBalance.mock.calls.some(
+            call => call[1]?.search === 'Traoré' && call[1]?.from === '2026-01-01' && call[1]?.to === '2026-01-31'
+          )
+        ).toBe(true),
+      { timeout: 8000 }
+    );
+  }, 20000);
+});
+
+describe('Balances — pagination locale', () => {
+  const vingtCinq = () =>
+    Array.from({ length: 25 }, (_, i) =>
+      ligne({
+        accountId: `compte-${i + 1}`,
+        label: `Locataire ${String(i + 1).padStart(2, '0')}`,
+        balance: 1000 * (i + 1)
+      })
+    );
+
+  it('balance clients : 20 lignes sur 25, compteur affiché, total de contrôle du serveur intact', async () => {
+    getClientsBalance.mockResolvedValue({ lines: vingtCinq(), totalBalance: 9_999_000, currency: 'XOF' });
+    mountClients();
+
+    await screen.findByText('Locataire 01', {}, { timeout: 8000 });
+    expect(screen.getByText('Locataire 20')).toBeInTheDocument();
+    expect(screen.queryByText('Locataire 21')).not.toBeInTheDocument();
+    expect(screen.getByText('1–20 sur 25')).toBeInTheDocument();
+    // Le total de contrôle est celui du serveur, pas la somme des 20 lignes affichées.
+    expect(screen.getByText(/9\s?999\s?000/)).toBeInTheDocument();
+  }, 20000);
+
+  it('balance âgée : 20 lignes sur 25 et compteur affiché', async () => {
+    getClientsAgingBalance.mockResolvedValue({
+      lines: vingtCinq().map(l => ({ ...l, notYetDue: 0, days0To30: 0, days30To60: 0, days60To90: 0, daysOver90: 0 })),
+      totalBalance: 0,
+      currency: 'XOF'
+    });
+    mountAgee();
+
+    await screen.findByText('Locataire 01', {}, { timeout: 8000 });
+    expect(screen.queryByText('Locataire 21')).not.toBeInTheDocument();
+    expect(screen.getByText('1–20 sur 25')).toBeInTheDocument();
+  }, 20000);
 });

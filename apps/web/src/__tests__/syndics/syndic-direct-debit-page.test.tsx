@@ -65,6 +65,10 @@ vi.mock('../../services/syndic-direct-debit-service', () => ({
   applySyndicReturnFile: vi.fn()
 }));
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 vi.mock('../../hooks/useMenuAccess', () => ({
   useMyMenuAccess: () => ({ disabled: new Set(), enabled: new Set(), permissions: null, ready: true })
 }));
@@ -160,12 +164,18 @@ const LocationProbe: React.FC = () => {
   return <div data-testid="location">{location.pathname}</div>;
 };
 
-function mount(url = `/tenant/${TENANT}/syndics/${SYNDIC}/prelevements`) {
+/** Query string courante, pour vérifier ce que la recherche écrit dans l'URL. */
+const SearchProbe: React.FC = () => <div data-testid="search">{decodeURIComponent(useLocation().search)}</div>;
+
+const BASE = `/tenant/${TENANT}/syndics/${SYNDIC}/prelevements`;
+
+function mount(url = BASE) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
+          <SearchProbe />
           <Routes>
             <Route path="/tenant/:tenantId/syndics/:syndicId/prelevements" element={<SyndicDirectDebit />} />
             <Route
@@ -210,7 +220,9 @@ async function dialog() {
 describe('SyndicDirectDebit — créancier du syndicat', () => {
   it('affiche la carte du créancier et ne propose aucun frais de rejet', async () => {
     mount();
-    expect(await screen.findByText('Compte de prélèvement du syndicat')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Compte de prélèvement du syndicat', { selector: '.ant-card-head-title' })
+    ).toBeInTheDocument();
     expect(await screen.findByText('Banque Atlantique')).toBeInTheDocument();
     expect(screen.getByText('EMT-77')).toBeInTheDocument();
     expect(screen.queryByText(/Frais de rejet/)).not.toBeInTheDocument();
@@ -224,10 +236,13 @@ describe('SyndicDirectDebit — créancier du syndicat', () => {
 
     expect(await screen.findByText(/Aucun compte de prélèvement configuré/)).toBeInTheDocument();
     // Sans créancier actif, mandats et remises sont verrouillés.
-    expect(screen.getByRole('button', { name: /Nouveau mandat/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Préparer une remise/ })).toBeDisabled();
+    await user.click(screen.getByRole('tab', { name: 'Mandats de prélèvement' }));
+    expect(await screen.findByRole('button', { name: /Nouveau mandat/ })).toBeDisabled();
+    await user.click(screen.getByRole('tab', { name: 'Remises' }));
+    expect(await screen.findByRole('button', { name: /Préparer une remise/ })).toBeDisabled();
+    await user.click(screen.getByRole('tab', { name: 'Compte de prélèvement du syndicat' }));
 
-    await user.click(screen.getByRole('button', { name: 'Configurer le compte' }));
+    await user.click(await screen.findByRole('button', { name: 'Configurer le compte' }));
     const modal = await dialog();
     await user.type(modal.getByLabelText('Libellé'), 'Compte du syndicat');
     await user.type(modal.getByLabelText('Banque'), 'Banque Atlantique');
@@ -252,7 +267,9 @@ describe('SyndicDirectDebit — créancier du syndicat', () => {
     mount();
 
     await screen.findByText('Banque Atlantique');
-    const creditorCard = screen.getByText('Compte de prélèvement du syndicat').closest('.ant-card') as HTMLElement;
+    const creditorCard = screen
+      .getByText('Compte de prélèvement du syndicat', { selector: '.ant-card-head-title' })
+      .closest('.ant-card') as HTMLElement;
     await user.click(within(creditorCard).getByRole('button', { name: 'Modifier' }));
     const modal = await dialog();
     expect(modal.getByLabelText("Numéro d'émetteur")).toHaveValue('EMT-77');
@@ -288,7 +305,9 @@ describe('SyndicDirectDebit — créancier du syndicat', () => {
       isActive: false
     });
 
-    const creditorCard = screen.getByText('Compte de prélèvement du syndicat').closest('.ant-card') as HTMLElement;
+    const creditorCard = screen
+      .getByText('Compte de prélèvement du syndicat', { selector: '.ant-card-head-title' })
+      .closest('.ant-card') as HTMLElement;
     // L'enregistrement de la désactivation doit être terminé (boutons de nouveau actifs).
     await waitFor(() => expect(within(creditorCard).getByRole('button', { name: 'Modifier' })).toBeEnabled());
     await user.click(within(creditorCard).getByRole('button', { name: 'Modifier' }));
@@ -304,9 +323,9 @@ describe('SyndicDirectDebit — créancier du syndicat', () => {
 });
 
 describe('SyndicDirectDebit — mandats', () => {
-  it('affiche la table des mandats et filtre par lot et statut', async () => {
+  it('affiche la table des mandats et envoie la recherche à l’API', async () => {
     const user = userEvent.setup();
-    mount();
+    mount(`${BASE}?tab=mandats`);
 
     const reference = await screen.findByText('MDT-2026-0001');
     const row = reference.closest('tr') as HTMLElement;
@@ -316,22 +335,41 @@ describe('SyndicDirectDebit — mandats', () => {
     expect(row.querySelector('bdi[dir="ltr"]')).toHaveTextContent('5678');
     expect(listSyndicMandates).toHaveBeenLastCalledWith(TENANT, SYNDIC, { page: 1, pageSize: 20 });
 
-    await user.click(screen.getByLabelText('Filtrer par lot'));
-    await user.click(await screen.findByTitle('A01 — Awa Traoré'));
+    // Saisie dans la barre : le texte part à l'API (search) après le debounce et se retrouve dans l'URL.
+    await user.type(within(screen.getByRole('search', { name: /mandats/ })).getAllByRole('textbox')[0], 'Traoré');
     await waitFor(() =>
-      expect(listSyndicMandates).toHaveBeenLastCalledWith(TENANT, SYNDIC, { lotId: 'lot-1', page: 1, pageSize: 20 })
+      expect(listSyndicMandates).toHaveBeenLastCalledWith(TENANT, SYNDIC, { search: 'Traoré', page: 1, pageSize: 20 })
     );
+    expect(screen.getByTestId('search')).toHaveTextContent('man.q=Traor');
+  });
 
-    await user.click(screen.getByLabelText('Filtrer par statut'));
-    await user.click(await screen.findByTitle('Suspendu'));
+  it('applique le lot, le statut et la recherche d’une URL partagée', async () => {
+    mount(`${BASE}?tab=mandats&man.lotId=lot-1&man.status=SUSPENDED&man.q=Awa`);
+    await screen.findByText('MDT-2026-0001');
     await waitFor(() =>
       expect(listSyndicMandates).toHaveBeenLastCalledWith(TENANT, SYNDIC, {
         lotId: 'lot-1',
         status: 'SUSPENDED',
+        search: 'Awa',
         page: 1,
         pageSize: 20
       })
     );
+  });
+
+  it('sans résultat, « Effacer les critères » ramène la liste complète', async () => {
+    const user = userEvent.setup();
+    listSyndicMandates.mockImplementation(async (_t: string, _s: string, filters: { search?: string }) =>
+      filters.search
+        ? { items: [], total: 0, page: 1, pageSize: 20 }
+        : { items: [makeMandate()], total: 1, page: 1, pageSize: 20 }
+    );
+    mount(`${BASE}?tab=mandats&man.q=zzz`);
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.')).toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText('MDT-2026-0001')).toBeInTheDocument();
+    expect(screen.getByTestId('search')).not.toHaveTextContent('man.q=');
   });
 
   it('enchaîne lot, copropriétaire, IBAN contrôlé puis crée le mandat', async () => {
@@ -344,7 +382,7 @@ describe('SyndicDirectDebit — mandats', () => {
     });
     createSyndicMandate.mockResolvedValue({ mandate: makeMandate({ id: 'm-2', status: 'DRAFT' }), warnings: [] });
     const user = userEvent.setup();
-    mount();
+    mount(`${BASE}?tab=mandats`);
 
     await screen.findByText('MDT-2026-0001');
     await user.click(screen.getByRole('button', { name: /Nouveau mandat/ }));
@@ -387,7 +425,7 @@ describe('SyndicDirectDebit — mandats', () => {
       warnings: []
     });
     const user = userEvent.setup();
-    mount();
+    mount(`${BASE}?tab=mandats`);
 
     await screen.findByText('MDT-2026-0001');
     await user.click(screen.getByRole('button', { name: /Nouveau mandat/ }));
@@ -415,7 +453,7 @@ describe('SyndicDirectDebit — mandats', () => {
       filename: 'autorisation-MDT-2026-0001.pdf'
     });
     const user = userEvent.setup();
-    mount();
+    mount(`${BASE}?tab=mandats`);
 
     const row = (await screen.findByText('MDT-2026-0001')).closest('tr') as HTMLElement;
     // Sans scan déposé, l'activation est refusée.
@@ -438,7 +476,7 @@ describe('SyndicDirectDebit — mandats', () => {
     uploadSyndicSignedScan.mockResolvedValue(makeMandate({ status: 'DRAFT', hasSignedScan: true }));
     activateSyndicMandate.mockResolvedValue(makeMandate());
     const user = userEvent.setup();
-    mount();
+    mount(`${BASE}?tab=mandats`);
 
     const row = (await screen.findByText('MDT-2026-0001')).closest('tr') as HTMLElement;
     const file = new File(['pdf'], 'scan.pdf', { type: 'application/pdf' });
@@ -454,7 +492,7 @@ describe('SyndicDirectDebit — mandats', () => {
   it('suspend avec un motif obligatoire', async () => {
     suspendSyndicMandate.mockResolvedValue(makeMandate({ status: 'SUSPENDED' }));
     const user = userEvent.setup();
-    mount();
+    mount(`${BASE}?tab=mandats`);
 
     const row = (await screen.findByText('MDT-2026-0001')).closest('tr') as HTMLElement;
     await user.click(within(row).getByRole('button', { name: 'Suspendre' }));
@@ -470,7 +508,7 @@ describe('SyndicDirectDebit — mandats', () => {
   it('révoque avec un motif après avoir prévenu que c’est définitif', async () => {
     revokeSyndicMandate.mockResolvedValue(makeMandate({ status: 'REVOKED' }));
     const user = userEvent.setup();
-    mount();
+    mount(`${BASE}?tab=mandats`);
 
     const row = (await screen.findByText('MDT-2026-0001')).closest('tr') as HTMLElement;
     await user.click(within(row).getByRole('button', { name: 'Révoquer' }));
@@ -490,7 +528,7 @@ describe('SyndicDirectDebit — mandats', () => {
     });
     reactivateSyndicMandate.mockResolvedValue(makeMandate());
     const user = userEvent.setup();
-    mount();
+    mount(`${BASE}?tab=mandats`);
 
     const row = (await screen.findByText('MDT-2026-0001')).closest('tr') as HTMLElement;
     await user.click(within(row).getByRole('button', { name: 'Réactiver' }));
@@ -508,7 +546,7 @@ describe('SyndicDirectDebit — mandats', () => {
       pageSize: 20
     });
     const user = userEvent.setup();
-    mount();
+    mount(`${BASE}?tab=mandats`);
 
     const row = (await screen.findByText('MDT-2026-0001')).closest('tr') as HTMLElement;
     await user.click(within(row).getByRole('button', { name: 'Réactiver' }));
@@ -521,7 +559,7 @@ describe('SyndicDirectDebit — mandats', () => {
 
 describe('SyndicDirectDebit — remises', () => {
   it('liste les remises avec le lien vers le détail', async () => {
-    mount();
+    mount(`${BASE}?tab=remises`);
 
     const link = await screen.findByRole('link', { name: 'PRL-2026-0001' });
     expect(link).toHaveAttribute('href', `/tenant/${TENANT}/syndics/${SYNDIC}/prelevements/remises/r-1`);
@@ -534,6 +572,33 @@ describe('SyndicDirectDebit — remises', () => {
     expect(listSyndicRemittances).toHaveBeenLastCalledWith(TENANT, SYNDIC, { page: 1, pageSize: 20 });
   });
 
+  it('envoie la recherche (référence PRL-…) à l’API et la met dans l’URL', async () => {
+    const user = userEvent.setup();
+    mount(`${BASE}?tab=remises`);
+    await screen.findByRole('link', { name: 'PRL-2026-0001' });
+    await user.type(within(screen.getByRole('search', { name: /remises/ })).getAllByRole('textbox')[0], 'PRL-2026');
+    await waitFor(() =>
+      expect(listSyndicRemittances).toHaveBeenLastCalledWith(TENANT, SYNDIC, {
+        search: 'PRL-2026',
+        page: 1,
+        pageSize: 20
+      })
+    );
+    expect(screen.getByTestId('search')).toHaveTextContent('rem.q=PRL-2026');
+  });
+
+  it('applique le statut et la date de prélèvement d’une URL partagée', async () => {
+    mount(`${BASE}?tab=remises&rem.status=EXPORTED&rem.collectionFrom=2026-11-01&rem.collectionTo=2026-11-30`);
+    await screen.findByRole('link', { name: 'PRL-2026-0001' });
+    expect(listSyndicRemittances).toHaveBeenLastCalledWith(TENANT, SYNDIC, {
+      status: 'EXPORTED',
+      from: '2026-11-01',
+      to: '2026-11-30',
+      page: 1,
+      pageSize: 20
+    });
+  });
+
   it('propose la date selon le jour de collecte et le délai d’avis, sans choix de créancier', async () => {
     createSyndicRemittance.mockResolvedValue({
       remittance: makeRemittance({ id: 'r-9', reference: 'PRL-2026-0009' }),
@@ -543,7 +608,7 @@ describe('SyndicDirectDebit — remises', () => {
       makeFullRemittance({ id: 'r-9', reference: 'PRL-2026-0009', scope: 'SYNDIC_LOT', lines: [] })
     );
     const user = userEvent.setup();
-    mount();
+    mount(`${BASE}?tab=remises`);
 
     await screen.findByRole('link', { name: 'PRL-2026-0001' });
     await user.click(screen.getByRole('button', { name: /Préparer une remise/ }));
@@ -568,12 +633,36 @@ describe('SyndicDirectDebit — remises', () => {
   it('affiche l’erreur de l’API dans la fenêtre sans la fermer', async () => {
     createSyndicRemittance.mockRejectedValue({ response: { status: 400, data: { message: 'Date trop proche' } } });
     const user = userEvent.setup();
-    mount();
+    mount(`${BASE}?tab=remises`);
 
     await screen.findByRole('link', { name: 'PRL-2026-0001' });
     await user.click(screen.getByRole('button', { name: /Préparer une remise/ }));
     const modal = await dialog();
     await user.click(modal.getByRole('button', { name: 'Préparer' }));
     expect(await modal.findByText('Date trop proche')).toBeInTheDocument();
+  });
+});
+
+describe('SyndicDirectDebit — onglets paresseux (?tab=)', () => {
+  it('par défaut, seule la carte du compte est montée : ni mandats ni remises ne sont demandés', async () => {
+    mount();
+    await waitFor(() => expect(getSyndicCreditor).toHaveBeenCalled());
+    expect(getSyndicCreditor).toHaveBeenCalledTimes(1);
+    expect(listSyndicMandates).not.toHaveBeenCalled();
+    expect(listSyndicRemittances).not.toHaveBeenCalled();
+  });
+
+  it('?tab=mandats ne charge que les mandats (et le créancier commun)', async () => {
+    mount(`${BASE}?tab=mandats`);
+    await waitFor(() => expect(listSyndicMandates).toHaveBeenCalled());
+    expect(getSyndicCreditor).toHaveBeenCalledTimes(1);
+    expect(listSyndicRemittances).not.toHaveBeenCalled();
+  });
+
+  it("le changement d'onglet charge les remises", async () => {
+    mount();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('tab', { name: 'Remises' }));
+    await waitFor(() => expect(listSyndicRemittances).toHaveBeenCalled());
   });
 });

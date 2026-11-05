@@ -282,6 +282,8 @@ export interface CoOwnerReceiptsResult {
 }
 
 export interface CoOwnerReceiptsQuery {
+  /** Recherche libre : numéro du reçu/de la quittance, numéro de lot, libellé de période. */
+  search?: string;
   lotId?: string;
   kind?: CoOwnerDocumentKind;
   /** `AAAA-MM-JJ` */
@@ -292,7 +294,7 @@ export interface CoOwnerReceiptsQuery {
   limit?: number;
 }
 
-/** `GET /quittances?lotId=&kind=&from=&to=&page=&limit=` */
+/** `GET /quittances?search=&lotId=&kind=&from=&to=&page=&limit=` */
 export async function listMyReceipts(params: CoOwnerReceiptsQuery = {}): Promise<CoOwnerReceiptsResult> {
   const response = await apiClient.get<ApiResponse<CoOwnerReceiptsResult>>(`${BASE}/quittances`, { params });
   return response.data.data;
@@ -687,7 +689,7 @@ export async function createDeclaration(input: DeclarationInput, proof?: File | 
 
 /** `GET /paiements-declares` (contrat §2.5). */
 export async function listMyDeclarations(
-  params: { status?: DeclarationStatus | 'ALL'; page?: number; limit?: number } = {}
+  params: { status?: DeclarationStatus | 'ALL'; search?: string; page?: number; limit?: number } = {}
 ): Promise<CoOwnerDeclarationsResult> {
   const response = await apiClient.get<ApiResponse<CoOwnerDeclarationsResult>>(`${BASE}/paiements-declares`, {
     params

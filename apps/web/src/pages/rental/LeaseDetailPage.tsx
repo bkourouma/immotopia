@@ -30,6 +30,7 @@ import type { SignerInput } from '../../types/signature-types';
 import { LeaseDirectDebitPanel } from '../../components/rental/direct-debit/LeaseDirectDebitPanel';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { t as translate } from '../../i18n/t';
+import { LEASE_TAB_PARAM, defaultLeaseTab, resolveLeaseTab, withLeaseTab, withTabLifecycle } from './lease-detail-tabs';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -39,7 +40,7 @@ const { Title, Text } = Typography;
  * onglet a les siens : sans remise à zéro, le statut d'échéance `OVERDUE` de
  * l'onglet Échéances partait à la liste des paiements (BUG-2026-11-03-010).
  */
-const PARAMS_PROPRES_A_UN_ONGLET = ['status', 'overdue', 'renterClientId', 'onglet', 'page', 'limit', 'sort'];
+const PARAMS_PROPRES_A_UN_ONGLET = ['status', 'overdue', 'renterClientId', 'page', 'limit', 'sort'];
 
 /** Paramètre d'URL de l'onglet principal de la fiche (Échéances, Paiements, Documents…). */
 const ONGLET_PRINCIPAL_PARAM = 'tab';
@@ -63,12 +64,13 @@ export const LeaseDetailPage: React.FC = () => {
     // Appui sur l'onglet déjà affiché (même absent de l'URL) : ses filtres
     // reçus par lien (ex. `status=OVERDUE`, `onglet=declarations`) restent.
     if (affiche === cle) return;
-    const next = new URLSearchParams(searchParams);
+    const next = withLeaseTab(searchParams, cle);
     PARAMS_PROPRES_A_UN_ONGLET.forEach(key => next.delete(key));
+    // `tab` reste accepté pour les anciens liens partagés ; `onglet` est la clé actuelle.
     next.set(ONGLET_PRINCIPAL_PARAM, cle);
     setSearchParams(next, { replace: true });
   };
-  const activeTab = searchParams.get(ONGLET_PRINCIPAL_PARAM);
+  const activeTab = searchParams.get(ONGLET_PRINCIPAL_PARAM) ?? searchParams.get(LEASE_TAB_PARAM);
   const [lease, setLease] = useState<RentalLease | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -414,7 +416,7 @@ export const LeaseDetailPage: React.FC = () => {
                     {lease.billing_frequency === 'ANNUAL' && translate('Annuel')}
                   </Descriptions.Item>
                   <Descriptions.Item label={translate("Jour d'échéance")}>
-                    {translate('Le')} {lease.due_day_of_month} de chaque mois
+                    {translate('Le')} {lease.due_day_of_month} {translate('de chaque mois')}
                   </Descriptions.Item>
                 </Descriptions>
               </Card>
@@ -441,11 +443,13 @@ export const LeaseDetailPage: React.FC = () => {
                   <Descriptions.Item label={translate('Jours de grâce')}>
                     {lease.penalty_grace_days > 0 ? (
                       <>
-                        {lease.penalty_grace_days} jour{lease.penalty_grace_days > 1 ? 's' : ''}
+                        {lease.penalty_grace_days}{' '}
+                        {lease.penalty_grace_days > 1 ? translate('jours') : translate('jour')}
                         <br />
                         <Text type="secondary" style={{ fontSize: '12px' }}>
-                          {translate('Les pénalités seront appliquées après')} {lease.penalty_grace_days} jour
-                          {lease.penalty_grace_days > 1 ? 's' : ''} de retard
+                          {translate('Les pénalités seront appliquées après')} {lease.penalty_grace_days}{' '}
+                          {lease.penalty_grace_days > 1 ? translate('jours') : translate('jour')}{' '}
+                          {translate('de retard')}
                         </Text>
                       </>
                     ) : (
@@ -637,8 +641,11 @@ export const LeaseDetailPage: React.FC = () => {
             // un autre élément et ne l'active pas ; la touche Entrée ne le fait
             // pas non plus après un appui souris (aucun onglet « focalisé »).
             // On active donc l'onglet dès l'appui, avant tout déplacement.
-            const defaultTab = isSaleOnly ? 'documents' : 'installments';
-            const currentTab = tabItems.some(item => item.key === activeTab) ? (activeTab as string) : defaultTab;
+            const currentTab = resolveLeaseTab(
+              activeTab,
+              tabItems.map(item => item.key),
+              defaultLeaseTab(isSaleOnly)
+            );
             const itemsWithPress = tabItems.map(item => ({
               ...item,
               label: <span onMouseDown={() => handleTabChange(item.key, currentTab)}>{item.label}</span>
@@ -650,7 +657,8 @@ export const LeaseDetailPage: React.FC = () => {
                 type="line"
                 size="large"
                 onChange={key => handleTabChange(key, currentTab)}
-                items={itemsWithPress}
+                // Les listes lourdes sont démontées ; dépôt et état des lieux gardent leur saisie.
+                items={withTabLifecycle(itemsWithPress)}
               />
             );
           })()}

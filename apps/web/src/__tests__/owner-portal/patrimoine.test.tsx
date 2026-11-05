@@ -1,7 +1,8 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import Patrimoine from '../../pages/OwnerPortal/Patrimoine';
 import type { PatrimoineOverview } from '../../services/owner-portal-patrimoine-service';
 
@@ -161,5 +162,46 @@ describe('Mon patrimoine — synthèse et biens', () => {
     mount();
 
     expect(await screen.findByText("Cette vue n'est pas disponible.", {}, { timeout: 8000 })).toBeInTheDocument();
+  });
+});
+
+describe('Mon patrimoine — recherche locale des biens', () => {
+  const T = { timeout: 8000 };
+  const deuxBiens = () => {
+    const base = overview();
+    const [villa] = base.properties;
+    return overview({
+      properties: [villa, { ...villa, id: 'prop-2', title: 'Studio Plateau', address: 'Avenue Chardy' }]
+    });
+  };
+  const Url = () => <div data-testid="url">{useLocation().search}</div>;
+  const mountAt = (url: string) =>
+    render(
+      <MemoryRouter initialEntries={[url]}>
+        <Url />
+        <Patrimoine />
+      </MemoryRouter>
+    );
+
+  it('filtre les biens sur le titre ou l’adresse et écrit la saisie dans l’URL', async () => {
+    const user = userEvent.setup();
+    getPatrimoine.mockResolvedValue(deuxBiens());
+    mountAt('/owner/patrimoine');
+    expect(await screen.findByText('Villa Cocody', {}, T)).toBeInTheDocument();
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'chardy');
+    await vi.waitFor(() => expect(screen.queryByText('Villa Cocody')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('Studio Plateau')).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).toContain('q=chardy');
+  });
+
+  it('applique l’URL initiale et efface les critères', async () => {
+    const user = userEvent.setup();
+    getPatrimoine.mockResolvedValue(deuxBiens());
+    mountAt('/owner/patrimoine?q=zzz');
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', {}, T)).toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText('Villa Cocody', {}, T)).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).not.toContain('q=');
   });
 });

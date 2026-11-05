@@ -15,8 +15,19 @@ import {
  * documents privés, jamais servis en statique.
  */
 
-function toParams(query: Partial<ReceiptListQuery>): Record<string, unknown> {
+/**
+ * Critères de la liste : ceux du contrat commun, plus la recherche serveur
+ * (numéro, lot, copropriétaire, e-mail) et le filtre « rattrapé ».
+ */
+export type ReceiptListParams = Partial<ReceiptListQuery> & {
+  search?: string;
+  backfilled?: boolean;
+};
+
+function toParams(query: ReceiptListParams): Record<string, unknown> {
   return {
+    search: query.search?.trim() || undefined,
+    backfilled: query.backfilled === undefined ? undefined : query.backfilled,
     lotId: query.lotId || undefined,
     contactId: query.contactId || undefined,
     kind: query.kind || undefined,
@@ -30,7 +41,7 @@ function toParams(query: Partial<ReceiptListQuery>): Record<string, unknown> {
 export async function listSyndicateReceipts(
   tenantId: string,
   syndicId: string,
-  query: Partial<ReceiptListQuery> = {}
+  query: ReceiptListParams = {}
 ): Promise<ReceiptListResult> {
   const response = await apiClient.get<{ success: boolean; data: ReceiptListResult }>(
     `/tenants/${tenantId}/syndics/${syndicId}/quittances`,
@@ -43,7 +54,7 @@ export async function listLotReceipts(
   tenantId: string,
   syndicId: string,
   lotId: string,
-  query: Partial<Omit<ReceiptListQuery, 'lotId'>> = {}
+  query: Omit<ReceiptListParams, 'lotId'> = {}
 ): Promise<ReceiptListResult> {
   const response = await apiClient.get<{ success: boolean; data: ReceiptListResult }>(
     `/tenants/${tenantId}/syndics/${syndicId}/lots/${lotId}/quittances`,

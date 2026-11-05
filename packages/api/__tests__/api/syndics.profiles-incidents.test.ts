@@ -85,15 +85,11 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   listOwnerAccountTransactionsByLot: jest.fn(),
   createOwnerAccountAdjustmentByLot: jest.fn(),
   getOwnerAccountStatementByLot: jest.fn(),
-  listChartOfAccountsBySyndicate: jest.fn(),
   createChartOfAccountBySyndicate: jest.fn(),
   listAccountingJournalsBySyndicate: jest.fn(),
   createAccountingJournalBySyndicate: jest.fn(),
-  listJournalEntriesBySyndicate: jest.fn(),
   createJournalEntryBySyndicate: jest.fn(),
   lockJournalEntryBySyndicate: jest.fn(),
-  getTrialBalanceBySyndicate: jest.fn(),
-  getGeneralLedgerBySyndicate: jest.fn(),
   listLotOwnerProfilesBySyndicate: jest.fn(async () => Array.from(store.ownerProfiles.values())),
   listIncompleteOwnerSharesBySyndicate: jest.fn(async () => [
     { lotId: 'lot-1', lotNumber: 'A-01', totalPercentage: 60 }

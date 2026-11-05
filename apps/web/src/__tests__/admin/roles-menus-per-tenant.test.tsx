@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { RolesPermissions } from '../../pages/admin/RolesPermissions';
 import { listMenuAccess, updateMenuAccess } from '../../services/role-menu-service';
 import { listRoles, getRole, listPermissions } from '../../services/role-service';
@@ -11,6 +12,9 @@ import { listTenants } from '../../services/tenant-service';
  * agence. Un rôle d'agence exige un choix ; un rôle de plateforme n'en a pas.
  */
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
 vi.mock('../../services/role-menu-service', () => ({
   listMenuAccess: vi.fn(),
   updateMenuAccess: vi.fn(),
@@ -33,7 +37,11 @@ const PLATFORM_ROLE = { id: 'r-1', key: 'PLATFORM_SUPER_ADMIN', name: 'Super adm
 const TENANT_ROLE = { id: 'r-2', key: 'TENANT_ADMIN', name: 'Admin agence', scope: 'TENANT' };
 
 async function mount() {
-  render(<RolesPermissions />);
+  render(
+    <MemoryRouter initialEntries={['/admin/roles']}>
+      <RolesPermissions />
+    </MemoryRouter>
+  );
   await screen.findByText('Rôles');
 }
 
@@ -72,6 +80,16 @@ describe('RolesPermissions — menus par agence', () => {
     expect(screen.queryByText('Choisir une agence')).not.toBeInTheDocument();
     expect(screen.queryByText('Choisissez une agence pour régler ses menus.')).not.toBeInTheDocument();
     expect(screen.getByText("Ces réglages s'appliquent à la plateforme.")).toBeInTheDocument();
+  });
+
+  it('recherche dans les menus : un terme sans correspondance vide la liste et propose d’effacer', async () => {
+    await mount();
+    await waitFor(() => expect(mockListMenuAccess).toHaveBeenCalledWith(null));
+    const box = (await screen.findAllByRole('textbox')).find(el => el.getAttribute('aria-label') === 'Rechercher')!;
+    fireEvent.change(box, { target: { value: 'zzzzzzzz' } });
+    fireEvent.keyDown(box, { key: 'Enter', code: 'Enter', keyCode: 13 });
+    expect(await screen.findByText('Aucun menu ne correspond aux critères.')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Effacer les critères' }).length).toBeGreaterThan(0);
   });
 
   async function choose(label: string) {

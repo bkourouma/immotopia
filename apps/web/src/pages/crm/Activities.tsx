@@ -1,89 +1,128 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  App,
-  Button,
-  Card,
-  Space,
-  Row,
-  Col,
-  Modal,
-  Spin,
-  Empty,
-  Alert,
-  Pagination,
-  Select,
-  DatePicker,
-  Typography,
-  Divider
-} from 'antd';
-import { PlusOutlined, FilterOutlined, CloseOutlined, CalendarOutlined } from '@ant-design/icons';
+import { Button, Card, Space, Row, Col, Modal, Spin, Empty, Alert, Pagination, Typography } from 'antd';
+import { PlusOutlined, CalendarOutlined } from '@ant-design/icons';
 import { ActivityForm } from '../../components/crm/ActivityForm';
 import { ActivityTimeline } from '../../components/crm/ActivityTimeline';
+import { ListSearch } from '../../components/primitives/ListSearch';
+import { useListSearch } from '../../hooks/useListSearch';
 import {
   listActivities,
   createActivity,
   listContacts,
+  getContact,
   CrmActivity,
-  CrmContact,
   CreateCrmActivityRequest,
   ActivityFilters
 } from '../../services/crm-service';
-import { listAssignableMembers, Member } from '../../services/membership-service';
-import { CrmActivityType } from '../../types/crm-types';
-import dayjs, { Dayjs } from 'dayjs';
+import { listAssignableMembers } from '../../services/membership-service';
 import { t } from '../../i18n/t';
 import { activityTypeLabel } from '../../utils/crm-labels';
+import { contactDisplayNameWithEmail } from '../../utils/contact-display';
 
 const { Title, Text } = Typography;
-const { RangePicker } = DatePicker;
+
+const ACTIVITY_TYPES = ['CALL', 'EMAIL', 'SMS', 'WHATSAPP', 'VISIT', 'MEETING', 'NOTE', 'TASK'];
 
 export const Activities: React.FC = () => {
-  const { message } = App.useApp();
-
   const { tenantId, contactId, dealId } = useParams<{ tenantId: string; contactId?: string; dealId?: string }>();
+  // `loadOptions` / `resolveLabel` sont figés au premier rendu : le tenant courant se lit par une ref.
+  const tenantRef = useRef(tenantId);
+  tenantRef.current = tenantId;
   const [activities, setActivities] = useState<CrmActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [filters, setFilters] = useState<ActivityFilters>({
-    page: 1,
-    limit: 50,
-    contactId: contactId,
-    dealId: dealId
-  });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
     total: 0,
     totalPages: 0
   });
-  const [contacts, setContacts] = useState<CrmContact[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [members, setMembers] = useState<{ value: string; label: string }[]>([]);
+
+  // Recherche multicritères : l'état vit dans l'URL, tout part à l'API (page serveur de 50 activités).
+  const search = useListSearch({
+    defaultPageSize: 50,
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Sujet, contenu, résultat, contact, auteur…')
+      },
+      {
+        key: 'type',
+        type: 'multiSelect',
+        label: t("Type d'activité"),
+        primary: true,
+        options: ACTIVITY_TYPES.map(type => ({ value: type, label: activityTypeLabel(type) }))
+      },
+      {
+        key: 'contactId',
+        type: 'select',
+        label: t('Contact'),
+        primary: true,
+        placeholder: t('Tous les contacts'),
+        // Contacts à recherche distante : 20 au plus, filtrés par le serveur.
+        loadOptions: async term => {
+          const response = await listContacts(tenantRef.current as string, {
+            search: term || undefined,
+            page: 1,
+            limit: 20
+          });
+          return (response.contacts ?? []).map(contact => ({
+            value: contact.id,
+            label: contactDisplayNameWithEmail(contact)
+          }));
+        },
+        resolveLabel: async id => {
+          const response = await getContact(tenantRef.current as string, id);
+          return response.success ? contactDisplayNameWithEmail(response.data) : undefined;
+        }
+      },
+      { key: 'createdBy', type: 'select', label: t('Collaborateur'), primary: true, options: members },
+      { key: 'period', type: 'dateRange', label: t('Période'), api: ['startDate', 'endDate'] },
+      {
+        key: 'direction',
+        type: 'multiSelect',
+        label: t('Direction'),
+        options: [
+          { value: 'OUT', label: t('Sortant') },
+          { value: 'IN', label: t('Entrant') },
+          { value: 'INTERNAL', label: t('Interne') }
+        ]
+      },
+      { key: 'hasNextAction', type: 'boolean', label: t('Prochaine action'), tristate: true }
+    ]
+  });
+
+  // Une page « activités d'un contact / d'une affaire » : la route pose le périmètre de départ,
+  // le critère « Contact » de la barre peut le remplacer (comme l'ancien filtre).
+  const apiParams = {
+    ...search.apiParams,
+    ...(contactId && !search.apiParams.contactId ? { contactId } : {}),
+    ...(dealId ? { dealId } : {})
+  } as ActivityFilters;
 
   useEffect(() => {
     if (tenantId) {
       loadActivities();
-      loadContacts();
-      loadMembers();
     }
-  }, [tenantId, filters, contactId, dealId]);
+  }, [tenantId, search.apiParams, contactId, dealId]);
 
   useEffect(() => {
-    setFilters((prev: ActivityFilters) => ({
-      ...prev,
-      contactId: contactId,
-      dealId: dealId
-    }));
-  }, [contactId, dealId]);
+    if (tenantId) {
+      loadMembers();
+    }
+  }, [tenantId]);
 
   const loadActivities = async () => {
     if (!tenantId) return;
     setLoading(true);
     setError(null);
     try {
-      const response = await listActivities(tenantId, filters);
+      const response = await listActivities(tenantId, apiParams);
       if (response.success) {
         setActivities(response.activities);
         setPagination(response.pagination);
@@ -108,67 +147,22 @@ export const Activities: React.FC = () => {
     }
   };
 
-  const loadContacts = async () => {
-    if (!tenantId) return;
-    try {
-      const response = await listContacts(tenantId, { limit: 100 });
-      if (response.success) {
-        setContacts(response.contacts);
-      }
-    } catch (err) {
-      console.error('Error loading contacts:', err);
-    }
-  };
-
   const loadMembers = async () => {
     if (!tenantId) return;
     try {
       const response = await listAssignableMembers(tenantId);
       if (response.success) {
-        setMembers(response.data.members);
+        setMembers(
+          (response.data?.members ?? []).map(member => ({
+            value: member.user.id,
+            label: member.user.fullName || member.user.email
+          }))
+        );
       }
     } catch (err) {
       console.error('Error loading members:', err);
     }
   };
-
-  const handleTypeFilter = (type: string) => {
-    setFilters({ ...filters, page: 1, type: (type || undefined) as CrmActivityType | undefined });
-  };
-
-  const handleContactFilter = (contactId: string) => {
-    setFilters({ ...filters, page: 1, contactId: contactId || undefined });
-  };
-
-  const handleCollaboratorFilter = (userId: string) => {
-    setFilters({ ...filters, page: 1, createdBy: userId || undefined });
-  };
-
-  const handleDateRangeFilter = (dates: [Dayjs | null, Dayjs | null] | null) => {
-    if (dates && dates[0] && dates[1]) {
-      setFilters({
-        ...filters,
-        page: 1,
-        startDate: dates[0].format('YYYY-MM-DD'),
-        endDate: dates[1].format('YYYY-MM-DD')
-      });
-    } else {
-      setFilters({ ...filters, page: 1, startDate: undefined, endDate: undefined });
-    }
-  };
-
-  const clearFilters = () => {
-    setFilters({
-      page: 1,
-      limit: 50,
-      contactId: contactId,
-      dealId: dealId
-    });
-    setShowAdvancedFilters(false);
-    message.info(t('Filtres réinitialisés'));
-  };
-
-  const activityTypes = ['CALL', 'EMAIL', 'SMS', 'WHATSAPP', 'VISIT', 'MEETING', 'NOTE', 'TASK'];
 
   return (
     <>
@@ -205,112 +199,8 @@ export const Activities: React.FC = () => {
           )}
         </Modal>
 
-        {/* Filters */}
-        <Card title={t('Filtres')} extra={<FilterOutlined />}>
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            {/* Type Filters */}
-            <div>
-              <Text strong style={{ marginInlineEnd: 16 }}>
-                {t("Type d'activité:")}
-              </Text>
-              <Space wrap>
-                <Button type={!filters.type ? 'primary' : 'default'} onClick={() => handleTypeFilter('')}>
-                  {t('Tous les types')}
-                </Button>
-                {activityTypes.map(type => (
-                  <Button
-                    key={type}
-                    type={filters.type === type ? 'primary' : 'default'}
-                    onClick={() => handleTypeFilter(type)}
-                  >
-                    {activityTypeLabel(type)}
-                  </Button>
-                ))}
-              </Space>
-            </div>
-
-            <Divider style={{ margin: '12px 0' }} />
-
-            {/* Advanced Filters */}
-            <Space wrap>
-              <Button icon={<FilterOutlined />} onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}>
-                {showAdvancedFilters ? t('Masquer') : t('Afficher')} {t('les filtres avancés')}
-              </Button>
-              {(filters.contactId || filters.createdBy || filters.startDate || filters.endDate) && (
-                <Button icon={<CloseOutlined />} onClick={clearFilters}>
-                  {t('Réinitialiser')}
-                </Button>
-              )}
-            </Space>
-
-            {showAdvancedFilters && (
-              <>
-                <Divider style={{ margin: '12px 0' }} />
-                <Row gutter={[16, 16]}>
-                  {/* Contact Filter */}
-                  <Col xs={24} sm={12} md={6}>
-                    <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                      {t('Contact')}
-                    </Text>
-                    <Select
-                      style={{ width: '100%' }}
-                      placeholder={t('Tous les contacts')}
-                      allowClear
-                      value={filters.contactId || undefined}
-                      onChange={value => handleContactFilter(value || '')}
-                      showSearch
-                      filterOption={(input, option) =>
-                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
-                      options={contacts.map(contact => ({
-                        value: contact.id,
-                        label: `${contact.firstName} ${contact.lastName}`
-                      }))}
-                    />
-                  </Col>
-
-                  {/* Collaborator Filter */}
-                  <Col xs={24} sm={12} md={6}>
-                    <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                      {t('Collaborateur')}
-                    </Text>
-                    <Select
-                      style={{ width: '100%' }}
-                      placeholder={t('Tous les collaborateurs')}
-                      allowClear
-                      value={filters.createdBy || undefined}
-                      onChange={value => handleCollaboratorFilter(value || '')}
-                      showSearch
-                      filterOption={(input, option) =>
-                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
-                      options={members.map(member => ({
-                        value: member.user.id,
-                        label: member.user.fullName || member.user.email
-                      }))}
-                    />
-                  </Col>
-
-                  {/* Date Range Filter */}
-                  <Col xs={24} sm={12} md={12}>
-                    <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                      {t('Période')}
-                    </Text>
-                    <RangePicker
-                      style={{ width: '100%' }}
-                      format="DD/MM/YYYY"
-                      placeholder={[t('Date début'), t('Date fin')]}
-                      value={
-                        filters.startDate && filters.endDate ? [dayjs(filters.startDate), dayjs(filters.endDate)] : null
-                      }
-                      onChange={handleDateRangeFilter}
-                    />
-                  </Col>
-                </Row>
-              </>
-            )}
-          </Space>
-        </Card>
+        {/* Recherche multicritères */}
+        <ListSearch {...search.searchProps} resultCount={loading ? undefined : pagination.total} />
 
         {/* Activities Timeline */}
         {error && (
@@ -332,6 +222,10 @@ export const Activities: React.FC = () => {
                 <Text>{t('Chargement des activités...')}</Text>
               </div>
             </div>
+          ) : activities.length === 0 && search.isFiltered ? (
+            <Empty description={t('Aucun résultat')}>
+              <Button onClick={search.clear}>{t('Effacer les critères')}</Button>
+            </Empty>
           ) : activities.length === 0 ? (
             <Empty
               image={<CalendarOutlined style={{ fontSize: 64, color: '#bfbfbf' }} />}
@@ -359,7 +253,7 @@ export const Activities: React.FC = () => {
               <Col xs={24} sm={12}>
                 <Text type="secondary">
                   {t('Affichage de')} {(pagination.page - 1) * pagination.limit + 1} à{' '}
-                  {Math.min(pagination.page * pagination.limit, pagination.total)} sur {pagination.total}{' '}
+                  {Math.min(pagination.page * pagination.limit, pagination.total)} {t('sur')} {pagination.total}{' '}
                   {t('activités')}
                 </Text>
               </Col>
@@ -372,7 +266,7 @@ export const Activities: React.FC = () => {
                   showTotal={(total, range) =>
                     t('{{start}}–{{end}} sur {{total}}', { start: range[0], end: range[1], total })
                   }
-                  onChange={page => setFilters({ ...filters, page })}
+                  onChange={page => search.setPage(page)}
                 />
               </Col>
             </Row>

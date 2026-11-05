@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { zSearch } from '../../utils/list-query-schemas';
 
 /**
  * Paramètres de `GET /tenants/:tenantId/audit`.
@@ -18,7 +19,10 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 function parseDate(value: string, endOfDay: boolean): Date | null {
   const iso = DATE_ONLY.test(value) ? `${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z` : value;
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? null : date;
+  if (Number.isNaN(date.getTime())) return null;
+  // Vraie date du calendrier : 2026-02-31 ne devient pas le 3 mars.
+  if (DATE_ONLY.test(value) && date.toISOString().slice(0, 10) !== value) return null;
+  return date;
 }
 
 function dateParam(endOfDay: boolean, message: string) {
@@ -47,6 +51,8 @@ export const tenantAuditQuerySchema = z
     actorUserId: z.string().min(1).max(64).optional(),
     entityType: z.string().min(1).max(100).optional(),
     entityId: z.string().min(1).max(64).optional(),
+    /** Recherche libre : action, ressource, identifiant ou acteur (au moment de l'action). */
+    search: zSearch(100),
     startDate: dateParam(false, 'Date de début invalide').optional(),
     endDate: dateParam(true, 'Date de fin invalide').optional(),
     cursor: z.string().min(1).max(512).optional(),

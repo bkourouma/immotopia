@@ -1,25 +1,20 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, DatePicker, Select } from 'antd';
+import { Button } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { getClientsAgingBalance, listClientBalanceProperties } from '../../services/finance-service';
-import type { ClientsAgingBalanceLine } from '../../types/finance-types';
-import { useListParams, type Sort } from '../../hooks/useListParams';
+import type { BalanceFilters, ClientsAgingBalanceLine } from '../../types/finance-types';
+import type { Sort } from '../../hooks/useListParams';
+import { useListSearch } from '../../hooks/useListSearch';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { exportToCSV } from '../../utils/export-utils';
-import {
-  PageHeader,
-  StateBlock,
-  MoneyValue,
-  DataView,
-  DataCard,
-  FilterSheet,
-  StatCard
-} from '../../components/primitives';
+import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatCard } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { formatMoney } from '../../components/primitives/MoneyValue';
@@ -35,6 +30,12 @@ import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded
  * `pages/rental/Installments.tsx` et `Payments.tsx`, et le territoire de cet
  * agent n'inclut aucun fichier partagé où loger une factorisation.
  *
+ * **Recherche en mode mixte.** Comme `BalanceClients.tsx` : locataire,
+ * période et bien partent au serveur (les totaux suivent le périmètre
+ * filtré), seule la découpe en pages est locale. Deux hooks lisent la même
+ * URL : `useListSearch` donne les paramètres d'API avant la requête,
+ * `useLocalListSearch` découpe et porte la barre.
+ *
  * **Tri.** `ClientsAgingBalance` n'est pas paginée par l'API (comme sa
  * balance simple) et `BalanceFilters` ne porte pas de paramètre de tri : le
  * tri des cinq colonnes de tranche est donc appliqué CÔTÉ ÉCRAN, sur la
@@ -43,15 +44,11 @@ import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded
  * même quand il n'est pas transmis au serveur.
  */
 
-type Filters = { from: string; to: string; propertyId: string };
-const FILTER_KEYS = ['from', 'to', 'propertyId'] as const;
-
-const { RangePicker } = DatePicker;
-
 /** Colonnes de tranche, dans l'ordre d'affichage — et les seules triables (récit 5). */
 const CHAMPS_TRANCHES = ['notYetDue', 'days0To30', 'days30To60', 'days60To90', 'daysOver90'] as const;
 type ChampTranche = (typeof CHAMPS_TRANCHES)[number];
 
+/** Tri global, avant la découpe en pages (constante de module : mémoïsation stable). */
 function trierLignes(lignes: ClientsAgingBalanceLine[], sort: Sort | null): ClientsAgingBalanceLine[] {
   if (!sort || !(CHAMPS_TRANCHES as readonly string[]).includes(sort.field)) return lignes;
   const champ = sort.field as ChampTranche;
@@ -75,13 +72,44 @@ export const BalanceAgee: React.FC = () => {
   // Locatif : sans gestion locative (RENTAL), ni campagne ni balance de locataires (BUG-051).
   const features = useAgencyFeatures(tenantId);
   const navigate = useNavigate();
-  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS });
 
-  const filtresPeriode = {
-    from: list.filters.from || undefined,
-    to: list.filters.to || undefined
-  };
-  const filtresApi = { ...filtresPeriode, propertyId: list.filters.propertyId || undefined };
+  /** Options du filtre sous le même droit de lecture financier que la balance. */
+  const { data: parc } = useQuery({
+    queryKey: queryKey('finance-balance-properties', tenantId, {}),
+    queryFn: () => listClientBalanceProperties(tenantId as string),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list
+  });
+  const optionsBiens = React.useMemo(
+    () =>
+      (parc ?? []).map(bien => ({ value: bien.id, label: bien.title })).sort((a, b) => a.label.localeCompare(b.label)),
+    [parc]
+  );
+
+  // Tous les critères partent au serveur : aucun accesseur local, le filtrage
+  // local les ignore.
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom du locataire…'), api: 'search' },
+    {
+      key: 'periode',
+      type: 'dateRange',
+      label: t('Période'),
+      primary: true,
+      urlKeys: ['from', 'to'],
+      api: ['from', 'to']
+    },
+    {
+      key: 'propertyId',
+      type: 'select',
+      label: t('Bien'),
+      primary: true,
+      loadOptions: async terme =>
+        optionsBiens.filter(bien => bien.label.toLocaleLowerCase().includes(terme.toLocaleLowerCase())).slice(0, 20),
+      resolveLabel: async id => optionsBiens.find(bien => bien.value === id)?.label ?? id
+    }
+  ];
+  const { filterParams } = useListSearch({ criteria: criteres });
+  const filtresApi = filterParams as BalanceFilters;
 
   const {
     data,
@@ -90,7 +118,7 @@ export const BalanceAgee: React.FC = () => {
     error: erreurRequete,
     refetch
   } = useQuery({
-    queryKey: queryKey('clients-balance-agee', tenantId, filtresApi),
+    queryKey: queryKey('clients-balance-agee', tenantId, filterParams),
     // `asOf` fixe le jour de référence des tranches à aujourd'hui : ce n'est
     // pas un filtre que la gestionnaire choisit, donc il ne vit pas dans
     // l'URL — à la différence de la période et du bien.
@@ -99,21 +127,11 @@ export const BalanceAgee: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  /** Options du filtre « Bien », limitées aux baux lisibles avec le droit financier. */
-  const { data: parc } = useQuery({
-    queryKey: queryKey('finance-balance-properties', tenantId, {}),
-    queryFn: () => listClientBalanceProperties(tenantId as string),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
+  const local = useLocalListSearch<ClientsAgingBalanceLine>(data?.lines, {
+    criteria: criteres,
+    sortItems: trierLignes
   });
-
-  const optionsBiens = React.useMemo(
-    () =>
-      (parc ?? []).map(bien => ({ value: bien.id, label: bien.title })).sort((a, b) => a.label.localeCompare(b.label)),
-    [parc]
-  );
-
-  const lignes = React.useMemo(() => trierLignes(data?.lines ?? [], list.sort), [data, list.sort]);
+  const lignes = local.filtered;
 
   const handleExport = () => {
     exportToCSV(
@@ -147,7 +165,7 @@ export const BalanceAgee: React.FC = () => {
 
   /** Icône de tri courant pour une colonne de tranche donnée. */
   const sortOrderPour = (champ: ChampTranche): SortOrder | null =>
-    list.sort?.field === champ ? (list.sort.order === 'asc' ? 'ascend' : 'descend') : null;
+    local.sort?.field === champ ? (local.sort.order === 'asc' ? 'ascend' : 'descend') : null;
 
   const colonneTranche = (titre: string, champ: ChampTranche): ColumnsType<ClientsAgingBalanceLine>[number] => ({
     title: titre,
@@ -207,66 +225,20 @@ export const BalanceAgee: React.FC = () => {
         primaryAction={{ label: t('Exporter'), icon: <DownloadOutlined />, onClick: handleExport }}
       />
 
-      <FilterSheet
-        activeCount={Object.keys(list.filters).length}
-        onClear={list.clearFilters}
-        title={t('Filtrer la balance')}
-      >
-        <div style={{ minWidth: 260 }}>
-          <label htmlFor="filtre-periode-balance-agee">{t('Période')}</label>
-          <RangePicker
-            id="filtre-periode-balance-agee"
-            style={{ width: '100%' }}
-            format="DD/MM/YYYY"
-            value={[
-              list.filters.from ? dayjs(list.filters.from) : null,
-              list.filters.to ? dayjs(list.filters.to) : null
-            ]}
-            onChange={dates =>
-              list.setFilters({
-                from: dates?.[0] ? dates[0].format('YYYY-MM-DD') : undefined,
-                to: dates?.[1] ? dates[1].format('YYYY-MM-DD') : undefined
-              })
-            }
-          />
-        </div>
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-bien-balance-agee">{t('Bien')}</label>
-          <Select
-            id="filtre-bien-balance-agee"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les biens')}
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            value={list.filters.propertyId || undefined}
-            onChange={value => list.setFilters({ propertyId: value })}
-            options={optionsBiens}
-          />
-        </div>
-      </FilterSheet>
-
       <DataView<ClientsAgingBalanceLine>
-        paginated={false}
-        items={lignes}
-        total={lignes.length}
-        page={1}
-        pageSize={Math.max(lignes.length, 1)}
-        onPageChange={() => {}}
+        // Pagination locale de la liste reçue : l'API rend la balance
+        // entière et ses totaux (ceux du serveur, jamais recalculés ici).
+        {...local.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger la balance âgée.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={list.isFiltered}
-        onClearFilters={list.clearFilters}
         emptyDescription={t('Aucun compte de locataire enregistré.')}
         columns={colonnes}
         rowKey={l => l.accountId}
         aria-label={t('Balance âgée')}
-        export={{ filename: t('Balance âgée') }}
-        sort={list.sort}
-        onSortChange={list.setSort}
+        export={{ filename: t('Balance âgée'), fetchAll: local.exportAll }}
         // Neuf colonnes hors « Actions » : elles ne tiennent pas dans les
         // ~690 px utiles au plancher du desktop (voir la même remarque dans
         // `pages/rental/Payments.tsx`).

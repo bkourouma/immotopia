@@ -22,8 +22,16 @@
  * `kind: 'PLATFORM'` et `tenantId`.
  */
 
+import { escapeLike } from '../utils/like-escape';
 import { randomUUID } from 'crypto';
-import { InvoiceLineKind, InvoiceStatus, PlatformPaymentMethod, Prisma, SubscriptionStatus } from '@prisma/client';
+import {
+  InvoiceLineKind,
+  InvoiceStatus,
+  PlatformInvoiceNature,
+  PlatformPaymentMethod,
+  Prisma,
+  SubscriptionStatus
+} from '@prisma/client';
 import { prisma, PrismaTransactionClient } from '../utils/database';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
@@ -985,7 +993,17 @@ export function serializePlatformInvoice(
 export interface ListPlatformInvoicesOptions {
   /** Agence : jamais les brouillons. */
   includeDrafts?: boolean;
-  status?: InvoiceStatus;
+  /** Un ou plusieurs statuts (le filtre de l'ecran envoie une liste). */
+  status?: InvoiceStatus | InvoiceStatus[];
+  /** Nature(s) : periode, depassement, avoir. */
+  nature?: PlatformInvoiceNature[];
+  /** Recherche libre sur le numero de facture et la reference de paiement. */
+  search?: string;
+  /** Fenetre sur la date d'emission (bornes incluses). */
+  from?: Date;
+  to?: Date;
+  minAmount?: number;
+  maxAmount?: number;
   page?: number;
   limit?: number;
 }
@@ -994,15 +1012,42 @@ export interface ListPlatformInvoicesOptions {
 export async function listPlatformInvoices(tenantId: string, options: ListPlatformInvoicesOptions = {}) {
   const page = Math.max(1, Math.floor(options.page ?? 1));
   const limit = Math.min(100, Math.max(1, Math.floor(options.limit ?? 20)));
+  const requested = options.status ? ([] as InvoiceStatus[]).concat(options.status) : [];
+  // Une agence ne voit jamais les brouillons, meme demandes explicitement.
+  const visible = options.includeDrafts ? requested : requested.filter(s => s !== InvoiceStatus.DRAFT);
+  const draftsOnly = requested.length > 0 && visible.length === 0;
+  const issueDate =
+    options.from || options.to
+      ? { ...(options.from ? { gte: options.from } : {}), ...(options.to ? { lte: options.to } : {}) }
+      : undefined;
+  const amountTotal =
+    options.minAmount !== undefined || options.maxAmount !== undefined
+      ? {
+          ...(options.minAmount !== undefined ? { gte: options.minAmount } : {}),
+          ...(options.maxAmount !== undefined ? { lte: options.maxAmount } : {})
+        }
+      : undefined;
+  const search = options.search?.trim();
   const where: Prisma.InvoiceWhereInput = {
     tenantId,
     kind: PLATFORM,
-    ...(options.status
-      ? { status: options.status }
+    ...(visible.length > 0
+      ? { status: visible.length === 1 ? visible[0] : { in: visible } }
       : options.includeDrafts
         ? {}
         : { status: { not: InvoiceStatus.DRAFT } }),
-    ...(options.status === InvoiceStatus.DRAFT && !options.includeDrafts ? { id: '__none__' } : {})
+    ...(draftsOnly ? { id: '__none__' } : {}),
+    ...(options.nature?.length ? { billingNature: { in: options.nature } } : {}),
+    ...(issueDate ? { issueDate } : {}),
+    ...(amountTotal ? { amountTotal } : {}),
+    ...(search
+      ? {
+          OR: [
+            { invoiceNumber: { contains: escapeLike(search), mode: 'insensitive' as const } },
+            { paymentReference: { contains: escapeLike(search), mode: 'insensitive' as const } }
+          ]
+        }
+      : {})
   };
   const [rows, total] = await Promise.all([
     prisma.invoice.findMany({

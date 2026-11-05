@@ -141,6 +141,8 @@ export interface ListDeclarationsQuery {
   from?: string;
   to?: string;
   overdue?: boolean;
+  /** Recherche serveur : déclarant, référence, téléphone du payeur, numéro de lot. */
+  search?: string;
   page?: number;
   limit?: number;
 }
@@ -263,6 +265,7 @@ export async function listSyndicDeclarations(
         from: query.from || undefined,
         to: query.to || undefined,
         overdue: query.overdue ? true : undefined,
+        search: query.search?.trim() || undefined,
         page: query.page,
         limit: query.limit
       }

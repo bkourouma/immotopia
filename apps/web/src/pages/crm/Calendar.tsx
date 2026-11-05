@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { App, Button, Checkbox, Space, Typography, Modal, Drawer, Tag, Divider, Segmented } from 'antd';
 import { PlusOutlined, DownloadOutlined, FileExcelOutlined, CheckCircleOutlined } from '@ant-design/icons';
@@ -13,7 +13,11 @@ import {
   CreateCrmActivityRequest
 } from '../../services/crm-service';
 import { ActivityForm } from '../../components/crm/ActivityForm';
-import { AdvancedFilters, AdvancedFilters as AdvancedFiltersType } from '../../components/crm/AdvancedFilters';
+import { ListSearch } from '../../components/primitives/ListSearch';
+import { useListSearch } from '../../hooks/useListSearch';
+import { filterItems } from '../../utils/list-search';
+import type { DateRangeValue } from '../../utils/list-search';
+import { listAssignableMembers } from '../../services/membership-service';
 import { exportToCSV, exportToExcel } from '../../utils/export-utils';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useListParams } from '../../hooks/useListParams';
@@ -60,6 +64,15 @@ const { Text, Title } = Typography;
  * lu, est retiré.
  */
 
+// Stables (hors du composant) : champ libre de l'agenda = ce que l'on lit sur un événement.
+const TEXTE_EVENEMENT = [
+  (evenement: EvenementAgenda) => evenement.title,
+  (evenement: EvenementAgenda) => evenement.contactName,
+  (evenement: EvenementAgenda) => evenement.dealLabel,
+  (evenement: EvenementAgenda) => evenement.location,
+  (evenement: EvenementAgenda) => evenement.nextActionType
+];
+
 /** La grille n'est demandée qu'au moment où elle est affichée. */
 const CalendarGrid = lazy(() => import('./CalendarGrid'));
 
@@ -104,7 +117,59 @@ export const CalendarPage: React.FC = () => {
   const [dateCourante, setDateCourante] = useState(new Date());
   const [evenementSelectionne, setEvenementSelectionne] = useState<EvenementAgenda | null>(null);
   const [formulaireOuvert, setFormulaireOuvert] = useState(false);
-  const [filtresAvances, setFiltresAvances] = useState<AdvancedFiltersType>({});
+  const [membres, setMembres] = useState<{ value: string; label: string }[]>([]);
+
+  // Collaborateurs de l'agence (liste bornée) : options du critère « Collaborateur ».
+  useEffect(() => {
+    if (!tenantId) return;
+    listAssignableMembers(tenantId)
+      .then(reponse => {
+        if (reponse.success) {
+          setMembres(
+            (reponse.data?.members ?? []).map(membre => ({
+              value: membre.user.id,
+              label: membre.user.fullName || membre.user.email
+            }))
+          );
+        }
+      })
+      .catch(() => undefined);
+  }, [tenantId]);
+
+  // Recherche de l'agenda : l'état vit dans l'URL (préfixe « ev »). Le filtrage est local, sur la fenêtre de
+  // dates chargée (l'agenda reçoit une fenêtre complète, pas une page serveur).
+  const recherche = useListSearch({
+    paramPrefix: 'ev',
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Titre, client, affaire, lieu…')
+      },
+      {
+        key: 'type',
+        type: 'select',
+        label: t("Type d'événement"),
+        primary: true,
+        options: [
+          { value: 'RDV', label: t('Rendez-vous') },
+          { value: 'VISITE', label: t('Visite') },
+          { value: 'FOLLOWUP', label: t('Relance') }
+        ]
+      },
+      { key: 'assignedTo', type: 'select', label: t('Collaborateur'), primary: true, options: membres },
+      { key: 'period', type: 'dateRange', label: t('Période personnalisée') }
+    ]
+  });
+  const typeFiltre = recherche.values.type as string | undefined;
+  const assigneFiltre = recherche.values.assignedTo as string | undefined;
+  const debutPeriode = (recherche.values.period as DateRangeValue | undefined)?.from;
+
+  // Le début de la période personnalisée déplace l'agenda (comme l'ancien filtre « Période personnalisée »).
+  useEffect(() => {
+    if (debutPeriode) setDateCourante(new Date(debutPeriode));
+  }, [debutPeriode]);
 
   /**
    * La vue par défaut dépend du palier : agenda sous 992 px, mois au-dessus.
@@ -128,10 +193,10 @@ export const CalendarPage: React.FC = () => {
   }, [dateCourante, vue]);
 
   const typesCharges = useMemo(() => {
-    if (filtresAvances.type === 'FOLLOWUP') return ['followups' as const, 'propertyVisits' as const];
-    if (filtresAvances.type) return ['propertyVisits' as const];
+    if (typeFiltre === 'FOLLOWUP') return ['followups' as const, 'propertyVisits' as const];
+    if (typeFiltre) return ['propertyVisits' as const];
     return avecRelances ? (['followups', 'propertyVisits'] as const) : (['propertyVisits'] as const);
-  }, [filtresAvances.type, avecRelances]);
+  }, [typeFiltre, avecRelances]);
 
   const {
     data,
@@ -159,8 +224,12 @@ export const CalendarPage: React.FC = () => {
 
   const evenements = useMemo(() => {
     const bruts = (data?.events ?? []).map(versEvenementAgenda).filter(Boolean) as EvenementAgenda[];
-    return filtrerEvenements(bruts, filtresAvances);
-  }, [data, filtresAvances]);
+    const parTypeEtCollaborateur = filtrerEvenements(bruts, { type: typeFiltre, assignedTo: assigneFiltre });
+    return filterItems(parTypeEtCollaborateur, recherche.values, {
+      criteria: recherche.criteria,
+      text: TEXTE_EVENEMENT
+    });
+  }, [data, typeFiltre, assigneFiltre, recherche.values, recherche.criteria]);
 
   const journees = useMemo(() => grouperParJour(evenements), [evenements]);
 
@@ -376,27 +445,10 @@ export const CalendarPage: React.FC = () => {
         {isFetching && !isPending && <Text type="secondary">{t('Mise à jour…')}</Text>}
       </div>
 
-      <AdvancedFilters
-        tenantId={tenantId}
-        config={{
-          showDateRange: true,
-          showAssignedTo: true,
-          showType: true,
-          showContactName: true,
-          dateRangeLabel: t('Période personnalisée'),
-          typeLabel: t("Type d'événement"),
-          contactNameLabel: t('Nom du client'),
-          typeOptions: [
-            { value: 'RDV', label: t('Rendez-vous') },
-            { value: 'VISITE', label: t('Visite') },
-            { value: 'FOLLOWUP', label: t('Relance') }
-          ]
-        }}
-        filters={filtresAvances}
-        onFiltersChange={nouveaux => {
-          setFiltresAvances(nouveaux);
-          if (nouveaux.startDate) setDateCourante(new Date(nouveaux.startDate));
-        }}
+      <ListSearch
+        {...recherche.searchProps}
+        aria-label={t("Rechercher dans l'agenda")}
+        resultCount={isPending ? undefined : evenements.length}
       />
 
       <div style={{ marginTop: 'var(--space-4)' }}>{contenu()}</div>

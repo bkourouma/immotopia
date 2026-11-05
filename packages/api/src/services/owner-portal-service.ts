@@ -83,6 +83,20 @@ import {
   toPortalAttachment,
   toPortalRentalDocument
 } from '../lib/files/portal-files';
+import {
+  buildOwnerDocumentsSearch,
+  buildOwnerInstallmentsSearch,
+  buildOwnerLeasesSearch,
+  buildOwnerPaymentsSearch,
+  buildOwnerTicketsSearch,
+  emptyOwnerPagination,
+  isOwnerListOutOfScope,
+  ownerEnumClause,
+  paginateOwnerList,
+  type OneOrMany,
+  type OwnerPortalListOptions,
+  type WithOwnerPagination
+} from './portal-list-filters/owner-portal-list-filters';
 
 const INTL_LOCALES = { fr: 'fr-FR', en: 'en-US', ar: 'ar' } as const;
 
@@ -816,19 +830,20 @@ export class OwnerPortalService {
     propertyIds: string[],
     tenantId: string,
     filters?: {
-      status?: RentalLeaseStatus;
+      status?: OneOrMany<RentalLeaseStatus>;
       propertyId?: string;
-    }
-  ): Promise<LeasesListData> {
+    } & OwnerPortalListOptions
+  ): Promise<WithOwnerPagination<LeasesListData>> {
     try {
-      if (propertyIds.length === 0) {
+      if (isOwnerListOutOfScope(propertyIds, filters)) {
         return {
           leases: [],
           summary: {
             active: 0,
             ended: 0,
             suspended: 0
-          }
+          },
+          pagination: emptyOwnerPagination(filters)
         };
       }
 
@@ -839,13 +854,15 @@ export class OwnerPortalService {
       };
 
       if (filters?.status) {
-        where.status = filters.status;
+        where.status = ownerEnumClause(filters.status);
       }
 
       if (filters?.propertyId) {
         // Le filtre RESTREINT le périmètre : bien hors périmètre = liste vide.
         where.property_id = { in: restrictToOwnerScope(propertyIds, filters.propertyId) };
       }
+
+      Object.assign(where, buildOwnerLeasesSearch(filters?.search));
 
       // Get leases
       const leases = await prisma.rentalLease.findMany({
@@ -880,6 +897,7 @@ export class OwnerPortalService {
       // Map to LeaseListItem
       const leaseList: LeaseListItem[] = leases.map(lease => ({
         id: lease.id,
+        propertyId: lease.property.id,
         propertyAddress: lease.property.address || 'Adresse non disponible',
         tenantName: lease.primaryRenter.user?.fullName || 'Locataire inconnu',
         startDate: lease.start_date,
@@ -888,9 +906,12 @@ export class OwnerPortalService {
         status: lease.status
       }));
 
+      const pageOfLeases = paginateOwnerList(leaseList, filters);
+
       return {
-        leases: leaseList,
-        summary: { active, ended, suspended }
+        leases: pageOfLeases.items,
+        summary: { active, ended, suspended },
+        pagination: pageOfLeases.pagination
       };
     } catch (error) {
       logger.error('Error getting owner leases:', error);
@@ -1523,12 +1544,12 @@ export class OwnerPortalService {
     propertyIds: string[],
     tenantId: string,
     filters?: {
-      status?: RentalInstallmentStatus;
+      status?: OneOrMany<RentalInstallmentStatus>;
       propertyId?: string;
       startDate?: Date;
       endDate?: Date;
-    }
-  ): Promise<InstallmentsListData> {
+    } & OwnerPortalListOptions
+  ): Promise<WithOwnerPagination<InstallmentsListData>> {
     try {
       if (propertyIds.length === 0) {
         return {
@@ -1540,7 +1561,8 @@ export class OwnerPortalService {
             paid: 0,
             totalAmount: 0,
             dueAmount: 0
-          }
+          },
+          pagination: emptyOwnerPagination(filters)
         };
       }
 
@@ -1552,7 +1574,7 @@ export class OwnerPortalService {
       };
 
       if (filters?.status) {
-        where.status = filters.status;
+        where.status = ownerEnumClause(filters.status);
       }
 
       if (filters?.propertyId) {
@@ -1571,10 +1593,13 @@ export class OwnerPortalService {
               paid: 0,
               totalAmount: 0,
               dueAmount: 0
-            }
+            },
+            pagination: emptyOwnerPagination(filters)
           };
         }
       }
+
+      Object.assign(where, buildOwnerInstallmentsSearch(filters?.search));
 
       if (filters?.startDate || filters?.endDate) {
         where.due_date = {};
@@ -1700,8 +1725,10 @@ export class OwnerPortalService {
         )
         .reduce((sum, inst) => sum + (Number(inst.amount || 0) - Number(inst.paidAmount || 0)), 0);
 
+      const pageOfInstallments = paginateOwnerList(installmentList, filters);
+
       return {
-        installments: installmentList,
+        installments: pageOfInstallments.items,
         summary: {
           total,
           due,
@@ -1709,7 +1736,8 @@ export class OwnerPortalService {
           paid,
           totalAmount,
           dueAmount
-        }
+        },
+        pagination: pageOfInstallments.pagination
       };
     } catch (error) {
       logger.error('Error getting owner installments:', error);
@@ -1727,9 +1755,9 @@ export class OwnerPortalService {
       startDate?: Date;
       endDate?: Date;
       propertyId?: string;
-      method?: RentalPaymentMethod;
-    }
-  ): Promise<PaymentsListData> {
+      method?: OneOrMany<RentalPaymentMethod>;
+    } & OwnerPortalListOptions
+  ): Promise<WithOwnerPagination<PaymentsListData>> {
     try {
       if (propertyIds.length === 0) {
         return {
@@ -1739,7 +1767,8 @@ export class OwnerPortalService {
             totalAmount: 0,
             thisMonth: 0,
             thisYear: 0
-          }
+          },
+          pagination: emptyOwnerPagination(filters)
         };
       }
 
@@ -1779,14 +1808,17 @@ export class OwnerPortalService {
               totalAmount: 0,
               thisMonth: 0,
               thisYear: 0
-            }
+            },
+            pagination: emptyOwnerPagination(filters)
           };
         }
       }
 
       if (filters?.method) {
-        where.method = filters.method;
+        where.method = ownerEnumClause(filters.method);
       }
+
+      Object.assign(where, buildOwnerPaymentsSearch(filters?.search));
 
       // Get payments
       const payments = await prisma.rentalPayment.findMany({
@@ -1857,14 +1889,17 @@ export class OwnerPortalService {
         return paymentDate >= currentYearStart && paymentDate <= currentYearEnd;
       }).length;
 
+      const pageOfPayments = paginateOwnerList(paymentList, filters);
+
       return {
-        payments: paymentList,
+        payments: pageOfPayments.items,
         summary: {
           total,
           totalAmount,
           thisMonth,
           thisYear
-        }
+        },
+        pagination: pageOfPayments.pagination
       };
     } catch (error) {
       logger.error('Error getting owner payments:', error);
@@ -2148,14 +2183,14 @@ export class OwnerPortalService {
     propertyIds: string[],
     tenantId: string,
     filters?: {
-      status?: MaintenanceTicketStatus;
+      status?: OneOrMany<MaintenanceTicketStatus>;
       propertyId?: string;
-      category?: MaintenanceTicketCategory;
-      priority?: MaintenanceTicketPriority;
-    }
-  ): Promise<MaintenanceTicketsListData> {
+      category?: OneOrMany<MaintenanceTicketCategory>;
+      priority?: OneOrMany<MaintenanceTicketPriority>;
+    } & OwnerPortalListOptions
+  ): Promise<WithOwnerPagination<MaintenanceTicketsListData>> {
     try {
-      if (propertyIds.length === 0) {
+      if (isOwnerListOutOfScope(propertyIds, filters)) {
         return {
           tickets: [],
           summary: {
@@ -2164,7 +2199,8 @@ export class OwnerPortalService {
             inProgress: 0,
             resolved: 0,
             totalCost: 0
-          }
+          },
+          pagination: emptyOwnerPagination(filters)
         };
       }
 
@@ -2174,7 +2210,7 @@ export class OwnerPortalService {
       };
 
       if (filters?.status) {
-        where.status = filters.status;
+        where.status = ownerEnumClause(filters.status);
       }
 
       if (filters?.propertyId) {
@@ -2183,12 +2219,14 @@ export class OwnerPortalService {
       }
 
       if (filters?.category) {
-        where.category = filters.category;
+        where.category = ownerEnumClause(filters.category);
       }
 
       if (filters?.priority) {
-        where.priority = filters.priority;
+        where.priority = ownerEnumClause(filters.priority);
       }
+
+      Object.assign(where, buildOwnerTicketsSearch(filters?.search));
 
       // Get tickets
       const tickets = await prisma.maintenanceTicket.findMany({
@@ -2229,15 +2267,18 @@ export class OwnerPortalService {
       // For now, we set it to 0 as there's no cost tracking in the schema
       const totalCost = 0;
 
+      const pageOfTickets = paginateOwnerList(ticketList, filters);
+
       return {
-        tickets: ticketList,
+        tickets: pageOfTickets.items,
         summary: {
           total,
           open,
           inProgress,
           resolved,
           totalCost
-        }
+        },
+        pagination: pageOfTickets.pagination
       };
     } catch (error) {
       logger.error('Error getting owner maintenance tickets:', error);
@@ -2354,16 +2395,17 @@ export class OwnerPortalService {
     propertyIds: string[],
     tenantId: string,
     filters?: {
-      documentType?: RentalDocumentType;
+      documentType?: OneOrMany<RentalDocumentType>;
       propertyId?: string;
       leaseId?: string;
-    }
-  ): Promise<DocumentsListData> {
+    } & OwnerPortalListOptions
+  ): Promise<WithOwnerPagination<DocumentsListData>> {
     try {
-      if (propertyIds.length === 0) {
+      if (isOwnerListOutOfScope(propertyIds, filters)) {
         return {
           documents: [],
-          groupedByType: {}
+          groupedByType: {},
+          pagination: emptyOwnerPagination(filters)
         };
       }
 
@@ -2397,7 +2439,7 @@ export class OwnerPortalService {
       };
 
       if (filters?.documentType) {
-        where.type = filters.documentType;
+        where.type = ownerEnumClause(filters.documentType);
       }
 
       if (filters?.propertyId) {
@@ -2413,6 +2455,8 @@ export class OwnerPortalService {
       if (filters?.leaseId) {
         where.lease_id = filters.leaseId;
       }
+
+      Object.assign(where, buildOwnerDocumentsSearch(filters?.search));
 
       // Get documents
       const rows = await prisma.rentalDocument.findMany({
@@ -2450,9 +2494,12 @@ export class OwnerPortalService {
         groupedByType[type].push(doc);
       }
 
+      const pageOfDocuments = paginateOwnerList(documents as any[], filters);
+
       return {
-        documents: documents as any[],
-        groupedByType
+        documents: pageOfDocuments.items,
+        groupedByType,
+        pagination: pageOfDocuments.pagination
       };
     } catch (error) {
       logger.error('Error getting owner documents:', error);

@@ -82,10 +82,13 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   listDocumentsBySyndicate: jest.fn(),
   getFinanceSummaryBySyndicate: jest.fn(),
   listCommonAssetsBySyndicate: jest.fn(),
-  listMeetingsBySyndicate: jest.fn(async (tenantId: string, syndicateId: string) =>
-    Array.from(store.meetings.values()).filter(
-      meeting => meeting.tenantId === tenantId && meeting.syndicateId === syndicateId
-    )
+  listMeetingsBySyndicate: jest.fn(
+    async (tenantId: string, syndicateId: string, filters?: { pagination?: { page: number; limit: number } }) => {
+      const { page = 1, limit = 20 } = filters?.pagination ?? {};
+      return Array.from(store.meetings.values())
+        .filter(meeting => meeting.tenantId === tenantId && meeting.syndicateId === syndicateId)
+        .slice((page - 1) * limit, page * limit);
+    }
   ),
   getMeetingByTenant: jest.fn(async (tenantId: string, syndicateId: string, meetingId: string) => {
     const meeting = store.meetings.get(meetingId);
@@ -254,6 +257,28 @@ describe('Syndics meetings routes', () => {
       resolutions: [],
       syndicate: { lots: [{ id: LOT_ID, lotNumber: 'A-01', generalShares: 100 }] }
     });
+  });
+
+  it('rend la deuxième page d’assemblées et rejette une taille de page invalide', async () => {
+    for (let index = 0; index < 21; index += 1) {
+      store.meetings.set(`meeting-${index}`, {
+        id: `meeting-${index}`,
+        tenantId: TENANT_ID,
+        syndicateId: SYNDIC_ID,
+        type: 'ORDINARY',
+        scheduledAt: '2026-06-20T09:00:00.000Z',
+        status: 'PLANNED',
+        quorum: 0,
+        resolutions: [],
+        syndicate: { lots: [] }
+      });
+    }
+    const url = `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees`;
+    const second = await request(app).get(url).query({ page: 2, limit: 20 });
+    expect(second.status).toBe(200);
+    expect(second.body.data.map((meeting: Meeting) => meeting.id)).toEqual(['meeting-20']);
+    expect(await request(app).get(url).query({ page: 1, limit: 101 })).toHaveProperty('status', 400);
+    expect(await request(app).get(url).query({ status: 'INVALID' })).toHaveProperty('status', 400);
   });
 
   it('creates a meeting and returns PLANNED status', async () => {

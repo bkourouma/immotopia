@@ -399,6 +399,22 @@ function countMap(rows: Array<{ tenantId: string; _count: { _all: number } }>): 
 }
 
 /**
+ * Parmi `tenantIds`, celles dont une capacite atteint 80 % de sa limite (meme
+ * regle que `SubscriptionSummary.nearLimit`). Les resumes sont calcules par
+ * lots de `MAX_SUMMARY_TENANTS` : filtre « proches de la limite » de la liste
+ * des agences, applique AVANT la pagination. L'ordre d'entree est conserve.
+ */
+export async function selectNearLimitTenantIds(tenantIds: readonly string[]): Promise<string[]> {
+  const near = new Set<string>();
+  for (let i = 0; i < tenantIds.length; i += MAX_SUMMARY_TENANTS) {
+    const chunk = tenantIds.slice(i, i + MAX_SUMMARY_TENANTS);
+    const summaries = await listSubscriptionSummaries(chunk);
+    for (const id of chunk) if (summaries[id]?.nearLimit) near.add(id);
+  }
+  return tenantIds.filter(id => near.has(id));
+}
+
+/**
  * Resume de l'abonnement de plusieurs agences en une dizaine de requetes
  * groupees, quelle que soit la taille de la page (supprime le N+1 de la liste
  * des agences). Consommation : comptages par defaut du registre (LOTS =

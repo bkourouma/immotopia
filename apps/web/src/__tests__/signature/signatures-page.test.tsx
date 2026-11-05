@@ -25,6 +25,9 @@ vi.mock('../../services/signature-admin-service', () => ({
   remindSignatureRequest: (...a: unknown[]) => remindSignatureRequest(...a),
   cancelSignatureRequest: (...a: unknown[]) => cancelSignatureRequest(...a)
 }));
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
 vi.mock('../../utils/save-blob', () => ({ saveBlob: (...a: unknown[]) => saveBlob(...a) }));
 
 function request(overrides: Record<string, any> = {}) {
@@ -64,10 +67,10 @@ function request(overrides: Record<string, any> = {}) {
   };
 }
 
-function renderPage() {
+function renderPage(initial = '/tenant/t1/signatures') {
   return render(
     <AntApp>
-      <MemoryRouter initialEntries={['/tenant/t1/signatures']}>
+      <MemoryRouter initialEntries={[initial]}>
         <Routes>
           <Route path="/tenant/:tenantId/signatures" element={<SignaturesPage />} />
         </Routes>
@@ -175,11 +178,31 @@ describe('SignaturesPage', () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('Bail Villa Cocody');
-    await user.type(screen.getByLabelText('Rechercher'), 'Traoré{enter}');
+    await user.type(screen.getByPlaceholderText('Titre du document, nom du signataire…'), 'Traoré{enter}');
     await waitFor(() =>
       expect(fetchSignatureSummary).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'Traoré' }))
     );
     expect(listSignaturesPage).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'Traoré' }));
+  });
+
+  it('applique les critères d’une URL partagée (type, période) à la liste et au résumé, sans le statut dans le résumé', async () => {
+    renderPage(
+      '/tenant/t1/signatures?status=COMPLETED&kind=LEASE_CONTRACT&periodFrom=2026-10-01&periodTo=2026-10-31&q=bail'
+    );
+    await screen.findByText('Bail Villa Cocody');
+    expect(listSignaturesPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        status: 'COMPLETED',
+        kind: 'LEASE_CONTRACT',
+        from: '2026-10-01',
+        to: '2026-10-31',
+        q: 'bail',
+        page: 1,
+        pageSize: 25
+      })
+    );
+    const summary = fetchSignatureSummary.mock.calls.at(-1)![0];
+    expect(summary).toEqual({ kind: 'LEASE_CONTRACT', from: '2026-10-01', to: '2026-10-31', q: 'bail' });
   });
 
   it('chaque type d’événement de la piste de preuve a un libellé lisible', () => {

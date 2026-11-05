@@ -1,12 +1,11 @@
 import React, { useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Button, Select, Space, Modal, Drawer } from 'antd';
+import { App, Button, Space, Modal, Drawer } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ThunderboltOutlined, CreditCardOutlined, PlusOutlined, LinkOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listInstallments,
-  listLeases,
   generateInstallments,
   recalculateInstallmentStatuses,
   deleteAllInstallments,
@@ -14,7 +13,7 @@ import {
   allocatePayment,
   calculatePenalties,
   RentalInstallment,
-  RentalInstallmentStatus,
+  InstallmentFilters,
   RentalPaymentMethod,
   CreatePaymentRequest
 } from '../../services/rental-service';
@@ -22,16 +21,11 @@ import { collectAllPages } from '../../utils/table-export/collect';
 import { PaymentForm } from '../../components/rental/PaymentForm';
 import { InstallmentPaymentLinkModal, canOfferPaymentLink } from '../../components/rental/InstallmentPaymentLinkButton';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { useListParams } from '../../hooks/useListParams';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { useListSearch } from '../../hooks/useListSearch';
+import { renterCriterion } from './rental-search-criteria';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import {
-  nomDuBien,
-  nomDeLaPersonne,
-  optionsLocatairesDesBaux,
-  deviseAffichee,
-  libellePeriodeEcheance
-} from '../../lib/rental-labels';
+import { nomDuBien, nomDeLaPersonne, deviseAffichee, libellePeriodeEcheance } from '../../lib/rental-labels';
 import {
   PageHeader,
   StateBlock,
@@ -40,7 +34,6 @@ import {
   formatMoney,
   DataView,
   DataCard,
-  FilterSheet,
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
@@ -78,9 +71,6 @@ interface InstallmentsProps {
   /** Fourni quand l'écran est monté en onglet d'un bail. */
   leaseId?: string;
 }
-
-type Filters = { status: string; overdue: string; renterClientId: string };
-const FILTER_KEYS = ['status', 'overdue', 'renterClientId'] as const;
 
 const STATUS_OPTIONS = localizedList(() => [
   { value: 'DUE', label: t('À échoir') },
@@ -127,7 +117,32 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
     permissions === null || (permissions.has('RENTAL_PAYMENTS_CREATE') && permissions.has('RENTAL_PAYMENTS_ALLOCATE'));
   const peutProposerLien = permissions === null || permissions.has('RENTAL_PAYMENTS_CREATE');
 
-  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS, defaultPageSize: 50 });
+  // Onglet d'un bail : préfixe d'URL `ech` (les autres onglets ont leurs propres listes).
+  const search = useListSearch({
+    paramPrefix: propLeaseId ? 'ech' : undefined,
+    ariaLabel: propLeaseId ? t('Rechercher dans les échéances') : undefined,
+    defaultPageSize: 50,
+    apiNames: { sort: false },
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('N° de bail, bien, locataire…'),
+        api: 'search'
+      },
+      { key: 'status', type: 'select', label: t('Statut'), primary: true, options: STATUS_OPTIONS },
+      {
+        key: 'overdue',
+        type: 'boolean',
+        label: t('En retard uniquement'),
+        primary: true,
+        api: value => (value ? { overdue: 'true' } : ({} as Record<string, string>))
+      },
+      { key: 'due', type: 'dateRange', label: t("Date d'échéance"), api: ['dueFrom', 'dueTo'] },
+      ...(leaseId ? [] : [renterCriterion(tenantId, { api: 'renterClientId' })])
+    ]
+  });
   const [enCours, setEnCours] = useState<string | null>(null);
   const [formulairePour, setFormulairePour] = useState<RentalInstallment | null>(null);
   const [lienPour, setLienPour] = useState<RentalInstallment | null>(null);
@@ -155,14 +170,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
     return nouvelle;
   }
 
-  const filtresApi = {
-    leaseId,
-    status: (list.filters.status as RentalInstallmentStatus) || undefined,
-    overdue: list.filters.overdue === 'true' ? true : undefined,
-    renterClientId: list.filters.renterClientId || undefined,
-    page: list.page,
-    limit: list.pageSize
-  };
+  const filtresApi = { ...search.apiParams, leaseId } as InstallmentFilters;
 
   const {
     data,
@@ -171,30 +179,12 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
     error: erreurRequete,
     refetch
   } = useQuery({
-    queryKey: queryKey('installments', tenantId, { ...list.queryParams, leaseId: leaseId ?? '' }),
+    queryKey: queryKey('installments', tenantId, { ...search.apiParams, leaseId: leaseId ?? '' }),
     queryFn: () => listInstallments(tenantId as string, filtresApi),
     enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
-
-  /**
-   * Locataires du portefeuille, pour le filtre.
-   *
-   * Ils sont derives des baux : une echeance n'a pas de locataire en propre,
-   * elle en herite de son contrat. On ne propose donc que les locataires qui
-   * ont effectivement un bail — un filtre qui ne ramene jamais rien est pire
-   * qu'un filtre absent.
-   *
-   * Inutile dans l'onglet d'un bail : le locataire y est deja unique.
-   */
-  const { data: donneesBaux } = useQuery({
-    queryKey: queryKey('leases', tenantId, { pour: 'filtre-locataire' }),
-    queryFn: () => listLeases(tenantId as string, { limit: 500 }),
-    enabled: Boolean(tenantId) && !leaseId,
-    staleTime: STALE_TIME.list
-  });
-
-  const optionsLocataires = React.useMemo(() => optionsLocatairesDesBaux(donneesBaux?.data), [donneesBaux]);
 
   const echeances = data?.data ?? [];
   const total = data?.pagination?.total ?? 0;
@@ -494,62 +484,18 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
     <>
       {enTete}
 
-      <FilterSheet
-        activeCount={Object.keys(list.filters).length}
-        onClear={list.clearFilters}
-        title={t('Filtrer les échéances')}
-      >
-        {!leaseId && (
-          <div style={{ minWidth: 240 }}>
-            <label htmlFor="filtre-locataire-echeance">{t('Locataire')}</label>
-            <Select
-              id="filtre-locataire-echeance"
-              style={{ width: '100%' }}
-              placeholder={t('Tous les locataires')}
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              value={list.filters.renterClientId || undefined}
-              onChange={value => list.setFilters({ renterClientId: value })}
-              options={optionsLocataires}
-            />
-          </div>
-        )}
-        <div style={{ minWidth: 200 }}>
-          <label htmlFor="filtre-statut-echeance">{t('Statut')}</label>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            id="filtre-statut-echeance"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les statuts')}
-            allowClear
-            value={list.filters.status || undefined}
-            onChange={value => list.setFilters({ status: value })}
-            options={STATUS_OPTIONS}
-          />
-        </div>
-        <div style={{ minWidth: 200 }}>
-          <label htmlFor="filtre-retard">{t('Retard')}</label>
-          <Select
-            id="filtre-retard"
-            style={{ width: '100%' }}
-            placeholder={t('Toutes')}
-            allowClear
-            value={list.filters.overdue || undefined}
-            onChange={value => list.setFilters({ overdue: value })}
-            options={[{ value: 'true', label: t('En retard uniquement') }]}
-          />
-        </div>
-      </FilterSheet>
-
       <DataView<RentalInstallment>
         // Export de TOUTES les échéances, avec les mêmes filtres que la liste affichée.
         export={{
           filename: t('Échéances'),
           fetchAll: () =>
             collectAllPages<RentalInstallment>(async (page, limit) => {
-              const reponse = await listInstallments(tenantId, { ...filtresApi, page, limit });
+              const reponse = await listInstallments(tenantId, {
+                ...search.filterParams,
+                leaseId,
+                page,
+                limit
+              } as InstallmentFilters);
               return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
             })
         }}
@@ -561,16 +507,13 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
         scrollX={leaseId ? undefined : 1180}
         items={echeances}
         total={total}
-        page={list.page}
-        pageSize={list.pageSize}
-        onPageChange={(page, size) => (size !== list.pageSize ? list.setPageSize(size) : list.setPage(page))}
+        search={search.searchProps}
+        {...search.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les échéances.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={list.isFiltered}
-        onClearFilters={list.clearFilters}
         emptyDescription={
           leaseId
             ? t('Aucune échéance pour ce bail. Générez-les depuis l’action ci-dessus.')

@@ -1,13 +1,15 @@
 import { useSyndicDirectDebitRights } from './useSyndicDirectDebitRights';
 import React, { useMemo, useState } from 'react';
-import { Alert, App, Button, Card, Select, Space, Table } from 'antd';
+import { Alert, App, Button, Card, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreditorDto, MandateDto, MandateStatus } from '../../../services/direct-debit-service';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { CreditorDto, MandateDto } from '../../../services/direct-debit-service';
 import { listSyndicMandates } from '../../../services/syndic-direct-debit-service';
 import { listSyndicateLots } from '../../../services/syndic-service';
-import { formatMoney } from '../../primitives';
+import { formatMoney, Table } from '../../primitives';
+import { useListSearch } from '../../../hooks/useListSearch';
+import { collectAllPages } from '../../../utils/table-export/collect';
 import {
   apiErrorMessage,
   MANDATE_STATUSES,
@@ -21,8 +23,6 @@ import { SYNDIC_DD_KEYS } from './keys';
 import { STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
 
-const PAGE_SIZE = 20;
-
 interface SyndicMandatesCardProps {
   tenantId: string;
   syndicId: string;
@@ -33,9 +33,6 @@ interface SyndicMandatesCardProps {
 export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId, syndicId, creditor }) => {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
-  const [lotId, setLotId] = useState<string | undefined>();
-  const [status, setStatus] = useState<MandateStatus | undefined>();
-  const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   // Signature électronique : lancer, relancer, annuler et lire les PDF exigent SYNDIC_DIRECT_DEBIT_MANAGE (SIG-S5).
   const { canManage } = useSyndicDirectDebitRights(tenantId);
@@ -59,11 +56,40 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
     [lots]
   );
 
-  const filters = { lotId, status, page, pageSize: PAGE_SIZE };
-  const { data, isPending, error } = useQuery({
-    queryKey: SYNDIC_DD_KEYS.mandates(tenantId, syndicId, filters),
-    queryFn: () => listSyndicMandates(tenantId, syndicId, filters),
-    staleTime: STALE_TIME.list
+  // Liste paginée par l'API (`pageSize`, pas de tri) : les critères partent à l'API.
+  const search = useListSearch({
+    paramPrefix: 'man',
+    ariaLabel: t('Rechercher dans les mandats'),
+    apiNames: { limit: 'pageSize', sort: false },
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Titulaire, lot, copropriétaire, référence, fin d’IBAN…')
+      },
+      {
+        key: 'status',
+        type: 'select',
+        label: t('Statut'),
+        primary: true,
+        options: MANDATE_STATUSES.map(value => ({ value, label: mandateStatusLabel(value) }))
+      },
+      {
+        key: 'lotId',
+        type: 'select',
+        label: t('Lot'),
+        primary: true,
+        options: lots.map(lot => ({ value: lot.id, label: lot.lotNumber }))
+      }
+    ]
+  });
+
+  const { data, isFetching, error } = useQuery({
+    queryKey: SYNDIC_DD_KEYS.mandates(tenantId, syndicId, search.apiParams),
+    queryFn: () => listSyndicMandates(tenantId, syndicId, search.apiParams),
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
 
   const refresh = () => {
@@ -133,41 +159,26 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
             message={t('Configurez et activez le compte de prélèvement du syndicat pour créer des mandats.')}
           />
         )}
-        <Space wrap size={[12, 12]}>
-          <Select
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            placeholder={t('Lot')}
-            aria-label={t('Filtrer par lot')}
-            style={{ minWidth: 220 }}
-            value={lotId}
-            onChange={value => {
-              setLotId(value);
-              setPage(1);
-            }}
-            options={lotOptions.map(lot => ({ value: lot.id, label: lot.label }))}
-          />
-          <Select
-            allowClear
-            placeholder={t('Statut')}
-            aria-label={t('Filtrer par statut')}
-            style={{ minWidth: 200 }}
-            value={status}
-            onChange={value => {
-              setStatus(value);
-              setPage(1);
-            }}
-            options={MANDATE_STATUSES.map(value => ({ value, label: mandateStatusLabel(value) }))}
-          />
-        </Space>
         {error && (
           <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement des mandats'))} />
         )}
         <Table<MandateDto>
+          aria-label={t('Mandats de prélèvement')}
+          search={search.searchProps}
+          exportFilename={t('Mandats de prélèvement')}
+          exportFetchAll={() =>
+            collectAllPages<MandateDto>(async (page, limit) => {
+              const response = await listSyndicMandates(tenantId, syndicId, {
+                ...search.filterParams,
+                page,
+                pageSize: limit
+              });
+              return { items: response.items, total: response.total };
+            })
+          }
           rowKey="id"
           size="middle"
-          loading={isPending}
+          loading={isFetching}
           columns={columns}
           dataSource={data?.items ?? []}
           scroll={{ x: 'max-content' }}
@@ -187,14 +198,8 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
               />
             )
           }}
-          pagination={{
-            current: page,
-            pageSize: PAGE_SIZE,
-            total: data?.total ?? 0,
-            showSizeChanger: false,
-            onChange: next => setPage(next)
-          }}
-          locale={{ emptyText: t('Aucun mandat de prélèvement') }}
+          pagination={search.tablePagination(data?.total ?? 0)}
+          locale={search.isFiltered ? undefined : { emptyText: t('Aucun mandat de prélèvement') }}
         />
       </Space>
 

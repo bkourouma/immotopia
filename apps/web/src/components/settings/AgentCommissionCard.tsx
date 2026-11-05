@@ -10,9 +10,15 @@ import {
 import { ModuleNotIncluded } from '../primitives/ModuleNotIncluded';
 import { Table } from '../primitives';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
+import { useLocalListSearch } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
+
+// Stables : déclarés hors du composant (filtrage mémoïsé).
+const AGENT_TEXT = [(agent: AgentCommissionShare) => agent.fullName, (agent: AgentCommissionShare) => agent.email];
+/** Au-delà de ce nombre de collaborateurs, la barre de recherche s'affiche (petit tableau sinon). */
+const SEARCH_THRESHOLD = 10;
 
 export interface AgentCommissionCardProps {
   tenantId: string;
@@ -28,6 +34,12 @@ export interface AgentCommissionCardProps {
 export const AgentCommissionCard: React.FC<AgentCommissionCardProps> = ({ tenantId }) => {
   const { message } = App.useApp();
   const [agents, setAgents] = useState<AgentCommissionShare[]>([]);
+  // Recherche locale, préfixe d'URL « col » (la page des réglages porte d'autres tableaux).
+  const local = useLocalListSearch<AgentCommissionShare>(agents, {
+    paramPrefix: 'col',
+    criteria: [{ key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom ou e-mail du collaborateur…') }],
+    text: AGENT_TEXT
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notIncluded, setNotIncluded] = useState(false);
@@ -137,12 +149,14 @@ export const AgentCommissionCard: React.FC<AgentCommissionCardProps> = ({ tenant
       </Text>
       {error ? <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} /> : null}
       <Table
+        {...local.tableProps}
+        search={agents.length > SEARCH_THRESHOLD ? local.searchProps : undefined}
+        aria-label={t('Commission des collaborateurs')}
         exportFilename={t('Commission des collaborateurs')}
+        exportFetchAll={local.exportAll}
         rowKey="userId"
         columns={columns}
-        dataSource={agents}
         loading={loading}
-        pagination={false}
       />
     </Card>
   );

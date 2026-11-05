@@ -3,6 +3,7 @@ import { activeMandateWhere, resolveOwnerPortalPropertyIds } from '../owner-port
 import { t } from '../../i18n';
 import { badRequest, conflict, notFound } from '../errors';
 import { prisma } from '../../utils/database';
+import { dayRange } from '../../utils/list-query-schemas';
 import { annualizeRent, remainingLoanMonths, type LoanSchedule, type YieldInput } from './yield';
 import { syncWorkProgramCostTx } from '../finance/cost-allocation';
 import { logger } from '../../utils/logger';
@@ -13,6 +14,7 @@ import { computeOwnerStatement, OWNER_STATEMENT_COMPUTATION_VERSION } from './ow
 import { assertTreasuryAccountUsableTx } from '../treasury/accounts';
 import { syncDirectExpenseEntryTx } from '../finance/rental-direct-ledger';
 import { ensurePropertyAsset, storedPropertyReliability } from './property-asset';
+import { escapeLike } from '../../utils/like-escape';
 
 // `services/audit-service.ts` n'est PAS importe ici bien que la specification
 // (edge case US12) demande une trace d'audit du remplacement d'un cout saisi
@@ -543,7 +545,18 @@ export async function listPropertyWorkPrograms(tenantId: string, propertyId: str
  */
 export async function listTenantWorkPrograms(
   tenantId: string,
-  options: { status?: WorkProgramStatus; page?: number; limit?: number; upcoming?: boolean } = {}
+  options: {
+    status?: WorkProgramStatus[] | WorkProgramStatus;
+    search?: string;
+    propertyId?: string;
+    plannedFrom?: string;
+    plannedTo?: string;
+    minCost?: number;
+    maxCost?: number;
+    page?: number;
+    limit?: number;
+    upcoming?: boolean;
+  } = {}
 ) {
   const page = Math.max(1, options.page ?? 1);
   // Plafond a 100 : une page plus large signale un appelant qui veut tout
@@ -576,7 +589,22 @@ export async function listTenantWorkPrograms(
     return { items: mapped, total: mapped.length, page: 1, limit: mapped.length || 1, totalPages: 1 };
   }
 
-  const where = { tenantId, ...(options.status ? { status: options.status } : {}) };
+  const where: Prisma.WorkProgramWhereInput = { tenantId };
+  const statuses = Array.isArray(options.status) ? options.status : options.status ? [options.status] : [];
+  if (statuses.length) where.status = statuses.length === 1 ? statuses[0] : { in: statuses };
+  if (options.propertyId) where.propertyId = options.propertyId;
+  const planned = dayRange(options.plannedFrom, options.plannedTo);
+  if (planned) where.plannedDate = planned;
+  if (options.minCost !== undefined || options.maxCost !== undefined) {
+    where.estimatedCost = {
+      ...(options.minCost !== undefined ? { gte: options.minCost } : {}),
+      ...(options.maxCost !== undefined ? { lte: options.maxCost } : {})
+    };
+  }
+  if (options.search) {
+    const contains = { contains: escapeLike(options.search), mode: 'insensitive' as const };
+    where.OR = [{ title: contains }, { property: { title: contains } }, { property: { internalReference: contains } }];
+  }
 
   const [items, total] = await Promise.all([
     prisma.workProgram.findMany({
@@ -985,27 +1013,120 @@ export async function buildPropertyYieldInput(tenantId: string, propertyId: stri
   };
 }
 
+export interface ListOwnerStatementsFilters {
+  ownerContactId?: string;
+  /** AAAA-MM exact. */
+  period?: string;
+  /** Bornes incluses, AAAA-MM (comparaison de chaines). */
+  periodFrom?: string;
+  periodTo?: string;
+  search?: string;
+  status?: StatementStatus[];
+  /** true : releves de l'ancien calcul ; false : releves au calcul courant. */
+  legacy?: boolean;
+  page?: number;
+  limit?: number;
+}
+
+const OWNER_STATEMENT_LIST_INCLUDE = {
+  owner: true,
+  items: {
+    include: { property: true }
+  }
+} satisfies Prisma.OwnerStatementInclude;
+
+type OwnerStatementListRow = Prisma.OwnerStatementGetPayload<{ include: typeof OWNER_STATEMENT_LIST_INCLUDE }>;
+
+export interface OwnerStatementsPage {
+  items: OwnerStatementListRow[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+  legacyUnpaidCount: number;
+}
+
+function buildOwnerStatementsWhere(
+  tenantId: string,
+  filters: ListOwnerStatementsFilters
+): Prisma.OwnerStatementWhereInput {
+  const where: Prisma.OwnerStatementWhereInput = { tenantId };
+  if (filters.ownerContactId) where.ownerContactId = filters.ownerContactId;
+  if (filters.status?.length) where.status = filters.status.length === 1 ? filters.status[0] : { in: filters.status };
+
+  const and: Prisma.OwnerStatementWhereInput[] = [];
+  if (filters.periodFrom || filters.periodTo) {
+    where.period = {
+      ...(filters.periodFrom ? { gte: filters.periodFrom } : {}),
+      ...(filters.periodTo ? { lte: filters.periodTo } : {})
+    };
+    // Mois exact en plus de la plage : les deux doivent tenir.
+    if (filters.period) and.push({ period: filters.period });
+  } else if (filters.period) {
+    where.period = filters.period;
+  }
+
+  if (filters.legacy !== undefined) {
+    where.computationVersion = filters.legacy
+      ? { lt: OWNER_STATEMENT_COMPUTATION_VERSION }
+      : { gte: OWNER_STATEMENT_COMPUTATION_VERSION };
+  }
+
+  if (filters.search) {
+    const contains = { contains: escapeLike(filters.search), mode: 'insensitive' as const };
+    and.push({
+      OR: [
+        { owner: { firstName: contains } },
+        { owner: { lastName: contains } },
+        { owner: { email: contains } },
+        { owner: { legalName: contains } },
+        { period: { contains: escapeLike(filters.search) } },
+        { items: { some: { property: { OR: [{ title: contains }, { internalReference: contains }] } } } }
+      ]
+    });
+  }
+  if (and.length) where.AND = and;
+  return where;
+}
+
+/**
+ * Releves proprietaire de l'agence. Sans `page` ni `limit` : tableau complet
+ * (comportement historique). Avec l'un des deux : page, pagination et nombre
+ * de releves impayes de l'ancien calcul (toute l'agence, hors filtres).
+ */
 export async function listOwnerStatements(
   tenantId: string,
-  filters?: {
-    ownerContactId?: string;
-    period?: string;
+  filters?: ListOwnerStatementsFilters
+): Promise<OwnerStatementListRow[] | OwnerStatementsPage> {
+  const f = filters ?? {};
+  const where = buildOwnerStatementsWhere(tenantId, f);
+  const orderBy = [{ period: 'desc' as const }, { createdAt: 'desc' as const }];
+
+  if (f.page === undefined && f.limit === undefined) {
+    return prisma.ownerStatement.findMany({ where, include: OWNER_STATEMENT_LIST_INCLUDE, orderBy });
   }
-) {
-  return prisma.ownerStatement.findMany({
-    where: {
-      tenantId,
-      ownerContactId: filters?.ownerContactId,
-      period: filters?.period
-    },
-    include: {
-      owner: true,
-      items: {
-        include: { property: true }
+
+  const page = Math.max(1, f.page ?? 1);
+  const limit = Math.min(100, Math.max(1, f.limit ?? 20));
+  const [items, total, legacyUnpaidCount] = await Promise.all([
+    prisma.ownerStatement.findMany({
+      where,
+      include: OWNER_STATEMENT_LIST_INCLUDE,
+      orderBy,
+      skip: (page - 1) * limit,
+      take: limit
+    }),
+    prisma.ownerStatement.count({ where }),
+    prisma.ownerStatement.count({
+      where: {
+        tenantId,
+        computationVersion: { lt: OWNER_STATEMENT_COMPUTATION_VERSION },
+        status: { not: StatementStatus.PAID }
       }
-    },
-    orderBy: [{ period: 'desc' }, { createdAt: 'desc' }]
-  });
+    })
+  ]);
+  return {
+    items,
+    pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
+    legacyUnpaidCount
+  };
 }
 
 export async function getOwnerStatementById(tenantId: string, statementId: string) {

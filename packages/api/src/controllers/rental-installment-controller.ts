@@ -11,6 +11,7 @@ import {
 import { RentalInstallmentStatus } from '@prisma/client';
 import { parsePagination } from '../utils/pagination-helper';
 import { parseEnumParam, parseIntParam } from '../utils/query-params';
+import { parseInstallmentListExtras } from '../lib/rental/lease-list-filters';
 
 /**
  * Generate installments for a lease
@@ -68,6 +69,8 @@ export const listInstallmentsHandler = asyncHandler(async (req: Request, res: Re
   if (overdue === 'true') {
     filters.overdue = true;
   }
+
+  Object.assign(filters, parseInstallmentListExtras(req.query));
 
   const { page, limit } = parsePagination(req.query);
 

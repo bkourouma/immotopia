@@ -100,7 +100,10 @@ function base(tenantId: string): string {
 function toQuery(filters?: Record<string, string | number | boolean | undefined>): string {
   if (!filters) return '';
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(filters)) {
+  for (const [rawKey, rawValue] of Object.entries(filters)) {
+    // La recherche libre part rognée ; vide, elle n'est pas envoyée.
+    const key = rawKey;
+    const value = key === 'search' && typeof rawValue === 'string' ? rawValue.trim() : rawValue;
     if (value !== undefined && value !== '') {
       params.set(key, String(value));
     }
@@ -146,7 +149,7 @@ export async function listStockBalances(
  */
 export async function listStockMovements(
   tenantId: string,
-  filters?: StockMovementsFilters
+  filters?: StockMovementsFilters & { search?: string }
 ): Promise<StockRead<StockMovementView[]>> {
   const response = await apiClient.get<ApiResponseWithMeta<StockMovementView[]>>(
     `${base(tenantId)}/stock/movements${toQuery(filters as Record<string, string | number | undefined>)}`

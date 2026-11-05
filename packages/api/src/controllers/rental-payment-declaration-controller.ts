@@ -16,6 +16,7 @@ import {
 import { PaymentDeclarationStatus } from '@prisma/client';
 import { parsePagination } from '../utils/pagination-helper';
 import { parseEnumParam } from '../utils/query-params';
+import { parseDeclarationListExtras } from '../lib/rental/payment-list-filters';
 
 // Validation schemas
 const approvePaymentDeclarationSchema = z.object({
@@ -106,12 +107,7 @@ export const listPaymentDeclarationsHandler = asyncHandler(async (req: Request, 
   if (req.query.declaredBy) {
     filters.declaredBy = req.query.declaredBy as string;
   }
-  if (req.query.startDate) {
-    filters.startDate = new Date(req.query.startDate as string);
-  }
-  if (req.query.endDate) {
-    filters.endDate = new Date(req.query.endDate as string);
-  }
+  Object.assign(filters, parseDeclarationListExtras(req.query));
 
   // Parse pagination (defaults so all declarations can be shown)
   const { page, limit } = parsePagination(req.query, { defaultPage: 1, defaultLimit: 100 });

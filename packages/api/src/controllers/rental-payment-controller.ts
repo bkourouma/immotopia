@@ -15,6 +15,7 @@ import { getCheckoutForPayment, reconcileCheckout, toOnlineCheckoutSummaryDto } 
 import { parsePagination } from '../utils/pagination-helper';
 import { parseEnumParam } from '../utils/query-params';
 import { createPaymentSchema, allocatePaymentSchema, updatePaymentStatusSchema } from '../lib/rental/payment-schemas';
+import { parsePaymentListExtras } from '../lib/rental/payment-list-filters';
 
 /**
  * Lot 7 : `onlineCheckout` sort en `OnlineCheckoutSummary` (contrat §3.2),
@@ -150,6 +151,8 @@ export const getPaymentHandler = asyncHandler(async (req: Request, res: Response
 export const listPaymentsHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = getTenantIdFromRequest(req);
   const { leaseId, renterClientId, status, method, startDate, endDate } = req.query;
+  // Valide search, montants et jours réels (400 sinon) : `new Date('x')` partait en 500.
+  const extras = parsePaymentListExtras(req.query);
 
   const filters: any = {};
   if (leaseId) {
@@ -172,6 +175,7 @@ export const listPaymentsHandler = asyncHandler(async (req: Request, res: Respon
   if (endDate) {
     filters.endDate = new Date(endDate as string);
   }
+  Object.assign(filters, extras); // bornes validées, fin de jour incluse
 
   const { page, limit } = parsePagination(req.query);
 

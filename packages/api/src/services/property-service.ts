@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import { assertFreeTierCapacityTx, getAssetCapacityLimit, lockTenantAssets } from './personal-space/free-tier';
 import { prisma } from '../utils/database';
 import { PROPERTY_MEDIA_SELECT } from '../utils/property-media-select';
@@ -884,9 +885,9 @@ export async function listProperties(
   if (q) {
     and.push({
       OR: [
-        { title: { contains: q, mode: 'insensitive' } },
-        { address: { contains: q, mode: 'insensitive' } },
-        { internalReference: { contains: q, mode: 'insensitive' } }
+        { title: { contains: escapeLike(q), mode: 'insensitive' } },
+        { address: { contains: escapeLike(q), mode: 'insensitive' } },
+        { internalReference: { contains: escapeLike(q), mode: 'insensitive' } }
       ]
     });
   }
@@ -895,8 +896,8 @@ export async function listProperties(
   if (city) {
     and.push({
       OR: [
-        { address: { contains: city, mode: 'insensitive' } },
-        { locationZone: { contains: city, mode: 'insensitive' } }
+        { address: { contains: escapeLike(city), mode: 'insensitive' } },
+        { locationZone: { contains: escapeLike(city), mode: 'insensitive' } }
       ]
     });
   }

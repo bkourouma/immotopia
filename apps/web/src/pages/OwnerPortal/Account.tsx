@@ -11,6 +11,8 @@ import {
   type PayoutMethod
 } from '../../services/owner-portal-account-service';
 import { DataCard, DataView, MoneyValue, SkeletonList, SkeletonStats, StateBlock } from '../../components/primitives';
+import { AccountTabs } from './search/AccountTabs';
+import { useAccountSearch } from './search/useAccountSearch';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
 
@@ -106,6 +108,7 @@ export default function Account() {
     queryKey: ['owner-portal-account'],
     queryFn: () => getOwnerAccount()
   });
+  const { payoutsSearch, movementsSearch } = useAccountSearch(compte, PAYOUT_METHOD_LABELS, MOVEMENT_TYPE_LABELS);
 
   if (isPending) {
     return (
@@ -280,55 +283,50 @@ export default function Account() {
         )}
       </Row>
 
-      <Card title={t('Reversements reçus')}>
-        <DataView<OwnerPayout>
-          export={{ filename: t('Reversements reçus') }}
-          paginated={false}
-          items={compte.payouts}
-          total={compte.payouts.length}
-          page={1}
-          pageSize={compte.payouts.length || 20}
-          onPageChange={() => {}}
-          rowKey={p => p.id}
-          aria-label={t('Reversements reçus')}
-          emptyDescription={t("Aucun reversement n'a encore été effectué.")}
-          columns={payoutColumns}
-          renderCard={p => (
-            <DataCard
-              title={p.number}
-              subtitle={`${dateCourte(p.paidAt)} · ${methodLabel(p.method)}`}
-              highlight={<MoneyValue value={p.amount} />}
-              status={statutReversement(p)}
-              fields={p.reference ? [{ label: t('Référence'), value: p.reference }] : undefined}
+      <Card>
+        <AccountTabs
+          payouts={
+            <DataView<OwnerPayout>
+              export={{ filename: t('Reversements reçus'), fetchAll: payoutsSearch.exportAll }}
+              {...payoutsSearch.dataViewProps}
+              search={payoutsSearch.search}
+              rowKey={p => p.id}
+              aria-label={t('Reversements reçus')}
+              emptyDescription={t("Aucun reversement n'a encore été effectué.")}
+              columns={payoutColumns}
+              renderCard={p => (
+                <DataCard
+                  title={p.number}
+                  subtitle={`${dateCourte(p.paidAt)} · ${methodLabel(p.method)}`}
+                  highlight={<MoneyValue value={p.amount} />}
+                  status={statutReversement(p)}
+                  fields={p.reference ? [{ label: t('Référence'), value: p.reference }] : undefined}
+                />
+              )}
             />
-          )}
-        />
-      </Card>
-
-      <Card title={t('Détail des mouvements')}>
-        <DataView<OwnerMovement>
-          export={{ filename: t('Détail des mouvements') }}
-          paginated={false}
-          items={compte.movements}
-          total={compte.movements.length}
-          page={1}
-          pageSize={compte.movements.length || 20}
-          onPageChange={() => {}}
-          rowKey={m => m.id}
-          aria-label={t('Détail des mouvements')}
-          emptyDescription={t('Aucun mouvement enregistré sur ce compte.')}
-          columns={movementColumns}
-          renderCard={m => (
-            <DataCard
-              title={m.label}
-              subtitle={m.propertyTitle ? `${dateCourte(m.date)} · ${m.propertyTitle}` : dateCourte(m.date)}
-              highlight={<MontantMouvement movement={m} />}
-              fields={[
-                { label: t('Type'), value: movementTypeLabel(m.type) },
-                { label: t('Solde après'), value: <MoneyValue value={m.balanceAfter} /> }
-              ]}
+          }
+          movements={
+            <DataView<OwnerMovement>
+              export={{ filename: t('Détail des mouvements'), fetchAll: movementsSearch.exportAll }}
+              {...movementsSearch.dataViewProps}
+              search={movementsSearch.search}
+              rowKey={m => m.id}
+              aria-label={t('Détail des mouvements')}
+              emptyDescription={t('Aucun mouvement enregistré sur ce compte.')}
+              columns={movementColumns}
+              renderCard={m => (
+                <DataCard
+                  title={m.label}
+                  subtitle={m.propertyTitle ? `${dateCourte(m.date)} · ${m.propertyTitle}` : dateCourte(m.date)}
+                  highlight={<MontantMouvement movement={m} />}
+                  fields={[
+                    { label: t('Type'), value: movementTypeLabel(m.type) },
+                    { label: t('Solde après'), value: <MoneyValue value={m.balanceAfter} /> }
+                  ]}
+                />
+              )}
             />
-          )}
+          }
         />
       </Card>
 

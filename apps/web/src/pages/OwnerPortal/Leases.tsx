@@ -1,26 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Select, Space, Typography, Spin, Alert, Empty, Row, Col, List, Tag, Button } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Card, Space, Typography, Spin, Alert, Empty, Row, Col, List, Tag, Button } from 'antd';
 import { FileTextOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
+import { ListSearch, StateBlock } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
+import { useOwnerPropertyOptions } from './useOwnerPropertyOptions';
 import { t } from '../../i18n/t';
-import { localizedList } from '../../i18n/localized';
 
 import { activeLocale, formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
-const { Option } = Select;
+
+interface LeaseItem {
+  id: string;
+  propertyId?: string;
+  propertyAddress: string;
+  tenantName: string;
+  startDate: string;
+  endDate: string | null;
+  monthlyRent: number;
+  status: string;
+}
 
 interface LeasesData {
-  leases: Array<{
-    id: string;
-    propertyAddress: string;
-    tenantName: string;
-    startDate: string;
-    endDate: string | null;
-    monthlyRent: number;
-    status: string;
-  }>;
+  leases: LeaseItem[];
   summary: {
     active: number;
     ended: number;
@@ -28,13 +33,12 @@ interface LeasesData {
   };
 }
 
-const statusOptions = localizedList(() => [
-  { value: '', label: t('Tous les statuts') },
-  { value: 'ACTIVE', label: t('Actif') },
-  { value: 'ENDED', label: t('Terminé') },
-  { value: 'SUSPENDED', label: t('Suspendu') },
-  { value: 'CANCELED', label: t('Annulé') }
-]);
+// Stables : déclarés HORS du composant (le filtrage local reste mémoïsé).
+const TEXTE_RECHERCHE = [(lease: LeaseItem) => lease.propertyAddress, (lease: LeaseItem) => lease.tenantName];
+const ACCESSEURS = {
+  status: (lease: LeaseItem) => lease.status,
+  period: (lease: LeaseItem) => lease.startDate
+};
 
 const formatCurrency = (amount: number) => {
   return formatFcfa(amount);
@@ -66,24 +70,18 @@ export default function Leases() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<LeasesData | null>(null);
-  const [filters, setFilters] = useState({
-    status: '',
-    propertyId: ''
-  });
+  const { options: propertyOptions } = useOwnerPropertyOptions();
 
   useEffect(() => {
     loadLeases();
-  }, [filters]);
+  }, []);
 
   const loadLeases = async () => {
     try {
       setLoading(true);
       setError(null);
-      const params: any = {};
-      if (filters.status) params.status = filters.status;
-      if (filters.propertyId) params.propertyId = filters.propertyId;
-
-      const response = await ownerPortalService.getLeases(params);
+      // Liste reçue en entier : la recherche se fait ici, l'appel part sans filtre.
+      const response = await ownerPortalService.getLeases();
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
@@ -95,6 +93,39 @@ export default function Leases() {
       setLoading(false);
     }
   };
+
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Bien, locataire…') },
+    {
+      key: 'status',
+      type: 'multiSelect',
+      label: t('Statut'),
+      primary: true,
+      options: [
+        { value: 'ACTIVE', label: t('Actif') },
+        { value: 'ENDED', label: t('Terminé') },
+        { value: 'SUSPENDED', label: t('Suspendu') },
+        { value: 'CANCELED', label: t('Annulé') }
+      ]
+    },
+    { key: 'propertyId', type: 'select', label: t('Propriété'), primary: true, options: propertyOptions },
+    { key: 'period', type: 'dateRange', label: t('Début du bail') }
+  ];
+
+  // Le critère « Propriété » compare l’identifiant du bien (deux lots d’un même immeuble partagent l’adresse).
+  const predicates = useMemo(
+    () => ({
+      propertyId: (lease: LeaseItem, value: unknown) => lease.propertyId === value
+    }),
+    []
+  );
+
+  const local = useLocalListSearch<LeaseItem>(data?.leases, {
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS,
+    predicates
+  });
 
   if (loading) {
     return (
@@ -153,32 +184,20 @@ export default function Leases() {
         </Col>
       </Row>
 
-      {/* Filters (T065) */}
-      <Card title={t('Filtres')}>
-        <Space wrap>
-          <Select
-            showSearch
-            optionFilterProp="children"
-            style={{ width: 200 }}
-            placeholder={t('Statut')}
-            value={filters.status || undefined}
-            onChange={value => setFilters({ ...filters, status: value || '' })}
-            allowClear
-          >
-            {statusOptions.map(opt => (
-              <Option key={opt.value} value={opt.value}>
-                {opt.label}
-              </Option>
-            ))}
-          </Select>
-        </Space>
-      </Card>
-
       {/* Lease List */}
       <Card title={t('Liste des baux')}>
-        {data.leases.length > 0 ? (
+        {/* Recherche locale : la liste arrive en entier (résumé ci-dessus : tous les baux, hors recherche) */}
+        <ListSearch {...local.searchProps} />
+        {local.total > 0 ? (
           <List
-            dataSource={data.leases}
+            dataSource={local.pageItems}
+            pagination={{
+              current: local.page,
+              pageSize: local.pageSize,
+              total: local.total,
+              onChange: local.dataViewProps.onPageChange,
+              showSizeChanger: true
+            }}
             renderItem={lease => (
               <List.Item
                 actions={[
@@ -198,7 +217,7 @@ export default function Leases() {
                     <Space direction="vertical" size={0}>
                       <Text type="secondary">{t('Locataire : {{nom}}', { nom: lease.tenantName })}</Text>
                       <Text type="secondary">
-                        {t('Du')} {formatDate(lease.startDate)} au{' '}
+                        {t('Du')} {formatDate(lease.startDate)} {t('au')}{' '}
                         {lease.endDate ? formatDate(lease.endDate) : t('Non définie')}
                       </Text>
                       <Text type="secondary">
@@ -210,8 +229,13 @@ export default function Leases() {
               </List.Item>
             )}
           />
+        ) : local.isFiltered ? (
+          <StateBlock
+            variant="no-results"
+            actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
+          />
         ) : (
-          <Empty description={t('Aucun bail trouvé avec ces filtres')} />
+          <Empty description={t('Aucun bail disponible')} />
         )}
       </Card>
     </Space>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -223,6 +223,49 @@ describe('<HoldingEntityDetailPage> — quotes-parts et consolidation', () => {
     expect(screen.getAllByText('7,20 %').length).toBeGreaterThan(0);
     expect(screen.getAllByText('6,20 %').length).toBeGreaterThan(0);
     expect(screen.queryByText(/720/)).toBeNull();
+  });
+});
+
+describe('<HoldingEntityDetailPage> — recherche dans les biens rattachés', () => {
+  it('filtre les biens rattachés sur la référence, sans toucher aux autres cartes', async () => {
+    const user = userEvent.setup();
+    const detail = entityDetail();
+    detail.holdings = [
+      ...detail.holdings,
+      {
+        id: 'holding-2',
+        propertyId: 'property-2',
+        sharePercent: 40,
+        effectiveFrom: null,
+        notes: null,
+        property: {
+          id: 'property-2',
+          title: 'Terrain Bingerville',
+          internalReference: 'LOT-777',
+          propertyType: 'LAND',
+          status: 'AVAILABLE'
+        },
+        propertyTotalSharePercent: 40
+      }
+    ];
+    getHoldingEntity.mockResolvedValue(detail);
+    monter();
+
+    const T = { timeout: 8000 };
+    await screen.findByText('LOT-777', undefined, T);
+    // BIEN-0001 figure aussi dans la carte Consolidation : on compte ses occurrences.
+    const avant = screen.getAllByText('BIEN-0001').length;
+    await user.type(
+      within(screen.getByRole('search', { name: 'Rechercher dans les biens rattachés' })).getByPlaceholderText(
+        /Bien, référence/
+      ),
+      'lot-777'
+    );
+
+    await waitFor(() => expect(screen.getAllByText('BIEN-0001')).toHaveLength(avant - 1), T);
+    expect(screen.getByText('LOT-777')).toBeInTheDocument();
+    // La carte Consolidation, elle, garde son bien.
+    expect((await screen.findAllByText('Villa Angré')).length).toBeGreaterThan(0);
   });
 });
 

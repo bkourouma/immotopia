@@ -5,6 +5,8 @@ import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { RevenueChart } from '../../components/OwnerPortal/RevenueChart';
 import { Table } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
@@ -35,6 +37,9 @@ interface RevenueByMonthData {
   revenue: number;
   paymentCount: number;
 }
+
+// Stable : déclaré HORS du composant (le filtrage local reste mémoïsé).
+const TEXTE_RECHERCHE = [(row: RevenueByPropertyData) => row.propertyAddress];
 
 const formatCurrency = (amount: number) => {
   return formatFcfa(amount);
@@ -95,6 +100,16 @@ export default function Revenues() {
     yearOptions.push(currentYear - i);
   }
 
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Propriété…') }
+  ];
+
+  // Seul le tableau est filtré : le graphique et les sélecteurs de période/année pilotent les calculs.
+  const local = useLocalListSearch<RevenueByPropertyData>(revenuesByProperty, {
+    criteria,
+    text: TEXTE_RECHERCHE
+  });
+
   const propertyTableColumns = [
     {
       title: t('Propriété'),
@@ -105,14 +120,12 @@ export default function Revenues() {
       title: t('Revenus'),
       dataIndex: 'revenue',
       key: 'revenue',
-      render: (amount: number) => formatCurrency(amount),
-      sorter: (a: RevenueByPropertyData, b: RevenueByPropertyData) => a.revenue - b.revenue
+      render: (amount: number) => formatCurrency(amount)
     },
     {
       title: t('Nombre de paiements'),
       dataIndex: 'paymentCount',
-      key: 'paymentCount',
-      sorter: (a: RevenueByPropertyData, b: RevenueByPropertyData) => a.paymentCount - b.paymentCount
+      key: 'paymentCount'
     }
   ];
 
@@ -241,12 +254,13 @@ export default function Revenues() {
             {/* Revenue by Property Table (T087) */}
             <div style={{ marginTop: 24 }}>
               <Table
+                aria-label={t('Revenus par propriété')}
+                {...local.tableProps}
                 exportFilename={t('Revenus par propriété')}
+                exportFetchAll={local.exportAll}
                 scroll={{ x: 'max-content' }}
                 columns={propertyTableColumns}
-                dataSource={revenuesByProperty}
                 rowKey="propertyId"
-                pagination={{ pageSize: 10 }}
               />
             </div>
           </>

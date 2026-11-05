@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { App, Button, Card, Input, InputNumber, Modal, Select, Space, Switch, Typography } from 'antd';
+import React, { useMemo, useRef, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { Alert, App, Button, Card, Input, InputNumber, Modal, Space, Switch, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { CheckCircleOutlined, LockOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,8 +17,13 @@ import type {
   CashSession,
   CashSessionStatus,
   DenominationValue,
-  ExpectedLine
+  ExpectedLine,
+  ListCashSessionsFilters
 } from '../../services/cash-sessions-service';
+import { listTreasuryAccounts } from '../../services/treasury-service';
+import { useListSearch } from '../../hooks/useListSearch';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import {
   PageHeader,
@@ -105,6 +110,272 @@ function totalBilletage(compteurs: Partial<Record<DenominationValue, number>>): 
   return TOUTES_DENOMINATIONS.reduce((somme, valeur) => somme + Number(valeur) * (compteurs[valeur] ?? 0), 0);
 }
 
+/** Compteur de la pagination des « lignes attendues » (1–20 sur 25). */
+const afficherTotal = (total: number, range: [number, number]) =>
+  t('{{start}}–{{end}} sur {{total}}', { start: range[0], end: range[1], total });
+
+// --- Lignes attendues : filtrage local (constantes de module, identité stable) ---
+
+const TEXTE_LIGNE = [(ligne: ExpectedLine) => ligne.label];
+const ACCESSEURS_LIGNE = {
+  type: (ligne: ExpectedLine) => ligne.kind,
+  montant: (ligne: ExpectedLine) => ligne.amount
+};
+
+/**
+ * Tableau des opérations attendues d'une session (session courante, ou détail
+ * dans la fenêtre). Liste reçue en entier : recherche, pagination (20 par page)
+ * et export de toute la liste filtrée sont locaux. Un préfixe d'URL par
+ * instance : `att` (session courante), `det` (détail d'une session).
+ */
+const LignesAttendues: React.FC<{
+  lignes: ExpectedLine[];
+  colonnes: ColumnsType<ExpectedLine>;
+  paramPrefix: string;
+  /** Nom accessible de la barre de recherche (distinct d'une instance à l'autre). */
+  rechercheLabel: string;
+}> = ({ lignes, colonnes, paramPrefix, rechercheLabel }) => {
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t("Libellé de l'opération…") },
+    {
+      key: 'type',
+      type: 'multiSelect',
+      label: t('Type'),
+      primary: true,
+      options: (Object.keys(KIND_LABEL) as ExpectedLine['kind'][]).map(kind => ({
+        value: kind,
+        label: KIND_LABEL[kind]
+      }))
+    },
+    { key: 'montant', type: 'numberRange', label: t('Montant'), unit: 'FCFA', primary: true }
+  ];
+  const local = useLocalListSearch<ExpectedLine>(lignes, {
+    paramPrefix,
+    criteria: criteres,
+    text: TEXTE_LIGNE,
+    accessors: ACCESSEURS_LIGNE
+  });
+
+  return (
+    <Table<ExpectedLine>
+      {...local.tableProps}
+      // Deux barres peuvent coexister (session courante, détail) : noms distincts.
+      search={{ ...local.tableProps.search, 'aria-label': rechercheLabel }}
+      pagination={{
+        ...local.tableProps.pagination,
+        hideOnSinglePage: true,
+        showSizeChanger: false,
+        showTotal: afficherTotal
+      }}
+      columns={colonnes}
+      rowKey={(l, index) => `${l.kind}-${index}-${l.at}`}
+      size="small"
+      aria-label={t('Opérations de la caisse')}
+      exportFilename={t('Opérations de la caisse')}
+      exportFetchAll={local.exportAll}
+    />
+  );
+};
+
+// --- Historique des sessions : mode mixte (statut, caissier, caisse et période partent au serveur) ---
+
+// L'API renvoie au plus 200 sessions (les plus récentes, après filtres).
+const PLAFOND_HISTORIQUE = 200;
+
+const HistoriqueSessions: React.FC<{ tenantId: string; onOpen: (id: string) => void }> = ({ tenantId, onOpen }) => {
+  // `loadOptions`/`api` figés au premier rendu : l'agence se lit par une ref.
+  const tenantRef = useRef(tenantId);
+  tenantRef.current = tenantId;
+
+  const comptesQuery = useQuery({
+    queryKey: queryKey('treasury-accounts', tenantId, { usage: 'cash-history-filter' }),
+    queryFn: () => listTreasuryAccounts(tenantId),
+    staleTime: STALE_TIME.reference
+  });
+  const optionsCaisses = useMemo(
+    () =>
+      (comptesQuery.data ?? [])
+        .filter(compte => compte.kind === 'CASH')
+        .map(compte => ({ value: compte.id, label: [compte.label, compte.accountNumber].filter(Boolean).join(' · ') })),
+    [comptesQuery.data]
+  );
+
+  // Caissiers déjà vus dans les sessions reçues : aucun service de liste ne les
+  // donne, et filtrer par un caissier ne doit pas faire disparaître les autres.
+  const caissiersVus = useRef(new Map<string, string>());
+  const [, setVersionCaissiers] = useState(0);
+
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Numéro, caisse, caissier…'),
+      api: 'search'
+    },
+    {
+      key: 'status',
+      type: 'select',
+      label: t('Statut'),
+      primary: true,
+      options: [
+        { value: 'OPEN', label: t('Ouverte') },
+        { value: 'CLOSED', label: t('À valider') },
+        { value: 'VALIDATED', label: t('Validée') }
+      ]
+    },
+    {
+      key: 'ouverture',
+      type: 'dateRange',
+      label: t('Ouverture du… au…'),
+      primary: true,
+      api: ['from', 'to']
+    },
+    {
+      key: 'cashierUserId',
+      type: 'select',
+      label: t('Caissier'),
+      options: Array.from(caissiersVus.current, ([value, label]) => ({ value, label })).sort((a, b) =>
+        a.label.localeCompare(b.label)
+      ),
+      resolveLabel: id => caissiersVus.current.get(id)
+    },
+    {
+      key: 'treasuryAccountId',
+      type: 'select',
+      label: t('Caisse'),
+      options: optionsCaisses
+    },
+    {
+      key: 'ecart',
+      type: 'boolean',
+      label: t('Écart non nul'),
+      api: (v): Record<string, string> => (v ? { hasDifference: 'true' } : {})
+    }
+  ];
+  // Paramètres d'API des critères serveur, disponibles avant la requête.
+  const { filterParams } = useListSearch({ paramPrefix: 'his', criteria: criteres });
+
+  const historiqueQuery = useQuery({
+    queryKey: queryKey('cash-sessions', tenantId, filterParams),
+    queryFn: () => listCashSessions(tenantId, filterParams as ListCashSessionsFilters),
+    staleTime: STALE_TIME.list
+  });
+
+  // Mémorise les caissiers de chaque réponse (la requête, filtrée, en montre moins).
+  const donnees = historiqueQuery.data;
+  React.useEffect(() => {
+    let nouveau = false;
+    for (const session of donnees ?? []) {
+      if (!caissiersVus.current.has(session.cashierUserId)) {
+        caissiersVus.current.set(session.cashierUserId, session.cashierName);
+        nouveau = true;
+      }
+    }
+    if (nouveau) setVersionCaissiers(v => v + 1);
+  }, [donnees]);
+
+  const local = useLocalListSearch<CashSession>(donnees, {
+    paramPrefix: 'his',
+    criteria: criteres
+  });
+
+  const colonnes: ColumnsType<CashSession> = [
+    { title: t('Numéro'), key: 'number', render: (_, s) => s.number },
+    { title: t('Caisse'), key: 'treasury', render: (_, s) => s.treasuryLabel || '—' },
+    { title: t('Caissier'), key: 'cashier', render: (_, s) => s.cashierName },
+    { title: t('Ouverture'), key: 'openedAt', render: (_, s) => dateHeure(s.openedAt) },
+    { title: t('Clôture'), key: 'closedAt', render: (_, s) => (s.closedAt ? dateHeure(s.closedAt) : '—') },
+    {
+      title: t('Attendu'),
+      key: 'expected',
+      align: 'end',
+      exportValue: s => s.expected.amount,
+      render: (_, s) => <MoneyValue value={s.expected.amount} />
+    },
+    {
+      title: t('Compté'),
+      key: 'counted',
+      align: 'end',
+      exportValue: s => s.countedAmount ?? null,
+      render: (_, s) => <MoneyValue value={s.countedAmount} />
+    },
+    {
+      title: t('Écart'),
+      key: 'difference',
+      align: 'end',
+      exportValue: s => s.difference ?? null,
+      render: (_, s) =>
+        s.difference === null ? (
+          '—'
+        ) : (
+          <Text style={{ color: couleurEcart(s.difference) }}>
+            <MoneyValue value={s.difference} signed />
+          </Text>
+        )
+    },
+    {
+      title: t('Statut'),
+      key: 'status',
+      render: (_, s) => <StatusTag status={s.status} tone={STATUS_TONE[s.status]} label={STATUS_LABEL[s.status]} />
+    },
+    {
+      title: t('Actions'),
+      key: 'actions',
+      align: 'end',
+      render: (_, s) => (
+        <Button type="link" onClick={() => onOpen(s.id)}>
+          {t('Voir le détail')}
+        </Button>
+      )
+    }
+  ];
+
+  return (
+    <>
+      {(donnees?.length ?? 0) >= PLAFOND_HISTORIQUE && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--space-4)' }}
+          title={t(
+            'Seules les 200 sessions les plus récentes correspondant aux critères sont affichées. Affinez par période, statut ou caisse.'
+          )}
+        />
+      )}
+      <DataView<CashSession>
+        {...local.dataViewProps}
+        // Deux barres peuvent coexister (historique, détail ouvert) : noms distincts.
+        search={{ ...local.dataViewProps.search, 'aria-label': t("Rechercher dans l'historique des caisses") }}
+        loading={historiqueQuery.isPending}
+        error={historiqueQuery.error ? t('Impossible de charger les sessions de caisse.') : null}
+        errorCause={historiqueQuery.error}
+        onRetry={() => historiqueQuery.refetch()}
+        emptyDescription={t('Aucune session de caisse.')}
+        rowKey={s => s.id}
+        aria-label={t('Historique des caisses')}
+        export={{ filename: t('Historique des caisses'), fetchAll: local.exportAll }}
+        columns={colonnes}
+        renderCard={s => (
+          <DataCard
+            title={s.number}
+            aria-label={s.number}
+            subtitle={s.cashierName}
+            status={<StatusTag status={s.status} tone={STATUS_TONE[s.status]} label={STATUS_LABEL[s.status]} />}
+            highlight={<MoneyValue value={s.expected.amount} />}
+            onOpen={() => onOpen(s.id)}
+            fields={[
+              { label: t('Caisse'), value: s.treasuryLabel || '—' },
+              { label: t('Ouverture'), value: dateHeure(s.openedAt) },
+              { label: t('Compté'), value: <MoneyValue value={s.countedAmount} /> }
+            ]}
+          />
+        )}
+      />
+    </>
+  );
+};
+
 export const Caisse: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -139,8 +410,20 @@ export const Caisse: React.FC = () => {
   const [clotureEnCours, setClotureEnCours] = useState(false);
 
   // --- Historique --------------------------------------------------------
-  const [filtreStatut, setFiltreStatut] = useState<CashSessionStatus | undefined>(undefined);
   const [sessionOuverteId, setSessionOuverteId] = useState<string | null>(null);
+  // Les critères `det.*` du détail ne survivent ni à la fermeture ni au passage à une autre session.
+  const [, setSearchParams] = useSearchParams();
+  const ouvrirDetail = (id: string | null) => {
+    setSearchParams(
+      precedent => {
+        const suivant = new URLSearchParams(precedent);
+        for (const cle of Array.from(suivant.keys())) if (cle.startsWith('det.')) suivant.delete(cle);
+        return suivant;
+      },
+      { replace: true }
+    );
+    setSessionOuverteId(id);
+  };
   const [commentaireValidation, setCommentaireValidation] = useState('');
   const [validationEnCours, setValidationEnCours] = useState(false);
 
@@ -151,13 +434,6 @@ export const Caisse: React.FC = () => {
     staleTime: STALE_TIME.list,
     // Un 403 est une réponse définitive : ne pas la rejouer.
     retry: (nombre, erreur) => !isPermissionDenied(erreur) && nombre < 2
-  });
-
-  const historiqueQuery = useQuery({
-    queryKey: queryKey('cash-sessions', tenantId, { status: filtreStatut }),
-    queryFn: () => listCashSessions(tenantId as string, { status: filtreStatut }),
-    enabled: Boolean(tenantId) && onglet === 'historique',
-    staleTime: STALE_TIME.list
   });
 
   const detailQuery = useQuery({
@@ -242,7 +518,7 @@ export const Caisse: React.FC = () => {
       });
       message.success(t('Caisse {{number}} validée.', { number: validee.number }));
       setCommentaireValidation('');
-      setSessionOuverteId(null);
+      ouvrirDetail(null);
       queryClient.invalidateQueries({ queryKey: queryKey('cash-sessions', tenantId, {}) });
       queryClient.invalidateQueries({ queryKey: queryKey('cash-session-detail', tenantId, {}) });
     } catch (err: any) {
@@ -374,14 +650,11 @@ export const Caisse: React.FC = () => {
         </div>
 
         {session.expected.lines.length > 0 ? (
-          <Table<ExpectedLine>
-            dataSource={session.expected.lines}
-            columns={colonnesOperations}
-            rowKey={(l, index) => `${l.kind}-${index}-${l.at}`}
-            pagination={false}
-            size="small"
-            aria-label={t('Opérations de la caisse')}
-            exportFilename={t('Opérations de la caisse')}
+          <LignesAttendues
+            lignes={session.expected.lines}
+            colonnes={colonnesOperations}
+            paramPrefix="att"
+            rechercheLabel={t('Rechercher dans les opérations de la session en cours')}
           />
         ) : (
           <Text type="secondary">{t('Aucune opération pour le moment.')}</Text>
@@ -423,112 +696,7 @@ export const Caisse: React.FC = () => {
 
   // --- Onglet « Historique » -----------------------------------------------
 
-  const colonnesHistorique: ColumnsType<CashSession> = [
-    { title: t('Numéro'), key: 'number', render: (_, s) => s.number },
-    { title: t('Caisse'), key: 'treasury', render: (_, s) => s.treasuryLabel || '—' },
-    { title: t('Caissier'), key: 'cashier', render: (_, s) => s.cashierName },
-    { title: t('Ouverture'), key: 'openedAt', render: (_, s) => dateHeure(s.openedAt) },
-    { title: t('Clôture'), key: 'closedAt', render: (_, s) => (s.closedAt ? dateHeure(s.closedAt) : '—') },
-    {
-      title: t('Attendu'),
-      key: 'expected',
-      align: 'end',
-      exportValue: s => s.expected.amount,
-      render: (_, s) => <MoneyValue value={s.expected.amount} />
-    },
-    {
-      title: t('Compté'),
-      key: 'counted',
-      align: 'end',
-      exportValue: s => s.countedAmount ?? null,
-      render: (_, s) => <MoneyValue value={s.countedAmount} />
-    },
-    {
-      title: t('Écart'),
-      key: 'difference',
-      align: 'end',
-      exportValue: s => s.difference ?? null,
-      render: (_, s) =>
-        s.difference === null ? (
-          '—'
-        ) : (
-          <Text style={{ color: couleurEcart(s.difference) }}>
-            <MoneyValue value={s.difference} signed />
-          </Text>
-        )
-    },
-    {
-      title: t('Statut'),
-      key: 'status',
-      render: (_, s) => <StatusTag status={s.status} tone={STATUS_TONE[s.status]} label={STATUS_LABEL[s.status]} />
-    },
-    {
-      title: t('Actions'),
-      key: 'actions',
-      align: 'end',
-      render: (_, s) => (
-        <Button type="link" onClick={() => setSessionOuverteId(s.id)}>
-          {t('Voir le détail')}
-        </Button>
-      )
-    }
-  ];
-
-  const sessions = historiqueQuery.data ?? [];
-
-  const ongletHistorique = (
-    <>
-      <div style={{ marginBottom: 'var(--space-4)', maxWidth: 260 }}>
-        <label htmlFor="caisse-filtre-statut">{t('Statut')}</label>
-        <Select<CashSessionStatus | undefined>
-          id="caisse-filtre-statut"
-          style={{ width: '100%' }}
-          allowClear
-          placeholder={t('Tous les statuts')}
-          value={filtreStatut}
-          onChange={valeur => setFiltreStatut(valeur)}
-          options={[
-            { value: 'OPEN', label: t('Ouverte') },
-            { value: 'CLOSED', label: t('À valider') },
-            { value: 'VALIDATED', label: t('Validée') }
-          ]}
-        />
-      </div>
-
-      <DataView<CashSession>
-        items={sessions}
-        total={sessions.length}
-        page={1}
-        pageSize={sessions.length || 1}
-        paginated={false}
-        onPageChange={() => undefined}
-        loading={historiqueQuery.isPending}
-        error={historiqueQuery.error ? t('Impossible de charger les sessions de caisse.') : null}
-        errorCause={historiqueQuery.error}
-        onRetry={() => historiqueQuery.refetch()}
-        emptyDescription={t('Aucune session de caisse.')}
-        rowKey={s => s.id}
-        aria-label={t('Historique des caisses')}
-        export={{ filename: t('Historique des caisses') }}
-        columns={colonnesHistorique}
-        renderCard={s => (
-          <DataCard
-            title={s.number}
-            aria-label={s.number}
-            subtitle={s.cashierName}
-            status={<StatusTag status={s.status} tone={STATUS_TONE[s.status]} label={STATUS_LABEL[s.status]} />}
-            highlight={<MoneyValue value={s.expected.amount} />}
-            onOpen={() => setSessionOuverteId(s.id)}
-            fields={[
-              { label: t('Caisse'), value: s.treasuryLabel || '—' },
-              { label: t('Ouverture'), value: dateHeure(s.openedAt) },
-              { label: t('Compté'), value: <MoneyValue value={s.countedAmount} /> }
-            ]}
-          />
-        )}
-      />
-    </>
-  );
+  const ongletHistorique = <HistoriqueSessions tenantId={tenantId} onOpen={ouvrirDetail} />;
 
   return (
     <>
@@ -708,7 +876,7 @@ export const Caisse: React.FC = () => {
         }
         open={Boolean(sessionOuverteId)}
         onCancel={() => {
-          setSessionOuverteId(null);
+          ouvrirDetail(null);
           setCommentaireValidation('');
         }}
         footer={null}
@@ -774,9 +942,11 @@ export const Caisse: React.FC = () => {
 
             <Title level={5}>{t('Opérations')}</Title>
             {detailQuery.data.expected.lines.length > 0 ? (
-              <Table<ExpectedLine>
-                dataSource={detailQuery.data.expected.lines}
-                columns={[
+              <LignesAttendues
+                lignes={detailQuery.data.expected.lines}
+                paramPrefix="det"
+                rechercheLabel={t('Rechercher dans les opérations de la session')}
+                colonnes={[
                   { title: t('Date et heure'), key: 'at', render: (_, l) => dateHeure(l.at) },
                   { title: t('Type'), key: 'kind', render: (_, l) => KIND_LABEL[l.kind] },
                   { title: t('Libellé'), key: 'label', render: (_, l) => l.label },
@@ -788,11 +958,6 @@ export const Caisse: React.FC = () => {
                     render: (_, l) => <MoneyValue value={l.amount} signed />
                   }
                 ]}
-                rowKey={(l, index) => `${l.kind}-${index}`}
-                pagination={false}
-                size="small"
-                aria-label={t('Opérations de la caisse')}
-                exportFilename={t('Opérations de la caisse')}
               />
             ) : (
               <Text type="secondary">{t('Aucune opération.')}</Text>

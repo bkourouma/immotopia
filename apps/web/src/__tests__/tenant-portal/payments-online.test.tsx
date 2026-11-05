@@ -176,7 +176,7 @@ describe('Portail locataire — sélection et paiement en ligne', () => {
 });
 
 describe('Portail locataire — suivi du retour PaySecureHub', () => {
-  it('affiche « Paiement confirmé » et recharge échéances et historique au succès', async () => {
+  it('affiche « Paiement confirmé » et recharge la liste affichée (échéances) au succès', async () => {
     getOnlinePaymentCheckout.mockResolvedValue(checkout({ status: 'SUCCESS' }));
 
     mount('/tenant/payments?paiement=IMT-CODE1');
@@ -184,7 +184,8 @@ describe('Portail locataire — suivi du retour PaySecureHub', () => {
     expect(await screen.findByText('Paiement confirmé.', {}, { timeout: 8000 })).toBeInTheDocument();
 
     await waitFor(() => expect(getInstallments.mock.calls.length).toBeGreaterThan(1));
-    await waitFor(() => expect(getPaymentHistory.mock.calls.length).toBeGreaterThan(1));
+    // L'historique n'est pas affiché : il ne se charge qu'à l'ouverture de son onglet.
+    expect(getPaymentHistory).not.toHaveBeenCalled();
 
     // Le paramètre est retiré une fois le paiement traité.
     await waitFor(() => expect(screen.getByTestId('adresse').textContent).toBe('/tenant/payments'));

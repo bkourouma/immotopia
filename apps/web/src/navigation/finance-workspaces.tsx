@@ -52,6 +52,7 @@ import { featureForAgencyPath } from './route-features';
 export type FinanceWorkspaceFamily =
   | 'caisse-tresorerie'
   | 'saisie-validation'
+  | 'comptabilite'
   | 'facturation-balances'
   | 'reversements-commissions'
   | 'fournisseurs-commandes'
@@ -100,6 +101,38 @@ export const FINANCE_WORKSPACES: Record<FinanceWorkspaceFamily, FinanceWorkspace
     tabs: [
       { key: 'validation', label: () => t('Pièces à valider'), href: `${FINANCE}/validation`, icon: <AuditOutlined /> },
       { key: 'importation', label: () => t('Importation'), href: `${FINANCE}/importation`, icon: <ImportOutlined /> }
+    ]
+  },
+  // Les quatre lectures comptables de l'agence, du détail vers la synthèse :
+  // le journal des écritures, le grand livre, la balance générale, puis les
+  // soldes des mandants. Un seul menu « Comptabilité », allumé sur chacune.
+  comptabilite: {
+    label: () => t('Comptabilité'),
+    tabs: [
+      {
+        key: 'journal',
+        label: () => t('Journal'),
+        href: `${FINANCE}/comptabilite/journal`,
+        icon: <FileTextOutlined />
+      },
+      {
+        key: 'grand-livre',
+        label: () => t('Grand livre'),
+        href: `${FINANCE}/comptabilite/grand-livre`,
+        icon: <ProfileOutlined />
+      },
+      {
+        key: 'balance',
+        label: () => t('Balance générale'),
+        href: `${FINANCE}/comptabilite/balance`,
+        icon: <AuditOutlined />
+      },
+      {
+        key: 'mandants',
+        label: () => t('Mandants'),
+        href: `${FINANCE}/comptabilite/mandants`,
+        icon: <TeamOutlined />
+      }
     ]
   },
   // Facturer, puis suivre ce qui reste dû, puis ce qui traîne.

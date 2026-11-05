@@ -60,6 +60,8 @@ import {
   isStockReasonComplete,
   type StockReasonValue
 } from '../../components/finance/stock/StockReasonPicker';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { StockSlipPdfButton } from '../../components/finance/stock/StockSlipPdfButton';
 import { StockTakerSelect } from '../../components/finance/stock/StockTakerSelect';
 import { StockAttachmentList } from '../../components/finance/stock/StockAttachmentList';
@@ -79,6 +81,7 @@ import { useCaptureDrawerParam, useCountFieldCaptures } from '../../components/f
 import type { CountCaptureLine } from '../../types/finance-stock-whatsapp-types';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { dateFormat } from '../../i18n/format';
+import { localizedList } from '../../i18n/localized';
 import { t } from '../../i18n/t';
 
 const { Title, Text, Paragraph } = Typography;
@@ -1034,7 +1037,32 @@ function CarteLigneInventaire(props: {
   );
 }
 
-const TableauLignes: React.FC<{
+/** Pagination locale d'une liste déjà chargée en entier. */
+function usePaginationLocale<T>(liste: readonly T[], tailleInitiale: number) {
+  const [page, setPage] = useState(1);
+  const [taille, setTaille] = useState(tailleInitiale);
+  const longueur = liste.length;
+  useEffect(() => setPage(1), [longueur]);
+  return {
+    page,
+    pageSize: taille,
+    items: liste.slice((page - 1) * taille, page * taille),
+    onPageChange: (suivante: number, tailleSuivante: number) => {
+      if (tailleSuivante !== taille) {
+        setTaille(tailleSuivante);
+        setPage(1);
+      } else {
+        setPage(suivante);
+      }
+    }
+  };
+}
+
+/** Plafond d'affichage des lignes d'un comptage et de la liste des inventaires. */
+const LIGNES_PAR_PAGE = 50;
+const INVENTAIRES_PAR_PAGE = 20;
+
+interface TableauLignesProps {
   comptage: StockCount;
   lignes: StockCountLine[];
   valuesVisible: boolean;
@@ -1042,23 +1070,97 @@ const TableauLignes: React.FC<{
   actions?: (ligne: StockCountLine) => React.ReactNode;
   actionCarte?: (ligne: StockCountLine) => { label: string; onClick: () => void } | undefined;
   ariaLabel: string;
-}> = ({ comptage, lignes, valuesVisible, vide, actions, actionCarte, ariaLabel }) => (
-  <DataView<StockCountLine>
-    export={{ filename: ariaLabel }}
-    paginated={false}
-    scrollX={1100}
-    items={lignes}
-    total={lignes.length}
-    page={1}
-    pageSize={Math.max(lignes.length, 1)}
-    onPageChange={() => {}}
-    emptyDescription={vide}
-    columns={colonnesLignesInventaire({ comptage, valuesVisible, actions })}
-    rowKey={ligne => ligne.id}
-    aria-label={ariaLabel}
-    renderCard={ligne => <CarteLigneInventaire ligne={ligne} comptage={comptage} action={actionCarte?.(ligne)} />}
-  />
-);
+}
+
+// Champ libre des lignes : article (référence, désignation), compté par, et le motif tel qu'affiché.
+// Un comptage à l'aveugle (brouillon, abandonné) ne montre pas de motif : il n'est pas cherché.
+const TEXTE_LIGNES = [
+  (ligne: StockCountLine) => ligne.itemReference,
+  (ligne: StockCountLine) => ligne.itemLabel,
+  motifExporte,
+  (ligne: StockCountLine) => ligne.countedByLabel
+];
+const TEXTE_LIGNES_AVEUGLE = [
+  (ligne: StockCountLine) => ligne.itemReference,
+  (ligne: StockCountLine) => ligne.itemLabel,
+  (ligne: StockCountLine) => ligne.countedByLabel
+];
+// « En écart » : la règle existante (`estEnEcart`), aucun calcul nouveau.
+const ACCESSEURS_LIGNES = { ecart: estEnEcart };
+
+/** Le tableau des lignes d'un comptage, avec sa barre de recherche (préfixe d'URL `lgn`, 50 par page). */
+const TableauLignes: React.FC<TableauLignesProps> = ({
+  comptage,
+  lignes,
+  valuesVisible,
+  vide,
+  actions,
+  actionCarte,
+  ariaLabel
+}) => {
+  // Un comptage à l'aveugle masque l'attendu et l'écart : on ne propose pas de critère qui les révélerait.
+  const aveugle = comptage.status === 'DRAFT' || comptage.status === 'CANCELLED';
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: aveugle ? t('Article, compté par…') : t('Article, motif, compté par…')
+    },
+    ...(aveugle ? [] : [{ key: 'ecart', type: 'boolean' as const, label: t('En écart'), primary: true }])
+  ];
+  // Les saisies (article, quantité) vivent hors du tableau : paginer n'en perd aucune.
+  const local = useLocalListSearch<StockCountLine>(lignes, {
+    paramPrefix: 'lgn',
+    defaultPageSize: LIGNES_PAR_PAGE,
+    criteria: criteres,
+    text: aveugle ? TEXTE_LIGNES_AVEUGLE : TEXTE_LIGNES,
+    accessors: ACCESSEURS_LIGNES
+  });
+  return (
+    <DataView<StockCountLine>
+      {...local.dataViewProps}
+      // La liste des inventaires et celle d'un comptage ouvert sont montées ensemble : une barre, un nom.
+      search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les lignes du comptage') }}
+      export={{ filename: ariaLabel, fetchAll: local.exportAll }}
+      scrollX={1100}
+      emptyDescription={vide}
+      columns={colonnesLignesInventaire({ comptage, valuesVisible, actions })}
+      rowKey={ligne => ligne.id}
+      aria-label={ariaLabel}
+      renderCard={ligne => <CarteLigneInventaire ligne={ligne} comptage={comptage} action={actionCarte?.(ligne)} />}
+    />
+  );
+};
+
+/** Les petites listes d'un comptage validé (écartées, non comptées) : pas de barre, pagination locale. */
+const TableauLignesSimple: React.FC<TableauLignesProps> = ({
+  comptage,
+  lignes,
+  valuesVisible,
+  vide,
+  actions,
+  actionCarte,
+  ariaLabel
+}) => {
+  const pagination = usePaginationLocale(lignes, LIGNES_PAR_PAGE);
+  return (
+    <DataView<StockCountLine>
+      export={{ filename: ariaLabel, fetchAll: async () => lignes }}
+      scrollX={1100}
+      items={pagination.items}
+      total={lignes.length}
+      page={pagination.page}
+      pageSize={pagination.pageSize}
+      onPageChange={pagination.onPageChange}
+      emptyDescription={vide}
+      columns={colonnesLignesInventaire({ comptage, valuesVisible, actions })}
+      rowKey={ligne => ligne.id}
+      aria-label={ariaLabel}
+      renderCard={ligne => <CarteLigneInventaire ligne={ligne} comptage={comptage} action={actionCarte?.(ligne)} />}
+    />
+  );
+};
 
 const grille: React.CSSProperties = {
   display: 'grid',
@@ -1746,9 +1848,13 @@ const BlocValidation: React.FC<{
 // --- VALIDATED (ecrans §7.7) -----------------------------------------------
 
 const DetailValide: React.FC<DetailProps> = ({ tenantId, contexte, comptage, valuesVisible }) => {
-  const actives = comptage.lines.filter(ligne => !ligne.setAside && !ligne.notCounted);
-  const ecartees = comptage.lines.filter(ligne => ligne.setAside !== null);
-  const nonComptees = comptage.lines.filter(ligne => ligne.notCounted && ligne.setAside === null);
+  // Listes mémoïsées : la recherche locale recalcule dès que l'identité du tableau change.
+  const actives = useMemo(() => comptage.lines.filter(ligne => !ligne.setAside && !ligne.notCounted), [comptage.lines]);
+  const ecartees = useMemo(() => comptage.lines.filter(ligne => ligne.setAside !== null), [comptage.lines]);
+  const nonComptees = useMemo(
+    () => comptage.lines.filter(ligne => ligne.notCounted && ligne.setAside === null),
+    [comptage.lines]
+  );
   // Un inventaire validé avant le lot 040 n'a rien figé (`countedValue` vide,
   // comme le lisent les indicateurs) : ne jamais lui prêter « Figé à la
   // validation ». Une valeur absente le dit, plutôt que de disparaître.
@@ -1821,7 +1927,7 @@ const DetailValide: React.FC<DetailProps> = ({ tenantId, contexte, comptage, val
           <Title level={5} style={{ marginBlockStart: 'var(--space-5)' }}>
             {t('Lignes écartées')}
           </Title>
-          <TableauLignes
+          <TableauLignesSimple
             comptage={comptage}
             lignes={ecartees}
             valuesVisible={valuesVisible}
@@ -1835,7 +1941,7 @@ const DetailValide: React.FC<DetailProps> = ({ tenantId, contexte, comptage, val
           <Title level={5} style={{ marginBlockStart: 'var(--space-5)' }}>
             {t('Non comptés')}
           </Title>
-          <TableauLignes
+          <TableauLignesSimple
             comptage={comptage}
             lignes={nonComptees}
             valuesVisible={valuesVisible}
@@ -1862,32 +1968,35 @@ const DetailValide: React.FC<DetailProps> = ({ tenantId, contexte, comptage, val
 
 // --- CANCELLED (ecrans §7.8) -----------------------------------------------
 
-const DetailAbandonne: React.FC<DetailProps> = ({ comptage, valuesVisible }) => (
-  <>
-    <div
-      role="status"
-      style={{
-        border: '1px solid var(--border-default)',
-        borderRadius: 'var(--radius-md)',
-        padding: 'var(--space-4)',
-        marginBlockEnd: 'var(--space-4)',
-        background: 'var(--surface-sunken)'
-      }}
-    >
-      {t(
-        'Inventaire abandonné le {{date}}. Motif : {{motif}}. Les quantités attendues ne sont pas affichées ; elles restent consultables dans le journal d’activité de l’agence.',
-        { date: dateCourte(comptage.cancelledAt), motif: comptage.cancelReason ?? '' }
-      )}
-    </div>
-    <TableauLignes
-      comptage={comptage}
-      lignes={comptage.lines.filter(ligne => !ligne.notCounted)}
-      valuesVisible={valuesVisible}
-      ariaLabel={t('Lignes du comptage')}
-      vide={t('Aucune ligne comptée.')}
-    />
-  </>
-);
+const DetailAbandonne: React.FC<DetailProps> = ({ comptage, valuesVisible }) => {
+  const lignesComptees = useMemo(() => comptage.lines.filter(ligne => !ligne.notCounted), [comptage.lines]);
+  return (
+    <>
+      <div
+        role="status"
+        style={{
+          border: '1px solid var(--border-default)',
+          borderRadius: 'var(--radius-md)',
+          padding: 'var(--space-4)',
+          marginBlockEnd: 'var(--space-4)',
+          background: 'var(--surface-sunken)'
+        }}
+      >
+        {t(
+          'Inventaire abandonné le {{date}}. Motif : {{motif}}. Les quantités attendues ne sont pas affichées ; elles restent consultables dans le journal d’activité de l’agence.',
+          { date: dateCourte(comptage.cancelledAt), motif: comptage.cancelReason ?? '' }
+        )}
+      </div>
+      <TableauLignes
+        comptage={comptage}
+        lignes={lignesComptees}
+        valuesVisible={valuesVisible}
+        ariaLabel={t('Lignes du comptage')}
+        vide={t('Aucune ligne comptée.')}
+      />
+    </>
+  );
+};
 
 const DetailInventaire: React.FC<{
   tenantId: string;
@@ -1956,6 +2065,31 @@ function actionDeListe(statut: StockCountStatus): string {
   return t('Consulter');
 }
 
+// Recherche locale des inventaires : constantes de module (identité stable, filtrage mémoïsé).
+const OPTIONS_ETAT_INVENTAIRE = localizedList(() =>
+  (['DRAFT', 'COUNTED', 'VALIDATED', 'CANCELLED'] as StockCountStatus[]).map(code => ({
+    value: code,
+    label: STOCK_COUNT_STATUS_DISPLAY[code].label
+  }))
+);
+const OPTIONS_NATURE_INVENTAIRE = localizedList(() =>
+  (['REGULAR', 'OPENING', 'CLOSING'] as StockCountKind[]).map(code => ({
+    value: code,
+    label: STOCK_COUNT_KIND_LABELS[code]
+  }))
+);
+const TEXTE_INVENTAIRES = [
+  (c: StockCount) => c.locationLabel,
+  (c: StockCount) => c.createdByLabel,
+  (c: StockCount) => c.validatedByLabel
+];
+const ACCESSEURS_INVENTAIRES = {
+  lieu: (c: StockCount) => c.locationId,
+  status: (c: StockCount) => c.status,
+  kind: (c: StockCount) => c.kind,
+  compte: (c: StockCount) => c.countedAt
+};
+
 const OngletInventaire: React.FC<{
   tenantId: string;
   contexte: StockFieldContext;
@@ -1967,22 +2101,45 @@ const OngletInventaire: React.FC<{
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const { canCount } = contexte.abilities;
-  const [lieuFiltre, setLieuFiltre] = useState<string | undefined>(undefined);
-  const [statutFiltre, setStatutFiltre] = useState<StockCountStatus | undefined>(undefined);
-  const [natureFiltre, setNatureFiltre] = useState<StockCountKind | undefined>(undefined);
   const [fenetre, setFenetre] = useState<{ lieu?: string; nature?: StockCountKind } | null>(ouverture);
 
   useEffect(() => {
     if (ouverture) setFenetre(ouverture);
   }, [ouverture]);
 
-  const filtres = { locationId: lieuFiltre, status: statutFiltre, kind: natureFiltre };
+  // La liste arrive en entier : lieu, état et nature se filtrent ici comme le reste (plus aucun filtre serveur).
   const liste = useQuery({
-    queryKey: queryKey('stock-counts', tenantId, filtres),
-    queryFn: () => listStockCounts(tenantId, filtres),
+    queryKey: queryKey('stock-counts', tenantId, {}),
+    queryFn: () => listStockCounts(tenantId),
     staleTime: STALE_TIME.list
   });
-  const comptages = liste.data?.data ?? [];
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Lieu, ouvert par, validé par…')
+    },
+    {
+      key: 'lieu',
+      type: 'select',
+      label: t('Lieu'),
+      primary: true,
+      options: contexte.locations.map(lieu => ({ value: lieu.id, label: libelleLieu(lieu) }))
+    },
+    { key: 'status', type: 'select', label: t('État'), primary: true, options: OPTIONS_ETAT_INVENTAIRE },
+    { key: 'kind', type: 'select', label: t('Nature'), primary: true, options: OPTIONS_NATURE_INVENTAIRE },
+    { key: 'compte', type: 'dateRange', label: t('Compté le') }
+  ];
+  const local = useLocalListSearch<StockCount>(liste.data?.data, {
+    paramPrefix: 'inv',
+    defaultPageSize: INVENTAIRES_PAR_PAGE,
+    criteria: criteres,
+    text: TEXTE_INVENTAIRES,
+    accessors: ACCESSEURS_INVENTAIRES
+  });
   const valuesVisible = liste.data?.meta.valuesVisible ?? contexte.abilities.valuesVisible;
 
   const valeurEcart = (comptage: StockCount): React.ReactNode => {
@@ -2068,78 +2225,24 @@ const OngletInventaire: React.FC<{
           'Un inventaire se compte à l’aveugle, se clôt, se justifie, puis se valide par une autre personne que celle qui a compté. Rien ne bouge dans le stock avant la validation.'
         )}
       />
-      <Space wrap size="middle" align="end" style={{ marginBlockEnd: 'var(--space-3)' }}>
-        <div>
-          <label htmlFor="comptages-lieu">{t('Lieu')}</label>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            id="comptages-lieu"
-            style={{ width: 260, display: 'block' }}
-            allowClear
-            placeholder={t('Tous les lieux')}
-            value={lieuFiltre}
-            onChange={valeur => setLieuFiltre(valeur ?? undefined)}
-            options={contexte.locations.map(lieu => ({ value: lieu.id, label: libelleLieu(lieu) }))}
-          />
-        </div>
-        <div>
-          <label htmlFor="comptages-statut">{t('État')}</label>
-          <Select
-            id="comptages-statut"
-            style={{ width: 200, display: 'block' }}
-            allowClear
-            placeholder={t('Tous les états')}
-            value={statutFiltre}
-            onChange={valeur => setStatutFiltre(valeur ?? undefined)}
-            options={(['DRAFT', 'COUNTED', 'VALIDATED', 'CANCELLED'] as StockCountStatus[]).map(code => ({
-              value: code,
-              label: STOCK_COUNT_STATUS_DISPLAY[code].label
-            }))}
-          />
-        </div>
-        <div>
-          <label htmlFor="comptages-nature">{t('Nature')}</label>
-          <Select
-            id="comptages-nature"
-            style={{ width: 220, display: 'block' }}
-            allowClear
-            placeholder={t('Toutes les natures')}
-            value={natureFiltre}
-            onChange={valeur => setNatureFiltre(valeur ?? undefined)}
-            options={(['REGULAR', 'OPENING', 'CLOSING'] as StockCountKind[]).map(code => ({
-              value: code,
-              label: STOCK_COUNT_KIND_LABELS[code]
-            }))}
-          />
-        </div>
-        {canCount ? (
+      {canCount ? (
+        <Space wrap size="middle" align="end" style={{ marginBlockEnd: 'var(--space-3)' }}>
           <Button type="primary" onClick={() => setFenetre({})}>
             {t('Ouvrir un inventaire')}
           </Button>
-        ) : null}
-      </Space>
+        </Space>
+      ) : null}
 
       <DataView<StockCount>
-        export={{ filename: t('Inventaires') }}
-        paginated={false}
+        {...local.dataViewProps}
+        search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les inventaires') }}
+        export={{ filename: t('Inventaires'), fetchAll: local.exportAll }}
         scrollX={1300}
-        items={comptages}
-        total={comptages.length}
-        page={1}
-        pageSize={Math.max(comptages.length, 1)}
-        onPageChange={() => {}}
         loading={liste.isPending}
         isReloading={liste.isFetching && !liste.isPending}
         error={liste.isError ? t('Impossible de charger les inventaires.') : null}
         errorCause={liste.error}
         onRetry={() => void liste.refetch()}
-        isFiltered={Boolean(lieuFiltre || statutFiltre || natureFiltre)}
-        onClearFilters={() => {
-          setLieuFiltre(undefined);
-          setStatutFiltre(undefined);
-          setNatureFiltre(undefined);
-        }}
         emptyDescription={t('Aucun inventaire n’a encore été ouvert.')}
         emptyAction={canCount ? { label: t('Ouvrir un inventaire'), onClick: () => setFenetre({}) } : undefined}
         columns={colonnes}

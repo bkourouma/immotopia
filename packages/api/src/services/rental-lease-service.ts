@@ -18,6 +18,7 @@ import { syncLotActivationsTx } from './lot-registry-service';
 import { getTenantById } from './tenant-service';
 import { assertThirdPartyAllowedForTenant } from './own-assets-barrier-service';
 import { t } from '../i18n';
+import { applyLeaseSearch } from '../lib/rental/lease-list-filters';
 import { generateLeaseNumber, isLeaseNumberCollision } from './rental-lease-number';
 import { toRentalDocumentDto } from './rental-document-service';
 import { repriceUnstartedInstallmentsTx } from '../lib/lease-lifecycle/service';
@@ -864,20 +865,8 @@ export async function listLeases(
     where.primary_renter_client_id = filters.primaryRenterClientId;
   }
 
-  // Recherche « numéro, bien ou locataire » (le sélecteur de bail l'annonce ainsi) :
-  // numéro du bail, référence/titre/adresse du bien, nom ou e-mail du locataire
-  // principal. Insensible à la casse ; le filtre `tenant_id` ci-dessus reste en vigueur.
-  const search = filters?.search?.trim();
-  if (search) {
-    const contient = { contains: search, mode: 'insensitive' as const };
-    where.OR = [
-      { lease_number: contient },
-      { property: { title: contient } },
-      { property: { address: contient } },
-      { property: { internalReference: contient } },
-      { primaryRenter: { user: { fullName: contient } } },
-      { primaryRenter: { user: { email: contient } } }
-    ];
+  if (filters?.search) {
+    applyLeaseSearch(where, filters.search);
   }
 
   const page = pagination?.page || 1;

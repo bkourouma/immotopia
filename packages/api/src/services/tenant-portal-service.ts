@@ -19,7 +19,6 @@ import {
 } from '../types/tenant-portal-types';
 import {
   RentalInstallmentStatus,
-  RentalPaymentMethod,
   RentalPaymentStatus,
   MaintenanceTicketStatus,
   MaintenanceTicketCommentAuthorType,
@@ -41,6 +40,14 @@ import { isUuid } from '../lib/signature/sources/guards';
 import { detectDocumentKind, detectImageKind, extensionForKind } from '../utils/file-signature';
 import { env } from '../config/env';
 import { PORTAL_RENTAL_DOCUMENT_SELECT, toPortalAttachment, toPortalRentalDocument } from '../lib/files/portal-files';
+import {
+  buildTenantDeclarationsFilters,
+  buildTenantInstallmentsSearch,
+  buildTenantPaymentsSearch,
+  buildTenantTicketsWhere,
+  tenantEnumClause,
+  type TenantTicketsFilters
+} from './portal-list-filters/tenant-portal-list-filters';
 
 /** Montant exigé d'une échéance : loyer, charges, autres frais et pénalité. */
 function installmentTotal(inst: {
@@ -587,9 +594,10 @@ export class TenantPortalService {
     leaseId: string,
     tenantId: string,
     filters?: {
-      status?: string;
+      status?: string | string[];
       startDate?: string;
       endDate?: string;
+      search?: string;
     },
     pagination?: {
       page?: number;
@@ -610,15 +618,18 @@ export class TenantPortalService {
         tenant_id: tenantId
       };
 
-      if (filters?.status === RentalInstallmentStatus.OVERDUE) {
+      const statuses = filters?.status ? (Array.isArray(filters.status) ? filters.status : [filters.status]) : [];
+      if (statuses.includes(RentalInstallmentStatus.OVERDUE)) {
         // Les brouillons échus s'affichent « En retard » (H30) : ils répondent aussi au filtre.
         where.OR = [
-          { status: RentalInstallmentStatus.OVERDUE },
+          { status: tenantEnumClause(statuses) },
           { status: RentalInstallmentStatus.DRAFT, due_date: { lt: startOfToday() } }
         ];
-      } else if (filters?.status) {
-        where.status = filters.status;
+      } else if (statuses.length > 0) {
+        where.status = tenantEnumClause(statuses);
       }
+
+      Object.assign(where, buildTenantInstallmentsSearch(filters?.search));
 
       if (filters?.startDate || filters?.endDate) {
         where.due_date = {};
@@ -1438,7 +1449,8 @@ export class TenantPortalService {
     filters?: {
       startDate?: string;
       endDate?: string;
-      method?: string;
+      method?: string | string[];
+      search?: string;
     },
     pagination?: {
       page?: number;
@@ -1465,23 +1477,22 @@ export class TenantPortalService {
       };
 
       if (filters?.method) {
-        where.method = filters.method;
-        declarationWhere.payment_method = filters.method as RentalPaymentMethod;
+        where.method = tenantEnumClause(filters.method);
       }
 
+      Object.assign(where, buildTenantPaymentsSearch(filters?.search));
+      Object.assign(declarationWhere, buildTenantDeclarationsFilters(filters));
+
       if (filters?.startDate || filters?.endDate) {
-        const dateRange: { gte?: Date; lt?: Date } = {};
+        const dateRange: { gte?: Date; lte?: Date } = {};
         if (filters.startDate) {
           dateRange.gte = new Date(filters.startDate);
         }
         if (filters.endDate) {
-          const endExclusive = new Date(filters.endDate);
-          endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
-          dateRange.lt = endExclusive;
+          dateRange.lte = new Date(filters.endDate);
         }
         // La date affichée est succeededAt, ou initiatedAt si le paiement n'a pas réussi.
         where.OR = [{ succeeded_at: dateRange }, { succeeded_at: null, initiated_at: dateRange }];
-        declarationWhere.payment_date = dateRange;
       }
 
       // Get all payments (capped) and declarations so we can merge and paginate
@@ -1831,9 +1842,7 @@ export class TenantPortalService {
     tenantClientId: string,
     leaseId: string,
     tenantId: string,
-    filters?: {
-      status?: string;
-    },
+    filters?: TenantTicketsFilters,
     pagination?: {
       page?: number;
       limit?: number;
@@ -1845,9 +1854,7 @@ export class TenantPortalService {
       // `tenant_contact_id` a l'identifiant du TenantClient, valeur que la cle
       // etrangere vers `crm_contacts` interdit : la liste restait vide.
       const visibility = await tenantPortalTicketFilter({ tenantId, tenantClientId, leaseId });
-      const where: Prisma.MaintenanceTicketWhereInput = filters?.status
-        ? { AND: [visibility, { status: filters.status as MaintenanceTicketStatus }] }
-        : visibility;
+      const where: Prisma.MaintenanceTicketWhereInput = buildTenantTicketsWhere(visibility, filters);
 
       const page = pagination?.page || 1;
       const limit = Math.min(pagination?.limit || 20, 100);

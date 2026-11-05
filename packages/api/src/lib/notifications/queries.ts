@@ -22,6 +22,7 @@ import type {
   PlatformNotificationFilters,
   PlatformNotificationItem
 } from './types';
+import { escapeLike } from '../../utils/like-escape';
 
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 20;
@@ -87,14 +88,30 @@ export async function listMyNotifications(input: {
   tenantId: string;
   userId: string;
   unreadOnly?: boolean;
+  /** Recherche libre dans le titre et le message. */
+  q?: string;
+  from?: Date;
+  to?: Date;
   page?: number;
   pageSize?: number;
 }): Promise<Paginated<NotificationItem>> {
   const { page, pageSize, skip, take } = paging(input.page, input.pageSize);
+  const q = input.q?.trim();
   const where: Prisma.UserNotificationWhereInput = {
     tenantId: input.tenantId,
     recipientUserId: input.userId,
-    ...(input.unreadOnly ? { readAt: null } : {})
+    ...(input.unreadOnly ? { readAt: null } : {}),
+    ...(q
+      ? {
+          OR: [
+            { title: { contains: escapeLike(q), mode: 'insensitive' as const } },
+            { body: { contains: escapeLike(q), mode: 'insensitive' as const } }
+          ]
+        }
+      : {}),
+    ...(input.from || input.to
+      ? { createdAt: { ...(input.from ? { gte: input.from } : {}), ...(input.to ? { lte: input.to } : {}) } }
+      : {})
   };
   const [rows, total] = await Promise.all([
     prisma.userNotification.findMany({
@@ -228,9 +245,9 @@ function buildAdminWhere(
     ...(q
       ? {
           OR: [
-            { title: { contains: q, mode: 'insensitive' as const } },
-            { body: { contains: q, mode: 'insensitive' as const } },
-            { recipientLabel: { contains: q, mode: 'insensitive' as const } }
+            { title: { contains: escapeLike(q), mode: 'insensitive' as const } },
+            { body: { contains: escapeLike(q), mode: 'insensitive' as const } },
+            { recipientLabel: { contains: escapeLike(q), mode: 'insensitive' as const } }
           ]
         }
       : {}),
@@ -272,7 +289,7 @@ export async function listNotificationRecipients(
       tenantId,
       key: { not: MESSAGE_NOTIFICATION_KEY },
       recipientUserId: { not: null },
-      ...(term ? { recipientLabel: { contains: term, mode: 'insensitive' as const } } : {})
+      ...(term ? { recipientLabel: { contains: escapeLike(term), mode: 'insensitive' as const } } : {})
     },
     select: { recipientUserId: true, recipientLabel: true },
     distinct: ['recipientUserId'],

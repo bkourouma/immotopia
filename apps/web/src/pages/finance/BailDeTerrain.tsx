@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { App, Button, Card, DatePicker, InputNumber, Select, Space, Typography } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { App, Button, Card, DatePicker, InputNumber, Select, Space, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { Dayjs } from 'dayjs';
@@ -15,9 +15,16 @@ import {
 } from '../../services/finance-lot4-service';
 import { listConstructionSites } from '../../services/finance-lot2-service';
 import { LAND_LEASE_STATUS_LABELS } from '../../types/finance-lot4-types';
-import type { LandLeaseAccrual, LandLeasePayment, LandLeaseSiteRef } from '../../types/finance-lot4-types';
+import type {
+  LandLeaseAccrual,
+  LandLeaseDocumentStatus,
+  LandLeasePayment,
+  LandLeaseSiteRef
+} from '../../types/finance-lot4-types';
 import { detailKey, entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { DateRangeValue, SearchCriterion } from '../../utils/list-search';
 import {
   PageHeader,
   StateBlock,
@@ -91,6 +98,12 @@ const { Title, Text } = Typography;
  * **Vocabulaire (P-1 du PRD).** On *loue*, on *paie*, on *constate*, on
  * *impute* — jamais « débit » ni « crédit ».
  *
+ * **Recherche.** Les paiements (préfixe d'URL `pai`) et les constatations
+ * (`cst`) ont chacun leur barre (`useLocalListSearch`), dans le composant de
+ * leur onglet. Les sommes de l'en-tête (« Payé à ce jour », « Consommé à ce
+ * jour ») restent calculées sur les listes COMPLÈTES, jamais sur la liste
+ * filtrée. Les chantiers rattachés (quelques-uns par bail) n'ont pas de barre.
+ *
  * **Le poste de dépense du bail (ajout au contrat du 19 septembre 2026).**
  * `costCategoryLabel` est affiché tel quel, jamais `costCategoryId` : c'est
  * le poste qui reçoit le loyer dans le coût des chantiers rattachés.
@@ -139,11 +152,187 @@ function resteAConsommer(accountBalance: number): number {
   return -accountBalance;
 }
 
+const OPTIONS_STATUT_PAIEMENT = localizedList(() =>
+  (Object.keys(LAND_LEASE_STATUS_LABELS) as LandLeaseDocumentStatus[]).map(value => ({
+    value,
+    label: LAND_LEASE_STATUS_LABELS[value]
+  }))
+);
+
+function periodeCouverte(p: LandLeasePayment): string {
+  return `${dateCourte(p.coverageStartDate)} – ${dateCourte(p.coverageEndDate)}`;
+}
+
+// Paiements — champ libre : auteur de la saisie et période couverte (telle qu'affichée).
+const TEXTE_PAIEMENTS = [(p: LandLeasePayment) => p.createdByLabel, periodeCouverte];
+const ACCESSEURS_PAIEMENTS = {
+  status: (p: LandLeasePayment) => p.status,
+  date: (p: LandLeasePayment) => p.paymentDate,
+  montant: (p: LandLeasePayment) => p.amount
+};
+
+// Constatations — champ libre : période (libellé affiché) et chantiers imputés.
+const TEXTE_CONSTATATIONS = [
+  (c: LandLeaseAccrual) => libellePeriode(c.periodYear, c.periodMonth),
+  (c: LandLeaseAccrual) => c.allocations.map(a => a.siteLabel)
+];
+
+const deuxChiffres = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * Une constatation couvre un mois entier : elle correspond à un intervalle de
+ * dates dès que ce mois le touche (pas seulement son premier jour).
+ */
+const PREDICATS_CONSTATATIONS = {
+  periode: (c: LandLeaseAccrual, valeur: unknown) => {
+    const { from, to } = valeur as DateRangeValue;
+    const debut = `${c.periodYear}-${deuxChiffres(c.periodMonth)}-01`;
+    const fin = `${c.periodYear}-${deuxChiffres(c.periodMonth)}-${deuxChiffres(new Date(c.periodYear, c.periodMonth, 0).getDate())}`;
+    return (!from || fin >= from) && (!to || debut <= to);
+  }
+};
+
+interface SectionListeProps<T> {
+  lignes: T[] | undefined;
+  colonnes: ColumnsType<T>;
+  loading: boolean;
+  error: unknown;
+  onRetry: () => void;
+}
+
+/** Paiements annuels et leur barre de recherche (préfixe `pai`). Montée avec son onglet. */
+const SectionPaiements: React.FC<
+  SectionListeProps<LandLeasePayment> & { onValider: (p: LandLeasePayment) => void }
+> = ({ lignes, colonnes, loading, error, onRetry, onValider }) => {
+  const confirmerAction = useConfirmAction();
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Saisi par, période couverte…') },
+    { key: 'status', type: 'select', label: t('Statut'), primary: true, options: OPTIONS_STATUT_PAIEMENT },
+    { key: 'date', type: 'dateRange', label: t('Date de paiement') },
+    { key: 'montant', type: 'numberRange', label: t('Montant'), unit: 'FCFA' }
+  ];
+  const local = useLocalListSearch<LandLeasePayment>(lignes, {
+    paramPrefix: 'pai',
+    criteria: criteres,
+    text: TEXTE_PAIEMENTS,
+    accessors: ACCESSEURS_PAIEMENTS
+  });
+
+  return (
+    <DataView<LandLeasePayment>
+      scrollX={900}
+      {...local.dataViewProps}
+      loading={loading}
+      error={error ? t('Impossible de charger les paiements de ce bail.') : null}
+      errorCause={error}
+      onRetry={onRetry}
+      emptyDescription={t("Aucun paiement n'a encore été saisi pour ce bail.")}
+      columns={colonnes}
+      rowKey={p => p.id}
+      aria-label={t('Paiements annuels du bail')}
+      export={{ filename: t('Paiements annuels'), fetchAll: local.exportAll }}
+      renderCard={p => (
+        <DataCard
+          title={dateCourte(p.paymentDate)}
+          aria-label={t('Paiement du {{value}}', { value: dateCourte(p.paymentDate) })}
+          subtitle={periodeCouverte(p)}
+          status={
+            <StatusTag status={p.status} tone={TONE_PAIEMENT[p.status]} label={LAND_LEASE_STATUS_LABELS[p.status]} />
+          }
+          highlight={<MoneyValue value={p.amount} />}
+          fields={[{ label: t('Saisi par'), value: p.createdByLabel }]}
+          primaryAction={
+            p.status === 'DRAFT'
+              ? {
+                  label: t('Valider'),
+                  onClick: () =>
+                    confirmerAction({
+                      title: t('Valider le paiement du {{value}} ?', { value: dateCourte(p.paymentDate) }),
+                      description: t(
+                        "Cette opération est irréversible : une fois validé, ce paiement ne peut plus être modifié, et l'avance versée commence à être consommée mois après mois."
+                      ),
+                      okText: t('Confirmer la validation'),
+                      onConfirm: () => onValider(p)
+                    })
+                }
+              : undefined
+          }
+        />
+      )}
+    />
+  );
+};
+
+/** Constatations mensuelles et leur barre de recherche (préfixe `cst`). Montée avec son onglet. */
+const SectionConstatations: React.FC<SectionListeProps<LandLeaseAccrual>> = ({
+  lignes,
+  colonnes,
+  loading,
+  error,
+  onRetry
+}) => {
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Période, chantier imputé…') },
+    { key: 'periode', type: 'dateRange', label: t('Période') }
+  ];
+  const local = useLocalListSearch<LandLeaseAccrual>(lignes, {
+    paramPrefix: 'cst',
+    criteria: criteres,
+    text: TEXTE_CONSTATATIONS,
+    predicates: PREDICATS_CONSTATATIONS
+  });
+
+  return (
+    <DataView<LandLeaseAccrual>
+      scrollX={800}
+      {...local.dataViewProps}
+      loading={loading}
+      error={error ? t('Impossible de charger les constatations de ce bail.') : null}
+      errorCause={error}
+      onRetry={onRetry}
+      emptyDescription={t("Aucun mois n'a encore été constaté pour ce bail.")}
+      columns={colonnes}
+      rowKey={c => c.id}
+      aria-label={t('Constatations mensuelles du bail')}
+      export={{ filename: t('Constatations mensuelles'), fetchAll: local.exportAll }}
+      renderCard={c => (
+        <DataCard
+          title={libellePeriode(c.periodYear, c.periodMonth)}
+          aria-label={libellePeriode(c.periodYear, c.periodMonth)}
+          highlight={<MoneyValue value={c.amount} />}
+          fields={
+            c.allocations.length > 0
+              ? c.allocations.map(a => ({
+                  label: a.siteLabel,
+                  value: <MoneyValue value={a.amount} />
+                }))
+              : [{ label: t('Imputations'), value: t('Aucun chantier actif sur ce bail à cette date') }]
+          }
+        />
+      )}
+    />
+  );
+};
+
 export const BailDeTerrain: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId, landLeaseId } = useParams<{ tenantId: string; landLeaseId: string }>();
   const queryClient = useQueryClient();
   const confirmerAction = useConfirmAction();
+
+  // Onglet actif dans l'URL (?onglet=chantiers|paiements|constatations) ;
+  // inconnu -> chantiers. Les autres paramètres sont conservés.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const ongletBrut = searchParams.get('onglet');
+  const onglet = ongletBrut === 'paiements' || ongletBrut === 'constatations' ? ongletBrut : 'chantiers';
+  const changerOnglet = (cle: string) => {
+    const suivants = new URLSearchParams(searchParams);
+    suivants.set('onglet', cle);
+    setSearchParams(suivants, { replace: true });
+  };
 
   const {
     data: bail,
@@ -157,6 +346,9 @@ export const BailDeTerrain: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
+  // Les paiements et les constatations restent chargés au montage, quel que
+  // soit l'onglet : les indicateurs « Payé à ce jour » et « Consommé à ce
+  // jour » de l'en-tête en sont la somme (aucun calcul ne change).
   const {
     data: paiements,
     isPending: paiementsEnAttente,
@@ -186,10 +378,13 @@ export const BailDeTerrain: React.FC = () => {
   // `landLeaseId` : ce référentiel ne permet donc d'exclure que les chantiers
   // déjà listés dans `bail.sites`, pas ceux rattachés à un AUTRE bail — voir
   // la rubrique « Hypothèses » du rapport de cet agent.
+  // Aucun libellé affiché n'en dépend : il ne se charge qu'à l'ouverture du
+  // sélecteur de rattachement.
+  const [referentielDemande, setReferentielDemande] = useState(false);
   const { data: chantiers } = useQuery({
     queryKey: queryKey('construction-sites', tenantId, {}),
     queryFn: () => listConstructionSites(tenantId as string),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && referentielDemande,
     staleTime: STALE_TIME.reference
   });
 
@@ -210,6 +405,16 @@ export const BailDeTerrain: React.FC = () => {
     [paiements]
   );
   const consomme = useMemo(() => (constatations ?? []).reduce((somme, c) => somme + c.amount, 0), [constatations]);
+
+  // ---------------------------------------------------------------------
+  // Pagination locale des chantiers rattachés (20 lignes par page) ; les
+  // paiements et les constatations paginent avec leur barre de recherche.
+  // ---------------------------------------------------------------------
+
+  const [pageSites, setPageSites] = useState(1);
+  const [taillePageSites, setTaillePageSites] = useState(20);
+  const nbSites = bail?.sites.length ?? 0;
+  useEffect(() => setPageSites(1), [nbSites]);
 
   // ---------------------------------------------------------------------
   // Rattachement d'un chantier
@@ -497,260 +702,232 @@ export const BailDeTerrain: React.FC = () => {
         {t('Loyer imputé au poste «')} {bail.costCategoryLabel} ».
       </Text>
 
-      <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        {t('Chantiers rattachés')}
-      </Title>
-      <DataView<LandLeaseSiteRef>
-        paginated={false}
-        items={bail.sites}
-        total={bail.sites.length}
-        page={1}
-        pageSize={Math.max(bail.sites.length, 1)}
-        onPageChange={() => {}}
-        emptyDescription={t(
-          "Aucun chantier n'est rattaché à ce bail : les prochaines constatations mensuelles seront enregistrées sans imputation tant qu'aucun n'est ajouté ci-dessous."
-        )}
-        columns={colonnesSites}
-        rowKey={s => s.siteId}
-        aria-label={t('Chantiers rattachés au bail')}
-        export={{ filename: t('Chantiers rattachés') }}
-        renderCard={s => (
-          <DataCard
-            title={s.siteLabel}
-            aria-label={s.siteLabel}
-            status={<StatusTag status={s.status} />}
-            primaryAction={{
-              label: t('Détacher'),
-              onClick: () =>
-                confirmerAction({
-                  title: t('Détacher « {{siteLabel}} » de ce bail ?', { siteLabel: s.siteLabel }),
-                  description: t(
-                    "Ce chantier ne recevra plus d'imputation de charge de ce bail à compter de la prochaine constatation mensuelle."
-                  ),
-                  okText: t('Confirmer le détachement'),
-                  onConfirm: () => detacherChantier(s)
-                })
-            }}
-          />
-        )}
+      <Tabs
+        activeKey={onglet}
+        onChange={changerOnglet}
+        destroyOnHidden
+        style={{ marginTop: 'var(--space-6)' }}
+        items={[
+          {
+            key: 'chantiers',
+            label: t('Chantiers rattachés'),
+            children: (
+              <>
+                <DataView<LandLeaseSiteRef>
+                  items={bail.sites.slice((pageSites - 1) * taillePageSites, pageSites * taillePageSites)}
+                  total={bail.sites.length}
+                  page={pageSites}
+                  pageSize={taillePageSites}
+                  onPageChange={(page, taille) => {
+                    setPageSites(page);
+                    setTaillePageSites(taille);
+                  }}
+                  emptyDescription={t(
+                    "Aucun chantier n'est rattaché à ce bail : les prochaines constatations mensuelles seront enregistrées sans imputation tant qu'aucun n'est ajouté ci-dessous."
+                  )}
+                  columns={colonnesSites}
+                  rowKey={s => s.siteId}
+                  aria-label={t('Chantiers rattachés au bail')}
+                  export={{ filename: t('Chantiers rattachés') }}
+                  renderCard={s => (
+                    <DataCard
+                      title={s.siteLabel}
+                      aria-label={s.siteLabel}
+                      status={<StatusTag status={s.status} />}
+                      primaryAction={{
+                        label: t('Détacher'),
+                        onClick: () =>
+                          confirmerAction({
+                            title: t('Détacher « {{siteLabel}} » de ce bail ?', { siteLabel: s.siteLabel }),
+                            description: t(
+                              "Ce chantier ne recevra plus d'imputation de charge de ce bail à compter de la prochaine constatation mensuelle."
+                            ),
+                            okText: t('Confirmer le détachement'),
+                            onConfirm: () => detacherChantier(s)
+                          })
+                      }}
+                    />
+                  )}
+                />
+
+                <Card style={{ marginTop: 'var(--space-4)' }}>
+                  <Space wrap align="end" size="middle">
+                    <div style={{ minWidth: 260 }}>
+                      <div>
+                        <label htmlFor="rattacher-chantier">{t('Rattacher un chantier existant')}</label>
+                      </div>
+                      <Select
+                        id="rattacher-chantier"
+                        style={{ width: '100%' }}
+                        placeholder={t('Choisir un chantier')}
+                        value={siteARattacher}
+                        onChange={setSiteARattacher}
+                        onOpenChange={ouvert => {
+                          if (ouvert) setReferentielDemande(true);
+                        }}
+                        showSearch
+                        optionFilterProp="label"
+                        options={optionsRattachement}
+                        notFoundContent={t('Aucun chantier disponible')}
+                      />
+                    </div>
+                    <Button
+                      type="primary"
+                      loading={rattachementEnCours}
+                      disabled={!siteARattacher}
+                      onClick={rattacherChantier}
+                    >
+                      {t('Rattacher')}
+                    </Button>
+                  </Space>
+                </Card>
+              </>
+            )
+          },
+          {
+            key: 'paiements',
+            label: t('Paiements annuels'),
+            children: (
+              <>
+                <SectionPaiements
+                  lignes={paiements}
+                  colonnes={colonnesPaiements}
+                  loading={paiementsEnAttente}
+                  error={erreurPaiements}
+                  onRetry={() => refetchPaiements()}
+                  onValider={validerPaiement}
+                />
+
+                <Card style={{ marginTop: 'var(--space-4)' }}>
+                  <Title level={5} style={{ marginTop: 0 }}>
+                    {t('Nouveau paiement annuel')}
+                  </Title>
+                  <Space wrap size="middle" align="end">
+                    <div>
+                      <div>
+                        <label htmlFor="paiement-date">{t('Date de paiement')}</label>
+                      </div>
+                      <DatePicker
+                        id="paiement-date"
+                        format="DD/MM/YYYY"
+                        value={datePaiement}
+                        onChange={v => setDatePaiement(v ?? dayjs())}
+                      />
+                    </div>
+                    <div>
+                      <div>
+                        <label htmlFor="paiement-montant">{t('Montant')}</label>
+                      </div>
+                      <InputNumber
+                        id="paiement-montant"
+                        min={0}
+                        style={{ width: 180 }}
+                        value={montantPaiement ?? undefined}
+                        onChange={value => setMontantPaiement((value as number | null) ?? null)}
+                        {...montantSaisiProps}
+                      />
+                    </div>
+                    <div>
+                      <div>
+                        <label htmlFor="paiement-debut">{t('Début de la période couverte')}</label>
+                      </div>
+                      <DatePicker
+                        id="paiement-debut"
+                        format="DD/MM/YYYY"
+                        value={debutCouverture}
+                        onChange={setDebutCouverture}
+                      />
+                    </div>
+                    <div>
+                      <div>
+                        <label htmlFor="paiement-fin">{t('Fin de la période couverte')}</label>
+                      </div>
+                      <DatePicker
+                        id="paiement-fin"
+                        format="DD/MM/YYYY"
+                        value={finCouverture}
+                        onChange={setFinCouverture}
+                        disabledDate={current => (debutCouverture ? current.isBefore(debutCouverture, 'day') : false)}
+                      />
+                    </div>
+                    <Button
+                      type="primary"
+                      loading={enregistrementPaiementEnCours}
+                      disabled={!peutEnregistrerPaiement}
+                      onClick={enregistrerPaiement}
+                    >
+                      {t('Enregistrer le paiement')}
+                    </Button>
+                  </Space>
+                </Card>
+              </>
+            )
+          },
+          {
+            key: 'constatations',
+            label: t('Constatations mensuelles'),
+            children: (
+              <>
+                <SectionConstatations
+                  lignes={constatations}
+                  colonnes={colonnesConstatations}
+                  loading={constatationsEnAttente}
+                  error={erreurConstatations}
+                  onRetry={() => refetchConstatations()}
+                />
+
+                <Card style={{ marginTop: 'var(--space-4)' }}>
+                  <Title level={5} style={{ marginTop: 0 }}>
+                    {t('Constater un mois à la main')}
+                  </Title>
+                  <Text type="secondary">
+                    {t(
+                      "À n'utiliser que si le travail programmé du 1er du mois n'a pas tourné : rejouer un mois déjà constaté ne double rien."
+                    )}
+                  </Text>
+                  <Space wrap size="middle" align="end" style={{ marginTop: 'var(--space-3)' }}>
+                    <div>
+                      <div>
+                        <label htmlFor="constat-annee">{t('Année')}</label>
+                      </div>
+                      <InputNumber
+                        id="constat-annee"
+                        style={{ width: 120 }}
+                        min={2000}
+                        max={2100}
+                        value={anneeConstat ?? undefined}
+                        onChange={value => setAnneeConstat((value as number | null) ?? null)}
+                      />
+                    </div>
+                    <div>
+                      <div>
+                        <label htmlFor="constat-mois">{t('Mois')}</label>
+                      </div>
+                      <Select
+                        id="constat-mois"
+                        style={{ width: 160 }}
+                        value={moisConstat ?? undefined}
+                        onChange={setMoisConstat}
+                        showSearch
+                        optionFilterProp="label"
+                        options={OPTIONS_MOIS}
+                      />
+                    </div>
+                    <Button
+                      type="primary"
+                      loading={constatationEnCours}
+                      disabled={!anneeConstat || !moisConstat}
+                      onClick={constaterMois}
+                    >
+                      {t('Constater ce mois')}
+                    </Button>
+                  </Space>
+                </Card>
+              </>
+            )
+          }
+        ]}
       />
-
-      <Card style={{ marginTop: 'var(--space-4)' }}>
-        <Space wrap align="end" size="middle">
-          <div style={{ minWidth: 260 }}>
-            <div>
-              <label htmlFor="rattacher-chantier">{t('Rattacher un chantier existant')}</label>
-            </div>
-            <Select
-              id="rattacher-chantier"
-              style={{ width: '100%' }}
-              placeholder={t('Choisir un chantier')}
-              value={siteARattacher}
-              onChange={setSiteARattacher}
-              showSearch
-              optionFilterProp="label"
-              options={optionsRattachement}
-              notFoundContent={t('Aucun chantier disponible')}
-            />
-          </div>
-          <Button type="primary" loading={rattachementEnCours} disabled={!siteARattacher} onClick={rattacherChantier}>
-            {t('Rattacher')}
-          </Button>
-        </Space>
-      </Card>
-
-      <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        {t('Paiements annuels')}
-      </Title>
-      <DataView<LandLeasePayment>
-        paginated={false}
-        scrollX={900}
-        items={paiements ?? []}
-        total={(paiements ?? []).length}
-        page={1}
-        pageSize={Math.max((paiements ?? []).length, 1)}
-        onPageChange={() => {}}
-        loading={paiementsEnAttente}
-        error={erreurPaiements ? t('Impossible de charger les paiements de ce bail.') : null}
-        errorCause={erreurPaiements}
-        onRetry={() => refetchPaiements()}
-        emptyDescription={t("Aucun paiement n'a encore été saisi pour ce bail.")}
-        columns={colonnesPaiements}
-        rowKey={p => p.id}
-        aria-label={t('Paiements annuels du bail')}
-        export={{ filename: t('Paiements annuels') }}
-        renderCard={p => (
-          <DataCard
-            title={dateCourte(p.paymentDate)}
-            aria-label={t('Paiement du {{value}}', { value: dateCourte(p.paymentDate) })}
-            subtitle={`${dateCourte(p.coverageStartDate)} – ${dateCourte(p.coverageEndDate)}`}
-            status={
-              <StatusTag status={p.status} tone={TONE_PAIEMENT[p.status]} label={LAND_LEASE_STATUS_LABELS[p.status]} />
-            }
-            highlight={<MoneyValue value={p.amount} />}
-            fields={[{ label: t('Saisi par'), value: p.createdByLabel }]}
-            primaryAction={
-              p.status === 'DRAFT'
-                ? {
-                    label: t('Valider'),
-                    onClick: () =>
-                      confirmerAction({
-                        title: t('Valider le paiement du {{value}} ?', { value: dateCourte(p.paymentDate) }),
-                        description: t(
-                          "Cette opération est irréversible : une fois validé, ce paiement ne peut plus être modifié, et l'avance versée commence à être consommée mois après mois."
-                        ),
-                        okText: t('Confirmer la validation'),
-                        onConfirm: () => validerPaiement(p)
-                      })
-                  }
-                : undefined
-            }
-          />
-        )}
-      />
-
-      <Card style={{ marginTop: 'var(--space-4)' }}>
-        <Title level={5} style={{ marginTop: 0 }}>
-          {t('Nouveau paiement annuel')}
-        </Title>
-        <Space wrap size="middle" align="end">
-          <div>
-            <div>
-              <label htmlFor="paiement-date">{t('Date de paiement')}</label>
-            </div>
-            <DatePicker
-              id="paiement-date"
-              format="DD/MM/YYYY"
-              value={datePaiement}
-              onChange={v => setDatePaiement(v ?? dayjs())}
-            />
-          </div>
-          <div>
-            <div>
-              <label htmlFor="paiement-montant">{t('Montant')}</label>
-            </div>
-            <InputNumber
-              id="paiement-montant"
-              min={0}
-              style={{ width: 180 }}
-              value={montantPaiement ?? undefined}
-              onChange={value => setMontantPaiement((value as number | null) ?? null)}
-              {...montantSaisiProps}
-            />
-          </div>
-          <div>
-            <div>
-              <label htmlFor="paiement-debut">{t('Début de la période couverte')}</label>
-            </div>
-            <DatePicker id="paiement-debut" format="DD/MM/YYYY" value={debutCouverture} onChange={setDebutCouverture} />
-          </div>
-          <div>
-            <div>
-              <label htmlFor="paiement-fin">{t('Fin de la période couverte')}</label>
-            </div>
-            <DatePicker
-              id="paiement-fin"
-              format="DD/MM/YYYY"
-              value={finCouverture}
-              onChange={setFinCouverture}
-              disabledDate={current => (debutCouverture ? current.isBefore(debutCouverture, 'day') : false)}
-            />
-          </div>
-          <Button
-            type="primary"
-            loading={enregistrementPaiementEnCours}
-            disabled={!peutEnregistrerPaiement}
-            onClick={enregistrerPaiement}
-          >
-            {t('Enregistrer le paiement')}
-          </Button>
-        </Space>
-      </Card>
-
-      <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        {t('Constatations mensuelles')}
-      </Title>
-      <DataView<LandLeaseAccrual>
-        paginated={false}
-        scrollX={800}
-        items={constatations ?? []}
-        total={(constatations ?? []).length}
-        page={1}
-        pageSize={Math.max((constatations ?? []).length, 1)}
-        onPageChange={() => {}}
-        loading={constatationsEnAttente}
-        error={erreurConstatations ? t('Impossible de charger les constatations de ce bail.') : null}
-        errorCause={erreurConstatations}
-        onRetry={() => refetchConstatations()}
-        emptyDescription={t("Aucun mois n'a encore été constaté pour ce bail.")}
-        columns={colonnesConstatations}
-        rowKey={c => c.id}
-        aria-label={t('Constatations mensuelles du bail')}
-        export={{ filename: t('Constatations mensuelles') }}
-        renderCard={c => (
-          <DataCard
-            title={libellePeriode(c.periodYear, c.periodMonth)}
-            aria-label={libellePeriode(c.periodYear, c.periodMonth)}
-            highlight={<MoneyValue value={c.amount} />}
-            fields={
-              c.allocations.length > 0
-                ? c.allocations.map(a => ({
-                    label: a.siteLabel,
-                    value: <MoneyValue value={a.amount} />
-                  }))
-                : [{ label: t('Imputations'), value: t('Aucun chantier actif sur ce bail à cette date') }]
-            }
-          />
-        )}
-      />
-
-      <Card style={{ marginTop: 'var(--space-4)' }}>
-        <Title level={5} style={{ marginTop: 0 }}>
-          {t('Constater un mois à la main')}
-        </Title>
-        <Text type="secondary">
-          {t(
-            "À n'utiliser que si le travail programmé du 1er du mois n'a pas tourné : rejouer un mois déjà constaté ne double rien."
-          )}
-        </Text>
-        <Space wrap size="middle" align="end" style={{ marginTop: 'var(--space-3)' }}>
-          <div>
-            <div>
-              <label htmlFor="constat-annee">{t('Année')}</label>
-            </div>
-            <InputNumber
-              id="constat-annee"
-              style={{ width: 120 }}
-              min={2000}
-              max={2100}
-              value={anneeConstat ?? undefined}
-              onChange={value => setAnneeConstat((value as number | null) ?? null)}
-            />
-          </div>
-          <div>
-            <div>
-              <label htmlFor="constat-mois">{t('Mois')}</label>
-            </div>
-            <Select
-              id="constat-mois"
-              style={{ width: 160 }}
-              value={moisConstat ?? undefined}
-              onChange={setMoisConstat}
-              showSearch
-              optionFilterProp="label"
-              options={OPTIONS_MOIS}
-            />
-          </div>
-          <Button
-            type="primary"
-            loading={constatationEnCours}
-            disabled={!anneeConstat || !moisConstat}
-            onClick={constaterMois}
-          >
-            {t('Constater ce mois')}
-          </Button>
-        </Space>
-      </Card>
     </>
   );
 };

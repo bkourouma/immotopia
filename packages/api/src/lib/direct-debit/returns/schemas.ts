@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { t } from '../../../i18n';
 import { parseIsoDate } from '../business-days';
+import { zDay, zSearch } from '../../../utils/list-query-schemas';
 
 /**
  * Validation des corps et requêtes du retour banque (spec 042, P3, data-model
@@ -49,6 +50,11 @@ export const settleAllSchema = z.object({ settledAt: isoDate(t('Date de règleme
 export type SettleAllInput = z.infer<typeof settleAllSchema>;
 
 export const listReturnImportsQuerySchema = z.object({
+  /** Nom du fichier importé. */
+  search: zSearch(100),
+  /** Date d'import (jours réels aaaa-mm-jj, bornes incluses). */
+  from: zDay,
+  to: zDay,
   page: z.coerce.number().int().min(1).max(10_000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20)
 });

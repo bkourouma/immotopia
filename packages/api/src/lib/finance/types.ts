@@ -303,7 +303,7 @@ export interface ClientsBalanceResult {
  */
 export type GetClientsBalance = (
   tenantId: string,
-  filters?: { range?: PeriodRange; propertyId?: string; asOf?: Date }
+  filters?: { range?: PeriodRange; propertyId?: string; asOf?: Date; search?: string }
 ) => Promise<ClientsBalanceResult>;
 
 export interface ClientsAgingBalanceLine extends ClientsBalanceLine {
@@ -317,7 +317,7 @@ export interface ClientsAgingBalanceLine extends ClientsBalanceLine {
 
 export type GetClientsAgingBalance = (
   tenantId: string,
-  filters?: { range?: PeriodRange; propertyId?: string; asOf?: Date }
+  filters?: { range?: PeriodRange; propertyId?: string; asOf?: Date; search?: string }
 ) => Promise<{ lines: ClientsAgingBalanceLine[]; totalBalance: number; currency: string }>;
 
 export interface AccountStatementResult {

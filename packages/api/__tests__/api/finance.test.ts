@@ -60,6 +60,11 @@ let portalContext: { tenantClientId: string; tenantId: string; leaseId: string }
 const getClientsBalance = jest.fn();
 const getClientsAgingBalance = jest.fn();
 const getAccountStatement = jest.fn();
+const searchAccountStatement = jest.fn();
+
+jest.mock('../../src/lib/finance/statement-search', () => ({
+  searchAccountStatement: (...args: any[]) => searchAccountStatement(...args)
+}));
 
 jest.mock('../../src/lib/finance/reports', () => ({
   getClientsBalance: (...args: any[]) => getClientsBalance(...args),
@@ -284,6 +289,39 @@ describe('GET /tenants/:tenantId/finance/accounts/:accountId/statement', () => {
     expect(response.body.data.pageSize).toBe(50);
   });
 
+  it.each(['asOf', 'asOfDate'])('transmet search, %s et la pagination au relevé filtré', async alias => {
+    const found = {
+      ...sampleStatement(),
+      movements: [{ ...sampleStatement().movements[0], id: 'mvt-2', balanceAfter: 150_000 }],
+      total: 2,
+      filteredTotals: { debit: 450_000, credit: 0 }
+    };
+    searchAccountStatement.mockResolvedValue(found);
+
+    const response = await request(app).get(
+      `/api/tenants/${TENANT_A}/finance/accounts/${ACCOUNT_A}/statement?search=loyer&${alias}=2026-09-30&page=2&pageSize=1`
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchAccountStatement).toHaveBeenCalledWith(TENANT_A, ACCOUNT_A, {
+      range: undefined,
+      search: 'loyer',
+      skip: 1,
+      take: 1,
+      asOf: new Date('2026-09-30')
+    });
+    expect(getAccountStatement).not.toHaveBeenCalled();
+    expect(response.body.data).toEqual(
+      expect.objectContaining({
+        page: 2,
+        pageSize: 1,
+        total: 2,
+        closingBalance: 150_000,
+        movements: [expect.objectContaining({ id: 'mvt-2', balanceAfter: 150_000 })]
+      })
+    );
+  });
+
   it('rejette en 400 un intervalle de dates invalide', async () => {
     const response = await request(app).get(
       `/api/tenants/${TENANT_A}/finance/accounts/${ACCOUNT_A}/statement?periodStart=2026-09-30&periodEnd=2026-09-01`
@@ -314,6 +352,47 @@ describe('GET /tenants/:tenantId/finance/accounts/:accountId/statement', () => {
 // ---------------------------------------------------------------------------
 
 describe('GET /tenants/:tenantId/finance/accounts/:accountId/statement.pdf', () => {
+  it('imprime les lignes cherchées avec leurs vrais soldes et les totaux filtrés', async () => {
+    const found = {
+      ...sampleStatement(),
+      movements: [{ id: 'm-2', label: 'Loyer', balanceAfter: 700 }],
+      total: 1,
+      openingBalance: 100,
+      closingBalance: 900,
+      filteredTotals: { debit: 200, credit: 0 }
+    };
+    searchAccountStatement.mockResolvedValue(found);
+    buildAccountStatementPdf.mockResolvedValue(Buffer.from('%PDF-1.4 releve'));
+
+    const response = await request(app).get(
+      `/api/tenants/${TENANT_A}/finance/accounts/${ACCOUNT_A}/statement.pdf?search=loyer&from=2026-01-01`
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchAccountStatement).toHaveBeenCalledWith(TENANT_A, ACCOUNT_A, {
+      range: { from: new Date('2026-01-01'), to: undefined },
+      search: 'loyer',
+      skip: 0,
+      take: 5000
+    });
+    expect(getAccountStatement).not.toHaveBeenCalled();
+    expect(buildAccountStatementPdf).toHaveBeenCalledWith(
+      expect.objectContaining({
+        movements: found.movements,
+        openingBalance: 100,
+        closingBalance: 900,
+        filteredTotals: { debit: 200, credit: 0 }
+      })
+    );
+  });
+
+  it('rejette une recherche invalide en 400', async () => {
+    const response = await request(app).get(
+      `/api/tenants/${TENANT_A}/finance/accounts/${ACCOUNT_A}/statement.pdf?search=${'x'.repeat(101)}`
+    );
+    expect(response.status).toBe(400);
+    expect(searchAccountStatement).not.toHaveBeenCalled();
+  });
   it('renvoie un document PDF (cas nominal)', async () => {
     getAccountStatement.mockResolvedValue(sampleStatement());
     buildAccountStatementPdf.mockResolvedValue(Buffer.from('%PDF-1.4 releve'));

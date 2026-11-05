@@ -84,12 +84,12 @@ function actif(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function monter() {
+function monter(initial = '/tenant/agence-1/patrimoine/actifs/a1') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
-        <MemoryRouter initialEntries={['/tenant/agence-1/patrimoine/actifs/a1']}>
+        <MemoryRouter initialEntries={[initial]}>
           <Routes>
             <Route path="/tenant/:tenantId/patrimoine/actifs/:assetId" element={<AssetDetailPage />} />
           </Routes>
@@ -113,6 +113,22 @@ describe('<AssetDetailPage>', () => {
     expect(await screen.findByText('Expertise')).toBeInTheDocument();
     expect(screen.getByText('Cabinet Kouassi')).toBeInTheDocument();
     expect(screen.queryByText('Ouvrir la fiche du bien')).not.toBeInTheDocument();
+  });
+
+  it('ouvre l’onglet demandé par ?onglet= (dettes), sinon « Valeurs » par défaut', async () => {
+    monter('/tenant/agence-1/patrimoine/actifs/a1?onglet=debts');
+
+    expect(await screen.findByRole('tab', { name: 'Dettes', selected: true })).toBeInTheDocument();
+    expect(
+      await screen.findByText('Aucune dette adossée à cet actif.', undefined, { timeout: 8000 })
+    ).toBeInTheDocument();
+  });
+
+  it('retombe sur « Valeurs » pour un onglet inconnu', async () => {
+    monter('/tenant/agence-1/patrimoine/actifs/a1?onglet=nimporte');
+
+    expect(await screen.findByRole('tab', { name: 'Valeurs', selected: true })).toBeInTheDocument();
+    expect(await screen.findByText('Cabinet Kouassi', undefined, { timeout: 8000 })).toBeInTheDocument();
   });
 
   it('renvoie vers la fiche du bien et sans onglet Détenteurs pour l’immobilier', async () => {

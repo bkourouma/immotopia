@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -23,6 +23,8 @@ vi.mock('../../services/rental-service', () => ({
   deleteLease: (...a: unknown[]) => deleteLease(...a),
   RentalLeaseStatus: {}
 }));
+
+vi.mock('../../services/property-service', () => ({ listProperties: vi.fn(), getProperty: vi.fn() }));
 
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
@@ -86,52 +88,32 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-/**
- * Appels de la LISTE, par opposition à ceux qui alimentent le filtre.
- *
- * L'écran interroge `listLeases` deux fois pour deux raisons distinctes : la
- * liste paginée que l'on regarde, et la liste complète dont on tire les options
- * du filtre « locataire ». Seule la première dépend de la recherche — compter
- * les appels bruts mélangerait les deux et ferait échouer le test pour une
- * raison qui n'a rien à voir avec ce qu'il vérifie.
- */
+/** Appels de la LISTE paginée (les appels de sélecteur n'ont pas de `page`). */
 const appelsDeLaListe = () => listLeases.mock.calls.filter(([, filtres]) => filtres && 'page' in filtres);
+
+const champRecherche = () => within(screen.getByRole('search')).getByRole('textbox');
 
 describe('Baux — un seul déclencheur de recherche', () => {
   it('ne relance pas deux fois la même requête quand on tape puis valide', async () => {
-    // L'ancienne version appelait `onChange` ET `onSearch` : le premier
-    // relançait l'effet, le second refaisait la requête avec les mêmes
-    // paramètres.
     const user = userEvent.setup({ delay: null });
     monter();
-    await waitFor(() => expect(appelsDeLaListe()).toHaveLength(1));
+    await waitFor(() => expect(appelsDeLaListe()).toHaveLength(1), { timeout: 8000 });
 
-    const champ = await screen.findByLabelText('Rechercher un bail', {}, { timeout: 8000 });
-    await user.type(champ, 'BAIL-2026');
+    await screen.findByText('BAIL-2026-0001', {}, { timeout: 8000 });
+    await user.type(champRecherche(), 'BAIL-2026');
     await user.keyboard('{Enter}');
 
-    // Après le silence de 250 ms, un SEUL appel supplémentaire.
     await waitFor(() => expect(appelsDeLaListe().at(-1)?.[1]).toMatchObject({ search: 'BAIL-2026' }), {
       timeout: 3000
     });
     expect(appelsDeLaListe()).toHaveLength(2);
   });
 
-  it('ne recharge pas les options du filtre à chaque frappe', async () => {
-    // La liste complète sert uniquement à peupler le sélecteur de locataires.
-    // La recharger à chaque caractère tapé serait neuf requêtes pour rien.
-    const user = userEvent.setup({ delay: null });
+  it('ne charge plus la liste complète des baux pour remplir le filtre locataire', async () => {
     monter();
-    await waitFor(() => expect(listLeases).toHaveBeenCalled());
-
-    const champ = await screen.findByLabelText('Rechercher un bail', {}, { timeout: 8000 });
-    await user.type(champ, 'BAIL-2026');
-
-    await waitFor(() => expect(appelsDeLaListe().at(-1)?.[1]).toMatchObject({ search: 'BAIL-2026' }), {
-      timeout: 3000
-    });
-    const appelsDuFiltre = listLeases.mock.calls.filter(([, f]) => f && !('page' in f));
-    expect(appelsDuFiltre).toHaveLength(1);
+    await waitFor(() => expect(appelsDeLaListe()).toHaveLength(1), { timeout: 8000 });
+    expect(listLeases.mock.calls.some(([, f]) => f && f.limit === 500)).toBe(false);
+    expect(listLeases).toHaveBeenCalledTimes(1);
   });
 
   it('restaure la recherche depuis l’URL', async () => {

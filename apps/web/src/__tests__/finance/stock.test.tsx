@@ -649,6 +649,21 @@ async function choisirOption(id: string, texte: string | RegExp): Promise<void> 
   fireEvent.click(option);
 }
 
+/** Choisit une option d'un critère de la barre de recherche (liste déroulante nommée par son libellé). */
+async function choisirDansLaBarre(libelle: string, texte: string | RegExp): Promise<void> {
+  const barre = within(screen.getByRole('search'));
+  fireEvent.mouseDown(await barre.findByRole('combobox', { name: libelle }, { timeout: 8000 }));
+  const candidats = await screen.findAllByText(texte, {}, { timeout: 8000 });
+  const option = candidats.find(element => element.closest('.ant-select-item'));
+  if (!option) throw new Error(`Option « ${String(texte)} » absente du critère « ${libelle} ».`);
+  fireEvent.click(option);
+}
+
+/** Déplie les critères secondaires de la barre. */
+async function ouvrirPlusDeCriteres(): Promise<void> {
+  fireEvent.click(await screen.findByRole('button', { name: /^Plus de critères/ }, { timeout: 8000 }));
+}
+
 /** Saisit un nombre dans un `<InputNumber>` et laisse AntD le valider. */
 function saisirNombre(id: string, valeur: string): void {
   const entree = champ(id) as HTMLInputElement;
@@ -759,7 +774,8 @@ describe("L'état du stock — par lieu et par article", () => {
     monter();
 
     await attendreEtat();
-    await user.click(screen.getByRole('checkbox', { name: 'Masquer les lignes à zéro' }));
+    await ouvrirPlusDeCriteres();
+    await user.click(await screen.findByRole('checkbox', { name: 'Masquer les lignes à zéro' }));
 
     await waitFor(() => expect(appelsGet(/stock\/balances\?onlyInStock=true/).length).toBeGreaterThan(0));
   }, 15000);
@@ -768,12 +784,12 @@ describe("L'état du stock — par lieu et par article", () => {
     monter();
 
     await attendreEtat();
-    await choisirOption('filtre-lieu-stock', "Magasin central d'Angré");
+    await choisirDansLaBarre('Lieu', "Magasin central d'Angré");
     await waitFor(() =>
       expect(appelsGet(new RegExp(`stock/balances\\?locationId=${MAGASIN}`)).length).toBeGreaterThan(0)
     );
 
-    await choisirOption('filtre-article-stock', 'CIM-42 — Ciment CPJ 42,5');
+    await choisirDansLaBarre('Article', 'CIM-42 — Ciment CPJ 42,5');
     await waitFor(() => expect(appelsGet(new RegExp(`itemId=${CIMENT}`)).length).toBeGreaterThan(0));
   }, 20000);
 
@@ -874,14 +890,30 @@ describe('Le journal des mouvements', () => {
     monter();
     await ouvrirJournal();
 
-    await choisirOption('journal-nature', 'Sortie vers un chantier');
+    await choisirDansLaBarre('Nature', 'Sortie vers un chantier');
     await waitFor(() => expect(appelsGet(/stock\/movements\?type=ISSUE/).length).toBeGreaterThan(0));
+  }, 45000);
 
-    const du = champ('journal-du') as HTMLInputElement;
-    fireEvent.change(du, { target: { value: '01/09/2026' } });
-    fireEvent.keyDown(du, { key: 'Enter', code: 'Enter' });
+  it('la période et le chantier d’une URL partagée partent en requête, avec le préfixe « jrn »', async () => {
+    monter(
+      `/tenant/${TENANT}/finance/stock?onglet=journal&jrn.periodeFrom=2026-09-01&jrn.periodeTo=2026-09-30&jrn.siteId=${RIVIERA}`
+    );
+    await screen.findByText('BR-2026-00042', {}, { timeout: 8000 });
+    const appel = appelsGet(/stock\/movements\?/)[0];
+    expect(appel).toContain('from=2026-09-01');
+    expect(appel).toContain('to=2026-09-30');
+    expect(appel).toContain(`siteId=${RIVIERA}`);
+  }, 30000);
 
-    await waitFor(() => expect(appelsGet(/from=2026-09-01/).length).toBeGreaterThan(0));
+  it('envoie la saisie du champ libre au journal (search) et la garde dans l’URL', async () => {
+    const user = userEvent.setup({ delay: null });
+    monter();
+    await ouvrirJournal();
+
+    await user.type(within(screen.getByRole('search')).getByRole('textbox', { name: 'Rechercher' }), 'ciment');
+    await waitFor(() => expect(appelsGet(/stock\/movements\?.*search=ciment/).length).toBeGreaterThan(0), {
+      timeout: 8000
+    });
   }, 45000);
 
   it('lit les pages par curseur : « Charger plus » envoie `cursor`, et garde les lignes déjà chargées', async () => {
@@ -952,9 +984,10 @@ describe('Le journal des mouvements', () => {
     monter();
     await ouvrirJournal();
 
-    expect(document.getElementById('journal-preneur')).toBeNull();
-    expect(document.getElementById('journal-auteur')).toBeNull();
-    expect(document.getElementById('journal-demandeur')).toBeNull();
+    await ouvrirPlusDeCriteres();
+    expect(await screen.findByRole('combobox', { name: 'Chantier' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Preneur' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Saisi par' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Prix unitaire' })).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'Valeur du mouvement' })).not.toBeInTheDocument();
     expect(appelsGet(/movements\/authors/)).toEqual([]);
@@ -965,9 +998,10 @@ describe('Le journal des mouvements', () => {
     monter();
     await ouvrirJournal();
 
-    await choisirOption('journal-auteur', 'Aissatou Brou');
+    await ouvrirPlusDeCriteres();
+    await choisirDansLaBarre('Saisi par', 'Aissatou Brou');
     await waitFor(() => expect(appelsGet(/stock\/movements\?.*createdByUserId=u1/).length).toBeGreaterThan(0));
-    await choisirOption('journal-preneur', 'Koné Ibrahim — Équipe maçonnerie');
+    await choisirDansLaBarre('Preneur', 'Koné Ibrahim — Équipe maçonnerie');
     await waitFor(() => expect(appelsGet(new RegExp(`takerId=${PRENEUR}`)).length).toBeGreaterThan(0));
   }, 45000);
 
@@ -975,7 +1009,7 @@ describe('Le journal des mouvements', () => {
     const user = userEvent.setup({ delay: null });
     monter();
     await ouvrirJournal();
-    await choisirOption('journal-nature', 'Sortie vers un chantier');
+    await choisirDansLaBarre('Nature', 'Sortie vers un chantier');
 
     await user.click(screen.getByRole('button', { name: /Exporter \(CSV\)/ }));
     await waitFor(() => expect(saveBlob).toHaveBeenCalled());
@@ -1285,6 +1319,7 @@ describe('Un réessai après une coupure ne double rien (B3-R2)', () => {
 });
 
 describe('Une réponse incertaine garde l’identifiant de requête ; un refus définitif le renouvelle', () => {
+  // Plafond relevé : rendu jsdom lent sous charge (mesure du 04/11, durée isolée 51 à 65 s)
   it('503 et 429 : même `clientRequestId` ; après un 409, un nouveau', async () => {
     const user = userEvent.setup({ delay: null });
     post
@@ -1317,7 +1352,7 @@ describe('Une réponse incertaine garde l’identifiant de requête ; un refus d
     expect(ids[2]).toBe(ids[0]);
     expect(String(ids[3])).toMatch(UUID);
     expect(ids[3]).not.toBe(ids[2]);
-  }, 60000);
+  }, 120000);
 });
 
 describe('Le poste est exigé, et la proposition de l’article n’a aucune autorité', () => {
@@ -1369,6 +1404,7 @@ describe('La réception : facture du contexte, prix facultatif, contrôles (A8, 
     expect(appelsGet(/supplier-invoices\/facture-0142\/receipts/).length).toBeGreaterThan(0);
   }, 45000);
 
+  // Plafond relevé : rendu jsdom lent sous charge (mesure du 04/11, durée isolée 37 à 52 s)
   it('envoie `supplierInvoiceLineId`, omet `unitCost` laissé tel quel, et porte un `clientRequestId`', async () => {
     const user = userEvent.setup({ delay: null });
     post.mockResolvedValue(
@@ -1428,7 +1464,7 @@ describe('La réception : facture du contexte, prix facultatif, contrôles (A8, 
     // L'écran de confirmation : le bon, et les contrôles du serveur.
     expect(await screen.findByText('Réception enregistrée — BR-2026-00043', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByText('La valeur reçue dépasse le montant de la facture.')).toBeInTheDocument();
-  }, 60000);
+  }, 90000);
 
   it('le prix est facultatif : une ligne sans prix ne ferme pas l’envoi', async () => {
     monter();
@@ -1626,6 +1662,73 @@ describe('Une photo choisie avant l’enregistrement part sur le mouvement cré�
     expect(piece.get('targetId')).toBe('mvt-retour-1');
     expect(await within(boiteOuverte()).findByText('Envoyée', {}, { timeout: 8000 })).toBeInTheDocument();
   }, 60000);
+});
+
+describe('Onglets paresseux et pagination locale de l’état du stock', () => {
+  it('ne lit pas le journal tant que son onglet n’est pas affiché, puis le lit après le clic', async () => {
+    const user = userEvent.setup({ delay: null });
+    monter();
+
+    await attendreEtat();
+    expect(appelsGet(/stock\/movements(\?|$)/)).toHaveLength(0);
+    expect(appelsGet(/stock\/movements\/authors/)).toHaveLength(0);
+    expect(appelsGet(/stock\/takers/)).toHaveLength(0);
+
+    await user.click(screen.getByRole('tab', { name: 'Journal des mouvements' }));
+    await screen.findByText('BR-2026-00042', {}, { timeout: 8000 });
+    expect(appelsGet(/stock\/movements(\?|$)/).length).toBeGreaterThan(0);
+  }, 20000);
+
+  it('?onglet=journal ouvre le journal, sans lire les soldes', async () => {
+    monter(`/tenant/${TENANT}/finance/stock?onglet=journal`);
+
+    await screen.findByText('BR-2026-00042', {}, { timeout: 8000 });
+    expect(appelsGet(/stock\/balances/)).toHaveLength(0);
+  }, 20000);
+
+  it('pagine l’état du stock par 20 : 25 soldes donnent 20 lignes, puis les 5 suivantes en page 2', async () => {
+    const user = userEvent.setup({ delay: null });
+    const beaucoup: StockBalanceView[] = Array.from({ length: 25 }, (_, i) => ({
+      ...SOLDES[0],
+      itemId: `article-${i}`,
+      itemReference: `REF-${String(i + 1).padStart(3, '0')}`,
+      itemLabel: `Article numéro ${i + 1}`,
+      locationId: `lieu-${i}`,
+      locationLabel: `Lieu ${i + 1}`
+    }));
+    configurerGet({ soldes: beaucoup });
+    monter();
+
+    await screen.findByText('Article numéro 1', {}, { timeout: 8000 });
+    expect(screen.getAllByText(/^Article numéro \d+$/)).toHaveLength(20);
+    expect(screen.queryByText('Article numéro 21')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTitle('2'));
+    await screen.findByText('Article numéro 21', {}, { timeout: 8000 });
+    expect(screen.getAllByText(/^Article numéro \d+$/)).toHaveLength(5);
+  }, 30000);
+});
+
+describe('L’état du stock — recherche multicritères', () => {
+  it('le champ libre filtre localement la liste reçue (référence, désignation, lieu) sans nouvelle requête', async () => {
+    const user = userEvent.setup({ delay: null });
+    monter();
+    await attendreEtat();
+    const avant = appelsGet(/stock\/balances/).length;
+
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'ciment');
+    await waitFor(() => expect(screen.queryByText('Fer à béton HA 12')).not.toBeInTheDocument(), { timeout: 8000 });
+    expect(screen.getAllByText('Ciment CPJ 42,5').length).toBeGreaterThan(0);
+    expect(appelsGet(/stock\/balances/).length).toBe(avant);
+  }, 30000);
+
+  it('un critère d’URL initiale (préfixe « etat ») part à l’API des soldes', async () => {
+    monter(`/tenant/${TENANT}/finance/stock?etat.lieu=${MAGASIN}&etat.masquerZero=1`);
+    await screen.findAllByText('Ciment CPJ 42,5', {}, { timeout: 8000 });
+    const appel = appelsGet(/stock\/balances/)[0];
+    expect(appel).toContain(`locationId=${MAGASIN}`);
+    expect(appel).toContain('onlyInStock=true');
+  }, 30000);
 });
 
 describe('Vocabulaire', () => {

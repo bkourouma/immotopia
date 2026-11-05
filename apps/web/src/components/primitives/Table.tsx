@@ -5,6 +5,9 @@ import type { AnyObject } from 'antd/es/_util/type';
 import { ExportMenu, type ExportFetchAllResult } from './ExportMenu';
 import { resolveExportColumns } from '../../utils/table-export/columns';
 import { t } from '../../i18n/t';
+import type { ListSearchBinding } from '../../utils/list-search/types';
+import { ListSearch } from './ListSearch';
+import { StateBlock } from './StateBlock';
 
 /**
  * `Table` — le `Table` d'Ant Design, avec le bouton « Exporter » en plus.
@@ -25,6 +28,9 @@ import { t } from '../../i18n/t';
  * `exportable={false}` retire le bouton — par exemple pour un sous-tableau
  * d'une ligne dépliée, ou un tableau d'aperçu.
  *
+ * Avec `search`, la barre `<ListSearch>` se pose au-dessus (voir la prop) et le
+ * bouton « Exporter » s'y loge.
+ *
  * Limite : la `ref` d'AntD n'est pas relayée.
  */
 
@@ -39,13 +45,40 @@ export interface ExportableTableProps<T extends AnyObject = AnyObject> extends T
   exportFetchAll?: () => Promise<ExportFetchAllResult<T>>;
   /** `true` impose le PDF, `false` le retire (défaut : jusqu'à 12 colonnes). */
   exportPdf?: boolean;
+  /**
+   * Recherche multicritères (`useListSearch(...).searchProps`, ou celui de
+   * `useLocalListSearch`). La barre `<ListSearch>` se pose au-dessus du
+   * tableau, même vide ; le bouton « Exporter » s'y loge. Le compteur vient de
+   * `search.resultCount`, sinon de `pagination.total`, sinon de
+   * `dataSource.length`. Un tableau vide sous des critères actifs affiche
+   * « Aucun résultat » et « Effacer les critères », sauf si l'écran fournit
+   * son `locale.emptyText`.
+   */
+  search?: ListSearchBinding;
 }
 
 function TableImpl<T extends AnyObject = AnyObject>(props: ExportableTableProps<T>): React.ReactElement {
-  const { exportable = true, exportFilename, exportTitle, exportFetchAll, exportPdf, ...tableProps } = props;
+  const { exportable = true, exportFilename, exportTitle, exportFetchAll, exportPdf, search, ...tableProps } = props;
   const rows = (tableProps.dataSource ?? []) as readonly T[];
   const childrenColumnName = tableProps.expandable?.childrenColumnName ?? 'children';
   const hasColumns = React.useMemo(() => resolveExportColumns(tableProps.columns).length > 0, [tableProps.columns]);
+  // Recadrage d'une page hors bornes quand la recherche est active (voir DataView).
+  const searchPagination = search && typeof tableProps.pagination === 'object' ? tableProps.pagination : null;
+  const pgTotal = searchPagination?.total;
+  const pgCurrent = searchPagination?.current;
+  const pgSize = searchPagination?.pageSize;
+  const pgOnChange = searchPagination?.onChange;
+  const pgLastPage =
+    typeof pgTotal === 'number' && pgTotal > 0 && typeof pgSize === 'number' && pgSize > 0
+      ? Math.ceil(pgTotal / pgSize)
+      : 0;
+  const pgOutOfRange = pgLastPage > 0 && typeof pgCurrent === 'number' && pgCurrent > pgLastPage;
+  React.useEffect(() => {
+    if (pgOutOfRange) pgOnChange?.(pgLastPage, pgSize as number);
+    // `onChange` est volontairement hors des dépendances : l'écran le recrée à chaque rendu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pgOutOfRange, pgLastPage, pgSize]);
+
   const showExport = exportable && rows.length > 0 && hasColumns;
   const label =
     exportFilename ??
@@ -53,22 +86,65 @@ function TableImpl<T extends AnyObject = AnyObject>(props: ExportableTableProps<
     ((tableProps as Record<string, unknown>)['aria-label'] as string | undefined) ??
     t('Export');
 
+  const exportMenu = showExport ? (
+    <ExportMenu<T>
+      columns={tableProps.columns}
+      rows={rows}
+      fetchAll={exportFetchAll}
+      filename={label}
+      title={exportTitle ?? label}
+      pdf={exportPdf}
+      childrenColumnName={childrenColumnName}
+    />
+  ) : null;
+
+  if (!search) {
+    return (
+      <>
+        {exportMenu && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-2)' }}>
+            {exportMenu}
+          </div>
+        )}
+        <AntTable<T> {...tableProps} />
+      </>
+    );
+  }
+
+  const pagination = tableProps.pagination;
+  const resultCount =
+    search.resultCount ??
+    (pagination && typeof pagination === 'object' && typeof pagination.total === 'number'
+      ? pagination.total
+      : rows.length);
+
+  // Aucun résultat sous des critères actifs : un état qui propose d'en sortir,
+  // sauf si l'écran a fourni le sien. Pas pendant un chargement : la liste n'est
+  // pas encore connue, et le bouton serait recouvert par l'indicateur d'AntD.
+  const loadingProp = tableProps.loading;
+  const isLoading =
+    typeof loadingProp === 'object' && loadingProp !== null ? loadingProp.spinning !== false : Boolean(loadingProp);
+  const showNoResults =
+    rows.length === 0 && !pgOutOfRange && search.activeCount > 0 && tableProps.locale?.emptyText === undefined;
+  const locale = showNoResults
+    ? {
+        ...tableProps.locale,
+        emptyText: isLoading ? (
+          // Emplacement neutre sous l'indicateur : ni « aucune donnée » ni « aucun résultat ».
+          <div style={{ minHeight: 120 }} aria-hidden="true" />
+        ) : (
+          <StateBlock
+            variant="no-results"
+            actions={[{ label: t('Effacer les critères'), onClick: search.onClear, primary: true }]}
+          />
+        )
+      }
+    : tableProps.locale;
+
   return (
     <>
-      {showExport && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-2)' }}>
-          <ExportMenu<T>
-            columns={tableProps.columns}
-            rows={rows}
-            fetchAll={exportFetchAll}
-            filename={label}
-            title={exportTitle ?? label}
-            pdf={exportPdf}
-            childrenColumnName={childrenColumnName}
-          />
-        </div>
-      )}
-      <AntTable<T> {...tableProps} />
+      <ListSearch {...search} resultCount={resultCount} extra={exportMenu} />
+      <AntTable<T> {...tableProps} locale={locale} />
     </>
   );
 }

@@ -4,7 +4,6 @@ import { App, Alert, Button, Card, Space, Tag, Typography } from 'antd';
 import { OwnerStatementGenerator } from '../../../components/patrimoine/OwnerStatementGenerator';
 import {
   createOwnerStatement,
-  listOwnerStatements,
   recomputeOwnerStatement,
   sendOwnerStatement
 } from '../../../services/patrimoine-service';
@@ -13,6 +12,7 @@ import { MoneyValue, Table } from '../../../components/primitives';
 import { listContacts } from '../../../services/crm-service';
 import { listProperties } from '../../../services/property-service';
 import type { OwnerStatement } from '../../../types/patrimoine-types';
+import { useOwnerStatementsList } from './useOwnerStatementsList';
 import { useAuth } from '../../../hooks/useAuth';
 import { useOwnAssetsOnly } from '../../../hooks/useMenuAccess';
 import { t } from '../../../i18n/t';
@@ -57,13 +57,13 @@ export const OwnerStatementsPage: React.FC = () => {
   const { tenantMembership } = useAuth();
   const effectiveTenantId = tenantId || tenantMembership?.tenantId;
   const ownAssetsOnly = useOwnAssetsOnly(effectiveTenantId, true);
+  const list = useOwnerStatementsList(effectiveTenantId);
 
   const [loading, setLoading] = useState(true);
   const [createLoading, setCreateLoading] = useState(false);
   const [sendLoadingId, setSendLoadingId] = useState<string | null>(null);
   const [recomputeLoadingId, setRecomputeLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [statements, setStatements] = useState<OwnerStatement[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [propertyOptions, setPropertyOptions] = useState<Array<{ value: string; label: string }>>([]);
 
@@ -72,12 +72,10 @@ export const OwnerStatementsPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [statementData, properties, contacts] = await Promise.all([
-        listOwnerStatements(effectiveTenantId),
+      const [properties, contacts] = await Promise.all([
         listProperties(effectiveTenantId, { page: 1, limit: 100 }),
         listContacts(effectiveTenantId, { page: 1, limit: 500 })
       ]);
-      setStatements(statementData);
       // Les titres ne sont pas uniques (plusieurs lots « Appartement F3 ») : la référence
       // et l'adresse permettent de reconnaître le bon bien. La recherche porte sur ce libellé.
       setPropertyOptions(
@@ -110,6 +108,7 @@ export const OwnerStatementsPage: React.FC = () => {
       await createOwnerStatement(effectiveTenantId, payload);
       message.success(t('Relevé généré'));
       await loadData();
+      void list.refetch();
     } catch (e: any) {
       message.error(statementApiErrorMessage(e, t('Échec de génération du relevé')));
     } finally {
@@ -128,6 +127,7 @@ export const OwnerStatementsPage: React.FC = () => {
         message.warning(sendReasonLabel(result.reason));
       }
       await loadData();
+      void list.refetch();
     } catch (e: any) {
       message.error(statementApiErrorMessage(e, t("Échec de l'envoi du relevé")));
     } finally {
@@ -142,6 +142,7 @@ export const OwnerStatementsPage: React.FC = () => {
       await recomputeOwnerStatement(effectiveTenantId, statementId);
       message.success(t('Relevé recalculé. Vérifiez-le avant de le renvoyer au propriétaire.'));
       await loadData();
+      void list.refetch();
     } catch (e: any) {
       message.error(statementApiErrorMessage(e, t('Échec du recalcul du relevé')));
     } finally {
@@ -149,9 +150,9 @@ export const OwnerStatementsPage: React.FC = () => {
     }
   };
 
-  const legacyCount = statements.filter(
-    statement => isLegacyStatement(statement) && statement.status !== 'PAID'
-  ).length;
+  // Toute l'agence, ancien calcul et non payé : compté par le serveur, hors critères et pagination.
+  const legacyCount = list.legacyUnpaidCount;
+  const listError = list.error ? t('Erreur de chargement des relevés') : null;
 
   if (ownAssetsOnly) {
     return (
@@ -176,7 +177,7 @@ export const OwnerStatementsPage: React.FC = () => {
           <Text type="secondary">{t('Génération, suivi et envoi des relevés propriétaires')}</Text>
         </div>
 
-        {error ? <Alert type="error" showIcon message={error} /> : null}
+        {error || listError ? <Alert type="error" showIcon message={error || listError} /> : null}
         {legacyCount > 0 ? (
           <Alert
             type="warning"
@@ -197,10 +198,14 @@ export const OwnerStatementsPage: React.FC = () => {
         <Card title={t('Historique des relevés')}>
           <Table
             exportFilename={t('Historique des relevés')}
+            exportFetchAll={list.exportFetchAll}
+            search={list.search.searchProps}
+            pagination={list.search.tablePagination(list.total)}
+            locale={list.search.isFiltered ? undefined : { emptyText: t('Aucun relevé de gérance pour le moment.') }}
             scroll={{ x: 'max-content' }}
-            loading={loading}
+            loading={loading || list.isFetching}
             rowKey="id"
-            dataSource={statements}
+            dataSource={list.statements}
             columns={[
               { title: t('Période'), dataIndex: 'period' },
               {

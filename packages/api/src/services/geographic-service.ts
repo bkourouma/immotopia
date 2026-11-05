@@ -1,5 +1,6 @@
 // Shared client: a dedicated `new PrismaClient()` here opened a second
 // connection pool outside the graceful-shutdown handlers in utils/database.
+import { escapeLike } from '../utils/like-escape';
 import { prisma } from '../utils/database';
 
 export interface GeographicLocation {
@@ -29,8 +30,8 @@ export async function searchLocations(query: string, limit: number = 50): Promis
     where: {
       isActive: true,
       OR: [
-        { name: { contains: searchTerm, mode: 'insensitive' } },
-        { nameFr: { contains: searchTerm, mode: 'insensitive' } }
+        { name: { contains: escapeLike(searchTerm), mode: 'insensitive' } },
+        { nameFr: { contains: escapeLike(searchTerm), mode: 'insensitive' } }
       ]
     },
     include: {

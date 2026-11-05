@@ -376,10 +376,14 @@ export function getCashVoucherPdfUrl(tenantId: string, voucherId: string): strin
 // File de validation
 // ---------------------------------------------------------------------------
 
-/** Les pièces en attente, toutes natures confondues, avec leur auteur. */
+/**
+ * Les pièces en attente, avec leur auteur. Sans filtre, toutes natures
+ * confondues ; `documentType` (déjà accepté par l'API) restreint à une nature.
+ * Une valeur vide n'est pas envoyée.
+ */
 export async function getValidationQueue(
   tenantId: string,
-  filters?: { createdByUserId?: string }
+  filters?: { createdByUserId?: string; documentType?: string }
 ): Promise<PendingDocument[]> {
   const response = await apiClient.get<ApiResponse<PendingDocument[]>>(
     `${base(tenantId)}/validation-queue${toQuery(filters)}`

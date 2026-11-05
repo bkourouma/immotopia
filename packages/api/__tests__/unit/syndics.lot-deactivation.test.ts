@@ -276,6 +276,7 @@ describe('Lots de la copropriete : profils locataires actuels', () => {
     await getSyndicateWithLotsAndStats('t1', 's1');
     const args = mockPrisma.syndicate.findFirst.mock.calls.at(-1)[0];
     const tenantProfiles = args.include.lots.include.tenantProfiles;
+    expect(args.include.chargeCalls).toBeUndefined();
     expect(tenantProfiles.where.isCurrent).toBe(true);
     expect(tenantProfiles.where.OR).toEqual([{ tenantUntil: null }, { tenantUntil: { gt: expect.any(Date) } }]);
     expect(tenantProfiles.select).toEqual(

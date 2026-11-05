@@ -105,6 +105,9 @@ export interface MandateListFilters {
   creditorId?: string;
   status?: MandateStatus;
   search?: string;
+  /** Période de signature (AAAA-MM-JJ, bornes incluses). */
+  signedFrom?: string;
+  signedTo?: string;
   page?: number;
   pageSize?: number;
 }
@@ -483,6 +486,11 @@ export interface SkippedMandateDto {
 export interface RemittanceListFilters {
   creditorId?: string;
   status?: RemittanceStatus;
+  /** Référence de la remise ou libellé du créancier. */
+  search?: string;
+  /** Date de prélèvement (AAAA-MM-JJ, bornes incluses). */
+  collectionFrom?: string;
+  collectionTo?: string;
   page?: number;
   pageSize?: number;
 }
@@ -704,7 +712,7 @@ export async function applyReturnFile(
 
 export async function listReturnImports(
   tenantId: string,
-  params: { page?: number; pageSize?: number } = {}
+  params: { page?: number; pageSize?: number; search?: string; from?: string; to?: string } = {}
 ): Promise<ReturnImportListResult> {
   const response = await apiClient.get(`${base(tenantId)}/returns`, { params });
   return response.data.data;

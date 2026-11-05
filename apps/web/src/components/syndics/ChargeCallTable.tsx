@@ -5,6 +5,8 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
 import { Table } from '../primitives';
+import type { ListSearchBinding } from '../../utils/list-search';
+import type { ExportFetchAllResult } from '../primitives/ExportMenu';
 import { ChargeCall, ChargeCallStatus } from '../../types/syndic-types';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
@@ -66,9 +68,24 @@ export function canOfferChargePaymentLink(item: ChargeCall): boolean {
   );
 }
 
+/** Pagination serveur : la page affichée, sa taille et le total des appels filtrés. */
+export interface ChargeCallTablePagination {
+  page: number;
+  limit: number;
+  total: number;
+  onChange: (page: number, limit: number) => void;
+}
+
 interface ChargeCallTableProps {
   items: ChargeCall[];
   loading?: boolean;
+  /**
+   * Pagination serveur. Absente : liste fournie en entier (appels d'un seul
+   * lot, par exemple), paginée localement.
+   */
+  pagination?: ChargeCallTablePagination;
+  /** Export de tout le jeu filtré (pas seulement la page affichée), en mode pagination serveur. */
+  exportFetchAll?: () => Promise<ExportFetchAllResult<ChargeCall>>;
   /**
    * Callback pour l'action « Enregistrer un paiement » (FR-005). Optionnel :
    * quand il n'est pas fourni, la colonne Actions ne s'affiche pas, pour que
@@ -97,18 +114,26 @@ interface ChargeCallTableProps {
    * (spec 047) : la colonne « Statut » y ajoute la pastille « Paiement déclaré ».
    */
   declaredPendingCallIds?: ReadonlySet<string>;
+  /**
+   * Recherche multicritères de la liste (`useListSearch(...).searchProps`) : la barre se pose au-dessus du
+   * tableau. Absente : liste fournie en entier, sans barre. Sous critère actif, le tableau vide propose d'effacer.
+   */
+  search?: ListSearchBinding;
 }
 
 export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
   items,
   loading = false,
+  pagination,
+  exportFetchAll,
   onRecordPayment,
   onDownloadNotice,
   onDownloadNoticeWord,
   funds,
   onAssignFund,
   onPaymentLink,
-  declaredPendingCallIds
+  declaredPendingCallIds,
+  search
 }) => {
   const fundNames = new Map((funds || []).map(fund => [fund.id, fund.name]));
   const columns: ColumnsType<ChargeCall> = [
@@ -236,8 +261,21 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
       columns={columns}
       dataSource={items}
       loading={loading}
-      pagination={{ pageSize: 10, hideOnSinglePage: true }}
-      locale={{ emptyText: t('Aucun appel de charges') }}
+      exportFetchAll={exportFetchAll}
+      pagination={
+        pagination
+          ? {
+              current: pagination.page,
+              pageSize: pagination.limit,
+              total: pagination.total,
+              showSizeChanger: true,
+              pageSizeOptions: [10, 20, 50, 100],
+              onChange: pagination.onChange
+            }
+          : { pageSize: 10, hideOnSinglePage: true }
+      }
+      search={search}
+      locale={search && search.activeCount > 0 ? undefined : { emptyText: t('Aucun appel de charges') }}
       scroll={{ x: 1200 }}
     />
   );

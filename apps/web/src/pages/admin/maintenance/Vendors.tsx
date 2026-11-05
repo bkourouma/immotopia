@@ -1,31 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  App,
-  Card,
-  Button,
-  Space,
-  Typography,
-  Input,
-  Tag,
-  Empty,
-  Spin,
-  Popconfirm,
-  Modal,
-  Form,
-  Select,
-  Pagination
-} from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
+import { App, Card, Button, Space, Typography, Tag, Spin, Popconfirm, Modal, Form } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { Table } from '../../../components/primitives';
 import { collectAllPages } from '../../../utils/table-export/collect';
 import { vendorMaintenanceService } from '../../../services/maintenance-service';
 import { useAuth } from '../../../hooks/useAuth';
+import { useListSearch } from '../../../hooks/useListSearch';
 import { t } from '../../../i18n/t';
 
 const { Title } = Typography;
-const { Option } = Select;
-const { Search } = Input;
 
 interface Vendor {
   id: string;
@@ -47,57 +31,70 @@ export const Vendors: React.FC = () => {
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isActiveFilter, setIsActiveFilter] = useState<boolean | undefined>(undefined);
   const [showForm, setShowForm] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0
+  const [total, setTotal] = useState(0);
+  // Premier chargement terminé : le spinner plein écran ne remplace plus la page ensuite
+  // (la barre de recherche garde son focus, même quand une recherche ne donne rien).
+  const [loaded, setLoaded] = useState(false);
+
+  // Recherche multicritères portée par l'URL (?q=…&active=1&page=2).
+  const search = useListSearch({
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Nom, spécialité, e-mail ou téléphone…')
+      },
+      {
+        key: 'active',
+        type: 'boolean',
+        label: t('Statut'),
+        primary: true,
+        tristate: true,
+        trueLabel: t('Actifs'),
+        falseLabel: t('Inactifs'),
+        api: 'isActive'
+      }
+    ]
   });
+  const paramsRef = useRef(search.apiParams);
+  paramsRef.current = search.apiParams;
+  const paramsKey = JSON.stringify(search.apiParams);
 
   useEffect(() => {
     if (effectiveTenantId) {
       loadVendors();
     }
-  }, [effectiveTenantId, pagination.page, searchTerm, isActiveFilter]);
+  }, [effectiveTenantId, paramsKey]);
 
   const loadVendors = async () => {
     if (!effectiveTenantId) return;
 
     setLoading(true);
     try {
+      const { isActive, ...rest } = paramsRef.current as Record<string, string | number>;
       const response = await vendorMaintenanceService.listVendors(effectiveTenantId, {
-        search: searchTerm || undefined,
-        isActive: isActiveFilter,
-        page: pagination.page,
-        limit: pagination.limit
+        search: rest.search as string | undefined,
+        isActive: isActive === undefined ? undefined : isActive === 'true',
+        page: rest.page as number,
+        limit: rest.limit as number
       });
 
       if (response.success) {
         setVendors(response.data);
-        setPagination(response.pagination);
+        setTotal(response.pagination?.total ?? response.data.length);
       }
     } catch (error) {
       console.error('Error loading vendors:', error);
       message.error(t('Erreur lors du chargement des prestataires'));
     } finally {
       setLoading(false);
+      setLoaded(true);
     }
-  };
-
-  const handleSearch = (value: string) => {
-    setSearchTerm(value);
-    setPagination(prev => ({ ...prev, page: 1 }));
-  };
-
-  const handleFilterChange = (value: boolean | undefined) => {
-    setIsActiveFilter(value);
-    setPagination(prev => ({ ...prev, page: 1 }));
   };
 
   const handleCreate = () => {
@@ -151,10 +148,6 @@ export const Vendors: React.FC = () => {
     } catch (error: any) {
       message.error(error.response?.data?.message || t('Erreur lors de la suppression'));
     }
-  };
-
-  const handlePageChange = (page: number) => {
-    setPagination(prev => ({ ...prev, page }));
   };
 
   const columns = [
@@ -220,7 +213,7 @@ export const Vendors: React.FC = () => {
     }
   ];
 
-  if (loading && vendors.length === 0) {
+  if (!loaded) {
     return (
       <>
         <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
@@ -238,137 +231,32 @@ export const Vendors: React.FC = () => {
           </Button>
         </div>
 
-        <Card style={{ marginBottom: 24 }}>
-          <Space>
-            <Search
-              placeholder={t('Rechercher par nom ou spécialité...')}
-              allowClear
-              style={{ width: 300 }}
-              onSearch={handleSearch}
-              enterButton={<SearchOutlined />}
-            />
-            <Select
-              placeholder={t('Filtrer par statut')}
-              allowClear
-              style={{ width: 200 }}
-              value={isActiveFilter}
-              onChange={handleFilterChange}
-            >
-              <Option value={true}>{t('Actifs')}</Option>
-              <Option value={false}>{t('Inactifs')}</Option>
-            </Select>
-          </Space>
-        </Card>
-
         <Card>
-          {vendors.length === 0 ? (
-            <Empty description={t('Aucun prestataire')} />
-          ) : (
-            <>
-              <Table
-                exportFilename={t('Gestion des prestataires')}
-                exportFetchAll={() =>
-                  collectAllPages<Vendor>(async (page, limit) => {
-                    const reponse = await vendorMaintenanceService.listVendors(effectiveTenantId as string, {
-                      search: searchTerm || undefined,
-                      isActive: isActiveFilter,
-                      page,
-                      limit
-                    });
-                    return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
-                  })
-                }
-                scroll={{ x: 'max-content' }}
-                columns={columns}
-                dataSource={vendors}
-                rowKey="id"
-                pagination={false}
-                loading={loading}
-              />
-
-              {pagination.totalPages > 1 && (
-                <div style={{ textAlign: 'center', marginTop: 24 }}>
-                  <Pagination
-                    current={pagination.page}
-                    total={pagination.total}
-                    pageSize={pagination.limit}
-                    onChange={handlePageChange}
-                    showTotal={total => t('Total: {{total}} prestataires', { total: total })}
-                  />
-                </div>
-              )}
-            </>
-          )}
+          <Table
+            aria-label={t('Gestion des prestataires')}
+            search={search.searchProps}
+            exportFilename={t('Gestion des prestataires')}
+            exportFetchAll={() =>
+              collectAllPages<Vendor>(async (page, limit) => {
+                const { search: term, isActive } = search.filterParams as Record<string, string | undefined>;
+                const reponse = await vendorMaintenanceService.listVendors(effectiveTenantId as string, {
+                  search: term,
+                  isActive: isActive === undefined ? undefined : isActive === 'true',
+                  page,
+                  limit
+                });
+                return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
+              })
+            }
+            scroll={{ x: 'max-content' }}
+            columns={columns}
+            dataSource={vendors}
+            rowKey="id"
+            pagination={search.tablePagination(total)}
+            loading={loading}
+            locale={search.isFiltered ? undefined : { emptyText: t('Aucun prestataire') }}
+          />
         </Card>
-
-        <Modal
-          title={editingVendor ? t('Modifier le prestataire') : t('Nouveau prestataire')}
-          open={showForm}
-          onCancel={() => {
-            setShowForm(false);
-            form.resetFields();
-          }}
-          footer={null}
-          width={600}
-        >
-          <Form form={form} layout="vertical" onFinish={handleSubmit}>
-            <Form.Item
-              name="name"
-              label={t('Nom')}
-              rules={[
-                { required: true, message: t('Le nom est requis') },
-                { min: 2, message: t('Le nom doit contenir au moins 2 caractères') }
-              ]}
-            >
-              <Input placeholder={t('Nom du prestataire')} />
-            </Form.Item>
-
-            <Form.Item name="phone" label={t('Téléphone')}>
-              <Input placeholder={t('Numéro de téléphone')} />
-            </Form.Item>
-
-            <Form.Item name="email" label={t('Email')} rules={[{ type: 'email', message: t('Email invalide') }]}>
-              <Input placeholder={t('Adresse email')} />
-            </Form.Item>
-
-            <Form.Item name="address" label={t('Adresse')}>
-              <Input.TextArea rows={3} placeholder={t('Adresse complète')} />
-            </Form.Item>
-
-            <Form.Item name="specialties" label={t('Spécialités')}>
-              <Select
-                mode="tags"
-                placeholder={t('Ajouter des spécialités (ex: Plomberie, Électricité)')}
-                tokenSeparators={[',']}
-              />
-            </Form.Item>
-
-            {editingVendor && (
-              <Form.Item name="isActive" label={t('Statut')} initialValue={true}>
-                <Select>
-                  <Option value={true}>{t('Actif')}</Option>
-                  <Option value={false}>{t('Inactif')}</Option>
-                </Select>
-              </Form.Item>
-            )}
-
-            <Form.Item>
-              <Space>
-                <Button type="primary" htmlType="submit" loading={submitting}>
-                  {editingVendor ? t('Enregistrer') : t('Créer')}
-                </Button>
-                <Button
-                  onClick={() => {
-                    setShowForm(false);
-                    form.resetFields();
-                  }}
-                >
-                  {t('Annuler')}
-                </Button>
-              </Space>
-            </Form.Item>
-          </Form>
-        </Modal>
       </div>
     </>
   );

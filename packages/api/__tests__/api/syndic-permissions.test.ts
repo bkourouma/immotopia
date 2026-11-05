@@ -40,6 +40,7 @@ jest.mock('../../src/middleware/upload-middleware', () => ({
 
 // Tout contrôleur est remplacé par un handler qui répond 200 « reached ».
 jest.mock('../../src/controllers/syndic-controller', () => stubModule());
+jest.mock('../../src/controllers/syndic-accounting-read-controller', () => stubModule());
 jest.mock('../../src/controllers/owner-statements-controller', () => stubModule());
 jest.mock('../../src/controllers/syndic-fund-assignment-controller', () => stubModule());
 jest.mock('../../src/controllers/syndic-coowner-portal-controller', () => stubModule());

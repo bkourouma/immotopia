@@ -395,6 +395,49 @@ describe('fiabilité des valeurs', () => {
   });
 });
 
+describe('recherche dans l’historique des valeurs', () => {
+  const T = { timeout: 8000 };
+
+  it('filtre les valeurs en local sur la source, sans rappeler l’API', async () => {
+    const user = userEvent.setup();
+    listAssetValuations.mockResolvedValue([
+      valeur({ id: 'v1', source: 'Cabinet Kouassi' }),
+      valeur({ id: 'v2', source: 'Agence Plateau', method: 'MANUAL', reliability: 'LOW' })
+    ]);
+    monter();
+
+    await screen.findByText('Cabinet Kouassi', undefined, T);
+    await user.type(
+      within(screen.getByRole('search', { name: 'Rechercher dans les valeurs' })).getByPlaceholderText(/Notes, source/),
+      'plateau'
+    );
+
+    await waitFor(() => expect(screen.queryByText('Cabinet Kouassi')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('Agence Plateau')).toBeInTheDocument();
+    expect(listAssetValuations).toHaveBeenCalledTimes(1);
+  });
+
+  it('applique le critère de méthode d’une URL partagée sous le préfixe val', async () => {
+    listAssetValuations.mockResolvedValue([
+      valeur({ id: 'v1', source: 'Cabinet Kouassi' }),
+      valeur({ id: 'v2', source: 'Agence Plateau', method: 'MANUAL' })
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AntApp>
+          <MemoryRouter initialEntries={['/x?val.methode=MANUAL']}>
+            <AssetValuationsTab tenantId="agence-1" asset={ACTIF as never} />
+          </MemoryRouter>
+        </AntApp>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByText('Agence Plateau', undefined, T)).toBeInTheDocument();
+    expect(screen.queryByText('Cabinet Kouassi')).not.toBeInTheDocument();
+  });
+});
+
 describe('cohérence après enregistrement des informations et de la suggestion', () => {
   it('B2 : après « Compléter les informations », la suggestion est recalculée et l’avertissement disparaît', async () => {
     const user = userEvent.setup();

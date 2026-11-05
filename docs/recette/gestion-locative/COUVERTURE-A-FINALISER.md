@@ -9,8 +9,8 @@ Généré depuis les verdicts explicites de RESULTATS.md. Les retests par anomal
 ## Bloc 02
 
 - échoué historique (11) : GL-02-016, GL-02-031, GL-02-032, GL-02-034, GL-02-036, GL-02-039, GL-02-059, GL-02-060, GL-02-061, GL-02-062, GL-02-070.
+- bloqué (1) : GL-02-074.
 - à finaliser (4) : GL-02-027, GL-02-080, GL-02-096, GL-02-100.
-- sans verdict (1) : GL-02-074.
 
 ## Bloc 03
 
@@ -24,7 +24,6 @@ Généré depuis les verdicts explicites de RESULTATS.md. Les retests par anomal
 - bloqué (1) : GL-04-045.
 - à finaliser (16) : GL-04-079, GL-04-084, GL-04-089, GL-04-092, GL-04-093, GL-04-094, GL-04-095, GL-04-097, GL-04-101, GL-04-102, GL-04-107, GL-04-110, GL-04-113, GL-04-116, GL-04-117, GL-04-119.
 - non joué (23) : GL-04-003, GL-04-007, GL-04-008, GL-04-017, GL-04-021, GL-04-022, GL-04-024, GL-04-026, GL-04-029, GL-04-030, GL-04-040, GL-04-041, GL-04-042, GL-04-043, GL-04-044, GL-04-059, GL-04-060, GL-04-066, GL-04-069, GL-04-074, GL-04-098, GL-04-115, GL-04-123.
-- sans verdict (1) : GL-04-039.
 
 ## Bloc 05
 

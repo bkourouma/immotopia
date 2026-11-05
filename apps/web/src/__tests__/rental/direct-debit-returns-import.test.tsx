@@ -19,6 +19,10 @@ const listReturnImports = vi.fn();
 const previewReturnFile = vi.fn();
 const applyReturnFile = vi.fn();
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 vi.mock('../../services/direct-debit-service', () => ({
   listRemittances: (...a: unknown[]) => listRemittances(...a),
   listCreditors: (...a: unknown[]) => listCreditors(...a),

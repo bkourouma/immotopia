@@ -1,115 +1,49 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
 import { SyndicAccounting } from '../../pages/syndics/SyndicAccounting';
-import apiClient from '../../utils/api-client';
+import * as syndicService from '../../services/syndic-service';
 
 const { confirmSpy } = vi.hoisted(() => ({ confirmSpy: vi.fn() }));
 
-vi.mock('../../utils/api-client', () => ({
-  __esModule: true,
-  default: {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn()
-  }
+// Le mock du module couvre CHAQUE export utilisé par l'écran et ses onglets.
+vi.mock('../../services/syndic-service', () => ({
+  createAccountingEntry: vi.fn(),
+  createAccountingJournal: vi.fn(),
+  createChartOfAccount: vi.fn(),
+  getAccountLedger: vi.fn(),
+  getTrialBalance: vi.fn(),
+  listAccountingEntries: vi.fn(),
+  listAccountingJournals: vi.fn(),
+  listChartOfAccounts: vi.fn(),
+  loadSyndicChartTemplate: vi.fn(),
+  lockAccountingEntry: vi.fn()
 }));
-
-vi.mock('@ant-design/icons', async () => {
-  // Vitest resolves named imports against the keys of this object, so the mock
-  // must expose the real export names — a Proxy over {} declares none.
-  const actual = await vi.importActual<Record<string, unknown>>('@ant-design/icons');
-  const Icon = () => <span />;
-  return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
-});
 
 // Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
 vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
 
+// 992 px et plus : la barre de recherche s'affiche en ligne.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
+// Seul `App.useApp` est remplacé : la confirmation « Charger le plan » est capturée par `confirmSpy`.
 vi.mock('antd', async () => {
-  // importActual reaches the real module from inside a hoisted mock factory;
-  // a plain dynamic import here deadlocks the module graph.
-  const React = await vi.importActual<typeof import('react')>('react');
-  const passthrough =
-    (Tag: keyof JSX.IntrinsicElements = 'div') =>
-    ({ children, ...props }: any) =>
-      React.createElement(Tag, props, children);
-
-  const formInstance = {
-    validateFields: vi.fn(),
-    resetFields: vi.fn()
-  };
-
-  const FormComponent: any = passthrough('form');
-  FormComponent.useForm = () => [formInstance];
-  FormComponent.Item = passthrough();
-  FormComponent.List = ({ children }: any) =>
-    children([], {
-      add: vi.fn(),
-      remove: vi.fn()
-    });
-
-  const Table = ({ dataSource, columns }: any) => (
-    <div>
-      {(dataSource || []).map((row: any, index: number) => (
-        <div key={row.id || index}>
-          {(columns || []).map((column: any, colIndex: number) => {
-            const value = column.dataIndex ? row[column.dataIndex] : undefined;
-            const content = column.render ? column.render(value, row, index) : value;
-            return <div key={colIndex}>{content}</div>;
-          })}
-        </div>
-      ))}
-    </div>
-  );
-
-  const antdMock: Record<string, unknown> = {
-    Alert: passthrough(),
-    Button: passthrough('button'),
-    Card: passthrough(),
-    Col: passthrough(),
-    Form: FormComponent,
-    Input: Object.assign(passthrough('input'), { TextArea: passthrough('textarea') }),
-    InputNumber: passthrough('input'),
-    Modal: passthrough(),
-    Row: passthrough(),
-    Select: passthrough('select'),
-    Space: passthrough(),
-    Spin: passthrough(),
-    Statistic: ({ title, value }: any) => (
-      <div>
-        {title}:{value}
-      </div>
-    ),
-    Table,
-    Tag: passthrough('span'),
-    Typography: {
-      Title: passthrough('h1'),
-      Paragraph: passthrough('p'),
-      Text: passthrough('span')
-    },
-    message: {
-      success: vi.fn(),
-      error: vi.fn()
-    }
-  };
+  const actual = await vi.importActual<typeof import('antd')>('antd');
   const appApi = {
-    message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
+    message: { success() {}, error() {}, warning() {}, info() {}, loading() {} },
     modal: { confirm: confirmSpy, info() {}, warning() {}, error() {}, success() {} },
     notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
   };
-  return {
-    ...antdMock,
-    App: { useApp: () => appApi },
-    // Aucun palier actif : le rendu par defaut des tests est le mobile.
-    Grid: { useBreakpoint: () => ({}) }
-  };
+  return { ...actual, App: Object.assign((() => null) as unknown as typeof actual.App, { useApp: () => appApi }) };
 });
 
-const mockApiClient = apiClient as any;
+const svc = syndicService as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 const authValue: AuthContextType = {
   user: {
@@ -146,52 +80,215 @@ const authValue: AuthContextType = {
   switchTenant: () => undefined
 };
 
-function renderWithRoute() {
+function Url() {
+  return <div data-testid="url">{decodeURIComponent(useLocation().search)}</div>;
+}
+
+const T = { timeout: 8000 };
+
+function renderWithRoute(search = '') {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
-    <AuthContext.Provider value={authValue}>
-      <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/comptabilite']}>
-        <Routes>
-          <Route path="/tenant/:tenantId/syndics/:syndicId/comptabilite" element={<SyndicAccounting />} />
-        </Routes>
-      </MemoryRouter>
-    </AuthContext.Provider>
+    <QueryClientProvider client={queryClient}>
+      <AuthContext.Provider value={authValue}>
+        <MemoryRouter initialEntries={[`/tenant/tenant-1/syndics/syndic-1/comptabilite${search}`]}>
+          <Url />
+          <Routes>
+            <Route path="/tenant/:tenantId/syndics/:syndicId/comptabilite" element={<SyndicAccounting />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>
+    </QueryClientProvider>
   );
 }
+
+const plan = [
+  {
+    id: 'acc-1',
+    accountNumber: '401',
+    accountName: 'Fournisseurs',
+    accountClass: 4,
+    accountType: 'LIABILITY',
+    isActive: true
+  },
+  {
+    id: 'acc-2',
+    accountNumber: '411',
+    accountName: 'Copropriétaires',
+    accountClass: 4,
+    accountType: 'ASSET',
+    isActive: true
+  }
+];
+
+const pagination = (total = 1) => ({ page: 1, limit: 20, total, totalPages: Math.max(1, Math.ceil(total / 20)) });
 
 describe('Syndics accounting page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockApiClient.get.mockImplementation((url: string) => {
-      if (url.endsWith('/comptabilite/comptes')) {
-        return Promise.resolve({
-          data: {
-            success: true,
-            data: [
-              {
-                id: 'acc-1',
-                accountNumber: '401',
-                accountName: 'Fournisseurs',
-                accountClass: 4,
-                accountType: 'LIABILITY',
-                isActive: true
-              }
-            ]
-          }
-        });
+    svc.listChartOfAccounts.mockResolvedValue(plan);
+    svc.listAccountingJournals.mockResolvedValue([
+      {
+        id: 'journal-1',
+        code: 'JG',
+        label: 'Journal general',
+        fiscalYear: 2026,
+        journalType: 'GENERAL',
+        createdAt: '2026-01-01T00:00:00.000Z'
       }
-      if (url.endsWith('/comptabilite/journaux')) {
-        return Promise.resolve({
-          data: {
-            success: true,
-            data: [{ id: 'journal-1', code: 'JG', label: 'Journal general', fiscalYear: 2026 }]
-          }
-        });
-      }
-      if (url.endsWith('/comptabilite/ecritures')) {
-        return Promise.resolve({
-          data: {
-            success: true,
-            data: [
+    ]);
+    svc.listAccountingEntries.mockResolvedValue({
+      items: [
+        {
+          id: 'entry-1',
+          journalId: 'journal-1',
+          entryDate: '2026-03-01T00:00:00.000Z',
+          reference: 'JE-001',
+          description: 'Ecriture test',
+          sourceType: 'MANUAL',
+          isLocked: false,
+          journal: { code: 'JG' },
+          lines: [{ id: 'l1', label: 'Ligne détail secrète', debit: 10, credit: 0 }]
+        }
+      ],
+      pagination: pagination(45)
+    });
+    svc.getTrialBalance.mockResolvedValue({
+      items: [
+        {
+          accountId: 'acc-1',
+          accountNumber: '401',
+          accountName: 'Fournisseurs',
+          accountClass: 4,
+          totalDebit: 10000,
+          totalCredit: 10000,
+          balance: 0
+        }
+      ],
+      totals: { totalDebit: 10000, totalCredit: 10000, isBalanced: true },
+      filteredTotals: { totalDebit: 10000, totalCredit: 10000 }
+    });
+    svc.getAccountLedger.mockResolvedValue({
+      account: {
+        id: 'acc-1',
+        accountNumber: '401',
+        accountName: 'Fournisseurs',
+        accountClass: 4,
+        accountType: 'LIABILITY'
+      },
+      summary: {
+        openingBalance: 111000,
+        periodDebit: 222000,
+        periodCredit: 333000,
+        closingBalance: 444000,
+        lineCount: 1
+      },
+      items: [
+        {
+          id: 'line-1',
+          entryId: 'entry-1',
+          entryDate: '2026-03-01T00:00:00.000Z',
+          reference: 'JE-001',
+          description: 'Ecriture test',
+          journalCode: 'JG',
+          label: 'Libellé grand livre',
+          lotId: null,
+          lotNumber: 'A1',
+          debit: 10000,
+          credit: 0,
+          runningBalance: 555000
+        }
+      ],
+      pagination: { page: 1, limit: 50, total: 1, totalPages: 1 }
+    });
+  });
+
+  it("affiche l'onglet Écritures par défaut sans charger la balance ni le grand livre", async () => {
+    renderWithRoute();
+    expect(await screen.findByText('Comptabilité syndic', undefined, T)).toBeTruthy();
+    expect(await screen.findByText('JE-001', undefined, T)).toBeTruthy();
+
+    // Aucun critère actif : ni période ni recherche envoyées (tout l'historique, comme avant la phase 1).
+    expect(svc.listAccountingEntries).toHaveBeenCalledWith('tenant-1', 'syndic-1', { page: 1, limit: 20 });
+    expect(svc.getTrialBalance).not.toHaveBeenCalled();
+    expect(svc.getAccountLedger).not.toHaveBeenCalled();
+    // Lignes d'écriture repliées par défaut : le détail n'est pas rendu.
+    expect(screen.queryByText('Ligne détail secrète')).toBeNull();
+    expect(screen.getByRole('search', { name: 'Rechercher dans les écritures' })).toBeTruthy();
+  });
+
+  it('locks an entry', async () => {
+    svc.lockAccountingEntry.mockResolvedValue({ id: 'entry-1', isLocked: true });
+
+    renderWithRoute();
+    fireEvent.click(await screen.findByText('Verrouiller', undefined, T));
+
+    await waitFor(() => {
+      expect(svc.lockAccountingEntry).toHaveBeenCalledWith('tenant-1', 'syndic-1', 'entry-1');
+    }, T);
+  });
+
+  it('demande la page suivante au serveur et la met dans l’URL', async () => {
+    const user = userEvent.setup();
+    renderWithRoute();
+    await screen.findByText('JE-001', undefined, T);
+    await user.click(screen.getByTitle('2'));
+
+    await waitFor(
+      () => expect(svc.listAccountingEntries).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', { page: 2, limit: 20 }),
+      T
+    );
+    expect(screen.getByTestId('url').textContent).toContain('ecr.page=2');
+  });
+
+  it('envoie la saisie de recherche des écritures au serveur après le debounce et la met dans l’URL', async () => {
+    const user = userEvent.setup();
+    renderWithRoute();
+    await screen.findByText('JE-001', undefined, T);
+    await user.type(screen.getByPlaceholderText('Référence, description, libellé de ligne…'), 'loyer');
+
+    await waitFor(
+      () =>
+        expect(svc.listAccountingEntries).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', {
+          search: 'loyer',
+          page: 1,
+          limit: 20
+        }),
+      T
+    );
+    expect(screen.getByTestId('url').textContent).toContain('ecr.q=loyer');
+  });
+
+  it("applique les critères d'une URL partagée aux écritures (journal, compte, statut, période)", async () => {
+    renderWithRoute(
+      '?ecr.journal=journal-1&ecr.account=acc-2&ecr.status=locked&ecr.periodFrom=2026-01-01&ecr.periodTo=2026-03-31'
+    );
+    await screen.findByText('JE-001', undefined, T);
+
+    await waitFor(
+      () =>
+        expect(svc.listAccountingEntries).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', {
+          journalId: 'journal-1',
+          accountId: 'acc-2',
+          status: 'locked',
+          from: '2026-01-01',
+          to: '2026-03-31',
+          page: 1,
+          limit: 20
+        }),
+      T
+    );
+    // Le libellé du compte venu de l'URL est retrouvé dans le plan : pas d'identifiant brut dans les puces.
+    expect(await screen.findAllByText(/411 - Copropriétaires/, undefined, T)).not.toHaveLength(0);
+  });
+
+  it('efface les critères des écritures et revient à la liste complète', async () => {
+    const user = userEvent.setup();
+    svc.listAccountingEntries.mockImplementation(async (_t: string, _s: string, params: Record<string, unknown>) =>
+      params.search
+        ? { items: [], pagination: pagination(0) }
+        : {
+            items: [
               {
                 id: 'entry-1',
                 journalId: 'journal-1',
@@ -200,139 +297,257 @@ describe('Syndics accounting page', () => {
                 description: 'Ecriture test',
                 sourceType: 'MANUAL',
                 isLocked: false,
-                journal: { code: 'JG' }
+                journal: { code: 'JG' },
+                lines: []
               }
-            ]
+            ],
+            pagination: pagination(1)
           }
-        });
-      }
-      if (url.endsWith('/comptabilite/balance')) {
-        return Promise.resolve({
-          data: {
-            success: true,
-            data: {
-              items: [
-                {
-                  accountId: 'acc-1',
-                  accountNumber: '401',
-                  accountName: 'Fournisseurs',
-                  totalDebit: 10000,
-                  totalCredit: 10000,
-                  balance: 0
-                }
-              ],
-              totals: { totalDebit: 10000, totalCredit: 10000, isBalanced: true }
-            }
-          }
-        });
-      }
-      if (url.endsWith('/comptabilite/grand-livre')) {
-        return Promise.resolve({
-          data: {
-            success: true,
-            data: [
-              {
-                id: 'line-1',
-                debit: 10000,
-                credit: 0,
-                account: { accountNumber: '401' },
-                entry: { reference: 'JE-001', entryDate: '2026-03-01T00:00:00.000Z' }
-              }
-            ]
-          }
-        });
-      }
-      return Promise.reject(new Error(`Unhandled GET ${url}`));
-    });
+    );
+    renderWithRoute('?ecr.q=zzz');
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', undefined, T)).toBeTruthy();
+    const boutons = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(boutons[boutons.length - 1]);
+
+    expect(await screen.findByText('JE-001', undefined, T)).toBeTruthy();
+    expect(svc.listAccountingEntries).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', { page: 1, limit: 20 });
+    expect(screen.getByTestId('url').textContent).not.toContain('ecr.q');
   });
 
-  it('renders accounting dashboard', async () => {
+  it('invite à choisir un compte dans le grand livre, sans requête', async () => {
+    const user = userEvent.setup();
     renderWithRoute();
-    expect(await screen.findByText('Comptabilité syndic')).toBeTruthy();
-    expect(await screen.findByText('401 - Fournisseurs')).toBeTruthy();
+    await screen.findByText('JE-001', undefined, T);
+    await user.click(screen.getByRole('tab', { name: 'Grand livre' }));
+
+    expect(await screen.findByText('Choisissez un compte pour afficher son grand livre.', undefined, T)).toBeTruthy();
+    expect(svc.getAccountLedger).not.toHaveBeenCalled();
+    // L'URL repart propre : seul l'onglet est nommé.
+    expect(screen.getByTestId('url').textContent).toBe('?tab=grand-livre');
   });
 
-  it('locks an entry', async () => {
-    mockApiClient.patch.mockResolvedValue({
-      data: {
-        success: true,
-        data: { id: 'entry-1', isLocked: true }
+  it("charge le grand livre du compte de l'URL avec sa synthèse et le solde progressif", async () => {
+    renderWithRoute('?tab=grand-livre&accountId=acc-1');
+
+    expect(await screen.findByText('Libellé grand livre', undefined, T)).toBeTruthy();
+    expect(svc.getAccountLedger).toHaveBeenCalledWith('tenant-1', 'syndic-1', {
+      accountId: 'acc-1',
+      page: 1,
+      limit: 50
+    });
+    expect(screen.getByText("Solde d'ouverture")).toBeTruthy();
+    expect(screen.getByText(/111\D*000/)).toBeTruthy();
+    expect(screen.getByText(/444\D*000/)).toBeTruthy();
+    expect(screen.getByText(/555\D*000/)).toBeTruthy();
+    expect(svc.listAccountingEntries).not.toHaveBeenCalled();
+  });
+
+  it('envoie la recherche du grand livre au serveur avec le compte choisi', async () => {
+    const user = userEvent.setup();
+    renderWithRoute('?tab=grand-livre&accountId=acc-1');
+    await screen.findByText('Libellé grand livre', undefined, T);
+    await user.type(screen.getByPlaceholderText('Pièce, description, libellé de ligne…'), 'JE-001');
+
+    await waitFor(
+      () =>
+        expect(svc.getAccountLedger).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', {
+          accountId: 'acc-1',
+          search: 'JE-001',
+          page: 1,
+          limit: 50
+        }),
+      T
+    );
+    expect(screen.getByTestId('url').textContent).toContain('gl.q=JE-001');
+    expect(screen.getByTestId('url').textContent).toContain('accountId=acc-1');
+  });
+
+  it('ouvre le grand livre depuis une ligne de la balance en reportant la période', async () => {
+    const user = userEvent.setup();
+    renderWithRoute('?tab=balance&bal.periodFrom=2026-01-01&bal.periodTo=2026-06-30');
+
+    expect(await screen.findByText('401 - Fournisseurs', undefined, T)).toBeTruthy();
+    expect(screen.getByText('Balance équilibrée')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Grand livre' }));
+
+    await waitFor(
+      () =>
+        expect(svc.getAccountLedger).toHaveBeenCalledWith('tenant-1', 'syndic-1', {
+          accountId: 'acc-1',
+          from: '2026-01-01',
+          to: '2026-06-30',
+          page: 1,
+          limit: 50
+        }),
+      T
+    );
+    expect(await screen.findByText('Libellé grand livre', undefined, T)).toBeTruthy();
+  });
+
+  it('envoie les classes de la balance au serveur (liste séparée par des virgules) sans page ni limite', async () => {
+    renderWithRoute('?tab=balance&bal.class=4,5&bal.hideZero=1');
+    await screen.findByText('401 - Fournisseurs', undefined, T);
+
+    expect(svc.getTrialBalance).toHaveBeenCalledWith('tenant-1', 'syndic-1', {
+      accountClass: '4,5',
+      hideZero: 'true'
+    });
+    // Les puces portent le critère : « Classe 4 » et « Classe 5 ».
+    const barre = screen.getByRole('search', { name: 'Rechercher dans la balance' });
+    expect((await within(barre).findAllByText(/Classe 4/, undefined, T)).length).toBeGreaterThan(0);
+  });
+
+  it('envoie la recherche de la balance au serveur', async () => {
+    const user = userEvent.setup();
+    renderWithRoute('?tab=balance');
+    await screen.findByText('401 - Fournisseurs', undefined, T);
+    await user.type(screen.getByPlaceholderText('Numéro ou intitulé du compte…'), 'four');
+
+    await waitFor(
+      () => expect(svc.getTrialBalance).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', { search: 'four' }),
+      T
+    );
+    expect(screen.getByTestId('url').textContent).toContain('bal.q=four');
+  });
+
+  it('filtre le plan comptable en local, sans requête et sans tenir compte des accents', async () => {
+    const user = userEvent.setup();
+    renderWithRoute('?tab=plan');
+    expect(await screen.findByText('Fournisseurs', undefined, T)).toBeTruthy();
+    expect(screen.getByText('Copropriétaires')).toBeTruthy();
+    const appelsAvant = svc.listChartOfAccounts.mock.calls.length;
+
+    await user.type(screen.getByPlaceholderText('Numéro ou intitulé du compte…'), 'COPROPRIETAIRES');
+    await waitFor(() => expect(screen.queryByText('Fournisseurs')).toBeNull(), T);
+    expect(screen.getByText('Copropriétaires')).toBeTruthy();
+    expect(screen.getByTestId('url').textContent).toContain('plan.q=COPROPRIETAIRES');
+    expect(svc.listChartOfAccounts.mock.calls.length).toBe(appelsAvant);
+  });
+
+  it('filtre le plan comptable par classe depuis l’URL', async () => {
+    renderWithRoute('?tab=plan&plan.classe=1');
+    // Aucun compte de classe 1 dans le plan de test : « Aucun résultat » et compteur à zéro.
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', undefined, T)).toBeTruthy();
+    expect(screen.queryByText('Fournisseurs')).toBeNull();
+  });
+
+  it('filtre les journaux en local par code', async () => {
+    const user = userEvent.setup();
+    svc.listAccountingJournals.mockResolvedValue([
+      {
+        id: 'j1',
+        code: 'JG',
+        label: 'Journal général',
+        fiscalYear: 2026,
+        journalType: 'GENERAL',
+        createdAt: '2026-01-01T00:00:00.000Z'
+      },
+      {
+        id: 'j2',
+        code: 'BQ',
+        label: 'Banque principale',
+        fiscalYear: 2026,
+        journalType: 'BANK',
+        createdAt: '2026-01-01T00:00:00.000Z'
       }
-    });
+    ]);
+    renderWithRoute('?tab=journaux');
+    expect(await screen.findByText('Banque principale', undefined, T)).toBeTruthy();
 
-    renderWithRoute();
-    fireEvent.click(await screen.findByText('Verrouiller'));
-
-    await waitFor(() => {
-      expect(mockApiClient.patch).toHaveBeenCalledWith(
-        '/tenants/tenant-1/syndics/syndic-1/comptabilite/ecritures/entry-1/verrouiller',
-        { lock: true }
-      );
-    });
+    await user.type(screen.getByPlaceholderText('Code ou libellé du journal…'), 'bq');
+    await waitFor(() => expect(screen.queryByText('Journal général')).toBeNull(), T);
+    expect(screen.getByText('Banque principale')).toBeTruthy();
   });
-
-  const chartUrl = '/tenants/tenant-1/syndics/syndic-1/comptabilite/comptes/charger-plan-syscohada';
 
   it('loads the SYSCOHADA chart directly when the chart is empty', async () => {
-    const defaultGet = mockApiClient.get.getMockImplementation();
     let loaded = false;
-    mockApiClient.get.mockImplementation((url: string) => {
-      if (url.endsWith('/comptabilite/comptes')) {
-        return Promise.resolve({
-          data: {
-            success: true,
-            data: loaded
-              ? [
-                  {
-                    id: 'a',
-                    accountNumber: '101',
-                    accountName: 'Capital',
-                    accountClass: 1,
-                    accountType: 'EQUITY',
-                    isActive: true
-                  }
-                ]
-              : []
-          }
-        });
-      }
-      return defaultGet!(url);
-    });
-    mockApiClient.post.mockImplementation(() => {
+    svc.listChartOfAccounts.mockImplementation(() =>
+      Promise.resolve(
+        loaded
+          ? [
+              {
+                id: 'a',
+                accountNumber: '101',
+                accountName: 'Capital',
+                accountClass: 1,
+                accountType: 'EQUITY',
+                isActive: true
+              }
+            ]
+          : []
+      )
+    );
+    svc.loadSyndicChartTemplate.mockImplementation(() => {
       loaded = true;
-      return Promise.resolve({ data: { success: true, data: { created: 12, skipped: 0, total: 12 } } });
+      return Promise.resolve({ created: 12, skipped: 0, total: 12 });
     });
 
-    renderWithRoute();
-    expect(await screen.findByText(/plan comptable de cette copropriété est vide/)).toBeTruthy();
+    renderWithRoute('?tab=plan');
+    expect(await screen.findByText(/plan comptable de cette copropriété est vide/, undefined, T)).toBeTruthy();
     fireEvent.click(await screen.findByText('Charger le plan SYSCOHADA'));
 
-    await waitFor(() => expect(mockApiClient.post).toHaveBeenCalledWith(chartUrl));
-    await waitFor(() => expect(screen.queryByText(/plan comptable de cette copropriété est vide/)).toBeNull());
-    const accountCalls = mockApiClient.get.mock.calls.filter(([url]: [string]) =>
-      url.endsWith('/comptabilite/comptes')
-    );
-    expect(accountCalls.length).toBe(2);
+    await waitFor(() => expect(svc.loadSyndicChartTemplate).toHaveBeenCalledWith('tenant-1', 'syndic-1'), T);
+    await waitFor(() => expect(screen.queryByText(/plan comptable de cette copropriété est vide/)).toBeNull(), T);
+    // Chargement initial + rechargement après invalidation : aucune requête de recherche en plus.
+    const planCalls = svc.listChartOfAccounts.mock.calls.filter(call => !call[2]);
+    expect(planCalls.length).toBe(2);
     expect(confirmSpy).not.toHaveBeenCalled();
   });
 
   it('asks for confirmation before loading the chart when it is not empty', async () => {
-    mockApiClient.post.mockResolvedValue({ data: { success: true, data: { created: 3, skipped: 9, total: 12 } } });
+    svc.loadSyndicChartTemplate.mockResolvedValue({ created: 3, skipped: 9, total: 12 });
     confirmSpy.mockImplementation((opts: any) => opts.onOk);
 
     renderWithRoute();
-    await screen.findByText('401 - Fournisseurs');
-    fireEvent.click(await screen.findByText('Charger le plan SYSCOHADA'));
+    await screen.findByText('JE-001', undefined, T);
+    fireEvent.click(await screen.findByText('Charger le plan SYSCOHADA', undefined, T));
 
     expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(mockApiClient.post).not.toHaveBeenCalled();
+    expect(svc.loadSyndicChartTemplate).not.toHaveBeenCalled();
 
     await confirmSpy.mock.calls[0][0].onOk();
-    expect(mockApiClient.post).toHaveBeenCalledWith(chartUrl);
+    expect(svc.loadSyndicChartTemplate).toHaveBeenCalledWith('tenant-1', 'syndic-1');
   });
 
   it('renders account types through t()', async () => {
+    renderWithRoute('?tab=plan');
+    expect((await screen.findAllByText('Passif', undefined, T)).length).toBeGreaterThan(0);
+  });
+
+  it('lit le plan complet (comptes inactifs compris) dans l’onglet Plan comptable seulement', async () => {
+    svc.listChartOfAccounts.mockImplementation((_t: string, _s: string, query?: { onlyActive?: boolean }) =>
+      Promise.resolve(
+        query?.onlyActive === false
+          ? [
+              ...plan,
+              {
+                id: 'acc-9',
+                accountNumber: '999',
+                accountName: 'Ancien compte',
+                accountClass: 9,
+                accountType: 'EXPENSE',
+                isActive: false
+              }
+            ]
+          : plan
+      )
+    );
+    renderWithRoute('?tab=plan');
+    expect(await screen.findByText('Ancien compte', undefined, T)).toBeTruthy();
+    expect(screen.getByText('Inactif')).toBeTruthy();
+    expect(svc.listChartOfAccounts).toHaveBeenCalledWith('tenant-1', 'syndic-1', { onlyActive: false });
+  });
+
+  it('ne lit pas le plan complet hors de l’onglet Plan comptable', async () => {
     renderWithRoute();
-    expect(await screen.findByText('Passif')).toBeTruthy();
+    await screen.findByText('JE-001', undefined, T);
+    expect(svc.listChartOfAccounts).not.toHaveBeenCalledWith('tenant-1', 'syndic-1', { onlyActive: false });
+  });
+
+  it('affiche des libellés lisibles pour le statut des écritures et le type de journal', async () => {
+    renderWithRoute();
+    await screen.findByText('JE-001', undefined, T);
+    expect(screen.getByText('Ouverte')).toBeTruthy();
+    expect(screen.queryByText('OUVERTE')).toBeNull();
   });
 });

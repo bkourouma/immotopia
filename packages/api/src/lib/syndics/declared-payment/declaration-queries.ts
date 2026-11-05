@@ -18,6 +18,7 @@ import {
   type DeclarationForAlerts,
   type LineTargetInput
 } from './declaration-alerts';
+import { contactSearchOr, insensitiveContains } from '../payment-list-filters';
 import { getDeclaredPaymentRules } from './settings';
 import type {
   CoOwnerDeclaration,
@@ -406,9 +407,40 @@ export interface ListDeclarationsParams {
   to?: string;
   /** `true` : seulement les déclarations en attente depuis N jours ouvrés ou plus. */
   overdue?: boolean;
+  /** Déclarant, référence, téléphone du payeur ou numéro de lot (insensible à la casse). */
+  search?: string;
   page?: number;
   limit?: number;
   now?: Date;
+}
+
+/** Nombre maximal de contacts retenus par une recherche de déclarant. */
+const MAX_SEARCH_CONTACTS = 200;
+
+/**
+ * Critère de recherche libre. Le déclarant est un identifiant de contact sans
+ * clé étrangère : on retient d'abord les contacts DE L'AGENCE dont le nom ou
+ * l'e-mail correspond, puis les déclarations qui les désignent.
+ */
+async function declarationSearchWhere(
+  tenantId: string,
+  search: string | undefined
+): Promise<Prisma.SyndicPaymentDeclarationWhereInput | null> {
+  if (!search) return null;
+  const contains = insensitiveContains(search);
+  const contacts = await prisma.crmContact.findMany({
+    where: { tenantId, OR: contactSearchOr(search) },
+    select: { id: true },
+    take: MAX_SEARCH_CONTACTS
+  });
+  return {
+    OR: [
+      { transactionReference: contains },
+      { payerPhone: contains },
+      { lines: { some: { lot: { lotNumber: contains } } } },
+      ...(contacts.length > 0 ? [{ declaredByContactId: { in: contacts.map(contact => contact.id) } }] : [])
+    ]
+  };
 }
 
 /**
@@ -432,6 +464,7 @@ export async function listDeclarations(params: ListDeclarationsParams): Promise<
   const to = params.to ? dayBound(params.to, true, 'to') : null;
 
   await assertSyndicateOfTenant(prisma, tenantId, syndicateId);
+  const searchWhere = await declarationSearchWhere(tenantId, params.search);
 
   // Phase 1 : toutes les PENDING de la copropriété, colonnes minimales, drapeaux calculés.
   const rules = await getDeclaredPaymentRules(prisma, tenantId, syndicateId);
@@ -457,6 +490,18 @@ export async function listDeclarations(params: ListDeclarationsParams): Promise<
     suspectedDuplicate: flagged.filter(entry => entry.duplicate).length
   };
 
+  // Les `PENDING` retenues par la recherche (le tri et les drapeaux restent calculés sur toutes).
+  const searchedPending = searchWhere
+    ? new Set(
+        (
+          await prisma.syndicPaymentDeclaration.findMany({
+            where: { tenantId, syndicateId, status: 'PENDING', ...searchWhere },
+            select: { id: true }
+          })
+        ).map(row => row.id)
+      )
+    : null;
+
   const includePending = status === 'PENDING' || status === 'ALL';
   const otherStatuses: DeclarationStatus[] =
     params.overdue === true ? [] : status === 'ALL' ? NON_PENDING_STATUSES : status === 'PENDING' ? [] : [status];
@@ -466,6 +511,7 @@ export async function listDeclarations(params: ListDeclarationsParams): Promise<
     ? flagged
         .filter(({ declaration, overdue }) => {
           if (params.overdue === true && !overdue) return false;
+          if (searchedPending && !searchedPending.has(declaration.id)) return false;
           if (params.receivingNumberId && declaration.receivingNumberId !== params.receivingNumberId) return false;
           if (params.lotId && !declaration.lines.some(line => line.lotId === params.lotId)) return false;
           if (from && declaration.paidAt.getTime() < from.getTime()) return false;
@@ -487,6 +533,7 @@ export async function listDeclarations(params: ListDeclarationsParams): Promise<
     tenantId,
     syndicateId,
     status: { in: otherStatuses },
+    ...(searchWhere ? { AND: [searchWhere] } : {}),
     ...(params.receivingNumberId ? { receivingNumberId: params.receivingNumberId } : {}),
     ...(params.lotId ? { lines: { some: { lotId: params.lotId } } } : {}),
     ...(from || to ? { paidAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {})
@@ -783,7 +830,7 @@ export async function getCoOwnerDeclaration(
  */
 export async function listCoOwnerDeclarations(
   scope: CoOwnerPortalScope,
-  params: { status?: DeclarationStatus; page?: number; limit?: number }
+  params: { status?: DeclarationStatus; search?: string; page?: number; limit?: number }
 ): Promise<{ items: CoOwnerDeclaration[]; pagination: Pagination }> {
   const page = clampPage(params.page);
   const limit = clampLimit(params.limit, DEFAULT_PORTAL_LIMIT, MAX_PORTAL_LIMIT);
@@ -791,7 +838,20 @@ export async function listCoOwnerDeclarations(
 
   const where: Prisma.SyndicPaymentDeclarationWhereInput = {
     ...coOwnerScopeWhere(scope),
-    ...(params.status ? { status: params.status } : {})
+    ...(params.status ? { status: params.status } : {}),
+    // ET de plus : le périmètre (`coOwnerScopeWhere`) n'est jamais remplacé par la recherche.
+    ...(params.search
+      ? {
+          AND: [
+            {
+              OR: [
+                { transactionReference: insensitiveContains(params.search) },
+                { lines: { some: { lot: { lotNumber: insensitiveContains(params.search) } } } }
+              ]
+            }
+          ]
+        }
+      : {})
   };
   const [total, sources] = await Promise.all([
     prisma.syndicPaymentDeclaration.count({ where }),

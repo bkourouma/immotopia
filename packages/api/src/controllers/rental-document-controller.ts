@@ -10,6 +10,7 @@ import {
 import { RentalDocumentType, RentalDocumentStatus } from '@prisma/client';
 import { parsePagination } from '../utils/pagination-helper';
 import { parseEnumParam } from '../utils/query-params';
+import { parseDocumentListExtras } from '../lib/rental/document-list-filters';
 import { asyncHandler, NotFoundError, UnauthorizedError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
@@ -113,6 +114,7 @@ export const listDocumentsHandler = asyncHandler(async (req: Request, res: Respo
   if (paymentId) {
     filters.paymentId = paymentId as string;
   }
+  Object.assign(filters, parseDocumentListExtras(req.query)); // search, from, to (400 si invalide)
 
   // Un 400 de parsePagination reste un 400 (plus converti en 500).
   const { page, limit } = parsePagination(req.query);

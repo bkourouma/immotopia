@@ -312,8 +312,7 @@ export function installerFausseApi(scenario: Scenario) {
     }
 
     // Collaborateurs de l'agence : réponse imbriquée sous `data.members`, et
-    // non `data` directement. C'est en servant la mauvaise forme ici que la
-    // fragilité d'`AdvancedFilters` est apparue.
+    // non `data` directement (forme réelle de l'API, à respecter dans la maquette).
     if (/\/tenants\/[^/]+\/users$/.test(url.pathname)) {
       return ok(config, {
         success: true,

@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { App, Button, DatePicker, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
+import React, { useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { App, Button, DatePicker, Input, InputNumber, Modal, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { Dayjs } from 'dayjs';
@@ -11,7 +11,6 @@ import {
   removePartnershipShare,
   setPropertyPartnership
 } from '../../services/finance-partnerships-service';
-import { listProperties } from '../../services/property-service';
 import type {
   Partnership,
   PartnershipPropertyRef,
@@ -31,10 +30,14 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { PropertyRemoteSelect } from '../../components/finance/PropertyRemoteSelect';
 import { localizedList } from '../../i18n/localized';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 
 import { activeLocale } from '../../i18n/format';
 const { Title } = Typography;
+
 const { RangePicker } = DatePicker;
 
 /**
@@ -113,27 +116,6 @@ export const Association: React.FC = () => {
     enabled: Boolean(tenantId && partnershipId),
     staleTime: STALE_TIME.list
   });
-
-  // Référentiel des biens, pour le seul sélecteur de rattachement ci-dessous.
-  // `Property` (module biens, gelé) n'expose pas l'association à laquelle il
-  // appartient déjà : ce référentiel ne permet donc d'exclure que les biens
-  // déjà listés dans `association.properties`, pas ceux rattachés à une AUTRE
-  // association — voir la rubrique « Hypothèses » du rapport de cet agent, et
-  // le même point relevé pour les chantiers dans `BailDeTerrain.tsx`.
-  const { data: biensReferentiel } = useQuery({
-    queryKey: queryKey('properties', tenantId, { limit: 100 }),
-    queryFn: () => listProperties(tenantId as string, { limit: 100 }),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.reference
-  });
-
-  const optionsRattachement = useMemo(() => {
-    const idsRattaches = new Set((association?.properties ?? []).map(p => p.propertyId));
-    return (biensReferentiel?.properties ?? [])
-      .filter(bien => !idsRattaches.has(bien.id))
-      .map(bien => ({ value: bien.id, label: bien.title }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [biensReferentiel, association]);
 
   // ---------------------------------------------------------------------
   // Ajout d'un associé
@@ -219,6 +201,23 @@ export const Association: React.FC = () => {
 
   const [associeConsulte, setAssocieConsulte] = useState<PartnershipShare | null>(null);
   const [plageReleve, setPlageReleve] = useState<[Dayjs, Dayjs] | null>(null);
+  const [, setSearchParams] = useSearchParams();
+
+  // Les critères et la page du relevé (clés `rel.*`) vivent dans l'URL : on les
+  // efface à la fermeture et au changement d'associé pour ne rien lui laisser.
+  const consulterAssocie = (associe: PartnershipShare | null) => {
+    setSearchParams(
+      prev => {
+        const next = new URLSearchParams(prev);
+        for (const cle of Array.from(next.keys())) {
+          if (cle.startsWith('rel.')) next.delete(cle);
+        }
+        return next;
+      },
+      { replace: true }
+    );
+    setAssocieConsulte(associe);
+  };
 
   const {
     data: releve,
@@ -284,7 +283,7 @@ export const Association: React.FC = () => {
           <Button
             type="link"
             onClick={() => {
-              setAssocieConsulte(s);
+              consulterAssocie(s);
               setPlageReleve(null);
             }}
           >
@@ -415,7 +414,7 @@ export const Association: React.FC = () => {
             primaryAction={{
               label: t("Voir l'état"),
               onClick: () => {
-                setAssocieConsulte(s);
+                consulterAssocie(s);
                 setPlageReleve(null);
               }
             }}
@@ -453,40 +452,24 @@ export const Association: React.FC = () => {
       <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
         {t('Biens rattachés')}
       </Title>
-      <DataView<PartnershipPropertyRef>
-        paginated={false}
-        items={association.properties}
-        total={association.properties.length}
-        page={1}
-        pageSize={Math.max(association.properties.length, 1)}
-        onPageChange={() => {}}
-        emptyDescription={t("Aucun bien n'est encore rattaché à cette association.")}
+      <BiensRattachesSection
+        properties={association.properties}
         columns={colonnesBiens}
-        rowKey={p => p.propertyId}
-        aria-label={t("Biens rattachés à l'association")}
-        export={{ filename: t('Biens rattachés') }}
-        renderCard={p => (
-          <DataCard
-            title={p.propertyLabel}
-            aria-label={p.propertyLabel}
-            primaryAction={{
-              label: t('Détacher'),
-              onClick: () =>
-                confirmerAction({
-                  title: t('Détacher « {{propertyLabel}} » de cette association ?', { propertyLabel: p.propertyLabel }),
-                  description: t(
-                    'Les loyers de ce bien ne seront plus répartis entre les associés à compter de la prochaine facturation. Les ventilations déjà constatées restent inchangées.'
-                  ),
-                  okText: t('Confirmer le détachement'),
-                  onConfirm: () => detacherBien(p)
-                })
-            }}
-          />
-        )}
+        onDetacher={p =>
+          confirmerAction({
+            title: t('Détacher « {{propertyLabel}} » de cette association ?', { propertyLabel: p.propertyLabel }),
+            description: t(
+              'Les loyers de ce bien ne seront plus répartis entre les associés à compter de la prochaine facturation. Les ventilations déjà constatées restent inchangées.'
+            ),
+            okText: t('Confirmer le détachement'),
+            onConfirm: () => detacherBien(p)
+          })
+        }
       />
 
       <Card_RattacherBien
-        options={optionsRattachement}
+        tenantId={tenantId}
+        excludeIds={association.properties.map(p => p.propertyId)}
         valeur={bienARattacher}
         onChange={setBienARattacher}
         enCours={rattachementEnCours}
@@ -500,9 +483,9 @@ export const Association: React.FC = () => {
             : t('État de quote-part')
         }
         open={Boolean(associeConsulte)}
-        onCancel={() => setAssocieConsulte(null)}
+        onCancel={() => consulterAssocie(null)}
         footer={
-          <Button type="primary" onClick={() => setAssocieConsulte(null)}>
+          <Button type="primary" onClick={() => consulterAssocie(null)}>
             {t('Fermer')}
           </Button>
         }
@@ -520,39 +503,25 @@ export const Association: React.FC = () => {
               style={{ width: '100%' }}
               format="DD/MM/YYYY"
               value={plageReleve}
-              onChange={dates => setPlageReleve(dates && dates[0] && dates[1] ? [dates[0], dates[1]] : null)}
+              onChange={dates => {
+                setPlageReleve(dates && dates[0] && dates[1] ? [dates[0], dates[1]] : null);
+                // Nouvelle période : le relevé repart de sa première page (la taille de page reste).
+                setSearchParams(
+                  prev => {
+                    const next = new URLSearchParams(prev);
+                    next.delete('rel.page');
+                    return next;
+                  },
+                  { replace: true }
+                );
+              }}
             />
           </div>
 
           {erreurReleve ? (
             <StateBlock variant="error" description={t("Impossible de charger l'état de quote-part de cet associé.")} />
           ) : (
-            <DataView<PartnerStatementLine>
-              paginated={false}
-              items={releve?.lines ?? []}
-              total={(releve?.lines ?? []).length}
-              page={1}
-              pageSize={Math.max((releve?.lines ?? []).length, 1)}
-              onPageChange={() => {}}
-              loading={releveEnAttente}
-              emptyDescription={t('Aucun loyer réparti sur cette période.')}
-              columns={colonnesReleve}
-              rowKey={l => `${l.propertyLabel}-${l.periodYear}-${l.periodMonth}`}
-              aria-label={t("Lignes de l'état de quote-part")}
-              export={{ filename: t('État de quote-part') }}
-              renderCard={l => (
-                <DataCard
-                  title={libellePeriode(l.periodYear, l.periodMonth)}
-                  aria-label={libellePeriode(l.periodYear, l.periodMonth)}
-                  subtitle={l.propertyLabel}
-                  highlight={<MoneyValue value={l.partnerShare} />}
-                  fields={[
-                    { label: t('Facturé'), value: <MoneyValue value={l.rentBilled} /> },
-                    { label: t('Encaissé'), value: <MoneyValue value={l.rentCollected} /> }
-                  ]}
-                />
-              )}
-            />
+            <ReleveSection lignes={releve?.lines} loading={releveEnAttente} columns={colonnesReleve} />
           )}
 
           {releve && (
@@ -578,6 +547,115 @@ export const Association: React.FC = () => {
         </Space>
       </Modal>
     </>
+  );
+};
+
+// --- Recherche des deux tableaux de la fiche ---------------------------------
+// Les quotes-parts (quelques associés, somme = 100 %) n'ont pas de barre.
+// Constantes de module : leur identité stable garde le filtrage mémoïsé.
+
+const TEXTE_BIENS = [(p: PartnershipPropertyRef) => p.propertyLabel];
+
+const TEXTE_RELEVE = [
+  (l: PartnerStatementLine) => l.propertyLabel,
+  (l: PartnerStatementLine) => libellePeriode(l.periodYear, l.periodMonth)
+];
+const ACCESSEURS_RELEVE = {
+  facture: (l: PartnerStatementLine) => l.rentBilled,
+  encaisse: (l: PartnerStatementLine) => l.rentCollected
+};
+
+/** Biens rattachés : liste reçue en entier, recherche et pagination locales, préfixe d'URL `bien`. */
+const BiensRattachesSection: React.FC<{
+  properties: PartnershipPropertyRef[];
+  columns: ColumnsType<PartnershipPropertyRef>;
+  onDetacher: (bien: PartnershipPropertyRef) => void;
+}> = ({ properties, columns, onDetacher }) => {
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Titre du bien…')
+    }
+  ];
+  const local = useLocalListSearch<PartnershipPropertyRef>(properties, {
+    paramPrefix: 'bien',
+    criteria: criteres,
+    text: TEXTE_BIENS
+  });
+
+  return (
+    <DataView<PartnershipPropertyRef>
+      {...local.dataViewProps}
+      search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les biens rattachés') }}
+      emptyDescription={t("Aucun bien n'est encore rattaché à cette association.")}
+      columns={columns}
+      rowKey={p => p.propertyId}
+      aria-label={t("Biens rattachés à l'association")}
+      export={{ filename: t('Biens rattachés'), fetchAll: local.exportAll }}
+      renderCard={p => (
+        <DataCard
+          title={p.propertyLabel}
+          aria-label={p.propertyLabel}
+          primaryAction={{ label: t('Détacher'), onClick: () => onDetacher(p) }}
+        />
+      )}
+    />
+  );
+};
+
+/**
+ * Lignes de l'état de quote-part d'un associé (dans la modale). La période
+ * (du… au…) reste le sélecteur existant au-dessus : c'est elle qui part à l'API
+ * (`from`/`to`), elle n'est pas dupliquée en critère. Ici : recherche locale sur
+ * le bien et la période, plus les montants facturé et encaissé. Préfixe d'URL `rel`.
+ */
+const ReleveSection: React.FC<{
+  lignes: PartnerStatementLine[] | undefined;
+  loading: boolean;
+  columns: ColumnsType<PartnerStatementLine>;
+}> = ({ lignes, loading, columns }) => {
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Bien, période…')
+    },
+    { key: 'facture', type: 'numberRange', label: t('Facturé'), unit: 'FCFA' },
+    { key: 'encaisse', type: 'numberRange', label: t('Encaissé'), unit: 'FCFA' }
+  ];
+  const local = useLocalListSearch<PartnerStatementLine>(lignes, {
+    paramPrefix: 'rel',
+    criteria: criteres,
+    text: TEXTE_RELEVE,
+    accessors: ACCESSEURS_RELEVE
+  });
+
+  return (
+    <DataView<PartnerStatementLine>
+      {...local.dataViewProps}
+      search={{ ...local.searchProps, 'aria-label': t("Rechercher dans l'état de quote-part") }}
+      loading={loading}
+      emptyDescription={t('Aucun loyer réparti sur cette période.')}
+      columns={columns}
+      rowKey={l => `${l.propertyLabel}-${l.periodYear}-${l.periodMonth}`}
+      aria-label={t("Lignes de l'état de quote-part")}
+      export={{ filename: t('État de quote-part'), fetchAll: local.exportAll }}
+      renderCard={l => (
+        <DataCard
+          title={libellePeriode(l.periodYear, l.periodMonth)}
+          aria-label={libellePeriode(l.periodYear, l.periodMonth)}
+          subtitle={l.propertyLabel}
+          highlight={<MoneyValue value={l.partnerShare} />}
+          fields={[
+            { label: t('Facturé'), value: <MoneyValue value={l.rentBilled} /> },
+            { label: t('Encaissé'), value: <MoneyValue value={l.rentCollected} /> }
+          ]}
+        />
+      )}
+    />
   );
 };
 
@@ -643,7 +721,8 @@ function Card_AjoutAssocie(props: {
 
 /** Même remarque que `Card_AjoutAssocie` : un bloc de saisie, extrait par lisibilité. */
 function Card_RattacherBien(props: {
-  options: { value: string; label: string }[];
+  tenantId: string;
+  excludeIds: readonly string[];
   valeur: string | undefined;
   onChange: (v: string | undefined) => void;
   enCours: boolean;
@@ -663,16 +742,14 @@ function Card_RattacherBien(props: {
           <div>
             <label htmlFor="rattacher-bien">{t('Rattacher un bien existant')}</label>
           </div>
-          <Select
+          <PropertyRemoteSelect
             id="rattacher-bien"
+            tenantId={props.tenantId}
             style={{ width: '100%' }}
             placeholder={t('Choisir un bien')}
             value={props.valeur}
             onChange={props.onChange}
-            showSearch
-            optionFilterProp="label"
-            options={props.options}
-            notFoundContent={t('Aucun bien disponible')}
+            excludeIds={props.excludeIds}
           />
         </div>
         <Button type="primary" loading={props.enCours} disabled={!props.valeur} onClick={props.onRattacher}>

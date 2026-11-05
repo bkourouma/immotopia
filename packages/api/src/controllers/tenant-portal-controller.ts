@@ -10,7 +10,6 @@
  */
 
 import { Request, Response } from 'express';
-import { RentalInstallmentStatus } from '@prisma/client';
 import { TenantPortalService } from '../services/tenant-portal-service';
 import {
   addCommentSchema,
@@ -21,9 +20,15 @@ import {
 } from '../utils/tenant-portal-validators';
 import { listPortalLeaseIds, resolveRequestedLeaseId } from '../utils/tenant-portal-leases';
 import { handleTenantPortalFinanceStatement } from './finance-controller';
-import { parseEnumParam, parseNumberParam } from '../utils/query-params';
+import { parseNumberParam } from '../utils/query-params';
 import { parsePagination } from '../utils/pagination-helper';
 import { asyncHandler, BadRequestError, ForbiddenError } from '../middleware/error-middleware';
+import {
+  definedOnly,
+  parseTenantPortalInstallmentsQuery,
+  parseTenantPortalMaintenanceQuery,
+  parseTenantPortalPaymentsQuery
+} from '../services/portal-list-filters/tenant-portal-list-filters';
 
 /** Contexte du portail locataire posé par `requireTenantPortalAccess`, sinon 403. */
 function portalContext(req: Request): { tenantClientId: string; leaseId: string; tenantId: string } {
@@ -149,17 +154,7 @@ export class TenantPortalController {
   getInstallments = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
-    const filters: { status?: string; startDate?: string; endDate?: string } = {};
-    const status = parseEnumParam(req.query.status, RentalInstallmentStatus, 'status');
-    if (status) {
-      filters.status = status;
-    }
-    if (req.query.startDate) {
-      filters.startDate = req.query.startDate as string;
-    }
-    if (req.query.endDate) {
-      filters.endDate = req.query.endDate as string;
-    }
+    const filters = definedOnly(parseTenantPortalInstallmentsQuery(req.query));
 
     const installmentsData = await this.service.getInstallments(
       tenantClientId,
@@ -249,16 +244,7 @@ export class TenantPortalController {
   getPaymentHistory = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
-    const filters: { startDate?: string; endDate?: string; method?: string } = {};
-    if (req.query.startDate) {
-      filters.startDate = req.query.startDate as string;
-    }
-    if (req.query.endDate) {
-      filters.endDate = req.query.endDate as string;
-    }
-    if (req.query.method) {
-      filters.method = req.query.method as string;
-    }
+    const filters = definedOnly(parseTenantPortalPaymentsQuery(req.query));
 
     const paymentHistoryData = await this.service.getPaymentHistory(
       tenantClientId,
@@ -338,10 +324,7 @@ export class TenantPortalController {
   getMaintenanceTickets = asyncHandler(async (req, res) => {
     const { tenantClientId, leaseId, tenantId } = await portalSingleLease(req);
 
-    const filters: { status?: string } = {};
-    if (req.query.status) {
-      filters.status = req.query.status as string;
-    }
+    const filters = definedOnly(parseTenantPortalMaintenanceQuery(req.query));
 
     const ticketsData = await this.service.getMaintenanceTickets(
       tenantClientId,

@@ -30,9 +30,9 @@ Recette de la gestion locative : scénario de 852 cas (`docs/recette/gestion-loc
   - Écart 036 corrigé et retesté : pour Prisca Yao, total âgé = grand livre = 767 750 FCFA, écart nul ; seuls les orphelins historiques de 3 200 et 2 000 restent. Les 56 tests financiers passent, bornes de période relues.
   - Nouveaux défauts du 05/11 : tri des signatures corrigé, testé et retesté ; filtre Bien du comptable corrigé dans les deux balances, nouveau lookup limité à id/title et à l'agence, 26 tests API et 14 web, lecture de B depuis A refusée en 403 ; dépôt multibaux corrigé, sélecteur et réessai après erreur, 4 tests web et 12 de garde API, retest C2 positif sur L5. Relectures code/sécurité : aucun constat restant après corrections et wiki.
   - Le classeur des fonctionnalités et les catalogues i18n sont complets.
-  - Les résultats par bloc sont dans `RESULTATS.md`.
+  - Résultats consolidés : 538 cas passés consignés, 62 échecs historiques, 30 bloqués, 156 partiels, 66 non joués explicites et aucun sans verdict. Bus : 105 anomalies passées, 3 bloquées. Ces compteurs ne sont pas interchangeables. Classeur fusionné : 1 157 entrées.
 - **Reste** : par ordre de priorité, détaillé dans `PASSATION.md`, section 2.
-  1. Intégrer `origin/main` (PR #195, `cf6fead9`), préserver sa nouvelle architecture, puis CI complète et fusion/staging autorisés. Le run 41984903824 de `12c477f3` a réellement passé les 13 suites/248 tests d'isolation et 11 620 tests API ; seuls deux tests Signatures ont expiré. Leur attente est corrigée et retestée. BUG005/006 sont passés.
+  1. Intégration de `origin/main` (PR #195, `cf6fead9`) résolue et typée : consulter `INTEGRATION-MAIN-2026-11-05.md`. Prochaine étape : CI complète de la tête intégrée, puis fusion/staging autorisés. Le run 41984903824 de `12c477f3` a réellement passé les 13 suites/248 tests d'isolation et 11 620 tests API ; seuls deux tests Signatures ont expiré. Leur attente est corrigée et retestée. BUG005/006 sont passés.
   2. Continuer les variantes partielles des compléments 04 et 08. L'agence A a atteint 20/20 signatures pendant GL-04-101 ; le 21e envoi a bien été refusé en 409. Cela bloque de nouvelles signatures, notamment GL-08-067, et le scénario GL-04-115 nécessite 26 demandes (configuration insuffisante). Aucun achat ni changement de plafond effectué.
   3. Consulter les nouveaux compléments 01, 05 et 1112 : sorties P1 historiques retrouvées et distinguées des contrôles actuels. BUG007 (forfait décimal) et 008 (formulaire principal financier lecteur) corrigés, tests et retests passés ; BUG009 (filtres historiques déclarations) corrigé, 14 tests API et retest navigateur passés. Restent les variantes et prérequis de `COUVERTURE-A-FINALISER.md` ; ne pas déclarer 852 réussites.
   4. Scénario GL-03-016 en conflit avec H39 (interdiction de chevauchement) : BUG-2026-11-05-001 bloqué comme écart de scénario, pas défaut produit confirmé ; conserver le garde.
@@ -48,7 +48,11 @@ Recette de la gestion locative : scénario de 852 cas (`docs/recette/gestion-loc
   - Ne jamais commiter pendant qu'un agent écrit.
   - Pas plus de deux ou trois agents à la fois.
   - Balance âgée : les écarts « Locataire Pénalités » (+3 200 et +2 000) sont des données orphelines, pas un défaut.
-- **Dernier commit poussé** : `12c477f3` ; lot 007/008/009 et stabilisation du test Signatures en cours d'intégration. Réglages actifs de recette restaurés à 10 %, TVA 18 % ; forfait inactif 1,5 conservé faute de remise à vide UI. Cartes financières indépendantes et comportement du hook sur panne réseau hors correctif 008, gardes API inchangées.
+- **Dernier commit préalable** : `189abda4` (007/008/009 et test Signatures) ; intégration main dans le commit de cette passation. Réglages actifs de recette restaurés à 10 %, TVA 18 % ; forfait inactif 1,5 conservé faute de remise à vide UI. Cartes financières indépendantes et comportement du hook sur panne réseau hors correctif 008, gardes API inchangées.
+
+## Référence intégrée — PR #195 (2026-11-05)
+
+La PR #195 est fusionnée dans main à `cf6fead99cfbed743f4f85ee048d5f5368fae268`, arbre identique au head testé `0d4d6574`. Staging déployé avec succès par le chat SYNDIC : run [41987651574](https://github.com/bkourouma/immotopia/actions/runs/41987651574). Son architecture de recherche et de lectures comptables est conservée dans l'intégration locative. Contexte détaillé, limites et décisions : [HANDOFF-ux-recherche.md](HANDOFF-ux-recherche.md).
 
 ## État des lieux (pilote) — 2026-10-31
 

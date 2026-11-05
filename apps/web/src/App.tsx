@@ -232,6 +232,27 @@ const SaleCommissions = lazy(() =>
 const Comptabilite = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Comptabilite').then(m => ({ default: m.Comptabilite }))
 );
+// Comptabilité de l'agence : une sous-page par lecture (lot C), chargées à la demande.
+const ComptabiliteJournal = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/comptabilite/JournalPage').then(m => ({
+    default: m.JournalPage
+  }))
+);
+const ComptabiliteGrandLivre = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/comptabilite/GrandLivrePage').then(m => ({
+    default: m.GrandLivrePage
+  }))
+);
+const ComptabiliteBalance = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/comptabilite/BalancePage').then(m => ({
+    default: m.BalancePage
+  }))
+);
+const ComptabiliteMandants = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/comptabilite/MandantsPage').then(m => ({
+    default: m.MandantsPage
+  }))
+);
 const Caisse = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Caisse').then(m => ({ default: m.Caisse }))
 );
@@ -1164,7 +1185,42 @@ function App() {
                         */}
                             <Route path="/tenant/:tenantId/finance/importation" element={<Importation />} />
                           </Route>
+                          {/* Ancienne adresse à onglets `?tab=` : redirigée vers la sous-page. */}
                           <Route path="/tenant/:tenantId/finance/comptabilite" element={<Comptabilite />} />
+                          <Route element={<FinanceWorkspaceLayout family="comptabilite" />}>
+                            <Route
+                              path="/tenant/:tenantId/finance/comptabilite/journal"
+                              element={
+                                <ProtectedRoute requiredPermissions="FINANCE_REPORTS_READ">
+                                  <ComptabiliteJournal />
+                                </ProtectedRoute>
+                              }
+                            />
+                            <Route
+                              path="/tenant/:tenantId/finance/comptabilite/grand-livre"
+                              element={
+                                <ProtectedRoute requiredPermissions="FINANCE_REPORTS_READ">
+                                  <ComptabiliteGrandLivre />
+                                </ProtectedRoute>
+                              }
+                            />
+                            <Route
+                              path="/tenant/:tenantId/finance/comptabilite/balance"
+                              element={
+                                <ProtectedRoute requiredPermissions="FINANCE_REPORTS_READ">
+                                  <ComptabiliteBalance />
+                                </ProtectedRoute>
+                              }
+                            />
+                            <Route
+                              path="/tenant/:tenantId/finance/comptabilite/mandants"
+                              element={
+                                <ProtectedRoute requiredPermissions="FINANCE_REPORTS_READ">
+                                  <ComptabiliteMandants />
+                                </ProtectedRoute>
+                              }
+                            />
+                          </Route>
                           <Route element={<FinanceWorkspaceLayout family="facturation-balances" />}>
                             <Route path="/tenant/:tenantId/finance/facturation" element={<Facturation />} />
                             <Route

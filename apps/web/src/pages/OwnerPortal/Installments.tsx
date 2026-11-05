@@ -1,16 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Spin, Alert, Tag, Space, Select, DatePicker, Empty, Button } from 'antd';
-import { DollarOutlined, CalendarOutlined, FilterOutlined, SyncOutlined } from '@ant-design/icons';
+import React from 'react';
+import { Card, Row, Col, Typography, Spin, Alert, Tag, Space, Button } from 'antd';
+import { DollarOutlined, CalendarOutlined, SyncOutlined } from '@ant-design/icons';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ownerPortalService } from '../../services/ownerPortalService';
+import type { OwnerPortalPagination } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { Table } from '../../components/primitives';
+import { useListSearch } from '../../hooks/useListSearch';
+import { STALE_TIME } from '../../lib/query-keys';
+import { collectAllPages } from '../../utils/table-export/collect';
+import { useOwnerPropertyOptions } from './useOwnerPropertyOptions';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
 import { formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
-const { Option } = Select;
-const { RangePicker } = DatePicker;
 
 interface InstallmentListItem {
   id: string;
@@ -36,6 +40,7 @@ interface InstallmentSummary {
 interface InstallmentsData {
   installments: InstallmentListItem[];
   summary: InstallmentSummary;
+  pagination?: OwnerPortalPagination;
 }
 
 const formatCurrency = (amount: number) => {
@@ -56,62 +61,60 @@ const getStatusTag = (status: string) => {
 };
 
 export default function Installments() {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<InstallmentsData | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
-  const [propertyFilter, setPropertyFilter] = useState<string | undefined>(undefined);
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
-  const [properties, setProperties] = useState<Array<{ id: string; address: string }>>([]);
+  const { options: propertyOptions } = useOwnerPropertyOptions();
 
-  useEffect(() => {
-    loadProperties();
-  }, []);
+  // Liste paginée par le serveur ; l'API ne trie pas (`sort: false`).
+  const search = useListSearch({
+    apiNames: { sort: false },
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Bien, locataire…') },
+      {
+        key: 'status',
+        type: 'multiSelect',
+        label: t('Statut'),
+        primary: true,
+        options: [
+          { value: 'DRAFT', label: t('Brouillon') },
+          { value: 'DUE', label: t('À payer') },
+          { value: 'PARTIAL', label: t('Partiel') },
+          { value: 'PAID', label: t('Payé') },
+          { value: 'OVERDUE', label: t('En retard') }
+        ]
+      },
+      {
+        key: 'propertyId',
+        type: 'select',
+        label: t('Propriété'),
+        primary: true,
+        options: propertyOptions
+      },
+      { key: 'period', type: 'dateRange', label: t('Période'), api: ['startDate', 'endDate'] }
+    ]
+  });
 
-  useEffect(() => {
-    loadInstallments();
-  }, [statusFilter, propertyFilter, dateRange]);
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: queryError,
+    refetch
+  } = useQuery({
+    queryKey: ['owner-portal', 'installments', search.apiParams],
+    queryFn: async (): Promise<InstallmentsData | null> => {
+      const response = await ownerPortalService.getInstallments(search.apiParams);
+      return response.data?.success && response.data?.data ? (response.data.data as InstallmentsData) : null;
+    },
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
+  });
 
-  const loadProperties = async () => {
-    try {
-      const response = await ownerPortalService.getProperties();
-      if (response.data?.success && response.data?.data?.properties) {
-        setProperties(
-          response.data.data.properties.map((p: any) => ({
-            id: p.id,
-            address: p.address
-          }))
-        );
-      }
-    } catch (err) {
-      console.error('Error loading properties:', err);
-    }
-  };
+  const error: string | null = queryError
+    ? (queryError as any).response?.data?.message || t('Erreur lors du chargement des échéances')
+    : null;
+  const installments = data?.installments ?? [];
+  const total = data?.pagination?.total ?? installments.length;
 
-  const loadInstallments = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const params: any = {};
-      if (statusFilter) params.status = statusFilter;
-      if (propertyFilter) params.propertyId = propertyFilter;
-      if (dateRange[0] && dateRange[1]) {
-        params.startDate = dateRange[0].format('YYYY-MM-DD');
-        params.endDate = dateRange[1].format('YYYY-MM-DD');
-      }
-
-      const response = await ownerPortalService.getInstallments(params);
-      if (response.data?.success && response.data?.data) {
-        setData(response.data.data);
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors du chargement des échéances'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Pas de tri d'en-tête : l'API ne trie pas et le tri antd ne porterait que sur la page reçue.
   const columns = [
     {
       title: t('Propriété'),
@@ -135,11 +138,6 @@ export default function Installments() {
       render: (date: Date | string) => {
         const dateObj = typeof date === 'string' ? new Date(date) : date;
         return dayjs(dateObj).format('DD/MM/YYYY');
-      },
-      sorter: (a: InstallmentListItem, b: InstallmentListItem) => {
-        const dateA = typeof a.dueDate === 'string' ? new Date(a.dueDate) : a.dueDate;
-        const dateB = typeof b.dueDate === 'string' ? new Date(b.dueDate) : b.dueDate;
-        return dateA.getTime() - dateB.getTime();
       }
     },
     {
@@ -161,40 +159,28 @@ export default function Installments() {
             </Text>
           )}
         </Space>
-      ),
-      sorter: (a: InstallmentListItem, b: InstallmentListItem) => a.amount - b.amount
+      )
     },
     {
       title: t('Pénalité'),
       dataIndex: 'penaltyAmount',
       key: 'penaltyAmount',
-      render: (penaltyAmount: number) => (Number(penaltyAmount || 0) > 0 ? formatCurrency(Number(penaltyAmount)) : '-'),
-      sorter: (a: InstallmentListItem, b: InstallmentListItem) =>
-        Number(a.penaltyAmount || 0) - Number(b.penaltyAmount || 0)
+      render: (penaltyAmount: number) => (Number(penaltyAmount || 0) > 0 ? formatCurrency(Number(penaltyAmount)) : '-')
     },
     {
       title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => getStatusTag(status)
-      // `filters`/`onFilter` de colonne retirés (§8.4, « double filtrage »).
-      // Ils doublaient le sélecteur de statut au-dessus du tableau, avec les
-      // mêmes libellés et les mêmes valeurs, mais ne portaient que sur la page
-      // reçue : les deux commandes pouvaient afficher des états contradictoires
-      // du même écran. Celle du haut part au serveur ; elle reste.
     }
   ];
 
-  if (loading && !data) {
+  if (isPending && !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
         <Spin size="large" tip={t('Chargement des échéances...')} />
       </div>
     );
-  }
-
-  if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   return (
@@ -207,15 +193,15 @@ export default function Installments() {
         </div>
         <Button
           icon={<SyncOutlined />}
-          onClick={loadInstallments}
-          loading={loading}
+          onClick={() => refetch()}
+          loading={isFetching}
           aria-label={t('Rafraîchir les échéances')}
         >
           {t('Actualiser')}
         </Button>
       </div>
 
-      {/* Summary Cards (T096) */}
+      {/* Summary Cards (T096) : calculées par le serveur sur toutes les lignes filtrées */}
       {data?.summary && (
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
@@ -275,78 +261,36 @@ export default function Installments() {
         </Row>
       )}
 
-      {/* Filters (T095) */}
-      <Card
-        title={
-          <Space>
-            <FilterOutlined />
-            <span>{t('Filtres')}</span>
-          </Space>
-        }
-      >
-        <div className="it-filters">
-          <div className="it-filters__field">
-            <Text strong>{t('Statut')}</Text>
-            <Select
-              showSearch
-              optionFilterProp="children"
-              style={{ width: 150 }}
-              placeholder={t('Tous les statuts')}
-              allowClear
-              value={statusFilter}
-              onChange={value => setStatusFilter(value)}
-            >
-              <Option value="DRAFT">{t('Brouillon')}</Option>
-              <Option value="DUE">{t('À payer')}</Option>
-              <Option value="PARTIAL">{t('Partiel')}</Option>
-              <Option value="PAID">{t('Payé')}</Option>
-              <Option value="OVERDUE">{t('En retard')}</Option>
-            </Select>
-          </div>
-          <div className="it-filters__field">
-            <Text strong>{t('Propriété')}</Text>
-            <Select
-              showSearch
-              optionFilterProp="children"
-              style={{ width: 200 }}
-              placeholder={t('Toutes les propriétés')}
-              allowClear
-              value={propertyFilter}
-              onChange={value => setPropertyFilter(value)}
-            >
-              {properties.map(prop => (
-                <Option key={prop.id} value={prop.id}>
-                  {prop.address}
-                </Option>
-              ))}
-            </Select>
-          </div>
-          <div className="it-filters__field">
-            <Text strong>{t('Période')}</Text>
-            <RangePicker
-              value={dateRange}
-              onChange={dates => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
-              format="DD/MM/YYYY"
-            />
-          </div>
-        </div>
-      </Card>
-
       {/* Installments Table (T097) */}
       <Card title={t('Liste des échéances')}>
-        {data && data.installments.length > 0 ? (
-          <Table
-            exportFilename={t('Liste des échéances')}
-            scroll={{ x: 'max-content' }}
-            columns={columns}
-            dataSource={data.installments}
-            rowKey="id"
-            loading={loading}
-            pagination={{ pageSize: 20 }}
+        {error && (
+          <Alert
+            message={t('Erreur')}
+            description={error}
+            type="error"
+            showIcon
+            style={{ marginBottom: 'var(--space-4)' }}
           />
-        ) : (
-          <Empty description={t('Aucune échéance trouvée')} />
         )}
+        <Table
+          aria-label={t('Liste des échéances')}
+          search={search.searchProps}
+          exportFilename={t('Liste des échéances')}
+          exportFetchAll={() =>
+            collectAllPages<InstallmentListItem>(async (page, limit) => {
+              const response = await ownerPortalService.getInstallments({ ...search.filterParams, page, limit });
+              const result = response.data?.data as InstallmentsData | undefined;
+              return { items: result?.installments ?? [], total: result?.pagination?.total ?? 0 };
+            })
+          }
+          scroll={{ x: 'max-content' }}
+          columns={columns}
+          dataSource={installments}
+          rowKey="id"
+          loading={isFetching}
+          pagination={search.tablePagination(total)}
+          locale={search.isFiltered ? undefined : { emptyText: t('Aucune échéance trouvée') }}
+        />
       </Card>
     </Space>
   );

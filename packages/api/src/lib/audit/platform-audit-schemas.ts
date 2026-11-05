@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { zSearch } from '../../utils/list-query-schemas';
 
 /**
  * Paramètres de `GET /admin/audit` et `GET /admin/audit/export` (ADR-006, phase 4).
@@ -20,7 +21,10 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 function parseDate(value: string, endOfDay: boolean): Date | null {
   const iso = DATE_ONLY.test(value) ? `${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z` : value;
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? null : date;
+  if (Number.isNaN(date.getTime())) return null;
+  // Un jour impossible (2026-02-31) ne doit pas glisser au mois suivant.
+  if (DATE_ONLY.test(value) && date.toISOString().slice(0, 10) !== value) return null;
+  return date;
 }
 
 function dateParam(endOfDay: boolean, message: string) {
@@ -57,6 +61,8 @@ const filterShape = {
     .max(64)
     .regex(/^[A-Za-z0-9._-]+$/)
     .optional(),
+  /** Recherche libre (action, ressource, acteur, requête, source), insensible à la casse. */
+  search: zSearch(120),
   startDate: dateParam(false, 'Date de début invalide').optional(),
   endDate: dateParam(true, 'Date de fin invalide').optional()
 };

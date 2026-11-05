@@ -1,12 +1,32 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Alert, Button, Descriptions, Progress, Space, Typography } from 'antd';
 import type { CompteRenduImport } from '../../../lib/importation/execution';
 import { libelleStatut } from '../../../lib/importation/rapport';
 import type { LigneRapport } from '../../../lib/importation/rapport';
+import { localizedList } from '../../../i18n/localized';
 import { t } from '../../../i18n/t';
+import { useLocalListSearch } from '../../../utils/list-search';
+import type { SearchCriterion } from '../../../utils/list-search';
 import { Table } from '../../../components/primitives';
 
 const { Text } = Typography;
+
+// Seuls ces statuts demandent une explication dans le tableau.
+const STATUTS_A_EXPLIQUER: ReadonlyArray<LigneRapport['statut']> = ['refusee_serveur', 'partielle', 'non_traitee'];
+const OPTIONS_STATUT = localizedList(() =>
+  STATUTS_A_EXPLIQUER.map(statut => ({ value: statut, label: libelleStatut(statut) }))
+);
+
+// Accesseurs stables (hors composant). Champ libre : n° de ligne, motif, détail et cellules d'origine
+// (libellé, nom…) ; le statut tel qu'affiché.
+const TEXTE_RECHERCHE = [
+  (l: LigneRapport) => String(l.numero),
+  (l: LigneRapport) => l.motif,
+  (l: LigneRapport) => l.detail,
+  (l: LigneRapport) => libelleStatut(l.statut),
+  (l: LigneRapport) => Object.values(l.textes)
+];
+const ACCESSEURS = { statut: (l: LigneRapport) => l.statut };
 
 interface EtapeImportProps {
   progression: { traitees: number; total: number } | null;
@@ -83,9 +103,20 @@ export const EtapeRapport: React.FC<EtapeRapportProps> = props => {
       .filter(e => e.relancable === false && e.code === 'REPONSE_INCERTAINE')
       .map(e => e.numero)
   );
-  const aExpliquer = lignes.filter(
-    l => l.statut === 'refusee_serveur' || l.statut === 'partielle' || l.statut === 'non_traitee'
-  );
+  // Les compteurs ci-dessus portent sur TOUTES les lignes ; la recherche ne touche que ce tableau.
+  const aExpliquer = useMemo(() => lignes.filter(l => STATUTS_A_EXPLIQUER.includes(l.statut)), [lignes]);
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('N° de ligne, libellé, motif…') },
+    { key: 'statut', type: 'multiSelect', label: t('Statut'), primary: true, options: OPTIONS_STATUT }
+  ];
+  const local = useLocalListSearch<LigneRapport>(aExpliquer, {
+    paramPrefix: 'rap',
+    ariaLabel: t('Rechercher dans le rapport'),
+    defaultPageSize: 25,
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
   return (
     <Space orientation="vertical" size="middle" style={{ width: '100%', maxWidth: 900 }}>
       {compteRendu?.interrompue ? (
@@ -114,11 +145,12 @@ export const EtapeRapport: React.FC<EtapeRapportProps> = props => {
 
       {aExpliquer.length > 0 ? (
         <Table
+          {...local.tableProps}
+          aria-label={t('Lignes à expliquer')}
           exportFilename={t('Rapport')}
+          exportFetchAll={local.exportAll}
           size="small"
           rowKey={ligne => String(ligne.numero)}
-          dataSource={aExpliquer}
-          pagination={{ pageSize: 25, showSizeChanger: false }}
           columns={[
             { title: t('Ligne'), dataIndex: 'numero', key: 'numero', width: 90 },
             { title: t('Statut'), key: 'statut', width: 180, render: (_v, l: LigneRapport) => libelleStatut(l.statut) },

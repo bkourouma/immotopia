@@ -48,6 +48,7 @@ import {
   type ThirdPartyMovementRecord,
   type ThirdPartyMovementType
 } from './types';
+import { escapeLike } from '../../utils/like-escape';
 
 /** Devise unique du lot 1 (décision D9 du plan). */
 const DEFAULT_CURRENCY = 'XOF';
@@ -129,7 +130,11 @@ export const getClientsBalance: GetClientsBalance = async (tenantId, filters) =>
   // Comptes TENANT du tenant : une ligne par locataire, chargée une seule
   // fois (une poignée de colonnes par client, pas un mouvement).
   const tenantAccounts = await prisma.thirdPartyAccount.findMany({
-    where: { tenantId, kind: 'TENANT' },
+    where: {
+      tenantId,
+      kind: 'TENANT',
+      ...(filters?.search ? { label: { contains: escapeLike(filters.search), mode: 'insensitive' as const } } : {})
+    },
     select: { id: true, tenantClientId: true, label: true, balance: true, currency: true }
   });
 
@@ -294,6 +299,7 @@ export const getClientsAgingBalance: GetClientsAgingBalanceWithGap = async (tena
   const base = await getClientsBalance(tenantId, {
     range: filters?.range,
     propertyId: filters?.propertyId,
+    search: filters?.search,
     asOf: cutoff
   });
   if (base.lines.length === 0) {

@@ -8,6 +8,7 @@ import {
   getInvoiceCheckout,
   getPaymentAvailability,
   listOwnPlatformInvoices,
+  type AdminInvoiceFilters,
   startInvoiceCheckout,
   type PaymentAvailability,
   type PlatformCheckout,
@@ -15,6 +16,8 @@ import {
 } from '../../services/platform-billing-service';
 import { formatMoney, StatusTag, Table } from '../primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
+import { useListSearch } from '../../hooks/useListSearch';
+import { platformInvoiceCriteria } from './platform-invoice-criteria';
 import {
   INVOICE_NATURE_LABEL,
   INVOICE_STATUS_LABEL,
@@ -53,6 +56,13 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
   const [searchParams, setSearchParams] = useSearchParams();
   const [invoices, setInvoices] = useState<PlatformInvoice[]>([]);
   const [loading, setLoading] = useState(true);
+  // Pagination et recherche serveur : les factures s'accumulent (une par période) au fil des années.
+  // État dans l'URL (préfixe `fac`, qui n'écrase pas `?paiement=`) ; jamais de brouillon côté agence.
+  const search = useListSearch({ paramPrefix: 'fac', criteria: platformInvoiceCriteria(false) });
+  const [total, setTotal] = useState(0);
+  const paramsKey = JSON.stringify(search.apiParams);
+  const paramsRef = useRef(paramsKey);
+  paramsRef.current = paramsKey;
   const [availability, setAvailability] = useState<PaymentAvailability | null>(null);
   const [paying, setPaying] = useState<string | null>(null);
   const [returned, setReturned] = useState<PlatformCheckout | null>(null);
@@ -67,11 +77,12 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [page, avail] = await Promise.all([
-        listOwnPlatformInvoices(tenantId, { limit: 50 }),
+      const [result, avail] = await Promise.all([
+        listOwnPlatformInvoices(tenantId, JSON.parse(paramsRef.current)),
         getPaymentAvailability(tenantId).catch(() => null)
       ]);
-      setInvoices(page.invoices);
+      setInvoices(result.invoices);
+      setTotal(result.pagination?.total ?? result.invoices.length);
       setAvailability(avail);
     } catch (err: any) {
       message.error(err.response?.data?.message || t('Erreur lors du chargement des factures'));
@@ -82,7 +93,7 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, paramsKey]);
 
   // Retour de la page de paiement : suivi du statut.
   const codePaiement = searchParams.get('paiement');
@@ -284,10 +295,15 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
           <Text type="secondary">{t('Mode démonstration : aucun paiement réel.')}</Text>
         )}
         <Table<PlatformInvoice>
+          search={search.searchProps}
           exportFilename={t('Factures')}
           exportFetchAll={() =>
             collectAllPages<PlatformInvoice>(async (page, limit) => {
-              const result = await listOwnPlatformInvoices(tenantId, { page, limit });
+              const result = await listOwnPlatformInvoices(tenantId, {
+                ...(search.filterParams as AdminInvoiceFilters),
+                page,
+                limit
+              });
               return { items: result.invoices, total: result.pagination.total };
             })
           }
@@ -296,10 +312,10 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
           columns={columns}
           dataSource={invoices}
           loading={loading}
-          pagination={false}
+          pagination={search.tablePagination(total)}
           scroll={{ x: 'max-content' }}
           aria-label={t('Factures')}
-          locale={{ emptyText: t('Aucune facture') }}
+          locale={search.isFiltered ? undefined : { emptyText: t('Aucune facture') }}
         />
       </Space>
     </Card>

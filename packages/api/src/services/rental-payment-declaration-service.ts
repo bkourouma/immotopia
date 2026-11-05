@@ -13,6 +13,7 @@ import { assertTreasuryAccountUsableTx } from '../lib/treasury/accounts';
 import { syncDirectRentPaymentEntryTx } from '../lib/finance/rental-direct-ledger';
 import { t } from '../i18n';
 import { ConflictError, NotFoundError } from '../middleware/error-middleware';
+import { applyDeclarationListExtras, type DeclarationListExtras } from '../lib/rental/payment-list-filters';
 
 interface PaymentDeclarationFilters {
   status?: PaymentDeclarationStatus;
@@ -649,7 +650,7 @@ export async function rejectPaymentDeclaration(
  */
 export async function getPaymentDeclarations(
   tenantId: string,
-  filters?: PaymentDeclarationFilters,
+  filters?: PaymentDeclarationFilters & DeclarationListExtras,
   pagination?: PaginationOptions
 ): Promise<{ declarations: any[]; pagination: any }> {
   try {
@@ -683,6 +684,8 @@ export async function getPaymentDeclarations(
         where.payment_date.lte = filters.endDate;
       }
     }
+
+    if (filters) applyDeclarationListExtras(where, filters); // search + méthode
 
     // Get declarations and total count
     const [declarations, total] = await Promise.all([

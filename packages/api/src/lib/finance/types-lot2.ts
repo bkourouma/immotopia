@@ -199,10 +199,9 @@ export interface TrialBalanceLine {
 /**
  * Balance générale d'une portée, par agrégation SQL.
  *
- * Distincte de `getTrialBalanceBySyndicate`, qui n'est pas modifiée et reste le
- * chemin de la copropriété. Celle-ci agrège en `groupBy` sur `tenantId` et
- * `scope`, jamais en mémoire : le banc de charge du lot 0 mesure un facteur
- * trente entre les deux approches.
+ * Balance generale d'une portee, agregee en `groupBy` sur `tenantId` et
+ * `scope`, jamais en memoire : le banc de charge du lot 0 mesurait un facteur
+ * trente par rapport a l'ancienne lecture en memoire de la copropriete.
  */
 export type GetTrialBalance = (
   tenantId: string,

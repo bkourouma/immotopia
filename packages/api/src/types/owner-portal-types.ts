@@ -121,6 +121,7 @@ export interface LeasesListData {
 
 export interface LeaseListItem {
   id: string;
+  propertyId: string;
   propertyAddress: string;
   tenantName: string;
   startDate: Date;

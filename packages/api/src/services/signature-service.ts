@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import { randomUUID } from 'crypto';
 import { Prisma, type SignatureDocumentKind } from '@prisma/client';
 import { env } from '../config/env';
@@ -612,8 +613,8 @@ function searchFilter(q?: string): Prisma.SignatureRequestWhereInput {
   if (!q) return {};
   return {
     OR: [
-      { title: { contains: q, mode: 'insensitive' } },
-      { signers: { some: { fullName: { contains: q, mode: 'insensitive' } } } }
+      { title: { contains: escapeLike(q), mode: 'insensitive' } },
+      { signers: { some: { fullName: { contains: escapeLike(q), mode: 'insensitive' } } } }
     ]
   };
 }

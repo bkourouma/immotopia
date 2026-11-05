@@ -17,16 +17,47 @@ import {
   Spin,
   Typography
 } from 'antd';
-import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import { SyndicateCard } from '../../components/syndics/SyndicateCard';
 import { useAuth } from '../../hooks/useAuth';
 import { createSyndicate, deleteSyndicate, listSyndicates } from '../../services/syndic-service';
 import { listMandatingAgencies, MandatingAgency } from '../../services/document-branding-service';
 import { CreateSyndicateRequest, Syndicate } from '../../types/syndic-types';
-import { useConfirmAction } from '../../components/primitives';
+import { ListSearch, StateBlock, useConfirmAction } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion, SearchOption } from '../../utils/list-search';
+import { localizedList } from '../../i18n/localized';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
+
+const PAGE_SIZE = 12;
+/** Valeur du critère « Mandant » pour les copropriétés sans agence mandante (identité de l'agence). */
+const NO_MANDANT = 'NONE';
+
+// Libellés vivants : un `t()` évalué au chargement du module figerait la langue.
+// IN_LIQUIDATION n'est pas proposé : ces copropriétés sont exclues de la liste.
+const STATUS_OPTIONS = localizedList((): SearchOption[] => [
+  { value: 'ACTIVE', label: t('Active') },
+  { value: 'IN_DISPUTE', label: t('En litige') }
+]);
+
+function lotCount(item: Syndicate): number {
+  return item._count?.lots ?? item.lots?.length ?? item.totalLots ?? 0;
+}
+
+// Stables (hors du composant) : le filtrage reste mémoïsé.
+const TEXTE_RECHERCHE = [
+  (item: Syndicate) => item.name,
+  (item: Syndicate) => item.address,
+  (item: Syndicate) => item.cadastralReference,
+  (item: Syndicate) => item.mandatingAgency?.name
+];
+const ACCESSEURS = {
+  status: (item: Syndicate) => item.status,
+  mandant: (item: Syndicate) => item.mandatingAgencyId || NO_MANDANT,
+  withLots: (item: Syndicate) => lotCount(item) > 0
+};
 
 export const SyndicsList: React.FC = () => {
   const { message } = App.useApp();
@@ -41,8 +72,6 @@ export const SyndicsList: React.FC = () => {
   const [items, setItems] = useState<Syndicate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deletingSyndicId, setDeletingSyndicId] = useState<string | null>(null);
@@ -108,28 +137,48 @@ export const SyndicsList: React.FC = () => {
     }
   };
 
-  const filteredItems = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const visibleItems = items.filter(item => item.status !== 'IN_LIQUIDATION');
-    if (!query) {
-      return visibleItems;
+  // Les copropriétés en liquidation sont exclues de la gestion courante. La redirection `?openSyndicSection=`
+  // ci-dessus lit `items` (liste non filtrée par la recherche).
+  const visibleItems = useMemo(() => items.filter(item => item.status !== 'IN_LIQUIDATION'), [items]);
+
+  const mandantOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    let withoutMandant = false;
+    for (const item of visibleItems) {
+      if (!item.mandatingAgencyId) withoutMandant = true;
+      else if (item.mandatingAgency?.name) byId.set(item.mandatingAgencyId, item.mandatingAgency.name);
     }
+    const options: SearchOption[] = [...byId].map(([value, label]) => ({ value, label }));
+    if (withoutMandant) options.push({ value: NO_MANDANT, label: t('Identité de l’agence') });
+    return options;
+  }, [visibleItems]);
 
-    return visibleItems.filter(item =>
-      [item.name, item.address, item.cadastralReference || ''].some(value => value.toLowerCase().includes(query))
-    );
-  }, [items, search]);
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Nom, adresse, référence cadastrale, mandant…')
+    },
+    { key: 'status', type: 'multiSelect', label: t('Statut'), primary: true, options: STATUS_OPTIONS },
+    { key: 'mandant', type: 'select', label: t('Mandant'), primary: true, options: mandantOptions },
+    {
+      key: 'withLots',
+      type: 'boolean',
+      label: t('Lots'),
+      tristate: true,
+      trueLabel: t('Avec lots'),
+      falseLabel: t('Sans lot')
+    }
+  ];
 
-  // Remise à la première page quand la recherche change la liste filtrée.
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search]);
-
-  const pageSize = 12;
-  const pagedItems = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredItems.slice(start, start + pageSize);
-  }, [filteredItems, currentPage]);
+  const local = useLocalListSearch<Syndicate>(visibleItems, {
+    ariaLabel: t('Rechercher dans les copropriétés'),
+    defaultPageSize: PAGE_SIZE,
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   const handleCreate = async () => {
     if (!effectiveTenantId) {
@@ -195,44 +244,47 @@ export const SyndicsList: React.FC = () => {
           </Button>
         </div>
 
-        <Input
-          allowClear
-          size="large"
-          prefix={<SearchOutlined />}
-          placeholder={t('Rechercher par nom, adresse ou référence cadastrale')}
-          value={search}
-          onChange={event => setSearch(event.target.value)}
-        />
-
         {error ? <Alert type="error" message={error} showIcon /> : null}
 
         {loading ? (
           <div style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Spin size="large" />
           </div>
-        ) : filteredItems.length === 0 ? (
-          <Empty description={t('Aucune copropriété trouvée')} />
+        ) : visibleItems.length === 0 ? (
+          <Empty description={t('Aucune copropriété trouvée')}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+              {t('Créer une copropriété')}
+            </Button>
+          </Empty>
         ) : (
           <>
-            <Row gutter={[16, 16]}>
-              {pagedItems.map(item => (
-                <Col key={item.id} xs={24} md={12} xl={8}>
-                  <SyndicateCard
-                    syndicate={item}
-                    tenantId={effectiveTenantId || ''}
-                    onDelete={handleDelete}
-                    deleting={deletingSyndicId === item.id}
-                  />
-                </Col>
-              ))}
-            </Row>
-            {filteredItems.length > pageSize ? (
+            <ListSearch {...local.searchProps} />
+            {local.total === 0 ? (
+              <StateBlock
+                variant="no-results"
+                actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
+              />
+            ) : (
+              <Row gutter={[16, 16]}>
+                {local.pageItems.map(item => (
+                  <Col key={item.id} xs={24} md={12} xl={8}>
+                    <SyndicateCard
+                      syndicate={item}
+                      tenantId={effectiveTenantId || ''}
+                      onDelete={handleDelete}
+                      deleting={deletingSyndicId === item.id}
+                    />
+                  </Col>
+                ))}
+              </Row>
+            )}
+            {local.total > PAGE_SIZE ? (
               <div style={{ display: 'flex', justifyContent: 'center' }}>
                 <Pagination
-                  current={currentPage}
-                  pageSize={pageSize}
-                  total={filteredItems.length}
-                  onChange={setCurrentPage}
+                  current={local.page}
+                  pageSize={PAGE_SIZE}
+                  total={local.total}
+                  onChange={page => local.setPage(page)}
                   showSizeChanger={false}
                 />
               </div>

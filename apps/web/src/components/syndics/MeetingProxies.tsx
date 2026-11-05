@@ -3,6 +3,8 @@ import { App, Alert, Button, Card, Form, Modal, Popconfirm, Select, Typography }
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { Table } from '../primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { listContacts } from '../../services/crm-service';
 import { createMeetingProxy, deleteMeetingProxy } from '../../services/syndic-service';
 import { MeetingContact, MeetingLot, MeetingProxy } from '../../types/syndic-types';
@@ -76,6 +78,59 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
     }
     return map;
   }, [lots]);
+
+  // Recherche LOCALE des pouvoirs (liste reçue en entier, bornée par l'AG ; préfixe d'URL « px »).
+  // Le filtre ne change que l'AFFICHAGE : ajouter ou retirer un pouvoir agit sur la ligne choisie.
+  const lotIdsByOwner = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const lot of lots) {
+      const ownerId = lotOwnerId(lot);
+      if (!ownerId) continue;
+      map.set(ownerId, [...(map.get(ownerId) ?? []), lot.id]);
+    }
+    return map;
+  }, [lots]);
+
+  const searchText = useMemo(
+    () => [
+      (proxy: MeetingProxy) => contactName(proxy.grantor),
+      (proxy: MeetingProxy) => contactName(proxy.representative),
+      (proxy: MeetingProxy) => lotsByOwner.get(proxy.grantorContactId)
+    ],
+    [lotsByOwner]
+  );
+  const searchAccessors = useMemo(
+    () => ({ lot: (proxy: MeetingProxy) => lotIdsByOwner.get(proxy.grantorContactId) }),
+    [lotIdsByOwner]
+  );
+  // Lots proposés : seulement ceux dont le copropriétaire a donné un pouvoir.
+  const lotCriterionOptions = useMemo(() => {
+    const grantors = new Set(proxies.map(proxy => proxy.grantorContactId));
+    return lots
+      .filter(lot => {
+        const ownerId = lotOwnerId(lot);
+        return ownerId !== null && grantors.has(ownerId);
+      })
+      .map(lot => ({ value: lot.id, label: formatLotLabel(lot) }));
+  }, [lots, proxies]);
+
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Mandant, mandataire, lot…')
+    },
+    { key: 'lot', type: 'select', label: t('Lot'), primary: true, options: lotCriterionOptions }
+  ];
+  const local = useLocalListSearch<MeetingProxy>(proxies, {
+    paramPrefix: 'px',
+    ariaLabel: t('Rechercher dans les pouvoirs'),
+    defaultPageSize: 20,
+    criteria,
+    text: searchText,
+    accessors: searchAccessors
+  });
 
   const representativeOptions = useMemo(() => {
     // Les coproprietaires sont aussi des mandataires possibles, meme si la liste CRM echoue.
@@ -193,15 +248,17 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
       {grantorOptions.length === 0 && !readOnly ? (
         <Text type="secondary">{t("Aucun lot n'a de copropriétaire : aucun pouvoir possible.")}</Text>
       ) : null}
-      <Table
+      <Table<MeetingProxy>
+        {...local.tableProps}
+        aria-label={t('Pouvoirs')}
         exportFilename={t('Pouvoirs')}
+        exportFetchAll={local.exportAll}
         scroll={{ x: 'max-content' }}
         rowKey="id"
         size="small"
-        dataSource={proxies}
         columns={columns}
-        pagination={false}
-        locale={{ emptyText: t('Aucun pouvoir enregistré') }}
+        pagination={{ ...local.tableProps.pagination, hideOnSinglePage: true, showSizeChanger: false }}
+        locale={local.isFiltered ? undefined : { emptyText: t('Aucun pouvoir enregistré') }}
       />
 
       <Modal

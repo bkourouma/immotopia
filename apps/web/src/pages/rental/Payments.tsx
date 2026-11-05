@@ -1,16 +1,14 @@
 import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { App, Button, Select, Tabs, Modal, Drawer } from 'antd';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { App, Button, Tabs, Modal, Drawer } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listPayments,
-  listLeases,
   createPayment,
   allocatePayment,
   RentalPayment,
-  RentalPaymentStatus,
   RentalPaymentMethod,
   CreatePaymentRequest,
   AllocatePaymentRequest
@@ -21,9 +19,10 @@ import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm
 import { PaymentDeclarationsList } from '../../components/rental/PaymentDeclarationsList';
 import { OnlineCheckoutStatus } from '../../components/rental/OnlineCheckoutStatus';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { useListParams } from '../../hooks/useListParams';
+import { useListSearch } from '../../hooks/useListSearch';
+import { paymentCriteria } from './payment-search-criteria';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { nomDuBien, nomDeLaPersonne, optionsLocatairesDesBaux, deviseAffichee } from '../../lib/rental-labels';
+import { nomDuBien, nomDeLaPersonne, deviseAffichee } from '../../lib/rental-labels';
 import {
   PageHeader,
   StateBlock,
@@ -32,12 +31,11 @@ import {
   MoneyValue,
   DataView,
   DataCard,
-  FilterSheet,
   formatMoney
 } from '../../components/primitives';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
-import { localizedList, localizedRecord } from '../../i18n/localized';
+import { localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 /**
@@ -68,9 +66,6 @@ interface PaymentsProps {
   leaseId?: string;
 }
 
-type Filters = { status: string; onglet: string; renterClientId: string };
-const FILTER_KEYS = ['status', 'onglet', 'renterClientId'] as const;
-
 const METHOD_LABELS: Record<string, string> = localizedRecord(() => ({
   CASH: t('Espèces'),
   BANK_TRANSFER: t('Virement bancaire'),
@@ -80,15 +75,6 @@ const METHOD_LABELS: Record<string, string> = localizedRecord(() => ({
   CARD: t('Carte bancaire'),
   OTHER: t('Autre')
 }));
-
-const STATUS_OPTIONS = localizedList(() => [
-  { value: 'PENDING', label: t('En attente') },
-  { value: 'SUCCESS', label: t('Réussi') },
-  { value: 'FAILED', label: t('Échoué') },
-  { value: 'CANCELED', label: t('Annulé') },
-  { value: 'REFUNDED', label: t('Remboursé') },
-  { value: 'PARTIALLY_REFUNDED', label: t('Partiellement remboursé') }
-]);
 
 /**
  * Montant déjà affecté d'un paiement.
@@ -135,11 +121,27 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   const peutEncaisser = permissions === null || permissions.has('RENTAL_PAYMENTS_CREATE');
   const peutAffecter = permissions === null || permissions.has('RENTAL_PAYMENTS_ALLOCATE');
 
-  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS, defaultPageSize: 50 });
+  // Recherche multicritères dans l'URL. Dans l'onglet d'un bail, préfixe `pai` (le bail porte
+  // ses propres onglets) ; sur la page autonome, clés brutes (liens existants conservés).
+  const search = useListSearch({
+    criteria: paymentCriteria(tenantId, leaseId),
+    paramPrefix: leaseId ? 'pai' : undefined,
+    ariaLabel: leaseId ? t('Rechercher dans les paiements') : undefined,
+    defaultPageSize: 50
+  });
+  const [searchParams, setSearchParams] = useSearchParams();
   const [saisieOuverte, setSaisieOuverte] = useState(false);
   const [affectePour, setAffectePour] = useState<RentalPayment | null>(null);
 
-  const onglet = list.filters.onglet || 'paiements';
+  // Sous-onglet Paiements / Déclarations dans l'URL : `onglet` (page), `pai.onglet` (onglet d'un bail).
+  const ongletKey = leaseId ? 'pai.onglet' : 'onglet';
+  // Avant les onglets préfixés, un lien de bail portait `tab=payments&onglet=declarations`.
+  // Le repli n'est valable que pour ces deux valeurs historiques : `onglet=payments`
+  // désigne maintenant l'onglet principal du bail, pas celui de cette liste.
+  const ancienSousOnglet = leaseId && searchParams.get('tab') === 'payments' ? searchParams.get('onglet') : null;
+  const onglet =
+    searchParams.get(ongletKey) ||
+    (ancienSousOnglet === 'declarations' || ancienSousOnglet === 'paiements' ? ancienSousOnglet : 'paiements');
 
   const {
     data,
@@ -148,42 +150,12 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
     error: erreurRequete,
     refetch
   } = useQuery({
-    queryKey: queryKey('payments', tenantId, {
-      status: list.filters.status ?? '',
-      renterClientId: list.filters.renterClientId ?? '',
-      leaseId: leaseId ?? '',
-      page: list.page,
-      limit: list.pageSize
-    }),
-    queryFn: () =>
-      listPayments(tenantId as string, {
-        leaseId,
-        status: (list.filters.status as RentalPaymentStatus) || undefined,
-        renterClientId: list.filters.renterClientId || undefined,
-        page: list.page,
-        limit: list.pageSize
-      }),
+    queryKey: queryKey('payments', tenantId, { leaseId: leaseId ?? '', ...search.apiParams }),
+    queryFn: () => listPayments(tenantId as string, { ...search.apiParams, ...(leaseId ? { leaseId } : {}) }),
     enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
-
-  /**
-   * Locataires du portefeuille, pour le filtre.
-   *
-   * Dérivés des baux et non des paiements affichés : un locataire qui n'a
-   * encore rien versé doit rester sélectionnable, ne serait-ce que pour
-   * constater qu'il n'a rien versé.
-   *
-   * Inutile dans l'onglet d'un bail : le payeur y est déjà unique.
-   */
-  const { data: tousLesBaux } = useQuery({
-    queryKey: queryKey('leases', tenantId, { pour: 'filtre-locataire' }),
-    queryFn: () => listLeases(tenantId as string, { limit: 500 }),
-    enabled: Boolean(tenantId) && !leaseId,
-    staleTime: STALE_TIME.list
-  });
-
-  const optionsLocataires = React.useMemo(() => optionsLocatairesDesBaux(tousLesBaux?.data), [tousLesBaux]);
 
   const paiements = data?.data ?? [];
   const total = data?.pagination?.total ?? 0;
@@ -315,43 +287,6 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
 
   const listeDesPaiements = (
     <>
-      <FilterSheet
-        activeCount={[list.filters.status, list.filters.renterClientId].filter(Boolean).length}
-        onClear={() => list.setFilters({ status: undefined, renterClientId: undefined })}
-        title={t('Filtrer les paiements')}
-      >
-        {!leaseId && (
-          <div style={{ minWidth: 240 }}>
-            <label htmlFor="filtre-locataire-paiement">{t('Locataire')}</label>
-            <Select
-              id="filtre-locataire-paiement"
-              style={{ width: '100%' }}
-              placeholder={t('Tous les locataires')}
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              value={list.filters.renterClientId || undefined}
-              onChange={valeur => list.setFilters({ renterClientId: valeur })}
-              options={optionsLocataires}
-            />
-          </div>
-        )}
-        <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-statut-paiement">{t('Statut')}</label>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            id="filtre-statut-paiement"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les statuts')}
-            allowClear
-            value={list.filters.status || undefined}
-            onChange={valeur => list.setFilters({ status: valeur })}
-            options={STATUS_OPTIONS}
-          />
-        </div>
-      </FilterSheet>
-
       <DataView<RentalPayment>
         // Export de TOUS les paiements, avec les mêmes filtres que la liste affichée.
         export={{
@@ -359,9 +294,8 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
           fetchAll: () =>
             collectAllPages<RentalPayment>(async (page, limit) => {
               const reponse = await listPayments(tenantId, {
-                leaseId,
-                status: (list.filters.status as RentalPaymentStatus) || undefined,
-                renterClientId: list.filters.renterClientId || undefined,
+                ...search.filterParams,
+                ...(leaseId ? { leaseId } : {}),
                 page,
                 limit
               });
@@ -374,16 +308,13 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
         scrollX={leaseId ? undefined : 1320}
         items={paiements}
         total={total}
-        page={list.page}
-        pageSize={list.pageSize}
-        onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
+        search={search.searchProps}
+        {...search.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les paiements.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={Boolean(list.filters.status)}
-        onClearFilters={() => list.setFilters({ status: undefined })}
         emptyDescription={t('Aucun paiement enregistré.')}
         emptyAction={
           peutEncaisser ? { label: t('Enregistrer un paiement'), onClick: () => setSaisieOuverte(true) } : undefined
@@ -475,7 +406,20 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
         // L'onglet actif vit dans l'URL : revenir depuis le détail d'un
         // paiement retrouve l'onglet d'où l'on venait, et un lien vers les
         // déclarations en attente est partageable.
-        onChange={cle => list.setFilters({ onglet: cle === 'paiements' ? undefined : cle })}
+        onChange={cle =>
+          setSearchParams(
+            previous => {
+              const next = new URLSearchParams(previous);
+              if (ancienSousOnglet === 'declarations' || ancienSousOnglet === 'paiements') next.delete('onglet');
+              if (cle === 'paiements') next.delete(ongletKey);
+              else next.set(ongletKey, cle);
+              return next;
+            },
+            { replace: true }
+          )
+        }
+        // La liste des déclarations ne se charge que quand son onglet est affiché.
+        destroyOnHidden
         items={[
           { key: 'paiements', label: t('Paiements'), children: listeDesPaiements },
           {

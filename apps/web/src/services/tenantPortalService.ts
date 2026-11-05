@@ -5,6 +5,9 @@
 
 import api from '../utils/api-client';
 
+/** Paramètres de liste : filtres (valeurs multiples en CSV), `search`, pagination. */
+type PortalListParams = { [key: string]: string | number | undefined };
+
 export const tenantPortalService = {
   // Dashboard
   getDashboard: () => api.get('/portal/tenant/dashboard'),
@@ -16,14 +19,16 @@ export const tenantPortalService = {
   getLeaseDetails: (leaseId?: string) => api.get('/portal/tenant/lease', { params: leaseId ? { leaseId } : undefined }),
 
   // Installments
-  getInstallments: (params?: { status?: string; startDate?: string; endDate?: string }) =>
-    api.get('/portal/tenant/installments', { params }),
+  getInstallments: (
+    params?: PortalListParams & { search?: string; status?: string; startDate?: string; endDate?: string }
+  ) => api.get('/portal/tenant/installments', { params }),
 
   getInstallmentDetails: (id: string) => api.get(`/portal/tenant/installments/${id}`),
 
   // Payments
-  getPaymentHistory: (params?: { startDate?: string; endDate?: string; method?: string }) =>
-    api.get('/portal/tenant/payments', { params }),
+  getPaymentHistory: (
+    params?: PortalListParams & { search?: string; startDate?: string; endDate?: string; method?: string }
+  ) => api.get('/portal/tenant/payments', { params }),
 
   // `leaseId` (paramètre d'URL lu par l'API) désigne le bail quand le paiement n'est
   // rattaché à aucune échéance et que le locataire a plusieurs baux actifs.
@@ -38,8 +43,15 @@ export const tenantPortalService = {
     api.get('/portal/tenant/deposit', { params: leaseId ? { leaseId } : undefined }),
 
   // Maintenance
-  getMaintenanceTickets: (params?: { status?: string; leaseId?: string }) =>
-    api.get('/portal/tenant/maintenance', { params }),
+  getMaintenanceTickets: (
+    params?: PortalListParams & {
+      search?: string;
+      status?: string;
+      category?: string;
+      priority?: string;
+      leaseId?: string;
+    }
+  ) => api.get('/portal/tenant/maintenance', { params }),
 
   // `leaseId` : bail concerné quand le locataire en a plusieurs
   createMaintenanceTicket: (data: FormData, leaseId?: string) =>

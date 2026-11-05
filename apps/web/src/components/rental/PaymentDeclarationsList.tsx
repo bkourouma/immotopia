@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { App, Button, Tag, Space, Typography, Empty, Alert, Select, Modal, Input, Image } from 'antd';
+import React, { useState, useEffect, useRef } from 'react';
+import { App, Button, Tag, Space, Typography, Alert, Modal, Input, Image } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, FileImageOutlined } from '@ant-design/icons';
 import {
@@ -8,7 +8,6 @@ import {
   rejectPaymentDeclaration,
   RentalPaymentDeclaration,
   PaymentDeclarationStatus,
-  PaymentDeclarationFilters,
   RentalPaymentMethod,
   fetchPaymentDeclarationProof
 } from '../../services/rental-service';
@@ -22,12 +21,24 @@ import {
   libellePeriodeEcheance,
   formatMontantLocatif
 } from '../../lib/rental-labels';
+import { useListSearch } from '../../hooks/useListSearch';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
 const { TextArea } = Input;
+
+/** Libellés vivants (lus à chaque rendu : ils suivent la langue). */
+const METHOD_LABELS = (): Record<RentalPaymentMethod, string> => ({
+  CASH: t('Espèces'),
+  BANK_TRANSFER: t('Virement bancaire'),
+  CHECK: t('Chèque'),
+  MOBILE_MONEY: t('Mobile Money'),
+  DIRECT_DEBIT: t('Prélèvement bancaire'),
+  CARD: t('Carte bancaire'),
+  OTHER: t('Autre')
+});
 
 interface PaymentDeclarationsListProps {
   tenantId: string;
@@ -47,18 +58,51 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
   const [declarations, setDeclarations] = useState<RentalPaymentDeclaration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<PaymentDeclarationFilters>({
-    status: undefined,
-    leaseId: leaseId,
-    page: 1,
-    limit: 100
+  // Recherche multicritères dans l'URL, préfixe `decl` : la page Paiements porte aussi sa propre barre.
+  const search = useListSearch({
+    paramPrefix: 'decl',
+    ariaLabel: t('Rechercher dans les déclarations'),
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Référence, n° de bail, bien, déclarant…')
+      },
+      {
+        key: 'status',
+        type: 'select',
+        label: t('Statut'),
+        placeholder: t('Tous les statuts'),
+        primary: true,
+        options: [
+          { value: PaymentDeclarationStatus.PENDING, label: t('En attente') },
+          { value: PaymentDeclarationStatus.APPROVED, label: t('Approuvées') },
+          { value: PaymentDeclarationStatus.REJECTED, label: t('Rejetées') },
+          { value: PaymentDeclarationStatus.CANCELED, label: t('Annulées') }
+        ]
+      },
+      {
+        key: 'periode',
+        type: 'dateRange',
+        label: t('Période'),
+        primary: true,
+        api: ['startDate', 'endDate']
+      },
+      {
+        key: 'method',
+        type: 'select',
+        label: t('Méthode'),
+        placeholder: t('Toutes les méthodes'),
+        options: (Object.keys(METHOD_LABELS()) as RentalPaymentMethod[]).map(value => ({
+          value,
+          label: METHOD_LABELS()[value]
+        }))
+      }
+    ]
   });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 100,
-    total: 0,
-    totalPages: 0
-  });
+  const [total, setTotal] = useState(0);
+  const requestId = useRef(0);
   const [approveModalVisible, setApproveModalVisible] = useState(false);
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [selectedDeclaration, setSelectedDeclaration] = useState<RentalPaymentDeclaration | null>(null);
@@ -72,27 +116,31 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     if (tenantId) {
       loadDeclarations();
     }
-  }, [tenantId, filters, leaseId]);
+  }, [tenantId, search.apiParams, leaseId]);
 
   const loadDeclarations = async () => {
     if (!tenantId) return;
+    const current = ++requestId.current;
     setLoading(true);
     setError(null);
     try {
       const response = await listPaymentDeclarations(tenantId, {
-        ...filters,
-        leaseId: leaseId || filters.leaseId
+        ...search.apiParams,
+        ...(leaseId ? { leaseId } : {})
       });
+      // Réponse d'une recherche déjà remplacée : ignorée.
+      if (current !== requestId.current) return;
       if (response.success) {
         setDeclarations(response.data);
-        setPagination(response.pagination);
+        setTotal(response.pagination?.total ?? 0);
       } else {
         setError(t('Erreur lors du chargement des déclarations'));
       }
     } catch (err: any) {
+      if (current !== requestId.current) return;
       setError(err.response?.data?.message || t('Erreur lors du chargement des déclarations'));
     } finally {
-      setLoading(false);
+      if (current === requestId.current) setLoading(false);
     }
   };
 
@@ -190,18 +238,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     return <Tag color={config.color}>{config.label}</Tag>;
   };
 
-  const getMethodLabel = (method: RentalPaymentMethod) => {
-    const methodMap: Record<RentalPaymentMethod, string> = {
-      CASH: t('Espèces'),
-      BANK_TRANSFER: t('Virement bancaire'),
-      CHECK: t('Chèque'),
-      MOBILE_MONEY: t('Mobile Money'),
-      DIRECT_DEBIT: t('Prélèvement bancaire'),
-      CARD: t('Carte bancaire'),
-      OTHER: t('Autre')
-    };
-    return methodMap[method] || method;
-  };
+  const getMethodLabel = (method: RentalPaymentMethod) => METHOD_LABELS()[method] || method;
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString(activeLocale(), {
@@ -339,64 +376,35 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
           />
         )}
 
-        <Space>
-          <Select
-            showSearch
-            optionFilterProp="children"
-            value={filters.status || 'all'}
-            onChange={value =>
-              setFilters({
-                ...filters,
-                status: value === 'all' ? undefined : (value as PaymentDeclarationStatus),
-                page: 1
-              })
-            }
-            style={{ width: 200 }}
-          >
-            <Select.Option value="all">{t('Tous les statuts')}</Select.Option>
-            <Select.Option value={PaymentDeclarationStatus.PENDING}>{t('En attente')}</Select.Option>
-            <Select.Option value={PaymentDeclarationStatus.APPROVED}>{t('Approuvées')}</Select.Option>
-            <Select.Option value={PaymentDeclarationStatus.REJECTED}>{t('Rejetées')}</Select.Option>
-            <Select.Option value={PaymentDeclarationStatus.CANCELED}>{t('Annulées')}</Select.Option>
-          </Select>
-        </Space>
-
-        {declarations.length === 0 && !loading ? (
-          <Empty description={t('Aucune déclaration trouvée')} />
-        ) : (
-          <Table
-            exportFilename={t('Déclarations de paiement')}
-            // Export de TOUTES les déclarations, avec le même filtre de statut que la liste.
-            exportFetchAll={() =>
-              collectAllPages<RentalPaymentDeclaration>(async (page, limit) => {
-                const reponse = await listPaymentDeclarations(tenantId, {
-                  ...filters,
-                  leaseId: leaseId || filters.leaseId,
-                  page,
-                  limit
-                });
-                return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
-              })
-            }
-            dataSource={declarations}
-            loading={loading}
-            rowKey="id"
-            scroll={{ x: 'max-content' }}
-            columns={columns}
-            pagination={{
-              current: pagination.page,
-              pageSize: pagination.limit,
-              total: pagination.total,
-              showSizeChanger: true,
-              pageSizeOptions: ['20', '50', '100', '200'],
-              showTotal: total =>
-                t('Total {{total}} déclaration{{value}}', { total: total, value: total !== 1 ? 's' : '' }),
-              onChange: (page, pageSize) => {
-                setFilters(prev => ({ ...prev, page, limit: pageSize ?? prev.limit }));
-              }
-            }}
-          />
-        )}
+        <Table
+          exportFilename={t('Déclarations de paiement')}
+          // Export de TOUTES les déclarations qui correspondent à la recherche affichée.
+          exportFetchAll={() =>
+            collectAllPages<RentalPaymentDeclaration>(async (page, limit) => {
+              const reponse = await listPaymentDeclarations(tenantId, {
+                ...search.filterParams,
+                ...(leaseId ? { leaseId } : {}),
+                page,
+                limit
+              });
+              return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
+            })
+          }
+          aria-label={t('Déclarations de paiement')}
+          search={search.searchProps}
+          dataSource={declarations}
+          loading={loading}
+          rowKey="id"
+          scroll={{ x: 'max-content' }}
+          columns={columns}
+          pagination={{
+            ...search.tablePagination(total),
+            showTotal: count =>
+              t('Total {{total}} déclaration{{value}}', { total: count, value: count !== 1 ? 's' : '' })
+          }}
+          // Sous critère, la Table affiche seule son bloc « Aucun résultat » et « Effacer les critères ».
+          locale={search.isFiltered ? undefined : { emptyText: t('Aucune déclaration trouvée') }}
+        />
       </Space>
 
       {/* Approve Modal */}

@@ -27,7 +27,8 @@ import {
   WalletOutlined
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
-import { Table } from '../../components/primitives';
+import { ListSearch, Table } from '../../components/primitives';
+import { listPagination, noResults, useLeaseDetailsSearch, useLeaseTabs } from './search/useLeaseDetailsSearch';
 import { t } from '../../i18n/t';
 
 import { activeLocale, formatFcfa } from '../../i18n/format';
@@ -179,6 +180,8 @@ export default function LeaseDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<LeaseDetailsData | null>(null);
+  const tabsProps = useLeaseTabs();
+  const { installmentsSearch, paymentsSearch } = useLeaseDetailsSearch(data, getPaymentMethodLabel);
 
   useEffect(() => {
     if (id) {
@@ -285,7 +288,7 @@ export default function LeaseDetails() {
         <Text type="secondary">{data.lease.property.address}</Text>
       </div>
 
-      <Tabs defaultActiveKey="info">
+      <Tabs {...tabsProps}>
         {/* T067: Lease Information Section */}
         <TabPane
           tab={
@@ -336,6 +339,7 @@ export default function LeaseDetails() {
           {data.lease.coRenters.length > 0 && (
             <Card title={t('Co-locataires')} style={{ marginTop: 16 }}>
               <List
+                pagination={{ pageSize: 20, hideOnSinglePage: true }}
                 dataSource={data.lease.coRenters}
                 renderItem={coRenter => (
                   <List.Item>
@@ -359,12 +363,14 @@ export default function LeaseDetails() {
           <Card title={t('Calendrier des échéances')}>
             {data.installments.length > 0 ? (
               <Table
+                aria-label={t('Calendrier des échéances')}
                 exportFilename={t('Calendrier des échéances')}
+                exportFetchAll={installmentsSearch.exportAll}
                 scroll={{ x: 'max-content' }}
                 columns={installmentColumns}
-                dataSource={data.installments}
+                {...installmentsSearch.tableProps}
+                search={installmentsSearch.search}
                 rowKey="id"
-                pagination={{ pageSize: 10 }}
               />
             ) : (
               <Empty description={t('Aucune échéance')} />
@@ -382,9 +388,12 @@ export default function LeaseDetails() {
           key="payments"
         >
           <Card title={t('Historique des paiements')}>
+            <ListSearch {...paymentsSearch.search} />
             {data.paymentHistory.length > 0 ? (
               <List
-                dataSource={data.paymentHistory}
+                pagination={listPagination(paymentsSearch)}
+                locale={{ emptyText: noResults(paymentsSearch.clear) }}
+                dataSource={paymentsSearch.pageItems}
                 renderItem={payment => (
                   <List.Item>
                     <List.Item.Meta
@@ -399,7 +408,7 @@ export default function LeaseDetails() {
                           <Text type="secondary">{formatDate(payment.succeeded_at)}</Text>
                           {payment.allocations.length > 0 && (
                             <Text type="secondary" style={{ fontSize: 12 }}>
-                              Allocations:{' '}
+                              {t('Allocations :')}{' '}
                               {payment.allocations.map((allocation, idx) => {
                                 const inst = allocation.installment;
                                 const periodLabel = inst
@@ -535,6 +544,7 @@ export default function LeaseDetails() {
               {data.deposit.movements.length > 0 && (
                 <Card title={t('Historique des mouvements')} style={{ marginTop: 16 }}>
                   <List
+                    pagination={{ pageSize: 20, hideOnSinglePage: true }}
                     dataSource={data.deposit.movements}
                     renderItem={movement => (
                       <List.Item>

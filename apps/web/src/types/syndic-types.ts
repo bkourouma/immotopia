@@ -656,6 +656,8 @@ export interface OverdueDashboardItem {
   paid: number;
   outstanding: number;
   daysLate: number;
+  /** Nombre de relances envoyées pour cet appel (compté côté serveur). */
+  remindersCount?: number;
 }
 
 export interface OverdueDashboard {

@@ -84,24 +84,24 @@ jest.mock('../../src/lib/syndics/queries', () => ({
     return charge;
   }),
   listChargeCallsBySyndicate: jest.fn(
-    async (tenantId: string, syndicateId: string, filters?: { period?: string; status?: string }) => {
+    async (tenantId: string, syndicateId: string, filters?: { period?: string; status?: string | string[] }) => {
       return Array.from(store.charges.values()).filter(charge => {
         if (charge.tenantId !== tenantId) return false;
         if (charge.syndicateId !== syndicateId) return false;
         if (filters?.period && charge.period !== filters.period) return false;
-        if (filters?.status && charge.status !== filters.status) return false;
+        if (filters?.status && ![filters.status].flat().includes(charge.status)) return false;
         return true;
       });
     }
   ),
   summarizeChargeCallsBySyndicate: jest.fn(
-    async (tenantId: string, syndicateId: string, filters?: { period?: string; status?: string }) => {
+    async (tenantId: string, syndicateId: string, filters?: { period?: string; status?: string | string[] }) => {
       const rows = Array.from(store.charges.values()).filter(
         charge =>
           charge.tenantId === tenantId &&
           charge.syndicateId === syndicateId &&
           (!filters?.period || charge.period === filters.period) &&
-          (!filters?.status || charge.status === filters.status)
+          (!filters?.status || [filters.status].flat().includes(charge.status))
       );
       return {
         totalCount: rows.length,

@@ -124,21 +124,23 @@ import {
   createIncidentHandler,
   updateIncidentHandler,
   addIncidentImputationHandler,
-  listChartOfAccountsHandler,
   createChartOfAccountHandler,
   loadSyndicChartTemplateHandler,
   listAccountingJournalsHandler,
   createAccountingJournalHandler,
-  listAccountingEntriesHandler,
   createAccountingEntryHandler,
   lockAccountingEntryHandler,
-  getTrialBalanceHandler,
-  getGeneralLedgerHandler,
   listFundsHandler,
   createFundHandler,
   renameFundHandler,
   adjustFundBalanceHandler
 } from '../controllers/syndic-controller';
+import {
+  getAccountLedgerHandler,
+  getTrialBalanceAggregatedHandler,
+  listAccountingEntriesPageHandler,
+  listChartOfAccountsSearchHandler
+} from '../controllers/syndic-accounting-read-controller';
 import { downloadConvocationDocxHandler } from '../controllers/syndic-word-documents-controller';
 
 const router = Router();
@@ -688,7 +690,7 @@ router.get(
 router.get(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes',
   requireAnyPropertyPermission(['SYNDIC_VIEW']),
-  listChartOfAccountsHandler
+  listChartOfAccountsSearchHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes',
@@ -713,7 +715,7 @@ router.post(
 router.get(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/ecritures',
   requireAnyPropertyPermission(['SYNDIC_VIEW']),
-  listAccountingEntriesHandler
+  listAccountingEntriesPageHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/ecritures',
@@ -728,12 +730,12 @@ router.patch(
 router.get(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/balance',
   requireAnyPropertyPermission(['SYNDIC_VIEW']),
-  getTrialBalanceHandler
+  getTrialBalanceAggregatedHandler
 );
 router.get(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/grand-livre',
   requireAnyPropertyPermission(['SYNDIC_VIEW']),
-  getGeneralLedgerHandler
+  getAccountLedgerHandler
 );
 
 router.get(
