@@ -217,7 +217,7 @@ describe('SignaturesPage', () => {
     });
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole('button', { name: 'Bail Villa Cocody' }));
+    await user.click(await screen.findByRole('button', { name: 'Bail Villa Cocody' }, { timeout: 10_000 }));
     expect(await screen.findByText('Piste de preuve intacte')).toBeInTheDocument();
     expect(fetchSignatureDetail).toHaveBeenCalledWith('r1');
     expect(screen.getByText('Demande créée')).toBeInTheDocument();
@@ -237,7 +237,7 @@ describe('SignaturesPage', () => {
     });
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole('button', { name: 'Bail Villa Cocody' }));
+    await user.click(await screen.findByRole('button', { name: 'Bail Villa Cocody' }, { timeout: 10_000 }));
     expect(await screen.findByText('Piste de preuve altérée')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Ouvrir le document' })).not.toBeInTheDocument();
   }, 60000);

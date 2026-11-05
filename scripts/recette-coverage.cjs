@@ -94,5 +94,5 @@ for (const block of [...new Set([...cases.values()].map((c) => c.block))]) {
   }
   remaining += "\n";
 }
-fs.writeFileSync(path.join(dir, "COUVERTURE-A-FINALISER.md"), remaining);
+fs.writeFileSync(path.join(dir, "COUVERTURE-A-FINALISER.md"), remaining.trimEnd() + "\n");
 console.log(table);

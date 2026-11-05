@@ -19,6 +19,7 @@ import {
 } from '../types/tenant-portal-types';
 import {
   RentalInstallmentStatus,
+  RentalPaymentMethod,
   RentalPaymentStatus,
   MaintenanceTicketStatus,
   MaintenanceTicketCommentAuthorType,
@@ -1457,19 +1458,30 @@ export class TenantPortalService {
         lease_id: { in: scope },
         tenant_id: tenantId
       };
+      const declarationWhere: Prisma.RentalPaymentDeclarationWhereInput = {
+        lease_id: { in: scope },
+        tenant_id: tenantId,
+        declared_by: tenantClientId
+      };
 
       if (filters?.method) {
         where.method = filters.method;
+        declarationWhere.payment_method = filters.method as RentalPaymentMethod;
       }
 
       if (filters?.startDate || filters?.endDate) {
-        where.succeeded_at = {};
+        const dateRange: { gte?: Date; lt?: Date } = {};
         if (filters.startDate) {
-          where.succeeded_at.gte = new Date(filters.startDate);
+          dateRange.gte = new Date(filters.startDate);
         }
         if (filters.endDate) {
-          where.succeeded_at.lte = new Date(filters.endDate);
+          const endExclusive = new Date(filters.endDate);
+          endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+          dateRange.lt = endExclusive;
         }
+        // La date affichée est succeededAt, ou initiatedAt si le paiement n'a pas réussi.
+        where.OR = [{ succeeded_at: dateRange }, { succeeded_at: null, initiated_at: dateRange }];
+        declarationWhere.payment_date = dateRange;
       }
 
       // Get all payments (capped) and declarations so we can merge and paginate
@@ -1499,11 +1511,7 @@ export class TenantPortalService {
           take: 500
         }),
         prisma.rentalPaymentDeclaration.findMany({
-          where: {
-            lease_id: { in: scope },
-            tenant_id: tenantId,
-            declared_by: tenantClientId
-          },
+          where: declarationWhere,
           orderBy: { created_at: 'desc' }
         })
       ]);

@@ -25,6 +25,11 @@ const deleteOwnerFeeTerms = vi.fn();
 const listAgentCommissionShares = vi.fn();
 const updateAgentCommissionShare = vi.fn();
 const getMenuEntitlements = vi.fn();
+const getMyMenuAccess = vi.fn();
+
+vi.mock('../../services/role-menu-service', () => ({
+  getMyMenuAccess: (...a: unknown[]) => getMyMenuAccess(...a)
+}));
 
 vi.mock('../../services/entitlements-service', () => ({
   getMenuEntitlements: (...a: unknown[]) => getMenuEntitlements(...a)
@@ -118,6 +123,11 @@ function mount() {
 beforeEach(() => {
   vi.clearAllMocks();
   getMenuEntitlements.mockResolvedValue({ enforcement: 'off', moduleAccess: {}, readOnly: false, phase: 'ACTIVE' });
+  getMyMenuAccess.mockResolvedValue({
+    disabledMenuKeys: [],
+    enabledMenuKeys: [],
+    permissionKeys: ['TENANT_SETTINGS_VIEW', 'TENANT_SETTINGS_EDIT']
+  });
   getAgencyFinanceSettings.mockResolvedValue(AGENCY_SETTINGS);
   listOwnerFeeTerms.mockResolvedValue(OWNERS);
   listAgentCommissionShares.mockResolvedValue(AGENTS);
@@ -149,4 +159,53 @@ describe('AgencyFinanceSettings — recette GL (BUG-013)', () => {
     expect(await screen.findByText("Indiquez à partir de quelle date la retenue s'applique")).toBeTruthy();
     expect(updateAgencyFinanceSettings).not.toHaveBeenCalled();
   }, 120_000);
+});
+
+describe('AgencyFinanceSettings — forfait et droits (BUG-2026-11-05-007/008)', () => {
+  it.each([
+    ['1,5', 1.5],
+    ['1.5', 1.5],
+    ['15', 15]
+  ])('conserve la saisie %s et envoie le forfait %s', async (saisie, montant) => {
+    updateAgencyFinanceSettings.mockImplementation(async (_tenantId, values) => ({ ...AGENCY_SETTINGS, ...values }));
+    mount();
+    await screen.findAllByText('Honoraires de gestion');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Forfait par échéance' }));
+    const champ = await screen.findByLabelText('Forfait par échéance (FCFA)');
+    fireEvent.change(champ, { target: { value: saisie } });
+    fireEvent.blur(champ);
+    expect((champ as HTMLInputElement).value).toBe(saisie.replace('.', ','));
+
+    expect(screen.getByLabelText('Taux de TVA (%)')).toBeEnabled();
+    const bouton = within(document.querySelector('form') as HTMLFormElement).getByRole('button', {
+      name: /Enregistrer/
+    });
+    expect(bouton).toBeEnabled();
+    fireEvent.click(bouton);
+    await waitFor(() => expect(updateAgencyFinanceSettings).toHaveBeenCalledTimes(1));
+    expect(updateAgencyFinanceSettings.mock.calls[0][1].managementFeeFixedAmount).toBe(montant);
+  });
+
+  it('masque l’écriture et bloque tout PUT pour une personne sans TENANT_SETTINGS_EDIT', async () => {
+    getMyMenuAccess.mockResolvedValue({
+      disabledMenuKeys: [],
+      enabledMenuKeys: [],
+      permissionKeys: ['TENANT_SETTINGS_VIEW']
+    });
+    getAgencyFinanceSettings.mockResolvedValue({
+      ...AGENCY_SETTINGS,
+      withholdingEnabled: true,
+      withholdingStartsOn: '2026-11-03'
+    });
+    mount();
+
+    expect(await screen.findByText('Fiscalité')).toBeTruthy();
+    expect(screen.getByLabelText('Taux de TVA (%)')).toBeDisabled();
+    expect(screen.getByLabelText('Appliquer aux encaissements à partir du')).toBeDisabled();
+    expect(
+      within(document.querySelector('form') as HTMLFormElement).queryByRole('button', { name: /Enregistrer/ })
+    ).toBeNull();
+    expect(updateAgencyFinanceSettings).not.toHaveBeenCalled();
+  });
 });

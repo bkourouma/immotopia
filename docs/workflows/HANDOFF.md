@@ -19,7 +19,7 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 ## Branche `orch/2026-11-03-recette-locatif` — 2026-11-05
 
-Recette complète de la gestion locative : scénario de 852 cas (`docs/recette/gestion-locative/`), exécution Playwright et correctifs délégués. PR brouillon [#193](https://github.com/bkourouma/immotopia/pull/193) vers `main`, à fusionner par l'utilisateur. Worktree : `.claude/worktrees/recette-locatif`.
+Recette de la gestion locative : scénario de 852 cas (`docs/recette/gestion-locative/`), exécution Playwright et correctifs délégués. PR [#193](https://github.com/bkourouma/immotopia/pull/193) vers `main`. Autorisation utilisateur du 05/11 vérifiée dans le chat SYNDIC : correction, fusion et staging après validation. Worktree : `.claude/worktrees/recette-locatif`.
 
 **Reprise par Codex le 05/11, en cours.** Lire `docs/recette/gestion-locative/REPRISE-2026-11-05.md`, les rapports `RETESTS*-2026-11-05.md` et `COMPLEMENT*-2026-11-05.md`, puis `COUVERTURE-A-FINALISER.md`. La passation du 04/11 reste une photographie historique.
 
@@ -32,9 +32,9 @@ Recette complète de la gestion locative : scénario de 852 cas (`docs/recette/g
   - Le classeur des fonctionnalités et les catalogues i18n sont complets.
   - Les résultats par bloc sont dans `RESULTATS.md`.
 - **Reste** : par ordre de priorité, détaillé dans `PASSATION.md`, section 2.
-  1. Suivre la CI du nouveau lot et rejouer BUG005/006 après commit. Toutes les anomalies RT5 sont passées avec leur portée détaillée (057 : interface + schéma, sans POST réel forcé). Ne pas confondre ces retests avec la validation de toutes les variantes des 852 cas.
+  1. Intégrer `origin/main` (PR #195, `cf6fead9`), préserver sa nouvelle architecture, puis CI complète et fusion/staging autorisés. Le run 41984903824 de `12c477f3` a réellement passé les 13 suites/248 tests d'isolation et 11 620 tests API ; seuls deux tests Signatures ont expiré. Leur attente est corrigée et retestée. BUG005/006 sont passés.
   2. Continuer les variantes partielles des compléments 04 et 08. L'agence A a atteint 20/20 signatures pendant GL-04-101 ; le 21e envoi a bien été refusé en 409. Cela bloque de nouvelles signatures, notamment GL-08-067, et le scénario GL-04-115 nécessite 26 demandes (configuration insuffisante). Aucun achat ni changement de plafond effectué.
-  3. Continuer les cas restants de `COUVERTURE-A-FINALISER.md`, notamment les 49 cas du bloc 01 sans verdict détaillé conservé (le journal ancien indique P1 terminé, sans verdicts exploitables).
+  3. Consulter les nouveaux compléments 01, 05 et 1112 : sorties P1 historiques retrouvées et distinguées des contrôles actuels. BUG007 (forfait décimal) et 008 (formulaire principal financier lecteur) corrigés, tests et retests passés ; BUG009 (filtres historiques déclarations) corrigé, 14 tests API et retest navigateur passés. Restent les variantes et prérequis de `COUVERTURE-A-FINALISER.md` ; ne pas déclarer 852 réussites.
   4. Scénario GL-03-016 en conflit avec H39 (interdiction de chevauchement) : BUG-2026-11-05-001 bloqué comme écart de scénario, pas défaut produit confirmé ; conserver le garde.
   5. Rejouer les prérequis manquants par l'interface sur données REC-GL, suivre les suites complètes en CI et mettre à jour la PR avant clôture.
 - **Pièges** :
@@ -48,7 +48,7 @@ Recette complète de la gestion locative : scénario de 852 cas (`docs/recette/g
   - Ne jamais commiter pendant qu'un agent écrit.
   - Pas plus de deux ou trois agents à la fois.
   - Balance âgée : les écarts « Locataire Pénalités » (+3 200 et +2 000) sont des données orphelines, pas un défaut.
-- **Dernier commit produit** : `7e38ae0f` (poussé) ; consulter `git log` pour les lots suivants et les rapports actualisés.
+- **Dernier commit poussé** : `12c477f3` ; lot 007/008/009 et stabilisation du test Signatures en cours d'intégration. Réglages actifs de recette restaurés à 10 %, TVA 18 % ; forfait inactif 1,5 conservé faute de remise à vide UI. Cartes financières indépendantes et comportement du hook sur panne réseau hors correctif 008, gardes API inchangées.
 
 ## État des lieux (pilote) — 2026-10-31
 

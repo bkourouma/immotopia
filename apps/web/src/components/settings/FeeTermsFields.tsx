@@ -2,6 +2,7 @@ import React from 'react';
 import { Col, Form, InputNumber, Radio, Row, Space } from 'antd';
 import { ManagementFeeMode } from '../../services/agency-finance-settings-service';
 import { t } from '../../i18n/t';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 
 export interface FeeTermsFieldsProps {
   /**
@@ -58,7 +59,7 @@ export const FeeTermsFields: React.FC<FeeTermsFieldsProps> = ({ namePrefix = [] 
               ]}
             >
               {/* `min={0}` et non 1 : un 0 saisi doit atteindre la règle ci-dessus, pas être recadré en silence. */}
-              <InputNumber min={0} style={{ width: '100%' }} />
+              <InputNumber min={0} {...montantSaisiProps} style={{ width: '100%' }} />
             </Form.Item>
           ) : (
             <Form.Item
