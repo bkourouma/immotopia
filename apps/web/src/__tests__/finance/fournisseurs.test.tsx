@@ -278,7 +278,10 @@ function compteTresorerie(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getSupplier.mockResolvedValue(fournisseur());
+  listSuppliers.mockResolvedValue([fournisseur()]);
+  getSupplier.mockImplementation(async (_tenantId: string, id: string) =>
+    ((await listSuppliers()) as Supplier[]).find(supplier => supplier.id === id)
+  );
   permissionsDetenues = null;
   listSupplierPayments.mockResolvedValue([]);
   listTreasuryAccounts.mockResolvedValue([

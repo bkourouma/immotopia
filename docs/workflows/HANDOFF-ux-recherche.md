@@ -2,7 +2,7 @@
 
 > **Complément le 2026-11-05 :** la PR #195 est fusionnée (`cf6fead9`).
 > Sélecteurs distants, limites restantes et PDF arabes sont livrés sur
-> `codex/ux-limites-proprietaires-pdf-arabe` ; état et vérifications dans
+> `codex/ux-limites-proprietaires-pdf-arabe` ([PR #196](https://github.com/bkourouma/immotopia/pull/196)) ; état et vérifications dans
 > [HANDOFF.md](HANDOFF.md). Les décisions H1–H13 ci-dessous sont conservées.
 >
 > **Reprise Codex le 2026-11-04 :** SYN-B et JOK sont terminés et intégrés

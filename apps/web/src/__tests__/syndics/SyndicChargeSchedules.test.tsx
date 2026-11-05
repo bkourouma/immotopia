@@ -579,7 +579,12 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
 
     fireEvent.click(await screen.findByText('Ouvrir'));
     const labelInput = await screen.findByLabelText('Libellé');
+    // Le tiroir monte après setFieldsValue ; attendre la valeur initiale et
+    // le champ conditionnel avant de soumettre le formulaire sous charge CI.
+    await waitFor(() => expect(labelInput).toHaveValue(SCHEDULE_MONTHLY.label));
+    await screen.findByLabelText('Budget');
     fireEvent.change(labelInput, { target: { value: 'Charges renommées' } });
+    await waitFor(() => expect(labelInput).toHaveValue('Charges renommées'));
     fireEvent.click(screen.getByText('Enregistrer'));
 
     // La validation asynchrone de tous les champs Ant Design depasse parfois
