@@ -591,8 +591,8 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
     });
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
 
-    // La validation asynchrone des champs Ant Design peut dépasser la seconde
-    // par défaut sur le runner CI ; les assertions sur le corps restent strictes.
+    // La validation asynchrone de tous les champs Ant Design depasse parfois
+    // la seconde par defaut de waitFor sur le runner CI partage.
     await waitFor(() => expect(updateChargeSchedule).toHaveBeenCalled(), { timeout: 15000 });
     const payload = updateChargeSchedule.mock.calls[0][3] as Record<string, unknown>;
     expect(payload).toMatchObject({ label: 'Charges renommées' });
