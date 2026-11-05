@@ -868,10 +868,10 @@ Application et données :
 ## Branche `orch/2026-11-03-ux-recherche-lot-perf` — 2026-11-05
 
 **État :** reprise de la PR #194, validation en cours.
-**Dernier commit avant reprise :** `58ca023e` (optimisations de rendu).
+**Dernier commit de code :** `e93d3259` (tests corrigés), après `58ca023e` (optimisations de rendu).
 
 Fait : analyse du lot et de la CI 41923038088 ; seul échec dans la validation asynchrone du formulaire Syndic. Attente ciblée portée à 15 secondes, sans modifier les assertions de payload ni le timeout global. Assertion d'identité API corrigée dans le test de rendu (comparaison avant/après, au lieu de comparer un objet à lui-même).
 
-Reste : terminer tests ciblés, mesure de rendu, contrôles et CI complète. Aucun gain de temps navigateur revendiqué. La langue remonte l'arbre via la clé de LanguageBoundary dans App.tsx ; les mémos des traductions suivent ce remontage.
+Validation locale : 27 tests Syndic et 5 tests de stabilité des rendus réussis. Mesure comparative séquentielle dans le même processus Vitest : après cinq rendus sans modification du parent, Select et RangePicker passent chacun de 5 rendus supplémentaires avant optimisation à 0 après. Deux scénarios de mesure réussis (34 tests locaux au total). Copies de mesure temporaires retirées. Aucun gain de temps navigateur revendiqué. Reste : attendre la CI complète du dernier commit. La langue remonte l'arbre via la clé de LanguageBoundary dans App.tsx ; les mémos des traductions suivent ce remontage.
 
 Pièges : les deux fichiers `zz-profil-*` non suivis préexistent et restent hors commit. Ne pas intervenir dans le worktree recette-locatif (#193). Cette branche contient une ancienne intégration de la recherche ; elle ne remplace pas #195 et ne doit pas être fusionnée sans examiner leur articulation.
