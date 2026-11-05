@@ -1539,6 +1539,7 @@
   "Le solde du dépôt de garantie est insuffisant pour ce mouvement": "رصيد مبلغ الضمان غير كافٍ لهذه الحركة",
   "Le statut du bien doit être : {{statuts}}": "يجب أن تكون حالة العقار: {{statuts}}",
   "Le statut du sinistre a changé entre-temps. Rechargez la page.": "تغيّرت حالة المطالبة في الأثناء. أعد تحميل الصفحة.",
+  "Le statut du ticket a changé. Rechargez le ticket avant de le modifier.": "تغيّرت حالة الطلب. أعد تحميل الطلب قبل تعديله.",
   "Le tableau doit contenir au moins {{minimum}} élément(s).": "يجب أن تحتوي القائمة على {{minimum}} عنصر (عناصر) على الأقل.",
   "Le tableau doit contenir au plus {{maximum}} élément(s).": "يجب ألا تحتوي القائمة على أكثر من {{maximum}} عنصر (عناصر).",
   "Le tableau doit contenir exactement {{maximum}} élément(s).": "يجب أن تحتوي القائمة على {{maximum}} عنصر (عناصر) بالضبط.",

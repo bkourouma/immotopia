@@ -14,7 +14,7 @@
   "{{n}} lignes constatées réglées.": "تم تسجيل {{n}} بنود كمسددة.",
   "{{n}} lignes n'ont pas pu être constatées :": "تعذر تسجيل {{n}} بنود:",
   "{{n}} locataires n'ont pas reçu l'avis de prélèvement.": "{{n}} مستأجرين لم يتلقوا إشعار الاقتطاع.",
-  "{{n}} paiement": "دفعة واحدة",
+  "{{n}} paiement": "{{n}} دفعة",
   "{{n}} paiements": "{{n}} دفعة",
   "{{nombre}} à évaluer": "{{nombre}} للتقييم",
   "{{nombre}} éléments manquants n'ont pas de retenue. Vous pouvez finaliser quand même.": "{{nombre}} عناصر مفقودة بدون اقتطاع. يمكنك الإنهاء رغم ذلك.",

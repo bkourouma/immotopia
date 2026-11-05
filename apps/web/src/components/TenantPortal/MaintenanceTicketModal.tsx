@@ -23,6 +23,12 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leas
   const [loading, setLoading] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
 
+  const handleCancel = () => {
+    form.resetFields();
+    setFileList([]);
+    onCancel();
+  };
+
   const handleSubmit = async (values: any) => {
     try {
       setLoading(true);
@@ -47,10 +53,8 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leas
       await tenantPortalService.createMaintenanceTicket(formData, leaseId);
 
       message.success(t('Ticket de maintenance créé avec succès'));
-      form.resetFields();
-      setFileList([]);
       onSuccess();
-      onCancel();
+      handleCancel();
     } catch (error: any) {
       message.error(error.response?.data?.message || t('Erreur lors de la création du ticket'));
     } finally {
@@ -88,7 +92,7 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leas
         </Space>
       }
       open={open}
-      onCancel={onCancel}
+      onCancel={handleCancel}
       footer={null}
       width={700}
       destroyOnClose
@@ -140,7 +144,7 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leas
         </Form.Item>
 
         <Form.Item label={t('Détails de localisation (optionnel)')} name="locationDetails">
-          <Input placeholder={t('Ex: Chambre principale, côté fenêtre')} />
+          <Input maxLength={500} placeholder={t('Ex: Chambre principale, côté fenêtre')} />
         </Form.Item>
 
         <Form.Item
@@ -167,7 +171,7 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leas
 
         <Form.Item>
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={onCancel}>{t('Annuler')}</Button>
+            <Button onClick={handleCancel}>{t('Annuler')}</Button>
             <Button type="primary" htmlType="submit" loading={loading}>
               {t('Créer le ticket')}
             </Button>

@@ -6,7 +6,7 @@ import { Table } from '../primitives';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
+import { formatMontantLocatif } from '../../lib/rental-labels';
 const { Title, Text } = Typography;
 
 interface InstallmentDetailsData {
@@ -102,13 +102,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: 'XOF',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number) => formatMontantLocatif(amount);
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';

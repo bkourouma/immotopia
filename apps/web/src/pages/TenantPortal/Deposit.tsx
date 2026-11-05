@@ -12,7 +12,7 @@ import { Table } from '../../components/primitives';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
+import { deviseAffichee, formatMontantLocatif } from '../../lib/rental-labels';
 const { Title, Text } = Typography;
 
 interface DepositMovement {
@@ -79,13 +79,7 @@ export default function TenantDeposit() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: 'XOF',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number) => formatMontantLocatif(amount, data?.deposit?.currency);
 
   const formatDate = (dateString: string) => {
     return dayjs(dateString).format('DD/MM/YYYY HH:mm');
@@ -112,7 +106,7 @@ export default function TenantDeposit() {
       DIRECT_DEBIT: t('Prélèvement bancaire'),
       CHECK: t('Chèque'),
       CARD: t('Carte bancaire'),
-      OTHER: 'Autre'
+      OTHER: t('Autre')
     };
     return labels[method] || method;
   };
@@ -212,7 +206,7 @@ export default function TenantDeposit() {
           {deposit.lease.lease_label && (
             <Descriptions.Item label={t('Nom du bail')}>{deposit.lease.lease_label}</Descriptions.Item>
           )}
-          <Descriptions.Item label={t('Devise')}>{deposit.currency}</Descriptions.Item>
+          <Descriptions.Item label={t('Devise')}>{deviseAffichee(deposit.currency)}</Descriptions.Item>
           <Descriptions.Item label={t('Montant cible')}>
             <Text strong>{formatCurrency(deposit.targetAmount)}</Text>
           </Descriptions.Item>

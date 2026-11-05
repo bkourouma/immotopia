@@ -49,6 +49,7 @@ import { redirectToExternalUrl } from '../../utils/external-redirect';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
+import { formatMontantLocatif } from '../../lib/rental-labels';
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
@@ -441,13 +442,7 @@ export default function TenantPayments() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: 'XOF',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number) => formatMontantLocatif(amount);
 
   const formatDate = (dateString: string) => {
     return dayjs(dateString).format('DD/MM/YYYY');
@@ -603,7 +598,7 @@ export default function TenantPayments() {
       DIRECT_DEBIT: t('Prélèvement bancaire'),
       CHECK: t('Chèque'),
       CARD: t('Carte bancaire'),
-      OTHER: 'Autre'
+      OTHER: t('Autre')
     };
     return labels[method] || method;
   };

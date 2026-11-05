@@ -17,6 +17,7 @@ import { getOnlinePaymentAvailability } from '../../services/payment-gateway-ser
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
+import { formatMontantLocatif } from '../../lib/rental-labels';
 const { Title, Text } = Typography;
 
 interface DashboardData {
@@ -105,13 +106,7 @@ export default function TenantDashboard() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: 'XOF',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number) => formatMontantLocatif(amount);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -129,8 +124,8 @@ export default function TenantDashboard() {
       CHECK: t('Chèque'),
       MOBILE_MONEY: t('Mobile Money'),
       DIRECT_DEBIT: t('Prélèvement bancaire'),
-      CARD: 'Carte',
-      OTHER: 'Autre'
+      CARD: t('Carte'),
+      OTHER: t('Autre')
     };
     return methods[method] || method;
   };

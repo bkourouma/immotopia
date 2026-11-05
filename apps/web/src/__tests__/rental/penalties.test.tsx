@@ -107,11 +107,11 @@ describe('Pénalités — montant retenu', () => {
       })
     ]);
 
-    const cellules = await screen.findAllByText(/XOF/, {}, { timeout: 8000 });
+    const cellules = await screen.findAllByText(/FCFA/, {}, { timeout: 8000 });
     // `MoneyValue` sépare le nombre de la devise par une espace insécable :
     // comparer sur une espace ordinaire échouerait sans rien dire du code.
     const textes = cellules.map(c => c.textContent?.replace(/\s/g, ' '));
-    expect(textes.some(t => t?.trim() === '0 XOF')).toBe(true);
+    expect(textes.some(t => t?.trim() === '0 FCFA')).toBe(true);
     // Le montant calculé reste visible : on doit pouvoir vérifier ce qui a été
     // annulé, pas seulement constater qu'il ne reste rien.
     expect(textes.some(t => t?.includes('132 500'))).toBe(true);
@@ -119,7 +119,7 @@ describe('Pénalités — montant retenu', () => {
 
   it('retient le montant calculé quand aucun ajustement n’existe', async () => {
     mount([penalite()]);
-    const montants = await screen.findAllByText(/132\s500\sXOF/, {}, { timeout: 8000 });
+    const montants = await screen.findAllByText(/132\s500\sFCFA/, {}, { timeout: 8000 });
     // Une fois en « montant calculé », une fois en « montant retenu ».
     expect(montants.length).toBeGreaterThanOrEqual(2);
   });
@@ -130,7 +130,7 @@ describe('Pénalités — montant calculé et montant retenu', () => {
 
   it('affiche le calcul initial d’une pénalité non ajustée quand calculated_amount est renseigné', async () => {
     mount([penalite({ amount: 8_000, calculated_amount: 8_000 })]);
-    const textes = normaliser(await screen.findAllByText(/8\s000\sXOF/, {}, { timeout: 8000 }));
+    const textes = normaliser(await screen.findAllByText(/8\s000\sFCFA/, {}, { timeout: 8000 }));
     // Une fois en « calculé », une fois en « retenu ».
     expect(textes.length).toBeGreaterThanOrEqual(2);
   });
@@ -144,8 +144,8 @@ describe('Pénalités — montant calculé et montant retenu', () => {
         adjustment_reason: 'Geste commercial'
       })
     ]);
-    const calcule = normaliser(await screen.findAllByText(/8\s000\sXOF/, {}, { timeout: 8000 }));
-    const retenu = normaliser(await screen.findAllByText(/4\s000\sXOF/, {}, { timeout: 8000 }));
+    const calcule = normaliser(await screen.findAllByText(/8\s000\sFCFA/, {}, { timeout: 8000 }));
+    const retenu = normaliser(await screen.findAllByText(/4\s000\sFCFA/, {}, { timeout: 8000 }));
     expect(calcule.length).toBeGreaterThanOrEqual(1);
     expect(retenu.length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText('Geste commercial')).toBeInTheDocument();
@@ -153,8 +153,8 @@ describe('Pénalités — montant calculé et montant retenu', () => {
 
   it('affiche 0 pour une pénalité ramenée à zéro, calcul initial conservé', async () => {
     mount([penalite({ amount: 0, calculated_amount: 8_000, adjusted_amount: 0, adjustment_reason: 'Annulée' })]);
-    const textes = normaliser(await screen.findAllByText(/XOF/, {}, { timeout: 8000 }));
-    expect(textes.some(t => t === '0 XOF')).toBe(true);
+    const textes = normaliser(await screen.findAllByText(/FCFA/, {}, { timeout: 8000 }));
+    expect(textes.some(t => t === '0 FCFA')).toBe(true);
     expect(textes.some(t => t?.includes('8 000'))).toBe(true);
   });
 });

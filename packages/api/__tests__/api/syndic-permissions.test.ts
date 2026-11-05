@@ -178,7 +178,7 @@ describe('droits du module Syndic et des relevés de gérance', () => {
       .set('x-role', 'agent')
       .send({ name: 'Copro Agent Test', address: 'x' });
     expect(res.status).toBe(403);
-    expect(res.body.message).toContain('SYNDIC_CREATE');
+    expect(res.body.message).toBe("Vous n'avez pas les droits nécessaires pour effectuer cette action.");
   });
 });
 

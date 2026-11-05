@@ -60,7 +60,7 @@ describe('<LandRegularizationListPage>', () => {
     expect(screen.getByText('TER-001')).toBeInTheDocument();
     expect(screen.getByText('2 étape(s) sur 6')).toBeInTheDocument();
     expect(screen.getByRole('progressbar', { name: 'Avancement du dossier' })).toHaveAttribute('aria-valuenow', '33');
-    expect(screen.getByText(/1.250.000 XOF/)).toBeInTheDocument();
+    expect(screen.getByText(/1.250.000 FCFA/)).toBeInTheDocument();
     expect(screen.getByText('En cours')).toBeInTheDocument();
     expect(screen.getByText('1', { selector: '.ant-tag' })).toBeInTheDocument();
     // Échéance à minuit UTC : affichée le jour prévu, quel que soit le fuseau.

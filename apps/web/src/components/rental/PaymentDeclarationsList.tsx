@@ -198,7 +198,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
       MOBILE_MONEY: t('Mobile Money'),
       DIRECT_DEBIT: t('Prélèvement bancaire'),
       CARD: t('Carte bancaire'),
-      OTHER: 'Autre'
+      OTHER: t('Autre')
     };
     return methodMap[method] || method;
   };

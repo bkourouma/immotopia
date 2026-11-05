@@ -29,6 +29,7 @@ import { t } from '../../i18n/t';
 import { filenameFromDisposition } from '../../utils/save-blob';
 
 import { activeLocale } from '../../i18n/format';
+import { formatMontantLocatif } from '../../lib/rental-labels';
 const { Title, Text } = Typography;
 
 interface LeaseDetailsData {
@@ -138,23 +139,9 @@ export default function TenantLease() {
     }
   };
 
-  /**
-   * Montant en francs CFA, insécable.
-   *
-   * `Intl` sépare les milliers par une espace fine insécable, mais pose une
-   * espace ORDINAIRE avant le symbole : dans une cellule étroite, le montant
-   * se coupait entre le nombre et « F CFA ». On rend toutes les espaces
-   * insécables pour que le montant reste d'un seul tenant.
-   */
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: 'XOF',
-      minimumFractionDigits: 0
-    })
-      .format(amount)
-      .replace(/\s/g, '\u00a0');
-  };
+  /** Garde le montant insécable dans les cellules étroites du bail. */
+  const formatCurrency = (amount: number) =>
+    formatMontantLocatif(amount, data?.lease.currency).replace(/\s/g, '\u00a0');
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';

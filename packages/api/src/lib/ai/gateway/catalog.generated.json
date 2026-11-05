@@ -2437,7 +2437,7 @@
       "path": "/api/tenants/:tenantId/rental/installments",
       "pathParams": [],
       "module": "rental",
-      "summary": "list installments (rental / installments)",
+      "summary": "rental / installments",
       "permissions": ["RENTAL_INSTALLMENTS_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -2448,7 +2448,7 @@
       "path": "/api/tenants/:tenantId/rental/installments/:installmentId",
       "pathParams": ["installmentId"],
       "module": "rental",
-      "summary": "get installment (rental / installments / {installmentId})",
+      "summary": "rental / installments / {installmentId}",
       "permissions": ["RENTAL_INSTALLMENTS_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -2569,7 +2569,7 @@
       "path": "/api/tenants/:tenantId/rental/leases/:leaseId/installments",
       "pathParams": ["leaseId"],
       "module": "rental",
-      "summary": "list installments (rental / leases / {leaseId} / installments)",
+      "summary": "rental / leases / {leaseId} / installments",
       "permissions": ["RENTAL_INSTALLMENTS_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -2591,7 +2591,7 @@
       "path": "/api/tenants/:tenantId/rental/payment-declarations",
       "pathParams": [],
       "module": "rental",
-      "summary": "list payment declarations (rental / payment-declarations)",
+      "summary": "rental / payment-declarations",
       "permissions": ["RENTAL_PAYMENTS_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -2602,7 +2602,7 @@
       "path": "/api/tenants/:tenantId/rental/payment-declarations/:declarationId",
       "pathParams": ["declarationId"],
       "module": "rental",
-      "summary": "get payment declaration (rental / payment-declarations / {declarationId})",
+      "summary": "rental / payment-declarations / {declarationId}",
       "permissions": ["RENTAL_PAYMENTS_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -2646,7 +2646,7 @@
       "path": "/api/tenants/:tenantId/rental/penalties",
       "pathParams": [],
       "module": "rental",
-      "summary": "list penalties (rental / penalties)",
+      "summary": "rental / penalties",
       "permissions": ["RENTAL_PENALTIES_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -2657,7 +2657,7 @@
       "path": "/api/tenants/:tenantId/rental/penalties/:penaltyId",
       "pathParams": ["penaltyId"],
       "module": "rental",
-      "summary": "get penalty (rental / penalties / {penaltyId})",
+      "summary": "rental / penalties / {penaltyId}",
       "permissions": ["RENTAL_PENALTIES_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -4395,7 +4395,7 @@
       "path": "/api/tenants/:tenantId/rental/penalties/:penaltyId",
       "pathParams": ["penaltyId"],
       "module": "rental",
-      "summary": "update penalty (rental / penalties / {penaltyId})",
+      "summary": "rental / penalties / {penaltyId}",
       "permissions": ["RENTAL_PENALTIES_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -6773,7 +6773,7 @@
       "path": "/api/tenants/:tenantId/rental/leases/:leaseId/installments",
       "pathParams": ["leaseId"],
       "module": "rental",
-      "summary": "generate installments (rental / leases / {leaseId} / installments)",
+      "summary": "rental / leases / {leaseId} / installments",
       "permissions": ["RENTAL_INSTALLMENTS_GENERATE"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -6784,7 +6784,7 @@
       "path": "/api/tenants/:tenantId/rental/leases/:leaseId/installments/recalculate",
       "pathParams": ["leaseId"],
       "module": "rental",
-      "summary": "recalculate installment statuses (rental / leases / {leaseId} / installments / recalculate)",
+      "summary": "rental / leases / {leaseId} / installments / recalculate",
       "permissions": ["RENTAL_INSTALLMENTS_GENERATE"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -6795,7 +6795,7 @@
       "path": "/api/tenants/:tenantId/rental/payment-declarations/:declarationId/approve",
       "pathParams": ["declarationId"],
       "module": "rental",
-      "summary": "approve payment declaration (rental / payment-declarations / {declarationId} / approve)",
+      "summary": "rental / payment-declarations / {declarationId} / approve",
       "permissions": ["RENTAL_PAYMENTS_ALLOCATE"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -6806,7 +6806,7 @@
       "path": "/api/tenants/:tenantId/rental/payment-declarations/:declarationId/reject",
       "pathParams": ["declarationId"],
       "module": "rental",
-      "summary": "reject payment declaration (rental / payment-declarations / {declarationId} / reject)",
+      "summary": "rental / payment-declarations / {declarationId} / reject",
       "permissions": ["RENTAL_PAYMENTS_ALLOCATE"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -6850,7 +6850,7 @@
       "path": "/api/tenants/:tenantId/rental/penalties/:penaltyId/justification",
       "pathParams": ["penaltyId"],
       "module": "rental",
-      "summary": "upload penalty justification (rental / penalties / {penaltyId} / justification)",
+      "summary": "rental / penalties / {penaltyId} / justification",
       "permissions": ["RENTAL_PENALTIES_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -6861,7 +6861,7 @@
       "path": "/api/tenants/:tenantId/rental/penalties/calculate",
       "pathParams": [],
       "module": "rental",
-      "summary": "calculate penalties (rental / penalties / calculate)",
+      "summary": "rental / penalties / calculate",
       "permissions": ["RENTAL_PENALTIES_CALCULATE"],
       "anyOfPermissions": null,
       "sensitive": false

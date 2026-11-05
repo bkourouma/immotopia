@@ -106,7 +106,7 @@ describe('<LandRegularizationDetailPage>', () => {
     monter();
 
     expect(await screen.findByText('Frais de régularisation')).toBeInTheDocument();
-    expect(screen.getByText(/1.250.000 XOF/)).toBeInTheDocument();
+    expect(screen.getByText(/1.250.000 FCFA/)).toBeInTheDocument();
     expect(screen.getByText("Ce montant n'est pas inclus dans le coût de revient du bien.")).toBeInTheDocument();
   });
 

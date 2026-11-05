@@ -3,7 +3,7 @@ import type { ColumnsType } from 'antd/es/table/interface';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { resolveExportColumns, getByPath, type ExportColumn } from './columns';
-import { normalizeText } from './text';
+import { isDashPlaceholder, normalizeText } from './text';
 import type { ExportCell, ExportRawValue, ExportTable } from './types';
 
 /**
@@ -81,7 +81,9 @@ function typedFromValue(value: ExportRawValue): ExportCell {
       : { text: formatRaw(value), value, kind: 'date' };
   }
   const text = normalizeText(String(value));
-  return text ? { text, value: text, kind: 'text' } : { text: '', value: null, kind: 'empty' };
+  return text && !isDashPlaceholder(text)
+    ? { text, value: text, kind: 'text' }
+    : { text: '', value: null, kind: 'empty' };
 }
 
 /**
@@ -106,7 +108,8 @@ export function typeCell(raw: unknown, renderedText: string | null): ExportCell 
   if (raw instanceof Date && !Number.isNaN(raw.getTime()) && renderedText === null) {
     return { text: shown, value: raw, kind: 'date' };
   }
-  if (!shown) return { text: '', value: null, kind: 'empty' };
+  // Un tiret de remplissage n'est pas une donnée : cellule vide (cf. `isDashPlaceholder`).
+  if (!shown || isDashPlaceholder(shown)) return { text: '', value: null, kind: 'empty' };
   return { text: shown, value: shown, kind: 'text' };
 }
 

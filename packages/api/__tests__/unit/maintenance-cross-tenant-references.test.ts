@@ -44,7 +44,10 @@ const mockPrisma: Row = {
     }),
     update: jest.fn(async ({ where, data }: Row) => {
       const idx = store.tickets.findIndex(
-        t => t.id === where.id && (where.tenant_id === undefined || t.tenant_id === where.tenant_id)
+        t =>
+          t.id === where.id &&
+          (where.tenant_id === undefined || t.tenant_id === where.tenant_id) &&
+          (where.status === undefined || t.status === where.status)
       );
       if (idx === -1) throw Object.assign(new Error('Record to update not found.'), { code: 'P2025' });
       store.tickets[idx] = { ...store.tickets[idx], ...data };
@@ -116,7 +119,17 @@ const mockPrisma: Row = {
     findFirst: jest.fn(async () => null)
   },
 
-  $transaction: jest.fn(async (callback: (tx: Row) => Promise<any>) => callback(mockPrisma))
+  $transaction: jest.fn(async (callback: (tx: Row) => Promise<any>) => {
+    const ticketsBefore = store.tickets.map(t => ({ ...t }));
+    const historyBefore = store.ticketStatusHistory.map(h => ({ ...h }));
+    try {
+      return await callback(mockPrisma);
+    } catch (error) {
+      store.tickets = ticketsBefore;
+      store.ticketStatusHistory = historyBefore;
+      throw error;
+    }
+  })
 };
 
 jest.mock('../../src/utils/database', () => ({
@@ -256,6 +269,48 @@ describe('maintenance-ticket-service — updateTicket : assignedToUserId doit ê
     const updated = await updateTicket(TENANT_A, ticket.id, { assignedToUserId: 'user-1' } as any, 'actor-1');
 
     expect(updated.assigned_to_user_id).toBe('user-1');
+  });
+
+  it('accepte le statut Assigné et un responsable actif dans la même sauvegarde', async () => {
+    const ticket = seedTicket({ status: 'IN_PROGRESS' });
+    seedMembership({ tenantId: TENANT_A, userId: 'user-1' });
+
+    const updated = await updateTicket(
+      TENANT_A,
+      ticket.id,
+      { status: 'ASSIGNED', assignedToUserId: 'user-1' } as any,
+      'actor-1'
+    );
+
+    expect(updated.status).toBe('ASSIGNED');
+    expect(updated.assigned_to_user_id).toBe('user-1');
+  });
+
+  it("annule l'assignation si l'écriture de l'historique échoue", async () => {
+    const ticket = seedTicket({ status: 'IN_PROGRESS' });
+    seedMembership({ tenantId: TENANT_A, userId: 'user-1' });
+    jest.spyOn(mockPrisma.maintenanceTicketStatusHistory, 'create').mockRejectedValueOnce(new Error('history failed'));
+
+    await expect(
+      updateTicket(TENANT_A, ticket.id, { status: 'ASSIGNED', assignedToUserId: 'user-1' } as any, 'actor-1')
+    ).rejects.toThrow('history failed');
+    expect(store.tickets.find(t => t.id === ticket.id)?.assigned_to_user_id).toBeNull();
+    expect(store.tickets.find(t => t.id === ticket.id)?.status).toBe('IN_PROGRESS');
+  });
+
+  it('refuse une transition si le statut a changé pendant la sauvegarde', async () => {
+    const ticket = seedTicket({ status: 'IN_PROGRESS' });
+    seedMembership({ tenantId: TENANT_A, userId: 'user-1' });
+    jest.spyOn(mockPrisma, '$transaction').mockImplementationOnce(async (callback: any) => {
+      store.tickets.find(t => t.id === ticket.id)!.status = 'CANCELED';
+      return callback(mockPrisma);
+    });
+
+    await expect(
+      updateTicket(TENANT_A, ticket.id, { status: 'ASSIGNED', assignedToUserId: 'user-1' } as any, 'actor-1')
+    ).rejects.toThrow('Le statut du ticket a changé');
+    expect(store.tickets.find(t => t.id === ticket.id)?.status).toBe('CANCELED');
+    expect(store.tickets.find(t => t.id === ticket.id)?.assigned_to_user_id).toBeNull();
   });
 });
 

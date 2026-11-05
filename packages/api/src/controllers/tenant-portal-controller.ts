@@ -302,7 +302,8 @@ export class TenantPortalController {
       category: body.category,
       priority: body.priority,
       title: body.title,
-      description: body.description
+      description: body.description,
+      locationDetails: body.locationDetails
     });
 
     const files = req.files as Express.Multer.File[] | undefined;
@@ -318,8 +319,7 @@ export class TenantPortalController {
       leaseId,
       tenantId,
       {
-        ...data,
-        locationDetails: body.locationDetails
+        ...data
       },
       files
     );

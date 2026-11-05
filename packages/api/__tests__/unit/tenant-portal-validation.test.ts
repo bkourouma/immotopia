@@ -9,8 +9,10 @@ jest.mock('../../src/utils/database', () => ({
   prisma: { rentalLease: { findMany: jest.fn().mockResolvedValue([{ id: 'l' }]) } }
 }));
 const declarePayment = jest.fn();
+const createMaintenanceTicket = jest.fn();
 jest.mock('../../src/services/tenant-portal-service', () => ({
   TenantPortalService: jest.fn().mockImplementation(() => ({
+    createMaintenanceTicket: (...a: any[]) => createMaintenanceTicket(...a),
     declarePayment: (...a: any[]) => declarePayment(...a),
     getInstallmentDetails: jest
       .fn()
@@ -24,7 +26,20 @@ jest.mock('../../src/controllers/finance-controller', () => ({ handleTenantPorta
 
 import { TenantPortalController } from '../../src/controllers/tenant-portal-controller';
 import { errorHandler, NotFoundError } from '../../src/middleware/error-middleware';
-import { declarePaymentSchema, validatePaymentProofFile } from '../../src/utils/tenant-portal-validators';
+import {
+  createMaintenanceTicketSchema,
+  declarePaymentSchema,
+  validatePaymentProofFile
+} from '../../src/utils/tenant-portal-validators';
+
+describe('création maintenance : localisation', () => {
+  const valid = { category: 'PLUMBING', priority: 'MEDIUM', title: 'Fuite', description: 'Fuite sous évier' };
+
+  it('refuse plus de 500 caractères', () => {
+    expect(createMaintenanceTicketSchema.safeParse({ ...valid, locationDetails: 'a'.repeat(501) }).success).toBe(false);
+    expect(createMaintenanceTicketSchema.safeParse({ ...valid, locationDetails: 'a'.repeat(500) }).success).toBe(true);
+  });
+});
 
 const controller = new TenantPortalController();
 
@@ -51,6 +66,27 @@ const req = (extra: any = {}): any => ({
   headers: {},
   path: '/x',
   ...extra
+});
+
+it('contrôleur maintenance : 501 caractères sont refusés avant création', async () => {
+  createMaintenanceTicket.mockClear();
+  const response = fakeRes();
+  await run(
+    controller.createMaintenanceTicket,
+    req({
+      body: {
+        category: 'PLUMBING',
+        priority: 'MEDIUM',
+        title: 'Fuite',
+        description: 'Fuite sous évier',
+        locationDetails: 'a'.repeat(501)
+      },
+      files: []
+    }),
+    response
+  );
+  expect(response.statusCode).toBe(400);
+  expect(createMaintenanceTicket).not.toHaveBeenCalled();
 });
 
 const file = (bytes: number[] | string, mimetype: string): any => {

@@ -109,6 +109,7 @@ const mockPrisma: Row = {
     findFirst: jest.fn(async () => ({ primary_renter_client_id: 'client-1' }))
   },
   thirdPartyMovement: { findMany: jest.fn(async () => []) },
+  $queryRaw: jest.fn(async () => []),
   $transaction: jest.fn(async (cb: (tx: Row) => Promise<any>) => cb(mockPrisma))
 };
 
