@@ -267,7 +267,7 @@ describe('Tableau de bord — filtres et navigation', () => {
 
     await screen.findByText('Villa duplex — Angré Centre', {}, { timeout: 8000 });
 
-    const combobox = await screen.findByRole('combobox', {}, { timeout: 8000 });
+    const combobox = await screen.findByRole('combobox', { name: 'Statut' }, { timeout: 8000 });
     fireEvent.mouseDown(combobox);
     fireEvent.click(await optionParLibelle('En cours'));
 
@@ -287,7 +287,8 @@ describe('Tableau de bord — filtres et navigation', () => {
     await waitFor(() =>
       expect(getSitesDashboard).toHaveBeenLastCalledWith('agence-1', expect.objectContaining({ onlyOverBudget: true }))
     );
-    expect(screen.getByTestId('adresse')).toHaveTextContent('onlyOverBudget=true');
+    // Le booléen de la barre s'écrit « 1 » dans l'URL ; le service reçoit bien `true`.
+    expect(screen.getByTestId('adresse')).toHaveTextContent('onlyOverBudget=1');
   });
 
   it('mène vers le budget du chantier, à son chemin exact', async () => {
@@ -299,6 +300,73 @@ describe('Tableau de bord — filtres et navigation', () => {
 
     expect(screen.getByTestId('adresse')).toHaveTextContent('/tenant/agence-1/finance/chantiers/chantier-1/budget');
     expect(await screen.findByText('budget du chantier')).toBeInTheDocument();
+  });
+});
+
+describe('Tableau de bord — recherche multicritères', () => {
+  const T = { timeout: 8000 };
+  const lignes = () => screen.getAllByRole('row').slice(1);
+
+  beforeEach(() => {
+    getSitesDashboard.mockResolvedValue({
+      rows: [
+        ligne(),
+        ligne({
+          siteId: 'chantier-2',
+          siteLabel: 'Résidence Palmeraie',
+          zone: 'Marcory',
+          variance: -500_000,
+          variancePercent: -14
+        }),
+        ligne({ siteId: 'chantier-3', siteLabel: 'Terrain loué — Riviera', zone: null, variance: null })
+      ],
+      currency: 'XOF'
+    });
+  });
+
+  it('cherche dans le chantier et la zone, en local, et garde le terme dans l’URL', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountTableau();
+
+    await screen.findByText('Résidence Palmeraie', {}, T);
+    expect(lignes()).toHaveLength(3);
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'marcory');
+
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+    expect(screen.getByText('Résidence Palmeraie')).toBeInTheDocument();
+    expect(screen.getByTestId('adresse')).toHaveTextContent('q=marcory');
+    // Le champ libre ne part pas au serveur : une seule requête, sans critère.
+    expect(getSitesDashboard).toHaveBeenCalledTimes(1);
+    expect(getSitesDashboard).toHaveBeenCalledWith('agence-1', { status: undefined, onlyOverBudget: false });
+  }, 30000);
+
+  it('envoie le statut et le dépassement de l’URL au serveur, sous leurs clés d’origine', async () => {
+    mountTableau('/tenant/agence-1/finance/tableau-de-bord-chantiers?status=PLANNED&onlyOverBudget=1');
+
+    await screen.findByText('Résidence Palmeraie', {}, T);
+    expect(getSitesDashboard).toHaveBeenCalledWith('agence-1', { status: 'PLANNED', onlyOverBudget: true });
+  });
+
+  it('filtre l’écart minimum et maximum en local, depuis l’URL', async () => {
+    mountTableau('/tenant/agence-1/finance/tableau-de-bord-chantiers?ecartMax=0');
+
+    expect(await screen.findByText('Résidence Palmeraie', {}, T)).toBeInTheDocument();
+    // Un chantier sans budget (écart nul) n'a pas d'écart à comparer : il sort.
+    expect(lignes()).toHaveLength(1);
+    expect(screen.queryByText('Villa duplex — Angré Centre')).not.toBeInTheDocument();
+  });
+
+  it('propose d’effacer les critères quand rien ne correspond', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountTableau('/tenant/agence-1/finance/tableau-de-bord-chantiers?q=zzz');
+
+    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', {}, T)).toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+
+    expect(await screen.findByText('Résidence Palmeraie', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(3);
+    expect(screen.getByTestId('adresse').textContent).not.toContain('q=');
   });
 });
 

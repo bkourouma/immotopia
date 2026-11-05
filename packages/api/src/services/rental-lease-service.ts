@@ -18,6 +18,7 @@ import { syncLotActivationsTx } from './lot-registry-service';
 import { getTenantById } from './tenant-service';
 import { assertThirdPartyAllowedForTenant } from './own-assets-barrier-service';
 import { t } from '../i18n';
+import { applyLeaseSearch } from '../lib/rental/lease-list-filters';
 import { generateLeaseNumber, isLeaseNumberCollision } from './rental-lease-number';
 import { toRentalDocumentDto } from './rental-document-service';
 
@@ -860,7 +861,7 @@ export async function listLeases(
   }
 
   if (filters?.search) {
-    where.OR = [{ lease_number: { contains: filters.search, mode: 'insensitive' } }];
+    applyLeaseSearch(where, filters.search);
   }
 
   const page = pagination?.page || 1;

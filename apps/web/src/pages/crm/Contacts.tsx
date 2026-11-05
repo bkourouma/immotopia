@@ -3,40 +3,15 @@ import { contactDisplayName } from '../../utils/contact-display';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
-import {
-  App,
-  Button,
-  Input,
-  Card,
-  Tag as AntTag,
-  Space,
-  Row,
-  Col,
-  Modal,
-  Spin,
-  Empty,
-  Alert,
-  Pagination,
-  Checkbox,
-  Typography,
-  Divider,
-  Tooltip,
-  Popconfirm
-} from 'antd';
-
-const { Search: InputSearch } = Input;
+import { App, Button, Card, Space, Row, Col, Modal, Spin, Empty, Alert, Typography, Tooltip, Popconfirm } from 'antd';
 import {
   UserOutlined,
   PlusOutlined,
-  SearchOutlined,
   EditOutlined,
   EyeOutlined,
   CalendarOutlined,
   TagOutlined,
-  DeleteOutlined,
-  CloseOutlined,
-  FilterOutlined,
-  CheckOutlined
+  DeleteOutlined
 } from '@ant-design/icons';
 import { ContactForm } from '../../components/crm/ContactForm';
 import { ActivityForm } from '../../components/crm/ActivityForm';
@@ -56,7 +31,10 @@ import {
   CreateCrmActivityRequest,
   ContactFilters
 } from '../../services/crm-service';
-import { AdvancedFilters, AdvancedFilters as AdvancedFiltersType } from '../../components/crm/AdvancedFilters';
+import { useListSearch } from '../../hooks/useListSearch';
+import { listAssignableMembers } from '../../services/membership-service';
+import { getMaturityLabel } from '../../utils/crm-utils';
+import { leadSourceLabels } from '../../utils/crm-labels';
 import { Table } from '../../components/primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import type { ColumnsType } from 'antd/es/table';
@@ -79,34 +57,108 @@ export const Contacts: React.FC = () => {
   // La liste ne porte pas la note « avis au compte portail » : le détail est lu à l'ouverture.
   const [editingDetail, setEditingDetail] = useState<CrmContact | null>(null);
   const [editingDetailLoading, setEditingDetailLoading] = useState(false);
-  const [filters, setFilters] = useState<ContactFilters>({
-    page: 1,
-    limit: 20
-  });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
     total: 0,
     totalPages: 0
   });
-  const [searchTerm, setSearchTerm] = useState('');
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [selectedContactForActivity, setSelectedContactForActivity] = useState<CrmContact | null>(null);
   const [allTags, setAllTags] = useState<CrmTag[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [showTagFilter, setShowTagFilter] = useState(false);
+  const [members, setMembers] = useState<{ value: string; label: string }[]>([]);
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [showBulkTagManager, setShowBulkTagManager] = useState(false);
-  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFiltersType>({});
-  const [hasActiveDealFilter, setHasActiveDealFilter] = useState<boolean | undefined>(undefined);
-  const [hasUpcomingActivityFilter, setHasUpcomingActivityFilter] = useState<boolean | undefined>(undefined);
+
+  // Recherche multicritères : l'état vit dans l'URL, tout part à l'API (page serveur).
+  const search = useListSearch({
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: translate('Rechercher'),
+        placeholder: translate('Nom, raison sociale, e-mail, téléphone…')
+      },
+      {
+        key: 'status',
+        type: 'multiSelect',
+        label: translate('Statut'),
+        primary: true,
+        options: [
+          { value: 'LEAD', label: translate('Prospects') },
+          { value: 'ACTIVE_CLIENT', label: translate('Clients') },
+          { value: 'ARCHIVED', label: translate('Archivés') }
+        ]
+      },
+      {
+        key: 'tagIds',
+        type: 'multiSelect',
+        label: translate('Tags'),
+        primary: true,
+        options: allTags.map(tag => ({ value: tag.id, label: tag.name }))
+      },
+      {
+        key: 'assignedTo',
+        type: 'select',
+        label: translate('Collaborateur'),
+        primary: true,
+        options: members
+      },
+      // Affaires et activités à venir : propres au module CRM.
+      ...(possede('CRM')
+        ? ([
+            { key: 'hasActiveDeal', type: 'boolean', label: translate('Affaire en cours') },
+            { key: 'hasUpcomingActivity', type: 'boolean', label: translate('Activité à venir') }
+          ] as const)
+        : []),
+      { key: 'created', type: 'dateRange', label: translate('Date de création'), api: ['startDate', 'endDate'] },
+      {
+        key: 'contactType',
+        type: 'multiSelect',
+        label: translate('Type de contact'),
+        options: [
+          { value: 'PERSON', label: translate('Personne') },
+          { value: 'COMPANY', label: translate('Entreprise') }
+        ]
+      },
+      {
+        key: 'maturityLevel',
+        type: 'multiSelect',
+        label: translate('Maturité'),
+        options: (['COLD', 'WARM', 'HOT'] as const).map(level => ({ value: level, label: getMaturityLabel(level) }))
+      },
+      {
+        key: 'leadSource',
+        type: 'multiSelect',
+        label: translate('Source du lead'),
+        options: Object.entries(leadSourceLabels()).map(([value, label]) => ({ value, label: String(label) }))
+      }
+    ]
+  });
+
+  useEffect(() => {
+    if (tenantId) {
+      loadTags();
+      listAssignableMembers(tenantId)
+        .then(response => {
+          if (response.success) {
+            setMembers(
+              (response.data?.members ?? []).map(member => ({
+                value: member.user.id,
+                label: member.user.fullName || member.user.email
+              }))
+            );
+          }
+        })
+        .catch(() => undefined);
+    }
+  }, [tenantId]);
 
   useEffect(() => {
     if (tenantId) {
       loadContacts();
-      loadTags();
     }
-  }, [tenantId, filters, advancedFilters, hasActiveDealFilter, hasUpcomingActivityFilter]);
+  }, [tenantId, search.apiParams]);
 
   const loadTags = async () => {
     if (!tenantId) return;
@@ -125,16 +177,7 @@ export const Contacts: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await listContacts(tenantId, {
-        ...filters,
-        search: filters.search || undefined,
-        startDate: advancedFilters.startDate,
-        endDate: advancedFilters.endDate,
-        assignedTo: advancedFilters.assignedTo,
-        source: advancedFilters.source,
-        hasActiveDeal: hasActiveDealFilter,
-        hasUpcomingActivity: hasUpcomingActivityFilter
-      });
+      const response = await listContacts(tenantId, search.apiParams as ContactFilters);
       if (response.success) {
         setContacts(response.contacts);
         setPagination(response.pagination);
@@ -146,23 +189,6 @@ export const Contacts: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleStatusFilter = (status: 'LEAD' | 'ACTIVE_CLIENT' | 'ARCHIVED' | '') => {
-    setFilters({ ...filters, page: 1, status: status || undefined });
-  };
-
-  const handleTagToggle = (tagId: string) => {
-    const newSelectedTags = selectedTags.includes(tagId)
-      ? selectedTags.filter(id => id !== tagId)
-      : [...selectedTags, tagId];
-    setSelectedTags(newSelectedTags);
-    setFilters({ ...filters, page: 1, tagIds: newSelectedTags.length > 0 ? newSelectedTags : undefined });
-  };
-
-  const clearTagFilters = () => {
-    setSelectedTags([]);
-    setFilters({ ...filters, page: 1, tagIds: undefined });
   };
 
   const handleBulkTagComplete = () => {
@@ -453,163 +479,6 @@ export const Contacts: React.FC = () => {
           )}
         </Modal>
 
-        {/* Filters */}
-        <Card title={translate('Filtres')} extra={<FilterOutlined />}>
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            <InputSearch
-              placeholder={translate('Rechercher des contacts...')}
-              allowClear
-              enterButton={<SearchOutlined />}
-              size="large"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              onSearch={value => {
-                setSearchTerm(value);
-                setFilters({ ...filters, page: 1, search: value || undefined });
-              }}
-            />
-
-            <Divider style={{ margin: '12px 0' }} />
-
-            <div>
-              <Text strong style={{ marginInlineEnd: 16 }}>
-                {translate('Statut :')}
-              </Text>
-              <Space wrap>
-                <Button type={!filters.status ? 'primary' : 'default'} onClick={() => handleStatusFilter('')}>
-                  {translate('Tous')}
-                </Button>
-                <Button
-                  type={filters.status === 'LEAD' ? 'primary' : 'default'}
-                  onClick={() => handleStatusFilter('LEAD')}
-                >
-                  {translate('Prospects')}
-                </Button>
-                <Button
-                  type={filters.status === 'ACTIVE_CLIENT' ? 'primary' : 'default'}
-                  onClick={() => handleStatusFilter('ACTIVE_CLIENT')}
-                >
-                  {translate('Clients')}
-                </Button>
-                <Button
-                  type={filters.status === 'ARCHIVED' ? 'primary' : 'default'}
-                  onClick={() => handleStatusFilter('ARCHIVED')}
-                >
-                  {translate('Archivés')}
-                </Button>
-              </Space>
-            </div>
-
-            <Divider style={{ margin: '12px 0' }} />
-
-            {/* Tag Filters */}
-            <div>
-              <Space style={{ marginBottom: 12, width: '100%' }} wrap>
-                <TagOutlined />
-                <Text strong>{translate('Filtrer par tags:')}</Text>
-                {selectedTags.length > 0 && (
-                  <Text type="secondary">
-                    ({selectedTags.length} {translate('sélectionné')}
-                    {selectedTags.length > 1 ? 's' : ''})
-                  </Text>
-                )}
-                {selectedTags.length > 0 && (
-                  <Button type="text" size="small" icon={<CloseOutlined />} onClick={clearTagFilters}>
-                    {translate('Effacer')}
-                  </Button>
-                )}
-                <Button size="small" icon={<FilterOutlined />} onClick={() => setShowTagFilter(!showTagFilter)}>
-                  {showTagFilter ? translate('Masquer') : translate('Afficher')}
-                </Button>
-              </Space>
-
-              {showTagFilter && (
-                <div style={{ marginTop: 12 }}>
-                  {allTags.length === 0 ? (
-                    <Text type="secondary" italic>
-                      {translate('Aucun tag disponible')}
-                    </Text>
-                  ) : (
-                    <Space wrap>
-                      {allTags.map(tag => (
-                        <AntTag
-                          key={tag.id}
-                          color={tag.color || '#3B82F6'}
-                          style={{
-                            cursor: 'pointer',
-                            opacity: selectedTags.includes(tag.id) ? 1 : 0.7
-                          }}
-                          onClick={() => handleTagToggle(tag.id)}
-                        >
-                          {selectedTags.includes(tag.id) && <CheckOutlined style={{ marginInlineEnd: 4 }} />}
-                          {tag.name}
-                        </AntTag>
-                      ))}
-                    </Space>
-                  )}
-                </div>
-              )}
-
-              {/* Selected Tags Display */}
-              {selectedTags.length > 0 && !showTagFilter && (
-                <div style={{ marginTop: 12 }}>
-                  <Space wrap>
-                    {selectedTags.map(tagId => {
-                      const tag = allTags.find(t => t.id === tagId);
-                      if (!tag) return null;
-                      return (
-                        <AntTag
-                          key={tag.id}
-                          color={tag.color || '#3B82F6'}
-                          closable
-                          onClose={() => handleTagToggle(tag.id)}
-                        >
-                          {tag.name}
-                        </AntTag>
-                      );
-                    })}
-                  </Space>
-                </div>
-              )}
-            </div>
-
-            <Divider style={{ margin: '12px 0' }} />
-
-            {/* Quick Filters */}
-            {possede('CRM') && (
-              <Space>
-                <Checkbox
-                  checked={hasActiveDealFilter === true}
-                  onChange={e => setHasActiveDealFilter(e.target.checked ? true : undefined)}
-                >
-                  {translate('Affaire en cours')}
-                </Checkbox>
-                <Checkbox
-                  checked={hasUpcomingActivityFilter === true}
-                  onChange={e => setHasUpcomingActivityFilter(e.target.checked ? true : undefined)}
-                >
-                  {translate('Activité à venir')}
-                </Checkbox>
-              </Space>
-            )}
-
-            <Divider style={{ margin: '12px 0' }} />
-
-            {/* Advanced Filters */}
-            <AdvancedFilters
-              tenantId={tenantId}
-              config={{
-                showDateRange: true,
-                showAssignedTo: true,
-                showSource: true,
-                dateRangeLabel: translate('Date de création')
-              }}
-              filters={advancedFilters}
-              onFiltersChange={setAdvancedFilters}
-            />
-          </Space>
-        </Card>
-
         {/* Contacts List */}
         {error && (
           <Alert
@@ -622,124 +491,88 @@ export const Contacts: React.FC = () => {
           />
         )}
 
-        {loading ? (
-          <Card>
-            <div style={{ textAlign: 'center', padding: '48px 0' }}>
-              <Spin size="large" />
-              <div style={{ marginTop: 16 }}>
-                <Text>{translate('Chargement des contacts...')}</Text>
-              </div>
-            </div>
-          </Card>
-        ) : contacts.length === 0 ? (
-          <Card>
-            <Empty
-              image={<UserOutlined style={{ fontSize: 64, color: '#bfbfbf' }} />}
-              imageStyle={{ height: 64 }}
-              description={
-                <Space direction="vertical" size="small">
-                  <Text strong>{translate('Aucun contact trouvé')}</Text>
-                  <Text type="secondary">{translate('Commencez par créer votre premier contact.')}</Text>
+        {/* Bulk Actions Toolbar */}
+        {selectedContacts.length > 0 && (
+          <Card
+            style={{
+              background: '#e6f7ff',
+              borderColor: '#91d5ff'
+            }}
+          >
+            <Row justify="space-between" align="middle" gutter={[16, 16]}>
+              <Col xs={24} sm={12}>
+                <Space>
+                  <Text strong>
+                    {selectedContacts.length > 1
+                      ? translate('{{count}} contacts sélectionnés', { count: selectedContacts.length })
+                      : translate('{{count}} contact sélectionné', { count: selectedContacts.length })}
+                  </Text>
+                  <Button size="small" onClick={() => setSelectedContacts([])}>
+                    {translate('Désélectionner tout')}
+                  </Button>
                 </Space>
-              }
-            >
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
-                {translate('Créer un contact')}
-              </Button>
-            </Empty>
+              </Col>
+              <Col xs={24} sm={12} style={{ textAlign: 'end' }}>
+                <Button type="primary" icon={<TagOutlined />} onClick={() => setShowBulkTagManager(true)}>
+                  {translate('Gérer les tags')}
+                </Button>
+              </Col>
+            </Row>
           </Card>
-        ) : (
-          <>
-            {/* Bulk Actions Toolbar */}
-            {selectedContacts.length > 0 && (
-              <Card
-                style={{
-                  background: '#e6f7ff',
-                  borderColor: '#91d5ff'
-                }}
-              >
-                <Row justify="space-between" align="middle" gutter={[16, 16]}>
-                  <Col xs={24} sm={12}>
-                    <Space>
-                      <Text strong>
-                        {selectedContacts.length} contact{selectedContacts.length > 1 ? 's' : ''}{' '}
-                        {translate('sélectionné')}
-                        {selectedContacts.length > 1 ? 's' : ''}
-                      </Text>
-                      <Button size="small" onClick={() => setSelectedContacts([])}>
-                        {translate('Désélectionner tout')}
-                      </Button>
-                    </Space>
-                  </Col>
-                  <Col xs={24} sm={12} style={{ textAlign: 'end' }}>
-                    <Button type="primary" icon={<TagOutlined />} onClick={() => setShowBulkTagManager(true)}>
-                      {translate('Gérer les tags')}
-                    </Button>
-                  </Col>
-                </Row>
-              </Card>
-            )}
-
-            {/* Table View */}
-            <Card>
-              <Table
-                exportFilename={translate('Contacts')}
-                // Export de TOUS les contacts, avec les mêmes filtres que la liste affichée.
-                exportFetchAll={() =>
-                  collectAllPages<CrmContact>(async (page, limit) => {
-                    const reponse = await listContacts(tenantId as string, {
-                      ...filters,
-                      search: filters.search || undefined,
-                      startDate: advancedFilters.startDate,
-                      endDate: advancedFilters.endDate,
-                      assignedTo: advancedFilters.assignedTo,
-                      source: advancedFilters.source,
-                      hasActiveDeal: hasActiveDealFilter,
-                      hasUpcomingActivity: hasUpcomingActivityFilter,
-                      page,
-                      limit
-                    });
-                    return { items: reponse.contacts ?? [], total: reponse.pagination?.total ?? 0 };
-                  })
-                }
-                columns={columns}
-                dataSource={contacts}
-                rowKey="id"
-                loading={loading}
-                rowSelection={rowSelection}
-                pagination={false}
-                scroll={{ x: 'max-content' }}
-                rowClassName={record => (selectedContacts.includes(record.id) ? 'ant-table-row-selected' : '')}
-              />
-            </Card>
-
-            {/* Pagination */}
-            {pagination.totalPages > 1 && (
-              <Card>
-                <Row justify="space-between" align="middle" gutter={[16, 16]}>
-                  <Col xs={24} sm={12}>
-                    <Text type="secondary">
-                      {translate('Affichage de')} {(pagination.page - 1) * pagination.limit + 1} à{' '}
-                      {Math.min(pagination.page * pagination.limit, pagination.total)} sur {pagination.total} contacts
-                    </Text>
-                  </Col>
-                  <Col xs={24} sm={12} style={{ textAlign: 'end' }}>
-                    <Pagination
-                      current={pagination.page}
-                      total={pagination.total}
-                      pageSize={pagination.limit}
-                      showSizeChanger={false}
-                      showTotal={(total, range) =>
-                        translate('{{start}}–{{end}} sur {{total}}', { start: range[0], end: range[1], total })
-                      }
-                      onChange={page => setFilters({ ...filters, page })}
-                    />
-                  </Col>
-                </Row>
-              </Card>
-            )}
-          </>
         )}
+
+        {/* Table View : la barre de recherche reste affichée même sans ligne. */}
+        <Card>
+          <Table
+            search={search.searchProps}
+            exportFilename={translate('Contacts')}
+            // Export de TOUS les contacts, avec les mêmes critères que la liste affichée.
+            exportFetchAll={() =>
+              collectAllPages<CrmContact>(async (page, limit) => {
+                const reponse = await listContacts(
+                  tenantId as string,
+                  {
+                    ...search.filterParams,
+                    page,
+                    limit
+                  } as ContactFilters
+                );
+                return { items: reponse.contacts ?? [], total: reponse.pagination?.total ?? 0 };
+              })
+            }
+            columns={columns}
+            dataSource={contacts}
+            rowKey="id"
+            loading={loading}
+            rowSelection={rowSelection}
+            pagination={search.tablePagination(pagination.total)}
+            scroll={{ x: 'max-content' }}
+            rowClassName={record => (selectedContacts.includes(record.id) ? 'ant-table-row-selected' : '')}
+            // Sans critère : invitation à créer. Sous critère, la Table affiche seule « Aucun résultat ».
+            locale={
+              search.isFiltered || search.page > 1
+                ? undefined
+                : {
+                    emptyText: (
+                      <Empty
+                        image={<UserOutlined style={{ fontSize: 64, color: '#bfbfbf' }} />}
+                        imageStyle={{ height: 64 }}
+                        description={
+                          <Space direction="vertical" size="small">
+                            <Text strong>{translate('Aucun contact trouvé')}</Text>
+                            <Text type="secondary">{translate('Commencez par créer votre premier contact.')}</Text>
+                          </Space>
+                        }
+                      >
+                        <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
+                          {translate('Créer un contact')}
+                        </Button>
+                      </Empty>
+                    )
+                  }
+            }
+          />
+        </Card>
 
         {/* Bulk Tag Manager Modal */}
         {showBulkTagManager && (

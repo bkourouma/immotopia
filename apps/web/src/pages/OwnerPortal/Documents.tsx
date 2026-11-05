@@ -1,19 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { App, Card, Typography, Spin, Alert, Empty, List, Button, Space, Select, Tag, Divider } from 'antd';
-import {
-  FolderOutlined,
-  DownloadOutlined,
-  FileTextOutlined,
-  FilterOutlined,
-  CalendarOutlined,
-  SyncOutlined
-} from '@ant-design/icons';
+import React, { useState } from 'react';
+import { App, Card, Typography, Spin, Alert, Empty, List, Button, Space, Tag, Pagination } from 'antd';
+import { FolderOutlined, DownloadOutlined, FileTextOutlined, CalendarOutlined, SyncOutlined } from '@ant-design/icons';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ownerPortalService } from '../../services/ownerPortalService';
+import type { OwnerPortalPagination } from '../../services/ownerPortalService';
+import { ListSearch, StateBlock } from '../../components/primitives';
+import { useListSearch } from '../../hooks/useListSearch';
+import { STALE_TIME } from '../../lib/query-keys';
+import { useOwnerPropertyOptions } from './useOwnerPropertyOptions';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
-const { Option } = Select;
 
 interface RentalDocument {
   id: string;
@@ -32,64 +30,96 @@ interface RentalDocument {
 }
 
 interface DocumentsData {
+  /** Page demandée au serveur. */
   documents: RentalDocument[];
+  /** Regroupement de TOUS les documents filtrés (pas de la page) : non utilisé pour l'affichage. */
   groupedByType: Record<string, RentalDocument[]>;
+  pagination?: OwnerPortalPagination;
 }
+
+const DOCUMENT_TYPES = [
+  'LEASE_CONTRACT',
+  'LEASE_ADDENDUM',
+  'RENT_RECEIPT',
+  'RENT_QUITTANCE',
+  'DEPOSIT_RECEIPT',
+  'STATEMENT',
+  'OTHER'
+];
 
 export default function Documents() {
   const { message } = App.useApp();
+  const { options: propertyOptions } = useOwnerPropertyOptions();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<DocumentsData | null>(null);
-  const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
-  const [propertyFilter, setPropertyFilter] = useState<string | undefined>(undefined);
-  const [properties, setProperties] = useState<Array<{ id: string; address: string }>>([]);
   const [downloading, setDownloading] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadProperties();
-  }, []);
-
-  useEffect(() => {
-    loadDocuments();
-  }, [typeFilter, propertyFilter]);
-
-  const loadProperties = async () => {
-    try {
-      const response = await ownerPortalService.getProperties();
-      if (response.data?.success && response.data?.data?.properties) {
-        setProperties(
-          response.data.data.properties.map((p: any) => ({
-            id: p.id,
-            address: p.address
-          }))
-        );
-      }
-    } catch (err) {
-      console.error('Error loading properties:', err);
-    }
+  const getDocumentTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      LEASE_CONTRACT: t('Contrat de bail'),
+      LEASE_ADDENDUM: 'Avenant',
+      RENT_RECEIPT: t('Quittance de loyer'),
+      RENT_QUITTANCE: 'Quittance',
+      DEPOSIT_RECEIPT: t('Reçu de dépôt'),
+      STATEMENT: t('Relevé'),
+      OTHER: 'Autre'
+    };
+    return labels[type] || type;
   };
 
-  const loadDocuments = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const params: any = {};
-      if (typeFilter) params.documentType = typeFilter;
-      if (propertyFilter) params.propertyId = propertyFilter;
-
-      const response = await ownerPortalService.getDocuments(params);
-      if (response.data?.success && response.data?.data) {
-        setData(response.data.data);
+  // Liste paginée par le serveur ; l'API ne trie pas (`sort: false`).
+  const search = useListSearch({
+    apiNames: { sort: false },
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Titre, numéro du document…') },
+      {
+        key: 'documentType',
+        type: 'multiSelect',
+        label: t('Type'),
+        primary: true,
+        options: DOCUMENT_TYPES.map(type => ({ value: type, label: getDocumentTypeLabel(type) }))
+      },
+      {
+        key: 'propertyId',
+        type: 'select',
+        label: t('Propriété'),
+        primary: true,
+        options: propertyOptions
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors du chargement des documents'));
-    } finally {
-      setLoading(false);
+    ]
+  });
+
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: queryError,
+    refetch
+  } = useQuery({
+    queryKey: ['owner-portal', 'documents', search.apiParams],
+    queryFn: async (): Promise<DocumentsData | null> => {
+      const response = await ownerPortalService.getDocuments(search.apiParams);
+      return response.data?.success && response.data?.data ? (response.data.data as DocumentsData) : null;
+    },
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
+  });
+
+  const error: string | null = queryError
+    ? (queryError as any).response?.data?.message || t('Erreur lors du chargement des documents')
+    : null;
+  const documents = React.useMemo(() => data?.documents ?? [], [data]);
+  const total = data?.pagination?.total ?? documents.length;
+
+  // Regroupement par type de la page reçue (présentation seulement : aucun filtrage côté client).
+  const groupedPage = React.useMemo(() => {
+    const groups = new Map<string, RentalDocument[]>();
+    for (const doc of documents) {
+      const group = groups.get(doc.type);
+      if (group) group.push(doc);
+      else groups.set(doc.type, [doc]);
     }
-  };
+    return Array.from(groups.entries());
+  }, [documents]);
 
   const handleDownload = async (documentId: string) => {
     try {
@@ -130,19 +160,6 @@ export default function Documents() {
     return dayjs(dateString).format('DD/MM/YYYY');
   };
 
-  const getDocumentTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      LEASE_CONTRACT: t('Contrat de bail'),
-      LEASE_ADDENDUM: 'Avenant',
-      RENT_RECEIPT: t('Quittance de loyer'),
-      RENT_QUITTANCE: 'Quittance',
-      DEPOSIT_RECEIPT: t('Reçu de dépôt'),
-      STATEMENT: t('Relevé'),
-      OTHER: 'Autre'
-    };
-    return labels[type] || type;
-  };
-
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
       DRAFT: { label: t('Brouillon'), color: 'default' },
@@ -153,24 +170,12 @@ export default function Documents() {
     return <Tag color={config.color}>{config.label}</Tag>;
   };
 
-  // Get all unique document types for filter
-  const allTypes = data ? Array.from(new Set(data.documents.map(doc => doc.type))) : [];
-
-  // Filter grouped documents by type filter
-  const filteredGroupedByType = data
-    ? Object.entries(data.groupedByType).filter(([type]) => (typeFilter ? type === typeFilter : true))
-    : [];
-
-  if (loading && !data) {
+  if (isPending && !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
         <Spin size="large" tip={t('Chargement des documents...')} />
       </div>
     );
-  }
-
-  if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   return (
@@ -183,131 +188,111 @@ export default function Documents() {
         </div>
         <Button
           icon={<SyncOutlined />}
-          onClick={loadDocuments}
-          loading={loading}
+          onClick={() => refetch()}
+          loading={isFetching}
           aria-label={t('Rafraîchir les documents')}
         >
           {t('Actualiser')}
         </Button>
       </div>
 
-      {/* Filters (T137) */}
-      <Card
-        title={
-          <Space>
-            <FilterOutlined />
-            <span>{t('Filtres')}</span>
-          </Space>
-        }
-      >
-        <div className="it-filters">
-          <div className="it-filters__field">
-            <Text strong>{t('Type')}</Text>
-            <Select
-              showSearch
-              optionFilterProp="children"
-              style={{ width: 200 }}
-              placeholder={t('Tous les types')}
-              allowClear
-              value={typeFilter}
-              onChange={value => setTypeFilter(value)}
-            >
-              {allTypes.map(type => (
-                <Option key={type} value={type}>
-                  {getDocumentTypeLabel(type)}
-                </Option>
-              ))}
-            </Select>
-          </div>
-          <div className="it-filters__field">
-            <Text strong>{t('Propriété')}</Text>
-            <Select
-              showSearch
-              optionFilterProp="children"
-              style={{ width: 200 }}
-              placeholder={t('Toutes les propriétés')}
-              allowClear
-              value={propertyFilter}
-              onChange={value => setPropertyFilter(value)}
-            >
-              {properties.map(prop => (
-                <Option key={prop.id} value={prop.id}>
-                  {prop.address}
-                </Option>
-              ))}
-            </Select>
-          </div>
-        </div>
-      </Card>
+      {/* Recherche multicritères (T137) : le type et le bien sont filtrés par le serveur */}
+      <div>
+        <ListSearch {...search.searchProps} resultCount={error ? undefined : total} />
+      </div>
+
+      {error && <Alert message={t('Erreur')} description={error} type="error" showIcon />}
 
       {/* Documents Grouped by Type (T136) */}
-      {filteredGroupedByType.length > 0 ? (
-        filteredGroupedByType.map(([type, documents]) => (
-          <Card
-            key={type}
-            title={
-              <Space>
-                <FolderOutlined />
-                <span>{getDocumentTypeLabel(type)}</span>
-                <Tag>{documents.length}</Tag>
-              </Space>
-            }
-          >
-            <List
-              dataSource={documents}
-              renderItem={doc => (
-                <List.Item
-                  actions={[
-                    <Button
-                      key="download"
-                      type="link"
-                      icon={<DownloadOutlined />}
-                      onClick={() => handleDownload(doc.id)}
-                      loading={downloading === doc.id}
+      <Spin spinning={isFetching && !isPending}>
+        {groupedPage.length > 0 ? (
+          <Space direction="vertical" size="large" style={{ width: '100%' }}>
+            {groupedPage.map(([type, group]) => (
+              <Card
+                key={type}
+                title={
+                  <Space>
+                    <FolderOutlined />
+                    <span>{getDocumentTypeLabel(type)}</span>
+                    <Tag>{group.length}</Tag>
+                  </Space>
+                }
+              >
+                <List
+                  dataSource={group}
+                  renderItem={doc => (
+                    <List.Item
+                      actions={[
+                        <Button
+                          key="download"
+                          type="link"
+                          icon={<DownloadOutlined />}
+                          onClick={() => handleDownload(doc.id)}
+                          loading={downloading === doc.id}
+                        >
+                          {t('Télécharger')}
+                        </Button>
+                      ]}
                     >
-                      {t('Télécharger')}
-                    </Button>
-                  ]}
-                >
-                  <List.Item.Meta
-                    avatar={<FileTextOutlined style={{ fontSize: 24, color: '#1890ff' }} />}
-                    title={
-                      <Space>
-                        <Text strong>
-                          {doc.title ||
-                            doc.document_number ||
-                            t('Document {{value}}', { value: doc.id.substring(0, 8) })}
-                        </Text>
-                        {getStatusTag(doc.status)}
-                      </Space>
-                    }
-                    description={
-                      <Space direction="vertical" size="small">
-                        {doc.lease?.property && (
-                          <Text type="secondary">
-                            {t('Propriété:')} {doc.lease.property.address}
-                          </Text>
-                        )}
-                        {doc.issued_at && (
+                      <List.Item.Meta
+                        avatar={<FileTextOutlined style={{ fontSize: 24, color: '#1890ff' }} />}
+                        title={
                           <Space>
-                            <CalendarOutlined />
-                            <Text type="secondary">
-                              {t('Émis le')} {formatDate(doc.issued_at)}
+                            <Text strong>
+                              {doc.title ||
+                                doc.document_number ||
+                                t('Document {{value}}', { value: doc.id.substring(0, 8) })}
                             </Text>
+                            {getStatusTag(doc.status)}
                           </Space>
-                        )}
-                      </Space>
-                    }
-                  />
-                </List.Item>
-              )}
-            />
+                        }
+                        description={
+                          <Space direction="vertical" size="small">
+                            {doc.lease?.property && (
+                              <Text type="secondary">
+                                {t('Propriété:')} {doc.lease.property.address}
+                              </Text>
+                            )}
+                            {doc.issued_at && (
+                              <Space>
+                                <CalendarOutlined />
+                                <Text type="secondary">
+                                  {t('Émis le')} {formatDate(doc.issued_at)}
+                                </Text>
+                              </Space>
+                            )}
+                          </Space>
+                        }
+                      />
+                    </List.Item>
+                  )}
+                />
+              </Card>
+            ))}
+          </Space>
+        ) : (
+          <Card>
+            {search.isFiltered ? (
+              <StateBlock
+                variant="no-results"
+                actions={[{ label: t('Effacer les critères'), onClick: search.clear, primary: true }]}
+              />
+            ) : (
+              <Empty description={t('Aucun document trouvé')} />
+            )}
           </Card>
-        ))
-      ) : (
-        <Card>
-          <Empty description={t('Aucun document trouvé')} />
-        </Card>
+        )}
+      </Spin>
+
+      {(total > search.pageSize || search.page > 1) && (
+        <Pagination
+          align="end"
+          current={search.page}
+          pageSize={search.pageSize}
+          total={total}
+          showSizeChanger
+          onChange={search.dataViewProps.onPageChange}
+        />
       )}
     </Space>
   );

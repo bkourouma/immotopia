@@ -29,16 +29,27 @@ export type {
  * Tenant maintenance service
  * All functions require tenantId as a parameter
  */
+/** Critères de recherche des tickets, en plus de `TicketFilters` (dates `aaaa-mm-jj`, bornes incluses). */
+export interface TicketSearchFilters {
+  search?: string;
+  priority?: MaintenanceTicketPriority;
+  category?: MaintenanceTicketCategory;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 export const tenantMaintenanceService = {
   /**
    * List tickets for tenant
    */
-  async listTickets(
-    tenantId: string,
-    filters?: TicketFilters
-  ): Promise<TicketListResponse> {
+  async listTickets(tenantId: string, filters?: TicketFilters & TicketSearchFilters): Promise<TicketListResponse> {
     const params = new URLSearchParams();
     if (filters?.status) params.append('status', filters.status);
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.priority) params.append('priority', filters.priority);
+    if (filters?.category) params.append('category', filters.category);
+    if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
+    if (filters?.dateTo) params.append('dateTo', filters.dateTo);
     if (filters?.propertyId) params.append('propertyId', filters.propertyId);
     if (filters?.tenantContactId) params.append('tenantContactId', filters.tenantContactId);
     if (filters?.leaseId) params.append('leaseId', filters.leaseId);
@@ -54,29 +65,18 @@ export const tenantMaintenanceService = {
   /**
    * Create a new ticket
    */
-  async createTicket(
-    tenantId: string,
-    data: CreateTicketRequest,
-    tenantContactId?: string
-  ): Promise<TicketResponse> {
-    const response = await apiClient.post<TicketResponse>(
-      `/tenants/${tenantId}/maintenance/tenant/tickets`,
-      {
-        ...data,
-        tenantContactId
-      }
-    );
+  async createTicket(tenantId: string, data: CreateTicketRequest, tenantContactId?: string): Promise<TicketResponse> {
+    const response = await apiClient.post<TicketResponse>(`/tenants/${tenantId}/maintenance/tenant/tickets`, {
+      ...data,
+      tenantContactId
+    });
     return response.data;
   },
 
   /**
    * Get ticket by ID with full details
    */
-  async getTicket(
-    tenantId: string,
-    ticketId: string,
-    tenantContactId?: string
-  ): Promise<TicketResponse> {
+  async getTicket(tenantId: string, ticketId: string, tenantContactId?: string): Promise<TicketResponse> {
     const params = new URLSearchParams();
     if (tenantContactId) params.append('tenantContactId', tenantContactId);
 
@@ -115,11 +115,7 @@ export const tenantMaintenanceService = {
   /**
    * Cancel a ticket
    */
-  async cancelTicket(
-    tenantId: string,
-    ticketId: string,
-    tenantContactId?: string
-  ): Promise<TicketResponse> {
+  async cancelTicket(tenantId: string, ticketId: string, tenantContactId?: string): Promise<TicketResponse> {
     const response = await apiClient.patch<TicketResponse>(
       `/tenants/${tenantId}/maintenance/tenant/tickets/${ticketId}`,
       {
@@ -161,7 +157,7 @@ export const tenantMaintenanceService = {
     if (tenantContactId) {
       body.tenantContactId = tenantContactId;
     }
-    
+
     const response = await apiClient.post<{ success: boolean; data: Comment }>(
       `/tenants/${tenantId}/maintenance/tenant/tickets/${ticketId}/comments`,
       body
@@ -212,6 +208,8 @@ export const managerMaintenanceService = {
       status?: MaintenanceTicketStatus;
       priority?: MaintenanceTicketPriority;
       assignedVendorId?: string;
+      category?: MaintenanceTicketCategory;
+      search?: string;
       dateFrom?: string;
       dateTo?: string;
       page?: number;
@@ -219,6 +217,8 @@ export const managerMaintenanceService = {
     }
   ): Promise<TicketListResponse> {
     const params = new URLSearchParams();
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.category) params.append('category', filters.category);
     if (filters?.propertyId) params.append('propertyId', filters.propertyId);
     if (filters?.status) params.append('status', filters.status);
     if (filters?.priority) params.append('priority', filters.priority);
@@ -238,9 +238,7 @@ export const managerMaintenanceService = {
    * Get ticket by ID with full details (manager view)
    */
   async getTicket(tenantId: string, ticketId: string): Promise<TicketResponse> {
-    const response = await apiClient.get<TicketResponse>(
-      `/tenants/${tenantId}/maintenance/admin/tickets/${ticketId}`
-    );
+    const response = await apiClient.get<TicketResponse>(`/tenants/${tenantId}/maintenance/admin/tickets/${ticketId}`);
     return response.data;
   },
 
@@ -268,11 +266,7 @@ export const managerMaintenanceService = {
   /**
    * Add a manager comment to a ticket
    */
-  async addComment(
-    tenantId: string,
-    ticketId: string,
-    content: string
-  ): Promise<{ success: boolean; data: Comment }> {
+  async addComment(tenantId: string, ticketId: string, content: string): Promise<{ success: boolean; data: Comment }> {
     const response = await apiClient.post<{ success: boolean; data: Comment }>(
       `/tenants/${tenantId}/maintenance/admin/tickets/${ticketId}/comments`,
       { content }

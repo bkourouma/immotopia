@@ -133,7 +133,12 @@ function savePdf(blob: Blob, filename: string) {
 function pageOf(response: { data: Envelope<PlatformInvoice[]> }): PlatformInvoicePage {
   return {
     invoices: response.data.data,
-    pagination: response.data.pagination ?? { page: 1, limit: response.data.data.length, total: response.data.data.length, totalPages: 1 }
+    pagination: response.data.pagination ?? {
+      page: 1,
+      limit: response.data.data.length,
+      total: response.data.data.length,
+      totalPages: 1
+    }
   };
 }
 
@@ -143,9 +148,28 @@ const adminBase = (tenantId: string) => `/admin/tenants/${tenantId}/platform-inv
 
 export async function listAdminPlatformInvoices(
   tenantId: string,
-  params: { page?: number; limit?: number; status?: PlatformInvoiceStatus } = {}
+  params: AdminInvoiceFilters = {}
 ): Promise<PlatformInvoicePage> {
-  return pageOf(await apiClient.get<Envelope<PlatformInvoice[]>>(adminBase(tenantId), { params }));
+  // Un paramètre vide n'est pas envoyé (l'API refuse une chaîne vide pour un montant ou une date).
+  const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== ''));
+  return pageOf(await apiClient.get<Envelope<PlatformInvoice[]>>(adminBase(tenantId), { params: clean }));
+}
+
+/** Filtres de la liste des factures d'une agence (valeurs multiples séparées par des virgules). */
+export interface AdminInvoiceFilters {
+  page?: number;
+  limit?: number;
+  /** `ISSUED,PAID`… */
+  status?: string;
+  /** `PERIOD,OVERAGE,CREDIT_NOTE` */
+  nature?: string;
+  /** Numéro de facture ou référence de paiement. */
+  search?: string;
+  /** `YYYY-MM-DD`, date d'émission, bornes incluses. */
+  from?: string;
+  to?: string;
+  minAmount?: number | string;
+  maxAmount?: number | string;
 }
 
 export async function getAdminPlatformInvoice(tenantId: string, invoiceId: string): Promise<PlatformInvoice> {
@@ -180,11 +204,17 @@ export async function issueCreditNote(
   invoiceId: string,
   input: { reason: string; reissuePending?: boolean }
 ): Promise<PlatformInvoice> {
-  const response = await apiClient.post<Envelope<PlatformInvoice>>(`${adminBase(tenantId)}/${invoiceId}/credit-note`, input);
+  const response = await apiClient.post<Envelope<PlatformInvoice>>(
+    `${adminBase(tenantId)}/${invoiceId}/credit-note`,
+    input
+  );
   return response.data.data;
 }
 
-export async function downloadAdminInvoicePdf(tenantId: string, invoice: Pick<PlatformInvoice, 'id' | 'invoiceNumber'>) {
+export async function downloadAdminInvoicePdf(
+  tenantId: string,
+  invoice: Pick<PlatformInvoice, 'id' | 'invoiceNumber'>
+) {
   const response = await apiClient.get(`${adminBase(tenantId)}/${invoice.id}/pdf`, { responseType: 'blob' });
   savePdf(response.data as Blob, `${invoice.invoiceNumber ?? 'brouillon'}.pdf`);
 }
@@ -215,9 +245,13 @@ export async function recordManualPayment(
   if (input.reference) form.append('reference', input.reference);
   if (input.note) form.append('note', input.note);
   if (input.proof) form.append('proof', input.proof);
-  const response = await apiClient.post<Envelope<ManualPaymentResult>>(`${adminBase(tenantId)}/${invoiceId}/payment`, form, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  });
+  const response = await apiClient.post<Envelope<ManualPaymentResult>>(
+    `${adminBase(tenantId)}/${invoiceId}/payment`,
+    form,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }
+  );
   return response.data.data;
 }
 
@@ -225,9 +259,9 @@ export async function getAdminInvoicePayment(
   tenantId: string,
   invoiceId: string
 ): Promise<{ payment: PlatformInvoicePayment | null; checkouts: PlatformCheckout[] }> {
-  const response = await apiClient.get<Envelope<{ payment: PlatformInvoicePayment | null; checkouts: PlatformCheckout[] }>>(
-    `${adminBase(tenantId)}/${invoiceId}/payment`
-  );
+  const response = await apiClient.get<
+    Envelope<{ payment: PlatformInvoicePayment | null; checkouts: PlatformCheckout[] }>
+  >(`${adminBase(tenantId)}/${invoiceId}/payment`);
   return response.data.data;
 }
 
@@ -242,9 +276,12 @@ const tenantBase = (tenantId: string) => `/tenants/${tenantId}/subscription`;
 
 export async function listOwnPlatformInvoices(
   tenantId: string,
-  params: { page?: number; limit?: number } = {}
+  params: AdminInvoiceFilters = {}
 ): Promise<PlatformInvoicePage> {
-  return pageOf(await apiClient.get<Envelope<PlatformInvoice[]>>(`${tenantBase(tenantId)}/invoices`, { params }));
+  const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== ''));
+  return pageOf(
+    await apiClient.get<Envelope<PlatformInvoice[]>>(`${tenantBase(tenantId)}/invoices`, { params: clean })
+  );
 }
 
 export async function downloadOwnInvoicePdf(tenantId: string, invoice: Pick<PlatformInvoice, 'id' | 'invoiceNumber'>) {
@@ -262,7 +299,9 @@ export async function getPaymentAvailability(tenantId: string): Promise<PaymentA
  * `data.checkoutUrl` : l'appelant reprend alors le paiement en cours.
  */
 export async function startInvoiceCheckout(tenantId: string, invoiceId: string): Promise<PlatformCheckout> {
-  const response = await apiClient.post<Envelope<PlatformCheckout>>(`${tenantBase(tenantId)}/invoices/${invoiceId}/checkout`);
+  const response = await apiClient.post<Envelope<PlatformCheckout>>(
+    `${tenantBase(tenantId)}/invoices/${invoiceId}/checkout`
+  );
   return response.data.data;
 }
 

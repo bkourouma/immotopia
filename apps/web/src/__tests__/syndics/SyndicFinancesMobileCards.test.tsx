@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp } from 'antd';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
@@ -33,6 +34,7 @@ const getSyndicFinanceSummary = vi.fn();
 const listAllChargeCalls = vi.fn();
 const getOverdueDashboard = vi.fn();
 const listPaymentReminders = vi.fn();
+const listChargeCallsPage = vi.fn();
 const createSyndicateFund = vi.fn();
 const renameSyndicateFund = vi.fn();
 const adjustSyndicateFundBalance = vi.fn();
@@ -43,6 +45,7 @@ vi.mock('../../services/syndic-service', () => ({
   listAllChargeCalls: (...args: unknown[]) => listAllChargeCalls(...args),
   getOverdueDashboard: (...args: unknown[]) => getOverdueDashboard(...args),
   listPaymentReminders: (...args: unknown[]) => listPaymentReminders(...args),
+  listChargeCallsPage: (...args: unknown[]) => listChargeCallsPage(...args),
   createSyndicateFund: (...args: unknown[]) => createSyndicateFund(...args),
   renameSyndicateFund: (...args: unknown[]) => renameSyndicateFund(...args),
   adjustSyndicateFundBalance: (...args: unknown[]) => adjustSyndicateFundBalance(...args)
@@ -91,15 +94,18 @@ const authValue: AuthContextType = {
 };
 
 function mount() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <AuthContext.Provider value={authValue}>
-      <AntApp>
-        <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/finances']}>
-          <Routes>
-            <Route path="/tenant/:tenantId/syndics/:syndicId/finances" element={<SyndicFinances />} />
-          </Routes>
-        </MemoryRouter>
-      </AntApp>
+      <QueryClientProvider client={client}>
+        <AntApp>
+          <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/finances']}>
+            <Routes>
+              <Route path="/tenant/:tenantId/syndics/:syndicId/finances" element={<SyndicFinances />} />
+            </Routes>
+          </MemoryRouter>
+        </AntApp>
+      </QueryClientProvider>
     </AuthContext.Provider>
   );
 }

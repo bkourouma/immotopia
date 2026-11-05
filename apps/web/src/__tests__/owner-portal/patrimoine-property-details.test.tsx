@@ -85,10 +85,10 @@ function details(overrides: Partial<Details> = {}): Details {
   };
 }
 
-function mount() {
+function mount(url = '/owner/patrimoine/prop-1') {
   return render(
     <AntApp>
-      <MemoryRouter initialEntries={['/owner/patrimoine/prop-1']}>
+      <MemoryRouter initialEntries={[url]}>
         <Routes>
           <Route path="/owner/patrimoine/:propertyId" element={<PatrimoinePropertyDetails />} />
         </Routes>
@@ -142,7 +142,8 @@ describe('Détail du patrimoine — téléchargement de document', () => {
     getPropertyDetails.mockResolvedValue(details());
     downloadDocument.mockResolvedValue(new Blob(['contenu']));
 
-    mount();
+    // Les documents sont dans leur propre onglet.
+    mount('/owner/patrimoine/prop-1?tab=documents');
 
     const bouton = await screen.findByText('Télécharger', {}, { timeout: 8000 });
     await userEvent.click(bouton);

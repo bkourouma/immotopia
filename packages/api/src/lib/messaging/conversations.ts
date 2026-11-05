@@ -21,6 +21,7 @@ import {
 import { sendMessage, unreadSince } from './messages';
 import { MAX_CLIENT_GROUP_PARTICIPANTS, MAX_PARTICIPANTS } from './schemas';
 import type { ConversationSummary, MessagingActor, Paginated } from './types';
+import { escapeLike } from '../../utils/like-escape';
 
 const SUMMARY_SELECT = {
   id: true,
@@ -154,13 +155,50 @@ async function summaryOf(actor: MessagingActor, conversationId: string): Promise
 
 export async function listConversations(
   actor: MessagingActor,
-  options: { page?: number; pageSize?: number } = {}
+  options: { page?: number; pageSize?: number; search?: string } = {}
 ): Promise<Paginated<ConversationSummary>> {
   const page = Math.max(options.page ?? 1, 1);
   const pageSize = Math.min(Math.max(options.pageSize ?? 20, 1), 100);
-  const where = {
+  const search = options.search?.trim();
+  const searchLike = escapeLike(search ?? '');
+  // Recherche : titre, et les AUTRES participants tels que l'acteur les voit deja.
+  // Personnel : nom ou e-mail. Client de portail : nom affiche du personnel
+  // seulement (membre ACTIF de l'agence) — jamais l'e-mail ni le telephone, et
+  // jamais le nom d'un autre client (masque a l'ecran : « Autre participant »).
+  // Le `where` garde toujours la condition « l'acteur est membre ».
+  const peerUserFilter: Prisma.UserWhereInput =
+    actor.audience === 'STAFF'
+      ? {
+          OR: [
+            { fullName: { contains: searchLike, mode: 'insensitive' as const } },
+            { email: { contains: searchLike, mode: 'insensitive' as const } }
+          ]
+        }
+      : {
+          fullName: { contains: searchLike, mode: 'insensitive' as const },
+          memberships: { some: { tenantId: actor.tenantId, status: 'ACTIVE' } }
+        };
+  const searchClause: Prisma.ConversationWhereInput = search
+    ? {
+        OR: [
+          { title: { contains: searchLike, mode: 'insensitive' } },
+          {
+            participants: {
+              some: {
+                tenantId: actor.tenantId,
+                leftAt: null,
+                userId: { not: actor.userId },
+                user: peerUserFilter
+              }
+            }
+          }
+        ]
+      }
+    : {};
+  const where: Prisma.ConversationWhereInput = {
     tenantId: actor.tenantId,
-    participants: { some: { userId: actor.userId, tenantId: actor.tenantId, leftAt: null } }
+    participants: { some: { userId: actor.userId, tenantId: actor.tenantId, leftAt: null } },
+    ...searchClause
   };
   const [rows, total] = await Promise.all([
     prisma.conversation.findMany({

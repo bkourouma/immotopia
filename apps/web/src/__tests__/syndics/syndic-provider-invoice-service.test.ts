@@ -40,6 +40,36 @@ describe('syndic-provider-invoice-service', () => {
     });
   });
 
+  it('transmet la recherche libre, plusieurs statuts et la période en jours aaaa-mm-jj', async () => {
+    mockApiClient.get.mockResolvedValueOnce({
+      data: { success: true, data: { items: [], total: 0, page: 1, limit: 20 } }
+    });
+
+    await service.listProviderInvoices('tenant-1', 'syndic-1', {
+      search: 'ascenseur',
+      status: 'RECORDED,PAID',
+      contractId: 'c1',
+      incidentId: 'i1',
+      from: '2026-01-01',
+      to: '2026-01-31',
+      page: 1,
+      limit: 20
+    });
+
+    expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/factures-prestataires', {
+      params: {
+        search: 'ascenseur',
+        status: 'RECORDED,PAID',
+        contractId: 'c1',
+        incidentId: 'i1',
+        from: '2026-01-01',
+        to: '2026-01-31',
+        page: 1,
+        limit: 20
+      }
+    });
+  });
+
   it('crée une facture en JSON quand aucun fichier n’est fourni', async () => {
     mockApiClient.post.mockResolvedValueOnce({
       data: {

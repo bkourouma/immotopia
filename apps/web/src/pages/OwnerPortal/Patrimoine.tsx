@@ -7,6 +7,7 @@ import { ownerPortalPatrimoineService } from '../../services/owner-portal-patrim
 import type { PatrimoineOverview, PatrimoineSummaryProperty } from '../../services/owner-portal-patrimoine-service';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { StateBlock, Table, formatMoney } from '../../components/primitives';
+import { usePatrimoineSearch } from './search/usePatrimoineSearch';
 import { DASH, deviseAffichee, formatPercent, sharePercentLabel } from './owner-patrimoine-labels';
 import { t } from '../../i18n/t';
 
@@ -51,6 +52,8 @@ export default function Patrimoine() {
   useEffect(() => {
     void load();
   }, []);
+
+  const local = usePatrimoineSearch(data?.properties);
 
   if (loading && !data) {
     return <StateBlock variant="loading" />;
@@ -238,12 +241,13 @@ export default function Patrimoine() {
       <Card title={t('Vos biens')}>
         {properties.length > 0 ? (
           <Table
+            aria-label={t('Vos biens')}
             exportFilename={t('Vos biens')}
+            exportFetchAll={local.exportAll}
             scroll={{ x: 'max-content' }}
             columns={columns}
-            dataSource={properties}
+            {...local.tableProps}
             rowKey="id"
-            pagination={{ pageSize: 10 }}
           />
         ) : (
           <StateBlock variant="empty" description={t('Aucun bien avec des données de patrimoine.')} />

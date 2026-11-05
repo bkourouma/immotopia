@@ -5,6 +5,9 @@
 
 import api from '../utils/api-client';
 
+/** Paramètres de liste : filtres (valeurs multiples en CSV), `search`, pagination. */
+type PortalListParams = { [key: string]: string | number | undefined };
+
 export const tenantPortalService = {
   // Dashboard
   getDashboard: () => api.get('/portal/tenant/dashboard'),
@@ -13,14 +16,16 @@ export const tenantPortalService = {
   getLeaseDetails: () => api.get('/portal/tenant/lease'),
 
   // Installments
-  getInstallments: (params?: { status?: string; startDate?: string; endDate?: string }) =>
-    api.get('/portal/tenant/installments', { params }),
+  getInstallments: (
+    params?: PortalListParams & { search?: string; status?: string; startDate?: string; endDate?: string }
+  ) => api.get('/portal/tenant/installments', { params }),
 
   getInstallmentDetails: (id: string) => api.get(`/portal/tenant/installments/${id}`),
 
   // Payments
-  getPaymentHistory: (params?: { startDate?: string; endDate?: string; method?: string }) =>
-    api.get('/portal/tenant/payments', { params }),
+  getPaymentHistory: (
+    params?: PortalListParams & { search?: string; startDate?: string; endDate?: string; method?: string }
+  ) => api.get('/portal/tenant/payments', { params }),
 
   declarePayment: (data: FormData) =>
     api.post('/portal/tenant/payments/declare', data, {
@@ -31,8 +36,9 @@ export const tenantPortalService = {
   getDepositInfo: () => api.get('/portal/tenant/deposit'),
 
   // Maintenance
-  getMaintenanceTickets: (params?: { status?: string }) =>
-    api.get('/portal/tenant/maintenance', { params }),
+  getMaintenanceTickets: (
+    params?: PortalListParams & { search?: string; status?: string; category?: string; priority?: string }
+  ) => api.get('/portal/tenant/maintenance', { params }),
 
   createMaintenanceTicket: (data: FormData) =>
     api.post('/portal/tenant/maintenance', data, {

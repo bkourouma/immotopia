@@ -410,7 +410,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
             style={{ marginBlockStart: 'var(--space-4)' }}
             rowKey="id"
             size="small"
-            pagination={false}
+            pagination={{ defaultPageSize: 10, hideOnSinglePage: true }}
             dataSource={requests}
             aria-label={t('Mes demandes')}
             columns={[

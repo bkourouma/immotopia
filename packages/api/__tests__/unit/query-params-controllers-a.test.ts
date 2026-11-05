@@ -163,7 +163,8 @@ describe('paramètres valides ou vides', () => {
   it('contacts : status valide transmis', async () => {
     const res = await run(listContactsHandler, { status: 'LEAD' });
     expect(res.statusCode).toBe(200);
-    expect(mockSvc.listContacts.mock.calls[0][1].status).toBe('LEAD');
+    // Le statut accepte désormais plusieurs valeurs (`LEAD,ACTIVE_CLIENT`) : une seule valeur part en tableau.
+    expect(mockSvc.listContacts.mock.calls[0][1].status).toEqual(['LEAD']);
   });
 
   it('biens : filtres valides transmis', async () => {

@@ -69,6 +69,11 @@ export interface NotificationRecipientOption {
 
 export interface NotificationListParams {
   unreadOnly?: boolean;
+  /** Recherche libre dans le titre et le message. */
+  q?: string;
+  /** `YYYY-MM-DD`, borne incluse. */
+  from?: string;
+  to?: string;
   page?: number;
   pageSize?: number;
 }

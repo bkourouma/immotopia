@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import { Prisma } from '@prisma/client';
 import type { z } from 'zod';
 import { prisma } from '../utils/database';
@@ -491,7 +492,7 @@ export async function listAssets(tenantId: string, query: ListAssetsQuery): Prom
       ...(query.assetClass ? { assetClass: query.assetClass } : {}),
       // Sans filtre : tout sauf les actifs archivés.
       status: query.status ?? { not: 'ARCHIVED' as const },
-      ...(query.search ? { name: { contains: query.search, mode: 'insensitive' as const } } : {})
+      ...(query.search ? { name: { contains: escapeLike(query.search), mode: 'insensitive' as const } } : {})
     },
     include: ASSET_INCLUDE,
     orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],

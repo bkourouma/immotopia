@@ -27,6 +27,8 @@ vi.mock('@ant-design/icons', async () => {
 
 // Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
 vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
+// La barre de recherche (Popover, DatePicker…) a ses propres tests : ici elle est neutralisée, le filtrage de l'URL reste testé.
+vi.mock('../../components/primitives/ListSearch', () => ({ ListSearch: () => null }));
 
 vi.mock('antd', async () => {
   // importActual reaches the real module from inside a hoisted mock factory;
@@ -80,6 +82,20 @@ vi.mock('antd', async () => {
     Select: passthrough('select'),
     Space: passthrough(),
     Spin: passthrough(),
+    Tabs: ({ items, activeKey, onChange }: any) => (
+      <div>
+        {items.map((item: any) => (
+          <button key={item.key} onClick={() => onChange(item.key)}>
+            {item.label}
+          </button>
+        ))}
+        {items
+          .filter((item: any) => item.key === activeKey)
+          .map((item: any) => (
+            <div key={item.key}>{item.children}</div>
+          ))}
+      </div>
+    ),
     Table,
     Tag: passthrough('span'),
     Typography: {
@@ -142,10 +158,10 @@ const authValue: AuthContextType = {
   switchTenant: () => undefined
 };
 
-function renderWithRoute() {
+function renderWithRoute(search = '') {
   return render(
     <AuthContext.Provider value={authValue}>
-      <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/budgets']}>
+      <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/budgets' + search]}>
         <Routes>
           <Route path="/tenant/:tenantId/syndics/:syndicId/budgets" element={<SyndicBudgets />} />
         </Routes>
@@ -346,5 +362,39 @@ describe('Syndics budgets page — budget clôturé (lecture seule)', () => {
     const repartirButton = (await screen.findByText('Répartir')) as HTMLButtonElement;
     expect(repartirButton.disabled).toBe(true);
     expect(screen.queryByText('Générer appels')).toBeNull();
+  });
+});
+
+describe('Syndics budgets page — onglets paresseux (?tab=)', () => {
+  const calledUrls = () => mockApiClient.get.mock.calls.map((call: unknown[]) => String(call[0]));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiClient.get.mockImplementation((url: string) => {
+      if (url.endsWith('/budgets')) return Promise.resolve({ data: { success: true, data: [] } });
+      if (url.endsWith('/charges/batch')) return Promise.resolve({ data: { success: true, data: [] } });
+      if (url.endsWith('/lots')) return Promise.resolve({ data: { success: true, data: [] } });
+      return Promise.reject(new Error(`Unhandled GET ${url}`));
+    });
+  });
+
+  it("au montage, seul l'onglet Budgets interroge son service", async () => {
+    renderWithRoute();
+    await waitFor(() => expect(calledUrls().some((url: string) => url.endsWith('/budgets'))).toBe(true));
+    expect(calledUrls().some((url: string) => url.endsWith('/charges/batch'))).toBe(false);
+    expect(calledUrls().some((url: string) => url.endsWith('/lots'))).toBe(false);
+  });
+
+  it("?tab=campagnes n'interroge que les campagnes d'appels", async () => {
+    renderWithRoute('?tab=campagnes');
+    await waitFor(() => expect(calledUrls().some((url: string) => url.endsWith('/charges/batch'))).toBe(true));
+    expect(calledUrls().some((url: string) => url.endsWith('/budgets'))).toBe(false);
+  });
+
+  it("le changement d'onglet charge les lots de la répartition", async () => {
+    renderWithRoute();
+    await waitFor(() => expect(calledUrls().some((url: string) => url.endsWith('/budgets'))).toBe(true));
+    fireEvent.click(screen.getByText('Répartition des lots'));
+    await waitFor(() => expect(calledUrls().some((url: string) => url.endsWith('/lots'))).toBe(true));
   });
 });

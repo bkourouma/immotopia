@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -53,12 +53,14 @@ function entite(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function monter() {
+const T = { timeout: 8000 };
+
+function monter(initial = '/tenant/agence-1/patrimoine/entities') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
-        <MemoryRouter initialEntries={['/tenant/agence-1/patrimoine/entities']}>
+        <MemoryRouter initialEntries={[initial]}>
           <Routes>
             <Route path="/tenant/:tenantId/patrimoine/entities" element={<HoldingEntitiesPage />} />
           </Routes>
@@ -78,7 +80,9 @@ describe('<HoldingEntitiesPage> — liste', () => {
     monter();
 
     expect(await screen.findByText('SCI Les Palmiers')).toBeInTheDocument();
-    expect(listHoldingEntities).toHaveBeenCalledWith('agence-1', { legalForm: undefined, country: undefined });
+    // Seule l'option « inclure les inactives » part à l'API ; forme juridique et pays se filtrent en local.
+    expect(listHoldingEntities).toHaveBeenCalledWith('agence-1', { includeInactive: false });
+    expect(screen.getByRole('search')).toBeInTheDocument();
   });
 
   it('affiche un état vide quand aucune entité n’existe', async () => {
@@ -86,6 +90,56 @@ describe('<HoldingEntitiesPage> — liste', () => {
     monter();
 
     expect(await screen.findByText('Aucune entité détentrice pour le moment.')).toBeInTheDocument();
+  });
+});
+
+describe('<HoldingEntitiesPage> — recherche', () => {
+  const deuxEntites = () => [
+    entite(),
+    entite({ id: 'entity-2', name: 'Holding Cocody', legalForm: 'HOLDING', country: 'ML', rccm: 'CI-ABJ-2020-B-1234' })
+  ];
+
+  it('filtre les cartes en local, sans accent ni casse, et sur le RCCM', async () => {
+    const user = userEvent.setup();
+    listHoldingEntities.mockResolvedValue(deuxEntites());
+    monter();
+
+    await screen.findByText('SCI Les Palmiers', undefined, T);
+    expect(screen.getByText('Holding Cocody')).toBeInTheDocument();
+    await user.type(within(screen.getByRole('search')).getByPlaceholderText(/Nom, RCCM/), 'abj-2020');
+
+    await waitFor(() => expect(screen.queryByText('SCI Les Palmiers')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('Holding Cocody')).toBeInTheDocument();
+    expect(listHoldingEntities).toHaveBeenCalledTimes(1);
+  });
+
+  it('applique forme juridique et pays d’une URL partagée en local', async () => {
+    listHoldingEntities.mockResolvedValue(deuxEntites());
+    monter('/tenant/agence-1/patrimoine/entities?forme=HOLDING&pays=ML');
+
+    expect(await screen.findByText('Holding Cocody', undefined, T)).toBeInTheDocument();
+    expect(screen.queryByText('SCI Les Palmiers')).not.toBeInTheDocument();
+  });
+
+  it('envoie « inclure les inactives » à l’API', async () => {
+    listHoldingEntities.mockResolvedValue([entite({ isActive: false })]);
+    monter('/tenant/agence-1/patrimoine/entities?inactives=1');
+
+    await waitFor(() => expect(listHoldingEntities).toHaveBeenCalledWith('agence-1', { includeInactive: true }), T);
+    expect(await screen.findByText('SCI Les Palmiers', undefined, T)).toBeInTheDocument();
+  });
+
+  it('distingue « aucun résultat » de « aucune entité » et propose d’effacer les critères', async () => {
+    const user = userEvent.setup();
+    monter('/tenant/agence-1/patrimoine/entities?q=zzzz');
+
+    expect(
+      await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', undefined, T)
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Aucune entité détentrice pour le moment.')).not.toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText('SCI Les Palmiers', undefined, T)).toBeInTheDocument();
   });
 });
 

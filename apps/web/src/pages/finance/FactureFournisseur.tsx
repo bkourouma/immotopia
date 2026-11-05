@@ -56,6 +56,9 @@ import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccoun
 import type { TreasuryPaymentMethod } from '../../components/finance/TreasuryAccountSelector';
 import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
+import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
@@ -181,6 +184,35 @@ function libelleModeReglement(method: string | undefined): string {
 
 const PERMISSION_VALIDER = 'FINANCE_DOCUMENTS_VALIDATE';
 
+// Statuts d'une pièce (facture ou règlement), libellés vivants.
+const OPTIONS_STATUT_PIECE = localizedList(() =>
+  Object.entries(DOCUMENT_STATUS_LABELS).map(([value, label]) => ({ value, label }))
+);
+
+// Recherche des factures (préfixe `fac`) : champ libre sur la référence et le chantier affichés.
+const TEXTE_FACTURES = [(f: SupplierInvoice) => f.reference, (f: SupplierInvoice) => f.siteLabel];
+const ACCESSEURS_FACTURES = {
+  status: (f: SupplierInvoice) => f.status,
+  siteId: (f: SupplierInvoice) => f.siteId,
+  date: (f: SupplierInvoice) => f.invoiceDate,
+  montant: (f: SupplierInvoice) => f.amount
+};
+
+// Recherche des règlements (préfixe `reg`) : mode, affectation et acteurs, tels qu'affichés.
+const TEXTE_REGLEMENTS = [
+  (r: SupplierPayment) => libelleModeReglement(r.method),
+  (r: SupplierPayment) => r.treasuryLabel,
+  (r: SupplierPayment) =>
+    r.allocations.length > 0 ? r.allocations.map(a => a.invoiceReference).join(' · ') : t('Acompte, sans facture'),
+  (r: SupplierPayment) => r.createdByName,
+  (r: SupplierPayment) => r.validatedByName
+];
+const ACCESSEURS_REGLEMENTS = {
+  status: (r: SupplierPayment) => r.status,
+  mode: (r: SupplierPayment) => r.method,
+  date: (r: SupplierPayment) => r.paymentDate
+};
+
 export const FactureFournisseur: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -249,7 +281,7 @@ export const FactureFournisseur: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  const listeFactures = factures ?? [];
+  const listeFactures = useMemo(() => factures ?? [], [factures]);
 
   const optionsChantiers = useMemo(
     () => (chantiers ?? []).map(c => ({ value: c.id, label: c.name })).sort((a, b) => a.label.localeCompare(b.label)),
@@ -522,7 +554,48 @@ export const FactureFournisseur: React.FC = () => {
     enabled: Boolean(tenantId) && Boolean(supplierId),
     staleTime: STALE_TIME.list
   });
-  const reglements = reglementsServeur ?? [];
+  const reglements = useMemo(() => reglementsServeur ?? [], [reglementsServeur]);
+
+  // Deux tableaux montés ensemble : un préfixe d'URL par instance (`fac.`, `reg.`).
+  // Le paramètre `fournisseur` n'appartient à aucune des deux et reste intact.
+  const criteresFactures: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Référence, chantier…')
+    },
+    { key: 'status', type: 'select', label: t('Statut'), primary: true, options: OPTIONS_STATUT_PIECE },
+    ...(avecChantiers
+      ? [{ key: 'siteId', type: 'select', label: t('Chantier'), primary: true, options: optionsChantiers } as const]
+      : []),
+    { key: 'date', type: 'dateRange', label: t('Date') },
+    { key: 'montant', type: 'numberRange', label: t('Montant'), unit: 'FCFA' }
+  ];
+  const rechercheFactures = useLocalListSearch<SupplierInvoice>(listeFactures, {
+    paramPrefix: 'fac',
+    criteria: criteresFactures,
+    text: TEXTE_FACTURES,
+    accessors: ACCESSEURS_FACTURES
+  });
+
+  const criteresReglements: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Mode, affectation, saisi ou validé par…')
+    },
+    { key: 'status', type: 'select', label: t('Statut'), primary: true, options: OPTIONS_STATUT_PIECE },
+    { key: 'mode', type: 'select', label: t('Mode'), primary: true, options: SUPPLIER_PAYMENT_METHODS },
+    { key: 'date', type: 'dateRange', label: t('Date') }
+  ];
+  const rechercheReglements = useLocalListSearch<SupplierPayment>(reglements, {
+    paramPrefix: 'reg',
+    criteria: criteresReglements,
+    text: TEXTE_REGLEMENTS,
+    accessors: ACCESSEURS_REGLEMENTS
+  });
 
   /** Après une écriture : la liste des règlements ET le reste dû des factures changent. */
   const rafraichirReglements = async () => {
@@ -701,6 +774,350 @@ export const FactureFournisseur: React.FC = () => {
     }
   };
 
+  // Les deux tableaux sont mémoïsés : une frappe dans le formulaire (ou dans le règlement) re-rend toute la page,
+  // mais ni les barres de recherche ni les lignes ne dépendent de ces saisies. Les actions passent par une
+  // référence mise à jour à chaque rendu : un clic appelle toujours la version à jour du gestionnaire.
+  const actions = useRef({
+    validerFacture,
+    ouvrirAnnulation,
+    dupliquerFacture,
+    confirmerAction,
+    validerReglement,
+    descriptionValidationReglement,
+    referencesRisqueesDuReglement
+  });
+  actions.current = {
+    validerFacture,
+    ouvrirAnnulation,
+    dupliquerFacture,
+    confirmerAction,
+    validerReglement,
+    descriptionValidationReglement,
+    referencesRisqueesDuReglement
+  };
+  // La langue active invalide la mémoïsation : les libellés se retraduisent au changement de langue.
+  const langue = activeLocale();
+
+  const tableauFactures = useMemo(() => {
+    if (!fournisseur) return null;
+    const colonnes: ColumnsType<SupplierInvoice> = [
+      { title: t('Référence'), dataIndex: 'reference', key: 'reference' },
+      { title: t('Date'), key: 'date', render: (_, f) => dateCourte(f.invoiceDate) },
+      { title: t('Chantier'), key: 'chantier', render: (_, f) => f.siteLabel ?? '—' },
+      {
+        title: t('Montant'),
+        key: 'montant',
+        align: 'end',
+        render: (_, f) => <MoneyValue value={f.amount} />,
+        exportValue: f => f.amount
+      },
+      {
+        title: t('Statut'),
+        key: 'statut',
+        render: (_, f) => (
+          <StatusTag status={f.status} tone={STATUT_TONE[f.status]} label={DOCUMENT_STATUS_LABELS[f.status]} />
+        )
+      },
+      {
+        title: t('Actions'),
+        key: 'actions',
+        align: 'end',
+        render: (_, f) => (
+          // « Dupliquer » est proposée pour TOUS les statuts, annulé compris :
+          // on annule justement pour ressaisir. Même convention d'action
+          // secondaire que « Valider » et « Annuler » sur cet écran : un
+          // `<Button type="link">`.
+          <Space size="small">
+            {f.status === 'DRAFT' && peutValider && (
+              <ConfirmAction
+                title={t('Valider la facture {{reference}} ?', { reference: f.reference })}
+                description={t(
+                  'Cette opération est irréversible : une facture validée ne peut plus être modifiée. Toute correction devra passer par une annulation dédiée, avec un motif.'
+                )}
+                okText={t('Confirmer la validation')}
+                onConfirm={() => actions.current.validerFacture(f)}
+              >
+                <Button type="link">{t('Valider')}</Button>
+              </ConfirmAction>
+            )}
+            {f.status === 'VALIDATED' && peutValider && (
+              <Button type="link" onClick={() => actions.current.ouvrirAnnulation(f)}>
+                {t('Annuler')}
+              </Button>
+            )}
+            <Button
+              type="link"
+              loading={duplicationEnCours === f.id}
+              onClick={() => actions.current.dupliquerFacture(f)}
+            >
+              {t('Dupliquer')}
+            </Button>
+          </Space>
+        )
+      }
+    ];
+
+    return (
+      <DataView<SupplierInvoice>
+        {...rechercheFactures.dataViewProps}
+        search={{ ...rechercheFactures.searchProps, 'aria-label': t('Rechercher dans les factures') }}
+        export={{ filename: t('Factures fournisseurs'), fetchAll: rechercheFactures.exportAll }}
+        loading={facturesEnAttente}
+        isReloading={facturesEnCours && !facturesEnAttente}
+        error={erreurFactures ? t('Impossible de charger les factures de ce fournisseur.') : null}
+        errorCause={erreurFactures}
+        onRetry={() => refetchFactures()}
+        emptyDescription={t('Aucune facture enregistrée pour ce fournisseur.')}
+        columns={colonnes}
+        rowKey={f => f.id}
+        aria-label={t('Factures de {{name}}', { name: fournisseur.name })}
+        renderCard={f => (
+          <DataCard
+            title={f.reference}
+            aria-label={t('Facture {{reference}}', { reference: f.reference })}
+            subtitle={`${dateCourte(f.invoiceDate)}${f.siteLabel ? ' · ' + f.siteLabel : ''}`}
+            status={
+              <StatusTag status={f.status} tone={STATUT_TONE[f.status]} label={DOCUMENT_STATUS_LABELS[f.status]} />
+            }
+            highlight={<MoneyValue value={f.amount} />}
+            primaryAction={
+              !peutValider
+                ? undefined
+                : f.status === 'DRAFT'
+                  ? {
+                      label: t('Valider'),
+                      onClick: () =>
+                        actions.current.confirmerAction({
+                          title: t('Valider la facture {{reference}} ?', { reference: f.reference }),
+                          description: t(
+                            'Cette opération est irréversible : une facture validée ne peut plus être modifiée. Toute correction devra passer par une annulation dédiée, avec un motif.'
+                          ),
+                          okText: t('Confirmer la validation'),
+                          onConfirm: () => actions.current.validerFacture(f)
+                        })
+                    }
+                  : f.status === 'VALIDATED'
+                    ? { label: t('Annuler'), onClick: () => actions.current.ouvrirAnnulation(f) }
+                    : undefined
+            }
+            secondaryActions={[
+              { key: 'dupliquer', label: t('Dupliquer'), onClick: () => actions.current.dupliquerFacture(f) }
+            ]}
+          />
+        )}
+      />
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    fournisseur,
+    rechercheFactures.dataViewProps,
+    rechercheFactures.searchProps,
+    rechercheFactures.exportAll,
+    facturesEnAttente,
+    facturesEnCours,
+    erreurFactures,
+    refetchFactures,
+    peutValider,
+    duplicationEnCours,
+    langue
+  ]);
+
+  const tableauReglements = useMemo(() => {
+    if (!fournisseur) return null;
+    return (
+      <DataView<SupplierPayment>
+        {...rechercheReglements.dataViewProps}
+        search={{ ...rechercheReglements.searchProps, 'aria-label': t('Rechercher dans les règlements') }}
+        export={{
+          filename: t('Règlements de {{name}}', { name: fournisseur.name }),
+          fetchAll: rechercheReglements.exportAll
+        }}
+        loading={reglementsEnAttente}
+        error={erreurReglements ? t('Impossible de charger les règlements de ce fournisseur.') : null}
+        errorCause={erreurReglements}
+        onRetry={() => refetchReglements()}
+        emptyDescription={t('Aucun règlement enregistré pour ce fournisseur.')}
+        columns={[
+          { title: t('Date'), key: 'date', render: (_, r) => dateCourte(r.paymentDate) },
+          {
+            title: t('Montant réglé'),
+            key: 'montant',
+            align: 'end',
+            render: (_, r) => <MoneyValue value={r.amount} />,
+            exportValue: r => r.amount
+          },
+          {
+            title: t('Mode'),
+            key: 'mode',
+            render: (_, r) => (
+              <Space orientation="vertical" size={2}>
+                <span>{libelleModeReglement(r.method)}</span>
+                {r.treasuryLabel && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {r.treasuryLabel}
+                  </Text>
+                )}
+              </Space>
+            )
+          },
+          {
+            title: t('Affectation'),
+            key: 'affectation',
+            exportValue: r =>
+              r.allocations.length > 0
+                ? r.allocations.map(a => a.invoiceReference).join(' · ')
+                : t('Acompte, sans facture'),
+            render: (_, r) => {
+              const risques = r.status === 'DRAFT' ? actions.current.referencesRisqueesDuReglement(r) : [];
+              return (
+                <Space orientation="vertical" size={2}>
+                  <span>
+                    {r.allocations.length > 0
+                      ? r.allocations.map(a => a.invoiceReference).join(' · ')
+                      : t('Acompte, sans facture')}
+                  </span>
+                  {risques.length > 0 && (
+                    <Text type="warning" style={{ fontSize: 12 }}>
+                      {t('Déjà réglée(s) ou dépassée(s) : {{references}}', {
+                        references: risques.join(', ')
+                      })}
+                    </Text>
+                  )}
+                </Space>
+              );
+            }
+          },
+          {
+            title: t('Saisi / validé par'),
+            key: 'acteurs',
+            render: (_, r) => (
+              <Space orientation="vertical" size={2}>
+                {r.createdByName && <span>{r.createdByName}</span>}
+                {r.validatedByName && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {t('Validé par {{name}}', { name: r.validatedByName })}
+                  </Text>
+                )}
+              </Space>
+            )
+          },
+          {
+            title: t('Statut'),
+            key: 'statut',
+            render: (_, r) => (
+              <Space orientation="vertical" size={2}>
+                <StatusTag status={r.status} tone={STATUT_TONE[r.status]} label={DOCUMENT_STATUS_LABELS[r.status]} />
+                {r.status === 'VOIDED' && r.voidReason && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {r.voidReason}
+                  </Text>
+                )}
+              </Space>
+            )
+          },
+          {
+            title: t('Actions'),
+            key: 'actions',
+            align: 'end',
+            render: (_, r) => {
+              // Valider et annuler sont réservés au droit de validation :
+              // sans lui l'API répondrait 403 (BUG-2026-09-29-006).
+              if (!peutValider) return null;
+              if (r.status !== 'DRAFT') {
+                return r.status === 'VALIDATED' ? (
+                  <Button type="link" danger onClick={() => setCibleAnnulationReglement(r)}>
+                    {t('Annuler')}
+                  </Button>
+                ) : null;
+              }
+              // Un règlement dont les factures visées sont déjà soldées ou
+              // dépassées se valide encore — voir `referencesRisqueesDuReglement`
+              // — mais la boîte de confirmation le dit en clair, en plus de
+              // l'alerte déjà visible dans la colonne « Affectation ».
+              return (
+                <ConfirmAction
+                  title={t('Valider ce règlement ?')}
+                  description={actions.current.descriptionValidationReglement(r)}
+                  okText={t('Confirmer la validation')}
+                  onConfirm={() => actions.current.validerReglement(r)}
+                >
+                  <Button type="link">{t('Valider')}</Button>
+                </ConfirmAction>
+              );
+            }
+          }
+        ]}
+        rowKey={r => r.id}
+        aria-label={t('Règlements de {{name}}', { name: fournisseur.name })}
+        renderCard={r => (
+          <DataCard
+            title={dateCourte(r.paymentDate)}
+            aria-label={t('Règlement du {{value}}', { value: dateCourte(r.paymentDate) })}
+            status={
+              <StatusTag status={r.status} tone={STATUT_TONE[r.status]} label={DOCUMENT_STATUS_LABELS[r.status]} />
+            }
+            highlight={<MoneyValue value={r.amount} />}
+            fields={[
+              {
+                label: t('Mode'),
+                value: r.treasuryLabel
+                  ? `${libelleModeReglement(r.method)} · ${r.treasuryLabel}`
+                  : libelleModeReglement(r.method)
+              },
+              {
+                label: t('Affectation'),
+                value: r.allocations.length > 0 ? r.allocations.map(a => a.invoiceReference).join(' · ') : 'Acompte'
+              },
+              ...(r.createdByName ? [{ label: t('Saisi par'), value: r.createdByName }] : []),
+              ...(r.validatedByName ? [{ label: t('Validé par'), value: r.validatedByName }] : []),
+              ...(r.status === 'VOIDED' && r.voidReason ? [{ label: t('Motif'), value: r.voidReason }] : []),
+              ...(r.status === 'DRAFT' && actions.current.referencesRisqueesDuReglement(r).length > 0
+                ? [
+                    {
+                      label: t('Alerte'),
+                      value: t('Déjà réglée(s) ou dépassée(s) : {{references}}', {
+                        references: actions.current.referencesRisqueesDuReglement(r).join(', ')
+                      })
+                    }
+                  ]
+                : [])
+            ]}
+            primaryAction={
+              !peutValider
+                ? undefined
+                : r.status === 'DRAFT'
+                  ? {
+                      label: t('Valider'),
+                      onClick: () =>
+                        actions.current.confirmerAction({
+                          title: t('Valider ce règlement ?'),
+                          description: actions.current.descriptionValidationReglement(r),
+                          okText: t('Confirmer la validation'),
+                          onConfirm: () => actions.current.validerReglement(r)
+                        })
+                    }
+                  : r.status === 'VALIDATED'
+                    ? { label: t('Annuler'), onClick: () => setCibleAnnulationReglement(r) }
+                    : undefined
+            }
+          />
+        )}
+      />
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    fournisseur,
+    rechercheReglements.dataViewProps,
+    rechercheReglements.searchProps,
+    rechercheReglements.exportAll,
+    reglementsEnAttente,
+    erreurReglements,
+    refetchReglements,
+    peutValider,
+    listeFactures,
+    langue
+  ]);
+
   // ---------------------------------------------------------------------
 
   if (!tenantId) {
@@ -711,59 +1128,6 @@ export const FactureFournisseur: React.FC = () => {
     .filter(f => f.isActive)
     .map(f => ({ value: f.id, label: f.name }))
     .sort((a, b) => a.label.localeCompare(b.label));
-
-  const colonnesFactures: ColumnsType<SupplierInvoice> = [
-    { title: t('Référence'), dataIndex: 'reference', key: 'reference' },
-    { title: t('Date'), key: 'date', render: (_, f) => dateCourte(f.invoiceDate) },
-    { title: t('Chantier'), key: 'chantier', render: (_, f) => f.siteLabel ?? '—' },
-    {
-      title: t('Montant'),
-      key: 'montant',
-      align: 'end',
-      render: (_, f) => <MoneyValue value={f.amount} />,
-      exportValue: f => f.amount
-    },
-    {
-      title: t('Statut'),
-      key: 'statut',
-      render: (_, f) => (
-        <StatusTag status={f.status} tone={STATUT_TONE[f.status]} label={DOCUMENT_STATUS_LABELS[f.status]} />
-      )
-    },
-    {
-      title: t('Actions'),
-      key: 'actions',
-      align: 'end',
-      render: (_, f) => (
-        // « Dupliquer » est proposée pour TOUS les statuts, annulé compris :
-        // on annule justement pour ressaisir. Même convention d'action
-        // secondaire que « Valider » et « Annuler » sur cet écran : un
-        // `<Button type="link">`.
-        <Space size="small">
-          {f.status === 'DRAFT' && peutValider && (
-            <ConfirmAction
-              title={t('Valider la facture {{reference}} ?', { reference: f.reference })}
-              description={t(
-                'Cette opération est irréversible : une facture validée ne peut plus être modifiée. Toute correction devra passer par une annulation dédiée, avec un motif.'
-              )}
-              okText={t('Confirmer la validation')}
-              onConfirm={() => validerFacture(f)}
-            >
-              <Button type="link">{t('Valider')}</Button>
-            </ConfirmAction>
-          )}
-          {f.status === 'VALIDATED' && peutValider && (
-            <Button type="link" onClick={() => ouvrirAnnulation(f)}>
-              {t('Annuler')}
-            </Button>
-          )}
-          <Button type="link" loading={duplicationEnCours === f.id} onClick={() => dupliquerFacture(f)}>
-            {t('Dupliquer')}
-          </Button>
-        </Space>
-      )
-    }
-  ];
 
   return (
     <>
@@ -987,56 +1351,7 @@ export const FactureFournisseur: React.FC = () => {
           <Title level={4}>
             {t('Factures de')} {fournisseur.name}
           </Title>
-          <DataView<SupplierInvoice>
-            export={{ filename: t('Factures fournisseurs') }}
-            paginated={false}
-            items={listeFactures}
-            total={listeFactures.length}
-            page={1}
-            pageSize={Math.max(listeFactures.length, 1)}
-            onPageChange={() => {}}
-            loading={facturesEnAttente}
-            isReloading={facturesEnCours && !facturesEnAttente}
-            error={erreurFactures ? t('Impossible de charger les factures de ce fournisseur.') : null}
-            errorCause={erreurFactures}
-            onRetry={() => refetchFactures()}
-            emptyDescription={t('Aucune facture enregistrée pour ce fournisseur.')}
-            columns={colonnesFactures}
-            rowKey={f => f.id}
-            aria-label={t('Factures de {{name}}', { name: fournisseur.name })}
-            renderCard={f => (
-              <DataCard
-                title={f.reference}
-                aria-label={t('Facture {{reference}}', { reference: f.reference })}
-                subtitle={`${dateCourte(f.invoiceDate)}${f.siteLabel ? ' · ' + f.siteLabel : ''}`}
-                status={
-                  <StatusTag status={f.status} tone={STATUT_TONE[f.status]} label={DOCUMENT_STATUS_LABELS[f.status]} />
-                }
-                highlight={<MoneyValue value={f.amount} />}
-                primaryAction={
-                  !peutValider
-                    ? undefined
-                    : f.status === 'DRAFT'
-                      ? {
-                          label: t('Valider'),
-                          onClick: () =>
-                            confirmerAction({
-                              title: t('Valider la facture {{reference}} ?', { reference: f.reference }),
-                              description: t(
-                                'Cette opération est irréversible : une facture validée ne peut plus être modifiée. Toute correction devra passer par une annulation dédiée, avec un motif.'
-                              ),
-                              okText: t('Confirmer la validation'),
-                              onConfirm: () => validerFacture(f)
-                            })
-                        }
-                      : f.status === 'VALIDATED'
-                        ? { label: t('Annuler'), onClick: () => ouvrirAnnulation(f) }
-                        : undefined
-                }
-                secondaryActions={[{ key: 'dupliquer', label: t('Dupliquer'), onClick: () => dupliquerFacture(f) }]}
-              />
-            )}
-          />
+          {tableauFactures}
 
           <Card style={{ marginTop: 'var(--space-6)' }}>
             <Title level={4} style={{ marginTop: 0 }}>
@@ -1185,194 +1500,7 @@ export const FactureFournisseur: React.FC = () => {
 
             <div style={{ marginTop: 'var(--space-6)' }}>
               <Title level={5}>{t('Règlements de {{name}}', { name: fournisseur.name })}</Title>
-              <DataView<SupplierPayment>
-                export={{ filename: t('Règlements de {{name}}', { name: fournisseur.name }) }}
-                paginated={false}
-                items={reglements}
-                total={reglements.length}
-                page={1}
-                pageSize={Math.max(reglements.length, 1)}
-                onPageChange={() => {}}
-                loading={reglementsEnAttente}
-                error={erreurReglements ? t('Impossible de charger les règlements de ce fournisseur.') : null}
-                errorCause={erreurReglements}
-                onRetry={() => refetchReglements()}
-                emptyDescription={t('Aucun règlement enregistré pour ce fournisseur.')}
-                columns={[
-                  { title: t('Date'), key: 'date', render: (_, r) => dateCourte(r.paymentDate) },
-                  {
-                    title: t('Montant réglé'),
-                    key: 'montant',
-                    align: 'end',
-                    render: (_, r) => <MoneyValue value={r.amount} />,
-                    exportValue: r => r.amount
-                  },
-                  {
-                    title: t('Mode'),
-                    key: 'mode',
-                    render: (_, r) => (
-                      <Space orientation="vertical" size={2}>
-                        <span>{libelleModeReglement(r.method)}</span>
-                        {r.treasuryLabel && (
-                          <Text type="secondary" style={{ fontSize: 12 }}>
-                            {r.treasuryLabel}
-                          </Text>
-                        )}
-                      </Space>
-                    )
-                  },
-                  {
-                    title: t('Affectation'),
-                    key: 'affectation',
-                    exportValue: r =>
-                      r.allocations.length > 0
-                        ? r.allocations.map(a => a.invoiceReference).join(' · ')
-                        : t('Acompte, sans facture'),
-                    render: (_, r) => {
-                      const risques = r.status === 'DRAFT' ? referencesRisqueesDuReglement(r) : [];
-                      return (
-                        <Space orientation="vertical" size={2}>
-                          <span>
-                            {r.allocations.length > 0
-                              ? r.allocations.map(a => a.invoiceReference).join(' · ')
-                              : t('Acompte, sans facture')}
-                          </span>
-                          {risques.length > 0 && (
-                            <Text type="warning" style={{ fontSize: 12 }}>
-                              {t('Déjà réglée(s) ou dépassée(s) : {{references}}', {
-                                references: risques.join(', ')
-                              })}
-                            </Text>
-                          )}
-                        </Space>
-                      );
-                    }
-                  },
-                  {
-                    title: t('Saisi / validé par'),
-                    key: 'acteurs',
-                    render: (_, r) => (
-                      <Space orientation="vertical" size={2}>
-                        {r.createdByName && <span>{r.createdByName}</span>}
-                        {r.validatedByName && (
-                          <Text type="secondary" style={{ fontSize: 12 }}>
-                            {t('Validé par {{name}}', { name: r.validatedByName })}
-                          </Text>
-                        )}
-                      </Space>
-                    )
-                  },
-                  {
-                    title: t('Statut'),
-                    key: 'statut',
-                    render: (_, r) => (
-                      <Space orientation="vertical" size={2}>
-                        <StatusTag
-                          status={r.status}
-                          tone={STATUT_TONE[r.status]}
-                          label={DOCUMENT_STATUS_LABELS[r.status]}
-                        />
-                        {r.status === 'VOIDED' && r.voidReason && (
-                          <Text type="secondary" style={{ fontSize: 12 }}>
-                            {r.voidReason}
-                          </Text>
-                        )}
-                      </Space>
-                    )
-                  },
-                  {
-                    title: t('Actions'),
-                    key: 'actions',
-                    align: 'end',
-                    render: (_, r) => {
-                      // Valider et annuler sont réservés au droit de validation :
-                      // sans lui l'API répondrait 403 (BUG-2026-09-29-006).
-                      if (!peutValider) return null;
-                      if (r.status !== 'DRAFT') {
-                        return r.status === 'VALIDATED' ? (
-                          <Button type="link" danger onClick={() => setCibleAnnulationReglement(r)}>
-                            {t('Annuler')}
-                          </Button>
-                        ) : null;
-                      }
-                      // Un règlement dont les factures visées sont déjà soldées ou
-                      // dépassées se valide encore — voir `referencesRisqueesDuReglement`
-                      // — mais la boîte de confirmation le dit en clair, en plus de
-                      // l'alerte déjà visible dans la colonne « Affectation ».
-                      return (
-                        <ConfirmAction
-                          title={t('Valider ce règlement ?')}
-                          description={descriptionValidationReglement(r)}
-                          okText={t('Confirmer la validation')}
-                          onConfirm={() => validerReglement(r)}
-                        >
-                          <Button type="link">{t('Valider')}</Button>
-                        </ConfirmAction>
-                      );
-                    }
-                  }
-                ]}
-                rowKey={r => r.id}
-                aria-label={t('Règlements de {{name}}', { name: fournisseur.name })}
-                renderCard={r => (
-                  <DataCard
-                    title={dateCourte(r.paymentDate)}
-                    aria-label={t('Règlement du {{value}}', { value: dateCourte(r.paymentDate) })}
-                    status={
-                      <StatusTag
-                        status={r.status}
-                        tone={STATUT_TONE[r.status]}
-                        label={DOCUMENT_STATUS_LABELS[r.status]}
-                      />
-                    }
-                    highlight={<MoneyValue value={r.amount} />}
-                    fields={[
-                      {
-                        label: t('Mode'),
-                        value: r.treasuryLabel
-                          ? `${libelleModeReglement(r.method)} · ${r.treasuryLabel}`
-                          : libelleModeReglement(r.method)
-                      },
-                      {
-                        label: t('Affectation'),
-                        value:
-                          r.allocations.length > 0 ? r.allocations.map(a => a.invoiceReference).join(' · ') : 'Acompte'
-                      },
-                      ...(r.createdByName ? [{ label: t('Saisi par'), value: r.createdByName }] : []),
-                      ...(r.validatedByName ? [{ label: t('Validé par'), value: r.validatedByName }] : []),
-                      ...(r.status === 'VOIDED' && r.voidReason ? [{ label: t('Motif'), value: r.voidReason }] : []),
-                      ...(r.status === 'DRAFT' && referencesRisqueesDuReglement(r).length > 0
-                        ? [
-                            {
-                              label: t('Alerte'),
-                              value: t('Déjà réglée(s) ou dépassée(s) : {{references}}', {
-                                references: referencesRisqueesDuReglement(r).join(', ')
-                              })
-                            }
-                          ]
-                        : [])
-                    ]}
-                    primaryAction={
-                      !peutValider
-                        ? undefined
-                        : r.status === 'DRAFT'
-                          ? {
-                              label: t('Valider'),
-                              onClick: () =>
-                                confirmerAction({
-                                  title: t('Valider ce règlement ?'),
-                                  description: descriptionValidationReglement(r),
-                                  okText: t('Confirmer la validation'),
-                                  onConfirm: () => validerReglement(r)
-                                })
-                            }
-                          : r.status === 'VALIDATED'
-                            ? { label: t('Annuler'), onClick: () => setCibleAnnulationReglement(r) }
-                            : undefined
-                    }
-                  />
-                )}
-              />
+              {tableauReglements}
             </div>
           </Card>
         </>

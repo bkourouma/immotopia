@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -223,5 +224,31 @@ describe('Comptages terrain — la photo ne se lit qu’à l’ouverture du tiro
     monter();
     expect(await screen.findByText('Aucun comptage pour ces filtres.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Inscrire un chef de chantier' })).not.toBeInTheDocument();
+  });
+});
+
+const appelsComptages = () =>
+  get.mock.calls.map(call => String(call[0])).filter(url => url.includes('/stock/whatsapp/field-counts'));
+
+describe('Comptages terrain — recherche multicritères', () => {
+  it('envoie la saisie du champ libre au serveur (search) après le debounce', async () => {
+    const user = userEvent.setup();
+    routerGet(false);
+    monter();
+    await screen.findByText('Ciment CPJ 42,5');
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'ciment');
+    await waitFor(() => expect(appelsComptages().some(url => url.includes('search=ciment'))).toBe(true), {
+      timeout: 8000
+    });
+  });
+
+  it('applique les critères d’une URL initiale (lieu, source, q) à la requête', async () => {
+    routerGet(false);
+    monter(`/tenant/${TENANT}/finance/stock/comptages-terrain?lieu=${RIVIERA}&source=WEB&q=fer`);
+    await screen.findByText('Ciment CPJ 42,5', undefined, { timeout: 8000 });
+    const appel = appelsComptages()[0];
+    expect(appel).toContain(`locationId=${RIVIERA}`);
+    expect(appel).toContain('source=WEB');
+    expect(appel).toContain('search=fer');
   });
 });

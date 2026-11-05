@@ -121,6 +121,7 @@ export const listDeclarationsHandler = asyncHandler(async (req: Request, res: Re
     from: query.from,
     to: query.to,
     overdue: query.overdue,
+    search: query.search,
     page: query.page,
     limit: query.limit
   });

@@ -38,7 +38,7 @@ export const patchAccountHandler = asyncHandler(async (req: Request, res: Respon
 
 export const listTransfersHandler = asyncHandler(async (req: Request, res: Response) => {
   const { tenantId } = context(req);
-  res.json({ success: true, data: await listTransfers(tenantId) });
+  res.json({ success: true, data: await listTransfers(tenantId, req.query) });
 });
 
 export const createTransferHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -58,7 +58,7 @@ export const getWithholdingHandler = asyncHandler(async (req: Request, res: Resp
 
 export const listTaxRemittancesHandler = asyncHandler(async (req: Request, res: Response) => {
   const { tenantId } = context(req);
-  res.json({ success: true, data: await listTaxRemittances(tenantId) });
+  res.json({ success: true, data: await listTaxRemittances(tenantId, req.query) });
 });
 
 export const createTaxRemittanceHandler = asyncHandler(async (req: Request, res: Response) => {

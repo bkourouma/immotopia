@@ -19,7 +19,7 @@
  * `describe.skip`, et `npm test` (qui decouvre ce fichier normalement, sans
  * ce script) reste vert.
  */
-const { execSync } = require('child_process');
+const { execFileSync, execSync } = require('child_process');
 
 // Meme mecanisme que src/config/env.ts : charge packages/api/.env si present,
 // sans ecraser une variable deja fournie par l'environnement appelant.
@@ -44,36 +44,44 @@ const env = {
 console.log('Application des migrations sur la base de test isolation...');
 execSync('npx prisma migrate deploy', { stdio: 'inherit', env });
 
-console.log(
-  'Execution des suites sur base reelle : isolation (E1), acces tiers de confiance (B3), signature electronique (spec 044), patrimoine multi-actifs et espace particulier...'
-);
-// --runInBand : isolation.test.ts compare des compteurs GLOBAUX avant/apres ; une suite parallele qui ecrit dans la meme base les fausserait.
-execSync(
-  'npx jest --runInBand __tests__/integration/isolation.test.ts __tests__/integration/external-access.db.test.ts __tests__/integration/patrimoine.property-asset.integration.test.ts __tests__/integration/signup-guard.integration.test.ts __tests__/integration/personal-space.integration.test.ts __tests__/integration/patrimoine.personal-permission.integration.test.ts __tests__/integration/signature.db.test.ts',
-  { stdio: 'inherit', env }
-);
+// Chaque fichier dispose de son propre processus Node : la heap de ts-jest et
+// de l'application est liberee avant le suivant. L'ordre reste strictement
+// sequentiel, notamment pour les compteurs globaux et le declencheur d'audit.
+const groups = [
+  {
+    name: 'isolation et lectures sur base reelle',
+    files: [
+      'isolation.test.ts',
+      'external-access.db.test.ts',
+      'patrimoine.property-asset.integration.test.ts',
+      'signup-guard.integration.test.ts',
+      'personal-space.integration.test.ts',
+      'patrimoine.personal-permission.integration.test.ts',
+      'signature.db.test.ts',
+      'accounting-exports-sql.test.ts',
+      'syndic-accounting-reads-sql.test.ts',
+      'like-escape-sql.test.ts'
+    ]
+  },
+  {
+    name: 'concurrence du stock',
+    files: ['stock-concurrence.test.ts', 'stock-cloture-concurrence.test.ts', 'stock-alertes-concurrence.test.ts']
+  },
+  {
+    name: 'inventaire WhatsApp',
+    files: ['stock-whatsapp-inventaire.test.ts', 'stock-whatsapp-quota-concurrence.test.ts']
+  },
+  { name: 'integrite du journal d’audit', files: ['audit-integrity.test.ts'] }
+];
 
-// Stock (lot 040) : concurrence des ecritures, de la cloture d'inventaire et
-// des alertes. Lancees SEPAREMENT et en serie : chacune fait courir des
-// transactions simultanees sur la meme base et compte ce qui a ete ecrit.
-console.log('Execution des suites de concurrence du stock...');
-execSync(
-  'npx jest --runInBand __tests__/integration/stock-concurrence.test.ts __tests__/integration/stock-cloture-concurrence.test.ts __tests__/integration/stock-alertes-concurrence.test.ts',
-  { stdio: 'inherit', env }
-);
-
-// Inventaire par WhatsApp (lot 041) : bout en bout contre le vrai code du lot
-// 040 (inscription, photo, FIN, validation), essais d'activation simultanes,
-// index uniques partiels, puis quota sous concurrence. En serie, a part :
-// chacune compte ce que des messages simultanes ont ecrit.
-console.log("Execution des suites de l'inventaire par WhatsApp...");
-execSync(
-  'npx jest --runInBand __tests__/integration/stock-whatsapp-inventaire.test.ts __tests__/integration/stock-whatsapp-quota-concurrence.test.ts',
-  { stdio: 'inherit', env }
-);
-
-// Journal d'audit (phase 5) : scellement, verification, purge. Lance APRES et
-// SEPAREMENT : certains cas desactivent un declencheur de `audit_logs` le temps
-// d'une alteration simulee, ce qui ne doit jamais croiser une autre suite.
-console.log("Execution de la suite integrite du journal d'audit...");
-execSync('npx jest --runInBand __tests__/integration/audit-integrity.test.ts', { stdio: 'inherit', env });
+const jestBin = require.resolve('jest/bin/jest');
+for (const group of groups) {
+  console.log(`Execution des suites : ${group.name}...`);
+  for (const [index, file] of group.files.entries()) {
+    const testPath = `__tests__/integration/${file}`;
+    console.log(`[${index + 1}/${group.files.length}] ${testPath}`);
+    // execFileSync propage immediatement le code de sortie non nul : aucun
+    // fichier suivant ne demarre apres un echec.
+    execFileSync(process.execPath, [jestBin, '--runInBand', '--forceExit', testPath], { stdio: 'inherit', env });
+  }
+}

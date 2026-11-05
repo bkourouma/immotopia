@@ -1,8 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
+import { dayRange } from '../../utils/list-query-schemas';
 import { unprocessableEntity } from '../errors';
 import { logger } from '../../utils/logger';
+import { escapeLike } from '../../utils/like-escape';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { roundMoney } from './finance-utils';
@@ -944,15 +946,24 @@ export async function cancelProviderPayment(
 
 export async function listProviderInvoices(tenantId: string, syndicateId: string, query: ListProviderInvoicesQuery) {
   await assertSyndicate(tenantId, syndicateId);
+  const search = query.search ? escapeLike(query.search) : undefined;
   const where: Prisma.SyndicProviderInvoiceWhereInput = {
     tenantId,
     syndicateId,
     ...(query.providerId ? { providerId: query.providerId } : {}),
     ...(query.contractId ? { contractId: query.contractId } : {}),
     ...(query.incidentId ? { incidentId: query.incidentId } : {}),
-    ...(query.status ? { status: query.status } : {}),
-    ...(query.from || query.to
-      ? { invoiceDate: { ...(query.from ? { gte: query.from } : {}), ...(query.to ? { lte: query.to } : {}) } }
+    ...(query.status && query.status.length > 0 ? { status: { in: query.status } } : {}),
+    ...(query.from || query.to ? { invoiceDate: dayRange(query.from, query.to) } : {}),
+    // S'ajoute en ET aux filtres de l'agence et de la copropriété ci-dessus.
+    ...(search
+      ? {
+          OR: [
+            { number: { contains: search, mode: 'insensitive' as const } },
+            { label: { contains: search, mode: 'insensitive' as const } },
+            { provider: { name: { contains: search, mode: 'insensitive' as const } } }
+          ]
+        }
       : {})
   };
   const [rows, total] = await Promise.all([

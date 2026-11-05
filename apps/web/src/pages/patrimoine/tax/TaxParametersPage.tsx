@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Select, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -18,11 +18,36 @@ import {
   taxKindLabel
 } from '../../../components/patrimoine/entities/tax-labels';
 import { TaxDisclaimer } from '../../../components/patrimoine/entities/TaxDisclaimer';
+import { localizedList } from '../../../i18n/localized';
 import { t } from '../../../i18n/t';
+import { useLocalListSearch } from '../../../utils/list-search';
+import type { SearchCriterion } from '../../../utils/list-search';
 
 const { Text } = Typography;
 
 type ParameterRow = TaxParametersData['parameters'][number];
+
+const OPTIONS_IMPOT = localizedList(() =>
+  (['PROPERTY_TAX', 'RENTAL_INCOME_TAX'] as const).map(kind => ({ value: kind, label: taxKindLabel(kind) }))
+);
+const OPTIONS_STATUT = localizedList(() =>
+  (['VALIDE', 'A_VALIDER'] as const).map(status => ({ value: status, label: parameterStatusLabel(status) }))
+);
+
+// Accesseurs stables (hors composant). Champ libre : impôt, clé et libellé tels qu'affichés, bien, source, notes.
+const TEXTE_RECHERCHE = [
+  (p: ParameterRow) => taxKindLabel(p.taxKind),
+  (p: ParameterRow) => p.key,
+  (p: ParameterRow) => parameterKeyLabel(p.key, p.label),
+  (p: ParameterRow) => p.label,
+  (p: ParameterRow) => propertyKindSelectorLabel(p.propertyKind),
+  (p: ParameterRow) => p.source,
+  (p: ParameterRow) => p.notes
+];
+const ACCESSEURS = {
+  impot: (p: ParameterRow) => p.taxKind,
+  statut: (p: ParameterRow) => p.status
+};
 
 /**
  * `<TaxParametersPage>` — référentiel fiscal versionné (impôt, clé, sélecteurs,
@@ -41,6 +66,19 @@ export const TaxParametersPage: React.FC = () => {
     queryFn: () => getTaxParameters(agence as string, { country, year }),
     enabled: Boolean(agence),
     staleTime: STALE_TIME.reference
+  });
+
+  const parameters = useMemo(() => parametersQuery.data?.parameters ?? [], [parametersQuery.data]);
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Impôt, clé, libellé, bien, source…') },
+    { key: 'impot', type: 'multiSelect', label: t('Impôt'), primary: true, options: OPTIONS_IMPOT },
+    { key: 'statut', type: 'multiSelect', label: t('Statut'), options: OPTIONS_STATUT }
+  ];
+  const local = useLocalListSearch<ParameterRow>(parameters, {
+    ariaLabel: t('Rechercher dans les paramètres'),
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
   });
 
   const columns: ColumnsType<ParameterRow> = [
@@ -162,14 +200,14 @@ export const TaxParametersPage: React.FC = () => {
         <SkeletonTable rows={8} columns={columns.length} aria-label={t('Paramètres en cours de chargement')} />
       ) : (
         <Table
+          {...local.tableProps}
           exportFilename={t('Paramètres fiscaux')}
+          exportFetchAll={local.exportAll}
           rowKey="id"
           columns={columns}
-          dataSource={parametersQuery.data?.parameters ?? []}
-          pagination={false}
           size="middle"
           aria-label={t('Paramètres fiscaux')}
-          locale={{ emptyText: t('Aucun paramètre pour ce pays et cette année') }}
+          locale={local.isFiltered ? undefined : { emptyText: t('Aucun paramètre pour ce pays et cette année') }}
         />
       )}
     </>

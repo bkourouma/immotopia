@@ -1,15 +1,27 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { ProviderList, ProviderWithContracts } from '../../components/syndics/ProviderList';
 import { MaintenanceContract } from '../../types/syndic-types';
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
+function renderList(props: React.ComponentProps<typeof ProviderList>) {
+  return render(
+    <MemoryRouter>
+      <ProviderList {...props} />
+    </MemoryRouter>
+  );
+}
+
 /**
  * `<ProviderList>` — prestataires de l'agence vus depuis une copropriété :
- * filtre « Sous contrat » par défaut, bascule vers « Tous », tri (contrats
- * actifs puis nombre de contrats puis nom), colonne d'actions propre à
- * l'écran appelant, état vide. Rendu avec le vrai antd (pas de mock) : ces
- * comportements dépendent de `<Segmented>`/`<Table>` réels.
+ * tous affichés (la recherche locale et son critère « Contrat » les filtrent),
+ * tri (contrats actifs puis nombre de contrats puis nom), colonne d'actions
+ * propre à l'écran appelant, état vide. Rendu avec le vrai antd (pas de mock) ;
+ * la recherche elle-même est couverte par `ProvidersSearch.test.tsx`.
  */
 
 function contract(overrides: Partial<MaintenanceContract>): MaintenanceContract {
@@ -38,42 +50,36 @@ function provider(overrides: Partial<ProviderWithContracts>): ProviderWithContra
 }
 
 describe('ProviderList', () => {
-  it('filtre par défaut sur « Sous contrat » quand au moins un prestataire en a un', () => {
+  it('affiche tous les prestataires, ceux sous contrat en premier', () => {
     const providers = [
-      provider({ id: 'p1', name: 'Hydro-Tech Plomberie', contracts: [contract({ id: 'c1', providerId: 'p1' })] }),
+      provider({ id: 'p2', name: 'Sans Contrat SARL' }),
+      provider({ id: 'p1', name: 'Hydro-Tech Plomberie', contracts: [contract({ id: 'c1', providerId: 'p1' })] })
+    ];
+
+    renderList({ providers });
+
+    const names = screen.getAllByText(/Hydro-Tech Plomberie|Sans Contrat SARL/).map(node => node.textContent);
+    expect(names).toEqual(['Hydro-Tech Plomberie', 'Sans Contrat SARL']);
+  });
+
+  it('résume les contrats actifs et terminés de chaque prestataire', () => {
+    const providers = [
+      provider({
+        id: 'p1',
+        name: 'Hydro-Tech Plomberie',
+        contracts: [
+          contract({ id: 'c1', providerId: 'p1' }),
+          contract({ id: 'c2', providerId: 'p1', status: 'TERMINATED' })
+        ]
+      }),
       provider({ id: 'p2', name: 'Sans Contrat SARL' })
     ];
 
-    render(<ProviderList providers={providers} />);
+    renderList({ providers });
 
-    expect(screen.getByText('Hydro-Tech Plomberie')).toBeInTheDocument();
-    expect(screen.queryByText('Sans Contrat SARL')).not.toBeInTheDocument();
-    expect(screen.getByText('Sous contrat (1)')).toBeInTheDocument();
-    expect(screen.getByText('Tous (2)')).toBeInTheDocument();
-  });
-
-  it('bascule sur « Tous » quand aucun prestataire n’a de contrat avec cette copropriété', () => {
-    const providers = [provider({ id: 'p1', name: 'Sans Contrat SARL' })];
-
-    render(<ProviderList providers={providers} />);
-
-    expect(screen.getByText('Sans Contrat SARL')).toBeInTheDocument();
-  });
-
-  it('bascule vers « Tous » au clic', async () => {
-    const user = userEvent.setup();
-    const providers = [
-      provider({ id: 'p1', name: 'Hydro-Tech Plomberie', contracts: [contract({ id: 'c1', providerId: 'p1' })] }),
-      provider({ id: 'p2', name: 'Sans Contrat SARL' })
-    ];
-
-    render(<ProviderList providers={providers} />);
-    expect(screen.queryByText('Sans Contrat SARL')).not.toBeInTheDocument();
-
-    await user.click(screen.getByText('Tous (2)'));
-
-    expect(screen.getByText('Sans Contrat SARL')).toBeInTheDocument();
-    expect(screen.getByText('Hydro-Tech Plomberie')).toBeInTheDocument();
+    expect(screen.getByText('1 actif')).toBeInTheDocument();
+    expect(screen.getByText('1 terminé')).toBeInTheDocument();
+    expect(screen.getByText('Aucun contrat')).toBeInTheDocument();
   });
 
   it('trie les prestataires sous contrat actif avant ceux au contrat terminé, puis par nom', () => {
@@ -90,7 +96,7 @@ describe('ProviderList', () => {
       })
     ];
 
-    render(<ProviderList providers={providers} />);
+    renderList({ providers });
 
     const names = screen.getAllByText(/Zeta Sécurité|Alpha Ascenseurs/).map(node => node.textContent);
     expect(names).toEqual(['Alpha Ascenseurs', 'Zeta Sécurité']);
@@ -99,13 +105,13 @@ describe('ProviderList', () => {
   it('garde les actions propres à l’écran appelant', () => {
     const providers = [provider({ id: 'p1', name: 'Hydro-Tech Plomberie' })];
 
-    render(<ProviderList providers={providers} renderActions={p => <button>Modifier {p.name}</button>} />);
+    renderList({ providers, renderActions: p => <button>Modifier {p.name}</button> });
 
     expect(screen.getByText('Modifier Hydro-Tech Plomberie')).toBeInTheDocument();
   });
 
   it('affiche un état vide sans prestataire', () => {
-    render(<ProviderList providers={[]} />);
+    renderList({ providers: [] });
     expect(screen.getByText('Aucun prestataire')).toBeInTheDocument();
   });
 });

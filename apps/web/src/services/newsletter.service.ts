@@ -67,6 +67,18 @@ export interface ImportResult {
   errors: string[];
 }
 
+/** Filtres de la liste des campagnes (tous traités par l'API). `status` : un ou plusieurs statuts séparés par des virgules. */
+export interface NewsletterCampaignFilters {
+  status?: string;
+  search?: string;
+  listId?: string;
+  /** aaaa-mm-jj, date de création, bornes incluses. */
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
 export const newsletterService = {
   // Lists
   async listLists(tenantId: string): Promise<NewsletterList[]> {
@@ -74,7 +86,10 @@ export const newsletterService = {
     return Array.isArray(data) ? data : [];
   },
 
-  async createList(tenantId: string, payload: { name: string; type: string; doubleOptIn?: boolean }): Promise<NewsletterList> {
+  async createList(
+    tenantId: string,
+    payload: { name: string; type: string; doubleOptIn?: boolean }
+  ): Promise<NewsletterList> {
     const { data } = await apiClient.post<NewsletterList>(`/tenants/${tenantId}/newsletter/lists`, payload);
     return data;
   },
@@ -84,7 +99,11 @@ export const newsletterService = {
     return data;
   },
 
-  async updateList(tenantId: string, listId: string, payload: { name?: string; doubleOptIn?: boolean }): Promise<NewsletterList> {
+  async updateList(
+    tenantId: string,
+    listId: string,
+    payload: { name?: string; doubleOptIn?: boolean }
+  ): Promise<NewsletterList> {
     const { data } = await apiClient.patch<NewsletterList>(`/tenants/${tenantId}/newsletter/lists/${listId}`, payload);
     return data;
   },
@@ -97,20 +116,31 @@ export const newsletterService = {
   async listSubscribers(
     tenantId: string,
     listId: string,
-    opts?: { status?: string; page?: number; limit?: number }
-  ): Promise<{ subscribers: NewsletterSubscriber[]; pagination: { total: number; page: number; limit: number; totalPages: number } }> {
+    opts?: { status?: string; search?: string; page?: number; limit?: number }
+  ): Promise<{
+    subscribers: NewsletterSubscriber[];
+    pagination: { total: number; page: number; limit: number; totalPages: number };
+  }> {
     const params = new URLSearchParams();
     if (opts?.status) params.set('status', opts.status);
+    if (opts?.search) params.set('search', opts.search);
     if (opts?.page) params.set('page', String(opts.page));
     if (opts?.limit) params.set('limit', String(opts.limit));
     const qs = params.toString();
     const { data } = await apiClient.get<{ subscribers: NewsletterSubscriber[]; pagination: object }>(
       `/tenants/${tenantId}/newsletter/lists/${listId}/subscribers${qs ? `?${qs}` : ''}`
     );
-    return data as { subscribers: NewsletterSubscriber[]; pagination: { total: number; page: number; limit: number; totalPages: number } };
+    return data as {
+      subscribers: NewsletterSubscriber[];
+      pagination: { total: number; page: number; limit: number; totalPages: number };
+    };
   },
 
-  async addSubscriber(tenantId: string, listId: string, payload: { email: string; name?: string }): Promise<NewsletterSubscriber> {
+  async addSubscriber(
+    tenantId: string,
+    listId: string,
+    payload: { email: string; name?: string }
+  ): Promise<NewsletterSubscriber> {
     const { data } = await apiClient.post<NewsletterSubscriber>(
       `/tenants/${tenantId}/newsletter/lists/${listId}/subscribers`,
       payload
@@ -154,8 +184,10 @@ export const newsletterService = {
   },
 
   // Templates
-  async listTemplates(tenantId: string): Promise<NewsletterTemplate[]> {
-    const { data } = await apiClient.get<NewsletterTemplate[]>(`/tenants/${tenantId}/newsletter/templates`);
+  async listTemplates(tenantId: string, opts?: { search?: string }): Promise<NewsletterTemplate[]> {
+    const { data } = await apiClient.get<NewsletterTemplate[]>(`/tenants/${tenantId}/newsletter/templates`, {
+      params: opts?.search ? { search: opts.search } : undefined
+    });
     return Array.isArray(data) ? data : [];
   },
 
@@ -169,7 +201,11 @@ export const newsletterService = {
     return data;
   },
 
-  async updateTemplate(tenantId: string, templateId: string, payload: { name?: string; html?: string }): Promise<NewsletterTemplate> {
+  async updateTemplate(
+    tenantId: string,
+    templateId: string,
+    payload: { name?: string; html?: string }
+  ): Promise<NewsletterTemplate> {
     const { data } = await apiClient.patch<NewsletterTemplate>(
       `/tenants/${tenantId}/newsletter/templates/${templateId}`,
       payload
@@ -184,17 +220,27 @@ export const newsletterService = {
   // Campaigns
   async listCampaigns(
     tenantId: string,
-    opts?: { status?: string; page?: number; limit?: number }
-  ): Promise<{ campaigns: NewsletterCampaign[]; pagination: { total: number; page: number; limit: number; totalPages: number } }> {
+    opts?: NewsletterCampaignFilters
+  ): Promise<{
+    campaigns: NewsletterCampaign[];
+    pagination: { total: number; page: number; limit: number; totalPages: number };
+  }> {
     const params = new URLSearchParams();
     if (opts?.status) params.set('status', opts.status);
+    if (opts?.search) params.set('search', opts.search);
+    if (opts?.listId) params.set('listId', opts.listId);
+    if (opts?.from) params.set('from', opts.from);
+    if (opts?.to) params.set('to', opts.to);
     if (opts?.page) params.set('page', String(opts.page));
     if (opts?.limit) params.set('limit', String(opts.limit));
     const qs = params.toString();
     const { data } = await apiClient.get<{ campaigns: NewsletterCampaign[]; pagination: object }>(
       `/tenants/${tenantId}/newsletter/campaigns${qs ? `?${qs}` : ''}`
     );
-    return data as { campaigns: NewsletterCampaign[]; pagination: { total: number; page: number; limit: number; totalPages: number } };
+    return data as {
+      campaigns: NewsletterCampaign[];
+      pagination: { total: number; page: number; limit: number; totalPages: number };
+    };
   },
 
   async createCampaign(
@@ -260,7 +306,9 @@ export const newsletterService = {
     if (opts?.page) params.set('page', String(opts.page));
     if (opts?.limit) params.set('limit', String(opts.limit));
     const qs = params.toString();
-    const { data } = await apiClient.get(`/tenants/${tenantId}/newsletter/campaigns/${campaignId}/recipients${qs ? `?${qs}` : ''}`);
+    const { data } = await apiClient.get(
+      `/tenants/${tenantId}/newsletter/campaigns/${campaignId}/recipients${qs ? `?${qs}` : ''}`
+    );
     return data as { recipients: Array<{ email: string; status: string }>; pagination: object };
   }
 };

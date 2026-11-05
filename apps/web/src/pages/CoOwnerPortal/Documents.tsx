@@ -10,10 +10,16 @@ import { t } from '../../i18n/t';
 import { downloadCoOwnerDocument, listMyDocuments, type CoOwnerDocument } from '../../services/coowner-portal-service';
 import { documentTypeLabel } from './labels';
 import { describeDownloadError } from '../../utils/download-error';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { saveBlob } from '../../utils/save-blob';
 import { portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
+
+// Champ libre : titre du document et copropriété. Constantes de module : filtrage mémoïsé.
+const TEXTE_RECHERCHE = [(doc: CoOwnerDocument) => doc.title, (doc: CoOwnerDocument) => doc.syndicate];
+const ACCESSEURS = { type: (doc: CoOwnerDocument) => doc.type };
 
 /**
  * Documents de copropriété : le règlement et les procès-verbaux d'assemblée
@@ -32,6 +38,26 @@ export default function CoOwnerDocuments() {
     queryKey: ['coowner-portal', 'documents'],
     staleTime: 30_000,
     queryFn: () => listMyDocuments()
+  });
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Document, copropriété…') },
+    {
+      key: 'type',
+      type: 'select',
+      label: t('Type'),
+      primary: true,
+      options: [
+        { value: 'REGULATION', label: documentTypeLabel('REGULATION') },
+        { value: 'GENERAL_MEETING_MINUTES', label: documentTypeLabel('GENERAL_MEETING_MINUTES') }
+      ]
+    }
+  ];
+  const local = useLocalListSearch<CoOwnerDocument>(documents, {
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
   });
 
   const download = async (document: CoOwnerDocument) => {
@@ -96,15 +122,10 @@ export default function CoOwnerDocuments() {
       </div>
       <Card>
         <DataView<CoOwnerDocument>
-          paginated={false}
-          items={documents}
-          total={documents.length}
-          page={1}
-          pageSize={documents.length || 20}
-          onPageChange={() => {}}
+          {...local.dataViewProps}
           rowKey={doc => doc.id}
           aria-label={t('Documents de copropriété')}
-          export={{ filename: t('Documents de copropriété') }}
+          export={{ filename: t('Documents de copropriété'), fetchAll: local.exportAll }}
           emptyDescription={t("Aucun document n'est encore disponible.")}
           columns={columns}
           renderCard={doc => (

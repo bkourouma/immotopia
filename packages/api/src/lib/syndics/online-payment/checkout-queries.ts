@@ -3,6 +3,7 @@ import { prisma } from '../../../utils/database';
 import { NotFoundError } from '../../../middleware/error-middleware';
 import { t } from '../../../i18n';
 import { assertSyndicateOfTenant } from '../charge-allocation';
+import { contactSearchOr, insensitiveContains } from '../payment-list-filters';
 import { loadAgencyFeesPaidBy } from './gateway-config';
 import type {
   CheckoutOrigin,
@@ -181,6 +182,8 @@ export interface ListSyndicCheckoutsQuery {
   from?: string;
   /** `YYYY-MM-DD`, borne haute INCLUSE sur `createdAt`. */
   to?: string;
+  /** Code de paiement, payeur (nom, e-mail) ou numéro de lot (insensible à la casse). */
+  search?: string;
   page?: number;
   limit?: number;
 }
@@ -194,6 +197,33 @@ function createdAtRange(query: ListSyndicCheckoutsQuery): Prisma.DateTimeFilter 
   return range.gte || range.lt ? range : undefined;
 }
 
+/** Nombre maximal de contacts retenus par une recherche de payeur. */
+const MAX_SEARCH_CONTACTS = 200;
+
+/**
+ * Recherche libre. Le payeur est un identifiant de contact sans clé étrangère :
+ * on retient d'abord les contacts DE L'AGENCE dont le nom ou l'e-mail correspond.
+ */
+async function checkoutSearchWhere(
+  tenantId: string,
+  search: string | undefined
+): Promise<Prisma.SyndicOnlineCheckoutWhereInput | null> {
+  if (!search) return null;
+  const contains = insensitiveContains(search);
+  const contacts = await prisma.crmContact.findMany({
+    where: { tenantId, OR: contactSearchOr(search) },
+    select: { id: true },
+    take: MAX_SEARCH_CONTACTS
+  });
+  return {
+    OR: [
+      { codePaiement: contains },
+      { lot: { lotNumber: contains } },
+      ...(contacts.length > 0 ? [{ contactId: { in: contacts.map(contact => contact.id) } }] : [])
+    ]
+  };
+}
+
 export async function listSyndicCheckouts(
   tenantId: string,
   syndicateId: string,
@@ -204,9 +234,11 @@ export async function listSyndicCheckouts(
   const page = Math.max(1, Math.trunc(query.page ?? 1));
   const limit = Math.min(100, Math.max(1, Math.trunc(query.limit ?? 20)));
   const createdAt = createdAtRange(query);
+  const searchWhere = await checkoutSearchWhere(tenantId, query.search);
   const where: Prisma.SyndicOnlineCheckoutWhereInput = {
     tenantId,
     syndicateId,
+    ...(searchWhere ? { AND: [searchWhere] } : {}),
     ...(query.status && query.status.length > 0 ? { status: { in: query.status } } : {}),
     ...(query.origin ? { origin: query.origin } : {}),
     ...(query.lotId ? { lotId: query.lotId } : {}),

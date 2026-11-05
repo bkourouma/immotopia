@@ -1,4 +1,5 @@
 import { prisma } from '../utils/database';
+import { applyPaymentListExtras, type PaymentListExtras } from '../lib/rental/payment-list-filters';
 import type { PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
 import {
@@ -1195,7 +1196,7 @@ export async function getPaymentById(tenantId: string, paymentId: string): Promi
  */
 export async function listPayments(
   tenantId: string,
-  filters: PaymentFilters,
+  filters: PaymentFilters & PaymentListExtras,
   options: PaginationOptions = {}
 ): Promise<any> {
   try {
@@ -1231,6 +1232,8 @@ export async function listPayments(
         where.created_at.lte = filters.endDate;
       }
     }
+
+    applyPaymentListExtras(where, filters); // search + montants
 
     const [payments, total] = await Promise.all([
       prisma.rentalPayment.findMany({

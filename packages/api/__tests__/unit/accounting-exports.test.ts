@@ -16,10 +16,10 @@ const {
   parseAsOfDate,
   toCsv,
   trialBalanceTable,
-  toXlsx,
-  mandantSubledgerTable,
-  mandantTrialBalanceTable
+  toXlsx
 } = require('../../src/lib/accounting-exports/service');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { mandantSubledgerTable, mandantTrialBalanceTable } = require('../../src/lib/accounting-exports/mandants');
 
 describe('parsePeriod', () => {
   const now = new Date('2026-09-23T15:00:00Z');

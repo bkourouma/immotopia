@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -135,22 +135,6 @@ function Adresse() {
   return <span data-testid="adresse">{location.pathname + location.search}</span>;
 }
 
-/**
- * Choisit une option de menu déroulant par son libellé.
- *
- * Le même libellé apparaît souvent déjà ailleurs à l'écran (une ligne de
- * tableau déjà chargée) : `findByText` seul y verrait alors plusieurs
- * éléments. Seule l'option de la liste déroulante porte la classe
- * `ant-select-item` d'AntD, ce qui la distingue sans ambiguïté.
- */
-async function optionParLibelle(libelle: string): Promise<HTMLElement> {
-  return waitFor(() => {
-    const candidat = screen.getAllByText(libelle).find(el => el.closest('.ant-select-item'));
-    if (!candidat) throw new Error(`Option de menu déroulant introuvable : « ${libelle} »`);
-    return candidat;
-  });
-}
-
 function mountListe(url = '/tenant/agence-1/finance/bons-de-commande') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
@@ -202,25 +186,12 @@ describe('Bons de commande — liste et filtres', () => {
     expect(screen.getByText(/3\s500\s000/)).toBeInTheDocument();
   });
 
-  it('filtre par chantier en envoyant son identifiant, jamais son nom', async () => {
+  it('ne demande rien de filtré à l’API : la liste arrive en entier et se filtre localement', async () => {
     listPurchaseOrders.mockResolvedValue([bon()]);
-    const user = userEvent.setup({ delay: null, pointerEventsCheck: 0 });
-    mountListe();
+    mountListe('/tenant/agence-1/finance/bons-de-commande?siteId=chantier-1&status=DRAFT');
 
     await screen.findByText('BC-2026-0041', {}, { timeout: 8000 });
-
-    const comboboxes = await screen.findAllByRole('combobox', {}, { timeout: 8000 });
-    fireEvent.mouseDown(comboboxes[0]);
-    fireEvent.click(await optionParLibelle('Villa duplex — Angré Centre'));
-
-    await waitFor(() =>
-      expect(listPurchaseOrders).toHaveBeenLastCalledWith('agence-1', expect.objectContaining({ siteId: 'chantier-1' }))
-    );
-    // Jamais le nom du chantier envoyé comme filtre.
-    expect(listPurchaseOrders).not.toHaveBeenLastCalledWith(
-      'agence-1',
-      expect.objectContaining({ siteId: 'Villa duplex — Angré Centre' })
-    );
+    expect(listPurchaseOrders).toHaveBeenCalledWith('agence-1');
   });
 
   it('affiche l’état vide quand aucun bon n’existe', async () => {
@@ -262,6 +233,76 @@ describe('Bons de commande — liste et filtres', () => {
     await user.click(screen.getAllByRole('button', { name: /Nouveau bon/ })[0]);
 
     expect(screen.getByTestId('adresse')).toHaveTextContent('/tenant/agence-1/finance/bons-de-commande/nouveau');
+  });
+});
+
+describe('Bons de commande — recherche locale', () => {
+  const T = { timeout: 8000 };
+  const PLACEHOLDER = 'Référence, chantier, fournisseur…';
+
+  beforeEach(() => {
+    listPurchaseOrders.mockResolvedValue([
+      bon(),
+      bon({
+        id: 'bon-2',
+        reference: 'BC-2026-0042',
+        siteId: 'chantier-2',
+        siteLabel: 'Résidence Les Palmiers',
+        supplierId: 'frs-02',
+        supplierLabel: 'Quincaillerie du Plateau',
+        status: 'ISSUED',
+        totalAmount: 800_000,
+        remainingAmount: 800_000,
+        invoicingState: 'NOT_INVOICED'
+      })
+    ]);
+  });
+
+  /** Lignes de données du tableau (l'en-tête est exclu). */
+  const lignes = () => screen.getAllByRole('row').slice(1);
+
+  it('cherche dans la référence, le chantier et le fournisseur sans tenir compte des accents', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountListe();
+
+    await user.type(await screen.findByPlaceholderText(PLACEHOLDER, {}, T), 'PALMIERS');
+
+    await waitFor(() => expect(screen.queryByText('BC-2026-0041')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('BC-2026-0042')).toBeInTheDocument();
+    expect(screen.getByTestId('adresse')).toHaveTextContent('q=PALMIERS');
+  });
+
+  it('applique le chantier d’une URL partagée (clé `siteId` conservée)', async () => {
+    // Une valeur d'URL absente des options du critère est ignorée : le chantier partagé doit exister.
+    listConstructionSites.mockResolvedValue([
+      chantier(),
+      chantier({ id: 'chantier-2', name: 'Résidence Les Palmiers' })
+    ]);
+    mountListe('/tenant/agence-1/finance/bons-de-commande?siteId=chantier-2');
+
+    expect(await screen.findByText('BC-2026-0042', {}, T)).toBeInTheDocument();
+    // Les options arrivent en asynchrone : la liste est d'abord complète, puis filtrée.
+    await waitFor(() => expect(screen.queryByText('BC-2026-0041')).not.toBeInTheDocument(), T);
+    expect(lignes()).toHaveLength(1);
+  });
+
+  it('applique le statut et l’intervalle de montants d’une URL partagée', async () => {
+    mountListe('/tenant/agence-1/finance/bons-de-commande?status=ISSUED&montantMin=500000&montantMax=900000');
+
+    expect(await screen.findByText('BC-2026-0042', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('BC-2026-0041')).not.toBeInTheDocument();
+  });
+
+  it('« Effacer les critères » ramène toute la liste', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountListe('/tenant/agence-1/finance/bons-de-commande?q=zzz');
+
+    const barre = await screen.findByRole('search', {}, T);
+    await user.click(await within(barre).findByRole('button', { name: 'Effacer les critères' }, T));
+
+    expect(await screen.findByText('BC-2026-0041', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(2);
+    expect(screen.getByTestId('adresse')).not.toHaveTextContent('q=');
   });
 });
 
@@ -382,6 +423,25 @@ describe('Bon de commande — quantité et prix unitaire', () => {
     expect(screen.getByRole('columnheader', { name: 'Prix unitaire' })).toBeInTheDocument();
     expect(screen.getByText('40')).toBeInTheDocument();
     expect(screen.getByText(/87\s500/)).toBeInTheDocument();
+  }, 30000);
+
+  it('plafonne les lignes du bon à 50 par page (pagination locale)', async () => {
+    getPurchaseOrder.mockResolvedValue(
+      bon({
+        lines: Array.from({ length: 55 }, (_, i) => ({
+          id: `bon-1-l${i + 1}`,
+          costCategoryId: 'poste-gros-oeuvre',
+          costCategoryLabel: 'Gros œuvre',
+          label: `Ligne ${String(i + 1).padStart(2, '0')}`,
+          amount: 1_000
+        }))
+      })
+    );
+    mountBon('/tenant/agence-1/finance/bons-de-commande/bon-1');
+
+    expect(await screen.findByText('Ligne 01', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByText('Ligne 50')).toBeInTheDocument();
+    expect(screen.queryByText('Ligne 51')).not.toBeInTheDocument();
   }, 30000);
 });
 

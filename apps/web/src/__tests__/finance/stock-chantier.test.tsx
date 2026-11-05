@@ -744,3 +744,51 @@ describe('Lot 040 — le restant pendant un comptage du lieu (aveugle)', () => {
     expect(screen.queryByText('100 sac')).not.toBeInTheDocument();
   });
 });
+
+describe('Recherche dans les articles du chantier (préfixe rap)', () => {
+  const T = { timeout: 8000 };
+  const deuxLignes = () =>
+    configurerGet({
+      rapprochement: rapprochement({
+        lines: [
+          ligne({
+            itemId: 'article-ciment-01',
+            itemReference: 'CIM-42',
+            itemLabel: 'Ciment CPJ 42,5',
+            itemUnit: 'sac',
+            remainingQuantity: 220
+          }),
+          ligne({
+            itemId: 'article-sable-03',
+            itemReference: 'SAB-00',
+            itemLabel: 'Sable lavé',
+            itemUnit: 'm³',
+            remainingQuantity: 0
+          })
+        ]
+      })
+    });
+
+  it('filtre les lignes à la saisie (sans accent ni casse) et « Effacer les critères » ramène la liste', async () => {
+    const user = userEvent.setup();
+    deuxLignes();
+    monter();
+    await screen.findByText('CIM-42', {}, T);
+    expect(screen.getByText('SAB-00')).toBeInTheDocument();
+
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'LAVE');
+    await waitFor(() => expect(screen.queryByText('CIM-42')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('SAB-00')).toBeInTheDocument();
+
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText('CIM-42', {}, T)).toBeInTheDocument();
+  });
+
+  it('applique le critère « restant non nul » d’une URL partagée', async () => {
+    deuxLignes();
+    monter(`/tenant/${TENANT}/finance/chantiers/${SITE}/stock?rap.restant=1`);
+    await screen.findByText('CIM-42', {}, T);
+    expect(screen.queryByText('SAB-00')).not.toBeInTheDocument();
+  });
+});

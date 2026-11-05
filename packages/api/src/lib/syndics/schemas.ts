@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { dayEnd, dayStart, zDay, zSearch } from '../../utils/list-query-schemas';
 import { checkPeriodBounds, periodBoundsFields } from './charge-allocation-schemas';
 import { httpUrl } from '../safe-url';
 import { MAX_MONTHLY_PENALTY_RATE } from './finance-utils';
@@ -10,6 +11,10 @@ export const paginationQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(20)
 });
 
+export const meetingsListQuerySchema = paginationQuerySchema.extend({
+  status: z.enum(['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional()
+});
+
 export const dateRangeQuerySchema = z
   .object({
     from: z.coerce.date().optional(),
@@ -18,6 +23,20 @@ export const dateRangeQuerySchema = z
   .refine(value => !value.from || !value.to || value.from <= value.to, {
     message: 'La date de debut doit etre inferieure ou egale a la date de fin'
   });
+
+/**
+ * `GET /syndics/:syndicId/lots?search=&limit=` : sans paramètre, la liste
+ * complète (sélecteurs de lots des autres écrans). `limit` (1..50) sert aux
+ * sélecteurs à recherche distante.
+ */
+export const syndicLotsQuerySchema = z.object({
+  search: zSearch(),
+  limit: z.preprocess(
+    value => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.coerce.number().int().min(1).max(50).optional()
+  )
+});
+export type SyndicLotsQuery = z.infer<typeof syndicLotsQuerySchema>;
 
 export const createSyndicateSchema = z.object({
   propertyId: z.string().uuid().optional(),
@@ -647,33 +666,9 @@ export const createAccountingJournalSchema = z.object({
   fiscalYear: z.number().int().min(2000)
 });
 
-export const accountingEntriesQuerySchema = z
-  .object({
-    journalId: uuidSchema.optional(),
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional(),
-    page: z.coerce.number().int().positive().optional().default(1),
-    limit: z.coerce.number().int().positive().max(100).optional().default(20)
-  })
-  .refine(value => !value.from || !value.to || value.from <= value.to, {
-    message: 'La date de debut doit etre inferieure ou egale a la date de fin'
-  });
-
 export const lockJournalEntrySchema = z.object({
   lock: z.literal(true).default(true)
 });
-
-export const accountingRangeQuerySchema = z
-  .object({
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional(),
-    accountId: uuidSchema.optional(),
-    page: z.coerce.number().int().positive().optional().default(1),
-    limit: z.coerce.number().int().positive().max(100).optional().default(20)
-  })
-  .refine(value => !value.from || !value.to || value.from <= value.to, {
-    message: 'La date de debut doit etre inferieure ou egale a la date de fin'
-  });
 
 export const ownerAccountStatementQuerySchema = z
   .object({
@@ -683,6 +678,85 @@ export const ownerAccountStatementQuerySchema = z
   .refine(value => !value.from || !value.to || value.from <= value.to, {
     message: 'La date de debut doit etre inferieure ou egale a la date de fin'
   });
+
+// --- Criteres de recherche serveur des listes (recouvrement, appels, compte lot) ---
+
+/** Une valeur repetee dans la query (?a=1&a=2) est jointe par des virgules. */
+const queryText = (raw: unknown) => (Array.isArray(raw) ? raw.join(',') : raw);
+
+/** Parametre optionnel : une chaine vide est traitee comme absente. */
+const optionalQuery = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess(raw => {
+    const value = queryText(raw);
+    return typeof value === 'string' && value.trim() === '' ? undefined : value;
+  }, schema.optional());
+
+/** Recherche libre : rognee, 1 a 100 caracteres. */
+const searchQuery = optionalQuery(z.string().trim().min(1).max(100));
+
+/** Liste de valeurs d'enum separees par des virgules (une seule valeur reste valide). */
+const csvEnumQuery = <E extends z.ZodEnum<[string, ...string[]]>>(values: E) =>
+  optionalQuery(
+    z
+      .string()
+      .transform(raw =>
+        raw
+          .split(',')
+          .map(part => part.trim())
+          .filter(Boolean)
+      )
+      .pipe(z.array(values).min(1).max(values.options.length))
+  );
+
+// Jour aaaa-mm-jj RÉEL (2026-02-31 et 2026-13-45 → 400) : `from` = début du jour,
+// `to` = fin du jour INCLUSIVE (23:59:59.999), cf. utils/list-query-schemas.
+const fromDayQuery = z.preprocess(queryText, zDay).transform(day => (day ? dayStart(day) : undefined));
+const toDayQuery = z.preprocess(queryText, zDay).transform(day => (day ? dayEnd(day) : undefined));
+
+const checkDateOrder = (value: { from?: Date; to?: Date }) => !value.from || !value.to || value.from <= value.to;
+// Message relayé par le middleware d'erreurs (traduit à la requête) ; marqueur = extraction i18n.
+// @i18n-keys
+const dateOrderMessage = { message: 'La date de début doit être antérieure ou égale à la date de fin.' };
+
+export const paymentReminderListQuerySchema = z
+  .object({
+    search: searchQuery,
+    status: csvEnumQuery(z.enum(['SENT', 'DELIVERED', 'FAILED'])),
+    channel: csvEnumQuery(z.enum(['EMAIL', 'SMS', 'WHATSAPP', 'PUSH'])),
+    level: optionalQuery(z.coerce.number().int().min(1).max(1000)),
+    from: fromDayQuery,
+    to: toDayQuery,
+    lotId: optionalQuery(z.string().uuid())
+  })
+  .refine(checkDateOrder, dateOrderMessage);
+
+export const latePenaltyListQuerySchema = z.object({
+  search: searchQuery,
+  waived: optionalQuery(z.enum(['true', 'false']).transform(value => value === 'true')),
+  lotId: optionalQuery(z.string().uuid())
+});
+
+export const paymentScheduleListQuerySchema = z.object({
+  search: searchQuery,
+  status: csvEnumQuery(z.enum(['ACTIVE', 'COMPLETED', 'DEFAULTED'])),
+  lotId: optionalQuery(z.string().uuid())
+});
+
+export const chargeCallListQuerySchema = z.object({
+  search: searchQuery,
+  lotId: optionalQuery(z.string().uuid()),
+  status: csvEnumQuery(z.enum(['PENDING', 'PARTIAL', 'PAID', 'OVERDUE'])),
+  period: optionalQuery(z.string().trim().min(1).max(100))
+});
+
+export const ownerAccountTransactionListQuerySchema = z
+  .object({
+    from: fromDayQuery,
+    to: toDayQuery,
+    type: csvEnumQuery(z.enum(['CHARGE_CALL', 'PAYMENT', 'PENALTY', 'WAIVER', 'ADJUSTMENT', 'FUND_TRANSFER'])),
+    search: searchQuery
+  })
+  .refine(checkDateOrder, dateOrderMessage);
 
 export const createOwnerAccountAdjustmentSchema = z.object({
   direction: z.enum(['DEBIT', 'CREDIT']),
@@ -765,9 +839,7 @@ export type WaivePenaltyInput = z.infer<typeof waivePenaltySchema>;
 export type CreateScheduleRequestInput = z.infer<typeof createScheduleRequestSchema>;
 export type CreateChartOfAccountInput = z.infer<typeof createChartOfAccountSchema>;
 export type CreateAccountingJournalInput = z.infer<typeof createAccountingJournalSchema>;
-export type AccountingEntriesQueryInput = z.infer<typeof accountingEntriesQuerySchema>;
 export type LockJournalEntryInput = z.infer<typeof lockJournalEntrySchema>;
-export type AccountingRangeQueryInput = z.infer<typeof accountingRangeQuerySchema>;
 export type OwnerAccountStatementQueryInput = z.infer<typeof ownerAccountStatementQuerySchema>;
 export type CreateOwnerAccountAdjustmentInput = z.infer<typeof createOwnerAccountAdjustmentSchema>;
 export type CreateSyndicateFundInput = z.infer<typeof createSyndicateFundSchema>;

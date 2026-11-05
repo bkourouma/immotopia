@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { App, Button, Card, Input, Select, Space, Typography } from 'antd';
+import { App, Button, Card, Input, Select, Space, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ThunderboltOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -8,6 +8,8 @@ import { listBillingRuns, getBillingRun, runBilling } from '../../services/finan
 import { BILLING_EXCLUSION_LABELS } from '../../types/finance-types';
 import type { BillingExclusionReason, BillingRun, BillingRunSummary } from '../../types/finance-types';
 import { detailKey, queryKey, STALE_TIME } from '../../lib/query-keys';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import {
   PageHeader,
   StateBlock,
@@ -35,8 +37,9 @@ const { Text, Title } = Typography;
  * Construit sur le même modèle que les écrans hybrides de la refonte
  * locative — `pages/rental/Installments.tsx`, `Penalties.tsx` — et que ses
  * voisins financiers (`BalanceClients.tsx`) : mêmes primitives, mêmes trois
- * états délégués à `<DataView>`, aucune pagination puisque ni l'historique ni
- * un compte rendu ne sont paginés par le contrat gelé.
+ * états délégués à `<DataView>`. Ni l'historique ni un compte rendu ne sont
+ * paginés par le contrat gelé : chaque tableau est reçu en entier, puis filtré
+ * et paginé localement (`useLocalListSearch`, 20 par page).
  *
  * **Le point de conception qui compte : l'idempotence n'est pas un danger.**
  * `runBilling` (`finance-service.ts`) garantit que relancer la même période ne
@@ -47,11 +50,10 @@ const { Text, Title } = Typography;
  * `<DataView>` neutre que n'importe quelle exclusion : rien n'y signale un
  * échec.
  *
- * **L'état de liste vit dans l'URL.** Il n'y a ici ni filtre ni pagination à y
- * loger — l'historique comme le compte rendu sont rendus intégralement par
- * l'API — mais la campagne dont le compte rendu est affiché l'est : `?campagne=<id>`.
- * Un lien vers cet écran, partagé ou rechargé, rouvre exactement le même
- * compte rendu.
+ * **L'état de liste vit dans l'URL.** La campagne dont le compte rendu est
+ * affiché (`?campagne=<id>`), l'onglet du compte rendu (`?detail=`) et les
+ * critères de chaque tableau (préfixes `his.`, `fac.`, `exc.`, `av.`) : un lien
+ * vers cet écran, partagé ou rechargé, rouvre exactement la même vue.
  *
  * **Vocabulaire (P-1 du PRD).** On *facture*, on *règle*, jamais « débit » ni
  * « crédit ». Les montants passent systématiquement par `<MoneyValue>`, sans
@@ -174,6 +176,287 @@ const COLONNES_AVANCES: ColumnsType<LigneAvance> = localizedList(() => [
   }
 ]);
 
+const ONGLETS_DETAIL = ['factures', 'exclus', 'avances'] as const;
+type OngletDetail = (typeof ONGLETS_DETAIL)[number];
+
+// Accesseurs de recherche : constantes de module (identité stable, filtrage mémoïsé).
+const TEXTE_FACTUREES = [(ligne: LigneFacturee) => ligne.leaseLabel];
+const ACCESSEURS_FACTUREES = { montant: (ligne: LigneFacturee) => ligne.amount };
+
+const TEXTE_EXCLUES = [(ligne: LigneExclue) => ligne.leaseLabel, (ligne: LigneExclue) => libelleMotif(ligne.reason)];
+const ACCESSEURS_EXCLUES = { motif: (ligne: LigneExclue) => ligne.reason };
+
+const TEXTE_AVANCES = [(ligne: LigneAvance) => ligne.tenantLabel];
+const ACCESSEURS_AVANCES = { montant: (ligne: LigneAvance) => ligne.amount };
+
+const TEXTE_HISTORIQUE = [
+  (campagne: BillingRun) => campagne.label,
+  (campagne: BillingRun) => periodeSeule(campagne.periodMonth, campagne.periodYear),
+  (campagne: BillingRun) => libellePeriode(campagne.periodMonth, campagne.periodYear)
+];
+const ACCESSEURS_HISTORIQUE = {
+  statut: (campagne: BillingRun) => campagne.status,
+  annee: (campagne: BillingRun) => campagne.periodYear,
+  executee: (campagne: BillingRun) => campagne.finishedAt
+};
+
+/** Baux facturés : préfixe d'URL `fac`, liste locale (le résumé de la campagne arrive en entier). */
+function TableauFactures({ lignes }: { lignes: LigneFacturee[] }) {
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Locataire, bien…') },
+    { key: 'montant', type: 'numberRange', label: t('Montant facturé'), unit: 'FCFA', primary: true }
+  ];
+  const local = useLocalListSearch<LigneFacturee>(lignes, {
+    paramPrefix: 'fac',
+    criteria: criteres,
+    text: TEXTE_FACTUREES,
+    accessors: ACCESSEURS_FACTUREES
+  });
+  return (
+    <DataView<LigneFacturee>
+      {...local.dataViewProps}
+      search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les baux facturés') }}
+      emptyDescription={t('Aucun bail facturé pour cette période.')}
+      columns={COLONNES_FACTUREES}
+      rowKey={ligne => ligne.installmentId}
+      aria-label={t('Baux facturés')}
+      export={{ filename: t('Baux facturés'), fetchAll: local.exportAll }}
+      renderCard={ligne => (
+        <DataCard
+          title={ligne.leaseLabel}
+          aria-label={t('Bail {{leaseLabel}} facturé', { leaseLabel: ligne.leaseLabel })}
+          highlight={<MoneyValue value={ligne.amount} />}
+        />
+      )}
+    />
+  );
+}
+
+/**
+ * Baux exclus : préfixe `exc`. Une campagne sans exclusion est une bonne
+ * campagne : la phrase d'état vide le dit, elle ne constate pas une absence.
+ */
+function TableauExclus({ lignes }: { lignes: LigneExclue[] }) {
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Locataire, bien, motif…') },
+    {
+      key: 'motif',
+      type: 'multiSelect',
+      label: t('Motif'),
+      primary: true,
+      options: (Object.keys(BILLING_EXCLUSION_LABELS) as BillingExclusionReason[]).map(raison => ({
+        value: raison,
+        label: BILLING_EXCLUSION_LABELS[raison]
+      }))
+    }
+  ];
+  const local = useLocalListSearch<LigneExclue>(lignes, {
+    paramPrefix: 'exc',
+    criteria: criteres,
+    text: TEXTE_EXCLUES,
+    accessors: ACCESSEURS_EXCLUES
+  });
+  return (
+    <DataView<LigneExclue>
+      {...local.dataViewProps}
+      search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les baux exclus') }}
+      emptyDescription={t("Aucun bail exclu : la campagne a facturé l'ensemble des baux éligibles.")}
+      columns={COLONNES_EXCLUES}
+      rowKey={ligne => ligne.leaseId}
+      aria-label={t('Baux exclus')}
+      export={{ filename: t('Baux exclus'), fetchAll: local.exportAll }}
+      renderCard={ligne => (
+        <DataCard
+          title={ligne.leaseLabel}
+          aria-label={t('Bail {{leaseLabel}} exclu', { leaseLabel: ligne.leaseLabel })}
+          fields={[{ label: t('Motif'), value: libelleMotif(ligne.reason) }]}
+        />
+      )}
+    />
+  );
+}
+
+/** Avances imputées : préfixe `av`. La ligne ne porte que le client (pas de libellé de bail). */
+function TableauAvances({ lignes }: { lignes: LigneAvance[] }) {
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Client…') },
+    { key: 'montant', type: 'numberRange', label: t('Montant imputé'), unit: 'FCFA', primary: true }
+  ];
+  const local = useLocalListSearch<LigneAvance>(lignes, {
+    paramPrefix: 'av',
+    criteria: criteres,
+    text: TEXTE_AVANCES,
+    accessors: ACCESSEURS_AVANCES
+  });
+  return (
+    <DataView<LigneAvance>
+      {...local.dataViewProps}
+      search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les avances imputées') }}
+      emptyDescription={t('Aucune avance à imputer sur cette période.')}
+      columns={COLONNES_AVANCES}
+      rowKey={ligne => `${ligne.installmentId}-${ligne.sourcePaymentId}`}
+      aria-label={t('Avances imputées')}
+      export={{ filename: t('Avances imputées'), fetchAll: local.exportAll }}
+      renderCard={ligne => (
+        <DataCard
+          title={ligne.tenantLabel}
+          aria-label={t('Avance imputée pour {{tenantLabel}}', { tenantLabel: ligne.tenantLabel })}
+          highlight={<MoneyValue value={ligne.amount} />}
+        />
+      )}
+    />
+  );
+}
+
+/**
+ * Le détail d'un compte rendu en trois onglets paresseux (`destroyOnHidden`) :
+ * un seul tableau est monté à la fois. L'onglet actif vit dans l'URL
+ * (`?detail=factures|exclus|avances`) ; chaque tableau a sa recherche, son
+ * préfixe d'URL et sa pagination locale (20 par page).
+ * Le parent le monte avec `key={run.id}`.
+ */
+function DetailCompteRendu({ resume }: { resume: BillingRunSummary }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const brut = searchParams.get('detail');
+  const onglet: OngletDetail = (ONGLETS_DETAIL as readonly string[]).includes(brut ?? '')
+    ? (brut as OngletDetail)
+    : 'factures';
+
+  const changerOnglet = (cle: string) => {
+    setSearchParams(
+      prev => {
+        const next = new URLSearchParams(prev);
+        next.set('detail', cle);
+        return next;
+      },
+      { replace: true }
+    );
+  };
+
+  return (
+    <Tabs
+      activeKey={onglet}
+      onChange={changerOnglet}
+      destroyOnHidden
+      items={[
+        {
+          key: 'factures',
+          label: `${t('Baux facturés')} (${resume.billed.length})`,
+          children: <TableauFactures lignes={resume.billed} />
+        },
+        {
+          key: 'exclus',
+          label: `${t('Baux exclus')} (${resume.excluded.length})`,
+          children: <TableauExclus lignes={resume.excluded} />
+        },
+        {
+          key: 'avances',
+          label: `${t('Avances imputées')} (${resume.advancesApplied.length})`,
+          children: <TableauAvances lignes={resume.advancesApplied} />
+        }
+      ]}
+    />
+  );
+}
+
+interface HistoriqueProps {
+  campagnes: BillingRun[] | undefined;
+  loading: boolean;
+  fetching: boolean;
+  error: unknown;
+  onRetry: () => void;
+  onOpen: (id: string) => void;
+}
+
+/** Historique des campagnes : préfixe `his`, liste locale (≤ 12 campagnes par an). */
+function HistoriqueCampagnes({ campagnes, loading, fetching, error, onRetry, onOpen }: HistoriqueProps) {
+  const annees = useMemo(
+    () => Array.from(new Set((campagnes ?? []).map(c => c.periodYear))).sort((a, b) => b - a),
+    [campagnes]
+  );
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Libellé, période…') },
+    {
+      key: 'statut',
+      type: 'multiSelect',
+      label: t('Statut'),
+      primary: true,
+      options: (Object.keys(STATUT_CAMPAGNE) as BillingRun['status'][]).map(statut => ({
+        value: statut,
+        label: STATUT_CAMPAGNE[statut].label
+      }))
+    },
+    {
+      key: 'annee',
+      type: 'select',
+      label: t('Année'),
+      primary: true,
+      options: annees.map(annee => ({ value: String(annee), label: String(annee) }))
+    },
+    { key: 'executee', type: 'dateRange', label: t('Exécutée le') }
+  ];
+  const local = useLocalListSearch<BillingRun>(campagnes, {
+    paramPrefix: 'his',
+    criteria: criteres,
+    text: TEXTE_HISTORIQUE,
+    accessors: ACCESSEURS_HISTORIQUE
+  });
+
+  const colonnes: ColumnsType<BillingRun> = [
+    { title: t('Période'), key: 'periode', render: (_, c) => periodeSeule(c.periodMonth, c.periodYear) },
+    { title: t('Libellé'), dataIndex: 'label', key: 'libelle' },
+    {
+      title: t('Statut'),
+      key: 'statut',
+      render: (_, c) => {
+        const s = STATUT_CAMPAGNE[c.status];
+        return <StatusTag status={c.status} tone={s.tone} label={s.label} />;
+      }
+    },
+    { title: t('Exécutée le'), key: 'date', render: (_, c) => (c.finishedAt ? dateCourte(c.finishedAt) : '—') },
+    {
+      title: t('Actions'),
+      key: 'actions',
+      align: 'end',
+      render: (_, c) => (
+        <Button type="link" onClick={() => onOpen(c.id)}>
+          {t('Voir le compte rendu')}
+        </Button>
+      )
+    }
+  ];
+
+  return (
+    <DataView<BillingRun>
+      {...local.dataViewProps}
+      search={{ ...local.searchProps, 'aria-label': t("Rechercher dans l'historique des campagnes") }}
+      loading={loading}
+      isReloading={fetching && !loading}
+      error={error ? t("Impossible de charger l'historique des campagnes.") : null}
+      errorCause={error}
+      onRetry={onRetry}
+      emptyDescription={t("Aucune campagne n'a encore été exécutée.")}
+      columns={colonnes}
+      rowKey={c => c.id}
+      aria-label={t('Historique des campagnes')}
+      export={{ filename: t('Historique des campagnes'), fetchAll: local.exportAll }}
+      renderCard={c => {
+        const s = STATUT_CAMPAGNE[c.status];
+        return (
+          <DataCard
+            title={c.label}
+            aria-label={t('Campagne {{label}}', { label: c.label })}
+            subtitle={periodeSeule(c.periodMonth, c.periodYear)}
+            status={<StatusTag status={c.status} tone={s.tone} label={s.label} />}
+            fields={[{ label: t('Exécutée le'), value: c.finishedAt ? dateCourte(c.finishedAt) : '—' }]}
+            onOpen={() => onOpen(c.id)}
+          />
+        );
+      }}
+    />
+  );
+}
+
 interface CompteRenduProps {
   run: BillingRun | null;
   loading: boolean;
@@ -249,77 +532,7 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             <StatCard label={t('Avances imputées')} value={String(resume.advancesApplied.length)} tone="positive" />
           </div>
 
-          <Title level={5}>{t('Détail des baux facturés')}</Title>
-          <DataView<LigneFacturee>
-            paginated={false}
-            items={resume.billed}
-            total={resume.billed.length}
-            page={1}
-            pageSize={Math.max(resume.billed.length, 1)}
-            onPageChange={() => {}}
-            emptyDescription={t('Aucun bail facturé pour cette période.')}
-            columns={COLONNES_FACTUREES}
-            rowKey={ligne => ligne.installmentId}
-            aria-label={t('Baux facturés')}
-            export={{ filename: t('Baux facturés') }}
-            renderCard={ligne => (
-              <DataCard
-                title={ligne.leaseLabel}
-                aria-label={t('Bail {{leaseLabel}} facturé', { leaseLabel: ligne.leaseLabel })}
-                highlight={<MoneyValue value={ligne.amount} />}
-              />
-            )}
-          />
-
-          <Title level={5} style={{ marginTop: 'var(--space-6)' }}>
-            {t('Détail des baux exclus')}
-          </Title>
-          {/* Une campagne sans exclusion est une bonne campagne : la phrase
-              d'état vide le dit, elle ne constate pas une absence. */}
-          <DataView<LigneExclue>
-            paginated={false}
-            items={resume.excluded}
-            total={resume.excluded.length}
-            page={1}
-            pageSize={Math.max(resume.excluded.length, 1)}
-            onPageChange={() => {}}
-            emptyDescription={t("Aucun bail exclu : la campagne a facturé l'ensemble des baux éligibles.")}
-            columns={COLONNES_EXCLUES}
-            rowKey={ligne => ligne.leaseId}
-            aria-label={t('Baux exclus')}
-            export={{ filename: t('Baux exclus') }}
-            renderCard={ligne => (
-              <DataCard
-                title={ligne.leaseLabel}
-                aria-label={t('Bail {{leaseLabel}} exclu', { leaseLabel: ligne.leaseLabel })}
-                fields={[{ label: t('Motif'), value: libelleMotif(ligne.reason) }]}
-              />
-            )}
-          />
-
-          <Title level={5} style={{ marginTop: 'var(--space-6)' }}>
-            {t('Détail des avances imputées')}
-          </Title>
-          <DataView<LigneAvance>
-            paginated={false}
-            items={resume.advancesApplied}
-            total={resume.advancesApplied.length}
-            page={1}
-            pageSize={Math.max(resume.advancesApplied.length, 1)}
-            onPageChange={() => {}}
-            emptyDescription={t('Aucune avance à imputer sur cette période.')}
-            columns={COLONNES_AVANCES}
-            rowKey={ligne => `${ligne.installmentId}-${ligne.sourcePaymentId}`}
-            aria-label={t('Avances imputées')}
-            export={{ filename: t('Avances imputées') }}
-            renderCard={ligne => (
-              <DataCard
-                title={ligne.tenantLabel}
-                aria-label={t('Avance imputée pour {{tenantLabel}}', { tenantLabel: ligne.tenantLabel })}
-                highlight={<MoneyValue value={ligne.amount} />}
-              />
-            )}
-          />
+          <DetailCompteRendu key={run.id} resume={resume} />
         </>
       )}
     </Card>
@@ -432,8 +645,10 @@ export const Facturation: React.FC = () => {
   const descriptionConfirmation = campagneExistante ? (
     <>
       {t('Une campagne a déjà été exécutée pour cette période, le')}{' '}
-      {dateCourte(campagneExistante.finishedAt || campagneExistante.startedAt)}. Relancer ne crée aucun doublon : les
-      baux déjà facturés ressortiront simplement en exclusion, et seuls les baux nouvellement éligibles seront facturés.
+      {dateCourte(campagneExistante.finishedAt || campagneExistante.startedAt)}.{' '}
+      {t(
+        'Relancer ne crée aucun doublon : les baux déjà facturés ressortiront simplement en exclusion, et seuls les baux nouvellement éligibles seront facturés.'
+      )}
     </>
   ) : (
     <>
@@ -442,30 +657,6 @@ export const Facturation: React.FC = () => {
       )}
     </>
   );
-
-  const colonnesHistorique: ColumnsType<BillingRun> = [
-    { title: t('Période'), key: 'periode', render: (_, c) => periodeSeule(c.periodMonth, c.periodYear) },
-    { title: t('Libellé'), dataIndex: 'label', key: 'libelle' },
-    {
-      title: t('Statut'),
-      key: 'statut',
-      render: (_, c) => {
-        const s = STATUT_CAMPAGNE[c.status];
-        return <StatusTag status={c.status} tone={s.tone} label={s.label} />;
-      }
-    },
-    { title: t('Exécutée le'), key: 'date', render: (_, c) => (c.finishedAt ? dateCourte(c.finishedAt) : '—') },
-    {
-      title: t('Actions'),
-      key: 'actions',
-      align: 'end',
-      render: (_, c) => (
-        <Button type="link" onClick={() => ouvrirCampagne(c.id)}>
-          {t('Voir le compte rendu')}
-        </Button>
-      )
-    }
-  ];
 
   return (
     <>
@@ -561,36 +752,13 @@ export const Facturation: React.FC = () => {
       )}
 
       <Title level={4}>{t('Historique des campagnes')}</Title>
-      <DataView<BillingRun>
-        paginated={false}
-        items={campagnes}
-        total={campagnes.length}
-        page={1}
-        pageSize={Math.max(campagnes.length, 1)}
-        onPageChange={() => {}}
+      <HistoriqueCampagnes
+        campagnes={campagnesData}
         loading={historiqueEnAttente}
-        isReloading={historiqueEnCours && !historiqueEnAttente}
-        error={erreurHistorique ? t("Impossible de charger l'historique des campagnes.") : null}
-        errorCause={erreurHistorique}
+        fetching={historiqueEnCours}
+        error={erreurHistorique}
         onRetry={() => refetchHistorique()}
-        emptyDescription={t("Aucune campagne n'a encore été exécutée.")}
-        columns={colonnesHistorique}
-        rowKey={c => c.id}
-        aria-label={t('Historique des campagnes')}
-        export={{ filename: t('Historique des campagnes') }}
-        renderCard={c => {
-          const s = STATUT_CAMPAGNE[c.status];
-          return (
-            <DataCard
-              title={c.label}
-              aria-label={t('Campagne {{label}}', { label: c.label })}
-              subtitle={periodeSeule(c.periodMonth, c.periodYear)}
-              status={<StatusTag status={c.status} tone={s.tone} label={s.label} />}
-              fields={[{ label: t('Exécutée le'), value: c.finishedAt ? dateCourte(c.finishedAt) : '—' }]}
-              onOpen={() => ouvrirCampagne(c.id)}
-            />
-          );
-        }}
+        onOpen={ouvrirCampagne}
       />
     </>
   );

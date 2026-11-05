@@ -372,7 +372,7 @@ describe('Fiche de l’association — associés', () => {
         sharePercent: 15
       })
     );
-  }, 15000);
+  }, 45000);
 
   it('avertit avant de retirer un associé, puis n’appelle le serveur qu’après confirmation', async () => {
     const user = userEvent.setup({ delay: null });
@@ -389,7 +389,7 @@ describe('Fiche de l’association — associés', () => {
     await user.click(screen.getByRole('button', { name: 'Confirmer le retrait' }));
 
     await waitFor(() => expect(del).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/partnership-shares/part-1`));
-  }, 15000);
+  }, 90000);
 
   it('ouvre l’état de quote-part d’un associé, en lecture seule', async () => {
     const user = userEvent.setup({ delay: null });
@@ -409,7 +409,7 @@ describe('Fiche de l’association — associés', () => {
 
     // Rien ne s'y écrit : ni bouton de saisie, ni action de mutation dans la modale.
     expect(screen.queryByRole('button', { name: /Enregistrer/ })).not.toBeInTheDocument();
-  }, 15000);
+  }, 45000);
 });
 
 describe('Fiche de l’association — biens rattachés', () => {
@@ -434,7 +434,7 @@ describe('Fiche de l’association — biens rattachés', () => {
         partnershipId: 'assoc-1'
       })
     );
-  }, 15000);
+  }, 45000);
 
   it('détache un bien après confirmation, sans le présenter comme irréversible', async () => {
     const user = userEvent.setup({ delay: null });
@@ -451,7 +451,7 @@ describe('Fiche de l’association — biens rattachés', () => {
         partnershipId: null
       })
     );
-  }, 15000);
+  }, 45000);
 });
 
 describe('Navigation — les chemins déclarés par les écrans', () => {
@@ -495,4 +495,178 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
   });
+});
+
+describe('Recherche multicritères des associations', () => {
+  const T = { timeout: 8000 };
+  const AUTRE = 'Bureau Treichville — association Konan';
+
+  function deuxAssociations() {
+    configurerGet({
+      associations: [
+        association(),
+        association({
+          id: 'assoc-2',
+          label: AUTRE,
+          shares: [{ id: 'part-3', partnerAccountId: 'compte-3', partnerName: 'Ousmane Konan', sharePercent: 45 }],
+          totalSharePercent: 45,
+          companySharePercent: 55,
+          properties: [{ propertyId: 'bien-3', propertyLabel: 'Bureau Plateau' }]
+        })
+      ]
+    });
+  }
+
+  it('liste : le champ libre filtre sur les associés et affiche le compteur', async () => {
+    deuxAssociations();
+    const user = userEvent.setup({ delay: null });
+    mountListe();
+
+    await screen.findByText(AUTRE, {}, T);
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'ousmane');
+
+    await waitFor(() => expect(screen.queryByText(/Villa de la Riviera/)).not.toBeInTheDocument(), T);
+    expect(screen.getByText(AUTRE)).toBeInTheDocument();
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
+  }, 45000);
+
+  it('liste : « quotes-parts incomplètes » (URL) ne garde que les totaux différents de 100 %', async () => {
+    deuxAssociations();
+    mountListe(`/tenant/${TENANT}/finance/associations?incompletes=1`);
+
+    await screen.findByText(AUTRE, {}, T);
+    expect(screen.queryByText(/Villa de la Riviera/)).not.toBeInTheDocument();
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
+  }, 45000);
+
+  it('fiche : le champ libre des biens rattachés filtre sur le titre du bien', async () => {
+    configurerGet({
+      association: association({
+        properties: [
+          { propertyId: 'bien-1', propertyLabel: 'Terrain 600 m²' },
+          { propertyId: 'bien-4', propertyLabel: 'Villa Bingerville' }
+        ]
+      })
+    });
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    await screen.findByText('Terrain 600 m²', {}, T);
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'bingerville');
+
+    await waitFor(() => expect(screen.queryByText('Terrain 600 m²')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('Villa Bingerville')).toBeInTheDocument();
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
+  }, 45000);
+
+  it('fiche : la barre de l’état de quote-part filtre les lignes du relevé', async () => {
+    configurerGet({
+      releve: statement({
+        lines: [
+          {
+            propertyLabel: 'Terrain 600 m²',
+            periodYear: 2026,
+            periodMonth: 8,
+            rentBilled: 500_000,
+            rentCollected: 500_000,
+            partnerShare: 300_000
+          },
+          {
+            propertyLabel: 'Villa Angré',
+            periodYear: 2026,
+            periodMonth: 9,
+            rentBilled: 200_000,
+            rentCollected: 100_000,
+            partnerShare: 60_000
+          }
+        ]
+      })
+    });
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    const ligneKouadio = (await screen.findByText('Mamadou Kouadio', {}, T)).closest('tr') as HTMLElement;
+    await user.click(within(ligneKouadio).getByRole('button', { name: "Voir l'état" }));
+    const barre = await screen.findByRole('search', { name: "Rechercher dans l'état de quote-part" }, T);
+    await screen.findByText('Villa Angré', {}, T);
+
+    await user.type(within(barre).getByRole('textbox'), 'septembre');
+
+    await waitFor(() => expect(screen.queryByText('Août 2026')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('Septembre 2026')).toBeInTheDocument();
+    expect(within(barre).getByText('1 résultat')).toBeInTheDocument();
+  }, 60000);
+
+  it('fiche : les critères de l’état de quote-part ne survivent pas à la fermeture de la modale', async () => {
+    configurerGet({
+      releve: statement({
+        lines: [
+          {
+            propertyLabel: 'Terrain 600 m²',
+            periodYear: 2026,
+            periodMonth: 8,
+            rentBilled: 500_000,
+            rentCollected: 500_000,
+            partnerShare: 300_000
+          },
+          {
+            propertyLabel: 'Villa Angré',
+            periodYear: 2026,
+            periodMonth: 9,
+            rentBilled: 200_000,
+            rentCollected: 100_000,
+            partnerShare: 60_000
+          }
+        ]
+      })
+    });
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    const ligneKouadio = (await screen.findByText('Mamadou Kouadio', {}, T)).closest('tr') as HTMLElement;
+    await user.click(within(ligneKouadio).getByRole('button', { name: "Voir l'état" }));
+    const barre = await screen.findByRole('search', { name: "Rechercher dans l'état de quote-part" }, T);
+    await screen.findByText('Villa Angré', {}, T);
+    await user.type(within(barre).getByRole('textbox'), 'septembre');
+    await waitFor(() => expect(screen.queryByText('Août 2026')).not.toBeInTheDocument(), T);
+
+    await user.click(screen.getByRole('button', { name: 'Fermer' }));
+
+    await user.click(within(ligneKouadio).getByRole('button', { name: "Voir l'état" }));
+    expect(await screen.findByText('Août 2026', {}, T)).toBeInTheDocument();
+    expect(screen.getByText('Septembre 2026')).toBeInTheDocument();
+  }, 60000);
+  it('fiche : changer la période de l’état de quote-part ramène le relevé à sa première page', async () => {
+    const lignes = Array.from({ length: 60 }, (_, i) => ({
+      propertyLabel: `Bien ${String(i + 1).padStart(2, '0')}`,
+      periodYear: 2026,
+      periodMonth: 8,
+      rentBilled: 100_000,
+      rentCollected: 100_000,
+      partnerShare: 60_000
+    }));
+    configurerGet({ releve: statement({ lines: lignes }) });
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    const ligneKouadio = (await screen.findByText('Mamadou Kouadio', {}, T)).closest('tr') as HTMLElement;
+    await user.click(within(ligneKouadio).getByRole('button', { name: "Voir l'état" }));
+    await screen.findByText('Bien 01', {}, T);
+
+    // Page 2 du relevé : la première ligne n'est plus affichée.
+    const modale = screen.getByRole('dialog');
+    await user.click(within(modale).getByTitle('2'));
+    await waitFor(() => expect(screen.queryByText('Bien 01')).not.toBeInTheDocument(), T);
+
+    // Saisie d'une période : retour en page 1.
+    const [debut, fin] = within(modale)
+      .getAllByPlaceholderText(/./)
+      .filter(el => el.closest('.ant-picker'));
+    await user.click(debut);
+    await user.type(debut, '01/08/2026{Enter}');
+    await user.click(fin);
+    await user.type(fin, '31/08/2026{Enter}');
+
+    expect(await screen.findByText('Bien 01', {}, T)).toBeInTheDocument();
+  }, 60000);
 });

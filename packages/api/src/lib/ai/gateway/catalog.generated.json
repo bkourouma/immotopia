@@ -310,6 +310,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/finance/accounting/accounts",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/accounting/accounts",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / accounting / accounts",
+      "permissions": ["FINANCE_REPORTS_READ"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/finance/accounting/general-ledger",
       "method": "GET",
       "path": "/api/tenants/:tenantId/finance/accounting/general-ledger",
@@ -349,6 +360,17 @@
       "pathParams": [],
       "module": "finance",
       "summary": "finance / accounting / mandant-trial-balance",
+      "permissions": ["FINANCE_REPORTS_READ"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/accounting/meta",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/accounting/meta",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / accounting / meta",
       "permissions": ["FINANCE_REPORTS_READ"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -3856,7 +3878,7 @@
       "path": "/api/tenants/:tenantId/users",
       "pathParams": [],
       "module": "users",
-      "summary": "list members (users)",
+      "summary": "users",
       "permissions": ["USERS_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -4980,6 +5002,17 @@
       "module": "email-notifications",
       "summary": "reset (email-notifications / {key} / reset)",
       "permissions": ["COMMUNICATION_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/finance/accounting/sync",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/accounting/sync",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / accounting / sync",
+      "permissions": ["FINANCE_REPORTS_READ"],
       "anyOfPermissions": null,
       "sensitive": false
     },

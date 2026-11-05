@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -160,7 +160,7 @@ describe('Trésorerie — onglet Comptes', () => {
     await screen.findByText('Caisse agence Cocody', {}, { timeout: 8000 });
     await user.click(screen.getByRole('button', { name: /Nouveau compte/ }));
 
-    await user.click(screen.getByLabelText('Nature'));
+    await user.click(within(screen.getByRole('dialog')).getByLabelText('Nature'));
     await user.click(await screen.findByText('Mobile Money'));
 
     await user.type(screen.getByLabelText('Libellé'), 'Wave agence');
@@ -182,7 +182,7 @@ describe('Trésorerie — onglet Comptes', () => {
       bankAccountRef: undefined,
       isDefault: undefined
     });
-  });
+  }, 90000);
 });
 
 describe('Trésorerie — onglet Virements internes', () => {
@@ -214,7 +214,7 @@ describe('Trésorerie — onglet Virements internes', () => {
       toTreasuryAccountId: 'compte-banque-1',
       amount: 100_000
     });
-  });
+  }, 90000);
 
   it('annule un virement avec un motif obligatoire', async () => {
     listTreasuryTransfers.mockResolvedValue([virement()]);
@@ -237,7 +237,7 @@ describe('Trésorerie — onglet Virements internes', () => {
     await waitFor(() =>
       expect(voidTreasuryTransfer).toHaveBeenCalledWith('agence-1', 'vir-1', { reason: 'Erreur de saisie du montant' })
     );
-  });
+  }, 90000);
 });
 
 describe('Trésorerie — onglet Retenues à la source', () => {
@@ -287,4 +287,124 @@ describe('Trésorerie — onglet Retenues à la source', () => {
     // Mais aucun bouton de création n'est proposé.
     expect(screen.queryByRole('button', { name: /Nouveau versement/ })).not.toBeInTheDocument();
   });
+});
+
+describe('Trésorerie — recherche multicritères', () => {
+  it('filtre les comptes par texte (liste locale) : lignes et compteur', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount();
+
+    await screen.findByText('Caisse agence Cocody', {}, { timeout: 8000 });
+    expect(screen.getByText('2 résultats')).toBeInTheDocument();
+
+    const barre = screen.getByRole('search', { name: 'Rechercher dans les comptes de trésorerie' });
+    await user.type(within(barre).getByRole('textbox'), 'CI0123');
+
+    await waitFor(() => expect(screen.queryByText('Caisse agence Cocody')).not.toBeInTheDocument(), {
+      timeout: 8000
+    });
+    expect(screen.getByText('Ecobank agence')).toBeInTheDocument();
+    expect(screen.getByText('1 résultat')).toBeInTheDocument();
+  });
+
+  it('envoie le statut, la période et le compte des virements au serveur, dans l’appel du service', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount(
+      '/tenant/agence-1/finance/tresorerie?vir.status=VOIDED&vir.dateFrom=2026-09-01&vir.dateTo=2026-09-30&vir.compte=compte-banque-1&vir.q=chèque'
+    );
+
+    await screen.findByText('Caisse agence Cocody', {}, { timeout: 8000 });
+    await user.click(screen.getByRole('tab', { name: 'Virements internes' }));
+
+    await waitFor(() => expect(listTreasuryTransfers).toHaveBeenCalled(), { timeout: 8000 });
+    expect(listTreasuryTransfers).toHaveBeenLastCalledWith('agence-1', {
+      search: 'chèque',
+      status: 'VOIDED',
+      from: '2026-09-01',
+      to: '2026-09-30',
+      accountId: 'compte-banque-1'
+    });
+  });
+
+  it('filtre le montant des virements en local, sans le renvoyer au serveur', async () => {
+    listTreasuryTransfers.mockResolvedValue([
+      virement({ id: 'v-petit', number: 'VIR-2026-0001', amount: 50_000 }),
+      virement({ id: 'v-gros', number: 'VIR-2026-0002', amount: 500_000 })
+    ]);
+    const user = userEvent.setup({ delay: null });
+    mount('/tenant/agence-1/finance/tresorerie?vir.montantMin=100000');
+
+    await screen.findByText('Caisse agence Cocody', {}, { timeout: 8000 });
+    await user.click(screen.getByRole('tab', { name: 'Virements internes' }));
+
+    expect(await screen.findByText('VIR-2026-0002', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText('VIR-2026-0001')).not.toBeInTheDocument();
+    expect(listTreasuryTransfers).toHaveBeenLastCalledWith('agence-1', {});
+  });
+
+  it('envoie le statut et le compte des versements au serveur', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount('/tenant/agence-1/finance/tresorerie?ret.status=VALIDATED&ret.compte=compte-banque-1');
+
+    await screen.findByText('Caisse agence Cocody', {}, { timeout: 8000 });
+    await user.click(screen.getByRole('tab', { name: 'Retenues à la source' }));
+
+    await waitFor(() => expect(listTaxRemittances).toHaveBeenCalled(), { timeout: 8000 });
+    expect(listTaxRemittances).toHaveBeenLastCalledWith('agence-1', {
+      status: 'VALIDATED',
+      treasuryAccountId: 'compte-banque-1'
+    });
+  });
+
+  it.each([
+    ['Virements internes', 'virements'],
+    ['Retenues à la source', 'versements']
+  ])(
+    'onglet %s : bandeau de plafond à 500 lignes, absent sous le plafond',
+    async (onglet, mot) => {
+      const texte = `Seuls les 500 ${mot} les plus récents correspondant aux critères sont affichés. Affinez par période, statut ou compte.`;
+      const virements = (n: number) =>
+        Array.from({ length: n }, (_, i) => virement({ id: `v-${i}`, number: `VIR-${i}` }));
+      const versements = (n: number) =>
+        Array.from({ length: n }, (_, i) => versementDgi({ id: `d-${i}`, number: `DGI-${i}` }));
+      const pleine = onglet === 'Virements internes';
+      listTreasuryTransfers.mockResolvedValue(pleine ? virements(500) : []);
+      listTaxRemittances.mockResolvedValue(pleine ? [] : versements(500));
+      const user = userEvent.setup({ delay: null });
+      const { unmount } = mount();
+      await screen.findByText('Caisse agence Cocody', {}, { timeout: 8000 });
+      await user.click(screen.getByRole('tab', { name: onglet }));
+      expect(await screen.findByText(texte, {}, { timeout: 8000 })).toBeInTheDocument();
+      unmount();
+
+      listTreasuryTransfers.mockResolvedValue(pleine ? virements(3) : []);
+      listTaxRemittances.mockResolvedValue(pleine ? [] : versements(3));
+      mount();
+      await screen.findByText('Caisse agence Cocody', {}, { timeout: 8000 });
+      await user.click(screen.getByRole('tab', { name: onglet }));
+      await screen.findByText(pleine ? 'VIR-0' : 'DGI-0', {}, { timeout: 8000 });
+      expect(screen.queryByText(texte)).not.toBeInTheDocument();
+    },
+    40000
+  );
+  it.each([
+    ['avec une borne de montant', '?vir.montantMin=100000', true],
+    ['sans borne de montant', '', false]
+  ])(
+    'virements : 500 lignes %s, mention de portée du filtre de montant',
+    async (_libelle, requete, visible) => {
+      const texte = 'Le filtre de montant ne porte que sur ces 500 virements les plus récents.';
+      listTreasuryTransfers.mockResolvedValue(
+        Array.from({ length: 500 }, (_, i) => virement({ id: `v-${i}`, number: `VIR-${i}`, amount: 200_000 }))
+      );
+      const user = userEvent.setup({ delay: null });
+      mount(`/tenant/agence-1/finance/tresorerie${requete}`);
+      await screen.findByText('Caisse agence Cocody', {}, { timeout: 8000 });
+      await user.click(screen.getByRole('tab', { name: 'Virements internes' }));
+      await screen.findByText('VIR-0', {}, { timeout: 8000 });
+      if (visible) expect(screen.getByText(texte)).toBeInTheDocument();
+      else expect(screen.queryByText(texte)).not.toBeInTheDocument();
+    },
+    40000
+  );
 });

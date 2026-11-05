@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import crypto from 'crypto';
 import { JSDOM } from 'jsdom';
 import type { NewsletterCampaignStatus, Prisma } from '@prisma/client';
@@ -483,9 +484,41 @@ export async function cancelCampaign(tenantId: string, campaignId: string) {
   });
 }
 
-export async function listCampaigns(tenantId: string, options: { status?: string; page?: number; limit?: number }) {
+export interface ListCampaignsOptions {
+  /** Un statut ou plusieurs (déjà validés par le contrôleur). */
+  status?: string | string[];
+  /** Recherche libre : objet de la campagne ou nom de la liste. */
+  search?: string;
+  /** Liste de diffusion : reste dans le `where` de l'agence (une liste étrangère ne renvoie rien). */
+  listId?: string;
+  /** Création du / au (bornes incluses). */
+  from?: Date;
+  to?: Date;
+  page?: number;
+  limit?: number;
+}
+
+export async function listCampaigns(tenantId: string, options: ListCampaignsOptions) {
   const where: Prisma.NewsletterCampaignWhereInput = { tenantId };
-  if (options.status) where.status = options.status as NewsletterCampaignStatus;
+  const statuses = (Array.isArray(options.status) ? options.status : (options.status ?? '').split(','))
+    .map(value => value.trim())
+    .filter(Boolean) as NewsletterCampaignStatus[];
+  if (statuses.length === 1) where.status = statuses[0];
+  else if (statuses.length > 1) where.status = { in: statuses };
+  if (options.listId) where.listId = options.listId;
+  const search = options.search?.trim();
+  if (search) {
+    where.OR = [
+      { subject: { contains: escapeLike(search), mode: 'insensitive' } },
+      { list: { name: { contains: escapeLike(search), mode: 'insensitive' } } }
+    ];
+  }
+  if (options.from || options.to) {
+    where.createdAt = {
+      ...(options.from ? { gte: options.from } : {}),
+      ...(options.to ? { lte: options.to } : {})
+    };
+  }
 
   const page = Math.max(1, options.page ?? 1);
   const limit = Math.min(100, Math.max(1, options.limit ?? 20));

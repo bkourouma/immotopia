@@ -5359,6 +5359,9 @@ model JournalEntry {
   @@index([tenantId])
   @@index([documentType, documentId])
   @@index([voidedByEntryId])
+  // Lectures comptables (lot C) : journal et grand livre par periode.
+  @@index([tenantId, entryDate, createdAt])
+  @@index([tenantId, journalId, entryDate])
   @@map("journal_entries")
 }
 
@@ -5393,6 +5396,9 @@ model JournalEntryLine {
   @@index([accountId])
   @@index([lotId])
   @@index([thirdPartyAccountId])
+  @@index([accountId, entryId])
+  // Index partiel (third_party_account_id, funds_nature) WHERE funds_nature IS NOT NULL :
+  // declare en SQL brut dans 20261103100000_accounting_read_indexes, invisible pour Prisma.
   @@map("journal_entry_lines")
 }
 

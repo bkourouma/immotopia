@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { App, Button, Modal, Drawer, Form, Input, InputNumber, Upload, Typography, Space, Dropdown } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -14,6 +14,8 @@ import {
   RentalPenalty
 } from '../../services/rental-service';
 import { saveBlob } from '../../utils/save-blob';
+import { useLocalListSearch } from '../../utils/list-search';
+import { PENALTY_ACCESSORS, PENALTY_TEXT, penaltyCriteria } from './penalty-search';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, useConfirmAction } from '../../components/primitives';
@@ -142,7 +144,17 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
     staleTime: STALE_TIME.list
   });
 
-  const penalites = data?.data ?? [];
+  const penalites = useMemo(() => data?.data ?? [], [data]);
+
+  // Liste reçue en entier (l'API ne pagine pas) : recherche et pagination locales.
+  // Préfixe `pen` quand l'écran est un onglet du bail (plusieurs tableaux sur la page).
+  const local = useLocalListSearch<RentalPenalty>(penalites, {
+    criteria: penaltyCriteria(),
+    text: PENALTY_TEXT,
+    accessors: PENALTY_ACCESSORS,
+    defaultPageSize: 50,
+    ...(propLeaseId ? { paramPrefix: 'pen', ariaLabel: t('Rechercher dans les pénalités') } : {})
+  });
 
   const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['penalties', tenantId] });
 
@@ -316,7 +328,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
         <Text type="secondary">
           {t('Montant calculé :')}{' '}
           <MoneyValue value={montantCalcule(ajustePour) ?? ajustePour.amount} currency={ajustePour.currency} /> ·{' '}
-          {ajustePour.days_late} jour{ajustePour.days_late > 1 ? 's' : ''} de retard
+          {ajustePour.days_late} {ajustePour.days_late > 1 ? t('jours') : t('jour')} {t('de retard')}
         </Text>
       )}
       <Form.Item
@@ -431,19 +443,9 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       />
 
       <DataView<RentalPenalty>
-        // L'API ne pagine pas : tout est déjà chargé, la page courante est l'ensemble.
-        export={{ filename: t('Pénalités de retard') }}
-        items={penalites}
-        // L'API ne pagine pas les pénalités : elle renvoie tout. Annoncer
-        // `items.length` n'est donc pas un raccourci, c'est le total réel de ce
-        // que le serveur a rendu. `paginated={false}` le dit explicitement —
-        // avant, l'absence de barre tenait à l'égalité entre `total` et
-        // `pageSize`, ce qui se défaisait au premier changement du composant.
-        paginated={false}
-        total={penalites.length}
-        page={1}
-        pageSize={Math.max(penalites.length, 1)}
-        onPageChange={() => {}}
+        // L'API ne pagine pas : recherche, pagination et export locaux (liste filtrée).
+        {...local.dataViewProps}
+        export={{ filename: t('Pénalités de retard'), fetchAll: local.exportAll }}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les pénalités.') : null}

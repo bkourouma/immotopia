@@ -13,6 +13,10 @@ import { creditor, inactiveCreditor, makeRemittance, TENANT_ID } from './direct-
  * « Préparer une remise » avec la date proposée.
  */
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 const listRemittances = vi.fn();
 const listCreditors = vi.fn();
 const createRemittance = vi.fn();
@@ -34,12 +38,15 @@ const LocationProbe: React.FC = () => {
   );
 };
 
-function mount() {
+const Url: React.FC = () => <div data-testid="url">{useLocation().search}</div>;
+
+function mount(initial = `/tenant/${TENANT_ID}/rental/direct-debit/remittances`) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
-        <MemoryRouter initialEntries={[`/tenant/${TENANT_ID}/rental/direct-debit/remittances`]}>
+        <MemoryRouter initialEntries={[initial]}>
+          <Url />
           <Routes>
             <Route path="/tenant/:tenantId/rental/direct-debit/remittances" element={<DirectDebitRemittances />} />
             <Route path="/tenant/:tenantId/rental/direct-debit/remittances/:remittanceId" element={<LocationProbe />} />
@@ -87,29 +94,55 @@ describe('DirectDebitRemittances', () => {
     expect(remises).toHaveAttribute('aria-selected', 'true');
   });
 
-  it("filtre par statut et par créancier en rappelant l'API", async () => {
+  it('envoie la saisie de la barre à l’API après le debounce et la met dans l’URL', async () => {
     const user = userEvent.setup();
     mount();
     await screen.findByRole('link', { name: 'PRL-2026-0001' });
     expect(listRemittances).toHaveBeenLastCalledWith(TENANT_ID, { page: 1, pageSize: 20 });
 
-    const [creditorSelect, statusSelect] = screen.getAllByRole('combobox');
-    await user.click(statusSelect);
-    await user.click(await screen.findByTitle('Validée'));
-    await waitFor(() =>
-      expect(listRemittances).toHaveBeenLastCalledWith(TENANT_ID, { status: 'VALIDATED', page: 1, pageSize: 20 })
+    await user.type(
+      within(screen.getByRole('search', { name: 'Rechercher dans les remises' })).getByRole('textbox'),
+      'PRL-2026'
     );
+    await waitFor(
+      () => expect(listRemittances).toHaveBeenLastCalledWith(TENANT_ID, { search: 'PRL-2026', page: 1, pageSize: 20 }),
+      { timeout: 8000 }
+    );
+    expect(screen.getByTestId('url').textContent).toContain('q=PRL-2026');
+  });
 
-    await user.click(creditorSelect);
-    await user.click(await screen.findByTitle('Compte loyers'));
+  it('applique statut, créancier et période de prélèvement d’une URL partagée', async () => {
+    mount(
+      `/tenant/${TENANT_ID}/rental/direct-debit/remittances?status=VALIDATED&creditorId=c-1&collectionFrom=2026-11-01&collectionTo=2026-11-30`
+    );
+    await screen.findByRole('link', { name: 'PRL-2026-0001' });
     await waitFor(() =>
       expect(listRemittances).toHaveBeenLastCalledWith(TENANT_ID, {
         status: 'VALIDATED',
         creditorId: 'c-1',
+        collectionFrom: '2026-11-01',
+        collectionTo: '2026-11-30',
         page: 1,
         pageSize: 20
       })
     );
+  });
+
+  it('propose d’effacer les critères quand aucune remise ne correspond', async () => {
+    const user = userEvent.setup();
+    listRemittances.mockImplementation(async (_tenant: string, params: Record<string, unknown>) =>
+      params.search
+        ? { items: [], total: 0, page: 1, pageSize: 20 }
+        : { items: [makeRemittance()], total: 1, page: 1, pageSize: 20 }
+    );
+    mount(`/tenant/${TENANT_ID}/rental/direct-debit/remittances?q=zzz`);
+    expect(
+      await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', undefined, { timeout: 8000 })
+    ).toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    expect(await screen.findByRole('link', { name: 'PRL-2026-0001' })).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).not.toContain('q=');
   });
 
   it('ouvre la modale avec le créancier actif et la date proposée, puis ouvre le détail avec les mandats non retenus', async () => {

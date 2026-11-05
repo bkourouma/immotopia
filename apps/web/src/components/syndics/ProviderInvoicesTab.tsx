@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   App,
   Alert,
@@ -21,11 +22,16 @@ import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
 import { Table } from '../primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
+import { useListSearch } from '../../hooks/useListSearch';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
+import { STALE_TIME } from '../../lib/query-keys';
 import {
   createProviderInvoice,
   listProviderBalances,
   listProviderInvoices
 } from '../../services/syndic-provider-invoice-service';
+import type { ProviderInvoiceListParams } from '../../services/syndic-provider-invoice-service';
 import { listBudgets, listSyndicIncidents, listSyndicateFunds } from '../../services/syndic-service';
 import {
   BudgetLineItem,
@@ -44,9 +50,15 @@ import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Paragraph, Title, Text } = Typography;
-const { RangePicker } = DatePicker;
 
 const INVOICE_STATUSES: ProviderInvoiceStatus[] = ['RECORDED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED'];
+
+// Accesseurs stables (hors du composant) : le filtrage des soldes reste mémoïsé.
+const SOLDES_TEXTE = [(balance: ProviderBalance) => balance.providerName];
+const SOLDES_ACCESSEURS = {
+  due: (balance: ProviderBalance) => balance.totalDue,
+  overdue: (balance: ProviderBalance) => balance.overdueDue > 0
+};
 
 interface BudgetLineOption extends BudgetLineItem {
   budgetLabel: string;
@@ -73,17 +85,6 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
 }) => {
   const { message } = App.useApp();
 
-  const [items, setItems] = useState<ProviderInvoice[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [providerFilter, setProviderFilter] = useState<string | undefined>();
-  const [statusFilter, setStatusFilter] = useState<ProviderInvoiceStatus | undefined>();
-  const [range, setRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
-
   const [balances, setBalances] = useState<ProviderBalance[]>([]);
   const [incidents, setIncidents] = useState<SyndicateIncident[]>([]);
   const [funds, setFunds] = useState<SyndicateFund[]>([]);
@@ -103,9 +104,85 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
     void loadReferenceData();
   }, [tenantId, syndicId]);
 
-  useEffect(() => {
-    void loadInvoices();
-  }, [tenantId, syndicId, providerFilter, statusFilter, range, page, pageSize]);
+  // Factures : liste paginée et filtrée par le serveur (préfixe d'URL « fa »).
+  // Les critères partent à l'API ; l'onglet n'est monté que lorsqu'il est affiché.
+  const contractOptions = useMemo(
+    () =>
+      contracts.map(contract => ({
+        value: contract.id,
+        label: contract.provider?.name ? `${contract.provider.name} · ${contract.nature}` : contract.nature
+      })),
+    [contracts]
+  );
+  const incidentOptions = useMemo(
+    () =>
+      incidents.map(incident => ({
+        value: incident.id,
+        label: incident.description.length > 80 ? `${incident.description.slice(0, 80)}…` : incident.description
+      })),
+    [incidents]
+  );
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Numéro de facture, libellé, prestataire…')
+    },
+    {
+      key: 'providerId',
+      type: 'select',
+      label: t('Prestataire'),
+      primary: true,
+      options: providers.map(provider => ({ value: provider.id, label: provider.name }))
+    },
+    {
+      key: 'status',
+      type: 'multiSelect',
+      label: t('Statut'),
+      primary: true,
+      options: INVOICE_STATUSES.map(status => ({ value: status, label: providerInvoiceStatusLabels[status] }))
+    },
+    { key: 'period', type: 'dateRange', label: t('Date de facture'), api: ['from', 'to'] },
+    { key: 'contractId', type: 'select', label: t('Contrat'), options: contractOptions },
+    { key: 'incidentId', type: 'select', label: t('Incident'), options: incidentOptions }
+  ];
+  const search = useListSearch({
+    paramPrefix: 'fa',
+    ariaLabel: t('Rechercher dans les factures'),
+    apiNames: { sort: false },
+    criteria
+  });
+
+  const invoicesQuery = useQuery({
+    queryKey: ['syndic-provider-invoices', tenantId, syndicId, search.apiParams],
+    queryFn: () => listProviderInvoices(tenantId, syndicId, search.apiParams as ProviderInvoiceListParams),
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
+  });
+  const items = invoicesQuery.data?.items ?? [];
+  const total = invoicesQuery.data?.total ?? 0;
+  const loading = invoicesQuery.isFetching;
+  const invoicesError = invoicesQuery.error as { response?: { data?: { error?: string } } } | null;
+  const error = invoicesError ? invoicesError.response?.data?.error || t('Impossible de charger les factures') : null;
+  const loadInvoices = async () => {
+    await invoicesQuery.refetch();
+  };
+
+  // Soldes par prestataire : liste reçue en entier (un solde par prestataire facturé),
+  // recherche et pagination locales (préfixe d'URL « so »).
+  const balanceCriteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom du prestataire…') },
+    { key: 'due', type: 'numberRange', label: t('Reste dû'), primary: true, unit: 'FCFA' },
+    { key: 'overdue', type: 'boolean', label: t('Avec retard'), primary: true }
+  ];
+  const balanceSearch = useLocalListSearch<ProviderBalance>(balances, {
+    paramPrefix: 'so',
+    ariaLabel: t('Rechercher dans les soldes'),
+    criteria: balanceCriteria,
+    text: SOLDES_TEXTE,
+    accessors: SOLDES_ACCESSEURS
+  });
 
   const loadReferenceData = async () => {
     try {
@@ -123,27 +200,6 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
       setBalances(balancesData);
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Impossible de charger les données de référence'));
-    }
-  };
-
-  const loadInvoices = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await listProviderInvoices(tenantId, syndicId, {
-        providerId: providerFilter,
-        status: statusFilter,
-        from: range?.[0] ? range[0]!.startOf('day').toISOString() : undefined,
-        to: range?.[1] ? range[1]!.endOf('day').toISOString() : undefined,
-        page,
-        limit: pageSize
-      });
-      setItems(data.items);
-      setTotal(data.total);
-    } catch (err: any) {
-      setError(err.response?.data?.error || t('Impossible de charger les factures'));
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -325,68 +381,31 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
 
       <Card title={t('Soldes par prestataire')}>
         <Table
+          {...balanceSearch.tableProps}
+          aria-label={t('Soldes par prestataire')}
           exportFilename={t('Soldes par prestataire')}
+          exportFetchAll={balanceSearch.exportAll}
           rowKey="providerId"
-          dataSource={balances}
           columns={balanceColumns}
-          pagination={{ pageSize: 5, hideOnSinglePage: true }}
-          locale={{ emptyText: t('Aucune facture enregistrée') }}
+          locale={balanceSearch.isFiltered ? undefined : { emptyText: t('Aucune facture enregistrée') }}
         />
-      </Card>
-
-      <Card>
-        <Space wrap size="middle">
-          <Select
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            placeholder={t('Filtrer par prestataire')}
-            style={{ minWidth: 220 }}
-            value={providerFilter}
-            onChange={value => {
-              setPage(1);
-              setProviderFilter(value);
-            }}
-            options={providers.map(provider => ({ value: provider.id, label: provider.name }))}
-          />
-          <Select
-            allowClear
-            placeholder={t('Filtrer par statut')}
-            style={{ minWidth: 200 }}
-            value={statusFilter}
-            onChange={value => {
-              setPage(1);
-              setStatusFilter(value);
-            }}
-            options={INVOICE_STATUSES.map(status => ({ value: status, label: providerInvoiceStatusLabels[status] }))}
-          />
-          <RangePicker
-            format="DD/MM/YYYY"
-            value={range as any}
-            onChange={value => {
-              setPage(1);
-              setRange(value as [dayjs.Dayjs | null, dayjs.Dayjs | null] | null);
-            }}
-          />
-        </Space>
       </Card>
 
       {error ? <Alert type="error" message={error} showIcon /> : null}
 
       <Card>
         <Table
+          search={search.searchProps}
+          aria-label={t('Factures des prestataires')}
           exportFilename={t('Factures des prestataires')}
-          // Toutes les factures, avec les mêmes filtres que la liste affichée.
+          // Toutes les factures, avec les mêmes critères que la liste affichée.
           exportFetchAll={() =>
             collectAllPages<ProviderInvoice>(async (exportPage, limit) => {
               const data = await listProviderInvoices(tenantId, syndicId, {
-                providerId: providerFilter,
-                status: statusFilter,
-                from: range?.[0]?.startOf('day').toISOString(),
-                to: range?.[1]?.endOf('day').toISOString(),
+                ...search.filterParams,
                 page: exportPage,
                 limit
-              });
+              } as ProviderInvoiceListParams);
               return { items: data.items, total: data.total };
             })
           }
@@ -395,17 +414,8 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
           dataSource={items}
           columns={columns}
           scroll={{ x: 'max-content' }}
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: true,
-            onChange: (nextPage, nextPageSize) => {
-              setPage(nextPage);
-              setPageSize(nextPageSize);
-            }
-          }}
-          locale={{ emptyText: t('Aucune facture pour ces filtres') }}
+          pagination={search.tablePagination(total)}
+          locale={search.isFiltered ? undefined : { emptyText: t('Aucune facture enregistrée') }}
         />
       </Card>
 

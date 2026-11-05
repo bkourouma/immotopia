@@ -7,9 +7,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { listSuppliers, createSupplier } from '../../services/finance-lot2-service';
 import { SUPPLIER_KIND_LABELS } from '../../types/finance-lot2-types';
 import type { Supplier, SupplierKind } from '../../types/finance-lot2-types';
-import { useListParams } from '../../hooks/useListParams';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { queryKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
-import { PageHeader, StateBlock, StatusTag, DataView, DataCard, FilterSheet } from '../../components/primitives';
+import { PageHeader, StateBlock, StatusTag, DataView, DataCard } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { localizedList } from '../../i18n/localized';
 
@@ -17,15 +18,17 @@ import { localizedList } from '../../i18n/localized';
  * Fournisseurs — liste et création, récit 2 du lot 2
  * (`specs/017-finance-fournisseurs-chantiers/spec.md`).
  *
- * Construit sur le même modèle que les écrans du lot 1 (`BalanceClients.tsx`,
- * `Facturation.tsx`) : mêmes primitives, mêmes trois états délégués à
- * `<DataView>`, l'état de liste dans l'URL.
+ * **Patron « liste reçue en entier → filtrage local »** (guide :
+ * `docs/architecture/recherche-listes.md`). `listSuppliers` n'est ni paginé ni
+ * filtrable côté serveur (contrat gelé, `finance-lot2-service.ts`) : la liste
+ * arrive d'un bloc et `useLocalListSearch` la filtre, la pagine (20 par page) et
+ * fournit l'export de toute la liste filtrée. Les critères vivent dans l'URL
+ * (`q`, `nature`, `actif`) : une liste filtrée se partage par lien. Aucun
+ * critère ne déclare d'`api` : rien ne part vers le serveur.
  *
- * `listSuppliers` n'est ni paginé ni filtrable côté serveur (contrat gelé,
- * `finance-lot2-service.ts`) : le champ de recherche ci-dessous filtre donc la
- * liste déjà reçue, côté écran — comme `BalanceAgee.tsx` le fait déjà pour son
- * tri. Le terme cherché vit malgré tout dans l'URL : une liste filtrée reste
- * partageable par copier-coller.
+ * Les accesseurs sont des constantes de module : leur identité stable garde le
+ * filtrage mémoïsé. Les trois états (chargement, erreur, vide) restent
+ * délégués à `<DataView>`.
  *
  * **La nature décide de la suite.** Un fournisseur MATERIALS ou MIXED devra
  * obligatoirement rattacher chacune de ses factures à un chantier
@@ -33,9 +36,6 @@ import { localizedList } from '../../i18n/localized';
  * Cet écran ne fait qu'enregistrer cette nature — la contrainte s'applique
  * plus loin.
  */
-
-type Filters = { q: string };
-const FILTER_KEYS = ['q'] as const;
 
 const OPTIONS_NATURE = localizedList(() =>
   (Object.keys(SUPPLIER_KIND_LABELS) as SupplierKind[]).map(kind => ({
@@ -52,19 +52,26 @@ interface FormulaireFournisseur {
   contactEmail?: string;
 }
 
-function correspond(fournisseur: Supplier, terme: string): boolean {
-  const cible = terme.toLowerCase();
-  return [fournisseur.name, fournisseur.contactName, fournisseur.contactPhone, fournisseur.contactEmail]
-    .filter((valeur): valeur is string => Boolean(valeur))
-    .some(valeur => valeur.toLowerCase().includes(cible));
-}
+// Champ libre : raison sociale, contact et nature (libellé affiché, dans la langue courante).
+const TEXTE_RECHERCHE = [
+  (f: Supplier) => f.name,
+  (f: Supplier) => f.contactName,
+  (f: Supplier) => f.contactPhone,
+  (f: Supplier) => f.contactEmail,
+  (f: Supplier) => SUPPLIER_KIND_LABELS[f.kind]
+];
+
+// Valeur lue par les critères non textuels, par clé de critère.
+const ACCESSEURS = {
+  nature: (f: Supplier) => f.kind,
+  actif: (f: Supplier) => f.isActive
+};
 
 export const Fournisseurs: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS });
 
   const [ouvert, setOuvert] = useState(false);
   const [enregistrement, setEnregistrement] = useState(false);
@@ -84,8 +91,31 @@ export const Fournisseurs: React.FC = () => {
   });
 
   const toutes = fournisseurs ?? [];
-  const terme = list.filters.q ?? '';
-  const lignes = terme ? toutes.filter(f => correspond(f, terme)) : toutes;
+
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Raison sociale, contact, téléphone, e-mail…')
+    },
+    { key: 'nature', type: 'multiSelect', label: t('Nature'), primary: true, options: OPTIONS_NATURE },
+    {
+      key: 'actif',
+      type: 'boolean',
+      label: t('Statut'),
+      primary: true,
+      tristate: true,
+      trueLabel: t('Actif'),
+      falseLabel: t('Inactif')
+    }
+  ];
+  const local = useLocalListSearch<Supplier>(fournisseurs, {
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   const fermer = () => {
     setOuvert(false);
@@ -161,38 +191,25 @@ export const Fournisseurs: React.FC = () => {
     <>
       <PageHeader
         title={t('Fournisseurs')}
-        subtitle={toutes.length > 0 ? `${toutes.length} fournisseur${toutes.length > 1 ? 's' : ''}` : undefined}
+        subtitle={
+          // Deux clés plutôt qu'un « s » collé : chaque langue accorde à sa façon.
+          toutes.length === 0
+            ? undefined
+            : toutes.length === 1
+              ? t('1 fournisseur')
+              : t('{{count}} fournisseurs', { count: toutes.length })
+        }
         primaryAction={{ label: t('Nouveau fournisseur'), icon: <PlusOutlined />, onClick: () => setOuvert(true) }}
       />
 
-      <FilterSheet activeCount={terme ? 1 : 0} onClear={list.clearFilters} title={t('Filtrer les fournisseurs')}>
-        <div style={{ minWidth: 260 }}>
-          <label htmlFor="filtre-fournisseurs-q">{t('Rechercher')}</label>
-          <Input
-            id="filtre-fournisseurs-q"
-            allowClear
-            placeholder={t('Raison sociale, contact, téléphone…')}
-            value={terme}
-            onChange={event => list.setFilters({ q: event.target.value || undefined })}
-          />
-        </div>
-      </FilterSheet>
-
       <DataView<Supplier>
-        export={{ filename: t('Fournisseurs') }}
-        paginated={false}
-        items={lignes}
-        total={lignes.length}
-        page={1}
-        pageSize={Math.max(lignes.length, 1)}
-        onPageChange={() => {}}
+        {...local.dataViewProps}
+        export={{ filename: t('Fournisseurs'), fetchAll: local.exportAll }}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les fournisseurs.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={list.isFiltered}
-        onClearFilters={list.clearFilters}
         emptyDescription={t('Aucun fournisseur enregistré.')}
         emptyAction={{ label: t('Nouveau fournisseur'), onClick: () => setOuvert(true) }}
         columns={colonnes}

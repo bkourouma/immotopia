@@ -5,9 +5,16 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { HtmlCodeEditor } from '../../components/HtmlCodeEditor';
 import { newsletterService, type NewsletterTemplate } from '../../services/newsletter.service';
 import { Table, useConfirmAction } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 const HELP_TEXT = 'Variables disponibles : {{contenu}}, {{prenom}}, {{nom}}, {{email}}, {{lien_desinscription}}';
+
+// Stables : déclarés hors du composant (filtrage mémoïsé).
+const TEMPLATE_TEXT = [
+  (tpl: NewsletterTemplate) => tpl.name,
+  (tpl: NewsletterTemplate) => tpl.html.replace(/<[^>]+>/g, ' ')
+];
 
 export function NewsletterTemplatesPage() {
   const { message } = App.useApp();
@@ -20,6 +27,12 @@ export function NewsletterTemplatesPage() {
   const [editingTemplate, setEditingTemplate] = useState<NewsletterTemplate | null>(null);
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+
+  // Modèles reçus en entier : recherche et pagination locales, état dans l'URL.
+  const local = useLocalListSearch<NewsletterTemplate>(templates, {
+    criteria: [{ key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom ou contenu du modèle…') }],
+    text: TEMPLATE_TEXT
+  });
 
   const loadTemplates = useCallback(async () => {
     if (!tenantId) return;
@@ -135,13 +148,19 @@ export function NewsletterTemplatesPage() {
 
         <Card>
           <Table
+            {...local.tableProps}
+            aria-label={t('Templates newsletter')}
             exportFilename={t('Templates newsletter')}
+            exportFetchAll={local.exportAll}
             scroll={{ x: 'max-content' }}
             loading={loading}
             columns={columns}
-            dataSource={templates}
             rowKey="id"
-            locale={{ emptyText: 'Aucun template. Créez-en un pour réutiliser une structure HTML dans vos campagnes.' }}
+            locale={
+              local.isFiltered
+                ? undefined
+                : { emptyText: t('Aucun template. Créez-en un pour réutiliser une structure HTML dans vos campagnes.') }
+            }
           />
         </Card>
       </div>

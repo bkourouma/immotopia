@@ -37,6 +37,16 @@ const movementFilterShape = {
   takerId: z.string().uuid('Identifiant de preneur invalide.').optional(),
   createdByUserId: z.string().trim().min(1, 'Identifiant d’utilisateur invalide.').max(64).optional(),
   requestedBy: z.string().trim().min(1, 'Le demandeur recherché est vide.').max(120).optional(),
+  /**
+   * Recherche libre (insensible à la casse) : article, lieu, bon, chantier,
+   * motif et, pour qui voit les valeurs, preneur et demandeur. Vide = ignorée.
+   */
+  search: z
+    .string()
+    .trim()
+    .max(120, 'La recherche compte au plus 120 caractères.')
+    .optional()
+    .transform(value => (value ? value : undefined)),
   from: dateQueryParam('Date de début invalide.').optional(),
   to: dateQueryParam('Date de fin invalide.').optional()
 };

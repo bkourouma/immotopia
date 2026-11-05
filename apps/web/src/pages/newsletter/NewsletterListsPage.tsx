@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { App, Card, Button, Modal, Form, Input, Select, Switch, Space, Typography, Collapse } from 'antd';
 import { DownloadOutlined, UserAddOutlined } from '@ant-design/icons';
@@ -8,10 +8,16 @@ import { SubscriberList } from '../../components/newsletter/SubscriberList';
 import { ImportCsvModal } from '../../components/newsletter/ImportCsvModal';
 import { SubscriptionForm } from '../../components/newsletter/SubscriptionForm';
 import { AdvancedContactSearch } from '../../components/crm/AdvancedContactSearch';
+import { useListSearch } from '../../hooks/useListSearch';
+import { useLocalListSearch } from '../../utils/list-search';
 import { newsletterService, type NewsletterList, type NewsletterSubscriber } from '../../services/newsletter.service';
 import type { ContactSearchResultItem } from '../../services/contact-search.service';
 import { t } from '../../i18n/t';
 import { collectAllPages } from '../../utils/table-export/collect';
+
+// Stables : déclarés hors du composant (le filtrage local reste mémoïsé).
+const LIST_TEXT = [(list: NewsletterList) => list.name];
+const LIST_ACCESSORS = { type: (list: NewsletterList) => list.type };
 
 export function NewsletterListsPage() {
   const { message } = App.useApp();
@@ -47,22 +53,63 @@ export function NewsletterListsPage() {
     }
   }, [tenantId, message]);
 
-  const loadSubscribers = useCallback(
-    async (page = 1, limit = 20) => {
-      if (!tenantId || !selectedList) return;
-      setSubLoading(true);
-      try {
-        const data = await newsletterService.listSubscribers(tenantId, selectedList.id, { page, limit });
-        setSubscribers(data.subscribers);
-        setPagination(data.pagination);
-      } catch (e) {
-        message.error((e as Error).message || t('Erreur lors du chargement'));
-      } finally {
-        setSubLoading(false);
+  // Listes de diffusion (reçues en entier) : recherche locale, état dans l'URL sous le préfixe « lst ».
+  const listSearch = useLocalListSearch<NewsletterList>(lists, {
+    paramPrefix: 'lst',
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom de la liste…') },
+      {
+        key: 'type',
+        type: 'multiSelect',
+        label: t('Type'),
+        primary: true,
+        options: [
+          { value: 'MANUAL', label: t('Manuelle') },
+          { value: 'FROM_OWNERS', label: t('Propriétaires') },
+          { value: 'FROM_RENTERS', label: t('Locataires') },
+          { value: 'FROM_CRM_CONTACTS', label: t('Contacts CRM') }
+        ]
       }
-    },
-    [tenantId, selectedList, message]
-  );
+    ],
+    text: LIST_TEXT,
+    accessors: LIST_ACCESSORS
+  });
+
+  // Abonnés de la liste ouverte (paginés par le serveur), préfixe « abo ».
+  const subSearch = useListSearch({
+    paramPrefix: 'abo',
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('E-mail ou nom de l’abonné…') },
+      {
+        key: 'status',
+        type: 'multiSelect',
+        label: t('Statut'),
+        primary: true,
+        options: [
+          { value: 'ACTIVE', label: t('Actif') },
+          { value: 'PENDING_CONFIRMATION', label: t('En attente') },
+          { value: 'UNSUBSCRIBED', label: t('Désabonné') }
+        ]
+      }
+    ]
+  });
+  const subParamsRef = useRef(subSearch.apiParams);
+  subParamsRef.current = subSearch.apiParams;
+  const subParamsKey = JSON.stringify(subSearch.apiParams);
+
+  const loadSubscribers = useCallback(async () => {
+    if (!tenantId || !selectedList) return;
+    setSubLoading(true);
+    try {
+      const data = await newsletterService.listSubscribers(tenantId, selectedList.id, subParamsRef.current);
+      setSubscribers(data.subscribers);
+      setPagination(data.pagination);
+    } catch (e) {
+      message.error((e as Error).message || t('Erreur lors du chargement'));
+    } finally {
+      setSubLoading(false);
+    }
+  }, [tenantId, selectedList, message]);
 
   useEffect(() => {
     loadLists();
@@ -70,11 +117,11 @@ export function NewsletterListsPage() {
 
   useEffect(() => {
     if (selectedList) {
-      loadSubscribers(1, pagination.limit);
+      loadSubscribers();
     } else {
       setSubscribers([]);
     }
-  }, [selectedList, loadSubscribers]);
+  }, [selectedList, loadSubscribers, subParamsKey]);
 
   const handleCreateList = async (values: { name: string; type: string; doubleOptIn?: boolean }) => {
     if (!tenantId) return;
@@ -134,7 +181,7 @@ export function NewsletterListsPage() {
     try {
       await newsletterService.removeSubscriber(tenantId, sub.id);
       message.success(t('Abonné retiré'));
-      loadSubscribers(pagination.page, pagination.limit);
+      loadSubscribers();
       loadLists();
     } catch (e) {
       message.error((e as Error).message || 'Erreur');
@@ -177,7 +224,7 @@ export function NewsletterListsPage() {
           value: result.skipped ? `, ${result.skipped} ignoré(s) ou déjà présents` : ''
         })
       );
-      loadSubscribers(1, pagination.limit);
+      loadSubscribers();
       loadLists();
     } catch (e) {
       message.error((e as Error).message || t("Erreur lors de l'ajout"));
@@ -240,14 +287,20 @@ export function NewsletterListsPage() {
                   <SubscriberList
                     subscribers={subscribers}
                     loading={subLoading}
-                    pagination={pagination}
-                    onPageChange={(page, limit) => loadSubscribers(page, limit ?? pagination.limit)}
+                    pagination={{ ...pagination, page: subSearch.page, limit: subSearch.pageSize }}
+                    search={subSearch.searchProps}
+                    isFiltered={subSearch.isFiltered}
+                    onPageChange={(page, limit) => {
+                      if (limit && limit !== subSearch.pageSize) subSearch.setPageSize(limit);
+                      subSearch.setPage(page);
+                    }}
                     onRemove={handleRemoveSubscriber}
                     onImport={() => setImportModalOpen(true)}
                     onExport={handleExport}
                     exportFetchAll={() =>
                       collectAllPages<NewsletterSubscriber>(async (page, limit) => {
                         const data = await newsletterService.listSubscribers(tenantId!, selectedList.id, {
+                          ...subSearch.filterParams,
                           page,
                           limit
                         });
@@ -260,9 +313,10 @@ export function NewsletterListsPage() {
               ) : (
                 <div style={{ padding: 24, background: '#fafafa', borderRadius: 8 }}>
                   <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-                    {t('Liste dérivée :')} {selectedList.activeCount ?? 0} destinataire(s) potentiel(s) (propriétaires /
-                    locataires / contacts avec consentement). Les abonnés sont résolus à l&apos;envoi de chaque
-                    campagne.
+                    {t('Liste dérivée :')} {selectedList.activeCount ?? 0}{' '}
+                    {t(
+                      "destinataire(s) potentiel(s) (propriétaires / locataires / contacts avec consentement). Les abonnés sont résolus à l'envoi de chaque campagne."
+                    )}
                   </Typography.Paragraph>
                   <Button type="default" icon={<DownloadOutlined />} onClick={handleExport}>
                     {t('Exporter CSV (destinataires actuels)')}
@@ -273,9 +327,15 @@ export function NewsletterListsPage() {
           </>
         ) : (
           <ListDashboard
-            lists={lists}
+            lists={listSearch.filtered}
+            totalLists={lists.length}
+            search={listSearch.searchProps}
+            onClearSearch={listSearch.clear}
             loading={loading}
-            onSelectList={setSelectedList}
+            onSelectList={list => {
+              subSearch.clear();
+              setSelectedList(list);
+            }}
             onCreateList={() => setCreateModalOpen(true)}
             onEditList={l => {
               setEditList(l);

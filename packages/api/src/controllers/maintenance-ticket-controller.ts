@@ -27,6 +27,42 @@ import {
 } from '@prisma/client';
 import { parsePagination } from '../utils/pagination-helper';
 import { parseEnumParam } from '../utils/query-params';
+import { BadRequestError } from '../middleware/error-middleware';
+import { t } from '../i18n';
+import { dayEnd, dayStart, zDay, zSearch } from '../utils/list-query-schemas';
+
+/** Recherche libre (briques partagées) : rognée, 100 caractères au plus, vide = pas de filtre, sinon 400. */
+function parseSearchQuery(raw: unknown): string | undefined {
+  const parsed = zSearch(100).safeParse(raw);
+  if (!parsed.success) {
+    throw new BadRequestError(t('Paramètre invalide : {{name}}.', { name: 'search' }), [
+      { field: 'search', message: t('Texte trop long ou mal formé.') }
+    ]);
+  }
+  return parsed.data;
+}
+
+/**
+ * Date de filtre : `aaaa-mm-jj` réel (briques partagées ; la borne de fin couvre toute la journée, UTC)
+ * ou, par compatibilité, une date-heure ISO. Une valeur illisible est un 400, jamais une `Invalid Date`.
+ */
+function parseDateQuery(raw: unknown, name: string, endOfDay: boolean): Date | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const invalid = () =>
+    new BadRequestError(t('Paramètre invalide : {{name}}.', { name }), [
+      { field: name, message: t('Date invalide (format aaaa-mm-jj).') }
+    ]);
+  if (typeof raw !== 'string' || raw.length > 40) throw invalid();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const day = zDay.safeParse(raw);
+    if (!day.success || !day.data) throw invalid();
+    return endOfDay ? dayEnd(day.data) : dayStart(day.data);
+  }
+  // Date-heure ISO (non couverte par zDay) : conservée telle quelle.
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) throw invalid();
+  return date;
+}
 
 /**
  * Repond directement quand l'erreur porte deja son statut HTTP.
@@ -134,6 +170,26 @@ export async function listTenantTicketsHandler(req: Request, res: Response): Pro
     }
     if (req.query.leaseId) {
       filters.leaseId = req.query.leaseId as string;
+    }
+    const tenantSearch = parseSearchQuery(req.query.search);
+    if (tenantSearch) {
+      filters.search = tenantSearch;
+    }
+    const tenantPriority = parseEnumParam(req.query.priority, MaintenanceTicketPriority, 'priority');
+    if (tenantPriority) {
+      filters.priority = tenantPriority;
+    }
+    const tenantCategory = parseEnumParam(req.query.category, MaintenanceTicketCategory, 'category');
+    if (tenantCategory) {
+      filters.category = tenantCategory;
+    }
+    const tenantDateFrom = parseDateQuery(req.query.dateFrom, 'dateFrom', false);
+    if (tenantDateFrom) {
+      filters.dateFrom = tenantDateFrom;
+    }
+    const tenantDateTo = parseDateQuery(req.query.dateTo, 'dateTo', true);
+    if (tenantDateTo) {
+      filters.dateTo = tenantDateTo;
     }
 
     const { page, limit } = parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 });
@@ -623,11 +679,21 @@ export async function listAllTicketsHandler(req: Request, res: Response): Promis
     if (req.query.assignedVendorId) {
       filters.assignedVendorId = req.query.assignedVendorId as string;
     }
-    if (req.query.dateFrom) {
-      filters.dateFrom = new Date(req.query.dateFrom as string);
+    const category = parseEnumParam(req.query.category, MaintenanceTicketCategory, 'category');
+    if (category) {
+      filters.category = category;
     }
-    if (req.query.dateTo) {
-      filters.dateTo = new Date(req.query.dateTo as string);
+    const search = parseSearchQuery(req.query.search);
+    if (search) {
+      filters.search = search;
+    }
+    const dateFrom = parseDateQuery(req.query.dateFrom, 'dateFrom', false);
+    if (dateFrom) {
+      filters.dateFrom = dateFrom;
+    }
+    const dateTo = parseDateQuery(req.query.dateTo, 'dateTo', true);
+    if (dateTo) {
+      filters.dateTo = dateTo;
     }
 
     const { page, limit } = parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 });

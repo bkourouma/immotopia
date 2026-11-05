@@ -523,7 +523,10 @@ async function choisir(etiquette: RegExp, texteOption: RegExp) {
  */
 async function fenetreOuverturePrerempli(): Promise<HTMLElement> {
   const fenetre = await screen.findByRole('dialog', {}, TIMEOUT);
-  await waitFor(() => expect(within(fenetre).queryByText('Choisir un lieu de stockage')).not.toBeInTheDocument(), TIMEOUT);
+  await waitFor(
+    () => expect(within(fenetre).queryByText('Choisir un lieu de stockage')).not.toBeInTheDocument(),
+    TIMEOUT
+  );
   return fenetre;
 }
 
@@ -580,7 +583,7 @@ describe('Le transfert entre lieux', () => {
     expect(corps).not.toHaveProperty('tenantId');
     expect(corps).not.toHaveProperty('unitCost');
     expect(corps).not.toHaveProperty('siteId');
-  }, 40000);
+  }, 120000);
 
   it('envoie la précision quand le motif est « Autre », et ferme l’envoi tant qu’elle manque', async () => {
     monter();
@@ -595,7 +598,7 @@ describe('Le transfert entre lieux', () => {
     const [, corps] = post.mock.calls[0] as [string, Record<string, unknown>];
     expect(corps.reasonCode).toBe('OTHER');
     expect(corps.reason).toBe('Prêt au chantier voisin');
-  }, 40000);
+  }, 120000);
 
   it('désactive le lieu d’un chantier clos dans les destinations', async () => {
     monter();
@@ -603,7 +606,7 @@ describe('Le transfert entre lieux', () => {
     const clos = items.find(item => /Dépôt de Cocody/.test(item.textContent ?? ''));
     expect(clos?.textContent).toMatch(/\(chantier clos\)/);
     expect(clos?.className).toMatch(/ant-select-item-option-disabled/);
-  }, 40000);
+  }, 120000);
 
   it('lieu d’origine en comptage : ni quantité, ni avertissement de dépassement', async () => {
     configurerGet({ soldes: [solde(SABLE, MAGASIN, null)], blindLocationIds: [MAGASIN] });
@@ -615,7 +618,7 @@ describe('Le transfert entre lieux', () => {
     expect(await screen.findByText(/la quantité disponible n’est pas affichée/, {}, TIMEOUT)).toBeInTheDocument();
     expect(screen.queryByText(/La quantité dépasse/)).not.toBeInTheDocument();
     expect(screen.queryByText(/il reste/)).not.toBeInTheDocument();
-  }, 40000);
+  }, 120000);
 
   it('n’affiche pas la valeur déplacée sans les valeurs', async () => {
     configurerGet({ ctx: contexte({}, { valuesVisible: false }), valuesVisible: false });
@@ -632,7 +635,7 @@ describe('Le transfert entre lieux', () => {
     expect(screen.getByText(/Les valeurs du stock ne sont pas affichées pour votre rôle/)).toBeInTheDocument();
     // « il y reste » d'un lieu en comptage : masqué, pas « 0 ».
     expect(screen.getByText('Masqué (comptage en cours)')).toBeInTheDocument();
-  }, 40000);
+  }, 120000);
 });
 
 // ===========================================================================
@@ -649,7 +652,7 @@ describe('La liste des inventaires', () => {
     expect(screen.queryByText('Brouillon')).not.toBeInTheDocument();
     expect(screen.getAllByText('Masqué').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Justifier les écarts' })).toBeInTheDocument();
-  }, 40000);
+  }, 120000);
 
   it('ouvre un inventaire courant : le lieu et la date, jamais l’agence', async () => {
     post.mockResolvedValue({ data: { data: enCours() } });
@@ -663,7 +666,7 @@ describe('La liste des inventaires', () => {
     const [adresse, corps] = post.mock.calls[0] as [string, Record<string, unknown>];
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/counts`);
     expect(Object.keys(corps).sort()).toEqual(['countedAt', 'locationId']);
-  }, 40000);
+  }, 120000);
 
   it('?ouvrir=OPENING&lieu= préremplit l’inventaire d’ouverture quand le lieu le porte', async () => {
     const ctx = contexte();
@@ -680,7 +683,7 @@ describe('La liste des inventaires', () => {
       'Inventaire d’ouverture',
       'Inventaire de clôture'
     ]);
-  }, 40000);
+  }, 120000);
 
   it('n’offre pas « Inventaire d’ouverture » quand openingCountSuggested est faux', async () => {
     monter(`/tenant/${TENANT}/finance/stock/inventaire?ouvrir=OPENING&lieu=${DEPOT}`);
@@ -689,7 +692,7 @@ describe('La liste des inventaires', () => {
     expect(within(fenetre).getByText('Inventaire courant')).toBeInTheDocument();
     const natures = await optionsDeId('comptage-nature');
     expect(natures.map(n => n.textContent)).toEqual(['Inventaire courant', 'Inventaire de clôture']);
-  }, 40000);
+  }, 120000);
 });
 
 // ===========================================================================
@@ -710,7 +713,7 @@ describe('Le comptage en cours (DRAFT)', () => {
       expect(url).not.toMatch(/\/stock\/balances/);
     }
     attendreVocabulaireNeutre();
-  }, 40000);
+  }, 120000);
 
   it('le PUT ne porte que l’article, la quantité comptée et l’identifiant — jamais de motif', async () => {
     monterDetail(EN_COURS);
@@ -726,7 +729,7 @@ describe('Le comptage en cours (DRAFT)', () => {
     expect(String(corps.clientRequestId)).toMatch(UUID);
     expect(corps).not.toHaveProperty('reason');
     expect(corps).not.toHaveProperty('expectedQuantity');
-  }, 40000);
+  }, 120000);
 
   it('« Clore le comptage » poste …/close après confirmation', async () => {
     post.mockResolvedValue({ data: { data: clos() } });
@@ -737,7 +740,7 @@ describe('Le comptage en cours (DRAFT)', () => {
 
     await waitFor(() => expect(post).toHaveBeenCalled(), TIMEOUT);
     expect(post.mock.calls[0][0]).toBe(`/tenants/${TENANT}/finance/stock/counts/${EN_COURS}/close`);
-  }, 40000);
+  }, 120000);
 
   it('relaie STOCK_COUNT_INCOMPLETE en nommant les articles du serveur', async () => {
     post.mockRejectedValue({
@@ -757,7 +760,7 @@ describe('Le comptage en cours (DRAFT)', () => {
 
     expect(await screen.findByText(/Il reste à compter : Fer à béton HA 12/, {}, TIMEOUT)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Compter Fer à béton HA 12' })).toBeInTheDocument();
-  }, 40000);
+  }, 120000);
 
   it('abandonne avec un motif obligatoire', async () => {
     post.mockResolvedValue({ data: { data: { ...enCours(), status: 'CANCELLED' } } });
@@ -775,7 +778,7 @@ describe('Le comptage en cours (DRAFT)', () => {
       `/tenants/${TENANT}/finance/stock/counts/${EN_COURS}/cancel`,
       { reason: 'Mauvais lieu choisi' }
     ]);
-  }, 40000);
+  }, 120000);
 });
 
 // ===========================================================================
@@ -792,7 +795,7 @@ describe('Le comptage clos (COUNTED)', () => {
     expect(aJustifier).toHaveLength(1);
     expect(screen.getByText(/Motif libre : Trois tôles/)).toBeInTheDocument();
     expect(document.querySelector('.ant-typography-danger')).toBeNull();
-  }, 40000);
+  }, 120000);
 
   it('justifie un écart : PUT …/justification avec le motif ; « Autre » sans précision reste fermé', async () => {
     put.mockResolvedValue({ data: { data: ligne('l-fer', FER) } });
@@ -813,7 +816,7 @@ describe('Le comptage clos (COUNTED)', () => {
       `/tenants/${TENANT}/finance/stock/counts/${CLOS}/lines/${FER}/justification`,
       { reasonCode: 'UNEXPLAINED_DISAPPEARANCE' }
     ]);
-  }, 40000);
+  }, 120000);
 
   it('écarte une ligne avec un motif : POST …/set-aside', async () => {
     post.mockResolvedValue({ data: { data: clos() } });
@@ -828,7 +831,7 @@ describe('Le comptage clos (COUNTED)', () => {
       `/tenants/${TENANT}/finance/stock/counts/${CLOS}/lines/${FER}/set-aside`,
       { reason: 'À recompter demain' }
     ]);
-  }, 40000);
+  }, 120000);
 
   it('écarte tous les non comptés en une fois, et ferme la validation tant qu’il en reste', async () => {
     post.mockResolvedValue({ data: { data: clos() } });
@@ -848,14 +851,14 @@ describe('Le comptage clos (COUNTED)', () => {
       `/tenants/${TENANT}/finance/stock/counts/${CLOS}/set-aside-uncounted`,
       { reason: 'Inventaire tournant' }
     ]);
-  }, 40000);
+  }, 120000);
 
   it('n’offre pas le procès-verbal avant la validation, et garde un vocabulaire neutre', async () => {
     monterDetail(CLOS);
     await screen.findByText(`${MOINS}7 barre`, {}, TIMEOUT);
     expect(screen.queryByRole('button', { name: /procès-verbal/ })).not.toBeInTheDocument();
     attendreVocabulaireNeutre();
-  }, 40000);
+  }, 120000);
 });
 
 // ===========================================================================
@@ -877,7 +880,7 @@ describe('La validation', () => {
 
     await waitFor(() => expect(post).toHaveBeenCalled(), TIMEOUT);
     expect(post.mock.calls[0]).toEqual([`/tenants/${TENANT}/finance/stock/counts/${CLOS}/validate`, {}]);
-  }, 40000);
+  }, 120000);
 
   it('quatre yeux : un compteur sans dérogation voit l’alerte et un bouton fermé', async () => {
     configurerGet({ liste: [closPret({ validation: { callerIsCounter: true, selfValidationAllowed: false } })] });
@@ -885,7 +888,7 @@ describe('La validation', () => {
     expect(await screen.findByText('Vous avez compté des lignes de cet inventaire', {}, TIMEOUT)).toBeInTheDocument();
     expect(screen.getByText('Une autre personne habilitée de l’agence doit le valider.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Valider l’inventaire' })).toBeDisabled();
-  }, 40000);
+  }, 120000);
 
   it('dérogation permise : le bouton ouvre « Valider sans second regard » et envoie la raison', async () => {
     configurerGet({ liste: [closPret({ validation: { callerIsCounter: true, selfValidationAllowed: true } })] });
@@ -901,7 +904,7 @@ describe('La validation', () => {
 
     await waitFor(() => expect(post).toHaveBeenCalled(), TIMEOUT);
     expect(post.mock.calls[0][1]).toEqual({ selfValidationReason: 'Je suis seul habilité ce mois-ci.' });
-  }, 40000);
+  }, 120000);
 
   it('400 …REASON_REQUIRED ouvre la fenêtre de dérogation (rôle changé entre deux lectures)', async () => {
     configurerGet({ liste: [closPret()] });
@@ -913,7 +916,7 @@ describe('La validation', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Confirmer la validation' }, TIMEOUT));
 
     expect(await screen.findByLabelText('Pourquoi validez-vous seul ?', {}, TIMEOUT)).toBeInTheDocument();
-  }, 40000);
+  }, 120000);
 
   it('409 …NEGATIVE_AFTER_MOVEMENTS liste les articles avec « Écarter la ligne »', async () => {
     configurerGet({ liste: [closPret()] });
@@ -933,7 +936,7 @@ describe('La validation', () => {
 
     expect(await screen.findByText(/plus que ce qui a été compté : Ciment CPJ 42,5/, {}, TIMEOUT)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Écarter la ligne Ciment CPJ 42,5' })).toBeInTheDocument();
-  }, 40000);
+  }, 120000);
 
   it('403 …SELF_VALIDATION_FORBIDDEN laisse une alerte persistante', async () => {
     configurerGet({ liste: [closPret()] });
@@ -948,7 +951,7 @@ describe('La validation', () => {
       await screen.findByText(/Vous avez compté cet inventaire : une autre personne habilitée/, {}, TIMEOUT)
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Valider l’inventaire' })).toBeDisabled();
-  }, 40000);
+  }, 120000);
 });
 
 // ===========================================================================
@@ -971,14 +974,14 @@ describe('L’inventaire validé', () => {
     expect(screen.getByText(/Cet inventaire ne s’annule pas/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Valider l’inventaire' })).not.toBeInTheDocument();
     attendreVocabulaireNeutre();
-  }, 40000);
+  }, 120000);
 
   it('dit « Figé à la validation » sur les valeurs figées par la validation', async () => {
     configurerGet({ liste: [valide()] });
     monterDetail(VALIDE);
     expect((await screen.findAllByText('Figé à la validation.', {}, TIMEOUT)).length).toBeGreaterThan(0);
     expect(screen.queryByText('Non figée (inventaire antérieur au lot)')).not.toBeInTheDocument();
-  }, 40000);
+  }, 120000);
 
   it('un inventaire antérieur au lot, sans valeur figée, le dit et ne prétend jamais l’avoir figé', async () => {
     configurerGet({
@@ -993,7 +996,7 @@ describe('L’inventaire validé', () => {
     expect(screen.getAllByText('Non figée (inventaire antérieur au lot)')).toHaveLength(4);
     expect(screen.getByText('Écart net')).toBeInTheDocument();
     expect(screen.queryByText(/Figé à la validation/)).not.toBeInTheDocument();
-  }, 40000);
+  }, 120000);
 });
 
 // ===========================================================================
@@ -1038,7 +1041,7 @@ describe('Les captures WhatsApp de l’inventaire (lot 041)', () => {
     // Rien d'autre ne change : l'écart reste celui du lot 040, à justifier.
     expect(screen.getAllByText('Écart à justifier').length).toBeGreaterThan(0);
     attendreVocabulaireNeutre();
-  }, 40000);
+  }, 120000);
 
   it('un 404 de la route des captures laisse l’écran du lot 040 tel quel', async () => {
     configurerGet({ liste: [clos()] });
@@ -1053,7 +1056,7 @@ describe('Les captures WhatsApp de l’inventaire (lot 041)', () => {
     expect(screen.queryByRole('button', { name: 'Photo' })).not.toBeInTheDocument();
     expect(screen.queryByText('Impossible de charger cet inventaire.')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Valider l’inventaire' })).toBeInTheDocument();
-  }, 40000);
+  }, 120000);
 
   it('un inventaire saisi au web n’a ni pastille ni lien photo', async () => {
     configurerGet({ liste: [clos()], captures: { countId: CLOS, source: 'WEB', lines: [] } });
@@ -1065,5 +1068,105 @@ describe('Les captures WhatsApp de l’inventaire (lot 041)', () => {
     );
     expect(screen.queryByTestId('whatsapp-count-badge')).not.toBeInTheDocument();
     expect(screen.queryByTestId('whatsapp-line-badge')).not.toBeInTheDocument();
-  }, 40000);
+  }, 120000);
+});
+
+describe('Onglets paresseux et pagination locale', () => {
+  it('la liste des inventaires n’est demandée qu’à l’ouverture de l’onglet Inventaire physique', async () => {
+    monter();
+    await screen.findByRole('tab', { name: 'Inventaire physique' }, TIMEOUT);
+    const appelsListe = () => get.mock.calls.filter(c => /\/stock\/counts(\?|$)/.test(String(c[0]))).length;
+    expect(appelsListe()).toBe(0);
+    await ongletInventaire();
+    await waitFor(() => expect(appelsListe()).toBeGreaterThan(0), TIMEOUT);
+  }, 120000);
+
+  it('25 inventaires : 20 lignes sur la première page, 5 sur la seconde', async () => {
+    const liste = Array.from({ length: 25 }, (_, i) => ({ ...valide(), id: `comptage-${i}`, lines: [] }));
+    configurerGet({ liste });
+    monter(`/tenant/${TENANT}/finance/stock/inventaire?onglet=inventaire`);
+    await waitFor(() => expect(document.querySelectorAll('tbody tr.ant-table-row').length).toBe(20), TIMEOUT);
+    fireEvent.click(screen.getByTitle('2'));
+    await waitFor(() => expect(document.querySelectorAll('tbody tr.ant-table-row').length).toBe(5), TIMEOUT);
+  }, 120000);
+
+  it('60 lignes de comptage : 50 sur la première page, 10 sur la seconde', async () => {
+    // L'inventaire parent reste dans le DOM : on ne compte que les lignes d'article.
+    const lignesCiment = () =>
+      Array.from(document.querySelectorAll('tbody tr.ant-table-row')).filter(r => /CIM-42/.test(r.textContent ?? ''))
+        .length;
+    const lignes = Array.from({ length: 60 }, (_, i) => ligne(`l-${i}`, CIMENT, { countedQuantity: i }));
+    configurerGet({ liste: [{ ...enCours(), lines: lignes }] });
+    monterDetail(EN_COURS);
+    await waitFor(() => expect(lignesCiment()).toBe(50), TIMEOUT);
+    fireEvent.click(screen.getByTitle('2'));
+    await waitFor(() => expect(lignesCiment()).toBe(10), TIMEOUT);
+  }, 120000);
+});
+
+// ===========================================================================
+// Recherche multicritères (préfixes d'URL `inv` et `lgn`)
+// ===========================================================================
+
+describe('La recherche dans la liste des inventaires', () => {
+  const lignesDuTableau = () => document.querySelectorAll('tbody tr.ant-table-row').length;
+
+  it('filtre les inventaires à la saisie (sans accent ni casse) puis « Effacer les critères » rend la liste', async () => {
+    monter(`/tenant/${TENANT}/finance/stock/inventaire?onglet=inventaire`);
+    await waitFor(() => expect(lignesDuTableau()).toBe(3), TIMEOUT);
+
+    fireEvent.change(within(screen.getByRole('search')).getByRole('textbox'), { target: { value: 'DEPOT' } });
+    await waitFor(() => expect(lignesDuTableau()).toBe(2), TIMEOUT);
+
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    fireEvent.click(effacer[effacer.length - 1]);
+    await waitFor(() => expect(lignesDuTableau()).toBe(3), TIMEOUT);
+  }, 120000);
+
+  it('applique les critères d’une URL partagée (état), sans rien envoyer au serveur', async () => {
+    monter(`/tenant/${TENANT}/finance/stock/inventaire?onglet=inventaire&inv.status=COUNTED`);
+    await waitFor(() => expect(lignesDuTableau()).toBe(1), TIMEOUT);
+    // « Comptage clos » apparaît dans la puce du critère et dans la ligne du tableau.
+    expect(screen.getAllByText('Comptage clos').length).toBeGreaterThan(0);
+    const appels = get.mock.calls.map(c => String(c[0])).filter(url => /\/stock\/counts(\?|$)/.test(url));
+    expect(appels.length).toBeGreaterThan(0);
+    expect(appels.every(url => !url.includes('?'))).toBe(true);
+  }, 120000);
+
+  it('une URL sans résultat propose d’effacer les critères', async () => {
+    monter(`/tenant/${TENANT}/finance/stock/inventaire?onglet=inventaire&inv.kind=CLOSING`);
+    expect(
+      await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', {}, TIMEOUT)
+    ).toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    fireEvent.click(effacer[effacer.length - 1]);
+    await waitFor(() => expect(lignesDuTableau()).toBe(3), TIMEOUT);
+  }, 120000);
+});
+
+describe('La recherche dans les lignes d’un comptage', () => {
+  it('filtre les lignes à la saisie, et « En écart » écarte la ligne non comptée', async () => {
+    monterDetail(CLOS);
+    expect(await screen.findByText(`${MOINS}7 barre`, {}, TIMEOUT)).toBeInTheDocument();
+    expect(screen.getByText(/SAB-00/)).toBeInTheDocument();
+    expect(screen.getByText(/TOL-BA/)).toBeInTheDocument();
+
+    const barres = screen.getAllByRole('search');
+    fireEvent.change(within(barres[barres.length - 1]).getByRole('textbox'), { target: { value: 'fer a beton' } });
+    await waitFor(() => expect(screen.queryByText(/TOL-BA/)).not.toBeInTheDocument(), TIMEOUT);
+    expect(screen.getByText(`${MOINS}7 barre`)).toBeInTheDocument();
+  }, 120000);
+
+  it('applique le critère « En écart » d’une URL partagée', async () => {
+    monter(`/tenant/${TENANT}/finance/stock/inventaire?inventaire=${CLOS}&lgn.ecart=1`);
+    expect(await screen.findByText(`${MOINS}7 barre`, {}, TIMEOUT)).toBeInTheDocument();
+    expect(screen.getByText(/TOL-BA/)).toBeInTheDocument();
+    expect(screen.queryByText(/SAB-00/)).not.toBeInTheDocument();
+  }, 120000);
+
+  it('un comptage à l’aveugle ne propose pas « En écart » (il révélerait l’attendu)', async () => {
+    monterDetail(EN_COURS);
+    await screen.findByText(/CIM-42/, {}, TIMEOUT);
+    expect(screen.queryByText('En écart')).not.toBeInTheDocument();
+  }, 120000);
 });

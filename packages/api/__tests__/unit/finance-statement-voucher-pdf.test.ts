@@ -12,6 +12,7 @@ const mockPrisma: any = {
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
 import { PDFDocument, PDFPage } from 'pdf-lib';
+import { runWithLanguage } from '../../src/i18n';
 import { buildAccountStatementPdf } from '../../src/lib/finance/statement-pdf';
 import { printCashVoucherHandler } from '../../src/controllers/finance-sites-controller';
 
@@ -61,6 +62,43 @@ function movement(index: number): any {
 }
 
 describe('relevé de compte financier (PDF)', () => {
+  it('nomme les mouvements selon la nature du tiers et la langue du document', async () => {
+    const base = {
+      tenantId: TENANT,
+      accountLabel: 'C1',
+      currency: 'FCFA',
+      openingBalance: 0,
+      closingBalance: 0,
+      movements: [{ ...movement(1), type: 'INSTALLMENT' }]
+    };
+    await buildAccountStatementPdf({ ...base, kind: 'TENANT' });
+    expect(texts).toContain('Loyer');
+    expect(texts).not.toContain('INSTALLMENT');
+
+    texts.length = 0;
+    await buildAccountStatementPdf({ ...base, kind: 'SUPPLIER' });
+    expect(texts).toContain('Facture');
+    expect(texts).not.toContain('Loyer');
+
+    texts.length = 0;
+    await runWithLanguage('en', () => buildAccountStatementPdf({ ...base, kind: 'SUPPLIER' }));
+    expect(texts).toContain('Invoice');
+  });
+
+  it('signale les lignes filtrées et conserve le solde réel de chaque mouvement', async () => {
+    await buildAccountStatementPdf({
+      tenantId: TENANT,
+      accountLabel: 'C1',
+      currency: 'FCFA',
+      openingBalance: 100,
+      closingBalance: 900,
+      filteredTotals: { debit: 200, credit: 0 },
+      movements: [{ ...movement(1), balanceAfter: 700 }]
+    });
+    expect(texts).toContain('Lignes filtrées');
+    expect(texts).toContain('700,00 FCFA');
+    expect(texts).toContain('Solde de clôture : 900,00 FCFA');
+  });
   it("porte l'en-tête de l'agence, le titre, les soldes et un pied paginé", async () => {
     const buffer = await buildAccountStatementPdf({
       tenantId: TENANT,

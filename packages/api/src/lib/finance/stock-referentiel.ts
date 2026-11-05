@@ -63,6 +63,7 @@ import type {
   UpdateStockItemTx,
   UpdateStockLocationTx
 } from './types-lot5-referentiel';
+import { escapeLike } from '../../utils/like-escape';
 
 /**
  * Le défaut du PRD (besoin S5). Écrit une fois ici plutôt que répété : c'est
@@ -259,8 +260,8 @@ export const listStockItems: ListStockItems = async (tenantId, filters) => {
       ...(search
         ? {
             OR: [
-              { reference: { contains: search, mode: 'insensitive' as const } },
-              { label: { contains: search, mode: 'insensitive' as const } }
+              { reference: { contains: escapeLike(search), mode: 'insensitive' as const } },
+              { label: { contains: escapeLike(search), mode: 'insensitive' as const } }
             ]
           }
         : {})

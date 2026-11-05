@@ -17,6 +17,45 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## orch/2026-11-03-ux-recherche — recherche multicritères et ergonomie (2026-11-04)
+
+**État :** tous les lots retenus sont intégrés et les contrôles locaux sont verts. [PR #195](https://github.com/bkourouma/immotopia/pull/195) ouverte ; les suites complètes backend/web et leur verdict sont attachés à cette PR. Elle est maintenue en brouillon tant que sa validation automatique n'est pas terminée. Passation d'origine et décisions métier : [HANDOFF-ux-recherche.md](HANDOFF-ux-recherche.md).
+
+**Fait :** lots initiaux conservés ; SYN-B terminé, relu et fusionné (`949b1ece`, lot `36d5da6d`). JOK intégré par `d7843e87` (lot `fde5b12b`) : caractères LIKE cherchés littéralement, recherches du journal respectant l'identité plateforme masquée, budget CRM égal à zéro, suppression de quatre anciens lecteurs comptables et deux schémas sans appelant runtime. Corrections de reprise `7048a197` : purge des filtres des onglets du bail ; étapes gagnées/perdues et export cohérent du Kanban ; PDF du relevé aligné sur la recherche avec vrais soldes et libellés adaptés au tiers. Traductions EN/AR et libellés hérités traités (1 304 entrées modifiées contrôlées sans vide ni désaccord de paramètres) ; classeur et miroir actualisés (1 154 sous-fonctionnalités). Catalogue IA régénéré : 785 routes, contenu déjà cohérent.
+
+**Reste :**
+
+- Avant la fusion, consulter les checks de la PR #195 (la CI actuelle comprend quatre lots web, l'API et l'isolation réelle) et résoudre les échecs éventuels. Les suites complètes n'ont pas été exécutées en local pendant la reprise ; leur exécution de référence est celle de GitHub Actions sur le dernier SHA de la PR.
+- La fusion et le déploiement restent à l'utilisateur. Les limites de couverture manuelle et les points d'attention métier/migration sont documentés dans la PR et ci-dessous.
+
+Vérifications locales terminées :
+
+- Intégration finale : `npm run build` (TypeScript API et web sans erreur, Vite production), lint sans erreur (avertissements conservés), architecture sans violation, `wiki:check`, i18n web/API, contrastes, budget du point d'entrée : 229 699 octets gzip pour 230 400 autorisés.
+- Reprise : 37 tests API finance/PDF, 43 tests web CRM/bail/relevé, test de bascule des libellés des biens en arabe verts.
+- SYN-B : 91 tests Jest et 86 scénarios web verts après correction d'une assertion d'encodage URL (fichier AG rejoué seul : 19/19).
+- JOK : 284 tests unitaires, 58 tests API historiques, trois suites SQL réelles et isolation 129/129, typecheck API, architecture verts. Ces comptes ne s'additionnent pas : certaines suites se recouvrent.
+- Validation du lanceur isolation sous 4 Go : 16 fichiers / 339 tests verts (fichiers 1–5, puis reprise 6–16 après mise à jour des assertions de permission). Aucun test désactivé ; exécution complète en une commande confiée à la CI bloquante du dernier SHA.
+- Retours de la première CI corrigés et rejoués localement : programmation de charges 27/27 ; contrat des lots et export grand livre 8/8. Le second passage CI doit valider ces corrections avec l'ensemble des suites.
+- Relecture de code et de sécurité indépendantes : constats confirmés corrigés ; relecture ciblée finale sans nouveau défaut confirmé.
+- Recette sur données synthétiques : bien hors première page ; état vide et effacement ; CSV de 55 biens excluant l'autre agence ; mobile arabe 390 px sans débordement et application différée des critères ; vrais soldes 1 000 / 1 500 dans le relevé et le PDF rendu ; recherche d'une assemblée ancienne parmi 125 et CSV filtré d'une ligne ; `%` et `_` retournant uniquement le résultat littéral attendu.
+- Non couvert manuellement : tous les écrans/rôles/combinaisons, volumes réels, vote/quorum en session réelle, paiements réels et déploiement.
+
+**Pièges :**
+
+- Jest : toujours `--forceExit`.
+- La CI d'isolation est désormais bloquante : le badge vert précédent masquait un OOM avec `continue-on-error`. Le lanceur conserve les 16 fichiers, un processus séquentiel par fichier avec 4 Go de heap. La suite générale conserve son parallélisme et son budget antérieurs : son premier passage a terminé les 710 fichiers sans OOM (682 verts, 26 ignorés, deux tests corrigés), et utilise désormais `--forceExit`. Le contrôle de dérive Prisma reste le seul step toléré (index SQL/Prisma, explication dans le workflow).
+- Assertions de refus patrimoine : vérifier `requiredPermission`, pas le code dans le message localisé. Les lectures globales d'audit utilisent 100 lignes par page pour rester rejouables lorsque le journal immuable grossit ; les scénarios ciblés à 2 lignes sont conservés.
+- Les tests jsdom lents expirent sous charge : relancer le fichier seul avant de conclure.
+- Prisma `contains` n'échappe pas `%` ni `_`.
+- La PR #193 touche les mêmes fichiers.
+- PERF est écarté : pas de gain démontré, risque de cache de paramètres périmés dans le hook partagé. La PR #194 existe mais n'est pas intégrée ; ni branche ni PR supprimée.
+- Le PostgreSQL natif Windows occupe 5432 et masque le port du conteneur de développement. Les tests utilisent un NOUVEAU conteneur dédié `immotopia-ux-codex-test`, lié à `127.0.0.1:55432`, avec bases distinctes `immotopia_ux_codex_test_20261104` et `immotopia_ux_codex_demo_20261104`. Ne jamais utiliser la base réelle pour ces essais ; aucun `.env` lu ou modifié explicitement.
+- Recette synthétique : web 3300, API 8800, scripts temporaires dans `%TEMP%/immotopia-ux-qa-20261104`. L'API est lancée en mode test sans jobs. Recharger après les écritures de catalogues : le HMR de LanguageContext peut provoquer une erreur temporaire en développement.
+- PDF arabe : repli français préexistant imposé par les polices WinAnsi ; les clés AR sont traduites mais le moteur PDF arabe n'a pas été remplacé.
+- Les relances SQL sur une même base de test sont désormais rejouables : nettoyage des appels/paiements et lignes comptables des seuls tenants de la suite avant la suppression ; lecture globale des audits à 100 par page, scénarios de pagination ciblés conservés à 2.
+
+**Branche :** `orch/2026-11-03-ux-recherche` @ `d7843e87` (dernier commit fonctionnel, avant cette mise à jour documentaire). Worktree `D:/APP/Immobillier-worktrees/ux-integ`. Base `origin/main` @ `6be7f91a`, revérifiée le 2026-11-04. Le checkout principal est ancien et contient des modifications d'une autre session : ne pas y travailler.
+
 ## État des lieux (pilote) — 2026-10-31
 
 **État :** constat, puis mise en application des PR ouvertes (planning du 2026-10-31) : #175 et #191 fusionnées par l'utilisateur, staging puis production déployés sur `dd5b61c3` ; restent les actions de l'étape 5. Le classifieur du mode auto refuse `gh pr merge` à l'agent (« Merge Without Review ») : les fusions restent à l'utilisateur.

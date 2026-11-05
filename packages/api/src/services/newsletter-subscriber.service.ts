@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import crypto from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { toCsvString } from '../lib/csv';
@@ -65,7 +66,7 @@ export async function addSubscriber(tenantId: string, listId: string, data: { em
 export async function listSubscribers(
   tenantId: string,
   listId: string,
-  options: { status?: string; page?: number; limit?: number }
+  options: { status?: string | string[]; search?: string; page?: number; limit?: number }
 ) {
   // La liste doit appartenir à l'agence : une liste d'une autre agence est
   // indiscernable d'une liste inexistante (même 404).
@@ -76,11 +77,27 @@ export async function listSubscribers(
   const limit = Math.min(100, Math.max(1, options.limit ?? 50));
   const skip = (page - 1) * limit;
 
+  const statuses = (Array.isArray(options.status) ? options.status : (options.status ?? '').split(','))
+    .map(value => value.trim())
+    .filter(Boolean);
+  const search = options.search?.trim();
+
   // Liste dérivée (propriétaires, locataires, contacts CRM) : aucun abonné
   // n'est stocké, on renvoie les destinataires résolus à la volée, avec la
   // même logique que l'envoi de campagne et l'export. Ils sont tous actifs.
   if (list.type !== 'MANUAL') {
-    const recipients = options.status && options.status !== 'ACTIVE' ? [] : await resolveRecipients(tenantId, listId);
+    const allRecipients =
+      statuses.length > 0 && !statuses.includes('ACTIVE') ? [] : await resolveRecipients(tenantId, listId);
+    const needle = search?.toLowerCase();
+    const recipients = needle
+      ? allRecipients.filter(r =>
+          [r.email, r.prenom, r.nom, [r.prenom, r.nom].filter(Boolean).join(' ')].some(value =>
+            String(value ?? '')
+              .toLowerCase()
+              .includes(needle)
+          )
+        )
+      : allRecipients;
     const total = recipients.length;
     const subscribers = recipients.slice(skip, skip + limit).map(r => ({
       id: `derived:${r.email.toLowerCase()}`,
@@ -101,7 +118,15 @@ export async function listSubscribers(
   }
 
   const where: Prisma.NewsletterSubscriberWhereInput = { listId, tenantId };
-  if (options.status) where.status = options.status as 'PENDING_CONFIRMATION' | 'ACTIVE' | 'UNSUBSCRIBED';
+  type SubscriberStatus = 'PENDING_CONFIRMATION' | 'ACTIVE' | 'UNSUBSCRIBED';
+  if (statuses.length === 1) where.status = statuses[0] as SubscriberStatus;
+  else if (statuses.length > 1) where.status = { in: statuses as SubscriberStatus[] };
+  if (search) {
+    where.OR = [
+      { email: { contains: escapeLike(search), mode: 'insensitive' } },
+      { name: { contains: escapeLike(search), mode: 'insensitive' } }
+    ];
+  }
 
   const [subscribers, total] = await Promise.all([
     prisma.newsletterSubscriber.findMany({

@@ -1,22 +1,16 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Checkbox, Select, Space, Tooltip } from 'antd';
+import { Button, Space, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { acknowledgeBudgetAlert, getSitesDashboard } from '../../services/finance-lot3-service';
 import type { SiteDashboardRow } from '../../types/finance-lot3-types';
 import { SITE_STATUS_LABELS } from '../../types/finance-lot2-types';
-import { useListParams } from '../../hooks/useListParams';
+import { useListSearch } from '../../hooks/useListSearch';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { ApiParams, SearchCriterion } from '../../utils/list-search';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import {
-  PageHeader,
-  StateBlock,
-  MoneyValue,
-  DataView,
-  DataCard,
-  FilterSheet,
-  StatusTag
-} from '../../components/primitives';
+import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatusTag } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { localizedList } from '../../i18n/localized';
@@ -52,22 +46,31 @@ import { localizedList } from '../../i18n/localized';
  * solennité d'une validation ou d'une annulation : « une alerte informe, elle
  * n'interdit pas » (§6 du modèle).
  *
+ * **Recherche multicritères (mode mixte).** Le statut et « en dépassement
+ * uniquement » restent des filtres du SERVEUR (`getSitesDashboard`, qui
+ * calcule l'agrégat) : ils sont envoyés avec leurs clés d'URL d'origine
+ * (`status`, `onlyOverBudget`) et n'ont aucun accesseur local. Le champ libre
+ * (chantier, zone) et l'écart min/max filtrent en local, sur les lignes
+ * reçues, sans rien recalculer (`variance` est lue telle quelle).
+ *
  * **Les filtres envoient un identifiant ou un code, jamais un libellé.**
  * `status` est le code brut (`PLANNED`, `IN_PROGRESS`…), au même titre que
- * `Chantiers.tsx` ; `onlyOverBudget` est un booléen porté par l'URL sous la
- * forme du texte `'true'`, l'unique valeur que `useListParams` sait
- * distinguer d'une absence de filtre.
+ * `Chantiers.tsx` ; `onlyOverBudget` est un booléen de la barre (`1` dans
+ * l'URL) que l'on traduit en `true` pour le service.
  *
  * **Vocabulaire (P-1).** On *engage*, on *budgète*, jamais « débit » ni
  * « crédit ».
  */
 
-type Filters = { status: string; onlyOverBudget: string };
-const FILTER_KEYS = ['status', 'onlyOverBudget'] as const;
-
 const OPTIONS_STATUT = localizedList(() =>
   Object.entries(SITE_STATUS_LABELS).map(([value, label]) => ({ value, label }))
 );
+
+// Champ libre : chantier et zone, tels qu'affichés.
+const TEXTE_RECHERCHE = [(r: SiteDashboardRow) => r.siteLabel, (r: SiteDashboardRow) => r.zone];
+
+// Seul l'écart se filtre en local : statut et dépassement sont envoyés au serveur.
+const ACCESSEURS = { ecart: (r: SiteDashboardRow) => r.variance };
 
 /** Lit le SIGNE d'un écart déjà calculé — ne recalcule jamais l'écart lui-même. */
 function toneEcart(variance: number | null): StatusTone {
@@ -84,11 +87,29 @@ export const TableauDeBordChantiers: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS });
 
+  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
+  const criteres: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Chantier, zone…'), api: false },
+    // Filtres du serveur : aucun accesseur local, ils partent avec leur nom d'origine.
+    { key: 'status', type: 'select', label: t('Statut'), primary: true, options: OPTIONS_STATUT },
+    {
+      key: 'onlyOverBudget',
+      type: 'boolean',
+      label: t('Chantiers en dépassement uniquement'),
+      primary: true,
+      api: (valeur): ApiParams => (valeur ? { onlyOverBudget: 'true' } : {})
+    },
+    { key: 'ecart', type: 'numberRange', label: t('Écart'), unit: 'FCFA', api: false }
+  ];
+
+  // La requête a besoin des critères serveur AVANT d'avoir ses lignes, alors que
+  // la recherche locale a besoin des lignes : une première lecture de l'URL
+  // fournit donc les paramètres d'API, la seconde filtre les lignes reçues.
+  const serveur = useListSearch({ criteria: criteres });
   const filtresApi = {
-    status: list.filters.status || undefined,
-    onlyOverBudget: list.filters.onlyOverBudget === 'true'
+    status: typeof serveur.filterParams.status === 'string' ? serveur.filterParams.status : undefined,
+    onlyOverBudget: serveur.filterParams.onlyOverBudget === 'true'
   };
 
   const {
@@ -108,7 +129,11 @@ export const TableauDeBordChantiers: React.FC = () => {
   });
 
   const lignes = data?.rows ?? [];
-  const nombreFiltres = [list.filters.status, list.filters.onlyOverBudget].filter(Boolean).length;
+  const local = useLocalListSearch<SiteDashboardRow>(data?.rows, {
+    criteria: criteres,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
 
   const acquitter = async (ligne: SiteDashboardRow) => {
     if (!tenantId || !ligne.openAlert) return;
@@ -230,53 +255,18 @@ export const TableauDeBordChantiers: React.FC = () => {
         subtitle={lignes.length > 0 ? `${lignes.length} chantier${lignes.length > 1 ? 's' : ''}` : undefined}
       />
 
-      <FilterSheet
-        activeCount={nombreFiltres}
-        onClear={() => list.setFilters({ status: undefined, onlyOverBudget: undefined })}
-        title={t('Filtrer le tableau de bord')}
-      >
-        <div style={{ minWidth: 200 }}>
-          <label htmlFor="filtre-tdb-statut">{t('Statut')}</label>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            id="filtre-tdb-statut"
-            style={{ width: '100%' }}
-            placeholder={t('Tous les statuts')}
-            allowClear
-            value={list.filters.status || undefined}
-            onChange={valeur => list.setFilters({ status: valeur })}
-            options={OPTIONS_STATUT}
-          />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', height: 32 }}>
-          <Checkbox
-            checked={list.filters.onlyOverBudget === 'true'}
-            onChange={event => list.setFilters({ onlyOverBudget: event.target.checked ? 'true' : undefined })}
-          >
-            {t('Chantiers en dépassement uniquement')}
-          </Checkbox>
-        </div>
-      </FilterSheet>
-
       <DataView<SiteDashboardRow>
-        export={{ filename: t('Tableau de bord des chantiers') }}
-        // Le tableau de bord ne pagine pas (contrat gelé, §5 du modèle) : un
-        // seul appel rend tous les chantiers de l'agence.
-        paginated={false}
+        export={{ filename: t('Tableau de bord des chantiers'), fetchAll: local.exportAll }}
+        // Le tableau de bord ne pagine pas côté serveur (contrat gelé, §5 du
+        // modèle) : un seul appel rend tous les chantiers de l'agence, la
+        // pagination (20 par page) est locale.
         scrollX={1200}
-        items={lignes}
-        total={lignes.length}
-        page={1}
-        pageSize={Math.max(lignes.length, 1)}
-        onPageChange={() => {}}
+        {...local.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger le tableau de bord des chantiers.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={list.isFiltered}
-        onClearFilters={() => list.setFilters({ status: undefined, onlyOverBudget: undefined })}
         emptyDescription={t('Aucun chantier ne correspond à ces critères.')}
         columns={colonnes}
         rowKey={r => r.siteId}

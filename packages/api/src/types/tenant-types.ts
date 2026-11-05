@@ -63,6 +63,8 @@ export interface TenantFilters {
   plan?: string;
   module?: string;
   search?: string;
+  /** Seulement les agences dont une capacite atteint 80 % de leur limite. */
+  nearLimit?: boolean;
   page?: number;
   limit?: number;
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card,
   Button,
@@ -25,6 +25,9 @@ import {
   CalendarOutlined
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
+import { ListSearch, StateBlock } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
 
@@ -121,28 +124,28 @@ const formatDate = (dateString: string) => {
 };
 
 const propertyTypeLabels: Record<string, string> = localizedRecord(() => ({
-  APPARTEMENT: 'Appartement',
-  MAISON_VILLA: 'Maison/Villa',
-  STUDIO: 'Studio',
-  DUPLEX_TRIPLEX: 'Duplex/Triplex',
+  APPARTEMENT: t('Appartement'),
+  MAISON_VILLA: t('Maison/Villa'),
+  STUDIO: t('Studio'),
+  DUPLEX_TRIPLEX: t('Duplex/Triplex'),
   CHAMBRE_COLOCATION: t('Chambre en colocation'),
-  BUREAU: 'Bureau',
-  BOUTIQUE_COMMERCIAL: 'Boutique/Commercial',
+  BUREAU: t('Bureau'),
+  BOUTIQUE_COMMERCIAL: t('Boutique/Commercial'),
   ENTREPOT_INDUSTRIEL: t('Entrepôt/Industriel'),
-  TERRAIN: 'Terrain',
-  IMMEUBLE: 'Immeuble',
-  PARKING_BOX: 'Parking/Box',
+  TERRAIN: t('Terrain'),
+  IMMEUBLE: t('Immeuble'),
+  PARKING_BOX: t('Parking/Box'),
   LOT_PROGRAMME_NEUF: t('Lot programme neuf')
 }));
 
 const propertyStatusLabels: Record<string, string> = localizedRecord(() => ({
-  DRAFT: 'Brouillon',
+  DRAFT: t('Brouillon'),
   UNDER_REVIEW: t("En cours d'examen"),
-  AVAILABLE: 'Disponible',
+  AVAILABLE: t('Disponible'),
   RESERVED: t('Réservé'),
   UNDER_OFFER: t('Sous offre'),
   RENTED: t('Loué'),
-  SOLD: 'Vendu',
+  SOLD: t('Vendu'),
   ARCHIVED: t('Archivé')
 }));
 
@@ -151,8 +154,8 @@ const translatePropertyType = (value: string) => propertyTypeLabels[value] || va
 const translatePropertyStatus = (value: string) => propertyStatusLabels[value] || value;
 
 const transactionModeLabels: Record<string, string> = localizedRecord(() => ({
-  SALE: 'Vente',
-  RENTAL: 'Location',
+  SALE: t('Vente'),
+  RENTAL: t('Location'),
   SHORT_TERM: t('Location courte durée')
 }));
 
@@ -170,9 +173,144 @@ const leaseStatusLabel = (status: string): string => {
   return labels[status] || status;
 };
 
+const ONGLETS_BIEN = ['info', 'lease', 'history', 'revenue', 'maintenance'];
+
+type LeaseHistoryItem = PropertyDetailsData['leaseHistory'][number];
+type MaintenanceItem = PropertyDetailsData['maintenanceHistory'][number];
+
+// Stables : déclarés HORS des composants (le filtrage local reste mémoïsé).
+const TEXTE_BAUX = [(lease: LeaseHistoryItem) => lease.primaryRenter.user.fullName];
+const TEXTE_TICKETS = [
+  (ticket: MaintenanceItem) => ticket.title,
+  (ticket: MaintenanceItem) => ticket.category,
+  (ticket: MaintenanceItem) => ticket.status
+];
+
+/** Historique des baux : borné par rien côté API, donc barre locale (préfixe `bx`). */
+function LeaseHistoryList({ leases }: { leases: LeaseHistoryItem[] }) {
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Locataire…') }
+  ];
+  const local = useLocalListSearch<LeaseHistoryItem>(leases, { paramPrefix: 'bx', criteria, text: TEXTE_BAUX });
+  return (
+    <>
+      <ListSearch {...local.searchProps} aria-label={t("Rechercher dans l'historique des baux")} />
+      {local.total > 0 ? (
+        <List
+          pagination={{
+            current: local.page,
+            pageSize: local.pageSize,
+            total: local.total,
+            onChange: local.dataViewProps.onPageChange,
+            showSizeChanger: true,
+            hideOnSinglePage: true
+          }}
+          dataSource={local.pageItems}
+          renderItem={lease => (
+            <List.Item>
+              <List.Item.Meta
+                title={
+                  <Space>
+                    <Text strong>{lease.primaryRenter.user.fullName}</Text>
+                    <Tag color="default">{t('Terminé')}</Tag>
+                  </Space>
+                }
+                description={
+                  <Space direction="vertical" size={0}>
+                    <Text type="secondary">
+                      {t('Du')} {formatDate(lease.start_date)} {t('au')}{' '}
+                      {lease.end_date ? formatDate(lease.end_date) : 'N/A'}
+                    </Text>
+                    <Text type="secondary">
+                      {t('Loyer :')} {formatCurrency(Number(lease.rent_amount))} {t('/ mois')}
+                    </Text>
+                  </Space>
+                }
+              />
+            </List.Item>
+          )}
+        />
+      ) : (
+        <StateBlock
+          variant="no-results"
+          actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
+        />
+      )}
+    </>
+  );
+}
+
+/** Historique de maintenance : barre locale (préfixe `mnt`). */
+function MaintenanceList({ tickets }: { tickets: MaintenanceItem[] }) {
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Titre, catégorie, statut…') }
+  ];
+  const local = useLocalListSearch<MaintenanceItem>(tickets, { paramPrefix: 'mnt', criteria, text: TEXTE_TICKETS });
+  return (
+    <>
+      <ListSearch {...local.searchProps} aria-label={t("Rechercher dans l'historique de maintenance")} />
+      {local.total > 0 ? (
+        <List
+          pagination={{
+            current: local.page,
+            pageSize: local.pageSize,
+            total: local.total,
+            onChange: local.dataViewProps.onPageChange,
+            showSizeChanger: true,
+            hideOnSinglePage: true
+          }}
+          dataSource={local.pageItems}
+          renderItem={ticket => (
+            <List.Item>
+              <List.Item.Meta
+                title={
+                  <Space>
+                    <Text strong>{ticket.title}</Text>
+                    <Tag color={ticket.status === 'RESOLVED' ? 'success' : 'processing'}>{ticket.status}</Tag>
+                  </Space>
+                }
+                description={
+                  <Space direction="vertical" size={0}>
+                    <Text type="secondary">
+                      {t('Catégorie:')} {ticket.category}
+                    </Text>
+                    <Text type="secondary">
+                      {t('Priorité:')} {ticket.priority}
+                    </Text>
+                    <Text type="secondary">
+                      {t('Créé le:')} {formatDate(ticket.created_at)}
+                    </Text>
+                  </Space>
+                }
+              />
+            </List.Item>
+          )}
+        />
+      ) : (
+        <StateBlock
+          variant="no-results"
+          actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
+        />
+      )}
+    </>
+  );
+}
+
 export default function PropertyDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const ongletParam = searchParams.get('tab');
+  const ongletActif = ongletParam && ONGLETS_BIEN.includes(ongletParam) ? ongletParam : 'info';
+  const changerOnglet = (cle: string) =>
+    setSearchParams(
+      precedent => {
+        const suivant = new URLSearchParams(precedent);
+        suivant.set('tab', cle);
+        return suivant;
+      },
+      { replace: true }
+    );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PropertyDetailsData | null>(null);
@@ -237,7 +375,7 @@ export default function PropertyDetails() {
         <Text type="secondary">{data.property.address}</Text>
       </div>
 
-      <Tabs defaultActiveKey="info">
+      <Tabs activeKey={ongletActif} onChange={changerOnglet} destroyOnHidden>
         {/* T048: Property Information Section */}
         <TabPane
           tab={
@@ -309,6 +447,7 @@ export default function PropertyDetails() {
                 <div style={{ marginTop: 24 }}>
                   <Title level={4}>{t('Co-locataires')}</Title>
                   <List
+                    pagination={{ pageSize: 20, hideOnSinglePage: true }}
                     dataSource={data.currentLease.coRenters}
                     renderItem={coRenter => (
                       <List.Item>
@@ -335,30 +474,7 @@ export default function PropertyDetails() {
         >
           {data.leaseHistory.length > 0 ? (
             <Card title={t('Historique des baux')}>
-              <List
-                dataSource={data.leaseHistory}
-                renderItem={lease => (
-                  <List.Item>
-                    <List.Item.Meta
-                      title={
-                        <Space>
-                          <Text strong>{lease.primaryRenter.user.fullName}</Text>
-                          <Tag color="default">{t('Terminé')}</Tag>
-                        </Space>
-                      }
-                      description={
-                        <Space direction="vertical" size={0}>
-                          <Text type="secondary">
-                            {t('Du')} {formatDate(lease.start_date)} au{' '}
-                            {lease.end_date ? formatDate(lease.end_date) : 'N/A'}
-                          </Text>
-                          <Text type="secondary">Loyer: {formatCurrency(Number(lease.rent_amount))} / mois</Text>
-                        </Space>
-                      }
-                    />
-                  </List.Item>
-                )}
-              />
+              <LeaseHistoryList leases={data.leaseHistory} />
             </Card>
           ) : (
             <Empty description={t('Aucun historique de bail')} />
@@ -412,34 +528,7 @@ export default function PropertyDetails() {
         >
           {data.maintenanceHistory.length > 0 ? (
             <Card title={t('Historique de maintenance')}>
-              <List
-                dataSource={data.maintenanceHistory}
-                renderItem={ticket => (
-                  <List.Item>
-                    <List.Item.Meta
-                      title={
-                        <Space>
-                          <Text strong>{ticket.title}</Text>
-                          <Tag color={ticket.status === 'RESOLVED' ? 'success' : 'processing'}>{ticket.status}</Tag>
-                        </Space>
-                      }
-                      description={
-                        <Space direction="vertical" size={0}>
-                          <Text type="secondary">
-                            {t('Catégorie:')} {ticket.category}
-                          </Text>
-                          <Text type="secondary">
-                            {t('Priorité:')} {ticket.priority}
-                          </Text>
-                          <Text type="secondary">
-                            {t('Créé le:')} {formatDate(ticket.created_at)}
-                          </Text>
-                        </Space>
-                      }
-                    />
-                  </List.Item>
-                )}
-              />
+              <MaintenanceList tickets={data.maintenanceHistory} />
             </Card>
           ) : (
             <Empty description={t('Aucun ticket de maintenance')} />

@@ -1,126 +1,36 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { App, Button, Card, Col, Form, Input, InputNumber, Modal, Row, Select, Space, Tag, Typography } from 'antd';
+import React, { useMemo, useState } from 'react';
+import { App, Button, Col, Form, Input, InputNumber, Modal, Row, Select, Space, Tabs, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import dayjs from 'dayjs';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DataCard, DataView, MoneyValue, StatCard } from '../../components/primitives';
 import { FundMovementsDrawer } from '../../components/syndics/FundMovementsDrawer';
-import { paymentMethodLabel } from '../../components/syndics/labels';
-import type { Sort } from '../../hooks/useListParams';
+import { ChargeCallsTab } from '../../components/syndics/finances/ChargeCallsTab';
+import { OverdueTab } from '../../components/syndics/finances/OverdueTab';
+import { PaymentsTab } from '../../components/syndics/finances/PaymentsTab';
+import { financeLoadError } from '../../components/syndics/finances/finance-rows';
+import { financeKeys } from '../../components/syndics/finances/query-keys';
+import { useLocalTable } from '../../components/syndics/finances/useLocalTable';
+import { useTabParam } from '../../components/syndics/finances/url-params';
 import {
   adjustSyndicateFundBalance,
   createSyndicateFund,
   getOverdueDashboard,
   getSyndicFinanceSummary,
-  listAllChargeCalls,
-  listPaymentReminders,
   renameSyndicateFund
 } from '../../services/syndic-service';
-import {
-  ChargeCall,
-  ChargeCallStatus,
-  FinanceSummary,
-  OverdueDashboard,
-  PaymentReminder,
-  SyndicateLot
-} from '../../types/syndic-types';
+import { FinanceSummary, OverdueDashboard } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
-import { formatLotLabel } from '../../utils/syndic-lot-label';
-import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Paragraph, Title } = Typography;
 
-/**
- * Étiquettes de statut d'un appel de charges — mêmes clés que
- * `ChargeCallTable` (composants/syndics), pour ne pas dupliquer la
- * traduction sous une forme légèrement différente.
- */
-const chargeStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
-  PENDING: { color: 'gold', label: t('En attente') },
-  PARTIAL: { color: 'blue', label: t('Partiel') },
-  PAID: { color: 'green', label: t('Payé') },
-  OVERDUE: { color: 'red', label: t('En retard') }
-};
+/** Onglets de l'écran, dans l'ordre d'affichage (le premier est le défaut de `?tab=`). */
+const FINANCE_TABS = ['fonds', 'appels', 'paiements', 'impayes'] as const;
+type FinanceTab = (typeof FINANCE_TABS)[number];
 
-type LotWithOwner = SyndicateLot & {
-  owner?: { id: string; firstName?: string | null; lastName?: string | null; email?: string | null } | null;
-};
-
-function ownerLabel(
-  owner?: { firstName?: string | null; lastName?: string | null; email?: string | null } | null
-): string {
-  if (!owner) return t('Sans copropriétaire');
-  const name = [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim();
-  return name || owner.email || t('Copropriétaire');
-}
-
-function shortReference(id: string): string {
-  return `APPEL-${id.slice(0, 8).toUpperCase()}`;
-}
-
-function scrollToSection(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-/**
- * Tri et pagination d'une liste déjà chargée en mémoire, appliqués côté
- * client.
- *
- * Les quatre tableaux de cette page partagent une seule requête combinée
- * (résumé + appels + retards + relances) : il n'y a pas de pagination serveur
- * à interroger de nouveau à chaque page ou tri. Ce hook rejoue localement le
- * contrat attendu par `<DataView>` — page courante, total, tri — pour que les
- * quatre tableaux se comportent de façon identique.
- */
-function useLocalTable<T>(items: T[], pageSize: number) {
-  const [page, setPage] = useState(1);
-  const [sort, setSort] = useState<Sort | null>(null);
-
-  useEffect(() => {
-    setPage(1);
-  }, [items]);
-
-  const sorted = useMemo(() => {
-    if (!sort) return items;
-    const { field, order } = sort;
-    return [...items].sort((a, b) => {
-      const av = (a as Record<string, unknown>)[field];
-      const bv = (b as Record<string, unknown>)[field];
-      if (av === bv) return 0;
-      if (av === null || av === undefined) return order === 'asc' ? -1 : 1;
-      if (bv === null || bv === undefined) return order === 'asc' ? 1 : -1;
-      if (typeof av === 'number' && typeof bv === 'number') {
-        return order === 'asc' ? av - bv : bv - av;
-      }
-      const as = String(av);
-      const bs = String(bv);
-      return order === 'asc' ? as.localeCompare(bs) : bs.localeCompare(as);
-    });
-  }, [items, sort]);
-
-  const total = sorted.length;
-  const pageItems = useMemo(
-    () => sorted.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize),
-    [sorted, page, pageSize]
-  );
-
-  return {
-    pageItems,
-    // Toutes les lignes, triées comme à l'écran : c'est ce que l'export emporte.
-    allItems: sorted,
-    total,
-    page,
-    pageSize,
-    onPageChange: (nextPage: number) => setPage(nextPage),
-    sort,
-    onSortChange: (nextSort: Sort | null) => {
-      setSort(nextSort);
-      setPage(1);
-    }
-  };
-}
+const EMPTY_DASHBOARD: OverdueDashboard = { items: [], totals: { overdueCount: 0, overdueAmount: 0 } };
 
 interface FundRow {
   id: string;
@@ -129,39 +39,7 @@ interface FundRow {
   currency: string;
 }
 
-interface ChargeRow {
-  id: string;
-  reference: string;
-  period: string;
-  lotLabel: string;
-  ownerLabel: string;
-  amount: number;
-  paid: number;
-  outstanding: number;
-  dueDate: string;
-  status: ChargeCallStatus;
-}
-
-interface PaymentRow {
-  id: string;
-  paidAt: string;
-  lotLabel: string;
-  ownerLabel: string;
-  chargeReference: string;
-  amount: number;
-  method: string;
-}
-
-interface OverdueRow {
-  chargeCallId: string;
-  lotLabel: string;
-  ownerLabel: string;
-  outstanding: number;
-  daysLate: number;
-  remindersCount: number;
-}
-
-function buildFundRows(summary: FinanceSummary | null): FundRow[] {
+function buildFundRows(summary: FinanceSummary | undefined): FundRow[] {
   if (!summary) return [];
   return summary.funds.map(fund => ({
     id: fund.id,
@@ -171,80 +49,35 @@ function buildFundRows(summary: FinanceSummary | null): FundRow[] {
   }));
 }
 
-function buildChargeRows(charges: ChargeCall[]): ChargeRow[] {
-  return charges.map(charge => {
-    const lot = charge.lot as LotWithOwner | undefined;
-    // Lot S2 : `paidAmount`/`outstandingAmount` sont calculés côté API à
-    // partir des affectations ; repli sur `payments[]` si absents.
-    const amount = Number(charge.amount);
-    const paid =
-      charge.paidAmount !== undefined
-        ? Number(charge.paidAmount)
-        : (charge.payments || []).reduce((sum, payment) => sum + Number(payment.amount), 0);
-    return {
-      id: charge.id,
-      reference: shortReference(charge.id),
-      period: charge.period,
-      lotLabel: formatLotLabel(lot, charge.lotId),
-      ownerLabel: ownerLabel(lot?.owner),
-      amount,
-      paid,
-      outstanding:
-        charge.outstandingAmount !== undefined ? Number(charge.outstandingAmount) : Math.max(0, amount - paid),
-      dueDate: charge.dueDate,
-      status: charge.status
-    };
-  });
-}
-
-function buildPaymentRows(charges: ChargeCall[]): PaymentRow[] {
-  const rows: PaymentRow[] = [];
-  for (const charge of charges) {
-    const lot = charge.lot as LotWithOwner | undefined;
-    for (const payment of charge.payments || []) {
-      rows.push({
-        id: payment.id,
-        paidAt: payment.paidAt,
-        lotLabel: formatLotLabel(lot, charge.lotId),
-        ownerLabel: ownerLabel(lot?.owner),
-        chargeReference: `${charge.period} · ${shortReference(charge.id)}`,
-        amount: Number(payment.amount),
-        method: payment.method || '—'
-      });
-    }
-  }
-  return rows;
-}
-
-function buildOverdueRows(dashboard: OverdueDashboard, reminders: PaymentReminder[]): OverdueRow[] {
-  const reminderCounts = new Map<string, number>();
-  for (const reminder of reminders) {
-    reminderCounts.set(reminder.chargeCallId, (reminderCounts.get(reminder.chargeCallId) || 0) + 1);
-  }
-  return dashboard.items.map(item => ({
-    chargeCallId: item.chargeCallId,
-    lotLabel: formatLotLabel({ lotNumber: item.lotNumber, property: item.property }, item.lotNumber),
-    ownerLabel: ownerLabel(item.owner),
-    outstanding: item.outstanding,
-    daysLate: item.daysLate,
-    remindersCount: reminderCounts.get(item.chargeCallId) || 0
-  }));
-}
-
+/**
+ * Finances d'une copropriété : cartes de synthèse, puis quatre onglets
+ * paresseux (`?tab=`). Chaque onglet charge ses propres données quand il est
+ * affiché — plus de chargement global. Convention d'URL : voir
+ * `components/syndics/finances/url-params.ts`.
+ */
 export const SyndicFinances: React.FC = () => {
   const { message } = App.useApp();
+  const queryClient = useQueryClient();
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
+  const [activeTab, setActiveTab] = useTabParam<FinanceTab>(FINANCE_TABS, 'fonds');
 
-  const [summary, setSummary] = useState<FinanceSummary | null>(null);
-  const [charges, setCharges] = useState<ChargeCall[]>([]);
-  const [dashboard, setDashboard] = useState<OverdueDashboard>({
-    items: [],
-    totals: { overdueCount: 0, overdueAmount: 0 }
+  const ready = Boolean(effectiveTenantId && syndicId);
+  const tenantKey = effectiveTenantId ?? '';
+  const syndicKey = syndicId ?? '';
+
+  const summaryQuery = useQuery({
+    queryKey: financeKeys.summary(tenantKey, syndicKey),
+    queryFn: () => getSyndicFinanceSummary(tenantKey, syndicKey),
+    enabled: ready
   });
-  const [reminders, setReminders] = useState<PaymentReminder[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [errorCause, setErrorCause] = useState<unknown>(null);
+  // Le tableau de bord des retards alimente deux cartes de synthèse ET l'onglet Impayés.
+  const dashboardQuery = useQuery({
+    queryKey: financeKeys.overdue(tenantKey, syndicKey),
+    queryFn: () => getOverdueDashboard(tenantKey, syndicKey),
+    enabled: ready
+  });
+  const summary = summaryQuery.data;
+  const dashboard = dashboardQuery.data ?? EMPTY_DASHBOARD;
 
   const [fundModalOpen, setFundModalOpen] = useState(false);
   const [fundSubmitting, setFundSubmitting] = useState(false);
@@ -260,38 +93,8 @@ export const SyndicFinances: React.FC = () => {
 
   const [movementsTarget, setMovementsTarget] = useState<FundRow | null>(null);
 
-  useEffect(() => {
-    if (!effectiveTenantId || !syndicId) {
-      setLoading(false);
-      setError(t('Paramètres finances manquants'));
-      return;
-    }
-    void loadAll();
-  }, [effectiveTenantId, syndicId]);
-
-  const loadAll = async () => {
-    if (!effectiveTenantId || !syndicId) return;
-    setLoading(true);
-    setError(null);
-    setErrorCause(null);
-    try {
-      const [summaryData, chargesData, dashboardData, remindersData] = await Promise.all([
-        getSyndicFinanceSummary(effectiveTenantId, syndicId),
-        listAllChargeCalls(effectiveTenantId, syndicId),
-        getOverdueDashboard(effectiveTenantId, syndicId),
-        listPaymentReminders(effectiveTenantId, syndicId, { page: 1, limit: 100 })
-      ]);
-      setSummary(summaryData);
-      setCharges(chargesData);
-      setDashboard(dashboardData);
-      setReminders(remindersData);
-    } catch (err: any) {
-      setErrorCause(err);
-      setError(err.response?.data?.error || t('Impossible de charger la synthèse financière'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Un fonds créé, renommé ou ajusté ne change que la synthèse (soldes, totaux).
+  const refreshSummary = () => queryClient.invalidateQueries({ queryKey: financeKeys.summary(tenantKey, syndicKey) });
 
   const handleCreateFund = async () => {
     if (!effectiveTenantId || !syndicId) return;
@@ -306,7 +109,7 @@ export const SyndicFinances: React.FC = () => {
       message.success(t('Fonds créé'));
       setFundModalOpen(false);
       fundForm.resetFields();
-      await loadAll();
+      await refreshSummary();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Création du fonds impossible'));
     } finally {
@@ -322,7 +125,7 @@ export const SyndicFinances: React.FC = () => {
       await renameSyndicateFund(effectiveTenantId, syndicId, renameTarget.id, { name: values.name });
       message.success(t('Fonds renommé'));
       setRenameTarget(null);
-      await loadAll();
+      await refreshSummary();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Renommage du fonds impossible'));
     } finally {
@@ -349,7 +152,7 @@ export const SyndicFinances: React.FC = () => {
         message.warning(t('Attention : le solde du fonds est désormais négatif.'));
       }
       setAdjustTarget(null);
-      await loadAll();
+      await refreshSummary();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Ajustement du fonds impossible'));
     } finally {
@@ -358,14 +161,7 @@ export const SyndicFinances: React.FC = () => {
   };
 
   const fundRows = useMemo(() => buildFundRows(summary), [summary]);
-  const chargeRows = useMemo(() => buildChargeRows(charges), [charges]);
-  const paymentRows = useMemo(() => buildPaymentRows(charges), [charges]);
-  const overdueRows = useMemo(() => buildOverdueRows(dashboard, reminders), [dashboard, reminders]);
-
   const fundsTable = useLocalTable(fundRows, 10);
-  const chargesTable = useLocalTable(chargeRows, 10);
-  const paymentsTable = useLocalTable(paymentRows, 10);
-  const overdueTable = useLocalTable(overdueRows, 10);
 
   const fundColumns: ColumnsType<FundRow> = [
     { title: t('Fonds'), dataIndex: 'name', key: 'name' },
@@ -409,92 +205,93 @@ export const SyndicFinances: React.FC = () => {
     }
   ];
 
-  const chargeColumns: ColumnsType<ChargeRow> = [
-    { title: t('Référence'), dataIndex: 'reference', key: 'reference' },
-    { title: t('Période'), dataIndex: 'period', key: 'period', sorter: true },
-    { title: t('Lot'), dataIndex: 'lotLabel', key: 'lotLabel' },
-    { title: t('Copropriétaire'), dataIndex: 'ownerLabel', key: 'ownerLabel' },
-    {
-      title: t('Montant appelé'),
-      dataIndex: 'amount',
-      key: 'amount',
-      align: 'end',
-      sorter: true,
-      render: (_: number, row) => <MoneyValue value={row.amount} />
-    },
-    {
-      title: t('Payé'),
-      dataIndex: 'paid',
-      key: 'paid',
-      align: 'end',
-      sorter: true,
-      render: (_: number, row) => <MoneyValue value={row.paid} />
-    },
-    {
-      title: t('Reste'),
-      dataIndex: 'outstanding',
-      key: 'outstanding',
-      align: 'end',
-      sorter: true,
-      render: (_: number, row) => <MoneyValue value={row.outstanding} />
-    },
-    {
-      title: t('Échéance'),
-      dataIndex: 'dueDate',
-      key: 'dueDate',
-      sorter: true,
-      render: (value: string) => dayjs(value).format(dateFormat('short'))
-    },
-    {
-      title: t('Statut'),
-      dataIndex: 'status',
-      key: 'status',
-      render: (value: ChargeCallStatus) => (
-        <Tag color={chargeStatusConfig[value].color}>{chargeStatusConfig[value].label}</Tag>
-      )
-    }
-  ];
+  const missingParams = ready ? null : t('Paramètres finances manquants');
+  const fundsError = missingParams ?? financeLoadError(summaryQuery.error);
 
-  const paymentColumns: ColumnsType<PaymentRow> = [
-    {
-      title: t('Date'),
-      dataIndex: 'paidAt',
-      key: 'paidAt',
-      sorter: true,
-      render: (value: string) => dayjs(value).format(dateFormat('short'))
-    },
-    { title: t('Lot'), dataIndex: 'lotLabel', key: 'lotLabel' },
-    { title: t('Copropriétaire'), dataIndex: 'ownerLabel', key: 'ownerLabel' },
-    { title: t('Appel concerné'), dataIndex: 'chargeReference', key: 'chargeReference' },
-    {
-      title: t('Montant'),
-      dataIndex: 'amount',
-      key: 'amount',
-      align: 'end',
-      sorter: true,
-      render: (_: number, row) => <MoneyValue value={row.amount} />
-    },
-    {
-      title: t('Mode'),
-      dataIndex: 'method',
-      key: 'method',
-      render: (value: string) => paymentMethodLabel(value)
-    }
-  ];
+  const fundsPanel = (
+    <DataView<FundRow>
+      items={fundsTable.pageItems}
+      total={fundsTable.total}
+      page={fundsTable.page}
+      pageSize={fundsTable.pageSize}
+      onPageChange={fundsTable.onPageChange}
+      sort={fundsTable.sort}
+      onSortChange={fundsTable.onSortChange}
+      loading={ready && summaryQuery.isLoading}
+      error={fundsError}
+      errorCause={summaryQuery.error}
+      onRetry={() => void summaryQuery.refetch()}
+      emptyDescription={t('Aucun fonds enregistré pour cette copropriété.')}
+      columns={fundColumns}
+      rowKey={row => row.id}
+      aria-label={t('Détail des fonds')}
+      export={{ filename: t('Détail des fonds'), fetchAll: async () => fundsTable.allItems }}
+      renderCard={row => (
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <DataCard
+              title={row.name}
+              aria-label={row.name}
+              highlight={<MoneyValue value={row.balance} />}
+              primaryAction={{
+                label: t('Ajuster le solde'),
+                onClick: () => {
+                  setAdjustTarget(row);
+                  adjustForm.resetFields();
+                  adjustForm.setFieldsValue({ kind: 'ADJUSTMENT', direction: 'CREDIT' });
+                }
+              }}
+              secondaryActions={[
+                {
+                  key: 'mouvements',
+                  label: t('Historique des mouvements'),
+                  onClick: () => setMovementsTarget(row)
+                }
+              ]}
+            />
+          </div>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => {
+              setRenameTarget(row);
+              renameForm.setFieldsValue({ name: row.name });
+            }}
+            style={{ marginTop: 'var(--space-2)' }}
+          >
+            {t('Renommer')}
+          </Button>
+        </div>
+      )}
+    />
+  );
 
-  const overdueColumns: ColumnsType<OverdueRow> = [
-    { title: t('Lot'), dataIndex: 'lotLabel', key: 'lotLabel' },
-    { title: t('Copropriétaire'), dataIndex: 'ownerLabel', key: 'ownerLabel' },
+  const tabItems = [
+    { key: 'fonds', label: t('Détail des fonds'), children: fundsPanel },
     {
-      title: t('Montant dû'),
-      dataIndex: 'outstanding',
-      key: 'outstanding',
-      align: 'end',
-      sorter: true,
-      render: (_: number, row) => <MoneyValue value={row.outstanding} />
+      key: 'appels',
+      label: t('Détail des appels de fonds'),
+      children: ready ? <ChargeCallsTab tenantId={tenantKey} syndicId={syndicKey} /> : null
     },
-    { title: t('Jours de retard'), dataIndex: 'daysLate', key: 'daysLate', align: 'end', sorter: true },
-    { title: t('Relances'), dataIndex: 'remindersCount', key: 'remindersCount', align: 'end', sorter: true }
+    {
+      key: 'paiements',
+      label: t('Détail des paiements reçus'),
+      children: ready ? <PaymentsTab tenantId={tenantKey} syndicId={syndicKey} /> : null
+    },
+    {
+      key: 'impayes',
+      label: t('Détail des impayés et retards'),
+      children: ready ? (
+        <OverdueTab
+          tenantId={tenantKey}
+          syndicId={syndicKey}
+          dashboard={dashboard}
+          dashboardLoading={dashboardQuery.isLoading}
+          dashboardError={dashboardQuery.error}
+          onRetryDashboard={() => void dashboardQuery.refetch()}
+        />
+      ) : null
+    }
   ];
 
   return (
@@ -520,28 +317,28 @@ export const SyndicFinances: React.FC = () => {
             <StatCard
               label={t('Total fonds')}
               value={<MoneyValue value={summary?.totals.totalFundsBalance} />}
-              onClick={() => scrollToSection('finances-fonds')}
+              onClick={() => setActiveTab('fonds')}
             />
           </Col>
           <Col xs={24} md={8}>
             <StatCard
               label={t('Total appelé')}
               value={<MoneyValue value={summary?.totals.totalCalled} />}
-              onClick={() => scrollToSection('finances-appels')}
+              onClick={() => setActiveTab('appels')}
             />
           </Col>
           <Col xs={24} md={8}>
             <StatCard
               label={t('Total payé')}
               value={<MoneyValue value={summary?.totals.totalPaid} />}
-              onClick={() => scrollToSection('finances-paiements')}
+              onClick={() => setActiveTab('paiements')}
             />
           </Col>
           <Col xs={24} md={8}>
             <StatCard
               label={t('Reste à payer')}
               value={<MoneyValue value={summary?.totals.totalOutstanding} />}
-              onClick={() => scrollToSection('finances-appels')}
+              onClick={() => setActiveTab('appels')}
             />
           </Col>
           <Col xs={24} md={8}>
@@ -552,7 +349,7 @@ export const SyndicFinances: React.FC = () => {
               label={t('Dossiers en retard')}
               value={dashboard.totals.overdueCount}
               tone={dashboard.totals.overdueCount > 0 ? 'danger' : 'neutral'}
-              onClick={() => scrollToSection('finances-retards')}
+              onClick={() => setActiveTab('impayes')}
             />
           </Col>
           <Col xs={24} md={8}>
@@ -560,177 +357,17 @@ export const SyndicFinances: React.FC = () => {
               label={t('Montant en retard')}
               value={<MoneyValue value={dashboard.totals.overdueAmount} />}
               tone={dashboard.totals.overdueAmount > 0 ? 'danger' : 'neutral'}
-              onClick={() => scrollToSection('finances-retards')}
+              onClick={() => setActiveTab('impayes')}
             />
           </Col>
         </Row>
 
-        <div id="finances-fonds">
-          <Card title={t('Détail des fonds')}>
-            <DataView<FundRow>
-              items={fundsTable.pageItems}
-              total={fundsTable.total}
-              page={fundsTable.page}
-              pageSize={fundsTable.pageSize}
-              onPageChange={fundsTable.onPageChange}
-              sort={fundsTable.sort}
-              onSortChange={fundsTable.onSortChange}
-              loading={loading}
-              error={error}
-              errorCause={errorCause}
-              onRetry={() => void loadAll()}
-              emptyDescription={t('Aucun fonds enregistré pour cette copropriété.')}
-              columns={fundColumns}
-              rowKey={row => row.id}
-              aria-label={t('Détail des fonds')}
-              export={{ filename: t('Détail des fonds'), fetchAll: async () => fundsTable.allItems }}
-              renderCard={row => (
-                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <DataCard
-                      title={row.name}
-                      aria-label={row.name}
-                      highlight={<MoneyValue value={row.balance} />}
-                      primaryAction={{
-                        label: t('Ajuster le solde'),
-                        onClick: () => {
-                          setAdjustTarget(row);
-                          adjustForm.resetFields();
-                          adjustForm.setFieldsValue({ kind: 'ADJUSTMENT', direction: 'CREDIT' });
-                        }
-                      }}
-                      secondaryActions={[
-                        {
-                          key: 'mouvements',
-                          label: t('Historique des mouvements'),
-                          onClick: () => setMovementsTarget(row)
-                        }
-                      ]}
-                    />
-                  </div>
-                  <Button
-                    type="link"
-                    size="small"
-                    onClick={() => {
-                      setRenameTarget(row);
-                      renameForm.setFieldsValue({ name: row.name });
-                    }}
-                    style={{ marginTop: 'var(--space-2)' }}
-                  >
-                    {t('Renommer')}
-                  </Button>
-                </div>
-              )}
-            />
-          </Card>
-        </div>
-
-        <div id="finances-appels">
-          <Card title={t('Détail des appels de fonds')}>
-            <DataView<ChargeRow>
-              items={chargesTable.pageItems}
-              total={chargesTable.total}
-              page={chargesTable.page}
-              pageSize={chargesTable.pageSize}
-              onPageChange={chargesTable.onPageChange}
-              sort={chargesTable.sort}
-              onSortChange={chargesTable.onSortChange}
-              loading={loading}
-              error={error}
-              errorCause={errorCause}
-              onRetry={() => void loadAll()}
-              emptyDescription={t('Aucun appel de charges enregistré pour cette copropriété.')}
-              columns={chargeColumns}
-              rowKey={row => row.id}
-              aria-label={t('Détail des appels de fonds')}
-              export={{ filename: t('Détail des appels de fonds'), fetchAll: async () => chargesTable.allItems }}
-              scrollX={1100}
-              renderCard={row => (
-                <DataCard
-                  title={`${row.lotLabel} — ${row.ownerLabel}`}
-                  aria-label={row.reference}
-                  subtitle={`${row.reference} · ${row.period}`}
-                  highlight={<MoneyValue value={row.amount} />}
-                  status={
-                    <Tag color={chargeStatusConfig[row.status].color}>{chargeStatusConfig[row.status].label}</Tag>
-                  }
-                  fields={[
-                    { label: t('Payé'), value: <MoneyValue value={row.paid} /> },
-                    { label: t('Reste'), value: <MoneyValue value={row.outstanding} /> },
-                    { label: t('Échéance'), value: dayjs(row.dueDate).format(dateFormat('short')) }
-                  ]}
-                />
-              )}
-            />
-          </Card>
-        </div>
-
-        <div id="finances-paiements">
-          <Card title={t('Détail des paiements reçus')}>
-            <DataView<PaymentRow>
-              items={paymentsTable.pageItems}
-              total={paymentsTable.total}
-              page={paymentsTable.page}
-              pageSize={paymentsTable.pageSize}
-              onPageChange={paymentsTable.onPageChange}
-              sort={paymentsTable.sort}
-              onSortChange={paymentsTable.onSortChange}
-              loading={loading}
-              error={error}
-              errorCause={errorCause}
-              onRetry={() => void loadAll()}
-              emptyDescription={t('Aucun paiement enregistré pour cette copropriété.')}
-              columns={paymentColumns}
-              rowKey={row => row.id}
-              aria-label={t('Détail des paiements reçus')}
-              export={{ filename: t('Détail des paiements reçus'), fetchAll: async () => paymentsTable.allItems }}
-              scrollX={1000}
-              renderCard={row => (
-                <DataCard
-                  title={`${row.lotLabel} — ${row.ownerLabel}`}
-                  aria-label={row.id}
-                  subtitle={`${dayjs(row.paidAt).format(dateFormat('short'))} · ${row.chargeReference}`}
-                  highlight={<MoneyValue value={row.amount} />}
-                  fields={[{ label: t('Mode'), value: row.method }]}
-                />
-              )}
-            />
-          </Card>
-        </div>
-
-        <div id="finances-retards">
-          <Card title={t('Détail des impayés et retards')}>
-            <DataView<OverdueRow>
-              items={overdueTable.pageItems}
-              total={overdueTable.total}
-              page={overdueTable.page}
-              pageSize={overdueTable.pageSize}
-              onPageChange={overdueTable.onPageChange}
-              sort={overdueTable.sort}
-              onSortChange={overdueTable.onSortChange}
-              loading={loading}
-              error={error}
-              errorCause={errorCause}
-              onRetry={() => void loadAll()}
-              emptyDescription={t('Aucun dossier en retard pour cette copropriété.')}
-              columns={overdueColumns}
-              rowKey={row => row.chargeCallId}
-              aria-label={t('Détail des impayés et retards')}
-              export={{ filename: t('Détail des impayés et retards'), fetchAll: async () => overdueTable.allItems }}
-              renderCard={row => (
-                <DataCard
-                  title={`${row.lotLabel} — ${row.ownerLabel}`}
-                  aria-label={row.lotLabel}
-                  highlight={<MoneyValue value={row.outstanding} />}
-                  fields={[
-                    { label: t('Jours de retard'), value: row.daysLate },
-                    { label: t('Relances'), value: row.remindersCount }
-                  ]}
-                />
-              )}
-            />
-          </Card>
-        </div>
+        <Tabs
+          activeKey={activeTab}
+          onChange={key => setActiveTab(key as FinanceTab)}
+          destroyOnHidden
+          items={tabItems}
+        />
       </Space>
 
       <Modal

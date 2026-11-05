@@ -1,12 +1,16 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { DeclarationsTable } from '../../../components/syndics/declared-payment/DeclarationsTable';
 import type { SyndicDeclarationRow } from '../../../services/syndic-declared-payment-service';
 
 /**
- * File de validation des paiements déclarés (spec 047, lot L7).
+ * File de validation des paiements déclarés (spec 047, lot L7) et sa recherche
+ * multicritères (lot SYN-A, préfixe d'URL `dec`).
  * Le service est mocké en entier : chaque export utilisé par le composant et
  * ses dépendances doit figurer ci-dessous, Vitest refusant tout import non déclaré.
  */
@@ -23,6 +27,13 @@ vi.mock('../../../services/syndic-declared-payment-service', () => ({
 vi.mock('../../../services/syndic-service', () => ({
   listSyndicateLots: (...a: unknown[]) => listSyndicateLots(...a)
 }));
+
+vi.mock('../../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
+// Délai large : la suite complète tourne en parallèle et peut être lente.
+const T = { timeout: 8000 };
 
 function row(overrides: Partial<SyndicDeclarationRow> = {}): SyndicDeclarationRow {
   return {
@@ -93,14 +104,32 @@ const NUMBERS = [
 ];
 const LOTS = [{ id: 'lot-1', lotNumber: 'A12', lotType: 'APARTMENT', generalShares: 100 }];
 
-function renderTable(props: Partial<React.ComponentProps<typeof DeclarationsTable>> = {}) {
+function Url() {
+  return <div data-testid="url">{useLocation().search}</div>;
+}
+
+function renderTable(props: Partial<React.ComponentProps<typeof DeclarationsTable>> = {}, initial = '/paiements') {
   const onOpen = vi.fn();
-  const utils = render(
-    <AntApp>
-      <DeclarationsTable tenantId="t1" syndicId="s1" onOpen={onOpen} {...props} />
-    </AntApp>
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <QueryClientProvider client={client}>
+      <AntApp>
+        <MemoryRouter initialEntries={[initial]}>
+          <Url />
+          {children}
+        </MemoryRouter>
+      </AntApp>
+    </QueryClientProvider>
   );
-  return { ...utils, onOpen };
+  const element = (extra: Partial<React.ComponentProps<typeof DeclarationsTable>> = {}) => (
+    <DeclarationsTable tenantId="t1" syndicId="s1" onOpen={onOpen} {...props} {...extra} />
+  );
+  const utils = render(element(), { wrapper });
+  return {
+    ...utils,
+    onOpen,
+    rerenderTable: (extra: Partial<React.ComponentProps<typeof DeclarationsTable>>) => utils.rerender(element(extra))
+  };
 }
 
 const lastQuery = () => listSyndicDeclarations.mock.calls[listSyndicDeclarations.mock.calls.length - 1][2];
@@ -115,18 +144,19 @@ beforeEach(() => {
 describe('DeclarationsTable', () => {
   it('charge par défaut les déclarations en attente, page 1, 20 par page', async () => {
     renderTable();
-    await screen.findByText('Awa Koné');
+    await screen.findByText('Awa Koné', undefined, T);
     expect(listSyndicDeclarations).toHaveBeenCalledWith(
       't1',
       's1',
       expect.objectContaining({ status: 'PENDING', page: 1, limit: 20 })
     );
     expect(lastQuery().overdue).toBeUndefined();
+    expect(lastQuery().search).toBeUndefined();
   });
 
   it('affiche les compteurs de la réponse', async () => {
     renderTable();
-    await screen.findByText('Awa Koné');
+    await screen.findByText('Awa Koné', undefined, T);
     expect(screen.getByText('En attente 7')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'En retard 2' })).toBeTruthy();
     expect(screen.getByText('Doublon suspecté 1')).toBeTruthy();
@@ -139,7 +169,7 @@ describe('DeclarationsTable', () => {
       ])
     );
     renderTable();
-    await screen.findByText('Marc Gestionnaire');
+    await screen.findByText('Marc Gestionnaire', undefined, T);
     expect(screen.getByText('Gestionnaire')).toBeTruthy();
     expect(screen.getByText('A12, B03')).toBeTruthy();
     expect(screen.getByText(/\+225 07 07 07 07 07/)).toBeTruthy();
@@ -159,7 +189,7 @@ describe('DeclarationsTable', () => {
       ])
     );
     renderTable();
-    await screen.findByText('Awa Koné');
+    await screen.findByText('Awa Koné', undefined, T);
     const tableRow = screen.getByText('Awa Koné').closest('tr') as HTMLElement;
     expect(within(tableRow).getByText('En retard')).toBeTruthy();
     expect(within(tableRow).getByText('Doublon suspecté')).toBeTruthy();
@@ -170,60 +200,65 @@ describe('DeclarationsTable', () => {
   it("n'affiche pas ces pastilles sur une ligne déjà traitée", async () => {
     listSyndicDeclarations.mockResolvedValue(response([row({ status: 'APPROVED', overdue: true, aiPrefilled: true })]));
     renderTable();
-    await screen.findByText('Awa Koné');
+    await screen.findByText('Awa Koné', undefined, T);
     const tableRow = screen.getByText('Awa Koné').closest('tr') as HTMLElement;
     expect(within(tableRow).getByText('Validée')).toBeTruthy();
     expect(within(tableRow).queryByText('En retard')).toBeNull();
     expect(within(tableRow).queryByText('Lue par IA')).toBeNull();
   });
 
-  it('« En retard » filtre sur overdue: true et se retire au second clic', async () => {
+  it('« En retard 2 » pose le critère « En retard » (overdue) et le retire au second clic', async () => {
     renderTable();
-    await screen.findByText('Awa Koné');
+    await screen.findByText('Awa Koné', undefined, T);
     fireEvent.click(screen.getByRole('button', { name: 'En retard 2' }));
-    await waitFor(() => expect(lastQuery().overdue).toBe(true));
+    await waitFor(() => expect(lastQuery().overdue).toBe('true'), T);
+    expect(screen.getByTestId('url').textContent).toContain('dec.overdue=1');
+    const callsBefore = listSyndicDeclarations.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: 'En retard 2' }));
-    await waitFor(() => expect(lastQuery().overdue).toBeUndefined());
+    // Le critère retiré quitte l'URL ; la liste sans critère est déjà en cache, aucun nouvel appel n'est nécessaire.
+    await waitFor(() => expect(screen.getByTestId('url').textContent).not.toContain('dec.overdue'), T);
+    expect(screen.getByRole('button', { name: 'En retard 2' })).toHaveAttribute('aria-pressed', 'false');
+    expect(listSyndicDeclarations.mock.calls.length).toBe(callsBefore);
   });
 
-  it('change le filtre de statut', async () => {
+  it('envoie la saisie au service (search) après le debounce et la met dans l’URL', async () => {
+    const user = userEvent.setup();
     renderTable();
-    await screen.findByText('Awa Koné');
-    fireEvent.click(screen.getByText('Toutes'));
-    await waitFor(() => expect(lastQuery().status).toBe('ALL'));
-    fireEvent.click(screen.getByText('Rejetées'));
-    await waitFor(() => expect(lastQuery().status).toBe('REJECTED'));
+    await screen.findByText('Awa Koné', undefined, T);
+    await user.type(
+      within(screen.getByRole('search', { name: /paiements déclarés/ })).getAllByRole('textbox')[0],
+      'TX-REF'
+    );
+    await waitFor(() => expect(lastQuery()).toMatchObject({ status: 'PENDING', search: 'TX-REF', page: 1 }), T);
+    expect(screen.getByTestId('url').textContent).toContain('dec.q=TX-REF');
   });
 
-  it('filtre par numéro de réception et par lot', async () => {
-    renderTable();
-    await screen.findByText('Awa Koné');
-    await waitFor(() => expect(listSyndicateLots).toHaveBeenCalledWith('t1', 's1'));
-
-    fireEvent.mouseDown(screen.getByLabelText('Numéro de réception'));
-    fireEvent.click(await screen.findByText(/Wave · \+225 07 07 07 07 07 · Syndic Les Palmiers/));
-    await waitFor(() => expect(lastQuery().receivingNumberId).toBe('n1'));
-
-    fireEvent.mouseDown(screen.getByLabelText('Lot'));
-    fireEvent.click(await screen.findByText(/^A12/, { selector: '.ant-select-item-option-content' }));
-    await waitFor(() => expect(lastQuery().lotId).toBe('lot-1'));
-    expect(lastQuery().receivingNumberId).toBe('n1');
+  it('applique les critères d’une URL partagée : statut, numéro, lot, période, retard', async () => {
+    renderTable(
+      {},
+      '/paiements?dec.status=REJECTED&dec.receivingNumberId=n1&dec.lotId=lot-1&dec.periodFrom=2026-10-01&dec.periodTo=2026-10-15&dec.overdue=1'
+    );
+    await screen.findByText('Awa Koné', undefined, T);
+    await waitFor(
+      () =>
+        expect(lastQuery()).toMatchObject({
+          status: 'REJECTED',
+          receivingNumberId: 'n1',
+          lotId: 'lot-1',
+          from: '2026-10-01',
+          to: '2026-10-15',
+          overdue: 'true',
+          page: 1,
+          limit: 20
+        }),
+      T
+    );
   });
 
-  it('filtre par période de paiement au format YYYY-MM-DD', async () => {
-    const { container } = renderTable();
-    await screen.findByText('Awa Koné');
-    const inputs = container.querySelectorAll<HTMLInputElement>('.ant-picker-range input');
-    expect(inputs.length).toBe(2);
-
-    fireEvent.mouseDown(inputs[0]);
-    fireEvent.change(inputs[0], { target: { value: '2026-10-01' } });
-    fireEvent.keyDown(inputs[0], { key: 'Enter', keyCode: 13 });
-    fireEvent.mouseDown(inputs[1]);
-    fireEvent.change(inputs[1], { target: { value: '2026-10-15' } });
-    fireEvent.keyDown(inputs[1], { key: 'Enter', keyCode: 13 });
-
-    await waitFor(() => expect(lastQuery()).toMatchObject({ from: '2026-10-01', to: '2026-10-15' }));
+  it('sans statut dans l’URL, l’écran demande les paiements en attente ; « Toutes » vient de l’URL', async () => {
+    renderTable({}, '/paiements?dec.status=ALL');
+    await screen.findByText('Awa Koné', undefined, T);
+    await waitFor(() => expect(lastQuery().status).toBe('ALL'), T);
   });
 
   it('pagine côté serveur et conserve l’ordre du serveur', async () => {
@@ -236,32 +271,52 @@ describe('DeclarationsTable', () => {
       counts: { pending: 45, overdue: 0, suspectedDuplicate: 0 }
     });
     renderTable();
-    await screen.findByText('Zoé Zadi');
+    await screen.findByText('Zoé Zadi', undefined, T);
     const names = Array.from(document.querySelectorAll('tbody tr.ant-table-row')).map(tr => tr.textContent ?? '');
     expect(names[0]).toContain('Zoé Zadi');
     expect(names[1]).toContain('Abel Aka');
 
     fireEvent.click(screen.getByTitle('2'));
-    await waitFor(() => expect(lastQuery().page).toBe(2));
+    await waitFor(() => expect(lastQuery().page).toBe(2), T);
+    expect(screen.getByTestId('url').textContent).toContain('dec.page=2');
   });
 
-  it('un changement de filtre revient en page 1', async () => {
+  it('un changement de critère revient en page 1', async () => {
+    const user = userEvent.setup();
     listSyndicDeclarations.mockResolvedValue({
       items: [row()],
       pagination: { page: 1, limit: 20, total: 45, totalPages: 3 },
       counts: { pending: 45, overdue: 0, suspectedDuplicate: 0 }
     });
     renderTable();
-    await screen.findByText('Awa Koné');
+    await screen.findByText('Awa Koné', undefined, T);
     fireEvent.click(screen.getByTitle('2'));
-    await waitFor(() => expect(lastQuery().page).toBe(2));
-    fireEvent.click(screen.getByText('Toutes'));
-    await waitFor(() => expect(lastQuery()).toMatchObject({ status: 'ALL', page: 1 }));
+    await waitFor(() => expect(lastQuery().page).toBe(2), T);
+    await user.type(
+      within(screen.getByRole('search', { name: /paiements déclarés/ })).getAllByRole('textbox')[0],
+      'Awa'
+    );
+    await waitFor(() => expect(lastQuery()).toMatchObject({ search: 'Awa', page: 1 }), T);
+  });
+
+  it('propose d’effacer les critères quand rien ne correspond', async () => {
+    const user = userEvent.setup();
+    listSyndicDeclarations.mockImplementation(async (_t: string, _s: string, query: { search?: string }) =>
+      query.search ? response([]) : response([row()])
+    );
+    renderTable({}, '/paiements?dec.q=zzz');
+    expect(
+      await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', undefined, T)
+    ).toBeInTheDocument();
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText('Awa Koné', undefined, T)).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).not.toContain('dec.q=');
   });
 
   it('ouvre la déclaration par « Examiner » et par clic sur la ligne', async () => {
     const { onOpen } = renderTable();
-    await screen.findByText('Awa Koné');
+    await screen.findByText('Awa Koné', undefined, T);
     fireEvent.click(screen.getByRole('button', { name: /Examiner/ }));
     expect(onOpen).toHaveBeenCalledTimes(1);
     expect(onOpen.mock.calls[0][0].id).toBe('d1');
@@ -271,25 +326,16 @@ describe('DeclarationsTable', () => {
   });
 
   it('recharge quand refreshToken change', async () => {
-    const onOpen = vi.fn();
-    const { rerender } = render(
-      <AntApp>
-        <DeclarationsTable tenantId="t1" syndicId="s1" onOpen={onOpen} refreshToken={0} />
-      </AntApp>
-    );
-    await screen.findByText('Awa Koné');
+    const { rerenderTable } = renderTable({ refreshToken: 0 });
+    await screen.findByText('Awa Koné', undefined, T);
     const before = listSyndicDeclarations.mock.calls.length;
-    rerender(
-      <AntApp>
-        <DeclarationsTable tenantId="t1" syndicId="s1" onOpen={onOpen} refreshToken={1} />
-      </AntApp>
-    );
-    await waitFor(() => expect(listSyndicDeclarations.mock.calls.length).toBe(before + 1));
+    rerenderTable({ refreshToken: 1 });
+    await waitFor(() => expect(listSyndicDeclarations.mock.calls.length).toBe(before + 1), T);
   });
 
   it('affiche les boutons ajoutés par la page', async () => {
     renderTable({ toolbarExtra: <button type="button">Déclarer pour un copropriétaire</button> });
-    await screen.findByText('Awa Koné');
+    await screen.findByText('Awa Koné', undefined, T);
     expect(screen.getByRole('button', { name: 'Déclarer pour un copropriétaire' })).toBeTruthy();
   });
 
@@ -298,15 +344,15 @@ describe('DeclarationsTable', () => {
       response([], { counts: { pending: 0, overdue: 0, suspectedDuplicate: 0 } })
     );
     renderTable();
-    expect(await screen.findByText('Aucun paiement déclaré')).toBeTruthy();
+    expect(await screen.findByText('Aucun paiement déclaré', undefined, T)).toBeTruthy();
   });
 
   it('affiche l’erreur de chargement et « Réessayer » recharge', async () => {
     listSyndicDeclarations.mockRejectedValueOnce({ response: { data: { message: 'Service indisponible' } } });
     renderTable();
-    expect(await screen.findByText('Service indisponible')).toBeTruthy();
+    expect(await screen.findByText('Service indisponible', undefined, T)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
-    expect(await screen.findByText('Awa Koné')).toBeTruthy();
+    expect(await screen.findByText('Awa Koné', undefined, T)).toBeTruthy();
     expect(screen.queryByText('Service indisponible')).toBeNull();
   });
 
@@ -314,7 +360,7 @@ describe('DeclarationsTable', () => {
     listSyndicReceivingNumbers.mockRejectedValue(new Error('boom'));
     listSyndicateLots.mockRejectedValue(new Error('boom'));
     renderTable();
-    expect(await screen.findByText('Awa Koné')).toBeTruthy();
+    expect(await screen.findByText('Awa Koné', undefined, T)).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 });

@@ -3,24 +3,23 @@ import {
   App,
   Alert,
   Button,
-  Card,
   Col,
   Form,
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
   Row,
   Select,
   Space,
   Spin,
   Switch,
-  Tag,
+  Tabs,
   Typography,
   Upload
 } from 'antd';
 import type { RcFile } from 'antd/es/upload';
 import { UploadOutlined } from '@ant-design/icons';
+import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKey } from '../../lib/query-keys';
 import {
@@ -54,13 +53,16 @@ import type {
 import type { PropertyDocument } from '../../types/property-types';
 import { DocumentVault } from './DocumentVault';
 import { PatrimoineExportButton } from './PatrimoineExportButton';
-import { ExpenseTracker } from './ExpenseTracker';
-import { LoanWidget } from './LoanWidget';
-import { ValuationHistory } from './ValuationHistory';
 import { YieldCalculator, type YieldAssumptionsInput } from './YieldCalculator';
 import { loadYieldAssumptions, persistYieldAssumptions } from './yield-assumptions-storage';
 import { YieldProjectionChart } from './YieldProjectionChart';
 import { WorkProgramTimeline } from './WorkProgramTimeline';
+import { ValuationsSection } from './property-tab/ValuationsSection';
+import { ExpensesSection } from './property-tab/ExpensesSection';
+import { LoansSection } from './property-tab/LoansSection';
+import { WorksSection } from './property-tab/WorksSection';
+import { RUBRIQUE_PARAM, parseRubrique } from './property-tab/rubriques';
+import type { Rubrique } from './property-tab/rubriques';
 import {
   listPropertyDocuments,
   uploadDocument as uploadPropertyDocument,
@@ -68,7 +70,7 @@ import {
 } from '../../services/property-service';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
-import { MoneyValue, Table, formatMoney } from '../primitives';
+import { formatMoney } from '../primitives';
 import {
   DEVISE_PATRIMOINE,
   apiErrorMessage,
@@ -80,7 +82,6 @@ import {
   valuationMethodLabel
 } from './patrimoine-labels';
 
-import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
 
 function toDateTimeLocal(date?: string | null): string | undefined {
@@ -106,14 +107,6 @@ function toDateInput(date?: string | null): string | undefined {
 function toIso(value?: string): string | undefined {
   if (!value) return undefined;
   return new Date(value).toISOString();
-}
-
-function workProgramStatusLabel(status: WorkProgram['status']): string {
-  if (status === 'PLANNED') return t('Planifié');
-  if (status === 'IN_PROGRESS') return t('En cours');
-  if (status === 'COMPLETED') return t('Terminé');
-  if (status === 'CANCELLED') return t('Annulé');
-  return status;
 }
 
 function paymentMethodLabel(method: PaymentMethod): string {
@@ -154,26 +147,71 @@ interface Props {
  * bien avec des documents mais un rendement en échec (prix d'acquisition
  * absent, service indisponible…) doit quand même montrer ses documents.
  */
-interface SectionErrors {
-  valuations?: string;
-  expenses?: string;
-  loans?: string;
-  workPrograms?: string;
-  documents?: string;
-  yieldData?: string;
-}
+type SectionKey = 'valuations' | 'expenses' | 'loans' | 'workPrograms' | 'documents' | 'yieldData';
+type SectionErrors = Partial<Record<SectionKey, string>>;
+
+/** Chaque rubrique ne charge que sa propre donnée : une requête (la synthèse : rendement + hypothèses). */
+const SECTION_DE_RUBRIQUE: Record<Rubrique, SectionKey> = {
+  synthese: 'yieldData',
+  valorisations: 'valuations',
+  depenses: 'expenses',
+  credits: 'loans',
+  travaux: 'workPrograms',
+  documents: 'documents'
+};
+
+const ERREUR_CHARGEMENT = (key: SectionKey): string => {
+  if (key === 'valuations') return t('Erreur de chargement des valorisations');
+  if (key === 'expenses') return t('Erreur de chargement des dépenses');
+  if (key === 'loans') return t('Erreur de chargement des crédits');
+  if (key === 'workPrograms') return t('Erreur de chargement des travaux');
+  if (key === 'documents') return t('Erreur de chargement des documents');
+  return t('Erreur de chargement du rendement');
+};
+
+const BlocChargement: React.FC = () => (
+  <div style={{ textAlign: 'center', padding: '36px 0' }}>
+    <Spin />
+  </div>
+);
+
+// Préfixes de recherche des rubriques (valorisations, dépenses, crédits, travaux, documents).
+const PREFIXES_RECHERCHE = ['val.', 'dep.', 'cre.', 'trv.', 'doc.'];
 
 export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId }) => {
   const queryClient = useQueryClient();
   const { message } = App.useApp();
 
-  const [loading, setLoading] = useState(true);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rubrique = parseRubrique(searchParams.get(RUBRIQUE_PARAM));
+  // Remplace l'entrée d'historique et ne touche à aucun autre paramètre (`onglet`, recherches préfixées).
+  const changerRubrique = (key: string) =>
+    setSearchParams(
+      prev => {
+        const next = new URLSearchParams(prev);
+        // Les critères d'une rubrique n'ont pas de sens dans une autre : on retire leurs clés préfixées.
+        for (const k of Array.from(next.keys())) {
+          if (PREFIXES_RECHERCHE.some(p => k.startsWith(p))) next.delete(k);
+        }
+        next.set(RUBRIQUE_PARAM, key);
+        return next;
+      },
+      { replace: true }
+    );
+
+  // « loading » : premier chargement de la section ; absent = pas encore demandée ou périmée.
+  const [sectionStatus, setSectionStatus] = useState<Partial<Record<SectionKey, 'loading' | 'loaded' | 'error'>>>({});
   const [sectionErrors, setSectionErrors] = useState<SectionErrors>({});
   const [yieldLoading, setYieldLoading] = useState(false);
   const [yieldAssumptions, setYieldAssumptions] = useState<YieldAssumptionsInput | undefined>(undefined);
   const [yieldSyncStatus, setYieldSyncStatus] = useState<'synced' | 'local'>('synced');
-  // Ignore la réponse d'un chargement périmé (changement d'agence ou de bien en cours de route).
-  const loadSeq = useRef(0);
+  // Ignore la réponse d'un chargement périmé : une requête plus récente de la même section, ou un
+  // changement d'agence ou de bien en cours de route (`epoch`).
+  const loadSeq = useRef<Partial<Record<SectionKey, number>>>({});
+  const epoch = useRef(0);
+  const scope = useRef<string | null>(null);
+  // Sections à jour : une section déjà chargée n'est pas rechargée tant qu'elle n'est pas périmée.
+  const freshSections = useRef<Set<SectionKey>>(new Set());
   const currentKey = useRef('');
   currentKey.current = `${tenantId}:${propertyId}`;
   const [submitting, setSubmitting] = useState(false);
@@ -211,62 +249,106 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   const expenseAgencyIsBuyer = Form.useWatch('agencyIsBuyer', expenseForm) as boolean | undefined;
   const expenseRecurrence = Form.useWatch('recurrence', expenseForm) as ExpenseRecurrence | undefined;
 
-  const loadAll = useCallback(async () => {
-    const seq = ++loadSeq.current;
-    setLoading(true);
-    const loadYield = async () => {
-      const loaded = await loadYieldAssumptions(tenantId, propertyId);
-      const data = loaded.assumptions
-        ? await getPropertyYield(tenantId, propertyId, loaded.assumptions)
-        : await getPropertyYield(tenantId, propertyId);
-      return { loaded, data };
-    };
-    const [valuationsRes, expensesRes, loansRes, workProgramsRes, documentsRes, yieldRes] = await Promise.allSettled([
-      listValuations(tenantId, propertyId),
-      listExpenses(tenantId, propertyId),
-      listLoans(tenantId, propertyId),
-      listWorkPrograms(tenantId, propertyId),
-      listPropertyDocuments(tenantId, propertyId),
-      loadYield()
-    ]);
-    if (seq !== loadSeq.current) return;
+  /**
+   * Charge UNE section (la rubrique affichée). Le premier chargement montre un indicateur ;
+   * un rechargement après mutation garde le tableau affiché. Un échec reste propre à sa section.
+   */
+  const loadSection = useCallback(
+    async (key: SectionKey) => {
+      const startEpoch = epoch.current;
+      const seq = (loadSeq.current[key] = (loadSeq.current[key] ?? 0) + 1);
+      const perime = () => startEpoch !== epoch.current || seq !== loadSeq.current[key];
+      setSectionStatus(prev => (prev[key] === 'loaded' ? prev : { ...prev, [key]: 'loading' }));
+      try {
+        if (key === 'valuations') {
+          const data = await listValuations(tenantId, propertyId);
+          if (perime()) return;
+          setValuations(data);
+        } else if (key === 'expenses') {
+          const data = await listExpenses(tenantId, propertyId);
+          if (perime()) return;
+          setExpenses(data);
+        } else if (key === 'loans') {
+          const data = await listLoans(tenantId, propertyId);
+          if (perime()) return;
+          setLoans(data);
+        } else if (key === 'workPrograms') {
+          const data = await listWorkPrograms(tenantId, propertyId);
+          if (perime()) return;
+          setWorkPrograms(data);
+        } else if (key === 'documents') {
+          const data = await listPropertyDocuments(tenantId, propertyId);
+          if (perime()) return;
+          setDocuments(data);
+        } else {
+          const loaded = await loadYieldAssumptions(tenantId, propertyId);
+          const data = loaded.assumptions
+            ? await getPropertyYield(tenantId, propertyId, loaded.assumptions)
+            : await getPropertyYield(tenantId, propertyId);
+          if (perime()) return;
+          setYieldData(data);
+          setYieldAssumptions(loaded.assumptions);
+          setYieldSyncStatus(loaded.synced ? 'synced' : 'local');
+        }
+        freshSections.current.add(key);
+        setSectionErrors(prev => ({ ...prev, [key]: undefined }));
+        setSectionStatus(prev => ({ ...prev, [key]: 'loaded' }));
+      } catch (error) {
+        if (perime()) return;
+        if (key === 'yieldData') {
+          // Pas de rendement ni d'hypothèses de l'ancien bien affichés sous le nouveau.
+          setYieldData(null);
+          setYieldAssumptions(undefined);
+          setYieldSyncStatus('synced');
+        }
+        setSectionErrors(prev => ({ ...prev, [key]: apiErrorMessage(error, ERREUR_CHARGEMENT(key)) }));
+        setSectionStatus(prev => ({ ...prev, [key]: 'error' }));
+      }
+    },
+    [propertyId, tenantId]
+  );
 
-    const erreurs: SectionErrors = {};
+  /** Le rendement dépend des valorisations, dépenses, crédits et travaux : il se recharge à son prochain affichage. */
+  const marquerRendementPerime = () => {
+    freshSections.current.delete('yieldData');
+    loadSeq.current.yieldData = (loadSeq.current.yieldData ?? 0) + 1;
+    setSectionStatus(prev => ({ ...prev, yieldData: undefined }));
+  };
 
-    if (valuationsRes.status === 'fulfilled') setValuations(valuationsRes.value);
-    else erreurs.valuations = apiErrorMessage(valuationsRes.reason, t('Erreur de chargement des valorisations'));
+  /** Après une mutation : recharge la section touchée et, si besoin, périme le rendement. */
+  const rechargerApresMutation = async (key: SectionKey, rendementPerime: boolean) => {
+    if (rendementPerime) marquerRendementPerime();
+    await loadSection(key);
+  };
 
-    if (expensesRes.status === 'fulfilled') setExpenses(expensesRes.value);
-    else erreurs.expenses = apiErrorMessage(expensesRes.reason, t('Erreur de chargement des dépenses'));
-
-    if (loansRes.status === 'fulfilled') setLoans(loansRes.value);
-    else erreurs.loans = apiErrorMessage(loansRes.reason, t('Erreur de chargement des crédits'));
-
-    if (workProgramsRes.status === 'fulfilled') setWorkPrograms(workProgramsRes.value);
-    else erreurs.workPrograms = apiErrorMessage(workProgramsRes.reason, t('Erreur de chargement des travaux'));
-
-    if (documentsRes.status === 'fulfilled') setDocuments(documentsRes.value);
-    else erreurs.documents = apiErrorMessage(documentsRes.reason, t('Erreur de chargement des documents'));
-
-    if (yieldRes.status === 'fulfilled') {
-      setYieldData(yieldRes.value.data);
-      setYieldAssumptions(yieldRes.value.loaded.assumptions);
-      setYieldSyncStatus(yieldRes.value.loaded.synced ? 'synced' : 'local');
-    } else {
-      // Pas de rendement ni d'hypothèses de l'ancien bien affichés sous le nouveau.
-      setYieldData(null);
-      setYieldAssumptions(undefined);
-      setYieldSyncStatus('synced');
-      erreurs.yieldData = apiErrorMessage(yieldRes.reason, t('Erreur de chargement du rendement'));
-    }
-
-    setSectionErrors(erreurs);
-    setLoading(false);
-  }, [propertyId, tenantId]);
-
+  // Changement d'agence ou de bien : on repart de zéro (les réponses en vol deviennent périmées).
   useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
+    const clef = `${tenantId}:${propertyId}`;
+    if (scope.current === clef) return;
+    const premierMontage = scope.current === null;
+    scope.current = clef;
+    epoch.current += 1;
+    freshSections.current = new Set();
+    loadSeq.current = {};
+    if (premierMontage) return;
+    setSectionStatus({});
+    setSectionErrors({});
+    setValuations([]);
+    setExpenses([]);
+    setLoans([]);
+    setWorkPrograms([]);
+    setDocuments([]);
+    setYieldData(null);
+    setYieldAssumptions(undefined);
+    setYieldSyncStatus('synced');
+  }, [tenantId, propertyId]);
+
+  // Une requête seulement : celle de la rubrique affichée, si elle n'est pas déjà à jour.
+  useEffect(() => {
+    const key = SECTION_DE_RUBRIQUE[rubrique];
+    if (freshSections.current.has(key)) return;
+    void loadSection(key);
+  }, [rubrique, loadSection]);
 
   const annualExpenses = useMemo(
     () =>
@@ -355,7 +437,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       }
       setValuationModalOpen(false);
       await invalidateTaxQueries();
-      await loadAll();
+      await rechargerApresMutation('valuations', true);
     } catch (e: any) {
       if (e?.errorFields) return;
       message.error(apiErrorMessage(e, t('Erreur de sauvegarde de la valorisation')));
@@ -370,7 +452,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       await deleteValuation(tenantId, propertyId, valuationId);
       message.success(t('Valorisation supprimée'));
       await invalidateTaxQueries();
-      await loadAll();
+      await rechargerApresMutation('valuations', true);
     } catch (e) {
       message.error(apiErrorMessage(e, t('Erreur de suppression de la valorisation')));
     } finally {
@@ -438,7 +520,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         message.success(t('Dépense ajoutée'));
       }
       setExpenseModalOpen(false);
-      await loadAll();
+      await rechargerApresMutation('expenses', true);
     } catch (e: any) {
       if (e?.errorFields) return;
       message.error(apiErrorMessage(e, t('Erreur de sauvegarde de la dépense')));
@@ -452,7 +534,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     try {
       await deleteExpense(tenantId, propertyId, expenseId);
       message.success(t('Dépense supprimée'));
-      await loadAll();
+      await rechargerApresMutation('expenses', true);
     } catch (e) {
       message.error(apiErrorMessage(e, t('Erreur de suppression de la dépense')));
     } finally {
@@ -506,7 +588,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         message.success(t('Crédit ajouté'));
       }
       setLoanModalOpen(false);
-      await loadAll();
+      await rechargerApresMutation('loans', true);
     } catch (e: any) {
       if (e?.errorFields) return;
       message.error(apiErrorMessage(e, t('Erreur de sauvegarde du crédit')));
@@ -520,7 +602,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     try {
       await deleteLoan(tenantId, propertyId, loanId);
       message.success(t('Crédit supprimé'));
-      await loadAll();
+      await rechargerApresMutation('loans', true);
     } catch (e) {
       message.error(apiErrorMessage(e, t('Erreur de suppression du crédit')));
     } finally {
@@ -581,7 +663,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         message.success(t('Programme de travaux ajouté'));
       }
       setWorkModalOpen(false);
-      await loadAll();
+      await rechargerApresMutation('workPrograms', true);
     } catch (e: any) {
       if (e?.errorFields) return;
       message.error(apiErrorMessage(e, t('Erreur de sauvegarde des travaux')));
@@ -595,7 +677,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     try {
       await deleteWorkProgram(tenantId, propertyId, programId);
       message.success(t('Programme de travaux supprimé'));
-      await loadAll();
+      await rechargerApresMutation('workPrograms', true);
     } catch (e) {
       message.error(apiErrorMessage(e, t('Erreur de suppression des travaux')));
     } finally {
@@ -628,7 +710,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       message.success(t('Document ajouté'));
       setDocumentModalOpen(false);
       setDocumentFile(null);
-      await loadAll();
+      await rechargerApresMutation('documents', false);
     } catch (e: any) {
       if (e?.errorFields) return;
       message.error(apiErrorMessage(e, t("Erreur lors de l'ajout du document")));
@@ -650,311 +732,144 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     }
   };
 
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: '36px 0' }}>
-        <Spin />
-      </div>
-    );
-  }
+  const enChargement = (key: SectionKey) => sectionStatus[key] === undefined || sectionStatus[key] === 'loading';
+
+  const rubriques = [
+    {
+      key: 'synthese',
+      label: t('Synthèse'),
+      children: enChargement('yieldData') ? (
+        <BlocChargement />
+      ) : (
+        <Row gutter={[16, 16]}>
+          <Col xs={24}>
+            {sectionErrors.yieldData ? (
+              <Alert type="error" showIcon message={sectionErrors.yieldData} />
+            ) : (
+              <YieldCalculator
+                data={yieldData}
+                loading={yieldLoading}
+                assumptions={yieldAssumptions}
+                syncStatus={yieldSyncStatus}
+                onRecalculate={handleRecalculateYield}
+              />
+            )}
+          </Col>
+          <Col xs={24}>
+            <YieldProjectionChart data={yieldData?.projection ?? []} />
+          </Col>
+        </Row>
+      )
+    },
+    {
+      key: 'valorisations',
+      label: t('Valorisations'),
+      children: enChargement('valuations') ? (
+        <BlocChargement />
+      ) : (
+        <ValuationsSection
+          valuations={valuations}
+          error={sectionErrors.valuations}
+          busyActionId={busyActionId}
+          onAdd={openCreateValuation}
+          onEdit={openEditValuation}
+          onDelete={removeValuation}
+        />
+      )
+    },
+    {
+      key: 'depenses',
+      label: t('Dépenses'),
+      children: enChargement('expenses') ? (
+        <BlocChargement />
+      ) : (
+        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+          <ExpensesSection
+            expenses={expenses}
+            error={sectionErrors.expenses}
+            busyActionId={busyActionId}
+            onAdd={openCreateExpense}
+            onEdit={openEditExpense}
+            onDelete={removeExpense}
+          />
+          {sectionErrors.expenses ? null : (
+            <Alert
+              type="info"
+              showIcon
+              message={t("Total des charges de l'année en cours : {{value}}", {
+                value: formatMoney(annualExpenses, { currency: DEVISE_PATRIMOINE })
+              })}
+            />
+          )}
+        </Space>
+      )
+    },
+    {
+      key: 'credits',
+      label: t('Crédits'),
+      children: enChargement('loans') ? (
+        <BlocChargement />
+      ) : (
+        <LoansSection
+          loans={loans}
+          error={sectionErrors.loans}
+          busyActionId={busyActionId}
+          onAdd={openCreateLoan}
+          onEdit={openEditLoan}
+          onDelete={removeLoan}
+        />
+      )
+    },
+    {
+      key: 'travaux',
+      label: t('Travaux'),
+      children: enChargement('workPrograms') ? (
+        <BlocChargement />
+      ) : (
+        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+          {sectionErrors.workPrograms ? null : <WorkProgramTimeline items={workPrograms} />}
+          <WorksSection
+            workPrograms={workPrograms}
+            error={sectionErrors.workPrograms}
+            busyActionId={busyActionId}
+            onAdd={openCreateWorkProgram}
+            onEdit={openEditWorkProgram}
+            onDelete={removeWorkProgram}
+          />
+        </Space>
+      )
+    },
+    {
+      key: 'documents',
+      label: t('Documents'),
+      children: enChargement('documents') ? (
+        <BlocChargement />
+      ) : sectionErrors.documents ? (
+        <Alert type="error" showIcon message={sectionErrors.documents} />
+      ) : (
+        <DocumentVault
+          documents={documents}
+          tenantId={tenantId}
+          propertyId={propertyId}
+          onDelete={handleDeleteDocument}
+          deletingId={deletingDocumentId}
+          searchPrefix="doc"
+          extra={
+            <Button type="primary" onClick={openCreateDocument}>
+              {t('Ajouter')}
+            </Button>
+          }
+        />
+      )
+    }
+  ];
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div style={{ textAlign: 'end' }}>
         <PatrimoineExportButton tenantId={tenantId} propertyId={propertyId} />
       </div>
-      <Row gutter={[16, 16]}>
-        <Col xs={24}>
-          {sectionErrors.valuations ? (
-            <Alert type="error" showIcon message={sectionErrors.valuations} />
-          ) : (
-            <ValuationHistory valuations={valuations} />
-          )}
-        </Col>
-      </Row>
-      <Row gutter={[16, 16]}>
-        <Col xs={24}>
-          {sectionErrors.loans ? (
-            <Alert type="error" showIcon message={sectionErrors.loans} />
-          ) : (
-            <LoanWidget loans={loans} />
-          )}
-        </Col>
-      </Row>
-      <Row gutter={[16, 16]}>
-        <Col xs={24}>
-          {sectionErrors.expenses ? (
-            <Alert type="error" showIcon message={sectionErrors.expenses} />
-          ) : (
-            <ExpenseTracker expenses={expenses} />
-          )}
-        </Col>
-      </Row>
-      <Card
-        title={t('Gérer les valorisations')}
-        extra={
-          <Button type="primary" onClick={openCreateValuation}>
-            {t('Ajouter')}
-          </Button>
-        }
-      >
-        <Table
-          exportFilename={t('Gérer les valorisations')}
-          scroll={{ x: 'max-content' }}
-          rowKey="id"
-          dataSource={valuations}
-          pagination={{ pageSize: 5 }}
-          columns={[
-            {
-              title: t('Date'),
-              dataIndex: 'valuatedAt',
-              render: (value: string) => new Date(value).toLocaleString(activeLocale())
-            },
-            {
-              title: t('Valeur'),
-              dataIndex: 'estimatedValue',
-              render: (value: number, record: AssetValuation) => <MoneyValue value={value} currency={record.currency} />
-            },
-            {
-              title: t('Méthode'),
-              dataIndex: 'method',
-              render: (value: AssetValuation['method']) => <Tag>{valuationMethodLabel(value)}</Tag>
-            },
-            {
-              title: t('Actions'),
-              key: 'actions',
-              render: (_: unknown, record: AssetValuation) => (
-                <Space>
-                  <Button size="small" onClick={() => openEditValuation(record)}>
-                    {t('Modifier')}
-                  </Button>
-                  <Popconfirm title={t('Supprimer cette valorisation ?')} onConfirm={() => removeValuation(record.id)}>
-                    <Button size="small" danger loading={busyActionId === `valuation-${record.id}`}>
-                      {t('Supprimer')}
-                    </Button>
-                  </Popconfirm>
-                </Space>
-              )
-            }
-          ]}
-        />
-      </Card>
-      <Card
-        title={t('Gérer les dépenses')}
-        extra={
-          <Button type="primary" onClick={openCreateExpense}>
-            {t('Ajouter')}
-          </Button>
-        }
-      >
-        <Table
-          exportFilename={t('Gérer les dépenses')}
-          scroll={{ x: 'max-content' }}
-          rowKey="id"
-          dataSource={expenses}
-          pagination={{ pageSize: 5 }}
-          columns={[
-            {
-              title: t('Date'),
-              dataIndex: 'paidAt',
-              render: (value: string) => new Date(value).toLocaleDateString(activeLocale())
-            },
-            { title: t('Libellé'), dataIndex: 'label' },
-            {
-              title: t('Catégorie'),
-              dataIndex: 'category',
-              render: (value: PropertyExpense['category']) => <Tag>{expenseCategoryLabel(value)}</Tag>
-            },
-            {
-              title: t('Périodicité'),
-              dataIndex: 'recurrence',
-              render: (value: PropertyExpense['recurrence']) => expenseRecurrenceLabel(value)
-            },
-            {
-              title: t('Montant'),
-              dataIndex: 'amount',
-              render: (value: number, record: PropertyExpense) => (
-                <MoneyValue value={value} currency={record.currency} />
-              )
-            },
-            {
-              title: t('Actions'),
-              key: 'actions',
-              render: (_: unknown, record: PropertyExpense) => (
-                <Space>
-                  <Button size="small" onClick={() => openEditExpense(record)}>
-                    {t('Modifier')}
-                  </Button>
-                  <Popconfirm title={t('Supprimer cette dépense ?')} onConfirm={() => removeExpense(record.id)}>
-                    <Button size="small" danger loading={busyActionId === `expense-${record.id}`}>
-                      {t('Supprimer')}
-                    </Button>
-                  </Popconfirm>
-                </Space>
-              )
-            }
-          ]}
-        />
-      </Card>
-      <Card
-        title={t('Gérer les crédits')}
-        extra={
-          <Button type="primary" onClick={openCreateLoan}>
-            {t('Ajouter')}
-          </Button>
-        }
-      >
-        <Table
-          exportFilename={t('Gérer les crédits')}
-          scroll={{ x: 'max-content' }}
-          rowKey="id"
-          dataSource={loans}
-          pagination={{ pageSize: 5 }}
-          columns={[
-            { title: t('Prêteur'), dataIndex: 'lender' },
-            {
-              title: t('Capital restant'),
-              dataIndex: 'remainingCapital',
-              render: (value: number, record: PropertyLoan) => <MoneyValue value={value} currency={record.currency} />
-            },
-            {
-              title: t('Statut'),
-              dataIndex: 'status',
-              render: (value: PropertyLoan['status']) => <Tag>{loanStatusLabel(value)}</Tag>
-            },
-            {
-              title: t('Actions'),
-              key: 'actions',
-              render: (_: unknown, record: PropertyLoan) => (
-                <Space>
-                  <Button size="small" onClick={() => openEditLoan(record)}>
-                    {t('Modifier')}
-                  </Button>
-                  <Popconfirm title={t('Supprimer ce crédit ?')} onConfirm={() => removeLoan(record.id)}>
-                    <Button size="small" danger loading={busyActionId === `loan-${record.id}`}>
-                      {t('Supprimer')}
-                    </Button>
-                  </Popconfirm>
-                </Space>
-              )
-            }
-          ]}
-        />
-      </Card>
-      <Card
-        title={t('Gérer les programmes de travaux')}
-        extra={
-          <Button type="primary" onClick={openCreateWorkProgram}>
-            {t('Ajouter')}
-          </Button>
-        }
-      >
-        {sectionErrors.workPrograms ? (
-          <Alert type="error" showIcon message={sectionErrors.workPrograms} />
-        ) : (
-          <Table
-            exportFilename={t('Gérer les programmes de travaux')}
-            scroll={{ x: 'max-content' }}
-            rowKey="id"
-            dataSource={workPrograms}
-            pagination={{ pageSize: 5 }}
-            columns={[
-              { title: t('Titre'), dataIndex: 'title' },
-              {
-                title: t('Chantier'),
-                dataIndex: 'constructionSite',
-                exportValue: (record: WorkProgram) => record.constructionSite?.name ?? '',
-                render: (_: unknown, record: WorkProgram) =>
-                  record.constructionSite ? <Tag color="blue">{record.constructionSite.name}</Tag> : '—'
-              },
-              {
-                title: t('Date prévue'),
-                dataIndex: 'plannedDate',
-                render: (value: string) => new Date(value).toLocaleDateString(activeLocale())
-              },
-              {
-                title: t('Coût estimé'),
-                dataIndex: 'estimatedCost',
-                render: (value: number, record: WorkProgram) => <MoneyValue value={value} currency={record.currency} />
-              },
-              {
-                title: t('Coût réel'),
-                dataIndex: 'actualCost',
-                render: (value: number | null | undefined, record: WorkProgram) => (
-                  <MoneyValue value={value ?? null} currency={record.currency} />
-                )
-              },
-              {
-                title: t('Statut'),
-                dataIndex: 'status',
-                render: (value: WorkProgram['status']) => <Tag>{workProgramStatusLabel(value)}</Tag>
-              },
-              {
-                title: t('Actions'),
-                key: 'actions',
-                render: (_: unknown, record: WorkProgram) => (
-                  <Space>
-                    <Button size="small" onClick={() => openEditWorkProgram(record)}>
-                      {t('Modifier')}
-                    </Button>
-                    <Popconfirm title={t('Supprimer ce programme ?')} onConfirm={() => removeWorkProgram(record.id)}>
-                      <Button size="small" danger loading={busyActionId === `work-${record.id}`}>
-                        {t('Supprimer')}
-                      </Button>
-                    </Popconfirm>
-                  </Space>
-                )
-              }
-            ]}
-          />
-        )}
-      </Card>
-      <Row gutter={[16, 16]}>
-        <Col xs={24}>
-          {sectionErrors.yieldData ? (
-            <Alert type="error" showIcon message={sectionErrors.yieldData} />
-          ) : (
-            <YieldCalculator
-              data={yieldData}
-              loading={yieldLoading}
-              assumptions={yieldAssumptions}
-              syncStatus={yieldSyncStatus}
-              onRecalculate={handleRecalculateYield}
-            />
-          )}
-        </Col>
-        <Col xs={24}>
-          <YieldProjectionChart data={yieldData?.projection ?? []} />
-        </Col>
-      </Row>
-      <WorkProgramTimeline items={workPrograms} />
-      <Row gutter={[16, 16]}>
-        <Col xs={24}>
-          {sectionErrors.documents ? (
-            <Alert type="error" showIcon message={sectionErrors.documents} />
-          ) : (
-            <DocumentVault
-              documents={documents}
-              tenantId={tenantId}
-              propertyId={propertyId}
-              onDelete={handleDeleteDocument}
-              deletingId={deletingDocumentId}
-              extra={
-                <Button type="primary" onClick={openCreateDocument}>
-                  {t('Ajouter')}
-                </Button>
-              }
-            />
-          )}
-        </Col>
-      </Row>
-      <Alert
-        type="info"
-        showIcon
-        message={t("Total des charges de l'année en cours : {{value}}", {
-          value: formatMoney(annualExpenses, { currency: DEVISE_PATRIMOINE })
-        })}
-      />
+      <Tabs destroyOnHidden activeKey={rubrique} onChange={changerRubrique} items={rubriques} />
 
       <Modal
         title={editingValuationId ? t('Modifier valorisation') : t('Ajouter valorisation')}

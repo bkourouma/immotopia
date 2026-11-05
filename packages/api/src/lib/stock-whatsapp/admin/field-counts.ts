@@ -81,6 +81,16 @@ type LastLineRow = {
   counted_by_email: string | null;
 };
 
+/** Minuscules, sans diacritiques (NFD) : « Béton » et « beton » se valent. */
+export function normalizeSearch(value: string): string {
+  return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+/** Vrai si l'aiguille (déjà normalisée) est sous-chaîne d'au moins un des champs. */
+function matchesSearch(needle: string, fields: Array<string | null | undefined>): boolean {
+  return fields.some(field => typeof field === 'string' && normalizeSearch(field).includes(needle));
+}
+
 type PairKey = string;
 const pairKey = (locationId: string, itemId: string): PairKey => `${locationId}|${itemId}`;
 
@@ -276,7 +286,9 @@ export async function listFieldCounts(
     }
   }
 
-  // 6. Les lignes, masquées pour l'appelant.
+  // 6. Les lignes, masquées pour l'appelant. La recherche ne fait que restreindre
+  //    (avant tri, curseur et pagination, donc le curseur reste cohérent).
+  const searchNeedle = normalizeSearch(query.search ?? '');
   const rows: Array<FieldCountRow & { sortKey: SortKey }> = [];
   for (const [key, pair] of pairs) {
     const location = locationById.get(pair.locationId);
@@ -316,6 +328,12 @@ export async function listFieldCounts(
       : null;
 
     if (query.source && lastCount?.countSource !== query.source) continue;
+    if (
+      searchNeedle &&
+      !matchesSearch(searchNeedle, [item.reference, item.label, location.label, lastCount?.countedByLabel])
+    ) {
+      continue;
+    }
 
     rows.push({
       locationId: location.id,

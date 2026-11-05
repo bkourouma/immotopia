@@ -15,6 +15,13 @@ import {
 import { handleTenantPortalFinanceStatement } from './finance-controller';
 import { parseNumberParam } from '../utils/query-params';
 import { parsePagination } from '../utils/pagination-helper';
+import { respondWithAppError } from '../utils/app-error-response';
+import {
+  definedOnly,
+  parseTenantPortalInstallmentsQuery,
+  parseTenantPortalMaintenanceQuery,
+  parseTenantPortalPaymentsQuery
+} from '../services/portal-list-filters/tenant-portal-list-filters';
 
 /**
  * Message a montrer au locataire.
@@ -130,16 +137,7 @@ export class TenantPortalController {
 
       const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
 
-      const filters: any = {};
-      if (req.query.status) {
-        filters.status = req.query.status as string;
-      }
-      if (req.query.startDate) {
-        filters.startDate = req.query.startDate as string;
-      }
-      if (req.query.endDate) {
-        filters.endDate = req.query.endDate as string;
-      }
+      const filters: any = definedOnly(parseTenantPortalInstallmentsQuery(req.query));
 
       const { page, limit } = parsePagination(req.query);
       const pagination: any = {};
@@ -163,6 +161,7 @@ export class TenantPortalController {
         data: installmentsData
       });
     } catch (error: any) {
+      if (respondWithAppError(res, error)) return;
       const statusCode = error.statusCode || 500;
       const message = messageErreurPortail(error, 'Erreur lors de la récupération des échéances.');
 
@@ -320,16 +319,7 @@ export class TenantPortalController {
 
       const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
 
-      const filters: any = {};
-      if (req.query.startDate) {
-        filters.startDate = req.query.startDate as string;
-      }
-      if (req.query.endDate) {
-        filters.endDate = req.query.endDate as string;
-      }
-      if (req.query.method) {
-        filters.method = req.query.method as string;
-      }
+      const filters: any = definedOnly(parseTenantPortalPaymentsQuery(req.query));
 
       const { page, limit } = parsePagination(req.query);
       const pagination: any = {};
@@ -353,6 +343,7 @@ export class TenantPortalController {
         data: paymentHistoryData
       });
     } catch (error: any) {
+      if (respondWithAppError(res, error)) return;
       const statusCode = error.statusCode || 500;
       const message = messageErreurPortail(error, "Erreur lors de la récupération de l'historique des paiements.");
 
@@ -494,10 +485,7 @@ export class TenantPortalController {
 
       const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
 
-      const filters: any = {};
-      if (req.query.status) {
-        filters.status = req.query.status as string;
-      }
+      const filters: any = definedOnly(parseTenantPortalMaintenanceQuery(req.query));
 
       const { page, limit } = parsePagination(req.query);
       const pagination: any = {};
@@ -521,6 +509,7 @@ export class TenantPortalController {
         data: ticketsData
       });
     } catch (error: any) {
+      if (respondWithAppError(res, error)) return;
       const statusCode = error.statusCode || 500;
       const message = messageErreurPortail(error, 'Erreur lors de la récupération des tickets de maintenance.');
 

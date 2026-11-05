@@ -56,6 +56,27 @@ export interface MoneyValueProps {
   className?: string;
 }
 
+/**
+ * `Intl.NumberFormat` est coûteux à construire (`toLocaleString` en recrée un
+ * à chaque appel) : un tableau de mille lignes en refaisait des milliers. Un
+ * formateur par (langue, décimales), conservé pour la durée du module. Le
+ * texte produit est celui de `toLocaleString(locale, { min/maxFractionDigits })`.
+ */
+const formateurs = new Map<string, Intl.NumberFormat>();
+
+function nombreFormat(locale: string, fractionDigits: number): Intl.NumberFormat {
+  const cle = `${locale}|${fractionDigits}`;
+  let formateur = formateurs.get(cle);
+  if (!formateur) {
+    formateur = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits
+    });
+    formateurs.set(cle, formateur);
+  }
+  return formateur;
+}
+
 export function formatMoney(
   value: number | string | null | undefined,
   { currency = DEFAULT_CURRENCY, fractionDigits = 0, placeholder = '—' }: Partial<MoneyValueProps> = {}
@@ -66,10 +87,7 @@ export function formatMoney(
   if (!Number.isFinite(numeric)) return placeholder;
 
   // fr-FR pose une espace insecable etroite (U+202F) comme separateur.
-  const formatted = numeric.toLocaleString(activeLocale(), {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits
-  });
+  const formatted = nombreFormat(activeLocale(), fractionDigits).format(numeric);
 
   return currency ? `${formatted} ${currency}` : formatted;
 }

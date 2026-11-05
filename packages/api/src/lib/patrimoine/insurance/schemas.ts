@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { zSearch } from '../../../utils/list-query-schemas';
 
 /**
  * Validation Zod des polices, sinistres et pièces (lot B1, spec 032). Tous les
@@ -149,6 +150,8 @@ export const listClaimsQuerySchema = z
     propertyId: idSchema.optional(),
     policyId: uuidSchema.optional(),
     status: z.enum(CLAIM_STATUSES).optional(),
+    /** Recherche libre : description, référence et titre du bien, assureur, n° de police. */
+    search: zSearch(),
     limit: z.coerce.number().int().min(1).max(500).optional()
   })
   .strict();

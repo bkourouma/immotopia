@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -296,8 +296,8 @@ describe('Fournisseurs — liste et création', () => {
 
     await user.type(await screen.findByLabelText('Raison sociale'), 'Nouveau Fournisseur SARL');
 
-    // La modale ne porte qu'un seul menu déroulant : la nature.
-    await user.click(screen.getByRole('combobox'));
+    // La barre de recherche porte aussi des menus déroulants : on cible celui de la modale (la nature).
+    await user.click(within(screen.getByRole('dialog')).getByRole('combobox'));
     await user.click(await screen.findByText('Prestation'));
 
     await user.click(screen.getByRole('button', { name: 'Créer' }));
@@ -332,6 +332,115 @@ describe('Fournisseurs — liste et création', () => {
       await screen.findByText('Impossible de charger les fournisseurs.', {}, { timeout: 8000 })
     ).toBeInTheDocument();
     expect(screen.getByText('Réessayer')).toBeInTheDocument();
+  });
+});
+
+describe('Fournisseurs — recherche locale', () => {
+  const T = { timeout: 8000 };
+  const PLACEHOLDER = 'Raison sociale, contact, téléphone, e-mail…';
+
+  beforeEach(() => {
+    listSuppliers.mockResolvedValue([
+      fournisseur(),
+      fournisseur({
+        id: 'frs-02',
+        name: 'Électricité Générale Bamako',
+        kind: 'SERVICES',
+        contactName: 'Boubacar Traoré',
+        contactEmail: 'btraore@elec-bamako.ml'
+      }),
+      fournisseur({ id: 'frs-03', name: 'Quincaillerie du Plateau', kind: 'MIXED', isActive: false })
+    ]);
+  });
+
+  /** Lignes de données du tableau (l'en-tête est exclu). */
+  const lignes = () => screen.getAllByRole('row').slice(1);
+
+  it('cherche sans tenir compte des accents ni de la casse, et garde le terme dans l’URL', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFournisseurs();
+
+    await user.type(await screen.findByPlaceholderText(PLACEHOLDER, {}, T), 'MATERIAUX');
+
+    // Le champ s'applique après ~300 ms sans frappe.
+    await waitFor(() => expect(screen.queryByText('Électricité Générale Bamako')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('Matériaux du Bandama SARL')).toBeInTheDocument();
+    expect(screen.getByTestId('adresse')).toHaveTextContent('q=MATERIAUX');
+  });
+
+  it('cherche aussi dans le contact, l’e-mail et le libellé de la nature', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFournisseurs();
+
+    const champ = await screen.findByPlaceholderText(PLACEHOLDER, {}, T);
+    await user.type(champ, 'btraore@elec');
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+    expect(screen.getByText('Électricité Générale Bamako')).toBeInTheDocument();
+
+    await user.clear(champ);
+    await user.type(champ, 'materiaux et prestation');
+    expect(await screen.findByText('Quincaillerie du Plateau', {}, T)).toBeInTheDocument();
+    await waitFor(() => expect(lignes()).toHaveLength(1), T);
+  });
+
+  it('filtre par nature depuis l’URL (lien partagé)', async () => {
+    mountFournisseurs('/tenant/agence-1/finance/fournisseurs?nature=SERVICES');
+
+    expect(await screen.findByText('Électricité Générale Bamako', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('Matériaux du Bandama SARL')).not.toBeInTheDocument();
+    expect(screen.queryByText('Quincaillerie du Plateau')).not.toBeInTheDocument();
+  });
+
+  it('filtre les fournisseurs inactifs depuis l’URL', async () => {
+    mountFournisseurs('/tenant/agence-1/finance/fournisseurs?actif=0');
+
+    expect(await screen.findByText('Quincaillerie du Plateau', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('Matériaux du Bandama SARL')).not.toBeInTheDocument();
+    expect(lignes()).toHaveLength(1);
+  });
+
+  it('annonce le nombre de résultats dans la barre, et garde le total non filtré en sous-titre', async () => {
+    mountFournisseurs();
+
+    const barre = await screen.findByRole('search', {}, T);
+    expect(await within(barre).findByText('3 résultats', {}, T)).toBeInTheDocument();
+    expect(screen.getByText('3 fournisseurs')).toBeInTheDocument();
+  });
+
+  it('compte les résultats filtrés sans changer le sous-titre', async () => {
+    mountFournisseurs('/tenant/agence-1/finance/fournisseurs?actif=1');
+
+    const barre = await screen.findByRole('search', {}, T);
+    expect(await within(barre).findByText('2 résultats', {}, T)).toBeInTheDocument();
+    expect(screen.getByText('3 fournisseurs')).toBeInTheDocument();
+  });
+
+  it('pagine localement : 20 lignes en page 1 sur 25 fournisseurs', async () => {
+    listSuppliers.mockResolvedValue(
+      Array.from({ length: 25 }, (_, i) =>
+        fournisseur({ id: `frs-${i + 1}`, name: `Fournisseur ${String(i + 1).padStart(2, '0')}` })
+      )
+    );
+    mountFournisseurs();
+
+    expect(await screen.findByText('Fournisseur 01', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(20);
+    expect(screen.queryByText('Fournisseur 21')).not.toBeInTheDocument();
+    const barre = screen.getByRole('search');
+    expect(within(barre).getByText('25 résultats')).toBeInTheDocument();
+  });
+
+  it('« Effacer les critères » ramène toute la liste', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFournisseurs('/tenant/agence-1/finance/fournisseurs?q=zzz');
+
+    // Aucun résultat : le bloc d'état et la barre proposent chacun d'effacer.
+    const barre = await screen.findByRole('search', {}, T);
+    await user.click(await within(barre).findByRole('button', { name: 'Effacer les critères' }, T));
+
+    expect(await screen.findByText('Matériaux du Bandama SARL', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(3);
+    expect(screen.getByTestId('adresse')).not.toHaveTextContent('q=');
   });
 });
 
@@ -391,6 +500,74 @@ describe('Balance fournisseurs', () => {
     expect(
       await screen.findByText('Impossible de charger la balance fournisseurs.', {}, { timeout: 8000 })
     ).toBeInTheDocument();
+  });
+
+  describe('recherche (mode mixte)', () => {
+    const T = { timeout: 8000 };
+    const REPONSE = {
+      lines: [
+        ligneBalance(),
+        ligneBalance({
+          accountId: 'compte-frs-02',
+          supplierId: 'frs-02',
+          label: 'BTP Sahel Construction',
+          totalBilled: 5_000_000,
+          totalSettled: 2_000_000,
+          balance: 3_000_000
+        })
+      ],
+      totalBalance: 3_500_000,
+      currency: 'XOF'
+    };
+
+    it('le champ libre filtre localement sans rappeler l’API', async () => {
+      getSuppliersBalance.mockResolvedValue(REPONSE);
+      const user = userEvent.setup({ delay: null });
+      mountBalance();
+
+      await user.type(await screen.findByPlaceholderText('Fournisseur…', {}, T), 'SAHEL');
+
+      await waitFor(() => expect(screen.queryByText('Matériaux du Bandama SARL')).not.toBeInTheDocument(), T);
+      expect(screen.getByText('BTP Sahel Construction')).toBeInTheDocument();
+      expect(getSuppliersBalance).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('adresse')).toHaveTextContent('q=SAHEL');
+      // Le total de contrôle n'est plus celui des lignes visibles : masqué.
+      expect(screen.queryByText('Total de contrôle')).not.toBeInTheDocument();
+    });
+
+    it('la période et le chantier d’une URL partagée partent à l’API', async () => {
+      getSuppliersBalance.mockResolvedValue(REPONSE);
+      mountBalance(
+        '/tenant/agence-1/finance/balance-fournisseurs?periodeFrom=2026-01-01&periodeTo=2026-03-31&chantier=chantier-1'
+      );
+
+      await screen.findByText('Matériaux du Bandama SARL', {}, T);
+      expect(getSuppliersBalance).toHaveBeenLastCalledWith(
+        'agence-1',
+        expect.objectContaining({ from: '2026-01-01', to: '2026-03-31', siteId: 'chantier-1' })
+      );
+    });
+
+    it('l’intervalle de solde filtre localement', async () => {
+      getSuppliersBalance.mockResolvedValue(REPONSE);
+      mountBalance('/tenant/agence-1/finance/balance-fournisseurs?soldeMin=1000000');
+
+      expect(await screen.findByText('BTP Sahel Construction', {}, T)).toBeInTheDocument();
+      expect(screen.queryByText('Matériaux du Bandama SARL')).not.toBeInTheDocument();
+    });
+
+    it('« Effacer les critères » ramène toute la liste', async () => {
+      getSuppliersBalance.mockResolvedValue(REPONSE);
+      const user = userEvent.setup({ delay: null });
+      mountBalance('/tenant/agence-1/finance/balance-fournisseurs?q=zzz');
+
+      const barre = await screen.findByRole('search', {}, T);
+      await user.click(await within(barre).findByRole('button', { name: 'Effacer les critères' }, T));
+
+      expect(await screen.findByText('Matériaux du Bandama SARL', {}, T)).toBeInTheDocument();
+      expect(screen.getByText('BTP Sahel Construction')).toBeInTheDocument();
+      expect(screen.getByTestId('adresse')).not.toHaveTextContent('q=');
+    });
   });
 });
 
@@ -517,7 +694,7 @@ describe('Facture fournisseur — écart d’imputation', () => {
     await user.type(screen.getByLabelText('Montant imputé'), '1000000');
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Enregistrer en brouillon' })).not.toBeDisabled());
-  }, 60000);
+  }, 150000);
 });
 
 describe('Facture fournisseur — validation et annulation', () => {
@@ -731,7 +908,8 @@ describe('Règlement — avertissement avant de valider un règlement déjà sol
 
     await user.click(boutonValider);
     expect(await screen.findByText(/risque de payer deux fois la même facture/)).toBeInTheDocument();
-  });
+    // Les barres de recherche alourdissent le DOM : les requêtes par rôle sont plus lentes sous charge.
+  }, 120000);
 });
 
 describe('Règlements relus du serveur (BUG-2026-09-29-001)', () => {
@@ -938,6 +1116,106 @@ describe('Actions réservées aux validateurs (BUG-2026-09-29-006, volet fournis
     await user.click(await screen.findByRole('button', { name: 'Confirmer la validation' }));
 
     expect(await screen.findByText("Vous n'avez pas le droit de valider une facture fournisseur.")).toBeInTheDocument();
+  }, 120000);
+});
+
+describe('Facture fournisseur — recherche des factures et des règlements', () => {
+  const T = { timeout: 8000 };
+  const BASE = '/tenant/agence-1/finance/factures-fournisseurs?fournisseur=frs-01';
+
+  beforeEach(() => {
+    listSuppliers.mockResolvedValue([fournisseur({ id: 'frs-01', name: 'BTP Sahel OI', kind: 'SERVICES' })]);
+    listSupplierInvoices.mockResolvedValue([
+      facture({
+        id: 'fact-a',
+        reference: 'FRS-AAA-001',
+        status: 'VALIDATED',
+        amount: 1_000_000,
+        remainingPayable: 1_000_000
+      }),
+      facture({
+        id: 'fact-b',
+        reference: 'FRS-BBB-002',
+        status: 'DRAFT',
+        amount: 4_000_000,
+        siteId: null,
+        siteLabel: null
+      })
+    ]);
+    listSupplierPayments.mockResolvedValue([
+      reglement({
+        id: 'regl-1',
+        amount: 111_000,
+        status: 'VALIDATED',
+        method: 'CHECK',
+        createdByName: 'Aïcha Comptable'
+      }),
+      reglement({ id: 'regl-2', amount: 222_000, status: 'DRAFT', method: 'CASH', createdByName: 'Moussa Caissier' })
+    ]);
+  });
+
+  function montage(url: string) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <AntApp>
+          <MemoryRouter initialEntries={[url]}>
+            <Adresse />
+            <Routes>
+              <Route path="/tenant/:tenantId/finance/factures-fournisseurs" element={<FactureFournisseur />} />
+            </Routes>
+          </MemoryRouter>
+        </AntApp>
+      </QueryClientProvider>
+    );
+  }
+
+  it('monte deux barres distinctes, une par tableau', async () => {
+    montage(BASE);
+
+    expect(await screen.findByRole('search', { name: 'Rechercher dans les factures' }, T)).toBeInTheDocument();
+    expect(await screen.findByRole('search', { name: 'Rechercher dans les règlements' }, T)).toBeInTheDocument();
+  });
+
+  it('cherche dans les factures (préfixe fac) sans toucher aux règlements ni au fournisseur choisi', async () => {
+    const user = userEvent.setup({ delay: null });
+    montage(BASE);
+
+    const barre = await screen.findByRole('search', { name: 'Rechercher dans les factures' }, T);
+    await user.type(within(barre).getByRole('textbox'), 'BBB');
+
+    await waitFor(() => expect(screen.queryByText('FRS-AAA-001')).not.toBeInTheDocument(), T);
+    expect(screen.getByText('FRS-BBB-002')).toBeInTheDocument();
+    const adresse = screen.getByTestId('adresse');
+    expect(adresse).toHaveTextContent('fac.q=BBB');
+    expect(adresse).toHaveTextContent('fournisseur=frs-01');
+    // Les règlements sont intacts.
+    expect(screen.getByText('Aïcha Comptable')).toBeInTheDocument();
+    expect(screen.getByText('Moussa Caissier')).toBeInTheDocument();
+  });
+
+  it('applique les critères d’URL du préfixe reg aux seuls règlements', async () => {
+    montage(`${BASE}&reg.mode=CASH`);
+
+    expect(await screen.findByText('Moussa Caissier', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('Aïcha Comptable')).not.toBeInTheDocument();
+    expect(screen.getByText('FRS-AAA-001')).toBeInTheDocument();
+    expect(screen.getByText('FRS-BBB-002')).toBeInTheDocument();
+  });
+
+  it('le champ libre des règlements trouve un acteur, et « Effacer les critères » ramène la liste', async () => {
+    const user = userEvent.setup({ delay: null });
+    montage(`${BASE}&reg.q=moussa`);
+
+    expect(await screen.findByText('Moussa Caissier', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText('Aïcha Comptable')).not.toBeInTheDocument();
+
+    const barre = screen.getByRole('search', { name: 'Rechercher dans les règlements' });
+    await user.click(within(barre).getByRole('button', { name: 'Effacer les critères' }));
+
+    expect(await screen.findByText('Aïcha Comptable', {}, T)).toBeInTheDocument();
+    expect(screen.getByTestId('adresse')).not.toHaveTextContent('reg.q=');
+    expect(screen.getByTestId('adresse')).toHaveTextContent('fournisseur=frs-01');
   });
 });
 

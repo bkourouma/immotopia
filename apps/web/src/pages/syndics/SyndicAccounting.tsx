@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   App,
   Alert,
@@ -12,26 +12,38 @@ import {
   Row,
   Select,
   Space,
-  Spin,
-  Tag,
+  Tabs,
   Typography
 } from 'antd';
-import { DownloadOutlined, LockOutlined, PlusOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
-import { MoneyValue, StatCard, Table } from '../../components/primitives';
+import { DownloadOutlined, PlusOutlined } from '@ant-design/icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import { StatCard } from '../../components/primitives';
 import {
   createAccountingEntry,
   createAccountingJournal,
   createChartOfAccount,
-  getGeneralLedger,
-  getTrialBalance,
-  listAccountingEntries,
   listAccountingJournals,
   listChartOfAccounts,
   loadSyndicChartTemplate,
   lockAccountingEntry
 } from '../../services/syndic-service';
-import { AccountingJournal, ChartOfAccount, JournalEntry, SourceType, TrialBalance } from '../../types/syndic-types';
+import { AccountingJournal, ChartOfAccount, SourceType } from '../../types/syndic-types';
+import { AccountingBalanceTab } from '../../components/syndics/accounting/AccountingBalanceTab';
+import { AccountingEntriesTab } from '../../components/syndics/accounting/AccountingEntriesTab';
+import { AccountingJournalsTab } from '../../components/syndics/accounting/AccountingJournalsTab';
+import { AccountingLedgerTab } from '../../components/syndics/accounting/AccountingLedgerTab';
+import { AccountingPlanTab } from '../../components/syndics/accounting/AccountingPlanTab';
+import {
+  ACCOUNT_TYPE_VALUES,
+  ACCOUNTING_TABS,
+  AccountingTabKey,
+  DEFAULT_ACCOUNTING_TAB,
+  LEDGER_PREFIX,
+  UpdateParams,
+  accountTypeLabel,
+  accountingKey
+} from '../../components/syndics/accounting/accounting-shared';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
@@ -44,42 +56,16 @@ const sourceTypeOptions = (): Array<{ value: SourceType; label: string }> => [
   { value: 'FUND', label: t('FONDS') }
 ];
 
-const accountTypeLabel = (type: ChartOfAccount['accountType']): string => {
-  switch (type) {
-    case 'ASSET':
-      return t('Actif (bilan)');
-    case 'LIABILITY':
-      return t('Passif');
-    case 'EQUITY':
-      return t('Capitaux propres');
-    case 'INCOME':
-      return t('Produit');
-    case 'EXPENSE':
-      return t('Charge');
-    default:
-      return type;
-  }
-};
-
-const accountTypeValues: Array<ChartOfAccount['accountType']> = ['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE'];
-
 export const SyndicAccounting: React.FC = () => {
   const { message, modal } = App.useApp();
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
+  const tenantId = effectiveTenantId ?? '';
+  const ready = Boolean(effectiveTenantId && syndicId);
 
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
-  const [journals, setJournals] = useState<AccountingJournal[]>([]);
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [trialBalance, setTrialBalance] = useState<TrialBalance>({
-    items: [],
-    totals: { totalDebit: 0, totalCredit: 0, isBalanced: true }
-  });
-  const [ledger, setLedger] = useState<any[]>([]);
 
   const [openAccount, setOpenAccount] = useState(false);
   const [openJournal, setOpenJournal] = useState(false);
@@ -89,14 +75,52 @@ export const SyndicAccounting: React.FC = () => {
   const [journalForm] = Form.useForm();
   const [entryForm] = Form.useForm();
 
-  useEffect(() => {
-    if (!effectiveTenantId || !syndicId) {
-      setLoading(false);
-      setError(t('Paramètres comptabilité manquants'));
-      return;
-    }
-    void loadData();
-  }, [effectiveTenantId, syndicId]);
+  const tabParam = searchParams.get('tab');
+  const activeTab: AccountingTabKey = ACCOUNTING_TABS.includes(tabParam as AccountingTabKey)
+    ? (tabParam as AccountingTabKey)
+    : DEFAULT_ACCOUNTING_TAB;
+
+  const updateParams: UpdateParams = useCallback(
+    patch => {
+      setSearchParams(
+        previous => {
+          const next = new URLSearchParams(previous);
+          Object.entries(patch).forEach(([key, value]) => {
+            if (value === undefined || value === '') next.delete(key);
+            else next.set(key, value);
+          });
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  // Le plan comptable et la liste des journaux (bornés) sont chargés au montage : ils alimentent les
+  // sélecteurs des modales, l'activation de « Nouvelle écriture » et les onglets Plan comptable / Journaux.
+  // Tout le reste (écritures, grand livre, balance) ne se charge qu'à l'affichage de son onglet.
+  const accountsQuery = useQuery({
+    queryKey: accountingKey(tenantId, syndicId ?? '', 'plan'),
+    queryFn: () => listChartOfAccounts(tenantId, syndicId as string),
+    enabled: ready
+  });
+  const journalsQuery = useQuery({
+    queryKey: accountingKey(tenantId, syndicId ?? '', 'journaux'),
+    queryFn: () => listAccountingJournals(tenantId, syndicId as string),
+    enabled: ready
+  });
+  // L'onglet Plan comptable lit aussi les comptes inactifs (le critère Actifs/Inactifs en dépend) : requête
+  // distincte, chargée à l'affichage de l'onglet. Les sélecteurs de saisie restent sur les comptes actifs.
+  const fullPlanQuery = useQuery({
+    queryKey: accountingKey(tenantId, syndicId ?? '', 'plan-complet'),
+    queryFn: () => listChartOfAccounts(tenantId, syndicId as string, { onlyActive: false }),
+    enabled: ready && activeTab === 'plan'
+  });
+  const accounts = useMemo<ChartOfAccount[]>(() => accountsQuery.data ?? [], [accountsQuery.data]);
+  const fullPlan = useMemo<ChartOfAccount[]>(() => fullPlanQuery.data ?? [], [fullPlanQuery.data]);
+  const journals = useMemo<AccountingJournal[]>(() => journalsQuery.data ?? [], [journalsQuery.data]);
+  const loadError = accountsQuery.error || journalsQuery.error;
 
   const accountOptions = useMemo(
     () =>
@@ -116,31 +140,35 @@ export const SyndicAccounting: React.FC = () => {
     [journals]
   );
 
-  const loadData = async () => {
-    if (!effectiveTenantId || !syndicId) return;
-    setLoading(true);
-    setError(null);
+  /** Après une création ou un verrouillage : tous les onglets de cette copropriété sont rechargés au besoin. */
+  const refresh = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: accountingKey(tenantId, syndicId ?? '') }),
+    [queryClient, tenantId, syndicId]
+  );
 
-    try {
-      const [accountsData, journalsData, entriesData, balanceData, ledgerData] = await Promise.all([
-        listChartOfAccounts(effectiveTenantId, syndicId),
-        listAccountingJournals(effectiveTenantId, syndicId),
-        listAccountingEntries(effectiveTenantId, syndicId, { page: 1, limit: 100 }),
-        getTrialBalance(effectiveTenantId, syndicId),
-        getGeneralLedger(effectiveTenantId, syndicId, { page: 1, limit: 100 })
-      ]);
-
-      setAccounts(accountsData);
-      setJournals(journalsData);
-      setEntries(entriesData);
-      setTrialBalance(balanceData);
-      setLedger(ledgerData);
-    } catch (err: any) {
-      setError(err.response?.data?.error || t('Impossible de charger la comptabilité'));
-    } finally {
-      setLoading(false);
-    }
+  // Changer d'onglet repart d'une URL propre : chaque tableau a ses critères sous son préfixe, ceux de
+  // l'onglet quitté ne doivent pas rester dans le lien.
+  const handleTabChange = (key: string) => {
+    const next = new URLSearchParams();
+    if (key !== DEFAULT_ACCOUNTING_TAB) next.set('tab', key);
+    // Le compte choisi suit l'utilisateur d'un onglet « compte » à l'autre.
+    const accountId = searchParams.get('accountId');
+    if (key === 'grand-livre' && accountId) next.set('accountId', accountId);
+    setSearchParams(next, { replace: true });
   };
+
+  /** Balance -> grand livre du compte, en reportant la période posée sur la balance (aucune si absente). */
+  const openLedgerOf = useCallback(
+    (accountId: string, period: { from?: string; to?: string }) => {
+      const next = new URLSearchParams();
+      next.set('tab', 'grand-livre');
+      next.set('accountId', accountId);
+      if (period.from) next.set(`${LEDGER_PREFIX}.periodFrom`, period.from);
+      if (period.to) next.set(`${LEDGER_PREFIX}.periodTo`, period.to);
+      setSearchParams(next, { replace: true });
+    },
+    [setSearchParams]
+  );
 
   const handleCreateAccount = async () => {
     if (!effectiveTenantId || !syndicId) return;
@@ -158,7 +186,7 @@ export const SyndicAccounting: React.FC = () => {
       message.success(t('Compte comptable créé'));
       setOpenAccount(false);
       accountForm.resetFields();
-      await loadData();
+      await refresh();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Création compte impossible'));
     } finally {
@@ -177,7 +205,7 @@ export const SyndicAccounting: React.FC = () => {
           skipped: result.skipped
         })
       );
-      await loadData();
+      await refresh();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Chargement du plan comptable impossible'));
     } finally {
@@ -209,7 +237,7 @@ export const SyndicAccounting: React.FC = () => {
       message.success(t('Journal comptable créé'));
       setOpenJournal(false);
       journalForm.resetFields();
-      await loadData();
+      await refresh();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Création journal impossible'));
     } finally {
@@ -240,7 +268,7 @@ export const SyndicAccounting: React.FC = () => {
       message.success(t('Écriture comptable enregistrée'));
       setOpenEntry(false);
       entryForm.resetFields();
-      await loadData();
+      await refresh();
     } catch (err: any) {
       message.error(err.response?.data?.error || t("Création d'écriture impossible"));
     } finally {
@@ -248,19 +276,66 @@ export const SyndicAccounting: React.FC = () => {
     }
   };
 
-  const handleLockEntry = async (entryId: string) => {
-    if (!effectiveTenantId || !syndicId) return;
-    setSubmitting(true);
-    try {
-      await lockAccountingEntry(effectiveTenantId, syndicId, entryId);
-      message.success(t('Écriture verrouillée'));
-      await loadData();
-    } catch (err: any) {
-      message.error(err.response?.data?.error || t('Verrouillage impossible'));
-    } finally {
-      setSubmitting(false);
+  const handleLockEntry = useCallback(
+    async (entryId: string) => {
+      if (!effectiveTenantId || !syndicId) return;
+      setSubmitting(true);
+      try {
+        await lockAccountingEntry(effectiveTenantId, syndicId, entryId);
+        message.success(t('Écriture verrouillée'));
+        await refresh();
+      } catch (err: any) {
+        message.error(err.response?.data?.error || t('Verrouillage impossible'));
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [effectiveTenantId, syndicId, message, refresh]
+  );
+
+  const tabProps = { tenantId, syndicId: syndicId ?? '', params: searchParams, updateParams, accounts };
+
+  const tabItems = [
+    {
+      key: 'ecritures',
+      label: t('Écritures comptables'),
+      children: (
+        <AccountingEntriesTab
+          {...tabProps}
+          journals={journals}
+          submitting={submitting}
+          onLock={entryId => void handleLockEntry(entryId)}
+        />
+      )
+    },
+    {
+      key: 'grand-livre',
+      label: t('Grand livre'),
+      children: <AccountingLedgerTab {...tabProps} />
+    },
+    {
+      key: 'balance',
+      label: t('Balance de vérification'),
+      children: <AccountingBalanceTab {...tabProps} onOpenLedger={openLedgerOf} />
+    },
+    {
+      key: 'plan',
+      label: t('Plan comptable'),
+      children: (
+        <AccountingPlanTab
+          accounts={fullPlan}
+          loading={fullPlanQuery.isLoading}
+          submitting={submitting}
+          onLoadTemplate={handleLoadChartTemplate}
+        />
+      )
+    },
+    {
+      key: 'journaux',
+      label: t('Journaux comptables'),
+      children: <AccountingJournalsTab journals={journals} loading={journalsQuery.isLoading} />
     }
-  };
+  ];
 
   return (
     <>
@@ -297,203 +372,25 @@ export const SyndicAccounting: React.FC = () => {
           </Space>
         </div>
 
-        {error ? <Alert type="error" message={error} showIcon /> : null}
+        {!ready ? <Alert type="error" message={t('Paramètres comptabilité manquants')} showIcon /> : null}
+        {loadError ? <Alert type="error" message={t('Impossible de charger la comptabilité')} showIcon /> : null}
 
-        {loading ? (
-          <div style={{ minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Spin size="large" />
-          </div>
-        ) : (
+        {ready ? (
           <>
             <Row gutter={[16, 16]}>
-              <Col xs={24} md={8}>
+              <Col xs={24} md={12}>
                 <StatCard label={t('Comptes')} value={accounts.length} />
               </Col>
-              <Col xs={24} md={8}>
+              <Col xs={24} md={12}>
                 <StatCard label={t('Journaux')} value={journals.length} />
               </Col>
-              <Col xs={24} md={8}>
-                <StatCard
-                  label={t('Balance équilibrée')}
-                  value={trialBalance.totals.isBalanced ? t('Oui') : t('Non')}
-                  tone={trialBalance.totals.isBalanced ? 'positive' : 'danger'}
-                />
-              </Col>
             </Row>
 
-            <Card title={t('Plan comptable')}>
-              {accounts.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                  <Paragraph type="secondary">
-                    {t(
-                      'Le plan comptable de cette copropriété est vide. Chargez le plan SYSCOHADA de copropriété pour démarrer.'
-                    )}
-                  </Paragraph>
-                  <Button
-                    type="primary"
-                    icon={<DownloadOutlined />}
-                    onClick={handleLoadChartTemplate}
-                    loading={submitting}
-                  >
-                    {t('Charger le plan SYSCOHADA')}
-                  </Button>
-                </div>
-              ) : (
-                <Table
-                  exportFilename={t('Plan comptable')}
-                  scroll={{ x: 'max-content' }}
-                  rowKey="id"
-                  dataSource={accounts}
-                  pagination={{ pageSize: 10 }}
-                  columns={[
-                    { title: t('Numéro'), dataIndex: 'accountNumber' },
-                    { title: t('Intitulé'), dataIndex: 'accountName' },
-                    { title: t('Classe'), dataIndex: 'accountClass' },
-                    {
-                      title: t('Type'),
-                      dataIndex: 'accountType',
-                      render: (value: ChartOfAccount['accountType']) => accountTypeLabel(value)
-                    },
-                    {
-                      title: t('Actif'),
-                      render: (_, account) =>
-                        account.isActive ? <Tag color="green">OUI</Tag> : <Tag color="red">NON</Tag>
-                    }
-                  ]}
-                />
-              )}
+            <Card>
+              <Tabs destroyOnHidden activeKey={activeTab} onChange={handleTabChange} items={tabItems} />
             </Card>
-
-            <Card title={t('Journaux comptables')}>
-              <Table
-                exportFilename={t('Journaux comptables')}
-                scroll={{ x: 'max-content' }}
-                rowKey="id"
-                dataSource={journals}
-                pagination={{ pageSize: 10 }}
-                columns={[
-                  { title: t('Code'), dataIndex: 'code' },
-                  { title: t('Libellé'), dataIndex: 'label' },
-                  { title: t('Type'), dataIndex: 'journalType' },
-                  { title: t('Exercice'), dataIndex: 'fiscalYear' },
-                  {
-                    title: t('Créé le'),
-                    dataIndex: 'createdAt',
-                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
-                  }
-                ]}
-              />
-            </Card>
-
-            <Card title={t('Écritures comptables')}>
-              <Table
-                exportFilename={t('Écritures comptables')}
-                scroll={{ x: 'max-content' }}
-                rowKey="id"
-                dataSource={entries}
-                pagination={{ pageSize: 10 }}
-                columns={[
-                  {
-                    title: t('Date'),
-                    dataIndex: 'entryDate',
-                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
-                  },
-                  { title: t('Référence'), dataIndex: 'reference' },
-                  { title: t('Description'), dataIndex: 'description' },
-                  {
-                    title: t('Journal'),
-                    render: (_, entry) => entry.journal?.code || entry.journalId
-                  },
-                  {
-                    title: t('Statut'),
-                    render: (_, entry) =>
-                      entry.isLocked ? <Tag color="green">{t('VERROUILLÉE')}</Tag> : <Tag color="orange">OUVERTE</Tag>
-                  },
-                  {
-                    title: t('Action'),
-                    exportable: false,
-                    render: (_, entry) =>
-                      entry.isLocked ? (
-                        <Tag>{t('Verrouillée')}</Tag>
-                      ) : (
-                        <Button
-                          size="small"
-                          icon={<LockOutlined />}
-                          loading={submitting}
-                          onClick={() => void handleLockEntry(entry.id)}
-                        >
-                          {t('Verrouiller')}
-                        </Button>
-                      )
-                  }
-                ]}
-              />
-            </Card>
-
-            <Row gutter={[16, 16]}>
-              <Col xs={24} xl={12}>
-                <Card title={t('Balance de vérification')}>
-                  <Table
-                    exportFilename={t('Balance de vérification')}
-                    scroll={{ x: 'max-content' }}
-                    rowKey="accountId"
-                    dataSource={trialBalance.items}
-                    pagination={{ pageSize: 8 }}
-                    columns={[
-                      { title: t('Compte'), render: (_, item) => `${item.accountNumber} - ${item.accountName}` },
-                      {
-                        title: t('Débit'),
-                        dataIndex: 'totalDebit',
-                        align: 'end',
-                        render: (value: number) => <MoneyValue value={value} />
-                      },
-                      {
-                        title: t('Crédit'),
-                        dataIndex: 'totalCredit',
-                        align: 'end',
-                        render: (value: number) => <MoneyValue value={value} />
-                      },
-                      {
-                        title: t('Solde'),
-                        dataIndex: 'balance',
-                        align: 'end',
-                        render: (value: number) => <MoneyValue value={value} />
-                      }
-                    ]}
-                  />
-                </Card>
-              </Col>
-              <Col xs={24} xl={12}>
-                <Card title={t('Grand livre')}>
-                  <Table
-                    exportFilename={t('Grand livre')}
-                    scroll={{ x: 'max-content' }}
-                    rowKey="id"
-                    dataSource={ledger}
-                    pagination={{ pageSize: 8 }}
-                    columns={[
-                      { title: t('Date'), render: (_, line) => dayjs(line.entry?.entryDate).format('DD/MM/YYYY') },
-                      { title: t('Compte'), render: (_, line) => line.account?.accountNumber || '-' },
-                      { title: t('Référence'), render: (_, line) => line.entry?.reference || '-' },
-                      {
-                        title: t('Débit'),
-                        dataIndex: 'debit',
-                        align: 'end',
-                        render: (value: number | string) => <MoneyValue value={value} />
-                      },
-                      {
-                        title: t('Crédit'),
-                        dataIndex: 'credit',
-                        align: 'end',
-                        render: (value: number | string) => <MoneyValue value={value} />
-                      }
-                    ]}
-                  />
-                </Card>
-              </Col>
-            </Row>
           </>
-        )}
+        ) : null}
       </Space>
 
       <Modal
@@ -541,7 +438,7 @@ export const SyndicAccounting: React.FC = () => {
             <Select
               showSearch
               optionFilterProp="label"
-              options={accountTypeValues.map(value => ({ value, label: accountTypeLabel(value).toUpperCase() }))}
+              options={ACCOUNT_TYPE_VALUES.map(value => ({ value, label: accountTypeLabel(value).toUpperCase() }))}
             />
           </Form.Item>
         </Form>
@@ -585,10 +482,10 @@ export const SyndicAccounting: React.FC = () => {
               showSearch
               optionFilterProp="label"
               options={[
-                { value: 'GENERAL', label: 'GENERAL' },
-                { value: 'BANK', label: 'BANQUE' },
-                { value: 'CASH', label: 'CAISSE' },
-                { value: 'CHARGES', label: 'CHARGES' }
+                { value: 'GENERAL', label: t('Général') },
+                { value: 'BANK', label: t('Banque') },
+                { value: 'CASH', label: t('Caisse') },
+                { value: 'CHARGES', label: t('Charges') }
               ]}
             />
           </Form.Item>

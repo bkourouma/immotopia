@@ -5,6 +5,7 @@ import { logAuditEvent, recordAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { prisma } from '../../utils/database';
 import { assertBelongsToTenant } from '../../utils/tenant-ownership';
+import { dayRange } from '../../utils/list-query-schemas';
 import { logger } from '../../utils/logger';
 import { cancelOpenRequestsForTarget } from '../signature/cancel';
 import { auditScope, RENTAL_CTX, scopeWhere, type DirectDebitScopeCtx } from './syndic/scope';
@@ -31,6 +32,7 @@ import type {
   UpdateMandateInput
 } from './schemas';
 import type { PrivateFile } from '../files/private-files';
+import { escapeLike } from '../../utils/like-escape';
 
 /**
  * Mandats de prélèvement bancaire (spec 042, PB2 et PB3).
@@ -100,12 +102,14 @@ export async function listMandates(
   if (query.debtorClientId) where.debtorClientId = query.debtorClientId;
   if (query.creditorId) where.creditorId = query.creditorId;
   if (query.status) where.status = query.status;
+  const signedAt = dayRange(query.signedFrom, query.signedTo);
+  if (signedAt) where.signedAt = signedAt;
   if (query.search) {
     const search = query.search;
     const or: Prisma.DirectDebitMandateWhereInput[] = [
-      { holderName: { contains: search, mode: 'insensitive' } },
-      { lease: { is: { lease_number: { contains: search, mode: 'insensitive' } } } },
-      { debtor: { is: { user: { is: { fullName: { contains: search, mode: 'insensitive' } } } } } }
+      { holderName: { contains: escapeLike(search), mode: 'insensitive' } },
+      { lease: { is: { lease_number: { contains: escapeLike(search), mode: 'insensitive' } } } },
+      { debtor: { is: { user: { is: { fullName: { contains: escapeLike(search), mode: 'insensitive' } } } } } }
     ];
     const reference = /^MDT-(\d{4})-(\d{1,6})$/i.exec(search);
     if (reference) or.push({ year: Number(reference[1]), sequence: Number(reference[2]) });

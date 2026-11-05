@@ -991,10 +991,8 @@ function buildEntryDateFilter(range?: PeriodRange): { gte?: Date; lte?: Date } |
  * Voir `GetTrialBalance` dans `./types-lot2.ts`.
  *
  * **Agregee en SQL, jamais en memoire.** Le banc de charge du lot 0 mesure un
- * facteur trente entre les deux approches ; `getTrialBalanceBySyndicate`, qui
- * charge toutes les lignes pour les sommer en JavaScript, reste le chemin de la
- * copropriete et n'est pas modifiee. Celle-ci agrege par `groupBy` et ne
- * ramene qu'une ligne par compte.
+ * facteur trente par rapport a l'ancienne lecture en memoire de la copropriete.
+ * Celle-ci agrege par `groupBy` et ne ramene qu'une ligne par compte.
  *
  * L'isolation passe par la colonne `tenantId` de l'ecriture et du compte : pas
  * une jointure vers la copropriete, qu'une ecriture operationnelle n'a pas.

@@ -4,6 +4,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { PropertyPatrimoineTab } from '../../components/patrimoine/PropertyPatrimoineTab';
 
 /**
@@ -67,9 +68,10 @@ vi.mock('../../services/treasury-service', () => ({
 }));
 
 // Composants d'affichage sans rapport avec le formulaire de dépense.
-vi.mock('../../components/patrimoine/ValuationHistory', () => ({ ValuationHistory: () => null }));
-vi.mock('../../components/patrimoine/ExpenseTracker', () => ({ ExpenseTracker: () => null }));
-vi.mock('../../components/patrimoine/LoanWidget', () => ({ LoanWidget: () => null }));
+// Bureau : la barre de recherche des tableaux s'affiche en ligne.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
 vi.mock('../../components/patrimoine/YieldCalculator', () => ({ YieldCalculator: () => null }));
 vi.mock('../../components/patrimoine/YieldProjectionChart', () => ({ YieldProjectionChart: () => null }));
 vi.mock('../../components/patrimoine/WorkProgramTimeline', () => ({ WorkProgramTimeline: () => null }));
@@ -82,14 +84,16 @@ function mount() {
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
-        <PropertyPatrimoineTab tenantId="tenant-1" propertyId="property-1" />
+        <MemoryRouter initialEntries={['/biens/property-1?rubrique=depenses']}>
+          <PropertyPatrimoineTab tenantId="tenant-1" propertyId="property-1" />
+        </MemoryRouter>
       </AntApp>
     </QueryClientProvider>
   );
 }
 
 async function ouvrirModaleDepense() {
-  const carte = await screen.findByText('Gérer les dépenses');
+  const carte = await screen.findByText('Gérer les dépenses', undefined, { timeout: 8000 });
   const card = carte.closest('.ant-card') as HTMLElement;
   await userEvent.click(within(card).getByRole('button', { name: 'Ajouter' }));
   return screen.findByRole('dialog');

@@ -7,6 +7,8 @@ import {
   getPatrimoinePerformance,
   getPropertyYield,
   getYieldAssumptions,
+  listOwnerStatementsPage,
+  listTenantWorkPrograms,
   saveYieldAssumptions,
   updateValuation,
   updateWorkProgram
@@ -138,5 +140,68 @@ describe('patrimoine-service', () => {
       { responseType: 'blob' }
     );
     expect(result).toEqual({ blob, filename: 'patrimoine.xlsx' });
+  });
+
+  it('liste les relevés par page : critères en paramètres, total et compteur d’ancien calcul à la racine', async () => {
+    const releve = { id: 'rel-1' };
+    mockApiClient.get.mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: [releve],
+        pagination: { page: 2, limit: 20, total: 41, totalPages: 3 },
+        legacyUnpaidCount: 4
+      }
+    } as never);
+
+    const result = await listOwnerStatementsPage('tenant-1', {
+      status: 'SENT,PAID',
+      periodFrom: '2026-01',
+      page: 2,
+      limit: 20
+    });
+
+    expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/owner-statements', {
+      params: { status: 'SENT,PAID', periodFrom: '2026-01', page: 2, limit: 20 }
+    });
+    expect(result).toEqual({ items: [releve], total: 41, legacyUnpaidCount: 4 });
+  });
+
+  it('liste les relevés sans pagination : le total est la longueur de la liste', async () => {
+    mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: [{ id: 'a' }, { id: 'b' }] } } as never);
+
+    const result = await listOwnerStatementsPage('tenant-1');
+
+    expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/owner-statements', { params: {} });
+    expect(result).toEqual({ items: [{ id: 'a' }, { id: 'b' }], total: 2, legacyUnpaidCount: 0 });
+  });
+
+  it('liste les programmes de travaux avec tous les critères, sans valeur vide', async () => {
+    const reponse = { items: [], total: 0, page: 1, limit: 25, totalPages: 0 };
+    mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: reponse } } as never);
+
+    const result = await listTenantWorkPrograms('tenant-1', {
+      status: 'PLANNED,IN_PROGRESS',
+      search: 'toiture',
+      propertyId: 'bien-1',
+      plannedFrom: '2026-01-01',
+      plannedTo: '2026-12-31',
+      minCost: 1000000,
+      maxCost: 20000000,
+      page: 2,
+      limit: 25
+    });
+
+    expect(mockApiClient.get).toHaveBeenCalledWith(
+      '/tenants/tenant-1/work-programs?status=PLANNED%2CIN_PROGRESS&search=toiture&propertyId=bien-1&plannedFrom=2026-01-01&plannedTo=2026-12-31&minCost=1000000&maxCost=20000000&page=2&limit=25'
+    );
+    expect(result).toEqual(reponse);
+  });
+
+  it('garde l’appel de l’aperçu patrimoine : travaux à venir, 20 au plus', async () => {
+    mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: { items: [] } } } as never);
+
+    await listTenantWorkPrograms('tenant-1', { upcoming: true, limit: 20, search: '' });
+
+    expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/work-programs?upcoming=true&limit=20');
   });
 });

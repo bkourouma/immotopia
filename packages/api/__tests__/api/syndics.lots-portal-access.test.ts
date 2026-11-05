@@ -106,7 +106,7 @@ describe('Etat d’acces au portail par lot (fiche et page « Lots »)', () => {
     const response = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/lots`);
 
     expect(response.status).toBe(200);
-    expect(mockGetSyndicate).toHaveBeenCalledWith(TENANT_ID, SYNDIC_ID);
+    expect(mockGetSyndicate).toHaveBeenCalledWith(TENANT_ID, SYNDIC_ID, {});
     expect(portalAccessByLot(response.body.data)).toEqual(expected);
   });
 

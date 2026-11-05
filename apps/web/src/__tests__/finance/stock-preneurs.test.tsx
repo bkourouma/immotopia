@@ -121,12 +121,12 @@ function appelsCarnet(): string[] {
   return get.mock.calls.map(call => String(call[0])).filter(url => /\/stock\/takers/.test(url));
 }
 
-function monter() {
+function monter(url = `/tenant/${TENANT}/finance/stock/preneurs`) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
-        <MemoryRouter initialEntries={[`/tenant/${TENANT}/finance/stock/preneurs`]}>
+        <MemoryRouter initialEntries={[url]}>
           <Routes>
             <Route path="/tenant/:tenantId/finance/stock/preneurs" element={<StockPreneurs />} />
           </Routes>
@@ -149,18 +149,29 @@ beforeEach(() => {
 });
 
 describe('Carnet des preneurs — la liste', () => {
-  it('liste le carnet, cherche, et montre les désactivés sur demande', async () => {
+  it('charge le carnet en entier une seule fois, puis cherche en local', async () => {
     const user = userEvent.setup();
     monter();
     expect(await screen.findByText('Koné Ibrahim', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByText('Yao Serge')).toBeInTheDocument();
-    expect(appelsCarnet()[0]).toBe(`/tenants/${TENANT}/finance/stock/takers`);
+    expect(appelsCarnet()).toEqual([`/tenants/${TENANT}/finance/stock/takers?onlyActive=false`]);
 
-    await user.type(screen.getByRole('searchbox', { name: 'Rechercher un nom ou une équipe' }), 'Kon{Enter}');
-    await waitFor(() => expect(appelsCarnet().some(url => url.includes('search=Kon'))).toBe(true));
+    await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'MACONNERIE{Enter}');
+    await waitFor(() => expect(screen.queryByText('Yao Serge')).not.toBeInTheDocument(), { timeout: 8000 });
+    expect(screen.getByText('Koné Ibrahim')).toBeInTheDocument();
+    expect(appelsCarnet()).toHaveLength(1);
 
-    await user.click(screen.getByRole('checkbox', { name: 'Afficher les preneurs désactivés' }));
-    await waitFor(() => expect(appelsCarnet().some(url => url.includes('onlyActive=false'))).toBe(true));
+    const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
+    await user.click(effacer[effacer.length - 1]);
+    expect(await screen.findByText('Yao Serge', {}, { timeout: 8000 })).toBeInTheDocument();
+  }, 30000);
+
+  it('applique le statut demandé par l’URL : seuls les preneurs désactivés', async () => {
+    poser({ carnet: [preneur(), YAO, preneur({ id: 'preneur-ancien', fullName: 'Ancien Paul', isActive: false })] });
+    monter(`/tenant/${TENANT}/finance/stock/preneurs?actif=0`);
+    expect(await screen.findByText('Ancien Paul', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText('Koné Ibrahim')).not.toBeInTheDocument();
+    expect(screen.queryByText('Yao Serge')).not.toBeInTheDocument();
   }, 30000);
 
   it('affiche toujours l’encadré sur les données personnelles', async () => {

@@ -1,20 +1,17 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import { DatePicker } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PrinterOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import dayjs, { Dayjs } from 'dayjs';
 import { getAccountStatement, getAccountStatementPdfUrl } from '../../services/finance-service';
 import type { ThirdPartyKind, ThirdPartyMovementLine, ThirdPartyMovementType } from '../../types/finance-types';
-import { useListParams } from '../../hooks/useListParams';
+import { useListSearch } from '../../hooks/useListSearch';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, FilterSheet } from '../../components/primitives';
+import { PageHeader, StateBlock, MoneyValue, DataView, DataCard } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
-const { RangePicker } = DatePicker;
 
 /**
  * Relevé de compte de tiers — Récit 2 du spec, tâche 1.13 du plan.
@@ -33,15 +30,15 @@ const { RangePicker } = DatePicker;
 
 /** Nature d'un mouvement -> libellé français, prêt à afficher (P-1). */
 export const NATURE_LABELS: Record<ThirdPartyMovementType, string> = localizedRecord(() => ({
-  INSTALLMENT: 'Loyer',
+  INSTALLMENT: t('Loyer'),
   PAYMENT: t('Règlement'),
   ADVANCE_RECEIVED: t('Avance reçue'),
   ADVANCE_APPLIED: t('Avance imputée'),
   PENALTY: t('Pénalité'),
-  WAIVER: 'Remise',
-  ADJUSTMENT: 'Ajustement',
+  WAIVER: t('Remise'),
+  ADJUSTMENT: t('Ajustement'),
   OPENING_BALANCE: t('Solde initial'),
-  VOID: 'Annulation'
+  VOID: t('Annulation')
 }));
 
 /**
@@ -110,12 +107,64 @@ function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
 }
 
-type Filters = { from: string; to: string };
-const FILTER_KEYS = ['from', 'to'] as const;
+/** Plafond de lignes par requête accepté par l'API (`accountStatementQuerySchema`). */
+const TAKE_MAX = 200;
+
+/**
+ * Relit le relevé entier (même période) par tranches de 200, pour l'export.
+ *
+ * S'arrête au total annoncé par le serveur, ou dès qu'une tranche arrive vide
+ * (un total qui ne serait jamais atteint ne doit pas faire boucler l'export).
+ */
+export async function lireToutLeReleve(
+  tenantId: string,
+  accountId: string,
+  periode: { from?: string; to?: string; search?: string }
+): Promise<ThirdPartyMovementLine[]> {
+  const lignes: ThirdPartyMovementLine[] = [];
+  let total = Infinity;
+  while (lignes.length < total) {
+    const tranche = await getAccountStatement(tenantId, accountId, {
+      from: periode.from || undefined,
+      to: periode.to || undefined,
+      search: periode.search || undefined,
+      skip: lignes.length,
+      take: TAKE_MAX
+    });
+    total = tranche.total;
+    if (tranche.movements.length === 0) break;
+    lignes.push(...tranche.movements);
+  }
+  return lignes;
+}
 
 export const Releve: React.FC = () => {
   const { tenantId, accountId } = useParams<{ tenantId: string; accountId: string }>();
-  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS });
+
+  // Période + texte du libellé, tous deux traités par le serveur. Le texte ne
+  // recalcule JAMAIS le solde : « Solde après » reste celui de la suite complète
+  // des mouvements de la période. Les URL `from` / `to` sont conservées.
+  const search = useListSearch({
+    criteria: [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Libellé du mouvement…'), api: 'search' },
+      {
+        key: 'periode',
+        type: 'dateRange',
+        label: t('Période'),
+        primary: true,
+        urlKeys: ['from', 'to'],
+        api: ['from', 'to']
+      }
+    ]
+  });
+  const periode = search.filterParams as { from?: string; to?: string; search?: string };
+
+  // Pagination SERVEUR : l'API borne déjà le relevé (50 lignes par défaut) ;
+  // l'écran demande la tranche de la page affichée (`skip`/`take`, traduits de
+  // `page`/`limit` du hook). Le solde « après » de chaque ligne reste celui
+  // calculé par le serveur.
+  const taillePage = Math.min(search.pageSize, TAKE_MAX);
+  const skip = (search.page - 1) * taillePage;
 
   const {
     data,
@@ -126,13 +175,19 @@ export const Releve: React.FC = () => {
   } = useQuery({
     queryKey: queryKey('account-statement', tenantId, {
       accountId: accountId ?? '',
-      from: list.filters.from ?? '',
-      to: list.filters.to ?? ''
+      from: periode.from ?? '',
+      to: periode.to ?? '',
+      search: periode.search ?? '',
+      skip,
+      take: taillePage
     }),
     queryFn: () =>
       getAccountStatement(tenantId as string, accountId as string, {
-        from: list.filters.from || undefined,
-        to: list.filters.to || undefined
+        from: periode.from || undefined,
+        to: periode.to || undefined,
+        search: periode.search || undefined,
+        skip,
+        take: taillePage
       }),
     enabled: Boolean(tenantId && accountId),
     staleTime: STALE_TIME.list
@@ -144,13 +199,14 @@ export const Releve: React.FC = () => {
 
   const mouvements = data?.movements ?? [];
 
-  const plage: [Dayjs, Dayjs] | null =
-    list.filters.from && list.filters.to ? [dayjs(list.filters.from), dayjs(list.filters.to)] : null;
+  /** Export : relit le relevé entier, avec les mêmes critères (période et texte). */
+  const toutLeReleve = () => lireToutLeReleve(tenantId, accountId, periode);
 
   const imprimer = () => {
     const url = getAccountStatementPdfUrl(tenantId, accountId, {
-      from: list.filters.from || undefined,
-      to: list.filters.to || undefined
+      from: periode.from || undefined,
+      to: periode.to || undefined,
+      search: periode.search || undefined
     });
     window.open(url, '_blank', 'noopener,noreferrer');
   };
@@ -206,47 +262,30 @@ export const Releve: React.FC = () => {
         primaryAction={{ label: t('Imprimer'), icon: <PrinterOutlined />, onClick: imprimer }}
       />
 
-      <FilterSheet
-        activeCount={[list.filters.from, list.filters.to].filter(Boolean).length}
-        onClear={() => list.setFilters({ from: undefined, to: undefined })}
-        title={t('Période du relevé')}
-      >
-        <div style={{ minWidth: 260 }}>
-          <label htmlFor="periode-releve">{t('Période')}</label>
-          <RangePicker
-            id="periode-releve"
-            style={{ width: '100%' }}
-            value={plage}
-            format="DD/MM/YYYY"
-            onChange={dates => {
-              if (dates && dates[0] && dates[1]) {
-                list.setFilters({ from: dates[0].format('YYYY-MM-DD'), to: dates[1].format('YYYY-MM-DD') });
-              } else {
-                list.setFilters({ from: undefined, to: undefined });
-              }
-            }}
-          />
-        </div>
-      </FilterSheet>
+      {periode.search && data?.filteredTotals && (
+        // Totaux des lignes retenues (toutes pages). « Solde après » reste celui de la suite complète.
+        <p role="note" style={{ margin: '0 0 12px', opacity: 0.85 }}>
+          <strong>{t('Lignes filtrées')}</strong> · {t('Facturé')} <MoneyValue value={data.filteredTotals.debit} /> ·{' '}
+          {t('Réglé')} <MoneyValue value={data.filteredTotals.credit} />
+        </p>
+      )}
 
       <DataView<ThirdPartyMovementLine>
-        export={{ filename: data?.label ?? t('Relevé de compte') }}
-        // Une chronologie se lit d'un bloc : pas de pagination, le serveur
-        // rend déjà le relevé borné par les dates choisies.
-        paginated={false}
+        export={{ filename: data?.label ?? t('Relevé de compte'), fetchAll: toutLeReleve }}
+        // Pagination serveur (`skip`/`take`) : `total` est celui du serveur
+        // pour la période choisie.
+        paginated
         scrollX={960}
         items={mouvements}
-        total={mouvements.length}
-        page={1}
-        pageSize={mouvements.length || 20}
-        onPageChange={() => {}}
+        total={data?.total ?? mouvements.length}
+        search={search.searchProps}
+        {...search.dataViewProps}
+        pageSize={taillePage}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger le relevé.') : null}
         errorCause={erreurRequete}
         onRetry={() => refetch()}
-        isFiltered={list.isFiltered}
-        onClearFilters={() => list.setFilters({ from: undefined, to: undefined })}
         emptyDescription={t('Aucun mouvement sur cette période.')}
         columns={colonnes}
         rowKey={m => m.id}

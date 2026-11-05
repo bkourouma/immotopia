@@ -9,6 +9,8 @@ import { ConfirmAction } from '../../primitives/ConfirmAction';
 import { feedback } from '../../../lib/feedback';
 import { t } from '../../../i18n/t';
 import { cancelDeclaration, type CoOwnerDeclaration } from '../../../services/coowner-portal-service';
+import type { UseListSearchResult } from '../../../hooks/useListSearch';
+import type { ListSearchBinding } from '../../../utils/list-search';
 import {
   declarationStatusColor,
   declarationStatusLabel,
@@ -26,9 +28,23 @@ const { Text } = Typography;
  * notes du syndic sont du texte brut (`pre-wrap`), jamais du HTML.
  */
 
+/**
+ * Liste paginée et filtrée par le serveur (`/paiements-declares`), pilotée par
+ * l'écran qui détient `useListSearch` et la requête. Absente : la liste reçue
+ * s'affiche en entier, sans barre (usage historique).
+ */
+export interface DeclarationsServerList {
+  search: ListSearchBinding;
+  /** Total serveur (jamais `items.length`). */
+  total: number;
+  dataViewProps: UseListSearchResult['dataViewProps'];
+  isReloading?: boolean;
+}
+
 export interface DeclarationsListProps {
   items: CoOwnerDeclaration[];
   onChanged?: () => void;
+  serverList?: DeclarationsServerList;
 }
 
 const NOTE_STYLE: React.CSSProperties = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' };
@@ -143,7 +159,7 @@ function StatusCell({ declaration, onChanged }: { declaration: CoOwnerDeclaratio
   );
 }
 
-export function DeclarationsList({ items, onChanged }: DeclarationsListProps) {
+export function DeclarationsList({ items, onChanged, serverList }: DeclarationsListProps) {
   const columns: ColumnsType<CoOwnerDeclaration> = [
     {
       title: t('Date du paiement'),
@@ -171,12 +187,21 @@ export function DeclarationsList({ items, onChanged }: DeclarationsListProps) {
 
   return (
     <DataView<CoOwnerDeclaration>
-      paginated={false}
+      {...(serverList
+        ? {
+            ...serverList.dataViewProps,
+            search: serverList.search,
+            total: serverList.total,
+            isReloading: serverList.isReloading
+          }
+        : {
+            paginated: false,
+            total: items.length,
+            page: 1,
+            pageSize: items.length || 20,
+            onPageChange: () => {}
+          })}
       items={items}
-      total={items.length}
-      page={1}
-      pageSize={items.length || 20}
-      onPageChange={() => {}}
       rowKey={row => row.id}
       aria-label={t('Mes déclarations')}
       emptyDescription={t("Vous n'avez fait aucune déclaration de paiement.")}

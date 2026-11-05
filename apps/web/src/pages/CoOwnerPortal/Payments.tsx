@@ -1,11 +1,14 @@
-import React, { useMemo, useState } from 'react';
-import { Button, Card, Col, Modal, Row, Select, Space, Typography } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Button, Card, Col, Modal, Row, Space, Typography } from 'antd';
 import { DownloadOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { DataCard, DataView, MoneyValue, SkeletonList, StateBlock, Table } from '../../components/primitives';
+import { DataCard, DataView, MoneyValue, SkeletonList, Table } from '../../components/primitives';
 import { feedback } from '../../lib/feedback';
+import { useListSearch } from '../../hooks/useListSearch';
+import { filterItems, paginate } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 import { DeclarationsList } from '../../components/coowner-portal/declared-payment/DeclarationsList';
 import {
@@ -14,10 +17,12 @@ import {
   listMyLots,
   listMyPayments,
   type CoOwnerPayment,
-  type CoOwnerPaymentDocument
+  type CoOwnerPaymentDocument,
+  type DeclarationStatus
 } from '../../services/coowner-portal-service';
 import { saveBlob } from '../../utils/save-blob';
 import { displayCurrency } from '../../utils/syndic-currency';
+import { declarationStatusLabel } from '../../components/coowner-portal/declared-payment/labels';
 import { blobErrorMessage, portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
@@ -29,6 +34,17 @@ const { Title, Text } = Typography;
  * disponible de chaque lot est rappelée en tête, pas seulement dans le
  * détail d'un paiement.
  */
+
+// Champ libre : référence, numéro de lot et mode de paiement affichés. Constantes de module.
+const TEXTE_RECHERCHE = [
+  (payment: CoOwnerPayment) => payment.reference,
+  (payment: CoOwnerPayment) => payment.lot.lotNumber,
+  (payment: CoOwnerPayment) => payment.methodLabel
+];
+const NO_PAYMENTS: CoOwnerPayment[] = [];
+const PAYMENT_LIST_LIMIT = 500;
+const DECLARATION_PAGE_LIMIT = 50;
+const DECLARATION_STATUSES: DeclarationStatus[] = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELED'];
 
 function yearOptions(): number[] {
   const current = new Date().getFullYear();
@@ -124,37 +140,144 @@ function PaymentDetail({ payment }: { payment: CoOwnerPayment }) {
   );
 }
 
+/**
+ * « Mes déclarations » : liste paginée et filtrée par le serveur (statut). Section facultative :
+ * toute erreur (API absente, droit refusé) ou l'absence de toute déclaration la masque sans
+ * casser la page. Préfixe `dec` : le tableau des paiements (`pa`) partage l'écran.
+ */
+function DeclarationsSection() {
+  const queryClient = useQueryClient();
+  // Champ libre serveur (`search` : référence de transaction déclarée, numéro de lot) + statut.
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Référence de transaction, lot…')
+    },
+    {
+      key: 'status',
+      type: 'select',
+      label: t('Statut'),
+      primary: true,
+      options: DECLARATION_STATUSES.map(status => ({ value: status, label: declarationStatusLabel(status) }))
+    }
+  ];
+  const search = useListSearch({ criteria, paramPrefix: 'dec', apiNames: { sort: false } });
+  const { pageSize, setPageSize } = search;
+  useEffect(() => {
+    if (pageSize > DECLARATION_PAGE_LIMIT) setPageSize(DECLARATION_PAGE_LIMIT);
+  }, [pageSize, setPageSize]);
+  const declarationParams = {
+    ...search.apiParams,
+    limit: Math.min(pageSize, DECLARATION_PAGE_LIMIT)
+  } as { status?: DeclarationStatus; search?: string; page?: number; limit: number };
+  const declarations = useQuery({
+    queryKey: ['coowner-portal', 'declarations', declarationParams],
+    staleTime: 30_000,
+    queryFn: () => listMyDeclarations(declarationParams),
+    placeholderData: keepPreviousData,
+    retry: false
+  });
+
+  // Section facultative : une erreur la masque, sauf sous critère actif (il faut pouvoir l'effacer).
+  if (declarations.isError && !search.isFiltered) return null;
+  const items = declarations.data?.items ?? [];
+  const total = declarations.data?.pagination.total ?? 0;
+  // Aucune déclaration et aucun critère : section masquée. Sous critère, elle reste affichée
+  // (la recherche et le critère « Statut » ne doivent pas disparaître avec elle quand il ne laisse aucun résultat).
+  if (!search.isFiltered && total === 0) return null;
+  const dataViewProps = {
+    ...search.dataViewProps,
+    error: declarations.isError
+      ? portalErrorMessage(declarations.error, t('Impossible de charger vos déclarations.'))
+      : null,
+    onRetry: () => void declarations.refetch()
+  };
+
+  return (
+    <Card>
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <div>
+          <Title level={3}>{t('Mes déclarations')}</Title>
+          <Text type="secondary">
+            {t(
+              'Paiements mobile money que vous avez déclarés au syndic. Rien n’est porté à votre compte avant validation.'
+            )}
+          </Text>
+        </div>
+        <DeclarationsList
+          items={items}
+          onChanged={() => void queryClient.invalidateQueries({ queryKey: ['coowner-portal', 'declarations'] })}
+          serverList={{
+            search: { ...search.searchProps, 'aria-label': t('Rechercher dans les déclarations') },
+            total,
+            dataViewProps,
+            isReloading: declarations.isFetching && !declarations.isPending
+          }}
+        />
+      </Space>
+    </Card>
+  );
+}
+
 export default function CoOwnerPayments() {
-  const [lotId, setLotId] = useState<string | undefined>(undefined);
-  const [year, setYear] = useState<number | undefined>(undefined);
+  const queryClient = useQueryClient();
   const [detail, setDetail] = useState<CoOwnerPayment | null>(null);
 
   const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], staleTime: 30_000, queryFn: () => listMyLots() });
-  const payments = useQuery({
-    queryKey: ['coowner-portal', 'payments', lotId ?? null, year ?? null],
-    staleTime: 30_000,
-    queryFn: () => listMyPayments({ lotId, year })
-  });
-
-  // Section facultative : toute erreur (API absente, droit refusé) la masque sans casser la page.
-  const declarations = useQuery({
-    queryKey: ['coowner-portal', 'declarations'],
-    staleTime: 30_000,
-    queryFn: () => listMyDeclarations({ status: 'ALL', limit: 50 }),
-    retry: false
-  });
-  const declarationItems = declarations.isError ? [] : (declarations.data?.items ?? []);
-
-  const refreshAll = () => {
-    void payments.refetch();
-    void declarations.refetch();
-  };
-
   const lotOptions = useMemo(
     () =>
       (lots.data ?? []).map(lot => ({ value: lot.id, label: t('Lot {{lotNumber}}', { lotNumber: lot.lotNumber }) })),
     [lots.data]
   );
+
+  // Préfixe `pa` : le tableau des déclarations (`dec`) partage l'écran. Lot et exercice pilotent
+  // l'appel (le serveur filtre) : `api: false`, la requête les lit dans `search.values`. Le champ
+  // libre filtre ici la liste de cet appel, qui arrive en entier.
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Référence, lot, mode de paiement…'),
+      api: false
+    },
+    { key: 'lot', type: 'select', label: t('Lot'), primary: true, options: lotOptions, api: false },
+    {
+      key: 'year',
+      type: 'select',
+      label: t('Exercice'),
+      primary: true,
+      options: yearOptions().map(candidate => ({ value: String(candidate), label: String(candidate) })),
+      api: false
+    }
+  ];
+  const search = useListSearch({ criteria, paramPrefix: 'pa', apiNames: { sort: false } });
+  const lotId = typeof search.values.lot === 'string' ? search.values.lot : undefined;
+  const yearValue = typeof search.values.year === 'string' ? Number(search.values.year) : NaN;
+  const year = Number.isInteger(yearValue) ? yearValue : undefined;
+
+  const payments = useQuery({
+    queryKey: ['coowner-portal', 'payments', lotId ?? null, year ?? null],
+    staleTime: 30_000,
+    queryFn: () => listMyPayments({ lotId, year }),
+    placeholderData: keepPreviousData
+  });
+  const paymentItems = payments.data?.items ?? NO_PAYMENTS;
+  const filteredPayments = useMemo(
+    () => filterItems(paymentItems, search.values, { criteria: search.criteria, text: TEXTE_RECHERCHE }),
+    [paymentItems, search.values, search.criteria]
+  );
+  const paymentsPage = useMemo(
+    () => paginate(filteredPayments, search.page, search.pageSize),
+    [filteredPayments, search.page, search.pageSize]
+  );
+
+  const refreshAll = () => {
+    void payments.refetch();
+    void queryClient.invalidateQueries({ queryKey: ['coowner-portal', 'declarations'] });
+  };
 
   const columns: ColumnsType<CoOwnerPayment> = [
     { title: t('Date'), key: 'paidAt', render: (_, row) => dayjs(row.paidAt).format('DD/MM/YYYY') },
@@ -200,27 +323,6 @@ export default function CoOwnerPayments() {
         </Button>
       </div>
 
-      <Space wrap size="middle">
-        <Select
-          allowClear
-          style={{ minWidth: 200 }}
-          placeholder={t('Tous les lots')}
-          options={lotOptions}
-          value={lotId}
-          onChange={value => setLotId(value ?? undefined)}
-          aria-label={t('Lot')}
-        />
-        <Select
-          allowClear
-          style={{ minWidth: 140 }}
-          placeholder={t('Tous les exercices')}
-          options={yearOptions().map(candidate => ({ value: candidate, label: String(candidate) }))}
-          value={year}
-          onChange={value => setYear(value ?? undefined)}
-          aria-label={t('Exercice')}
-        />
-      </Space>
-
       {payments.data && payments.data.advances.length > 0 ? (
         <Row gutter={[16, 16]}>
           {payments.data.advances
@@ -240,26 +342,39 @@ export default function CoOwnerPayments() {
         </Row>
       ) : null}
 
+      {paymentItems.length >= PAYMENT_LIST_LIMIT ? (
+        <Alert
+          type="warning"
+          showIcon
+          message={t(
+            'Seuls les 500 paiements les plus récents sont affichés. Les critères de recherche et l’export portent sur ces paiements.'
+          )}
+        />
+      ) : null}
+
       {payments.isPending ? (
         <SkeletonList rows={3} />
-      ) : payments.error ? (
-        <StateBlock
-          variant="error"
-          description={portalErrorMessage(payments.error, t('Impossible de charger vos paiements.'))}
-          actions={[{ label: t('Réessayer'), onClick: () => void payments.refetch(), primary: true }]}
-        />
       ) : (
+        // Sur erreur, la barre et ses critères restent affichés : l'erreur s'affiche dessous (DataView).
         <Card>
           <DataView<CoOwnerPayment>
-            paginated={false}
-            items={payments.data?.items ?? []}
-            total={payments.data?.items.length ?? 0}
-            page={1}
-            pageSize={payments.data?.items.length || 20}
-            onPageChange={() => {}}
+            {...search.dataViewProps}
+            error={
+              payments.error ? portalErrorMessage(payments.error, t('Impossible de charger vos paiements.')) : null
+            }
+            onRetry={() => void payments.refetch()}
+            page={paymentsPage.page}
+            items={paymentsPage.items}
+            total={filteredPayments.length}
+            search={{
+              ...search.searchProps,
+              resultCount: filteredPayments.length,
+              'aria-label': t('Rechercher dans les paiements')
+            }}
+            isReloading={payments.isFetching && !payments.isPending}
             rowKey={row => row.id}
             aria-label={t('Mes paiements')}
-            export={{ filename: t('Mes paiements') }}
+            export={{ filename: t('Mes paiements'), fetchAll: () => Promise.resolve(filteredPayments) }}
             emptyDescription={t("Aucun paiement n'a encore été enregistré pour vos lots.")}
             columns={columns}
             renderCard={row => (
@@ -283,21 +398,7 @@ export default function CoOwnerPayments() {
         </Card>
       )}
 
-      {declarationItems.length > 0 ? (
-        <Card>
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            <div>
-              <Title level={3}>{t('Mes déclarations')}</Title>
-              <Text type="secondary">
-                {t(
-                  'Paiements mobile money que vous avez déclarés au syndic. Rien n’est porté à votre compte avant validation.'
-                )}
-              </Text>
-            </div>
-            <DeclarationsList items={declarationItems} />
-          </Space>
-        </Card>
-      ) : null}
+      <DeclarationsSection />
 
       <Modal
         open={Boolean(detail)}

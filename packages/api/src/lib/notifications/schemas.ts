@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { zSearch } from '../../utils/list-query-schemas';
 
 /**
  * Paramètres des routes de notifications.
@@ -24,7 +25,8 @@ function dateParam(endOfDay: boolean, message: string) {
     .transform((value, ctx) => {
       const iso = DATE_ONLY.test(value) ? `${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z` : value;
       const date = new Date(iso);
-      if (Number.isNaN(date.getTime())) {
+      // Un jour impossible (2026-02-31) ne doit pas glisser au mois suivant.
+      if (Number.isNaN(date.getTime()) || (DATE_ONLY.test(value) && date.toISOString().slice(0, 10) !== value)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message });
         return z.NEVER;
       }
@@ -36,6 +38,10 @@ function dateParam(endOfDay: boolean, message: string) {
 export const myNotificationsQuerySchema = z
   .object({
     unreadOnly: boolParam.optional(),
+    /** Recherche libre dans le titre et le message. */
+    q: zSearch(200),
+    from: dateParam(false, 'Date de début invalide').optional(),
+    to: dateParam(true, 'Date de fin invalide').optional(),
     page: pageParam.optional(),
     pageSize: pageSizeParam.optional()
   })
@@ -48,7 +54,7 @@ const adminFilterShape = {
   senderUserId: z.string().min(1).max(64).optional(),
   channel: z.enum(CHANNELS).optional(),
   status: z.enum(STATUSES).optional(),
-  q: z.string().trim().max(200).optional(),
+  q: zSearch(200),
   from: dateParam(false, 'Date de début invalide').optional(),
   to: dateParam(true, 'Date de fin invalide').optional(),
   page: pageParam.optional(),

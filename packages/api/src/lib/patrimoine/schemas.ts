@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { httpUrl } from '../safe-url';
+import { zSearch, zCsvEnum, zId, zDay, zAmount, dayOrderRefinement } from '../../utils/list-query-schemas';
+import { t } from '../../i18n';
 
 const uuidSchema = z.string().uuid();
 
@@ -176,14 +178,76 @@ export const exportQuerySchema = z.object({
  * `GET /tenants/:tenantId/work-programs`. `upcoming=true` ne garde que les
  * programmes planifies ou en cours, par date prevue croissante.
  */
-export const listTenantWorkProgramsQuerySchema = z.object({
-  status: z
-    .enum(WORK_PROGRAM_STATUSES, { errorMap: () => ({ message: 'Statut de programme de travaux inconnu' }) })
-    .optional(),
-  page: z.coerce.number().int().min(1).optional(),
-  limit: z.coerce.number().int().min(1).optional(),
-  upcoming: z
-    .enum(['true', 'false'])
+export const listTenantWorkProgramsQuerySchema = z
+  .object({
+    /** Un ou plusieurs statuts, separes par des virgules (`PLANNED,IN_PROGRESS`). */
+    status: zCsvEnum(WORK_PROGRAM_STATUSES),
+    search: zSearch(),
+    propertyId: zId,
+    plannedFrom: zDay,
+    plannedTo: zDay,
+    minCost: zAmount({ min: 0 }),
+    maxCost: zAmount({ min: 0 }),
+    page: z.coerce.number().int().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    upcoming: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform(value => value === 'true')
+  })
+  .superRefine(dayOrderRefinement('plannedFrom', 'plannedTo'))
+  .superRefine((data, ctx) => {
+    if (data.minCost !== undefined && data.maxCost !== undefined && data.minCost > data.maxCost) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['maxCost'],
+        message: t('Le coût maximal doit être supérieur ou égal au coût minimal.')
+      });
+    }
+  });
+
+const STATEMENT_STATUSES = ['DRAFT', 'SENT', 'PAID'] as const;
+
+/** Mois reel AAAA-MM (01 a 12), vide -> undefined. */
+const zMonth = z.preprocess(
+  value => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z
+    .string()
+    .trim()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Mois invalide (format attendu : AAAA-MM).')
     .optional()
-    .transform(value => value === 'true')
-});
+) as z.ZodType<string | undefined, z.ZodTypeDef, unknown>;
+
+/**
+ * Parametres de requete de la liste des releves proprietaire.
+ * `status` : CSV (`DRAFT,SENT`). `legacy` : releves de l'ancien calcul.
+ * Sans `page` ni `limit`, la liste est renvoyee en entier.
+ */
+export const listOwnerStatementsQuerySchema = z
+  .object({
+    search: zSearch(),
+    status: zCsvEnum(STATEMENT_STATUSES),
+    ownerContactId: zId,
+    period: zMonth,
+    periodFrom: zMonth,
+    periodTo: zMonth,
+    legacy: z.preprocess(
+      value => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+      z
+        .enum(['true', 'false'])
+        .transform(value => value === 'true')
+        .optional()
+    ) as z.ZodType<boolean | undefined, z.ZodTypeDef, unknown>,
+    page: z.coerce.number().int().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional()
+  })
+  .superRefine((data, ctx) => {
+    // Mois AAAA-MM : l'ordre alphabetique est l'ordre chronologique.
+    if (data.periodFrom !== undefined && data.periodTo !== undefined && data.periodFrom > data.periodTo) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['periodTo'],
+        message: t('Le mois de fin doit être postérieur ou égal au mois de début.')
+      });
+    }
+  });

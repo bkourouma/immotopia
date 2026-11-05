@@ -1,5 +1,10 @@
 import { Request, Response } from 'express';
-import { generateStatementSchema, updateStatementSchema } from '../lib/patrimoine/schemas';
+import {
+  generateStatementSchema,
+  listOwnerStatementsQuerySchema,
+  updateStatementSchema
+} from '../lib/patrimoine/schemas';
+import { t } from '../i18n';
 import {
   generateOwnerStatement,
   getOwnerStatementById,
@@ -17,12 +22,37 @@ function resolveTenantId(req: Request): string {
   return tenantId;
 }
 
+/** Valide les parametres de requete ; toute valeur invalide leve une `BadRequestError` (400). */
+export function parseListOwnerStatementsQuery(query: Request['query']) {
+  const parsed = listOwnerStatementsQuerySchema.safeParse(query);
+  if (!parsed.success) {
+    throw new BadRequestError(
+      t('Paramètres de recherche invalides.'),
+      parsed.error.issues.map(issue => ({ field: issue.path.join('.'), message: issue.message }))
+    );
+  }
+  return parsed.data;
+}
+
+/**
+ * GET /tenants/:tenantId/owner-statements
+ * Sans page ni limit : liste complete `{ data: [...] }`. Avec page ou limit :
+ * `{ data, pagination, legacyUnpaidCount }`.
+ */
 export const listOwnerStatementsHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = resolveTenantId(req);
-  const ownerContactId = req.query.ownerContactId as string | undefined;
-  const period = req.query.period as string | undefined;
-  const data = await listOwnerStatements(tenantId, { ownerContactId, period });
-  res.json({ success: true, data });
+  const filters = parseListOwnerStatementsQuery(req.query);
+  const result = await listOwnerStatements(tenantId, filters);
+  if (Array.isArray(result)) {
+    res.json({ success: true, data: result });
+    return;
+  }
+  res.json({
+    success: true,
+    data: result.items,
+    pagination: result.pagination,
+    legacyUnpaidCount: result.legacyUnpaidCount
+  });
 });
 
 export const createOwnerStatementHandler = asyncHandler(async (req: Request, res: Response) => {

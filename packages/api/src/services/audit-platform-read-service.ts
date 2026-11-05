@@ -1,3 +1,4 @@
+import { escapeLike } from '../utils/like-escape';
 import type { AuditLog, Prisma } from '@prisma/client';
 import { prisma } from '../utils/database';
 import { enrichAuditLogsWithResourceLabels } from './audit-service';
@@ -40,6 +41,8 @@ export interface PlatformAuditFilters {
   entityType?: string;
   entityId?: string;
   requestId?: string;
+  /** Recherche libre : action, type et id de ressource, libellé de l'acteur, requête, source. */
+  search?: string;
   startDate?: Date;
   endDate?: Date;
   cursor?: string;
@@ -89,6 +92,19 @@ export function buildPlatformAuditWhere(
         ...(filters.startDate ? { gte: filters.startDate } : {}),
         ...(filters.endDate ? { lte: filters.endDate } : {})
       }
+    });
+  }
+  if (filters.search) {
+    const contains = { contains: escapeLike(filters.search), mode: 'insensitive' as const };
+    and.push({
+      OR: [
+        { actionKey: contains },
+        { entityType: contains },
+        { entityId: contains },
+        { actorLabel: contains },
+        { requestId: contains },
+        { source: contains }
+      ]
     });
   }
   if (cursor) {

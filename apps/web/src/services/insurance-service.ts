@@ -77,7 +77,13 @@ export async function deleteInsurancePolicy(tenantId: string, policyId: string):
 
 export async function listInsuranceClaims(
   tenantId: string,
-  filters: { propertyId?: string; status?: InsuranceClaimStatus; policyId?: string; limit?: number } = {}
+  filters: {
+    propertyId?: string;
+    status?: InsuranceClaimStatus;
+    policyId?: string;
+    search?: string;
+    limit?: number;
+  } = {}
 ): Promise<InsuranceClaimDto[]> {
   const response = await apiClient.get<ApiResponse<InsuranceClaimDto[]>>(
     `${base(tenantId)}/insurance/claims${query(filters)}`

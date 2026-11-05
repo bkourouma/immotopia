@@ -5,6 +5,7 @@ import { recordAuditEvent } from '../../../services/audit-service';
 import { AuditActionKey } from '../../../types/audit-types';
 import { prisma } from '../../../utils/database';
 import { logger } from '../../../utils/logger';
+import { dayRange } from '../../../utils/list-query-schemas';
 import { withExclusiveSection } from '../../ai/advisory-lock';
 import { formatFrenchDate } from '../business-days';
 import { contactDisplayName, resolveDebtorNames } from '../dto';
@@ -33,6 +34,7 @@ import type {
   ReturnScope,
   ReturnSkipReason
 } from './types';
+import { escapeLike } from '../../../utils/like-escape';
 
 /**
  * Import d'un fichier de retour de la banque (spec 042, P3, data-model §8.5) en
@@ -490,9 +492,12 @@ async function applyLocked(
 export async function listReturnImportsFor(
   tenantId: string,
   scope: ReturnScope,
-  query: { page: number; pageSize: number }
+  query: { page: number; pageSize: number; search?: string; from?: string; to?: string }
 ): Promise<{ items: ReturnImportDto[]; total: number; page: number; pageSize: number }> {
   const where: Prisma.DirectDebitReturnImportWhereInput = { tenantId, ...returnImportScopeWhere(scope) };
+  if (query.search) where.fileName = { contains: escapeLike(query.search), mode: 'insensitive' };
+  const createdAt = dayRange(query.from, query.to);
+  if (createdAt) where.createdAt = createdAt;
   const [total, rows] = await Promise.all([
     prisma.directDebitReturnImport.count({ where }),
     prisma.directDebitReturnImport.findMany({

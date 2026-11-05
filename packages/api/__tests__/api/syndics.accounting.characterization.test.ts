@@ -15,6 +15,16 @@
  * SURPRISE restants decrivent des comportements deliberement laisses
  * identiques : les corriger changerait la copropriete deja en service, hors du
  * perimetre de ce lot.
+ *
+ * Lot SYN-A : les lectures GET comptes / ecritures / balance / grand-livre ne
+ * passent plus par `queries.ts` mais par `lib/syndics/accounting-reads`
+ * (journal pagine `{ data, pagination }`, balance agregee en SQL avec
+ * `filteredTotals`, grand livre d'UN compte). Ce fichier exerce toujours la
+ * vraie couche : le faux Prisma ci-dessous simule aussi `$queryRaw` pour la
+ * seule requete de balance (agregat par compte) et fournit un `Prisma.sql`
+ * minimal. Ce que le fichier protege (isolation, immuabilite, regles de
+ * l'ecriture, semantique de la balance) est inchange ; seule la forme de la
+ * reponse a evolue.
  */
 
 jest.mock('../../src/middleware/auth-middleware', () => ({
@@ -108,6 +118,17 @@ jest.mock('@prisma/client', () => {
   const journalOf = (entry: Row) => store.journals.find(j => j.id === entry.journalId);
   const accountOf = (line: Row) => store.accounts.find(a => a.id === line.accountId);
 
+  /** Filtres du journal : agence, copropriete (via le journal), journal, statut, periode. */
+  const entriesMatching = (where: Row) => {
+    const syndicateId = where.journal?.syndicateId;
+    return store.entries
+      .filter(e => where.tenantId === undefined || e.tenantId === where.tenantId)
+      .filter(e => (syndicateId === undefined ? true : journalOf(e)?.syndicateId === syndicateId))
+      .filter(e => where.journalId === undefined || e.journalId === where.journalId)
+      .filter(e => where.isLocked === undefined || Boolean(e.isLocked) === where.isLocked)
+      .filter(e => matchesDateFilter(new Date(e.entryDate), where.entryDate));
+  };
+
   const hydrateEntry = (entry: Row) => ({
     ...entry,
     journal: journalOf(entry) ?? null,
@@ -131,6 +152,7 @@ jest.mock('@prisma/client', () => {
         const where = args.where ?? {};
         return store.accounts
           .filter(a => a.syndicateId === where.syndicateId)
+          .filter(a => where.tenantId === undefined || a.tenantId === where.tenantId)
           .filter(a => where.isActive === undefined || a.isActive === where.isActive)
           .sort(buildComparator(args.orderBy))
           .map(a =>
@@ -141,7 +163,12 @@ jest.mock('@prisma/client', () => {
       }),
       findFirst: jest.fn(async (args: Row) => {
         const where = args.where ?? {};
-        const found = store.accounts.find(a => a.id === where.id && a.syndicateId === where.syndicateId);
+        const found = store.accounts.find(
+          a =>
+            a.id === where.id &&
+            a.syndicateId === where.syndicateId &&
+            (where.tenantId === undefined || a.tenantId === where.tenantId)
+        );
         return found ? { id: found.id } : null;
       }),
       count: jest.fn(async (args: Row) => {
@@ -194,17 +221,12 @@ jest.mock('@prisma/client', () => {
     },
     journalEntry: {
       findMany: jest.fn(async (args: Row) => {
-        const where = args.where ?? {};
-        const syndicateId = where.journal?.syndicateId;
-        const rows = store.entries
-          .filter(e => (syndicateId === undefined ? true : journalOf(e)?.syndicateId === syndicateId))
-          .filter(e => where.journalId === undefined || e.journalId === where.journalId)
-          .filter(e => matchesDateFilter(new Date(e.entryDate), where.entryDate))
-          .sort(buildComparator(args.orderBy));
+        const rows = entriesMatching(args.where ?? {}).sort(buildComparator(args.orderBy));
         const skip = args.skip ?? 0;
         const take = args.take ?? rows.length;
         return rows.slice(skip, skip + take).map(hydrateEntry);
       }),
+      count: jest.fn(async (args: Row) => entriesMatching(args.where ?? {}).length),
       findFirst: jest.fn(async (args: Row) => {
         const where = args.where ?? {};
         const syndicateId = where.journal?.syndicateId;
@@ -268,7 +290,78 @@ jest.mock('@prisma/client', () => {
 
   client.$transaction = jest.fn(async (callback: any) => callback(client));
 
+  // `Prisma.sql` minimal : un fragment garde son texte (valeurs remplacees par
+  // « ? ») et ses valeurs, les fragments imbriques sont aplatis comme le fait
+  // le vrai Prisma.
+  const toSql = (text: string, params: any[]) => ({ __sql: true, text, params });
+  const sqlTag = (strings: TemplateStringsArray, ...values: any[]) => {
+    let text = strings[0];
+    const params: any[] = [];
+    values.forEach((value, index) => {
+      if (value && value.__sql) {
+        text += value.text;
+        params.push(...value.params);
+      } else {
+        text += '?';
+        params.push(value);
+      }
+      text += strings[index + 1];
+    });
+    return toSql(text, params);
+  };
+  const PrismaStub = {
+    sql: sqlTag,
+    empty: toSql('', []),
+    join: (parts: any[], separator = ',') =>
+      toSql(
+        parts.map(part => part.text).join(separator),
+        parts.flatMap(part => part.params)
+      )
+  };
+
+  /**
+   * Seule requete SQL brute exercee ici : l'agregat de la balance (mouvements
+   * par compte, agence + copropriete + bornes de periode). Toute autre requete
+   * brute fait echouer le test plutot que de renvoyer du vide en silence.
+   */
+  client.$queryRaw = jest.fn(async (query: Row) => {
+    if (!String(query?.text).includes('a.account_number')) {
+      throw new Error('Requete SQL brute non simulee : ' + String(query?.text).slice(0, 80));
+    }
+    const [tenantId, syndicateId] = query.params as string[];
+    const bounds: { from?: Date; to?: Date } = {};
+    for (const match of (query.text as string).matchAll(/e\.entry_date (>=|<=) \?/g)) {
+      const placeholderIndex = (query.text.slice(0, match.index).match(/\?/g) ?? []).length;
+      const value = new Date(String(query.params[placeholderIndex]).replace(' ', 'T') + 'Z');
+      if (match[1] === '>=') bounds.from = value;
+      else bounds.to = value;
+    }
+
+    const byAccount = new Map<string, Row>();
+    for (const line of store.lines) {
+      const entry = store.entries.find(e => e.id === line.entryId);
+      if (!entry || entry.tenantId !== tenantId || journalOf(entry)?.syndicateId !== syndicateId) continue;
+      const date = new Date(entry.entryDate);
+      if ((bounds.from && date < bounds.from) || (bounds.to && date > bounds.to)) continue;
+      const account = accountOf(line);
+      if (!account) continue;
+      const row = byAccount.get(account.id) ?? {
+        account_id: account.id,
+        account_number: account.accountNumber,
+        account_name: account.accountName,
+        account_class: account.accountClass,
+        total_debit: 0,
+        total_credit: 0
+      };
+      row.total_debit += Number(line.debit);
+      row.total_credit += Number(line.credit);
+      byAccount.set(account.id, row);
+    }
+    return Array.from(byAccount.values());
+  });
+
   return {
+    Prisma: PrismaStub,
     PrismaClient: jest.fn(() => client),
     __mockPrisma: client,
     __store: store
@@ -296,6 +389,7 @@ function seedAccount(id: string, accountNumber: string, accountName: string, ext
   const account = {
     id,
     syndicateId: SYNDIC_ID,
+    tenantId: TENANT_ID,
     accountNumber,
     accountName,
     accountClass: Number(accountNumber[0]),
@@ -552,6 +646,21 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
       expect(response.body.error).toBe('Copropriete introuvable pour ce tenant');
     });
 
+    it('renvoie 403 sur le journal, la balance et le grand livre d un autre tenant', async () => {
+      seedAccount(ACCOUNT_1_ID, '401', 'Fournisseurs');
+
+      const ecritures = await request(app).get(`${base(AUTRE_TENANT_ID)}/ecritures`);
+      const balance = await request(app).get(`${base(AUTRE_TENANT_ID)}/balance`);
+      const grandLivre = await request(app)
+        .get(`${base(AUTRE_TENANT_ID)}/grand-livre`)
+        .query({ accountId: ACCOUNT_1_ID });
+
+      expect(ecritures.status).toBe(403);
+      expect(balance.status).toBe(403);
+      expect(grandLivre.status).toBe(403);
+      expect(grandLivre.body.error).toBe('Copropriete introuvable pour ce tenant');
+    });
+
     it('bloque aussi la creation d une ecriture pour un autre tenant', async () => {
       seedJournal();
       seedAccount(ACCOUNT_1_ID, '401', 'Fournisseurs');
@@ -735,17 +844,55 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
       expect(response.body.data.map((e: any) => e.reference)).toEqual(['JE-MAR', 'JE-FEV', 'JE-JAN']);
     });
 
+    it('pagine le journal cote serveur et annonce le total', async () => {
+      await posterEcriture(1000, '2026-01-10T00:00:00.000Z', 'JE-JAN');
+      await posterEcriture(2000, '2026-02-10T00:00:00.000Z', 'JE-FEV');
+      await posterEcriture(3000, '2026-03-10T00:00:00.000Z', 'JE-MAR');
+
+      const response = await request(app).get(`${base()}/ecritures`).query({ page: '2', limit: '2' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.map((e: any) => e.reference)).toEqual(['JE-JAN']);
+      expect(response.body.pagination).toEqual({ page: 2, limit: 2, total: 3, totalPages: 2 });
+    });
+
+    it('filtre le journal par statut verrouille ou ouvert', async () => {
+      const verrouillee = await posterEcriture(1000, '2026-01-10T00:00:00.000Z', 'JE-VERROU');
+      await posterEcriture(2000, '2026-02-10T00:00:00.000Z', 'JE-OUVERT');
+      await request(app).patch(`${base()}/ecritures/${verrouillee.body.data.id}/verrouiller`).send({ lock: true });
+
+      const verrouillees = await request(app).get(`${base()}/ecritures`).query({ status: 'locked' });
+      const ouvertes = await request(app).get(`${base()}/ecritures`).query({ status: 'open' });
+
+      expect(verrouillees.body.data.map((e: any) => e.reference)).toEqual(['JE-VERROU']);
+      expect(ouvertes.body.data.map((e: any) => e.reference)).toEqual(['JE-OUVERT']);
+    });
+
     it('borne le listage des ecritures par from et to (bornes incluses)', async () => {
       await posterEcriture(1000, '2026-01-10T00:00:00.000Z', 'JE-JAN');
       await posterEcriture(2000, '2026-02-10T00:00:00.000Z', 'JE-FEV');
       await posterEcriture(3000, '2026-03-10T00:00:00.000Z', 'JE-MAR');
 
-      const response = await request(app)
-        .get(`${base()}/ecritures`)
-        .query({ from: '2026-02-10T00:00:00.000Z', to: '2026-03-10T00:00:00.000Z' });
+      const response = await request(app).get(`${base()}/ecritures`).query({ from: '2026-02-10', to: '2026-03-10' });
 
       expect(response.status).toBe(200);
       expect(response.body.data.map((e: any) => e.reference)).toEqual(['JE-MAR', 'JE-FEV']);
+    });
+
+    it('borne de fin inclusive sur le jour entier, jours impossibles refuses (400)', async () => {
+      await posterEcriture(1000, '2026-03-10T14:30:00.000Z', 'JE-APRES-MIDI');
+      await posterEcriture(2000, '2026-03-11T00:00:00.000Z', 'JE-LENDEMAIN');
+
+      const response = await request(app).get(`${base()}/ecritures`).query({ from: '2026-03-10', to: '2026-03-10' });
+      expect(response.status).toBe(200);
+      expect(response.body.data.map((e: any) => e.reference)).toEqual(['JE-APRES-MIDI']);
+
+      for (const bad of ['2026-02-31', '2026-13-45', 'demain']) {
+        const refused = await request(app).get(`${base()}/ecritures`).query({ to: bad });
+        expect(refused.status).toBe(400);
+      }
+      const inverted = await request(app).get(`${base()}/balance`).query({ from: '2026-03-11', to: '2026-03-10' });
+      expect(inverted.status).toBe(400);
     });
 
     // Etait : "SURPRISE : un intervalle de dates invalide renvoie 500 sur les
@@ -846,11 +993,7 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
 
       // Si le lot 2 ajoute un update/delete d ecriture, ce test echoue : la decision
       // sur le principe d immuabilite devra alors etre prise explicitement.
-      expect(surface).toEqual([
-        'createJournalEntryBySyndicate',
-        'listJournalEntriesBySyndicate',
-        'lockJournalEntryBySyndicate'
-      ]);
+      expect(surface).toEqual(['createJournalEntryBySyndicate', 'lockJournalEntryBySyndicate']);
     });
 
     it('SURPRISE : une ecriture verrouillee n empeche pas d en creer une autre a la meme reference', async () => {
@@ -884,6 +1027,7 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
           accountId: ACCOUNT_1_ID,
           accountNumber: '401',
           accountName: 'Fournisseurs',
+          accountClass: 4,
           totalDebit: 12500,
           totalCredit: 0,
           balance: 12500
@@ -892,6 +1036,7 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
           accountId: ACCOUNT_2_ID,
           accountNumber: '512',
           accountName: 'Banque',
+          accountClass: 5,
           totalDebit: 0,
           totalCredit: 12500,
           balance: -12500
@@ -908,13 +1053,51 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
       expect(response.body.data.totals).toEqual({ totalDebit: 12500, totalCredit: 12500, isBalanced: true });
     });
 
+    it('les filtres de la balance reduisent les lignes sans toucher aux totaux generaux', async () => {
+      await posterEcriture(10000, '2026-01-10T00:00:00.000Z', 'JE-1');
+
+      const parClasse = await request(app).get(`${base()}/balance`).query({ accountClass: '4' });
+      const parRecherche = await request(app).get(`${base()}/balance`).query({ search: 'banq' });
+
+      expect(parClasse.status).toBe(200);
+      expect(parClasse.body.data.items.map((i: any) => i.accountNumber)).toEqual(['401']);
+      expect(parClasse.body.data.filteredTotals).toEqual({ totalDebit: 10000, totalCredit: 0 });
+      expect(parClasse.body.data.totals).toEqual({ totalDebit: 10000, totalCredit: 10000, isBalanced: true });
+      expect(parRecherche.body.data.items.map((i: any) => i.accountNumber)).toEqual(['512']);
+    });
+
+    it('hideZero masque les comptes dont le solde est nul', async () => {
+      // Une ecriture puis son extourne : les deux comptes retombent a zero.
+      await posterEcriture(1000, '2026-01-10T00:00:00.000Z', 'JE-1');
+      await request(app)
+        .post(`${base()}/ecritures`)
+        .send({
+          journalId: JOURNAL_ID,
+          entryDate: '2026-01-11T00:00:00.000Z',
+          reference: 'JE-EXTOURNE',
+          description: 'Extourne',
+          sourceType: 'MANUAL',
+          lines: [
+            { accountId: ACCOUNT_2_ID, debit: 1000, credit: 0, label: 'Debit' },
+            { accountId: ACCOUNT_1_ID, debit: 0, credit: 1000, label: 'Credit' }
+          ]
+        });
+
+      const tout = await request(app).get(`${base()}/balance`);
+      const sansZero = await request(app).get(`${base()}/balance`).query({ hideZero: 'true' });
+
+      expect(tout.body.data.items).toHaveLength(2);
+      expect(sansZero.status).toBe(200);
+      expect(sansZero.body.data.items).toEqual([]);
+      // Les totaux generaux restent ceux de la periode, filtres ou non.
+      expect(sansZero.body.data.totals).toEqual({ totalDebit: 2000, totalCredit: 2000, isBalanced: true });
+    });
+
     it('restreint l agregation a la periode demandee', async () => {
       await posterEcriture(10000, '2026-01-10T00:00:00.000Z', 'JE-JAN');
       await posterEcriture(2500, '2026-02-10T00:00:00.000Z', 'JE-FEV');
 
-      const response = await request(app)
-        .get(`${base()}/balance`)
-        .query({ from: '2026-02-01T00:00:00.000Z', to: '2026-02-28T00:00:00.000Z' });
+      const response = await request(app).get(`${base()}/balance`).query({ from: '2026-02-01', to: '2026-02-28' });
 
       expect(response.status).toBe(200);
       expect(response.body.data.totals).toEqual({ totalDebit: 2500, totalCredit: 2500, isBalanced: true });
@@ -923,14 +1106,49 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
     it('SURPRISE : une periode sans aucune ecriture renvoie une balance vide declaree equilibree', async () => {
       await posterEcriture(10000, '2026-01-10T00:00:00.000Z', 'JE-JAN');
 
-      const response = await request(app)
-        .get(`${base()}/balance`)
-        .query({ from: '2025-01-01T00:00:00.000Z', to: '2025-12-31T00:00:00.000Z' });
+      const response = await request(app).get(`${base()}/balance`).query({ from: '2025-01-01', to: '2025-12-31' });
 
       expect(response.status).toBe(200);
       expect(response.body.data.items).toEqual([]);
       // 0 === 0 : isBalanced vaut true meme quand il n y a rien a equilibrer.
       expect(response.body.data.totals).toEqual({ totalDebit: 0, totalCredit: 0, isBalanced: true });
+    });
+  });
+
+  describe('Grand livre', () => {
+    it('refuse en 400 un grand livre sans accountId (le compte est obligatoire)', async () => {
+      const response = await request(app).get(`${base()}/grand-livre`);
+
+      expect(response.status).toBe(400);
+    });
+
+    it('refuse en 400 un accountId qui n est pas un UUID', async () => {
+      const response = await request(app).get(`${base()}/grand-livre`).query({ accountId: 'abc' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('renvoie 404 pour un compte inconnu ou d une autre copropriete (meme erreur)', async () => {
+      store.syndicates.push({ id: 'syndic-2', tenantId: TENANT_ID, status: 'ACTIVE' });
+      store.accounts.push({
+        id: ACCOUNT_2_ID,
+        syndicateId: 'syndic-2',
+        tenantId: TENANT_ID,
+        accountNumber: '512',
+        accountName: 'Banque',
+        accountClass: 5,
+        accountType: 'ASSET',
+        isActive: true,
+        parentAccountId: null,
+        createdAt: new Date(Date.UTC(2026, 0, 1))
+      });
+
+      const inconnu = await request(app).get(`${base()}/grand-livre`).query({ accountId: ACCOUNT_1_ID });
+      const autreCopropriete = await request(app).get(`${base()}/grand-livre`).query({ accountId: ACCOUNT_2_ID });
+
+      expect(inconnu.status).toBe(404);
+      expect(autreCopropriete.status).toBe(404);
+      expect(autreCopropriete.body.error).toBe(inconnu.body.error);
     });
   });
 });

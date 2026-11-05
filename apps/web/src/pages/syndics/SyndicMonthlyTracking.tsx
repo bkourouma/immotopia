@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Card, Space, Spin, Tooltip, Typography } from 'antd';
-import { formatMoney, MoneyValue } from '../../components/primitives';
+import { Alert, Card, Pagination, Space, Spin, Tooltip, Typography } from 'antd';
+import { formatMoney, ListSearch, MoneyValue, StateBlock } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { getMonthlyTracking } from '../../services/syndic-lot-payment-service';
-import { MonthlyTracking, MonthlyTrackingStatus } from '../../types/syndic-types';
+import { MonthlyTracking, MonthlyTrackingLotRow, MonthlyTrackingStatus } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
@@ -51,6 +53,16 @@ const STATUS_CONFIG: Record<MonthlyTrackingStatus, { color: string; textColor: s
     NONE: { color: 'transparent', textColor: 'var(--text-secondary, #999)', label: t('—') }
   }));
 
+// Statuts proposés au critère : NONE (« — », aucun appel ce mois-ci) n'est pas un statut à chercher.
+const STATUTS_RECHERCHABLES: MonthlyTrackingStatus[] = ['PAID', 'PARTIAL', 'DUE', 'OVERDUE'];
+
+// Accesseurs stables (hors du composant) : le filtrage reste mémoïsé.
+const TEXTE_RECHERCHE = [(row: MonthlyTrackingLotRow) => row.lotNumber, (row: MonthlyTrackingLotRow) => row.ownerName];
+const ACCESSEURS = {
+  // Tableau : une ligne passe si l'un de ses mois porte l'un des statuts choisis.
+  statut: (row: MonthlyTrackingLotRow) => row.months.map(cell => cell.status)
+};
+
 function yearRange(current: number): number[] {
   const years: number[] = [];
   for (let year = current - 3; year <= current + 1; year += 1) {
@@ -93,6 +105,33 @@ export const SyndicMonthlyTracking: React.FC = () => {
   const years = useMemo(() => yearRange(new Date().getFullYear()), []);
   const currency = tracking?.currency;
 
+  const lots = useMemo(() => tracking?.lots ?? [], [tracking]);
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('N° de lot, copropriétaire…')
+    },
+    {
+      key: 'statut',
+      type: 'multiSelect',
+      label: t('Statut sur au moins un mois'),
+      primary: true,
+      options: STATUTS_RECHERCHABLES.map(status => ({ value: status, label: STATUS_CONFIG[status].label }))
+    }
+  ];
+  const local = useLocalListSearch<MonthlyTrackingLotRow>(lots, {
+    ariaLabel: t('Rechercher un lot'),
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS
+  });
+  const { clampPage, total: totalFiltre } = local;
+  useEffect(() => {
+    clampPage?.(totalFiltre);
+  }, [clampPage, totalFiltre]);
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
@@ -130,6 +169,7 @@ export const SyndicMonthlyTracking: React.FC = () => {
         </div>
       ) : (
         <Card>
+          {lots.length > 0 || local.isFiltered ? <ListSearch {...local.searchProps} /> : null}
           <div style={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 900 }}>
               <thead>
@@ -145,7 +185,7 @@ export const SyndicMonthlyTracking: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {(tracking?.lots ?? []).map(row => (
+                {local.pageItems.map(row => (
                   <tr key={row.lotId}>
                     <td style={{ padding: 8, fontWeight: 600, whiteSpace: 'nowrap' }}>{row.lotNumber}</td>
                     <td style={{ padding: 8, whiteSpace: 'nowrap' }}>{row.ownerName || t('Sans copropriétaire')}</td>
@@ -183,16 +223,37 @@ export const SyndicMonthlyTracking: React.FC = () => {
                     </td>
                   </tr>
                 ))}
-                {(tracking?.lots?.length ?? 0) === 0 ? (
+                {lots.length === 0 ? (
                   <tr>
                     <td colSpan={15} style={{ padding: 16, textAlign: 'center' }}>
                       {t('Aucun lot pour cette copropriété.')}
                     </td>
                   </tr>
                 ) : null}
+                {lots.length > 0 && local.total === 0 ? (
+                  <tr>
+                    <td colSpan={15} style={{ padding: 8 }}>
+                      <StateBlock
+                        variant="no-results"
+                        actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
+                      />
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
+
+          {local.total > local.pageSize ? (
+            <Pagination
+              current={local.page}
+              pageSize={local.pageSize}
+              total={local.total}
+              showSizeChanger={false}
+              onChange={page => local.setPage(page)}
+              style={{ marginTop: 16, textAlign: 'end' }}
+            />
+          ) : null}
 
           <Space wrap size={16} style={{ marginTop: 16 }} aria-label={t('Légende')}>
             {(Object.keys(STATUS_CONFIG) as MonthlyTrackingStatus[]).map(status => {

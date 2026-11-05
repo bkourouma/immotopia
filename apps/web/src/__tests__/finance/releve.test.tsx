@@ -1,10 +1,10 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Releve } from '../../pages/finance/Releve';
+import { Releve, lireToutLeReleve } from '../../pages/finance/Releve';
 import TenantPayments from '../../pages/TenantPortal/Payments';
 import type { AccountStatement, ThirdPartyMovementLine, ThirdPartyMovementType } from '../../types/finance-types';
 
@@ -271,6 +271,23 @@ describe('Relevé de compte — écran agence', () => {
 
     ouvrir.mockRestore();
   });
+
+  it('transmet au PDF le texte et la période de la liste affichée', async () => {
+    getAccountStatement.mockResolvedValue(statement({ label: 'Mariam Diomandé' }));
+    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const user = userEvent.setup({ delay: null });
+
+    mountReleve('/tenant/agence-1/finance/comptes/cpt-1?q=loyer&from=2026-01-01&to=2026-03-31');
+    await screen.findByText('Mariam Diomandé', {}, { timeout: 8000 });
+    await user.click(screen.getByRole('button', { name: /Imprimer/ }));
+
+    expect(getAccountStatementPdfUrl).toHaveBeenCalledWith('agence-1', 'cpt-1', {
+      from: '2026-01-01',
+      to: '2026-03-31',
+      search: 'loyer'
+    });
+    ouvrir.mockRestore();
+  });
 });
 
 describe('Relevé de compte — onglet du portail locataire', () => {
@@ -435,5 +452,160 @@ describe('Relevé de compte — le vocabulaire suit le tiers', () => {
     await screen.findByText('Loyer mars 2026', {}, { timeout: 8000 });
     expect(screen.getByText('Loyer')).toBeInTheDocument();
     expect(screen.getByText('Clients')).toBeInTheDocument();
+  });
+});
+
+describe('Relevé — pagination serveur', () => {
+  const vingtMouvements = () =>
+    Array.from({ length: 20 }, (_, i) =>
+      mouvement({ id: `mvt-${i + 1}`, label: `Mouvement ${String(i + 1).padStart(2, '0')}` })
+    );
+
+  it('demande la première tranche (skip 0, take 20), affiche le total du serveur et envoie skip=pageSize en page 2', async () => {
+    getAccountStatement.mockResolvedValue(statement({ movements: vingtMouvements(), total: 45 }));
+    const user = userEvent.setup({ delay: null });
+    mountReleve();
+
+    await screen.findByText('Mouvement 01', {}, { timeout: 8000 });
+    expect(getAccountStatement.mock.calls[0][2]).toMatchObject({ skip: 0, take: 20 });
+    expect(screen.getByText('1–20 sur 45')).toBeInTheDocument();
+
+    await user.click(screen.getByTitle('2'));
+
+    await waitFor(
+      () =>
+        expect(getAccountStatement.mock.calls.some(call => call[2]?.skip === 20 && call[2]?.take === 20)).toBe(true),
+      { timeout: 8000 }
+    );
+  }, 20000);
+
+  it('relit la page depuis l’URL (?page=3 → skip 40) en gardant la période', async () => {
+    getAccountStatement.mockResolvedValue(statement({ movements: vingtMouvements(), total: 45 }));
+    mountReleve('/tenant/agence-1/finance/comptes/cpt-1?page=3&from=2026-01-01&to=2026-03-31');
+
+    await waitFor(() => expect(getAccountStatement).toHaveBeenCalled(), { timeout: 8000 });
+    expect(getAccountStatement.mock.calls[0][2]).toMatchObject({
+      from: '2026-01-01',
+      to: '2026-03-31',
+      skip: 40,
+      take: 20
+    });
+  }, 20000);
+});
+
+describe('Relevé — recherche par période', () => {
+  it('affiche la barre de recherche (champ libre sur le libellé) et la période de l’URL en puce', async () => {
+    getAccountStatement.mockResolvedValue(statement({ movements: [mouvement()], total: 1 }));
+    mountReleve('/tenant/agence-1/finance/comptes/cpt-1?from=2026-01-01&to=2026-03-31');
+
+    await screen.findByText('Loyer de janvier 2026', {}, { timeout: 8000 });
+    const barre = screen.getByRole('search');
+    expect(within(barre).getByRole('textbox', { name: 'Rechercher' })).toHaveAttribute(
+      'placeholder',
+      'Libellé du mouvement…'
+    );
+    expect(screen.getByTitle(/Période/)).toBeInTheDocument();
+  }, 20000);
+
+  it('« Effacer les critères » retire la période : le service est relu sans from ni to, page 1', async () => {
+    getAccountStatement.mockResolvedValue(statement({ movements: [mouvement()], total: 1 }));
+    const user = userEvent.setup({ delay: null });
+    mountReleve('/tenant/agence-1/finance/comptes/cpt-1?page=2&from=2026-01-01&to=2026-03-31');
+
+    await screen.findByText('Loyer de janvier 2026', {}, { timeout: 8000 }).catch(() => undefined);
+    await waitFor(() => expect(getAccountStatement).toHaveBeenCalled(), { timeout: 8000 });
+    const effacer = await screen.findAllByRole('button', { name: 'Effacer les critères' }, { timeout: 8000 });
+    await user.click(effacer[effacer.length - 1]);
+
+    await waitFor(
+      () => {
+        const dernier = getAccountStatement.mock.calls[getAccountStatement.mock.calls.length - 1][2];
+        expect(dernier.from).toBeUndefined();
+        expect(dernier.to).toBeUndefined();
+        expect(dernier.skip).toBe(0);
+      },
+      { timeout: 8000 }
+    );
+  }, 20000);
+});
+
+describe('Relevé — export de tout le relevé (lireToutLeReleve)', () => {
+  const tranche = (debut: number, nombre: number, total: number) =>
+    statement({
+      movements: Array.from({ length: nombre }, (_, i) => mouvement({ id: `mvt-${debut + i}` })),
+      total
+    });
+
+  it('total 450 : trois appels (skip 0, 200, 400, take 200) et 450 lignes, avec la période', async () => {
+    getAccountStatement
+      .mockResolvedValueOnce(tranche(0, 200, 450))
+      .mockResolvedValueOnce(tranche(200, 200, 450))
+      .mockResolvedValueOnce(tranche(400, 50, 450));
+
+    const lignes = await lireToutLeReleve('agence-1', 'cpt-1', { from: '2026-01-01', to: '2026-03-31' });
+
+    expect(lignes).toHaveLength(450);
+    expect(getAccountStatement).toHaveBeenCalledTimes(3);
+    expect(getAccountStatement.mock.calls.map(call => call[2])).toEqual([
+      { from: '2026-01-01', to: '2026-03-31', skip: 0, take: 200 },
+      { from: '2026-01-01', to: '2026-03-31', skip: 200, take: 200 },
+      { from: '2026-01-01', to: '2026-03-31', skip: 400, take: 200 }
+    ]);
+  });
+
+  it('une tranche vide reçue avant le total arrête la boucle', async () => {
+    getAccountStatement.mockResolvedValueOnce(tranche(0, 200, 450)).mockResolvedValueOnce(tranche(200, 0, 450));
+
+    const lignes = await lireToutLeReleve('agence-1', 'cpt-1', {});
+
+    expect(lignes).toHaveLength(200);
+    expect(getAccountStatement).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Relevé — recherche sur le libellé', () => {
+  it('taper un texte envoie search au service ; « Solde après » reste celui de la suite complète, avec la mention « Lignes filtrées »', async () => {
+    const user = userEvent.setup({ delay: null });
+    getAccountStatement.mockImplementation(async (_t: string, _a: string, filtres: { search?: string }) =>
+      filtres.search
+        ? statement({
+            movements: [mouvement({ id: 'mvt-9', label: 'Loyer de mars 2026', balanceAfter: 777_000 })],
+            total: 1,
+            openingBalance: 100_000,
+            closingBalance: 900_000,
+            filteredTotals: { debit: 450_000, credit: 120_000 }
+          })
+        : statement({ movements: [mouvement()], total: 1, openingBalance: 100_000, closingBalance: 900_000 })
+    );
+    mountReleve();
+    await screen.findByText('Loyer de janvier 2026', {}, { timeout: 8000 });
+    expect(screen.queryByText('Lignes filtrées')).not.toBeInTheDocument();
+
+    await user.type(within(screen.getByRole('search')).getByRole('textbox', { name: 'Rechercher' }), 'loyer');
+
+    await waitFor(() => expect(getAccountStatement.mock.calls.some(call => call[2]?.search === 'loyer')).toBe(true), {
+      timeout: 8000
+    });
+    const ligne = (await screen.findByText('Loyer de mars 2026', {}, { timeout: 8000 })).closest('tr') as HTMLElement;
+    // Le solde après est celui reçu (suite complète), jamais recalculé sur la ligne seule.
+    expect(within(ligne).getByText(/777\s000/)).toBeInTheDocument();
+    const mention = screen.getByText('Lignes filtrées').closest('p') as HTMLElement;
+    expect(within(mention).getByText(/450\s000/)).toBeInTheDocument();
+    expect(within(mention).getByText(/120\s000/)).toBeInTheDocument();
+    expect(mention.textContent ?? '').not.toMatch(/d[ée]bit|cr[ée]dit/i);
+  }, 30000);
+
+  it('l’export transmet le texte (lireToutLeReleve avec search)', async () => {
+    getAccountStatement.mockResolvedValueOnce(statement({ movements: [mouvement({ id: 'a' })], total: 1 }));
+    const lignes = await lireToutLeReleve('agence-1', 'cpt-1', { from: '2026-01-01', search: 'loyer' });
+
+    expect(lignes).toHaveLength(1);
+    expect(getAccountStatement.mock.calls[getAccountStatement.mock.calls.length - 1][2]).toEqual({
+      from: '2026-01-01',
+      to: undefined,
+      search: 'loyer',
+      skip: 0,
+      take: 200
+    });
   });
 });

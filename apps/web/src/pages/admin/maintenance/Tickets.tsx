@@ -1,49 +1,60 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Select,
-  Button,
-  Space,
-  Typography,
-  DatePicker,
-  Input,
-  Tag,
-  Empty,
-  Spin,
-  Pagination,
-  Row,
-  Col
-} from 'antd';
-import { EyeOutlined, FilterOutlined } from '@ant-design/icons';
+import { Card, Button, Typography, Tag, Spin } from 'antd';
+import { EyeOutlined } from '@ant-design/icons';
 import { Table } from '../../../components/primitives';
 import { collectAllPages } from '../../../utils/table-export/collect';
 import { TicketStatusBadge } from '../../../components/maintenance/TicketStatusBadge';
-import { managerMaintenanceService } from '../../../services/maintenance-service';
-import { Ticket, MaintenanceTicketStatus, MaintenanceTicketPriority } from '../../../types/maintenance-types';
+import { managerMaintenanceService, vendorMaintenanceService } from '../../../services/maintenance-service';
+import { getProperty, listProperties } from '../../../services/property-service';
+import { useListSearch } from '../../../hooks/useListSearch';
+import { Ticket, MaintenanceTicketStatus } from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { safeFormatDate } from '../../../utils/date-utils';
 import dayjs from 'dayjs';
+import { localizedList } from '../../../i18n/localized';
 import { t } from '../../../i18n/t';
 import { localizedRecord } from '../../../i18n/localized';
 
 const { Title } = Typography;
-const { Option } = Select;
-const { RangePicker } = DatePicker;
 
 const categoryLabels: Record<string, string> = localizedRecord(() => ({
-  PLUMBING: 'Plomberie',
+  PLUMBING: t('Plomberie'),
   ELECTRICITY: t('Électricité'),
-  AC: 'Climatisation',
-  OTHER: 'Autre'
+  AC: t('Climatisation'),
+  OTHER: t('Autre')
 }));
 
 const priorityLabels: Record<string, string> = localizedRecord(() => ({
-  LOW: 'Faible',
-  MEDIUM: 'Moyenne',
+  LOW: t('Faible'),
+  MEDIUM: t('Moyenne'),
   HIGH: t('Élevée'),
-  URGENT: 'Urgente'
+  URGENT: t('Urgente')
 }));
+
+// Libellés vivants (suivent la langue) pour les listes de critères.
+const STATUS_OPTIONS = localizedList(() => [
+  { value: 'DECLARED', label: t('Déclaré') },
+  { value: 'IN_PROGRESS', label: t('En cours') },
+  { value: 'ASSIGNED', label: t('Assigné') },
+  { value: 'RESOLVED', label: t('Résolu') },
+  { value: 'CANCELED', label: t('Annulé') }
+]);
+const PRIORITY_OPTIONS = localizedList(() => [
+  { value: 'LOW', label: t('Faible') },
+  { value: 'MEDIUM', label: t('Moyenne') },
+  { value: 'HIGH', label: t('Élevée') },
+  { value: 'URGENT', label: t('Urgente') }
+]);
+const CATEGORY_OPTIONS = localizedList(() => [
+  { value: 'PLUMBING', label: t('Plomberie') },
+  { value: 'ELECTRICITY', label: t('Électricité') },
+  { value: 'AC', label: t('Climatisation') },
+  { value: 'OTHER', label: t('Autre') }
+]);
+
+const propertyOptionLabel = (property: { internalReference?: string; title?: string }) =>
+  [property.internalReference, property.title].filter(Boolean).join(' · ');
 
 const priorityColors: Record<string, string> = {
   LOW: 'default',
@@ -60,94 +71,83 @@ export const Tickets: React.FC = () => {
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({
-    propertyId: undefined as string | undefined,
-    status: undefined as MaintenanceTicketStatus | undefined,
-    priority: undefined as MaintenanceTicketPriority | undefined,
-    assignedVendorId: undefined as string | undefined,
-    dateFrom: undefined as string | undefined,
-    dateTo: undefined as string | undefined,
-    page: 1,
-    limit: 20
-  });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0
-  });
+  const [total, setTotal] = useState(0);
+  // Premier chargement terminé : le spinner plein écran ne remplace plus la page ensuite
+  // (la barre de recherche garde son focus, même quand une recherche ne donne rien).
+  const [loaded, setLoaded] = useState(false);
 
-  /**
-   * Filtres appliqués, distincts des filtres en cours de saisie (§8.4).
-   *
-   * L'écran chargeait DEUX fois à chaque usage : l'effet réagissait au moindre
-   * changement de `filters`, et le bouton « Appliquer les filtres » relançait
-   * la même requête avec les mêmes paramètres. Toucher un sélecteur puis
-   * valider, le geste naturel, faisait donc deux allers-retours identiques.
-   *
-   * Le bouton devient le seul déclencheur — ce que demande le §8.4 —, mais la
-   * pagination ne peut pas attendre un clic sur « Appliquer » : `page` vit
-   * dans cet état-ci, et changer de page le met à jour directement.
-   */
-  const [filtresAppliques, setFiltresAppliques] = useState(filters);
+  // Les critères `loadOptions` / `resolveLabel` sont figés au premier rendu : l'agence
+  // est lue dans une référence.
+  const tenantRef = useRef(effectiveTenantId);
+  tenantRef.current = effectiveTenantId;
+
+  // Recherche multicritères portée par l'URL (?q=…&status=DECLARED&propertyId=…&page=2).
+  const search = useListSearch({
+    criteria: [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Titre, description, bien, prestataire…')
+      },
+      { key: 'status', type: 'select', label: t('Statut'), primary: true, options: STATUS_OPTIONS },
+      { key: 'priority', type: 'select', label: t('Priorité'), primary: true, options: PRIORITY_OPTIONS },
+      { key: 'category', type: 'select', label: t('Catégorie'), options: CATEGORY_OPTIONS },
+      {
+        key: 'propertyId',
+        type: 'select',
+        label: t('Bien'),
+        loadOptions: async term => {
+          const { properties } = await listProperties(tenantRef.current as string, { q: term || undefined, limit: 20 });
+          return properties.map(property => ({ value: property.id, label: propertyOptionLabel(property) }));
+        },
+        resolveLabel: async id => propertyOptionLabel(await getProperty(tenantRef.current as string, id))
+      },
+      {
+        key: 'assignedVendorId',
+        type: 'select',
+        label: t('Prestataire'),
+        loadOptions: async term => {
+          const response = await vendorMaintenanceService.listVendors(tenantRef.current as string, {
+            search: term || undefined,
+            limit: 20
+          });
+          return (response.data ?? []).map((vendor: { id: string; name: string }) => ({
+            value: vendor.id,
+            label: vendor.name
+          }));
+        },
+        resolveLabel: async id => (await vendorMaintenanceService.getVendor(tenantRef.current as string, id)).data?.name
+      },
+      { key: 'created', type: 'dateRange', label: t('Créé du / au'), api: ['dateFrom', 'dateTo'] }
+    ]
+  });
+  const paramsRef = useRef(search.apiParams);
+  paramsRef.current = search.apiParams;
+  const paramsKey = JSON.stringify(search.apiParams);
 
   useEffect(() => {
     if (effectiveTenantId) {
       loadTickets();
     }
-  }, [effectiveTenantId, filtresAppliques]);
-
-  const appliquerLesFiltres = () => {
-    // Retour à la première page : la page 7 d'un autre jeu de filtres n'a pas
-    // d'équivalent, et y atterrir donne une liste vide alors que des résultats
-    // existent.
-    setFiltresAppliques({ ...filters, page: 1 });
-  };
+  }, [effectiveTenantId, paramsKey]);
 
   const loadTickets = async () => {
     if (!effectiveTenantId) return;
 
     setLoading(true);
     try {
-      const response = await managerMaintenanceService.listTickets(effectiveTenantId, filtresAppliques);
+      const response = await managerMaintenanceService.listTickets(effectiveTenantId, paramsRef.current as never);
       if (response.success) {
         setTickets(response.data);
-        setPagination(response.pagination);
+        setTotal(response.pagination?.total ?? response.data.length);
       }
     } catch (error) {
       console.error('Error loading tickets:', error);
     } finally {
       setLoading(false);
+      setLoaded(true);
     }
-  };
-
-  const handleFilterChange = (key: string, value: any) => {
-    setFilters(prev => ({ ...prev, [key]: value, page: 1 }));
-  };
-
-  const handleDateRangeChange = (dates: any) => {
-    if (dates && dates.length === 2) {
-      setFilters(prev => ({
-        ...prev,
-        dateFrom: dates[0].format('YYYY-MM-DD'),
-        dateTo: dates[1].format('YYYY-MM-DD'),
-        page: 1
-      }));
-    } else {
-      setFilters(prev => ({
-        ...prev,
-        dateFrom: undefined,
-        dateTo: undefined,
-        page: 1
-      }));
-    }
-  };
-
-  const handlePageChange = (page: number) => {
-    // La page s'applique immédiatement, dans les deux états : le brouillon
-    // reste cohérent avec ce qui est affiché si l'on valide ensuite.
-    setFilters(prev => ({ ...prev, page }));
-    setFiltresAppliques(prev => ({ ...prev, page }));
   };
 
   const columns = [
@@ -261,7 +261,7 @@ export const Tickets: React.FC = () => {
     }
   ];
 
-  if (loading && tickets.length === 0) {
+  if (!loaded) {
     return (
       <>
         <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
@@ -276,98 +276,29 @@ export const Tickets: React.FC = () => {
           <Title level={2}>{t('Gestion des tickets de maintenance')}</Title>
         </div>
 
-        <Card style={{ marginBottom: 24 }}>
-          <Row gutter={[16, 16]}>
-            <Col xs={24} sm={12} md={6} lg={5}>
-              <Select
-                showSearch
-                optionFilterProp="children"
-                placeholder={t('Filtrer par statut')}
-                allowClear
-                style={{ width: '100%' }}
-                value={filters.status}
-                onChange={value => handleFilterChange('status', value)}
-              >
-                <Option value="DECLARED">{t('Déclaré')}</Option>
-                <Option value="IN_PROGRESS">{t('En cours')}</Option>
-                <Option value="ASSIGNED">{t('Assigné')}</Option>
-                <Option value="RESOLVED">{t('Résolu')}</Option>
-                <Option value="CANCELED">{t('Annulé')}</Option>
-              </Select>
-            </Col>
-
-            <Col xs={24} sm={12} md={6} lg={5}>
-              <Select
-                showSearch
-                optionFilterProp="children"
-                placeholder={t('Filtrer par priorité')}
-                allowClear
-                style={{ width: '100%' }}
-                value={filters.priority}
-                onChange={value => handleFilterChange('priority', value)}
-              >
-                <Option value="LOW">{t('Faible')}</Option>
-                <Option value="MEDIUM">{t('Moyenne')}</Option>
-                <Option value="HIGH">{t('Élevée')}</Option>
-                <Option value="URGENT">{t('Urgente')}</Option>
-              </Select>
-            </Col>
-
-            <Col xs={24} sm={24} md={8} lg={8}>
-              <RangePicker
-                placeholder={[t('Date début'), t('Date fin')]}
-                onChange={handleDateRangeChange}
-                format="DD/MM/YYYY"
-                style={{ width: '100%' }}
-              />
-            </Col>
-
-            <Col xs={24} sm={24} md={4} lg={6}>
-              <Button icon={<FilterOutlined />} onClick={appliquerLesFiltres} block type="primary">
-                {t('Appliquer les filtres')}
-              </Button>
-            </Col>
-          </Row>
-        </Card>
-
         <Card>
-          {tickets.length === 0 ? (
-            <Empty description={t('Aucun ticket de maintenance')} />
-          ) : (
-            <>
-              <Table
-                exportFilename={t('Gestion des tickets de maintenance')}
-                exportFetchAll={() =>
-                  collectAllPages<Ticket>(async (page, limit) => {
-                    const reponse = await managerMaintenanceService.listTickets(effectiveTenantId as string, {
-                      ...filtresAppliques,
-                      page,
-                      limit
-                    });
-                    return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
-                  })
-                }
-                columns={columns}
-                dataSource={tickets}
-                rowKey="id"
-                pagination={false}
-                loading={loading}
-                scroll={{ x: 'max-content' }}
-              />
-
-              {pagination.totalPages > 1 && (
-                <div style={{ textAlign: 'center', marginTop: 24 }}>
-                  <Pagination
-                    current={pagination.page}
-                    total={pagination.total}
-                    pageSize={pagination.limit}
-                    onChange={handlePageChange}
-                    showTotal={total => t('Total: {{total}} tickets', { total: total })}
-                  />
-                </div>
-              )}
-            </>
-          )}
+          <Table
+            aria-label={t('Gestion des tickets de maintenance')}
+            search={search.searchProps}
+            exportFilename={t('Gestion des tickets de maintenance')}
+            exportFetchAll={() =>
+              collectAllPages<Ticket>(async (page, limit) => {
+                const reponse = await managerMaintenanceService.listTickets(effectiveTenantId as string, {
+                  ...(search.filterParams as object),
+                  page,
+                  limit
+                });
+                return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
+              })
+            }
+            columns={columns}
+            dataSource={tickets}
+            rowKey="id"
+            pagination={search.tablePagination(total)}
+            loading={loading}
+            scroll={{ x: 'max-content' }}
+            locale={search.isFiltered ? undefined : { emptyText: t('Aucun ticket de maintenance') }}
+          />
         </Card>
       </div>
     </>

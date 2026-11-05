@@ -54,6 +54,8 @@ export interface TenantAuditFilters {
   actionKey?: string;
   entityType?: string;
   entityId?: string;
+  /** Recherche libre sur l'action, la ressource, l'identifiant et l'acteur (100 caractères au plus). */
+  search?: string;
   /** `YYYY-MM-DD`, borne incluse. */
   startDate?: string;
   /** `YYYY-MM-DD`, borne incluse. */

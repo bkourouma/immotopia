@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import { Table } from '../../components/primitives';
+import { useDepositSearch } from './search/depositSearch';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
@@ -121,6 +122,9 @@ export default function TenantDeposit() {
     };
     return labels[method] || method;
   };
+
+  // Mouvements reçus en entier : recherche locale (voir `search/depositSearch`).
+  const local = useDepositSearch(data?.movements, getPaymentMethodLabel);
 
   if (loading) {
     return (
@@ -249,6 +253,7 @@ export default function TenantDeposit() {
       >
         {movements && movements.length > 0 ? (
           <Table
+            {...local.tableProps}
             exportFilename={t('Historique des mouvements')}
             scroll={{ x: 'max-content' }}
             columns={[
@@ -333,11 +338,9 @@ export default function TenantDeposit() {
                 }
               }
             ]}
-            dataSource={movements}
             rowKey="id"
             pagination={{
-              pageSize: 20,
-              showSizeChanger: true,
+              ...local.tableProps.pagination,
               showTotal: total => t('Total: {{total}} mouvements', { total: total })
             }}
           />

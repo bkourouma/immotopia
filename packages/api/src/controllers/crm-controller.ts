@@ -1,5 +1,14 @@
 import { Request, Response } from 'express';
-import { CrmActivityType, CrmContactStatus, CrmDealStage, CrmDealType } from '@prisma/client';
+import {
+  CrmActivityDirection,
+  CrmActivityType,
+  CrmContactStatus,
+  CrmContactType,
+  CrmDealStage,
+  CrmDealType,
+  LeadSource,
+  MaturityLevel
+} from '@prisma/client';
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
 import {
   createContactSchema,
@@ -31,7 +40,15 @@ import { createActivity, listActivities } from '../services/crm-activity-service
 import { getDashboard } from '../services/crm-dashboard-service';
 import { respondWithAppError } from '../utils/app-error-response';
 import { parsePagination } from '../utils/pagination-helper';
-import { parseEnumParam } from '../utils/query-params';
+import { parseBooleanParam } from '../utils/query-params';
+import {
+  parseAmountParam,
+  parseDateParam,
+  parseEnumListParam,
+  parseIdListParam,
+  parseIdParam,
+  parseSearchParam
+} from '../utils/crm-query-params';
 
 /**
  * Create a new contact
@@ -125,11 +142,19 @@ export async function listContactsHandler(req: Request, res: Response): Promise<
     const tenantId = getTenantIdFromRequest(req);
 
     const filters = {
-      status: parseEnumParam(req.query.status, CrmContactStatus, 'status'),
-      source: req.query.source as string | undefined,
-      assignedTo: req.query.assignedTo as string | undefined,
-      tag: req.query.tag as string | undefined,
-      search: req.query.search as string | undefined,
+      status: parseEnumListParam(req.query.status, CrmContactStatus, 'status'),
+      contactType: parseEnumListParam(req.query.contactType, CrmContactType, 'contactType'),
+      maturityLevel: parseEnumListParam(req.query.maturityLevel, MaturityLevel, 'maturityLevel'),
+      leadSource: parseEnumListParam(req.query.leadSource, LeadSource, 'leadSource'),
+      source: parseSearchParam(req.query.source, 'source'),
+      assignedTo: parseIdParam(req.query.assignedTo, 'assignedTo'),
+      tag: parseSearchParam(req.query.tag, 'tag'),
+      tagIds: parseIdListParam(req.query.tagIds, 'tagIds'),
+      search: parseSearchParam(req.query.search),
+      startDate: parseDateParam(req.query.startDate, 'startDate'),
+      endDate: parseDateParam(req.query.endDate, 'endDate'),
+      hasActiveDeal: parseBooleanParam(req.query.hasActiveDeal, 'hasActiveDeal'),
+      hasUpcomingActivity: parseBooleanParam(req.query.hasUpcomingActivity, 'hasUpcomingActivity'),
       ...parsePagination(req.query)
     };
 
@@ -498,10 +523,15 @@ export async function listDealsHandler(req: Request, res: Response): Promise<voi
     const tenantId = getTenantIdFromRequest(req);
 
     const filters = {
-      type: parseEnumParam(req.query.type, CrmDealType, 'type'),
-      stage: parseEnumParam(req.query.stage, CrmDealStage, 'stage'),
-      assignedTo: req.query.assignedTo as string | undefined,
-      contactId: req.query.contactId as string | undefined,
+      type: parseEnumListParam(req.query.type, CrmDealType, 'type'),
+      stage: parseEnumListParam(req.query.stage, CrmDealStage, 'stage'),
+      assignedTo: parseIdParam(req.query.assignedTo, 'assignedTo'),
+      contactId: parseIdParam(req.query.contactId, 'contactId'),
+      search: parseSearchParam(req.query.search),
+      budgetMin: parseAmountParam(req.query.budgetMin, 'budgetMin'),
+      budgetMax: parseAmountParam(req.query.budgetMax, 'budgetMax'),
+      startDate: parseDateParam(req.query.startDate, 'startDate'),
+      endDate: parseDateParam(req.query.endDate, 'endDate'),
       ...parsePagination(req.query)
     };
 
@@ -633,12 +663,15 @@ export async function listActivitiesHandler(req: Request, res: Response): Promis
     const tenantId = getTenantIdFromRequest(req);
 
     const filters = {
-      contactId: req.query.contactId as string | undefined,
-      dealId: req.query.dealId as string | undefined,
-      type: parseEnumParam(req.query.type, CrmActivityType, 'type'),
-      createdBy: req.query.createdBy as string | undefined,
-      startDate: req.query.startDate as string | undefined,
-      endDate: req.query.endDate as string | undefined,
+      contactId: parseIdParam(req.query.contactId, 'contactId'),
+      dealId: parseIdParam(req.query.dealId, 'dealId'),
+      type: parseEnumListParam(req.query.type, CrmActivityType, 'type'),
+      direction: parseEnumListParam(req.query.direction, CrmActivityDirection, 'direction'),
+      createdBy: parseIdParam(req.query.createdBy, 'createdBy'),
+      hasNextAction: parseBooleanParam(req.query.hasNextAction, 'hasNextAction'),
+      search: parseSearchParam(req.query.search),
+      startDate: parseDateParam(req.query.startDate, 'startDate'),
+      endDate: parseDateParam(req.query.endDate, 'endDate'),
       ...parsePagination(req.query)
     };
 

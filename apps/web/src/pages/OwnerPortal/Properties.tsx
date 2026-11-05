@@ -1,32 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Select, Space, Typography, Spin, Alert, Empty, Row, Col, Statistic, Button } from 'antd';
+import { Space, Typography, Spin, Alert, Empty, Row, Col, Button, Pagination } from 'antd';
 import { BankOutlined, HomeOutlined, ToolOutlined, SyncOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { PropertyCard } from '../../components/OwnerPortal/PropertyCard';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
+import { ListSearch, StateBlock } from '../../components/primitives';
+import { useLocalListSearch } from '../../utils/list-search';
+import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
-import { localizedList } from '../../i18n/localized';
 
 const { Title, Text } = Typography;
-const { Option } = Select;
+
+interface PropertyItem {
+  id: string;
+  address: string;
+  propertyType: string;
+  status: string;
+  transactionModes: string[];
+  currentLease?: {
+    id: string;
+    tenantName: string;
+    startDate: string;
+    endDate: string | null;
+    monthlyRent: number;
+    status: string;
+  } | null;
+}
 
 interface PropertiesData {
-  properties: Array<{
-    id: string;
-    address: string;
-    propertyType: string;
-    status: string;
-    transactionModes: string[];
-    currentLease?: {
-      id: string;
-      tenantName: string;
-      startDate: string;
-      endDate: string | null;
-      monthlyRent: number;
-      status: string;
-    } | null;
-  }>;
+  properties: PropertyItem[];
   summary: {
     total: number;
     rented: number;
@@ -35,58 +38,36 @@ interface PropertiesData {
   };
 }
 
-const propertyTypeOptions = localizedList(() => [
-  { value: '', label: t('Tous les types') },
-  { value: 'APPARTEMENT', label: t('Appartement') },
-  { value: 'MAISON_VILLA', label: t('Maison / Villa') },
-  { value: 'STUDIO', label: t('Studio') },
-  { value: 'DUPLEX_TRIPLEX', label: t('Duplex / Triplex') },
-  { value: 'BUREAU', label: t('Bureau') },
-  { value: 'BOUTIQUE_COMMERCIAL', label: t('Boutique / Commercial') },
-  { value: 'TERRAIN', label: t('Terrain') }
-]);
+// Stables : déclarés HORS du composant (le filtrage local reste mémoïsé).
+// L'API ne renvoie ni titre ni référence : le champ libre porte sur l'adresse et le locataire en place.
+const TEXTE_RECHERCHE = [
+  (property: PropertyItem) => property.address,
+  (property: PropertyItem) => property.currentLease?.tenantName
+];
+const ACCESSEURS = {
+  status: (property: PropertyItem) => property.status,
+  propertyType: (property: PropertyItem) => property.propertyType,
+  transactionMode: (property: PropertyItem) => property.transactionModes
+};
 
-const statusOptions = localizedList(() => [
-  { value: '', label: t('Tous les statuts') },
-  { value: 'AVAILABLE', label: t('Disponible') },
-  { value: 'RENTED', label: t('Loué') },
-  { value: 'UNDER_REVIEW', label: t('En révision') },
-  { value: 'RESERVED', label: t('Réservé') },
-  { value: 'UNDER_OFFER', label: t('Sous offre') }
-]);
-
-const transactionModeOptions = localizedList(() => [
-  { value: '', label: t('Tous les modes') },
-  { value: 'RENTAL', label: t('Location') },
-  { value: 'SALE', label: t('Vente') },
-  { value: 'SHORT_TERM', label: t('Location courte durée') }
-]);
+const PAGE_SIZE = 12;
 
 export default function Properties() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PropertiesData | null>(null);
-  const [filters, setFilters] = useState({
-    status: '',
-    propertyType: '',
-    transactionMode: ''
-  });
 
   useEffect(() => {
     loadProperties();
-  }, [filters]);
+  }, []);
 
   const loadProperties = async () => {
     try {
       setLoading(true);
       setError(null);
-      const params: any = {};
-      if (filters.status) params.status = filters.status;
-      if (filters.propertyType) params.propertyType = filters.propertyType;
-      if (filters.transactionMode) params.transactionMode = filters.transactionMode;
-
-      const response = await ownerPortalService.getProperties(params);
+      // Liste reçue en entier : la recherche se fait ici, l'appel part sans filtre.
+      const response = await ownerPortalService.getProperties();
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
@@ -98,6 +79,55 @@ export default function Properties() {
       setLoading(false);
     }
   };
+
+  const criteria: SearchCriterion[] = [
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Adresse, locataire…') },
+    {
+      key: 'status',
+      type: 'multiSelect',
+      label: t('Statut'),
+      primary: true,
+      options: [
+        { value: 'AVAILABLE', label: t('Disponible') },
+        { value: 'RENTED', label: t('Loué') },
+        { value: 'UNDER_REVIEW', label: t('En révision') },
+        { value: 'RESERVED', label: t('Réservé') },
+        { value: 'UNDER_OFFER', label: t('Sous offre') }
+      ]
+    },
+    {
+      key: 'propertyType',
+      type: 'multiSelect',
+      label: t('Type de propriété'),
+      primary: true,
+      options: [
+        { value: 'APPARTEMENT', label: t('Appartement') },
+        { value: 'MAISON_VILLA', label: t('Maison / Villa') },
+        { value: 'STUDIO', label: t('Studio') },
+        { value: 'DUPLEX_TRIPLEX', label: t('Duplex / Triplex') },
+        { value: 'BUREAU', label: t('Bureau') },
+        { value: 'BOUTIQUE_COMMERCIAL', label: t('Boutique / Commercial') },
+        { value: 'TERRAIN', label: t('Terrain') }
+      ]
+    },
+    {
+      key: 'transactionMode',
+      type: 'multiSelect',
+      label: t('Mode de transaction'),
+      options: [
+        { value: 'RENTAL', label: t('Location') },
+        { value: 'SALE', label: t('Vente') },
+        { value: 'SHORT_TERM', label: t('Location courte durée') }
+      ]
+    }
+  ];
+
+  const local = useLocalListSearch<PropertyItem>(data?.properties, {
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors: ACCESSEURS,
+    defaultPageSize: PAGE_SIZE
+  });
 
   if (loading) {
     return (
@@ -169,71 +199,39 @@ export default function Properties() {
         </Col>
       </Row>
 
-      {/* Filters (T046) */}
-      <Card title={t('Filtres')}>
-        <Space wrap>
-          <Select
-            showSearch
-            optionFilterProp="children"
-            style={{ width: 200 }}
-            placeholder={t('Statut')}
-            value={filters.status || undefined}
-            onChange={value => setFilters({ ...filters, status: value || '' })}
-            allowClear
-          >
-            {statusOptions.map(opt => (
-              <Option key={opt.value} value={opt.value}>
-                {opt.label}
-              </Option>
-            ))}
-          </Select>
-
-          <Select
-            showSearch
-            optionFilterProp="children"
-            style={{ width: 200 }}
-            placeholder={t('Type de propriété')}
-            value={filters.propertyType || undefined}
-            onChange={value => setFilters({ ...filters, propertyType: value || '' })}
-            allowClear
-          >
-            {propertyTypeOptions.map(opt => (
-              <Option key={opt.value} value={opt.value}>
-                {opt.label}
-              </Option>
-            ))}
-          </Select>
-
-          <Select
-            showSearch
-            optionFilterProp="children"
-            style={{ width: 200 }}
-            placeholder={t('Mode de transaction')}
-            value={filters.transactionMode || undefined}
-            onChange={value => setFilters({ ...filters, transactionMode: value || '' })}
-            allowClear
-          >
-            {transactionModeOptions.map(opt => (
-              <Option key={opt.value} value={opt.value}>
-                {opt.label}
-              </Option>
-            ))}
-          </Select>
-        </Space>
-      </Card>
+      {/* Recherche locale : la liste arrive en entier (cartes de synthèse : tous les biens, hors recherche) */}
+      <ListSearch {...local.searchProps} />
 
       {/* Property List */}
       <div>
-        {data.properties.length > 0 ? (
-          <Row gutter={[16, 16]}>
-            {data.properties.map(property => (
-              <Col xs={24} sm={12} lg={8} key={property.id}>
-                <PropertyCard property={property} />
-              </Col>
-            ))}
-          </Row>
+        {local.total > 0 ? (
+          <Space direction="vertical" size="large" style={{ width: '100%' }}>
+            <Row gutter={[16, 16]}>
+              {local.pageItems.map(property => (
+                <Col xs={24} sm={12} lg={8} key={property.id}>
+                  <PropertyCard property={property} />
+                </Col>
+              ))}
+            </Row>
+            {(local.total > local.pageSize || local.page > 1) && (
+              <Pagination
+                align="end"
+                current={local.page}
+                pageSize={local.pageSize}
+                total={local.total}
+                pageSizeOptions={[12, 24, 48, 96]}
+                showSizeChanger
+                onChange={local.dataViewProps.onPageChange}
+              />
+            )}
+          </Space>
+        ) : local.isFiltered ? (
+          <StateBlock
+            variant="no-results"
+            actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
+          />
         ) : (
-          <Empty description={t('Aucune propriété trouvée avec ces filtres')} />
+          <Empty description={t('Aucune propriété disponible')} />
         )}
       </div>
     </Space>

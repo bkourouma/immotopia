@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
 import { SyndicProfilesIncidents } from '../../pages/syndics/SyndicProfilesIncidents';
@@ -47,6 +48,10 @@ vi.mock('../../components/crm/ContactForm', () => ({
 
 // Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
 vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
+
+// La barre de recherche a ses propres tests (primitives/list-search, SyndicProfilesIncidentsSearch) :
+// ce fichier moque tout antd, la barre y est neutralisée.
+vi.mock('../../components/primitives/ListSearch', () => ({ ListSearch: () => null }));
 
 vi.mock('antd', async () => {
   // importActual reaches the real module from inside a hoisted mock factory;
@@ -108,6 +113,10 @@ vi.mock('antd', async () => {
     Space: Object.assign(passthrough(), { Compact: passthrough() }),
     Spin: passthrough(),
     Table,
+    // Onglets : seul le panneau actif est rendu (comme `destroyOnHidden`).
+    Tabs: ({ items, activeKey }: any) => (
+      <div>{items.find((item: any) => item.key === activeKey)?.children ?? null}</div>
+    ),
     Tag: passthrough('span'),
     Typography: {
       Title: passthrough('h1'),
@@ -183,14 +192,18 @@ const authValue: AuthContextType = {
   switchTenant: () => undefined
 };
 
-function renderWithRoute() {
+/** `search` : l'onglet voulu (`?tab=locataires`) ; sans lui, l'onglet par défaut est « Profils propriétaires ». */
+function renderWithRoute(search = '') {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <AuthContext.Provider value={authValue}>
-      <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/profils-incidents']}>
-        <Routes>
-          <Route path="/tenant/:tenantId/syndics/:syndicId/profils-incidents" element={<SyndicProfilesIncidents />} />
-        </Routes>
-      </MemoryRouter>
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[`/tenant/tenant-1/syndics/syndic-1/profils-incidents${search}`]}>
+          <Routes>
+            <Route path="/tenant/:tenantId/syndics/:syndicId/profils-incidents" element={<SyndicProfilesIncidents />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
     </AuthContext.Provider>
   );
 }
@@ -305,7 +318,7 @@ describe('Syndics profiles/incidents page', () => {
   });
 
   it('renders profiles and incidents', async () => {
-    renderWithRoute();
+    renderWithRoute('?tab=incidents');
     expect(await screen.findByText('Profils lot et incidents')).toBeTruthy();
     // The description shows both in the incidents table and in the imputation
     // modal's incident selector, so match all occurrences.
@@ -388,7 +401,7 @@ describe('Syndics profiles/incidents page', () => {
   });
 
   it('shows imputation action for incidents', async () => {
-    renderWithRoute();
+    renderWithRoute('?tab=incidents');
     const button = await screen.findByText('Ajouter imputation');
     fireEvent.click(button);
     expect(button).toBeTruthy();
@@ -401,7 +414,7 @@ describe('Syndics profiles/incidents page', () => {
       data: { success: true, data: { id: 'i-1', status: 'IN_PROGRESS' } }
     });
 
-    renderWithRoute();
+    renderWithRoute('?tab=incidents');
     fireEvent.click(await screen.findByText("Modifier l'incident"));
 
     formValidateFields.mockResolvedValueOnce({
@@ -420,7 +433,7 @@ describe('Syndics profiles/incidents page', () => {
   });
 
   it('affiche la colonne Lot du tableau des incidents et pré-remplit le lot dans la modale d’imputation', async () => {
-    renderWithRoute();
+    renderWithRoute('?tab=incidents');
 
     // Colonne « Lot » : le numéro du lot de l'incident (formatLotLabel n'est
     // pas utilisé ici, donc ce numéro seul n'apparaît que dans cette colonne).
@@ -497,7 +510,7 @@ describe('Syndics profiles/incidents page', () => {
 
   it('le tableau des locataires affiche le statut et « Terminer » met fin au profil actuel', async () => {
     mockApiClient.patch.mockResolvedValueOnce({ data: { success: true, data: { id: 'tp-1', isCurrent: false } } });
-    renderWithRoute();
+    renderWithRoute('?tab=locataires');
 
     expect(await screen.findByText('Actuel')).toBeTruthy();
     expect(screen.getByText('Terminé')).toBeTruthy();
@@ -517,7 +530,7 @@ describe('Syndics profiles/incidents page', () => {
 
   it('l’imputation transmet le poste de budget et le contrat choisis, la devise restant XOF', async () => {
     mockApiClient.post.mockResolvedValueOnce({ data: { success: true, data: { id: 'imp-1' } } });
-    renderWithRoute();
+    renderWithRoute('?tab=incidents');
     fireEvent.click(await screen.findByText('Ajouter imputation'));
     await waitFor(() =>
       expect(mockApiClient.get.mock.calls.some(([url]: [string]) => url.endsWith('/budgets'))).toBe(true)

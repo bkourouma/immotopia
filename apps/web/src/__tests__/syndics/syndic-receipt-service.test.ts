@@ -52,6 +52,31 @@ describe('syndic-receipt-service (lot S3, besoin 1)', () => {
     });
   });
 
+  it('transmet la recherche, le filtre « rattrapé » et la période', async () => {
+    get.mockResolvedValue({
+      data: { success: true, data: { items: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 1 } } }
+    });
+
+    await listSyndicateReceipts('tenant-1', 'syndic-1', {
+      search: '  Awa ',
+      backfilled: false,
+      from: '2026-01-01',
+      to: '2026-01-31'
+    });
+    expect(get.mock.calls[get.mock.calls.length - 1][1].params).toMatchObject({
+      search: 'Awa',
+      backfilled: false,
+      from: '2026-01-01',
+      to: '2026-01-31'
+    });
+
+    await listSyndicateReceipts('tenant-1', 'syndic-1', { search: '   ' });
+    expect(get.mock.calls[get.mock.calls.length - 1][1].params).toMatchObject({
+      search: undefined,
+      backfilled: undefined
+    });
+  });
+
   it('liste les reçus d’un lot sans exiger lotId dans les filtres', async () => {
     get.mockResolvedValue({
       data: { success: true, data: { items: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 1 } } }

@@ -30,7 +30,7 @@ const BUDGET_ID = '22222222-2222-4222-8222-222222222222';
 
 const store = {
   budgets: new Map<string, any>(),
-  batches: new Map<string, any>(),
+  batches: new Map<string, any>()
 };
 
 jest.mock('../../src/lib/syndics/queries', () => ({
@@ -76,15 +76,11 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   listOwnerAccountTransactionsByLot: jest.fn(),
   createOwnerAccountAdjustmentByLot: jest.fn(),
   getOwnerAccountStatementByLot: jest.fn(),
-  listChartOfAccountsBySyndicate: jest.fn(),
   createChartOfAccountBySyndicate: jest.fn(),
   listAccountingJournalsBySyndicate: jest.fn(),
   createAccountingJournalBySyndicate: jest.fn(),
-  listJournalEntriesBySyndicate: jest.fn(),
   createJournalEntryBySyndicate: jest.fn(),
   lockJournalEntryBySyndicate: jest.fn(),
-  getTrialBalanceBySyndicate: jest.fn(),
-  getGeneralLedgerBySyndicate: jest.fn(),
   listBudgetsBySyndicate: jest.fn(async () => Array.from(store.budgets.values())),
   createBudgetBySyndicate: jest.fn(async (_tenantId: string, _syndicId: string, data: any) => {
     const created = { id: BUDGET_ID, status: 'DRAFT', ...data, allocations: [] };
@@ -99,7 +95,7 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   }),
   recomputeBudgetAllocationsByBudget: jest.fn(async () => [
     { id: 'alloc-1', lotId: 'lot-1', totalAllocated: 40000 },
-    { id: 'alloc-2', lotId: 'lot-2', totalAllocated: 60000 },
+    { id: 'alloc-2', lotId: 'lot-2', totalAllocated: 60000 }
   ]),
   listChargeCallBatchesBySyndicate: jest.fn(async () => Array.from(store.batches.values())),
   createChargeCallBatchBySyndicate: jest.fn(async (_tenantId: string, _syndicId: string, data: any) => {
@@ -111,13 +107,13 @@ jest.mock('../../src/lib/syndics/queries', () => ({
     const created = { id: `batch-${store.batches.size + 1}`, budgetId, ...data, chargeCalls: [{ id: 'charge-1' }] };
     store.batches.set(created.id, created);
     return created;
-  }),
+  })
 }));
 
 jest.mock('../../src/lib/syndics/notifications', () => ({
   notifyChargeCall: jest.fn().mockResolvedValue({ emailSent: true, whatsappSent: false }),
   notifyMeetingConvocation: jest.fn().mockResolvedValue({ emailSent: 0, whatsappSent: 0 }),
-  notifyChargeCallReminder: jest.fn().mockResolvedValue({ emailSent: true, whatsappSent: false }),
+  notifyChargeCallReminder: jest.fn().mockResolvedValue({ emailSent: true, whatsappSent: false })
 }));
 
 import syndicRoutes from '../../src/routes/syndic-routes';
@@ -146,9 +142,9 @@ describe('Syndics budgets routes', () => {
             category: 'Maintenance',
             description: 'Maintenance courante',
             amountForecast: 1000000,
-            distributionKey: 'GENERAL_SHARES',
-          },
-        ],
+            distributionKey: 'GENERAL_SHARES'
+          }
+        ]
       });
 
     expect(createResponse.status).toBe(201);
@@ -169,9 +165,9 @@ describe('Syndics budgets routes', () => {
             category: 'Maintenance',
             description: 'Maintenance courante',
             amountForecast: 1000000,
-            distributionKey: 'GENERAL_SHARES',
-          },
-        ],
+            distributionKey: 'GENERAL_SHARES'
+          }
+        ]
       });
 
     const approveResponse = await request(app)
@@ -191,7 +187,7 @@ describe('Syndics budgets routes', () => {
         period: '2026-Q2',
         dueDate: '2026-04-30T00:00:00.000Z',
         batchType: 'REGULAR',
-        currency: 'XOF',
+        currency: 'XOF'
       });
     expect(generateResponse.status).toBe(201);
     expect(generateResponse.body.data.chargeCalls).toHaveLength(1);
@@ -206,7 +202,7 @@ describe('Syndics budgets routes', () => {
         dueDate: '2026-05-31T00:00:00.000Z',
         batchType: 'EXCEPTIONAL',
         totalAmount: 150000,
-        currency: 'XOF',
+        currency: 'XOF'
       });
 
     expect(createResponse.status).toBe(201);
@@ -215,4 +211,3 @@ describe('Syndics budgets routes', () => {
     expect(listResponse.body.data).toHaveLength(1);
   });
 });
-

@@ -1,6 +1,9 @@
-import React from 'react';
-import { Badge, Button, Popconfirm, Space, Table, Tag, Typography } from 'antd';
+import React, { useMemo } from 'react';
+import { Badge, Button, Popconfirm, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { Table } from '../../primitives';
+import { useLocalListSearch } from '../../../utils/list-search';
+import type { SearchCriterion } from '../../../utils/list-search';
 import type { MeetingParticipantView } from '../../../types/syndic-live-types';
 import { formatDateTime } from './live-labels';
 import { t } from '../../../i18n/t';
@@ -17,6 +20,21 @@ interface LiveParticipantsTableProps {
   onRevoke: (participant: MeetingParticipantView) => void;
 }
 
+// Recherche LOCALE (la console reçoit déjà tous les participants et se rafraîchit seule) :
+// accesseurs stables, hors du composant. Le filtre ne change que l'AFFICHAGE : les actions
+// (copier, révoquer) restent propres à chaque ligne.
+const TEXTE_RECHERCHE = [
+  (participant: MeetingParticipantView) => participant.name,
+  (participant: MeetingParticipantView) => participant.email,
+  (participant: MeetingParticipantView) => participant.phone,
+  (participant: MeetingParticipantView) => participant.lotNumbers
+];
+const ACCESSEURS = {
+  online: (participant: MeetingParticipantView) => participant.online,
+  joined: (participant: MeetingParticipantView) => participant.joinedAt !== null,
+  links: (participant: MeetingParticipantView) => participant.activeLinks > 0
+};
+
 export const LiveParticipantsTable: React.FC<LiveParticipantsTableProps> = ({
   participants,
   inVisioContactIds,
@@ -25,6 +43,71 @@ export const LiveParticipantsTable: React.FC<LiveParticipantsTableProps> = ({
   onCopyLink,
   onRevoke
 }) => {
+  // « En visio » dépend de la salle : accesseur recréé seulement si l'ensemble change.
+  const accessors = useMemo(
+    () => ({
+      ...ACCESSEURS,
+      visio: (participant: MeetingParticipantView) => Boolean(inVisioContactIds?.has(participant.contactId))
+    }),
+    [inVisioContactIds]
+  );
+
+  const criteria: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Nom, e-mail, téléphone, lot…')
+    },
+    {
+      key: 'online',
+      type: 'boolean',
+      label: t('En ligne'),
+      primary: true,
+      tristate: true,
+      trueLabel: t('En ligne'),
+      falseLabel: t('Hors ligne')
+    },
+    {
+      key: 'joined',
+      type: 'boolean',
+      label: t('A rejoint'),
+      primary: true,
+      tristate: true,
+      trueLabel: t('A rejoint'),
+      falseLabel: t('Pas encore')
+    },
+    {
+      key: 'links',
+      type: 'boolean',
+      label: t('Liens actifs'),
+      tristate: true,
+      trueLabel: t('Avec lien actif'),
+      falseLabel: t('Sans lien actif')
+    },
+    ...(inVisioContactIds
+      ? [
+          {
+            key: 'visio',
+            type: 'boolean' as const,
+            label: t('En visio'),
+            tristate: true,
+            trueLabel: t('En visio'),
+            falseLabel: t('Pas en visio')
+          }
+        ]
+      : [])
+  ];
+
+  const local = useLocalListSearch<MeetingParticipantView>(participants, {
+    paramPrefix: 'lp',
+    ariaLabel: t('Rechercher dans les participants'),
+    defaultPageSize: 20,
+    criteria,
+    text: TEXTE_RECHERCHE,
+    accessors
+  });
+
   const columns: ColumnsType<MeetingParticipantView> = [
     {
       title: t('Participant'),
@@ -95,13 +178,15 @@ export const LiveParticipantsTable: React.FC<LiveParticipantsTableProps> = ({
 
   return (
     <Table<MeetingParticipantView>
+      {...local.tableProps}
+      aria-label={t('Participants et liens personnels')}
+      exportable={false}
       size="small"
       rowKey="contactId"
-      dataSource={participants}
       columns={columns}
       scroll={{ x: 'max-content' }}
-      pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false }}
-      locale={{ emptyText: t('Aucun participant pour le moment') }}
+      pagination={{ ...local.tableProps.pagination, hideOnSinglePage: true, showSizeChanger: false }}
+      locale={local.isFiltered ? undefined : { emptyText: t('Aucun participant pour le moment') }}
     />
   );
 };

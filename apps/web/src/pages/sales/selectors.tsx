@@ -2,9 +2,8 @@ import React from 'react';
 import { Select, Spin } from 'antd';
 import type { SelectProps } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { listProperties } from '../../services/property-service';
-import { listContacts } from '../../services/crm-service';
-import { listDeals } from '../../services/crm-service';
+import { getProperty, listProperties } from '../../services/property-service';
+import { getContact, listContacts, listDeals } from '../../services/crm-service';
 import { getOwnerClients } from '../../services/tenant-service';
 import { listAssignableMembers } from '../../services/membership-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
@@ -13,16 +12,19 @@ import { t } from '../../i18n/t';
 import { dealSummaryLabel } from '../../utils/crm-labels';
 import { contactDisplayName } from '../../utils/contact-display';
 import { formatMoney } from '../../components/primitives';
+import { REMOTE_SELECT_LIMIT, RemoteSelect } from './remote-select';
 
 /**
- * Sélecteurs cherchables du lot 9 (ventes) — même réglage partout :
- * `showSearch` + `optionFilterProp="label"` (commits `151ca6c`, `e772a73`).
+ * Sélecteurs cherchables du lot 9 (ventes).
  *
- * Chaque sélecteur charge une liste bornée côté client plutôt qu'une
- * recherche serveur au fil de la frappe : les agences de démonstration ont un
- * portefeuille de quelques dizaines à quelques centaines d'entrées, et c'est
- * la même approche que les sélecteurs déjà en place (`LeaseManagementTermsCard`,
- * `PropertyOwnershipCard`).
+ * - Bien et acquéreur (entités nombreuses) : recherche DISTANTE (`RemoteSelect`,
+ *   20 options au plus, requête 300 ms après la frappe, libellé d'une valeur
+ *   préremplie retrouvé par son identifiant). Plus de `limit: 500`.
+ * - Vendeur et négociateur : listes courtes de l'agence (propriétaires,
+ *   collaborateurs) chargées d'un bloc, filtrées dans le navigateur
+ *   (`showSearch` + `optionFilterProp="label"`).
+ * - Affaire CRM : l'API des affaires n'a ni recherche texte ni libellé
+ *   consolidé ; elle reste filtrée par acquéreur (voir `DealSelect`).
  */
 
 interface BaseSelectProps {
@@ -36,47 +38,24 @@ interface BaseSelectProps {
   size?: SelectProps['size'];
 }
 
-/** Bien de l'agence — mandat de vente. */
-export const PropertySelect: React.FC<BaseSelectProps> = ({
-  tenantId,
-  value,
-  onChange,
-  disabled,
-  placeholder,
-  style,
-  id,
-  size
-}) => {
-  const { data, isPending } = useQuery({
-    queryKey: queryKey('properties-select', tenantId),
-    queryFn: () => listProperties(tenantId, { limit: 500 }),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.reference
-  });
-
-  const options = (data?.properties ?? []).map(property => ({
-    value: property.id,
-    label: propertyLabel(property)
-  }));
-
-  return (
-    <Select
-      id={id}
-      size={size}
-      style={style ?? { width: '100%' }}
-      value={value ?? undefined}
-      onChange={next => onChange?.(next ?? null)}
-      allowClear
-      placeholder={placeholder ?? t('Sélectionner un bien')}
-      disabled={disabled}
-      loading={isPending}
-      notFoundContent={isPending ? <Spin size="small" /> : t('Aucun bien')}
-      showSearch
-      optionFilterProp="label"
-      options={options}
-    />
-  );
-};
+/** Bien de l'agence — mandat de vente (recherche distante : `q` = titre, adresse, référence). */
+export const PropertySelect: React.FC<BaseSelectProps> = ({ placeholder, tenantId, ...rest }) => (
+  <RemoteSelect
+    {...rest}
+    tenantId={tenantId}
+    scope="properties-select"
+    placeholder={placeholder ?? t('Sélectionner un bien')}
+    notFound={t('Aucun bien')}
+    load={async term => {
+      const { properties } = await listProperties(tenantId, { q: term || undefined, limit: REMOTE_SELECT_LIMIT });
+      return (properties ?? []).map(property => ({ value: property.id, label: propertyLabel(property) }));
+    }}
+    resolve={async id => {
+      const property = await getProperty(tenantId, id);
+      return property ? propertyLabel(property) : undefined;
+    }}
+  />
+);
 
 /**
  * Vendeur — un `TenantClient` de type `OWNER` (décision P1 du lot 9). La liste
@@ -124,44 +103,24 @@ export const SellerClientSelect: React.FC<BaseSelectProps> = ({
   );
 };
 
-/** Acquéreur — un contact CRM (P2 : un prospect n'a ni compte ni `TenantClient`). */
-export const BuyerContactSelect: React.FC<BaseSelectProps> = ({
-  tenantId,
-  value,
-  onChange,
-  disabled,
-  placeholder,
-  style,
-  id,
-  size
-}) => {
-  const { data, isPending } = useQuery({
-    queryKey: queryKey('crm-contacts-select', tenantId),
-    queryFn: () => listContacts(tenantId, { limit: 500 }),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.reference
-  });
-
-  const options = (data?.contacts ?? []).map(contact => ({ value: contact.id, label: contactLabel(contact) }));
-
-  return (
-    <Select
-      id={id}
-      size={size}
-      style={style ?? { width: '100%' }}
-      value={value ?? undefined}
-      onChange={next => onChange?.(next ?? null)}
-      allowClear
-      placeholder={placeholder ?? t('Sélectionner un acquéreur')}
-      disabled={disabled}
-      loading={isPending}
-      notFoundContent={isPending ? <Spin size="small" /> : t('Aucun contact')}
-      showSearch
-      optionFilterProp="label"
-      options={options}
-    />
-  );
-};
+/** Acquéreur — un contact CRM (P2 : un prospect n'a ni compte ni `TenantClient`). Recherche distante (`search`). */
+export const BuyerContactSelect: React.FC<BaseSelectProps> = ({ placeholder, tenantId, ...rest }) => (
+  <RemoteSelect
+    {...rest}
+    tenantId={tenantId}
+    scope="crm-contacts-select"
+    placeholder={placeholder ?? t('Sélectionner un acquéreur')}
+    notFound={t('Aucun contact')}
+    load={async term => {
+      const { contacts } = await listContacts(tenantId, { search: term || undefined, limit: REMOTE_SELECT_LIMIT });
+      return (contacts ?? []).map(contact => ({ value: contact.id, label: contactLabel(contact) }));
+    }}
+    resolve={async id => {
+      const { data } = await getContact(tenantId, id);
+      return data ? contactLabel(data) : undefined;
+    }}
+  />
+);
 
 /** Négociateur — un collaborateur de l'agence. */
 export const AgentSelect: React.FC<BaseSelectProps> = ({

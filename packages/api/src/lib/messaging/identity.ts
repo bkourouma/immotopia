@@ -14,6 +14,7 @@ import { ForbiddenError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
 import { hasPermission } from '../../services/permission-service';
 import type { DirectoryEntry, MessagingActor, ParticipantKind } from './types';
+import { escapeLike } from '../../utils/like-escape';
 
 const USER_SELECT = { id: true, email: true, fullName: true, isActive: true } as const;
 
@@ -149,10 +150,10 @@ export async function directory(actor: MessagingActor, q?: string): Promise<Dire
   // Un client ne cherche que par nom : filtrer sur l'e-mail reviendrait a le deviner.
   const searchFields =
     actor.audience === 'CLIENT'
-      ? [{ fullName: { contains: term ?? '', mode: 'insensitive' as const } }]
+      ? [{ fullName: { contains: escapeLike(term ?? ''), mode: 'insensitive' as const } }]
       : [
-          { fullName: { contains: term ?? '', mode: 'insensitive' as const } },
-          { email: { contains: term ?? '', mode: 'insensitive' as const } }
+          { fullName: { contains: escapeLike(term ?? ''), mode: 'insensitive' as const } },
+          { email: { contains: escapeLike(term ?? ''), mode: 'insensitive' as const } }
         ];
   const userFilter = {
     isActive: true,
