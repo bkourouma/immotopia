@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { env } from '../../config/env';
+import { isoDaySchema } from '../syndics/charge-allocation-schemas';
 import {
   EXTERNAL_ACCESS_SECTIONS,
   EXTERNAL_ACCESS_TYPES,
@@ -96,6 +97,40 @@ export const sendLinkSchema = z
   .strict();
 export type SendLinkInput = z.infer<typeof sendLinkSchema>;
 
-export const accessLogQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).optional() }).strict();
+const pagingFields = {
+  page: z.coerce.number().int().min(1).max(100000).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional()
+};
+
+export const grantsQuerySchema = z
+  .object({
+    ...pagingFields,
+    search: z.string().trim().min(1).max(200).optional(),
+    types: z
+      .string()
+      .refine(value => value.split(',').every(item => (EXTERNAL_ACCESS_TYPES as readonly string[]).includes(item)))
+      .optional(),
+    statuses: z
+      .string()
+      .refine(value => value.split(',').every(item => ['ACTIVE', 'EXPIRING', 'EXPIRED', 'REVOKED'].includes(item)))
+      .optional(),
+    expirationFrom: isoDaySchema.optional(),
+    expirationTo: isoDaySchema.optional()
+  })
+  .strict()
+  .refine(value => !value.expirationFrom || !value.expirationTo || value.expirationFrom <= value.expirationTo, {
+    path: ['expirationTo']
+  });
+
+export const accessLogQuerySchema = z
+  .object({
+    ...pagingFields,
+    search: z.string().trim().min(1).max(200).optional(),
+    actions: z.string().max(200).optional(),
+    dateFrom: isoDaySchema.optional(),
+    dateTo: isoDaySchema.optional()
+  })
+  .strict()
+  .refine(value => !value.dateFrom || !value.dateTo || value.dateFrom <= value.dateTo, { path: ['dateTo'] });
 
 export const grantIdParamSchema = idString;

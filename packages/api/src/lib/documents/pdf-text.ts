@@ -36,10 +36,10 @@ export function sanitizeForPdf(text: string): string {
 const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g;
 
 /**
- * Langue des libellés fixes d'un PDF : celle de la requête, sauf l'arabe
- * (Helvetica ne dessine pas l'arabe : repli sur le français plutôt que « ? »).
+ * Langue des libellés fixes d'un PDF. Chaque générateur arabe embarque sa
+ * police Unicode et compose ses textes bidirectionnels ; les originaux
+ * juridiquement français sont rendus sous `runInFrench` par leur service.
  */
 export function pdfLanguage(): Language {
-  const language = currentLanguage();
-  return language === 'ar' ? 'fr' : language;
+  return currentLanguage();
 }

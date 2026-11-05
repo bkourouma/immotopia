@@ -108,10 +108,12 @@ export interface TextCriterion extends CriterionBase {
 /**
  * Choix unique. URL et API : `key`.
  *
- * Options statiques (`options`) OU chargées à la demande (`loadOptions`) pour
+ * Options statiques (`options`) OU chargées à la demande (`loadOptions` ou
+ * `loadOptionsPage`) pour
  * les entités nombreuses (bien, lot, contact, chantier…) : le composant appelle
  * `loadOptions(saisie)` à l'ouverture puis à la frappe (debounce ~300 ms) ; il
- * doit rendre au plus ~20 options. `resolveLabel(value)` retrouve le libellé
+ * doit rendre au plus ~20 options par requête. `loadOptionsPage` charge les
+ * pages suivantes au défilement. `resolveLabel(value)` retrouve le libellé
  * d'une valeur venue de l'URL (puce, champ) quand elle n'est pas dans les
  * options déjà chargées.
  */
@@ -119,6 +121,8 @@ export interface SelectCriterion extends CriterionBase {
   type: 'select';
   options?: readonly SearchOption[];
   loadOptions?: (search: string) => Promise<SearchOption[]>;
+  /** Variante paginée : une page courte à l'ouverture, les suivantes au défilement. */
+  loadOptionsPage?: (search: string, page: number) => Promise<{ items: SearchOption[]; total: number }>;
   resolveLabel?: (value: string) => Promise<string | undefined> | string | undefined;
   placeholder?: string;
 }

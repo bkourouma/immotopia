@@ -181,9 +181,10 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
     }
   };
 
-  const handlePdf = async (invoice: PlatformInvoice) => {
+  const handlePdf = async (invoice: PlatformInvoice, translation?: 'ar') => {
     try {
-      await downloadOwnInvoicePdf(tenantId, invoice);
+      if (translation) await downloadOwnInvoicePdf(tenantId, invoice, translation);
+      else await downloadOwnInvoicePdf(tenantId, invoice);
     } catch (err: any) {
       message.error(err.response?.data?.message || t('Téléchargement impossible'));
     }
@@ -223,6 +224,9 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
         <Space wrap>
           <Button size="small" icon={<FilePdfOutlined />} onClick={() => handlePdf(r)}>
             {t('PDF')}
+          </Button>
+          <Button size="small" onClick={() => handlePdf(r, 'ar')}>
+            {t('Traduction arabe')}
           </Button>
           {availability?.available && PAYABLE_STATUSES.includes(r.status) && r.amountTotal > 0 && (
             <Button

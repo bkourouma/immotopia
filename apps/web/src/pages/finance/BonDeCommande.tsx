@@ -12,7 +12,8 @@ import {
   getPurchaseOrder,
   issuePurchaseOrder
 } from '../../services/finance-lot3-service';
-import { listConstructionSites, listCostCategories, listSuppliers } from '../../services/finance-lot2-service';
+import { listConstructionSites, listCostCategories } from '../../services/finance-lot2-service';
+import { SupplierSelect } from '../../components/finance/SupplierSelect';
 import { INVOICING_STATE_LABELS, PURCHASE_ORDER_STATUS_LABELS } from '../../types/finance-lot3-types';
 import type { PurchaseOrder, PurchaseOrderStatus } from '../../types/finance-lot3-types';
 import { detailKey, queryKey, STALE_TIME } from '../../lib/query-keys';
@@ -149,13 +150,6 @@ export const BonDeCommande: React.FC = () => {
     staleTime: STALE_TIME.reference
   });
 
-  const { data: fournisseurs } = useQuery({
-    queryKey: queryKey('suppliers', tenantId),
-    queryFn: () => listSuppliers(tenantId as string),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.reference
-  });
-
   const { data: postes } = useQuery({
     queryKey: queryKey('cost-categories', tenantId, {}),
     queryFn: () => listCostCategories(tenantId as string),
@@ -177,10 +171,6 @@ export const BonDeCommande: React.FC = () => {
 
   const optionsChantiers = (chantiers ?? [])
     .map(c => ({ value: c.id, label: c.name }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-  const optionsFournisseurs = (fournisseurs ?? [])
-    .filter(f => f.isActive)
-    .map(f => ({ value: f.id, label: f.name }))
     .sort((a, b) => a.label.localeCompare(b.label));
   const optionsPostes = (postes ?? [])
     .filter(p => p.isActive)
@@ -401,15 +391,12 @@ export const BonDeCommande: React.FC = () => {
               <div>
                 <label htmlFor="bon-fournisseur">{t('Fournisseur')}</label>
               </div>
-              <Select
+              <SupplierSelect
                 id="bon-fournisseur"
-                style={{ width: '100%' }}
-                showSearch
-                optionFilterProp="label"
+                tenantId={tenantId}
                 placeholder={t('Choisir le fournisseur')}
                 value={supplierId}
                 onChange={setSupplierId}
-                options={optionsFournisseurs}
               />
             </div>
           </Space>

@@ -7,7 +7,9 @@ import {
   getExternalAccessGrant,
   getExternalAccessScopeOptions,
   listExternalAccessGrants,
+  listExternalAccessGrantsPage,
   listExternalAccessLog,
+  listExternalAccessLogPage,
   listExternalAccessPropertyDocuments,
   revokeExternalAccessGrant,
   sendExternalAccessLink,
@@ -37,6 +39,15 @@ describe('external-access-service — agence', () => {
     mocked.get.mockResolvedValueOnce({ data: { success: true, data: { items: [{ id: 'g1' }] } } });
     await expect(listExternalAccessGrants('agence-1')).resolves.toEqual([{ id: 'g1' }]);
     expect(mocked.get).toHaveBeenCalledWith(BASE);
+  });
+
+  it('transmet les critères et la pagination des accès', async () => {
+    const page = { items: [{ id: 'g2' }], total: 501, page: 6, limit: 100 };
+    mocked.get.mockResolvedValueOnce({ data: { success: true, data: page } });
+    await expect(listExternalAccessGrantsPage('agence-1', { search: 'Koné', page: 6, limit: 100 })).resolves.toEqual(
+      page
+    );
+    expect(mocked.get).toHaveBeenCalledWith(`${BASE}?search=Kon%C3%A9&page=6&limit=100`);
   });
 
   it('lit les options de périmètre', async () => {
@@ -95,6 +106,13 @@ describe('external-access-service — agence', () => {
     mocked.get.mockResolvedValueOnce({ data: { success: true, data: { items: [{ id: 'a1' }] } } });
     await expect(listExternalAccessLog('agence-1', 'g1', 50)).resolves.toEqual([{ id: 'a1' }]);
     expect(mocked.get).toHaveBeenCalledWith(`${BASE}/g1/access-log?limit=50`);
+  });
+
+  it('transmet la pagination du journal sans exposer le payload', async () => {
+    const page = { items: [{ id: 'a2' }], total: 101, page: 2, limit: 100 };
+    mocked.get.mockResolvedValueOnce({ data: { success: true, data: page } });
+    await expect(listExternalAccessLogPage('agence-1', 'g1', { page: 2, limit: 100 })).resolves.toEqual(page);
+    expect(mocked.get).toHaveBeenCalledWith(`${BASE}/g1/access-log?page=2&limit=100`);
   });
 });
 

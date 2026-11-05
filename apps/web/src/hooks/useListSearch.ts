@@ -134,7 +134,7 @@ function criterionUrlKeys(criterion: SearchCriterion): string[] {
  */
 function staticOptionValues(criterion: SearchCriterion): Set<string> | undefined {
   if (criterion.type !== 'select' && criterion.type !== 'multiSelect') return undefined;
-  if (criterion.type === 'select' && criterion.loadOptions) return undefined;
+  if (criterion.type === 'select' && (criterion.loadOptions || criterion.loadOptionsPage)) return undefined;
   const options = criterion.options;
   if (!options || options.length === 0) return undefined;
   return new Set(options.map(option => option.value));
@@ -292,6 +292,7 @@ export function useListSearch(options: UseListSearchOptions): UseListSearchResul
         'falseLabel' in c ? c.falseLabel : '',
         'tristate' in c && c.tristate ? 1 : 0,
         'loadOptions' in c && c.loadOptions ? 1 : 0,
+        'loadOptionsPage' in c && c.loadOptionsPage ? 1 : 0,
         'resolveLabel' in c && c.resolveLabel ? 1 : 0
       ].join('~');
       return `${c.key}:${c.label}:${c.primary ? 1 : 0}:${opts}:${extras}`;
@@ -311,7 +312,11 @@ export function useListSearch(options: UseListSearchOptions): UseListSearchResul
   const stableCriteria = useMemo<readonly SearchCriterion[]>(
     () =>
       criteria.map(criterion => {
-        if (criterion.type !== 'select' || (!criterion.loadOptions && !criterion.resolveLabel)) return criterion;
+        if (
+          criterion.type !== 'select' ||
+          (!criterion.loadOptions && !criterion.loadOptionsPage && !criterion.resolveLabel)
+        )
+          return criterion;
         const current = (): SelectCriterion | undefined => {
           const found = criteriaRef.current.find(c => c.key === criterion.key);
           return found && found.type === 'select' ? found : undefined;
@@ -319,6 +324,10 @@ export function useListSearch(options: UseListSearchOptions): UseListSearchResul
         const wrapped: SelectCriterion = { ...criterion };
         if (criterion.loadOptions) {
           wrapped.loadOptions = (search: string) => current()?.loadOptions?.(search) ?? Promise.resolve([]);
+        }
+        if (criterion.loadOptionsPage) {
+          wrapped.loadOptionsPage = (search: string, page: number) =>
+            current()?.loadOptionsPage?.(search, page) ?? Promise.resolve({ items: [], total: 0 });
         }
         if (criterion.resolveLabel) {
           wrapped.resolveLabel = (value: string) => current()?.resolveLabel?.(value);

@@ -1,4 +1,4 @@
-import { Prisma, SaleAgreementStatus, SaleMandateStatus, SaleOfferStatus } from '@prisma/client';
+import { Prisma, SaleAgreementStatus, SaleMandateStatus, SaleMandateType, SaleOfferStatus } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { badRequest, conflict, notFound } from '../errors';
@@ -102,13 +102,60 @@ async function toMandateDto(
 
 export async function listMandates(
   tenantId: string,
-  filters: { status?: string; propertyId?: string; search?: string }
-): Promise<SaleMandateDto[]> {
+  filters: {
+    status?: string;
+    propertyId?: string;
+    search?: string;
+    type?: string;
+    startFrom?: string;
+    startTo?: string;
+    endFrom?: string;
+    endTo?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    expired?: boolean;
+    page?: number;
+    limit?: number;
+  }
+): Promise<SaleMandateDto[] | { items: SaleMandateDto[]; total: number; page: number; pageSize: number }> {
   const where: Prisma.SaleMandateWhereInput = { tenantId };
-  if (filters.status) where.status = filters.status as SaleMandateStatus;
+  if (filters.status) where.status = { in: filters.status.split(',') as SaleMandateStatus[] };
   if (filters.propertyId) where.propertyId = filters.propertyId;
+  if (filters.type) where.mandateType = { in: filters.type.split(',') as SaleMandateType[] };
+  if (filters.startFrom || filters.startTo)
+    where.startDate = {
+      ...(filters.startFrom ? { gte: new Date(filters.startFrom) } : {}),
+      ...(filters.startTo ? { lte: new Date(filters.startTo) } : {})
+    };
+  if (filters.endFrom || filters.endTo)
+    where.endDate = {
+      ...(filters.endFrom ? { gte: new Date(filters.endFrom) } : {}),
+      ...(filters.endTo ? { lte: new Date(filters.endTo) } : {})
+    };
+  if (filters.expired === true) where.AND = [{ status: SaleMandateStatus.ACTIVE }, { endDate: { lt: new Date() } }];
+  if (filters.expired === false)
+    where.OR = [{ status: { not: SaleMandateStatus.ACTIVE } }, { endDate: null }, { endDate: { gte: new Date() } }];
+  if (filters.minPrice !== undefined || filters.maxPrice !== undefined)
+    where.askingPrice = {
+      ...(filters.minPrice !== undefined ? { gte: filters.minPrice } : {}),
+      ...(filters.maxPrice !== undefined ? { lte: filters.maxPrice } : {})
+    };
 
-  const rows = await prisma.saleMandate.findMany({ where, orderBy: { createdAt: 'desc' }, take: 500 });
+  const paged = filters.page !== undefined || filters.limit !== undefined;
+  const page = filters.page ?? 1;
+  const limit = filters.limit ?? 20;
+
+  // Les noms affichés proviennent de plusieurs entités : chercher les IDs sans
+  // plafond avant de charger les détails de la page demandée.
+  const searching = Boolean(filters.search?.trim());
+  const rows = searching
+    ? await prisma.saleMandate.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] })
+    : await prisma.saleMandate.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        ...(paged ? { skip: (page - 1) * limit, take: limit } : {})
+      });
+  const total = searching ? rows.length : paged ? await prisma.saleMandate.count({ where }) : rows.length;
   const [props, sellers, agents] = await Promise.all([
     propertyLabels(
       prisma,
@@ -126,21 +173,30 @@ export async function listMandates(
     )
   ]);
 
+  const fold = (value: string) =>
+    value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  const needle = fold(filters.search?.trim() ?? '');
+  const candidates = searching
+    ? rows.filter(row => {
+        return (
+          mandateNumber(row.year, row.sequence).toLowerCase().includes(needle) ||
+          fold(props.get(row.propertyId)?.label ?? '').includes(needle) ||
+          fold(sellers.get(row.sellerClientId) ?? '').includes(needle) ||
+          (row.agentUserId ? fold(agents.get(row.agentUserId) ?? '').includes(needle) : false) ||
+          fold(row.mandateType === SaleMandateType.EXCLUSIVE ? 'Exclusif' : 'Simple').includes(needle)
+        );
+      })
+    : rows;
+  const selected = searching && paged ? candidates.slice((page - 1) * limit, page * limit) : candidates;
   const dtos = await Promise.all(
-    rows.map(row =>
+    selected.map(row =>
       toMandateDto(prisma, tenantId, row, { propertyLabelsMap: props, sellerNamesMap: sellers, agentNamesMap: agents })
     )
   );
-
-  if (!filters.search) return dtos;
-  const needle = filters.search.trim().toLowerCase();
-  if (!needle) return dtos;
-  return dtos.filter(
-    d =>
-      d.number.toLowerCase().includes(needle) ||
-      d.propertyLabel.toLowerCase().includes(needle) ||
-      d.sellerName.toLowerCase().includes(needle)
-  );
+  return paged ? { items: dtos, total: searching ? candidates.length : total, page, pageSize: limit } : dtos;
 }
 
 export async function createMandate(

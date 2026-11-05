@@ -93,8 +93,20 @@ export async function listStockItems(
   tenantId: string,
   filters?: { onlyActive?: boolean; search?: string }
 ): Promise<StockItemRef[]> {
-  const response = await apiClient.get<ApiResponse<StockItemRef[]>>(`${base(tenantId)}/stock/items${toQuery(filters)}`);
-  return response.data.data;
+  const items: StockItemRef[] = [];
+  for (let page = 1; ; page++) {
+    const response = await apiClient.get<ApiResponse<StockItemRef[]> & { pagination?: { total: number } }>(
+      `${base(tenantId)}/stock/items${toQuery({ ...filters, page, limit: 100 })}`
+    );
+    items.push(...response.data.data);
+    if (
+      !response.data.pagination ||
+      response.data.data.length === 0 ||
+      items.length >= response.data.pagination.total
+    ) {
+      return items;
+    }
+  }
 }
 
 /** Les lieux de stockage : magasins et lieux de chantier. */

@@ -61,8 +61,15 @@ async function findClaimOrThrow(tenantId: string, claimId: string) {
 
 export async function listClaims(
   tenantId: string,
-  filters: { propertyId?: string; policyId?: string; status?: ClaimStatus; search?: string; limit?: number }
-): Promise<InsuranceClaimDto[]> {
+  filters: {
+    propertyId?: string;
+    policyId?: string;
+    status?: ClaimStatus;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }
+): Promise<InsuranceClaimDto[] | { items: InsuranceClaimDto[]; total: number; page: number; limit: number }> {
   const where: Prisma.InsuranceClaimWhereInput = { tenantId };
   if (filters.propertyId) where.propertyId = filters.propertyId;
   if (filters.policyId) where.policyId = filters.policyId;
@@ -78,13 +85,20 @@ export async function listClaims(
     ];
   }
 
-  const rows = await prisma.insuranceClaim.findMany({
-    where,
-    include: CLAIM_INCLUDE,
-    orderBy: { declaredAt: 'desc' },
-    take: Math.min(filters.limit ?? DEFAULT_LIMIT, 500)
-  });
-  return rows.map(toClaimDto);
+  const paged = filters.page !== undefined;
+  const page = filters.page ?? 1;
+  const limit = filters.limit ?? 25;
+  const [rows, total] = await Promise.all([
+    prisma.insuranceClaim.findMany({
+      where,
+      include: CLAIM_INCLUDE,
+      orderBy: [{ declaredAt: 'desc' }, { id: 'desc' }],
+      ...(paged ? { skip: (page - 1) * limit, take: limit } : { take: Math.min(filters.limit ?? DEFAULT_LIMIT, 500) })
+    }),
+    paged ? prisma.insuranceClaim.count({ where }) : Promise.resolve(0)
+  ]);
+  const items = rows.map(toClaimDto);
+  return paged ? { items, total, page, limit } : items;
 }
 
 export async function getClaim(tenantId: string, claimId: string): Promise<InsuranceClaimDetailDto> {

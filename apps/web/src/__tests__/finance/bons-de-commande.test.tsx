@@ -1,8 +1,8 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BonsDeCommande } from '../../pages/finance/BonsDeCommande';
@@ -38,11 +38,28 @@ vi.mock('../../services/finance-lot3-service', () => ({
 
 const listConstructionSites = vi.fn();
 const listSuppliers = vi.fn();
+const defaultListSuppliersPage = async (
+  _tenantId: string,
+  filters: { search?: string; page?: number; limit?: number } = {}
+) => {
+  const all = (await listSuppliers()) as Supplier[];
+  const filtered = all.filter(item => item.name.toLowerCase().includes((filters.search ?? '').toLowerCase()));
+  const page = filters.page ?? 1;
+  const limit = filters.limit ?? 20;
+  return { items: filtered.slice((page - 1) * limit, page * limit), total: filtered.length };
+};
+const listSuppliersPage = vi.fn(defaultListSuppliersPage);
+const getSupplier = vi.fn(async (_tenantId: string, id: string) =>
+  ((await listSuppliers()) as Supplier[]).find(item => item.id === id)
+);
 const listCostCategories = vi.fn();
 
 vi.mock('../../services/finance-lot2-service', () => ({
   listConstructionSites: (...a: unknown[]) => listConstructionSites(...a),
   listSuppliers: (...a: unknown[]) => listSuppliers(...a),
+  listSuppliersPage: (...a: unknown[]) =>
+    listSuppliersPage(...(a as [string, { search?: string; page?: number; limit?: number }])),
+  getSupplier: (...a: unknown[]) => getSupplier(...(a as [string, string])),
   listCostCategories: (...a: unknown[]) => listCostCategories(...a)
 }));
 
@@ -170,12 +187,54 @@ function mountBon(url: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  listSuppliersPage.mockImplementation(defaultListSuppliersPage);
   listConstructionSites.mockResolvedValue([chantier()]);
   listSuppliers.mockResolvedValue([fournisseur()]);
   listCostCategories.mockResolvedValue([poste()]);
 });
 
 describe('Bons de commande — liste et filtres', () => {
+  it('écarte les options de l’ancienne agence si sa réponse arrive après le changement', async () => {
+    let finishOld: ((result: { items: Supplier[]; total: number }) => void) | undefined;
+    listPurchaseOrders.mockResolvedValue([bon()]);
+    listSuppliersPage.mockImplementation((tenant: string) =>
+      tenant === 'agence-1'
+        ? new Promise<{ items: Supplier[]; total: number }>(resolve => {
+            finishOld = resolve;
+          })
+        : Promise.resolve({ items: [fournisseur({ id: 'frs-new', name: 'Fournisseur nouvelle agence' })], total: 1 })
+    );
+    function SwitchTenant() {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate('/tenant/agence-2/finance/bons-de-commande')}>Changer d’agence</button>;
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    render(
+      <QueryClientProvider client={client}>
+        <AntApp>
+          <MemoryRouter initialEntries={['/tenant/agence-1/finance/bons-de-commande']}>
+            <SwitchTenant />
+            <Routes>
+              <Route path="/tenant/:tenantId/finance/bons-de-commande" element={<BonsDeCommande />} />
+            </Routes>
+          </MemoryRouter>
+        </AntApp>
+      </QueryClientProvider>
+    );
+
+    fireEvent.mouseDown(await screen.findByRole('combobox', { name: 'Fournisseur' }));
+    await waitFor(() =>
+      expect(listSuppliersPage).toHaveBeenCalledWith('agence-1', expect.objectContaining({ page: 1, limit: 20 }))
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Changer d’agence' }));
+    fireEvent.mouseDown(await screen.findByRole('combobox', { name: 'Fournisseur' }));
+    expect(
+      await screen.findByText('Fournisseur nouvelle agence', { selector: '.ant-select-item-option-content' })
+    ).toBeInTheDocument();
+    await act(async () => finishOld?.({ items: [fournisseur({ name: 'Fournisseur ancienne agence' })], total: 1 }));
+    expect(screen.queryByText('Fournisseur ancienne agence')).not.toBeInTheDocument();
+  });
+
   it('affiche une ligne par bon, avec le chantier et le fournisseur en libellé', async () => {
     listPurchaseOrders.mockResolvedValue([bon()]);
     mountListe();

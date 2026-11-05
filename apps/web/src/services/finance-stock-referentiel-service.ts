@@ -98,17 +98,48 @@ function sansIndefini(params: Record<string, unknown>): Record<string, unknown> 
 // L'article
 // ---------------------------------------------------------------------------
 
-/** Route A. `onlyActive` et `search` partent en paramètres de REQUÊTE, jamais dans le chemin. */
-export async function listStockItems(tenantId: string, filters?: ListStockItemsFilters): Promise<StockItem[]> {
+export async function listStockItemsPage(
+  tenantId: string,
+  filters?: ListStockItemsFilters
+): Promise<{
+  items: StockItem[];
+  total: number;
+  facets?: { units: string[]; categories: string[]; costCategories: { id: string; label: string }[] };
+}> {
   const recherche = filters?.search?.trim();
-  const response = await apiClient.get<ApiResponse<StockItem[]>>(
+  const response = await apiClient.get<
+    ApiResponse<StockItem[]> & {
+      pagination?: { total: number };
+      facets?: { units: string[]; categories: string[]; costCategories: { id: string; label: string }[] };
+    }
+  >(
     `${base(tenantId)}/stock/items${toQuery({
       onlyActive: filters?.onlyActive,
-      // Le serveur refuse la chaîne vide (`.min(1)`) : la clé est omise.
+      isActive: filters?.isActive,
+      unit: filters?.unit,
+      category: filters?.category,
+      defaultCostCategoryId: filters?.defaultCostCategoryId,
+      page: filters?.page,
+      limit: filters?.limit,
+      // Une recherche vide est omise de la requête.
       search: recherche ? recherche : undefined
     })}`
   );
-  return response.data.data;
+  return {
+    items: response.data.data,
+    total: response.data.pagination?.total ?? response.data.data.length,
+    facets: response.data.facets
+  };
+}
+
+/** Compatibilité pour l'importation : parcourt explicitement toutes les pages. */
+export async function listStockItems(tenantId: string, filters?: ListStockItemsFilters): Promise<StockItem[]> {
+  const items: StockItem[] = [];
+  for (let page = 1; ; page++) {
+    const result = await listStockItemsPage(tenantId, { ...filters, page, limit: 100 });
+    items.push(...result.items);
+    if (result.items.length === 0 || items.length >= result.total) return items;
+  }
 }
 
 /**

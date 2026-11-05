@@ -75,7 +75,12 @@ function monter(url: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   get.mockImplementation((url: string) =>
-    Promise.resolve({ data: { success: true, data: url.includes('/insurance/policies') ? POLICES : [] } })
+    Promise.resolve({
+      data: {
+        success: true,
+        data: url.includes('/insurance/policies') ? POLICES : { items: [], total: 0, page: 1, limit: 25 }
+      }
+    })
   );
 });
 
@@ -95,7 +100,7 @@ describe('Page Sinistres : recherche multicritères (BUG-2026-10-02-012)', () =>
     monter('/tenant/agence-1/patrimoine/claims?propertyId=prop-1&policyId=pol-1');
     await waitFor(() =>
       expect(appelsSinistres()).toContain(
-        '/tenants/agence-1/patrimoine/insurance/claims?propertyId=prop-1&policyId=pol-1&limit=500'
+        '/tenants/agence-1/patrimoine/insurance/claims?propertyId=prop-1&policyId=pol-1&page=1&limit=25'
       )
     );
   });
@@ -105,20 +110,23 @@ describe('Page Sinistres : recherche multicritères (BUG-2026-10-02-012)', () =>
     monter('/tenant/agence-1/patrimoine/claims');
     await user.type(await screen.findByPlaceholderText(PLACEHOLDER, {}, T), 'fuite');
     await waitFor(
-      () => expect(appelsSinistres()).toContain('/tenants/agence-1/patrimoine/insurance/claims?search=fuite&limit=500'),
+      () =>
+        expect(appelsSinistres()).toContain(
+          '/tenants/agence-1/patrimoine/insurance/claims?search=fuite&page=1&limit=25'
+        ),
       T
     );
     expect(screen.getByTestId('adresse')).toHaveTextContent('q=fuite');
   });
 
-  it('pagine la liste reçue en local (25 par page) avec le total de la liste reçue', async () => {
+  it('affiche une page serveur et le total annoncé', async () => {
     get.mockImplementation((url: string) =>
       Promise.resolve({
         data: {
           success: true,
           data: url.includes('/insurance/policies')
             ? POLICES
-            : Array.from({ length: 30 }, (_, i) => sinistre(`sin-${i}`))
+            : { items: Array.from({ length: 25 }, (_, i) => sinistre(`sin-${i}`)), total: 30, page: 1, limit: 25 }
         }
       })
     );
@@ -134,7 +142,11 @@ describe('Page Sinistres : recherche multicritères (BUG-2026-10-02-012)', () =>
       Promise.resolve({
         data: {
           success: true,
-          data: url.includes('/insurance/policies') ? POLICES : url.includes('search=') ? [] : [sinistre('sin-1')]
+          data: url.includes('/insurance/policies')
+            ? POLICES
+            : url.includes('search=')
+              ? { items: [], total: 0, page: 1, limit: 25 }
+              : { items: [sinistre('sin-1')], total: 1, page: 1, limit: 25 }
         }
       })
     );

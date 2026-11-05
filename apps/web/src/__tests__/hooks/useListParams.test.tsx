@@ -32,10 +32,16 @@ function Probe({ defaultPageSize = 20 }: { defaultPageSize?: number }) {
       <span data-testid="query">{JSON.stringify(list.queryParams)}</span>
 
       <button onClick={() => list.setPage(3)}>page 3</button>
+      <button onClick={() => list.setPage(Infinity)}>page infinie</button>
+      <button onClick={() => list.setPage(2.5)}>page fractionnaire</button>
+      <button onClick={() => list.setPage(9_000_000)}>page excessive</button>
       <button onClick={() => list.setFilters({ q: 'villa' })}>filtrer villa</button>
       <button onClick={() => list.setFilters({ q: '' })}>vider q</button>
       <button onClick={() => list.setSort({ field: 'price', order: 'desc' })}>trier prix</button>
       <button onClick={() => list.setPageSize(50)}>50 par page</button>
+      <button onClick={() => list.setPageSize(NaN)}>taille invalide</button>
+      <button onClick={() => list.setPageSize(2.5)}>taille fractionnaire</button>
+      <button onClick={() => list.setPageSize(9_000_000)}>taille excessive</button>
       <button onClick={list.clearFilters}>tout effacer</button>
     </div>
   );
@@ -68,6 +74,21 @@ describe('useListParams — lecture de l’URL', () => {
     expect(screen.getByTestId('page')).toHaveTextContent('1');
   });
 
+  it.each(['NaN', 'Infinity', '2.5', '1e3', '9007199254740992', '0', '-2'])('rejette la page invalide %s', raw => {
+    at(`?page=${raw}`);
+    expect(screen.getByTestId('page')).toHaveTextContent('1');
+  });
+
+  it.each(['NaN', 'Infinity', '2.5', '1e3', '9007199254740992', '0', '-2'])('rejette la limite invalide %s', raw => {
+    at(`?limit=${raw}`);
+    expect(screen.getByTestId('size')).toHaveTextContent('20');
+  });
+
+  it('borne les entiers excessifs avant de les envoyer à l’API', () => {
+    at('?page=9000000&limit=9000000');
+    expect(JSON.parse(screen.getByTestId('query').textContent as string)).toEqual({ page: 1_000_000, limit: 100 });
+  });
+
   it('compose les paramètres envoyés à l’API', () => {
     at('?q=villa&page=2');
     expect(JSON.parse(screen.getByTestId('query').textContent as string)).toEqual({
@@ -79,6 +100,22 @@ describe('useListParams — lecture de l’URL', () => {
 });
 
 describe('useListParams — écriture dans l’URL', () => {
+  it('normalise aussi les valeurs écrites par les contrôles', async () => {
+    const user = userEvent.setup();
+    at('?page=3');
+    await user.click(screen.getByText('page infinie'));
+    expect(screen.getByTestId('page')).toHaveTextContent('1');
+    await user.click(screen.getByText('page fractionnaire'));
+    expect(screen.getByTestId('page')).toHaveTextContent('1');
+    await user.click(screen.getByText('page excessive'));
+    expect(screen.getByTestId('page')).toHaveTextContent('1000000');
+    await user.click(screen.getByText('taille invalide'));
+    expect(screen.getByTestId('size')).toHaveTextContent('20');
+    await user.click(screen.getByText('taille fractionnaire'));
+    expect(screen.getByTestId('size')).toHaveTextContent('20');
+    await user.click(screen.getByText('taille excessive'));
+    expect(screen.getByTestId('size')).toHaveTextContent('100');
+  });
   it('n’écrit que ce qui s’écarte du défaut', async () => {
     const user = userEvent.setup();
     at('');

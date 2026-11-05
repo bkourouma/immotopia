@@ -203,6 +203,20 @@ async function names(ids: Array<string | null>) {
   return new Map(users.map(u => [u.id, u.fullName || u.email]));
 }
 
+/** Facette des caissiers de tout l'historique de l'agence, y compris les membres inactifs. */
+async function sessionCashiers(tenantId: string) {
+  const rows = await prisma.cashSession.findMany({
+    where: { tenantId },
+    distinct: ['cashierUserId'],
+    select: { cashierUserId: true }
+  });
+  const ids = rows.map(row => row.cashierUserId);
+  const labels = await names(ids);
+  return ids
+    .map(userId => ({ userId, name: labels.get(userId) ?? userId }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+}
+
 /** Libellés des comptes de trésorerie désignés par des sessions, en un aller. */
 async function treasuryLabels(ids: Array<string | null>) {
   const unique = Array.from(new Set(ids.filter((id): id is string => Boolean(id))));
@@ -519,6 +533,9 @@ const listSessionsFilterSchema = z
     from: z.preprocess(emptyToUndefined, ymdDate.optional()),
     to: z.preprocess(emptyToUndefined, ymdDate.optional()),
     search: zSearch(),
+    page: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(1_000_000).optional()),
+    limit: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(100).optional()),
+    includeCashiers: z.preprocess(emptyToUndefined, z.enum(['true', 'false']).optional()),
     // Seule la valeur 'true' (ou '1') filtre ; 'false'/'0' = pas de filtre ; autre valeur : 400.
     hasDifference: z.preprocess(
       emptyToUndefined,
@@ -548,9 +565,15 @@ export async function listSessions(
     to?: unknown;
     search?: unknown;
     hasDifference?: unknown;
+    page?: unknown;
+    limit?: unknown;
+    includeCashiers?: unknown;
   } = {}
 ) {
   const f = listSessionsFilterSchema.parse(filters);
+  const paged = f.page !== undefined || f.limit !== undefined;
+  const page = f.page ?? 1;
+  const limit = f.limit ?? 20;
   const openedAt =
     f.from || f.to
       ? {
@@ -568,16 +591,31 @@ export async function listSessions(
     ...(f.hasDifference ? { difference: { not: 0 } } : {})
   };
   let sessions: SessionRow[];
+  let total: number;
   if (!f.search) {
-    sessions = await prisma.cashSession.findMany({ where, orderBy: [{ openedAt: 'desc' }], take: 200 });
+    if (paged) {
+      [total, sessions] = await Promise.all([
+        prisma.cashSession.count({ where }),
+        prisma.cashSession.findMany({
+          where,
+          orderBy: [{ openedAt: 'desc' }, { id: 'desc' }],
+          skip: (page - 1) * limit,
+          take: limit
+        })
+      ]);
+    } else {
+      sessions = await prisma.cashSession.findMany({ where, orderBy: [{ openedAt: 'desc' }, { id: 'desc' }] });
+      total = sessions.length;
+    }
   } else {
-    // Le numéro n'est pas stocké : première passe légère, filtre en mémoire, puis plafond.
+    // Le numéro n'est pas stocké : première passe légère, filtre en mémoire,
+    // puis découpage de la page demandée avant le chargement des DTO.
     // Comparaison insensible à la casse et aux accents (comme la recherche locale du front).
     const fold = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
     const needle = fold(f.search);
     const light = await prisma.cashSession.findMany({
       where,
-      orderBy: [{ openedAt: 'desc' }],
+      orderBy: [{ openedAt: 'desc' }, { id: 'desc' }],
       select: { id: true, year: true, sequence: true, cashierUserId: true, treasuryAccountId: true, openedAt: true }
     });
     const [cashiers, labels, defaultCash] = await Promise.all([
@@ -592,18 +630,30 @@ export async function listSessions(
           fold(v).includes(needle)
         );
       })
-      .slice(0, 200)
       .map(s => s.id);
-    const rows = ids.length ? await prisma.cashSession.findMany({ where: { tenantId, id: { in: ids } } }) : [];
+    total = ids.length;
+    const visibleIds = paged ? ids.slice((page - 1) * limit, page * limit) : ids;
+    const rows = visibleIds.length
+      ? await prisma.cashSession.findMany({ where: { tenantId, id: { in: visibleIds } } })
+      : [];
     const byId = new Map(rows.map(r => [r.id, r]));
-    sessions = ids.map(id => byId.get(id)).filter((r): r is SessionRow => Boolean(r));
+    sessions = visibleIds.map(id => byId.get(id)).filter((r): r is SessionRow => Boolean(r));
   }
   const [map, tMap, defaultCash] = await Promise.all([
     names(sessions.flatMap(s => [s.cashierUserId, s.validatedByUserId])),
     treasuryLabels(sessions.map(s => s.treasuryAccountId)),
     defaultCashTreasury(tenantId)
   ]);
-  return Promise.all(sessions.map(s => toDto(s, map, tMap, defaultCash)));
+  const items = await Promise.all(sessions.map(s => toDto(s, map, tMap, defaultCash)));
+  return paged
+    ? {
+        items,
+        total,
+        page,
+        pageSize: limit,
+        ...(f.includeCashiers === 'false' ? {} : { cashiers: await sessionCashiers(tenantId) })
+      }
+    : items;
 }
 
 export async function getSession(tenantId: string, userId: string, sessionId: string) {

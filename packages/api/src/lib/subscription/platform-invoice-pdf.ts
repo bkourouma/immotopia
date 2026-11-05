@@ -1,16 +1,14 @@
 /**
  * PDF d'une facture PLATFORM (ou d'un avoir) — vague 3 lot A.
  *
- * Meme mecanique que les releves de copropriete (pdf-lib, police standard
- * Helvetica encodee en WinAnsi) : TOUT texte passe par `sanitizeForPdf`, qui
- * remplace les espaces insecables de `toLocaleString('fr-FR')` (U+202F,
- * U+00A0) et tout caractere hors WinAnsi. Le document est redige en
- * francais, langue de l'emetteur et de la facture : Helvetica ne sait pas
- * dessiner l'arabe, et une facture n'a qu'une version legale.
+ * La version legale reste en francais, en Helvetica WinAnsi ; `sanitizeForPdf`
+ * y neutralise les espaces insecables. Une copie de lecture arabe distincte
+ * est produite seulement sur demande explicite `translation=ar`.
  */
 
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from 'pdf-lib';
-import { t } from '../../i18n';
+import { runInFrench, t } from '../../i18n';
+import { renderArabicPlatformInvoicePdf } from './platform-invoice-pdf-ar';
 import { sanitizeForPdf } from '../syndics/owner-account-statement';
 import { pdfLanguage } from '../documents/pdf-text';
 import { drawDocumentHeader, issuerFromMandant, type DocumentBranding } from '../documents/document-branding';
@@ -131,7 +129,12 @@ function invoiceMetaLines(payload: PlatformInvoicePdfPayload): Array<[string, st
   return lines;
 }
 
-export async function buildPlatformInvoicePdf(payload: PlatformInvoicePdfPayload): Promise<Buffer> {
+export async function buildPlatformInvoicePdf(payload: PlatformInvoicePdfPayload, translation?: 'ar'): Promise<Buffer> {
+  if (translation === 'ar') return renderArabicPlatformInvoicePdf(payload);
+  return runInFrench(() => buildFrenchPlatformInvoicePdf(payload));
+}
+
+async function buildFrenchPlatformInvoicePdf(payload: PlatformInvoicePdfPayload): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);

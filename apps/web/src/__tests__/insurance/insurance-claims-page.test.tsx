@@ -76,7 +76,14 @@ function monter(url = '/tenant/agence-1/patrimoine/claims') {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  get.mockResolvedValue({ data: { success: true, data: [sinistre()] } });
+  get.mockImplementation((url: string) =>
+    Promise.resolve({
+      data: {
+        success: true,
+        data: url.includes('/insurance/claims') ? { items: [sinistre()], total: 1, page: 1, limit: 25 } : []
+      }
+    })
+  );
 });
 
 describe('Page Sinistres', () => {
@@ -85,7 +92,7 @@ describe('Page Sinistres', () => {
     expect(await screen.findByText('Saham · n° 123', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByText('Dégât des eaux')).toBeInTheDocument();
     expect(screen.getByText('Déclaré')).toBeInTheDocument();
-    expect(appelsSinistres()[0]).toBe('/tenants/agence-1/patrimoine/insurance/claims?limit=500');
+    expect(appelsSinistres()[0]).toContain('/tenants/agence-1/patrimoine/insurance/claims?page=1&limit=25');
     expect(screen.getByRole('link', { name: 'BIEN-0001' })).toHaveAttribute(
       'href',
       '/tenant/agence-1/properties/prop-1'
@@ -95,17 +102,22 @@ describe('Page Sinistres', () => {
   it('transmet le statut de l’URL à l’API', async () => {
     monter('/tenant/agence-1/patrimoine/claims?status=SETTLED');
     await waitFor(() => expect(appelsSinistres().length).toBeGreaterThan(0));
-    expect(appelsSinistres()[0]).toBe('/tenants/agence-1/patrimoine/insurance/claims?status=SETTLED&limit=500');
+    expect(appelsSinistres()[0]).toContain('status=SETTLED');
   });
 
-  it('avertit que la liste est tronquée au plafond de 500 sinistres', async () => {
-    const beaucoup = Array.from({ length: 500 }, (_, i) => sinistre({ id: `sin-${i}` }));
-    get.mockResolvedValue({ data: { success: true, data: beaucoup } });
+  it('annonce le total paginé sans bandeau de troncature', async () => {
+    const page = Array.from({ length: 25 }, (_, i) => sinistre({ id: `sin-${i}` }));
+    get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: {
+          success: true,
+          data: url.includes('/insurance/claims') ? { items: page, total: 501, page: 1, limit: 25 } : []
+        }
+      })
+    );
     monter();
-    expect(
-      await screen.findByText(/La liste est limitée aux 500 sinistres/, {}, { timeout: 8000 })
-    ).toBeInTheDocument();
-    expect(screen.getByText('500 sinistres affichés (liste limitée)')).toBeInTheDocument();
+    expect(await screen.findByText('501 sinistres', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText(/La liste est limitée/)).not.toBeInTheDocument();
   });
 
   it('n’avertit pas sous le plafond et annonce le total', async () => {
@@ -116,7 +128,14 @@ describe('Page Sinistres', () => {
   });
 
   it('affiche l’état vide', async () => {
-    get.mockResolvedValue({ data: { success: true, data: [] } });
+    get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: {
+          success: true,
+          data: url.includes('/insurance/claims') ? { items: [], total: 0, page: 1, limit: 25 } : []
+        }
+      })
+    );
     monter();
     expect(await screen.findByText(/Aucun sinistre/, {}, { timeout: 8000 })).toBeInTheDocument();
   });

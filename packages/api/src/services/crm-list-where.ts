@@ -14,6 +14,7 @@ import {
   CrmActivityType,
   CrmContactStatus,
   CrmContactType,
+  CrmContactRoleType,
   CrmDealStage,
   CrmDealType,
   MaturityLevel
@@ -33,6 +34,7 @@ interface PageFilters {
 export interface ContactListFilters extends PageFilters {
   status?: CrmContactStatus | CrmContactStatus[];
   contactType?: CrmContactType[];
+  role?: CrmContactRoleType[];
   maturityLevel?: MaturityLevel[];
   /** Origine du prospect (énumération). `source` ci-dessous est l'ancien champ texte libre. */
   leadSource?: LeadSource[];
@@ -106,6 +108,10 @@ export function buildContactListWhere(tenantId: string, filters: ContactListFilt
 
   if (filters.contactType && filters.contactType.length > 0) {
     where.contactType = filters.contactType.length === 1 ? filters.contactType[0] : { in: filters.contactType };
+  }
+
+  if (filters.role && filters.role.length > 0) {
+    where.roles = { some: { active: true, role: oneOrMany(filters.role), tenantId } };
   }
 
   if (filters.maturityLevel && filters.maturityLevel.length > 0) {

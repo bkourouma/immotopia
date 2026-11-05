@@ -658,6 +658,20 @@ options. Le contrôle appelle `loadOptions(saisie)` à l'ouverture puis à la fr
 - Si `loadOptions` échoue (rejet), le contrôle affiche l'erreur avec un bouton
   « Réessayer » : ne pas attraper l'erreur dans `loadOptions`, la laisser remonter.
 
+Pour permettre l'accès aux choix au-delà des vingt premiers,
+`loadOptionsPage(saisie, page)` peut remplacer `loadOptions` : il renvoie
+`{ items, total }`, par pages d'au plus vingt choix. Le contrôle charge la page
+suivante au défilement et ignore les réponses périmées après une nouvelle
+recherche. Le choix courant reste résolu indépendamment des pages disponibles.
+Au changement d'agence, remonter le contrôle et ses caches avec une clé de
+portée (`key={tenantId}` sur son `DataView`, par exemple) ; une enveloppe de
+fonction stable ne suffit pas à invalider des réponses déjà en vol.
+
+Les critères d'une liste paginée ne tirent pas leurs choix de la page courante :
+utiliser une recherche distante ou des facettes calculées sur tout le périmètre
+autorisé. C'est notamment le cas des caissiers historiques, des familles/unités
+de stock, des modes de paiement et des comptes de reversement.
+
 Exemple avec les services réels (`services/property-service.ts`,
 `services/crm-service.ts`) :
 
@@ -742,6 +756,11 @@ Détails :
 - `collectAllPages` parcourt les pages (100 par page, plafond 10 000 lignes) et
   rend `{ items, total, truncated }` ; l'export avertit si `truncated`.
 - Les API plafonnent souvent `limit` (100 en pratique) : ne pas demander plus.
+- La taille maximale d'une page n'est pas un plafond d'historique. Les listes
+  auparavant bornées à 100, 200, 500 ou 5 000 lignes utilisent maintenant des
+  pages avec un total réel et des filtres appliqués avant la page. Les lecteurs
+  de compatibilité qui collectent toutes les pages détectent une page répétée
+  comme une erreur ; ils ne renvoient pas un succès silencieusement tronqué.
 - Les tableaux d'un onglet portent chacun leur `filterParams` : ne pas mélanger
   les instances.
 - Sans `fetchAll`, l'export ne contient que la page affichée et le menu en
@@ -753,6 +772,12 @@ Règles (charte § 3 et `AGENTS.md`) :
 
 - Paramètre de recherche libre : **`search`**. Prisma `contains` +
   `mode: 'insensitive'` sur les colonnes utiles, en `OR`.
+- Lors d'une migration d'un filtre local, préserver ses accents et sa recherche
+  par mots : `utils/sql-text-search.ts` fournit `containsFoldedSql` (normalisation
+  NFD et paramètres liés, sans extension PostgreSQL) et `searchWordsSql` (ET
+  entre mots, OU entre colonnes). Ne pas remplacer ce comportement par un
+  `contains` sensible aux accents sur une seule page. Les expressions SQL sont
+  construites uniquement depuis le code ; les valeurs utilisateur restent liées.
 - Filtres : noms explicites (`status`, `type`, `propertyId`, `from`, `to`,
   `minAmount`, `maxAmount`…). Valeurs multiples : CSV (`status=A,B`), doublons
   ignorés.

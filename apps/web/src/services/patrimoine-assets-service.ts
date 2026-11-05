@@ -247,16 +247,32 @@ export async function listAssets(tenantId: string, filters?: AssetFilters): Prom
   return response.data.data;
 }
 
+export async function listAssetsPage(
+  tenantId: string,
+  filters: Record<string, unknown> & { page: number; limit: number }
+) {
+  const response = await apiClient.get<Envelope<{ items: AssetDto[]; total: number; page: number; limit: number }>>(
+    `${base(tenantId)}/assets${buildQuery(filters)}`
+  );
+  return response.data.data;
+}
+
 /**
  * Biens déjà liés à un actif immobilier, archivés compris (le serveur exclut
  * les archivés de la liste par défaut et répond 409 pour un bien déjà lié).
  * Indépendant des filtres de l'écran appelant.
  */
 export async function listLinkedPropertyIds(tenantId: string): Promise<string[]> {
-  const [current, archived] = await Promise.all([
-    listAssets(tenantId, { assetClass: 'REAL_ESTATE' }),
-    listAssets(tenantId, { assetClass: 'REAL_ESTATE', status: 'ARCHIVED' })
-  ]);
+  const fetch = async (status?: AssetStatus) => {
+    const items: AssetDto[] = [];
+    for (let page = 1; ; page += 1) {
+      const result = await listAssetsPage(tenantId, { assetClass: 'REAL_ESTATE', status, page, limit: 100 });
+      items.push(...result.items);
+      if (items.length >= result.total || result.items.length === 0) break;
+    }
+    return items;
+  };
+  const [current, archived] = await Promise.all([fetch(), fetch('ARCHIVED')]);
   const ids = [...current, ...archived].flatMap(asset => (asset.propertyId ? [asset.propertyId] : []));
   return Array.from(new Set(ids));
 }

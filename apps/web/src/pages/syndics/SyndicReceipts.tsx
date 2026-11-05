@@ -194,12 +194,14 @@ export const SyndicReceipts: React.FC = () => {
       : null;
   const refreshReceipts = () => receiptsQuery.refetch();
 
-  const handleDownload = async (receipt: ReceiptView) => {
+  const handleDownload = async (receipt: ReceiptView, translation?: 'ar') => {
     if (!effectiveTenantId || !syndicId) return;
     setDownloadingId(receipt.id);
     try {
       const fallback = `${receipt.kind === 'QUITTANCE' ? 'Quittance' : 'Recu'} ${receipt.number}.pdf`;
-      const { blob, filename } = await downloadReceiptFile(effectiveTenantId, syndicId, receipt.id, fallback);
+      const { blob, filename } = translation
+        ? await downloadReceiptFile(effectiveTenantId, syndicId, receipt.id, fallback, translation)
+        : await downloadReceiptFile(effectiveTenantId, syndicId, receipt.id, fallback);
       saveBlob(blob, filename);
     } catch (err) {
       message.error(await describeDownloadError(err));
@@ -373,6 +375,9 @@ export const SyndicReceipts: React.FC = () => {
             onClick={() => void handleDownload(row)}
           >
             {t('Télécharger')}
+          </Button>
+          <Button loading={downloadingId === row.id} onClick={() => void handleDownload(row, 'ar')}>
+            {t('Traduction arabe')}
           </Button>
           <Button
             size="small"

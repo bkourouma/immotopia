@@ -1,5 +1,12 @@
 import { PDFDocument, PDFFont, PDFPage, rgb } from 'pdf-lib';
 import { drawDocumentHeader, fontsOf, resolveDocumentBranding, truncate } from '../../documents/document-branding';
+import {
+  arabicFaces,
+  drawArabicFooters,
+  drawArabicNumber,
+  drawArabicText,
+  type ArabicFaces
+} from '../../documents/pdf-arabic';
 import { money } from '../../finance/statement-pdf';
 import { currentLanguage, t, type Language } from '../../../i18n';
 import { determineExportCurrency, type ExportProperty, type PatrimoineExportData } from './data';
@@ -14,11 +21,8 @@ import { documentStateLabel, documentTypeLabel, loanStatusLabel, workProgramStat
  * « page n / N » est posé une fois tout le contenu écrit — le nombre total de
  * pages n'est connu qu'à ce moment-là.
  *
- * Langue : les polices standard de pdf-lib (`Helvetica`) encodent en WinAnsi,
- * qui ne couvre pas l'arabe (voir `lib/documents/pdf-text.ts`). Plutôt que de
- * produire un PDF à moitié illisible, ce document force le français dès que
- * la langue de la requête est l'arabe ; l'export Excel, lui, reste dans la
- * langue demandée (`workbook.ts`).
+ * Langue : le français et l'anglais gardent Helvetica ; l'arabe utilise la
+ * police Unicode et le moteur bidirectionnel des documents PDF.
  */
 
 const PAGE_SIZE: [number, number] = [595.28, 841.89];
@@ -34,6 +38,7 @@ interface Writer {
   page: PDFPage;
   y: number;
   language: Language;
+  arabic?: ArabicFaces;
   /**
    * Rejoué juste après chaque saut de page tant qu'un tableau est en cours de
    * dessin (posé par `drawPerformanceTable`, effacé à la fin) : sans lui, une
@@ -63,7 +68,42 @@ function line(
   const size = opts.size ?? 9;
   const x = MARGIN + (opts.indent ?? 0);
   const maxWidth = PAGE_SIZE[0] - MARGIN - x;
+  if (w.arabic) {
+    drawArabicText(w.page, opts.bold ? w.arabic.bold : w.arabic.regular, nfc(text || ' '), {
+      x: PAGE_SIZE[0] - x,
+      y: w.y,
+      size,
+      maxWidth,
+      color: opts.color
+    });
+    w.y -= LINE_HEIGHT;
+    return;
+  }
   w.page.drawText(truncate(nfc(text || ' '), font, size, maxWidth), { x, y: w.y, size, font, color: opts.color });
+  w.y -= LINE_HEIGHT;
+}
+
+function labeledValue(
+  w: Writer,
+  label: string,
+  value: string,
+  opts: { bold?: boolean; size?: number; color?: ReturnType<typeof rgb>; indent?: number } = {}
+) {
+  if (!w.arabic) return line(w, `${label} : ${value}`, opts);
+  ensureSpace(w, LINE_HEIGHT);
+  const face = opts.bold ? w.arabic.bold : w.arabic.regular;
+  const size = opts.size ?? 9;
+  const right = PAGE_SIZE[0] - MARGIN - (opts.indent ?? 0);
+  const available = right - MARGIN;
+  const labelWidth = Math.min(230, available * 0.48);
+  drawArabicText(w.page, face, label, { x: right, y: w.y, size, maxWidth: labelWidth, color: opts.color });
+  drawArabicNumber(w.page, face, value, {
+    x: right - labelWidth - 12,
+    y: w.y,
+    size,
+    maxWidth: available - labelWidth - 12,
+    color: opts.color
+  });
   w.y -= LINE_HEIGHT;
 }
 
@@ -111,12 +151,12 @@ function drawConsolidatedOverview(w: Writer, data: PatrimoineExportData) {
       ? plainAmount(value)
       : fmt(value, currencyInfo.kind === 'single' ? currencyInfo.currency : 'XOF');
 
-  line(w, `${t('Biens au portefeuille', undefined, w.language)} : ${o.totalProperties}`);
-  line(w, `${t("Taux d'occupation", undefined, w.language)} : ${occupancyPct}`);
-  line(w, `${t('Valeur estimée totale', undefined, w.language)} : ${amount(o.totalEstimatedValue)}`);
-  line(w, `${t('Encours de crédits', undefined, w.language)} : ${amount(o.totalLoanBalance)}`);
-  line(w, `${t("Charges de l'année", undefined, w.language)} : ${amount(o.totalExpensesThisYear)}`);
-  line(w, `${t('Loyers annuels', undefined, w.language)} : ${amount(o.totalAnnualRent)}`);
+  labeledValue(w, t('Biens au portefeuille', undefined, w.language), String(o.totalProperties));
+  labeledValue(w, t("Taux d'occupation", undefined, w.language), occupancyPct);
+  labeledValue(w, t('Valeur estimée totale', undefined, w.language), amount(o.totalEstimatedValue));
+  labeledValue(w, t('Encours de crédits', undefined, w.language), amount(o.totalLoanBalance));
+  labeledValue(w, t("Charges de l'année", undefined, w.language), amount(o.totalExpensesThisYear));
+  labeledValue(w, t('Loyers annuels', undefined, w.language), amount(o.totalAnnualRent));
   if (currencyInfo.kind === 'multiple') {
     line(w, t('Montants en plusieurs devises, additionnés sans conversion', undefined, w.language), { color: GREY });
   }
@@ -141,6 +181,16 @@ function drawPerformanceCells(w: Writer, cells: string[], opts: { bold?: boolean
   const font = opts.bold ? w.fonts.bold : w.fonts.regular;
   cells.forEach((cell, index) => {
     const col = PERF_COLUMNS[index];
+    if (w.arabic) {
+      const drawCell = opts.bold ? drawArabicText : drawArabicNumber;
+      drawCell(w.page, opts.bold ? w.arabic.bold : w.arabic.regular, nfc(cell), {
+        x: PAGE_SIZE[0] - MARGIN - col.x,
+        y: w.y,
+        size: 8,
+        maxWidth: col.width - 4
+      });
+      return;
+    }
     w.page.drawText(truncate(nfc(cell), font, 8, col.width - 4), {
       x: MARGIN + col.x,
       y: w.y,
@@ -195,13 +245,12 @@ function drawPropertyBlock(w: Writer, property: ExportProperty) {
   line(w, `${t('Adresse', undefined, w.language)} : ${property.address}`, { color: GREY });
 
   const lastValuation = property.valuations[0];
-  line(
+  labeledValue(
     w,
-    `${t('Dernière valorisation', undefined, w.language)} : ${
-      lastValuation
-        ? `${fmt(lastValuation.estimatedValue, lastValuation.currency)} (${dateOrDash(lastValuation.valuatedAt, w.language)})`
-        : '-'
-    }`
+    t('Dernière valorisation', undefined, w.language),
+    lastValuation
+      ? `${fmt(lastValuation.estimatedValue, lastValuation.currency)} (${dateOrDash(lastValuation.valuatedAt, w.language)})`
+      : '-'
   );
 
   const activeLoans = property.loans.filter(loan => loan.status === 'ACTIVE');
@@ -210,11 +259,19 @@ function drawPropertyBlock(w: Writer, property: ExportProperty) {
   } else {
     line(w, `${t('Emprunts actifs', undefined, w.language)} :`);
     for (const loan of activeLoans) {
-      line(
-        w,
-        `${loan.lender} — ${fmt(loan.remainingCapital, loan.currency)} (${loanStatusLabel(loan.status, w.language)})`,
-        { indent: 12 }
-      );
+      if (w.arabic)
+        labeledValue(
+          w,
+          `${loan.lender} — ${loanStatusLabel(loan.status, w.language)}`,
+          fmt(loan.remainingCapital, loan.currency),
+          { indent: 12 }
+        );
+      else
+        line(
+          w,
+          `${loan.lender} — ${fmt(loan.remainingCapital, loan.currency)} (${loanStatusLabel(loan.status, w.language)})`,
+          { indent: 12 }
+        );
     }
   }
 
@@ -225,9 +282,10 @@ function drawPropertyBlock(w: Writer, property: ExportProperty) {
     line(w, `${t('Dépenses (12 derniers mois)', undefined, w.language)} : ${t('Aucune', undefined, w.language)}`);
   } else {
     const currency = property.valuations[0]?.currency ?? 'XOF';
-    line(
+    labeledValue(
       w,
-      `${t('Dépenses (12 derniers mois)', undefined, w.language)} : ${fmt(property.yield.annualExpenses, currency)}`
+      t('Dépenses (12 derniers mois)', undefined, w.language),
+      fmt(property.yield.annualExpenses, currency)
     );
   }
 
@@ -281,11 +339,12 @@ function drawFooters(pdfDoc: PDFDocument, fonts: { regular: PDFFont }, language:
 
 /** Construit le PDF de synthèse pour l'agence entière, ou pour un seul bien. */
 export async function buildPatrimoinePdf(tenantId: string, data: PatrimoineExportData): Promise<Buffer> {
-  const language: Language = currentLanguage() === 'ar' ? 'fr' : currentLanguage();
+  const language: Language = currentLanguage();
 
   const pdfDoc = await PDFDocument.create();
   const branding = await resolveDocumentBranding(tenantId, null);
   const fonts = await fontsOf(pdfDoc);
+  const arabic = language === 'ar' ? await arabicFaces(pdfDoc) : undefined;
 
   const title =
     data.scope === 'AGENCY' ? t('Export du patrimoine', undefined, language) : t('Export du bien', undefined, language);
@@ -297,7 +356,7 @@ export async function buildPatrimoinePdf(tenantId: string, data: PatrimoineExpor
   const firstPage = pdfDoc.addPage(PAGE_SIZE);
   const startY = await drawDocumentHeader(pdfDoc, firstPage, branding, { title, subtitle });
 
-  const w: Writer = { pdfDoc, fonts, page: firstPage, y: startY, language, onPageBreak: null };
+  const w: Writer = { pdfDoc, fonts, page: firstPage, y: startY, language, arabic, onPageBreak: null };
 
   if (data.scope === 'AGENCY') {
     drawConsolidatedOverview(w, data);
@@ -315,7 +374,8 @@ export async function buildPatrimoinePdf(tenantId: string, data: PatrimoineExpor
     }
   }
 
-  drawFooters(pdfDoc, fonts, language);
+  if (arabic) drawArabicFooters(pdfDoc, arabic, branding.issuer.name);
+  else drawFooters(pdfDoc, fonts, language);
 
   const bytes = await pdfDoc.save();
   return Buffer.from(bytes);

@@ -73,6 +73,16 @@ export interface UseListParamsResult<F extends Record<string, string>> extends L
 const PAGE_KEY = 'page';
 const SIZE_KEY = 'limit';
 const SORT_KEY = 'sort';
+const MAX_PAGE = 1_000_000;
+const MAX_PAGE_SIZE = 100;
+const MAX_DEFAULT_PAGE_SIZE = 1_000;
+
+function normalizePositiveInteger(value: unknown, fallback: number, max: number): number {
+  const parsed =
+    typeof value === 'number' ? value : typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, max);
+}
 
 function parseSort(raw: string | null): Sort | null {
   if (!raw) return null;
@@ -88,7 +98,9 @@ function formatSort(sort: Sort | null): string | null {
 export function useListParams<F extends Record<string, string>>(
   options: UseListParamsOptions<F>
 ): UseListParamsResult<F> {
-  const { filterKeys, defaultPageSize = 20, defaultSort = null, paramPrefix } = options;
+  const { filterKeys, defaultPageSize: requestedDefault = 20, defaultSort = null, paramPrefix } = options;
+  const defaultPageSize = normalizePositiveInteger(requestedDefault, 20, MAX_DEFAULT_PAGE_SIZE);
+  const maxPageSize = Math.max(MAX_PAGE_SIZE, defaultPageSize);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Clés d'URL réelles de cette instance (préfixées si `paramPrefix`).
@@ -108,8 +120,8 @@ export function useListParams<F extends Record<string, string>>(
     return result;
   }, [searchParams, filterKeys, urlKey]);
 
-  const page = Math.max(1, Number(searchParams.get(pageKey)) || 1);
-  const pageSize = Math.max(1, Number(searchParams.get(sizeKey)) || defaultPageSize);
+  const page = normalizePositiveInteger(searchParams.get(pageKey), 1, MAX_PAGE);
+  const pageSize = normalizePositiveInteger(searchParams.get(sizeKey), defaultPageSize, maxPageSize);
   const sort = parseSort(searchParams.get(sortKey)) ?? defaultSort;
   const isFiltered = Object.keys(filters).length > 0;
 
@@ -159,7 +171,7 @@ export function useListParams<F extends Record<string, string>>(
 
   const setPage = useCallback(
     (value: number, setOptions?: { replace?: boolean }) => {
-      write(next => next.set(pageKey, String(Math.max(1, value))), setOptions);
+      write(next => next.set(pageKey, String(normalizePositiveInteger(value, 1, MAX_PAGE))), setOptions);
     },
     [write, pageKey]
   );
@@ -167,12 +179,12 @@ export function useListParams<F extends Record<string, string>>(
   const setPageSize = useCallback(
     (value: number) => {
       write(next => {
-        next.set(sizeKey, String(Math.max(1, value)));
+        next.set(sizeKey, String(normalizePositiveInteger(value, defaultPageSize, maxPageSize)));
         // La page courante n'a pas d'équivalent dans une autre taille de page.
         next.delete(pageKey);
       });
     },
-    [write, sizeKey, pageKey]
+    [write, sizeKey, pageKey, defaultPageSize, maxPageSize]
   );
 
   const setSort = useCallback(

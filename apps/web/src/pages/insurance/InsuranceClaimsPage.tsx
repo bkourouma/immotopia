@@ -1,8 +1,7 @@
 import React, { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert } from 'antd';
-import { useQuery } from '@tanstack/react-query';
-import { listInsuranceClaims, listInsurancePolicies } from '../../services/insurance-service';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { listInsuranceClaimsPage, listInsurancePolicies } from '../../services/insurance-service';
 import type { ColumnsType } from 'antd/es/table';
 import type { InsuranceClaimDto, InsuranceClaimStatus } from '../../types/insurance-types';
 import { CLAIM_STATUS_VALUES, claimStatusLabel, options } from '../../components/insurance/insurance-labels';
@@ -15,6 +14,7 @@ import { t } from '../../i18n/t';
 import { isForbiddenError } from '../../components/patrimoine/patrimoine-labels';
 import { PatrimoineForbidden } from '../../components/patrimoine/PatrimoineForbidden';
 import { ClaimCard, claimColumns } from './claims-columns';
+import { collectAllPages } from '../../utils/table-export/collect';
 
 /**
  * Sinistres de l'agence : vue d'ensemble en lecture seule. Les changements de
@@ -27,7 +27,6 @@ import { ClaimCard, claimColumns } from './claims-columns';
  */
 
 /** Maximum accepté par l'API pour une liste de sinistres. */
-const CLAIMS_LIMIT = 500;
 
 /** Les montants s'exportent en nombres purs (Excel peut les sommer), pas en texte formaté. */
 const VALEURS_EXPORT: Record<string, (claim: InsuranceClaimDto) => number | null> = {
@@ -43,9 +42,8 @@ function colonnesExport(tenantId: string): ColumnsType<InsuranceClaimDto> {
   });
 }
 
-function sousTitre(total: number, tronque: boolean): string {
+function sousTitre(total: number): string {
   if (total <= 0) return t('Déclarations et suivi des sinistres');
-  if (tronque) return t('{{total}} sinistres affichés (liste limitée)', { total });
   return total > 1 ? t('{{total}} sinistres', { total }) : t('{{total}} sinistre', { total });
 }
 
@@ -70,15 +68,16 @@ export const InsuranceClaimsPage: React.FC = () => {
     [polices]
   );
 
-  // La pagination est locale : seuls les critères partent à l'API (`filterParams`, sans page ni limite).
   const search = useListSearch({
     defaultPageSize: 25,
+    apiNames: { sort: false },
     criteria: [
       {
         key: 'q',
         type: 'text',
         label: t('Rechercher'),
-        placeholder: t('Bien, police, assureur, description…')
+        placeholder: t('Bien, police, assureur, description…'),
+        api: 'search'
       },
       {
         key: 'status',
@@ -112,10 +111,16 @@ export const InsuranceClaimsPage: React.FC = () => {
     error: erreur,
     refetch
   } = useQuery({
-    queryKey: queryKey('insurance-claims', agence, { ...filtres, limit: CLAIMS_LIMIT }),
-    queryFn: () => listInsuranceClaims(agence as string, { ...filtres, limit: CLAIMS_LIMIT }),
+    queryKey: queryKey('insurance-claims', agence, search.apiParams),
+    queryFn: () =>
+      listInsuranceClaimsPage(agence as string, {
+        ...filtres,
+        page: search.page,
+        limit: Math.min(search.pageSize, 100)
+      }),
     enabled: Boolean(agence),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
 
   if (!agence) {
@@ -124,32 +129,22 @@ export const InsuranceClaimsPage: React.FC = () => {
 
   if (isForbiddenError(erreur)) return <PatrimoineForbidden />;
 
-  const tous = data ?? [];
-  const tronque = tous.length >= CLAIMS_LIMIT;
-  const debut = (search.page - 1) * search.pageSize;
-  const sinistres = tous.slice(debut, debut + search.pageSize);
+  const sinistres = data?.items ?? [];
+  const total = data?.total ?? 0;
 
   return (
     <>
-      <PageHeader title={t('Sinistres')} subtitle={sousTitre(tous.length, tronque)} />
-
-      {tronque && (
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBlockEnd: 16 }}
-          message={t(
-            'La liste est limitée aux {{limit}} sinistres les plus récents : d’autres existent. Affinez avec la recherche ou les filtres.',
-            { limit: CLAIMS_LIMIT }
-          )}
-        />
-      )}
+      <PageHeader title={t('Sinistres')} subtitle={sousTitre(total)} />
 
       <DataView<InsuranceClaimDto>
-        // La liste (plafonnée à 500) est déjà chargée en entier : l'export couvre tous les sinistres filtrés, pas la seule page.
-        export={{ filename: t('Sinistres'), columns: colonnesExport(agence), fetchAll: async () => tous }}
+        export={{
+          filename: t('Sinistres'),
+          columns: colonnesExport(agence),
+          fetchAll: () =>
+            collectAllPages(async (page, limit) => listInsuranceClaimsPage(agence, { ...filtres, page, limit }))
+        }}
         items={sinistres}
-        total={tous.length}
+        total={total}
         search={search.searchProps}
         {...search.dataViewProps}
         loading={isPending}

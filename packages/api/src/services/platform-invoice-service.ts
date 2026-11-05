@@ -1115,16 +1115,21 @@ function payloadForPdf(invoice: Awaited<ReturnType<typeof loadInvoice>>, custome
 export async function renderPlatformInvoicePdf(
   tenantId: string,
   invoiceId: string,
-  options: { includeDrafts?: boolean } = {}
+  options: { includeDrafts?: boolean; translation?: 'ar' } = {}
 ): Promise<{ filename: string; buffer: Buffer }> {
   const invoice = await loadInvoice(prisma, tenantId, invoiceId);
   if (invoice.status === InvoiceStatus.DRAFT && !options.includeDrafts) throw new NotFoundError('Facture introuvable.');
   const customer = invoice.customerSnapshot
     ? (invoice.customerSnapshot as unknown as PlatformCustomerInfo)
     : await customerOf(prisma, tenantId);
-  const buffer = await buildPlatformInvoicePdf(payloadForPdf(invoice, customer));
+  const payload = payloadForPdf(invoice, customer);
+  const buffer =
+    options.translation === 'ar'
+      ? await buildPlatformInvoicePdf(payload, 'ar')
+      : await buildPlatformInvoicePdf(payload);
   const base = isDraftNumber(invoice.invoiceNumber) ? `brouillon-${invoice.id.slice(0, 8)}` : invoice.invoiceNumber;
-  return { filename: `${invoice.billingNature === 'CREDIT_NOTE' ? 'avoir' : 'facture'}-${base}.pdf`, buffer };
+  const prefix = options.translation === 'ar' ? 'traduction-arabe-' : '';
+  return { filename: `${prefix}${invoice.billingNature === 'CREDIT_NOTE' ? 'avoir' : 'facture'}-${base}.pdf`, buffer };
 }
 
 // =============================================================== e-mail

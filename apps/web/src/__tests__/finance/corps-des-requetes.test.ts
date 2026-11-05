@@ -701,8 +701,9 @@ describe('Stock — aucun prix sur une sortie, et la facture reste dans le corps
   });
 
   it('référentiel appelé directement : les routes du sous-lot voisin, sans importer son service', async () => {
+    getMock.mockResolvedValueOnce({ data: { data: [], pagination: { total: 0 } } });
     await listStockItems(TENANT, { onlyActive: true });
-    expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items?onlyActive=true`);
+    expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items?onlyActive=true&page=1&limit=100`);
 
     await listStockLocations(TENANT, { onlyActive: true, kind: 'WAREHOUSE' });
     expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/locations?onlyActive=true&kind=WAREHOUSE`);
@@ -1172,12 +1173,16 @@ describe('Référentiel du stock — aucun identifiant du chemin dans le corps, 
   it('les filtres des deux listes partent en requête, jamais dans le chemin', async () => {
     const getMock = apiClient.get as unknown as ReturnType<typeof vi.fn>;
 
+    getMock.mockResolvedValueOnce({ data: { data: [], pagination: { total: 0 } } });
     await listStockItemsReferentiel(TENANT, { onlyActive: true, search: '  ciment  ' });
-    expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items?onlyActive=true&search=ciment`);
+    expect(getMock).toHaveBeenCalledWith(
+      `/tenants/${TENANT}/finance/stock/items?onlyActive=true&page=1&limit=100&search=ciment`
+    );
 
-    // Le serveur refuse la recherche VIDE (`.min(1)`) : la clé est omise.
+    // Une recherche vide est omise de la requête.
+    getMock.mockResolvedValueOnce({ data: { data: [], pagination: { total: 0 } } });
     await listStockItemsReferentiel(TENANT, { search: '   ' });
-    expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items`);
+    expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items?page=1&limit=100`);
 
     await listStockLocationsReferentiel(TENANT, { kind: 'SITE' });
     expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/locations?kind=SITE`);

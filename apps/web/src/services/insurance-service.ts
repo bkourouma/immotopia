@@ -85,9 +85,34 @@ export async function listInsuranceClaims(
     limit?: number;
   } = {}
 ): Promise<InsuranceClaimDto[]> {
+  if (filters.limit === undefined) {
+    const items: InsuranceClaimDto[] = [];
+    for (let page = 1; ; page += 1) {
+      const response = await listInsuranceClaimsPage(tenantId, { ...filters, page, limit: 100 });
+      items.push(...response.items);
+      if (items.length >= response.total || response.items.length === 0) return items;
+    }
+  }
   const response = await apiClient.get<ApiResponse<InsuranceClaimDto[]>>(
     `${base(tenantId)}/insurance/claims${query(filters)}`
   );
+  return response.data.data;
+}
+
+export async function listInsuranceClaimsPage(
+  tenantId: string,
+  filters: {
+    propertyId?: string;
+    status?: InsuranceClaimStatus;
+    policyId?: string;
+    search?: string;
+    page: number;
+    limit: number;
+  }
+): Promise<{ items: InsuranceClaimDto[]; total: number; page: number; limit: number }> {
+  const response = await apiClient.get<
+    ApiResponse<{ items: InsuranceClaimDto[]; total: number; page: number; limit: number }>
+  >(`${base(tenantId)}/insurance/claims${query(filters)}`);
   return response.data.data;
 }
 

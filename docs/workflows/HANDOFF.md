@@ -17,44 +17,39 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
-## orch/2026-11-03-ux-recherche — recherche multicritères et ergonomie (2026-11-04)
+## codex/ux-limites-proprietaires-pdf-arabe — complément UX et PDF arabe (2026-11-05)
 
-**État :** tous les lots retenus sont intégrés et les contrôles locaux sont verts. [PR #195](https://github.com/bkourouma/immotopia/pull/195) ouverte ; les suites complètes backend/web et leur verdict sont attachés à cette PR. Elle est maintenue en brouillon tant que sa validation automatique n'est pas terminée. Passation d'origine et décisions métier : [HANDOFF-ux-recherche.md](HANDOFF-ux-recherche.md).
+**État :** complément de la [PR #195](https://github.com/bkourouma/immotopia/pull/195), fusionnée pendant les vérifications le 2026-11-05 (`cf6fead9`). La nouvelle branche part de ce `main` ; son arbre de base est identique au SHA `0d4d6574` validé par les huit jobs de la [CI initiale](https://github.com/bkourouma/immotopia/actions/runs/41937266399). Cette CI initiale ne valide pas le complément. Livraison par PR complémentaire depuis la branche ci-dessus ; consulter sa CI sur son dernier SHA. Ne pas fusionner ni déployer sans demande explicite.
 
-**Fait :** lots initiaux conservés ; SYN-B terminé, relu et fusionné (`949b1ece`, lot `36d5da6d`). JOK intégré par `d7843e87` (lot `fde5b12b`) : caractères LIKE cherchés littéralement, recherches du journal respectant l'identité plateforme masquée, budget CRM égal à zéro, suppression de quatre anciens lecteurs comptables et deux schémas sans appelant runtime. Corrections de reprise `7048a197` : purge des filtres des onglets du bail ; étapes gagnées/perdues et export cohérent du Kanban ; PDF du relevé aligné sur la recherche avec vrais soldes et libellés adaptés au tiers. Traductions EN/AR et libellés hérités traités (1 304 entrées modifiées contrôlées sans vide ni désaccord de paramètres) ; classeur et miroir actualisés (1 154 sous-fonctionnalités). Catalogue IA régénéré : 785 routes, contenu déjà cohérent.
+**Fait :**
 
-**Reste :**
+- Propriétaires : rôle CRM actif filtré par l’API avant pagination ; recherche distante dans l’historique et le formulaire de relevé, choix conservé hors page. Fournisseurs : pages distantes de vingt choix, recherche et conservation de sélection, isolation des réponses au changement d’agence. Newsletter sur ListSearch ; URL non finies/fractionnaires/invalides normalisées.
+- Listes : pagination et export filtrés sans anciens plafonds de consultation pour ventes, caisse/trésorerie, fournisseurs/articles, pénalités, patrimoine/sinistres/accès partagés et portail copro. Assemblées gestionnaire et reversements filtrés/paginés en SQL ; affectations de paiements syndic via une route dédiée. Facettes sur l’ensemble autorisé. Aperçu des travaux à venir paginé avec total et URL.
+- PDF : police Unicode existante, mise en forme des lettres arabes et bidi, branches RTL sur les familles de génération, nombres en lettres arabes et clauses statiques traduites. Cellules numériques LTR, signe et chiffres conservés même pour un montant très large ; résumés de patrimoine et colonnes des relevés corrigés visuellement. Originaux factures/reçus français préservés ; copies `translation=ar` distinctes, marquées, non archivées, sans sceau ni signature de l’original. Les textes libres gardent leur langue.
+- Traductions EN/AR : +272 clés API et +9 web, aucune nouvelle traduction vide, identique au français en AR ou avec paramètres divergents. Catalogues extraits et contrôlés. Catalogue IA régénéré : 786 routes. Wiki XLSX et miroir : 1 159 sous-fonctionnalités, dont la pagination de l’aperçu des travaux ; architecture recherche/i18n actualisée.
+- Relectures indépendantes ciblées de code et de sécurité : constats confirmés corrigés. Dernière revue des requêtes SQL, reversements et travaux à venir sans défaut introduit confirmé.
 
-- Avant la fusion, consulter les checks de la PR #195 (la CI actuelle comprend quatre lots web, l'API et l'isolation réelle) et résoudre les échecs éventuels. Les suites complètes n'ont pas été exécutées en local pendant la reprise ; leur exécution de référence est celle de GitHub Actions sur le dernier SHA de la PR.
-- La fusion et le déploiement restent à l'utilisateur. Les limites de couverture manuelle et les points d'attention métier/migration sont documentés dans la PR et ci-dessous.
+**Vérifications :**
 
-Vérifications locales terminées :
+- Build final API et web (TypeScript sans erreur, Vite production), lint sans erreur, architecture, wiki, i18n API/web, budget du point d’entrée et contrastes : réussis. Les avertissements historiques de lint/Ant/jsdom ne sont pas présentés comme des erreurs corrigées.
+- Intégration API : dix suites /176 tests ; contrôles patrimoine/travaux et SQL final : trois suites /52 tests, dont huit tests SQL réels avec 5 001 assemblées et 205 reversements. Les deux suites PDF finales sont rejouées après les corrections visuelles ; les compteurs de lots se recouvrent et ne doivent pas être additionnés.
+- Intégration UI : 162 scénarios réussis après rejeu des tests sélecteurs (61/61) ; 40 scénarios complémentaires ciblés sur fournisseurs, stock, caisse, trésorerie, pénalités et traductions de factures, après correction du mock de recherche accentuée du stock. Les tests historiques hors sélection `-t` restent à la CI complète.
+- Recette sur deux bases strictement dédiées : propriétaire ancien retrouvé et sélectionné parmi 641 contacts (56 propriétaires), fournisseur parmi 205 via recherche sans accents et `%` littéral, critère conservé dans l’URL et après bascule de langue. Écran arabe 390 px : largeur de document 375 px, aucun débordement. 16 exemples PDF rendus avec Poppler (22 pages), textes mixtes, pages multiples, montants négatifs et valeur extrême ; inspection visuelle et corrections rejouées.
+- Reprise initiale conservée sur `main` : recherche/CSV des 55 biens avec exclusion de l’autre agence ; critères mobiles différés ; relevé filtré/PDF avec vrais soldes 1 000 / 1 500 ; assemblée ancienne et CSV filtré. Décisions métier H1–H13 conservées dans [HANDOFF-ux-recherche.md](HANDOFF-ux-recherche.md).
 
-- Intégration finale : `npm run build` (TypeScript API et web sans erreur, Vite production), lint sans erreur (avertissements conservés), architecture sans violation, `wiki:check`, i18n web/API, contrastes, budget du point d'entrée : 229 699 octets gzip pour 230 400 autorisés.
-- Reprise : 37 tests API finance/PDF, 43 tests web CRM/bail/relevé, test de bascule des libellés des biens en arabe verts.
-- SYN-B : 91 tests Jest et 86 scénarios web verts après correction d'une assertion d'encodage URL (fichier AG rejoué seul : 19/19).
-- JOK : 284 tests unitaires, 58 tests API historiques, trois suites SQL réelles et isolation 129/129, typecheck API, architecture verts. Ces comptes ne s'additionnent pas : certaines suites se recouvrent.
-- Validation du lanceur isolation sous 4 Go : 16 fichiers / 339 tests verts (fichiers 1–5, puis reprise 6–16 après mise à jour des assertions de permission). Aucun test désactivé ; exécution complète en une commande confiée à la CI bloquante du dernier SHA.
-- Retours de la première CI corrigés et rejoués localement : programmation de charges 27/27 ; contrat des lots et export grand livre 8/8. Le second passage CI doit valider ces corrections avec l'ensemble des suites.
-- Relecture de code et de sécurité indépendantes : constats confirmés corrigés ; relecture ciblée finale sans nouveau défaut confirmé.
-- Recette sur données synthétiques : bien hors première page ; état vide et effacement ; CSV de 55 biens excluant l'autre agence ; mobile arabe 390 px sans débordement et application différée des critères ; vrais soldes 1 000 / 1 500 dans le relevé et le PDF rendu ; recherche d'une assemblée ancienne parmi 125 et CSV filtré d'une ligne ; `%` et `_` retournant uniquement le résultat littéral attendu.
-- Non couvert manuellement : tous les écrans/rôles/combinaisons, volumes réels, vote/quorum en session réelle, paiements réels et déploiement.
+**Reste :** fusion et déploiement par l’utilisateur après validation de la PR complémentaire et de sa CI. Non couvert manuellement : tous les écrans/rôles/combinaisons, volumes réels, vote/quorum réel et paiements réels. Aucun changement de production effectué.
 
 **Pièges :**
 
-- Jest : toujours `--forceExit`.
-- La CI d'isolation est désormais bloquante : le badge vert précédent masquait un OOM avec `continue-on-error`. Le lanceur conserve les 16 fichiers, un processus séquentiel par fichier avec 4 Go de heap. La suite générale conserve son parallélisme et son budget antérieurs : son premier passage a terminé les 710 fichiers sans OOM (682 verts, 26 ignorés, deux tests corrigés), et utilise désormais `--forceExit`. Le contrôle de dérive Prisma reste le seul step toléré (index SQL/Prisma, explication dans le workflow).
-- Assertions de refus patrimoine : vérifier `requiredPermission`, pas le code dans le message localisé. Les lectures globales d'audit utilisent 100 lignes par page pour rester rejouables lorsque le journal immuable grossit ; les scénarios ciblés à 2 lignes sont conservés.
-- Les tests jsdom lents expirent sous charge : relancer le fichier seul avant de conclure.
-- Prisma `contains` n'échappe pas `%` ni `_`.
-- La PR #193 touche les mêmes fichiers.
-- PERF est écarté : pas de gain démontré, risque de cache de paramètres périmés dans le hook partagé. La PR #194 existe mais n'est pas intégrée ; ni branche ni PR supprimée.
-- Le PostgreSQL natif Windows occupe 5432 et masque le port du conteneur de développement. Les tests utilisent un NOUVEAU conteneur dédié `immotopia-ux-codex-test`, lié à `127.0.0.1:55432`, avec bases distinctes `immotopia_ux_codex_test_20261104` et `immotopia_ux_codex_demo_20261104`. Ne jamais utiliser la base réelle pour ces essais ; aucun `.env` lu ou modifié explicitement.
-- Recette synthétique : web 3300, API 8800, scripts temporaires dans `%TEMP%/immotopia-ux-qa-20261104`. L'API est lancée en mode test sans jobs. Recharger après les écritures de catalogues : le HMR de LanguageContext peut provoquer une erreur temporaire en développement.
-- PDF arabe : repli français préexistant imposé par les polices WinAnsi ; les clés AR sont traduites mais le moteur PDF arabe n'a pas été remplacé.
-- Les relances SQL sur une même base de test sont désormais rejouables : nettoyage des appels/paiements et lignes comptables des seuls tenants de la suite avant la suppression ; lecture globale des audits à 100 par page, scénarios de pagination ciblés conservés à 2.
+- L’isolation CI est bloquante : 17 fichiers SQL, un processus séquentiel par fichier, heap 4 Go. Ne pas rétablir `continue-on-error` ni charger tous les fichiers dans un seul processus. Jest utilise `--forceExit` ; le job général conserve son parallélisme antérieur.
+- Tailles de page, quotas métier (dont 500 actifs non archivés), partage de cent biens et sélection de paiements restent intentionnels. Le collecteur générique d’export conserve sa garde mémoire à 10 000 lignes et signale la troncature. Certaines recherches/agrégats parcourent encore tout le périmètre autorisé côté serveur avant pagination : exactitude assurée, performances sur gros volumes à mesurer.
+- Les copies PDF arabes ne remplacent jamais un document archivé. Ne pas réutiliser les anciennes PNG de recette, antérieures aux corrections RTL. Génération des exemples avec `PDF_AR_QA_DIR` et `PDF_AR_QA_OUTPUT`, puis rendu Poppler.
+- Vitest : `vi.clearAllMocks()` ne réinitialise pas les implémentations ; rétablir le mock fournisseur après le cas de course A→B. Le conteneur de défilement Ant actuel correspond à `.ant-select-dropdown [class$="-holder"]`. Un libellé sélectionné peut aussi exister dans le menu ouvert : vérifier le champ plutôt qu’un `getByText` global ambigu.
+- Le PostgreSQL Windows occupe 5432. Les tests utilisent uniquement le conteneur `immotopia-ux-codex-test`, lié à `127.0.0.1:55432`, bases `immotopia_ux_codex_test_20261104` et `immotopia_ux_codex_demo_20261104`. Aucun `.env` lu ou modifié explicitement. Recette temporaire : web 3300, API 8800 en mode test sans jobs. Scripts/logs dans `%TEMP%/immotopia-ux-qa-20261104`, `limits-*.log` ; données fictives.
+- Migration héritée de #195 `20261103100000_accounting_read_indexes` : construction d’index avec verrou ; période calme sur grosse base, Prisma à régénérer. Ce complément n’ajoute pas de migration.
+- PERF #194 reste exclu (gain non démontré, risque de cache périmé). Chevauchement avec #193 : la seconde fusion résout les conflits. Ne pas toucher au checkout principal ancien et modifié par une autre session.
 
-**Branche :** `orch/2026-11-03-ux-recherche` @ `d7843e87` (dernier commit fonctionnel, avant cette mise à jour documentaire). Worktree `D:/APP/Immobillier-worktrees/ux-integ`. Base `origin/main` @ `6be7f91a`, revérifiée le 2026-11-04. Le checkout principal est ancien et contient des modifications d'une autre session : ne pas y travailler.
+**Branche et dernier commit de base :** `codex/ux-limites-proprietaires-pdf-arabe` depuis `cf6fead99cfbed743f4f85ee048d5f5368fae268` ; ce complément et cette passation sont inclus dans le commit livré depuis `D:/APP/Immobillier-worktrees/ux-integ`, remote `https://github.com/bkourouma/immotopia.git`. Le SHA de livraison est celui de la tête de la PR complémentaire (`git log -1` pour la copie locale).
 
 ## État des lieux (pilote) — 2026-10-31
 

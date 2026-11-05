@@ -2668,7 +2668,7 @@
       "path": "/api/tenants/:tenantId/rental/penalties",
       "pathParams": [],
       "module": "rental",
-      "summary": "list penalties (rental / penalties)",
+      "summary": "rental / penalties",
       "permissions": ["RENTAL_PENALTIES_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -3483,6 +3483,17 @@
       "pathParams": ["syndicId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / paiement-en-ligne / solde",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiements",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements",
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_VIEW"]],
       "sensitive": false

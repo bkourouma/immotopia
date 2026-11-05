@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { App, Input, Button, Tag, Modal } from 'antd';
 import { listTags } from '../../services/crm-service';
 import { listMembers } from '../../services/membership-service';
 import { getAllCommunes } from '../../services/geographic-service';
-import { SearchOutlined, FilterOutlined, SaveOutlined, FolderOpenOutlined, DownloadOutlined } from '@ant-design/icons';
+import { FilterOutlined, SaveOutlined, FolderOpenOutlined, DownloadOutlined } from '@ant-design/icons';
 import contactSearchService, {
   type ContactSearchFilters,
   type ContactSearchResultItem
@@ -16,6 +16,7 @@ import { describeFilter, type FilterReferences } from './contact-search-filter-l
 import { t } from '../../i18n/t';
 import { writeErrorMessage } from '../../utils/error-handler';
 import { collectAllPages } from '../../utils/table-export/collect';
+import { ListSearch } from '../primitives/ListSearch';
 
 interface AdvancedContactSearchProps {
   onSelectContacts?: (contacts: ContactSearchResultItem[]) => void;
@@ -53,8 +54,10 @@ export function AdvancedContactSearch({
   const [saveName, setSaveName] = useState('');
   const [saving, setSaving] = useState(false);
   const [references, setReferences] = useState<FilterReferences>({ communes: [], tags: [], users: [] });
+  const searchSequence = useRef(0);
 
   const activeCount = countActiveFilters(filters);
+  const advancedCount = countActiveFilters({ ...filters, searchQuery: undefined });
 
   // Recherche initiale à l'ouverture pour afficher les contacts
   useEffect(() => {
@@ -93,6 +96,7 @@ export function AdvancedContactSearch({
 
   const runSearch = async (page = 1, limit = 50, searchFilters: Partial<ContactSearchFilters> = filters) => {
     if (!tenantId) return;
+    const sequence = ++searchSequence.current;
     setLoading(true);
     try {
       const data = await contactSearchService.search(tenantId, {
@@ -102,37 +106,41 @@ export function AdvancedContactSearch({
       });
       const contacts = Array.isArray(data?.contacts) ? data.contacts : [];
       const pagination = data?.pagination ?? { total: 0, page: 1, limit: 50, totalPages: 0 };
-      setResults({ contacts, pagination });
+      if (sequence === searchSequence.current) setResults({ contacts, pagination });
     } catch {
-      message.error(t('Recherche impossible'));
+      if (sequence === searchSequence.current) message.error(t('Recherche impossible'));
     } finally {
-      setLoading(false);
+      if (sequence === searchSequence.current) setLoading(false);
     }
   };
 
-  const handleSearch = () => runSearch(1, results?.pagination.limit ?? 50);
+  const applyFilters = (next: Partial<ContactSearchFilters>) => {
+    setFilters(next);
+    runSearch(1, results?.pagination.limit ?? 50, next);
+  };
 
   const handleApplyFilters = (newFilters: ContactSearchFilters) => {
-    setFilters(newFilters);
     setFilterModalOpen(false);
-    // Les nouveaux filtres sont passés tels quels : `filters` n'est pas encore à jour.
-    runSearch(1, results?.pagination.limit ?? 50, newFilters);
+    applyFilters(newFilters);
   };
 
   const handleUseSavedSearch = async (searchId: string) => {
     if (!tenantId) return;
+    const sequence = ++searchSequence.current;
     setLoading(true);
     try {
       const data = await contactSearchService.useSavedSearch(tenantId, searchId);
       const contacts = Array.isArray(data?.contacts) ? data.contacts : [];
       const pagination = data?.pagination ?? { total: 0, page: 1, limit: 50, totalPages: 0 };
-      setResults({ contacts, pagination });
-      setFilters(data?.appliedFilters || {});
-      setSavedModalOpen(false);
+      if (sequence === searchSequence.current) {
+        setResults({ contacts, pagination });
+        setFilters(data?.appliedFilters || {});
+        setSavedModalOpen(false);
+      }
     } catch {
-      message.error(t('Impossible de charger la recherche'));
+      if (sequence === searchSequence.current) message.error(t('Impossible de charger la recherche'));
     } finally {
-      setLoading(false);
+      if (sequence === searchSequence.current) setLoading(false);
     }
   };
 
@@ -184,7 +192,7 @@ export function AdvancedContactSearch({
   const removeFilter = (key: string) => {
     const next = { ...filters };
     delete next[key as keyof ContactSearchFilters];
-    setFilters(next);
+    applyFilters(next);
   };
 
   const handlePageChange = (page: number, limit: number) => {
@@ -197,30 +205,40 @@ export function AdvancedContactSearch({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <Input
-          placeholder={t('Recherche rapide (nom, email, téléphone...)')}
-          value={filters.searchQuery ?? ''}
-          onChange={e => setFilters(prev => ({ ...prev, searchQuery: e.target.value }))}
-          onPressEnter={handleSearch}
-          style={{ maxWidth: 320 }}
-          allowClear
-        />
-        <Button icon={<FilterOutlined />} onClick={() => setFilterModalOpen(true)}>
-          {t('Filtres avancés')}
-          {activeCount > 0 && <Tag style={{ marginInlineStart: 4 }}>{activeCount}</Tag>}
-        </Button>
-        <Button icon={<FolderOpenOutlined />} onClick={() => setSavedModalOpen(true)}>
-          {t('Recherches sauvegardées')}
-        </Button>
-        <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch} loading={loading}>
-          {t('Rechercher')}
-        </Button>
-      </div>
+      <ListSearch
+        criteria={[
+          {
+            key: 'searchQuery',
+            type: 'text',
+            label: t('Recherche rapide (nom, email, téléphone...)'),
+            placeholder: t('Recherche rapide (nom, email, téléphone...)')
+          }
+        ]}
+        values={{ searchQuery: filters.searchQuery }}
+        onChange={next =>
+          applyFilters({ ...filters, searchQuery: typeof next.searchQuery === 'string' ? next.searchQuery : undefined })
+        }
+        onClear={() => applyFilters({})}
+        activeCount={activeCount}
+        resultCount={loading ? undefined : results?.pagination.total}
+        aria-label={t('Rechercher')}
+        extra={
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button icon={<FilterOutlined />} onClick={() => setFilterModalOpen(true)}>
+              {t('Filtres avancés')}
+              {advancedCount > 0 && <Tag style={{ marginInlineStart: 4 }}>{advancedCount}</Tag>}
+            </Button>
+            <Button icon={<FolderOpenOutlined />} onClick={() => setSavedModalOpen(true)}>
+              {t('Recherches sauvegardées')}
+            </Button>
+          </div>
+        }
+      />
 
-      {activeCount > 0 && (
+      {advancedCount > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           {Object.entries(filters).map(([key, value]) => {
+            if (key === 'searchQuery') return null;
             if (value === undefined || value === null || (Array.isArray(value) && value.length === 0)) return null;
             const text = describeFilter(key, value, references);
             if (!text) return null;
@@ -230,9 +248,6 @@ export function AdvancedContactSearch({
               </Tag>
             );
           })}
-          <Button type="link" size="small" onClick={() => setFilters({})}>
-            {t('Tout effacer')}
-          </Button>
         </div>
       )}
 
@@ -242,10 +257,9 @@ export function AdvancedContactSearch({
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}
           >
             <span style={{ color: '#666' }}>
-              {results.pagination.total} {t('contact(s) trouvé(s)')}
-              {mode === 'select' &&
-                selectedContacts.length > 0 &&
-                t('· {{length}} sélectionné(s)', { length: selectedContacts.length })}
+              {mode === 'select' && selectedContacts.length > 0
+                ? t('· {{length}} sélectionné(s)', { length: selectedContacts.length })
+                : null}
             </span>
             <div style={{ display: 'flex', gap: 8 }}>
               {activeCount > 0 && (

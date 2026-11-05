@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { App, Alert, Button, Card, Space, Tag, Typography } from 'antd';
 import { OwnerStatementGenerator } from '../../../components/patrimoine/OwnerStatementGenerator';
@@ -50,37 +51,79 @@ export const OwnerStatementsPage: React.FC = () => {
   const [sendLoadingId, setSendLoadingId] = useState<string | null>(null);
   const [recomputeLoadingId, setRecomputeLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [ownerOptions, setOwnerOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [propertyOptions, setPropertyOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [ownerSearch, setOwnerSearch] = useState<{ tenantId: string; term: string } | null>(null);
+  const [debouncedOwnerSearch, setDebouncedOwnerSearch] = useState<{ tenantId: string; term: string } | null>(null);
+  const [selectedOwner, setSelectedOwner] = useState<{ tenantId: string; value: string; label: string } | null>(null);
+  const loadSequence = useRef(0);
+  const ownerTerm = ownerSearch && ownerSearch.tenantId === effectiveTenantId ? ownerSearch.term : '';
+  const debouncedTerm =
+    debouncedOwnerSearch && debouncedOwnerSearch.tenantId === effectiveTenantId ? debouncedOwnerSearch.term : '';
+
+  useEffect(() => {
+    setOwnerSearch(null);
+    setDebouncedOwnerSearch(null);
+    setSelectedOwner(null);
+  }, [effectiveTenantId]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (effectiveTenantId) setDebouncedOwnerSearch({ tenantId: effectiveTenantId, term: ownerTerm });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [effectiveTenantId, ownerTerm]);
+
+  const ownersQuery = useQuery({
+    queryKey: ['owner-statement-owner-options', effectiveTenantId, debouncedTerm],
+    queryFn: () =>
+      listContacts(effectiveTenantId as string, {
+        role: 'PROPRIETAIRE',
+        search: debouncedTerm || undefined,
+        page: 1,
+        limit: 20
+      }),
+    enabled: Boolean(effectiveTenantId)
+  });
+  const remoteOwnerOptions = useMemo(
+    () =>
+      (ownersQuery.data?.contacts ?? []).map(owner => ({
+        value: owner.id,
+        label: `${owner.firstName ?? ''} ${owner.lastName ?? ''}`.trim() || owner.email || owner.id
+      })),
+    [ownersQuery.data]
+  );
+  const selectableOwners = useMemo(() => {
+    if (
+      !selectedOwner ||
+      selectedOwner.tenantId !== effectiveTenantId ||
+      remoteOwnerOptions.some(option => option.value === selectedOwner.value)
+    )
+      return remoteOwnerOptions;
+    return [{ value: selectedOwner.value, label: selectedOwner.label }, ...remoteOwnerOptions];
+  }, [effectiveTenantId, remoteOwnerOptions, selectedOwner]);
 
   const loadData = async () => {
     if (!effectiveTenantId) return;
+    const sequence = ++loadSequence.current;
     setLoading(true);
     setError(null);
     try {
-      const [properties, contacts] = await Promise.all([
-        listProperties(effectiveTenantId, { page: 1, limit: 100 }),
-        listContacts(effectiveTenantId, { page: 1, limit: 500 })
-      ]);
+      const properties = await listProperties(effectiveTenantId, { page: 1, limit: 100 });
+      if (sequence !== loadSequence.current) return;
       setPropertyOptions(properties.properties.map(property => ({ value: property.id, label: property.title })));
-      const owners = contacts.contacts.filter(contact =>
-        (contact.roles || []).some(role => role.active && role.role === 'PROPRIETAIRE')
-      );
-      setOwnerOptions(
-        owners.map(owner => ({
-          value: owner.id,
-          label: `${owner.firstName} ${owner.lastName}`.trim() || owner.email || owner.id
-        }))
-      );
     } catch (e: any) {
-      setError(e?.response?.data?.error || t('Erreur de chargement des relevés'));
+      if (sequence === loadSequence.current)
+        setError(e?.response?.data?.error || t('Erreur de chargement des relevés'));
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     void loadData();
+    return () => {
+      loadSequence.current += 1;
+    };
   }, [effectiveTenantId]);
 
   const handleGenerate = async (payload: { ownerContactId: string; period: string; propertyIds: string[] }) => {
@@ -135,6 +178,7 @@ export const OwnerStatementsPage: React.FC = () => {
   // Toute l'agence, ancien calcul et non payé : compté par le serveur, hors critères et pagination.
   const legacyCount = list.legacyUnpaidCount;
   const listError = list.error ? t('Erreur de chargement des relevés') : null;
+  const ownerError = ownersQuery.isError ? t('Erreur de chargement des relevés') : null;
 
   if (ownAssetsOnly) {
     return (
@@ -159,7 +203,9 @@ export const OwnerStatementsPage: React.FC = () => {
           <Text type="secondary">{t('Génération, suivi et envoi des relevés propriétaires')}</Text>
         </div>
 
-        {error || listError ? <Alert type="error" showIcon message={error || listError} /> : null}
+        {error || listError || ownerError ? (
+          <Alert type="error" showIcon message={error || listError || ownerError} />
+        ) : null}
         {legacyCount > 0 ? (
           <Alert
             type="warning"
@@ -171,7 +217,16 @@ export const OwnerStatementsPage: React.FC = () => {
           />
         ) : null}
         <OwnerStatementGenerator
-          ownerOptions={ownerOptions}
+          key={effectiveTenantId}
+          ownerOptions={selectableOwners}
+          ownerLoading={ownersQuery.isFetching}
+          onOwnerSearch={term => {
+            if (effectiveTenantId) setOwnerSearch({ tenantId: effectiveTenantId, term });
+          }}
+          onOwnerSelect={value => {
+            const selected = selectableOwners.find(option => option.value === value);
+            if (effectiveTenantId && selected) setSelectedOwner({ tenantId: effectiveTenantId, ...selected });
+          }}
           propertyOptions={propertyOptions}
           loading={createLoading}
           onGenerate={handleGenerate}
@@ -179,6 +234,7 @@ export const OwnerStatementsPage: React.FC = () => {
 
         <Card title={t('Historique des relevés')}>
           <Table
+            key={effectiveTenantId}
             exportFilename={t('Historique des relevés')}
             exportFetchAll={list.exportFetchAll}
             search={list.search.searchProps}

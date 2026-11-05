@@ -1,5 +1,12 @@
 import { PDFDocument, PDFFont, PDFPage, rgb } from 'pdf-lib';
 import { drawDocumentHeader, fontsOf, resolveDocumentBranding, truncate } from '../../documents/document-branding';
+import {
+  arabicFaces,
+  drawArabicFooters,
+  drawArabicNumber,
+  drawArabicText,
+  type ArabicFaces
+} from '../../documents/pdf-arabic';
 import { money } from '../../finance/statement-pdf';
 import { currentLanguage, t, type Language } from '../../../i18n';
 import type { NetWorthExportData } from './net-worth-data';
@@ -11,8 +18,8 @@ import { assetClassLabel, exclusionReasonLabel, reliabilityLabel } from './net-w
  *
  * Même conception que `pdf.ts` (lot P3) : A4 multipage, en-tête de marque sur
  * la première page, pied « page n / N ». Les polices standard de pdf-lib
- * n'encodent pas l'arabe : le PDF est forcé en français quand la requête est
- * en arabe (le classeur Excel reste dans la langue demandée).
+ * n'encodent pas l'arabe : le rendu arabe utilise la police Unicode et le
+ * moteur bidirectionnel des documents PDF.
  */
 
 const PAGE_SIZE: [number, number] = [595.28, 841.89];
@@ -29,6 +36,7 @@ interface Writer {
   page: PDFPage;
   y: number;
   language: Language;
+  arabic?: ArabicFaces;
 }
 
 interface Column {
@@ -51,11 +59,45 @@ function line(w: Writer, text: string, opts: { bold?: boolean; size?: number; co
   ensureSpace(w, LINE_HEIGHT);
   const font = opts.bold ? w.fonts.bold : w.fonts.regular;
   const size = opts.size ?? 9;
+  if (w.arabic) {
+    drawArabicText(w.page, opts.bold ? w.arabic.bold : w.arabic.regular, text || ' ', {
+      x: PAGE_SIZE[0] - MARGIN,
+      y: w.y,
+      size,
+      maxWidth: CONTENT_WIDTH,
+      color: opts.color
+    });
+    w.y -= LINE_HEIGHT;
+    return;
+  }
   w.page.drawText(truncate(text || ' ', font, size, CONTENT_WIDTH), {
     x: MARGIN,
     y: w.y,
     size,
     font,
+    color: opts.color
+  });
+  w.y -= LINE_HEIGHT;
+}
+
+function labeledValue(
+  w: Writer,
+  label: string,
+  value: string,
+  opts: { bold?: boolean; size?: number; color?: ReturnType<typeof rgb> } = {}
+) {
+  if (!w.arabic) return line(w, `${label} : ${value}`, opts);
+  ensureSpace(w, LINE_HEIGHT);
+  const face = opts.bold ? w.arabic.bold : w.arabic.regular;
+  const size = opts.size ?? 9;
+  const right = PAGE_SIZE[0] - MARGIN;
+  const labelWidth = 230;
+  drawArabicText(w.page, face, label, { x: right, y: w.y, size, maxWidth: labelWidth, color: opts.color });
+  drawArabicNumber(w.page, face, value, {
+    x: right - labelWidth - 12,
+    y: w.y,
+    size,
+    maxWidth: CONTENT_WIDTH - labelWidth - 12,
     color: opts.color
   });
   w.y -= LINE_HEIGHT;
@@ -79,6 +121,18 @@ function tableRow(
   const size = 8;
   let x = MARGIN;
   columns.forEach((column, index) => {
+    if (w.arabic) {
+      const drawCell = !opts.bold && column.end ? drawArabicNumber : drawArabicText;
+      drawCell(w.page, opts.bold ? w.arabic.bold : w.arabic.regular, cells[index] || ' ', {
+        x: PAGE_SIZE[0] - MARGIN - x,
+        y: w.y,
+        size,
+        maxWidth: column.width - 6,
+        color: opts.color
+      });
+      x += column.width;
+      return;
+    }
     const text = truncate(cells[index] || ' ', font, size, column.width - 6);
     const drawX = column.end ? x + column.width - 6 - font.widthOfTextAtSize(text, size) : x;
     w.page.drawText(text, { x: drawX, y: w.y, size, font, color: opts.color });
@@ -119,10 +173,10 @@ function formatDate(value: Date, language: Language): string {
 function drawSummary(w: Writer, data: NetWorthExportData) {
   const lang = w.language;
   sectionTitle(w, t('Valeur nette', undefined, lang));
-  line(w, `${t('Date de calcul', undefined, lang)} : ${formatDate(data.asOf, lang)}`, { color: GREY });
-  line(w, `${t('Total des actifs', undefined, lang)} : ${fmt(data.totalAssets, data.currency)}`);
-  line(w, `${t('Total des dettes', undefined, lang)} : ${fmt(data.totalDebts, data.currency)}`);
-  line(w, `${t('Valeur nette', undefined, lang)} : ${fmt(data.netWorth, data.currency)}`, {
+  labeledValue(w, t('Date de calcul', undefined, lang), formatDate(data.asOf, lang), { color: GREY });
+  labeledValue(w, t('Total des actifs', undefined, lang), fmt(data.totalAssets, data.currency));
+  labeledValue(w, t('Total des dettes', undefined, lang), fmt(data.totalDebts, data.currency));
+  labeledValue(w, t('Valeur nette', undefined, lang), fmt(data.netWorth, data.currency), {
     bold: true,
     size: 11,
     color: data.netWorth < 0 ? RED : undefined
@@ -292,17 +346,17 @@ function drawFooters(pdfDoc: PDFDocument, fonts: { regular: PDFFont }, language:
 
 /** Construit le PDF de la situation patrimoniale d'une agence, en mémoire. */
 export async function buildNetWorthPdf(tenantId: string, data: NetWorthExportData): Promise<Buffer> {
-  const language: Language = currentLanguage() === 'ar' ? 'fr' : currentLanguage();
+  const language: Language = currentLanguage();
 
   const pdfDoc = await PDFDocument.create();
   const branding = await resolveDocumentBranding(tenantId, null);
   const fonts = await fontsOf(pdfDoc);
+  const arabic = language === 'ar' ? await arabicFaces(pdfDoc) : undefined;
 
   const firstPage = pdfDoc.addPage(PAGE_SIZE);
-  const startY = await drawDocumentHeader(pdfDoc, firstPage, branding, {
-    title: t('Situation patrimoniale', undefined, language)
-  });
-  const w: Writer = { pdfDoc, fonts, page: firstPage, y: startY, language };
+  const title = t('Situation patrimoniale', undefined, language);
+  const startY = await drawDocumentHeader(pdfDoc, firstPage, branding, { title });
+  const w: Writer = { pdfDoc, fonts, page: firstPage, y: startY, language, arabic };
 
   drawSummary(w, data);
   drawByClass(w, data);
@@ -310,7 +364,8 @@ export async function buildNetWorthPdf(tenantId: string, data: NetWorthExportDat
   drawDebts(w, data);
   drawExcluded(w, data);
   drawHistory(w, data);
-  drawFooters(pdfDoc, fonts, language);
+  if (arabic) drawArabicFooters(pdfDoc, arabic, branding.issuer.name);
+  else drawFooters(pdfDoc, fonts, language);
 
   return Buffer.from(await pdfDoc.save());
 }

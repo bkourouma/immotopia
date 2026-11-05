@@ -85,7 +85,7 @@ describe('listTenantWorkPrograms - where', () => {
       tenantId: 'T1',
       status: { in: ['PLANNED', 'IN_PROGRESS'] }
     });
-    expect(count).not.toHaveBeenCalled();
+    expect(count).toHaveBeenCalledWith({ where: { tenantId: 'T1', status: { in: ['PLANNED', 'IN_PROGRESS'] } } });
   });
 });
 

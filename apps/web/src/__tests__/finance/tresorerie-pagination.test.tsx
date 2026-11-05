@@ -54,12 +54,17 @@ function virement(i: number): TreasuryTransferDto {
 beforeEach(() => {
   vi.clearAllMocks();
   listTreasuryAccounts.mockResolvedValue([]);
-  listTreasuryTransfers.mockResolvedValue(Array.from({ length: 25 }, (_, i) => virement(i + 1)));
+  listTreasuryTransfers.mockResolvedValue({
+    items: Array.from({ length: 20 }, (_, i) => virement(i + 1)),
+    total: 25,
+    page: 1,
+    pageSize: 20
+  });
   listTaxRemittances.mockResolvedValue([]);
   getWithholdingSummary.mockResolvedValue({ enabled: true, accountNumber: '4478', collected: 0, remitted: 0, due: 0 });
 });
 
-describe('Trésorerie — sections paresseuses et pagination locale', () => {
+describe('Trésorerie — sections paresseuses et pagination serveur', () => {
   it('ne charge les virements qu’à l’ouverture de l’onglet, puis en affiche 20 sur 25', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
     const user = userEvent.setup({ delay: null });

@@ -16,6 +16,18 @@ vi.mock('../../services/coowner-portal-service', async () => {
   return {
     ...actual,
     listMyMeetings: (...a: unknown[]) => listMyMeetings(...a),
+    listMyMeetingsPage: async (params: { page: number; limit: number }) => {
+      const all = await listMyMeetings();
+      return {
+        items: all.slice((params.page - 1) * params.limit, params.page * params.limit),
+        pagination: {
+          page: params.page,
+          limit: params.limit,
+          total: all.length,
+          totalPages: Math.ceil(all.length / params.limit)
+        }
+      };
+    },
     requestLiveAccess: (...a: unknown[]) => requestLiveAccess(...a)
   };
 });

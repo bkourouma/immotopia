@@ -9,9 +9,11 @@
  */
 
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { currentLanguage, t } from '../../i18n';
 
 import { drawDocumentHeader, fontsOf, truncate, type DocumentBranding } from './document-branding';
 import { sanitizeForPdf } from './pdf-text';
+import { arabicFaces, drawArabicFooters, drawArabicText, wrapArabicText } from './pdf-arabic';
 import { A4, wrapText } from '../syndics/charge-receipt-pdf';
 
 export interface ClauseRow {
@@ -169,8 +171,109 @@ function drawFooters(pdfDoc: PDFDocument, font: PDFFont, label: string): void {
   });
 }
 
+/** Rendu Unicode RTL ; les clauses sont localisées par les builders du modèle. */
+async function renderArabicClauseDocumentPdf(model: ClauseDocumentModel, branding: DocumentBranding): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.setLanguage('ar');
+  pdfDoc.setTitle(model.title);
+  const faces = await arabicFaces(pdfDoc);
+  let page = pdfDoc.addPage([A4.width, A4.height]);
+  let y = await drawDocumentHeader(pdfDoc, page, branding, { title: model.title, subtitle: model.subtitle });
+  const right = A4.width - MARGIN;
+  const width = A4.width - 2 * MARGIN;
+  const ensure = (height: number) => {
+    if (y - height >= BOTTOM) return;
+    page = pdfDoc.addPage([A4.width, A4.height]);
+    y = A4.height - MARGIN - 10;
+  };
+  const linesOf = (text: string, size: number, maxWidth: number) =>
+    wrapArabicText(faces.regular, text || '—', size, maxWidth);
+  const drawParagraph = (text: string, size = BODY_SIZE) => {
+    for (const line of linesOf(text, size, width)) {
+      ensure(LINE);
+      drawArabicText(page, faces.regular, line, { x: right, y, size, maxWidth: width });
+      y -= LINE;
+    }
+    y -= 4;
+  };
+
+  for (const section of model.sections) {
+    ensure(60);
+    y -= 6;
+    drawArabicText(page, faces.bold, section.title, { x: right, y, size: 11, maxWidth: width });
+    y -= 5;
+    page.drawLine({ start: { x: MARGIN, y }, end: { x: right, y }, thickness: 0.4, color: rgb(0.8, 0.8, 0.8) });
+    y -= 14;
+    for (const row of section.rows ?? []) {
+      const numeric = /^[\d\s,./+\-]+(?:XOF|FCFA|EUR|USD)?$/.test(row.value.trim());
+      const valueLines = linesOf(row.value || '—', BODY_SIZE, width - LABEL_WIDTH);
+      for (const [index, line] of valueLines.entries()) {
+        ensure(LINE);
+        if (index === 0)
+          drawArabicText(page, faces.bold, row.label, {
+            x: right,
+            y,
+            size: 9,
+            maxWidth: LABEL_WIDTH - 8,
+            color: GREY
+          });
+        drawArabicText(page, faces.regular, line, {
+          x: numeric ? MARGIN : right - LABEL_WIDTH,
+          y,
+          size: BODY_SIZE,
+          maxWidth: width - LABEL_WIDTH,
+          ...(numeric ? { align: 'start' as const } : {})
+        });
+        y -= LINE;
+      }
+    }
+    for (const paragraph of section.paragraphs ?? []) drawParagraph(paragraph);
+  }
+
+  if (model.signatures.length > 0) {
+    ensure(110);
+    y -= 10;
+    drawArabicText(page, faces.bold, t('Signatures', undefined, 'ar'), { x: right, y, size: 11, maxWidth: width });
+    y -= 16;
+    const boxWidth = (width - 20) / 2;
+    for (let index = 0; index < model.signatures.length; index += 2) {
+      ensure(90);
+      const rowTop = y;
+      model.signatures.slice(index, index + 2).forEach((signature, column) => {
+        const x = column === 0 ? right - boxWidth : MARGIN;
+        page.drawRectangle({
+          x,
+          y: rowTop - 70,
+          width: boxWidth,
+          height: 76,
+          borderColor: rgb(0.75, 0.75, 0.75),
+          borderWidth: 0.6
+        });
+        drawArabicText(page, faces.bold, signature.role, {
+          x: x + boxWidth - 6,
+          y: rowTop - 8,
+          size: 9,
+          maxWidth: boxWidth - 12
+        });
+        drawArabicText(page, faces.regular, signature.name || ' ', {
+          x: x + boxWidth - 6,
+          y: rowTop - 20,
+          size: 9,
+          maxWidth: boxWidth - 12,
+          color: GREY
+        });
+      });
+      y = rowTop - 86;
+    }
+  }
+  if (model.closing) drawParagraph(model.closing, 8);
+  drawArabicFooters(pdfDoc, faces, branding.issuer.name);
+  return Buffer.from(await pdfDoc.save());
+}
+
 /** Rend un modèle de document en PDF A4. */
 export async function renderClauseDocumentPdf(model: ClauseDocumentModel, branding: DocumentBranding): Promise<Buffer> {
+  if (currentLanguage() === 'ar') return renderArabicClauseDocumentPdf(model, branding);
   const pdfDoc = await PDFDocument.create();
   const { regular, bold } = await fontsOf(pdfDoc);
   const page = pdfDoc.addPage([A4.width, A4.height]);

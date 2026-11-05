@@ -1,5 +1,6 @@
-import type { Prisma } from '@prisma/client';
+import type { MeetingStatus, Prisma, TransactionType } from '@prisma/client';
 import { prisma } from '../../utils/database';
+import { escapeLike } from '../../utils/like-escape';
 import { NotFoundError } from '../../middleware/error-middleware';
 import { isExternalDocumentUrl, localSyndicateDocumentPath, readSyndicateDocumentFile } from './document-files';
 import { computeOutstanding, deriveChargeCallStatus, roundMoney, type ChargeCallStatusValue } from './finance-utils';
@@ -369,7 +370,18 @@ async function loadScopedBalances(
 // 2. Compte d'un lot
 // ---------------------------------------------------------------------------
 
-export async function getCoOwnerLotAccount(scope: CoOwnerPortalScope, lotId: string) {
+export async function getCoOwnerLotAccount(
+  scope: CoOwnerPortalScope,
+  lotId: string,
+  query: {
+    search?: string;
+    type?: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+    page?: number;
+    limit?: number;
+  } = {}
+) {
   const lotScope = scopeOrThrow(scope, lotId);
   const [lot] = await loadLots(scope, [lotId]);
   if (!lot) throw new NotFoundError('Lot introuvable.');
@@ -391,11 +403,32 @@ export async function getCoOwnerLotAccount(scope: CoOwnerPortalScope, lotId: str
   // affiché = solde du périmètre.
   const visibleSince = lotScope.visibleSince;
   const sinceFilter = visibleSince ? { transactionDate: { gte: visibleSince } } : {};
+  const page = query.page ?? 1;
+  const limit = query.limit ?? 200;
+  const transactionWhere: Prisma.OwnerAccountTransactionWhereInput = {
+    accountId: account?.id,
+    ...sinceFilter,
+    ...(query.search ? { label: { contains: escapeLike(query.search), mode: 'insensitive' as const } } : {}),
+    ...(query.type ? { type: query.type as TransactionType } : {}),
+    ...(query.dateFrom || query.dateTo
+      ? {
+          transactionDate: {
+            gte:
+              visibleSince && query.dateFrom
+                ? new Date(Math.max(visibleSince.getTime(), query.dateFrom.getTime()))
+                : (query.dateFrom ?? visibleSince ?? undefined),
+            lt: query.dateTo ? new Date(query.dateTo.getTime() + 86_400_000) : undefined
+          }
+        }
+      : {})
+  };
+  const total = account ? await prisma.ownerAccountTransaction.count({ where: transactionWhere }) : 0;
   const rows = account
     ? await prisma.ownerAccountTransaction.findMany({
-        where: { accountId: account.id, ...sinceFilter },
+        where: transactionWhere,
         orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
-        take: 200,
+        skip: (page - 1) * limit,
+        take: limit,
         select: {
           id: true,
           transactionDate: true,
@@ -441,6 +474,7 @@ export async function getCoOwnerLotAccount(scope: CoOwnerPortalScope, lotId: str
           lastUpdatedAt: account.lastUpdatedAt
         }
       : null,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     transactions: transactions.map(transaction => {
       const after = describeBalance(transaction.balanceAfter);
       return {
@@ -540,7 +574,6 @@ export async function listCoOwnerChargeCalls(
   const calls = await prisma.chargeCall.findMany({
     where: ownedChargeCallsWhere(scope, lotIds),
     orderBy: [{ dueDate: 'desc' }, { createdAt: 'desc' }],
-    take: 500,
     select: {
       id: true,
       syndicateId: true,
@@ -607,6 +640,46 @@ export async function listCoOwnerChargeCalls(
   });
 }
 
+/** Pagination du tableau, après calcul du statut et des soldes sur tous les appels visibles. */
+export async function listCoOwnerChargeCallsPage(
+  scope: CoOwnerPortalScope,
+  query: {
+    lotId?: string;
+    tenantClientId?: string | null;
+    search?: string;
+    statuses?: string;
+    dueFrom?: Date;
+    dueTo?: Date;
+    page: number;
+    limit: number;
+  }
+) {
+  const all = await listCoOwnerChargeCalls(scope, { lotId: query.lotId, tenantClientId: query.tenantClientId });
+  const term = query.search?.toLocaleLowerCase();
+  const statuses = query.statuses?.split(',');
+  const items = all.filter(call => {
+    if (
+      term &&
+      ![call.period, call.lot?.lotNumber, call.syndicate].some(value => value?.toLocaleLowerCase().includes(term))
+    )
+      return false;
+    if (statuses && !statuses.includes(call.status)) return false;
+    if (query.dueFrom && call.dueDate < query.dueFrom) return false;
+    if (query.dueTo && call.dueDate >= new Date(query.dueTo.getTime() + 86_400_000)) return false;
+    return true;
+  });
+  const total = items.length;
+  return {
+    items: items.slice((query.page - 1) * query.limit, query.page * query.limit),
+    pagination: {
+      page: query.page,
+      limit: query.limit,
+      total,
+      totalPages: Math.ceil(total / query.limit)
+    }
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 4. Documents
 // ---------------------------------------------------------------------------
@@ -667,11 +740,12 @@ export function isLiveAvailable(status: string, scheduledAt: Date | string, now:
   return new Date(scheduledAt).getTime() - 24 * 60 * 60 * 1000 <= now;
 }
 
-export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
+export async function listCoOwnerMeetings(scope: CoOwnerPortalScope, selectedIds?: string[]) {
   if (scope.syndicateIds.length === 0) return [];
+  if (selectedIds && selectedIds.length === 0) return [];
   const syndicates = await loadSyndicates(scope);
   const meetings = await prisma.generalMeeting.findMany({
-    where: { syndicateId: { in: scope.syndicateIds } },
+    where: { syndicateId: { in: scope.syndicateIds }, ...(selectedIds ? { id: { in: selectedIds } } : {}) },
     orderBy: [{ scheduledAt: 'desc' }, { createdAt: 'desc' }],
     take: 100,
     select: {
@@ -784,4 +858,49 @@ export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
               })
     };
   });
+}
+
+export async function listCoOwnerMeetingsPage(
+  scope: CoOwnerPortalScope,
+  query: { search?: string; statuses?: string; dateFrom?: Date; dateTo?: Date; page: number; limit: number }
+) {
+  const where: Prisma.GeneralMeetingWhereInput = {
+    syndicateId: { in: scope.syndicateIds },
+    ...(query.statuses ? { status: { in: query.statuses.split(',') as MeetingStatus[] } } : {}),
+    ...(query.dateFrom || query.dateTo
+      ? {
+          scheduledAt: {
+            gte: query.dateFrom,
+            lt: query.dateTo ? new Date(query.dateTo.getTime() + 86_400_000) : undefined
+          }
+        }
+      : {}),
+    ...(query.search
+      ? {
+          OR: [
+            { location: { contains: escapeLike(query.search), mode: 'insensitive' as const } },
+            { syndicate: { name: { contains: escapeLike(query.search), mode: 'insensitive' as const } } },
+            { agendaItems: { some: { title: { contains: escapeLike(query.search), mode: 'insensitive' as const } } } }
+          ]
+        }
+      : {})
+  };
+  const [ids, total] = await Promise.all([
+    prisma.generalMeeting.findMany({
+      where,
+      select: { id: true },
+      orderBy: [{ scheduledAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+      skip: (query.page - 1) * query.limit,
+      take: query.limit
+    }),
+    prisma.generalMeeting.count({ where })
+  ]);
+  const items = await listCoOwnerMeetings(
+    scope,
+    ids.map(row => row.id)
+  );
+  return {
+    items,
+    pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) }
+  };
 }

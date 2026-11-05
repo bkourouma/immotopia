@@ -1,12 +1,11 @@
 import React from 'react';
-import { Alert, Button, List, Space, Tag, Typography } from 'antd';
+import { Button, List, Space, Tag, Typography } from 'antd';
 import type { InsuranceClaimDto } from '../../types/insurance-types';
 import { t } from '../../i18n/t';
 import { ListSearch } from '../primitives/ListSearch';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { ClaimStatusTimeline } from './ClaimStatusTimeline';
-import { PROPERTY_CLAIMS_API_LIMIT } from './claim-limits';
 import {
   CLAIM_STATUS_VALUES,
   causeLabel,
@@ -24,7 +23,7 @@ interface Props {
 
 /**
  * Au-delà de ce nombre de sinistres pour un même bien, la liste reçoit sa barre
- * de recherche (locale : l'API renvoie tous les sinistres du bien, 200 au plus)
+ * de recherche (la collecte paginée charge tous les sinistres du bien)
  * et se pagine. En deçà, la barre n'apporterait que du bruit.
  */
 export const CLAIMS_SEARCH_THRESHOLD = 10;
@@ -116,17 +115,6 @@ const SearchableClaimList: React.FC<Props> = ({ claims, onOpen }) => {
 /** Sinistres d'un bien : cause, statut, montant réclamé et frise des statuts. */
 export const ClaimList: React.FC<Props> = ({ claims, onOpen }) => (
   <>
-    {claims.length >= PROPERTY_CLAIMS_API_LIMIT && (
-      <Alert
-        type="warning"
-        showIcon
-        style={{ marginBlockEnd: 16 }}
-        message={t(
-          'La liste est limitée aux {{limit}} sinistres les plus récents : d’autres existent. Affinez avec la recherche ou les filtres.',
-          { limit: PROPERTY_CLAIMS_API_LIMIT }
-        )}
-      />
-    )}
     {claims.length > CLAIMS_SEARCH_THRESHOLD ? (
       <SearchableClaimList claims={claims} onOpen={onOpen} />
     ) : (

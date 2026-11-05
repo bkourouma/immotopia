@@ -142,6 +142,7 @@ import {
   listChartOfAccountsSearchHandler
 } from '../controllers/syndic-accounting-read-controller';
 import { downloadConvocationDocxHandler } from '../controllers/syndic-word-documents-controller';
+import { listSyndicPaymentsHandler } from '../controllers/syndic-payment-read-controller';
 
 const router = Router();
 
@@ -207,6 +208,11 @@ router.get(
   '/tenants/:tenantId/syndics/:syndicId/charges',
   requireAnyPropertyPermission(['SYNDIC_VIEW']),
   listChargeCallsHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/paiements',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  listSyndicPaymentsHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/charges',

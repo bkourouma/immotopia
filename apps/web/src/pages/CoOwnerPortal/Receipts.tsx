@@ -30,25 +30,31 @@ function receiptKindLabel(kind: CoOwnerDocumentKind): string {
 }
 
 function DownloadButton({ receipt }: { receipt: CoOwnerReceipt }) {
-  const [loading, setLoading] = useState(false);
-  const download = async () => {
-    setLoading(true);
+  const [loading, setLoading] = useState<'original' | 'ar' | null>(null);
+  const download = async (translation?: 'ar') => {
+    setLoading(translation ?? 'original');
     try {
       const { blob, filename } = await downloadCoOwnerReceiptFile(
         receipt.downloadPath,
-        t('{{label}} {{number}}.pdf', { label: receiptKindLabel(receipt.kind), number: receipt.number })
+        t('{{label}} {{number}}.pdf', { label: receiptKindLabel(receipt.kind), number: receipt.number }),
+        translation
       );
       saveBlob(blob, filename);
     } catch (error) {
       feedback.error(await blobErrorMessage(error, t('Téléchargement impossible.')));
     } finally {
-      setLoading(false);
+      setLoading(null);
     }
   };
   return (
-    <Button icon={<DownloadOutlined />} loading={loading} onClick={() => void download()}>
-      {t('Télécharger')}
-    </Button>
+    <Space wrap>
+      <Button icon={<DownloadOutlined />} loading={loading === 'original'} onClick={() => void download()}>
+        {t('Télécharger')}
+      </Button>
+      <Button loading={loading === 'ar'} onClick={() => void download('ar')}>
+        {t('Traduction arabe')}
+      </Button>
+    </Space>
   );
 }
 

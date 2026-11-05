@@ -3,10 +3,8 @@ import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 /**
- * Recherche locale des pénalités d'un bail (l'API rend toute la liste, sans
- * pagination). Les lectures de la raison et du justificatif reproduisent
- * celles de `Penalties.tsx` : la raison d'ajustement et le justificatif
- * partagent un champ texte, JSON ou texte brut.
+ * Critères de recherche transmis à l'API. Les accesseurs ci-dessous restent
+ * disponibles pour les autres usages de présentation et les anciens tests.
  */
 
 function champ(penalite: RentalPenalty): string | null {
@@ -77,9 +75,10 @@ export function penaltyCriteria(): SearchCriterion[] {
       key: 'q',
       type: 'text',
       label: t('Rechercher'),
-      placeholder: t('Raison, justificatif, jours de retard…')
+      placeholder: t('Raison, justificatif, jours de retard…'),
+      api: 'search'
     },
-    { key: 'periode', type: 'dateRange', label: t('Calculée le'), primary: true },
+    { key: 'periode', type: 'dateRange', label: t('Calculée le'), primary: true, api: ['from', 'to'] },
     {
       key: 'ajustee',
       type: 'boolean',
@@ -87,16 +86,18 @@ export function penaltyCriteria(): SearchCriterion[] {
       primary: true,
       tristate: true,
       trueLabel: t('Ajustée'),
-      falseLabel: t('Non ajustée')
+      falseLabel: t('Non ajustée'),
+      api: 'adjusted'
     },
-    { key: 'montant', type: 'numberRange', label: t('Montant retenu'), unit: 'FCFA' },
+    { key: 'montant', type: 'numberRange', label: t('Montant retenu'), unit: 'FCFA', api: ['minAmount', 'maxAmount'] },
     {
       key: 'justificatif',
       type: 'boolean',
       label: t('Justificatif'),
       tristate: true,
       trueLabel: t('Avec justificatif'),
-      falseLabel: t('Sans justificatif')
+      falseLabel: t('Sans justificatif'),
+      api: 'hasJustification'
     }
   ];
 }
