@@ -868,9 +868,9 @@ Application et données :
 ## Branche `orch/2026-11-03-ux-recherche-lot-perf` — 2026-11-05
 
 **État :** reprise de la PR #194, validation en cours.
-**Dernier commit de code :** `e93d3259` (tests corrigés), après `58ca023e` (optimisations de rendu).
+**Dernier commit avant cette correction :** `e5622c52` (documentation), après `e93d3259` et `58ca023e`. La correction de synchronisation est dans le commit portant cette passation.
 
-Fait : analyse du lot et de la CI 41923038088 ; seul échec dans la validation asynchrone du formulaire Syndic. Attente ciblée portée à 15 secondes, sans modifier les assertions de payload ni le timeout global. Assertion d'identité API corrigée dans le test de rendu (comparaison avant/après, au lieu de comparer un objet à lui-même).
+Fait : analyse du lot et de la CI 41923038088 ; seul échec dans la validation asynchrone du formulaire Syndic. La première attente ciblée de 15 secondes ne suffisait pas en CI (41978106026) : le scénario utilise maintenant userEvent, attend le préremplissage puis la fin de validation du champ avant soumission. Assertions de payload et timeout global conservés. Cinq répétitions consécutives locales du scénario corrigé réussies (repeats: 4 dans une copie temporaire retirée). Assertion d'identité API corrigée dans le test de rendu (comparaison avant/après, au lieu de comparer un objet à lui-même).
 
 Validation locale : 27 tests Syndic et 5 tests de stabilité des rendus réussis. Mesure comparative séquentielle dans le même processus Vitest : après cinq rendus sans modification du parent, Select et RangePicker passent chacun de 5 rendus supplémentaires avant optimisation à 0 après. Deux scénarios de mesure réussis (34 tests locaux au total). Copies de mesure temporaires retirées. Aucun gain de temps navigateur revendiqué. Reste : attendre la CI complète du dernier commit. La langue remonte l'arbre via la clé de LanguageBoundary dans App.tsx ; les mémos des traductions suivent ce remontage.
 

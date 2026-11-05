@@ -572,15 +572,24 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
   });
 
   it("modifie une programmation sans envoyer la clé `active` (refusée par l'API stricte)", async () => {
+    const user = userEvent.setup();
     listChargeSchedules.mockResolvedValue([SCHEDULE_MONTHLY]);
     previewChargeSchedule.mockResolvedValue({ scheduleId: 'sched-1', active: true, periods: [] });
     updateChargeSchedule.mockResolvedValue(SCHEDULE_MONTHLY);
     mount();
 
-    fireEvent.click(await screen.findByText('Ouvrir'));
+    await user.click(await screen.findByText('Ouvrir'));
     const labelInput = await screen.findByLabelText('Libellé');
-    fireEvent.change(labelInput, { target: { value: 'Charges renommées' } });
-    fireEvent.click(screen.getByText('Enregistrer'));
+    await waitFor(() => expect(labelInput).toHaveValue(SCHEDULE_MONTHLY.label));
+    await user.clear(labelInput);
+    await user.paste('Charges renommées');
+    // Attendre la validation déclenchée par la saisie avant validateFields().
+    // Sinon rc-field-form peut rejeter la soumission comme périmée (outOfDate).
+    await waitFor(() => {
+      expect(labelInput).toHaveValue('Charges renommées');
+      expect(labelInput.closest('.ant-form-item')).not.toHaveClass('ant-form-item-is-validating');
+    });
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
 
     // La validation asynchrone des champs Ant Design peut dépasser la seconde
     // par défaut sur le runner CI ; les assertions sur le corps restent strictes.
