@@ -5,10 +5,9 @@ import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { getClientsBalance } from '../../services/finance-service';
+import { getClientsBalance, listClientBalanceProperties } from '../../services/finance-service';
 import type { ClientsBalanceLine } from '../../types/finance-types';
 import { useListParams } from '../../hooks/useListParams';
-import { listProperties } from '../../services/property-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { exportToCSV } from '../../utils/export-utils';
 import {
@@ -80,32 +79,17 @@ export const BalanceClients: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  /**
-   * Options du filtre « Bien », lues sur le parc et non sur la balance.
-   *
-   * Deux raisons, dans cet ordre d'importance.
-   *
-   * D'abord l'exactitude : l'API attend un **identifiant** de bien, et une
-   * ligne de balance ne porte que des libellés (`propertyLabels`). Envoyer un
-   * libellé ne filtrerait rien. Le parc, lui, donne les deux.
-   *
-   * Ensuite la complétude : choisir un bien ne doit pas faire disparaître les
-   * autres de la liste déroulante, sinon on ne peut plus défiltrer. Dériver
-   * les options de la balance obligeait à la charger une seconde fois, sans
-   * filtre, pour ce seul besoin. Une requête de moins.
-   */
+  /** Options stables du filtre, sous le même droit de lecture que la balance. */
   const { data: parc } = useQuery({
-    queryKey: queryKey('finance-parc', tenantId, {}),
-    queryFn: () => listProperties(tenantId as string, { page: 1, limit: 200 }),
+    queryKey: queryKey('finance-balance-properties', tenantId, {}),
+    queryFn: () => listClientBalanceProperties(tenantId as string),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
   });
 
   const optionsBiens = React.useMemo(
     () =>
-      (parc?.properties ?? [])
-        .map(bien => ({ value: bien.id, label: bien.title }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
+      (parc ?? []).map(bien => ({ value: bien.id, label: bien.title })).sort((a, b) => a.label.localeCompare(b.label)),
     [parc]
   );
 

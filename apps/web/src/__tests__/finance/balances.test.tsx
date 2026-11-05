@@ -27,20 +27,12 @@ import { BalanceAgee } from '../../pages/finance/BalanceAgee';
 
 const getClientsBalance = vi.fn();
 const getClientsAgingBalance = vi.fn();
+const listClientBalanceProperties = vi.fn();
 
 vi.mock('../../services/finance-service', () => ({
   getClientsBalance: (...a: unknown[]) => getClientsBalance(...a),
-  getClientsAgingBalance: (...a: unknown[]) => getClientsAgingBalance(...a)
-}));
-
-// Les options du filtre « Bien » viennent du parc, et non de la balance :
-// l'API attend un identifiant de bien, qu'une ligne de balance ne porte pas.
-// Sans ce mock, la liste deroulante serait vide et le filtre ne serait pas
-// reellement couvert.
-const listProperties = vi.fn();
-
-vi.mock('../../services/property-service', () => ({
-  listProperties: (...a: unknown[]) => listProperties(...a)
+  getClientsAgingBalance: (...a: unknown[]) => getClientsAgingBalance(...a),
+  listClientBalanceProperties: (...a: unknown[]) => listClientBalanceProperties(...a)
 }));
 
 vi.mock('../../hooks/useBreakpoint', () => ({
@@ -115,6 +107,7 @@ function mountAgee(url = '/tenant/agence-1/finance/balance-agee') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  listClientBalanceProperties.mockResolvedValue([]);
 });
 
 describe('Balance clients — rendu', () => {
@@ -174,10 +167,7 @@ describe('Balance clients — rendu', () => {
 describe('Balance clients — état dans l’URL', () => {
   it('relit la période et le bien depuis l’adresse au montage', async () => {
     getClientsBalance.mockResolvedValue({ lines: [ligne()], totalBalance: 600_000, currency: 'XOF' });
-    listProperties.mockResolvedValue({
-      properties: [{ id: 'bien-7', title: 'Villa 4 pièces - Cocody Angré' }],
-      pagination: { page: 1, limit: 200, total: 1, totalPages: 1 }
-    });
+    listClientBalanceProperties.mockResolvedValue([{ id: 'bien-7', title: 'Villa 4 pièces - Cocody Angré' }]);
 
     mountClients('/tenant/agence-1/finance/balance-clients?from=2026-01-01&to=2026-01-31&propertyId=bien-7');
 

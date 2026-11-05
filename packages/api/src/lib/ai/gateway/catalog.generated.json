@@ -464,6 +464,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/finance/clients/properties",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/clients/properties",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / clients / properties",
+      "permissions": ["FINANCE_REPORTS_READ"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/finance/contractor-contracts",
       "method": "GET",
       "path": "/api/tenants/:tenantId/finance/contractor-contracts",

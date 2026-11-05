@@ -17,12 +17,10 @@ import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
  *         existence of another tenant's property)
  */
 export async function getPropertyForTenant(propertyId: string, tenantId: string) {
-  if (!tenantId) {
-    throw new BadRequestError('Contexte tenant requis pour les opérations sur les biens.');
-  }
+  const tenantWhere = propertyTenantWhere(tenantId);
 
   const property = await prisma.property.findFirst({
-    where: { id: propertyId, tenantId }
+    where: { id: propertyId, ...tenantWhere }
   });
 
   if (!property) {
@@ -30,4 +28,12 @@ export async function getPropertyForTenant(propertyId: string, tenantId: string)
   }
 
   return property;
+}
+
+/** Prédicat partagé pour les lectures de listes de biens d'une agence. */
+export function propertyTenantWhere(tenantId: string) {
+  if (!tenantId) {
+    throw new BadRequestError('Contexte tenant requis pour les opérations sur les biens.');
+  }
+  return { tenantId };
 }

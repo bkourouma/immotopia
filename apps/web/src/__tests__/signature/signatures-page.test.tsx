@@ -92,6 +92,30 @@ beforeEach(() => {
 });
 
 describe('SignaturesPage', () => {
+  it('alterne le tri de la date de création depuis le tri décroissant initial', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Bail Villa Cocody');
+    const header = screen.getByRole('columnheader', { name: /Créée le/ });
+    expect(header).toHaveAttribute('aria-sort', 'descending');
+
+    await user.click(header);
+    await waitFor(() => {
+      expect(header).toHaveAttribute('aria-sort', 'ascending');
+      expect(listSignaturesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sortBy: 'createdAt', sortDir: 'asc' })
+      );
+    });
+
+    await user.click(header);
+    await waitFor(() => {
+      expect(header).toHaveAttribute('aria-sort', 'descending');
+      expect(listSignaturesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sortBy: 'createdAt', sortDir: 'desc' })
+      );
+    });
+  });
+
   it('affiche les compteurs et les lignes', async () => {
     renderPage();
     expect(await screen.findByText('Bail Villa Cocody')).toBeInTheDocument();

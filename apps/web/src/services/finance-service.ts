@@ -57,6 +57,14 @@ export async function getClientsBalance(tenantId: string, filters?: BalanceFilte
   return response.data.data;
 }
 
+/** Biens liés à un bail, limités aux identifiants et libellés utiles aux balances. */
+export async function listClientBalanceProperties(tenantId: string): Promise<Array<{ id: string; title: string }>> {
+  const response = await apiClient.get<ApiResponse<Array<{ id: string; title: string }>>>(
+    `${base(tenantId)}/clients/properties`
+  );
+  return response.data.data;
+}
+
 /** Balance âgée : la même balance, ventilée par ancienneté de créance. */
 export async function getClientsAgingBalance(
   tenantId: string,

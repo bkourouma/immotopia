@@ -214,6 +214,8 @@ jest.mock('@prisma/client', () => {
           .map(i => {
             const lease = store.leases.find(l => l.id === i.lease_id);
             return {
+              id: i.id,
+              status: i.status,
               due_date: i.due_date,
               amount_rent: i.amount_rent ?? 0,
               amount_service: i.amount_service ?? 0,
@@ -620,6 +622,123 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
 
   describe('getClientsAgingBalance', () => {
     const ASOF = new Date('2026-06-15T00:00:00.000Z');
+
+    it('BUG-2026-11-04-036 : compte un brouillon facturé au jour dû, mais pas un vrai brouillon', async () => {
+      seedLease({ id: 'lease-prisca', property_id: 'prop-a', primary_renter_client_id: 'client-prisca' });
+      seedAccount({ id: 'acc-prisca', tenantClientId: 'client-prisca', label: 'Prisca', balance: 185000 });
+      seedInstallment({
+        id: 'draft-billed',
+        lease_id: 'lease-prisca',
+        status: 'DRAFT',
+        due_date: ASOF,
+        amount_rent: 185000
+      });
+      seedInstallment({
+        id: 'draft-unbilled',
+        lease_id: 'lease-prisca',
+        status: 'DRAFT',
+        due_date: ASOF,
+        amount_rent: 90000
+      });
+      seedInstallment({
+        id: 'draft-future',
+        lease_id: 'lease-prisca',
+        status: 'DRAFT',
+        due_date: new Date('2026-07-15T00:00:00Z'),
+        amount_rent: 50000
+      });
+      seedInstallment({
+        id: 'cancelled',
+        lease_id: 'lease-prisca',
+        status: 'CANCELED',
+        due_date: ASOF,
+        amount_rent: 120000
+      });
+      seedMovement({
+        id: 'm-draft',
+        accountId: 'acc-prisca',
+        movementDate: ASOF,
+        type: 'INSTALLMENT',
+        debit: 185000,
+        sourceId: 'draft-billed',
+        leaseId: 'lease-prisca'
+      });
+
+      const before = await getClientsAgingBalance(TENANT_ID, { asOf: new Date('2026-06-14T00:00:00Z') });
+      expect(before.lines.find(l => l.accountId === 'acc-prisca')?.agedTotal ?? 0).toBe(0);
+
+      const due = await getClientsAgingBalance(TENANT_ID, { asOf: ASOF });
+      const line = due.lines.find(l => l.accountId === 'acc-prisca')!;
+      expect(line.days0To30).toBe(185000);
+      expect(line.notYetDue).toBe(0);
+      expect(line.ledgerBalance).toBe(185000);
+      expect(line.gap).toBe(0);
+
+      const after = await getClientsAgingBalance(TENANT_ID, { asOf: new Date('2026-06-16T00:00:00Z') });
+      expect(after.lines.find(l => l.accountId === 'acc-prisca')?.gap).toBe(0);
+
+      const nextDay = new Date('2026-06-16T00:00:00Z');
+      seedInstallment({ id: 'next-day-due', lease_id: 'lease-prisca', due_date: nextDay, amount_rent: 1000 });
+      seedMovement({
+        id: 'next-day-movement',
+        accountId: 'acc-prisca',
+        movementDate: nextDay,
+        type: 'INSTALLMENT',
+        debit: 1000,
+        sourceId: 'next-day-due',
+        leaseId: 'lease-prisca'
+      });
+      const fromNextDay = await getClientsAgingBalance(TENANT_ID, { asOf: nextDay, range: { from: nextDay } });
+      const lineFromNextDay = fromNextDay.lines.find(l => l.accountId === 'acc-prisca')!;
+      expect(lineFromNextDay.ledgerBalance).toBe(186000);
+      expect(lineFromNextDay.agedTotal).toBe(186000);
+      expect(lineFromNextDay.gap).toBe(0);
+    });
+
+    it('borne le brouillon facturé à la fin du filtre de période', async () => {
+      seedLease({ id: 'lease-cutoff', property_id: 'prop-a', primary_renter_client_id: 'client-cutoff' });
+      seedAccount({ id: 'acc-cutoff', tenantClientId: 'client-cutoff', label: 'Compte', balance: 186000 });
+      seedInstallment({
+        id: 'old-due',
+        lease_id: 'lease-cutoff',
+        due_date: new Date('2026-06-01T00:00:00Z'),
+        amount_rent: 1000
+      });
+      seedMovement({
+        id: 'old-movement',
+        accountId: 'acc-cutoff',
+        movementDate: new Date('2026-06-01T00:00:00Z'),
+        type: 'INSTALLMENT',
+        debit: 1000,
+        sourceId: 'old-due',
+        leaseId: 'lease-cutoff'
+      });
+      seedInstallment({
+        id: 'draft-later',
+        lease_id: 'lease-cutoff',
+        status: 'DRAFT',
+        due_date: ASOF,
+        amount_rent: 185000
+      });
+      seedMovement({
+        id: 'later-movement',
+        accountId: 'acc-cutoff',
+        movementDate: ASOF,
+        type: 'INSTALLMENT',
+        debit: 185000,
+        sourceId: 'draft-later',
+        leaseId: 'lease-cutoff'
+      });
+
+      const result = await getClientsAgingBalance(TENANT_ID, {
+        asOf: ASOF,
+        range: { to: new Date('2026-06-14T00:00:00Z') }
+      });
+      const line = result.lines.find(l => l.accountId === 'acc-cutoff')!;
+      expect(line.agedTotal).toBe(1000);
+      expect(line.ledgerBalance).toBe(1000);
+      expect(line.gap).toBe(0);
+    });
 
     beforeEach(() => {
       seedLease({

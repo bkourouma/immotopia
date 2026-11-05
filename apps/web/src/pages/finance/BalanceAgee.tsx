@@ -6,10 +6,9 @@ import type { SortOrder } from 'antd/es/table/interface';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { getClientsAgingBalance, getClientsBalance } from '../../services/finance-service';
+import { getClientsAgingBalance, listClientBalanceProperties } from '../../services/finance-service';
 import type { ClientsAgingBalanceLine } from '../../types/finance-types';
 import { useListParams, type Sort } from '../../hooks/useListParams';
-import { listProperties } from '../../services/property-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { exportToCSV } from '../../utils/export-utils';
 import {
@@ -100,20 +99,17 @@ export const BalanceAgee: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  /** Options du filtre « Bien » — même construction que `BalanceClients.tsx`,
-   *  lues sur le parc : l'API attend un identifiant, pas un libellé. */
+  /** Options du filtre « Bien », limitées aux baux lisibles avec le droit financier. */
   const { data: parc } = useQuery({
-    queryKey: queryKey('finance-parc', tenantId, {}),
-    queryFn: () => listProperties(tenantId as string, { page: 1, limit: 200 }),
+    queryKey: queryKey('finance-balance-properties', tenantId, {}),
+    queryFn: () => listClientBalanceProperties(tenantId as string),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
   });
 
   const optionsBiens = React.useMemo(
     () =>
-      (parc?.properties ?? [])
-        .map(bien => ({ value: bien.id, label: bien.title }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
+      (parc ?? []).map(bien => ({ value: bien.id, label: bien.title })).sort((a, b) => a.label.localeCompare(b.label)),
     [parc]
   );
 

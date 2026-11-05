@@ -91,26 +91,34 @@ function targetOf(originalUrl: string, tenantId: string | undefined, fallback: s
   return ids.length > 0 ? ids[ids.length - 1] : fallback;
 }
 
-function summarizeDenial(body: unknown): { code?: string; message?: string } {
+function summarizeDenial(body: unknown): { code?: string; message?: string; requiredPermission?: string } {
   if (!body || typeof body !== 'object') return {};
-  const { code, message } = body as { code?: unknown; message?: unknown };
+  const { code, message, requiredPermission } = body as {
+    code?: unknown;
+    message?: unknown;
+    requiredPermission?: unknown;
+  };
   return {
     code: typeof code === 'string' ? code : undefined,
-    message: typeof message === 'string' ? message.slice(0, MAX_TEXT) : undefined
+    message: typeof message === 'string' ? message.slice(0, MAX_TEXT) : undefined,
+    requiredPermission:
+      typeof requiredPermission === 'string' && /^\w+$/.test(requiredPermission)
+        ? requiredPermission.slice(0, MAX_TEXT)
+        : undefined
   };
 }
 
 function denialEntry(
   req: Request,
   ctx: RequestContextData,
-  body: { code?: string; message?: string }
+  body: { code?: string; message?: string; requiredPermission?: string }
 ): AuditLogEntry | null {
   const actor = ctx.actor;
   if (!actor?.userId) return null;
   if (body.code && BUSINESS_403_CODES.has(body.code)) return null;
 
   const path = normalizeAuditPath(req.originalUrl);
-  const permission = /^Permission denied: (\w+)/.exec(body.message ?? '')?.[1];
+  const permission = body.requiredPermission ?? /^Permission denied: (\w+)/.exec(body.message ?? '')?.[1];
   const urlTenantId = (req.originalUrl.match(/\/tenants?\/([0-9a-f-]{36})/i) ?? [])[1];
 
   const payload = { method: req.method, path, ...(permission ? { permission } : {}) };
@@ -171,7 +179,7 @@ function record(
   req: Request,
   res: Response,
   ctx: RequestContextData,
-  denialBody: { code?: string; message?: string }
+  denialBody: { code?: string; message?: string; requiredPermission?: string }
 ): void {
   let entry: AuditLogEntry | null = null;
   if (res.statusCode === 403) {
@@ -204,7 +212,7 @@ export function auditAccessMiddleware(req: Request, res: Response, next: NextFun
     return;
   }
 
-  let denialBody: { code?: string; message?: string } = {};
+  let denialBody: { code?: string; message?: string; requiredPermission?: string } = {};
   const originalJson = res.json.bind(res);
   res.json = ((body?: unknown) => {
     if (res.statusCode === 403) denialBody = summarizeDenial(body);

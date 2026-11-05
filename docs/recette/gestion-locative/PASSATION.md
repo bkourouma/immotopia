@@ -1,4 +1,18 @@
-# Passation — recette Gestion locative (état au 04/11/2026)
+# Passation — recette Gestion locative (reprise au 05/11/2026)
+
+## Reprise du 5 novembre — à lire avant la photographie historique
+
+La recette a repris dans le même worktree avec Codex. D31 et maintenance 063–065 sont corrigés ; les onze anomalies RT5 sont retestées avec leur portée détaillée. Premier lot produit poussé : `7e38ae0f`. Les corrections complémentaires et preuves sont dans [REPRISE-2026-11-05.md](REPRISE-2026-11-05.md), [RT5](RETESTS-2026-11-05.md), [finance](RETESTS-FINANCE-2026-11-05.md), [maintenance](RETESTS-MAINTENANCE-2026-11-05.md) et les rapports `COMPLEMENT-*`.
+
+- Cartographie : Serena configuré, MCP non exposé dans ce chat ; Repomix et dependency-cruiser opérationnels. Contrôle des frontières frontend/API réussi.
+- `RESULTATS.md` possède désormais un bilan calculable ; `COUVERTURE-A-FINALISER.md` liste les cas partiels ou sans verdict. Le journal ancien annonce P1 terminé, mais les verdicts détaillés du bloc 01 n'ont pas été retrouvés : ne pas inventer leurs réussites.
+- Nouveaux constats du 05/11 : tri des signatures corrigé ; filtre Bien du comptable corrigé dans les deux balances avec lookup minimal ; portail Dépôt multibaux (005) corrigé, testé avec récupération après erreur et retesté en Chrome ; trois fiches bloquées incluent le scénario de renouvellement contradictoire avec H39. Consulter le bus et [ANOMALIES.md](ANOMALIES.md) pour l'état actualisé.
+- CI du premier lot : API 11 615 et web 4 261 tests réussis. **L'isolation affichait un faux vert** : dix tests échouaient, masqués par `continue-on-error`. Workflow rendu bloquant, messages 403, audit et nettoyage corrigés. Le rejeu LOCAL final passe réellement : **13 suites / 248 tests, code 0**, sur base neuve dédiée. Voir [ISOLATION-CI-2026-11-05.md](ISOLATION-CI-2026-11-05.md) et attendre le nouveau run avant de valider la CI du lot.
+- Quota de signatures de l'agence A atteint à 20/20 à l'issue de GL-04-101 : envoi suivant refusé en 409 comme attendu. Cela empêche de nouveaux envois dans la configuration actuelle ; GL-04-115 demande 26 dossiers et GL-08-067 doit être préparé autrement. Aucun achat réalisé.
+- API et SMTP relancés depuis les helpers permanents. Le puits SMTP écrivait auparavant dans l'ancien scratchpad : les trois messages manquants ont été copiés sans suppression et les nouveaux arrivent dans `outils/rec/mails`. Santé API 8820 avant chaque essai ; HMR peut prendre 40–80 secondes.
+- Sessions : plusieurs connexions simultanées du même compte invalident les anciennes sessions. Répartir ADMIN_A et AGENT_A lorsque les droits le permettent, noter le rôle réellement testé.
+
+**Les sections suivantes décrivent la photographie du 4 novembre. Leurs compteurs et priorités sont historiques ; les documents de reprise ci-dessus et HANDOFF priment pour continuer.**
 
 Ce document permet à un autre agent IA de reprendre la recette du module de
 gestion locative là où elle s'est arrêtée. Il complète

@@ -127,12 +127,8 @@ jobs:
 
       - run: npm run prisma:generate -w @immotopia/api
 
-      # continue-on-error : ce job n'a pas pu etre prouve vert en local (pas de
-      # base disponible lors de son ajout). A rendre bloquant des qu'un premier
-      # passage CI est vert.
       - name: Tests d'isolation
         run: npm run test:isolation -w @immotopia/api
-        continue-on-error: true
 
   # Le runner GitHub n'a que 4 vCPU. Les 78 fichiers de test montent chacun un
   # jsdom et de vrais composants Ant Design : sur une seule machine, avec

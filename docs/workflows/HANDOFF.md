@@ -17,32 +17,38 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
-## Branche `orch/2026-11-03-recette-locatif` — 2026-11-04
+## Branche `orch/2026-11-03-recette-locatif` — 2026-11-05
 
 Recette complète de la gestion locative : scénario de 852 cas (`docs/recette/gestion-locative/`), exécution Playwright et correctifs délégués. PR brouillon [#193](https://github.com/bkourouma/immotopia/pull/193) vers `main`, à fusionner par l'utilisateur. Worktree : `.claude/worktrees/recette-locatif`.
 
-**Recette arrêtée le 04/11 à la demande de l'utilisateur, pour reprise par une autre IA. Lire d'abord `docs/recette/gestion-locative/PASSATION.md`** : état, environnement, méthode, priorités.
+**Reprise par Codex le 05/11, en cours.** Lire `docs/recette/gestion-locative/REPRISE-2026-11-05.md`, les rapports `RETESTS*-2026-11-05.md` et `COMPLEMENT*-2026-11-05.md`, puis `COUVERTURE-A-FINALISER.md`. La passation du 04/11 reste une photographie historique.
 
 - **Fait** :
-  - 99 anomalies au bus `.agent-bus/`, dont 83 passées, 11 prêtes au retest (008, 036, 047, 055 à 062), 3 nouvelles non corrigées (063, 064, 065) et 2 bloquées (11-03-016, 11-03-028).
-  - Les lots D1 à D30 sont commités par thème.
+  - État actualisé des anomalies dans le bus partagé ; ne plus utiliser les compteurs du 04/11. Les trois nouvelles 063–065 sont corrigées et retestées, et RT5 est repris.
+  - D31, maintenance 063–065 et corrections des échecs CI commités et poussés : `7e38ae0f`. Hooks exécutés sans contournement. Rapport de relecture : aucun constat ouvert après corrections d'atomicité et de concurrence.
+  - CI du premier lot `41977138986` : API 11 615 et web 4 261 tests réussis. L'isolation était un faux vert (10 échecs masqués par continue-on-error), corrigé dans ce lot : étape désormais bloquante, permission structurée conservée dans audit, attentes 403 neutres et nettoyage FK ciblé. Rejeu LOCAL final complet : **13 suites / 248 tests, code 0**, base neuve `immotopia_isolation_codex_20261105_0645`, mode warn identique CI. Consulter le nouveau run après push avant de valider la CI.
+  - Écart 036 corrigé et retesté : pour Prisca Yao, total âgé = grand livre = 767 750 FCFA, écart nul ; seuls les orphelins historiques de 3 200 et 2 000 restent. Les 56 tests financiers passent, bornes de période relues.
+  - Nouveaux défauts du 05/11 : tri des signatures corrigé, testé et retesté ; filtre Bien du comptable corrigé dans les deux balances, nouveau lookup limité à id/title et à l'agence, 26 tests API et 14 web, lecture de B depuis A refusée en 403 ; dépôt multibaux corrigé, sélecteur et réessai après erreur, 4 tests web et 12 de garde API, retest C2 positif sur L5. Relectures code/sécurité : aucun constat restant après corrections et wiki.
   - Le classeur des fonctionnalités et les catalogues i18n sont complets.
   - Les résultats par bloc sont dans `RESULTATS.md`.
 - **Reste** : par ordre de priorité, détaillé dans `PASSATION.md`, section 2.
-  1. Finir D31, non commité dans le worktree : exports « - » vides avec 2 tests rouges, `t('Autre')`, montants du portail locataire.
-  2. Corriger 063 à 065.
-  3. Retester les 11 anomalies prêtes et les nouvelles.
-  4. Jouer les cas restants des blocs 02, 03, 04, 08, 09, 10, 11, 12 et 14.
-  5. Remplir le « Bilan par fichier », lancer les suites complètes et `test:isolation`, mettre la PR à jour.
+  1. Suivre la CI du nouveau lot et rejouer BUG005/006 après commit. Toutes les anomalies RT5 sont passées avec leur portée détaillée (057 : interface + schéma, sans POST réel forcé). Ne pas confondre ces retests avec la validation de toutes les variantes des 852 cas.
+  2. Continuer les variantes partielles des compléments 04 et 08. L'agence A a atteint 20/20 signatures pendant GL-04-101 ; le 21e envoi a bien été refusé en 409. Cela bloque de nouvelles signatures, notamment GL-08-067, et le scénario GL-04-115 nécessite 26 demandes (configuration insuffisante). Aucun achat ni changement de plafond effectué.
+  3. Continuer les cas restants de `COUVERTURE-A-FINALISER.md`, notamment les 49 cas du bloc 01 sans verdict détaillé conservé (le journal ancien indique P1 terminé, sans verdicts exploitables).
+  4. Scénario GL-03-016 en conflit avec H39 (interdiction de chevauchement) : BUG-2026-11-05-001 bloqué comme écart de scénario, pas défaut produit confirmé ; conserver le garde.
+  5. Rejouer les prérequis manquants par l'interface sur données REC-GL, suivre les suites complètes en CI et mettre à jour la PR avant clôture.
 - **Pièges** :
   - Outils de recette (briefs, `rec-env.cjs`, Playwright, lots i18n, journal `suivi.md`) : `D:\APP\Immobillier\.orchestration\2026-11-03-recette-locatif\`, local et exclu de git.
   - Serveurs : `rec-gl-smtp` (2525), `rec-gl-api` (8820) et `rec-gl-web` (3320) dans le `.claude/launch.json` du checkout principal. La base dédiée est `immotopia_recette_locatif`.
+  - API et puits SMTP ont été relancés depuis les helpers permanents sous `.orchestration/2026-11-03-recette-locatif/outils/rec`. Journaux API : `.orchestration/2026-11-03-recette-locatif/api-reprise.{stdout,stderr}.log`. Le SMTP ancien écrivait dans un scratchpad ; les trois messages manquants ont été copiés dans le dossier permanent sans supprimer les originaux.
+  - Plusieurs autres chats exécutent des tests dans `ux-integ` et `ux-lot-perf` : ne pas arrêter leurs processus ; distinguer les délais sous charge des régressions.
+  - Tests DB : trois bases locales de test créées, non supprimées (`immotopia_isolation_codex_20261105_0635`, `_0640`, `_0645`). Première tentative : mode `enforce` hérité du lanceur de recette, différent de la CI ; deuxième : 213 assertions passées mais erreur de clé étrangère comptable après le test ; troisième : 248 tests, toutes les phases réussies. Aucun effet sur `immotopia_recette_locatif`. Journaux sous `.orchestration/2026-11-03-recette-locatif/isolation-locale*.log`.
   - `set-state` du bus refuse « échoué au retest » : utiliser « en correction » avec une note.
   - Messages Zod et messages hors erreurs typées : les annoter `// @i18n-keys`.
   - Ne jamais commiter pendant qu'un agent écrit.
   - Pas plus de deux ou trois agents à la fois.
   - Balance âgée : les écarts « Locataire Pénalités » (+3 200 et +2 000) sont des données orphelines, pas un défaut.
-- **Dernier commit** : la passation, au-dessus de `4dab3306`, poussée.
+- **Dernier commit produit** : `7e38ae0f` (poussé) ; consulter `git log` pour les lots suivants et les rapports actualisés.
 
 ## État des lieux (pilote) — 2026-10-31
 

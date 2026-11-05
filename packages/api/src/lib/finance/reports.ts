@@ -55,7 +55,7 @@ const DEFAULT_CURRENCY = 'XOF';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** Statuts d'échéance considérés comme non soldés pour la balance âgée. */
-const UNPAID_INSTALLMENT_STATUSES = ['DUE', 'PARTIAL', 'OVERDUE'] as const;
+const UNPAID_INSTALLMENT_STATUSES = ['DRAFT', 'DUE', 'PARTIAL', 'OVERDUE'] as const;
 
 // ---------------------------------------------------------------------------
 // Utilitaires internes
@@ -371,6 +371,8 @@ export const getClientsAgingBalance: GetClientsAgingBalanceWithGap = async (tena
       ...(leaseIdFilter ? { lease_id: { in: leaseIdFilter } } : {})
     },
     select: {
+      id: true,
+      status: true,
       due_date: true,
       amount_rent: true,
       amount_service: true,
@@ -381,10 +383,30 @@ export const getClientsAgingBalance: GetClientsAgingBalanceWithGap = async (tena
     }
   });
 
+  // An old installment may still be DRAFT even though its billed movement is
+  // already in the ledger (for example after a data backfill). Count only those
+  // drafts: a genuine draft without a billed movement is not yet a receivable.
+  const draftIds = unpaidInstallments.filter(i => i.status === 'DRAFT').map(i => i.id);
+  const billedDraftMovements = draftIds.length
+    ? await prisma.thirdPartyMovement.findMany({
+        where: {
+          tenantId,
+          type: 'INSTALLMENT',
+          sourceType: 'RENTAL_INSTALLMENT',
+          sourceId: { in: draftIds },
+          movementDate: { lte: advanceUpTo },
+          accountId: { in: base.lines.map(line => line.accountId) }
+        },
+        select: { sourceId: true }
+      })
+    : [];
+  const billedDraftIds = new Set(billedDraftMovements.map(m => m.sourceId));
+
   const asOfUtcMidnight = toUtcMidnight(asOf);
   const bucketsByClient = new Map<string, AgingBuckets>();
 
   for (const installment of unpaidInstallments) {
+    if (installment.status === 'DRAFT' && !billedDraftIds.has(installment.id)) continue;
     const totalDue =
       toAmountOrZero(installment.amount_rent) +
       toAmountOrZero(installment.amount_service) +

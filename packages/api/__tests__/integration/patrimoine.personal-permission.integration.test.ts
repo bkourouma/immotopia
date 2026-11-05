@@ -108,13 +108,21 @@ maybeDescribe('permissions personnelles du patrimoine (base dédiée)', () => {
     ])('GET %s -> 403 PATRIMOINE_PERSONAL_VIEW', async path => {
       const res = await get(adminA, `${BASE(agencyA.id)}${path}`);
       expect(res.status).toBe(403);
-      expect(res.body.message).toContain('PATRIMOINE_PERSONAL_VIEW');
+      expect(res.body).toMatchObject({
+        error: 'Forbidden',
+        requiredPermission: 'PATRIMOINE_PERSONAL_VIEW'
+      });
+      expect(res.body.message).not.toContain('PATRIMOINE_PERSONAL_VIEW');
     });
 
     it('POST /assets -> 403 PATRIMOINE_PERSONAL_EDIT et aucun actif créé', async () => {
       const res = await post(adminA, `${BASE(agencyA.id)}/assets`, asset('Refusé'));
       expect(res.status).toBe(403);
-      expect(res.body.message).toContain('PATRIMOINE_PERSONAL_EDIT');
+      expect(res.body).toMatchObject({
+        error: 'Forbidden',
+        requiredPermission: 'PATRIMOINE_PERSONAL_EDIT'
+      });
+      expect(res.body.message).not.toContain('PATRIMOINE_PERSONAL_EDIT');
       expect(await prisma.asset.count({ where: { tenantId: agencyA.id } })).toBe(0);
     });
 

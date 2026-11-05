@@ -23,9 +23,9 @@ const getClientsAgingBalance = vi.fn();
 
 vi.mock('../../services/finance-service', () => ({
   getClientsBalance: (...a: unknown[]) => getClientsBalance(...a),
-  getClientsAgingBalance: (...a: unknown[]) => getClientsAgingBalance(...a)
+  getClientsAgingBalance: (...a: unknown[]) => getClientsAgingBalance(...a),
+  listClientBalanceProperties: vi.fn().mockResolvedValue([])
 }));
-vi.mock('../../services/property-service', () => ({ listProperties: vi.fn().mockResolvedValue({ data: [] }) }));
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));

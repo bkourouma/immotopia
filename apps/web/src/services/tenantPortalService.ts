@@ -34,7 +34,8 @@ export const tenantPortalService = {
     }),
 
   // Deposit
-  getDepositInfo: () => api.get('/portal/tenant/deposit'),
+  getDepositInfo: (leaseId?: string) =>
+    api.get('/portal/tenant/deposit', { params: leaseId ? { leaseId } : undefined }),
 
   // Maintenance
   getMaintenanceTickets: (params?: { status?: string; leaseId?: string }) =>
