@@ -41,9 +41,13 @@ export type PersonalPermissionsClient = Pick<
 >;
 
 function hasAllPersonalPermissions(
-  role: { permissions: Array<{ permission: { key: string } }> } | null | undefined
+  role: { permissions?: Array<{ permission: { key: string } }> } | null | undefined
 ): boolean {
-  return Boolean(role && PERSONAL_PERMISSIONS.every(p => role.permissions.some(rp => rp.permission.key === p.key)));
+  return Boolean(
+    role &&
+    Array.isArray(role.permissions) &&
+    PERSONAL_PERMISSIONS.every(p => role.permissions!.some(rp => rp.permission.key === p.key))
+  );
 }
 
 /**
@@ -124,6 +128,9 @@ export async function grantPersonalPermissionsToExistingSpaces(
   client: PersonalPermissionsClient
 ): Promise<{ spaces: number; admins: number }> {
   const roleId = await ensurePersonalSpaceOwnerRole(client);
+  if (!client.tenant?.findMany || !client.userRole?.findMany) {
+    return { spaces: 0, admins: 0 };
+  }
   const spaces = await client.tenant.findMany({ where: { type: 'PARTICULIER' }, select: { id: true } });
   if (spaces.length === 0) return { spaces: 0, admins: 0 };
   const admins = await client.userRole.findMany({
