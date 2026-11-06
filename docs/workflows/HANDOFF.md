@@ -17,7 +17,9 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
-## Branche `orch/2026-11-03-recette-locatif` — 2026-11-05
+## Branche `orch/2026-11-03-recette-locatif` — 2026-11-06
+
+**Réconciliation du 6 novembre :** intégration de main `360591bd` (#194 et #195). Unique conflit manuel dans le test SyndicChargeSchedules : préconditions du formulaire conservées et interaction user-event/attente de validation reprises de main. Branche maintenue en brouillon, aucune fusion de PR ni aucun déploiement autorisés dans cette reprise. Vérifications et SHA livrés consignés dans la réponse de reprise ; CI du nouveau head à contrôler.
 
 Reprise des travaux Claude Code et de la recette locative, PR [#193](https://github.com/bkourouma/immotopia/pull/193), worktree `.claude/worktrees/recette-locatif`. Le checkout principal ancien et modifié par ailleurs est préservé.
 
@@ -892,3 +894,14 @@ Application et données :
 - Recette locale : le navigateur intégré refuse les pages servies par adresse IP (utiliser `*.localhost`) et ses captures échouent panneau masqué (preuves par DOM et réseau) ; `preview_start` est limité à 5 serveurs. Les testeurs n'ont pas les mots de passe de recette : les consigner dans les scénarios.
 - Ports : API 8001, web 3000 (3002 sur ce poste), démo 8800/3300 ; sur ce poste le port 3301 est pris par un autre projet (Docker).
 - Les marques anti-doublon des notifications vivent dans la table `notification_markers`, jamais dans `AuditLog`.
+
+## Branche `orch/2026-11-03-ux-recherche-lot-perf` — 2026-11-05
+
+**État :** reprise de la PR #194, validation en cours.
+**Dernier commit avant cette correction :** `e5622c52` (documentation), après `e93d3259` et `58ca023e`. La correction de synchronisation est dans le commit portant cette passation.
+
+Fait : analyse du lot et de la CI 41923038088 ; seul échec dans la validation asynchrone du formulaire Syndic. La première attente ciblée de 15 secondes ne suffisait pas en CI (41978106026) : le scénario utilise maintenant userEvent, attend le préremplissage puis la fin de validation du champ avant soumission. Assertions de payload et timeout global conservés. Cinq répétitions consécutives locales du scénario corrigé réussies (repeats: 4 dans une copie temporaire retirée). Assertion d'identité API corrigée dans le test de rendu (comparaison avant/après, au lieu de comparer un objet à lui-même).
+
+Validation locale : 27 tests Syndic et 5 tests de stabilité des rendus réussis. Mesure comparative séquentielle dans le même processus Vitest : après cinq rendus sans modification du parent, Select et RangePicker passent chacun de 5 rendus supplémentaires avant optimisation à 0 après. Deux scénarios de mesure réussis (34 tests locaux au total). Copies de mesure temporaires retirées. Aucun gain de temps navigateur revendiqué. Reste : attendre la CI complète du dernier commit. La langue remonte l'arbre via la clé de LanguageBoundary dans App.tsx ; les mémos des traductions suivent ce remontage.
+
+Pièges : les deux fichiers `zz-profil-*` non suivis préexistent et restent hors commit. Ne pas intervenir dans le worktree recette-locatif (#193). Cette branche contient une ancienne intégration de la recherche ; elle ne remplace pas #195 et ne doit pas être fusionnée sans examiner leur articulation.

@@ -1,4 +1,4 @@
-import React, { useId, useRef, useState } from 'react';
+import React, { useCallback, useId, useMemo, useRef, useState } from 'react';
 import { Button, Typography } from 'antd';
 import { DownOutlined, UpOutlined } from '@ant-design/icons';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
@@ -81,6 +81,17 @@ const rowStyle: React.CSSProperties = {
   gap: 'var(--space-3)'
 };
 
+/**
+ * Fonction qui garde toujours la même identité et délègue à la DERNIÈRE valeur
+ * de `fn` : les contrôles mémoïsés ne se re-rendent pas quand l'appelant recrée
+ * sa fermeture à chaque rendu.
+ */
+function useLatestCallback<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const ref = useRef(fn);
+  ref.current = fn;
+  return useCallback((...args: A) => ref.current(...args), []);
+}
+
 export function ListSearch(props: ListSearchProps) {
   const {
     criteria,
@@ -96,20 +107,31 @@ export function ListSearch(props: ListSearchProps) {
   const { isDesktop } = useBreakpoint();
   const { cache, remember } = useOptionLabels(criteria, values);
 
-  const text = criteria.find((criterion): criterion is TextCriterion => criterion.type === 'text');
-  const others = criteria.filter((criterion): criterion is NonTextCriterion => criterion.type !== 'text');
+  const text = useMemo(
+    () => criteria.find((criterion): criterion is TextCriterion => criterion.type === 'text'),
+    [criteria]
+  );
+  const others = useMemo(
+    () => criteria.filter((criterion): criterion is NonTextCriterion => criterion.type !== 'text'),
+    [criteria]
+  );
+  const textKey = text?.key;
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const removeChip = (key: string) => {
+  const removeChip = useLatestCallback((key: string) => {
     // Le focus part avant que la puce ne disparaisse, sinon il tombe sur <body>.
     focusAfterRemoval(rootRef.current, key);
     onChange({ [key]: undefined });
-  };
-  const clearAll = () => {
+  });
+  const clearAll = useLatestCallback(() => {
     const root = rootRef.current;
     if (root) focusFallback(root)?.focus();
     onClear();
-  };
+  });
+  const applyText = useLatestCallback((next: string | undefined, options: { replace: boolean }) => {
+    if (textKey !== undefined) onChange({ [textKey]: next }, options);
+  });
+  const applyMobile = useLatestCallback((next: Partial<SearchValues>) => onChange(next));
 
   // La ligne du bas est toujours rendue : sa région `aria-live` doit exister avant
   // que le compteur n'arrive pour être annoncée, et sa hauteur évite un saut.
@@ -125,7 +147,7 @@ export function ListSearch(props: ListSearchProps) {
     <TextField
       criterion={text}
       value={typeof values[text.key] === 'string' ? (values[text.key] as string) : undefined}
-      onApply={(next, options) => onChange({ [text.key]: next }, options)}
+      onApply={applyText}
       touch={!isDesktop}
     />
   );
@@ -141,7 +163,7 @@ export function ListSearch(props: ListSearchProps) {
               values={values}
               labels={cache}
               remember={remember}
-              onApply={next => onChange(next)}
+              onApply={applyMobile}
               block={!textField}
             />
           )}
@@ -202,20 +224,33 @@ function DesktopBar({
 
   // `primary` en ligne (au plus `maxInline`) ; tout le reste, dans l'ordre
   // de déclaration, derrière « Plus de critères ».
-  const inline: NonTextCriterion[] = [];
-  let used = 0;
-  for (const criterion of others) {
-    if (!criterion.primary) continue;
-    // Un intervalle (deux champs) pèse pour deux critères.
-    const weight = criterion.type === 'dateRange' || criterion.type === 'numberRange' ? 2 : 1;
-    if (used + weight > maxInline) continue;
-    inline.push(criterion);
-    used += weight;
-  }
-  const secondary = others.filter(criterion => !inline.includes(criterion));
+  const { inline, secondary } = useMemo(() => {
+    const inlineList: NonTextCriterion[] = [];
+    let used = 0;
+    for (const criterion of others) {
+      if (!criterion.primary) continue;
+      // Un intervalle (deux champs) pèse pour deux critères.
+      const weight = criterion.type === 'dateRange' || criterion.type === 'numberRange' ? 2 : 1;
+      if (used + weight > maxInline) continue;
+      inlineList.push(criterion);
+      used += weight;
+    }
+    return { inline: inlineList, secondary: others.filter(criterion => !inlineList.includes(criterion)) };
+  }, [others, maxInline]);
   const activeSecondary = secondary.filter(criterion => isActiveValue(values[criterion.key])).length;
 
-  const apply = (criterion: SearchCriterion) => (value: SearchValues[string]) => onChange({ [criterion.key]: value });
+  // Un `onChange` par clé, à identité stable d'un rendu à l'autre.
+  const latestOnChange = useLatestCallback(onChange);
+  const handlers = useRef(new Map<string, (value: SearchValues[string]) => void>());
+  const apply = (criterion: SearchCriterion) => {
+    let handler = handlers.current.get(criterion.key);
+    if (!handler) {
+      const key = criterion.key;
+      handler = (value: SearchValues[string]) => latestOnChange({ [key]: value });
+      handlers.current.set(key, handler);
+    }
+    return handler;
+  };
 
   const closePanel = () => {
     setExpanded(false);

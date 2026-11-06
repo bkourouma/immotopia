@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { App, Button, Card, DatePicker, Input, InputNumber, Select, Space, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -149,7 +149,17 @@ export const Tacheron: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId, contractorId } = useParams<{ tenantId: string; contractorId: string }>();
   const queryClient = useQueryClient();
-  const confirmerAction = useConfirmAction();
+  const confirmerActionBrut = useConfirmAction();
+  // `useConfirmAction` rend une fonction neuve à chaque rendu : on la lit par
+  // une référence pour que les tableaux mémoïsés ne dépendent pas d'elle.
+  const confirmerRef = useRef(confirmerActionBrut);
+  useEffect(() => {
+    confirmerRef.current = confirmerActionBrut;
+  });
+  const confirmerAction = useCallback(
+    (options: Parameters<typeof confirmerActionBrut>[0]) => confirmerRef.current(options),
+    []
+  );
 
   // Onglet actif dans l'URL (?onglet=marches|reglements) ; inconnu -> marches.
   // Les autres paramètres sont conservés.
@@ -280,16 +290,19 @@ export const Tacheron: React.FC = () => {
     return Array.from(parSite, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
   }, [marches]);
 
-  const criteresMarches: SearchCriterion[] = [
-    {
-      key: 'q',
-      type: 'text',
-      label: t('Rechercher'),
-      placeholder: t('Référence, chantier, poste de dépense…')
-    },
-    { key: 'siteId', type: 'select', label: t('Chantier'), primary: true, options: optionsChantiersMarches },
-    { key: 'signed', type: 'dateRange', label: t('Signé le') }
-  ];
+  const criteresMarches = useMemo<SearchCriterion[]>(
+    () => [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Référence, chantier, poste de dépense…')
+      },
+      { key: 'siteId', type: 'select', label: t('Chantier'), primary: true, options: optionsChantiersMarches },
+      { key: 'signed', type: 'dateRange', label: t('Signé le') }
+    ],
+    [optionsChantiersMarches]
+  );
   const marchesLocal = useLocalListSearch<ContractorContract>(marches, {
     paramPrefix: 'mar',
     criteria: criteresMarches,
@@ -297,12 +310,15 @@ export const Tacheron: React.FC = () => {
     accessors: ACCESSEURS_MARCHES
   });
 
-  const criteresReglements: SearchCriterion[] = [
-    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Saisi par…') },
-    { key: 'status', type: 'select', label: t('Statut'), primary: true, options: OPTIONS_STATUT_PIECE },
-    { key: 'date', type: 'dateRange', label: t('Date') },
-    { key: 'amount', type: 'numberRange', label: t('Montant'), unit: 'FCFA' }
-  ];
+  const criteresReglements = useMemo<SearchCriterion[]>(
+    () => [
+      { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Saisi par…') },
+      { key: 'status', type: 'select', label: t('Statut'), primary: true, options: OPTIONS_STATUT_PIECE },
+      { key: 'date', type: 'dateRange', label: t('Date') },
+      { key: 'amount', type: 'numberRange', label: t('Montant'), unit: 'FCFA' }
+    ],
+    []
+  );
   const reglementsLocal = useLocalListSearch<ContractorPayment>(reglements, {
     paramPrefix: 'reg',
     criteria: criteresReglements,
@@ -414,23 +430,28 @@ export const Tacheron: React.FC = () => {
     }
   };
 
-  const validerSituation = async (situation: ProgressStatement) => {
-    if (!tenantId || !contractorId || !marcheConsulte) return;
-    try {
-      await validateProgressStatement(tenantId, situation.id);
-      // La validation fait monter les situations validées du marché ET ce
-      // qu'on doit au tâcheron : les deux soldes bougent, les deux listes se
-      // rechargent.
-      await queryClient.invalidateQueries({ queryKey: detailKey('progress-statements', tenantId, marcheConsulte.id) });
-      await queryClient.invalidateQueries({
-        queryKey: queryKey('contractor-contracts', tenantId, { contractorId })
-      });
-      await queryClient.invalidateQueries({ queryKey: detailKey('contractors', tenantId, contractorId) });
-      message.success(t('Situation validée.'));
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || t('La validation de la situation a échoué.'));
-    }
-  };
+  const validerSituation = useCallback(
+    async (situation: ProgressStatement) => {
+      if (!tenantId || !contractorId || !marcheConsulte) return;
+      try {
+        await validateProgressStatement(tenantId, situation.id);
+        // La validation fait monter les situations validées du marché ET ce
+        // qu'on doit au tâcheron : les deux soldes bougent, les deux listes se
+        // rechargent.
+        await queryClient.invalidateQueries({
+          queryKey: detailKey('progress-statements', tenantId, marcheConsulte.id)
+        });
+        await queryClient.invalidateQueries({
+          queryKey: queryKey('contractor-contracts', tenantId, { contractorId })
+        });
+        await queryClient.invalidateQueries({ queryKey: detailKey('contractors', tenantId, contractorId) });
+        message.success(t('Situation validée.'));
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || t('La validation de la situation a échoué.'));
+      }
+    },
+    [tenantId, contractorId, marcheConsulte, queryClient, message]
+  );
 
   // ---------------------------------------------------------------------
   // Enregistrer un règlement
@@ -466,17 +487,344 @@ export const Tacheron: React.FC = () => {
     }
   };
 
-  const validerReglement = async (reglement: ContractorPayment) => {
-    if (!tenantId || !contractorId) return;
-    try {
-      await validateContractorPayment(tenantId, reglement.id);
-      await queryClient.invalidateQueries({ queryKey: detailKey('contractor-payments', tenantId, contractorId) });
-      await queryClient.invalidateQueries({ queryKey: detailKey('contractors', tenantId, contractorId) });
-      message.success(t('Règlement validé.'));
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || t('La validation du règlement a échoué.'));
-    }
-  };
+  const validerReglement = useCallback(
+    async (reglement: ContractorPayment) => {
+      if (!tenantId || !contractorId) return;
+      try {
+        await validateContractorPayment(tenantId, reglement.id);
+        await queryClient.invalidateQueries({ queryKey: detailKey('contractor-payments', tenantId, contractorId) });
+        await queryClient.invalidateQueries({ queryKey: detailKey('contractors', tenantId, contractorId) });
+        message.success(t('Règlement validé.'));
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || t('La validation du règlement a échoué.'));
+      }
+    },
+    [tenantId, contractorId, queryClient, message]
+  );
+
+  // ---------------------------------------------------------------------
+  // Colonnes et tableaux (avant les retours anticipés : règle des hooks)
+  // ---------------------------------------------------------------------
+
+  const idMarcheConsulte = marcheConsulte?.id;
+  const colonnesMarches = useMemo<ColumnsType<ContractorContract>>(
+    () => [
+      { title: t('Référence'), key: 'reference', render: (_, m) => m.reference },
+      { title: t('Chantier'), key: 'chantier', render: (_, m) => m.siteLabel },
+      // Le nom du poste, jamais son identifiant : c'est lui qui reçoit les
+      // situations dans le coût du chantier.
+      { title: t('Poste de dépense'), key: 'poste', render: (_, m) => m.costCategoryLabel },
+      { title: t('Signé le'), key: 'signe', width: 120, render: (_, m) => dateCourte(m.signedDate) },
+      {
+        title: t('Montant convenu'),
+        key: 'convenu',
+        align: 'end',
+        render: (_, m) => <MoneyValue value={m.agreedAmount} />,
+        exportValue: m => m.agreedAmount
+      },
+      {
+        title: t('Situations validées'),
+        key: 'situe',
+        align: 'end',
+        render: (_, m) => <MoneyValue value={m.statementedAmount} />,
+        exportValue: m => m.statementedAmount
+      },
+      {
+        // « Marché restant », jamais « solde » : ce qui reste à EXÉCUTER, à ne
+        // pas confondre avec ce qu'on doit au tâcheron (voir l'en-tête).
+        title: t('Marché restant'),
+        key: 'restant',
+        align: 'end',
+        render: (_, m) => (
+          <Space orientation="vertical" size={0} style={{ alignItems: 'flex-end' }}>
+            <MoneyValue value={m.remainingAmount} signed />
+            {m.isOverrun && <StatusTag status="OVERRUN" tone="warning" label={t('Dépassement')} />}
+          </Space>
+        ),
+        // Nombre signé : négatif quand les situations dépassent le marché.
+        exportValue: m => m.remainingAmount
+      },
+      {
+        title: t('Actions'),
+        key: 'actions',
+        align: 'end',
+        render: (_, m) => (
+          <Button type="link" onClick={() => setMarcheChoisi(m.id)} disabled={idMarcheConsulte === m.id}>
+            {idMarcheConsulte === m.id ? t('Situations affichées') : t('Voir les situations')}
+          </Button>
+        )
+      }
+    ],
+    [idMarcheConsulte]
+  );
+
+  const colonnesSituations = useMemo<ColumnsType<ProgressStatement>>(
+    () => [
+      { title: t('Date'), key: 'date', width: 120, render: (_, s) => dateCourte(s.statementDate) },
+      { title: t('Description'), key: 'description', render: (_, s) => s.description },
+      {
+        title: t('Montant'),
+        key: 'montant',
+        align: 'end',
+        render: (_, s) => <MoneyValue value={s.amount} />,
+        exportValue: s => s.amount
+      },
+      { title: t('Saisie par'), key: 'saisie', render: (_, s) => s.createdByLabel },
+      {
+        title: t('Statut'),
+        key: 'statut',
+        render: (_, s) => (
+          <StatusTag
+            status={s.status}
+            tone={TONE_PIECE[s.status]}
+            label={CONTRACTOR_DOCUMENT_STATUS_LABELS[s.status]}
+          />
+        )
+      },
+      {
+        title: t('Actions'),
+        key: 'actions',
+        align: 'end',
+        render: (_, s) =>
+          s.status === 'DRAFT' ? (
+            <ConfirmAction
+              title={t('Valider la situation du {{value}} ?', { value: dateCourte(s.statementDate) })}
+              description={t(
+                'Cette opération est irréversible : la situation est constatée, le coût du chantier monte du même montant, et le tâcheron devient créancier de cette somme.'
+              )}
+              okText={t('Confirmer la validation')}
+              onConfirm={() => validerSituation(s)}
+            >
+              <Button type="link">{t('Valider')}</Button>
+            </ConfirmAction>
+          ) : null
+      }
+    ],
+    [validerSituation]
+  );
+
+  const colonnesReglements = useMemo<ColumnsType<ContractorPayment>>(
+    () => [
+      { title: t('Date'), key: 'date', width: 120, render: (_, r) => dateCourte(r.paymentDate) },
+      {
+        title: t('Montant'),
+        key: 'montant',
+        align: 'end',
+        render: (_, r) => <MoneyValue value={r.amount} />,
+        exportValue: r => r.amount
+      },
+      { title: t('Saisi par'), key: 'saisi', render: (_, r) => r.createdByLabel },
+      {
+        title: t('Statut'),
+        key: 'statut',
+        render: (_, r) => (
+          <StatusTag
+            status={r.status}
+            tone={TONE_PIECE[r.status]}
+            label={CONTRACTOR_DOCUMENT_STATUS_LABELS[r.status]}
+          />
+        )
+      },
+      {
+        title: t('Actions'),
+        key: 'actions',
+        align: 'end',
+        render: (_, r) =>
+          r.status === 'DRAFT' ? (
+            <ConfirmAction
+              title={t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) })}
+              description={t(
+                "Cette opération est irréversible : la somme sort de la caisse et vient en diminution de ce qu'on doit au tâcheron."
+              )}
+              okText={t('Confirmer la validation')}
+              onConfirm={() => validerReglement(r)}
+            >
+              <Button type="link">{t('Valider')}</Button>
+            </ConfirmAction>
+          ) : null
+      }
+    ],
+    [validerReglement]
+  );
+
+  // Les tableaux sont des éléments mémoïsés : une frappe dans un formulaire
+  // (état de la fiche) ne les re-rend pas, seul un changement de leurs données
+  // ou de leurs fonctions (toutes stables) les refait.
+  const tableauMarches = useMemo(
+    () => (
+      <DataView<ContractorContract>
+        export={{ filename: t('Marchés'), fetchAll: marchesLocal.exportAll }}
+        scrollX={1400}
+        {...marchesLocal.dataViewProps}
+        loading={marchesEnAttente}
+        error={erreurMarches ? t('Impossible de charger les marchés de ce tâcheron.') : null}
+        errorCause={erreurMarches}
+        onRetry={() => refetchMarches()}
+        emptyDescription={t("Aucun marché n'a encore été convenu avec ce tâcheron.")}
+        columns={colonnesMarches}
+        rowKey={m => m.id}
+        aria-label={t('Marchés du tâcheron')}
+        renderCard={m => (
+          <DataCard
+            title={m.reference}
+            aria-label={m.reference}
+            subtitle={t('{{chantier}} — poste « {{poste}} »', {
+              chantier: m.siteLabel,
+              poste: m.costCategoryLabel
+            })}
+            status={m.isOverrun ? <StatusTag status="OVERRUN" tone="warning" label={t('Dépassement')} /> : undefined}
+            highlight={<MoneyValue value={m.agreedAmount} />}
+            fields={[
+              { label: t('Situations validées'), value: <MoneyValue value={m.statementedAmount} /> },
+              { label: t('Marché restant'), value: <MoneyValue value={m.remainingAmount} signed /> },
+              { label: t('Signé le'), value: dateCourte(m.signedDate) }
+            ]}
+            primaryAction={{ label: t('Voir les situations'), onClick: () => setMarcheChoisi(m.id) }}
+          />
+        )}
+      />
+    ),
+    [
+      marchesLocal.dataViewProps,
+      marchesLocal.exportAll,
+      marchesEnAttente,
+      erreurMarches,
+      refetchMarches,
+      colonnesMarches
+    ]
+  );
+
+  const tableauSituations = useMemo(
+    () => (
+      <DataView<ProgressStatement>
+        export={{ filename: t("Situations d'avancement du marché") }}
+        scrollX={1000}
+        items={(situations ?? []).slice(
+          (pageSituations - 1) * taillePageSituations,
+          pageSituations * taillePageSituations
+        )}
+        total={(situations ?? []).length}
+        page={pageSituations}
+        pageSize={taillePageSituations}
+        onPageChange={(page, taille) => {
+          setPageSituations(page);
+          setTaillePageSituations(taille);
+        }}
+        loading={situationsEnAttente}
+        error={erreurSituations ? t('Impossible de charger les situations de ce marché.') : null}
+        errorCause={erreurSituations}
+        onRetry={() => refetchSituations()}
+        emptyDescription={t("Aucune situation n'a encore été saisie sur ce marché.")}
+        columns={colonnesSituations}
+        rowKey={s => s.id}
+        aria-label={t("Situations d'avancement du marché")}
+        renderCard={s => (
+          <DataCard
+            title={dateCourte(s.statementDate)}
+            aria-label={t('Situation du {{value}}', { value: dateCourte(s.statementDate) })}
+            subtitle={s.description}
+            status={
+              <StatusTag
+                status={s.status}
+                tone={TONE_PIECE[s.status]}
+                label={CONTRACTOR_DOCUMENT_STATUS_LABELS[s.status]}
+              />
+            }
+            highlight={<MoneyValue value={s.amount} />}
+            fields={[{ label: t('Saisie par'), value: s.createdByLabel }]}
+            primaryAction={
+              s.status === 'DRAFT'
+                ? {
+                    label: t('Valider'),
+                    onClick: () =>
+                      confirmerAction({
+                        title: t('Valider la situation du {{value}} ?', {
+                          value: dateCourte(s.statementDate)
+                        }),
+                        description: t(
+                          'Cette opération est irréversible : la situation est constatée, le coût du chantier monte du même montant, et le tâcheron devient créancier de cette somme.'
+                        ),
+                        okText: t('Confirmer la validation'),
+                        onConfirm: () => validerSituation(s)
+                      })
+                  }
+                : undefined
+            }
+          />
+        )}
+      />
+    ),
+    [
+      situations,
+      pageSituations,
+      taillePageSituations,
+      situationsEnAttente,
+      erreurSituations,
+      refetchSituations,
+      colonnesSituations,
+      validerSituation,
+      confirmerAction
+    ]
+  );
+
+  const tableauReglements = useMemo(
+    () => (
+      <DataView<ContractorPayment>
+        export={{ filename: t('Règlements'), fetchAll: reglementsLocal.exportAll }}
+        scrollX={900}
+        {...reglementsLocal.dataViewProps}
+        loading={reglementsEnAttente}
+        error={erreurReglements ? t('Impossible de charger les règlements de ce tâcheron.') : null}
+        errorCause={erreurReglements}
+        onRetry={() => refetchReglements()}
+        emptyDescription={t("Aucun règlement n'a encore été enregistré pour ce tâcheron.")}
+        columns={colonnesReglements}
+        rowKey={r => r.id}
+        aria-label={t('Règlements du tâcheron')}
+        renderCard={r => (
+          <DataCard
+            title={dateCourte(r.paymentDate)}
+            aria-label={t('Règlement du {{value}}', { value: dateCourte(r.paymentDate) })}
+            status={
+              <StatusTag
+                status={r.status}
+                tone={TONE_PIECE[r.status]}
+                label={CONTRACTOR_DOCUMENT_STATUS_LABELS[r.status]}
+              />
+            }
+            highlight={<MoneyValue value={r.amount} />}
+            fields={[{ label: t('Saisi par'), value: r.createdByLabel }]}
+            primaryAction={
+              r.status === 'DRAFT'
+                ? {
+                    label: t('Valider'),
+                    onClick: () =>
+                      confirmerAction({
+                        title: t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) }),
+                        description: t(
+                          "Cette opération est irréversible : la somme sort de la caisse et vient en diminution de ce qu'on doit au tâcheron."
+                        ),
+                        okText: t('Confirmer la validation'),
+                        onConfirm: () => validerReglement(r)
+                      })
+                  }
+                : undefined
+            }
+          />
+        )}
+      />
+    ),
+    [
+      reglementsLocal.dataViewProps,
+      reglementsLocal.exportAll,
+      reglementsEnAttente,
+      erreurReglements,
+      refetchReglements,
+      colonnesReglements,
+      validerReglement,
+      confirmerAction
+    ]
+  );
 
   // ---------------------------------------------------------------------
 
@@ -522,129 +870,6 @@ export const Tacheron: React.FC = () => {
       </>
     );
   }
-
-  const colonnesMarches: ColumnsType<ContractorContract> = [
-    { title: t('Référence'), key: 'reference', render: (_, m) => m.reference },
-    { title: t('Chantier'), key: 'chantier', render: (_, m) => m.siteLabel },
-    // Le nom du poste, jamais son identifiant : c'est lui qui reçoit les
-    // situations dans le coût du chantier.
-    { title: t('Poste de dépense'), key: 'poste', render: (_, m) => m.costCategoryLabel },
-    { title: t('Signé le'), key: 'signe', width: 120, render: (_, m) => dateCourte(m.signedDate) },
-    {
-      title: t('Montant convenu'),
-      key: 'convenu',
-      align: 'end',
-      render: (_, m) => <MoneyValue value={m.agreedAmount} />,
-      exportValue: m => m.agreedAmount
-    },
-    {
-      title: t('Situations validées'),
-      key: 'situe',
-      align: 'end',
-      render: (_, m) => <MoneyValue value={m.statementedAmount} />,
-      exportValue: m => m.statementedAmount
-    },
-    {
-      // « Marché restant », jamais « solde » : ce qui reste à EXÉCUTER, à ne
-      // pas confondre avec ce qu'on doit au tâcheron (voir l'en-tête).
-      title: t('Marché restant'),
-      key: 'restant',
-      align: 'end',
-      render: (_, m) => (
-        <Space orientation="vertical" size={0} style={{ alignItems: 'flex-end' }}>
-          <MoneyValue value={m.remainingAmount} signed />
-          {m.isOverrun && <StatusTag status="OVERRUN" tone="warning" label={t('Dépassement')} />}
-        </Space>
-      ),
-      // Nombre signé : négatif quand les situations dépassent le marché.
-      exportValue: m => m.remainingAmount
-    },
-    {
-      title: t('Actions'),
-      key: 'actions',
-      align: 'end',
-      render: (_, m) => (
-        <Button type="link" onClick={() => setMarcheChoisi(m.id)} disabled={marcheConsulte?.id === m.id}>
-          {marcheConsulte?.id === m.id ? t('Situations affichées') : t('Voir les situations')}
-        </Button>
-      )
-    }
-  ];
-
-  const colonnesSituations: ColumnsType<ProgressStatement> = [
-    { title: t('Date'), key: 'date', width: 120, render: (_, s) => dateCourte(s.statementDate) },
-    { title: t('Description'), key: 'description', render: (_, s) => s.description },
-    {
-      title: t('Montant'),
-      key: 'montant',
-      align: 'end',
-      render: (_, s) => <MoneyValue value={s.amount} />,
-      exportValue: s => s.amount
-    },
-    { title: t('Saisie par'), key: 'saisie', render: (_, s) => s.createdByLabel },
-    {
-      title: t('Statut'),
-      key: 'statut',
-      render: (_, s) => (
-        <StatusTag status={s.status} tone={TONE_PIECE[s.status]} label={CONTRACTOR_DOCUMENT_STATUS_LABELS[s.status]} />
-      )
-    },
-    {
-      title: t('Actions'),
-      key: 'actions',
-      align: 'end',
-      render: (_, s) =>
-        s.status === 'DRAFT' ? (
-          <ConfirmAction
-            title={t('Valider la situation du {{value}} ?', { value: dateCourte(s.statementDate) })}
-            description={t(
-              'Cette opération est irréversible : la situation est constatée, le coût du chantier monte du même montant, et le tâcheron devient créancier de cette somme.'
-            )}
-            okText={t('Confirmer la validation')}
-            onConfirm={() => validerSituation(s)}
-          >
-            <Button type="link">{t('Valider')}</Button>
-          </ConfirmAction>
-        ) : null
-    }
-  ];
-
-  const colonnesReglements: ColumnsType<ContractorPayment> = [
-    { title: t('Date'), key: 'date', width: 120, render: (_, r) => dateCourte(r.paymentDate) },
-    {
-      title: t('Montant'),
-      key: 'montant',
-      align: 'end',
-      render: (_, r) => <MoneyValue value={r.amount} />,
-      exportValue: r => r.amount
-    },
-    { title: t('Saisi par'), key: 'saisi', render: (_, r) => r.createdByLabel },
-    {
-      title: t('Statut'),
-      key: 'statut',
-      render: (_, r) => (
-        <StatusTag status={r.status} tone={TONE_PIECE[r.status]} label={CONTRACTOR_DOCUMENT_STATUS_LABELS[r.status]} />
-      )
-    },
-    {
-      title: t('Actions'),
-      key: 'actions',
-      align: 'end',
-      render: (_, r) =>
-        r.status === 'DRAFT' ? (
-          <ConfirmAction
-            title={t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) })}
-            description={t(
-              "Cette opération est irréversible : la somme sort de la caisse et vient en diminution de ce qu'on doit au tâcheron."
-            )}
-            okText={t('Confirmer la validation')}
-            onConfirm={() => validerReglement(r)}
-          >
-            <Button type="link">{t('Valider')}</Button>
-          </ConfirmAction>
-        ) : null
-    }
-  ];
 
   return (
     <>
@@ -714,39 +939,7 @@ export const Tacheron: React.FC = () => {
             label: t('Marchés'),
             children: (
               <>
-                <DataView<ContractorContract>
-                  export={{ filename: t('Marchés'), fetchAll: marchesLocal.exportAll }}
-                  scrollX={1400}
-                  {...marchesLocal.dataViewProps}
-                  loading={marchesEnAttente}
-                  error={erreurMarches ? t('Impossible de charger les marchés de ce tâcheron.') : null}
-                  errorCause={erreurMarches}
-                  onRetry={() => refetchMarches()}
-                  emptyDescription={t("Aucun marché n'a encore été convenu avec ce tâcheron.")}
-                  columns={colonnesMarches}
-                  rowKey={m => m.id}
-                  aria-label={t('Marchés du tâcheron')}
-                  renderCard={m => (
-                    <DataCard
-                      title={m.reference}
-                      aria-label={m.reference}
-                      subtitle={t('{{chantier}} — poste « {{poste}} »', {
-                        chantier: m.siteLabel,
-                        poste: m.costCategoryLabel
-                      })}
-                      status={
-                        m.isOverrun ? <StatusTag status="OVERRUN" tone="warning" label={t('Dépassement')} /> : undefined
-                      }
-                      highlight={<MoneyValue value={m.agreedAmount} />}
-                      fields={[
-                        { label: t('Situations validées'), value: <MoneyValue value={m.statementedAmount} /> },
-                        { label: t('Marché restant'), value: <MoneyValue value={m.remainingAmount} signed /> },
-                        { label: t('Signé le'), value: dateCourte(m.signedDate) }
-                      ]}
-                      primaryAction={{ label: t('Voir les situations'), onClick: () => setMarcheChoisi(m.id) }}
-                    />
-                  )}
-                />
+                {tableauMarches}
 
                 <Card style={{ marginTop: 'var(--space-4)' }}>
                   <Title level={5} style={{ marginTop: 0 }}>
@@ -860,65 +1053,7 @@ export const Tacheron: React.FC = () => {
                         : t('— ce qui reste à exécuter, et non ce qu’on lui doit.')}
                     </Text>
 
-                    <div style={{ marginTop: 'var(--space-3)' }}>
-                      <DataView<ProgressStatement>
-                        export={{ filename: t("Situations d'avancement du marché") }}
-                        scrollX={1000}
-                        items={(situations ?? []).slice(
-                          (pageSituations - 1) * taillePageSituations,
-                          pageSituations * taillePageSituations
-                        )}
-                        total={(situations ?? []).length}
-                        page={pageSituations}
-                        pageSize={taillePageSituations}
-                        onPageChange={(page, taille) => {
-                          setPageSituations(page);
-                          setTaillePageSituations(taille);
-                        }}
-                        loading={situationsEnAttente}
-                        error={erreurSituations ? t('Impossible de charger les situations de ce marché.') : null}
-                        errorCause={erreurSituations}
-                        onRetry={() => refetchSituations()}
-                        emptyDescription={t("Aucune situation n'a encore été saisie sur ce marché.")}
-                        columns={colonnesSituations}
-                        rowKey={s => s.id}
-                        aria-label={t("Situations d'avancement du marché")}
-                        renderCard={s => (
-                          <DataCard
-                            title={dateCourte(s.statementDate)}
-                            aria-label={t('Situation du {{value}}', { value: dateCourte(s.statementDate) })}
-                            subtitle={s.description}
-                            status={
-                              <StatusTag
-                                status={s.status}
-                                tone={TONE_PIECE[s.status]}
-                                label={CONTRACTOR_DOCUMENT_STATUS_LABELS[s.status]}
-                              />
-                            }
-                            highlight={<MoneyValue value={s.amount} />}
-                            fields={[{ label: t('Saisie par'), value: s.createdByLabel }]}
-                            primaryAction={
-                              s.status === 'DRAFT'
-                                ? {
-                                    label: t('Valider'),
-                                    onClick: () =>
-                                      confirmerAction({
-                                        title: t('Valider la situation du {{value}} ?', {
-                                          value: dateCourte(s.statementDate)
-                                        }),
-                                        description: t(
-                                          'Cette opération est irréversible : la situation est constatée, le coût du chantier monte du même montant, et le tâcheron devient créancier de cette somme.'
-                                        ),
-                                        okText: t('Confirmer la validation'),
-                                        onConfirm: () => validerSituation(s)
-                                      })
-                                  }
-                                : undefined
-                            }
-                          />
-                        )}
-                      />
-                    </div>
+                    <div style={{ marginTop: 'var(--space-3)' }}>{tableauSituations}</div>
 
                     <Card style={{ marginTop: 'var(--space-4)' }}>
                       <Title level={5} style={{ marginTop: 0 }}>
@@ -1014,50 +1149,7 @@ export const Tacheron: React.FC = () => {
             label: t('Règlements'),
             children: (
               <>
-                <DataView<ContractorPayment>
-                  export={{ filename: t('Règlements'), fetchAll: reglementsLocal.exportAll }}
-                  scrollX={900}
-                  {...reglementsLocal.dataViewProps}
-                  loading={reglementsEnAttente}
-                  error={erreurReglements ? t('Impossible de charger les règlements de ce tâcheron.') : null}
-                  errorCause={erreurReglements}
-                  onRetry={() => refetchReglements()}
-                  emptyDescription={t("Aucun règlement n'a encore été enregistré pour ce tâcheron.")}
-                  columns={colonnesReglements}
-                  rowKey={r => r.id}
-                  aria-label={t('Règlements du tâcheron')}
-                  renderCard={r => (
-                    <DataCard
-                      title={dateCourte(r.paymentDate)}
-                      aria-label={t('Règlement du {{value}}', { value: dateCourte(r.paymentDate) })}
-                      status={
-                        <StatusTag
-                          status={r.status}
-                          tone={TONE_PIECE[r.status]}
-                          label={CONTRACTOR_DOCUMENT_STATUS_LABELS[r.status]}
-                        />
-                      }
-                      highlight={<MoneyValue value={r.amount} />}
-                      fields={[{ label: t('Saisi par'), value: r.createdByLabel }]}
-                      primaryAction={
-                        r.status === 'DRAFT'
-                          ? {
-                              label: t('Valider'),
-                              onClick: () =>
-                                confirmerAction({
-                                  title: t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) }),
-                                  description: t(
-                                    "Cette opération est irréversible : la somme sort de la caisse et vient en diminution de ce qu'on doit au tâcheron."
-                                  ),
-                                  okText: t('Confirmer la validation'),
-                                  onConfirm: () => validerReglement(r)
-                                })
-                            }
-                          : undefined
-                      }
-                    />
-                  )}
-                />
+                {tableauReglements}
 
                 <Card style={{ marginTop: 'var(--space-4)' }}>
                   <Title level={5} style={{ marginTop: 0 }}>
