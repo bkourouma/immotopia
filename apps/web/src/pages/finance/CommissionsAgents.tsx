@@ -222,7 +222,15 @@ export const CommissionsAgents: React.FC = () => {
         </div>
       </div>
 
-      {erreurRequete ? (
+      {erreurRequete && (erreurRequete as { response?: { status?: number } }).response?.status === 403 ? (
+        <StateBlock
+          variant="forbidden"
+          description={
+            (erreurRequete as { response?: { data?: { message?: string } } }).response?.data?.message ||
+            t("Vous n'avez pas accès aux commissions des agents.")
+          }
+        />
+      ) : erreurRequete ? (
         <StateBlock
           variant="error"
           description={t('Impossible de charger les commissions des agents.')}

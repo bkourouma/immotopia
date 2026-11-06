@@ -32,6 +32,16 @@ export function formatNumber(value: number, options?: Intl.NumberFormatOptions):
 }
 
 /**
+ * Montant en franc CFA, écrit « 150 000 FCFA » (jamais « XOF », « CFA » ni
+ * « F CFA » du format `Intl` monétaire, qui varie avec le navigateur). Point
+ * d'entrée unique des écrans qui n'ont pas de devise propre à afficher ;
+ * le montant enregistré n'est pas touché, seul son rendu l'est.
+ */
+export function formatFcfa(value: number): string {
+  return `${formatNumber(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${DEFAULT_CURRENCY}`;
+}
+
+/**
  * Pourcentage déjà exprimé en points (12,5 → « 12,5 % »), et non en fraction :
  * c'est la convention de toutes les API du produit.
  */

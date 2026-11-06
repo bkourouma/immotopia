@@ -255,7 +255,10 @@ async function settlePieceTx(
     tenantId,
     journalId: desired.journalId,
     entryDate: desired.entryDate,
-    reference: desired.reference,
+    // Chaque génération suivante d'une même pièce porte sa propre référence
+    // (ENC-X, ENC-X-2, ENC-X-3…) ; la contre-passation en hérite (ANN-ENC-X-2).
+    // La clé d'idempotence reste `documentId`, pas la référence.
+    reference: rows.length === 0 ? desired.reference : `${desired.reference}-${rows.length + 1}`,
     description: desired.description,
     documentType: documentType as never,
     documentId: rows.length === 0 ? baseId : `${baseId}:r${rows.length}`,

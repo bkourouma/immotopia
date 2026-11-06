@@ -140,6 +140,8 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   let adminA: TestUser;
   let adminB: TestUser;
   const createdTenantIds: string[] = [];
+  const createdSyndicateIds: string[] = [];
+  const createdSyndicateLotIds: string[] = [];
   // Modeles DOCX globaux semes par le bloc « generation DOCX reelle » (retires en fin de suite).
   let seededTemplates: SeededGlobalTemplates | undefined;
 
@@ -162,12 +164,11 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         select: { file_path: true }
       });
       await Promise.all(generated.map(row => fs.rm(row.file_path as string, { force: true })));
-      // Le scénario Syndic crée paiements et appels avec FK RESTRICT vers lot/copropriété.
-      // On les retire dans l'ordre avant le nettoyage générique des agences de test.
-      await prisma.chargePayment.deleteMany({ where: { lot: { syndicate: { tenantId: { in: createdTenantIds } } } } });
-      await prisma.chargeCall.deleteMany({ where: { syndicate: { tenantId: { in: createdTenantIds } } } });
-      // La FK des lignes comptables vers les comptes est RESTRICT, même si l'agence possède les deux.
-      await prisma.journalEntryLine.deleteMany({ where: { entry: { tenantId: { in: createdTenantIds } } } });
+      // Les paiements et appels des coproprietes de ce test portent des FK
+      // Restrict ; les retirer dans l'ordre, sur les seuls identifiants crees ici.
+      await prisma.chargePayment.deleteMany({ where: { lotId: { in: createdSyndicateLotIds } } });
+      await prisma.chargeCall.deleteMany({ where: { syndicateId: { in: createdSyndicateIds } } });
+      await prisma.syndicate.deleteMany({ where: { id: { in: createdSyndicateIds } } });
       // Un echec de nettoyage remonte (il fait echouer la suite) : jamais silencieux.
       await cleanupTenants(createdTenantIds);
       // Apres les agences : leurs documents generes referencent le modele.
@@ -852,6 +853,8 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       const lot = await prisma.syndicateLot.create({
         data: { syndicateId: syndicate.id, lotNumber: `${label}-01`, lotType: 'APARTMENT', generalShares: 100 }
       });
+      createdSyndicateIds.push(syndicate.id);
+      createdSyndicateLotIds.push(lot.id);
       const call = await prisma.chargeCall.create({
         data: {
           syndicateId: syndicate.id,

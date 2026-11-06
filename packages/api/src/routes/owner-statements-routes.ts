@@ -6,6 +6,7 @@ import { requireAnyPropertyPermission, requirePropertyPermission } from '../midd
 import {
   createOwnerStatementHandler,
   getOwnerStatementHandler,
+  listOwnerStatementEligiblePropertiesHandler,
   listOwnerStatementsHandler,
   recomputeOwnerStatementHandler,
   sendOwnerStatementHandler,
@@ -38,6 +39,11 @@ router.post(
   '/tenants/:tenantId/owner-statements',
   requirePropertyPermission('OWNER_STATEMENTS_EDIT'),
   createOwnerStatementHandler
+);
+router.get(
+  '/tenants/:tenantId/owner-statements/eligible-properties',
+  requirePropertyPermission('OWNER_STATEMENTS_EDIT'),
+  listOwnerStatementEligiblePropertiesHandler
 );
 router.get(
   '/tenants/:tenantId/owner-statements/:statementId',

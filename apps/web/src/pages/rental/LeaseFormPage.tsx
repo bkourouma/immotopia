@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Card, Space, Typography, Spin, Alert } from 'antd';
+import { App, Card, Space, Typography, Spin, Alert } from 'antd';
 import { LeaseForm } from '../../components/rental/LeaseForm';
 import { LeaseFormWizard } from '../../components/rental/LeaseFormWizard';
 import {
@@ -18,6 +18,7 @@ const { Title, Text } = Typography;
 export const LeaseFormPage: React.FC = () => {
   const { tenantId, leaseId } = useParams<{ tenantId: string; leaseId: string }>();
   const navigate = useNavigate();
+  const { message } = App.useApp();
   const location = useLocation();
   const initialPropertyId = (location.state as { propertyId?: string })?.propertyId;
   const [lease, setLease] = useState<RentalLease | null>(null);
@@ -55,7 +56,19 @@ export const LeaseFormPage: React.FC = () => {
 
     // Errors propagate to LeaseForm, which renders them.
     if (leaseId) {
-      await updateLease(tenantId, leaseId, data as UpdateLeaseRequest);
+      const response = await updateLease(tenantId, leaseId, data as UpdateLeaseRequest);
+      // Dit combien d'échéances à venir ont suivi le nouveau loyer (BUG-2026-11-03-018).
+      const recalculees = response?.installmentsRepriced ?? 0;
+      if (recalculees > 0) {
+        message.info(
+          t(
+            '{{n}} échéance(s) à venir recalculée(s) au nouveau montant. Les échéances payées, commencées ou échues n’ont pas changé.',
+            {
+              n: recalculees
+            }
+          )
+        );
+      }
     } else {
       await createLease(tenantId, data as CreateLeaseRequest);
     }

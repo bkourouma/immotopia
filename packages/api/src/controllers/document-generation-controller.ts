@@ -8,18 +8,46 @@ import {
 } from '../services/document-generation-service';
 import { toRentalDocumentDto } from '../services/rental-document-service';
 import { DocumentType } from '@prisma/client';
-import { AppError, asyncHandler, UnauthorizedError } from '../middleware/error-middleware';
+import { AppError, BadRequestError, asyncHandler, UnauthorizedError } from '../middleware/error-middleware';
 import { t } from '../i18n';
+
+const UNSUPPORTED_DOC_TYPES = ['LEASE_ADDENDUM', 'RENT_QUITTANCE', 'DEPOSIT_RECEIPT', 'OTHER'] as const;
 
 const generateDocumentSchema = z.object({
   // `LEASE_CONTRACT` : contrat de bail dont le modele (habitation ou commercial) suit le type du bien.
-  docType: z.enum(['LEASE_CONTRACT', 'LEASE_HABITATION', 'LEASE_COMMERCIAL', 'RENT_RECEIPT', 'RENT_STATEMENT']),
+  docType: z.enum([
+    'LEASE_CONTRACT',
+    'LEASE_HABITATION',
+    'LEASE_COMMERCIAL',
+    'RENT_RECEIPT',
+    'RENT_STATEMENT',
+    // Types connus mais sans générateur : refusés par une 400 explicite (BUG-2026-11-04-028/029).
+    ...UNSUPPORTED_DOC_TYPES
+  ]),
   sourceKey: z.string().uuid(), // leaseId or paymentId
   templateId: z.string().uuid().optional(),
   installmentId: z.string().uuid().optional(),
   startDate: z.string().optional(), // For RENT_STATEMENT
-  endDate: z.string().optional() // For RENT_STATEMENT
+  endDate: z.string().optional(), // For RENT_STATEMENT
+  title: z.string().trim().max(200).optional(),
+  description: z.string().trim().max(2000).optional()
 });
+
+/** Période d'un relevé : deux dates valides, fin >= début. */
+function parseStatementPeriod(startDate?: string, endDate?: string): { startDate: Date; endDate: Date } {
+  if (!startDate || !endDate) {
+    throw new BadRequestError(t('Les dates de début et de fin sont requises pour le relevé de loyer'));
+  }
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new BadRequestError(t('Les dates de début et de fin du relevé sont invalides'));
+  }
+  if (end < start) {
+    throw new BadRequestError(t('La date de fin du relevé doit être postérieure ou égale à la date de début'));
+  }
+  return { startDate: start, endDate: end };
+}
 
 /**
  * Generate a document
@@ -51,7 +79,16 @@ export async function generateDocumentHandler(req: Request, res: Response): Prom
     if (validatedData.installmentId) {
       additionalParams.installmentId = validatedData.installmentId;
     }
-    if (validatedData.startDate && validatedData.endDate) {
+    if ((UNSUPPORTED_DOC_TYPES as readonly string[]).includes(validatedData.docType)) {
+      throw new BadRequestError(
+        t(
+          "Ce type de document ne peut pas être généré : aucun modèle n'existe pour lui. Types disponibles : contrat de bail, reçu de loyer, relevé."
+        )
+      );
+    }
+    if (validatedData.docType === 'RENT_STATEMENT') {
+      Object.assign(additionalParams, parseStatementPeriod(validatedData.startDate, validatedData.endDate));
+    } else if (validatedData.startDate && validatedData.endDate) {
       additionalParams.startDate = new Date(validatedData.startDate);
       additionalParams.endDate = new Date(validatedData.endDate);
     }
@@ -67,7 +104,8 @@ export async function generateDocumentHandler(req: Request, res: Response): Prom
       validatedData.sourceKey,
       validatedData.templateId,
       Object.keys(additionalParams).length > 0 ? additionalParams : undefined,
-      actorUserId
+      actorUserId,
+      { title: validatedData.title, description: validatedData.description }
     );
 
     res.status(201).json({

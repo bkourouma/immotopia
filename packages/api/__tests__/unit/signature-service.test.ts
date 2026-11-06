@@ -112,7 +112,7 @@ jest.mock('../../src/lib/signature/provider', () => ({
   getSignatureProvider: () => provider
 }));
 
-import { AppError, NotFoundError } from '../../src/middleware/error-middleware';
+import { AppError, ConflictError, NotFoundError } from '../../src/middleware/error-middleware';
 import { AuditActionKey } from '../../src/types/audit-types';
 import { recordAuditEvent } from '../../src/services/audit-service';
 import {
@@ -562,6 +562,30 @@ describe('contexte d’une cible', () => {
       smsAvailable: false,
       signers: [{ role: 'ACHETEUR', fullName: 'Awa Koné', email: 'awa@exemple.ci', contactId: 'c1', phone: null }]
     });
+  });
+
+  it('cible déjà signée (409) : le contexte répond canSend=false avec le motif, sans signataires ; un 404 reste levé', async () => {
+    const defaultSigners = jest.fn(async () => [{ role: 'AGENT', fullName: 'Awa', email: 'a@x.ci' }]);
+    registerSignatureSource(
+      fakeSource({
+        defaultSigners: defaultSigners as never,
+        assertTarget: jest.fn(async () => {
+          throw new ConflictError('Cet état des lieux est déjà signé.');
+        })
+      })
+    );
+    const context = await getSignatureTargetContext(ctx, 'LEASE_INSPECTION', 'x1');
+    expect(context).toMatchObject({ canSend: false, reason: 'Cet état des lieux est déjà signé.', signers: [] });
+    expect(defaultSigners).not.toHaveBeenCalled();
+
+    registerSignatureSource(
+      fakeSource({
+        assertTarget: jest.fn(async () => {
+          throw new NotFoundError('introuvable');
+        })
+      })
+    );
+    await expect(getSignatureTargetContext(ctx, 'LEASE_INSPECTION', 'x1')).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it('une source sans defaultSigners rend une liste vide ; un type sans source est refusé en 400', async () => {

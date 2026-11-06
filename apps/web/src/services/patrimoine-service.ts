@@ -318,6 +318,25 @@ export async function createOwnerStatement(tenantId: string, payload: Record<str
   return response.data.data;
 }
 
+export interface EligibleOwnerStatementProperty {
+  id: string;
+  title: string;
+  internalReference?: string | null;
+  address?: string | null;
+}
+
+/** Biens du propriétaire admissibles à la génération d'un relevé de gérance. */
+export async function listEligibleOwnerStatementProperties(
+  tenantId: string,
+  ownerContactId: string
+): Promise<EligibleOwnerStatementProperty[]> {
+  const response = await apiClient.get<ApiResponse<EligibleOwnerStatementProperty[]>>(
+    `/tenants/${tenantId}/owner-statements/eligible-properties`,
+    { params: { ownerContactId } }
+  );
+  return response.data.data;
+}
+
 export async function getOwnerStatementById(tenantId: string, statementId: string): Promise<OwnerStatement> {
   const response = await apiClient.get<ApiResponse<OwnerStatement>>(
     `/tenants/${tenantId}/owner-statements/${statementId}`

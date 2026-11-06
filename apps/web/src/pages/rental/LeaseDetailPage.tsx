@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons';
 import { getLease, RentalLease, RentalLeaseStatus, updateLeaseStatus } from '../../services/rental-service';
 import { getContact } from '../../services/crm-service';
+import { formatMontantLocatif } from '../../lib/rental-labels';
 import { PropertyTransactionMode } from '../../types/property-types';
 import { Installments } from './Installments';
 import { Payments } from './Payments';
@@ -27,11 +28,22 @@ import { LeaseInspectionsPanel } from '../../components/rental/inspections/Lease
 import { SignaturesPanel } from '../../components/signature/SignaturesPanel';
 import type { SignerInput } from '../../types/signature-types';
 import { LeaseDirectDebitPanel } from '../../components/rental/direct-debit/LeaseDirectDebitPanel';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { t as translate } from '../../i18n/t';
 import { LEASE_TAB_PARAM, defaultLeaseTab, resolveLeaseTab, withLeaseTab, withTabLifecycle } from './lease-detail-tabs';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
+
+/**
+ * Paramètres d'URL propres à la liste d'un onglet (filtres, page, tri). Chaque
+ * onglet a les siens : sans remise à zéro, le statut d'échéance `OVERDUE` de
+ * l'onglet Échéances partait à la liste des paiements (BUG-2026-11-03-010).
+ */
+const PARAMS_PROPRES_A_UN_ONGLET = ['status', 'overdue', 'renterClientId', 'page', 'limit', 'sort'];
+
+/** Paramètre d'URL de l'onglet principal de la fiche (Échéances, Paiements, Documents…). */
+const ONGLET_PRINCIPAL_PARAM = 'tab';
 
 export const LeaseDetailPage: React.FC = () => {
   const { message } = App.useApp();
@@ -39,6 +51,26 @@ export const LeaseDetailPage: React.FC = () => {
   const { tenantId, leaseId } = useParams<{ tenantId: string; leaseId: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { permissions } = useMyMenuAccess(tenantId);
+  // Modifier le bail et changer son statut exigent RENTAL_LEASES_EDIT (BUG-2026-11-03-011).
+  const peutModifier = permissions === null || permissions.has('RENTAL_LEASES_EDIT');
+
+  // L'onglet principal actif vit dans l'URL (`tab`) : il survit au rechargement
+  // (BUG-2026-11-04-041). Il n'est pas dans PARAMS_PROPRES_A_UN_ONGLET, donc la
+  // remise à zéro des paramètres d'un onglet ne le retire pas.
+  // L'onglet affiché est DÉRIVÉ de l'URL (liens `?tab=documents`, Précédent,
+  // Suivant, autre bail sans `tab`) : aucun état local à resynchroniser.
+  const handleTabChange = (cle: string, affiche: string) => {
+    // Appui sur l'onglet déjà affiché (même absent de l'URL) : ses filtres
+    // reçus par lien (ex. `status=OVERDUE`, `onglet=declarations`) restent.
+    if (affiche === cle) return;
+    const next = withLeaseTab(searchParams, cle);
+    PARAMS_PROPRES_A_UN_ONGLET.forEach(key => next.delete(key));
+    // `tab` reste accepté pour les anciens liens partagés ; `onglet` est la clé actuelle.
+    next.set(ONGLET_PRINCIPAL_PARAM, cle);
+    setSearchParams(next, { replace: true });
+  };
+  const activeTab = searchParams.get(ONGLET_PRINCIPAL_PARAM) ?? searchParams.get(LEASE_TAB_PARAM);
   const [lease, setLease] = useState<RentalLease | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -126,8 +158,9 @@ export const LeaseDetailPage: React.FC = () => {
       message.success(translate('Statut mis à jour avec succès'));
       loadLease();
     } catch (err: any) {
+      // Le refus n'est pas une erreur de chargement : la fiche reste affichée
+      // (BUG-2026-11-03-019), le message de l'API est montré en toast.
       const errorMsg = err.response?.data?.message || translate('Erreur lors de la mise à jour du statut');
-      setError(errorMsg);
       message.error(errorMsg);
     }
   };
@@ -149,12 +182,7 @@ export const LeaseDetailPage: React.FC = () => {
     return new Date(dateString).toLocaleDateString(activeLocale());
   };
 
-  const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number, currency: string = 'FCFA') => formatMontantLocatif(amount, currency);
 
   const formatPenaltyRate = (rate: number | string | null | undefined): string => {
     // Convert to number if it's a string or handle null/undefined
@@ -169,17 +197,10 @@ export const LeaseDetailPage: React.FC = () => {
       return '0.00';
     }
 
-    // The rate can be stored either as:
-    // - A decimal (0.05 for 5%) - need to multiply by 100
-    // - A percentage (5 for 5%) - use as is
-    // We check: if rate < 1, it's a decimal, otherwise it's already a percentage
-    if (numRate < 1) {
-      // Stored as decimal (0.05), convert to percentage
-      return (numRate * 100).toFixed(2);
-    } else {
-      // Already stored as percentage (5), use as is
-      return numRate.toFixed(2);
-    }
+    // L'API stocke un pourcentage (2 = 2 %, 0,5 = 0,5 %), cf. rental-penalty-service :
+    // aucune conversion. Multiplier par 100 sous 1 affichait 0,5 % en « 50.00 % »
+    // (BUG-2026-11-03-017).
+    return numRate.toFixed(2);
   };
 
   if (loading) {
@@ -269,6 +290,7 @@ export const LeaseDetailPage: React.FC = () => {
                 value={lease.status}
                 onChange={value => handleStatusChange(value as RentalLeaseStatus)}
                 style={{ width: 180 }}
+                disabled={!peutModifier}
               >
                 <Select.Option value="DRAFT">{translate('Brouillon')}</Select.Option>
                 <Select.Option value="ACTIVE">{translate('Actif')}</Select.Option>
@@ -276,13 +298,15 @@ export const LeaseDetailPage: React.FC = () => {
                 <Select.Option value="ENDED">{translate('Terminé')}</Select.Option>
                 <Select.Option value="CANCELED">{translate('Annulé')}</Select.Option>
               </Select>
-              <Button
-                type="primary"
-                icon={<EditOutlined />}
-                onClick={() => navigate(`/tenant/${tenantId}/rental/leases/${leaseId}/edit`)}
-              >
-                {translate('Modifier')}
-              </Button>
+              {peutModifier && (
+                <Button
+                  type="primary"
+                  icon={<EditOutlined />}
+                  onClick={() => navigate(`/tenant/${tenantId}/rental/leases/${leaseId}/edit`)}
+                >
+                  {translate('Modifier')}
+                </Button>
+              )}
             </Space>
           </Col>
         </Row>
@@ -611,20 +635,30 @@ export const LeaseDetailPage: React.FC = () => {
 
             const tabItems = isSaleOnly ? allTabItems.filter(t => t.key === 'documents') : allTabItems;
 
+            // BUG-2026-11-04-035 : sur une barre qui défile (375 px), le focus
+            // qu'un appui donne à l'onglet fait défiler la barre (`scrollToTab`
+            // de rc-tabs) ENTRE l'appui et le relâchement : le clic retombe sur
+            // un autre élément et ne l'active pas ; la touche Entrée ne le fait
+            // pas non plus après un appui souris (aucun onglet « focalisé »).
+            // On active donc l'onglet dès l'appui, avant tout déplacement.
+            const currentTab = resolveLeaseTab(
+              activeTab,
+              tabItems.map(item => item.key),
+              defaultLeaseTab(isSaleOnly)
+            );
+            const itemsWithPress = tabItems.map(item => ({
+              ...item,
+              label: <span onMouseDown={() => handleTabChange(item.key, currentTab)}>{item.label}</span>
+            }));
+
             return (
               <Tabs
-                // Onglet dans l'URL (`?onglet=`), validé contre les onglets présents ;
-                // `destroyOnHidden` par onglet (withTabLifecycle) : les listes lourdes sont démontées,
-                // le dépôt de garantie (formulaire en ligne) reste monté une fois ouvert.
-                activeKey={resolveLeaseTab(
-                  searchParams.get(LEASE_TAB_PARAM),
-                  tabItems.map(item => item.key),
-                  defaultLeaseTab(isSaleOnly)
-                )}
-                onChange={key => setSearchParams(previous => withLeaseTab(previous, key), { replace: true })}
+                activeKey={currentTab}
                 type="line"
                 size="large"
-                items={withTabLifecycle(tabItems)}
+                onChange={key => handleTabChange(key, currentTab)}
+                // Les listes lourdes sont démontées ; dépôt et état des lieux gardent leur saisie.
+                items={withTabLifecycle(itemsWithPress)}
               />
             );
           })()}

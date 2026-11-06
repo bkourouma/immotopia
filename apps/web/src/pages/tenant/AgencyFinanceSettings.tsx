@@ -28,7 +28,7 @@ import {
 import { formatMoney } from '../../components/primitives';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { FeeTermsFields } from '../../components/settings/FeeTermsFields';
-import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
+import { useMyMenuAccess, useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { OwnerFeeTermsCard } from '../../components/settings/OwnerFeeTermsCard';
 import { AgentCommissionCard } from '../../components/settings/AgentCommissionCard';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
@@ -60,6 +60,8 @@ type FormValues = Omit<AgencyFinanceSettingsInput, 'withholdingStartsOn'> & { wi
 export const AgencyFinanceSettings: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(tenantId);
+  const canEdit = permissions === null || permissions.has('TENANT_SETTINGS_EDIT');
   const [form] = Form.useForm<FormValues>();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -114,7 +116,7 @@ export const AgencyFinanceSettings: React.FC = () => {
   }, [tenantId]);
 
   const handleSubmit = async (values: FormValues) => {
-    if (!tenantId) return;
+    if (!tenantId || !permissionsReady || !canEdit) return;
     setSaving(true);
     try {
       // Les champs de gestion locative masqués ne sont pas dans `values` : on
@@ -137,7 +139,7 @@ export const AgencyFinanceSettings: React.FC = () => {
     }
   };
 
-  if (loading || !features.ready) {
+  if (loading || !features.ready || !permissionsReady) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', minHeight: 300, alignItems: 'center' }}>
         <Spin size="large" />
@@ -200,7 +202,13 @@ export const AgencyFinanceSettings: React.FC = () => {
         />
       ) : null}
 
-      <Form form={form} layout="vertical" onFinish={handleSubmit} onFinishFailed={onAntFormValidationFailed(form)}>
+      <Form
+        form={form}
+        layout="vertical"
+        disabled={!canEdit}
+        onFinish={handleSubmit}
+        onFinishFailed={onAntFormValidationFailed(form)}
+      >
         <Card title={t('Fiscalité')} style={{ marginBottom: 16 }}>
           <Row gutter={16}>
             <Col xs={24} md={12}>
@@ -219,7 +227,7 @@ export const AgencyFinanceSettings: React.FC = () => {
                 name="vatRate"
                 rules={[{ required: true, message: t('Le taux de TVA est requis') }]}
               >
-                <InputNumber min={0} max={100} disabled={!vatRegistered} style={{ width: '100%' }} />
+                <InputNumber min={0} max={100} disabled={!canEdit || !vatRegistered} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -394,7 +402,19 @@ export const AgencyFinanceSettings: React.FC = () => {
                       }
                     ]}
                   >
-                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" disabled={!withholdingEnabled} />
+                    <DatePicker
+                      style={{ width: '100%' }}
+                      format="DD/MM/YYYY"
+                      disabled={!canEdit || !withholdingEnabled}
+                      // Texte effacé au clavier : le sélecteur ne signale pas toujours ce vidage
+                      // (onChange), et le formulaire gardait l'ancienne date — envoyée à l'API
+                      // alors que le champ s'affichait vide (BUG-2026-11-03-013).
+                      onBlur={event => {
+                        if (!(event.target as HTMLInputElement).value) {
+                          form.setFieldValue('withholdingStartsOn', null);
+                        }
+                      }}
+                    />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={6}>
@@ -421,9 +441,11 @@ export const AgencyFinanceSettings: React.FC = () => {
           </>
         ) : null}
 
-        <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving} size="large">
-          {t('Enregistrer')}
-        </Button>
+        {canEdit ? (
+          <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving} size="large">
+            {t('Enregistrer')}
+          </Button>
+        ) : null}
       </Form>
 
       {/* Cartes indépendantes du formulaire ci-dessus : chacune gère son propre

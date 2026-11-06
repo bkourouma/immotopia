@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
 
-import { activeLocale } from '../../i18n/format';
+import { formatFcfa } from '../../i18n/format';
 const { Text } = Typography;
 
 interface PropertyCardProps {
@@ -59,11 +59,7 @@ const transactionModeLabels: Record<string, string> = localizedRecord(() => ({
 }));
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat(activeLocale(), {
-    style: 'currency',
-    currency: 'XOF',
-    minimumFractionDigits: 0
-  }).format(amount);
+  return formatFcfa(amount);
 };
 
 export const PropertyCard: React.FC<PropertyCardProps> = ({ property }) => {
@@ -110,8 +106,10 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property }) => {
               <Text type="secondary" style={{ fontSize: 12 }}>
                 <HomeOutlined /> {t('Bail actif')}
               </Text>
-              <Text strong>Locataire: {property.currentLease.tenantName}</Text>
-              <Text type="secondary">Loyer: {formatCurrency(property.currentLease.monthlyRent)} / mois</Text>
+              <Text strong>{t('Locataire : {{nom}}', { nom: property.currentLease.tenantName })}</Text>
+              <Text type="secondary">
+                {t('Loyer : {{montant}} / mois', { montant: formatCurrency(property.currentLease.monthlyRent) })}
+              </Text>
             </Space>
           </div>
         )}

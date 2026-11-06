@@ -3,7 +3,7 @@
  * Functions for generating reports in PDF, CSV, and Excel formats
  */
 
-import { toCsvString } from '../lib/csv';
+import { toCsvString, FORMULA_START } from '../lib/csv';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import ExcelJS from 'exceljs';
 import { format } from 'date-fns';
@@ -139,15 +139,15 @@ export async function generateRevenueReportPDF(data: RevenueReportData, tenantId
 export async function generateRevenueReportCSV(data: RevenueReportData, _tenantId: string): Promise<Buffer> {
   try {
     const rows: any[] = [
-      ['Rapport de Revenus'],
-      [`Période: ${format(data.startDate, 'dd/MM/yyyy')} - ${format(data.endDate, 'dd/MM/yyyy')}`],
+      [t('Rapport de revenus')],
+      [`${t('Période')}: ${format(data.startDate, 'dd/MM/yyyy')} - ${format(data.endDate, 'dd/MM/yyyy')}`],
       [],
-      ['Résumé'],
-      ['Revenus totaux', formatCurrency(data.totalRevenue)],
-      ['Nombre de paiements', data.paymentCount],
+      [t('Résumé')],
+      [t('Revenus totaux'), formatCurrency(data.totalRevenue)],
+      [t('Nombre de paiements'), data.paymentCount],
       [],
-      ['Revenus par propriété'],
-      ['Propriété', 'Revenus', 'Nombre de paiements']
+      [t('Revenus par propriété')],
+      [t('Propriété'), t('Revenus'), t('Nombre de paiements')]
     ];
 
     for (const item of data.revenuesByProperty) {
@@ -155,8 +155,8 @@ export async function generateRevenueReportCSV(data: RevenueReportData, _tenantI
     }
 
     rows.push([]);
-    rows.push(['Revenus par mois']);
-    rows.push(['Mois', 'Revenus']);
+    rows.push([t('Revenus par mois')]);
+    rows.push([t('Mois'), t('Revenus')]);
 
     for (const item of data.revenuesByMonth) {
       rows.push([item.month, formatCurrency(item.revenue)]);
@@ -175,46 +175,50 @@ export async function generateRevenueReportCSV(data: RevenueReportData, _tenantI
 export async function generateRevenueReportExcel(data: RevenueReportData, _tenantId: string): Promise<Buffer> {
   try {
     const workbook = new ExcelJS.Workbook();
-    const summarySheet = workbook.addWorksheet('Résumé');
-    const byPropertySheet = workbook.addWorksheet('Par propriété');
-    const byMonthSheet = workbook.addWorksheet('Par mois');
+    const summarySheet = workbook.addWorksheet(t('Résumé'));
+    const byPropertySheet = workbook.addWorksheet(t('Par propriété'));
+    const byMonthSheet = workbook.addWorksheet(t('Par mois'));
 
     // Summary sheet
     summarySheet.columns = [
-      { header: 'Métrique', key: 'metric', width: 30 },
-      { header: 'Valeur', key: 'value', width: 20 }
+      { header: t('Métrique'), key: 'metric', width: 30 },
+      { header: t('Valeur'), key: 'value', width: 20 }
     ];
     summarySheet.addRow({
-      metric: 'Période',
+      metric: t('Période'),
       value: `${format(data.startDate, 'dd/MM/yyyy')} - ${format(data.endDate, 'dd/MM/yyyy')}`
     });
-    summarySheet.addRow({ metric: 'Revenus totaux', value: formatCurrency(data.totalRevenue) });
-    summarySheet.addRow({ metric: 'Nombre de paiements', value: data.paymentCount });
+    summarySheet.addRow({ metric: t('Revenus totaux'), value: formatCurrency(data.totalRevenue) });
+    summarySheet.addRow({ metric: t('Nombre de paiements'), value: data.paymentCount });
 
     // By property sheet
     byPropertySheet.columns = [
-      { header: 'Propriété', key: 'property', width: 40 },
-      { header: 'Revenus', key: 'revenue', width: 20 },
-      { header: 'Nombre de paiements', key: 'count', width: 20 }
+      { header: t('Propriété'), key: 'property', width: 40 },
+      { header: t('Revenus'), key: 'revenue', width: 20 },
+      { header: t('Nombre de paiements'), key: 'count', width: 20 }
     ];
     for (const item of data.revenuesByProperty) {
-      byPropertySheet.addRow({
-        property: item.propertyAddress,
-        revenue: item.revenue,
-        count: item.paymentCount
-      });
+      byPropertySheet.addRow(
+        excelSafeRow({
+          property: item.propertyAddress,
+          revenue: item.revenue,
+          count: item.paymentCount
+        })
+      );
     }
 
     // By month sheet
     byMonthSheet.columns = [
-      { header: 'Mois', key: 'month', width: 20 },
-      { header: 'Revenus', key: 'revenue', width: 20 }
+      { header: t('Mois'), key: 'month', width: 20 },
+      { header: t('Revenus'), key: 'revenue', width: 20 }
     ];
     for (const item of data.revenuesByMonth) {
-      byMonthSheet.addRow({
-        month: item.month,
-        revenue: item.revenue
-      });
+      byMonthSheet.addRow(
+        excelSafeRow({
+          month: item.month,
+          revenue: item.revenue
+        })
+      );
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -327,17 +331,17 @@ export async function generateOccupancyReportPDF(data: OccupancyReportData, tena
 export async function generateOccupancyReportCSV(data: OccupancyReportData, _tenantId: string): Promise<Buffer> {
   try {
     const rows: any[] = [
-      ["Rapport d'Occupation"],
-      [`Date: ${format(data.asOfDate, 'dd/MM/yyyy')}`],
+      [t("Rapport d'occupation")],
+      [`${t('Date')}: ${format(data.asOfDate, 'dd/MM/yyyy')}`],
       [],
-      ['Résumé'],
-      ['Total propriétés', data.totalProperties],
-      ['Propriétés occupées', data.occupiedProperties],
-      ['Propriétés disponibles', data.availableProperties],
-      ["Taux d'occupation", `${data.occupancyRate.toFixed(2)}%`],
+      [t('Résumé')],
+      [t('Total propriétés'), data.totalProperties],
+      [t('Propriétés occupées'), data.occupiedProperties],
+      [t('Propriétés disponibles'), data.availableProperties],
+      [t("Taux d'occupation"), `${data.occupancyRate.toFixed(2)}%`],
       [],
-      ['Détails par propriété'],
-      ['Adresse', 'Statut', 'Bail', 'Locataire', 'Date début', 'Date fin']
+      [t('Détails par propriété')],
+      [t('Adresse'), t('Statut'), t('Bail'), t('Locataire'), t('Date début'), t('Date fin')]
     ];
 
     for (const prop of data.properties) {
@@ -364,38 +368,40 @@ export async function generateOccupancyReportCSV(data: OccupancyReportData, _ten
 export async function generateOccupancyReportExcel(data: OccupancyReportData, _tenantId: string): Promise<Buffer> {
   try {
     const workbook = new ExcelJS.Workbook();
-    const summarySheet = workbook.addWorksheet('Résumé');
-    const propertiesSheet = workbook.addWorksheet('Propriétés');
+    const summarySheet = workbook.addWorksheet(t('Résumé'));
+    const propertiesSheet = workbook.addWorksheet(t('Propriétés'));
 
     // Summary sheet
     summarySheet.columns = [
-      { header: 'Métrique', key: 'metric', width: 30 },
-      { header: 'Valeur', key: 'value', width: 20 }
+      { header: t('Métrique'), key: 'metric', width: 30 },
+      { header: t('Valeur'), key: 'value', width: 20 }
     ];
-    summarySheet.addRow({ metric: 'Date', value: format(data.asOfDate, 'dd/MM/yyyy') });
-    summarySheet.addRow({ metric: 'Total propriétés', value: data.totalProperties });
-    summarySheet.addRow({ metric: 'Propriétés occupées', value: data.occupiedProperties });
-    summarySheet.addRow({ metric: 'Propriétés disponibles', value: data.availableProperties });
-    summarySheet.addRow({ metric: "Taux d'occupation", value: `${data.occupancyRate.toFixed(2)}%` });
+    summarySheet.addRow({ metric: t('Date'), value: format(data.asOfDate, 'dd/MM/yyyy') });
+    summarySheet.addRow({ metric: t('Total propriétés'), value: data.totalProperties });
+    summarySheet.addRow({ metric: t('Propriétés occupées'), value: data.occupiedProperties });
+    summarySheet.addRow({ metric: t('Propriétés disponibles'), value: data.availableProperties });
+    summarySheet.addRow({ metric: t("Taux d'occupation"), value: `${data.occupancyRate.toFixed(2)}%` });
 
     // Properties sheet
     propertiesSheet.columns = [
-      { header: 'Adresse', key: 'address', width: 40 },
-      { header: 'Statut', key: 'status', width: 15 },
-      { header: 'Bail', key: 'lease', width: 20 },
-      { header: 'Locataire', key: 'tenant', width: 30 },
-      { header: 'Date début', key: 'startDate', width: 15 },
-      { header: 'Date fin', key: 'endDate', width: 15 }
+      { header: t('Adresse'), key: 'address', width: 40 },
+      { header: t('Statut'), key: 'status', width: 15 },
+      { header: t('Bail'), key: 'lease', width: 20 },
+      { header: t('Locataire'), key: 'tenant', width: 30 },
+      { header: t('Date début'), key: 'startDate', width: 15 },
+      { header: t('Date fin'), key: 'endDate', width: 15 }
     ];
     for (const prop of data.properties) {
-      propertiesSheet.addRow({
-        address: prop.address,
-        status: prop.status,
-        lease: prop.currentLease?.leaseNumber || '-',
-        tenant: prop.currentLease?.tenantName || '-',
-        startDate: prop.currentLease?.startDate ? format(prop.currentLease.startDate, 'dd/MM/yyyy') : '-',
-        endDate: prop.currentLease?.endDate ? format(prop.currentLease.endDate, 'dd/MM/yyyy') : '-'
-      });
+      propertiesSheet.addRow(
+        excelSafeRow({
+          address: prop.address,
+          status: prop.status,
+          lease: prop.currentLease?.leaseNumber || '-',
+          tenant: prop.currentLease?.tenantName || '-',
+          startDate: prop.currentLease?.startDate ? format(prop.currentLease.startDate, 'dd/MM/yyyy') : '-',
+          endDate: prop.currentLease?.endDate ? format(prop.currentLease.endDate, 'dd/MM/yyyy') : '-'
+        })
+      );
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -447,7 +453,7 @@ async function exportDataCSV(
   const rows: any[] = [];
 
   if (entityType === 'payments') {
-    rows.push(['ID', 'Propriété', 'Locataire', 'Montant', 'Date', 'Méthode', 'Statut']);
+    rows.push([t('ID'), t('Propriété'), t('Locataire'), t('Montant'), t('Date'), t('Méthode'), t('Statut')]);
     const payments = await prisma.rentalPayment.findMany({
       where: {
         tenant_id: tenantId,
@@ -484,12 +490,21 @@ async function exportDataCSV(
         payment.lease?.primaryRenter?.user?.fullName || '-',
         payment.amount,
         payment.succeeded_at ? format(payment.succeeded_at, 'dd/MM/yyyy') : '-',
-        payment.method,
-        payment.status
+        paymentMethodLabel(payment.method),
+        paymentStatusLabel(payment.status)
       ]);
     }
   } else if (entityType === 'installments') {
-    rows.push(['ID', 'Propriété', 'Locataire', 'Période', 'Date échéance', 'Montant', 'Payé', 'Statut']);
+    rows.push([
+      t('ID'),
+      t('Propriété'),
+      t('Locataire'),
+      t('Période'),
+      t('Date échéance'),
+      t('Montant'),
+      t('Payé'),
+      t('Statut')
+    ]);
     const installments = await prisma.rentalInstallment.findMany({
       where: {
         tenant_id: tenantId,
@@ -532,11 +547,11 @@ async function exportDataCSV(
         format(inst.due_date, 'dd/MM/yyyy'),
         totalAmount,
         inst.amount_paid,
-        inst.status
+        installmentStatusLabel(inst.status)
       ]);
     }
   } else if (entityType === 'leases') {
-    rows.push(['ID', 'Propriété', 'Locataire', 'Date début', 'Date fin', 'Loyer', 'Statut']);
+    rows.push([t('ID'), t('Propriété'), t('Locataire'), t('Date début'), t('Date fin'), t('Loyer'), t('Statut')]);
     const leases = await prisma.rentalLease.findMany({
       where: {
         tenant_id: tenantId,
@@ -560,7 +575,7 @@ async function exportDataCSV(
         format(lease.start_date, 'dd/MM/yyyy'),
         lease.end_date ? format(lease.end_date, 'dd/MM/yyyy') : '-',
         lease.rent_amount,
-        lease.status
+        leaseStatusLabel(lease.status)
       ]);
     }
   }
@@ -575,17 +590,17 @@ async function exportDataExcel(
   filters: any
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Données');
+  const worksheet = workbook.addWorksheet(t('Données'));
 
   if (entityType === 'payments') {
     worksheet.columns = [
-      { header: 'ID', key: 'id', width: 40 },
-      { header: 'Propriété', key: 'property', width: 40 },
-      { header: 'Locataire', key: 'tenant', width: 30 },
-      { header: 'Montant', key: 'amount', width: 15 },
-      { header: 'Date', key: 'date', width: 15 },
-      { header: 'Méthode', key: 'method', width: 15 },
-      { header: 'Statut', key: 'status', width: 15 }
+      { header: t('ID'), key: 'id', width: 40 },
+      { header: t('Propriété'), key: 'property', width: 40 },
+      { header: t('Locataire'), key: 'tenant', width: 30 },
+      { header: t('Montant'), key: 'amount', width: 15 },
+      { header: t('Date'), key: 'date', width: 15 },
+      { header: t('Méthode'), key: 'method', width: 15 },
+      { header: t('Statut'), key: 'status', width: 15 }
     ];
 
     const payments = await prisma.rentalPayment.findMany({
@@ -618,26 +633,28 @@ async function exportDataExcel(
     });
 
     for (const payment of payments) {
-      worksheet.addRow({
-        id: payment.id,
-        property: payment.lease?.property?.address || '-',
-        tenant: payment.lease?.primaryRenter?.user?.fullName || '-',
-        amount: Number(payment.amount),
-        date: payment.succeeded_at ? format(payment.succeeded_at, 'dd/MM/yyyy') : '-',
-        method: payment.method,
-        status: payment.status
-      });
+      worksheet.addRow(
+        excelSafeRow({
+          id: payment.id,
+          property: payment.lease?.property?.address || '-',
+          tenant: payment.lease?.primaryRenter?.user?.fullName || '-',
+          amount: Number(payment.amount),
+          date: payment.succeeded_at ? format(payment.succeeded_at, 'dd/MM/yyyy') : '-',
+          method: paymentMethodLabel(payment.method),
+          status: paymentStatusLabel(payment.status)
+        })
+      );
     }
   } else if (entityType === 'installments') {
     worksheet.columns = [
-      { header: 'ID', key: 'id', width: 40 },
-      { header: 'Propriété', key: 'property', width: 40 },
-      { header: 'Locataire', key: 'tenant', width: 30 },
-      { header: 'Période', key: 'period', width: 15 },
-      { header: 'Date échéance', key: 'dueDate', width: 15 },
-      { header: 'Montant', key: 'amount', width: 15 },
-      { header: 'Payé', key: 'paid', width: 15 },
-      { header: 'Statut', key: 'status', width: 15 }
+      { header: t('ID'), key: 'id', width: 40 },
+      { header: t('Propriété'), key: 'property', width: 40 },
+      { header: t('Locataire'), key: 'tenant', width: 30 },
+      { header: t('Période'), key: 'period', width: 15 },
+      { header: t('Date échéance'), key: 'dueDate', width: 15 },
+      { header: t('Montant'), key: 'amount', width: 15 },
+      { header: t('Payé'), key: 'paid', width: 15 },
+      { header: t('Statut'), key: 'status', width: 15 }
     ];
 
     const installments = await prisma.rentalInstallment.findMany({
@@ -674,26 +691,28 @@ async function exportDataExcel(
         Number(inst.amount_service) +
         Number(inst.amount_other_fees) +
         Number(inst.penalty_amount);
-      worksheet.addRow({
-        id: inst.id,
-        property: inst.lease?.property?.address || '-',
-        tenant: inst.lease?.primaryRenter?.user?.fullName || '-',
-        period: `${inst.period_month}/${inst.period_year}`,
-        dueDate: format(inst.due_date, 'dd/MM/yyyy'),
-        amount: totalAmount,
-        paid: Number(inst.amount_paid),
-        status: inst.status
-      });
+      worksheet.addRow(
+        excelSafeRow({
+          id: inst.id,
+          property: inst.lease?.property?.address || '-',
+          tenant: inst.lease?.primaryRenter?.user?.fullName || '-',
+          period: `${inst.period_month}/${inst.period_year}`,
+          dueDate: format(inst.due_date, 'dd/MM/yyyy'),
+          amount: totalAmount,
+          paid: Number(inst.amount_paid),
+          status: installmentStatusLabel(inst.status)
+        })
+      );
     }
   } else if (entityType === 'leases') {
     worksheet.columns = [
-      { header: 'ID', key: 'id', width: 40 },
-      { header: 'Propriété', key: 'property', width: 40 },
-      { header: 'Locataire', key: 'tenant', width: 30 },
-      { header: 'Date début', key: 'startDate', width: 15 },
-      { header: 'Date fin', key: 'endDate', width: 15 },
-      { header: 'Loyer', key: 'rent', width: 15 },
-      { header: 'Statut', key: 'status', width: 15 }
+      { header: t('ID'), key: 'id', width: 40 },
+      { header: t('Propriété'), key: 'property', width: 40 },
+      { header: t('Locataire'), key: 'tenant', width: 30 },
+      { header: t('Date début'), key: 'startDate', width: 15 },
+      { header: t('Date fin'), key: 'endDate', width: 15 },
+      { header: t('Loyer'), key: 'rent', width: 15 },
+      { header: t('Statut'), key: 'status', width: 15 }
     ];
 
     const leases = await prisma.rentalLease.findMany({
@@ -712,15 +731,17 @@ async function exportDataExcel(
     });
 
     for (const lease of leases) {
-      worksheet.addRow({
-        id: lease.id,
-        property: lease.property?.address || '-',
-        tenant: lease.primaryRenter?.user?.fullName || '-',
-        startDate: format(lease.start_date, 'dd/MM/yyyy'),
-        endDate: lease.end_date ? format(lease.end_date, 'dd/MM/yyyy') : '-',
-        rent: Number(lease.rent_amount),
-        status: lease.status
-      });
+      worksheet.addRow(
+        excelSafeRow({
+          id: lease.id,
+          property: lease.property?.address || '-',
+          tenant: lease.primaryRenter?.user?.fullName || '-',
+          startDate: format(lease.start_date, 'dd/MM/yyyy'),
+          endDate: lease.end_date ? format(lease.end_date, 'dd/MM/yyyy') : '-',
+          rent: Number(lease.rent_amount),
+          status: leaseStatusLabel(lease.status)
+        })
+      );
     }
   }
 
@@ -751,4 +772,71 @@ function formatCurrency(amount: number): string {
     currency: 'XOF',
     minimumFractionDigits: 0
   }).format(amount);
+}
+
+/**
+ * Libellés des valeurs techniques exportées (BUG-2026-11-04-009) : le texte
+ * français est la clé de traduction, dans la langue de la requête. Une valeur
+ * inconnue sort telle quelle plutôt que vide.
+ */
+function labelOf(map: Record<string, () => string>, value: string | null | undefined): string {
+  if (!value) return '-';
+  return map[value] ? map[value]() : value;
+}
+
+const PAYMENT_METHOD_LABELS: Record<string, () => string> = {
+  CASH: () => t('Espèces'),
+  BANK_TRANSFER: () => t('Virement bancaire'),
+  CHECK: () => t('Chèque'),
+  MOBILE_MONEY: () => t('Mobile Money'),
+  CARD: () => t('Carte bancaire'),
+  DIRECT_DEBIT: () => t('Prélèvement'),
+  OTHER: () => t('Autre')
+};
+
+const PAYMENT_STATUS_LABELS: Record<string, () => string> = {
+  PENDING: () => t('En attente'),
+  SUCCESS: () => t('Réussi'),
+  FAILED: () => t('Échoué'),
+  CANCELED: () => t('Annulé'),
+  REFUNDED: () => t('Remboursé'),
+  PARTIALLY_REFUNDED: () => t('Partiellement remboursé')
+};
+
+const INSTALLMENT_STATUS_LABELS: Record<string, () => string> = {
+  DRAFT: () => t('Brouillon'),
+  DUE: () => t('À payer'),
+  PARTIAL: () => t('Partiellement payée'),
+  PAID: () => t('Payée'),
+  OVERDUE: () => t('En retard'),
+  CANCELED: () => t('Annulée')
+};
+
+const LEASE_STATUS_LABELS: Record<string, () => string> = {
+  DRAFT: () => t('Brouillon'),
+  ACTIVE: () => t('Actif'),
+  SUSPENDED: () => t('Suspendu'),
+  ENDED: () => t('Terminé'),
+  CANCELED: () => t('Annulé')
+};
+
+const paymentMethodLabel = (value: string | null | undefined) => labelOf(PAYMENT_METHOD_LABELS, value);
+const paymentStatusLabel = (value: string | null | undefined) => labelOf(PAYMENT_STATUS_LABELS, value);
+const installmentStatusLabel = (value: string | null | undefined) => labelOf(INSTALLMENT_STATUS_LABELS, value);
+const leaseStatusLabel = (value: string | null | undefined) => labelOf(LEASE_STATUS_LABELS, value);
+
+/**
+ * Cellule Excel : un texte que le tableur exécuterait comme une formule est
+ * préfixé d'une apostrophe — même règle que `lib/csv.ts`. Nombres, chaînes
+ * purement numériques et tiret isolé sont laissés intacts.
+ */
+const NUMERIC_TEXT = /^[-+]?\d+([.,]\d+)?$/;
+function excelSafe<T>(value: T): T | string {
+  if (typeof value !== 'string') return value;
+  if (FORMULA_START.test(value) && value.trim() !== '-' && !NUMERIC_TEXT.test(value)) return `'${value}`;
+  return value;
+}
+
+function excelSafeRow(row: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, excelSafe(value)]));
 }

@@ -42,6 +42,18 @@ jest.mock('../../src/services/audit-service', () => ({
   flushAuditQueue: jest.fn()
 }));
 
+// La déclaration de paiement écrit la preuve sur le disque : rien n'est écrit ici.
+jest.mock('fs/promises', () => ({
+  ...jest.requireActual('fs/promises'),
+  mkdir: jest.fn(async () => undefined),
+  writeFile: jest.fn(async () => undefined),
+  unlink: jest.fn(async () => undefined)
+}));
+
+jest.mock('../../src/services/email-notification-config-service', () => ({
+  getEmailNotificationConfig: jest.fn(async () => ({ enabled: false }))
+}));
+
 import tenantPortalRoutes from '../../src/routes/tenant-portal-routes';
 import ownerPortalRoutes from '../../src/routes/owner-portal-routes';
 import { errorHandler } from '../../src/middleware/error-middleware';
@@ -210,6 +222,155 @@ describe('portail locataire — aucune réponse ne porte de chemin disque', () =
   it('documents', async () => {
     const data = await expectClean(USER_AWA, '/api/portal/tenant/documents');
     expect(data.documents[0].downloadPath).toBe(`/portal/tenant/documents/${id(31)}/download`);
+  });
+
+  it('détail d’une échéance : ni motif interne de pénalité ni champs techniques de paiement', async () => {
+    const INSTALLMENT = id(51);
+    mockPrisma.rentalInstallment.rows.push({
+      id: INSTALLMENT,
+      tenant_id: TENANT_A,
+      lease_id: LEASE,
+      period_year: 2026,
+      period_month: 4,
+      due_date: new Date('2026-04-05'),
+      status: 'PARTIAL',
+      amount_rent: 100000,
+      amount_service: 0,
+      amount_other_fees: 0,
+      penalty_amount: 5000,
+      amount_paid: 40000,
+      invoice_id: 'invoice-interne',
+      items: [
+        {
+          id: id(56),
+          tenant_id: TENANT_A,
+          installment_id: INSTALLMENT,
+          charge_type: 'RENT',
+          label: 'Loyer',
+          amount: 100000,
+          currency: 'FCFA',
+          metadata: { source: 'interne' },
+          created_at: new Date('2026-04-01')
+        }
+      ],
+      payments: [
+        {
+          id: id(57),
+          tenant_id: TENANT_A,
+          payment_id: id(53),
+          installment_id: INSTALLMENT,
+          amount: 40000,
+          currency: 'FCFA',
+          created_at: new Date('2026-04-10'),
+          payment: {
+            id: id(53),
+            amount: 40000,
+            method: 'MOBILE_MONEY',
+            status: 'SUCCESS',
+            currency: 'FCFA',
+            initiated_at: new Date('2026-04-10'),
+            succeeded_at: new Date('2026-04-10'),
+            psp_reference: 'REF-1',
+            psp_transaction_id: 'TX-INTERNE'
+          }
+        }
+      ],
+      penalties: [
+        {
+          id: id(52),
+          tenant_id: TENANT_A,
+          installment_id: INSTALLMENT,
+          amount: 5000,
+          currency: 'FCFA',
+          days_late: 10,
+          calculated_at: new Date('2026-04-15'),
+          created_at: new Date('2026-04-15'),
+          is_manual_override: true,
+          override_reason: `Justificatif ${'/uploads/documents/tenant-a/penalites/geste.pdf'}`,
+          created_by_user_id: 'user-agent'
+        }
+      ],
+      lease: { id: LEASE, lease_number: 'BAIL-1', property: { id: P1, address: 'Cocody' } }
+    });
+    mockPrisma.rentalPayment.rows.push({
+      id: id(53),
+      tenant_id: TENANT_A,
+      lease_id: LEASE,
+      status: 'SUCCESS',
+      amount: 40000,
+      currency: 'FCFA',
+      method: 'MOBILE_MONEY',
+      succeeded_at: new Date('2026-04-10'),
+      psp_reference: 'REF-1',
+      mm_phone: '+2250700000000',
+      treasury_account_id: id(54),
+      idempotency_key: 'idem-1',
+      raw_event_payload: { secret: 'x' },
+      created_by_user_id: 'user-agent',
+      allocations: [{ id: id(55), installment_id: INSTALLMENT, amount: 40000, currency: 'FCFA', tenant_id: TENANT_A }]
+    });
+
+    const data = await expectClean(USER_AWA, `/api/portal/tenant/installments/${INSTALLMENT}`);
+    const penalty = data.installment.penalties[0];
+    expect(penalty).toMatchObject({ id: id(52), amount: 5000, days_late: 10 });
+    expect(penalty).not.toHaveProperty('override_reason');
+    expect(penalty).not.toHaveProperty('created_by_user_id');
+
+    // Échéance, lignes et affectations : `select` explicite, aucun champ interne.
+    expect(data.installment).not.toHaveProperty('tenant_id');
+    expect(data.installment).not.toHaveProperty('invoice_id');
+    expect(data.installment.items[0]).toMatchObject({
+      id: id(56),
+      charge_type: 'RENT',
+      label: 'Loyer',
+      amount: 100000
+    });
+    for (const key of ['tenant_id', 'installment_id', 'metadata']) {
+      expect(data.installment.items[0]).not.toHaveProperty(key);
+    }
+    expect(data.installment.payments[0]).toMatchObject({ id: id(57), amount: 40000, currency: 'FCFA' });
+    for (const key of ['tenant_id', 'payment_id', 'installment_id']) {
+      expect(data.installment.payments[0]).not.toHaveProperty(key);
+    }
+    expect(data.installment.payments[0].payment).not.toHaveProperty('psp_transaction_id');
+    const related = data.relatedPayments[0];
+    expect(related).toMatchObject({ id: id(53), amount: 40000 });
+    for (const key of [
+      'mm_phone',
+      'treasury_account_id',
+      'idempotency_key',
+      'raw_event_payload',
+      'created_by_user_id'
+    ]) {
+      expect(related).not.toHaveProperty(key);
+    }
+  });
+
+  it('déclaration de paiement avec preuve : ni chemin /uploads ni champs internes dans la réponse', async () => {
+    // PNG minimal : l'extension et le type viennent de la signature du contenu.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64'
+    );
+    const res = await request(app)
+      .post('/api/portal/tenant/payments/declare')
+      .set('x-test-user', USER_AWA)
+      .field('amount', '50000')
+      .field('paymentDate', '2026-04-10')
+      .field('paymentMethod', 'MOBILE_MONEY')
+      .field('mobileOperator', 'ORANGE')
+      .field('transactionPhone', '+2250700000000')
+      .attach('proof', png, { filename: 'preuve.png', contentType: 'image/png' });
+
+    expect(`${res.status} ${JSON.stringify(res.body)}`).toMatch(/^201 /);
+    expect(findDiskPathLeaks(res.body)).toEqual([]);
+    const declaration = res.body.data;
+    expect(declaration).toMatchObject({ amount: 50000, status: 'PENDING', hasProof: true });
+    for (const key of ['proof_file_url', 'tenant_id', 'declared_by', 'reviewed_by', 'review_notes']) {
+      expect(declaration).not.toHaveProperty(key);
+    }
+    // La preuve est bien enregistrée côté serveur, mais ne sort pas.
+    expect(mockPrisma.rentalPaymentDeclaration.rows[0].proof_file_url).toMatch(/^\/uploads\/portal\/payments\//);
   });
 
   it('détail d’un ticket : pièces jointes sans URL de stockage', async () => {

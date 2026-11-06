@@ -56,7 +56,7 @@ router.post(
 );
 
 // Token Management
-router.post('/refresh', refreshRateLimiter, refresh);
+router.post('/refresh', refreshRateLimiter, asyncHandler(refresh));
 router.post('/logout', logout);
 
 // Password Management
@@ -68,7 +68,7 @@ router.post('/reset-password', resetPasswordRateLimiter, validate(resetPasswordS
 router.post('/invitations/accept', invitationAcceptRateLimiter, optionalAuthenticate, acceptInvitationHandler);
 
 // User Info
-router.get('/me', authenticate, getMe);
+router.get('/me', authenticate, asyncHandler(getMe));
 
 // Langue preferee du compte : elle suit l'utilisateur d'un appareil a l'autre,
 // et decide de la langue des e-mails envoyes hors requete.

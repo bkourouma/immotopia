@@ -119,3 +119,39 @@ describe('écrivain PDF', () => {
     expect(calls.pdfTexts).toContain('Page 2 / 2');
   });
 });
+
+describe('tiret de remplissage — Excel et PDF', () => {
+  const colonnes = [
+    { title: 'Nom', dataIndex: 'nom' },
+    { title: 'Note', dataIndex: 'note', render: (v?: string) => v || '-' }
+  ];
+  const lignes = [
+    { nom: 'Sans note', note: undefined },
+    { nom: '=cmd', note: '-1+2' }
+  ];
+
+  it('Excel : le tiret devient une cellule vide, « -1+2 » reste neutralisé', async () => {
+    const { buildExportTable } = await import('../../utils/table-export/build-table');
+    const { buildXlsxBlob } = await import('../../utils/table-export/excel');
+    const built = await buildExportTable(colonnes, lignes);
+    await buildXlsxBlob(built, { title: 'Baux', language: 'fr' });
+    expect(calls.rows).toEqual([
+      ['Nom', 'Note'],
+      ['Sans note', null],
+      ["'=cmd", "'-1+2"]
+    ]);
+  });
+
+  it('PDF : le tiret devient une cellule vide', async () => {
+    const { buildExportTable } = await import('../../utils/table-export/build-table');
+    const { buildPdfBlob } = await import('../../utils/table-export/pdf');
+    const built = await buildExportTable(colonnes, lignes);
+    await buildPdfBlob(built, { title: 'Baux', language: 'fr', locale: 'fr-FR' });
+    expect(calls.autoTable).toMatchObject({
+      body: [
+        ['Sans note', ''],
+        ['=cmd', '-1+2']
+      ]
+    });
+  });
+});

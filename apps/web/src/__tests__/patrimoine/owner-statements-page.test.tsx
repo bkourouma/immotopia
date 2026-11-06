@@ -14,6 +14,7 @@ import { OwnerStatementsPage } from '../../pages/patrimoine/statements/OwnerStat
  */
 
 const listOwnerStatementsPage = vi.hoisted(() => vi.fn());
+const listEligibleOwnerStatementProperties = vi.hoisted(() => vi.fn());
 const createOwnerStatement = vi.hoisted(() => vi.fn());
 const recomputeOwnerStatement = vi.hoisted(() => vi.fn());
 const sendOwnerStatement = vi.hoisted(() => vi.fn());
@@ -32,6 +33,7 @@ vi.mock('../../hooks/useMenuAccess', () => ({
 }));
 vi.mock('../../services/patrimoine-service', () => ({
   listOwnerStatementsPage: (...a: unknown[]) => listOwnerStatementsPage(...a),
+  listEligibleOwnerStatementProperties: (...a: unknown[]) => listEligibleOwnerStatementProperties(...a),
   createOwnerStatement: (...a: unknown[]) => createOwnerStatement(...a),
   recomputeOwnerStatement: (...a: unknown[]) => recomputeOwnerStatement(...a),
   sendOwnerStatement: (...a: unknown[]) => sendOwnerStatement(...a)
@@ -96,7 +98,64 @@ beforeEach(() => {
   listOwnerStatementsPage.mockResolvedValue(page([RELEVE]));
   listContacts.mockResolvedValue({ contacts: [], pagination: {} });
   listProperties.mockResolvedValue({ properties: [], pagination: {} });
+  listEligibleOwnerStatementProperties.mockResolvedValue([]);
   getContact.mockResolvedValue({ data: { id: 'c1', firstName: 'Awa', lastName: 'Koné' } });
+});
+
+describe('Génération de relevé : biens du propriétaire', () => {
+  it('ne propose que les biens éligibles et vide une sélection au changement de propriétaire', async () => {
+    listContacts.mockResolvedValue({
+      contacts: [
+        { id: 'c1', firstName: 'Awa', lastName: 'Koné', roles: [{ role: 'PROPRIETAIRE', active: true }] },
+        { id: 'c2', firstName: 'Bakary', lastName: 'Diallo', roles: [{ role: 'PROPRIETAIRE', active: true }] }
+      ],
+      pagination: {}
+    });
+    listEligibleOwnerStatementProperties.mockImplementation(async (_tenant: string, ownerId: string) =>
+      ownerId === 'c1'
+        ? [{ id: 'p1', title: 'Villa', internalReference: 'A-1', address: 'Cocody' }]
+        : [{ id: 'p2', title: 'Villa', internalReference: 'B-2', address: 'Plateau' }]
+    );
+    const user = userEvent.setup({ delay: null });
+    renderPage();
+
+    const owner = screen.getByRole('combobox', { name: 'Propriétaire' });
+    const properties = screen.getByRole('combobox', { name: 'Biens concernés' });
+    const selectedProperties = properties.closest('.ant-select') as HTMLElement;
+    expect(properties).toBeDisabled();
+
+    await user.click(owner);
+    await user.click(await screen.findByText('Awa Koné', { selector: '.ant-select-item-option-content' }, T));
+    await vi.waitFor(() => expect(listEligibleOwnerStatementProperties).toHaveBeenCalledWith('agence-1', 'c1'), T);
+    await vi.waitFor(() => expect(properties).not.toBeDisabled(), T);
+    await user.click(properties);
+    await user.click(
+      await screen.findByText('Villa — A-1 · Cocody', { selector: '.ant-select-item-option-content' }, T)
+    );
+    expect(within(selectedProperties).getByText('Villa — A-1 · Cocody')).toBeInTheDocument();
+
+    await user.click(owner);
+    await user.click(await screen.findByText('Bakary Diallo', { selector: '.ant-select-item-option-content' }, T));
+    await vi.waitFor(() => expect(listEligibleOwnerStatementProperties).toHaveBeenCalledWith('agence-1', 'c2'), T);
+    await vi.waitFor(() => expect(properties).not.toBeDisabled(), T);
+    expect(within(selectedProperties).queryByText('Villa — A-1 · Cocody')).not.toBeInTheDocument();
+    await user.click(properties);
+    expect(
+      await screen.findByText('Villa — B-2 · Plateau', { selector: '.ant-select-item-option-content' }, T)
+    ).toBeInTheDocument();
+    const visibleOptions = document.querySelector(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden)'
+    ) as HTMLElement;
+    expect(within(visibleOptions).queryByText('Villa — A-1 · Cocody')).not.toBeInTheDocument();
+    expect(listProperties).not.toHaveBeenCalled();
+
+    const clearOwner = owner.closest('.ant-select')?.querySelector<HTMLElement>('.ant-select-clear');
+    expect(clearOwner).toBeTruthy();
+    await user.click(clearOwner as HTMLElement);
+    // Form.useWatch publie l'effacement après la mise à jour du formulaire.
+    await vi.waitFor(() => expect(properties).toBeDisabled(), T);
+    expect(within(selectedProperties).queryByText('Villa — B-2 · Plateau')).not.toBeInTheDocument();
+  });
 });
 
 describe('Relevés de gérance : recherche multicritères', () => {

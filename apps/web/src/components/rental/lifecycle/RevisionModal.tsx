@@ -4,6 +4,10 @@ import dayjs, { Dayjs } from 'dayjs';
 import { ReviseLeaseRequest } from '../../../services/lease-lifecycle-service';
 import { t } from '../../../i18n/t';
 
+/** Plus grand montant que la base sait porter (Decimal 12,2), aligné sur l'API. */
+const MONTANT_MAX = 9_999_999_999.99;
+const MESSAGE_MONTANT_MAX = 'Le montant dépasse le maximum autorisé (9 999 999 999,99).';
+
 interface RevisionModalProps {
   open: boolean;
   currentRent: number;
@@ -109,7 +113,7 @@ export const RevisionModal: React.FC<RevisionModalProps> = ({
         <Form.Item
           label={t('Taux de révision (%)')}
           name="revisionRate"
-          help={t('Facultatif : calcule le nouveau loyer à partir du loyer actuel.')}
+          extra={t('Facultatif : calcule le nouveau loyer à partir du loyer actuel.')}
         >
           <InputNumber
             style={{ width: '100%' }}
@@ -123,24 +127,29 @@ export const RevisionModal: React.FC<RevisionModalProps> = ({
           name="newRent"
           rules={[
             { required: true, message: t('Le nouveau loyer est requis') },
-            { type: 'number', min: 0, message: t('Le loyer doit être positif') }
+            { type: 'number', min: 0.01, message: t('Le loyer doit être positif') },
+            { type: 'number', max: MONTANT_MAX, message: t(MESSAGE_MONTANT_MAX) }
           ]}
         >
-          <InputNumber style={{ width: '100%' }} min={0} step={1000} />
+          {/* Pas de `min` : il recadrerait la saisie en silence avant la validation. */}
+          <InputNumber style={{ width: '100%' }} step={1000} />
         </Form.Item>
 
         <Form.Item
           label={t('Nouvelles charges')}
           name="newCharges"
-          rules={[{ type: 'number', min: 0, message: t('Les charges doivent être positives') }]}
+          rules={[
+            { type: 'number', min: 0, message: t('Les charges ne peuvent pas être négatives') },
+            { type: 'number', max: MONTANT_MAX, message: t(MESSAGE_MONTANT_MAX) }
+          ]}
         >
-          <InputNumber style={{ width: '100%' }} min={0} step={1000} />
+          <InputNumber style={{ width: '100%' }} step={1000} />
         </Form.Item>
 
         <Form.Item
           label={t('Motif')}
           name="summary"
-          help={t("Les échéances pas encore réglées sont recalculées ; l'écart est inscrit au compte du locataire.")}
+          extra={t("Les échéances pas encore réglées sont recalculées ; l'écart est inscrit au compte du locataire.")}
         >
           <Input.TextArea rows={2} placeholder={t('Ex : révision annuelle indexée')} />
         </Form.Item>

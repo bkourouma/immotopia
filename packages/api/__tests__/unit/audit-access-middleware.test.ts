@@ -46,7 +46,7 @@ app.get('/api/tenants/:t/denied-permission', (_req, res) => {
 app.get('/api/tenants/:t/denied-typed', (_req, res) => {
   res.status(403).json({ success: false, code: 'FORBIDDEN', message: "Vous n'avez pas accès à cette ressource." });
 });
-app.get('/api/tenants/:t/denied-localized', (_req, res) => {
+app.get(['/api/tenants/:t/denied-neutral', '/api/tenants/:t/denied-localized'], (_req, res) => {
   res.status(403).json({
     success: false,
     error: 'Forbidden',
@@ -98,6 +98,17 @@ beforeEach(() => {
 });
 
 describe('refus de droit', () => {
+  it('conserve la permission dans le journal malgré un message de refus neutre', async () => {
+    const res = await request(app).get(`/api/tenants/${T}/denied-neutral`).set('x-user', 'u1').set('x-tenant', T);
+    expect(res.status).toBe(403);
+    expect(res.body.message).not.toContain('TENANT_AUDIT_VIEW');
+    await flush();
+    expect(lastEntry()).toMatchObject({
+      actionKey: 'ACCESS_DENIED',
+      entityId: 'TENANT_AUDIT_VIEW',
+      payload: { permission: 'TENANT_AUDIT_VIEW' }
+    });
+  });
   it('un membre privé d’un droit : ACCESS_DENIED avec la permission, sur son agence', async () => {
     await request(app).get(`/api/tenants/${T}/denied-permission`).set('x-user', 'u1').set('x-tenant', T);
     await flush();

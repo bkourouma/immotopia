@@ -8,7 +8,7 @@ import { logger } from '../utils/logger';
 import { prisma } from '../utils/database';
 import { logAuthEvent, recordAuthEvent } from './audit-auth-events';
 import { frontendUrl, isProduction } from '../config/env';
-import { AppError, BadRequestError } from '../middleware/error-middleware';
+import { AppError, BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
 import { AuditActionKey } from '../types/audit-types';
 import { legacySanitizedPassword } from '../middleware/validation-middleware';
 import { getUserPermissions } from './permission-service';
@@ -516,7 +516,7 @@ export async function issueGoogleSession(
  */
 export async function refreshAccessToken(refreshToken: string, deviceInfo?: string) {
   if (!refreshToken) {
-    throw new Error('Refresh token manquant.');
+    throw new UnauthorizedError('Refresh token manquant.');
   }
 
   // Hash the refresh token to compare with stored hash
@@ -529,7 +529,7 @@ export async function refreshAccessToken(refreshToken: string, deviceInfo?: stri
   });
 
   if (!tokenRecord) {
-    throw new Error('Refresh token invalide ou expiré. Veuillez vous reconnecter.');
+    throw new UnauthorizedError('Refresh token invalide ou expiré. Veuillez vous reconnecter.');
   }
 
   // Reuse of an already-rotated token means the token leaked: revoke the whole
@@ -555,11 +555,11 @@ export async function refreshAccessToken(refreshToken: string, deviceInfo?: stri
         payload: { revokedAllSessions: true }
       });
     });
-    throw new Error('Session invalide. Veuillez vous reconnecter.');
+    throw new UnauthorizedError('Session invalide. Veuillez vous reconnecter.');
   }
 
   if (tokenRecord.expiresAt <= new Date()) {
-    throw new Error('Refresh token invalide ou expiré. Veuillez vous reconnecter.');
+    throw new UnauthorizedError('Refresh token invalide ou expiré. Veuillez vous reconnecter.');
   }
 
   // Check if user is still active
@@ -569,7 +569,7 @@ export async function refreshAccessToken(refreshToken: string, deviceInfo?: stri
       where: { id: tokenRecord.id },
       data: { revoked: true, revokedAt: new Date() }
     });
-    throw new Error('Compte utilisateur désactivé ou non vérifié.');
+    throw new UnauthorizedError('Compte utilisateur désactivé ou non vérifié.');
   }
 
   // Rotate: revoke the presented token and issue a replacement atomically.
@@ -721,7 +721,7 @@ export async function getCurrentUser(userId: string) {
   });
 
   if (!user) {
-    throw new Error('Utilisateur introuvable.');
+    throw new BadRequestError('Utilisateur introuvable.');
   }
 
   const { passwordHash: removedPasswordHash, ...userPublic } = user;

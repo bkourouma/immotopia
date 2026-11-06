@@ -45,11 +45,17 @@ export interface TenantPortalContext {
   tenantId: string;
   tenantClientId: string;
   leaseId: string;
+  /**
+   * Tous les baux actifs du locataire (H29, `listPortalLeaseIds`). Absent : le
+   * seul `leaseId`. Un ticket de N'IMPORTE LEQUEL de ces baux est visible.
+   */
+  leaseIds?: string[];
 }
 
 export interface TenantPortalTicketScope {
   tenantId: string;
   leaseId: string;
+  leaseIds?: string[];
   crmContactId?: string;
 }
 
@@ -91,7 +97,8 @@ export async function resolveTenantPortalCrmContactId(
 
 /** Filtre Prisma des tickets du locataire (voir l'en-tête). */
 export function tenantPortalTicketWhere(scope: TenantPortalTicketScope): Prisma.MaintenanceTicketWhereInput {
-  const mine: Prisma.MaintenanceTicketWhereInput[] = [{ lease_id: scope.leaseId }];
+  const leaseIds = scope.leaseIds && scope.leaseIds.length > 0 ? scope.leaseIds : [scope.leaseId];
+  const mine: Prisma.MaintenanceTicketWhereInput[] = [{ lease_id: { in: leaseIds } }];
   if (scope.crmContactId) {
     mine.push({ tenant_contact_id: scope.crmContactId }, { created_by_contact_id: scope.crmContactId });
   }
@@ -103,7 +110,12 @@ export async function tenantPortalTicketFilter(
   portal: TenantPortalContext
 ): Promise<Prisma.MaintenanceTicketWhereInput> {
   const crmContactId = await resolveTenantPortalCrmContactId(portal.tenantId, portal.tenantClientId);
-  return tenantPortalTicketWhere({ tenantId: portal.tenantId, leaseId: portal.leaseId, crmContactId });
+  return tenantPortalTicketWhere({
+    tenantId: portal.tenantId,
+    leaseId: portal.leaseId,
+    leaseIds: portal.leaseIds,
+    crmContactId
+  });
 }
 
 const ticketIdSchema = z.string().uuid();

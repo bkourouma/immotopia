@@ -17,7 +17,8 @@ import {
   Input,
   List,
   Avatar,
-  Divider
+  Divider,
+  Select
 } from 'antd';
 import {
   ToolOutlined,
@@ -133,6 +134,27 @@ export default function TenantMaintenance() {
   const [commentText, setCommentText] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
 
+  // Plusieurs baux actifs (H29) : sélecteur, comme sur « Mon bail ».
+  const [leases, setLeases] = useState<Array<{ id: string; leaseNumber: string; propertyAddress: string }>>([]);
+  const [selectedLeaseId, setSelectedLeaseId] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    tenantPortalService
+      .getLeases()
+      .then(response => {
+        const liste = (response.data?.data ?? []) as Array<{
+          id: string;
+          leaseNumber: string;
+          propertyAddress: string;
+        }>;
+        setLeases(liste);
+        if (liste.length > 1) {
+          setSelectedLeaseId(previous => (liste.some(lease => lease.id === previous) ? previous : liste[0].id));
+        }
+      })
+      .catch(() => setLeases([]));
+  }, []);
+
   // Liste paginée par le serveur : tous les critères partent à l'API (qui ne trie pas).
   const search = useListSearch({
     apiNames: { sort: false },
@@ -179,14 +201,17 @@ export default function TenantMaintenance() {
 
   useEffect(() => {
     loadTickets();
-  }, [search.apiParams]);
+  }, [search.apiParams, selectedLeaseId]);
 
   const loadTickets = async () => {
     const numero = ++derniereRequete.current;
     try {
       setLoading(true);
       setError(null);
-      const response = await tenantPortalService.getMaintenanceTickets(search.apiParams);
+      const response = await tenantPortalService.getMaintenanceTickets({
+        ...search.apiParams,
+        leaseId: selectedLeaseId
+      });
       if (numero !== derniereRequete.current) return;
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
@@ -322,6 +347,19 @@ export default function TenantMaintenance() {
         </Button>
       </div>
 
+      {leases.length > 1 && (
+        <Select
+          aria-label={t('Bail')}
+          style={{ minWidth: 280, maxWidth: '100%' }}
+          value={selectedLeaseId ?? leases[0].id}
+          onChange={value => setSelectedLeaseId(value)}
+          options={leases.map(lease => ({
+            value: lease.id,
+            label: lease.propertyAddress ? `${lease.leaseNumber} — ${lease.propertyAddress}` : lease.leaseNumber
+          }))}
+        />
+      )}
+
       {/* Summary Cards */}
       {data?.summary && (
         <Row gutter={[16, 16]}>
@@ -382,6 +420,7 @@ export default function TenantMaintenance() {
             collectAllPages<MaintenanceTicket>(async (page, limit) => {
               const reponse = await tenantPortalService.getMaintenanceTickets({
                 ...search.filterParams,
+                leaseId: selectedLeaseId,
                 page,
                 limit
               });
@@ -409,6 +448,7 @@ export default function TenantMaintenance() {
       <MaintenanceTicketModal
         open={modalVisible}
         onCancel={() => setModalVisible(false)}
+        leaseId={selectedLeaseId}
         onSuccess={() => {
           loadTickets();
         }}
@@ -484,6 +524,7 @@ export default function TenantMaintenance() {
               </Title>
               {selectedTicket.comments && selectedTicket.comments.length > 0 ? (
                 <List
+                  rowKey="id"
                   dataSource={selectedTicket.comments}
                   renderItem={comment => (
                     <List.Item>

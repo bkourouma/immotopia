@@ -123,6 +123,8 @@ describe('catalogue d’audit', () => {
       // Contrôle du stock de chantier (spec 040, B6-R4).
       // Collecte de dépôt défaite par l'annulation du paiement qui l'a financée.
       'RENTAL_DEPOSIT_MOVEMENT_DELETED',
+      // Changement manuel de statut d'un règlement locatif (annulation, réactivation).
+      'RENTAL_PAYMENT_STATUS_CHANGED',
       'STOCK_RECEIPT_RECORDED',
       'STOCK_ISSUE_RECORDED',
       'STOCK_TRANSFER_RECORDED',

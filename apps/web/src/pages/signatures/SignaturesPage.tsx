@@ -195,6 +195,7 @@ const SignaturesPage: React.FC = () => {
       dataIndex: 'createdAt',
       key: 'createdAt',
       sorter: true,
+      sortDirections: ['descend', 'ascend', 'descend'],
       sortOrder: sortBy === 'createdAt' ? (sortDir === 'asc' ? 'ascend' : 'descend') : null,
       render: (value: string) => dateLabel(value)
     },

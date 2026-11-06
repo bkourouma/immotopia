@@ -186,6 +186,7 @@ export enum AuditActionKey {
   SYNDIC_PAYMENT_PROOF_VIEWED = 'SYNDIC_PAYMENT_PROOF_VIEWED',
   /** Lot C5 : lien de paiement d'une échéance envoyé au locataire (canal, jamais le jeton). */
   RENTAL_PAYMENT_LINK_SENT = 'RENTAL_PAYMENT_LINK_SENT',
+  RENTAL_PAYMENT_STATUS_CHANGED = 'RENTAL_PAYMENT_STATUS_CHANGED',
 
   // Accès en lecture seule des tiers de confiance (lot B3, spec 034) : jamais le
   // jeton, jamais l'e-mail du bénéficiaire. entityType 'ExternalAccessGrant'.

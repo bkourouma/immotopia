@@ -119,7 +119,7 @@ describe('périmètre : un identifiant reçu n élargit jamais la requête', () 
 
   it('baux : bien du propriétaire -> restreint à ce bien', async () => {
     await service.getLeases(MINE, T, { propertyId: 'prop-2' });
-    expect(whereOf(findManyLeases)).toMatchObject({ tenant_id: T, property_id: 'prop-2' });
+    expect(whereOf(findManyLeases)).toMatchObject({ tenant_id: T, property_id: { in: ['prop-2'] } });
   });
 
   it('baux : sans bien reçu, le périmètre complet', async () => {
@@ -136,7 +136,7 @@ describe('périmètre : un identifiant reçu n élargit jamais la requête', () 
 
   it('tickets : bien du propriétaire -> restreint à ce bien', async () => {
     await service.getMaintenanceTickets(MINE, T, { propertyId: 'prop-1' });
-    expect(whereOf(findManyTickets)).toMatchObject({ tenant_id: T, property_id: 'prop-1' });
+    expect(whereOf(findManyTickets)).toMatchObject({ tenant_id: T, property_id: { in: ['prop-1'] } });
   });
 
   it('documents : bien d un autre propriétaire -> vide, prisma non appelé', async () => {

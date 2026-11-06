@@ -14,9 +14,11 @@ import {
   RentalPenalty
 } from '../../services/rental-service';
 import { saveBlob } from '../../utils/save-blob';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import { useLocalListSearch } from '../../utils/list-search';
 import { PENALTY_ACCESSORS, PENALTY_TEXT, penaltyCriteria } from './penalty-search';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, useConfirmAction } from '../../components/primitives';
 import { t } from '../../i18n/t';
@@ -57,34 +59,29 @@ interface PenaltiesProps {
 }
 
 /**
- * La raison d'ajustement et le justificatif partagent un champ texte, où ils
- * sont sérialisés en JSON. Le champ peut aussi contenir du texte brut, écrit
- * avant que ce format n'existe : les deux lectures doivent survivre.
+ * L'API sépare la raison (`override_reason` / `adjustment_reason`, texte
+ * seul) du justificatif (`justification`, nom et date). Le JSON interne du
+ * justificatif n'est jamais affiché comme une raison (BUG-2026-11-04-014) ; on
+ * écarte aussi toute valeur qui en aurait la forme, par prudence.
  */
-function champRaison(penalite: RentalPenalty): string | null {
-  return (penalite as { override_reason?: string | null }).override_reason || penalite.adjustment_reason || null;
-}
-
 function raisonAjustement(penalite: RentalPenalty): string | null {
-  const brut = champRaison(penalite);
+  const brut = penalite.adjustment_reason ?? penalite.override_reason ?? null;
   if (!brut) return null;
-  try {
-    return JSON.parse(brut).reason || brut;
-  } catch {
-    return brut;
+  if (brut.trim().startsWith('{')) {
+    try {
+      const lue = JSON.parse(brut);
+      return typeof lue?.reason === 'string' && lue.reason ? lue.reason : null;
+    } catch {
+      return brut;
+    }
   }
+  return brut;
 }
 
-type Justificatif = { fileUrl?: string; fileName?: string };
+type Justificatif = { fileName?: string | null };
 
 function justificatif(penalite: RentalPenalty): Justificatif | null {
-  const brut = champRaison(penalite);
-  if (!brut) return null;
-  try {
-    return JSON.parse(brut).justification || null;
-  } catch {
-    return null;
-  }
+  return penalite.justification ?? null;
 }
 
 /**
@@ -124,6 +121,11 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
   const queryClient = useQueryClient();
   const confirmAction = useConfirmAction();
   const { isDesktop } = useBreakpoint();
+  // Ajuster, justifier et supprimer exigent RENTAL_PENALTIES_EDIT, calculer RENTAL_PENALTIES_CALCULATE :
+  // un profil en lecture seule ne voit pas d'action qui répondrait 403 (BUG-2026-11-04-018).
+  const { permissions } = useMyMenuAccess(tenantId);
+  const peutEditer = permissions === null || permissions.has('RENTAL_PENALTIES_EDIT');
+  const peutCalculer = permissions === null || permissions.has('RENTAL_PENALTIES_CALCULATE');
 
   const [ajustePour, setAjustePour] = useState<RentalPenalty | null>(null);
   const [justifiePour, setJustifiePour] = useState<RentalPenalty | null>(null);
@@ -156,7 +158,14 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
     ...(propLeaseId ? { paramPrefix: 'pen', ariaLabel: t('Rechercher dans les pénalités') } : {})
   });
 
-  const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['penalties', tenantId] });
+  // Une pénalité modifie l'échéance (montant dû, statut) : l'onglet Échéances et le bail se rechargent aussi.
+  const rafraichir = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['penalties', tenantId] }),
+      queryClient.invalidateQueries({ queryKey: ['installments', tenantId] }),
+      queryClient.invalidateQueries({ queryKey: ['leases', tenantId] })
+    ]);
+  };
 
   const handleCalculate = async () => {
     if (!tenantId) return;
@@ -235,7 +244,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
   // répond 404) : il se télécharge par la route authentifiée de la pénalité.
   const ouvrirJustificatif = async (penalite: RentalPenalty) => {
     const fichier = justificatif(penalite);
-    if (!tenantId || !fichier?.fileUrl) return;
+    if (!tenantId || !fichier) return;
     try {
       const { blob, filename } = await downloadPenaltyJustification(
         tenantId,
@@ -252,15 +261,18 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
-  const actionsSecondaires = (p: RentalPenalty) => [
-    {
-      key: 'just',
-      label: justificatif(p) ? t('Remplacer le justificatif') : t('Ajouter un justificatif'),
-      onClick: () => setJustifiePour(p)
-    },
-    { type: 'divider' as const },
-    { key: 'del', label: t('Supprimer'), danger: true, onClick: () => handleDelete(p) }
-  ];
+  const actionsSecondaires = (p: RentalPenalty) =>
+    !peutEditer
+      ? []
+      : [
+          {
+            key: 'just',
+            label: justificatif(p) ? t('Remplacer le justificatif') : t('Ajouter un justificatif'),
+            onClick: () => setJustifiePour(p)
+          },
+          { type: 'divider' as const },
+          { key: 'del', label: t('Supprimer'), danger: true, onClick: () => handleDelete(p) }
+        ];
 
   const colonnes: ColumnsType<RentalPenalty> = [
     { title: t('Calculée le'), key: 'date', render: (_, p) => dateCourte(p.calculated_at) },
@@ -306,16 +318,18 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
                 {t('Justificatif')}
               </Button>
             )}
-            <Button onClick={() => ouvrirAjustement(p)}>{t('Ajuster')}</Button>
+            {peutEditer && <Button onClick={() => ouvrirAjustement(p)}>{t('Ajuster')}</Button>}
             {/* Le même menu qu'en carte : ajouter ou remplacer un justificatif,
                 supprimer. Sans lui, ces deux actions n'existaient plus du tout
                 au-dessus de 992 px. */}
-            <Dropdown menu={{ items: actionsSecondaires(p) }} trigger={['click']} placement="bottomRight">
-              <Button
-                icon={<MoreOutlined />}
-                aria-label={t('Autres actions pour la pénalité du {{value}}', { value: dateCourte(p.calculated_at) })}
-              />
-            </Dropdown>
+            {peutEditer && (
+              <Dropdown menu={{ items: actionsSecondaires(p) }} trigger={['click']} placement="bottomRight">
+                <Button
+                  icon={<MoreOutlined />}
+                  aria-label={t('Autres actions pour la pénalité du {{value}}', { value: dateCourte(p.calculated_at) })}
+                />
+              </Dropdown>
+            )}
           </Space>
         );
       }
@@ -337,12 +351,13 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
         rules={[{ required: true, message: t('Indiquez le montant retenu.') }]}
         style={{ marginTop: 'var(--space-4)' }}
       >
-        <InputNumber<number>
+        <InputNumber
           min={0}
+          max={9999999999.99}
           style={{ width: '100%' }}
-          inputMode="numeric"
-          formatter={valeur => (valeur == null ? '' : String(valeur).replace(/\B(?=(\d{3})+(?!\d))/g, ' '))}
-          parser={texte => Number((texte || '').replace(/\s/g, '')) as 0}
+          inputMode="decimal"
+          // Champ vidé : aucune valeur (et non 0), pour que « Indiquez le montant retenu. » s'affiche.
+          {...montantSaisiProps}
         />
       </Form.Item>
       <Form.Item
@@ -434,12 +449,16 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
             ? t('{{length}} pénalité{{value}}', { length: penalites.length, value: penalites.length > 1 ? 's' : '' })
             : undefined
         }
-        primaryAction={{
-          label: t('Calculer les pénalités'),
-          icon: <ReloadOutlined />,
-          onClick: handleCalculate,
-          loading: calculEnCours
-        }}
+        primaryAction={
+          peutCalculer
+            ? {
+                label: t('Calculer les pénalités'),
+                icon: <ReloadOutlined />,
+                onClick: handleCalculate,
+                loading: calculEnCours
+              }
+            : undefined
+        }
       />
 
       <DataView<RentalPenalty>
@@ -484,7 +503,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
                   : []),
                 ...(fichier ? [{ label: t('Justificatif'), value: fichier.fileName || 'fichier joint' }] : [])
               ]}
-              primaryAction={{ label: t('Ajuster'), onClick: () => ouvrirAjustement(p) }}
+              primaryAction={peutEditer ? { label: t('Ajuster'), onClick: () => ouvrirAjustement(p) } : undefined}
               secondaryActions={[
                 ...(fichier
                   ? [{ key: 'open', label: t('Ouvrir le justificatif'), onClick: () => ouvrirJustificatif(p) }]

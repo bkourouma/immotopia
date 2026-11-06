@@ -130,6 +130,13 @@ export default function Account() {
     );
   }
 
+  // Champs ajoutés au contrat (BUG-2026-11-04-003) ; absents d'une vieille réponse.
+  const extraTotals = {
+    withholdingTax: compte.totals.withholdingTax ?? 0,
+    depositRetained: compte.totals.depositRetained ?? 0,
+    otherMovements: compte.totals.otherMovements ?? 0
+  };
+
   const payoutColumns: ColumnsType<OwnerPayout> = [
     { title: t('Date'), key: 'date', render: (_, p) => dateCourte(p.paidAt) },
     { title: t('Numéro'), dataIndex: 'number', key: 'number' },
@@ -201,7 +208,7 @@ export default function Account() {
         </Space>
       </Card>
 
-      {/* Cinq indicateurs (§ spec) : ce qui compose le solde. */}
+      {/* Indicateurs : ce qui compose le solde (retenue à la source et dépôt conservé compris). */}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={8}>
           <Card>
@@ -243,6 +250,37 @@ export default function Account() {
             </div>
           </Card>
         </Col>
+        {/* Du solde : ces trois lignes ferment l'équation avec les cinq précédentes. */}
+        {extraTotals.withholdingTax !== 0 && (
+          <Col xs={24} sm={12} lg={8}>
+            <Card>
+              <Text type="secondary">{t('Retenue à la source')}</Text>
+              <div style={{ marginTop: 4 }}>
+                <MoneyValue value={extraTotals.withholdingTax} />
+              </div>
+            </Card>
+          </Col>
+        )}
+        {extraTotals.depositRetained !== 0 && (
+          <Col xs={24} sm={12} lg={8}>
+            <Card>
+              <Text type="secondary">{t('Dépôt de garantie conservé')}</Text>
+              <div style={{ marginTop: 4 }}>
+                <MoneyValue value={extraTotals.depositRetained} />
+              </div>
+            </Card>
+          </Col>
+        )}
+        {extraTotals.otherMovements !== 0 && (
+          <Col xs={24} sm={12} lg={8}>
+            <Card>
+              <Text type="secondary">{t('Autres mouvements')}</Text>
+              <div style={{ marginTop: 4 }}>
+                <MoneyValue value={extraTotals.otherMovements} signed />
+              </div>
+            </Card>
+          </Col>
+        )}
       </Row>
 
       <Card>

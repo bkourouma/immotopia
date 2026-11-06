@@ -236,7 +236,12 @@ describe("l'annulation d'un paiement défait la collecte de dépôt rattachée",
 
     await updatePaymentStatusTx(mockPrisma as any, T, 'pay-1', 'CANCELED' as any, 'actor');
 
-    expect(mockRecordAudit).toHaveBeenCalledTimes(1);
+    // La suppression de la collecte, puis le changement de statut lui-même.
+    expect(mockRecordAudit).toHaveBeenCalledTimes(2);
+    expect(mockRecordAudit).toHaveBeenLastCalledWith(
+      mockPrisma,
+      expect.objectContaining({ actionKey: 'RENTAL_PAYMENT_STATUS_CHANGED', entityId: 'pay-1' })
+    );
     expect(mockRecordAudit).toHaveBeenCalledWith(
       mockPrisma,
       expect.objectContaining({

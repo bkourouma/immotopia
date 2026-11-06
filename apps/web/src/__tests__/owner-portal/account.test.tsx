@@ -41,7 +41,16 @@ function compte(overrides: Partial<OwnerAccountDetail> = {}): OwnerAccountDetail
     ownerName: 'Awa Konan',
     email: 'awa@example.com',
     balance: 0,
-    totals: { rentCollected: 0, fees: 0, vat: 0, expenses: 0, payouts: 0 },
+    totals: {
+      rentCollected: 0,
+      fees: 0,
+      vat: 0,
+      expenses: 0,
+      payouts: 0,
+      withholdingTax: 0,
+      depositRetained: 0,
+      otherMovements: 0
+    },
     movements: [],
     payouts: [],
     ...overrides

@@ -289,6 +289,39 @@ describe('GET /tenants/:tenantId/finance/accounts/:accountId/statement', () => {
     expect(response.body.data.pageSize).toBe(50);
   });
 
+  it.each(['asOf', 'asOfDate'])('transmet search, %s et la pagination au relevé filtré', async alias => {
+    const found = {
+      ...sampleStatement(),
+      movements: [{ ...sampleStatement().movements[0], id: 'mvt-2', balanceAfter: 150_000 }],
+      total: 2,
+      filteredTotals: { debit: 450_000, credit: 0 }
+    };
+    searchAccountStatement.mockResolvedValue(found);
+
+    const response = await request(app).get(
+      `/api/tenants/${TENANT_A}/finance/accounts/${ACCOUNT_A}/statement?search=loyer&${alias}=2026-09-30&page=2&pageSize=1`
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchAccountStatement).toHaveBeenCalledWith(TENANT_A, ACCOUNT_A, {
+      range: undefined,
+      search: 'loyer',
+      skip: 1,
+      take: 1,
+      asOf: new Date('2026-09-30')
+    });
+    expect(getAccountStatement).not.toHaveBeenCalled();
+    expect(response.body.data).toEqual(
+      expect.objectContaining({
+        page: 2,
+        pageSize: 1,
+        total: 2,
+        closingBalance: 150_000,
+        movements: [expect.objectContaining({ id: 'mvt-2', balanceAfter: 150_000 })]
+      })
+    );
+  });
+
   it('rejette en 400 un intervalle de dates invalide', async () => {
     const response = await request(app).get(
       `/api/tenants/${TENANT_A}/finance/accounts/${ACCOUNT_A}/statement?periodStart=2026-09-30&periodEnd=2026-09-01`

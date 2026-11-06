@@ -30,6 +30,7 @@ const LEASE = {
   id: 'lease-1',
   tenant_id: 'tenant-A',
   primary_renter_client_id: 'client-1',
+  status: 'ACTIVE',
   penalty_grace_days: 5,
   penalty_mode: 'PERCENT_OF_BALANCE',
   penalty_rate: 5,
@@ -108,6 +109,7 @@ const mockPrisma: Row = {
     findFirst: jest.fn(async () => ({ primary_renter_client_id: 'client-1' }))
   },
   thirdPartyMovement: { findMany: jest.fn(async () => []) },
+  $queryRaw: jest.fn(async () => []),
   $transaction: jest.fn(async (cb: (tx: Row) => Promise<any>) => cb(mockPrisma))
 };
 

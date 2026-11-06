@@ -202,7 +202,7 @@ export async function seedGatewayAndCheckouts(base: LocatifBase): Promise<void> 
         feesPaidBy: 'CLIENT',
         lastTestAt: plusDays(end, -3),
         lastTestOk: true,
-        lastTestMessage: 'Simulateur de paiement opérationnel.',
+        lastTestMessage: 'Mode simulateur : connexion toujours disponible.',
         createdAt: plusDays(end, -420)
       }
     });

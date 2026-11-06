@@ -8,6 +8,7 @@ import {
   getMaintenanceAttachmentFileForTenantPortal
 } from '../lib/maintenance/attachment-files';
 import { sendPrivateFile } from '../lib/files/private-files';
+import { listPortalLeaseIds } from '../utils/tenant-portal-leases';
 
 /**
  * Upload attachment for a ticket
@@ -92,8 +93,10 @@ export const downloadTenantPortalAttachmentHandler = asyncHandler(async (req: Re
     throw new ForbiddenError('Accès portail locataire refusé.');
   }
   const { tenantId, tenantClientId, leaseId } = req.tenantPortal;
+  // Un ticket de n'importe quel bail actif du locataire (H29), jamais d'un autre.
+  const leaseIds = await listPortalLeaseIds(tenantId, tenantClientId);
   const file = await getMaintenanceAttachmentFileForTenantPortal(
-    { tenantId, tenantClientId, leaseId },
+    { tenantId, tenantClientId, leaseId, leaseIds },
     req.params.id,
     req.params.attachmentId
   );

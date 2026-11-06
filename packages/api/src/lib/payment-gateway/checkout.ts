@@ -10,6 +10,7 @@ import { t } from '../../i18n';
 import { runWithTenantContext } from '../../utils/tenant-context';
 import { AppError, BadRequestError, ErrorCode, NotFoundError } from '../../middleware/error-middleware';
 import { roundMoney } from '../finance/money';
+import { startOfDay } from '../finance/installment-status';
 import { updatePaymentStatusTx, allocatePaymentTx } from '../../services/rental-payment-service';
 import { credentialsFrom, ensureCollectionAccountTx, isConfigUsable, loadConfig } from './config';
 import { gatewayClientForMode } from './paysecurehub';
@@ -207,6 +208,20 @@ interface PreparedCheckout {
   amount: number;
 }
 
+/** Même texte que le refus de déclaration d'un paiement du portail (`tenant-portal-service.ts`). */
+const NOT_EXIGIBLE_MESSAGE = "Cette échéance n'est pas exigible : aucun paiement ne peut être déclaré dessus.";
+
+interface PrepareCheckoutOptions {
+  /**
+   * Portail locataire : une échéance au statut `DRAFT` (pas encore émise) dont la
+   * date n'est pas passée n'est pas exigible. Un brouillon échu est « En retard »
+   * (H30, comme à l'agence) et reste payable. Le lien de paiement juge
+   * l'exigibilité lui-même (`installment-payment-link.ts`), il ne passe donc pas
+   * cette option.
+   */
+  refuseDraft?: boolean;
+}
+
 /**
  * Contrôles communs au portail et au lien de paiement : configuration
  * utilisable, de 1 à 24 échéances du MÊME tenant ET du bail, non annulées,
@@ -217,7 +232,8 @@ async function prepareCheckout(
   leaseId: string,
   installmentIds: string[],
   db: Pick<PrismaTransactionClient, 'rentalInstallment'> = prisma,
-  preloadedConfig?: PaymentGatewayConfig | null
+  preloadedConfig?: PaymentGatewayConfig | null,
+  options: PrepareCheckoutOptions = {}
 ): Promise<PreparedCheckout> {
   // `preloadedConfig` : chargée AVANT d'ouvrir une transaction (aucune requête hors `tx` à l'intérieur).
   const config = preloadedConfig === undefined ? await loadConfig(tenantId) : preloadedConfig;
@@ -235,6 +251,7 @@ async function prepareCheckout(
     select: {
       id: true,
       status: true,
+      due_date: true,
       amount_rent: true,
       amount_service: true,
       amount_other_fees: true,
@@ -252,6 +269,10 @@ async function prepareCheckout(
   for (const installment of installments) {
     if (installment.status === 'CANCELED') {
       throw new BadRequestError('Une échéance sélectionnée est annulée.');
+    }
+    // Un brouillon dont la date est passée est « En retard » (H30, comme à l'agence) : payable.
+    if (options.refuseDraft && installment.status === 'DRAFT' && installment.due_date >= startOfDay(new Date())) {
+      throw new BadRequestError(t(NOT_EXIGIBLE_MESSAGE));
     }
     const resteDu = resteDuEcheance(installment);
     if (resteDu <= 0) {
@@ -399,7 +420,7 @@ export async function startCheckout(
   installmentIds: string[],
   actorUserId: string | undefined
 ): Promise<OnlineCheckoutDto> {
-  const prepared = await prepareCheckout(tenantId, leaseId, installmentIds);
+  const prepared = await prepareCheckout(tenantId, leaseId, installmentIds, prisma, undefined, { refuseDraft: true });
   const { uniqueIds } = prepared;
 
   const fifteenMinutesAgo = new Date(Date.now() - PENDING_REUSE_WINDOW_MS);

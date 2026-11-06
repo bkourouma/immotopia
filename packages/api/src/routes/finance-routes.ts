@@ -8,6 +8,7 @@ import {
   getBillingRunHandler,
   getClientsAgingBalanceHandler,
   getClientsBalanceHandler,
+  listClientBalancePropertiesHandler,
   listBillingRunsHandler,
   printAccountStatementHandler
 } from '../controllers/finance-controller';
@@ -39,6 +40,8 @@ const router = Router();
 router.use('/tenants/:tenantId/finance', authenticate, requireTenantAccess);
 
 router.get('/tenants/:tenantId/finance/clients/balance', requireReportsRead, getClientsBalanceHandler);
+
+router.get('/tenants/:tenantId/finance/clients/properties', requireReportsRead, listClientBalancePropertiesHandler);
 
 router.get('/tenants/:tenantId/finance/clients/balance-agee', requireReportsRead, getClientsAgingBalanceHandler);
 

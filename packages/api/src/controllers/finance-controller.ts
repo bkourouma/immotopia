@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { toCsvString } from '../lib/csv';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { getAccountStatement, getClientsAgingBalance, getClientsBalance } from '../lib/finance/reports';
+import { listClientBalanceProperties } from '../lib/finance/client-balance-properties';
 import { runRentBilling } from '../lib/finance/billing-run';
 import { buildAccountStatementPdf } from '../lib/finance/statement-pdf';
 import { searchAccountStatement } from '../lib/finance/statement-search';
@@ -143,6 +144,12 @@ function toBillingRunResponse(row: {
 // A. Balance clients
 // ---------------------------------------------------------------------------
 
+export const listClientBalancePropertiesHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = requireTenantId(req);
+  const properties = await listClientBalanceProperties(tenantId);
+  res.status(200).json({ success: true, data: properties });
+});
+
 export const getClientsBalanceHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = requireTenantId(req);
   const query = clientsBalanceQuerySchema.parse(req.query ?? {});
@@ -207,7 +214,8 @@ export const getAccountStatementHandler = asyncHandler(async (req: Request, res:
       range: range.from || range.to ? range : undefined,
       search: query.search,
       skip: pagination.skip,
-      take: pagination.take
+      take: pagination.take,
+      asOf: query.asOfDate ?? query.asOf
     });
     res.status(200).json({
       success: true,
@@ -219,7 +227,8 @@ export const getAccountStatementHandler = asyncHandler(async (req: Request, res:
   const statement = await getAccountStatement(tenantId, accountId, {
     range: range.from || range.to ? range : undefined,
     skip: pagination.skip,
-    take: pagination.take
+    take: pagination.take,
+    asOf: query.asOfDate ?? query.asOf
   });
 
   res

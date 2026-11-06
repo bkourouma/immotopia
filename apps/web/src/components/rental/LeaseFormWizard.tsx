@@ -11,14 +11,40 @@ import {
 import { listProperties, getProperty, Property } from '../../services/property-service';
 import { PropertyType, PropertyTransactionMode, PropertyStatus } from '../../types/property-types';
 import { listContacts, CrmContact } from '../../services/crm-service';
-import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { montantSaisiProps, saisieNombreProps } from '../../utils/montant-saisi';
+import { erreursFinancieres, erreursPenalites } from './lease-form-validation';
 import { StepRail } from '../primitives/StepRail';
 import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
+import { formatsSaisieDate } from './lease-date-formats';
 import { findLeaseOwnerContactId } from './lease-owner-match';
 
 import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
+
+/** Étape logique (0 à 4) où se saisit chaque champ que le serveur peut refuser. */
+const ETAPE_DU_CHAMP: Record<string, number> = {
+  propertyId: 0,
+  startDate: 0,
+  endDate: 0,
+  moveInDate: 0,
+  moveOutDate: 0,
+  primaryRenterClientId: 1,
+  primaryRenterContactId: 1,
+  ownerClientId: 1,
+  ownerContactId: 1,
+  billingFrequency: 2,
+  dueDayOfMonth: 2,
+  rentAmount: 2,
+  serviceChargeAmount: 2,
+  securityDepositAmount: 2,
+  penaltyGraceDays: 3,
+  penaltyMode: 3,
+  penaltyRate: 3,
+  penaltyFixedAmount: 3,
+  penaltyCapAmount: 3,
+  notes: 4
+};
 
 interface LeaseFormWizardProps {
   lease?: RentalLease;
@@ -47,7 +73,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
     moveInDate: lease?.move_in_date ? lease.move_in_date.split('T')[0] : '',
     moveOutDate: lease?.move_out_date ? lease.move_out_date.split('T')[0] : '',
     billingFrequency: lease?.billing_frequency || RentalBillingFrequency.MONTHLY,
-    dueDayOfMonth: lease?.due_day_of_month || 1,
+    dueDayOfMonth: String(lease?.due_day_of_month || 1),
     currency: lease?.currency || 'FCFA',
     rentAmount: lease?.rent_amount?.toString() || '',
     serviceChargeAmount: lease?.service_charge_amount?.toString() || '0',
@@ -216,17 +242,11 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         break;
 
       case 2: // Informations financières
-        if (formData.dueDayOfMonth < 1 || formData.dueDayOfMonth > 31) {
-          newErrors.dueDayOfMonth = t("Le jour d'échéance doit être entre 1 et 31");
-        }
-        const rentAmountNum = parseFloat(parseNumber(formData.rentAmount));
-        if (!formData.rentAmount || isNaN(rentAmountNum) || rentAmountNum <= 0) {
-          newErrors.rentAmount = t('Le montant du loyer doit être supérieur à 0');
-        }
+        Object.assign(newErrors, erreursFinancieres(formData));
         break;
 
-      case 3: // Pénalités
-        // Optional step - no required validation
+      case 3: // Pénalités : facultatives, mais une valeur saisie doit être valable
+        Object.assign(newErrors, erreursPenalites(formData));
         break;
 
       case 4: // Notes
@@ -313,14 +333,14 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
                   }
                 : {
                     billingFrequency: formData.billingFrequency,
-                    dueDayOfMonth: parseInt(formData.dueDayOfMonth.toString(), 10),
+                    dueDayOfMonth: Number(formData.dueDayOfMonth),
                     currency: formData.currency,
                     rentAmount: parseFloat(parseNumber(formData.rentAmount)),
                     serviceChargeAmount: parseFloat(parseNumber(formData.serviceChargeAmount)) || 0,
                     securityDepositAmount: parseFloat(parseNumber(formData.securityDepositAmount)) || 0,
-                    penaltyGraceDays: parseInt(formData.penaltyGraceDays.toString(), 10) || 0,
+                    penaltyGraceDays: Number(formData.penaltyGraceDays) || 0,
                     penaltyMode: formData.penaltyMode,
-                    penaltyRate: parseFloat(formData.penaltyRate.toString()) || 0,
+                    penaltyRate: Number(formData.penaltyRate) || 0,
                     penaltyFixedAmount: parseFloat(parseNumber(formData.penaltyFixedAmount)) || 0,
                     penaltyCapAmount: formData.penaltyCapAmount
                       ? parseFloat(parseNumber(formData.penaltyCapAmount))
@@ -363,6 +383,12 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
   };
 
   const currentStepErrors = stepErrors[currentStep] || {};
+
+  // Erreur d'un champ numérique : dès qu'il a été touché, le contrôle en direct
+  // fait foi (le message suit la frappe) ; sinon, celui posé en quittant l'étape.
+  const erreursEnDirect = { ...erreursFinancieres(formData), ...erreursPenalites(formData) };
+  const erreurChamp = (champ: string): string | undefined =>
+    touchedFieldsRef.current.has(champ) ? erreursEnDirect[champ] : currentStepErrors[champ];
 
   // Skip "Informations financières" step when property has Type d'opération: Vente only
   const selectedProperty = properties.find(p => p.id === formData.propertyId);
@@ -410,16 +436,6 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
   // Step 1: Informations générales
   const step1Component = (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {errors.submit && (
-        <Alert
-          message={t('Erreur')}
-          description={errors.submit}
-          type="error"
-          showIcon
-          closable
-          onClose={() => setErrors(prev => ({ ...prev, submit: '' }))}
-        />
-      )}
       <Row gutter={16}>
         <Col xs={24}>
           <Form.Item
@@ -459,6 +475,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
             help={currentStepErrors.startDate}
           >
             <DatePicker
+              format={formatsSaisieDate()}
               value={formData.startDate ? dayjs(formData.startDate) : null}
               onChange={date => handleChange('startDate', date ? date.format('YYYY-MM-DD') : '')}
               disabled={!!lease}
@@ -474,6 +491,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
             help={currentStepErrors.endDate}
           >
             <DatePicker
+              format={formatsSaisieDate()}
               value={formData.endDate ? dayjs(formData.endDate) : null}
               onChange={date => handleChange('endDate', date ? date.format('YYYY-MM-DD') : '')}
               disabledDate={current => (formData.startDate ? current && current < dayjs(formData.startDate) : false)}
@@ -487,6 +505,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         <Col xs={24} md={12}>
           <Form.Item label={t("Date d'emménagement")}>
             <DatePicker
+              format={formatsSaisieDate()}
               value={formData.moveInDate ? dayjs(formData.moveInDate) : null}
               onChange={date => handleChange('moveInDate', date ? date.format('YYYY-MM-DD') : '')}
               style={{ width: '100%' }}
@@ -497,6 +516,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         <Col xs={24} md={12}>
           <Form.Item label={t('Date de déménagement')}>
             <DatePicker
+              format={formatsSaisieDate()}
               value={formData.moveOutDate ? dayjs(formData.moveOutDate) : null}
               onChange={date => handleChange('moveOutDate', date ? date.format('YYYY-MM-DD') : '')}
               style={{ width: '100%' }}
@@ -591,14 +611,14 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         <Form.Item
           label={t("Jour d'échéance (1-31)")}
           required
-          validateStatus={currentStepErrors.dueDayOfMonth ? 'error' : ''}
-          help={currentStepErrors.dueDayOfMonth}
+          validateStatus={erreurChamp('dueDayOfMonth') ? 'error' : ''}
+          help={erreurChamp('dueDayOfMonth')}
         >
+          {/* Sans min/max : l'InputNumber ramènerait 5,5 ou 45 à une borne en silence. */}
           <InputNumber
-            min={1}
-            max={31}
-            value={formData.dueDayOfMonth}
-            onChange={value => handleChange('dueDayOfMonth', value || 1)}
+            value={formData.dueDayOfMonth === '' ? undefined : Number(formData.dueDayOfMonth)}
+            onChange={value => handleChange('dueDayOfMonth', value?.toString() ?? '')}
+            {...saisieNombreProps(2)}
             style={{ width: '100%' }}
           />
         </Form.Item>
@@ -608,14 +628,13 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         <Form.Item
           label={t('Montant du loyer')}
           required
-          validateStatus={currentStepErrors.rentAmount ? 'error' : ''}
-          help={currentStepErrors.rentAmount}
+          validateStatus={erreurChamp('rentAmount') ? 'error' : ''}
+          help={erreurChamp('rentAmount')}
         >
           <InputNumber
             value={formData.rentAmount ? parseFloat(parseNumber(formData.rentAmount)) : undefined}
             onChange={value => handleChange('rentAmount', value?.toString() || '')}
-            formatter={value => formatNumberWithSpaces(value?.toString() || '')}
-            parser={value => parseFloat(parseFormattedNumber(value || '')) || 0}
+            {...montantSaisiProps}
             placeholder={t('Ex: 150 000')}
             style={{ width: '100%' }}
             step={1000}
@@ -624,12 +643,15 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       </Col>
 
       <Col xs={24} md={12}>
-        <Form.Item label={t('Charges de service')}>
+        <Form.Item
+          label={t('Charges de service')}
+          validateStatus={erreurChamp('serviceChargeAmount') ? 'error' : ''}
+          help={erreurChamp('serviceChargeAmount')}
+        >
           <InputNumber
             value={formData.serviceChargeAmount ? parseFloat(parseNumber(formData.serviceChargeAmount)) : undefined}
-            onChange={value => handleChange('serviceChargeAmount', value?.toString() || '0')}
-            formatter={value => formatNumberWithSpaces(value?.toString() || '')}
-            parser={value => parseFloat(parseFormattedNumber(value || '')) || 0}
+            onChange={value => handleChange('serviceChargeAmount', value?.toString() ?? '')}
+            {...montantSaisiProps}
             placeholder={t('Ex: 10 000')}
             style={{ width: '100%' }}
             step={1000}
@@ -638,12 +660,15 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       </Col>
 
       <Col xs={24} md={12}>
-        <Form.Item label={t('Dépôt de garantie')}>
+        <Form.Item
+          label={t('Dépôt de garantie')}
+          validateStatus={erreurChamp('securityDepositAmount') ? 'error' : ''}
+          help={erreurChamp('securityDepositAmount')}
+        >
           <InputNumber
             value={formData.securityDepositAmount ? parseFloat(parseNumber(formData.securityDepositAmount)) : undefined}
-            onChange={value => handleChange('securityDepositAmount', value?.toString() || '0')}
-            formatter={value => formatNumberWithSpaces(value?.toString() || '')}
-            parser={value => parseFloat(parseFormattedNumber(value || '')) || 0}
+            onChange={value => handleChange('securityDepositAmount', value?.toString() ?? '')}
+            {...montantSaisiProps}
             placeholder={t('Ex: 500 000')}
             style={{ width: '100%' }}
             step={1000}
@@ -659,12 +684,13 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       <Col xs={24} md={12}>
         <Form.Item
           label={t('Jours de grâce pour pénalités')}
-          help={t("Nombre de jours avant l'application des pénalités")}
+          validateStatus={erreurChamp('penaltyGraceDays') ? 'error' : ''}
+          help={erreurChamp('penaltyGraceDays') ?? t("Nombre de jours avant l'application des pénalités")}
         >
           <InputNumber
-            min={0}
-            value={parseInt(formData.penaltyGraceDays) || 0}
-            onChange={value => handleChange('penaltyGraceDays', value?.toString() || '0')}
+            value={formData.penaltyGraceDays === '' ? undefined : Number(formData.penaltyGraceDays)}
+            onChange={value => handleChange('penaltyGraceDays', value?.toString() ?? '')}
+            {...saisieNombreProps(2)}
             style={{ width: '100%' }}
           />
         </Form.Item>
@@ -682,24 +708,31 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       {formData.penaltyMode === 'PERCENT_OF_BALANCE' && (
         <>
           <Col xs={24} md={12}>
-            <Form.Item label={t('Taux de pénalité (%)')}>
+            <Form.Item
+              label={t('Taux de pénalité (%)')}
+              validateStatus={erreurChamp('penaltyRate') ? 'error' : ''}
+              help={erreurChamp('penaltyRate')}
+            >
               <InputNumber
-                min={0}
                 step={0.01}
-                value={parseFloat(formData.penaltyRate) || 0}
-                onChange={value => handleChange('penaltyRate', value?.toString() || '0')}
+                value={formData.penaltyRate === '' ? undefined : Number(formData.penaltyRate)}
+                onChange={value => handleChange('penaltyRate', value?.toString() ?? '')}
+                {...saisieNombreProps(4)}
                 style={{ width: '100%' }}
               />
             </Form.Item>
           </Col>
 
           <Col xs={24} md={12}>
-            <Form.Item label={t('Montant maximum de pénalité (optionnel)')}>
+            <Form.Item
+              label={t('Montant maximum de pénalité (optionnel)')}
+              validateStatus={erreurChamp('penaltyCapAmount') ? 'error' : ''}
+              help={erreurChamp('penaltyCapAmount')}
+            >
               <InputNumber
                 value={formData.penaltyCapAmount ? parseFloat(parseNumber(formData.penaltyCapAmount)) : undefined}
                 onChange={value => handleChange('penaltyCapAmount', value?.toString() || '')}
-                formatter={value => formatNumberWithSpaces(value?.toString() || '')}
-                parser={value => parseFloat(parseFormattedNumber(value || '')) || 0}
+                {...montantSaisiProps}
                 placeholder={t('Ex: 50 000')}
                 style={{ width: '100%' }}
                 step={1000}
@@ -711,12 +744,15 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
 
       {formData.penaltyMode === 'FIXED_AMOUNT' && (
         <Col xs={24} md={12}>
-          <Form.Item label={t('Montant fixe de pénalité')}>
+          <Form.Item
+            label={t('Montant fixe de pénalité')}
+            validateStatus={erreurChamp('penaltyFixedAmount') ? 'error' : ''}
+            help={erreurChamp('penaltyFixedAmount')}
+          >
             <InputNumber
               value={formData.penaltyFixedAmount ? parseFloat(parseNumber(formData.penaltyFixedAmount)) : undefined}
-              onChange={value => handleChange('penaltyFixedAmount', value?.toString() || '0')}
-              formatter={value => formatNumberWithSpaces(value?.toString() || '')}
-              parser={value => parseFloat(parseFormattedNumber(value || '')) || 0}
+              onChange={value => handleChange('penaltyFixedAmount', value?.toString() ?? '')}
+              {...montantSaisiProps}
               placeholder={t('Ex: 5 000')}
               style={{ width: '100%' }}
               step={1000}
@@ -764,13 +800,10 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         return !!formData.primaryRenterClientId;
 
       case 2: // Informations financières
-        if (formData.dueDayOfMonth < 1 || formData.dueDayOfMonth > 31) return false;
-        const rentAmountNum2 = parseFloat(parseNumber(formData.rentAmount));
-        if (!formData.rentAmount || isNaN(rentAmountNum2) || rentAmountNum2 <= 0) return false;
-        return true;
+        return Object.keys(erreursFinancieres(formData)).length === 0;
 
-      case 3: // Pénalités (optional)
-        return true;
+      case 3: // Pénalités (facultatives, mais valables si saisies)
+        return Object.keys(erreursPenalites(formData)).length === 0;
 
       case 4: // Notes (optional)
         return true;
@@ -815,6 +848,12 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === stepItems.length - 1;
 
+  // Champs refusés par le serveur qui vivent sur une autre étape que celle affichée.
+  const champsEnErreurAutreEtape = Object.entries(errors)
+    .filter(([champ, message]) => champ !== 'submit' && message && champ in ETAPE_DU_CHAMP)
+    .map(([champ, message]) => ({ champ, message, affichage: displayStepFromLogical(ETAPE_DU_CHAMP[champ]) }))
+    .filter(({ affichage }) => affichage >= 0 && affichage !== currentStep);
+
   return (
     <Form form={form} layout="vertical">
       {onCancel && (
@@ -844,6 +883,33 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       </div>
 
       <div style={{ minHeight: 400, marginBottom: 24 }}>{stepComponents[currentLogicalStep]}</div>
+
+      {/* Refus du serveur : visible à l'étape où l'on se trouve (BUG-2026-11-04-058),
+          avec un renvoi vers l'étape du champ fautif quand elle est connue. */}
+      {errors.submit && (
+        <Alert
+          role="alert"
+          style={{ marginBottom: 16 }}
+          message={t('Erreur')}
+          description={
+            <Space direction="vertical" size={4}>
+              <span>{errors.submit}</span>
+              {champsEnErreurAutreEtape.map(({ champ, message, affichage }) => (
+                <span key={champ}>
+                  {stepItems[affichage].title} : {message}{' '}
+                  <Button type="link" size="small" onClick={() => setCurrentStep(affichage)}>
+                    {t("Revenir à l'étape")}
+                  </Button>
+                </span>
+              ))}
+            </Space>
+          }
+          type="error"
+          showIcon
+          closable
+          onClose={() => setErrors(prev => ({ ...prev, submit: '' }))}
+        />
+      )}
 
       <div className="it-toolbar">
         <Button disabled={isFirstStep || isSubmitting || loading} onClick={() => handleStepChange(currentStep - 1)}>

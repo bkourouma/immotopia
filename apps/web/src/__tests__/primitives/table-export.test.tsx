@@ -127,6 +127,69 @@ describe('typage des nombres', () => {
   });
 });
 
+describe('tiret de remplissage', () => {
+  it('« - », « – » et « — » (avec ou sans espaces) donnent une cellule vide', () => {
+    for (const tiret of ['-', '–', '—', ' - ', ' — ', '\t–']) {
+      expect(typeCell(tiret, tiret)).toEqual({ text: '', value: null, kind: 'empty' });
+      expect(typeCell(tiret, null)).toEqual({ text: '', value: null, kind: 'empty' });
+    }
+  });
+
+  it('un tiret n’est vidé que s’il est seul : « -5 », « -1+2 » et « a-b » restent du texte', () => {
+    expect(typeCell('-5', '-5')).toMatchObject({ kind: 'text', text: '-5' });
+    expect(typeCell('-1+2', '-1+2')).toMatchObject({ kind: 'text', text: '-1+2' });
+    expect(typeCell('a-b', 'a-b')).toMatchObject({ kind: 'text', text: 'a-b' });
+    expect(typeCell('--', '--')).toMatchObject({ kind: 'text' });
+  });
+
+  it('un nombre négatif reste un nombre', () => {
+    expect(typeCell(-5, '-5')).toMatchObject({ kind: 'number', value: -5 });
+  });
+
+  it('colonnes à rendu texte, à rendu élément et à exportValue : tiret vidé, CSV sans apostrophe', async () => {
+    type Ligne = { id: string; note?: string; ref?: string; tel?: string; delta: string };
+    const columns: ColumnsType<Ligne> = [
+      { title: 'Rendu texte', dataIndex: 'note', render: (v?: string) => v || '-' },
+      { title: 'Rendu élément', dataIndex: 'ref', render: (v?: string) => <span>{v || '–'}</span> },
+      { title: 'Valeur d’export', dataIndex: 'tel', exportValue: r => r.tel || '—' },
+      { title: 'Brut', dataIndex: 'delta' }
+    ];
+    const rows: Ligne[] = [
+      { id: '1', delta: '-', note: undefined },
+      { id: '2', delta: '-1+2', note: '=1+1', ref: '@SUM(A1)', tel: '+22501' }
+    ];
+    // Les éléments montés rendent « – » pour la 1re ligne, « @SUM(A1) » pour la 2e.
+    const table = await buildExportTable(columns, rows, {
+      renderNodes: async nodes => nodes.map((_, i) => (i === 0 ? '–' : '@SUM(A1)'))
+    });
+
+    // Ligne 1 : quatre cellules vides.
+    expect(table.rows[0].map(c => c.kind)).toEqual(['empty', 'empty', 'empty', 'empty']);
+
+    const csv = toCsvString(table, 'fr');
+    const [, premiere, seconde] = csv.slice(1).split('\r\n');
+    expect(premiere).toBe(';;;');
+
+    // Ligne 2 : la neutralisation des formules reste entière.
+    expect(seconde).toBe("'=1+1;'@SUM(A1);'+22501;'-1+2");
+  });
+
+  it('neutralise toujours « =1+1 », « +1 », « -1+2 », « @SUM », tabulation et retour chariot en tête', () => {
+    const colonne: ExportTable['columns'] = [{ header: 'Valeur', numeric: false, integer: true }];
+    const cellule = (texte: string) => typeCell(texte, texte);
+    for (const mauvais of ['=1+1', '+1', '-1+2', '@SUM(A1)']) {
+      const table: ExportTable = { columns: colonne, rows: [[cellule(mauvais)]] };
+      const champ = toCsvString(table, 'fr').slice(1).split('\r\n')[1];
+      expect(champ.replace(/^"|"$/g, '').startsWith("'")).toBe(true);
+    }
+    // typeCell normalise les blancs en tête : les contrôles sont supprimés avant l'export.
+    for (const controle of ['\tx', '\rx']) {
+      const table: ExportTable = { columns: colonne, rows: [[cellule(controle)]] };
+      expect(toCsvString(table, 'fr').slice(1).split('\r\n')[1]).toBe('x');
+    }
+  });
+});
+
 describe('CSV', () => {
   const table: ExportTable = {
     columns: [

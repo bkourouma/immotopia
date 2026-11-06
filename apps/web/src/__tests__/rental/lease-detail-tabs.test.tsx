@@ -1,8 +1,8 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { LeaseDetailPage } from '../../pages/rental/LeaseDetailPage';
 import { defaultLeaseTab, resolveLeaseTab, withLeaseTab, withTabLifecycle } from '../../pages/rental/lease-detail-tabs';
@@ -10,14 +10,36 @@ import { defaultLeaseTab, resolveLeaseTab, withLeaseTab, withTabLifecycle } from
 /** Fiche du bail : onglet actif dans l'URL, un seul onglet monté à la fois. */
 
 const getLease = vi.hoisted(() => vi.fn());
+let permissions: Set<string> | null = null;
 
 vi.mock('../../services/rental-service', () => ({
   getLease: (...a: unknown[]) => getLease(...a),
   updateLeaseStatus: vi.fn()
 }));
 vi.mock('../../services/crm-service', () => ({ getContact: vi.fn() }));
-vi.mock('../../pages/rental/Installments', () => ({ Installments: () => <div>mock-installments</div> }));
-vi.mock('../../pages/rental/Payments', () => ({ Payments: () => <div>mock-payments</div> }));
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ disabled: new Set(), enabled: new Set(), permissions, ready: true })
+}));
+function Onglet({ nom }: { nom: string }) {
+  const [params] = useSearchParams();
+  return <div>{`${nom} status=${params.get('status') ?? 'aucun'}`}</div>;
+}
+vi.mock('../../pages/rental/Installments', () => ({
+  Installments: () => (
+    <>
+      <div>mock-installments</div>
+      <Onglet nom="echeances" />
+    </>
+  )
+}));
+vi.mock('../../pages/rental/Payments', () => ({
+  Payments: () => (
+    <>
+      <div>mock-payments</div>
+      <Onglet nom="paiements" />
+    </>
+  )
+}));
 vi.mock('../../pages/rental/Penalties', () => ({ Penalties: () => <div>mock-penalties</div> }));
 vi.mock('../../pages/rental/Deposits', () => ({
   Deposits: () => {
@@ -79,6 +101,7 @@ function montes() {
 }
 
 beforeEach(() => {
+  permissions = null;
   getLease.mockReset();
   getLease.mockResolvedValue({
     success: true,
@@ -193,5 +216,92 @@ describe('Fiche du bail : onglets paresseux', () => {
     await user.click(screen.getByRole('tab', { name: /Dépôt/ }));
     expect(await screen.findByLabelText('saisie-depot', undefined, T)).toHaveValue('abc');
     await vi.waitFor(() => expect(screen.queryByText('mock-installments')).toBeNull(), T);
+  });
+});
+
+describe('Régressions locatives conservées pendant la fusion', () => {
+  it("l'onglet Paiements ne reprend pas le filtre Statut des Échéances", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderPage('?status=OVERDUE');
+    await screen.findByText('echeances status=OVERDUE', undefined, T);
+    await user.click(screen.getByRole('tab', { name: /Paiements/ }));
+    expect(await screen.findByText('paiements status=aucun', undefined, T)).toBeInTheDocument();
+  });
+
+  it("active l'onglet dès l'appui souris, avant le déplacement de la barre", async () => {
+    renderPage();
+    await screen.findByText('echeances status=aucun', undefined, T);
+    fireEvent.mouseDown(screen.getByText('Paiements'));
+    expect(await screen.findByText('paiements status=aucun', undefined, T)).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Paiements/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('accepte un lien historique ?tab=payments et garde le sous-onglet transmis', async () => {
+    renderPage('?tab=payments&onglet=declarations');
+    expect(await screen.findByText('paiements status=aucun', undefined, T)).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).toContain('onglet=declarations');
+  });
+
+  it('écrit aussi ?tab= pour les anciens liens et purge le filtre quitté', async () => {
+    const user = userEvent.setup({ delay: null });
+    renderPage('?status=OVERDUE');
+    await screen.findByText('echeances status=OVERDUE', undefined, T);
+    await user.click(screen.getByRole('tab', { name: /Paiements/ }));
+    await screen.findByText('paiements status=aucun', undefined, T);
+    expect(screen.getByTestId('url').textContent).toContain('tab=payments');
+    expect(screen.getByTestId('url').textContent).not.toContain('status=');
+  });
+
+  it('garde un filtre reçu si l’onglet déjà affiché est pressé', async () => {
+    renderPage('?status=OVERDUE');
+    await screen.findByText('echeances status=OVERDUE', undefined, T);
+    fireEvent.mouseDown(screen.getByText('Échéances'));
+    fireEvent.click(screen.getByRole('tab', { name: /Échéances/ }));
+    expect(screen.getByTestId('url').textContent).toContain('status=OVERDUE');
+  });
+
+  it('suit un lien historique puis le retour et le suivant du navigateur', async () => {
+    function Nav() {
+      const navigate = useNavigate();
+      return (
+        <>
+          <button onClick={() => navigate('/tenant/t1/rental/leases/l1?tab=documents')}>documents-lien</button>
+          <button onClick={() => navigate(-1)}>précédent-lien</button>
+          <button onClick={() => navigate(1)}>suivant-lien</button>
+        </>
+      );
+    }
+    render(
+      <AntApp>
+        <MemoryRouter initialEntries={['/tenant/t1/rental/leases/l1']}>
+          <Url />
+          <Nav />
+          <Routes>
+            <Route path="/tenant/:tenantId/rental/leases/:leaseId" element={<LeaseDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </AntApp>
+    );
+    await screen.findByText('mock-installments', undefined, T);
+    fireEvent.click(screen.getByText('documents-lien'));
+    expect(await screen.findByText('mock-documents', undefined, T)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('précédent-lien'));
+    expect(await screen.findByText('mock-installments', undefined, T)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('suivant-lien'));
+    expect(await screen.findByText('mock-documents', undefined, T)).toBeInTheDocument();
+  });
+
+  it('cache Modifier sans droit RENTAL_LEASES_EDIT', async () => {
+    permissions = new Set(['RENTAL_LEASES_VIEW']);
+    renderPage();
+    await screen.findByText('mock-installments', undefined, T);
+    expect(screen.queryByRole('button', { name: /Modifier/ })).toBeNull();
+  });
+
+  it('affiche Modifier avec le droit RENTAL_LEASES_EDIT', async () => {
+    permissions = new Set(['RENTAL_LEASES_VIEW', 'RENTAL_LEASES_EDIT']);
+    renderPage();
+    await screen.findByText('mock-installments', undefined, T);
+    expect(screen.getByRole('button', { name: /Modifier/ })).toBeInTheDocument();
   });
 });

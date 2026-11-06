@@ -12,8 +12,11 @@ export const tenantPortalService = {
   // Dashboard
   getDashboard: () => api.get('/portal/tenant/dashboard'),
 
-  // Lease Details
-  getLeaseDetails: () => api.get('/portal/tenant/lease'),
+  // Baux actifs du locataire (plusieurs possibles)
+  getLeases: () => api.get('/portal/tenant/leases'),
+
+  // Lease Details — `leaseId` choisit le bail quand il y en a plusieurs
+  getLeaseDetails: (leaseId?: string) => api.get('/portal/tenant/lease', { params: leaseId ? { leaseId } : undefined }),
 
   // Installments
   getInstallments: (
@@ -27,22 +30,34 @@ export const tenantPortalService = {
     params?: PortalListParams & { search?: string; startDate?: string; endDate?: string; method?: string }
   ) => api.get('/portal/tenant/payments', { params }),
 
-  declarePayment: (data: FormData) =>
+  // `leaseId` (paramètre d'URL lu par l'API) désigne le bail quand le paiement n'est
+  // rattaché à aucune échéance et que le locataire a plusieurs baux actifs.
+  declarePayment: (data: FormData, leaseId?: string) =>
     api.post('/portal/tenant/payments/declare', data, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params: leaseId ? { leaseId } : undefined
     }),
 
   // Deposit
-  getDepositInfo: () => api.get('/portal/tenant/deposit'),
+  getDepositInfo: (leaseId?: string) =>
+    api.get('/portal/tenant/deposit', { params: leaseId ? { leaseId } : undefined }),
 
   // Maintenance
   getMaintenanceTickets: (
-    params?: PortalListParams & { search?: string; status?: string; category?: string; priority?: string }
+    params?: PortalListParams & {
+      search?: string;
+      status?: string;
+      category?: string;
+      priority?: string;
+      leaseId?: string;
+    }
   ) => api.get('/portal/tenant/maintenance', { params }),
 
-  createMaintenanceTicket: (data: FormData) =>
+  // `leaseId` : bail concerné quand le locataire en a plusieurs
+  createMaintenanceTicket: (data: FormData, leaseId?: string) =>
     api.post('/portal/tenant/maintenance', data, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params: leaseId ? { leaseId } : undefined
     }),
 
   getMaintenanceTicketDetails: (id: string) => api.get(`/portal/tenant/maintenance/${id}`),

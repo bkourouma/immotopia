@@ -13,13 +13,16 @@ jest.mock('@prisma/client', () => {
     accounts: [] as Row[],
     movements: [] as Row[],
     leases: [] as Row[],
-    installments: [] as Row[]
+    installments: [] as Row[],
+    allocations: [] as Row[]
   };
 
   const inFilter = (filter: any, value: unknown) => !filter?.in || filter.in.includes(value);
 
   const matchesMovementDate = (movementDate: Date, filter?: Row) => {
     if (!filter) return true;
+    // Une date nue est une égalité (`{ movementDate: first.movementDate }`).
+    if (filter instanceof Date) return new Date(movementDate).getTime() === filter.getTime();
     const value = new Date(movementDate).getTime();
     if (filter.gte && value < new Date(filter.gte).getTime()) return false;
     if (filter.lte && value > new Date(filter.lte).getTime()) return false;
@@ -36,18 +39,50 @@ jest.mock('@prisma/client', () => {
         return false;
       }
     }
-    if (where.type !== undefined && m.type !== where.type) return false;
+    if (where.type !== undefined) {
+      if (typeof where.type === 'object' && where.type !== null) {
+        if (where.type.not !== undefined && m.type === where.type.not) return false;
+        if (!inFilter(where.type, m.type)) return false;
+      } else if (m.type !== where.type) {
+        return false;
+      }
+    }
     if (where.leaseId && !inFilter(where.leaseId, m.leaseId)) return false;
-    if (where.type !== undefined && m.type !== where.type) return false;
-    if (where.sourceType !== undefined && m.sourceType !== where.sourceType) return false;
+    if (where.sourceType !== undefined) {
+      if (typeof where.sourceType === 'object' && where.sourceType !== null) {
+        if (where.sourceType.not !== undefined && m.sourceType === where.sourceType.not) return false;
+      } else if (m.sourceType !== where.sourceType) {
+        return false;
+      }
+    }
     if (where.sourceId && typeof where.sourceId === 'object' && !inFilter(where.sourceId, m.sourceId)) return false;
     if (where.movementDate && !matchesMovementDate(m.movementDate, where.movementDate)) return false;
+    if (where.createdAt !== undefined) {
+      if (where.createdAt instanceof Date) {
+        if (new Date(m.createdAt).getTime() !== where.createdAt.getTime()) return false;
+      } else if (where.createdAt.lt && !(new Date(m.createdAt).getTime() < new Date(where.createdAt.lt).getTime())) {
+        return false;
+      }
+    }
+    if (where.id !== undefined) {
+      if (typeof where.id === 'object' && where.id !== null) {
+        if (where.id.lt !== undefined && !(m.id < where.id.lt)) return false;
+      } else if (m.id !== where.id) {
+        return false;
+      }
+    }
+    // `OR` : au moins une alternative doit convenir (chaque alternative est un filtre complet).
+    if (where.OR && !where.OR.some((clause: Row) => matchesMovement(m, clause))) return false;
     return true;
   };
 
   const buildComparator = (orderBy?: Row[]) => (a: Row, b: Row) => {
     for (const clause of orderBy ?? []) {
       const [field, direction] = Object.entries(clause)[0] as [string, string];
+      if (field === 'id') {
+        if (a.id === b.id) continue;
+        return (a.id < b.id ? -1 : 1) * (direction === 'desc' ? -1 : 1);
+      }
       const left = new Date(a[field]).getTime();
       const right = new Date(b[field]).getTime();
       if (left !== right) {
@@ -150,6 +185,22 @@ jest.mock('@prisma/client', () => {
           .map(l => ({ id: l.id, primary_renter_client_id: l.primary_renter_client_id, property: l.property ?? null }));
       })
     },
+    rentalPaymentAllocation: {
+      // Deux lectures : par identifiant (`where.id.in`, affectations encore existantes) et
+      // les affectations à une échéance postérieure à `installment.due_date.gt`.
+      findMany: jest.fn(async (args: Row) => {
+        const where = args.where ?? {};
+        const gt = where.installment?.due_date?.gt as Date | undefined;
+        return store.allocations
+          .filter(a => {
+            if (where.tenant_id !== undefined && a.tenant_id !== where.tenant_id) return false;
+            if (where.id?.in && !where.id.in.includes(a.id)) return false;
+            if (gt && !(new Date(a.installment.due_date).getTime() > gt.getTime())) return false;
+            return true;
+          })
+          .map(a => ({ id: a.id, amount: a.amount, payment: a.payment, installment: a.installment }));
+      })
+    },
     rentalInstallment: {
       findMany: jest.fn(async (args: Row) => {
         const where = args.where ?? {};
@@ -163,6 +214,8 @@ jest.mock('@prisma/client', () => {
           .map(i => {
             const lease = store.leases.find(l => l.id === i.lease_id);
             return {
+              id: i.id,
+              status: i.status,
               due_date: i.due_date,
               amount_rent: i.amount_rent ?? 0,
               amount_service: i.amount_service ?? 0,
@@ -197,6 +250,7 @@ function resetStore() {
   store.movements.length = 0;
   store.leases.length = 0;
   store.installments.length = 0;
+  store.allocations.length = 0;
 }
 
 function seedAccount(
@@ -535,11 +589,156 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
 
         expect(line.balance).toBe(710000);
       });
+
+      it('un compte qui n’a que des contre-passations (VOID) dans la période reste dans la balance', async () => {
+        // Septembre ne contient, pour ce compte, que l'annulation d'un loyer facturé en août.
+        seedAccount({ id: 'acc-void', tenantClientId: 'client-void', label: 'Void seul', balance: 0 });
+        seedMovement({
+          id: 'void-1',
+          accountId: 'acc-void',
+          movementDate: at('2026-08-05T00:00:00.000Z'),
+          type: 'INSTALLMENT',
+          debit: 100000
+        });
+        seedMovement({
+          id: 'void-2',
+          accountId: 'acc-void',
+          movementDate: at('2026-09-10T00:00:00.000Z'),
+          type: 'VOID',
+          credit: 100000
+        });
+
+        const { lines } = await balanceFor({ from: '2026-09-01', to: '2026-09-30' });
+        const ligne = lines.find(l => l.accountId === 'acc-void');
+
+        expect(ligne).toBeDefined();
+        // L'annulation reprend la facturation : facturé −100 000, réglé 0, solde à fin septembre 0.
+        expect(ligne!.totalBilled).toBe(-100000);
+        expect(ligne!.totalSettled).toBe(0);
+        expect(ligne!.balance).toBe(0);
+      });
     });
   });
 
   describe('getClientsAgingBalance', () => {
     const ASOF = new Date('2026-06-15T00:00:00.000Z');
+
+    it('BUG-2026-11-04-036 : compte un brouillon facturé au jour dû, mais pas un vrai brouillon', async () => {
+      seedLease({ id: 'lease-prisca', property_id: 'prop-a', primary_renter_client_id: 'client-prisca' });
+      seedAccount({ id: 'acc-prisca', tenantClientId: 'client-prisca', label: 'Prisca', balance: 185000 });
+      seedInstallment({
+        id: 'draft-billed',
+        lease_id: 'lease-prisca',
+        status: 'DRAFT',
+        due_date: ASOF,
+        amount_rent: 185000
+      });
+      seedInstallment({
+        id: 'draft-unbilled',
+        lease_id: 'lease-prisca',
+        status: 'DRAFT',
+        due_date: ASOF,
+        amount_rent: 90000
+      });
+      seedInstallment({
+        id: 'draft-future',
+        lease_id: 'lease-prisca',
+        status: 'DRAFT',
+        due_date: new Date('2026-07-15T00:00:00Z'),
+        amount_rent: 50000
+      });
+      seedInstallment({
+        id: 'cancelled',
+        lease_id: 'lease-prisca',
+        status: 'CANCELED',
+        due_date: ASOF,
+        amount_rent: 120000
+      });
+      seedMovement({
+        id: 'm-draft',
+        accountId: 'acc-prisca',
+        movementDate: ASOF,
+        type: 'INSTALLMENT',
+        debit: 185000,
+        sourceId: 'draft-billed',
+        leaseId: 'lease-prisca'
+      });
+
+      const before = await getClientsAgingBalance(TENANT_ID, { asOf: new Date('2026-06-14T00:00:00Z') });
+      expect(before.lines.find(l => l.accountId === 'acc-prisca')?.agedTotal ?? 0).toBe(0);
+
+      const due = await getClientsAgingBalance(TENANT_ID, { asOf: ASOF });
+      const line = due.lines.find(l => l.accountId === 'acc-prisca')!;
+      expect(line.days0To30).toBe(185000);
+      expect(line.notYetDue).toBe(0);
+      expect(line.ledgerBalance).toBe(185000);
+      expect(line.gap).toBe(0);
+
+      const after = await getClientsAgingBalance(TENANT_ID, { asOf: new Date('2026-06-16T00:00:00Z') });
+      expect(after.lines.find(l => l.accountId === 'acc-prisca')?.gap).toBe(0);
+
+      const nextDay = new Date('2026-06-16T00:00:00Z');
+      seedInstallment({ id: 'next-day-due', lease_id: 'lease-prisca', due_date: nextDay, amount_rent: 1000 });
+      seedMovement({
+        id: 'next-day-movement',
+        accountId: 'acc-prisca',
+        movementDate: nextDay,
+        type: 'INSTALLMENT',
+        debit: 1000,
+        sourceId: 'next-day-due',
+        leaseId: 'lease-prisca'
+      });
+      const fromNextDay = await getClientsAgingBalance(TENANT_ID, { asOf: nextDay, range: { from: nextDay } });
+      const lineFromNextDay = fromNextDay.lines.find(l => l.accountId === 'acc-prisca')!;
+      expect(lineFromNextDay.ledgerBalance).toBe(186000);
+      expect(lineFromNextDay.agedTotal).toBe(186000);
+      expect(lineFromNextDay.gap).toBe(0);
+    });
+
+    it('borne le brouillon facturé à la fin du filtre de période', async () => {
+      seedLease({ id: 'lease-cutoff', property_id: 'prop-a', primary_renter_client_id: 'client-cutoff' });
+      seedAccount({ id: 'acc-cutoff', tenantClientId: 'client-cutoff', label: 'Compte', balance: 186000 });
+      seedInstallment({
+        id: 'old-due',
+        lease_id: 'lease-cutoff',
+        due_date: new Date('2026-06-01T00:00:00Z'),
+        amount_rent: 1000
+      });
+      seedMovement({
+        id: 'old-movement',
+        accountId: 'acc-cutoff',
+        movementDate: new Date('2026-06-01T00:00:00Z'),
+        type: 'INSTALLMENT',
+        debit: 1000,
+        sourceId: 'old-due',
+        leaseId: 'lease-cutoff'
+      });
+      seedInstallment({
+        id: 'draft-later',
+        lease_id: 'lease-cutoff',
+        status: 'DRAFT',
+        due_date: ASOF,
+        amount_rent: 185000
+      });
+      seedMovement({
+        id: 'later-movement',
+        accountId: 'acc-cutoff',
+        movementDate: ASOF,
+        type: 'INSTALLMENT',
+        debit: 185000,
+        sourceId: 'draft-later',
+        leaseId: 'lease-cutoff'
+      });
+
+      const result = await getClientsAgingBalance(TENANT_ID, {
+        asOf: ASOF,
+        range: { to: new Date('2026-06-14T00:00:00Z') }
+      });
+      const line = result.lines.find(l => l.accountId === 'acc-cutoff')!;
+      expect(line.agedTotal).toBe(1000);
+      expect(line.ledgerBalance).toBe(1000);
+      expect(line.gap).toBe(0);
+    });
 
     beforeEach(() => {
       seedLease({
@@ -596,8 +795,795 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
       // Le solde comptable reste disponible a part, avec l ecart.
       expect(line.ledgerBalance).toBe(40000);
       expect(result.ledgerTotalBalance).toBe(40000);
-      expect(line.gap).toBe(4000);
-      expect(result.gap).toBe(4000);
+      // L'écart compare des grandeurs comparables : le grand livre ne compte
+      // un loyer qu'à son échéance, donc on retire les 1000 « à échoir ».
+      expect(line.gap).toBe(5000);
+      expect(result.gap).toBe(5000);
+    });
+
+    it('BUG-2026-11-04-021 : un loyer émis non échu (à échoir) ne crée aucun écart avec la comptabilité', async () => {
+      seedLease({
+        id: 'lease-c',
+        property_id: 'prop-c',
+        primary_renter_client_id: 'client-c',
+        property: { title: 'Bien C', internalReference: 'REF-C' }
+      });
+      seedAccount({ id: 'acc-c', tenantClientId: 'client-c', label: 'Locataire C', balance: 640000 });
+      seedMovement({
+        id: 'm-c',
+        accountId: 'acc-c',
+        movementDate: new Date('2026-01-05T00:00:00.000Z'),
+        type: 'INSTALLMENT',
+        debit: 640000,
+        balanceAfter: 640000,
+        label: 'Loyers échus',
+        leaseId: 'lease-c'
+      });
+      const day = 24 * 60 * 60 * 1000;
+      for (const [i, d] of [100, 70, 40, 10].entries()) {
+        seedInstallment({
+          id: `c-${i}`,
+          lease_id: 'lease-c',
+          due_date: new Date(ASOF.getTime() - d * day),
+          amount_rent: 160000
+        });
+      }
+      seedInstallment({
+        id: 'c-futur',
+        lease_id: 'lease-c',
+        due_date: new Date(ASOF.getTime() + 5 * day),
+        amount_rent: 160000
+      });
+
+      const result = await getClientsAgingBalance(TENANT_ID, { asOf: ASOF });
+      const line = result.lines.find(l => l.accountId === 'acc-c')!;
+      expect(line.agedTotal).toBe(800000);
+      expect(line.notYetDue).toBe(160000);
+      expect(line.ledgerBalance).toBe(640000);
+      expect(line.gap).toBe(0);
+    });
+
+    it('un vrai écart reste signalé malgré les loyers à échoir', async () => {
+      seedLease({
+        id: 'lease-d',
+        property_id: 'prop-d',
+        primary_renter_client_id: 'client-d',
+        property: { title: 'Bien D', internalReference: 'REF-D' }
+      });
+      // Le grand livre porte 10 000 de plus que les échéances échues.
+      seedAccount({ id: 'acc-d', tenantClientId: 'client-d', label: 'Locataire D', balance: 170000 });
+      seedMovement({
+        id: 'm-d',
+        accountId: 'acc-d',
+        movementDate: new Date('2026-01-05T00:00:00.000Z'),
+        type: 'INSTALLMENT',
+        debit: 170000,
+        balanceAfter: 170000,
+        label: 'Loyers',
+        leaseId: 'lease-d'
+      });
+      seedInstallment({
+        id: 'd-1',
+        lease_id: 'lease-d',
+        due_date: new Date(ASOF.getTime() - 10 * MS_PER_DAY),
+        amount_rent: 160000
+      });
+      seedInstallment({
+        id: 'd-2',
+        lease_id: 'lease-d',
+        due_date: new Date(ASOF.getTime() + 5 * MS_PER_DAY),
+        amount_rent: 160000
+      });
+      const result = await getClientsAgingBalance(TENANT_ID, { asOf: ASOF });
+      expect(result.lines.find(l => l.accountId === 'acc-d')!.gap).toBe(10000);
+    });
+
+    describe('BUG-2026-11-04-036 : trop-perçus et pénalités ajustées', () => {
+      function seedLocataire(suffix: string, balance: number) {
+        seedLease({
+          id: `lease-${suffix}`,
+          property_id: `prop-${suffix}`,
+          primary_renter_client_id: `client-${suffix}`,
+          property: { title: `Bien ${suffix}`, internalReference: `REF-${suffix}` }
+        });
+        seedAccount({ id: `acc-${suffix}`, tenantClientId: `client-${suffix}`, label: `Locataire ${suffix}`, balance });
+      }
+
+      it('une avance non affectée est présentée à part et ne crée aucun écart', async () => {
+        seedLocataire('e', 0);
+        const jan = new Date('2026-01-05T00:00:00.000Z');
+        // Loyer payé en entier, plus 200 000 d'avance reçue : le compte est créditeur.
+        seedMovement({
+          id: 'e1',
+          accountId: 'acc-e',
+          movementDate: jan,
+          type: 'INSTALLMENT',
+          debit: 100000,
+          leaseId: 'lease-e'
+        });
+        seedMovement({
+          id: 'e2',
+          accountId: 'acc-e',
+          movementDate: jan,
+          type: 'ADVANCE_RECEIVED',
+          credit: 300000,
+          leaseId: 'lease-e'
+        });
+        seedMovement({
+          id: 'e3',
+          accountId: 'acc-e',
+          movementDate: jan,
+          type: 'PAYMENT',
+          credit: 100000,
+          leaseId: 'lease-e'
+        });
+        seedMovement({
+          id: 'e4',
+          accountId: 'acc-e',
+          movementDate: jan,
+          type: 'ADVANCE_APPLIED',
+          debit: 100000,
+          leaseId: 'lease-e'
+        });
+        seedInstallment({
+          id: 'e-1',
+          lease_id: 'lease-e',
+          due_date: jan,
+          amount_rent: 100000,
+          amount_paid: 100000,
+          status: 'PAID'
+        });
+
+        const result = await getClientsAgingBalance(TENANT_ID, { asOf: ASOF });
+        const line = result.lines.find(l => l.accountId === 'acc-e')!;
+        expect(line.ledgerBalance).toBe(-200000);
+        expect(line.agedTotal).toBe(0);
+        expect(line.unallocatedAdvance).toBe(200000);
+        expect(line.gap).toBe(0);
+        expect(result.unallocatedAdvance).toBe(200000);
+      });
+
+      it('un écart réel reste signalé même en présence d’une avance', async () => {
+        seedLocataire('f', 0);
+        const jan = new Date('2026-01-05T00:00:00.000Z');
+        seedMovement({
+          id: 'f1',
+          accountId: 'acc-f',
+          movementDate: jan,
+          type: 'ADVANCE_RECEIVED',
+          credit: 50000,
+          leaseId: 'lease-f'
+        });
+        // 7 000 de débit sans échéance impayée correspondante.
+        seedMovement({
+          id: 'f2',
+          accountId: 'acc-f',
+          movementDate: jan,
+          type: 'ADJUSTMENT',
+          debit: 7000,
+          leaseId: 'lease-f'
+        });
+
+        const result = await getClientsAgingBalance(TENANT_ID, { asOf: ASOF });
+        const line = result.lines.find(l => l.accountId === 'acc-f')!;
+        expect(line.unallocatedAdvance).toBe(50000);
+        // Grand livre −43 000 + avance 50 000 − tranches 0 : il reste les 7 000.
+        expect(line.gap).toBe(7000);
+      });
+
+      it('une pénalité remise dans la journée (mouvement postérieur à minuit) ne crée aucun écart', async () => {
+        seedLocataire('g', 0);
+        const jan = new Date('2026-01-05T00:00:00.000Z');
+        const apresMinuit = new Date(ASOF.getTime() + 10 * 60 * 60 * 1000);
+        // Loyer 100 000 en retard, pénalité 5 000 portée à 1 800 aujourd'hui.
+        seedMovement({
+          id: 'g1',
+          accountId: 'acc-g',
+          movementDate: jan,
+          type: 'INSTALLMENT',
+          debit: 100000,
+          leaseId: 'lease-g'
+        });
+        seedMovement({
+          id: 'g2',
+          accountId: 'acc-g',
+          movementDate: jan,
+          type: 'PENALTY',
+          debit: 5000,
+          sourceType: 'RENTAL_PENALTY',
+          sourceId: 'pen-1',
+          leaseId: 'lease-g'
+        });
+        seedMovement({
+          id: 'g3',
+          accountId: 'acc-g',
+          movementDate: apresMinuit,
+          type: 'WAIVER',
+          credit: 3200,
+          sourceType: 'RENTAL_PENALTY',
+          sourceId: 'pen-1',
+          leaseId: 'lease-g'
+        });
+        seedInstallment({
+          id: 'g-1',
+          lease_id: 'lease-g',
+          due_date: jan,
+          amount_rent: 100000,
+          penalty_amount: 1800,
+          status: 'OVERDUE'
+        });
+
+        const result = await getClientsAgingBalance(TENANT_ID, { asOf: ASOF });
+        const line = result.lines.find(l => l.accountId === 'acc-g')!;
+        expect(line.ledgerBalance).toBe(101800);
+        expect(line.agedTotal).toBe(101800);
+        expect(line.gap).toBe(0);
+      });
+
+      it('une pénalité relevée (clé <id>:<n>) est comptée des deux côtés', async () => {
+        seedLocataire('h', 0);
+        const jan = new Date('2026-01-05T00:00:00.000Z');
+        seedMovement({
+          id: 'h1',
+          accountId: 'acc-h',
+          movementDate: jan,
+          type: 'INSTALLMENT',
+          debit: 100000,
+          leaseId: 'lease-h'
+        });
+        seedMovement({
+          id: 'h2',
+          accountId: 'acc-h',
+          movementDate: jan,
+          type: 'PENALTY',
+          debit: 2000,
+          sourceType: 'RENTAL_PENALTY',
+          sourceId: 'pen-2',
+          leaseId: 'lease-h'
+        });
+        seedMovement({
+          id: 'h3',
+          accountId: 'acc-h',
+          movementDate: new Date(ASOF.getTime() + 3600000),
+          type: 'PENALTY',
+          debit: 3200,
+          sourceType: 'RENTAL_PENALTY',
+          sourceId: 'pen-2:2',
+          leaseId: 'lease-h'
+        });
+        seedInstallment({
+          id: 'h-1',
+          lease_id: 'lease-h',
+          due_date: jan,
+          amount_rent: 100000,
+          penalty_amount: 5200,
+          status: 'OVERDUE'
+        });
+
+        const result = await getClientsAgingBalance(TENANT_ID, { asOf: ASOF });
+        expect(result.lines.find(l => l.accountId === 'acc-h')!.gap).toBe(0);
+      });
+
+      it('un loyer futur daté du lendemain reste hors du grand livre', async () => {
+        seedLocataire('i', 0);
+        seedMovement({
+          id: 'i1',
+          accountId: 'acc-i',
+          movementDate: new Date(ASOF.getTime() + MS_PER_DAY),
+          type: 'INSTALLMENT',
+          debit: 90000,
+          leaseId: 'lease-i'
+        });
+        seedInstallment({
+          id: 'i-1',
+          lease_id: 'lease-i',
+          due_date: new Date(ASOF.getTime() + MS_PER_DAY),
+          amount_rent: 90000
+        });
+        seedMovement({
+          id: 'i2',
+          accountId: 'acc-i',
+          movementDate: new Date('2026-01-05T00:00:00.000Z'),
+          type: 'PAYMENT',
+          credit: 1,
+          leaseId: 'lease-i'
+        });
+
+        const result = await getClientsAgingBalance(TENANT_ID, { asOf: ASOF });
+        const line = result.lines.find(l => l.accountId === 'acc-i')!;
+        expect(line.notYetDue).toBe(90000);
+        expect(line.ledgerBalance).toBe(-1);
+      });
+
+      describe('ajustements de pénalité : comptés de la même façon des deux côtés de l’écart', () => {
+        // Loyer échu de 160 000 ; la pénalité (clé `<id>`, compléments `<id>:<n>`) est ajustée dans la journée.
+        const jan = new Date('2026-01-05T00:00:00.000Z');
+        const aujourdhui = new Date(ASOF.getTime() + 10 * 60 * 60 * 1000); // 10:00, après minuit
+
+        function seedLoyerEtPenalite(suffix: string, penaltyAmount: number, mouvements: Record<string, any>[]) {
+          seedLocataire(suffix, 0);
+          seedMovement({
+            id: `${suffix}-loyer`,
+            accountId: `acc-${suffix}`,
+            movementDate: jan,
+            type: 'INSTALLMENT',
+            debit: 160000,
+            leaseId: `lease-${suffix}`
+          });
+          mouvements.forEach((m, index) =>
+            seedMovement({
+              id: `${suffix}-pen-${index}`,
+              accountId: `acc-${suffix}`,
+              movementDate: aujourdhui,
+              sourceType: 'RENTAL_PENALTY',
+              leaseId: `lease-${suffix}`,
+              ...m
+            })
+          );
+          seedInstallment({
+            id: `${suffix}-i`,
+            lease_id: `lease-${suffix}`,
+            due_date: jan,
+            amount_rent: 160000,
+            penalty_amount: penaltyAmount
+          });
+        }
+
+        const ecart = async (suffix: string) =>
+          (await getClientsAgingBalance(TENANT_ID, { asOf: ASOF })).lines.find(l => l.accountId === `acc-${suffix}`)!;
+
+        it('hausse : le complément `<id>:1` est compté comme le miroir de l’échéance', async () => {
+          seedLoyerEtPenalite('h1', 4000, [
+            { type: 'PENALTY', debit: 3200, sourceId: 'pen-h1' },
+            { type: 'PENALTY', debit: 800, sourceId: 'pen-h1:1' }
+          ]);
+          const line = await ecart('h1');
+          expect(line.ledgerBalance).toBe(164000);
+          expect(line.agedTotal).toBe(164000);
+          expect(line.gap).toBe(0);
+        });
+
+        it('baisse : la remise partielle (WAIVER) est comptée comme le miroir de l’échéance', async () => {
+          seedLoyerEtPenalite('h2', 2000, [
+            { type: 'PENALTY', debit: 3200, sourceId: 'pen-h2' },
+            { type: 'WAIVER', credit: 1200, sourceId: 'pen-h2' }
+          ]);
+          const line = await ecart('h2');
+          expect(line.ledgerBalance).toBe(162000);
+          expect(line.gap).toBe(0);
+        });
+
+        it('remise à 0 : le débit est entièrement repris', async () => {
+          seedLoyerEtPenalite('h3', 0, [
+            { type: 'PENALTY', debit: 3200, sourceId: 'pen-h3' },
+            { type: 'WAIVER', credit: 3200, sourceId: 'pen-h3' }
+          ]);
+          const line = await ecart('h3');
+          expect(line.ledgerBalance).toBe(160000);
+          expect(line.gap).toBe(0);
+        });
+
+        it('suppression après une baisse : seconde remise `<id>:2`, miroir à 0', async () => {
+          seedLoyerEtPenalite('h4', 0, [
+            { type: 'PENALTY', debit: 3200, sourceId: 'pen-h4' },
+            { type: 'WAIVER', credit: 200, sourceId: 'pen-h4' },
+            { type: 'WAIVER', credit: 3000, sourceId: 'pen-h4:2' }
+          ]);
+          const line = await ecart('h4');
+          expect(line.ledgerBalance).toBe(160000);
+          expect(line.gap).toBe(0);
+        });
+
+        it('un reliquat de pénalité supprimée sans remise complète (ancienne anomalie) reste signalé', async () => {
+          // Pénalité 3 200 remise de 200, puis supprimée SANS seconde remise : le grand livre garde 3 000
+          // que plus aucune échéance ne porte. C'est une vraie incohérence, elle doit rester visible.
+          seedLoyerEtPenalite('h5', 0, [
+            { type: 'PENALTY', debit: 3200, sourceId: 'pen-h5' },
+            { type: 'WAIVER', credit: 200, sourceId: 'pen-h5' }
+          ]);
+          const line = await ecart('h5');
+          expect(line.ledgerBalance).toBe(163000);
+          expect(line.gap).toBe(3000);
+        });
+      });
+
+      describe('contre-passations d’avance et règlements d’échéances à échoir', () => {
+        const jan = new Date('2026-01-05T00:00:00.000Z');
+
+        /** Un loyer échu impayé de 100 000 : il garde une ligne au compte et ancre l'écart à 0. */
+        function seedLoyerEchu(suffix: string) {
+          seedMovement({
+            id: `${suffix}-loyer`,
+            accountId: `acc-${suffix}`,
+            movementDate: jan,
+            type: 'INSTALLMENT',
+            debit: 100000,
+            leaseId: `lease-${suffix}`
+          });
+          seedInstallment({
+            id: `${suffix}-i`,
+            lease_id: `lease-${suffix}`,
+            due_date: jan,
+            amount_rent: 100000
+          });
+        }
+
+        it('un règlement annulé (avance contre-passée) ne laisse ni avance ni écart', async () => {
+          seedLocataire('v', 0);
+          seedLoyerEchu('v');
+          seedMovement({
+            id: 'v1',
+            accountId: 'acc-v',
+            movementDate: jan,
+            type: 'ADVANCE_RECEIVED',
+            credit: 50000,
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId: 'pay-v'
+          });
+          // `annulerPieceTx` : la pièce « avance » est reprise par un débit VOID de même pièce.
+          seedMovement({
+            id: 'v2',
+            accountId: 'acc-v',
+            movementDate: new Date('2026-02-01T00:00:00.000Z'),
+            type: 'VOID',
+            debit: 50000,
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId: 'pay-v'
+          });
+
+          const result = await getClientsAgingBalance(TENANT_ID, { asOf: ASOF });
+          const line = result.lines.find(l => l.accountId === 'acc-v')!;
+          expect(line.ledgerBalance).toBe(100000);
+          expect(line.unallocatedAdvance).toBe(0);
+          expect(line.gap).toBe(0);
+          // Le total reste la somme des lignes (la ligne « a » de ce bloc porte déjà son propre écart de 5 000).
+          expect(result.gap).toBe(5000);
+        });
+
+        it('un dépôt de garantie collecté depuis une avance (retirerAvanceDuDepotTx) ne crée aucun écart', async () => {
+          seedLocataire('w', 0);
+          seedLoyerEchu('w');
+          seedMovement({
+            id: 'w1',
+            accountId: 'acc-w',
+            movementDate: jan,
+            type: 'ADVANCE_RECEIVED',
+            credit: 300000,
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId: 'pay-w'
+          });
+          seedMovement({
+            id: 'w2',
+            accountId: 'acc-w',
+            movementDate: jan,
+            type: 'VOID',
+            debit: 300000,
+            label: 'Dépôt de garantie encaissé : retiré des avances du locataire',
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId: 'pay-w'
+          });
+
+          const line = (await getClientsAgingBalance(TENANT_ID, { asOf: ASOF })).lines.find(
+            l => l.accountId === 'acc-w'
+          )!;
+          expect(line.unallocatedAdvance).toBe(0);
+          expect(line.gap).toBe(0);
+        });
+
+        it('la contre-passation d’une affectation (autre pièce) n’est pas une avance', async () => {
+          seedLocataire('x', 0);
+          seedLoyerEchu('x');
+          // Règlement affecté puis annulé : le PAYMENT et son VOID portent la pièce d'affectation.
+          seedMovement({
+            id: 'x1',
+            accountId: 'acc-x',
+            movementDate: jan,
+            type: 'PAYMENT',
+            credit: 40000,
+            sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+            sourceId: 'alloc-x'
+          });
+          seedMovement({
+            id: 'x2',
+            accountId: 'acc-x',
+            movementDate: jan,
+            type: 'VOID',
+            debit: 40000,
+            sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+            sourceId: 'alloc-x'
+          });
+
+          const line = (await getClientsAgingBalance(TENANT_ID, { asOf: ASOF })).lines.find(
+            l => l.accountId === 'acc-x'
+          )!;
+          expect(line.unallocatedAdvance).toBe(0);
+          expect(line.gap).toBe(0);
+        });
+
+        const ALLOC_Y = '00000000-0000-4000-8000-0000000000c1';
+        const ALLOC_Z = '00000000-0000-4000-8000-0000000000c2';
+        const ALLOC_U = '00000000-0000-4000-8000-0000000000c3';
+        const ALLOC_N = '00000000-0000-4000-8000-0000000000c4';
+
+        function seedAffectationFuture(suffix: string, amount: number, allocationId: string) {
+          const dueDate = new Date(ASOF.getTime() + 20 * MS_PER_DAY);
+          seedInstallment({
+            id: `${suffix}-futur`,
+            lease_id: `lease-${suffix}`,
+            due_date: dueDate,
+            amount_rent: 100000,
+            amount_paid: amount,
+            status: 'PARTIAL'
+          });
+          store.allocations.push({
+            id: allocationId,
+            tenant_id: TENANT_ID,
+            amount,
+            payment: { succeeded_at: jan, initiated_at: jan, renter_client_id: `client-${suffix}` },
+            installment: {
+              due_date: dueDate,
+              lease_id: `lease-${suffix}`,
+              lease: { primary_renter_client_id: `client-${suffix}` }
+            }
+          });
+        }
+
+        it('un règlement affecté à une échéance à échoir ne crée pas d’écart négatif', async () => {
+          seedLocataire('y', 0);
+          seedLoyerEchu('y');
+          seedMovement({
+            id: 'y1',
+            accountId: 'acc-y',
+            movementDate: jan,
+            type: 'PAYMENT',
+            credit: 60000,
+            sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+            sourceId: ALLOC_Y
+          });
+          seedAffectationFuture('y', 60000, ALLOC_Y);
+
+          const result = await getClientsAgingBalance(TENANT_ID, { asOf: ASOF });
+          const line = result.lines.find(l => l.accountId === 'acc-y')!;
+          // Grand livre : 100 000 de loyer échu − 60 000 réglés ; tranches hors « à échoir » : 100 000.
+          expect(line.ledgerBalance).toBe(40000);
+          expect(line.notYetDue).toBe(40000);
+          expect(line.gap).toBe(0);
+          expect(result.gap).toBe(5000);
+        });
+
+        it('idem quand le règlement avait d’abord été porté en avance (reprise ADVANCE_APPLIED)', async () => {
+          seedLocataire('z', 0);
+          seedLoyerEchu('z');
+          seedMovement({
+            id: 'z1',
+            accountId: 'acc-z',
+            movementDate: jan,
+            type: 'ADVANCE_RECEIVED',
+            credit: 100000,
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId: 'pay-z'
+          });
+          seedMovement({
+            id: 'z2',
+            accountId: 'acc-z',
+            movementDate: jan,
+            type: 'PAYMENT',
+            credit: 60000,
+            sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+            sourceId: ALLOC_Z
+          });
+          seedMovement({
+            id: 'z3',
+            accountId: 'acc-z',
+            movementDate: jan,
+            type: 'ADVANCE_APPLIED',
+            debit: 60000,
+            sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+            sourceId: ALLOC_Z
+          });
+          seedAffectationFuture('z', 60000, ALLOC_Z);
+
+          const line = (await getClientsAgingBalance(TENANT_ID, { asOf: ASOF })).lines.find(
+            l => l.accountId === 'acc-z'
+          )!;
+          expect(line.unallocatedAdvance).toBe(40000);
+          expect(line.gap).toBe(0);
+        });
+
+        const ALLOC_MORTE = '00000000-0000-4000-8000-0000000000aa';
+        const ALLOC_VIVANTE = '00000000-0000-4000-8000-0000000000bb';
+
+        it('règlement annulé après affectation : l’imputation de l’affectation supprimée n’est pas comptée', async () => {
+          seedLocataire('p', 0);
+          seedLoyerEchu('p');
+          // Reçu 100 000 en avance, 40 000 affectés, puis annulé : l'affectation est supprimée, la pièce
+          // « avance » contre-passée en entier, le couple PAYMENT / ADVANCE_APPLIED reste (net nul).
+          seedMovement({
+            id: 'p1',
+            accountId: 'acc-p',
+            movementDate: jan,
+            type: 'ADVANCE_RECEIVED',
+            credit: 100000,
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId: 'pay-p'
+          });
+          seedMovement({
+            id: 'p2',
+            accountId: 'acc-p',
+            movementDate: jan,
+            type: 'PAYMENT',
+            credit: 40000,
+            sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+            sourceId: ALLOC_MORTE
+          });
+          seedMovement({
+            id: 'p3',
+            accountId: 'acc-p',
+            movementDate: jan,
+            type: 'ADVANCE_APPLIED',
+            debit: 40000,
+            sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+            sourceId: ALLOC_MORTE
+          });
+          seedMovement({
+            id: 'p4',
+            accountId: 'acc-p',
+            movementDate: jan,
+            type: 'VOID',
+            debit: 100000,
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId: 'pay-p'
+          });
+
+          const line = (await getClientsAgingBalance(TENANT_ID, { asOf: ASOF })).lines.find(
+            l => l.accountId === 'acc-p'
+          )!;
+          expect(line.ledgerBalance).toBe(100000);
+          expect(line.unallocatedAdvance).toBe(0);
+          expect(line.gap).toBe(0);
+        });
+
+        it('règlement annulé puis réactivé : l’avance ré-inscrite (`:r1`) reste une avance', async () => {
+          seedLocataire('q', 0);
+          seedLoyerEchu('q');
+          // Même historique que ci-dessus, puis réactivation : 100 000 ré-inscrits en avance, rien d'affecté.
+          seedMovement({
+            id: 'q1',
+            accountId: 'acc-q',
+            movementDate: jan,
+            type: 'ADVANCE_RECEIVED',
+            credit: 100000,
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId: 'pay-q'
+          });
+          seedMovement({
+            id: 'q2',
+            accountId: 'acc-q',
+            movementDate: jan,
+            type: 'PAYMENT',
+            credit: 100000,
+            sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+            sourceId: ALLOC_MORTE
+          });
+          seedMovement({
+            id: 'q3',
+            accountId: 'acc-q',
+            movementDate: jan,
+            type: 'ADVANCE_APPLIED',
+            debit: 100000,
+            sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+            sourceId: ALLOC_MORTE
+          });
+          seedMovement({
+            id: 'q4',
+            accountId: 'acc-q',
+            movementDate: jan,
+            type: 'VOID',
+            debit: 100000,
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId: 'pay-q'
+          });
+          seedMovement({
+            id: 'q5',
+            accountId: 'acc-q',
+            movementDate: jan,
+            type: 'ADVANCE_RECEIVED',
+            credit: 100000,
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId: 'pay-q:r1'
+          });
+
+          const line = (await getClientsAgingBalance(TENANT_ID, { asOf: ASOF })).lines.find(
+            l => l.accountId === 'acc-q'
+          )!;
+          expect(line.ledgerBalance).toBe(0);
+          expect(line.unallocatedAdvance).toBe(100000);
+          expect(line.gap).toBe(0);
+        });
+
+        it('une imputation dont l’affectation existe encore reste déduite de l’avance', async () => {
+          seedLocataire('r', 0);
+          seedLoyerEchu('r');
+          seedMovement({
+            id: 'r1',
+            accountId: 'acc-r',
+            movementDate: jan,
+            type: 'ADVANCE_RECEIVED',
+            credit: 150000,
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId: 'pay-r'
+          });
+          seedMovement({
+            id: 'r2',
+            accountId: 'acc-r',
+            movementDate: jan,
+            type: 'PAYMENT',
+            credit: 100000,
+            sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+            sourceId: ALLOC_VIVANTE
+          });
+          seedMovement({
+            id: 'r3',
+            accountId: 'acc-r',
+            movementDate: jan,
+            type: 'ADVANCE_APPLIED',
+            debit: 100000,
+            sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+            sourceId: ALLOC_VIVANTE
+          });
+          store.allocations.push({
+            id: ALLOC_VIVANTE,
+            tenant_id: TENANT_ID,
+            amount: 100000,
+            payment: { succeeded_at: jan, initiated_at: jan, renter_client_id: 'client-r' },
+            installment: { due_date: jan, lease_id: 'lease-r', lease: { primary_renter_client_id: 'client-r' } }
+          });
+          // Le loyer échu est entièrement soldé par l'affectation.
+          store.installments.find((i: any) => i.id === 'r-i')!.status = 'PAID';
+
+          const line = (await getClientsAgingBalance(TENANT_ID, { asOf: ASOF })).lines.find(
+            l => l.accountId === 'acc-r'
+          )!;
+          expect(line.unallocatedAdvance).toBe(50000);
+          expect(line.gap).toBe(0);
+        });
+
+        it('un règlement postérieur à la date de référence n’est pas remis dans l’écart', async () => {
+          seedLocataire('u', 0);
+          seedLoyerEchu('u');
+          seedAffectationFuture('u', 60000, ALLOC_U);
+          // Règlement daté après `asOf` : son crédit n'est pas au grand livre à cette date.
+          seedMovement({
+            id: 'u1',
+            accountId: 'acc-u',
+            movementDate: new Date(ASOF.getTime() + MS_PER_DAY),
+            type: 'PAYMENT',
+            credit: 60000,
+            sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+            sourceId: ALLOC_U
+          });
+
+          const line = (await getClientsAgingBalance(TENANT_ID, { asOf: ASOF })).lines.find(
+            l => l.accountId === 'acc-u'
+          )!;
+          expect(line.ledgerBalance).toBe(100000);
+          expect(line.gap).toBe(0);
+        });
+
+        it('une affectation à une échéance à échoir sans crédit au compte n’est pas remise dans l’écart', async () => {
+          seedLocataire('n', 0);
+          seedLoyerEchu('n');
+          // L'affectation existe, mais aucun mouvement `PAYMENT` ne l'a portée au compte : le grand livre
+          // ne contient rien à compenser. Remettre son montant créerait un écart positif fantôme.
+          seedAffectationFuture('n', 60000, ALLOC_N);
+
+          const line = (await getClientsAgingBalance(TENANT_ID, { asOf: ASOF })).lines.find(
+            l => l.accountId === 'acc-n'
+          )!;
+          expect(line.ledgerBalance).toBe(100000);
+          expect(line.gap).toBe(0);
+        });
+      });
     });
 
     it('ne compte que les echeances non soldees, et ignore les autres locataires', async () => {
@@ -737,6 +1723,47 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
 
       expect(statement.movements.map(m => m.id)).toEqual(['s2']);
       expect(statement.total).toBe(4);
+    });
+
+    describe('ordre total (date, écriture, identifiant)', () => {
+      const SAME = new Date('2026-03-01T00:00:00.000Z');
+
+      beforeEach(() => {
+        seedAccount({ id: 'acc-t', tenantClientId: 'client-t', label: 'Ex æquo', balance: 0 });
+        // Trois mouvements de même date ET de même écriture : seul l'identifiant les départage.
+        // Insérés dans le désordre pour que l'ordre de la table ne triche pas.
+        seedMovement({ id: 'm-c', accountId: 'acc-t', movementDate: SAME, type: 'INSTALLMENT', debit: 50 });
+        seedMovement({ id: 'm-a', accountId: 'acc-t', movementDate: SAME, type: 'INSTALLMENT', debit: 100 });
+        seedMovement({ id: 'm-b', accountId: 'acc-t', movementDate: SAME, type: 'PAYMENT', credit: 30 });
+      });
+
+      it('trie en dernier critère par identifiant, dans le relevé comme dans la page suivante', async () => {
+        const { __mockPrisma } = jest.requireMock('@prisma/client') as { __mockPrisma: any };
+        __mockPrisma.thirdPartyMovement.findMany.mockClear();
+
+        const page1 = await getAccountStatement(TENANT_ID, 'acc-t', { skip: 0, take: 2 });
+        const page2 = await getAccountStatement(TENANT_ID, 'acc-t', { skip: 2, take: 2 });
+
+        expect(page1.movements.map(m => m.id)).toEqual(['m-a', 'm-b']);
+        expect(page2.movements.map(m => m.id)).toEqual(['m-c']);
+        for (const [args] of __mockPrisma.thirdPartyMovement.findMany.mock.calls) {
+          expect(args.orderBy[args.orderBy.length - 1]).toEqual({ id: 'asc' });
+        }
+      });
+
+      it('le solde de la page 2 repart du cumul des lignes qui la précèdent (agrégat, sans relire skip lignes)', async () => {
+        const { __mockPrisma } = jest.requireMock('@prisma/client') as { __mockPrisma: any };
+        const entier = await getAccountStatement(TENANT_ID, 'acc-t');
+        __mockPrisma.thirdPartyMovement.findMany.mockClear();
+
+        const page2 = await getAccountStatement(TENANT_ID, 'acc-t', { skip: 2, take: 2 });
+
+        // 100 − 30 + 50 : même cumul que le relevé entier.
+        expect(page2.movements.map(m => m.balanceAfter)).toEqual([120]);
+        expect(page2.movements[0].balanceAfter).toBe(entier.movements[2].balanceAfter);
+        // Une seule lecture de lignes (la page) : le solde d'ouverture de page est un agrégat.
+        expect(__mockPrisma.thirdPartyMovement.findMany).toHaveBeenCalledTimes(1);
+      });
     });
   });
 

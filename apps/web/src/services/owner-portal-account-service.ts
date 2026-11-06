@@ -68,6 +68,12 @@ export interface OwnerAccountTotals {
   vat: number;
   expenses: number;
   payouts: number;
+  /** Retenue à la source, en positif : elle diminue le solde. */
+  withholdingTax: number;
+  /** Dépôt de garantie conservé : il augmente le solde. */
+  depositRetained: number;
+  /** Toute autre écriture, signée : le solde reste toujours explicable. */
+  otherMovements: number;
 }
 
 /** Compte courant complet d'un propriétaire — ce que rend `GET /portal/owner/account`. */

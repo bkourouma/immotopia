@@ -1,4 +1,4 @@
-import apiClient from '../utils/api-client';
+import apiClient, { FILE_DOWNLOAD_TIMEOUT_MS } from '../utils/api-client';
 import { API_URL } from '../config/api';
 import { getStoredActiveTenantId } from '../utils/active-tenant';
 import type {
@@ -46,7 +46,12 @@ export async function fetchSignatureContext(kind: SignatureKind, targetId: strin
 }
 
 export async function createSignatureRequest(input: CreateSignatureRequestInput): Promise<SignatureRequestDto> {
-  const response = await apiClient.post('/signatures', input, { params: tenantParams() });
+  // Un contrat de bail est converti en PDF côté serveur (20 à 25 s) : le délai par
+  // défaut (20 s) coupait l'appel alors que la demande était créée (BUG-2026-11-04-042).
+  const response = await apiClient.post('/signatures', input, {
+    params: tenantParams(),
+    timeout: FILE_DOWNLOAD_TIMEOUT_MS
+  });
   return unwrap<SignatureRequestDto>(response.data);
 }
 

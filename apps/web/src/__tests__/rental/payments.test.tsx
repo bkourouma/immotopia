@@ -211,6 +211,18 @@ describe('Paiements — état dans l’URL', () => {
     expect(await screen.findByText('liste des déclarations', {}, { timeout: 8000 })).toBeInTheDocument();
   });
 
+  it.each([
+    ['REFUNDED', 'Remboursé'],
+    ['PARTIALLY_REFUNDED', 'Partiellement remboursé']
+  ])('le filtre propose le statut %s (BUG-2026-11-03-033)', async (code, libelle) => {
+    mount([], `/tenant/agence-1/rental/payments?status=${code}`);
+    await waitFor(() => expect(listPayments).toHaveBeenCalled(), { timeout: 8000 });
+    expect(listPayments.mock.calls[0][1]).toMatchObject({ status: code });
+    // Le sélecteur affiche le libellé de l'option : sans option, il afficherait le code brut.
+    const select = await screen.findByLabelText('Statut', {}, { timeout: 8000 });
+    expect(select.closest('.ant-select')).toHaveTextContent(libelle);
+  });
+
   it('n’envoie pas de statut quand aucun filtre n’est posé', async () => {
     mount([paiement()]);
     await waitFor(() => expect(listPayments).toHaveBeenCalled());

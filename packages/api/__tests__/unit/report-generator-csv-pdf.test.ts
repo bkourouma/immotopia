@@ -93,7 +93,7 @@ describe('export CSV des paiements', () => {
     expect(text.charCodeAt(0)).toBe(0xfeff);
     const line = text.split('\r\n')[1];
     expect(line).toContain('"\'=HYPERLINK(""http://x""), Rue des Flamboyants, Riviera Golf"');
-    expect(line.endsWith(',Fatou Diarra,350000,30/09/2026,CASH,SUCCESS')).toBe(true);
+    expect(line.endsWith(',Fatou Diarra,350000,30/09/2026,Espèces,Réussi')).toBe(true);
   });
 });
 

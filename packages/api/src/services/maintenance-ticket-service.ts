@@ -1215,46 +1215,99 @@ export async function updateTicket(tenantId: string, ticketId: string, data: Upd
     updateData.assigned_to_user_id = data.assignedToUserId || null;
   }
 
-  // Handle status update if provided
-  if (data.status && data.status !== existingTicket.status) {
-    // Use updateTicketStatus for status changes to ensure workflow validation
-    await updateTicketStatus(tenantId, ticketId, data.status as MaintenanceTicketStatus, actorUserId);
+  const statusChanged = !!data.status && data.status !== existingTicket.status;
+  if (statusChanged) {
+    const hasAssignment = !!(
+      (updateData.assigned_vendor_id !== undefined
+        ? updateData.assigned_vendor_id
+        : existingTicket.assigned_vendor_id) ||
+      (updateData.assigned_to_user_id !== undefined
+        ? updateData.assigned_to_user_id
+        : existingTicket.assigned_to_user_id)
+    );
+    const transition = validateStatusTransition(
+      existingTicket.status,
+      data.status as MaintenanceTicketStatus,
+      hasAssignment
+    );
+    if (!transition.isValid) {
+      throw badRequest(transition.error || 'Cette étape du ticket ne peut pas être atteinte depuis son statut actuel.');
+    }
   }
 
-  // Update ticket (only if there are other fields to update)
+  const previousStatus = existingTicket.status;
+  if (statusChanged) {
+    updateData.status = data.status as MaintenanceTicketStatus;
+    if (data.status === MaintenanceTicketStatus.IN_PROGRESS && !existingTicket.in_progress_at) {
+      updateData.in_progress_at = new Date();
+    }
+    if (data.status === MaintenanceTicketStatus.ASSIGNED && !existingTicket.assigned_at) {
+      updateData.assigned_at = new Date();
+    }
+    if (data.status === MaintenanceTicketStatus.RESOLVED && !existingTicket.resolved_at) {
+      updateData.resolved_at = new Date();
+    }
+  }
+
+  // Assignment, status and history are one atomic change.
   if (Object.keys(updateData).length > 0) {
-    const ticket = await prisma.maintenanceTicket.update({
-      where: {
-        id: ticketId,
-        tenant_id: tenantId
-      },
-      data: updateData,
-      include: {
-        property: {
-          select: {
-            id: true,
-            internalReference: true,
-            address: true
+    const ticket = await prisma
+      .$transaction(async tx => {
+        const updated = await tx.maintenanceTicket.update({
+          where: {
+            id: ticketId,
+            tenant_id: tenantId,
+            ...(statusChanged ? { status: previousStatus } : {})
+          },
+          data: updateData,
+          include: {
+            property: {
+              select: {
+                id: true,
+                internalReference: true,
+                address: true
+              }
+            },
+            assignedVendor: {
+              select: {
+                id: true,
+                name: true,
+                phone: true,
+                email: true,
+                specialties: true
+              }
+            },
+            assignedToUser: {
+              select: {
+                id: true,
+                email: true,
+                fullName: true
+              }
+            }
           }
-        },
-        assignedVendor: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            email: true,
-            specialties: true
-          }
-        },
-        assignedToUser: {
-          select: {
-            id: true,
-            email: true,
-            fullName: true
-          }
+        });
+
+        if (statusChanged) {
+          await tx.maintenanceTicketStatusHistory.create({
+            data: {
+              tenant_id: tenantId,
+              ticket_id: updated.id,
+              from_status: previousStatus,
+              to_status: data.status as MaintenanceTicketStatus,
+              changed_by_user_id: actorUserId,
+              note: null
+            }
+          });
         }
-      }
-    });
+        return updated;
+      })
+      .catch(error => {
+        if (statusChanged && typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2025') {
+          // @i18n-keys
+          throw badRequest('Le statut du ticket a changé. Rechargez le ticket avant de le modifier.');
+        }
+        throw error;
+      });
 
     logger.info('Maintenance ticket updated', {
       ticketId: ticket.id,
@@ -1263,10 +1316,20 @@ export async function updateTicket(tenantId: string, ticketId: string, data: Upd
       updatedFields: Object.keys(updateData)
     });
 
+    if (statusChanged) {
+      sendStatusChangeNotification(tenantId, ticketId, previousStatus, data.status as MaintenanceTicketStatus).catch(
+        err => {
+          logger.error('Failed to send status change notification', {
+            ticketId,
+            tenantId,
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+      );
+    }
     return ticket;
   }
 
-  // If only status was updated, fetch the updated ticket
   return await getTicketById(tenantId, ticketId);
 }
 

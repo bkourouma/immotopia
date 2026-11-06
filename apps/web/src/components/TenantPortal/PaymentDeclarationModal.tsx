@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { App, Modal, Form, Input, InputNumber, DatePicker, Select, Upload, Button, Space, Typography } from 'antd';
 import { UploadOutlined, DollarOutlined, CalendarOutlined, FileTextOutlined, PhoneOutlined } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
-import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import dayjs, { Dayjs } from 'dayjs';
 import type { UploadFile } from 'antd';
 import { t } from '../../i18n/t';
 
 const { TextArea } = Input;
+
+/** Chiffres (latins, arabo-indiens, persans), espaces (dont insécables), séparateurs décimaux et signe. */
+const CARACTERES_ADMIS = new RegExp('^[\\d\\s.,\\u066B\\u202F\\u00A0\\u0660-\\u0669\\u06F0-\\u06F9-]$');
 const { Text } = Typography;
 
 interface PaymentDeclarationModalProps {
@@ -34,6 +37,44 @@ export default function PaymentDeclarationModal({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
+
+  // Vrai tant qu'un caractère invalide a été tapé dans le montant : la validation
+  // le refuse même si la suite de la saisie (« 1e9 » → « 19 ») redevient numérique.
+  const caractereRefuse = useRef(false);
+  // Le drapeau ne retombe que quand le champ est vidé : le message le dit.
+  const messageCaractere = () =>
+    `${t('Le montant ne doit contenir que des chiffres et une virgule (2 décimales au plus).')} ${t(
+      'Caractère refusé : effacez le montant puis saisissez-le de nouveau.'
+    )}`;
+
+  // Plusieurs baux actifs et aucune échéance visée : le bail doit être choisi.
+  const [leases, setLeases] = useState<Array<{ id: string; leaseNumber: string; propertyAddress?: string }>>([]);
+  useEffect(() => {
+    if (!open || installmentId) return;
+    let annule = false;
+    (async () => {
+      try {
+        const response = await tenantPortalService.getLeases();
+        if (!annule) setLeases(Array.isArray(response?.data?.data) ? response.data.data : []);
+      } catch {
+        // Sans liste, la fenêtre se comporte comme pour un seul bail : le serveur retient le bail par défaut.
+        if (!annule) setLeases([]);
+      }
+    })();
+    return () => {
+      annule = true;
+    };
+  }, [open, installmentId]);
+  const doitChoisirUnBail = !installmentId && leases.length > 1;
+
+  /** Une touche qui n'est ni un chiffre, ni un séparateur, ni un signe est refusée avec un message (jamais ignorée en silence). */
+  const refuserCaractereInvalide = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (CARACTERES_ADMIS.test(event.key)) return;
+    event.preventDefault();
+    caractereRefuse.current = true;
+    form.setFields([{ name: 'amount', errors: [messageCaractere()] }]);
+  };
 
   const handleSubmit = async (values: any) => {
     try {
@@ -63,7 +104,7 @@ export default function PaymentDeclarationModal({
         formData.append('proof', fileList[0].originFileObj);
       }
 
-      await tenantPortalService.declarePayment(formData);
+      await tenantPortalService.declarePayment(formData, doitChoisirUnBail ? values.leaseId : undefined);
 
       message.success({
         content: t("Déclaration de paiement créée avec succès. Elle est en attente d'approbation par le gestionnaire."),
@@ -78,6 +119,23 @@ export default function PaymentDeclarationModal({
     } finally {
       setLoading(false);
     }
+  };
+
+  // À chaque ouverture : le solde restant de l'échéance visée est proposé (modifiable
+  // pour un paiement partiel) ; sans échéance, le montant est vide. Sans cela le
+  // magasin du formulaire gardait le montant de l'échéance précédente.
+  useEffect(() => {
+    if (!open) return;
+    caractereRefuse.current = false;
+    form.setFieldsValue({ amount: defaultAmount && defaultAmount > 0 ? defaultAmount : undefined });
+  }, [open, installmentId, defaultAmount, form]);
+
+  /** Fermer sans déclarer repart d'un formulaire vierge à la prochaine ouverture. */
+  const handleCancel = () => {
+    form.resetFields();
+    setFileList([]);
+    caractereRefuse.current = false;
+    onCancel();
   };
 
   const handleFileChange = (info: any) => {
@@ -113,40 +171,74 @@ export default function PaymentDeclarationModal({
         </Space>
       }
       open={open}
-      onCancel={onCancel}
+      onCancel={handleCancel}
       footer={null}
       width={600}
       destroyOnClose
     >
       <Form
         form={form}
+        // BUG-2026-11-04-052 : sans `preserve={false}`, le magasin du formulaire
+        // gardait le montant d'une échéance ouverte puis annulée, et le bouton de
+        // page « Déclarer un paiement » le réaffichait.
+        preserve={false}
         layout="vertical"
         onFinish={handleSubmit}
         initialValues={{
           paymentDate: dayjs(),
-          paymentMethod: 'CASH',
-          // Propose le solde restant quand la declaration part d'une echeance
-          // precise ; reste modifiable pour un paiement partiel.
-          ...(defaultAmount && defaultAmount > 0 ? { amount: defaultAmount } : {})
+          paymentMethod: 'CASH'
+          // Le montant proposé n'est PAS dans `initialValues` : il est posé à chaque
+          // ouverture par l'effet ci-dessus (BUG-2026-11-04-052).
         }}
       >
+        {doitChoisirUnBail && (
+          <Form.Item
+            label={t('Bail concerné')}
+            name="leaseId"
+            rules={[{ required: true, message: t('Le bail concerné est requis') }]}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder={t('Sélectionner le bail')}
+              options={leases.map(bail => ({
+                value: bail.id,
+                label: bail.propertyAddress ? `${bail.leaseNumber} — ${bail.propertyAddress}` : bail.leaseNumber
+              }))}
+            />
+          </Form.Item>
+        )}
+
         <Form.Item
           label={t('Montant')}
           name="amount"
           rules={[
             { required: true, message: t('Le montant est requis') },
-            { type: 'number', min: 0.01, message: t('Le montant doit être positif') }
+            { type: 'number', min: 0.01, message: t('Le montant doit être positif') },
+            {
+              validator: () =>
+                caractereRefuse.current ? Promise.reject(new Error(messageCaractere())) : Promise.resolve()
+            }
           ]}
         >
-          <InputNumber<number>
+          {/*
+            BUG-2026-11-04-043 : ni `min` (InputNumber recadrerait -1 en 0,01 sans rien
+            dire : la règle ci-dessus le refuse avec un message), ni `precision={0}`
+            (qui arrondissait 0,01 en 1). La virgule décimale de la langue est lue,
+            deux décimales au plus ; une lettre ou un symbole tapé est refusé avec un message.
+          */}
+          <InputNumber
             prefix={<DollarOutlined />}
             style={{ width: '100%' }}
             placeholder={t('Ex. 150 000')}
-            min={0.01}
             step={1000}
-            precision={0}
-            formatter={value => formatNumberWithSpaces(value?.toString() || '')}
-            parser={(value): number => parseFloat(parseFormattedNumber(value || '')) || 0}
+            inputMode="decimal"
+            onKeyDown={refuserCaractereInvalide}
+            // Champ vidé : on repart de zéro.
+            onChange={valeur => {
+              if (valeur === null || valeur === '') caractereRefuse.current = false;
+            }}
+            {...montantSaisiProps}
           />
         </Form.Item>
 
@@ -239,7 +331,7 @@ export default function PaymentDeclarationModal({
 
         <Form.Item>
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={onCancel}>{t('Annuler')}</Button>
+            <Button onClick={handleCancel}>{t('Annuler')}</Button>
             <Button type="primary" htmlType="submit" loading={loading}>
               {t('Déclarer le paiement')}
             </Button>

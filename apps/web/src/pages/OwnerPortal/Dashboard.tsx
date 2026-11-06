@@ -14,7 +14,7 @@ import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
+import { activeLocale, formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 interface DashboardData {
@@ -84,11 +84,7 @@ export default function OwnerDashboard() {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: 'XOF',
-      minimumFractionDigits: 0
-    }).format(amount);
+    return formatFcfa(amount);
   };
 
   const formatDate = (dateString: string) => {
@@ -276,7 +272,7 @@ export default function OwnerDashboard() {
                       description={
                         <Space direction="vertical" size={0}>
                           <Text type="secondary">{payment.propertyAddress}</Text>
-                          <Text type="secondary">Locataire: {payment.tenantName}</Text>
+                          <Text type="secondary">{t('Locataire : {{nom}}', { nom: payment.tenantName })}</Text>
                           <Text type="secondary">
                             {t('Période:')} {payment.period} - {formatDate(payment.dueDate)}
                           </Text>
@@ -321,7 +317,7 @@ export default function OwnerDashboard() {
                       description={
                         <Space direction="vertical" size={0}>
                           <Text type="secondary">{payment.propertyAddress}</Text>
-                          <Text type="secondary">Locataire: {payment.tenantName}</Text>
+                          <Text type="secondary">{t('Locataire : {{nom}}', { nom: payment.tenantName })}</Text>
                           <Text type="secondary">{formatDate(payment.date)}</Text>
                         </Space>
                       }

@@ -110,6 +110,10 @@ const accountNumber = z
 
 const percentage = z.coerce.number().min(0).max(100);
 
+// Message de validation Zod : traduit par le middleware d'erreur à l'exécution.
+// @i18n-keys
+const MSG_FORFAIT_POSITIF = 'Le forfait doit être supérieur à 0';
+
 export const updateFinanceSettingsSchema = z
   .object({
     vatRegistered: z.boolean(),
@@ -119,7 +123,7 @@ export const updateFinanceSettingsSchema = z
     managementFeeBase: z.nativeEnum(ManagementFeeBase),
     // Absent chez un client antérieur au mode forfait : pourcentage, comme avant.
     managementFeeMode: z.nativeEnum(ManagementFeeMode).default(ManagementFeeMode.PERCENT),
-    managementFeeFixedAmount: z.coerce.number().positive().nullish(),
+    managementFeeFixedAmount: z.coerce.number().positive(MSG_FORFAIT_POSITIF).nullish(),
     ownerFundsAccountNumber: accountNumber,
     managementFeeAccountNumber: accountNumber,
     vatCollectedAccountNumber: accountNumber,

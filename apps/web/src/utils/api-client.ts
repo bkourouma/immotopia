@@ -205,7 +205,13 @@ apiClient.interceptors.response.use(
         await refreshSession();
         return apiClient(originalRequest);
       } catch (refreshError) {
-        redirectToLogin();
+        // Un rafraîchissement qui n'a obtenu AUCUNE réponse (réseau coupé) ou
+        // un 5xx ne prouve pas que la session est perdue : pas de renvoi vers
+        // la connexion, l'appelant affiche son erreur (BUG-2026-11-04-044).
+        const status = (refreshError as AxiosError)?.response?.status;
+        if (status === 401 || status === 403) {
+          redirectToLogin();
+        }
         return Promise.reject(refreshError);
       }
     }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { App, Button, Tag, Space, Typography, Empty, Alert, Card, Row, Col, Spin } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -16,6 +16,7 @@ import {
 import { DepositMovementForm } from '../../components/rental/DepositMovementForm';
 import { Table } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { formatMontantLocatif } from '../../lib/rental-labels';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
@@ -52,12 +53,20 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, deposit?.id]);
 
+  // Numéro de la dernière lecture lancée. Sous React.StrictMode l'effet de
+  // chargement part deux fois (deux GET simultanés) : seule la réponse de la
+  // lecture la plus récente compte, sinon une réponse en erreur pouvait afficher
+  // son bandeau « Erreur » à côté des données de l'autre (BUG-2026-11-03-020).
+  const lastLoad = useRef(0);
+
   const loadDeposit = async () => {
     if (!tenantId || !leaseId) return;
+    const thisLoad = ++lastLoad.current;
     setLoading(true);
     setError(null);
     try {
       const response = await getDeposit(tenantId, leaseId);
+      if (thisLoad !== lastLoad.current) return;
       if (response.success) {
         setDeposit(response.data);
       } else {
@@ -65,6 +74,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
         setDeposit(null);
       }
     } catch (err: any) {
+      if (thisLoad !== lastLoad.current) return;
       if (err.response?.status === 404) {
         // Deposit doesn't exist yet, that's okay
         setDeposit(null);
@@ -72,7 +82,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
         setError(err.response?.data?.message || t('Erreur lors du chargement du dépôt'));
       }
     } finally {
-      setLoading(false);
+      if (thisLoad === lastLoad.current) setLoading(false);
     }
   };
 
@@ -107,12 +117,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
     return new Date(dateString).toLocaleDateString(activeLocale());
   };
 
-  const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number, currency: string = 'FCFA') => formatMontantLocatif(amount, currency);
 
   const getMovementTypeLabel = (type: string) => {
     const typeMap: Record<string, string> = {

@@ -15,6 +15,8 @@ import {
 import { asyncHandler, BadRequestError, ConflictError } from '../middleware/error-middleware';
 import { sendOwnerStatement } from '../lib/patrimoine/notifications';
 import { OWNER_STATEMENT_COMPUTATION_VERSION } from '../lib/patrimoine/owner-statement-computation';
+import { listOwnerStatementEligibleProperties } from '../lib/patrimoine/owner-statement-eligible-properties';
+import { z } from 'zod';
 
 function resolveTenantId(req: Request): string {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
@@ -53,6 +55,14 @@ export const listOwnerStatementsHandler = asyncHandler(async (req: Request, res:
     pagination: result.pagination,
     legacyUnpaidCount: result.legacyUnpaidCount
   });
+});
+
+/** GET /owner-statements/eligible-properties — sélection limitée au propriétaire choisi. */
+export const listOwnerStatementEligiblePropertiesHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = resolveTenantId(req);
+  const { ownerContactId } = z.object({ ownerContactId: z.string().uuid() }).parse(req.query);
+  const data = await listOwnerStatementEligibleProperties(tenantId, ownerContactId);
+  res.json({ success: true, data });
 });
 
 export const createOwnerStatementHandler = asyncHandler(async (req: Request, res: Response) => {

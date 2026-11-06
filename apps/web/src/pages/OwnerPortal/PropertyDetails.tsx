@@ -31,7 +31,7 @@ import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
 
-import { activeLocale } from '../../i18n/format';
+import { activeLocale, formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 
@@ -107,11 +107,7 @@ interface PropertyDetailsData {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat(activeLocale(), {
-    style: 'currency',
-    currency: 'XOF',
-    minimumFractionDigits: 0
-  }).format(amount);
+  return formatFcfa(amount);
 };
 
 const formatDate = (dateString: string) => {

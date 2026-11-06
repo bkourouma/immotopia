@@ -6,6 +6,7 @@ import { ListSearch } from '../../components/primitives';
 import { DocumentsSansResultat, useDocumentsSearch } from './search/documentsSearch';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
+import { filenameFromDisposition } from '../../utils/save-blob';
 
 const { Title, Text } = Typography;
 
@@ -66,14 +67,7 @@ export default function TenantDocuments() {
       link.href = url;
 
       // Get filename from Content-Disposition header or use default
-      const contentDisposition = response.headers['content-disposition'];
-      let fileName = `document-${documentId}.pdf`;
-      if (contentDisposition) {
-        const fileNameMatch = contentDisposition.match(/filename="(.+)"/);
-        if (fileNameMatch) {
-          fileName = fileNameMatch[1];
-        }
-      }
+      const fileName = filenameFromDisposition(response.headers?.['content-disposition'], `document-${documentId}`);
 
       link.setAttribute('download', fileName);
       document.body.appendChild(link);
@@ -158,6 +152,7 @@ export default function TenantDocuments() {
               }
             >
               <List
+                rowKey="id"
                 dataSource={documents}
                 renderItem={doc => (
                   <List.Item

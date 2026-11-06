@@ -128,7 +128,10 @@ export const requireTenantPortalAccess = async (req: Request, res: Response, nex
       },
       select: {
         id: true
-      }
+      },
+      // Bail par défaut déterministe (BUG-2026-11-04-049) : le même ordre que
+      // la liste des baux du portail (utils/tenant-portal-leases.ts).
+      orderBy: [{ start_date: 'asc' }, { id: 'asc' }]
     });
 
     if (!activeLease) {

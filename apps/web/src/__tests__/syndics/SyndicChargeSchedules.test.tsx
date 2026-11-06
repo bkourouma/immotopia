@@ -580,6 +580,15 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
 
     await user.click(await screen.findByText('Ouvrir'));
     const labelInput = await screen.findByLabelText('Libellé');
+    await waitFor(
+      () => {
+        expect(screen.getByLabelText('Source du montant').closest('.ant-select')).toHaveTextContent('Budget approuvé');
+        expect(screen.getByLabelText('Budget').closest('.ant-select')).toHaveTextContent('Budget 2026 (2026)');
+        expect(screen.getByLabelText('Fréquence').closest('.ant-select')).toHaveTextContent('Mensuelle');
+        expect((screen.getByLabelText("Jour d'émission") as HTMLInputElement).value).toBe('1');
+      },
+      { timeout: 10000 }
+    );
     await waitFor(() => expect(labelInput).toHaveValue(SCHEDULE_MONTHLY.label));
     await user.clear(labelInput);
     await user.paste('Charges renommées');

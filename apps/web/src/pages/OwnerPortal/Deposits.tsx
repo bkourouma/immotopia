@@ -8,7 +8,7 @@ import { useDepositsSearch } from './search/useDepositsSearch';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
+import { formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 interface DepositListItem {
@@ -16,7 +16,10 @@ interface DepositListItem {
   propertyAddress: string;
   tenantName: string;
   depositAmount: number;
+  /** Détenu : ce que l'agence garde pour le locataire (collecté - rendu - confisqué). */
   currentHeldAmount: number;
+  /** Retenu : retenues réelles (mises en retenue + confiscations). */
+  withheldAmount: number;
   status: string;
 }
 
@@ -24,6 +27,7 @@ interface DepositSummary {
   total: number;
   totalHeld: number;
   totalReleased: number;
+  totalWithheld: number;
 }
 
 interface DepositsData {
@@ -44,11 +48,7 @@ interface DepositMovement {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat(activeLocale(), {
-    style: 'currency',
-    currency: 'XOF',
-    minimumFractionDigits: 0
-  }).format(amount);
+  return formatFcfa(amount);
 };
 
 const getStatusTag = (status: string) => {
@@ -178,10 +178,17 @@ export default function Deposits() {
       render: (amount: number) => formatCurrency(amount)
     },
     {
-      title: t('Montant retenu'),
+      title: t('Montant détenu'),
       dataIndex: 'currentHeldAmount',
       key: 'currentHeldAmount',
       render: (amount: number) => formatCurrency(amount)
+    },
+    {
+      title: t('Montant retenu'),
+      dataIndex: 'withheldAmount',
+      key: 'withheldAmount',
+      render: (amount: number) => formatCurrency(amount),
+      sorter: (a: DepositListItem, b: DepositListItem) => a.withheldAmount - b.withheldAmount
     },
     {
       title: t('Statut'),
@@ -238,7 +245,7 @@ export default function Deposits() {
       {/* Summary Cards (T117) */}
       {data?.summary && (
         <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={8}>
+          <Col xs={24} sm={12} lg={6}>
             <StatCard
               title={t('Total')}
               value={data.summary.total.toString()}
@@ -246,15 +253,23 @@ export default function Deposits() {
               valueStyle={{ fontSize: 18 }}
             />
           </Col>
-          <Col xs={24} sm={12} lg={8}>
+          <Col xs={24} sm={12} lg={6}>
+            <StatCard
+              title={t('Total détenu')}
+              value={formatCurrency(data.summary.totalHeld)}
+              icon={<WalletOutlined style={{ color: '#1890ff' }} />}
+              valueStyle={{ fontSize: 18 }}
+            />
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
             <StatCard
               title={t('Total retenu')}
-              value={formatCurrency(data.summary.totalHeld)}
+              value={formatCurrency(data.summary.totalWithheld)}
               icon={<WalletOutlined style={{ color: '#faad14' }} />}
               valueStyle={{ fontSize: 18, color: '#faad14' }}
             />
           </Col>
-          <Col xs={24} sm={12} lg={8}>
+          <Col xs={24} sm={12} lg={6}>
             <StatCard
               title={t('Total libéré')}
               value={formatCurrency(data.summary.totalReleased)}

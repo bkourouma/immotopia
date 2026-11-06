@@ -156,6 +156,21 @@ describe('Caisse — ouverture', () => {
       openingNote: 'Fond remis par le régisseur'
     });
   });
+
+  it('BUG-2026-11-04-023 : refuse un fond négatif sans le recadrer en 0 ni appeler l’API', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount();
+
+    await screen.findByText('Ouvrir ma caisse', {}, { timeout: 8000 });
+
+    const champFond = screen.getByLabelText('Fond de caisse (FCFA)');
+    await user.clear(champFond);
+    await user.type(champFond, '-1');
+    await user.click(screen.getByRole('button', { name: 'Ouvrir la caisse' }));
+
+    expect(await screen.findByText('Le fond de caisse ne peut pas être négatif.')).toBeInTheDocument();
+    expect(openCashSession).not.toHaveBeenCalled();
+  });
 });
 
 describe('Caisse — session ouverte', () => {

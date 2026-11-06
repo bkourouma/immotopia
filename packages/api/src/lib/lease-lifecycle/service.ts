@@ -1,4 +1,4 @@
-import { LeaseEventType, Prisma, RentalInstallmentStatus, RentalLeaseStatus } from '@prisma/client';
+import { LeaseEventType, Prisma, PropertyStatus, RentalInstallmentStatus, RentalLeaseStatus } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
@@ -13,8 +13,13 @@ import {
   recalculateInstallmentStatuses
 } from '../../services/rental-installment-service';
 import { syncLotActivationsTx } from '../../services/lot-registry-service';
+import { logger } from '../../utils/logger';
+import { updatePropertyStatus } from '../../services/property-status-service';
 import { runWithTenantContext } from '../../utils/tenant-context';
 import { effectiveRentAt } from './effective-rent';
+import { assertNoLeaseOverlapTx } from './period-overlap';
+import { t } from '../../i18n';
+import { auPlusDeuxDecimales } from '../../utils/montant';
 
 /**
  * Vie d'un bail : révision du loyer, renouvellement, avenant, résiliation, et
@@ -35,7 +40,42 @@ import { effectiveRentAt } from './effective-rent';
 
 const month = z.string().regex(/^\d{4}-\d{2}$/, 'Mois attendu au format AAAA-MM');
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ');
-const money = z.coerce.number().nonnegative();
+/** Plus grand montant que les colonnes Decimal(12,2) savent porter (voir `rental/payment-schemas.ts`). */
+const MONTANT_MAX = 9_999_999_999.99;
+const MSG_TROP_ELEVE = 'Le montant dépasse le maximum autorisé (9 999 999 999,99).';
+// Messages de validation Zod : traduits par le middleware d'erreur à l'exécution.
+// @i18n-keys
+const MSG_DECIMALES = 'Le montant ne peut pas avoir plus de deux décimales.';
+// @i18n-keys
+const MSG_CHARGES_NEGATIVES = 'Les charges ne peuvent pas être négatives';
+// @i18n-keys
+const MSG_LOYER_POSITIF = 'Le loyer doit être supérieur à 0';
+/** Au plus deux décimales (utilitaire commun `utils/montant`). */
+const deuxDecimales = auPlusDeuxDecimales;
+
+const money = z.coerce
+  .number()
+  .nonnegative(MSG_CHARGES_NEGATIVES)
+  .max(MONTANT_MAX, MSG_TROP_ELEVE)
+  .refine(deuxDecimales, MSG_DECIMALES);
+const positiveMoney = z.coerce
+  .number()
+  .positive(MSG_LOYER_POSITIF)
+  .max(MONTANT_MAX, MSG_TROP_ELEVE)
+  .refine(deuxDecimales, MSG_DECIMALES);
+
+/**
+ * Valide un corps de requête : la première erreur devient une 400 au message
+ * lisible (le message générique « données invalides » masquerait la cause dans
+ * la fenêtre de l'utilisateur).
+ */
+function parseInput<S extends z.ZodTypeAny>(schema: S, body: unknown): z.output<S> {
+  const result = schema.safeParse(body);
+  if (result.success) return result.data;
+  const issue = result.error.issues[0];
+  throw badRequest(t(issue.message), { field: issue.path.join('.') });
+}
+
 const optionalText = z
   .string()
   .trim()
@@ -176,7 +216,7 @@ export async function getLeaseEvents(tenantId: string, leaseId: string) {
 
 const revisionSchema = z.object({
   effectiveMonth: month,
-  newRent: z.coerce.number().positive(),
+  newRent: positiveMoney,
   newCharges: money.optional(),
   revisionRate: z.coerce.number().min(-100).max(1000).nullish(),
   summary: optionalText
@@ -218,6 +258,7 @@ async function reprice(
   const { tenantId, leaseId, eventId, from, rent, charges } = params;
   const targets = await tx.rentalInstallment.findMany({
     where: {
+      tenant_id: tenantId,
       lease_id: leaseId,
       status: { in: UNPAID_STATUSES },
       amount_paid: 0,
@@ -247,6 +288,7 @@ async function reprice(
     orderBy: { createdAt: 'asc' },
     select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
   });
+  let repriced = 0;
   for (const inst of targets) {
     const effective = effectiveRentAt(
       { rent_amount: rent, service_charge_amount: charges },
@@ -255,17 +297,27 @@ async function reprice(
     );
     const periodRent = effective.rent;
     const periodCharges = effective.charges;
+    // Une échéance dont le loyer EFFECTIF ne change pas (une révision existante
+    // l'emporte sur le loyer de base de la fiche) n'est ni écrite ni comptée :
+    // annoncer « N échéances recalculées » pour rien trompait l'utilisateur.
+    if (
+      roundMoney(periodRent) === roundMoney(Number(inst.amount_rent)) &&
+      roundMoney(periodCharges) === roundMoney(Number(inst.amount_service))
+    ) {
+      continue;
+    }
+    repriced++;
     const before = installmentTotal(inst);
     await tx.rentalInstallment.update({
       where: { id: inst.id, tenant_id: tenantId },
       data: { amount_rent: new Prisma.Decimal(periodRent), amount_service: new Prisma.Decimal(periodCharges) }
     });
     await tx.rentalInstallmentItem.updateMany({
-      where: { installment_id: inst.id, charge_type: 'RENT' },
+      where: { tenant_id: tenantId, installment_id: inst.id, charge_type: 'RENT' },
       data: { amount: new Prisma.Decimal(periodRent) }
     });
     await tx.rentalInstallmentItem.updateMany({
-      where: { installment_id: inst.id, charge_type: 'SERVICE_CHARGE' },
+      where: { tenant_id: tenantId, installment_id: inst.id, charge_type: 'SERVICE_CHARGE' },
       data: { amount: new Prisma.Decimal(periodCharges) }
     });
 
@@ -288,11 +340,34 @@ async function reprice(
       movementDate: inst.due_date
     } as any);
   }
-  return targets.length;
+  return repriced;
+}
+
+/**
+ * Modification du loyer ou des charges par la fiche du bail : recalcule, dans
+ * la transaction de l'appelant, les échéances NON COMMENCÉES (période après le
+ * mois courant) et sans aucun paiement. Les échéances payées, partielles,
+ * échues ou du mois en cours ne bougent pas (BUG-2026-11-03-018). Retourne le
+ * nombre d'échéances recalculées.
+ */
+export async function repriceUnstartedInstallmentsTx(
+  tx: PrismaTransactionClient,
+  params: { tenantId: string; leaseId: string; rent: number; charges: number; now?: Date }
+) {
+  const now = params.now ?? new Date();
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  return reprice(tx, {
+    tenantId: params.tenantId,
+    leaseId: params.leaseId,
+    eventId: `EDIT-${now.getTime()}`,
+    from: { year: next.getUTCFullYear(), month: next.getUTCMonth() + 1 },
+    rent: params.rent,
+    charges: params.charges
+  });
 }
 
 export async function reviseRent(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
-  const input = revisionSchema.parse(body);
+  const input = parseInput(revisionSchema, body);
   const lease = await loadLease(tenantId, leaseId);
   if (await isTerminated(leaseId)) throw conflict('Ce bail est résilié : son loyer ne se révise plus.');
   if (lease.status === RentalLeaseStatus.CANCELED) throw conflict('Ce bail est annulé.');
@@ -324,12 +399,6 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
   // indicateurs gardent l'ancien loyer (BUG-2026-09-30-068).
   const planned = effectiveDate.getTime() > Date.now();
   const event = await prisma.$transaction(async tx => {
-    if (!planned) {
-      await tx.rentalLease.update({
-        where: { id: leaseId, tenant_id: tenantId },
-        data: { rent_amount: new Prisma.Decimal(input.newRent), service_charge_amount: new Prisma.Decimal(newCharges) }
-      });
-    }
     const created = await tx.leaseEvent.create({
       data: {
         tenantId,
@@ -349,6 +418,30 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
         createdByUserId: actorUserId ?? null
       }
     });
+    // Le loyer en vigueur du bail suit la MÊME règle que les échéances : la
+    // révision à la date d'effet la plus récente (à date égale, la dernière
+    // saisie) parmi celles dont le jour est arrivé. Une révision saisie après
+    // coup mais datée plus tôt ne réécrit donc pas le loyer en vigueur
+    // (BUG-2026-11-04-016).
+    if (!planned) {
+      const revisions = await tx.leaseEvent.findMany({
+        where: { tenantId, leaseId, type: LeaseEventType.REVISION },
+        orderBy: [{ createdAt: 'asc' }],
+        select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
+      });
+      const inForce = effectiveRentAt(
+        { rent_amount: lease.rent_amount, service_charge_amount: lease.service_charge_amount },
+        revisions,
+        new Date()
+      );
+      await tx.rentalLease.update({
+        where: { id: leaseId, tenant_id: tenantId },
+        data: {
+          rent_amount: new Prisma.Decimal(inForce.rent),
+          service_charge_amount: new Prisma.Decimal(inForce.charges)
+        }
+      });
+    }
     const updated = await reprice(tx, {
       tenantId,
       leaseId,
@@ -372,13 +465,13 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
 
 const renewalSchema = z.object({
   newEndDate: day,
-  newRent: z.coerce.number().positive().optional(),
+  newRent: positiveMoney.optional(),
   newCharges: money.optional(),
   summary: optionalText
 });
 
 export async function renewLease(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
-  const input = renewalSchema.parse(body);
+  const input = parseInput(renewalSchema, body);
   const lease = await loadLease(tenantId, leaseId);
   if (await isTerminated(leaseId)) throw conflict('Ce bail est résilié : il ne se renouvelle plus.');
   if (lease.status === RentalLeaseStatus.CANCELED) throw conflict('Ce bail est annulé.');
@@ -407,6 +500,14 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
   const plannedPrice = priceChanges && renewalEffective.getTime() > Date.now();
 
   const result = await prisma.$transaction(async tx => {
+    // La fin repoussée (ou le bail terminé qui repart) ne doit pas empiéter sur un autre bail du bien (H39).
+    await assertNoLeaseOverlapTx(tx, {
+      tenantId,
+      propertyId: lease.property_id,
+      startDate: lease.start_date,
+      endDate: newEnd,
+      excludeLeaseId: leaseId
+    });
     const updatedLease = await tx.rentalLease.update({
       where: { id: leaseId, tenant_id: tenantId },
       data: {
@@ -434,9 +535,29 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
     let created = 0;
     let cursor = { ...firstNew };
     const last = periodIndex(newEnd.getUTCFullYear(), newEnd.getUTCMonth() + 1);
+    // Chaque période prend le loyer EFFECTIF à sa date : les révisions déjà
+    // planifiées comptent, et le nouveau prix du renouvellement (inscrit plus
+    // bas comme révision) s'y ajoute dès son jour d'effet.
+    const plannedRevisions = await tx.leaseEvent.findMany({
+      where: { tenantId, leaseId, type: LeaseEventType.REVISION },
+      orderBy: { createdAt: 'asc' },
+      select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
+    });
+    const revisionsForPeriods = priceChanges
+      ? [...plannedRevisions, { effectiveDate: renewalEffective, newRent: rent, newCharges: charges }]
+      : plannedRevisions;
     while (periodIndex(cursor.year, cursor.month) <= last) {
+      const effective = effectiveRentAt(
+        { rent_amount: Number(lease.rent_amount), service_charge_amount: Number(lease.service_charge_amount) },
+        revisionsForPeriods,
+        new Date(Date.UTC(cursor.year, cursor.month - 1, 1, 12))
+      );
       const built = buildInstallmentForPeriod(
-        { ...updatedLease, rent_amount: new Prisma.Decimal(rent), service_charge_amount: new Prisma.Decimal(charges) },
+        {
+          ...updatedLease,
+          rent_amount: new Prisma.Decimal(effective.rent),
+          service_charge_amount: new Prisma.Decimal(effective.charges)
+        },
         cursor.year,
         cursor.month
       );
@@ -521,7 +642,7 @@ const amendmentSchema = z.object({
 });
 
 export async function recordAmendment(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
-  const input = amendmentSchema.parse(body);
+  const input = parseInput(amendmentSchema, body);
   await loadLease(tenantId, leaseId);
   const event = await prisma.leaseEvent.create({
     data: {
@@ -550,7 +671,7 @@ const terminationSchema = z.object({
 });
 
 export async function terminateLease(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
-  const input = terminationSchema.parse(body);
+  const input = parseInput(terminationSchema, body);
   const lease = await loadLease(tenantId, leaseId);
   if (await isTerminated(leaseId)) throw conflict('Ce bail est déjà résilié.');
   if (lease.status === RentalLeaseStatus.CANCELED) throw conflict('Ce bail est annulé.');
@@ -655,6 +776,43 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
     return terminationEvent;
   });
 
+  // Résiliation effective : le bien redevient « Disponible » comme au changement
+  // de statut manuel du bail (sauf si un autre bail actif l'occupe). Une
+  // résiliation future ne libère rien tout de suite.
+  if (
+    end.getTime() <= Date.now() &&
+    (lease.status === RentalLeaseStatus.ACTIVE || lease.status === RentalLeaseStatus.SUSPENDED)
+  ) {
+    const otherActiveLeases = await prisma.rentalLease.count({
+      where: {
+        property_id: lease.property_id,
+        tenant_id: tenantId,
+        status: RentalLeaseStatus.ACTIVE,
+        id: { not: leaseId }
+      }
+    });
+    if (otherActiveLeases === 0) {
+      // La résiliation est déjà validée : un statut de bien qui ne se laisse pas
+      // changer ne doit pas la faire échouer (même tolérance que le changement
+      // de statut manuel du bail).
+      try {
+        await updatePropertyStatus(
+          lease.property_id,
+          PropertyStatus.AVAILABLE,
+          tenantId,
+          undefined,
+          actorUserId,
+          'Statut réinitialisé après résiliation du bail'
+        );
+      } catch (err) {
+        logger.warn('Could not revert property status after lease termination', {
+          propertyId: lease.property_id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    }
+  }
+
   return eventDto(event);
 }
 
@@ -675,7 +833,9 @@ export async function getFinalSettlement(tenantId: string, leaseId: string) {
       where: {
         tenant_id: tenantId,
         lease_id: leaseId,
-        status: { in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.OVERDUE, RentalInstallmentStatus.PARTIAL] },
+        // Toute échéance échue non annulée et non soldée est un impayé, quel
+        // que soit le statut stocké (une échéance « DRAFT » non recalculée compte).
+        status: { notIn: [RentalInstallmentStatus.CANCELED, RentalInstallmentStatus.PAID] },
         // Un impayé est échu. Les échéances sont facturées dès leur génération :
         // sans cette borne, un solde établi avant la fin du bail compterait les
         // loyers des mois à venir comme des dettes.
@@ -753,7 +913,8 @@ export async function applyDueRevisions(tenantId?: string, now: Date = new Date(
       newRent: { not: null },
       details: { path: ['planned'], equals: true }
     },
-    orderBy: { effectiveDate: 'asc' }
+    // Date d'effet croissante, puis ordre de saisie : à date égale, la dernière saisie gagne.
+    orderBy: [{ effectiveDate: 'asc' }, { createdAt: 'asc' }]
   });
 
   let applied = 0;

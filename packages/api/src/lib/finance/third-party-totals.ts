@@ -107,29 +107,52 @@ export async function sumNetMovementsByAccount(
 export async function sumClientBilledSettledByAccount(
   baseWhere: Record<string, unknown>
 ): Promise<Map<string, MovementTotals>> {
-  const [grouped, applied] = await Promise.all([
+  const [grouped, applied, voids] = await Promise.all([
     prisma.thirdPartyMovement.groupBy({
       by: ['accountId'],
-      where: baseWhere as any,
+      where: { ...baseWhere, type: { not: 'VOID' } } as any,
       _sum: { debit: true, credit: true }
     }),
     prisma.thirdPartyMovement.groupBy({
       by: ['accountId'],
       where: { ...baseWhere, type: 'ADVANCE_APPLIED' } as any,
       _sum: { debit: true }
+    }),
+    prisma.thirdPartyMovement.groupBy({
+      by: ['accountId'],
+      where: { ...baseWhere, type: 'VOID' } as any,
+      _sum: { debit: true, credit: true }
     })
   ]);
 
   const appliedByAccount = new Map<string, number>(
     (applied as any[]).map(g => [g.accountId as string, toAmountOrZero(g._sum.debit)])
   );
+  const voidsByAccount = new Map<string, { debit: number; credit: number }>(
+    (voids as any[]).map(g => [
+      g.accountId as string,
+      { debit: toAmountOrZero(g._sum.debit), credit: toAmountOrZero(g._sum.credit) }
+    ])
+  );
 
   const totals = new Map<string, MovementTotals>();
-  for (const group of grouped as any[]) {
-    const reprise = appliedByAccount.get(group.accountId) ?? 0;
-    totals.set(group.accountId, {
-      billed: roundMoney(toAmountOrZero(group._sum.debit) - reprise),
-      settled: roundMoney(toAmountOrZero(group._sum.credit) - reprise)
+  // Union des comptes : un compte dont la période ne porte QUE des contre-passations (pièce
+  // d'une période antérieure annulée dans celle-ci) n'a aucune ligne dans `grouped` et
+  // disparaissait du résultat, alors que son annulation pèse sur le solde.
+  const groupedByAccount = new Map<string, { debit: number; credit: number }>(
+    (grouped as any[]).map(g => [
+      g.accountId as string,
+      { debit: toAmountOrZero(g._sum.debit), credit: toAmountOrZero(g._sum.credit) }
+    ])
+  );
+  const accountIds = new Set<string>([...groupedByAccount.keys(), ...voidsByAccount.keys()]);
+  for (const accountId of accountIds) {
+    const brut = groupedByAccount.get(accountId) ?? { debit: 0, credit: 0 };
+    const reprise = appliedByAccount.get(accountId) ?? 0;
+    const annule = voidsByAccount.get(accountId) ?? { debit: 0, credit: 0 };
+    totals.set(accountId, {
+      billed: roundMoney(brut.debit - reprise - annule.credit),
+      settled: roundMoney(brut.credit - reprise - annule.debit)
     });
   }
   return totals;

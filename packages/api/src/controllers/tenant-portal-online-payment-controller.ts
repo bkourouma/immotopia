@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { asyncHandler, ForbiddenError } from '../middleware/error-middleware';
+import { asyncHandler, BadRequestError, ForbiddenError, NotFoundError } from '../middleware/error-middleware';
+import { prisma } from '../utils/database';
+import { listPortalLeaseIds } from '../utils/tenant-portal-leases';
 import {
   getCheckoutForPortal,
   getOnlinePaymentAvailability,
@@ -34,10 +36,31 @@ const startCheckoutSchema = z.object({
 });
 
 export const startOnlinePaymentHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { tenantId, tenantClientId, leaseId } = requirePortalContext(req);
+  const { tenantId, tenantClientId } = requirePortalContext(req);
   const { installmentIds } = startCheckoutSchema.parse(req.body);
 
-  const checkout = await startCheckout(tenantId, tenantClientId, leaseId, installmentIds, req.user?.userId);
+  // H29 : le bail à payer est celui des échéances choisies, contrôlé contre les
+  // baux actifs du locataire connecté (jamais un `leaseId` du corps). Une échéance
+  // hors périmètre répond 404 ; un paiement porte sur un seul bail.
+  const scope = await listPortalLeaseIds(tenantId, tenantClientId);
+  if (scope.length === 0) {
+    throw new ForbiddenError('Aucun bail actif trouvé.');
+  }
+  const uniqueIds = [...new Set(installmentIds)];
+  const owned = await prisma.rentalInstallment.findMany({
+    where: { id: { in: uniqueIds }, tenant_id: tenantId, lease_id: { in: scope } },
+    select: { id: true, lease_id: true }
+  });
+  if (owned.length !== uniqueIds.length) {
+    throw new NotFoundError('Échéance non trouvée');
+  }
+  const leaseIdsOfSelection = new Set(owned.map(row => row.lease_id));
+  if (leaseIdsOfSelection.size > 1) {
+    throw new BadRequestError('Un paiement en ligne ne peut porter que sur les échéances d’un seul bail.');
+  }
+  const checkoutLeaseId = owned[0].lease_id;
+
+  const checkout = await startCheckout(tenantId, tenantClientId, checkoutLeaseId, installmentIds, req.user?.userId);
   res.status(201).json({ success: true, data: checkout });
 });
 

@@ -1,6 +1,12 @@
 /**
  * Tenant Portal Controller
  * API endpoints for tenant portal operations
+ *
+ * Les handlers ne fabriquent plus leurs réponses d'erreur : les services
+ * lèvent des erreurs typées (`middleware/error-middleware`) et
+ * `errorHandler` répond — 404 pour un objet inconnu ou d'un autre locataire,
+ * 400 pour une donnée invalide, et un message neutre (sans chemin de fichier
+ * ni `stack`) pour une panne de la base. Voir BUG-2026-11-03-004 et -007.
  */
 
 import { Request, Response } from 'express';
@@ -12,10 +18,11 @@ import {
   validateMaintenanceAttachment,
   validatePaymentProofFile
 } from '../utils/tenant-portal-validators';
+import { listPortalLeaseIds, resolveRequestedLeaseId } from '../utils/tenant-portal-leases';
 import { handleTenantPortalFinanceStatement } from './finance-controller';
 import { parseNumberParam } from '../utils/query-params';
 import { parsePagination } from '../utils/pagination-helper';
-import { respondWithAppError } from '../utils/app-error-response';
+import { asyncHandler, BadRequestError, ForbiddenError } from '../middleware/error-middleware';
 import {
   definedOnly,
   parseTenantPortalInstallmentsQuery,
@@ -23,27 +30,69 @@ import {
   parseTenantPortalPaymentsQuery
 } from '../services/portal-list-filters/tenant-portal-list-filters';
 
-/**
- * Message a montrer au locataire.
- *
- * Ces `catch` renvoyaient `error.message` des qu'il existait. Pour une erreur
- * metier levee par le service, c'etait le bon texte ; pour une erreur Prisma,
- * cela envoyait au navigateur d'un locataire — un tiers exterieur a l'agence —
- * le chemin absolu du fichier source du serveur, le numero de ligne, un
- * extrait de code et le nom technique des colonnes. Constate en recette le
- * 22/09/2026 sur la creation d'une demande de maintenance.
- *
- * Une erreur du moteur de base rend donc le message de repli, et rien d'autre.
- * Son detail reste entier dans les journaux de l'API.
- */
-function messageErreurPortail(error: unknown, repli: string): string {
-  const nom = String((error as { name?: unknown })?.name ?? '');
-  if (nom.startsWith('PrismaClient')) {
-    return repli;
+/** Contexte du portail locataire posé par `requireTenantPortalAccess`, sinon 403. */
+function portalContext(req: Request): { tenantClientId: string; leaseId: string; tenantId: string } {
+  if (!req.tenantPortal) {
+    throw new ForbiddenError('Accès portail locataire requis.');
   }
+  const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
+  return { tenantClientId, leaseId, tenantId };
+}
 
-  const message = (error as { message?: unknown })?.message;
-  return typeof message === 'string' && message.trim() ? message : repli;
+/**
+ * Contexte multi-baux (H29). `leaseIds` = baux actifs du locataire connecté
+ * (jamais un identifiant fourni par l'appelant). `?leaseId=` restreint à un
+ * seul bail, qui doit appartenir à ce périmètre, sinon 404. Sans lui, `leaseIds`
+ * couvre tous les baux et `leaseId` reste le bail par défaut.
+ */
+async function portalLeaseScope(req: Request): Promise<{
+  tenantClientId: string;
+  leaseId: string;
+  tenantId: string;
+  leaseIds: string[];
+  allLeaseIds: string[];
+  explicit: boolean;
+}> {
+  const { tenantClientId, leaseId, tenantId } = portalContext(req);
+  const all = await listPortalLeaseIds(tenantId, tenantClientId);
+  // Périmètre vide : comme le middleware, aucun bail actif => 403 (pas de repli).
+  if (all.length === 0) {
+    throw new ForbiddenError('Aucun bail actif trouvé.');
+  }
+  const requested = resolveRequestedLeaseId(all, req.query.leaseId, all.includes(leaseId) ? leaseId : all[0]);
+  return {
+    tenantClientId,
+    tenantId,
+    leaseId: requested.leaseId,
+    leaseIds: requested.explicit ? [requested.leaseId] : all,
+    allLeaseIds: all,
+    explicit: requested.explicit
+  };
+}
+
+/** Bail unique : le bail par défaut, ou celui de `?leaseId=` s'il est dans le périmètre. */
+async function portalSingleLease(req: Request): Promise<{ tenantClientId: string; leaseId: string; tenantId: string }> {
+  if (req.query.leaseId === undefined) {
+    return portalContext(req);
+  }
+  const { tenantClientId, leaseId, tenantId } = await portalLeaseScope(req);
+  return { tenantClientId, leaseId, tenantId };
+}
+
+function paginationFrom(query: Request['query']): { page?: number; limit?: number } | undefined {
+  const { page, limit } = parsePagination(query);
+  const pagination: { page?: number; limit?: number } = {};
+  if (page !== undefined) {
+    pagination.page = page;
+  }
+  if (limit !== undefined) {
+    pagination.limit = limit;
+  }
+  return Object.keys(pagination).length > 0 ? pagination : undefined;
+}
+
+function orUndefined<T extends object>(filters: T): T | undefined {
+  return Object.keys(filters).length > 0 ? filters : undefined;
 }
 
 export class TenantPortalController {
@@ -57,674 +106,332 @@ export class TenantPortalController {
    * Get dashboard data
    * GET /api/portal/tenant/dashboard
    */
-  async getDashboard(req: Request, res: Response): Promise<void> {
-    try {
-      if (!req.tenantPortal) {
-        res.status(403).json({
-          success: false,
-          message: 'Accès portail locataire requis.'
-        });
-        return;
-      }
+  getDashboard = asyncHandler(async (req, res) => {
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
-      const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
+    const dashboardData = await this.service.getDashboard(tenantClientId, leaseId, tenantId, leaseIds);
 
-      const dashboardData = await this.service.getDashboard(tenantClientId, leaseId, tenantId);
+    res.status(200).json({
+      success: true,
+      data: dashboardData
+    });
+  });
 
-      res.status(200).json({
-        success: true,
-        data: dashboardData
-      });
-    } catch (error: any) {
-      const statusCode = error.statusCode || 500;
-      const message = messageErreurPortail(error, 'Erreur lors de la récupération du tableau de bord.');
+  /**
+   * Baux actifs du locataire connecté (sélecteur de bail)
+   * GET /api/portal/tenant/leases
+   */
+  getLeases = asyncHandler(async (req, res) => {
+    const { leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
-      res.status(statusCode).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-      });
-    }
-  }
+    const leases = await this.service.getLeases(tenantId, leaseIds, leaseId);
+
+    res.status(200).json({
+      success: true,
+      data: leases
+    });
+  });
 
   /**
    * Get lease details
    * GET /api/portal/tenant/lease
    */
-  async getLeaseDetails(req: Request, res: Response): Promise<void> {
-    try {
-      if (!req.tenantPortal) {
-        res.status(403).json({
-          success: false,
-          message: 'Accès portail locataire requis.'
-        });
-        return;
-      }
+  getLeaseDetails = asyncHandler(async (req, res) => {
+    const { tenantClientId, leaseId, tenantId } = await portalSingleLease(req);
 
-      const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
+    const leaseDetailsData = await this.service.getLeaseDetails(tenantClientId, leaseId, tenantId);
 
-      const leaseDetailsData = await this.service.getLeaseDetails(tenantClientId, leaseId, tenantId);
-
-      res.status(200).json({
-        success: true,
-        data: leaseDetailsData
-      });
-    } catch (error: any) {
-      const statusCode = error.statusCode || 500;
-      const message = messageErreurPortail(error, 'Erreur lors de la récupération des détails du bail.');
-
-      res.status(statusCode).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-      });
-    }
-  }
+    res.status(200).json({
+      success: true,
+      data: leaseDetailsData
+    });
+  });
 
   /**
    * Get installments list
    * GET /api/portal/tenant/installments
    */
-  async getInstallments(req: Request, res: Response): Promise<void> {
-    try {
-      if (!req.tenantPortal) {
-        res.status(403).json({
-          success: false,
-          message: 'Accès portail locataire requis.'
-        });
-        return;
-      }
+  getInstallments = asyncHandler(async (req, res) => {
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
-      const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
+    const filters = definedOnly(parseTenantPortalInstallmentsQuery(req.query));
 
-      const filters: any = definedOnly(parseTenantPortalInstallmentsQuery(req.query));
+    const installmentsData = await this.service.getInstallments(
+      tenantClientId,
+      leaseId,
+      tenantId,
+      orUndefined(filters),
+      paginationFrom(req.query),
+      leaseIds
+    );
 
-      const { page, limit } = parsePagination(req.query);
-      const pagination: any = {};
-      if (page !== undefined) {
-        pagination.page = page;
-      }
-      if (limit !== undefined) {
-        pagination.limit = limit;
-      }
-
-      const installmentsData = await this.service.getInstallments(
-        tenantClientId,
-        leaseId,
-        tenantId,
-        Object.keys(filters).length > 0 ? filters : undefined,
-        Object.keys(pagination).length > 0 ? pagination : undefined
-      );
-
-      res.status(200).json({
-        success: true,
-        data: installmentsData
-      });
-    } catch (error: any) {
-      if (respondWithAppError(res, error)) return;
-      const statusCode = error.statusCode || 500;
-      const message = messageErreurPortail(error, 'Erreur lors de la récupération des échéances.');
-
-      res.status(statusCode).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-      });
-    }
-  }
+    res.status(200).json({
+      success: true,
+      data: installmentsData
+    });
+  });
 
   /**
    * Get installment details
    * GET /api/portal/tenant/installments/:id
    */
-  async getInstallmentDetails(req: Request, res: Response): Promise<void> {
-    try {
-      if (!req.tenantPortal) {
-        res.status(403).json({
-          success: false,
-          message: 'Accès portail locataire requis.'
-        });
-        return;
-      }
+  getInstallmentDetails = asyncHandler(async (req, res) => {
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
-      const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
-      const installmentId = req.params.id;
+    const installmentDetailsData = await this.service.getInstallmentDetails(
+      tenantClientId,
+      leaseId,
+      tenantId,
+      req.params.id,
+      leaseIds
+    );
 
-      if (!installmentId) {
-        res.status(400).json({
-          success: false,
-          message: "ID d'échéance requis."
-        });
-        return;
-      }
-
-      const installmentDetailsData = await this.service.getInstallmentDetails(
-        tenantClientId,
-        leaseId,
-        tenantId,
-        installmentId
-      );
-
-      res.status(200).json({
-        success: true,
-        data: installmentDetailsData
-      });
-    } catch (error: any) {
-      // Check if it's a "not found" error
-      const statusCode =
-        error.message?.includes('non trouvé') || error.message?.includes('not found') ? 404 : error.statusCode || 500;
-      const message = messageErreurPortail(error, "Erreur lors de la récupération des détails de l'échéance.");
-
-      res.status(statusCode).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-      });
-    }
-  }
+    res.status(200).json({
+      success: true,
+      data: installmentDetailsData
+    });
+  });
 
   /**
    * Declare payment
    * POST /api/portal/tenant/payments/declare
    */
-  async declarePayment(req: Request, res: Response): Promise<void> {
-    console.log('[DECLARATION] POST /portal/tenant/payments/declare reçu');
-    try {
-      if (!req.tenantPortal) {
-        console.warn('[DECLARATION] Refusé: pas de contexte portail locataire');
-        res.status(403).json({
-          success: false,
-          message: 'Accès portail locataire requis.'
-        });
-        return;
-      }
+  declarePayment = asyncHandler(async (req, res) => {
+    // Le corps est validé AVANT toute requête en base (400 sans lecture).
+    const body = req.body ?? {};
 
-      const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
-      console.log('[DECLARATION] Contexte:', { tenantId, leaseId, tenantClientId });
+    // Un `ZodError` remonte à `errorHandler` : 400 avec le détail par champ.
+    const data = declarePaymentSchema.parse({
+      amount: parseNumberParam(body.amount, 'amount'),
+      paymentDate: body.paymentDate,
+      paymentMethod: body.paymentMethod,
+      transactionPhone: body.transactionPhone,
+      mobileOperator: body.mobileOperator,
+      reference: body.reference,
+      installmentId: body.installmentId,
+      notes: body.notes
+    });
 
-      // Validate request body
-      const validationResult = declarePaymentSchema.safeParse({
-        amount: parseNumberParam(req.body.amount, 'amount', { min: 0.01 }),
-        paymentDate: req.body.paymentDate,
-        paymentMethod: req.body.paymentMethod,
-        transactionPhone: req.body.transactionPhone,
-        mobileOperator: req.body.mobileOperator,
-        reference: req.body.reference,
-        installmentId: req.body.installmentId,
-        notes: req.body.notes
-      });
-
-      if (!validationResult.success) {
-        const errorMessages = validationResult.error.errors
-          .map((err: any) => `${err.path.join('.')}: ${err.message}`)
-          .join(', ');
-
-        res.status(400).json({
-          success: false,
-          message: `Données invalides: ${errorMessages}`,
-          errors: validationResult.error.errors
-        });
-        return;
-      }
-
-      // Validate file if provided
-      const fileValidation = validatePaymentProofFile(req.file);
-      if (!fileValidation.valid) {
-        res.status(400).json({
-          success: false,
-          message: fileValidation.error || 'Fichier invalide.'
-        });
-        return;
-      }
-
-      const paymentDeclaration = await this.service.declarePayment(
-        tenantClientId,
-        leaseId,
-        tenantId,
-        validationResult.data,
-        req.file
-      );
-
-      res.status(201).json({
-        success: true,
-        message: 'Déclaration de paiement créée avec succès.',
-        data: paymentDeclaration
-      });
-    } catch (error: any) {
-      console.error('[DECLARATION] Erreur contrôleur:', error?.message, error);
-      const statusCode = error.statusCode || 500;
-      const message = messageErreurPortail(error, 'Erreur lors de la déclaration du paiement.');
-
-      res.status(statusCode).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-      });
+    const fileValidation = validatePaymentProofFile(req.file);
+    if (!fileValidation.valid) {
+      throw new BadRequestError(fileValidation.error || 'Fichier invalide.');
     }
-  }
+
+    // `leaseId` du corps n'est pas lu : le bail est celui de l'échéance, contrôlée
+    // contre les baux du locataire connecté (service).
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
+
+    const paymentDeclaration = await this.service.declarePayment(
+      tenantClientId,
+      leaseId,
+      tenantId,
+      data,
+      req.file,
+      leaseIds
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Déclaration de paiement créée avec succès.',
+      data: paymentDeclaration
+    });
+  });
 
   /**
    * Get payment history
    * GET /api/portal/tenant/payments
    */
-  async getPaymentHistory(req: Request, res: Response): Promise<void> {
-    try {
-      if (!req.tenantPortal) {
-        res.status(403).json({
-          success: false,
-          message: 'Accès portail locataire requis.'
-        });
-        return;
-      }
+  getPaymentHistory = asyncHandler(async (req, res) => {
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
-      const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
+    const filters = definedOnly(parseTenantPortalPaymentsQuery(req.query));
 
-      const filters: any = definedOnly(parseTenantPortalPaymentsQuery(req.query));
+    const paymentHistoryData = await this.service.getPaymentHistory(
+      tenantClientId,
+      leaseId,
+      tenantId,
+      orUndefined(filters),
+      paginationFrom(req.query),
+      leaseIds
+    );
 
-      const { page, limit } = parsePagination(req.query);
-      const pagination: any = {};
-      if (page !== undefined) {
-        pagination.page = page;
-      }
-      if (limit !== undefined) {
-        pagination.limit = limit;
-      }
-
-      const paymentHistoryData = await this.service.getPaymentHistory(
-        tenantClientId,
-        leaseId,
-        tenantId,
-        Object.keys(filters).length > 0 ? filters : undefined,
-        Object.keys(pagination).length > 0 ? pagination : undefined
-      );
-
-      res.status(200).json({
-        success: true,
-        data: paymentHistoryData
-      });
-    } catch (error: any) {
-      if (respondWithAppError(res, error)) return;
-      const statusCode = error.statusCode || 500;
-      const message = messageErreurPortail(error, "Erreur lors de la récupération de l'historique des paiements.");
-
-      res.status(statusCode).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-      });
-    }
-  }
+    res.status(200).json({
+      success: true,
+      data: paymentHistoryData
+    });
+  });
 
   /**
    * Get deposit information
    * GET /api/portal/tenant/deposit
    */
-  async getDepositInfo(req: Request, res: Response): Promise<void> {
-    try {
-      if (!req.tenantPortal) {
-        res.status(403).json({
-          success: false,
-          message: 'Accès portail locataire requis.'
-        });
-        return;
-      }
+  getDepositInfo = asyncHandler(async (req, res) => {
+    const { tenantClientId, leaseId, tenantId } = await portalSingleLease(req);
 
-      const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
+    const depositInfoData = await this.service.getDepositInfo(tenantClientId, leaseId, tenantId);
 
-      const depositInfoData = await this.service.getDepositInfo(tenantClientId, leaseId, tenantId);
-
-      res.status(200).json({
-        success: true,
-        data: depositInfoData
-      });
-    } catch (error: any) {
-      const statusCode = error.statusCode || 500;
-      const message = messageErreurPortail(error, 'Erreur lors de la récupération des informations du dépôt.');
-
-      res.status(statusCode).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-      });
-    }
-  }
+    res.status(200).json({
+      success: true,
+      data: depositInfoData
+    });
+  });
 
   /**
    * Create maintenance ticket
    * POST /api/portal/tenant/maintenance
    */
-  async createMaintenanceTicket(req: Request, res: Response): Promise<void> {
-    try {
-      if (!req.tenantPortal) {
-        res.status(403).json({
-          success: false,
-          message: 'Accès portail locataire requis.'
-        });
-        return;
+  createMaintenanceTicket = asyncHandler(async (req, res) => {
+    const { tenantClientId, leaseId, tenantId } = await portalSingleLease(req);
+    const body = req.body ?? {};
+
+    const data = createMaintenanceTicketSchema.parse({
+      category: body.category,
+      priority: body.priority,
+      title: body.title,
+      description: body.description,
+      locationDetails: body.locationDetails
+    });
+
+    const files = req.files as Express.Multer.File[] | undefined;
+    for (const file of files ?? []) {
+      const fileValidation = validateMaintenanceAttachment(file);
+      if (!fileValidation.valid) {
+        throw new BadRequestError(fileValidation.error || 'Fichier invalide.');
       }
-
-      const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
-
-      // Validate request body
-      const validationResult = createMaintenanceTicketSchema.safeParse({
-        category: req.body.category,
-        priority: req.body.priority,
-        title: req.body.title,
-        description: req.body.description
-      });
-
-      if (!validationResult.success) {
-        const errorMessages = validationResult.error.errors
-          .map((err: any) => `${err.path.join('.')}: ${err.message}`)
-          .join(', ');
-
-        res.status(400).json({
-          success: false,
-          message: `Données invalides: ${errorMessages}`,
-          errors: validationResult.error.errors
-        });
-        return;
-      }
-
-      // Validate files if provided
-      const files = req.files as Express.Multer.File[];
-      if (files && files.length > 0) {
-        for (const file of files) {
-          const fileValidation = validateMaintenanceAttachment(file);
-          if (!fileValidation.valid) {
-            res.status(400).json({
-              success: false,
-              message: fileValidation.error || 'Fichier invalide.'
-            });
-            return;
-          }
-        }
-      }
-
-      const ticket = await this.service.createMaintenanceTicket(
-        tenantClientId,
-        leaseId,
-        tenantId,
-        {
-          ...validationResult.data,
-          locationDetails: req.body.locationDetails
-        },
-        files
-      );
-
-      res.status(201).json({
-        success: true,
-        message: 'Ticket de maintenance créé avec succès.',
-        data: ticket
-      });
-    } catch (error: any) {
-      const statusCode = error.statusCode || 500;
-      const message = messageErreurPortail(error, 'Erreur lors de la création du ticket de maintenance.');
-
-      res.status(statusCode).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-      });
     }
-  }
+
+    const ticket = await this.service.createMaintenanceTicket(
+      tenantClientId,
+      leaseId,
+      tenantId,
+      {
+        ...data
+      },
+      files
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Ticket de maintenance créé avec succès.',
+      data: ticket
+    });
+  });
 
   /**
    * Get maintenance tickets
    * GET /api/portal/tenant/maintenance
    */
-  async getMaintenanceTickets(req: Request, res: Response): Promise<void> {
-    try {
-      if (!req.tenantPortal) {
-        res.status(403).json({
-          success: false,
-          message: 'Accès portail locataire requis.'
-        });
-        return;
-      }
+  getMaintenanceTickets = asyncHandler(async (req, res) => {
+    const { tenantClientId, leaseId, tenantId } = await portalSingleLease(req);
 
-      const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
+    const filters = definedOnly(parseTenantPortalMaintenanceQuery(req.query));
 
-      const filters: any = definedOnly(parseTenantPortalMaintenanceQuery(req.query));
+    const ticketsData = await this.service.getMaintenanceTickets(
+      tenantClientId,
+      leaseId,
+      tenantId,
+      orUndefined(filters),
+      paginationFrom(req.query)
+    );
 
-      const { page, limit } = parsePagination(req.query);
-      const pagination: any = {};
-      if (page !== undefined) {
-        pagination.page = page;
-      }
-      if (limit !== undefined) {
-        pagination.limit = limit;
-      }
-
-      const ticketsData = await this.service.getMaintenanceTickets(
-        tenantClientId,
-        leaseId,
-        tenantId,
-        Object.keys(filters).length > 0 ? filters : undefined,
-        Object.keys(pagination).length > 0 ? pagination : undefined
-      );
-
-      res.status(200).json({
-        success: true,
-        data: ticketsData
-      });
-    } catch (error: any) {
-      if (respondWithAppError(res, error)) return;
-      const statusCode = error.statusCode || 500;
-      const message = messageErreurPortail(error, 'Erreur lors de la récupération des tickets de maintenance.');
-
-      res.status(statusCode).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-      });
-    }
-  }
+    res.status(200).json({
+      success: true,
+      data: ticketsData
+    });
+  });
 
   /**
    * Get maintenance ticket details
    * GET /api/portal/tenant/maintenance/:id
    */
-  async getMaintenanceTicketDetails(req: Request, res: Response): Promise<void> {
-    try {
-      if (!req.tenantPortal) {
-        res.status(403).json({
-          success: false,
-          message: 'Accès portail locataire requis.'
-        });
-        return;
-      }
+  getMaintenanceTicketDetails = asyncHandler(async (req, res) => {
+    // Un ticket de n'importe quel bail du périmètre (H29), pas seulement du bail choisi.
+    const { tenantClientId, leaseId, tenantId, allLeaseIds } = await portalLeaseScope(req);
 
-      const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
-      const ticketId = req.params.id;
+    const ticketDetails = await this.service.getMaintenanceTicketDetails(
+      tenantClientId,
+      leaseId,
+      tenantId,
+      req.params.id,
+      allLeaseIds
+    );
 
-      if (!ticketId) {
-        res.status(400).json({
-          success: false,
-          message: 'ID de ticket requis.'
-        });
-        return;
-      }
-
-      const ticketDetails = await this.service.getMaintenanceTicketDetails(tenantClientId, leaseId, tenantId, ticketId);
-
-      res.status(200).json({
-        success: true,
-        data: ticketDetails
-      });
-    } catch (error: any) {
-      // Check if it's a "not found" error
-      const statusCode =
-        error.message?.includes('introuvable') || error.message?.includes('not found') ? 404 : error.statusCode || 500;
-      const message = messageErreurPortail(error, 'Erreur lors de la récupération des détails du ticket.');
-
-      res.status(statusCode).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-      });
-    }
-  }
+    res.status(200).json({
+      success: true,
+      data: ticketDetails
+    });
+  });
 
   /**
    * Add comment to maintenance ticket
    * POST /api/portal/tenant/maintenance/:id/comment
    */
-  async addTicketComment(req: Request, res: Response): Promise<void> {
-    try {
-      if (!req.tenantPortal) {
-        res.status(403).json({
-          success: false,
-          message: 'Accès portail locataire requis.'
-        });
-        return;
-      }
+  addTicketComment = asyncHandler(async (req, res) => {
+    const { comment: text } = addCommentSchema.parse({ comment: req.body?.comment });
 
-      const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
-      const ticketId = req.params.id;
+    const { tenantClientId, leaseId, tenantId, allLeaseIds } = await portalLeaseScope(req);
 
-      if (!ticketId) {
-        res.status(400).json({
-          success: false,
-          message: 'ID de ticket requis.'
-        });
-        return;
-      }
+    const comment = await this.service.addTicketComment(
+      tenantClientId,
+      leaseId,
+      tenantId,
+      req.params.id,
+      text,
+      allLeaseIds
+    );
 
-      const validationResult = addCommentSchema.safeParse({
-        comment: req.body.comment
-      });
-
-      if (!validationResult.success) {
-        const errorMessages = validationResult.error.errors
-          .map((err: any) => `${err.path.join('.')}: ${err.message}`)
-          .join(', ');
-
-        res.status(400).json({
-          success: false,
-          message: `Données invalides: ${errorMessages}`,
-          errors: validationResult.error.errors
-        });
-        return;
-      }
-
-      const comment = await this.service.addTicketComment(
-        tenantClientId,
-        leaseId,
-        tenantId,
-        ticketId,
-        validationResult.data.comment
-      );
-
-      res.status(201).json({
-        success: true,
-        message: 'Commentaire ajouté avec succès.',
-        data: comment
-      });
-    } catch (error: any) {
-      const statusCode = error.statusCode || 500;
-      const message = messageErreurPortail(error, "Erreur lors de l'ajout du commentaire.");
-
-      res.status(statusCode).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-      });
-    }
-  }
+    res.status(201).json({
+      success: true,
+      message: 'Commentaire ajouté avec succès.',
+      data: comment
+    });
+  });
 
   /**
    * Get documents
    * GET /api/portal/tenant/documents
    */
-  async getDocuments(req: Request, res: Response): Promise<void> {
-    try {
-      if (!req.tenantPortal) {
-        res.status(403).json({
-          success: false,
-          message: 'Accès portail locataire requis.'
-        });
-        return;
-      }
+  getDocuments = asyncHandler(async (req, res) => {
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
-      const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
-
-      const filters: any = {};
-      if (req.query.type) {
-        filters.type = req.query.type as string;
-      }
-
-      const documentsData = await this.service.getDocuments(
-        tenantClientId,
-        leaseId,
-        tenantId,
-        Object.keys(filters).length > 0 ? filters : undefined
-      );
-
-      res.status(200).json({
-        success: true,
-        data: documentsData
-      });
-    } catch (error: any) {
-      const statusCode = error.statusCode || 500;
-      const message = messageErreurPortail(error, 'Erreur lors de la récupération des documents.');
-
-      res.status(statusCode).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-      });
+    const filters: { type?: string } = {};
+    if (req.query.type) {
+      filters.type = req.query.type as string;
     }
-  }
+
+    const documentsData = await this.service.getDocuments(
+      tenantClientId,
+      leaseId,
+      tenantId,
+      orUndefined(filters),
+      leaseIds
+    );
+
+    res.status(200).json({
+      success: true,
+      data: documentsData
+    });
+  });
 
   /**
    * Download document
    * GET /api/portal/tenant/documents/:id/download
    */
-  async downloadDocument(req: Request, res: Response): Promise<void> {
-    try {
-      if (!req.tenantPortal) {
-        res.status(403).json({
-          success: false,
-          message: 'Accès portail locataire requis.'
-        });
-        return;
-      }
+  downloadDocument = asyncHandler(async (req, res) => {
+    const { tenantClientId, leaseId, tenantId, leaseIds } = await portalLeaseScope(req);
 
-      const { tenantClientId, leaseId, tenantId } = req.tenantPortal;
-      const documentId = req.params.id;
+    const { buffer, fileName, mimeType } = await this.service.downloadDocument(
+      tenantClientId,
+      leaseId,
+      tenantId,
+      req.params.id,
+      leaseIds
+    );
 
-      if (!documentId) {
-        res.status(400).json({
-          success: false,
-          message: 'ID de document requis.'
-        });
-        return;
-      }
-
-      const { buffer, fileName, mimeType } = await this.service.downloadDocument(
-        tenantClientId,
-        leaseId,
-        tenantId,
-        documentId
-      );
-
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-      res.send(buffer);
-    } catch (error: any) {
-      // Check if it's a "not found" error
-      const statusCode =
-        error.message?.includes('non trouvé') || error.message?.includes('not found') ? 404 : error.statusCode || 500;
-      const message = messageErreurPortail(error, 'Erreur lors du téléchargement du document.');
-
-      res.status(statusCode).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-      });
-    }
-  }
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(buffer);
+  });
 
   /**
    * Solde et relevé financier du locataire connecté (lecture seule).
@@ -741,14 +448,7 @@ export class TenantPortalController {
    * (`handleTenantPortalFinanceStatement`), pas ici : c'est le même code qui
    * résout le compte de tiers et calcule le relevé pour la route agence,
    * réutilisé tel quel pour que le locataire voie exactement ce que verrait
-   * la gestionnaire pour son compte (US6, scénario 1). Cette délégation en
-   * une ligne évite aussi d'alourdir ce fichier, qui porte déjà une erreur
-   * TypeScript préexistante sans rapport avec ce lot (`declarePayment`
-   * ci-dessus) — ne pas y ajouter de nouvelle logique la laisse à sa place
-   * plutôt que de la faire hériter, sans le vouloir, à ce nouveau point
-   * d'entrée.
+   * la gestionnaire pour son compte (US6, scénario 1).
    */
-  async getFinanceStatement(req: Request, res: Response): Promise<void> {
-    return handleTenantPortalFinanceStatement(req, res);
-  }
+  getFinanceStatement = (req: Request, res: Response): Promise<void> => handleTenantPortalFinanceStatement(req, res);
 }
