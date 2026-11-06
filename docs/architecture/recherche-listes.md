@@ -1397,3 +1397,24 @@ liste) n'est pas un critère : ne pas le passer par `ListSearch`.
 ne pas modifier `primitives/**`, `hooks/useListSearch.ts`, `hooks/useListParams.ts`
 ni `utils/list-search/**` ; une solution locale à l'écran, et la question dans le
 rapport du lot.
+
+## Stabilité des rendus (lot performance, PR #194)
+
+`useListSearch` stabilise les critères, valeurs structurées et propriétés de la
+barre. Les contrôles sont mémoïsés ; leurs fonctions de rappel gardent une
+identité stable tout en utilisant les valeurs courantes. Les écrans Stock et
+Tâcheron mémorisent leurs critères, colonnes et tableaux afin que la saisie dans
+un formulaire ne reconstruise pas les parties inchangées.
+
+Les critères et leurs options doivent être remplacés de manière immuable lors
+d'une modification. Un changement de langue remonte les pages via
+`LanguageBoundary` dans `App.tsx`, ce qui reconstruit leurs libellés mémoïsés.
+
+Mesure du 2026-11-05 : comparaison de `58ca023e^` et `e93d3259`, même scénario
+et même processus Vitest/jsdom, avec les vrais contrôles Ant Design instrumentés.
+Après cinq rendus du parent sans changement, Select et RangePicker effectuent
+chacun cinq rendus supplémentaires avant optimisation et zéro après. Les cinq
+tests permanents `list-search-renders.test.tsx` vérifient également les critères
+redéclarés, la modification isolée d'un filtre et la temporisation du champ libre.
+Ce résultat mesure les rendus ; il ne démontre pas un gain de durée dans un
+navigateur réel ni un gain chiffré sur les écrans Stock et Tâcheron.

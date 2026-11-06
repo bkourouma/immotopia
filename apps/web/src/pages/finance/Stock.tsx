@@ -1898,7 +1898,7 @@ function filtresDuSolde(params: ApiParams): { locationId?: string; itemId?: stri
   };
 }
 
-function OngletEtat(props: {
+const OngletEtat = React.memo(function OngletEtat(props: {
   tenantId: string;
   contexte: StockFieldContext;
   onRecevoir: () => void;
@@ -1906,37 +1906,40 @@ function OngletEtat(props: {
   const { tenantId, contexte, onRecevoir } = props;
   // Mode mixte : lieu, article et « masquer les lignes à zéro » partent à l'API
   // (le serveur calcule les soldes) ; le champ libre filtre la liste reçue.
-  const criteres: SearchCriterion[] = [
-    {
-      key: 'q',
-      type: 'text',
-      label: t('Rechercher'),
-      placeholder: t('Référence, désignation, lieu…'),
-      api: false
-    },
-    {
-      key: 'lieu',
-      type: 'select',
-      label: t('Lieu'),
-      primary: true,
-      api: 'locationId',
-      options: contexte.locations.map(l => ({ value: l.id, label: l.label }))
-    },
-    {
-      key: 'article',
-      type: 'select',
-      label: t('Article'),
-      primary: true,
-      api: 'itemId',
-      options: contexte.items.map(a => ({ value: a.id, label: `${a.reference} — ${a.label}` }))
-    },
-    {
-      key: 'masquerZero',
-      type: 'boolean',
-      label: t('Masquer les lignes à zéro'),
-      api: (valeur): ApiParams => (valeur ? { onlyInStock: 'true' } : {})
-    }
-  ];
+  const criteres = useMemo<SearchCriterion[]>(
+    () => [
+      {
+        key: 'q',
+        type: 'text',
+        label: t('Rechercher'),
+        placeholder: t('Référence, désignation, lieu…'),
+        api: false
+      },
+      {
+        key: 'lieu',
+        type: 'select',
+        label: t('Lieu'),
+        primary: true,
+        api: 'locationId',
+        options: contexte.locations.map(l => ({ value: l.id, label: l.label }))
+      },
+      {
+        key: 'article',
+        type: 'select',
+        label: t('Article'),
+        primary: true,
+        api: 'itemId',
+        options: contexte.items.map(a => ({ value: a.id, label: `${a.reference} — ${a.label}` }))
+      },
+      {
+        key: 'masquerZero',
+        type: 'boolean',
+        label: t('Masquer les lignes à zéro'),
+        api: (valeur): ApiParams => (valeur ? { onlyInStock: 'true' } : {})
+      }
+    ],
+    [contexte.locations, contexte.items]
+  );
   // Les critères de l'API se lisent dans l'URL avant la requête ; le filtrage
   // local (plus bas) relit les mêmes clés une fois la liste reçue.
   const critereApi = useListSearch({ paramPrefix: 'etat', criteria: criteres });
@@ -1949,7 +1952,7 @@ function OngletEtat(props: {
   });
   const meta = soldes.data?.meta;
   const valeursVisibles = meta?.valuesVisible ?? contexte.abilities.valuesVisible;
-  const aveugles = lieuxAveugles(meta, contexte);
+  const aveugles = useMemo(() => lieuxAveugles(meta, contexte), [meta, contexte]);
   const liste = useMemo(() => soldes.data?.data ?? [], [soldes.data]);
   const local = useLocalListSearch<StockBalanceView>(liste, {
     paramPrefix: 'etat',
@@ -1957,93 +1960,125 @@ function OngletEtat(props: {
     text: TEXTE_RECHERCHE_SOLDE
   });
 
-  const pastilleComptage = <StatusTag status="STOCK_COUNT_IN_PROGRESS" tone="info" label={t('Comptage en cours')} />;
-  const valeurOuComptage = (b: StockBalanceView, valeur: number | null, unite?: boolean) =>
-    valeur === null ? (
-      aveugles.has(b.locationId) ? (
-        pastilleComptage
-      ) : null
-    ) : unite ? (
-      <Space size={4}>
-        <MoneyValue value={valeur} />
-        <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-          / {b.itemUnit}
-        </Text>
-      </Space>
-    ) : (
-      <MoneyValue value={valeur} />
-    );
-
-  const colonnes: ColumnsType<StockBalanceView> = [
-    {
-      title: t('Article'),
-      key: 'article',
-      exportValue: b => `${b.itemLabel} — ${b.itemReference}`,
-      render: (_, b) => (
-        <Space orientation="vertical" size={0}>
-          <span>{b.itemLabel}</span>
+  const pastilleComptage = useMemo(
+    () => <StatusTag status="STOCK_COUNT_IN_PROGRESS" tone="info" label={t('Comptage en cours')} />,
+    []
+  );
+  const valeurOuComptage = useCallback(
+    (b: StockBalanceView, valeur: number | null, unite?: boolean) =>
+      valeur === null ? (
+        aveugles.has(b.locationId) ? (
+          pastilleComptage
+        ) : null
+      ) : unite ? (
+        <Space size={4}>
+          <MoneyValue value={valeur} />
           <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-            {b.itemReference}
+            / {b.itemUnit}
           </Text>
         </Space>
-      )
-    },
-    {
-      title: t('Lieu'),
-      key: 'lieu',
-      exportValue: b =>
-        aveugles.has(b.locationId) ? `${b.locationLabel} — ${t('Comptage en cours')}` : b.locationLabel,
-      render: (_, b) => (
-        <Space size={4} wrap>
-          <span>{b.locationLabel}</span>
-          {aveugles.has(b.locationId) ? pastilleComptage : null}
-        </Space>
-      )
-    },
-    {
-      title: t('Quantité'),
-      key: 'quantite',
-      align: 'end',
-      render: (_, b) =>
-        b.quantity === 0 ? (
-          <Text type="secondary">
-            0 {b.itemUnit} {t('— plus rien ici')}
-          </Text>
-        ) : (
-          <StockQuantityCell quantity={b.quantity} unit={b.itemUnit} />
+      ) : (
+        <MoneyValue value={valeur} />
+      ),
+    [aveugles, pastilleComptage]
+  );
+
+  const colonnes = useMemo<ColumnsType<StockBalanceView>>(
+    () => [
+      {
+        title: t('Article'),
+        key: 'article',
+        exportValue: b => `${b.itemLabel} — ${b.itemReference}`,
+        render: (_, b) => (
+          <Space orientation="vertical" size={0}>
+            <span>{b.itemLabel}</span>
+            <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
+              {b.itemReference}
+            </Text>
+          </Space>
         )
-    },
-    ...(valeursVisibles
-      ? ([
-          {
-            title: t('Coût moyen unitaire'),
-            key: 'cout-moyen',
-            align: 'end',
-            render: (_, b) => valeurOuComptage(b, b.averageUnitCost, true),
-            exportValue: b => b.averageUnitCost
-          },
-          {
-            title: t('Valeur'),
-            key: 'valeur',
-            align: 'end',
-            render: (_, b) => valeurOuComptage(b, b.value),
-            exportValue: b => b.value
-          }
-        ] as ColumnsType<StockBalanceView>)
-      : [])
-  ];
+      },
+      {
+        title: t('Lieu'),
+        key: 'lieu',
+        exportValue: b =>
+          aveugles.has(b.locationId) ? `${b.locationLabel} — ${t('Comptage en cours')}` : b.locationLabel,
+        render: (_, b) => (
+          <Space size={4} wrap>
+            <span>{b.locationLabel}</span>
+            {aveugles.has(b.locationId) ? pastilleComptage : null}
+          </Space>
+        )
+      },
+      {
+        title: t('Quantité'),
+        key: 'quantite',
+        align: 'end',
+        render: (_, b) =>
+          b.quantity === 0 ? (
+            <Text type="secondary">
+              0 {b.itemUnit} {t('— plus rien ici')}
+            </Text>
+          ) : (
+            <StockQuantityCell quantity={b.quantity} unit={b.itemUnit} />
+          )
+      },
+      ...(valeursVisibles
+        ? ([
+            {
+              title: t('Coût moyen unitaire'),
+              key: 'cout-moyen',
+              align: 'end',
+              render: (_, b) => valeurOuComptage(b, b.averageUnitCost, true),
+              exportValue: b => b.averageUnitCost
+            },
+            {
+              title: t('Valeur'),
+              key: 'valeur',
+              align: 'end',
+              render: (_, b) => valeurOuComptage(b, b.value),
+              exportValue: b => b.value
+            }
+          ] as ColumnsType<StockBalanceView>)
+        : [])
+    ],
+    [valeursVisibles, aveugles, pastilleComptage, valeurOuComptage]
+  );
+
+  const exportEtat = useMemo(() => ({ filename: t('État du stock'), fetchAll: local.exportAll }), [local.exportAll]);
+  const refetchSoldes = soldes.refetch;
+  const relire = useCallback(() => refetchSoldes(), [refetchSoldes]);
+  const carteSolde = useCallback(
+    (b: StockBalanceView) => (
+      <DataCard
+        title={b.itemLabel}
+        aria-label={b.itemLabel}
+        subtitle={`${b.itemReference} — ${b.locationLabel}`}
+        highlight={
+          valeursVisibles ? valeurOuComptage(b, b.value) : <StockQuantityCell quantity={b.quantity} unit={b.itemUnit} />
+        }
+        fields={[
+          { label: t('Quantité'), value: <StockQuantityCell quantity={b.quantity} unit={b.itemUnit} /> },
+          ...(valeursVisibles
+            ? [{ label: t('Coût moyen unitaire'), value: valeurOuComptage(b, b.averageUnitCost, true) }]
+            : [])
+        ]}
+      />
+    ),
+    [valeursVisibles, valeurOuComptage]
+  );
 
   return (
     <>
       <DataView<StockBalanceView>
         {...local.dataViewProps}
-        export={{ filename: t('État du stock'), fetchAll: local.exportAll }}
+        export={exportEtat}
         scrollX={1000}
         loading={soldes.isPending}
         isReloading={soldes.isFetching && !soldes.isPending}
         error={soldes.error ? t("Impossible de charger l'état du stock.") : null}
         errorCause={soldes.error}
-        onRetry={() => soldes.refetch()}
+        onRetry={relire}
         emptyDescription={t("Aucun stock n'est encore enregistré.")}
         emptyAction={
           contexte.abilities.canReceive ? { label: t('Enregistrer une réception'), onClick: onRecevoir } : undefined
@@ -2051,26 +2086,7 @@ function OngletEtat(props: {
         columns={colonnes}
         rowKey={b => `${b.itemId}-${b.locationId}`}
         aria-label={t('État du stock')}
-        renderCard={b => (
-          <DataCard
-            title={b.itemLabel}
-            aria-label={b.itemLabel}
-            subtitle={`${b.itemReference} — ${b.locationLabel}`}
-            highlight={
-              valeursVisibles ? (
-                valeurOuComptage(b, b.value)
-              ) : (
-                <StockQuantityCell quantity={b.quantity} unit={b.itemUnit} />
-              )
-            }
-            fields={[
-              { label: t('Quantité'), value: <StockQuantityCell quantity={b.quantity} unit={b.itemUnit} /> },
-              ...(valeursVisibles
-                ? [{ label: t('Coût moyen unitaire'), value: valeurOuComptage(b, b.averageUnitCost, true) }]
-                : [])
-            ]}
-          />
-        )}
+        renderCard={carteSolde}
       />
 
       {valeursVisibles ? (
@@ -2082,7 +2098,7 @@ function OngletEtat(props: {
       ) : null}
     </>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Onglet « Journal des mouvements » (A5, A4-R4 — ecrans §5.6)
@@ -2124,9 +2140,8 @@ function OngletJournal(props: {
   });
   // « Demandeur ou preneur contient » est couvert par le champ libre (le serveur
   // y cherche preneur et demandeur quand l'appelant voit les valeurs).
-  const search = useListSearch({
-    paramPrefix: 'jrn',
-    criteria: [
+  const criteres = useMemo<SearchCriterion[]>(
+    () => [
       {
         key: 'q',
         type: 'text',
@@ -2178,8 +2193,10 @@ function OngletJournal(props: {
             }
           ] as SearchCriterion[])
         : [])
-    ]
-  });
+    ],
+    [contexte.items, contexte.locations, contexte.sites, filtresParPersonne, preneurs.data, auteurs.data]
+  );
+  const search = useListSearch({ paramPrefix: 'jrn', criteria: criteres });
   const texte = (valeur: string | number | undefined) => (valeur === undefined ? undefined : String(valeur));
   const critere = search.filterParams;
   const filtres: Omit<StockMovementsFilters, 'cursor' | 'limit'> & { search?: string } = {
@@ -2222,7 +2239,7 @@ function OngletJournal(props: {
   const mouvements = useMemo(() => (journal.data?.pages ?? []).flatMap(page => page.data), [journal.data]);
   const meta = journal.data?.pages[0]?.meta;
   const valeursVisibles = meta?.valuesVisible ?? abilities.valuesVisible;
-  const aveugles = lieuxAveugles(meta, contexte);
+  const aveugles = useMemo(() => lieuxAveugles(meta, contexte), [meta, contexte]);
   const suiteEchouee = journal.isFetchNextPageError;
   // Une suite qui échoue n'efface pas les lignes déjà lues : seul un échec de
   // la première lecture (ou de sa relecture) remplace la liste par l'erreur.
@@ -2250,209 +2267,241 @@ function OngletJournal(props: {
     }
   };
 
-  const masque = (m: StockMovementView) => aveugles.has(m.locationId);
-  const nature_ = (m: StockMovementView) => (
-    <StatusTag status={m.type} label={STOCK_MOVEMENT_TYPE_LABELS[m.type]} tone={STOCK_MOVEMENT_TYPE_TONES[m.type]} />
+  const masque = useCallback((m: StockMovementView) => aveugles.has(m.locationId), [aveugles]);
+  const nature_ = useCallback(
+    (m: StockMovementView) => (
+      <StatusTag status={m.type} label={STOCK_MOVEMENT_TYPE_LABELS[m.type]} tone={STOCK_MOVEMENT_TYPE_TONES[m.type]} />
+    ),
+    []
   );
-  const signe = (m: StockMovementView) => `${m.isDecrease ? '−' : '+'} ${quantite(m.quantity, m.itemUnit)}`;
-  const saisiLe = (m: StockMovementView) => (
-    <Space size={4} wrap>
-      <span>{dateHeure(m.createdAt)}</span>
-      {m.entryLagDays > 0 ? (
-        <Tooltip title={t('Saisi {{n}} jour(s) après la date déclarée.', { n: m.entryLagDays })}>
-          <span>
-            <StatusTag
-              status="STOCK_ENTRY_LAG"
-              tone={m.entryLagDays >= 3 ? 'warning' : 'neutral'}
-              label={t('+{{n}} j', { n: m.entryLagDays })}
-            />
-          </span>
-        </Tooltip>
-      ) : null}
-    </Space>
+  const signe = useCallback(
+    (m: StockMovementView) => `${m.isDecrease ? '−' : '+'} ${quantite(m.quantity, m.itemUnit)}`,
+    []
   );
-  const preneurOuDemandeur = (m: StockMovementView) =>
-    m.requestedBy ? (
-      <Space orientation="vertical" size={0}>
-        <span>{m.requestedBy}</span>
-        {m.takerLabel && m.takerLabel !== m.requestedBy ? (
-          <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-            {t('(aujourd’hui : {{takerLabel}})', { takerLabel: m.takerLabel })}
-          </Text>
+  const saisiLe = useCallback(
+    (m: StockMovementView) => (
+      <Space size={4} wrap>
+        <span>{dateHeure(m.createdAt)}</span>
+        {m.entryLagDays > 0 ? (
+          <Tooltip title={t('Saisi {{n}} jour(s) après la date déclarée.', { n: m.entryLagDays })}>
+            <span>
+              <StatusTag
+                status="STOCK_ENTRY_LAG"
+                tone={m.entryLagDays >= 3 ? 'warning' : 'neutral'}
+                label={t('+{{n}} j', { n: m.entryLagDays })}
+              />
+            </span>
+          </Tooltip>
         ) : null}
       </Space>
-    ) : (
-      <Text type="secondary">—</Text>
-    );
-  const motifDe = (m: StockMovementView): string => {
+    ),
+    []
+  );
+  const preneurOuDemandeur = useCallback(
+    (m: StockMovementView) =>
+      m.requestedBy ? (
+        <Space orientation="vertical" size={0}>
+          <span>{m.requestedBy}</span>
+          {m.takerLabel && m.takerLabel !== m.requestedBy ? (
+            <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
+              {t('(aujourd’hui : {{takerLabel}})', { takerLabel: m.takerLabel })}
+            </Text>
+          ) : null}
+        </Space>
+      ) : (
+        <Text type="secondary">—</Text>
+      ),
+    []
+  );
+  const motifDe = useCallback((m: StockMovementView): string => {
     const libelle = stockReasonDisplay(m.reasonCode, m.reason);
     if (!libelle) return '—';
     return m.reasonCode && m.reason?.trim() ? `${libelle} — ${m.reason.trim()}` : libelle;
-  };
-  const bonDe = (m: StockMovementView) =>
-    m.slipNumber && m.slipId ? (
-      <Button type="link" style={{ paddingInline: 0 }} onClick={() => onOuvrirBon(m.slipId as string)}>
-        {m.slipNumber}
-      </Button>
-    ) : (
-      <Text type="secondary">—</Text>
-    );
-  const piecesJointes = (m: StockMovementView) =>
-    m.attachmentsCount > 0 ? (
-      <Button
-        type="link"
-        icon={<PaperClipOutlined />}
-        aria-label={t('Pièces jointes : {{n}}', { n: m.attachmentsCount })}
-        onClick={() => (m.slipId ? onOuvrirBon(m.slipId) : setPiecesDuMouvement(m))}
-      >
-        {m.attachmentsCount}
-      </Button>
-    ) : (
-      <Text type="secondary">—</Text>
-    );
+  }, []);
+  const bonDe = useCallback(
+    (m: StockMovementView) =>
+      m.slipNumber && m.slipId ? (
+        <Button type="link" style={{ paddingInline: 0 }} onClick={() => onOuvrirBon(m.slipId as string)}>
+          {m.slipNumber}
+        </Button>
+      ) : (
+        <Text type="secondary">—</Text>
+      ),
+    [onOuvrirBon]
+  );
+  const piecesJointes = useCallback(
+    (m: StockMovementView) =>
+      m.attachmentsCount > 0 ? (
+        <Button
+          type="link"
+          icon={<PaperClipOutlined />}
+          aria-label={t('Pièces jointes : {{n}}', { n: m.attachmentsCount })}
+          onClick={() => (m.slipId ? onOuvrirBon(m.slipId) : setPiecesDuMouvement(m))}
+        >
+          {m.attachmentsCount}
+        </Button>
+      ) : (
+        <Text type="secondary">—</Text>
+      ),
+    [onOuvrirBon]
+  );
 
-  const colonnes: ColumnsType<StockMovementView> = [
-    { title: t('Date'), key: 'date', render: (_, m) => date(m.movementDate) },
-    {
-      title: t('Saisi le'),
-      key: 'saisi-le',
-      render: (_, m) => saisiLe(m),
-      exportValue: m =>
-        m.entryLagDays > 0
-          ? `${dateHeure(m.createdAt)} — ${t('+{{n}} j', { n: m.entryLagDays })}`
-          : dateHeure(m.createdAt)
-    },
-    { title: t('Nature'), key: 'nature', render: (_, m) => nature_(m) },
-    { title: t('Bon'), key: 'bon', render: (_, m) => bonDe(m), exportValue: m => m.slipNumber ?? '' },
-    {
-      title: t('Article'),
-      key: 'article',
-      exportValue: m => `${m.itemLabel} — ${m.itemReference}`,
-      render: (_, m) => (
-        <Space orientation="vertical" size={0}>
-          <span>{m.itemLabel}</span>
-          <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-            {m.itemReference}
-          </Text>
-        </Space>
-      )
-    },
-    { title: t('Lieu'), key: 'lieu', render: (_, m) => m.locationLabel },
-    { title: t('Quantité'), key: 'quantite', align: 'end', render: (_, m) => signe(m) },
-    {
-      title: t('Reste après'),
-      key: 'reste',
-      align: 'end',
-      exportValue: m => {
-        if (m.quantityAfter === null) return t('Comptage en cours');
-        const reste = quantite(m.quantityAfter, m.itemUnit);
-        return valeursVisibles && m.valueAfter !== null ? `${reste} — ${formatMoney(m.valueAfter)}` : reste;
+  const colonnes = useMemo<ColumnsType<StockMovementView>>(
+    () => [
+      { title: t('Date'), key: 'date', render: (_, m) => date(m.movementDate) },
+      {
+        title: t('Saisi le'),
+        key: 'saisi-le',
+        render: (_, m) => saisiLe(m),
+        exportValue: m =>
+          m.entryLagDays > 0
+            ? `${dateHeure(m.createdAt)} — ${t('+{{n}} j', { n: m.entryLagDays })}`
+            : dateHeure(m.createdAt)
       },
-      render: (_, m) =>
-        m.quantityAfter === null ? (
-          MASQUE_COMPTAGE()
-        ) : (
-          <Space orientation="vertical" size={0} style={{ alignItems: 'flex-end' }}>
-            <span>{quantite(m.quantityAfter, m.itemUnit)}</span>
-            {valeursVisibles && m.valueAfter !== null ? (
-              <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-                <MoneyValue value={m.valueAfter} />
-              </Text>
-            ) : null}
-          </Space>
-        )
-    },
-    ...(valeursVisibles
-      ? ([
-          {
-            title: t('Prix unitaire'),
-            key: 'prix-unitaire',
-            align: 'end',
-            render: (_, m) =>
-              m.unitCost === null ? masque(m) ? MASQUE_COMPTAGE() : null : <MoneyValue value={m.unitCost} />,
-            exportValue: m => m.unitCost
-          },
-          {
-            // `totalValue` TEL QUEL, jamais `quantity × unitCost`.
-            title: t('Valeur du mouvement'),
-            key: 'valeur',
-            align: 'end',
-            exportValue: m => m.totalValue,
-            render: (_, m) =>
-              m.totalValue === null ? (
-                masque(m) ? (
-                  MASQUE_COMPTAGE()
-                ) : null
-              ) : m.type === 'SUPPLIER_RETURN' && m.supplierCreditValue !== null ? (
-                <Tooltip
-                  title={t('Valeur sortie du stock ; montant porté au fournisseur : {{supplierCreditValue}}', {
-                    supplierCreditValue: formatMoney(m.supplierCreditValue)
-                  })}
-                >
-                  <span>
-                    <MoneyValue value={m.totalValue} />
-                  </span>
-                </Tooltip>
-              ) : (
-                <MoneyValue value={m.totalValue} />
-              )
-          }
-        ] as ColumnsType<StockMovementView>)
-      : []),
-    {
-      title: t('Chantier imputé'),
-      key: 'chantier',
-      exportValue: m =>
-        m.siteLabel ? `${m.siteLabel} — ${m.costCategoryLabel ?? t('Poste non renseigné')}` : t('Aucune imputation'),
-      render: (_, m) =>
-        m.siteLabel ? (
+      { title: t('Nature'), key: 'nature', render: (_, m) => nature_(m) },
+      { title: t('Bon'), key: 'bon', render: (_, m) => bonDe(m), exportValue: m => m.slipNumber ?? '' },
+      {
+        title: t('Article'),
+        key: 'article',
+        exportValue: m => `${m.itemLabel} — ${m.itemReference}`,
+        render: (_, m) => (
           <Space orientation="vertical" size={0}>
-            <span>{m.siteLabel}</span>
+            <span>{m.itemLabel}</span>
             <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-              {m.costCategoryLabel ?? t('Poste non renseigné')}
+              {m.itemReference}
             </Text>
           </Space>
-        ) : (
-          <Text type="secondary">{t('Aucune imputation')}</Text>
         )
-    },
-    {
-      title: t('Preneur ou demandeur'),
-      key: 'preneur',
-      render: (_, m) => preneurOuDemandeur(m),
-      exportValue: m =>
-        m.requestedBy
-          ? m.takerLabel && m.takerLabel !== m.requestedBy
-            ? `${m.requestedBy} — ${t('(aujourd’hui : {{takerLabel}})', { takerLabel: m.takerLabel })}`
-            : m.requestedBy
-          : ''
-    },
-    { title: t('Motif'), key: 'motif', render: (_, m) => motifDe(m) },
-    {
-      title: t('Pièce'),
-      key: 'piece',
-      exportValue: m => m.supplierInvoiceReference ?? '',
-      render: (_, m) =>
-        m.supplierInvoiceReference && m.supplierInvoiceId ? (
-          <Button
-            type="link"
-            style={{ paddingInline: 0 }}
-            onClick={() => onOuvrirFacture(m.supplierInvoiceId as string)}
-          >
-            {m.supplierInvoiceReference}
-          </Button>
-        ) : (
-          (m.supplierInvoiceReference ?? <Text type="secondary">—</Text>)
-        )
-    },
-    { title: t('Saisi par'), key: 'auteur', render: (_, m) => m.createdByLabel },
-    {
-      title: t('Pièces jointes'),
-      key: 'pieces-jointes',
-      render: (_, m) => piecesJointes(m),
-      exportValue: m => m.attachmentsCount
-    }
-  ];
+      },
+      { title: t('Lieu'), key: 'lieu', render: (_, m) => m.locationLabel },
+      { title: t('Quantité'), key: 'quantite', align: 'end', render: (_, m) => signe(m) },
+      {
+        title: t('Reste après'),
+        key: 'reste',
+        align: 'end',
+        exportValue: m => {
+          if (m.quantityAfter === null) return t('Comptage en cours');
+          const reste = quantite(m.quantityAfter, m.itemUnit);
+          return valeursVisibles && m.valueAfter !== null ? `${reste} — ${formatMoney(m.valueAfter)}` : reste;
+        },
+        render: (_, m) =>
+          m.quantityAfter === null ? (
+            MASQUE_COMPTAGE()
+          ) : (
+            <Space orientation="vertical" size={0} style={{ alignItems: 'flex-end' }}>
+              <span>{quantite(m.quantityAfter, m.itemUnit)}</span>
+              {valeursVisibles && m.valueAfter !== null ? (
+                <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
+                  <MoneyValue value={m.valueAfter} />
+                </Text>
+              ) : null}
+            </Space>
+          )
+      },
+      ...(valeursVisibles
+        ? ([
+            {
+              title: t('Prix unitaire'),
+              key: 'prix-unitaire',
+              align: 'end',
+              render: (_, m) =>
+                m.unitCost === null ? masque(m) ? MASQUE_COMPTAGE() : null : <MoneyValue value={m.unitCost} />,
+              exportValue: m => m.unitCost
+            },
+            {
+              // `totalValue` TEL QUEL, jamais `quantity × unitCost`.
+              title: t('Valeur du mouvement'),
+              key: 'valeur',
+              align: 'end',
+              exportValue: m => m.totalValue,
+              render: (_, m) =>
+                m.totalValue === null ? (
+                  masque(m) ? (
+                    MASQUE_COMPTAGE()
+                  ) : null
+                ) : m.type === 'SUPPLIER_RETURN' && m.supplierCreditValue !== null ? (
+                  <Tooltip
+                    title={t('Valeur sortie du stock ; montant porté au fournisseur : {{supplierCreditValue}}', {
+                      supplierCreditValue: formatMoney(m.supplierCreditValue)
+                    })}
+                  >
+                    <span>
+                      <MoneyValue value={m.totalValue} />
+                    </span>
+                  </Tooltip>
+                ) : (
+                  <MoneyValue value={m.totalValue} />
+                )
+            }
+          ] as ColumnsType<StockMovementView>)
+        : []),
+      {
+        title: t('Chantier imputé'),
+        key: 'chantier',
+        exportValue: m =>
+          m.siteLabel ? `${m.siteLabel} — ${m.costCategoryLabel ?? t('Poste non renseigné')}` : t('Aucune imputation'),
+        render: (_, m) =>
+          m.siteLabel ? (
+            <Space orientation="vertical" size={0}>
+              <span>{m.siteLabel}</span>
+              <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
+                {m.costCategoryLabel ?? t('Poste non renseigné')}
+              </Text>
+            </Space>
+          ) : (
+            <Text type="secondary">{t('Aucune imputation')}</Text>
+          )
+      },
+      {
+        title: t('Preneur ou demandeur'),
+        key: 'preneur',
+        render: (_, m) => preneurOuDemandeur(m),
+        exportValue: m =>
+          m.requestedBy
+            ? m.takerLabel && m.takerLabel !== m.requestedBy
+              ? `${m.requestedBy} — ${t('(aujourd’hui : {{takerLabel}})', { takerLabel: m.takerLabel })}`
+              : m.requestedBy
+            : ''
+      },
+      { title: t('Motif'), key: 'motif', render: (_, m) => motifDe(m) },
+      {
+        title: t('Pièce'),
+        key: 'piece',
+        exportValue: m => m.supplierInvoiceReference ?? '',
+        render: (_, m) =>
+          m.supplierInvoiceReference && m.supplierInvoiceId ? (
+            <Button
+              type="link"
+              style={{ paddingInline: 0 }}
+              onClick={() => onOuvrirFacture(m.supplierInvoiceId as string)}
+            >
+              {m.supplierInvoiceReference}
+            </Button>
+          ) : (
+            (m.supplierInvoiceReference ?? <Text type="secondary">—</Text>)
+          )
+      },
+      { title: t('Saisi par'), key: 'auteur', render: (_, m) => m.createdByLabel },
+      {
+        title: t('Pièces jointes'),
+        key: 'pieces-jointes',
+        render: (_, m) => piecesJointes(m),
+        exportValue: m => m.attachmentsCount
+      }
+    ],
+    [
+      valeursVisibles,
+      masque,
+      nature_,
+      signe,
+      saisiLe,
+      preneurOuDemandeur,
+      motifDe,
+      bonDe,
+      piecesJointes,
+      onOuvrirFacture
+    ]
+  );
 
   const mouvementFiltre = mouvementId ? mouvements.find(m => m.id === mouvementId) : undefined;
 
@@ -2833,6 +2882,20 @@ export const Stock: React.FC = () => {
     },
     [setSearchParams]
   );
+  // Déclarés avant les retours anticipés (règle des hooks) : références stables
+  // pour que l'onglet mémoïsé et les colonnes du journal ne se refassent pas.
+  const recevoir = useCallback(() => {
+    setGeneration(g => g + 1);
+    setFenetre('reception');
+  }, []);
+  const ouvrirBon = useCallback(
+    (slipId: string) => modifierParametres(p => p.set('bon', slipId)),
+    [modifierParametres]
+  );
+  const ouvrirFacture = useCallback(
+    (invoiceId: string) => modifierParametres(p => p.set('facture', invoiceId)),
+    [modifierParametres]
+  );
 
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
@@ -2896,8 +2959,6 @@ export const Stock: React.FC = () => {
     setFenetre(quelle);
   };
   const fermer = () => setFenetre(null);
-  const ouvrirBon = (slipId: string) => modifierParametres(p => p.set('bon', slipId));
-  const ouvrirFacture = (invoiceId: string) => modifierParametres(p => p.set('facture', invoiceId));
 
   const autresMouvements = abilities.canDispose ? (
     <Dropdown
@@ -2982,7 +3043,7 @@ export const Stock: React.FC = () => {
           {
             key: 'etat',
             label: t('État du stock'),
-            children: <OngletEtat tenantId={tenantId} contexte={contexte} onRecevoir={() => ouvrir('reception')} />
+            children: <OngletEtat tenantId={tenantId} contexte={contexte} onRecevoir={recevoir} />
           },
           {
             key: 'journal',

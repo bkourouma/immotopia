@@ -91,6 +91,10 @@ Pièges :
 - Le checkout principal est encore sur `feat/signature-s5-s7` (déjà fusionnée), 372 commits derrière `main`, avec des modifications locales (`.claude/launch.json`, `packages/api/package.json`) : lire l'état depuis `origin/main` (`git show`, `git grep`) ou depuis un worktree à jour, jamais depuis cet arbre.
 - Disque D: à 97 % (15 Go libres) ; une quinzaine de worktrees périmés sous `.claude/worktrees/` et `D:\APP\Immobillier-worktrees\` (retirer les jonctions avec `rmdir` avant tout `git worktree remove`).
 
+## Branche `codex/ux-limites-proprietaires-pdf-arabe` — 2026-11-06
+
+**Réconciliation :** intégration de main `360591bd`, qui contient #194 et #195. Le hook de recherche conserve la mémorisation des signatures et la signature du chargeur paginé `loadOptionsPage` ; un test couvre l'ajout/retrait du chargeur et sa fermeture courante après changement d'agence. Le test Syndic conserve l'attente du Budget et la saisie/validation asynchrone de main. PR maintenue en brouillon, sans fusion ni déploiement. #193 reste une PR séparée ; son éventuel chevauchement devra être réconcilié avant une seconde fusion. Vérifications et SHA livrés consignés dans le compte rendu de reprise, CI du nouveau head à contrôler.
+
 ## Branche `fix/oracles-et-finitions` — 2026-10-20
 
 **État :** PR vers `main` (fusion par l'utilisateur). Oracles d'existence d'agence restants après la PR #185 et deux finitions de la recette des notifications.
@@ -900,3 +904,14 @@ Application et données :
 - Recette locale : le navigateur intégré refuse les pages servies par adresse IP (utiliser `*.localhost`) et ses captures échouent panneau masqué (preuves par DOM et réseau) ; `preview_start` est limité à 5 serveurs. Les testeurs n'ont pas les mots de passe de recette : les consigner dans les scénarios.
 - Ports : API 8001, web 3000 (3002 sur ce poste), démo 8800/3300 ; sur ce poste le port 3301 est pris par un autre projet (Docker).
 - Les marques anti-doublon des notifications vivent dans la table `notification_markers`, jamais dans `AuditLog`.
+
+## Branche `orch/2026-11-03-ux-recherche-lot-perf` — 2026-11-05
+
+**État :** reprise de la PR #194, validation en cours.
+**Dernier commit avant cette correction :** `e5622c52` (documentation), après `e93d3259` et `58ca023e`. La correction de synchronisation est dans le commit portant cette passation.
+
+Fait : analyse du lot et de la CI 41923038088 ; seul échec dans la validation asynchrone du formulaire Syndic. La première attente ciblée de 15 secondes ne suffisait pas en CI (41978106026) : le scénario utilise maintenant userEvent, attend le préremplissage puis la fin de validation du champ avant soumission. Assertions de payload et timeout global conservés. Cinq répétitions consécutives locales du scénario corrigé réussies (repeats: 4 dans une copie temporaire retirée). Assertion d'identité API corrigée dans le test de rendu (comparaison avant/après, au lieu de comparer un objet à lui-même).
+
+Validation locale : 27 tests Syndic et 5 tests de stabilité des rendus réussis. Mesure comparative séquentielle dans le même processus Vitest : après cinq rendus sans modification du parent, Select et RangePicker passent chacun de 5 rendus supplémentaires avant optimisation à 0 après. Deux scénarios de mesure réussis (34 tests locaux au total). Copies de mesure temporaires retirées. Aucun gain de temps navigateur revendiqué. Reste : attendre la CI complète du dernier commit. La langue remonte l'arbre via la clé de LanguageBoundary dans App.tsx ; les mémos des traductions suivent ce remontage.
+
+Pièges : les deux fichiers `zz-profil-*` non suivis préexistent et restent hors commit. Ne pas intervenir dans le worktree recette-locatif (#193). Cette branche contient une ancienne intégration de la recherche ; elle ne remplace pas #195 et ne doit pas être fusionnée sans examiner leur articulation.

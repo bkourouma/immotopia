@@ -63,7 +63,7 @@ export interface TextFieldProps {
   style?: React.CSSProperties;
 }
 
-export function TextField({ criterion, value, onApply, touch, style }: TextFieldProps) {
+export const TextField = React.memo(function TextField({ criterion, value, onApply, touch, style }: TextFieldProps) {
   const external = value ?? '';
   const [local, setLocal] = useState(external);
   // Dernière valeur connue du parent (reçue ou envoyée) : tant que `value`
@@ -137,7 +137,7 @@ export function TextField({ criterion, value, onApply, touch, style }: TextField
       style={{ ...fill, ...(touch ? { minHeight: 44 } : {}), ...style }}
     />
   );
-}
+});
 
 /* -------------------------------------------------------------------------- */
 /* Choix unique                                                               */
@@ -561,7 +561,7 @@ export interface CriterionControlProps extends ControlShared {
   onChange: (value: SearchValue) => void;
 }
 
-export function CriterionControl(props: CriterionControlProps) {
+export const CriterionControl = React.memo(function CriterionControl(props: CriterionControlProps) {
   const { criterion } = props;
   switch (criterion.type) {
     case 'select':
@@ -577,4 +577,4 @@ export function CriterionControl(props: CriterionControlProps) {
     default:
       return null;
   }
-}
+});
