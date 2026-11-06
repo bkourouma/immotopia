@@ -1,17 +1,17 @@
-import React from 'react';
-import { Alert } from 'antd';
+import React, { useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { ColumnsType } from 'antd/es/table';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { getSalesPipeline, listSaleMandates } from '../../services/sales-service';
-import type { SaleMandateDto } from '../../services/sales-service';
-import { useLocalListSearch } from '../../utils/list-search';
+import type { ListSaleMandatesFilters, SaleListPage, SaleMandateDto } from '../../services/sales-service';
+import { useListSearch } from '../../hooks/useListSearch';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatCard } from '../../components/primitives';
 import { MANDATE_TYPE_LABELS, dateCourte } from './helpers';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
-import { MANDATE_ACCESSORS, MANDATE_TEXT, MANDATES_LIMIT, mandateCriteria } from './mandate-search';
+import { mandateCriteria } from './mandate-search';
 
 /**
  * Tableau des ventes — lot 9 (PRD §5.1).
@@ -20,14 +20,14 @@ import { MANDATE_ACCESSORS, MANDATE_TEXT, MANDATES_LIMIT, mandateCriteria } from
  * vendeur, prix demandé, type, échéance, nombre d'offres, statut. Construit
  * sur le modèle de `pages/finance/ComptesProprietaires.tsx`.
  *
- * La liste des mandats actifs est reçue en entier (500 au plus) : elle a sa
- * barre de recherche locale (champ libre, type, échéance, prix) et se pagine.
+ * La liste des mandats actifs est filtrée et paginée par l'API.
  * Le statut n'y figure pas : tous les mandats listés sont actifs. La liste
  * complète, tous statuts confondus, est sur « Tous les mandats ».
  */
 export const SalesDashboard: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
+  const recherche = useListSearch({ criteria: mandateCriteria({ withStatus: false }), defaultPageSize: 20 });
 
   const {
     data: pipeline,
@@ -45,20 +45,30 @@ export const SalesDashboard: React.FC = () => {
     data: mandates,
     isPending: mandatesLoading,
     isFetching: mandatesFetching,
+    isPlaceholderData: mandatesPlaceholderData,
     error: mandatesError,
     refetch: refetchMandates
   } = useQuery({
-    queryKey: queryKey('sale-mandates', tenantId, { status: 'ACTIVE' }),
-    queryFn: () => listSaleMandates(tenantId as string, { status: 'ACTIVE' }),
+    queryKey: queryKey('sale-mandates', tenantId, { status: 'ACTIVE', ...recherche.apiParams }),
+    queryFn: () =>
+      listSaleMandates(
+        tenantId as string,
+        { ...recherche.apiParams, status: 'ACTIVE' } as unknown as ListSaleMandatesFilters & {
+          page: number;
+          limit: number;
+        }
+      ),
     enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
-
-  const local = useLocalListSearch<SaleMandateDto>(mandates, {
-    criteria: mandateCriteria({ withStatus: false }),
-    text: MANDATE_TEXT,
-    accessors: MANDATE_ACCESSORS
-  });
+  const page = mandates as SaleListPage<SaleMandateDto> | SaleMandateDto[] | undefined;
+  const rows = Array.isArray(page) ? page : (page?.items ?? []);
+  const total = Array.isArray(page) ? page.length : (page?.total ?? 0);
+  const { clampPage } = recherche;
+  useEffect(() => {
+    if (page && !mandatesPlaceholderData) clampPage?.(total);
+  }, [page, total, mandatesPlaceholderData, clampPage]);
 
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
@@ -171,21 +181,23 @@ export const SalesDashboard: React.FC = () => {
         </div>
       )}
 
-      {(mandates?.length ?? 0) >= MANDATES_LIMIT && (
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBlockEnd: 16 }}
-          message={t('La liste est limitée aux {{limit}} mandats les plus récents : d’autres existent.', {
-            limit: MANDATES_LIMIT
-          })}
-        />
-      )}
-
       <DataView<SaleMandateDto>
-        {...local.dataViewProps}
-        // Liste reçue en entier : l'export couvre tous les mandats filtrés, pas la seule page.
-        export={{ filename: t('Mandats de vente actifs'), fetchAll: local.exportAll }}
+        items={rows}
+        total={total}
+        {...recherche.dataViewProps}
+        search={recherche.searchProps}
+        export={{
+          filename: t('Mandats de vente actifs'),
+          fetchAll: () =>
+            collectAllPages((page, limit) =>
+              listSaleMandates(tenantId, {
+                ...recherche.filterParams,
+                status: 'ACTIVE',
+                page,
+                limit
+              } as ListSaleMandatesFilters & { page: number; limit: number })
+            )
+        }}
         loading={mandatesLoading}
         isReloading={mandatesFetching && !mandatesLoading}
         error={mandatesError ? t('Impossible de charger les mandats actifs.') : null}

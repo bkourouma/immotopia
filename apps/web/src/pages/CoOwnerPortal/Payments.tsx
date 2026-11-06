@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Col, Modal, Row, Space, Typography } from 'antd';
+import { Button, Card, Col, Modal, Row, Space, Typography } from 'antd';
 import { DownloadOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
@@ -7,7 +7,6 @@ import dayjs from 'dayjs';
 import { DataCard, DataView, MoneyValue, SkeletonList, Table } from '../../components/primitives';
 import { feedback } from '../../lib/feedback';
 import { useListSearch } from '../../hooks/useListSearch';
-import { filterItems, paginate } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 import { DeclarationsList } from '../../components/coowner-portal/declared-payment/DeclarationsList';
@@ -24,6 +23,7 @@ import { saveBlob } from '../../utils/save-blob';
 import { displayCurrency } from '../../utils/syndic-currency';
 import { declarationStatusLabel } from '../../components/coowner-portal/declared-payment/labels';
 import { blobErrorMessage, portalErrorMessage } from './portal-error';
+import { collectAllPages } from '../../utils/table-export/collect';
 
 const { Title, Text } = Typography;
 
@@ -36,13 +36,7 @@ const { Title, Text } = Typography;
  */
 
 // Champ libre : référence, numéro de lot et mode de paiement affichés. Constantes de module.
-const TEXTE_RECHERCHE = [
-  (payment: CoOwnerPayment) => payment.reference,
-  (payment: CoOwnerPayment) => payment.lot.lotNumber,
-  (payment: CoOwnerPayment) => payment.methodLabel
-];
 const NO_PAYMENTS: CoOwnerPayment[] = [];
-const PAYMENT_LIST_LIMIT = 500;
 const DECLARATION_PAGE_LIMIT = 50;
 const DECLARATION_STATUSES: DeclarationStatus[] = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELED'];
 
@@ -54,28 +48,34 @@ function yearOptions(): number[] {
 }
 
 function DocumentButton({ doc }: { doc: CoOwnerPaymentDocument }) {
-  const [loading, setLoading] = useState(false);
-  const download = async () => {
-    setLoading(true);
+  const [loading, setLoading] = useState<'original' | 'ar' | null>(null);
+  const download = async (translation?: 'ar') => {
+    setLoading(translation ?? 'original');
     try {
       const label = doc.kind === 'QUITTANCE' ? t('Quittance') : t('Reçu');
       const { blob, filename } = await downloadCoOwnerReceiptFile(
         doc.downloadPath,
-        t('{{label}} {{number}}.pdf', { label, number: doc.number })
+        t('{{label}} {{number}}.pdf', { label, number: doc.number }),
+        translation
       );
       saveBlob(blob, filename);
     } catch (error) {
       feedback.error(await blobErrorMessage(error, t('Téléchargement impossible.')));
     } finally {
-      setLoading(false);
+      setLoading(null);
     }
   };
   return (
-    <Button size="small" icon={<DownloadOutlined />} loading={loading} onClick={() => void download()}>
-      {doc.kind === 'QUITTANCE'
-        ? t('Quittance {{number}}', { number: doc.number })
-        : t('Reçu {{number}}', { number: doc.number })}
-    </Button>
+    <Space wrap>
+      <Button size="small" icon={<DownloadOutlined />} loading={loading === 'original'} onClick={() => void download()}>
+        {doc.kind === 'QUITTANCE'
+          ? t('Quittance {{number}}', { number: doc.number })
+          : t('Reçu {{number}}', { number: doc.number })}
+      </Button>
+      <Button size="small" loading={loading === 'ar'} onClick={() => void download('ar')}>
+        {t('Traduction arabe')}
+      </Button>
+    </Space>
   );
 }
 
@@ -232,47 +232,38 @@ export default function CoOwnerPayments() {
     [lots.data]
   );
 
-  // Préfixe `pa` : le tableau des déclarations (`dec`) partage l'écran. Lot et exercice pilotent
-  // l'appel (le serveur filtre) : `api: false`, la requête les lit dans `search.values`. Le champ
-  // libre filtre ici la liste de cet appel, qui arrive en entier.
+  // Préfixe `pa` : le tableau des déclarations (`dec`) partage l'écran.
   const criteria: SearchCriterion[] = [
     {
       key: 'q',
       type: 'text',
       label: t('Rechercher'),
-      placeholder: t('Référence, lot, mode de paiement…'),
-      api: false
+      placeholder: t('Référence, lot, mode de paiement…')
     },
-    { key: 'lot', type: 'select', label: t('Lot'), primary: true, options: lotOptions, api: false },
+    { key: 'lot', type: 'select', label: t('Lot'), primary: true, options: lotOptions, api: 'lotId' },
     {
       key: 'year',
       type: 'select',
       label: t('Exercice'),
       primary: true,
       options: yearOptions().map(candidate => ({ value: String(candidate), label: String(candidate) })),
-      api: false
+      api: 'year'
     }
   ];
   const search = useListSearch({ criteria, paramPrefix: 'pa', apiNames: { sort: false } });
-  const lotId = typeof search.values.lot === 'string' ? search.values.lot : undefined;
-  const yearValue = typeof search.values.year === 'string' ? Number(search.values.year) : NaN;
-  const year = Number.isInteger(yearValue) ? yearValue : undefined;
-
   const payments = useQuery({
-    queryKey: ['coowner-portal', 'payments', lotId ?? null, year ?? null],
+    queryKey: ['coowner-portal', 'payments', search.apiParams],
     staleTime: 30_000,
-    queryFn: () => listMyPayments({ lotId, year }),
+    queryFn: () =>
+      listMyPayments({
+        ...search.apiParams,
+        page: search.page,
+        limit: Math.min(search.pageSize, 100)
+      }),
     placeholderData: keepPreviousData
   });
   const paymentItems = payments.data?.items ?? NO_PAYMENTS;
-  const filteredPayments = useMemo(
-    () => filterItems(paymentItems, search.values, { criteria: search.criteria, text: TEXTE_RECHERCHE }),
-    [paymentItems, search.values, search.criteria]
-  );
-  const paymentsPage = useMemo(
-    () => paginate(filteredPayments, search.page, search.pageSize),
-    [filteredPayments, search.page, search.pageSize]
-  );
+  const paymentTotal = payments.data?.pagination?.total ?? paymentItems.length;
 
   const refreshAll = () => {
     void payments.refetch();
@@ -342,16 +333,6 @@ export default function CoOwnerPayments() {
         </Row>
       ) : null}
 
-      {paymentItems.length >= PAYMENT_LIST_LIMIT ? (
-        <Alert
-          type="warning"
-          showIcon
-          message={t(
-            'Seuls les 500 paiements les plus récents sont affichés. Les critères de recherche et l’export portent sur ces paiements.'
-          )}
-        />
-      ) : null}
-
       {payments.isPending ? (
         <SkeletonList rows={3} />
       ) : (
@@ -363,18 +344,24 @@ export default function CoOwnerPayments() {
               payments.error ? portalErrorMessage(payments.error, t('Impossible de charger vos paiements.')) : null
             }
             onRetry={() => void payments.refetch()}
-            page={paymentsPage.page}
-            items={paymentsPage.items}
-            total={filteredPayments.length}
+            items={paymentItems}
+            total={paymentTotal}
             search={{
               ...search.searchProps,
-              resultCount: filteredPayments.length,
+              resultCount: paymentTotal,
               'aria-label': t('Rechercher dans les paiements')
             }}
             isReloading={payments.isFetching && !payments.isPending}
             rowKey={row => row.id}
             aria-label={t('Mes paiements')}
-            export={{ filename: t('Mes paiements'), fetchAll: () => Promise.resolve(filteredPayments) }}
+            export={{
+              filename: t('Mes paiements'),
+              fetchAll: () =>
+                collectAllPages(async (page, limit) => {
+                  const response = await listMyPayments({ ...search.filterParams, page, limit });
+                  return { items: response.items, total: response.pagination?.total ?? response.items.length };
+                })
+            }}
             emptyDescription={t("Aucun paiement n'a encore été enregistré pour vos lots.")}
             columns={columns}
             renderCard={row => (

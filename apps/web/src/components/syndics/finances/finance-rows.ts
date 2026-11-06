@@ -1,4 +1,5 @@
 import type { ChargeCall, ChargeCallStatus, OverdueDashboard, SyndicateLot } from '../../../types/syndic-types';
+import type { SyndicPaymentAllocation } from '../../../services/syndic-payment-service';
 import { formatLotLabel } from '../../../utils/syndic-lot-label';
 import { t } from '../../../i18n/t';
 
@@ -105,6 +106,19 @@ export function buildPaymentRows(charges: ChargeCall[]): PaymentRow[] {
     }
   }
   return rows;
+}
+
+/** Même ligne que `buildPaymentRows`, alimentée directement par les affectations paginées. */
+export function buildPaymentAllocationRows(allocations: SyndicPaymentAllocation[]): PaymentRow[] {
+  return allocations.map(allocation => ({
+    id: allocation.id,
+    paidAt: allocation.payment.paidAt,
+    lotLabel: formatLotLabel(allocation.chargeCall.lot, allocation.chargeCall.lotId),
+    ownerLabel: ownerLabel(allocation.chargeCall.lot.owner),
+    chargeReference: `${allocation.chargeCall.period} · ${shortReference(allocation.chargeCall.id)}`,
+    amount: Number(allocation.amount),
+    method: allocation.payment.method || '—'
+  }));
 }
 
 export function buildOverdueRows(dashboard: OverdueDashboard): OverdueRow[] {

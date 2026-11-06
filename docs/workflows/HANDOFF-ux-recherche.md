@@ -1,5 +1,10 @@
 # Passation — chantier « recherche multicritères et ergonomie » (ux-recherche)
 
+> **Complément le 2026-11-05 :** la PR #195 est fusionnée (`cf6fead9`).
+> Sélecteurs distants, limites restantes et PDF arabes sont livrés sur
+> `codex/ux-limites-proprietaires-pdf-arabe` ([PR #196](https://github.com/bkourouma/immotopia/pull/196)) ; état et vérifications dans
+> [HANDOFF.md](HANDOFF.md). Les décisions H1–H13 ci-dessous sont conservées.
+>
 > **Reprise Codex le 2026-11-04 :** SYN-B et JOK sont terminés et intégrés
 > (`949b1ece`, `d7843e87`), les traductions et le classeur du lot Z sont faits.
 > Compilations, lint, architecture, i18n, wiki, budget et contrastes locaux verts ;

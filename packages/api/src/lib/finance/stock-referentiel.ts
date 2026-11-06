@@ -42,6 +42,7 @@
  * `accounting.ts`, ni le journal, ni un compte.
  */
 
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { ErrorCode } from '../../middleware/error-middleware';
@@ -64,6 +65,7 @@ import type {
   UpdateStockLocationTx
 } from './types-lot5-referentiel';
 import { escapeLike } from '../../utils/like-escape';
+import { containsFoldedSql, searchWordsSql } from '../../utils/sql-text-search';
 
 /**
  * Le défaut du PRD (besoin S5). Écrit une fois ici plutôt que répété : c'est
@@ -247,25 +249,46 @@ export const updateStockItemTx: UpdateStockItemTx = async (tx, tenantId, itemId,
   return toStockItemRecord(updated);
 };
 
-/** Voir `ListStockItems` dans `./types-lot5-referentiel.ts`. */
-export const listStockItems: ListStockItems = async (tenantId, filters) => {
+/** Filtres partagés par la lecture interne et la route paginée. */
+function stockItemsWhere(
+  tenantId: string,
+  filters?: {
+    onlyActive?: boolean;
+    isActive?: boolean;
+    search?: string;
+    unit?: string;
+    category?: string;
+    defaultCostCategoryId?: string;
+  }
+): Prisma.StockItemWhereInput {
   const search = filters?.search?.trim();
+  return {
+    tenantId,
+    ...(filters?.isActive !== undefined
+      ? { isActive: filters.isActive }
+      : filters?.onlyActive
+        ? { isActive: true }
+        : {}),
+    ...(filters?.unit ? { unit: filters.unit } : {}),
+    ...(filters?.category ? { category: filters.category } : {}),
+    ...(filters?.defaultCostCategoryId ? { defaultCostCategoryId: filters.defaultCostCategoryId } : {}),
+    // La recherche porte sur la référence ET la désignation : sur le
+    // terrain on cherche « CIM » aussi souvent que « ciment ».
+    ...(search
+      ? {
+          OR: [
+            { reference: { contains: escapeLike(search), mode: 'insensitive' as const } },
+            { label: { contains: escapeLike(search), mode: 'insensitive' as const } },
+            { category: { contains: escapeLike(search), mode: 'insensitive' as const } }
+          ]
+        }
+      : {})
+  };
+}
 
+export const listStockItems: ListStockItems = async (tenantId, filters) => {
   const rows = await prisma.stockItem.findMany({
-    where: {
-      tenantId,
-      ...(filters?.onlyActive ? { isActive: true } : {}),
-      // La recherche porte sur la référence ET la désignation : sur le
-      // terrain on cherche « CIM » aussi souvent que « ciment ».
-      ...(search
-        ? {
-            OR: [
-              { reference: { contains: escapeLike(search), mode: 'insensitive' as const } },
-              { label: { contains: escapeLike(search), mode: 'insensitive' as const } }
-            ]
-          }
-        : {})
-    },
+    where: stockItemsWhere(tenantId, filters),
     // Libellé du poste proposé résolu PAR LOT, jamais une requête par ligne —
     // même principe qu'aux listes des lots précédents.
     include: { defaultCostCategory: { select: { label: true } } },
@@ -274,6 +297,72 @@ export const listStockItems: ListStockItems = async (tenantId, filters) => {
 
   return rows.map(row => toStockItemRecord(row));
 };
+
+/** Lecture bornée de la route HTTP ; le contrat interne historique conserve sa forme tableau. */
+export async function listStockItemsPage(
+  tenantId: string,
+  filters: Parameters<typeof stockItemsWhere>[1] & { page: number; limit: number }
+) {
+  const where = stockItemsWhere(tenantId, filters);
+  let pageIds: string[] | undefined;
+  let searchTotal: number | undefined;
+  if (filters.search?.trim()) {
+    const clauses = [Prisma.sql`i.tenant_id = ${tenantId}`];
+    const active = filters.isActive !== undefined ? filters.isActive : filters.onlyActive ? true : undefined;
+    if (active !== undefined) clauses.push(Prisma.sql`i.is_active = ${active}`);
+    if (filters.unit) clauses.push(Prisma.sql`i.unit = ${filters.unit}`);
+    if (filters.category) clauses.push(Prisma.sql`i.category = ${filters.category}`);
+    if (filters.defaultCostCategoryId)
+      clauses.push(Prisma.sql`i.default_cost_category_id = ${filters.defaultCostCategoryId}::uuid`);
+    clauses.push(
+      searchWordsSql(filters.search, word =>
+        containsFoldedSql(Prisma.sql`concat_ws(' ', i.reference, i.label, i.category)`, word)
+      )
+    );
+    const from = Prisma.sql`FROM stock_items i WHERE ${Prisma.join(clauses, ' AND ')}`;
+    const [counts, ids] = await Promise.all([
+      prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`SELECT count(*) AS total ${from}`),
+      prisma.$queryRaw<Array<{ id: string }>>(
+        Prisma.sql`SELECT i.id ${from} ORDER BY i.reference ASC, i.id ASC LIMIT ${filters.limit} OFFSET ${(filters.page - 1) * filters.limit}`
+      )
+    ]);
+    searchTotal = Number(counts[0]?.total ?? 0);
+    pageIds = ids.map(row => row.id);
+  }
+  const [rows, total, units, categories, costCategories] = await Promise.all([
+    prisma.stockItem.findMany({
+      where: pageIds ? { tenantId, id: { in: pageIds } } : where,
+      include: { defaultCostCategory: { select: { label: true } } },
+      orderBy: [{ reference: 'asc' }, { id: 'asc' }],
+      ...(pageIds ? {} : { skip: (filters.page - 1) * filters.limit, take: filters.limit })
+    }),
+    pageIds ? Promise.resolve(searchTotal ?? 0) : prisma.stockItem.count({ where }),
+    prisma.stockItem.findMany({ where: { tenantId }, distinct: ['unit'], select: { unit: true } }),
+    prisma.stockItem.findMany({
+      where: { tenantId, category: { not: null } },
+      distinct: ['category'],
+      select: { category: true }
+    }),
+    prisma.stockItem.findMany({
+      where: { tenantId, defaultCostCategoryId: { not: null } },
+      distinct: ['defaultCostCategoryId'],
+      select: { defaultCostCategoryId: true, defaultCostCategory: { select: { label: true } } }
+    })
+  ]);
+  return {
+    items: rows.map(row => toStockItemRecord(row)),
+    total,
+    facets: {
+      units: units.map(row => row.unit),
+      categories: categories.flatMap(row => (row.category ? [row.category] : [])),
+      costCategories: costCategories.flatMap(row =>
+        row.defaultCostCategoryId
+          ? [{ id: row.defaultCostCategoryId, label: row.defaultCostCategory?.label ?? row.defaultCostCategoryId }]
+          : []
+      )
+    }
+  };
+}
 
 /** Voir `GetStockItem` dans `./types-lot5-referentiel.ts`. */
 export const getStockItem: GetStockItem = async (tenantId, itemId) => {

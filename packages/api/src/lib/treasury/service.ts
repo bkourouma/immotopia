@@ -318,6 +318,8 @@ const ymd = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ.')
   .refine(isRealDay, 'Date invalide.');
 const emptyToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
+const listPageParam = z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(1_000_000).optional());
+const listLimitParam = z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(100).optional());
 
 /** Bornes [from 00:00:00, to 23:59:59.999] (UTC). */
 function parseRange(from: string | undefined, to: string | undefined) {
@@ -353,9 +355,17 @@ const listTransfersFilterSchema = z
     to: z.preprocess(emptyToUndefined, ymd.optional()),
     accountId: z.preprocess(emptyToUndefined, z.string().trim().uuid().optional()),
     status: statusListSchema,
-    search: z.preprocess(emptyToUndefined, z.string().trim().max(100).optional())
+    search: z.preprocess(emptyToUndefined, z.string().trim().max(100).optional()),
+    minAmount: z.preprocess(emptyToUndefined, z.coerce.number().finite().optional()),
+    maxAmount: z.preprocess(emptyToUndefined, z.coerce.number().finite().optional()),
+    page: listPageParam,
+    limit: listLimitParam
   })
-  .superRefine(refineRange);
+  .superRefine((value, ctx) => {
+    refineRange(value, ctx);
+    if (value.minAmount !== undefined && value.maxAmount !== undefined && value.minAmount > value.maxAmount)
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Le montant minimal doit précéder le montant maximal.' });
+  });
 
 export interface ListTransfersFilters {
   from?: unknown;
@@ -363,18 +373,28 @@ export interface ListTransfersFilters {
   accountId?: unknown;
   status?: unknown;
   search?: unknown;
+  minAmount?: unknown;
+  maxAmount?: unknown;
+  page?: unknown;
+  limit?: unknown;
 }
 
-export async function listTransfers(
-  tenantId: string,
-  filters: ListTransfersFilters = {}
-): Promise<TreasuryTransferDto[]> {
+export async function listTransfers(tenantId: string, filters: ListTransfersFilters = {}) {
   const f = listTransfersFilterSchema.parse(filters);
+  const paged = f.page !== undefined || f.limit !== undefined;
+  const page = f.page ?? 1;
+  const limit = f.limit ?? 20;
   const { start, end } = parseRange(f.from, f.to);
   const where: Prisma.TreasuryTransferWhereInput = { tenantId };
   if (start || end) where.transferredAt = { ...(start ? { gte: start } : {}), ...(end ? { lte: end } : {}) };
   if (f.accountId) where.OR = [{ fromTreasuryAccountId: f.accountId }, { toTreasuryAccountId: f.accountId }];
   if (f.status) where.status = { in: f.status };
+  if (f.minAmount !== undefined || f.maxAmount !== undefined) {
+    where.amount = {
+      ...(f.minAmount !== undefined ? { gte: f.minAmount } : {}),
+      ...(f.maxAmount !== undefined ? { lte: f.maxAmount } : {})
+    };
+  }
   if (f.search) {
     where.AND = [
       {
@@ -385,11 +405,14 @@ export async function listTransfers(
       }
     ];
   }
-  const transfers = await prisma.treasuryTransfer.findMany({
+  const query = {
     where,
-    orderBy: { transferredAt: 'desc' },
-    take: 500
-  });
+    orderBy: [{ transferredAt: 'desc' as const }, { id: 'desc' as const }],
+    ...(paged ? { skip: (page - 1) * limit, take: limit } : {})
+  };
+  const [transfers, total] = paged
+    ? await Promise.all([prisma.treasuryTransfer.findMany(query), prisma.treasuryTransfer.count({ where })])
+    : [await prisma.treasuryTransfer.findMany(query), 0];
   const [labels, names] = await Promise.all([
     accountLabels(
       tenantId,
@@ -397,7 +420,8 @@ export async function listTransfers(
     ),
     userNames(transfers.map(t => t.createdByUserId))
   ]);
-  return transfers.map(t => toTransferDto(t, labels, names));
+  const items = transfers.map(t => toTransferDto(t, labels, names));
+  return paged ? { items, total, page, pageSize: limit } : items;
 }
 
 const createTransferSchema = z.object({
@@ -610,7 +634,10 @@ const listRemittancesFilterSchema = z
     from: z.preprocess(emptyToUndefined, ymd.optional()),
     to: z.preprocess(emptyToUndefined, ymd.optional()),
     status: statusListSchema,
-    treasuryAccountId: z.preprocess(emptyToUndefined, z.string().trim().uuid().optional())
+    treasuryAccountId: z.preprocess(emptyToUndefined, z.string().trim().uuid().optional()),
+    search: z.preprocess(emptyToUndefined, z.string().trim().max(100).optional()),
+    page: listPageParam,
+    limit: listLimitParam
   })
   .superRefine(refineRange);
 
@@ -619,13 +646,16 @@ export interface ListTaxRemittancesFilters {
   to?: unknown;
   status?: unknown;
   treasuryAccountId?: unknown;
+  search?: unknown;
+  page?: unknown;
+  limit?: unknown;
 }
 
-export async function listTaxRemittances(
-  tenantId: string,
-  filters: ListTaxRemittancesFilters = {}
-): Promise<TaxRemittanceDto[]> {
+export async function listTaxRemittances(tenantId: string, filters: ListTaxRemittancesFilters = {}) {
   const f = listRemittancesFilterSchema.parse(filters);
+  const paged = f.page !== undefined || f.limit !== undefined;
+  const page = f.page ?? 1;
+  const limit = f.limit ?? 20;
   const { start, end } = parseRange(f.from, f.to);
   const where: Prisma.TaxRemittanceWhereInput = { tenantId };
   if (start || end) where.paidAt = { ...(start ? { gte: start } : {}), ...(end ? { lte: end } : {}) };
@@ -633,8 +663,8 @@ export async function listTaxRemittances(
   if (f.treasuryAccountId) where.treasuryAccountId = f.treasuryAccountId;
   const remittances = await prisma.taxRemittance.findMany({
     where,
-    orderBy: { paidAt: 'desc' },
-    take: 500
+    orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+    ...(!f.search && paged ? { skip: (page - 1) * limit, take: limit } : {})
   });
   const [labels, names] = await Promise.all([
     accountLabels(
@@ -643,7 +673,23 @@ export async function listTaxRemittances(
     ),
     userNames(remittances.map(r => r.createdByUserId))
   ]);
-  return remittances.map(r => toRemittanceDto(r, labels, names));
+  const mapped = remittances.map(r => toRemittanceDto(r, labels, names));
+  const folded = (value: string) =>
+    value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  const needle = f.search ? folded(f.search) : '';
+  const matches = needle
+    ? mapped.filter(item =>
+        [item.number, item.periodLabel, item.treasuryLabel, item.reference ?? ''].some(value =>
+          folded(value).includes(needle)
+        )
+      )
+    : mapped;
+  const total = paged ? (f.search ? matches.length : await prisma.taxRemittance.count({ where })) : matches.length;
+  const items = paged && f.search ? matches.slice((page - 1) * limit, page * limit) : matches;
+  return paged ? { items, total, page, pageSize: limit } : items;
 }
 
 const createRemittanceSchema = z.object({

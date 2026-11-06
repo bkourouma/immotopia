@@ -13,7 +13,6 @@ import {
   Modal,
   Select,
   Space,
-  Spin,
   TimePicker,
   Tag,
   Typography
@@ -26,19 +25,19 @@ import { MeetingStatusActions } from '../../components/syndics/MeetingStatusActi
 import { describeConvocation, meetingStatusColors } from '../../components/syndics/meeting-governance';
 import {
   createMeetingWithConvocation,
-  listMeetings,
+  listMeetingsPage,
   resendMeetingConvocation,
   updateMeetingStatus
 } from '../../services/syndic-service';
 import { GeneralMeeting, MeetingConvocationResult, MeetingStatus, MeetingType } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
-import { useLocalListSearch } from '../../utils/list-search';
+import { useListSearch } from '../../hooks/useListSearch';
+import { collectAllPages } from '../../utils/table-export/collect';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 import { localizedList } from '../../i18n/localized';
 const { Paragraph, Title } = Typography;
-const MEETING_LIST_LIMIT = 5000;
 
 function newIdempotencyKey(): string {
   try {
@@ -54,19 +53,6 @@ const meetingTypeOptions: Array<{ label: string; value: MeetingType }> = localiz
   { label: t('Extraordinaire'), value: 'EXTRAORDINARY' }
 ]);
 
-// Recherche LOCALE (la liste des assemblées d'une copropriété arrive en entier) : accesseurs
-// stables, hors du composant. Libellés lus à l'appel pour suivre la langue.
-const TEXTE_RECHERCHE = [
-  (meeting: GeneralMeeting) => meetingTypeLabels[meeting.type] ?? meeting.type,
-  (meeting: GeneralMeeting) => meeting.location,
-  (meeting: GeneralMeeting) => meetingStatusLabels[meeting.status] ?? meeting.status
-];
-const ACCESSEURS = {
-  status: (meeting: GeneralMeeting) => meeting.status,
-  type: (meeting: GeneralMeeting) => meeting.type,
-  date: (meeting: GeneralMeeting) => meeting.scheduledAt
-};
-
 export const SyndicMeetings: React.FC = () => {
   const { message } = App.useApp();
 
@@ -74,6 +60,7 @@ export const SyndicMeetings: React.FC = () => {
   const navigate = useNavigate();
 
   const [meetings, setMeetings] = useState<GeneralMeeting[]>([]);
+  const [total, setTotal] = useState(0);
   const loadVersion = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +96,7 @@ export const SyndicMeetings: React.FC = () => {
         label: meetingStatusLabels[status]
       }))
     },
-    { key: 'date', type: 'dateRange', label: t('Date'), primary: true },
+    { key: 'date', type: 'dateRange', label: t('Date'), primary: true, api: ['from', 'to'] },
     {
       key: 'type',
       type: 'multiSelect',
@@ -117,12 +104,12 @@ export const SyndicMeetings: React.FC = () => {
       options: meetingTypeOptions.map(option => ({ value: option.value, label: option.label }))
     }
   ];
-  const local = useLocalListSearch<GeneralMeeting>(meetings, {
+  const search = useListSearch({
     defaultPageSize: 20,
-    criteria,
-    text: TEXTE_RECHERCHE,
-    accessors: ACCESSEURS
+    apiNames: { sort: false },
+    criteria
   });
+  const queryKey = JSON.stringify(search.apiParams);
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
@@ -134,7 +121,7 @@ export const SyndicMeetings: React.FC = () => {
     return () => {
       loadVersion.current += 1;
     };
-  }, [effectiveTenantId, syndicId]);
+  }, [effectiveTenantId, syndicId, queryKey]);
 
   const loadMeetings = async () => {
     if (!effectiveTenantId || !syndicId) return;
@@ -142,8 +129,11 @@ export const SyndicMeetings: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await listMeetings(effectiveTenantId, syndicId);
-      if (version === loadVersion.current) setMeetings(data);
+      const data = await listMeetingsPage(effectiveTenantId, syndicId, search.apiParams);
+      if (version === loadVersion.current) {
+        setMeetings(data.items);
+        setTotal(data.pagination.total);
+      }
     } catch (err: any) {
       if (version === loadVersion.current)
         setError(err.response?.data?.error || t('Impossible de charger les assemblées'));
@@ -296,15 +286,6 @@ export const SyndicMeetings: React.FC = () => {
         </div>
 
         {error ? <Alert type="error" message={error} showIcon /> : null}
-        {meetings.length >= MEETING_LIST_LIMIT ? (
-          <Alert
-            type="warning"
-            showIcon
-            message={t(
-              'Seules les 5 000 assemblées les plus récentes sont affichées. La recherche et l’export portent sur ces assemblées.'
-            )}
-          />
-        ) : null}
 
         {convocationSummary ? (
           <Alert
@@ -326,96 +307,99 @@ export const SyndicMeetings: React.FC = () => {
           />
         ) : null}
 
-        {loading ? (
-          <div style={{ minHeight: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Spin size="large" />
-          </div>
-        ) : (
-          <Card title={t('Liste des assemblées')}>
-            <Table<GeneralMeeting>
-              {...local.tableProps}
-              aria-label={t('Liste des assemblées')}
-              exportFilename={t('Liste des assemblées')}
-              exportFetchAll={local.exportAll}
-              pagination={{ ...local.tableProps.pagination, hideOnSinglePage: true, showSizeChanger: false }}
-              locale={
-                local.isFiltered
-                  ? undefined
-                  : {
-                      emptyText: (
-                        <Empty
-                          description={t('Aucune assemblée pour le moment : créez-en une avec « Nouvelle assemblée ».')}
-                        />
-                      )
-                    }
-              }
-              scroll={{ x: 'max-content' }}
-              rowKey="id"
-              columns={[
-                {
-                  title: t('Type'),
-                  dataIndex: 'type',
-                  key: 'type',
-                  render: (value: MeetingType) => t(meetingTypeLabels[value] ?? value)
-                },
-                {
-                  title: t('Date'),
-                  dataIndex: 'scheduledAt',
-                  key: 'scheduledAt',
-                  render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm')
-                },
-                {
-                  title: t('Début'),
-                  dataIndex: 'startTime',
-                  key: 'startTime',
-                  render: (value?: string | null) => (value ? dayjs(value).format('HH:mm') : '-')
-                },
-                {
-                  title: t('Fin'),
-                  dataIndex: 'endTime',
-                  key: 'endTime',
-                  render: (value?: string | null) => (value ? dayjs(value).format('HH:mm') : '-')
-                },
-                {
-                  title: t('Lieu'),
-                  dataIndex: 'location',
-                  key: 'location',
-                  render: (value?: string | null) => value || t('Non renseigné')
-                },
-                {
-                  title: t('Statut'),
-                  dataIndex: 'status',
-                  key: 'status',
-                  render: (value: GeneralMeeting['status']) => (
-                    <Tag color={meetingStatusColors[value]}>{meetingStatusLabels[value]}</Tag>
-                  )
-                },
-                {
-                  title: t('Actions'),
-                  key: 'actions',
-                  render: (_: unknown, item: GeneralMeeting) => (
-                    <Space wrap>
-                      <Button
-                        size="small"
-                        onClick={() =>
-                          navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees/${item.id}`)
-                        }
-                      >
-                        {t('Voir détails')}
-                      </Button>
-                      <MeetingStatusActions
-                        size="small"
-                        status={item.status}
-                        loading={changingStatusId === item.id}
-                        onChange={status => handleStatusChange(item.id, status)}
+        <Card title={t('Liste des assemblées')}>
+          <Table<GeneralMeeting>
+            loading={loading}
+            dataSource={meetings}
+            search={search.searchProps}
+            aria-label={t('Liste des assemblées')}
+            exportFilename={t('Liste des assemblées')}
+            exportFetchAll={() =>
+              collectAllPages<GeneralMeeting>(async (page, limit) => {
+                const result = await listMeetingsPage(effectiveTenantId!, syndicId!, {
+                  ...search.filterParams,
+                  page,
+                  limit
+                });
+                return { items: result.items, total: result.pagination.total };
+              })
+            }
+            pagination={search.tablePagination(total)}
+            locale={
+              search.isFiltered
+                ? undefined
+                : {
+                    emptyText: (
+                      <Empty
+                        description={t('Aucune assemblée pour le moment : créez-en une avec « Nouvelle assemblée ».')}
                       />
-                    </Space>
-                  )
-                }
-              ]}
-            />
-          </Card>
-        )}
+                    )
+                  }
+            }
+            scroll={{ x: 'max-content' }}
+            rowKey="id"
+            columns={[
+              {
+                title: t('Type'),
+                dataIndex: 'type',
+                key: 'type',
+                render: (value: MeetingType) => t(meetingTypeLabels[value] ?? value)
+              },
+              {
+                title: t('Date'),
+                dataIndex: 'scheduledAt',
+                key: 'scheduledAt',
+                render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm')
+              },
+              {
+                title: t('Début'),
+                dataIndex: 'startTime',
+                key: 'startTime',
+                render: (value?: string | null) => (value ? dayjs(value).format('HH:mm') : '-')
+              },
+              {
+                title: t('Fin'),
+                dataIndex: 'endTime',
+                key: 'endTime',
+                render: (value?: string | null) => (value ? dayjs(value).format('HH:mm') : '-')
+              },
+              {
+                title: t('Lieu'),
+                dataIndex: 'location',
+                key: 'location',
+                render: (value?: string | null) => value || t('Non renseigné')
+              },
+              {
+                title: t('Statut'),
+                dataIndex: 'status',
+                key: 'status',
+                render: (value: GeneralMeeting['status']) => (
+                  <Tag color={meetingStatusColors[value]}>{meetingStatusLabels[value]}</Tag>
+                )
+              },
+              {
+                title: t('Actions'),
+                key: 'actions',
+                render: (_: unknown, item: GeneralMeeting) => (
+                  <Space wrap>
+                    <Button
+                      size="small"
+                      onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees/${item.id}`)}
+                    >
+                      {t('Voir détails')}
+                    </Button>
+                    <MeetingStatusActions
+                      size="small"
+                      status={item.status}
+                      loading={changingStatusId === item.id}
+                      onChange={status => handleStatusChange(item.id, status)}
+                    />
+                  </Space>
+                )
+              }
+            ]}
+          />
+        </Card>
       </Space>
 
       <Modal

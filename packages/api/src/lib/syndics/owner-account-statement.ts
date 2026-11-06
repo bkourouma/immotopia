@@ -1,8 +1,10 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { sanitizeForPdf } from '../documents/pdf-text';
 import { drawDocumentHeader, drawSignatureBlock, type DocumentBranding } from '../documents/document-branding';
+import { currentLanguage } from '../../i18n';
+import { renderArabicOwnerAccountStatementPdf } from './owner-account-statement-ar';
 
-type StatementTransaction = {
+export type StatementTransaction = {
   transactionDate: Date;
   type: string;
   label: string;
@@ -11,7 +13,7 @@ type StatementTransaction = {
   balanceAfter: number;
 };
 
-type StatementPayload = {
+export type StatementPayload = {
   syndicateName: string;
   lotNumber: string;
   ownerName: string;
@@ -35,14 +37,18 @@ function money(value: number, currency: string) {
  * (constat de recette module 3.4). On affiche donc ici la valeur absolue avec
  * la mention explicite, plutôt que de changer la convention stockée.
  */
+// @i18n-keys
+const BALANCE_LABELS = { debit: 'Débiteur', credit: 'Créditeur', settled: 'Solde à jour' } as const;
+
 export function describeBalanceForPdf(value: number): { amount: number; label: string } {
   const rounded = Math.round(value * 100) / 100;
-  if (rounded > 0) return { amount: rounded, label: 'Débiteur' };
-  if (rounded < 0) return { amount: Math.abs(rounded), label: 'Créditeur' };
-  return { amount: 0, label: 'Solde à jour' };
+  if (rounded > 0) return { amount: rounded, label: BALANCE_LABELS.debit };
+  if (rounded < 0) return { amount: Math.abs(rounded), label: BALANCE_LABELS.credit };
+  return { amount: 0, label: BALANCE_LABELS.settled };
 }
 
 /** Libellé français d'un type de mouvement (le code brut « CHARGE_CALL » n'a pas sa place sur un relevé). */
+// @i18n-keys
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   CHARGE_CALL: 'Appel',
   PAYMENT: 'Paiement',
@@ -69,6 +75,7 @@ export async function buildOwnerAccountStatementPdf(
   payload: StatementPayload,
   branding?: DocumentBranding | null
 ): Promise<Buffer> {
+  if (currentLanguage() === 'ar') return renderArabicOwnerAccountStatementPdf(payload, branding);
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([595, 842]);
   const { height } = page.getSize();

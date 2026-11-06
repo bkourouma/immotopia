@@ -94,6 +94,19 @@ export interface ListCashSessionsFilters {
   treasuryAccountId?: string;
   search?: string;
   hasDifference?: string;
+  page?: number;
+  limit?: number;
+  /** Désactiver la facette pour les pages d'export déjà filtrées. */
+  includeCashiers?: boolean;
+}
+
+export interface CashSessionsPage {
+  items: CashSession[];
+  total: number;
+  page: number;
+  pageSize: number;
+  /** Tous les caissiers ayant eu une session dans cette agence, même inactifs. */
+  cashiers?: Array<{ userId: string; name: string }>;
 }
 
 /** La session OUVERTE de l'utilisateur connecté — `GET /current`. `null` si aucune. */
@@ -132,7 +145,7 @@ export async function validateCashSession(
 export async function listCashSessions(
   tenantId: string,
   filters: ListCashSessionsFilters = {}
-): Promise<CashSession[]> {
+): Promise<CashSession[] | CashSessionsPage> {
   const response = await apiClient.get(BASE(tenantId), {
     params: {
       status: filters.status || undefined,
@@ -141,7 +154,10 @@ export async function listCashSessions(
       to: filters.to || undefined,
       treasuryAccountId: filters.treasuryAccountId || undefined,
       search: filters.search || undefined,
-      hasDifference: filters.hasDifference || undefined
+      hasDifference: filters.hasDifference || undefined,
+      page: filters.page,
+      limit: filters.limit,
+      includeCashiers: filters.includeCashiers
     }
   });
   return response.data.data;

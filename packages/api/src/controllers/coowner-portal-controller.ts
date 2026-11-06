@@ -5,12 +5,16 @@ import {
   getCoOwnerDocumentFile,
   getCoOwnerLotAccount,
   listCoOwnerChargeCalls,
+  listCoOwnerChargeCallsPage,
   listCoOwnerDocuments,
   listCoOwnerLots,
   listCoOwnerMeetings,
+  listCoOwnerMeetingsPage,
   type CoOwnerPortalScope
 } from '../lib/syndics/coowner-portal';
 import { issueCoOwnerPortalMeetingLink } from '../lib/syndics/meeting-participants';
+import { zSearch } from '../utils/list-query-schemas';
+import { isoDaySchema } from '../lib/syndics/charge-allocation-schemas';
 
 /**
  * Portail copropriétaire — lecture seule (`/api/portal/copropriete/*`).
@@ -36,7 +40,48 @@ function scopeOf(req: Request): CoOwnerPortalScope {
 const lotParamsSchema = z.object({ lotId: z.string().uuid() });
 const meetingParamsSchema = z.object({ meetingId: z.string().uuid() });
 const documentParamsSchema = z.object({ documentId: z.string().uuid() });
-const chargeCallsQuerySchema = z.object({ lotId: z.string().uuid().optional() });
+const chargeCallsQuerySchema = z
+  .object({
+    lotId: z.string().uuid().optional(),
+    search: zSearch(),
+    statuses: z
+      .string()
+      .refine(value => value.split(',').every(status => ['PENDING', 'PARTIAL', 'PAID', 'OVERDUE'].includes(status)))
+      .optional(),
+    dueFrom: isoDaySchema.optional(),
+    dueTo: isoDaySchema.optional(),
+    page: z.coerce.number().int().min(1).max(10000).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional()
+  })
+  .strict()
+  .refine(value => !value.dueFrom || !value.dueTo || value.dueFrom <= value.dueTo, { path: ['dueTo'] });
+const meetingsQuerySchema = z
+  .object({
+    search: zSearch(),
+    statuses: z
+      .string()
+      .refine(value =>
+        value.split(',').every(status => ['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].includes(status))
+      )
+      .optional(),
+    dateFrom: isoDaySchema.optional(),
+    dateTo: isoDaySchema.optional(),
+    page: z.coerce.number().int().min(1).max(10000).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional()
+  })
+  .strict()
+  .refine(value => !value.dateFrom || !value.dateTo || value.dateFrom <= value.dateTo, { path: ['dateTo'] });
+const lotAccountQuerySchema = z
+  .object({
+    search: zSearch(),
+    type: z.enum(['CHARGE_CALL', 'PAYMENT', 'PENALTY', 'WAIVER', 'ADJUSTMENT', 'FUND_TRANSFER']).optional(),
+    dateFrom: isoDaySchema.optional(),
+    dateTo: isoDaySchema.optional(),
+    page: z.coerce.number().int().min(1).max(10000).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional()
+  })
+  .strict()
+  .refine(value => !value.dateFrom || !value.dateTo || value.dateFrom <= value.dateTo, { path: ['dateTo'] });
 
 export const listCoOwnerLotsHandler = asyncHandler(async (req: Request, res: Response) => {
   const lots = await listCoOwnerLots(scopeOf(req));
@@ -45,16 +90,17 @@ export const listCoOwnerLotsHandler = asyncHandler(async (req: Request, res: Res
 
 export const getCoOwnerLotAccountHandler = asyncHandler(async (req: Request, res: Response) => {
   const { lotId } = lotParamsSchema.parse(req.params);
-  const account = await getCoOwnerLotAccount(scopeOf(req), lotId);
+  const account = await getCoOwnerLotAccount(scopeOf(req), lotId, lotAccountQuerySchema.parse(req.query));
   res.json({ success: true, data: account });
 });
 
 export const listCoOwnerChargeCallsHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { lotId } = chargeCallsQuerySchema.parse(req.query);
-  const calls = await listCoOwnerChargeCalls(scopeOf(req), {
-    lotId,
-    tenantClientId: req.coOwnerPortal?.tenantClientId ?? null
-  });
+  const query = chargeCallsQuerySchema.parse(req.query);
+  const filters = { ...query, tenantClientId: req.coOwnerPortal?.tenantClientId ?? null };
+  const calls =
+    query.page !== undefined || query.limit !== undefined
+      ? await listCoOwnerChargeCallsPage(scopeOf(req), { ...filters, page: query.page ?? 1, limit: query.limit ?? 20 })
+      : await listCoOwnerChargeCalls(scopeOf(req), filters);
   res.json({ success: true, data: calls });
 });
 
@@ -73,7 +119,11 @@ export const downloadCoOwnerDocumentHandler = asyncHandler(async (req: Request, 
 });
 
 export const listCoOwnerMeetingsHandler = asyncHandler(async (req: Request, res: Response) => {
-  const meetings = await listCoOwnerMeetings(scopeOf(req));
+  const query = meetingsQuerySchema.parse(req.query);
+  const meetings =
+    query.page !== undefined || query.limit !== undefined
+      ? await listCoOwnerMeetingsPage(scopeOf(req), { ...query, page: query.page ?? 1, limit: query.limit ?? 20 })
+      : await listCoOwnerMeetings(scopeOf(req));
   res.json({ success: true, data: meetings });
 });
 

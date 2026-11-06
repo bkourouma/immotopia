@@ -581,6 +581,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
     await user.click(await screen.findByText('Ouvrir'));
     const labelInput = await screen.findByLabelText('Libellé');
     await waitFor(() => expect(labelInput).toHaveValue(SCHEDULE_MONTHLY.label));
+    await screen.findByLabelText('Budget');
     await user.clear(labelInput);
     await user.paste('Charges renommées');
     // Attendre la validation déclenchée par la saisie avant validateFields().

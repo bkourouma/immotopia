@@ -1,6 +1,6 @@
 import { PDFDocument, PDFFont, PDFPage, rgb } from 'pdf-lib';
 import { NotFoundError } from '../../middleware/error-middleware';
-import { t } from '../../i18n';
+import { currentLanguage, t } from '../../i18n';
 import { recordAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { prisma } from '../../utils/database';
@@ -13,6 +13,7 @@ import {
   type DocumentBranding
 } from '../documents/document-branding';
 import { sanitizeForPdf } from '../documents/pdf-text';
+import { arabicFaces, drawArabicFooters, drawArabicText, wrapArabicText } from '../documents/pdf-arabic';
 import { A4, formatAmount, wrapText } from '../syndics/charge-receipt-pdf';
 import { contactDisplayName, referenceOf, resolveDebtorNames } from './dto';
 import { formatIbanGroups } from './iban';
@@ -94,8 +95,120 @@ export function authorizationFileName(reference: string): string {
   return `Autorisation de prélèvement ${reference}`.replace(/[\\/:*?"<>|]+/g, '-').trim() + '.pdf';
 }
 
+/** Copie arabe créée à la demande ; l'IBAN et les montants restent en ordre LTR. */
+async function renderAuthorizationArabicPdf(data: AuthorizationPdfData, branding: DocumentBranding): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.setLanguage('ar');
+  pdfDoc.setTitle(t('Autorisation de prélèvement {{reference}}', { reference: data.reference }));
+  const page = pdfDoc.addPage([A4.width, A4.height]);
+  const faces = await arabicFaces(pdfDoc);
+  const right = A4.width - MARGIN;
+  let y = await drawDocumentHeader(pdfDoc, page, branding, {
+    title: t('AUTORISATION DE PRÉLÈVEMENT'),
+    subtitle: t('Référence du mandat : {{reference}}', { reference: data.reference })
+  });
+  const section = (title: string) => {
+    y -= 7;
+    drawArabicText(page, faces.bold, title, { x: right, y, size: 11, maxWidth: CONTENT_WIDTH });
+    y -= 5;
+    page.drawLine({ start: { x: MARGIN, y }, end: { x: right, y }, thickness: 0.6, color: LIGHT });
+    y -= 20;
+  };
+  const row = (label: string, value: string, ltr = false) => {
+    drawArabicText(page, faces.bold, label, { x: right, y, size: 9, maxWidth: 145 });
+    drawArabicText(page, faces.regular, value || '—', {
+      x: ltr ? MARGIN : right - 155,
+      y,
+      size: 9,
+      maxWidth: CONTENT_WIDTH - 165,
+      ...(ltr ? { align: 'start' as const } : {})
+    });
+    y -= 18;
+  };
+  section(t('Créancier (bénéficiaire du prélèvement)'));
+  row(t('Nom'), data.creditorLabel);
+  row(
+    t("Numéro d'émetteur"),
+    data.creditorIdentifier ?? t('À renseigner par le créancier'),
+    Boolean(data.creditorIdentifier)
+  );
+  if (data.creditorBankName) row(t('Banque du créancier'), data.creditorBankName);
+  section(t('Débiteur (titulaire du compte à débiter)'));
+  row(t('Titulaire du compte'), data.holderName);
+  if (data.debtorName && data.debtorName !== data.holderName) {
+    row(data.lotNumber ? t('Copropriétaire') : t('Locataire'), data.debtorName);
+  }
+  row(t('IBAN'), formatIbanGroups(data.iban), true);
+  row(t('Code banque'), data.bankCode, true);
+  section(t('Conditions du prélèvement'));
+  if (data.leaseNumber) row(t('Bail'), data.leaseNumber, true);
+  if (data.propertyLabel) row(t('Bien loué'), data.propertyLabel);
+  if (data.syndicateName) row(t('Copropriété'), data.syndicateName);
+  if (data.lotNumber) row(t('Lot'), data.lotNumber, true);
+  row(t('Jour de prélèvement'), t('Le {{day}} de chaque mois', { day: data.collectionDay }));
+  row(
+    t('Montant maximal'),
+    data.maxAmount === null ? t('Sans plafond') : formatAmount(data.maxAmount, data.currency),
+    data.maxAmount !== null
+  );
+
+  const paragraphs = [
+    t(
+      "En signant ce formulaire, j'autorise {{creditor}} à envoyer des instructions à ma banque pour débiter mon compte, et ma banque à débiter mon compte conformément à ces instructions, au titre {{purpose}}. Je peux révoquer cette autorisation à tout moment en prévenant le créancier et ma banque par écrit. Je serai prévenu avant chaque prélèvement.",
+      {
+        creditor: data.creditorLabel,
+        purpose: data.lotNumber
+          ? t('des appels de charges de copropriété de ce lot')
+          : t('du loyer et des charges de mon bail')
+      }
+    ),
+    t(
+      'Ce document est à signer, à remettre au créancier et à déposer auprès de la banque du débiteur. Il contient des coordonnées bancaires : ne le laissez pas à la portée de tiers.'
+    )
+  ];
+  for (const paragraph of paragraphs) {
+    for (const line of wrapArabicText(faces.regular, paragraph, 8.5, CONTENT_WIDTH)) {
+      drawArabicText(page, faces.regular, line, { x: right, y, size: 8.5, maxWidth: CONTENT_WIDTH });
+      y -= 13;
+    }
+    y -= 5;
+  }
+  const top = Math.min(y - 10, 225);
+  const boxWidth = (CONTENT_WIDTH - 20) / 2;
+  page.drawRectangle({
+    x: right - boxWidth,
+    y: top - 86,
+    width: boxWidth,
+    height: 80,
+    borderColor: LIGHT,
+    borderWidth: 0.75
+  });
+  drawArabicText(page, faces.bold, t('Fait à ____________________, le ____ / ____ / ________'), {
+    x: right,
+    y: top + 8,
+    size: 8.5,
+    maxWidth: boxWidth + 20
+  });
+  drawArabicText(page, faces.bold, t('Signature du titulaire du compte'), {
+    x: right - 8,
+    y: top - 22,
+    size: 8.5,
+    maxWidth: boxWidth - 16
+  });
+  drawArabicText(page, faces.regular, t('(précédée de « Bon pour autorisation »)'), {
+    x: right - 8,
+    y: top - 36,
+    size: 8,
+    maxWidth: boxWidth - 16
+  });
+  await drawSignatureBlock(pdfDoc, page, branding, { x: MARGIN, y: top, label: t('Le créancier') });
+  drawArabicFooters(pdfDoc, faces, branding.issuer.name);
+  return Buffer.from(await pdfDoc.save());
+}
+
 /** Rend l'autorisation (une page A4). */
 export async function renderAuthorizationPdf(data: AuthorizationPdfData, branding: DocumentBranding): Promise<Buffer> {
+  if (currentLanguage() === 'ar') return renderAuthorizationArabicPdf(data, branding);
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([A4.width, A4.height]);
   const fonts = await fontsOf(pdfDoc);

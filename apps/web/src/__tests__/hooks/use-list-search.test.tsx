@@ -478,3 +478,55 @@ describe('useListSearch — signature d’affichage', () => {
     expect(latest.criteria[0].help).toBe('h2');
   });
 });
+
+describe('useListSearch — chargement paginé après intégration performance', () => {
+  it('ajoute le chargeur paginé puis conserve son identité et sa fermeture courante', async () => {
+    const make = (tenant?: string): SearchCriterion[] => [
+      {
+        key: 'owner',
+        type: 'select',
+        label: 'Propriétaire',
+        ...(tenant
+          ? {
+              loadOptionsPage: async (search: string, page: number) => ({
+                items: [{ value: `${tenant}-${search}-${page}`, label: tenant }],
+                total: 1
+              })
+            }
+          : {})
+      }
+    ];
+    const view = render(
+      <MemoryRouter>
+        <Probe criteria={make()} />
+      </MemoryRouter>
+    );
+    view.rerender(
+      <MemoryRouter>
+        <Probe criteria={make('A')} />
+      </MemoryRouter>
+    );
+    const first = latest.criteria[0] as Extract<SearchCriterion, { type: 'select' }>;
+    expect(await first.loadOptionsPage?.('ancien', 2)).toEqual({
+      items: [{ value: 'A-ancien-2', label: 'A' }],
+      total: 1
+    });
+    view.rerender(
+      <MemoryRouter>
+        <Probe criteria={make('B')} />
+      </MemoryRouter>
+    );
+    const next = latest.criteria[0] as Extract<SearchCriterion, { type: 'select' }>;
+    expect(next.loadOptionsPage).toBe(first.loadOptionsPage);
+    expect(await next.loadOptionsPage?.('ancien', 3)).toEqual({
+      items: [{ value: 'B-ancien-3', label: 'B' }],
+      total: 1
+    });
+    view.rerender(
+      <MemoryRouter>
+        <Probe criteria={make()} />
+      </MemoryRouter>
+    );
+    expect((latest.criteria[0] as Extract<SearchCriterion, { type: 'select' }>).loadOptionsPage).toBeUndefined();
+  });
+});

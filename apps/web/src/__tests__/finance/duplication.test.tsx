@@ -61,6 +61,18 @@ vi.mock('../../services/finance-lot3-service', () => ({
 const listConstructionSites = vi.fn();
 const listCostCategories = vi.fn();
 const listSuppliers = vi.fn();
+const listSuppliersPage = vi.fn(
+  async (_tenantId: string, filters: { search?: string; page?: number; limit?: number } = {}) => {
+    const all = (await listSuppliers()) as Supplier[];
+    const filtered = all.filter(item => item.name.toLowerCase().includes((filters.search ?? '').toLowerCase()));
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 20;
+    return { items: filtered.slice((page - 1) * limit, page * limit), total: filtered.length };
+  }
+);
+const getSupplier = vi.fn(async (_tenantId: string, id: string) =>
+  ((await listSuppliers()) as Supplier[]).find(item => item.id === id)
+);
 const listSupplierInvoices = vi.fn();
 const getSupplierInvoice = vi.fn();
 const createSupplierInvoice = vi.fn();
@@ -79,6 +91,9 @@ vi.mock('../../services/finance-lot2-service', () => ({
   listConstructionSites: (...a: unknown[]) => listConstructionSites(...a),
   listCostCategories: (...a: unknown[]) => listCostCategories(...a),
   listSuppliers: (...a: unknown[]) => listSuppliers(...a),
+  listSuppliersPage: (...a: unknown[]) =>
+    listSuppliersPage(...(a as [string, { search?: string; page?: number; limit?: number }])),
+  getSupplier: (...a: unknown[]) => getSupplier(...(a as [string, string])),
   listSupplierInvoices: (...a: unknown[]) => listSupplierInvoices(...a),
   getSupplierInvoice: (...a: unknown[]) => getSupplierInvoice(...a),
   createSupplierInvoice: (...a: unknown[]) => createSupplierInvoice(...a),

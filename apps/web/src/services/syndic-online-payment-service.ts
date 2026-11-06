@@ -150,7 +150,19 @@ export interface SyndicGatewayPayout {
   treasuryAccountNumber?: string;
   createdAt: string;
 }
-export type SyndicGatewayPayoutsResult = { items: SyndicGatewayPayout[] };
+export type SyndicGatewayPayoutsResult = {
+  items: SyndicGatewayPayout[];
+  pagination?: Pagination;
+  accountNumbers?: string[];
+};
+export interface GatewayPayoutsQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  account?: string;
+  from?: string;
+  to?: string;
+}
 
 /** 1.9 */
 export interface RecordGatewayPayoutBody {
@@ -301,11 +313,11 @@ export async function decideSyndicOnlineCheckout(
 export async function listSyndicGatewayPayouts(
   tenantId: string,
   syndicId: string,
-  limit?: number
+  query?: number | GatewayPayoutsQuery
 ): Promise<SyndicGatewayPayoutsResult> {
   const response = await apiClient.get<Envelope<SyndicGatewayPayoutsResult>>(
     `${base(tenantId, syndicId)}/paiement-en-ligne/reversements`,
-    { params: { limit } }
+    { params: typeof query === 'number' ? { limit: query } : query }
   );
   return response.data.data;
 }

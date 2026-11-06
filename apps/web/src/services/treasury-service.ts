@@ -27,6 +27,10 @@ export interface ListTreasuryTransfersFilters {
   accountId?: string;
   status?: string;
   search?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  page?: number;
+  limit?: number;
 }
 
 export interface ListTaxRemittancesFilters {
@@ -34,12 +38,24 @@ export interface ListTaxRemittancesFilters {
   to?: string;
   status?: string;
   treasuryAccountId?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface TreasuryListPage<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 /** Retire les valeurs vides ; undefined si aucun filtre (appel sans paramètre). */
 function compactParams(filters?: object): Record<string, string> | undefined {
   if (!filters) return undefined;
-  const entries = Object.entries(filters).filter(([, v]) => typeof v === 'string' && v.trim() !== '');
+  const entries = Object.entries(filters)
+    .filter(([, v]) => (typeof v === 'string' && v.trim() !== '') || (typeof v === 'number' && Number.isFinite(v)))
+    .map(([key, value]) => [key, String(value)]);
   return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
@@ -171,7 +187,7 @@ export async function updateTreasuryAccount(
 export async function listTreasuryTransfers(
   tenantId: string,
   filters?: ListTreasuryTransfersFilters
-): Promise<TreasuryTransferDto[]> {
+): Promise<TreasuryTransferDto[] | TreasuryListPage<TreasuryTransferDto>> {
   const params = compactParams(filters);
   const response = await apiClient.get(`${BASE(tenantId)}/transfers`, params ? { params } : undefined);
   return response.data.data;
@@ -206,7 +222,7 @@ export async function getWithholdingSummary(tenantId: string): Promise<Withholdi
 export async function listTaxRemittances(
   tenantId: string,
   filters?: ListTaxRemittancesFilters
-): Promise<TaxRemittanceDto[]> {
+): Promise<TaxRemittanceDto[] | TreasuryListPage<TaxRemittanceDto>> {
   const params = compactParams(filters);
   const response = await apiClient.get(`${BASE(tenantId)}/tax-remittances`, params ? { params } : undefined);
   return response.data.data;

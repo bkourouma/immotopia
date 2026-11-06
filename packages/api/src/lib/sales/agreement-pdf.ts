@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { NotFoundError } from '../../middleware/error-middleware';
+import { currentLanguage, t } from '../../i18n';
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import {
   drawDocumentHeader,
@@ -10,6 +11,8 @@ import {
   type DocumentBranding
 } from '../documents/document-branding';
 import { sanitizeForPdf } from '../documents/pdf-text';
+import { arabicFaces, drawArabicFooters, drawArabicText, wrapArabicText } from '../documents/pdf-arabic';
+import { amountToArabicWords } from '../syndics/number-to-arabic-words';
 import { A4, formatAmount, wrapText } from '../syndics/charge-receipt-pdf';
 import { amountToFrenchWords } from '../syndics/number-to-french-words';
 import { agreementNumber } from './numbering';
@@ -230,13 +233,150 @@ function priceText(data: AgreementPdfData): string {
   return `La vente est consentie et acceptée moyennant le prix de ${formatAmount(data.price, data.currency)} (${amountToFrenchWords(data.price, data.currency)}), payable ${how}.`;
 }
 
+function financingText(financing: string | null): string {
+  switch (financing) {
+    case 'CASH':
+      return t('au comptant');
+    case 'LOAN':
+      return t('avec un prêt bancaire');
+    case 'MIXED':
+      return t('par un apport et un prêt bancaire');
+    default:
+      return t('selon les modalités convenues entre les parties');
+  }
+}
+
 function deedText(data: AgreementPdfData): string {
   const notary = data.notaryName ? ` devant ${data.notaryName}, notaire,` : ' devant le notaire de leur choix';
   return `Les parties s'engagent à réitérer la vente par acte authentique${notary} au plus tard le ${frenchDate(data.expectedDeedDate)}, sous réserve de la réalisation des conditions suspensives.`;
 }
 
+/** Version de lecture arabe d'un nouveau compromis ; les données et l'empreinte restent identiques. */
+async function renderSaleAgreementArabicPdf(data: AgreementPdfData, branding: DocumentBranding): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  doc.setLanguage('ar');
+  doc.setTitle(t('Compromis de vente {{number}}', { number: data.number }));
+  doc.setCreator('ImmoTopia');
+  const faces = await arabicFaces(doc);
+  let page = doc.addPage([A4.width, A4.height]);
+  let y = await drawDocumentHeader(doc, page, branding, {
+    title: t('COMPROMIS DE VENTE'),
+    subtitle: t('N° {{number}}', { number: data.number })
+  });
+  const right = A4.width - MARGIN;
+  const width = A4.width - 2 * MARGIN;
+  const ensure = (height: number) => {
+    if (y - height >= MARGIN + 25) return;
+    page = doc.addPage([A4.width, A4.height]);
+    y = A4.height - MARGIN;
+    drawArabicText(page, faces.bold, t('Compromis de vente {{number}} (suite)', { number: data.number }), {
+      x: right,
+      y,
+      size: 10,
+      maxWidth: width
+    });
+    y -= 23;
+  };
+  const heading = (text: string) => {
+    ensure(38);
+    y -= 9;
+    drawArabicText(page, faces.bold, text, { x: right, y, size: 11, maxWidth: width });
+    y -= 19;
+  };
+  const paragraph = (text: string) => {
+    for (const line of wrapArabicText(faces.regular, text, BODY, width)) {
+      ensure(LEADING);
+      drawArabicText(page, faces.regular, line, { x: right, y, size: BODY, maxWidth: width });
+      y -= LEADING;
+    }
+  };
+  const field = (label: string, value: string, ltr = false) => {
+    ensure(LEADING);
+    drawArabicText(page, faces.regular, label, { x: right, y, size: BODY, maxWidth: 155, color: GREY });
+    drawArabicText(page, faces.bold, value || '—', {
+      x: ltr ? MARGIN : right - 165,
+      y,
+      size: BODY,
+      maxWidth: width - 165,
+      ...(ltr ? { align: 'start' as const } : {})
+    });
+    y -= LEADING + 2;
+  };
+
+  heading(t('Entre les soussignés'));
+  field(t('Le vendeur'), data.seller.name);
+  field(
+    t("L'acquéreur"),
+    data.buyer.company && data.buyer.representative
+      ? t('{{name}}, représentée par {{representative}}', {
+          name: data.buyer.name,
+          representative: data.buyer.representative
+        })
+      : data.buyer.name
+  );
+  heading(t('Article 1 - Bien vendu'));
+  field(t('Désignation'), data.property.title);
+  field(t('Référence'), data.property.reference, true);
+  field(t('Adresse'), [data.property.address, data.property.zone].filter(Boolean).join('، '));
+  heading(t('Article 2 - Prix'));
+  paragraph(t('La vente est consentie et acceptée moyennant le prix indiqué ci-dessous.'));
+  field(t('Prix de vente'), formatAmount(data.price, data.currency), true);
+  field(t('Montant en lettres'), amountToArabicWords(data.price, data.currency));
+  field(t('Payable'), financingText(data.financing));
+  heading(t('Article 3 - Dépôt de garantie'));
+  if (data.depositAmount && data.depositAmount > 0) {
+    paragraph(t("L'acquéreur verse un dépôt de garantie du montant indiqué ci-dessous."));
+    field(t('Dépôt de garantie'), formatAmount(data.depositAmount, data.currency), true);
+    field(t('Montant en lettres'), amountToArabicWords(data.depositAmount, data.currency));
+    field(
+      t('Conservation du dépôt'),
+      data.depositHolder === 'NOTARY'
+        ? data.notaryName || t('le notaire')
+        : data.depositHolder === 'SELLER'
+          ? t('le vendeur')
+          : t('selon les modalités convenues entre les parties')
+    );
+    paragraph(t('Il s’impute sur le prix à la réalisation de la vente.'));
+  } else paragraph(t("Aucun dépôt de garantie n'est stipulé."));
+  heading(t('Article 4 - Échéancier de paiement'));
+  if (data.milestones.length === 0)
+    paragraph(t("Aucun échéancier particulier n'est stipulé ; le solde du prix est payable à la signature de l'acte."));
+  for (const milestone of data.milestones) {
+    paragraph(milestone.label);
+    field(t('Montant'), formatAmount(milestone.amount, data.currency), true);
+    field(t('Au plus tard le'), milestone.dueDate ? frenchDate(milestone.dueDate) : t('à définir'), true);
+  }
+  heading(t('Article 5 - Conditions suspensives'));
+  if (data.conditions.length === 0) paragraph(t("Aucune condition suspensive n'est stipulée."));
+  else paragraph(t('La vente est conclue sous les conditions suspensives suivantes :'));
+  for (const condition of data.conditions) {
+    paragraph(condition.label);
+    if (condition.dueDate) field(t('Au plus tard le'), frenchDate(condition.dueDate), true);
+  }
+  heading(t('Article 6 - Acte authentique'));
+  paragraph(
+    t(
+      "Les parties s'engagent à réitérer la vente par acte authentique devant le notaire indiqué, au plus tard à la date mentionnée ci-dessous, sous réserve de la réalisation des conditions suspensives."
+    )
+  );
+  field(t('Notaire'), data.notaryName || t('le notaire de leur choix'));
+  field(t('Au plus tard le'), data.expectedDeedDate ? frenchDate(data.expectedDeedDate) : t('à définir'), true);
+  heading(t('Article 7 - Dispositions générales'));
+  paragraph(
+    t(
+      "Le vendeur déclare être libre de disposer du bien et l'acquéreur déclare avoir visité le bien et en accepter l'état. Chaque partie reconnaît avoir lu et accepté le présent compromis, qui prend effet à la date de la dernière signature."
+    )
+  );
+  heading(t('Signatures'));
+  field(t('Le vendeur'), data.seller.name);
+  field(t("L'acquéreur"), data.buyer.name);
+  drawArabicFooters(doc, faces, branding.issuer.name);
+  return Buffer.from(await doc.save());
+}
+
 /** Rend le compromis (clauses types courtes, à faire valider juridiquement). */
 export async function renderSaleAgreementPdf(data: AgreementPdfData, branding: DocumentBranding): Promise<Buffer> {
+  if (currentLanguage() === 'ar') return renderSaleAgreementArabicPdf(data, branding);
   const doc = await PDFDocument.create();
   doc.setTitle(sanitizeForPdf(`Compromis de vente ${data.number}`));
   doc.setCreator('ImmoTopia');

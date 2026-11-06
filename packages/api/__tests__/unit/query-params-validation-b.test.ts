@@ -71,7 +71,7 @@ jest.mock('../../src/lib/sales/pipeline', () => ({
 import { listTemplatesHandler } from '../../src/controllers/document-template-controller';
 import { updateStatusHandler } from '../../src/controllers/property-status-controller';
 import { uploadMediaHandler } from '../../src/controllers/property-media-controller';
-import { listMandatesHandler } from '../../src/controllers/sales-controller';
+import { listCommissionsHandler, listMandatesHandler } from '../../src/controllers/sales-controller';
 
 function mockRes() {
   const res: any = {};
@@ -92,6 +92,27 @@ beforeEach(() => {
   listMandates.mockClear();
   listAgreements.mockClear();
   listCommissions.mockClear();
+});
+
+describe('sales-controller — pagination des commissions', () => {
+  it('transmet filtres et page 26 sans tronquer au contrôleur', async () => {
+    listCommissions.mockResolvedValue({ items: [], total: 501, page: 26, pageSize: 20, totals: {} });
+    const req: any = {
+      tenantContext: { tenantId: 'tenant-1' },
+      user: { userId: 'user-1' },
+      query: { page: '26', limit: '20', status: 'DUE,PAID', minAmount: '0', search: 'koné' }
+    };
+    const next = mockNext();
+    await listCommissionsHandler(req, mockRes(), next);
+    expect(next).not.toHaveBeenCalled();
+    expect(listCommissions).toHaveBeenCalledWith('tenant-1', {
+      page: 26,
+      limit: 20,
+      status: 'DUE,PAID',
+      minAmount: 0,
+      search: 'koné'
+    });
+  });
 });
 
 describe('document-template-controller — validation docType query param', () => {
@@ -305,4 +326,46 @@ describe('sales-controller — validation status query param', () => {
     expect(listMandates).toHaveBeenCalledTimes(1);
     expect(res.json).toHaveBeenCalled();
   });
+
+  it('transmet les filtres de vente avant la pagination, y compris la page 26', async () => {
+    listMandates.mockResolvedValue({ items: [], total: 501, page: 26, pageSize: 20 });
+    const req: any = {
+      tenantContext: { tenantId: 'tenant-1' },
+      user: { userId: 'user-1' },
+      query: {
+        page: '26',
+        limit: '20',
+        status: 'ACTIVE,REVOKED',
+        type: 'SIMPLE',
+        minPrice: '1000000',
+        search: 'cocody'
+      }
+    };
+    const res = mockRes();
+    const next = mockNext();
+
+    await listMandatesHandler(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(listMandates).toHaveBeenCalledWith('tenant-1', {
+      page: 26,
+      limit: 20,
+      status: 'ACTIVE,REVOKED',
+      type: 'SIMPLE',
+      minPrice: 1000000,
+      search: 'cocody'
+    });
+    expect(res.json).toHaveBeenCalledWith({ success: true, data: { items: [], total: 501, page: 26, pageSize: 20 } });
+  });
+
+  it.each([{ page: '0' }, { limit: '101' }, { minPrice: 'oops' }, { type: 'UNKNOWN' }])(
+    'refuse les filtres de pagination invalides (%o)',
+    async query => {
+      const req: any = { tenantContext: { tenantId: 'tenant-1' }, user: { userId: 'user-1' }, query };
+      const next = mockNext();
+      await listMandatesHandler(req, mockRes(), next);
+      expect(listMandates).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+    }
+  );
 });

@@ -563,6 +563,14 @@ describe('Portail copropriétaire — ce que voit chaque copropriétaire', () =>
     expect(res.body.data.transactions.map((tx: any) => tx.id)).toEqual(['tx-2', 'tx-1']);
   });
 
+  it('pagine les mouvements sans recalculer le solde sur la seule page', async () => {
+    const res = await request(app).get(`/api/portal/copropriete/lots/${L1}/compte?page=2&limit=1`).set(as(USER_AWA));
+    expect(res.status).toBe(200);
+    expect(res.body.data.pagination.total).toBe(2);
+    expect(res.body.data.transactions.map((tx: any) => tx.id)).toEqual(['tx-1']);
+    expect(res.body.data.account).toMatchObject({ amount: 70000, direction: 'DEBITEUR' });
+  });
+
   it('A ne lit pas le compte du lot de B dans la même copropriété : 404, comme un lot inexistant', async () => {
     const res = await request(app).get(`/api/portal/copropriete/lots/${L2}/compte`).set(as(USER_AWA));
     const inexistant = await request(app)
@@ -591,6 +599,16 @@ describe('Portail copropriétaire — ce que voit chaque copropriétaire', () =>
     // B8 : bornes structurées de la période.
     expect(res.body.data[0].periodStart).toBe(new Date('2026-01-01').toISOString());
     expect(res.body.data[0].periodEnd).toBe(new Date('2026-03-31').toISOString());
+  });
+
+  it('filtre les appels après calcul du statut, dans le périmètre du copropriétaire', async () => {
+    const res = await request(app)
+      .get('/api/portal/copropriete/appels?page=1&limit=1&statuses=OVERDUE')
+      .set(as(USER_AWA));
+    expect(res.status).toBe(200);
+    expect(res.body.data.pagination.total).toBe(1);
+    expect(res.body.data.items.map((call: any) => call.id)).toEqual([CALL_L1]);
+    expect(JSON.stringify(res.body)).not.toContain(CALL_L2);
   });
 
   it('A ne voit pas les appels du lot de B, ni en les filtrant par son identifiant', async () => {
@@ -679,6 +697,17 @@ describe('Portail copropriétaire — ce que voit chaque copropriétaire', () =>
       totalShares: 1000,
       myVotes: [{ lotNumber: 'A1', vote: 'FOR' }]
     });
+    expect(JSON.stringify(res.body)).not.toContain(CONTACT_BAKARY);
+    expect(JSON.stringify(res.body)).not.toContain('A2');
+  });
+
+  it('pagine les assemblées et conserve la confidentialité des votes', async () => {
+    const res = await request(app)
+      .get('/api/portal/copropriete/assemblees?page=1&limit=1&statuses=COMPLETED')
+      .set(as(USER_AWA));
+    expect(res.status).toBe(200);
+    expect(res.body.data.pagination.total).toBe(1);
+    expect(res.body.data.items[0].id).toBe(MEETING_DONE);
     expect(JSON.stringify(res.body)).not.toContain(CONTACT_BAKARY);
     expect(JSON.stringify(res.body)).not.toContain('A2');
   });

@@ -76,7 +76,7 @@ let locationChanges: Record<string, unknown> = {};
 
 const createStockItemTx = jest.fn();
 const updateStockItemTx = jest.fn();
-const listStockItems = jest.fn();
+const listStockItemsPage = jest.fn();
 const getStockItem = jest.fn();
 const createStockLocationTx = jest.fn();
 const updateStockLocationTx = jest.fn();
@@ -90,7 +90,7 @@ jest.mock('../../src/lib/finance/stock-referentiel', () => ({
     item: await updateStockItemTx(...args),
     changes: itemChanges
   }),
-  listStockItems: (...args: any[]) => listStockItems(...args),
+  listStockItemsPage: (...args: any[]) => listStockItemsPage(...args),
   getStockItem: (...args: any[]) => getStockItem(...args),
   createStockLocationTx: (...args: any[]) => createStockLocationTx(...args),
   updateStockLocationWithChangesTx: async (...args: any[]) => ({
@@ -340,33 +340,67 @@ describe('PATCH /tenants/:tenantId/finance/stock/items/:itemId', () => {
 describe('GET /tenants/:tenantId/finance/stock/items', () => {
   it(
     'LE CHEMIN LITTÉRAL RESTE JOIGNABLE malgré `items/:itemId` : la liste répond, ' +
-      'et c’est `listStockItems` qui est appelé, pas `getStockItem`',
+      'et c’est `listStockItemsPage` qui est appelé, pas `getStockItem`',
     async () => {
-      listStockItems.mockResolvedValue([itemRecord()]);
+      listStockItemsPage.mockResolvedValue({
+        items: [itemRecord()],
+        total: 1,
+        facets: { units: [], categories: [], costCategories: [] }
+      });
 
       const res = await request(app).get(`/api/tenants/${TENANT_A}/finance/stock/items`);
 
       expect(res.status).toBe(200);
       expect(res.body.data).toHaveLength(1);
-      expect(listStockItems).toHaveBeenCalledWith(TENANT_A, { onlyActive: undefined, search: undefined });
+      expect(listStockItemsPage).toHaveBeenCalledWith(TENANT_A, expect.objectContaining({ page: 1, limit: 20 }));
+      expect(res.body.pagination).toEqual({ page: 1, limit: 20, total: 1, totalPages: 1 });
       expect(getStockItem).not.toHaveBeenCalled();
     }
   );
 
   it('transmet onlyActive et search depuis la query', async () => {
-    listStockItems.mockResolvedValue([]);
+    listStockItemsPage.mockResolvedValue({
+      items: [],
+      total: 0,
+      facets: { units: [], categories: [], costCategories: [] }
+    });
 
     await request(app).get(`/api/tenants/${TENANT_A}/finance/stock/items?onlyActive=true&search=cim`);
 
-    expect(listStockItems).toHaveBeenCalledWith(TENANT_A, { onlyActive: true, search: 'cim' });
+    expect(listStockItemsPage).toHaveBeenCalledWith(
+      TENANT_A,
+      expect.objectContaining({ onlyActive: true, search: 'cim' })
+    );
   });
 
   it('ne transforme pas onlyActive=false en true', async () => {
-    listStockItems.mockResolvedValue([]);
+    listStockItemsPage.mockResolvedValue({
+      items: [],
+      total: 0,
+      facets: { units: [], categories: [], costCategories: [] }
+    });
 
     await request(app).get(`/api/tenants/${TENANT_A}/finance/stock/items?onlyActive=false`);
 
-    expect(listStockItems).toHaveBeenCalledWith(TENANT_A, { onlyActive: false, search: undefined });
+    expect(listStockItemsPage).toHaveBeenCalledWith(TENANT_A, expect.objectContaining({ onlyActive: false }));
+  });
+
+  it('transmet page, limite et critères sans perdre le total', async () => {
+    listStockItemsPage.mockResolvedValue({
+      items: [itemRecord()],
+      total: 121,
+      facets: { units: ['sac'], categories: [], costCategories: [] }
+    });
+    const res = await request(app).get(
+      `/api/tenants/${TENANT_A}/finance/stock/items?page=3&limit=20&search=100%25&isActive=false&unit=sac`
+    );
+    expect(res.status).toBe(200);
+    expect(listStockItemsPage).toHaveBeenCalledWith(
+      TENANT_A,
+      expect.objectContaining({ page: 3, limit: 20, search: '100%', isActive: false, unit: 'sac' })
+    );
+    expect(res.body.pagination).toEqual({ page: 3, limit: 20, total: 121, totalPages: 7 });
+    expect(res.body.facets.units).toEqual(['sac']);
   });
 });
 
@@ -622,7 +656,11 @@ describe('Aucune route ne supprime un article ni un lieu', () => {
 
 describe('Lot 040 — gardes du référentiel (B1-R2, B1-R3)', () => {
   it('les quatre lectures passent sur STOCK_VIEW, plus sur FINANCE_ACCOUNTS_READ', async () => {
-    listStockItems.mockResolvedValue([]);
+    listStockItemsPage.mockResolvedValue({
+      items: [],
+      total: 0,
+      facets: { units: [], categories: [], costCategories: [] }
+    });
     getStockItem.mockResolvedValue(itemRecord());
     listStockLocations.mockResolvedValue([]);
     getStockSettings.mockResolvedValue(settingsRecord());

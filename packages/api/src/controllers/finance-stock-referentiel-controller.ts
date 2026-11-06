@@ -5,7 +5,7 @@ import {
   createStockLocationTx,
   getStockItem,
   getStockSettings,
-  listStockItems,
+  listStockItemsPage,
   listStockLocationViews,
   setStockValuationMethodTx,
   updateStockItemWithChangesTx,
@@ -159,9 +159,14 @@ export const listStockItemsHandler = asyncHandler(async (req: Request, res: Resp
   const tenantId = requireTenantId(req);
   const query = listStockItemsQuerySchema.parse(req.query ?? {});
 
-  const items = await listStockItems(tenantId, { onlyActive: query.onlyActive, search: query.search });
+  const { items, total, facets } = await listStockItemsPage(tenantId, query);
 
-  res.status(200).json({ success: true, data: items });
+  res.status(200).json({
+    success: true,
+    data: items,
+    pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) },
+    facets
+  });
 });
 
 // ---------------------------------------------------------------------------

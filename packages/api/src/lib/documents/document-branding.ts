@@ -3,8 +3,9 @@ import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, rgb } from 'pdf
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
 import { privateUploadPath, privateUploadReadRoots } from '../files/private-files';
-import { t } from '../../i18n';
+import { currentLanguage, t } from '../../i18n';
 import { pdfLanguage, sanitizeForPdf } from './pdf-text';
+import { arabicFaces, drawArabicHeader, drawArabicText } from './pdf-arabic';
 import { readBrandingImage, readImageFile, type BrandingImage } from './branding-storage';
 
 /**
@@ -528,6 +529,26 @@ export async function drawDocumentHeader(
   branding: DocumentBranding,
   options: DocumentHeaderOptions
 ): Promise<number> {
+  if (currentLanguage() === 'ar') {
+    pdfDoc.setAuthor(branding.issuer.name);
+    let logoX = 40;
+    let logoBottom = page.getSize().height;
+    for (const source of [branding.issuerLogo, branding.syndicate?.logo ?? null]) {
+      const logo = await embedImageOnce(pdfDoc, source);
+      if (!logo) continue;
+      const size = fitInBox(logo.width, logo.height, 68, 54);
+      const bottom = page.getSize().height - 40 - size.height;
+      page.drawImage(logo, { x: logoX, y: bottom, ...size });
+      logoBottom = Math.min(logoBottom, bottom);
+      logoX += 76;
+    }
+    return drawArabicHeader(page, await arabicFaces(pdfDoc), branding, options.title, options.subtitle, {
+      titleRight: options.titleRight,
+      showSyndicate: options.showSyndicate,
+      leftReserve: logoX - 40,
+      bandBottom: logoBottom
+    });
+  }
   const fonts = await fontsOf(pdfDoc);
   const { width, height } = page.getSize();
   const s = options.scale ?? 1;
@@ -559,6 +580,31 @@ export async function drawSignatureBlock(
   branding: DocumentBranding,
   options: { x: number; y: number; label: string }
 ): Promise<number> {
+  if (currentLanguage() === 'ar') {
+    const faces = await arabicFaces(pdfDoc);
+    const { x } = options;
+    drawArabicText(page, faces.bold, options.label, { x: x + 200, y: options.y, size: 9, maxWidth: 200 });
+    const areaTop = options.y - 6;
+    const stamp = await embedImage(pdfDoc, branding.stamp);
+    if (stamp) {
+      const size = fitInBox(stamp.width, stamp.height, 90, 70);
+      page.drawImage(stamp, { x, y: areaTop - size.height, ...size, opacity: 0.9 });
+    }
+    const signature = await embedImage(pdfDoc, branding.signature);
+    if (signature) {
+      const size = fitInBox(signature.width, signature.height, 140, 55);
+      page.drawImage(signature, { x: x + 30, y: areaTop - (70 + size.height) / 2, ...size });
+    }
+    const bottom = areaTop - 82;
+    drawArabicText(page, faces.regular, branding.issuer.name || ' ', {
+      x: x + 200,
+      y: bottom,
+      size: 8,
+      maxWidth: 200,
+      color: GREY
+    });
+    return bottom - 10;
+  }
   const { regular, bold } = await fontsOf(pdfDoc);
   const { x } = options;
   let y = options.y;

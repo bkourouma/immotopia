@@ -167,12 +167,33 @@ describe('PayoutsPanel : recherche locale', () => {
   ];
 
   beforeEach(() => {
-    listSyndicGatewayPayouts.mockResolvedValue({ items: PAYOUTS });
+    listSyndicGatewayPayouts.mockImplementation(async (_tenant, _syndic, query = {}) => payoutPage(PAYOUTS, query));
   });
+
+  function payoutPage(items: typeof PAYOUTS, query: Record<string, string | number>) {
+    const norm = (value: string) =>
+      value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+    const filtered = items.filter(
+      row =>
+        (!query.search || norm(`${row.reference} ${row.note ?? ''}`).includes(norm(String(query.search)))) &&
+        (!query.account || (row.treasuryAccountNumber ?? '5525') === query.account) &&
+        (!query.from || row.date >= String(query.from)) &&
+        (!query.to || row.date <= String(query.to))
+    );
+    const page = Number(query.page ?? 1);
+    const limit = Number(query.limit ?? 20);
+    return {
+      items: filtered.slice((page - 1) * limit, page * limit),
+      pagination: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) }
+    };
+  }
 
   const panel = () => <PayoutsPanel tenantId="t1" syndicId="s1" canEdit collectionBalance={0} />;
 
-  it('filtre les reversements sur la référence ou la note, sans nouvel appel à l’API', async () => {
+  it('envoie la recherche des reversements au serveur', async () => {
     const user = userEvent.setup();
     mount(panel());
     expect(await screen.findByText('VIR-OCTOBRE')).toBeInTheDocument();
@@ -183,7 +204,12 @@ describe('PayoutsPanel : recherche locale', () => {
     await waitFor(() => expect(screen.queryByText('VIR-SEPT')).not.toBeInTheDocument());
     expect(screen.getByText('VIR-OCTOBRE')).toBeInTheDocument();
     expect(screen.getByTestId('url').textContent).toContain('rev.q=solde');
-    expect(listSyndicGatewayPayouts.mock.calls.length).toBe(calls);
+    expect(listSyndicGatewayPayouts.mock.calls.length).toBeGreaterThan(calls);
+    expect(listSyndicGatewayPayouts).toHaveBeenLastCalledWith(
+      't1',
+      's1',
+      expect.objectContaining({ search: 'solde du mois', page: 1 })
+    );
   });
 
   it('applique le compte et la période d’une URL partagée', async () => {
@@ -201,19 +227,27 @@ describe('PayoutsPanel : recherche locale', () => {
     expect(await screen.findByText('VIR-OCTOBRE')).toBeInTheDocument();
   });
 
-  it('demande 200 reversements au plus et signale la limite atteinte', async () => {
-    const many = Array.from({ length: 200 }, (_, i) => ({
+  it('retrouve les reversements au-dela de lancien plafond de200', async () => {
+    const many = Array.from({ length: 205 }, (_, i) => ({
       entryId: `m${i}`,
       reference: `VIR-${i}`,
       date: '2026-10-05',
       amount: 1000,
       note: null,
+      treasuryAccountNumber: '5525',
       createdAt: ''
     }));
-    listSyndicGatewayPayouts.mockResolvedValue({ items: many });
+    listSyndicGatewayPayouts.mockImplementation(async (_tenant, _syndic, query = {}) => payoutPage(many, query));
+    const user = userEvent.setup();
     mount(panel());
-    expect(await screen.findByText('Seuls les 200 reversements les plus récents sont affichés.')).toBeInTheDocument();
-    expect(listSyndicGatewayPayouts).toHaveBeenCalledWith('t1', 's1', 200);
+    expect(await screen.findByText('VIR-0')).toBeInTheDocument();
+    await user.type(searchBox(/reversements/), 'VIR-204');
+    expect(await screen.findByText('VIR-204')).toBeInTheDocument();
+    expect(listSyndicGatewayPayouts).toHaveBeenLastCalledWith(
+      't1',
+      's1',
+      expect.objectContaining({ search: 'VIR-204', limit: 20 })
+    );
   });
 
   it('sans mention sous la limite de 200 reversements', async () => {

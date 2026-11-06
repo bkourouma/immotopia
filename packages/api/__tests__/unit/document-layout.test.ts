@@ -190,10 +190,10 @@ describe('drawDocumentFooters', () => {
     expect(footerRightText('  ', 2, 2)).toBe('Page 2/2');
   });
 
-  it("garde le français pour un document demandé en arabe (Helvetica n'écrit pas l'arabe)", () => {
+  it('utilise les libellés arabes dans les pieds des PDF non archivés', () => {
     runWithLanguage('ar', () => {
-      expect(pdfLanguage()).toBe('fr');
-      expect(footerRightText('R1', 1, 1)).not.toContain('?');
+      expect(pdfLanguage()).toBe('ar');
+      expect(footerRightText('R1', 1, 1)).toBe('المرجع R1 - الصفحة 1/1');
     });
   });
 });

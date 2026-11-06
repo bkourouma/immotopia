@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Prisma, SupplierKind } from '@prisma/client';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { voidDocumentTx } from '../lib/finance/accounting';
 import {
@@ -27,6 +28,8 @@ import {
 import { prisma } from '../utils/database';
 import { getEntitlements } from '../services/subscription-v2-service';
 import { evaluateFeatureAccess } from '../lib/subscription/feature-access';
+import { containsFoldedSql, searchWordsSql } from '../utils/sql-text-search';
+import { t } from '../i18n';
 
 /**
  * Contrôleur des dix points d'entrée agence du module financier
@@ -384,17 +387,77 @@ async function enrichirReglement(tenantId: string, record: SupplierPaymentRecord
 export const listSuppliersHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = requireTenantId(req);
   const query = listSuppliersQuerySchema.parse(req.query ?? {});
+  const where: Prisma.SupplierWhereInput = {
+    tenantId,
+    ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
+    ...(query.kind ? { kind: { in: query.kind as SupplierKind[] } } : {})
+  };
+  const include = { thirdPartyAccount: { select: { balance: true, currency: true } } } as const;
+  let suppliers: Array<Prisma.SupplierGetPayload<{ include: typeof include }>>;
+  let total;
+  if (query.search) {
+    // La recherche historique ignore les accents ; les autres filtres et le
+    // compte restent appliqués en SQL avant LIMIT/OFFSET.
+    const clauses = [Prisma.sql`s.tenant_id = ${tenantId}`];
+    if (query.isActive !== undefined) clauses.push(Prisma.sql`s.is_active = ${query.isActive}`);
+    if (query.kind?.length) clauses.push(Prisma.sql`s.kind::text IN (${Prisma.join(query.kind)})`);
+    const normalized = (value: string) =>
+      value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+    clauses.push(
+      searchWordsSql(query.search, word => {
+        const needle = normalized(word);
+        const matchedKinds = (
+          Object.entries({
+            MATERIALS: t('Matériaux'),
+            SERVICES: t('Prestation'),
+            MIXED: t('Matériaux et prestation')
+          }) as Array<[string, string]>
+        )
+          .filter(([kind, label]) => normalized(`${kind} ${label}`).includes(needle))
+          .map(([kind]) => kind);
+        const matches = [
+          containsFoldedSql(Prisma.sql`concat_ws(' ', s.name, s.contact_name, s.contact_phone, s.contact_email)`, word)
+        ];
+        if (matchedKinds.length) matches.push(Prisma.sql`s.kind::text IN (${Prisma.join(matchedKinds)})`);
+        return Prisma.sql`(${Prisma.join(matches, ' OR ')})`;
+      })
+    );
+    const from = Prisma.sql`FROM suppliers s WHERE ${Prisma.join(clauses, ' AND ')}`;
+    const [countRows, pageIds] = await Promise.all([
+      prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`SELECT count(*) AS total ${from}`),
+      prisma.$queryRaw<Array<{ id: string }>>(
+        Prisma.sql`SELECT s.id ${from} ORDER BY s.name ASC, s.id ASC LIMIT ${query.limit} OFFSET ${(query.page - 1) * query.limit}`
+      )
+    ]);
+    total = Number(countRows[0]?.total ?? 0);
+    suppliers = pageIds.length
+      ? await prisma.supplier.findMany({
+          where: { ...where, id: { in: pageIds.map(row => row.id) } },
+          include,
+          orderBy: [{ name: 'asc' }, { id: 'asc' }]
+        })
+      : [];
+  } else {
+    [suppliers, total] = await Promise.all([
+      prisma.supplier.findMany({
+        where,
+        include,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit
+      }),
+      prisma.supplier.count({ where })
+    ]);
+  }
 
-  const suppliers = await prisma.supplier.findMany({
-    where: {
-      tenantId,
-      ...(query.isActive !== undefined ? { isActive: query.isActive } : {})
-    },
-    include: { thirdPartyAccount: { select: { balance: true, currency: true } } },
-    orderBy: { name: 'asc' }
+  res.status(200).json({
+    success: true,
+    data: suppliers.map(row => toSupplierResponseFromRow(row)),
+    pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) }
   });
-
-  res.status(200).json({ success: true, data: suppliers.map((row: any) => toSupplierResponseFromRow(row)) });
 });
 
 // ---------------------------------------------------------------------------

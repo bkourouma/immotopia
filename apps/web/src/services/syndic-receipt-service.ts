@@ -68,11 +68,12 @@ export async function downloadReceiptFile(
   tenantId: string,
   syndicId: string,
   receiptId: string,
-  fallbackName = 'Document.pdf'
+  fallbackName = 'Document.pdf',
+  translation?: 'ar'
 ): Promise<{ blob: Blob; filename: string }> {
   const response = await apiClient.get<Blob>(
     `/tenants/${tenantId}/syndics/${syndicId}/quittances/${encodeURIComponent(receiptId)}/fichier`,
-    { responseType: 'blob' }
+    { responseType: 'blob', ...(translation ? { params: { translation } } : {}) }
   );
   return {
     blob: response.data,

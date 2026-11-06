@@ -3,7 +3,8 @@ import { PDFDocument } from 'pdf-lib';
 import { drawDocumentHeader, fontsOf, resolveDocumentBranding, truncate } from '../lib/documents/document-branding';
 import { drawDocumentFooters } from '../lib/documents/document-layout';
 import { pdfLanguage, sanitizeForPdf } from '../lib/documents/pdf-text';
-import { t } from '../i18n';
+import { arabicFaces, drawArabicFooters, drawArabicText } from '../lib/documents/pdf-arabic';
+import { currentLanguage, t } from '../i18n';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { prisma } from '../utils/database';
 import { toAmountOrZero } from '../lib/finance/types';
@@ -414,7 +415,7 @@ function formatDate(date?: Date | null): string {
  * Le numéro de la pièce y figure en tête, en gras : c'est par lui qu'on la
  * retrouve, brouillon comme validée.
  */
-async function buildCashVoucherPdf(payload: {
+export type CashVoucherPdfPayload = {
   /** Agence émettrice : son identité figure dans l'en-tête standard. */
   tenantId: string;
   /** Nul pour un brouillon : le numéro est attribué à la validation. */
@@ -428,7 +429,22 @@ async function buildCashVoucherPdf(payload: {
   costCategoryLabel: string;
   status: string;
   validatedAt: Date | null;
-}): Promise<Buffer> {
+};
+
+// @i18n-keys
+const AR_CASH_VOUCHER_LABELS = {
+  site: 'Chantier',
+  category: 'Poste de dépense',
+  beneficiary: 'Bénéficiaire',
+  reason: 'Motif',
+  date: 'Date',
+  amount: 'Montant',
+  status: 'Statut',
+  validated: 'Validée le'
+} as const;
+
+export async function buildCashVoucherPdf(payload: CashVoucherPdfPayload): Promise<Buffer> {
+  if (currentLanguage() === 'ar') return buildArabicCashVoucherPdf(payload);
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([595, 842]);
   const { regular: font, bold } = await fontsOf(pdfDoc);
@@ -465,6 +481,36 @@ async function buildCashVoucherPdf(payload: {
   await drawDocumentFooters(pdfDoc, { issuerName: branding.issuer.name, reference: payload.number });
   const bytes = await pdfDoc.save();
   return Buffer.from(bytes);
+}
+
+async function buildArabicCashVoucherPdf(payload: CashVoucherPdfPayload): Promise<Buffer> {
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([595, 842]);
+  const faces = await arabicFaces(pdf);
+  const branding = await resolveDocumentBranding(payload.tenantId, null);
+  const number = payload.number ? `Pièce n° ${payload.number}` : 'Pièce n° : attribué à la validation';
+  let y = await drawDocumentHeader(pdf, page, branding, {
+    title: t('Bon de caisse', undefined, 'ar'),
+    subtitle: number
+  });
+  const row = (label: string, value: string) => {
+    drawArabicText(page, faces.bold, t(label, undefined, 'ar'), { x: 555, y, size: 10, maxWidth: 170 });
+    drawArabicText(page, faces.regular, value, { x: 370, y, size: 10, maxWidth: 320 });
+    y -= 20;
+  };
+  row(AR_CASH_VOUCHER_LABELS.site, payload.siteName);
+  row(AR_CASH_VOUCHER_LABELS.category, payload.costCategoryLabel);
+  row(AR_CASH_VOUCHER_LABELS.beneficiary, payload.beneficiary);
+  row(AR_CASH_VOUCHER_LABELS.reason, payload.reason);
+  row(AR_CASH_VOUCHER_LABELS.date, formatDate(payload.voucherDate));
+  row(AR_CASH_VOUCHER_LABELS.amount, money(payload.amount, payload.currency));
+  row(
+    AR_CASH_VOUCHER_LABELS.status,
+    payload.status === 'VALIDATED' ? t('Validée', undefined, 'ar') : t('Brouillon', undefined, 'ar')
+  );
+  if (payload.validatedAt) row(AR_CASH_VOUCHER_LABELS.validated, formatDate(payload.validatedAt));
+  drawArabicFooters(pdf, faces, branding.issuer.name);
+  return Buffer.from(await pdf.save());
 }
 
 // ---------------------------------------------------------------------------

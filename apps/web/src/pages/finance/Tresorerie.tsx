@@ -1,7 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  Alert,
   App,
   Button,
   Card,
@@ -43,6 +42,7 @@ import type {
 } from '../../services/treasury-service';
 import { queryKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
 import { useListSearch } from '../../hooks/useListSearch';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import {
@@ -73,9 +73,7 @@ const { TextArea } = Input;
  * loyers, ce qui a été reversé à la DGI, et ce qui reste dû.
  *
  * **Recherche.** Comptes : liste locale (préfixe `cpt`). Virements (`vir`) et versements
- * (`ret`) : listes plafonnées côté API, donc mixtes — statut, période, compte (et
- * `search` pour les virements) partent au serveur via `filterParams`, le montant des
- * virements et le champ libre des versements se filtrent ici. Chaque onglet est un
+ * (`ret`) : filtres et pagination côté serveur, export de toutes les pages filtrées. Chaque onglet est un
  * composant monté à son affichage (`destroyOnHidden`) : sa requête ne part pas avant.
  *
  * **Écrit contre le contrat, l'API n'existant pas encore.** `services/
@@ -127,10 +125,6 @@ const EXEMPLE_NUMERO_COMPTE: Record<TreasuryAccountKind, string> = {
   CHECKS_TO_CASH: '513',
   CARDS_TO_CASH: '515'
 };
-
-function dateHeure(iso: string): string {
-  return dayjs(iso).format(dateFormat('dateTime'));
-}
 
 function dateJour(iso: string): string {
   return dayjs(iso).format(dateFormat('short'));
@@ -203,15 +197,6 @@ const ACCESSEURS_COMPTES = {
   actif: (c: TreasuryAccountDto) => c.isActive,
   defaut: (c: TreasuryAccountDto) => c.isDefault
 };
-// Virements : seul le montant se filtre ici ; le reste part au serveur (aucun accesseur = ignoré en local).
-const ACCESSEURS_VIREMENTS = { montant: (v: TreasuryTransferDto) => v.amount };
-// Versements : le champ libre est local (l'API ne sait pas chercher dans le texte).
-const TEXTE_VERSEMENTS = [
-  (v: TaxRemittanceDto) => v.number,
-  (v: TaxRemittanceDto) => v.periodLabel,
-  (v: TaxRemittanceDto) => v.treasuryLabel,
-  (v: TaxRemittanceDto) => v.reference
-];
 
 interface OngletComptesProps {
   query: UseQueryResult<TreasuryAccountDto[]>;
@@ -333,15 +318,11 @@ interface OngletVirementsProps {
   onAnnuler: (virement: TreasuryTransferDto) => void;
 }
 
-/** Plafond de lignes renvoyé par l'API (`take: 500`) pour les virements et les versements. */
-const PLAFOND_LIGNES_API = 500;
-
 /**
- * Onglet « Virements internes » : mode mixte, préfixe d'URL `vir`.
+ * Onglet « Virements internes » : recherche serveur, préfixe d'URL `vir`.
  *
- * La liste est plafonnée côté API : le champ libre (`search`), le statut, le
- * compte (de OU vers) et la période partent donc au serveur, dans la clé et
- * dans l'appel. Seul l'intervalle de montants se filtre ici (`api: false`).
+ * Le champ libre (`search`), le statut, le compte (de OU vers), la période et
+ * l'intervalle de montants partent au serveur, dans la clé et dans l'appel.
  * La requête n'existe que lorsque l'onglet est monté (`destroyOnHidden`).
  */
 function OngletVirements({ tenantId, comptes, onNouveau, onAnnuler }: OngletVirementsProps) {
@@ -351,29 +332,30 @@ function OngletVirements({ tenantId, comptes, onNouveau, onAnnuler }: OngletVire
     { key: 'status', type: 'multiSelect', label: t('Statut'), primary: true, options: OPTIONS_STATUT_DOCUMENT },
     { key: 'date', type: 'dateRange', label: t('Date'), primary: true, api: ['from', 'to'] },
     { key: 'compte', type: 'select', label: t('Compte'), options: optionsComptes, api: 'accountId' },
-    { key: 'montant', type: 'numberRange', label: t('Montant'), unit: 'FCFA', api: false }
+    {
+      key: 'montant',
+      type: 'numberRange',
+      label: t('Montant'),
+      unit: 'FCFA',
+      api: ['minAmount', 'maxAmount']
+    }
   ];
-  // Paramètres d'API des critères serveur, disponibles avant la requête.
-  const { filterParams } = useListSearch({ paramPrefix: 'vir', criteria: criteres });
+  const recherche = useListSearch({ paramPrefix: 'vir', criteria: criteres, defaultPageSize: 20 });
 
   const query = useQuery({
-    queryKey: queryKey('treasury-transfers', tenantId, filterParams),
-    queryFn: () => listTreasuryTransfers(tenantId, filterParams as ListTreasuryTransfersFilters),
+    queryKey: queryKey('treasury-transfers', tenantId, recherche.apiParams),
+    queryFn: () => listTreasuryTransfers(tenantId, recherche.apiParams as ListTreasuryTransfersFilters),
     staleTime: STALE_TIME.list,
     placeholderData: keepPreviousData
   });
 
-  const local = useLocalListSearch<TreasuryTransferDto>(query.data, {
-    paramPrefix: 'vir',
-    criteria: criteres,
-    accessors: ACCESSEURS_VIREMENTS
-  });
-
-  // Le montant se filtre ici, sur la liste reçue (plafonnée) : on signale la borne posée.
-  const borneMontant = local.values.montant as { min?: unknown; max?: unknown } | undefined;
-  const borneMontantActive = [borneMontant?.min, borneMontant?.max].some(
-    b => b !== undefined && b !== '' && b !== null
-  );
+  const response = query.data;
+  const rows = Array.isArray(response) ? response : (response?.items ?? []);
+  const total = Array.isArray(response) ? response.length : (response?.total ?? 0);
+  const { clampPage } = recherche;
+  useEffect(() => {
+    if (response && !query.isPlaceholderData) clampPage?.(total);
+  }, [response, total, query.isPlaceholderData, clampPage]);
 
   const colonnes: ColumnsType<TreasuryTransferDto> = [
     { title: t('Numéro'), key: 'numero', render: (_, v) => v.number },
@@ -427,28 +409,21 @@ function OngletVirements({ tenantId, comptes, onNouveau, onAnnuler }: OngletVire
         </Button>
       </div>
 
-      {(query.data?.length ?? 0) >= PLAFOND_LIGNES_API && (
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 'var(--space-4)' }}
-          title={t(
-            'Seuls les 500 virements les plus récents correspondant aux critères sont affichés. Affinez par période, statut ou compte.'
-          )}
-        />
-      )}
-      {(query.data?.length ?? 0) >= PLAFOND_LIGNES_API && borneMontantActive && (
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 'var(--space-4)' }}
-          title={t('Le filtre de montant ne porte que sur ces 500 virements les plus récents.')}
-        />
-      )}
       <DataView<TreasuryTransferDto>
-        {...local.dataViewProps}
-        search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les virements internes') }}
-        export={{ filename: t('Virements internes'), fetchAll: local.exportAll }}
+        items={rows}
+        total={total}
+        {...recherche.dataViewProps}
+        search={{ ...recherche.searchProps, 'aria-label': t('Rechercher dans les virements internes') }}
+        export={{
+          filename: t('Virements internes'),
+          fetchAll: () =>
+            collectAllPages<TreasuryTransferDto>(async (page, limit) => {
+              const result = await listTreasuryTransfers(tenantId, { ...recherche.filterParams, page, limit });
+              return Array.isArray(result)
+                ? { items: result, total: result.length }
+                : { items: result.items, total: result.total };
+            })
+        }}
         loading={query.isPending}
         isReloading={query.isFetching && !query.isPending}
         error={query.error ? t('Impossible de charger les virements internes.') : null}
@@ -484,9 +459,8 @@ interface TableauVersementsProps {
 }
 
 /**
- * Versements à la DGI : mode mixte, préfixe d'URL `ret`. Statut, période et
- * compte partent au serveur ; le champ libre (numéro, période, compte,
- * référence) est local, l'API ne sachant pas chercher dans le texte.
+ * Versements à la DGI : recherche serveur, préfixe d'URL `ret`. Statut,
+ * période, compte et champ libre (numéro, période, compte, référence) partent au serveur.
  */
 function TableauVersements({ tenantId, comptes, peutCreer, onNouveau, onAnnuler }: TableauVersementsProps) {
   const optionsComptes = useMemo(() => optionsComptesDe(comptes), [comptes]);
@@ -496,26 +470,28 @@ function TableauVersements({ tenantId, comptes, peutCreer, onNouveau, onAnnuler 
       type: 'text',
       label: t('Rechercher'),
       placeholder: t('Numéro, période, compte, référence…'),
-      api: false
+      api: 'search'
     },
     { key: 'status', type: 'multiSelect', label: t('Statut'), primary: true, options: OPTIONS_STATUT_DOCUMENT },
     { key: 'date', type: 'dateRange', label: t('Date'), primary: true, api: ['from', 'to'] },
     { key: 'compte', type: 'select', label: t('Compte'), options: optionsComptes, api: 'treasuryAccountId' }
   ];
-  const { filterParams } = useListSearch({ paramPrefix: 'ret', criteria: criteres });
+  const recherche = useListSearch({ paramPrefix: 'ret', criteria: criteres, defaultPageSize: 20 });
 
   const query = useQuery({
-    queryKey: queryKey('tax-remittances', tenantId, filterParams),
-    queryFn: () => listTaxRemittances(tenantId, filterParams as ListTaxRemittancesFilters),
+    queryKey: queryKey('tax-remittances', tenantId, recherche.apiParams),
+    queryFn: () => listTaxRemittances(tenantId, recherche.apiParams as ListTaxRemittancesFilters),
     staleTime: STALE_TIME.list,
     placeholderData: keepPreviousData
   });
 
-  const local = useLocalListSearch<TaxRemittanceDto>(query.data, {
-    paramPrefix: 'ret',
-    criteria: criteres,
-    text: TEXTE_VERSEMENTS
-  });
+  const response = query.data;
+  const rows = Array.isArray(response) ? response : (response?.items ?? []);
+  const total = Array.isArray(response) ? response.length : (response?.total ?? 0);
+  const { clampPage } = recherche;
+  useEffect(() => {
+    if (response && !query.isPlaceholderData) clampPage?.(total);
+  }, [response, total, query.isPlaceholderData, clampPage]);
 
   const colonnes: ColumnsType<TaxRemittanceDto> = [
     { title: t('Numéro'), key: 'numero', render: (_, v) => v.number },
@@ -569,20 +545,21 @@ function TableauVersements({ tenantId, comptes, peutCreer, onNouveau, onAnnuler 
         )}
       </div>
 
-      {(query.data?.length ?? 0) >= PLAFOND_LIGNES_API && (
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 'var(--space-4)' }}
-          title={t(
-            'Seuls les 500 versements les plus récents correspondant aux critères sont affichés. Affinez par période, statut ou compte.'
-          )}
-        />
-      )}
       <DataView<TaxRemittanceDto>
-        {...local.dataViewProps}
-        search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les versements à la DGI') }}
-        export={{ filename: t('Versements à la DGI'), fetchAll: local.exportAll }}
+        items={rows}
+        total={total}
+        {...recherche.dataViewProps}
+        search={{ ...recherche.searchProps, 'aria-label': t('Rechercher dans les versements à la DGI') }}
+        export={{
+          filename: t('Versements à la DGI'),
+          fetchAll: () =>
+            collectAllPages<TaxRemittanceDto>(async (page, limit) => {
+              const result = await listTaxRemittances(tenantId, { ...recherche.filterParams, page, limit });
+              return Array.isArray(result)
+                ? { items: result, total: result.length }
+                : { items: result.items, total: result.total };
+            })
+        }}
         loading={query.isPending}
         isReloading={query.isFetching && !query.isPending}
         error={query.error ? t('Impossible de charger les versements à la DGI.') : null}

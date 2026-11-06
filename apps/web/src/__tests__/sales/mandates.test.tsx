@@ -251,12 +251,12 @@ describe('Mandats de vente — nouveau mandat', () => {
   });
 });
 
-describe('Mandats de vente — recherche locale', () => {
+describe('Mandats de vente — recherche serveur', () => {
   const T = { timeout: 8000 };
   const PLACEHOLDER = 'Numéro, bien, vendeur, négociateur…';
 
   beforeEach(() => {
-    listSaleMandates.mockResolvedValue([
+    const all = [
       mandat(),
       mandat({
         id: 'mandate-2',
@@ -274,13 +274,30 @@ describe('Mandats de vente — recherche locale', () => {
         sellerName: 'Fatou Diallo',
         askingPrice: 80_000_000
       })
-    ]);
+    ];
+    listSaleMandates.mockImplementation(async (_tenant: string, params: Record<string, any>) => {
+      const filtered = all.filter(
+        m =>
+          (!params.search ||
+            [m.number, m.propertyLabel, m.sellerName].some(v =>
+              v.toLowerCase().includes(params.search.toLowerCase())
+            )) &&
+          (!params.status || params.status.split(',').includes(m.status)) &&
+          (params.minPrice === undefined || m.askingPrice >= params.minPrice)
+      );
+      return {
+        items: filtered.slice((params.page - 1) * params.limit, params.page * params.limit),
+        total: filtered.length,
+        page: params.page,
+        pageSize: params.limit
+      };
+    });
   });
 
-  it('charge la liste entière sans paramètre serveur', async () => {
+  it('charge la première page avec paramètres serveur', async () => {
     mount();
     expect(await screen.findByText('MV-2026-0001', {}, T)).toBeInTheDocument();
-    expect(listSaleMandates).toHaveBeenCalledWith('agence-1');
+    expect(listSaleMandates).toHaveBeenCalledWith('agence-1', { page: 1, limit: 20 });
   });
 
   it('cherche sans accent ni casse dans le bien et le vendeur, et garde le terme dans l’URL', async () => {
@@ -317,11 +334,15 @@ describe('Mandats de vente — recherche locale', () => {
     expect(screen.getByTestId('adresse')).not.toHaveTextContent('q=');
   });
 
-  it('avertit que la liste est tronquée au plafond de 500 mandats', async () => {
-    listSaleMandates.mockResolvedValue(
-      Array.from({ length: 500 }, (_, i) => mandat({ id: `m-${i}`, number: `MV-${i}` }))
-    );
-    mount();
-    expect(await screen.findByText(/La liste est limitée aux 500 mandats/, {}, T)).toBeInTheDocument();
+  it('peut charger une page au-delà de 500 mandats', async () => {
+    listSaleMandates.mockImplementation(async (_tenant: string, params: Record<string, number>) => ({
+      items: params.page === 26 ? [mandat({ id: 'm-501', number: 'MV-501' })] : [],
+      total: 501,
+      page: params.page,
+      pageSize: params.limit
+    }));
+    mount('/tenant/agence-1/sales/mandates?page=26');
+    expect(await screen.findByText('MV-501', {}, T)).toBeInTheDocument();
+    expect(listSaleMandates).toHaveBeenCalledWith('agence-1', { page: 26, limit: 20 });
   });
 });

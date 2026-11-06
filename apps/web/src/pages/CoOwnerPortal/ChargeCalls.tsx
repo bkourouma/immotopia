@@ -315,6 +315,7 @@ export default function CoOwnerChargeCalls() {
       <Card>
         <ChargeCallsTable
           calls={calls}
+          serverMode
           onResume={onlineEnabled ? call => void resumePayment(call) : undefined}
           selection={
             onlineEnabled ? { selectedIds: selectedCalls.map(call => call.id), onChange: setSelectedIds } : undefined

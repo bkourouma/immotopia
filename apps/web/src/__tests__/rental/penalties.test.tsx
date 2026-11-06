@@ -67,7 +67,11 @@ function penalite(overrides: Record<string, unknown> = {}) {
 }
 
 function mount(penalites: unknown[]) {
-  listPenalties.mockResolvedValue({ success: true, data: penalites });
+  listPenalties.mockResolvedValue({
+    success: true,
+    data: penalites,
+    pagination: { total: penalites.length, page: 1, limit: 50, totalPages: 1 }
+  });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
@@ -205,20 +209,17 @@ describe('Pénalités — lecture du champ « raison »', () => {
 });
 
 describe('Pénalités — pagination', () => {
-  it('pagine localement : l’API rend tout, l’écran découpe en pages de 50', async () => {
-    // Le endpoint ignore `page` et `limit` et renvoie tout. La pagination est
-    // locale (recherche multicritères) ; le compteur reste celui de la liste.
+  it('utilise le total de la réponse paginée', async () => {
     mount([penalite({ id: 'a' }), penalite({ id: 'b' }), penalite({ id: 'c' })]);
     expect(await screen.findByText('3 pénalités', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(document.querySelector('.ant-pagination')).not.toBeNull();
   });
 
-  it('n’envoie ni page ni limite au service', async () => {
+  it('envoie la page et la limite au service', async () => {
     mount([penalite()]);
     await waitFor(() => expect(listPenalties).toHaveBeenCalled());
     const filtres = listPenalties.mock.calls[0][1];
-    expect(filtres).not.toHaveProperty('page');
-    expect(filtres).not.toHaveProperty('limit');
+    expect(filtres).toMatchObject({ page: 1, limit: 50 });
   });
 });
 

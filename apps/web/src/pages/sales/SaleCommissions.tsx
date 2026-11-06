@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Alert, App, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Typography } from 'antd';
+import { App, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   createSaleCommissionPayment,
   getSaleCommission,
@@ -12,14 +12,16 @@ import {
 } from '../../services/sales-service';
 import type {
   CreateSaleCommissionPaymentInput,
+  ListSaleCommissionsFilters,
   SaleCommissionDto,
   SaleCommissionPaymentDto,
   SaleCommissionStatus
 } from '../../services/sales-service';
-import { useLocalListSearch } from '../../utils/list-search';
+import { useListSearch } from '../../hooks/useListSearch';
+import { collectAllPages } from '../../utils/table-export/collect';
 import type { SearchCriterion } from '../../utils/list-search';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { MoneyValue, PageHeader, StateBlock, StatCard, StatusTag, Table } from '../../components/primitives';
+import { MoneyValue, PageHeader, StateBlock, StatCard, Table } from '../../components/primitives';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { TreasuryAccountSelector, type TreasuryPaymentMethod } from '../../components/finance/TreasuryAccountSelector';
 import { COMMISSION_PAYER_LABELS, SALE_PAYMENT_METHOD_LABELS, dateCourte } from './helpers';
@@ -38,29 +40,10 @@ const STATUS_OPTIONS: { value: SaleCommissionStatus; label: string }[] = localiz
   { value: 'CANCELLED', label: t('Annulée') }
 ]);
 
-/** Plafond de la liste renvoyée par l'API (`take: 500`). */
-const COMMISSIONS_LIMIT = 500;
-
 const PAYER_OPTIONS = localizedList(() => [
   { value: 'SELLER', label: COMMISSION_PAYER_LABELS.SELLER },
   { value: 'BUYER', label: COMMISSION_PAYER_LABELS.BUYER }
 ]);
-
-// Constantes de module : l'identité stable garde le filtrage mémoïsé.
-const COMMISSION_TEXT = [
-  (c: SaleCommissionDto) => c.number,
-  (c: SaleCommissionDto) => c.agreementNumber,
-  (c: SaleCommissionDto) => c.propertyLabel,
-  (c: SaleCommissionDto) => c.payerName,
-  (c: SaleCommissionDto) => c.agentName
-];
-const COMMISSION_ACCESSORS = {
-  status: (c: SaleCommissionDto) => c.status,
-  payer: (c: SaleCommissionDto) => c.payer,
-  period: (c: SaleCommissionDto) => c.issuedAt,
-  amount: (c: SaleCommissionDto) => c.amountInclTax,
-  unpaid: (c: SaleCommissionDto) => c.status !== 'CANCELLED' && c.remainingAmount > 0
-};
 
 interface PaymentFormValues {
   amount: number;
@@ -175,8 +158,8 @@ const CommissionPaymentModal: React.FC<{
  * règlements par ligne dépliée, annulation d'un règlement avec motif, part
  * du négociateur.
  *
- * Recherche LOCALE : l'API renvoie toutes les commissions d'un bloc (500 au
- * plus). Les totaux de la tête suivent la liste filtrée. Le sous-tableau des
+ * La recherche et la pagination sont assurées par l'API. Les totaux de la tête
+ * suivent toutes les commissions filtrées. Le sous-tableau des
  * règlements d'une commission (quelques lignes) n'a pas de barre.
  */
 export const SaleCommissions: React.FC = () => {
@@ -184,49 +167,31 @@ export const SaleCommissions: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const {
-    data,
-    isPending,
-    error: erreurRequete,
-    refetch
-  } = useQuery({
-    queryKey: queryKey('sale-commissions', tenantId, {}),
-    queryFn: () => listSaleCommissions(tenantId as string),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
-  });
-
   const criteres: SearchCriterion[] = [
-    {
-      key: 'q',
-      type: 'text',
-      label: t('Rechercher'),
-      placeholder: t('Numéro, compromis, bien, payeur, négociateur…')
-    },
+    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Numéro, compromis, bien, payeur, négociateur…') },
     { key: 'status', type: 'multiSelect', label: t('Statut'), primary: true, options: STATUS_OPTIONS },
-    { key: 'period', type: 'dateRange', label: t('Date d’émission'), primary: true },
-    { key: 'amount', type: 'numberRange', label: t('Montant TTC'), unit: 'FCFA' },
+    { key: 'period', type: 'dateRange', label: t('Date d’émission'), primary: true, api: ['from', 'to'] },
+    { key: 'amount', type: 'numberRange', label: t('Montant TTC'), unit: 'FCFA', api: ['minAmount', 'maxAmount'] },
     { key: 'payer', type: 'multiSelect', label: t('Payeur'), options: PAYER_OPTIONS },
     { key: 'unpaid', type: 'boolean', label: t('Avec un reste dû') }
   ];
-  const local = useLocalListSearch<SaleCommissionDto>(data?.items, {
-    criteria: criteres,
-    text: COMMISSION_TEXT,
-    accessors: COMMISSION_ACCESSORS
+  const recherche = useListSearch({ criteria: criteres, defaultPageSize: 20 });
+
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: erreurRequete,
+    refetch
+  } = useQuery({
+    queryKey: queryKey('sale-commissions', tenantId, recherche.apiParams),
+    queryFn: () => listSaleCommissions(tenantId as string, recherche.apiParams as ListSaleCommissionsFilters),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
-  // Totaux de la liste filtrée (et non de la seule page).
-  const totals = useMemo(
-    () =>
-      local.filtered.reduce(
-        (acc, c) => ({
-          amountInclTax: acc.amountInclTax + c.amountInclTax,
-          paidAmount: acc.paidAmount + c.paidAmount,
-          remainingAmount: acc.remainingAmount + c.remainingAmount
-        }),
-        { amountInclTax: 0, paidAmount: 0, remainingAmount: 0 }
-      ),
-    [local.filtered]
-  );
+  const totals = data?.totals ?? { amountInclTax: 0, paidAmount: 0, remainingAmount: 0 };
+  const total = data?.total ?? data?.items.length ?? 0;
 
   const {
     data: detail,
@@ -394,17 +359,6 @@ export const SaleCommissions: React.FC = () => {
         <StatCard label={t('Reste dû')} value={<MoneyValue value={totals.remainingAmount} />} tone="warning" />
       </div>
 
-      {(data?.items.length ?? 0) >= COMMISSIONS_LIMIT && (
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBlockEnd: 16 }}
-          message={t('La liste est limitée aux {{limit}} commissions les plus récentes : d’autres existent.', {
-            limit: COMMISSIONS_LIMIT
-          })}
-        />
-      )}
-
       {erreurRequete ? (
         <StateBlock
           variant="error"
@@ -413,15 +367,28 @@ export const SaleCommissions: React.FC = () => {
         />
       ) : (
         <Table<SaleCommissionDto>
-          {...local.tableProps}
+          dataSource={data?.items ?? []}
+          pagination={recherche.tablePagination(total)}
+          search={recherche.searchProps}
           aria-label={t('Commissions de vente')}
           exportFilename={t('Commissions de vente')}
-          exportFetchAll={local.exportAll}
-          loading={isPending}
+          exportFetchAll={() =>
+            collectAllPages((page, limit) =>
+              listSaleCommissions(tenantId, {
+                ...recherche.filterParams,
+                page,
+                limit
+              } as ListSaleCommissionsFilters).then(result => ({
+                items: result.items,
+                total: result.total ?? result.items.length
+              }))
+            )
+          }
+          loading={isPending || isFetching}
           columns={colonnes}
           rowKey={c => c.id}
           // Sous critère, la Table affiche seule son bloc « Aucun résultat ».
-          locale={local.isFiltered ? undefined : { emptyText: t('Aucune commission de vente.') }}
+          locale={recherche.isFiltered ? undefined : { emptyText: t('Aucune commission de vente.') }}
           expandable={{
             expandedRowKeys: expandedId ? [expandedId] : [],
             onExpand: (expanded, record) => setExpandedId(expanded ? record.id : null),

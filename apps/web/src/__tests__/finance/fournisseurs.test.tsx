@@ -36,9 +36,38 @@ import type {
  */
 
 const listSuppliers = vi.fn();
+const getSupplier = vi.fn();
+const listSuppliersPage = vi.fn(async (_tenantId: string, filters: Record<string, unknown> = {}) => {
+  const suppliers = (await listSuppliers()) as Supplier[];
+  const query = String(filters.search ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  const kinds = filters.kind === undefined ? [] : String(filters.kind).split(',');
+  const filtered = suppliers.filter(supplier => {
+    const kindLabel = { MATERIALS: 'Matériaux', SERVICES: 'Prestation', MIXED: 'Matériaux et prestation' }[
+      supplier.kind
+    ];
+    const text = [supplier.name, supplier.contactName, supplier.contactPhone, supplier.contactEmail, kindLabel]
+      .join(' ')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+    return (
+      (!query || text.includes(query)) &&
+      (kinds.length === 0 || kinds.includes(supplier.kind)) &&
+      (filters.isActive === undefined ||
+        supplier.isActive === (filters.isActive === 'true' || filters.isActive === true))
+    );
+  });
+  const page = Number(filters.page ?? 1);
+  const limit = Number(filters.limit ?? 20);
+  return { items: filtered.slice((page - 1) * limit, page * limit), total: filtered.length };
+});
 const createSupplier = vi.fn();
 const getSuppliersBalance = vi.fn();
 const listSupplierInvoices = vi.fn();
+const getSupplierInvoice = vi.fn();
 const createSupplierInvoice = vi.fn();
 const validateSupplierInvoice = vi.fn();
 const voidSupplierInvoice = vi.fn();
@@ -51,9 +80,12 @@ const listCostCategories = vi.fn();
 
 vi.mock('../../services/finance-lot2-service', () => ({
   listSuppliers: (...a: unknown[]) => listSuppliers(...a),
+  getSupplier: (...a: unknown[]) => getSupplier(...a),
+  listSuppliersPage: (...a: unknown[]) => listSuppliersPage(...(a as [string, Record<string, unknown>])),
   createSupplier: (...a: unknown[]) => createSupplier(...a),
   getSuppliersBalance: (...a: unknown[]) => getSuppliersBalance(...a),
   listSupplierInvoices: (...a: unknown[]) => listSupplierInvoices(...a),
+  getSupplierInvoice: (...a: unknown[]) => getSupplierInvoice(...a),
   createSupplierInvoice: (...a: unknown[]) => createSupplierInvoice(...a),
   validateSupplierInvoice: (...a: unknown[]) => validateSupplierInvoice(...a),
   voidSupplierInvoice: (...a: unknown[]) => voidSupplierInvoice(...a),
@@ -246,6 +278,10 @@ function compteTresorerie(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  listSuppliers.mockResolvedValue([fournisseur()]);
+  getSupplier.mockImplementation(async (_tenantId: string, id: string) =>
+    ((await listSuppliers()) as Supplier[]).find(supplier => supplier.id === id)
+  );
   permissionsDetenues = null;
   listSupplierPayments.mockResolvedValue([]);
   listTreasuryAccounts.mockResolvedValue([
@@ -335,7 +371,7 @@ describe('Fournisseurs — liste et création', () => {
   });
 });
 
-describe('Fournisseurs — recherche locale', () => {
+describe('Fournisseurs — recherche serveur', () => {
   const T = { timeout: 8000 };
   const PLACEHOLDER = 'Raison sociale, contact, téléphone, e-mail…';
 
@@ -356,7 +392,7 @@ describe('Fournisseurs — recherche locale', () => {
   /** Lignes de données du tableau (l'en-tête est exclu). */
   const lignes = () => screen.getAllByRole('row').slice(1);
 
-  it('cherche sans tenir compte des accents ni de la casse, et garde le terme dans l’URL', async () => {
+  it('envoie le terme au service et le garde dans l’URL', async () => {
     const user = userEvent.setup({ delay: null });
     mountFournisseurs();
 
@@ -366,6 +402,7 @@ describe('Fournisseurs — recherche locale', () => {
     await waitFor(() => expect(screen.queryByText('Électricité Générale Bamako')).not.toBeInTheDocument(), T);
     expect(screen.getByText('Matériaux du Bandama SARL')).toBeInTheDocument();
     expect(screen.getByTestId('adresse')).toHaveTextContent('q=MATERIAUX');
+    expect(listSuppliersPage).toHaveBeenCalledWith('agence-1', expect.objectContaining({ search: 'MATERIAUX' }));
   });
 
   it('cherche aussi dans le contact, l’e-mail et le libellé de la nature', async () => {
@@ -399,7 +436,7 @@ describe('Fournisseurs — recherche locale', () => {
     expect(lignes()).toHaveLength(1);
   });
 
-  it('annonce le nombre de résultats dans la barre, et garde le total non filtré en sous-titre', async () => {
+  it('annonce le nombre de résultats dans la barre et le sous-titre', async () => {
     mountFournisseurs();
 
     const barre = await screen.findByRole('search', {}, T);
@@ -407,15 +444,15 @@ describe('Fournisseurs — recherche locale', () => {
     expect(screen.getByText('3 fournisseurs')).toBeInTheDocument();
   });
 
-  it('compte les résultats filtrés sans changer le sous-titre', async () => {
+  it('compte les résultats filtrés selon le total serveur', async () => {
     mountFournisseurs('/tenant/agence-1/finance/fournisseurs?actif=1');
 
     const barre = await screen.findByRole('search', {}, T);
     expect(await within(barre).findByText('2 résultats', {}, T)).toBeInTheDocument();
-    expect(screen.getByText('3 fournisseurs')).toBeInTheDocument();
+    expect(screen.getByText('2 fournisseurs')).toBeInTheDocument();
   });
 
-  it('pagine localement : 20 lignes en page 1 sur 25 fournisseurs', async () => {
+  it('pagine côté serveur : 20 lignes en page 1 sur 25 fournisseurs', async () => {
     listSuppliers.mockResolvedValue(
       Array.from({ length: 25 }, (_, i) =>
         fournisseur({ id: `frs-${i + 1}`, name: `Fournisseur ${String(i + 1).padStart(2, '0')}` })
@@ -428,6 +465,10 @@ describe('Fournisseurs — recherche locale', () => {
     expect(screen.queryByText('Fournisseur 21')).not.toBeInTheDocument();
     const barre = screen.getByRole('search');
     expect(within(barre).getByText('25 résultats')).toBeInTheDocument();
+    await userEvent.setup({ delay: null }).click(screen.getByTitle('2'));
+    expect(await screen.findByText('Fournisseur 21', {}, T)).toBeInTheDocument();
+    expect(lignes()).toHaveLength(5);
+    expect(listSuppliersPage).toHaveBeenCalledWith('agence-1', expect.objectContaining({ page: 2, limit: 20 }));
   });
 
   it('« Effacer les critères » ramène toute la liste', async () => {

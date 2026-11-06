@@ -42,7 +42,7 @@ function base(tenantId: string): string {
 }
 
 /** Même sérialisation qu'au lot 1 : une valeur absente est omise, jamais vide. */
-function toQuery(filters?: Record<string, string | number | undefined>): string {
+function toQuery(filters?: Record<string, string | number | boolean | undefined>): string {
   if (!filters) return '';
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
@@ -58,8 +58,43 @@ function toQuery(filters?: Record<string, string | number | undefined>): string 
 // Fournisseurs
 // ---------------------------------------------------------------------------
 
+export interface SupplierListFilters {
+  search?: string;
+  kind?: string;
+  isActive?: boolean | string;
+  page?: number | string;
+  limit?: number | string;
+}
+
+export async function listSuppliersPage(
+  tenantId: string,
+  filters?: SupplierListFilters
+): Promise<{ items: Supplier[]; total: number }> {
+  const response = await apiClient.get<ApiResponse<Supplier[]> & { pagination?: { total: number } }>(
+    `${base(tenantId)}/suppliers${toQuery({
+      search: filters?.search?.trim() || undefined,
+      kind: filters?.kind,
+      isActive: filters?.isActive,
+      page: filters?.page,
+      limit: filters?.limit
+    })}`
+  );
+  return { items: response.data.data, total: response.data.pagination?.total ?? response.data.data.length };
+}
+
+/** Compatibilité des sélecteurs et de l'import : collecte toutes les pages sans troncature. */
 export async function listSuppliers(tenantId: string): Promise<Supplier[]> {
-  const response = await apiClient.get<ApiResponse<Supplier[]>>(`${base(tenantId)}/suppliers`);
+  const items: Supplier[] = [];
+  for (let page = 1; ; page++) {
+    const result = await listSuppliersPage(tenantId, { page, limit: 100 });
+    items.push(...result.items);
+    if (result.items.length === 0 || items.length >= result.total) return items;
+  }
+}
+
+/** Résout un fournisseur pré-sélectionné par son ID, même hors de la page courante. */
+export async function getSupplier(tenantId: string, supplierId: string): Promise<Supplier> {
+  const response = await apiClient.get<ApiResponse<Supplier>>(`${base(tenantId)}/suppliers/${supplierId}`);
   return response.data.data;
 }
 
