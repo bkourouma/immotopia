@@ -189,6 +189,18 @@ describe('Paiements : sous-onglets', () => {
 });
 
 describe('Paiements : onglet d’un bail', () => {
+  it('rouvre un ancien lien tab=payments&onglet=declarations puis migre le sous-onglet', async () => {
+    const user = userEvent.setup();
+    renderPage('/tenant/agence-1/rental/payments?tab=payments&onglet=declarations', 'bail-1');
+    expect(await screen.findByText('liste des déclarations', undefined, T)).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Paiements' }));
+    expect(await screen.findAllByText(/1\s000\s000\sFCFA/, undefined, T)).not.toHaveLength(0);
+    expect(screen.getByTestId('url').textContent).not.toContain('onglet=declarations');
+    await user.click(screen.getByRole('tab', { name: 'Déclarations en attente' }));
+    expect(await screen.findByText('liste des déclarations', undefined, T)).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).toContain('pai.onglet=declarations');
+  });
+
   it('préfixe les clés par pai, filtre sur le bail et n’offre pas de critère locataire', async () => {
     const user = userEvent.setup();
     renderPage('/tenant/agence-1/rental/payments?pai.q=angré&pai.status=SUCCESS', 'bail-1');

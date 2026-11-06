@@ -33,6 +33,7 @@ const TENANT = 'tenant-A';
 
 function makeTx(installment: Row | null): Row {
   return {
+    $queryRaw: jest.fn(async () => []),
     rentalPayment: {
       findFirst: jest.fn(async () => ({
         id: 'pay-1',

@@ -706,10 +706,20 @@ export function isProviderRequiredForSource(source: { kind: SignatureDocumentKin
  */
 export async function getSignatureTargetContext(ctx: Ctx, kind: string, targetId: string) {
   const source = getSignatureSource(kind);
-  await source.assertTarget(ctx, targetId);
+  // Cible déjà signée (409) : le panneau reste consultable (demandes, PDF), seul l'envoi est fermé.
+  // Introuvable (404) ou autre agence : l'erreur reste levée. L'envoi (POST) garde son 409.
+  let sendBlockedReason: string | null = null;
+  try {
+    await source.assertTarget(ctx, targetId);
+  } catch (err) {
+    if (!(err instanceof ConflictError)) throw err;
+    sendBlockedReason = err.message;
+  }
   return {
     kind: source.kind,
     targetType: source.targetType,
+    canSend: sendBlockedReason === null,
+    reason: sendBlockedReason,
     // Vrai seulement si le fournisseur actif ne peut pas signer ce type (R-2).
     providerRequired: isProviderRequiredForSource(source) && !getSignatureProvider().qualified,
     // Le fournisseur actif est un prestataire externe : signataires par e-mail uniquement.
@@ -718,7 +728,9 @@ export async function getSignatureTargetContext(ctx: Ctx, kind: string, targetId
     // Canaux admis par le type (absent : tous) et code demandé avant consultation (spec 042 §10).
     allowedChannels: source.allowedChannels ?? null,
     codeBeforeView: Boolean(source.codeBeforeView),
-    signers: await visibleSigners(ctx, source.defaultSigners ? await source.defaultSigners(ctx, targetId) : [])
+    signers: sendBlockedReason
+      ? []
+      : await visibleSigners(ctx, source.defaultSigners ? await source.defaultSigners(ctx, targetId) : [])
   };
 }
 

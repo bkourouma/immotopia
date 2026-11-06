@@ -7,6 +7,10 @@ import { t } from '../i18n/t';
 // les routes, l'importer statiquement mettait 53 Ko d'AntD dans le chunk
 // d'entree pour un ecran que la plupart des sessions ne voient jamais.
 const AccessDenied = lazy(() => import('./primitives/AccessDenied').then(m => ({ default: m.AccessDenied })));
+// Même raison : l'erreur de chargement du compte est rare, et tire AntD.
+const AccountLoadError = lazy(() =>
+  import('./primitives/AccountLoadError').then(m => ({ default: m.AccountLoadError }))
+);
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -34,8 +38,16 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   requireTenant,
   requiredPermissions
 }) => {
-  const { isAuthenticated, isLoading, user, tenantMembership, isLoadingMembership, activeTenantId, hasPermission } =
-    useAuth();
+  const {
+    isAuthenticated,
+    isLoading,
+    user,
+    tenantMembership,
+    isLoadingMembership,
+    activeTenantId,
+    hasPermission,
+    loadError
+  } = useAuth();
   const location = useLocation();
   const params = useParams<{ tenantId?: string }>();
 
@@ -64,6 +76,16 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
           />
         ))}
       </div>
+    );
+  }
+
+  // Panne de l'API au chargement du compte ou de l'agence : message propre et
+  // « Réessayer », ni renvoi vers la connexion ni « aucune agence ».
+  if (loadError) {
+    return (
+      <Suspense fallback={null}>
+        <AccountLoadError />
+      </Suspense>
     );
   }
 

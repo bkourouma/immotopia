@@ -5,7 +5,8 @@ import dayjs from 'dayjs';
 import { Table } from '../primitives';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
+import { formatFcfa } from '../../i18n/format';
+import { libelleOperateurMobileMoney } from '../../lib/rental-payment-status';
 const { Text, Title } = Typography;
 
 interface PaymentDetailsModalProps {
@@ -16,11 +17,7 @@ interface PaymentDetailsModalProps {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat(activeLocale(), {
-    style: 'currency',
-    currency: 'XOF',
-    minimumFractionDigits: 0
-  }).format(amount);
+  return formatFcfa(amount);
 };
 
 const getStatusTag = (status: string) => {
@@ -135,7 +132,9 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
               <Descriptions.Item label={t('Référence PSP')}>{payment.psp_reference}</Descriptions.Item>
             )}
             {payment.mm_operator && (
-              <Descriptions.Item label={t('Opérateur Mobile Money')}>{payment.mm_operator}</Descriptions.Item>
+              <Descriptions.Item label={t('Opérateur Mobile Money')}>
+                {libelleOperateurMobileMoney(payment.mm_operator)}
+              </Descriptions.Item>
             )}
             {payment.mm_phone && (
               <Descriptions.Item label={t('Téléphone Mobile Money')}>{payment.mm_phone}</Descriptions.Item>

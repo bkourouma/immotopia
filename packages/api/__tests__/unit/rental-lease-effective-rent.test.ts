@@ -43,8 +43,9 @@ const mockPrisma: Row = {
       store.events.filter(
         e =>
           e.type === where.type &&
-          e.effectiveDate.getTime() <= where.effectiveDate.lte.getTime() &&
-          e.details?.planned === where.details.equals &&
+          // Deux formes de requête : `applyDueRevisions` filtre (date, planifiée), `reviseRent` lit toutes les révisions.
+          (!where.effectiveDate || e.effectiveDate.getTime() <= where.effectiveDate.lte.getTime()) &&
+          (!where.details || e.details?.planned === where.details.equals) &&
           (!where.tenantId || e.tenantId === where.tenantId)
       )
     )

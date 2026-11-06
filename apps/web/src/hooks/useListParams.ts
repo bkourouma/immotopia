@@ -45,7 +45,8 @@ export interface UseListParamsOptions<F extends Record<string, string>> {
   defaultSort?: Sort | null;
   /**
    * Préfixe des clés d'URL de cette instance : `paramPrefix: 'lots'` donne
-   * `lots.q`, `lots.page`, `lots.limit`, `lots.sort`. Permet à deux tableaux
+   * `lots.q`, `lots.page`, `lots.limit`, `lots.sort`. Le suffixe `_` conserve
+   * la convention antérieure (`doc_` donne `doc_status`, `doc_page`). Permet à deux tableaux
    * d'un même écran de porter chacun leur état sans s'écraser. `filters`,
    * `queryParams` et les arguments de `setFilters` restent en clés non
    * préfixées. Absent : clés brutes (comportement historique).
@@ -70,9 +71,9 @@ export interface UseListParamsResult<F extends Record<string, string>> extends L
   queryParams: Record<string, string | number>;
 }
 
-const PAGE_KEY = 'page';
-const SIZE_KEY = 'limit';
-const SORT_KEY = 'sort';
+const BASE_PAGE_KEY = 'page';
+const BASE_SIZE_KEY = 'limit';
+const BASE_SORT_KEY = 'sort';
 
 function parseSort(raw: string | null): Sort | null {
   if (!raw) return null;
@@ -90,27 +91,38 @@ export function useListParams<F extends Record<string, string>>(
 ): UseListParamsResult<F> {
   const { filterKeys, defaultPageSize = 20, defaultSort = null, paramPrefix } = options;
   const [searchParams, setSearchParams] = useSearchParams();
-
+  // Avec un préfixe, les clés d'URL propres à cette liste (filtres, page, taille,
+  // tri) ne se confondent pas avec celles d'une autre liste montée dans la même
+  // page (onglets d'une fiche) ; les noms vus par l'appelant restent inchangés.
   // Clés d'URL réelles de cette instance (préfixées si `paramPrefix`).
-  const pageKey = paramPrefix ? `${paramPrefix}.${PAGE_KEY}` : PAGE_KEY;
-  const sizeKey = paramPrefix ? `${paramPrefix}.${SIZE_KEY}` : SIZE_KEY;
-  const sortKey = paramPrefix ? `${paramPrefix}.${SORT_KEY}` : SORT_KEY;
-  const urlKey = useCallback((key: string) => (paramPrefix ? `${paramPrefix}.${key}` : key), [paramPrefix]);
+  const urlKey = useCallback(
+    (key: string) => (paramPrefix ? `${paramPrefix}${paramPrefix.endsWith('_') ? '' : '.'}${key}` : key),
+    [paramPrefix]
+  );
+  const pageKey = urlKey(BASE_PAGE_KEY);
+  const sizeKey = urlKey(BASE_SIZE_KEY);
+  const sortKey = urlKey(BASE_SORT_KEY);
+  // Les anciens liens de l'onglet Documents utilisaient `doc_status` ;
+  // la recherche actuelle écrit `doc.status`. Les deux restent lisibles.
+  const readKey = useCallback(
+    (key: string) => searchParams.get(urlKey(key)) ?? (paramPrefix === 'doc' ? searchParams.get(`doc_${key}`) : null),
+    [searchParams, urlKey, paramPrefix]
+  );
 
   const filters = useMemo(() => {
     const result = {} as F;
     for (const key of filterKeys) {
-      const value = searchParams.get(urlKey(key));
+      const value = readKey(key);
       // Un paramètre présent mais vide vaut absent : `?q=` ne doit pas filtrer
       // sur la chaîne vide, sinon vider un champ ne ramène aucun résultat.
       if (value) (result as Record<string, string>)[key] = value;
     }
     return result;
-  }, [searchParams, filterKeys, urlKey]);
+  }, [filterKeys, readKey]);
 
-  const page = Math.max(1, Number(searchParams.get(pageKey)) || 1);
-  const pageSize = Math.max(1, Number(searchParams.get(sizeKey)) || defaultPageSize);
-  const sort = parseSort(searchParams.get(sortKey)) ?? defaultSort;
+  const page = Math.max(1, Number(readKey(BASE_PAGE_KEY)) || 1);
+  const pageSize = Math.max(1, Number(readKey(BASE_SIZE_KEY)) || defaultPageSize);
+  const sort = parseSort(readKey(BASE_SORT_KEY)) ?? defaultSort;
   const isFiltered = Object.keys(filters).length > 0;
 
   /**
@@ -123,6 +135,13 @@ export function useListParams<F extends Record<string, string>>(
   const write = useCallback(
     (mutate: (next: URLSearchParams) => void, options?: { replace?: boolean }) => {
       const next = new URLSearchParams(searchParams);
+      if (paramPrefix === 'doc') {
+        for (const key of [...filterKeys, BASE_PAGE_KEY, BASE_SIZE_KEY, BASE_SORT_KEY]) {
+          const oldKey = `doc_${key}`;
+          if (!next.has(urlKey(key)) && next.has(oldKey)) next.set(urlKey(key), next.get(oldKey) as string);
+          next.delete(oldKey);
+        }
+      }
       mutate(next);
 
       if (next.get(pageKey) === '1') next.delete(pageKey);
@@ -131,7 +150,18 @@ export function useListParams<F extends Record<string, string>>(
 
       setSearchParams(next, { replace: options?.replace ?? false });
     },
-    [searchParams, setSearchParams, defaultPageSize, defaultSort, pageKey, sizeKey, sortKey]
+    [
+      searchParams,
+      setSearchParams,
+      defaultPageSize,
+      defaultSort,
+      pageKey,
+      sizeKey,
+      sortKey,
+      paramPrefix,
+      filterKeys,
+      urlKey
+    ]
   );
 
   const setFilters = useCallback<UseListParamsResult<F>['setFilters']>(

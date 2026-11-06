@@ -97,7 +97,10 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
         paymentId: paymentId || undefined,
         title: values.title || undefined,
         description: values.description || undefined,
-        templateId: values.templateId || undefined
+        templateId: values.templateId || undefined,
+        ...(values.type === RentalDocumentType.STATEMENT
+          ? { startDate: values.startDate, endDate: values.endDate }
+          : {})
       };
 
       await onSubmit(submitData);
@@ -146,15 +149,46 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
           >
             <Select showSearch optionFilterProp="children">
               <Select.Option value={RentalDocumentType.LEASE_CONTRACT}>{translate('Contrat de bail')}</Select.Option>
-              <Select.Option value={RentalDocumentType.LEASE_ADDENDUM}>{translate('Avenant')}</Select.Option>
               <Select.Option value={RentalDocumentType.RENT_RECEIPT}>{translate('Reçu de loyer')}</Select.Option>
-              <Select.Option value={RentalDocumentType.RENT_QUITTANCE}>{translate('Quittance de loyer')}</Select.Option>
-              <Select.Option value={RentalDocumentType.DEPOSIT_RECEIPT}>{translate('Reçu de dépôt')}</Select.Option>
               <Select.Option value={RentalDocumentType.STATEMENT}>{translate('Relevé')}</Select.Option>
-              <Select.Option value={RentalDocumentType.OTHER}>{translate('Autre')}</Select.Option>
             </Select>
           </Form.Item>
         </Col>
+
+        {documentType === RentalDocumentType.STATEMENT && (
+          <>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={translate('Début de la période')}
+                name="startDate"
+                rules={[{ required: true, message: translate('La date de début est requise') }]}
+              >
+                <Input type="date" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={translate('Fin de la période')}
+                name="endDate"
+                dependencies={['startDate']}
+                rules={[
+                  { required: true, message: translate('La date de fin est requise') },
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      const debut = getFieldValue('startDate');
+                      if (!value || !debut || value >= debut) return Promise.resolve();
+                      return Promise.reject(
+                        new Error(translate('La date de fin doit être postérieure ou égale à la date de début'))
+                      );
+                    }
+                  })
+                ]}
+              >
+                <Input type="date" />
+              </Form.Item>
+            </Col>
+          </>
+        )}
 
         <Col xs={24} md={12}>
           <Form.Item label={translate('Titre (optionnel)')} name="title">

@@ -113,8 +113,9 @@ const TAKE_MAX = 200;
 /**
  * Relit le relevé entier (même période) par tranches de 200, pour l'export.
  *
- * S'arrête au total annoncé par le serveur, ou dès qu'une tranche arrive vide
- * (un total qui ne serait jamais atteint ne doit pas faire boucler l'export).
+ * Fige l'instant de référence pour garder les mêmes mouvements et soldes sur
+ * toutes les pages. S'arrête au total annoncé par le serveur, ou dès qu'une
+ * tranche arrive vide (un total jamais atteint ne doit pas faire boucler l'export).
  */
 export async function lireToutLeReleve(
   tenantId: string,
@@ -123,11 +124,13 @@ export async function lireToutLeReleve(
 ): Promise<ThirdPartyMovementLine[]> {
   const lignes: ThirdPartyMovementLine[] = [];
   let total = Infinity;
+  const asOf = new Date().toISOString();
   while (lignes.length < total) {
     const tranche = await getAccountStatement(tenantId, accountId, {
       from: periode.from || undefined,
       to: periode.to || undefined,
       search: periode.search || undefined,
+      asOf,
       skip: lignes.length,
       take: TAKE_MAX
     });

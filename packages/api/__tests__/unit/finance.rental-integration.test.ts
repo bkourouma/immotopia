@@ -121,6 +121,7 @@ function matchField(value: any, criterion: any): boolean {
   if (criterion !== null && typeof criterion === 'object' && !(criterion instanceof Date)) {
     if ('not' in criterion) return value !== criterion.not;
     if ('in' in criterion) return (criterion.in as any[]).includes(value);
+    if ('startsWith' in criterion) return typeof value === 'string' && value.startsWith(criterion.startsWith);
     if ('lt' in criterion) return new Date(value).getTime() < new Date(criterion.lt).getTime();
     if ('gte' in criterion) return new Date(value).getTime() >= new Date(criterion.gte).getTime();
     return true;
@@ -399,6 +400,7 @@ const mockPrisma: Row = {
     count: jest.fn(async ({ where }: Row) => store.movements.filter(m => matchRow(m, where)).length)
   },
 
+  $queryRaw: jest.fn(async () => []),
   $transaction: jest.fn(async (callback: (tx: Row) => Promise<any>) => {
     const snapshot = structuredClone({
       leases: store.leases,
@@ -478,6 +480,7 @@ function seedLocataire(): void {
     tenant_id: TENANT_ID,
     lease_number: 'BAIL-001',
     primary_renter_client_id: CLIENT_ID,
+    status: 'ACTIVE',
     currency: 'FCFA',
     penalty_grace_days: 0,
     penalty_mode: null,
@@ -571,7 +574,7 @@ describe('Échéance devenue exigible', () => {
       sourceType: 'RENTAL_INSTALLMENT',
       sourceId: echeance.id,
       leaseId: LEASE_ID,
-      label: 'Loyer de fevrier 2026'
+      label: 'Loyer de février 2026'
     });
     expect(compte()?.balance).toBe(107500);
   });
@@ -847,7 +850,7 @@ describe('Pénalité', () => {
       debit: 7500,
       sourceType: 'RENTAL_PENALTY',
       sourceId: penalty.id,
-      label: "Pénalité de retard sur l'échéance de fevrier 2026"
+      label: "Pénalité de retard sur l'échéance de février 2026"
     });
     // L'échéance n'était pas encore facturée : seule la pénalité pèse au compte.
     expect(compte()?.balance).toBe(7500);

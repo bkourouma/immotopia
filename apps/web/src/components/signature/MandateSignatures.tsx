@@ -48,14 +48,17 @@ export const MandateSignatures: React.FC<MandateSignaturesProps> = ({
   const [providerRequired, setProviderRequired] = useState(false);
   const [externalProvider, setExternalProvider] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blockedReason, setBlockedReason] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     setSigners(null);
+    setBlockedReason(null);
     setError(null);
     fetchSignatureContext(kind, mandateId)
       .then(context => {
         if (!active) return;
+        setBlockedReason(context.canSend === false ? context.reason || t('Envoi impossible pour le moment.') : null);
         setProviderRequired(Boolean(context.providerRequired));
         setExternalProvider(Boolean(context.externalProvider));
         setSigners(
@@ -86,6 +89,7 @@ export const MandateSignatures: React.FC<MandateSignaturesProps> = ({
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       {error && <Alert type="error" showIcon message={error} />}
+      {!error && blockedReason && <Alert type="info" showIcon message={blockedReason} />}
       <SignaturesPanel
         kind={kind}
         targetType={TARGET_TYPES[kind]}
@@ -94,7 +98,7 @@ export const MandateSignatures: React.FC<MandateSignaturesProps> = ({
         fileLabel={fileLabel}
         providerRequired={providerRequired}
         externalProvider={externalProvider}
-        sendDisabled={Boolean(error)}
+        sendDisabled={Boolean(error) || blockedReason !== null}
         allowedChannels={allowedChannels}
         sendLabel={sendLabel}
         pollMs={pollMs}

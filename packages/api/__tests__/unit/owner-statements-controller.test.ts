@@ -15,6 +15,11 @@ const getOwnerStatementById = jest.fn();
 const generateOwnerStatement = jest.fn();
 const updateOwnerStatement = jest.fn();
 const recomputeOwnerStatement = jest.fn();
+const listOwnerStatementEligibleProperties = jest.fn();
+
+jest.mock('../../src/lib/patrimoine/owner-statement-eligible-properties', () => ({
+  listOwnerStatementEligibleProperties: (...a: any[]) => listOwnerStatementEligibleProperties(...a)
+}));
 
 jest.mock('../../src/lib/patrimoine/queries', () => ({
   listOwnerStatements: (...a: any[]) => listOwnerStatements(...a),
@@ -34,6 +39,7 @@ import {
   getOwnerStatementHandler,
   listOwnerStatementsHandler,
   recomputeOwnerStatementHandler,
+  listOwnerStatementEligiblePropertiesHandler,
   sendOwnerStatementHandler,
   updateOwnerStatementHandler
 } from '../../src/controllers/owner-statements-controller';
@@ -54,6 +60,7 @@ function buildApp() {
   });
   app.get('/tenants/:tenantId/owner-statements', listOwnerStatementsHandler);
   app.post('/tenants/:tenantId/owner-statements', createOwnerStatementHandler);
+  app.get('/tenants/:tenantId/owner-statements/eligible-properties', listOwnerStatementEligiblePropertiesHandler);
   app.get('/tenants/:tenantId/owner-statements/:statementId', getOwnerStatementHandler);
   app.patch('/tenants/:tenantId/owner-statements/:statementId', updateOwnerStatementHandler);
   app.post('/tenants/:tenantId/owner-statements/:statementId/recompute', recomputeOwnerStatementHandler);
@@ -84,6 +91,31 @@ describe('GET /owner-statements — liste', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true, data: [baseStatement()] });
+  });
+});
+
+describe('GET /owner-statements/eligible-properties — choix du propriétaire', () => {
+  const ownerContactId = '11111111-1111-4111-8111-111111111111';
+
+  it('transmet tenant et propriétaire et ne renvoie que les champs du sélecteur', async () => {
+    const rows = [{ id: 'prop-1', title: 'Appartement', internalReference: 'A-1', address: 'Rue 1' }];
+    listOwnerStatementEligibleProperties.mockResolvedValue(rows);
+
+    const res = await request(buildApp()).get(
+      `/tenants/${TENANT}/owner-statements/eligible-properties?ownerContactId=${ownerContactId}`
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true, data: rows });
+    expect(listOwnerStatementEligibleProperties).toHaveBeenCalledWith(TENANT, ownerContactId);
+  });
+
+  it('rejette un identifiant manquant ou malformé avant toute lecture', async () => {
+    for (const query of ['', '?ownerContactId=autre']) {
+      const res = await request(buildApp()).get(`/tenants/${TENANT}/owner-statements/eligible-properties${query}`);
+      expect(res.status).toBe(400);
+    }
+    expect(listOwnerStatementEligibleProperties).not.toHaveBeenCalled();
   });
 });
 
@@ -228,6 +260,17 @@ describe('PATCH /owner-statements/:id — mise à jour', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true, data: baseStatement({ status: 'PAID' }) });
+  });
+
+  it('400 : `paidAt` n’est plus modifiable (seul le reversement le pose), le service n’est pas appelé', async () => {
+    updateOwnerStatement.mockClear();
+
+    const res = await request(buildApp())
+      .patch(`/tenants/${TENANT}/owner-statements/${STATEMENT_ID}`)
+      .send({ status: 'SENT', paidAt: '2026-10-01' });
+
+    expect(res.status).toBe(400);
+    expect(updateOwnerStatement).not.toHaveBeenCalled();
   });
 });
 

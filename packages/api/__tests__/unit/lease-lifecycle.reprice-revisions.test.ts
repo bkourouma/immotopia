@@ -88,7 +88,7 @@ jest.mock('../../src/utils/database', () => ({
   prisma: new Proxy({}, { get: (_t, prop) => (mockPrisma as any)[prop] })
 }));
 
-import { reviseRent } from '../../src/lib/lease-lifecycle/service';
+import { reviseRent, repriceUnstartedInstallmentsTx } from '../../src/lib/lease-lifecycle/service';
 
 const installment = (month: number): Row => ({
   id: `inst-${month}`,
@@ -124,5 +124,42 @@ describe('reviseRent — révisions planifiées qui se chevauchent', () => {
 
     const byMonth = Object.fromEntries(store.installments.map(i => [i.period_month, i.amount_rent]));
     expect(byMonth).toEqual({ 10: 100000, 11: 115000, 12: 115000 });
+  });
+});
+
+describe('repriceUnstartedInstallmentsTx — nombre d’échéances réellement recalculées', () => {
+  const now = new Date(Date.UTC(2026, 8, 15));
+
+  it('une révision couvre déjà les trois mois : modifier le loyer de base ne recalcule rien', async () => {
+    await reviseRent('tenant-A', 'lease-1', { effectiveMonth: '2026-10', newRent: 120000 });
+    mockPrisma.rentalInstallment.update.mockClear();
+
+    const count = await repriceUnstartedInstallmentsTx(mockPrisma as any, {
+      tenantId: 'tenant-A',
+      leaseId: 'lease-1',
+      rent: 90000,
+      charges: 0,
+      now
+    });
+
+    expect(count).toBe(0);
+    expect(mockPrisma.rentalInstallment.update).not.toHaveBeenCalled();
+    expect(store.installments.map(i => i.amount_rent)).toEqual([120000, 120000, 120000]);
+  });
+
+  it('seules les échéances dont le montant change sont comptées', async () => {
+    // Sans révision, le loyer de base s'applique ; novembre y est déjà.
+    store.installments[1].amount_rent = 130000;
+
+    const count = await repriceUnstartedInstallmentsTx(mockPrisma as any, {
+      tenantId: 'tenant-A',
+      leaseId: 'lease-1',
+      rent: 130000,
+      charges: 0,
+      now
+    });
+
+    expect(count).toBe(2); // octobre et décembre ; novembre était déjà à 130 000
+    expect(store.installments.map(i => i.amount_rent)).toEqual([130000, 130000, 130000]);
   });
 });

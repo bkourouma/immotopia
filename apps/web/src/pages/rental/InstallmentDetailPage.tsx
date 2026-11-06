@@ -5,6 +5,8 @@ import { ArrowLeftOutlined, DollarOutlined, CalendarOutlined } from '@ant-design
 import { getInstallment, RentalInstallment, RentalInstallmentStatus } from '../../services/rental-service';
 import { InstallmentPaymentLinksPanel } from '../../components/rental/InstallmentPaymentLinksPanel';
 import { t } from '../../i18n/t';
+import { formatMoney } from '../../components/primitives/MoneyValue';
+import { deviseAffichee, libellePeriodeEcheance } from '../../lib/rental-labels';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -57,12 +59,8 @@ export const InstallmentDetailPage: React.FC = () => {
     return new Date(dateString).toLocaleDateString(activeLocale());
   };
 
-  const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency
-    }).format(amount);
-  };
+  // Utilitaire commun : le franc CFA s'écrit « FCFA », jamais « F CFA » ni « XOF » (H31).
+  const formatCurrency = (amount: number, currency: string = 'FCFA') => formatMoney(amount, { currency });
 
   const calculateTotalDue = (inst: RentalInstallment) => {
     return (
@@ -110,7 +108,7 @@ export const InstallmentDetailPage: React.FC = () => {
             </Button>
             <div>
               <Title level={3} style={{ margin: 0 }}>
-                {t('Échéance')} {installment.period_month}/{installment.period_year}
+                {t('Échéance')} {libellePeriodeEcheance(installment.period_month, installment.period_year)}
               </Title>
               <Text type="secondary">{t("Détails de l'échéance")}</Text>
             </div>
@@ -167,14 +165,15 @@ export const InstallmentDetailPage: React.FC = () => {
             >
               <Descriptions column={1} bordered size="small">
                 <Descriptions.Item label={t('Période')}>
-                  {installment.period_month}/{installment.period_year}
+                  {libellePeriodeEcheance(installment.period_month, installment.period_year)}
                 </Descriptions.Item>
                 <Descriptions.Item label={t("Date d'échéance")}>{formatDate(installment.due_date)}</Descriptions.Item>
                 <Descriptions.Item label={t('Statut')}>{getStatusTag(installment.status)}</Descriptions.Item>
                 {installment.paid_at && (
                   <Descriptions.Item label={t('Date de paiement')}>{formatDate(installment.paid_at)}</Descriptions.Item>
                 )}
-                <Descriptions.Item label={t('Devise')}>{installment.currency}</Descriptions.Item>
+                {/* Le code enregistré (« XOF », « CFA ») ne s'affiche jamais tel quel : « FCFA ». */}
+                <Descriptions.Item label={t('Devise')}>{deviseAffichee(installment.currency)}</Descriptions.Item>
                 <Descriptions.Item label={t('Date de création')}>
                   {formatDate(installment.created_at)}
                 </Descriptions.Item>
@@ -192,7 +191,7 @@ export const InstallmentDetailPage: React.FC = () => {
             installmentId={installmentId}
             remaining={remaining}
             status={installment.status}
-            periodLabel={`${installment.period_month}/${installment.period_year}`}
+            periodLabel={libellePeriodeEcheance(installment.period_month, installment.period_year)}
           />
         )}
       </Space>

@@ -27,6 +27,7 @@ import {
   PageHeader,
   StateBlock,
   StatusTag,
+  statusLabel,
   MoneyValue,
   DataView,
   DataCard,
@@ -98,6 +99,15 @@ function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
 }
 
+/**
+ * Date du règlement : le jour où le locataire a payé, pas celui où la ligne a
+ * été saisie. `succeeded_at` la porte pour un paiement encaissé ; un paiement
+ * encore en attente n'a que sa date de saisie.
+ */
+function dateDuReglement(paiement: RentalPayment): string {
+  return dateCourte(paiement.succeeded_at ?? paiement.initiated_at);
+}
+
 export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   const { message } = App.useApp();
   const { tenantId, leaseId: paramLeaseId } = useParams<{ tenantId: string; leaseId?: string }>();
@@ -125,7 +135,13 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
 
   // Sous-onglet Paiements / Déclarations dans l'URL : `onglet` (page), `pai.onglet` (onglet d'un bail).
   const ongletKey = leaseId ? 'pai.onglet' : 'onglet';
-  const onglet = searchParams.get(ongletKey) || 'paiements';
+  // Avant les onglets préfixés, un lien de bail portait `tab=payments&onglet=declarations`.
+  // Le repli n'est valable que pour ces deux valeurs historiques : `onglet=payments`
+  // désigne maintenant l'onglet principal du bail, pas celui de cette liste.
+  const ancienSousOnglet = leaseId && searchParams.get('tab') === 'payments' ? searchParams.get('onglet') : null;
+  const onglet =
+    searchParams.get(ongletKey) ||
+    (ancienSousOnglet === 'declarations' || ancienSousOnglet === 'paiements' ? ancienSousOnglet : 'paiements');
 
   const {
     data,
@@ -199,7 +215,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
               nomDeLaPersonne(p.renterClient?.user ?? p.lease?.primaryRenter?.user)
           }
         ]),
-    { title: t('Date'), key: 'date', render: (_, p) => dateCourte(p.initiated_at) },
+    { title: t('Date'), key: 'date', render: (_, p) => dateDuReglement(p) },
     {
       title: t('Montant'),
       key: 'montant',
@@ -224,10 +240,21 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       }
     },
     { title: t('Méthode'), key: 'methode', render: (_, p) => METHOD_LABELS[p.method] || p.method },
-    { title: t('Statut'), key: 'statut', render: (_, p) => <StatusTag status={p.status} /> },
+    {
+      title: t('Statut'),
+      key: 'statut',
+      // Le libellé traduit du statut, rien d'autre (BUG-2026-11-04-061).
+      exportValue: p => statusLabel(p.status) ?? p.status,
+      render: (_, p) => <StatusTag status={p.status} />
+    },
     {
       title: t('En ligne'),
       key: 'en-ligne',
+      // Sans cette valeur, l'export lisait le texte rendu de la cellule : les
+      // deux badges mis bout à bout, « En ligneRéussi » (BUG-2026-11-04-061).
+      // La colonne dit seulement si le paiement est passé par le paiement en
+      // ligne ; son statut est celui de la colonne « Statut ».
+      exportValue: p => (p.onlineCheckout ? t('Oui') : t('Non')),
       render: (_, p) =>
         p.onlineCheckout ? (
           <OnlineCheckoutStatus
@@ -300,8 +327,8 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
           return (
             <DataCard
               title={<MoneyValue value={p.amount} currency={deviseAffichee(p.currency)} />}
-              aria-label={t('Paiement du {{value}}', { value: dateCourte(p.initiated_at) })}
-              subtitle={`${dateCourte(p.initiated_at)} · ${METHOD_LABELS[p.method as RentalPaymentMethod] || p.method}`}
+              aria-label={t('Paiement du {{value}}', { value: dateDuReglement(p) })}
+              subtitle={`${dateDuReglement(p)} · ${METHOD_LABELS[p.method as RentalPaymentMethod] || p.method}`}
               status={<StatusTag status={p.status} />}
               fields={[
                 ...(reste > 0
@@ -360,7 +387,9 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
     <>
       <PageHeader
         title={t('Paiements')}
-        subtitle={total > 0 ? `${total} paiement${total > 1 ? 's' : ''}` : undefined}
+        subtitle={
+          total > 0 ? (total > 1 ? t('{{n}} paiements', { n: total }) : t('{{n}} paiement', { n: total })) : undefined
+        }
         primaryAction={
           peutEncaisser
             ? {
@@ -381,6 +410,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
           setSearchParams(
             previous => {
               const next = new URLSearchParams(previous);
+              if (ancienSousOnglet === 'declarations' || ancienSousOnglet === 'paiements') next.delete('onglet');
               if (cle === 'paiements') next.delete(ongletKey);
               else next.set(ongletKey, cle);
               return next;

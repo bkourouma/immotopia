@@ -546,11 +546,14 @@ describe('Relevé — export de tout le relevé (lireToutLeReleve)', () => {
 
     expect(lignes).toHaveLength(450);
     expect(getAccountStatement).toHaveBeenCalledTimes(3);
-    expect(getAccountStatement.mock.calls.map(call => call[2])).toEqual([
+    const filtres = getAccountStatement.mock.calls.map(call => call[2]);
+    expect(filtres.map(({ asOf, ...autres }) => autres)).toEqual([
       { from: '2026-01-01', to: '2026-03-31', skip: 0, take: 200 },
       { from: '2026-01-01', to: '2026-03-31', skip: 200, take: 200 },
       { from: '2026-01-01', to: '2026-03-31', skip: 400, take: 200 }
     ]);
+    expect(filtres[0].asOf).toBeTruthy();
+    expect(new Set(filtres.map(filtre => filtre.asOf)).size).toBe(1);
   });
 
   it('une tranche vide reçue avant le total arrête la boucle', async () => {
@@ -604,6 +607,7 @@ describe('Relevé — recherche sur le libellé', () => {
       from: '2026-01-01',
       to: undefined,
       search: 'loyer',
+      asOf: expect.any(String),
       skip: 0,
       take: 200
     });

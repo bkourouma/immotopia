@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../../utils/database';
+import { t } from '../../i18n';
 import { badRequest, conflict, notFound } from '../errors';
 import { postDocumentEntryTx } from '../finance/accounting';
 import { appendThirdPartyMovementTx } from '../finance/ledger';
@@ -8,6 +9,7 @@ import { materializeManagementFees } from '../rental-fees/materialize';
 import { getAgencyFinanceSettings } from '../settings/finance-settings';
 import { assertTreasuryAccountUsableTx, resolveTreasuryAccountTx } from '../treasury/accounts';
 import { ensureRentalAccountsTx, journalResolver } from './accounts';
+import { auPlusDeuxDecimales } from '../../utils/montant';
 import {
   getOrCreateOwnerAccountTx,
   listAgencyOwners,
@@ -83,6 +85,38 @@ function toPayoutDto(
   };
 }
 
+/**
+ * Variante portail d'un reversement : seulement ce que le propriétaire lit.
+ * Ni notes internes, ni compte de trésorerie, ni motif d'annulation, ni nom de
+ * l'agent qui l'a saisi (la vue agence garde `toPayoutDto`).
+ */
+function toPortalPayoutDto(payout: {
+  id: string;
+  year: number;
+  sequence: number;
+  amount: Decimalish;
+  paidAt: Date;
+  method: string;
+  reference: string | null;
+  statementId: string | null;
+  status: string;
+  voidedAt: Date | null;
+  createdAt: Date;
+}) {
+  return {
+    id: payout.id,
+    number: payoutNumber(payout.year, payout.sequence),
+    amount: amount(payout.amount),
+    paidAt: payout.paidAt.toISOString(),
+    method: payout.method,
+    reference: payout.reference,
+    statementId: payout.statementId,
+    status: payout.status,
+    voidedAt: payout.voidedAt ? payout.voidedAt.toISOString() : null,
+    createdAt: payout.createdAt.toISOString()
+  };
+}
+
 /** Pour les totaux, une contre-passation compte au débit de sa nature d'origine. */
 const TOTAL_BY_SOURCE: Record<string, 'rentCollected' | 'fees' | 'vat' | 'expenses' | 'payouts'> = {
   [OWNER_SOURCE.RENT]: 'rentCollected',
@@ -92,7 +126,18 @@ const TOTAL_BY_SOURCE: Record<string, 'rentCollected' | 'fees' | 'vat' | 'expens
   [OWNER_SOURCE.PAYOUT]: 'payouts'
 };
 
-async function buildAccountDetail(tenantId: string, ownerClientId: string) {
+/**
+ * Mouvements qui ne sont pas l'un des cinq indicateurs d'origine
+ * (BUG-2026-11-04-003) : la retenue à la source (débit) et le dépôt de garantie
+ * conservé (crédit) pèsent sur le solde. Sans eux, les indicateurs n'expliquent
+ * pas le solde affiché.
+ */
+const EXTRA_TOTAL_BY_SOURCE: Record<string, 'withholdingTax' | 'depositRetained'> = {
+  [OWNER_SOURCE.WITHHOLDING]: 'withholdingTax',
+  [OWNER_SOURCE.DEPOSIT_RETAINED]: 'depositRetained'
+};
+
+async function buildAccountDetail(tenantId: string, ownerClientId: string, options: { portal?: boolean } = {}) {
   const owner = await prisma.tenantClient.findFirst({
     where: { id: ownerClientId, tenantId },
     select: { id: true, user: { select: { fullName: true, email: true } } }
@@ -129,6 +174,10 @@ async function buildAccountDetail(tenantId: string, ownerClientId: string) {
   // mouvement suit l'ordre d'inscription, qui peut différer (un loyer d'août
   // inscrit en septembre). Le total, lui, est le même.
   const totals = { rentCollected: 0, fees: 0, vat: 0, expenses: 0, payouts: 0 };
+  // `withholdingTax` : retenue à la source, comptée à son débit (diminue le
+  // solde). `depositRetained` : dépôt conservé, compté à son crédit.
+  const extraTotals = { withholdingTax: 0, depositRetained: 0 };
+  let otherMovements = 0;
   let running = 0;
   const rows = movements.map(m => {
     const debit = amount(m.debit);
@@ -139,6 +188,11 @@ async function buildAccountDetail(tenantId: string, ownerClientId: string) {
       // Un loyer se compte à son crédit ; tout le reste à son débit. Une
       // contre-passation, de sens inverse, vient en diminution.
       totals[bucket] += bucket === 'rentCollected' ? credit - debit : debit - credit;
+    } else {
+      const extra = EXTRA_TOTAL_BY_SOURCE[m.sourceType];
+      if (extra === 'withholdingTax') extraTotals.withholdingTax += debit - credit;
+      else if (extra === 'depositRetained') extraTotals.depositRetained += credit - debit;
+      else otherMovements += credit - debit; // toute autre écriture : le solde reste explicable
     }
     const lease = m.leaseId ? leaseById.get(m.leaseId) : undefined;
     return {
@@ -165,16 +219,21 @@ async function buildAccountDetail(tenantId: string, ownerClientId: string) {
       fees: roundMoney(totals.fees),
       vat: roundMoney(totals.vat),
       expenses: roundMoney(totals.expenses),
-      payouts: roundMoney(totals.payouts)
+      payouts: roundMoney(totals.payouts),
+      // Solde = loyers - honoraires - TVA - dépenses - reversements
+      //         - retenue à la source + dépôt conservé + autres mouvements.
+      withholdingTax: roundMoney(extraTotals.withholdingTax),
+      depositRetained: roundMoney(extraTotals.depositRetained),
+      otherMovements: roundMoney(otherMovements)
     },
     movements: rows,
-    payouts: payouts.map(p => toPayoutDto(p, names))
+    payouts: payouts.map(p => (options.portal ? toPortalPayoutDto(p) : toPayoutDto(p, names)))
   };
 }
 
-export async function getOwnerAccount(tenantId: string, ownerClientId: string) {
+export async function getOwnerAccount(tenantId: string, ownerClientId: string, options: { portal?: boolean } = {}) {
   await syncOwnerAccount(tenantId, ownerClientId);
-  return buildAccountDetail(tenantId, ownerClientId);
+  return buildAccountDetail(tenantId, ownerClientId, options);
 }
 
 /**
@@ -232,8 +291,22 @@ export async function listOwnerAccounts(tenantId: string) {
   });
 }
 
-const payoutSchema = z.object({
-  amount: z.coerce.number().positive(),
+/** Plus grand montant d'un reversement accepté. */
+const PAYOUT_MAX = 9_999_999_999.99;
+
+/** Au plus deux décimales : la colonne est `Decimal(14,2)`, un 1000,555 serait arrondi en silence. */
+const hasAtMostTwoDecimals = auPlusDeuxDecimales;
+
+export const payoutSchema = z.object({
+  // Messages posés à la validation (pas au chargement du module) : `t()` suit la langue de la requête.
+  amount: z.coerce.number().superRefine((value, ctx) => {
+    if (!(value > 0)) ctx.addIssue({ code: 'custom', message: t('Le montant doit être supérieur à 0') });
+    else if (value > PAYOUT_MAX) {
+      ctx.addIssue({ code: 'custom', message: t('Le montant dépasse le maximum autorisé (9 999 999 999,99).') });
+    } else if (!hasAtMostTwoDecimals(value)) {
+      ctx.addIssue({ code: 'custom', message: t('Le montant ne peut avoir plus de 2 décimales.') });
+    }
+  }),
   paidAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ'),
   method: z.enum(['CASH', 'BANK_TRANSFER', 'CHECK', 'MOBILE_MONEY', 'OTHER']),
   // Lot 10 : le compte de trésorerie réellement débité ; vide, celui par défaut du moyen.
@@ -285,6 +358,15 @@ async function lockThirdPartyAccountTx(tx: any, tenantId: string, accountId: str
   if (!Array.isArray(locked) || locked.length === 0) throw notFound('Compte propriétaire introuvable');
 }
 
+/** Somme des reversements NON annulés rattachés à un relevé. */
+async function statementCoveredTx(tx: any, tenantId: string, statementId: string) {
+  const rows: Array<{ amount: Decimalish }> = await tx.ownerPayout.findMany({
+    where: { tenantId, statementId, status: { not: 'VOIDED' } },
+    select: { amount: true }
+  });
+  return roundMoney(rows.reduce((sum, row) => sum + amount(row.amount), 0));
+}
+
 export async function createOwnerPayout(
   tenantId: string,
   ownerClientId: string,
@@ -300,11 +382,18 @@ export async function createOwnerPayout(
   const settings = await getAgencyFinanceSettings(tenantId);
 
   if (input.statementId) {
-    const statement = await prisma.ownerStatement.findFirst({
-      where: { id: input.statementId, tenantId },
-      select: { id: true }
-    });
-    if (!statement) throw notFound('Releve introuvable');
+    const [statement, ownerClient] = await Promise.all([
+      prisma.ownerStatement.findFirst({
+        where: { id: input.statementId, tenantId },
+        select: { id: true, ownerContactId: true }
+      }),
+      prisma.tenantClient.findFirst({ where: { id: ownerClientId, tenantId }, select: { id: true, details: true } })
+    ]);
+    // Le relevé doit être celui du propriétaire du compte : même erreur qu'un relevé inexistant.
+    const ownerContactId = (ownerClient?.details as { crmContactId?: unknown } | null)?.crmContactId;
+    if (!statement || !ownerContactId || statement.ownerContactId !== ownerContactId) {
+      throw notFound('Releve introuvable');
+    }
   }
 
   const payout = await prisma.$transaction(async tx => {
@@ -380,8 +469,22 @@ export async function createOwnerPayout(
       ]
     });
 
+    // Le relevé n'est « Payé » que lorsque les reversements non annulés qui lui sont
+    // rattachés couvrent son net dû au propriétaire (un reversement partiel le laisse tel quel).
     if (input.statementId) {
-      await tx.ownerStatement.update({ where: { id: input.statementId, tenantId }, data: { status: 'PAID', paidAt } });
+      const statement = await tx.ownerStatement.findFirst({
+        where: { id: input.statementId, tenantId },
+        select: { netAmount: true, status: true }
+      });
+      if (statement && statement.status !== 'PAID') {
+        const covered = await statementCoveredTx(tx, tenantId, input.statementId);
+        if (covered >= roundMoney(amount(statement.netAmount))) {
+          await tx.ownerStatement.update({
+            where: { id: input.statementId, tenantId },
+            data: { status: 'PAID', paidAt }
+          });
+        }
+      }
     }
     return created;
   });
@@ -390,7 +493,17 @@ export async function createOwnerPayout(
   return toPayoutDto(payout, names);
 }
 
-const voidSchema = z.object({ reason: z.string().trim().min(3, 'Le motif est requis') });
+export const voidSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .superRefine((value, ctx) => {
+      if (value.length === 0) ctx.addIssue({ code: 'custom', message: t('Le motif est requis') });
+      else if (value.length < 3) {
+        ctx.addIssue({ code: 'custom', message: t('Le motif doit contenir au moins 3 caractères') });
+      }
+    })
+});
 
 export async function voidOwnerPayout(
   tenantId: string,
@@ -444,11 +557,21 @@ export async function voidOwnerPayout(
     });
 
     // Le relevé que ce reversement réglait redevient dû.
+    // Il ne l'est que si les reversements restants ne couvrent plus son net.
     if (existing.statementId) {
-      await tx.ownerStatement.updateMany({
-        where: { id: existing.statementId, tenantId, status: 'PAID' },
-        data: { status: 'SENT', paidAt: null }
+      const statement = await tx.ownerStatement.findFirst({
+        where: { id: existing.statementId, tenantId },
+        select: { netAmount: true, status: true }
       });
+      if (statement?.status === 'PAID') {
+        const covered = await statementCoveredTx(tx, tenantId, existing.statementId);
+        if (covered < roundMoney(amount(statement.netAmount))) {
+          await tx.ownerStatement.updateMany({
+            where: { id: existing.statementId, tenantId, status: 'PAID' },
+            data: { status: 'SENT', paidAt: null }
+          });
+        }
+      }
     }
     return updated;
   });

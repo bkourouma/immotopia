@@ -125,6 +125,11 @@ const cases: Array<{ name: string; method: Method; url: (t: string) => string }>
   { name: 'factures prestataires', method: 'get', url: t => `${base(t)}/syndics/${S}/factures-prestataires` },
   { name: 'relevés de gérance (liste)', method: 'get', url: t => `${base(t)}/owner-statements` },
   { name: 'relevés de gérance (création)', method: 'post', url: t => `${base(t)}/owner-statements` },
+  {
+    name: 'biens éligibles au relevé de gérance',
+    method: 'get',
+    url: t => `${base(t)}/owner-statements/eligible-properties?ownerContactId=11111111-1111-4111-8111-111111111111`
+  },
   { name: 'relevé de gérance (envoi)', method: 'post', url: t => `${base(t)}/owner-statements/${S}/send` },
   { name: 'agences mandantes (liste)', method: 'get', url: t => `${base(t)}/syndic-mandating-agencies` },
   { name: 'agences mandantes (création)', method: 'post', url: t => `${base(t)}/syndic-mandating-agencies` },
@@ -179,7 +184,7 @@ describe('droits du module Syndic et des relevés de gérance', () => {
       .set('x-role', 'agent')
       .send({ name: 'Copro Agent Test', address: 'x' });
     expect(res.status).toBe(403);
-    expect(res.body.message).toContain('SYNDIC_CREATE');
+    expect(res.body.message).toBe("Vous n'avez pas les droits nécessaires pour effectuer cette action.");
   });
 });
 

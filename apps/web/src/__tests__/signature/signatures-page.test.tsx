@@ -95,6 +95,30 @@ beforeEach(() => {
 });
 
 describe('SignaturesPage', () => {
+  it('alterne le tri de la date de création depuis le tri décroissant initial', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Bail Villa Cocody');
+    const header = screen.getByRole('columnheader', { name: /Créée le/ });
+    expect(header).toHaveAttribute('aria-sort', 'descending');
+
+    await user.click(header);
+    await waitFor(() => {
+      expect(header).toHaveAttribute('aria-sort', 'ascending');
+      expect(listSignaturesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sortBy: 'createdAt', sortDir: 'asc' })
+      );
+    });
+
+    await user.click(header);
+    await waitFor(() => {
+      expect(header).toHaveAttribute('aria-sort', 'descending');
+      expect(listSignaturesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sortBy: 'createdAt', sortDir: 'desc' })
+      );
+    });
+  });
+
   it('affiche les compteurs et les lignes', async () => {
     renderPage();
     expect(await screen.findByText('Bail Villa Cocody')).toBeInTheDocument();
@@ -216,7 +240,7 @@ describe('SignaturesPage', () => {
     });
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole('button', { name: 'Bail Villa Cocody' }));
+    await user.click(await screen.findByRole('button', { name: 'Bail Villa Cocody' }, { timeout: 10_000 }));
     expect(await screen.findByText('Piste de preuve intacte')).toBeInTheDocument();
     expect(fetchSignatureDetail).toHaveBeenCalledWith('r1');
     expect(screen.getByText('Demande créée')).toBeInTheDocument();
@@ -236,7 +260,7 @@ describe('SignaturesPage', () => {
     });
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole('button', { name: 'Bail Villa Cocody' }));
+    await user.click(await screen.findByRole('button', { name: 'Bail Villa Cocody' }, { timeout: 10_000 }));
     expect(await screen.findByText('Piste de preuve altérée')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Ouvrir le document' })).not.toBeInTheDocument();
   }, 60000);

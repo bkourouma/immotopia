@@ -42,10 +42,14 @@ import { redirectToExternalUrl } from '../../utils/external-redirect';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
+import { formatMontantLocatif } from '../../lib/rental-labels';
 const { Title, Text } = Typography;
 
 interface InstallmentItem {
   id: string;
+  /** Bail de l'échéance : plusieurs baux actifs possibles (BUG-2026-11-04-049). */
+  leaseId?: string;
+  leaseNumber?: string | null;
   period: string;
   dueDate: string;
   amount: number;
@@ -367,7 +371,35 @@ export default function TenantPayments() {
   });
   const selection = useSelectionEcheances(echSearch.filterParams, data?.installments);
   const selectedInstallmentIds = selection.ids;
+  // La sélection survit à la pagination : retenir le bail des lignes déjà visitées
+  // pour empêcher un paiement groupé sur des baux différents.
+  const [leaseByInstallmentId, setLeaseByInstallmentId] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setLeaseByInstallmentId(previous => {
+      let changed = false;
+      const next = { ...previous };
+      for (const installment of data?.installments ?? []) {
+        if (installment.leaseId && next[installment.id] !== installment.leaseId) {
+          next[installment.id] = installment.leaseId;
+          changed = true;
+        }
+      }
+      return changed ? next : previous;
+    });
+  }, [data?.installments]);
   const [payingOnline, setPayingOnline] = useState(false);
+
+  // Plusieurs baux actifs : le numéro de bail est affiché sur chaque échéance.
+  const { data: leases } = useQuery({
+    queryKey: ['tenant-portal-leases'],
+    queryFn: async () => {
+      const response = await tenantPortalService.getLeases();
+      return (response.data?.data ?? []) as Array<{ id: string; leaseNumber: string }>;
+    },
+    staleTime: 60_000,
+    retry: false
+  });
+  const hasSeveralLeases = (leases?.length ?? 0) > 1;
 
   // Payment history state
   const [paymentHistoryLoading, setPaymentHistoryLoading] = useState(false);
@@ -406,17 +438,18 @@ export default function TenantPayments() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: 'XOF',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number) => formatMontantLocatif(amount);
 
   const formatDate = (dateString: string) => {
     return dayjs(dateString).format('DD/MM/YYYY');
   };
+
+  /**
+   * Seules les échéances exigibles se paient : ni brouillon (pas encore
+   * facturée), ni annulée, ni soldée.
+   */
+  const isPayable = (record: InstallmentItem) =>
+    ['DUE', 'OVERDUE', 'PARTIAL'].includes(record.status) && record.balance > 0;
 
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
@@ -550,7 +583,7 @@ export default function TenantPayments() {
       DIRECT_DEBIT: t('Prélèvement bancaire'),
       CHECK: t('Chèque'),
       CARD: t('Carte bancaire'),
-      OTHER: 'Autre'
+      OTHER: t('Autre')
     };
     return labels[method] || method;
   };
@@ -563,6 +596,17 @@ export default function TenantPayments() {
       width: 110,
       render: (period: string) => <Text strong>{period}</Text>
     },
+    ...(hasSeveralLeases
+      ? [
+          {
+            title: t('Bail'),
+            dataIndex: 'leaseNumber',
+            key: 'leaseNumber',
+            width: 140,
+            render: (leaseNumber: string | null | undefined) => <Text>{leaseNumber ?? '-'}</Text>
+          }
+        ]
+      : []),
     {
       title: t("Date d'échéance"),
       dataIndex: 'dueDate',
@@ -609,7 +653,7 @@ export default function TenantPayments() {
       width: 190,
       render: (_: any, record: InstallmentItem) => (
         <Space>
-          {record.balance > 0 && (
+          {isPayable(record) && (
             <Button
               type="primary"
               size="small"
@@ -630,6 +674,9 @@ export default function TenantPayments() {
     }
   ];
 
+  const selectedLeaseId = selectedInstallmentIds
+    .map(id => leaseByInstallmentId[id] ?? data?.installments.find(item => item.id === id)?.leaseId)
+    .find((id): id is string => Boolean(id));
   const totalSelectionOnline = selection.total;
 
   if (ongletActif === 'echeances' && loading && !data) {
@@ -818,10 +865,28 @@ export default function TenantPayments() {
                         availability?.available
                           ? {
                               selectedRowKeys: selectedInstallmentIds,
-                              onChange: keys => selection.surChangement(keys, data.installments),
+                              onChange: keys => {
+                                // Le clic « Tout sélectionner » peut cocher plusieurs baux
+                                // d'un coup, avant que getCheckboxProps ne soit recalculé.
+                                // Filtrer les clés AVANT de les enregistrer, y compris
+                                // celles sélectionnées sur une autre page.
+                                const ids = new Set(keys.map(String));
+                                const premier = data.installments.find(item => ids.has(item.id) && isPayable(item));
+                                const bailCible = selectedLeaseId ?? premier?.leaseId;
+                                const compatibles = keys.filter(key => {
+                                  const id = String(key);
+                                  const ligne = data.installments.find(item => item.id === id);
+                                  const bail = ligne?.leaseId ?? leaseByInstallmentId[id];
+                                  return bail === bailCible;
+                                });
+                                selection.surChangement(compatibles, data.installments);
+                              },
                               getCheckboxProps: (record: InstallmentItem) => ({
+                                // Un paiement en ligne porte sur un seul bail : une fois une
+                                // échéance choisie, celles d'un autre bail sont grisées.
                                 disabled:
-                                  record.balance <= 0 ||
+                                  !isPayable(record) ||
+                                  (selectedLeaseId !== undefined && record.leaseId !== selectedLeaseId) ||
                                   (selection.limiteAtteinte && !selectedInstallmentIds.includes(record.id)),
                                 'aria-label': t('Sélectionner {{period}}', { period: record.period })
                               })
@@ -932,7 +997,11 @@ export default function TenantPayments() {
                                     ? t('En attente')
                                     : declStatus === 'REJECTED'
                                       ? t('Rejetée')
-                                      : status;
+                                      : declStatus === 'FAILED'
+                                        ? t('Échoué')
+                                        : declStatus === 'CANCELED'
+                                          ? t('Annulé')
+                                          : status;
                               const color =
                                 declStatus === 'SUCCESS' || declStatus === 'APPROVED'
                                   ? 'success'
@@ -941,7 +1010,16 @@ export default function TenantPayments() {
                                     : declStatus === 'REJECTED'
                                       ? 'error'
                                       : 'default';
-                              return <Tag color={color}>{label}</Tag>;
+                              return (
+                                <Space direction="vertical" size={2}>
+                                  <Tag color={color}>{label}</Tag>
+                                  {declStatus === 'REJECTED' && record.rejectionReason ? (
+                                    <Text type="secondary" style={{ fontSize: 12 }}>
+                                      {t('Motif : {{reason}}', { reason: record.rejectionReason })}
+                                    </Text>
+                                  ) : null}
+                                </Space>
+                              );
                             }
                           },
                           {
@@ -1065,7 +1143,13 @@ export default function TenantPayments() {
         open={declarationModalVisible}
         installmentId={declarationFor?.id}
         defaultAmount={declarationFor?.balance}
-        installmentLabel={declarationFor?.period}
+        installmentLabel={
+          declarationFor
+            ? hasSeveralLeases && declarationFor.leaseNumber
+              ? `${declarationFor.period} (${declarationFor.leaseNumber})`
+              : declarationFor.period
+            : undefined
+        }
         onCancel={() => {
           setDeclarationModalVisible(false);
           setDeclarationFor(null);

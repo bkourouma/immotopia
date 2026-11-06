@@ -13,6 +13,7 @@ import {
   totalWithholdingTax
 } from '../../../components/patrimoine/owner-statement-helpers';
 import { t } from '../../../i18n/t';
+import { statementApiErrorMessage } from './statement-errors';
 
 import { activeLocale } from '../../../i18n/format';
 const { Title } = Typography;
@@ -63,7 +64,7 @@ export const OwnerStatementDetailPage: React.FC = () => {
         const data = await getOwnerStatementById(effectiveTenantId, id);
         setStatement(data);
       } catch (e: any) {
-        setError(e?.response?.data?.error || t('Erreur de chargement du détail du relevé'));
+        setError(statementApiErrorMessage(e, t('Erreur de chargement du détail du relevé')));
       } finally {
         setLoading(false);
       }
@@ -79,7 +80,7 @@ export const OwnerStatementDetailPage: React.FC = () => {
       setStatement(data);
       message.success(t('Relevé recalculé. Vérifiez-le avant de le renvoyer au propriétaire.'));
     } catch (e: any) {
-      message.error(e?.response?.data?.error || e?.response?.data?.message || t('Échec du recalcul du relevé'));
+      message.error(statementApiErrorMessage(e, t('Échec du recalcul du relevé')));
     } finally {
       setRecomputing(false);
     }

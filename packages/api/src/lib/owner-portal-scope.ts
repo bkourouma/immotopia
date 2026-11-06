@@ -1,5 +1,6 @@
 import { Prisma, PropertyOwnershipType } from '@prisma/client';
 import { prisma } from '../utils/database';
+import { propertyTenantWhere } from '../utils/property-tenant-guard';
 
 /**
  * Périmètre du portail propriétaire : UNE seule fonction décide quels biens
@@ -34,9 +35,12 @@ export async function resolveOwnerPortalPropertyIds(params: {
   tenantClientId: string;
   tenantId: string;
   now?: Date;
+  /** Lookup d'agence : borne les biens à property.tenantId, sans changer le portail. */
+  restrictToTenantProperties?: boolean;
 }): Promise<string[]> {
   const { userId, tenantClientId, tenantId } = params;
   const now = params.now ?? new Date();
+  const propertyScope = params.restrictToTenantProperties ? propertyTenantWhere(tenantId) : {};
 
   // Mandats de gestion ACTIFS de cette agence pour ce propriétaire.
   const mandates = await prisma.propertyMandate.findMany({
@@ -53,6 +57,7 @@ export async function resolveOwnerPortalPropertyIds(params: {
     mandatedIds.size
       ? prisma.property.findMany({
           where: {
+            ...propertyScope,
             id: { in: Array.from(mandatedIds) },
             ownerUserId: userId,
             ownershipType: PropertyOwnershipType.CLIENT
@@ -71,12 +76,22 @@ export async function resolveOwnerPortalPropertyIds(params: {
   const leasedIds = leased.map(l => l.property_id);
   let leasedAllowed = leasedIds;
   if (leasedIds.length > 0) {
-    const clientProps = await prisma.property.findMany({
-      where: { id: { in: leasedIds }, ownershipType: PropertyOwnershipType.CLIENT },
-      select: { id: true }
-    });
-    const clientIds = new Set(clientProps.map(p => p.id));
-    leasedAllowed = leasedIds.filter(id => !clientIds.has(id) || mandatedIds.has(id));
+    if (params.restrictToTenantProperties) {
+      const tenantLeased = await prisma.property.findMany({
+        where: { ...propertyScope, id: { in: leasedIds } },
+        select: { id: true, ownershipType: true }
+      });
+      leasedAllowed = tenantLeased
+        .filter(property => property.ownershipType !== PropertyOwnershipType.CLIENT || mandatedIds.has(property.id))
+        .map(property => property.id);
+    } else {
+      const clientProps = await prisma.property.findMany({
+        where: { id: { in: leasedIds }, ownershipType: PropertyOwnershipType.CLIENT },
+        select: { id: true }
+      });
+      const clientIds = new Set(clientProps.map(p => p.id));
+      leasedAllowed = leasedIds.filter(id => !clientIds.has(id) || mandatedIds.has(id));
+    }
   }
 
   return Array.from(new Set([...direct.map(p => p.id), ...mandatedProps.map(p => p.id), ...leasedAllowed]));

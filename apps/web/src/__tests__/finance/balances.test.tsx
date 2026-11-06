@@ -19,32 +19,20 @@ import { BalanceAgee } from '../../pages/finance/BalanceAgee';
  * explicites de 8 s sur les `findBy*` pour survivre à la charge parallèle de
  * la suite complète.
  *
- * Le mock de `services/finance-service` couvre les DEUX exports que les deux
- * écrans utilisent (`getClientsBalance` ET `getClientsAgingBalance`) : Vitest
+ * Le mock de `services/finance-service` couvre les exports des deux
+ * écrans (balances et lookup des biens) : Vitest
  * refuse tout import qu'un `vi.mock` ne déclare pas explicitement, là où Jest
  * renvoyait `undefined` en silence (AGENTS.md).
  */
 
 const getClientsBalance = vi.fn();
 const getClientsAgingBalance = vi.fn();
+const listClientBalanceProperties = vi.fn();
 
 vi.mock('../../services/finance-service', () => ({
   getClientsBalance: (...a: unknown[]) => getClientsBalance(...a),
-  getClientsAgingBalance: (...a: unknown[]) => getClientsAgingBalance(...a)
-}));
-
-// Les options du critère « Bien » viennent d'une recherche distante
-// (`loadOptions` de la barre ListSearch) : l'API attend un identifiant de bien,
-// qu'une ligne de balance ne porte pas. Sans ce mock, la liste déroulante
-// serait vide et le critère ne serait pas réellement couvert. `getProperty`
-// relit (`resolveLabel`) un bien venu de l'URL qui ne figure pas dans les
-// résultats.
-const listProperties = vi.fn();
-const getProperty = vi.fn();
-
-vi.mock('../../services/property-service', () => ({
-  listProperties: (...a: unknown[]) => listProperties(...a),
-  getProperty: (...a: unknown[]) => getProperty(...a)
+  getClientsAgingBalance: (...a: unknown[]) => getClientsAgingBalance(...a),
+  listClientBalanceProperties: (...a: unknown[]) => listClientBalanceProperties(...a)
 }));
 
 vi.mock('../../hooks/useBreakpoint', () => ({
@@ -119,11 +107,7 @@ function mountAgee(url = '/tenant/agence-1/finance/balance-agee') {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  listProperties.mockResolvedValue({
-    properties: [{ id: 'bien-7', title: 'Villa 4 pièces - Cocody Angré' }],
-    pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
-  });
-  getProperty.mockResolvedValue({ id: 'bien-7', title: 'Villa 4 pièces - Cocody Angré' });
+  listClientBalanceProperties.mockResolvedValue([{ id: 'bien-7', title: 'Villa 4 pièces - Cocody Angré' }]);
 });
 
 describe('Balance clients — rendu', () => {
@@ -186,10 +170,7 @@ describe('Balance clients — rendu', () => {
 describe('Balance clients — état dans l’URL', () => {
   it('relit la période et le bien depuis l’adresse au montage', async () => {
     getClientsBalance.mockResolvedValue({ lines: [ligne()], totalBalance: 600_000, currency: 'XOF' });
-    listProperties.mockResolvedValue({
-      properties: [{ id: 'bien-7', title: 'Villa 4 pièces - Cocody Angré' }],
-      pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
-    });
+    listClientBalanceProperties.mockResolvedValue([{ id: 'bien-7', title: 'Villa 4 pièces - Cocody Angré' }]);
 
     mountClients('/tenant/agence-1/finance/balance-clients?from=2026-01-01&to=2026-01-31&propertyId=bien-7');
 
@@ -200,7 +181,7 @@ describe('Balance clients — état dans l’URL', () => {
       to: '2026-01-31',
       // Un IDENTIFIANT de bien, jamais son libelle : c'est ce que l'API
       // attend, et un libelle ne filtrerait rien. La liste deroulante le tire
-      // du parc, seule source qui porte les deux.
+      // du lookup financier, seule source qui porte les deux pour ce rôle.
       propertyId: 'bien-7'
     });
   });
@@ -423,7 +404,7 @@ describe('Balances — recherche multicritères', () => {
     );
   };
 
-  it('balance clients : choisir un bien envoie son identifiant (recherche distante, 20 résultats)', async () => {
+  it('balance clients : choisir un bien envoie son identifiant depuis le lookup financier', async () => {
     getClientsBalance.mockResolvedValue({ lines: [ligne()], totalBalance: 600_000, currency: 'XOF' });
     const user = userEvent.setup({ delay: null });
     mountClients();
@@ -436,8 +417,7 @@ describe('Balances — recherche multicritères', () => {
       { timeout: 8000 }
     );
     expect(screen.getByTestId('adresse')).toHaveTextContent('propertyId=bien-7');
-    // Plus de parc chargé d'avance : la recherche est distante, 20 résultats.
-    expect(listProperties.mock.calls.every(call => call[1]?.limit === 20)).toBe(true);
+    expect(listClientBalanceProperties).toHaveBeenCalledWith('agence-1');
   }, 20000);
 
   it('balance âgée : choisir un bien envoie son identifiant', async () => {

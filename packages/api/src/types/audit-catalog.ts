@@ -206,6 +206,7 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SECURE_LINK_REVOKED]: tenant('SECURITY'),
   [AuditActionKey.SECURE_LINK_PAYMENT_STARTED]: tenant('BILLING'),
   [AuditActionKey.RENTAL_PAYMENT_LINK_SENT]: tenant('BILLING'),
+  [AuditActionKey.RENTAL_PAYMENT_STATUS_CHANGED]: tenant('BILLING', { critical: true }),
   [AuditActionKey.EXTERNAL_ACCESS_GRANT_CREATED]: tenant('SECURITY'),
   [AuditActionKey.EXTERNAL_ACCESS_GRANT_UPDATED]: tenant('SECURITY'),
   [AuditActionKey.EXTERNAL_ACCESS_GRANT_REVOKED]: tenant('SECURITY'),

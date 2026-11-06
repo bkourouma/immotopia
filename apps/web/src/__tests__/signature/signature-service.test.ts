@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const get = vi.fn();
 const post = vi.fn();
 vi.mock('../../utils/api-client', () => ({
+  FILE_DOWNLOAD_TIMEOUT_MS: 120_000,
   default: { get: (...a: unknown[]) => get(...a), post: (...a: unknown[]) => post(...a) }
 }));
 vi.mock('../../config/api', () => ({ API_URL: 'http://api.test/api' }));
@@ -52,6 +53,12 @@ describe('signature-service', () => {
     expect(await createSignatureRequest({ kind: 'LEASE_CONTRACT', targetId: 'b1', signers: [] })).toEqual({ id: 's1' });
     get.mockResolvedValueOnce({ data: { data: [{ id: 's1' }] } });
     expect(await listSignatureRequests({ targetId: 'b1' })).toEqual([{ id: 's1' }]);
+  });
+
+  it('BUG-2026-11-04-042 : l’envoi en signature (conversion PDF) a un délai long, pas celui par défaut', async () => {
+    post.mockResolvedValueOnce({ data: { success: true, data: { id: 's2' } } });
+    await createSignatureRequest({ kind: 'LEASE_CONTRACT', targetId: 'b1', signers: [] });
+    expect(post).toHaveBeenCalledWith('/signatures', expect.anything(), expect.objectContaining({ timeout: 120_000 }));
   });
 
   it('lit code, détails et délai d’une erreur publique', async () => {

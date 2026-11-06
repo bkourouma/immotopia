@@ -57,6 +57,14 @@ export async function getClientsBalance(tenantId: string, filters?: BalanceFilte
   return response.data.data;
 }
 
+/** Biens liés à un bail, limités aux identifiants et libellés utiles aux balances. */
+export async function listClientBalanceProperties(tenantId: string): Promise<Array<{ id: string; title: string }>> {
+  const response = await apiClient.get<ApiResponse<Array<{ id: string; title: string }>>>(
+    `${base(tenantId)}/clients/properties`
+  );
+  return response.data.data;
+}
+
 /** Balance âgée : la même balance, ventilée par ancienneté de créance. */
 export async function getClientsAgingBalance(
   tenantId: string,
@@ -79,6 +87,58 @@ export async function getAccountStatement(
   );
   return response.data.data;
 }
+
+/** Taille de page demandée au relevé : le maximum accepté par le serveur. */
+const STATEMENT_PAGE_SIZE = 200;
+/** Garde-fou : au-delà (10 000 lignes), on s'arrête plutôt que de boucler. */
+const STATEMENT_MAX_PAGES = 50;
+
+/**
+ * Relevé COMPLET d'un compte : toutes les lignes jusqu'au solde de clôture.
+ *
+ * Le serveur pagine par 50 par défaut ; lire une seule page tronquait le
+ * relevé (BUG-2026-11-04-048) alors que l'en-tête annonçait déjà le solde de
+ * clôture. On enchaîne donc les pages (`skip`/`take`) et on les concatène.
+ * Le « Solde après » de chaque ligne reste juste : le serveur le recalcule à
+ * partir du solde d'ouverture et des lignes sautées, jamais d'après la page.
+ */
+export async function getFullAccountStatement(
+  tenantId: string,
+  accountId: string,
+  filters?: Pick<StatementFilters, 'from' | 'to'>
+): Promise<FullAccountStatement> {
+  // Instant de référence figé à la première page et repris à l'identique pour
+  // toutes les suivantes : sinon chaque page coupe le grand livre à « maintenant »
+  // et les soldes cumulés dérivent d'une page à l'autre (la route accepte `asOf`).
+  const asOf = new Date().toISOString();
+  const first = await getAccountStatement(tenantId, accountId, {
+    ...filters,
+    asOf,
+    skip: 0,
+    take: STATEMENT_PAGE_SIZE
+  });
+  const movements = [...first.movements];
+  let pagesLues = 1;
+
+  for (let page = 1; page < STATEMENT_MAX_PAGES && movements.length < first.total; page += 1) {
+    const next = await getAccountStatement(tenantId, accountId, {
+      ...filters,
+      asOf,
+      skip: page * STATEMENT_PAGE_SIZE,
+      take: STATEMENT_PAGE_SIZE
+    });
+    pagesLues += 1;
+    if (next.movements.length === 0) break;
+    movements.push(...next.movements);
+  }
+
+  // Plafond atteint avec des lignes encore à lire : on le dit, on ne coupe pas en silence.
+  const tronque = pagesLues >= STATEMENT_MAX_PAGES && movements.length < first.total;
+  return { ...first, movements, tronque };
+}
+
+/** Relevé complet, avec un drapeau quand le plafond de pages a coupé la lecture. */
+export type FullAccountStatement = AccountStatement & { tronque: boolean };
 
 /**
  * URL du relevé imprimable.

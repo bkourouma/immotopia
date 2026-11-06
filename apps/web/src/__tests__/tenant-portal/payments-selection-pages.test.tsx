@@ -122,6 +122,62 @@ async function selectionnerSurDeuxPages(user: ReturnType<typeof userEvent.setup>
 const normaliser = (texte: string | null) => (texte ?? '').replace(/[^0-9]/g, '');
 
 describe('Portail locataire — sélection des échéances sur plusieurs pages', () => {
+  it('Tout sélectionner ne retient que le premier bail lorsque deux baux sont sur la page', async () => {
+    getInstallments.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          installments: [
+            installment({ leaseId: 'bail-a' }),
+            installment({ id: 'ech-2', leaseId: 'bail-b', period: '06/2026', amount: 30_000, balance: 30_000 })
+          ],
+          summary: { total: 2, paid: 0, due: 2, overdue: 0, partial: 0 },
+          pagination: { page: 1, limit: 20, total: 2, totalPages: 1 }
+        }
+      }
+    });
+    mount();
+    await screen.findByText('05/2026', {}, { timeout: 8000 });
+    await screen.findByText('06/2026');
+
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+    await waitFor(() => expect(screen.getByText('1 échéance(s) sélectionnée(s)')).toBeInTheDocument());
+    expect(normaliser(screen.getByText(/Total à payer/).textContent)).toContain('50000');
+    expect(screen.getByRole('checkbox', { name: 'Sélectionner 06/2026' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Payer en ligne' }));
+    await waitFor(() => expect(createOnlinePaymentCheckout).toHaveBeenCalledTimes(1));
+    expect(createOnlinePaymentCheckout).toHaveBeenCalledWith(['ech-1']);
+  });
+
+  it('garde le bail sélectionné sur une autre page quand Tout sélectionner est actionné', async () => {
+    getInstallments.mockImplementation(async (params: { page?: number }) => {
+      const page = params?.page ?? 1;
+      const response = reponsePage(page);
+      response.data.data.installments = [
+        page === 1
+          ? installment({ leaseId: 'bail-a' })
+          : installment({ id: 'ech-2', leaseId: 'bail-b', period: '06/2026', amount: 30_000, balance: 30_000 })
+      ];
+      return response;
+    });
+    const user = userEvent.setup();
+    mount();
+    await screen.findByText('05/2026', {}, { timeout: 8000 });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Sélectionner 05/2026' }));
+    await user.click(await screen.findByTitle('2'));
+    await screen.findByText('06/2026', {}, { timeout: 8000 });
+
+    expect(screen.getByRole('checkbox', { name: 'Sélectionner 06/2026' })).toBeDisabled();
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+    expect(screen.getByText('1 échéance(s) sélectionnée(s)')).toBeInTheDocument();
+    expect(normaliser(screen.getByText(/Total à payer/).textContent)).toContain('50000');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Payer en ligne' }));
+    await waitFor(() => expect(createOnlinePaymentCheckout).toHaveBeenCalledTimes(1));
+    expect(createOnlinePaymentCheckout).toHaveBeenCalledWith(['ech-1']);
+  });
+
   it('additionne les échéances de deux pages et envoie exactement ces ids', async () => {
     const user = userEvent.setup();
     await selectionnerSurDeuxPages(user);

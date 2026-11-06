@@ -163,9 +163,10 @@ export interface CreateLeaseRequest {
 }
 
 export interface UpdateLeaseRequest {
-  endDate?: Date;
-  moveInDate?: Date;
-  moveOutDate?: Date;
+  /** `null` retire la date : le bail devient sans fin (BUG-2026-11-03-022). */
+  endDate?: Date | null;
+  moveInDate?: Date | null;
+  moveOutDate?: Date | null;
   rentAmount?: number;
   serviceChargeAmount?: number;
   securityDepositAmount?: number;

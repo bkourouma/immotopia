@@ -78,7 +78,7 @@ export const AmendmentModal: React.FC<AmendmentModalProps> = ({ open, onCancel, 
           label={t('Objet')}
           name="summary"
           rules={[{ required: true, message: t("L'objet de l'avenant est requis") }]}
-          help={t("Déposez l'avenant signé dans l'onglet Documents.")}
+          extra={t("Déposez l'avenant signé dans l'onglet Documents.")}
         >
           <Input.TextArea rows={3} placeholder={t('Ex : changement de destination du bien')} />
         </Form.Item>

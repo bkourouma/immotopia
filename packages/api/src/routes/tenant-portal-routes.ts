@@ -23,19 +23,26 @@ const upload = multer({
 router.use(authenticate);
 router.use(requireTenantPortalAccess);
 
+// Les handlers du contrôleur sont enveloppés dans `asyncHandler` : branchés
+// directement, ils reçoivent `next` d'Express et toute erreur suit la chaîne
+// standard jusqu'à `errorHandler`.
+
 // Dashboard
-router.get('/dashboard', (req, res) => controller.getDashboard(req, res));
+router.get('/dashboard', controller.getDashboard);
+
+// Baux actifs du locataire (sélecteur de bail, H29)
+router.get('/leases', controller.getLeases);
 
 // Lease Details
-router.get('/lease', (req, res) => controller.getLeaseDetails(req, res));
+router.get('/lease', controller.getLeaseDetails);
 
 // Installments
-router.get('/installments', (req, res) => controller.getInstallments(req, res));
-router.get('/installments/:id', (req, res) => controller.getInstallmentDetails(req, res));
+router.get('/installments', controller.getInstallments);
+router.get('/installments/:id', controller.getInstallmentDetails);
 
 // Payments
-router.get('/payments', (req, res) => controller.getPaymentHistory(req, res));
-router.post('/payments/declare', upload.single('proof'), (req, res) => controller.declarePayment(req, res));
+router.get('/payments', controller.getPaymentHistory);
+router.post('/payments/declare', upload.single('proof'), controller.declarePayment);
 
 // Lot 7 : paiement en ligne (PaySecureHub).
 router.get('/online-payments/availability', getOnlinePaymentAvailabilityHandler);
@@ -43,23 +50,21 @@ router.post('/online-payments', startOnlinePaymentHandler);
 router.get('/online-payments/:codePaiement', getOnlinePaymentHandler);
 
 // Deposit
-router.get('/deposit', (req, res) => controller.getDepositInfo(req, res));
+router.get('/deposit', controller.getDepositInfo);
 
 // Finance (lot 016 — solde et relevé du locataire connecté, lecture seule)
-router.get('/finance/statement', (req, res) => controller.getFinanceStatement(req, res));
+router.get('/finance/statement', controller.getFinanceStatement);
 
 // Maintenance
-router.get('/maintenance', (req, res) => controller.getMaintenanceTickets(req, res));
-router.post('/maintenance', upload.array('attachments', 10), (req, res) =>
-  controller.createMaintenanceTicket(req, res)
-);
-router.get('/maintenance/:id', (req, res) => controller.getMaintenanceTicketDetails(req, res));
-router.post('/maintenance/:id/comment', (req, res) => controller.addTicketComment(req, res));
+router.get('/maintenance', controller.getMaintenanceTickets);
+router.post('/maintenance', upload.array('attachments', 10), controller.createMaintenanceTicket);
+router.get('/maintenance/:id', controller.getMaintenanceTicketDetails);
+router.post('/maintenance/:id/comment', controller.addTicketComment);
 // Pièce jointe d'un ticket visible dans ce portail — jamais servie en statique.
 router.get('/maintenance/:id/attachments/:attachmentId', downloadTenantPortalAttachmentHandler);
 
 // Documents
-router.get('/documents', (req, res) => controller.getDocuments(req, res));
-router.get('/documents/:id/download', (req, res) => controller.downloadDocument(req, res));
+router.get('/documents', controller.getDocuments);
+router.get('/documents/:id/download', controller.downloadDocument);
 
 export default router;

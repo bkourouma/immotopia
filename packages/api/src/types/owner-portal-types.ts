@@ -154,7 +154,10 @@ export interface LeaseDetailsData {
 export interface LeaseBalance {
   totalDue: number;
   totalPaid: number;
+  /** Reste dû : échéances exigibles (échues) non soldées. */
   remaining: number;
+  /** Échéances à venir non soldées, hors reste dû. */
+  upcoming: number;
 }
 
 // Revenue Types
@@ -252,7 +255,10 @@ export interface DepositListItem {
   propertyAddress: string;
   tenantName: string;
   depositAmount: number;
+  /** Détenu : collecté - remboursé - confisqué. */
   currentHeldAmount: number;
+  /** Retenu : mises en retenue en cours + confiscations. */
+  withheldAmount: number;
   status: string;
 }
 
@@ -260,6 +266,8 @@ export interface DepositSummary {
   total: number;
   totalHeld: number;
   totalReleased: number;
+  /** Retenues réelles (mises en retenue + confiscations), distinctes du détenu. */
+  totalWithheld: number;
 }
 
 export interface DepositMovementsData {

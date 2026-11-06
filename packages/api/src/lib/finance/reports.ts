@@ -56,7 +56,7 @@ const DEFAULT_CURRENCY = 'XOF';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** Statuts d'échéance considérés comme non soldés pour la balance âgée. */
-const UNPAID_INSTALLMENT_STATUSES = ['DUE', 'PARTIAL', 'OVERDUE'] as const;
+const UNPAID_INSTALLMENT_STATUSES = ['DRAFT', 'DUE', 'PARTIAL', 'OVERDUE'] as const;
 
 // ---------------------------------------------------------------------------
 // Utilitaires internes
@@ -234,6 +234,12 @@ function toUtcMidnight(date: Date): number {
 export type ClientsAgingBalanceLineWithGap = ClientsAgingBalanceLine & {
   agedTotal: number;
   ledgerBalance: number;
+  /**
+   * Avance reçue et pas encore affectée à une échéance (trop-perçu). Elle
+   * pèse au crédit du grand livre mais n'est dans aucune tranche : elle est
+   * présentée à part et ne compte pas dans l'écart.
+   */
+  unallocatedAdvance: number;
   gap: number;
 };
 
@@ -244,8 +250,30 @@ export interface ClientsAgingBalanceWithGap {
   currency: string;
   /** Solde comptable (grand livre) total. */
   ledgerTotalBalance: number;
-  /** ledgerTotalBalance - totalBalance. */
+  /** Somme des avances non affectées (voir la ligne). */
+  unallocatedAdvance: number;
+  /** Écart réel : solde comptable + avances non affectées − (total âgé − à échoir). */
   gap: number;
+}
+
+/**
+ * Borne haute du grand livre pour la balance âgée.
+ *
+ * L'écran envoie un jour (`YYYY-MM-DD`), lu comme minuit UTC. Or les tranches
+ * reflètent l'état des échéances à l'instant de la requête, y compris les
+ * pénalités ajustées dans la journée, dont les mouvements portent l'heure de
+ * l'ajustement. Couper le grand livre à minuit les en exclurait : un écart
+ * fantôme apparaissait jusqu'au lendemain. Un jour entier est donc compté
+ * jusqu'à sa dernière milliseconde (les loyers futurs, datés d'un jour
+ * ultérieur, restent exclus comme avant).
+ */
+function ledgerCutoff(asOf: Date): Date {
+  const isDateOnly =
+    asOf.getUTCHours() === 0 &&
+    asOf.getUTCMinutes() === 0 &&
+    asOf.getUTCSeconds() === 0 &&
+    asOf.getUTCMilliseconds() === 0;
+  return isDateOnly ? new Date(asOf.getTime() + MS_PER_DAY - 1) : asOf;
 }
 
 export type GetClientsAgingBalanceWithGap = (
@@ -267,19 +295,77 @@ export type GetClientsAgingBalanceWithGap = (
 export const getClientsAgingBalance: GetClientsAgingBalanceWithGap = async (tenantId, filters) => {
   const asOf = filters?.asOf ?? new Date();
 
+  const cutoff = ledgerCutoff(asOf);
   const base = await getClientsBalance(tenantId, {
     range: filters?.range,
     propertyId: filters?.propertyId,
-    search: filters?.search
+    search: filters?.search,
+    asOf: cutoff
   });
   if (base.lines.length === 0) {
-    return { lines: [], totalBalance: 0, currency: base.currency, ledgerTotalBalance: 0, gap: 0 };
+    return {
+      lines: [],
+      totalBalance: 0,
+      currency: base.currency,
+      ledgerTotalBalance: 0,
+      unallocatedAdvance: 0,
+      gap: 0
+    };
   }
+
+  // Avances non affectées : une avance encaissée crédite le compte
+  // (`ADVANCE_RECEIVED`), chaque affectation à une échéance la reprend par un
+  // débit `ADVANCE_APPLIED`. Le reste est un trop-perçu : au grand livre, mais
+  // dans aucune échéance impayée. Même borne de date que le solde comptable.
+  const rangeEnd = buildMovementDateFilter(filters?.range)?.lte;
+  const advanceUpTo = rangeEnd && rangeEnd < cutoff ? rangeEnd : cutoff;
+  const advanceSums = await prisma.thirdPartyMovement.groupBy({
+    by: ['accountId'],
+    where: {
+      tenantId,
+      accountId: { in: base.lines.map(line => line.accountId) },
+      // Pièces « avance » d'un règlement : le crédit reçu (`ADVANCE_RECEIVED`, ré-inscriptions
+      // `<paiement>:rN` comprises) et sa contre-passation (`VOID` sur la pièce `RENTAL_PAYMENT` :
+      // règlement annulé, dépôt de garantie retiré des avances), qui la reprend par un débit.
+      // Les `VOID` d'une affectation (`RENTAL_PAYMENT_ALLOCATION`) ne sont pas des avances.
+      // Les imputations (`ADVANCE_APPLIED`) sont comptées à part, ci-dessous.
+      OR: [{ type: 'ADVANCE_RECEIVED' }, { type: 'VOID', sourceType: 'RENTAL_PAYMENT' }],
+      movementDate: { lte: advanceUpTo }
+    },
+    _sum: { debit: true, credit: true }
+  });
+  const appliedByAccount = await sumLiveAdvanceApplications(
+    tenantId,
+    base.lines.map(line => line.accountId),
+    advanceUpTo
+  );
+  const advanceByAccount = new Map(
+    advanceSums.map(g => [
+      g.accountId,
+      Math.max(
+        0,
+        roundMoney(
+          toAmountOrZero(g._sum.credit) - toAmountOrZero(g._sum.debit) - (appliedByAccount.get(g.accountId) ?? 0)
+        )
+      )
+    ])
+  );
 
   let leaseIdFilter: string[] | undefined;
   if (filters?.propertyId) {
     leaseIdFilter = await resolveLeaseIdsForProperty(tenantId, filters.propertyId);
   }
+
+  // Règlements affectés à une échéance À ÉCHOIR. Le grand livre porte leur crédit à la date du
+  // règlement, mais la créance correspondante n'y entre qu'à l'échéance : sans correction, le
+  // compte paraît créditeur d'un montant qu'aucune tranche ni avance n'explique, soit un écart
+  // négatif fantôme. Ce montant est remis du côté du grand livre dans la formule de l'écart.
+  const prepaidByAccount = await sumPaidOnFutureInstallments(
+    tenantId,
+    advanceUpTo,
+    leaseIdFilter,
+    base.lines.map(line => line.accountId)
+  );
 
   // Ensemble borné par construction : seules les échéances non soldées,
   // typiquement une poignée par locataire. Ce n'est pas l'ensemble des
@@ -291,6 +377,8 @@ export const getClientsAgingBalance: GetClientsAgingBalanceWithGap = async (tena
       ...(leaseIdFilter ? { lease_id: { in: leaseIdFilter } } : {})
     },
     select: {
+      id: true,
+      status: true,
       due_date: true,
       amount_rent: true,
       amount_service: true,
@@ -301,10 +389,30 @@ export const getClientsAgingBalance: GetClientsAgingBalanceWithGap = async (tena
     }
   });
 
+  // An old installment may still be DRAFT even though its billed movement is
+  // already in the ledger (for example after a data backfill). Count only those
+  // drafts: a genuine draft without a billed movement is not yet a receivable.
+  const draftIds = unpaidInstallments.filter(i => i.status === 'DRAFT').map(i => i.id);
+  const billedDraftMovements = draftIds.length
+    ? await prisma.thirdPartyMovement.findMany({
+        where: {
+          tenantId,
+          type: 'INSTALLMENT',
+          sourceType: 'RENTAL_INSTALLMENT',
+          sourceId: { in: draftIds },
+          movementDate: { lte: advanceUpTo },
+          accountId: { in: base.lines.map(line => line.accountId) }
+        },
+        select: { sourceId: true }
+      })
+    : [];
+  const billedDraftIds = new Set(billedDraftMovements.map(m => m.sourceId));
+
   const asOfUtcMidnight = toUtcMidnight(asOf);
   const bucketsByClient = new Map<string, AgingBuckets>();
 
   for (const installment of unpaidInstallments) {
+    if (installment.status === 'DRAFT' && !billedDraftIds.has(installment.id)) continue;
     const totalDue =
       toAmountOrZero(installment.amount_rent) +
       toAmountOrZero(installment.amount_service) +
@@ -349,24 +457,129 @@ export const getClientsAgingBalance: GetClientsAgingBalanceWithGap = async (tena
     const agedTotal = roundMoney(
       buckets.notYetDue + buckets.days0To30 + buckets.days30To60 + buckets.days60To90 + buckets.daysOver90
     );
+    const unallocatedAdvance = advanceByAccount.get(line.accountId) ?? 0;
+    const prepaid = prepaidByAccount.get(line.accountId) ?? 0;
     return {
       ...line,
       ...buckets,
       agedTotal,
       ledgerBalance: line.balance,
-      gap: roundMoney(line.balance - agedTotal)
+      unallocatedAdvance,
+      // Le grand livre ne compte un loyer qu'à sa date d'échéance : on
+      // compare donc au solde âgé HORS « À échoir » (grandeurs comparables).
+      // Le trop-perçu, au crédit du grand livre mais hors des tranches, est
+      // remis du côté des tranches : il se lit à part, pas comme un écart.
+      // Idem de ce qui a déjà été réglé sur une échéance à échoir (`prepaid`) : son crédit est au
+      // grand livre, sa créance pas encore.
+      gap: roundMoney(line.balance + unallocatedAdvance + prepaid - (agedTotal - buckets.notYetDue))
     };
   });
 
   const totalBalance = roundMoney(lines.reduce((sum, line) => sum + line.agedTotal, 0));
+  const totalNotYetDue = roundMoney(lines.reduce((sum, line) => sum + line.notYetDue, 0));
+  const totalAdvance = roundMoney(lines.reduce((sum, line) => sum + line.unallocatedAdvance, 0));
+  const totalPrepaid = roundMoney(lines.reduce((sum, line) => sum + (prepaidByAccount.get(line.accountId) ?? 0), 0));
   return {
     lines,
     totalBalance,
     currency: base.currency,
     ledgerTotalBalance: base.totalBalance,
-    gap: roundMoney(base.totalBalance - totalBalance)
+    unallocatedAdvance: totalAdvance,
+    gap: roundMoney(base.totalBalance + totalAdvance + totalPrepaid - (totalBalance - totalNotYetDue))
   };
 };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Avance consommée par des affectations ENCORE EXISTANTES, par compte.
+ *
+ * Annuler un règlement supprime ses affectations et contre-passe sa pièce « avance », mais laisse
+ * en place le couple `PAYMENT` / `ADVANCE_APPLIED` de chaque affectation (net nul au compte :
+ * `annulerPieceTx` n'a rien à reprendre). Compter ce débit `ADVANCE_APPLIED` en plus du `VOID`
+ * retirait l'avance deux fois — et, à la réactivation du règlement, faisait disparaître une avance
+ * pourtant réinscrite. Une imputation dont l'affectation n'existe plus n'est donc pas comptée.
+ * Une imputation d'une autre origine que l'affectation reste toujours comptée.
+ */
+async function sumLiveAdvanceApplications(
+  tenantId: string,
+  accountIds: string[],
+  upTo: Date
+): Promise<Map<string, number>> {
+  const applied = await prisma.thirdPartyMovement.findMany({
+    where: { tenantId, accountId: { in: accountIds }, type: 'ADVANCE_APPLIED', movementDate: { lte: upTo } },
+    select: { accountId: true, sourceType: true, sourceId: true, debit: true }
+  });
+
+  const allocationIds = applied
+    .filter(m => m.sourceType === 'RENTAL_PAYMENT_ALLOCATION' && UUID_RE.test(m.sourceId))
+    .map(m => m.sourceId);
+  const checked = new Set(allocationIds);
+  const live = new Set(
+    allocationIds.length === 0
+      ? []
+      : (
+          await prisma.rentalPaymentAllocation.findMany({
+            where: { tenant_id: tenantId, id: { in: allocationIds } },
+            select: { id: true }
+          })
+        ).map(a => a.id)
+  );
+
+  const totals = new Map<string, number>();
+  for (const movement of applied) {
+    // Seule une imputation vérifiée ET absente de la table des affectations est écartée.
+    if (checked.has(movement.sourceId) && !live.has(movement.sourceId)) continue;
+    totals.set(movement.accountId, roundMoney((totals.get(movement.accountId) ?? 0) + toAmountOrZero(movement.debit)));
+  }
+  return totals;
+}
+
+/**
+ * Règlement déjà inscrit au grand livre, par compte, pour des affectations à des échéances dont la
+ * date est postérieure à `upTo` (loyers à échoir).
+ *
+ * On lit le crédit `PAYMENT` RÉELLEMENT écrit au compte (dans la fenêtre `<= upTo`), pas le montant
+ * de l'affectation : une affectation sans mouvement au compte (ancienne donnée, règlement postérieur
+ * à la date de référence) ne pèse pas au grand livre et ne doit donc pas être remise dans l'écart.
+ */
+async function sumPaidOnFutureInstallments(
+  tenantId: string,
+  upTo: Date,
+  leaseIdFilter: string[] | undefined,
+  accountIds: string[]
+): Promise<Map<string, number>> {
+  const allocations = await prisma.rentalPaymentAllocation.findMany({
+    where: {
+      tenant_id: tenantId,
+      installment: {
+        due_date: { gt: upTo },
+        ...(leaseIdFilter ? { lease_id: { in: leaseIdFilter } } : {})
+      }
+    },
+    select: { id: true }
+  });
+  const ids = allocations.map(a => a.id).filter(id => UUID_RE.test(id));
+  const totals = new Map<string, number>();
+  if (ids.length === 0) return totals;
+
+  const credited = await prisma.thirdPartyMovement.groupBy({
+    by: ['accountId'],
+    where: {
+      tenantId,
+      accountId: { in: accountIds },
+      type: 'PAYMENT',
+      sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+      sourceId: { in: ids },
+      movementDate: { lte: upTo }
+    },
+    _sum: { credit: true }
+  });
+  for (const group of credited) {
+    totals.set(group.accountId, roundMoney(toAmountOrZero(group._sum.credit)));
+  }
+  return totals;
+}
 
 // ---------------------------------------------------------------------------
 // C. Relevé de compte
@@ -420,6 +633,12 @@ export async function balanceUpTo(
   return roundMoney(toAmountOrZero(sums._sum.debit) - toAmountOrZero(sums._sum.credit));
 }
 
+/**
+ * Ordre TOTAL du relevé : date, écriture, puis identifiant. Deux mouvements de même date et
+ * d'écriture simultanée (lot) gardaient un ordre libre, donc des soldes et des pages instables.
+ */
+const STATEMENT_ORDER = [{ movementDate: 'asc' as const }, { createdAt: 'asc' as const }, { id: 'asc' as const }];
+
 /** Voir `GetAccountStatement` dans `./types.ts`. */
 export const getAccountStatement: GetAccountStatement = async (tenantId, accountId, filters) => {
   const account = await prisma.thirdPartyAccount.findFirst({
@@ -446,7 +665,7 @@ export const getAccountStatement: GetAccountStatement = async (tenantId, account
   const [movements, total, openingBalance, closingBalance] = await Promise.all([
     prisma.thirdPartyMovement.findMany({
       where: movementWhere,
-      orderBy: [{ movementDate: 'asc' }, { createdAt: 'asc' }],
+      orderBy: STATEMENT_ORDER,
       skip,
       take
     }),
@@ -457,14 +676,22 @@ export const getAccountStatement: GetAccountStatement = async (tenantId, account
 
   // Solde courant recalculé dans l'ordre d'affichage, à partir de l'ouverture.
   let running = openingBalance;
-  if (skip > 0) {
-    const before = await prisma.thirdPartyMovement.findMany({
-      where: movementWhere,
-      orderBy: [{ movementDate: 'asc' }, { createdAt: 'asc' }],
-      take: skip,
-      select: { debit: true, credit: true }
+  const first = movements[0];
+  if (skip > 0 && first) {
+    // Somme des mouvements qui précèdent la première ligne de la page, dans l'ordre total du
+    // relevé : un agrégat, au lieu de relire `skip` lignes.
+    const sums = await prisma.thirdPartyMovement.aggregate({
+      where: {
+        ...movementWhere,
+        OR: [
+          { movementDate: { lt: first.movementDate } },
+          { movementDate: first.movementDate, createdAt: { lt: first.createdAt } },
+          { movementDate: first.movementDate, createdAt: first.createdAt, id: { lt: first.id } }
+        ]
+      },
+      _sum: { debit: true, credit: true }
     });
-    for (const m of before) running = roundMoney(running + toAmountOrZero(m.debit) - toAmountOrZero(m.credit));
+    running = roundMoney(running + toAmountOrZero(sums._sum.debit) - toAmountOrZero(sums._sum.credit));
   }
   const withBalance = movements.map(m => {
     running = roundMoney(running + toAmountOrZero(m.debit) - toAmountOrZero(m.credit));

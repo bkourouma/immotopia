@@ -6,7 +6,7 @@ import { Table } from '../primitives';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
+import { formatMontantLocatif } from '../../lib/rental-labels';
 const { Title, Text } = Typography;
 
 interface InstallmentDetailsData {
@@ -25,9 +25,9 @@ interface InstallmentDetailsData {
     balance: number;
     items: Array<{
       id: string;
-      description: string;
+      label: string;
       amount: number;
-      type: string;
+      charge_type: string;
     }>;
     payments: Array<{
       id: string;
@@ -39,14 +39,15 @@ interface InstallmentDetailsData {
         method: string;
         status: string;
         succeeded_at: string | null;
-        reference: string | null;
+        psp_reference: string | null;
       };
     }>;
     penalties: Array<{
       id: string;
       amount: number;
-      reason: string | null;
-      applied_at: string;
+      days_late: number | null;
+      calculated_at: string | null;
+      created_at: string;
     }>;
     lease: {
       id: string;
@@ -63,7 +64,7 @@ interface InstallmentDetailsData {
     method: string;
     status: string;
     succeeded_at: string | null;
-    reference: string | null;
+    psp_reference: string | null;
     allocations: Array<{
       id: string;
       amount: number;
@@ -101,13 +102,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: 'XOF',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number) => formatMontantLocatif(amount);
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
@@ -127,6 +122,18 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
     return <Tag color={config.color}>{config.label}</Tag>;
   };
 
+  const chargeTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      RENT: t('Loyer'),
+      SERVICE_CHARGE: t('Charges de service'),
+      UTILITY: t('Consommations'),
+      MAINTENANCE: t('Entretien'),
+      DOSSIER_FEE: t('Frais de dossier'),
+      OTHER: t('Autres frais')
+    };
+    return labels[type] || t('Autres frais');
+  };
+
   const getPaymentMethodLabel = (method: string) => {
     const labels: Record<string, string> = {
       CASH: t('Espèces'),
@@ -134,7 +141,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
       MOBILE_MONEY: t('Mobile Money'),
       DIRECT_DEBIT: t('Prélèvement bancaire'),
       CHECK: t('Chèque'),
-      OTHER: 'Autre'
+      OTHER: t('Autre')
     };
     return labels[method] || method;
   };
@@ -164,22 +171,14 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
   const itemsColumns = [
     {
       title: t('Description'),
-      dataIndex: 'description',
-      key: 'description'
+      dataIndex: 'label',
+      key: 'label'
     },
     {
       title: t('Type'),
-      dataIndex: 'type',
-      key: 'type',
-      render: (type: string) => {
-        const typeLabels: Record<string, string> = {
-          RENT: 'Loyer',
-          SERVICE_CHARGE: 'Charges',
-          OTHER_FEE: t('Autres frais'),
-          PENALTY: t('Pénalité')
-        };
-        return typeLabels[type] || type;
-      }
+      dataIndex: 'charge_type',
+      key: 'charge_type',
+      render: (type: string) => chargeTypeLabel(type)
     },
     {
       title: t('Montant'),
@@ -213,7 +212,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
     },
     {
       title: t('Référence'),
-      dataIndex: ['payment', 'reference'],
+      dataIndex: ['payment', 'psp_reference'],
       key: 'reference',
       render: (ref: string | null) => ref || '-'
     },
@@ -345,16 +344,16 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
                 align: 'end' as const
               },
               {
-                title: t('Raison'),
-                dataIndex: 'reason',
-                key: 'reason',
-                render: (reason: string | null) => reason || '-'
+                title: t('Jours de retard'),
+                dataIndex: 'days_late',
+                key: 'days_late',
+                render: (days: number | null) => (days == null ? '-' : days)
               },
               {
                 title: t("Date d'application"),
-                dataIndex: 'applied_at',
-                key: 'applied_at',
-                render: (date: string) => formatDate(date)
+                key: 'calculated_at',
+                render: (_: unknown, penalty: { calculated_at: string | null; created_at: string }) =>
+                  formatDate(penalty.calculated_at ?? penalty.created_at)
               }
             ]}
             dataSource={installment.penalties}

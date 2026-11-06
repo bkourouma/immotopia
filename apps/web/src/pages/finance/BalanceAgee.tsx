@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -6,8 +6,7 @@ import type { SortOrder } from 'antd/es/table/interface';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { getClientsAgingBalance } from '../../services/finance-service';
-import { getProperty, listProperties } from '../../services/property-service';
+import { getClientsAgingBalance, listClientBalanceProperties } from '../../services/finance-service';
 import type { BalanceFilters, ClientsAgingBalanceLine } from '../../types/finance-types';
 import type { Sort } from '../../hooks/useListParams';
 import { useListSearch } from '../../hooks/useListSearch';
@@ -74,9 +73,18 @@ export const BalanceAgee: React.FC = () => {
   const features = useAgencyFeatures(tenantId);
   const navigate = useNavigate();
 
-  // `loadOptions` et `resolveLabel` sont gelés au premier rendu : l'agence se lit par une ref.
-  const tenantRef = useRef(tenantId);
-  tenantRef.current = tenantId;
+  /** Options du filtre sous le même droit de lecture financier que la balance. */
+  const { data: parc } = useQuery({
+    queryKey: queryKey('finance-balance-properties', tenantId, {}),
+    queryFn: () => listClientBalanceProperties(tenantId as string),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list
+  });
+  const optionsBiens = React.useMemo(
+    () =>
+      (parc ?? []).map(bien => ({ value: bien.id, label: bien.title })).sort((a, b) => a.label.localeCompare(b.label)),
+    [parc]
+  );
 
   // Tous les critères partent au serveur : aucun accesseur local, le filtrage
   // local les ignore.
@@ -95,14 +103,9 @@ export const BalanceAgee: React.FC = () => {
       type: 'select',
       label: t('Bien'),
       primary: true,
-      loadOptions: async terme => {
-        const { properties } = await listProperties(tenantRef.current as string, { q: terme || undefined, limit: 20 });
-        return properties.map(bien => ({ value: bien.id, label: bien.title || bien.id }));
-      },
-      resolveLabel: async id => {
-        const bien = await getProperty(tenantRef.current as string, id);
-        return bien.title || id;
-      }
+      loadOptions: async terme =>
+        optionsBiens.filter(bien => bien.label.toLocaleLowerCase().includes(terme.toLocaleLowerCase())).slice(0, 20),
+      resolveLabel: async id => optionsBiens.find(bien => bien.value === id)?.label ?? id
     }
   ];
   const { filterParams } = useListSearch({ criteria: criteres });

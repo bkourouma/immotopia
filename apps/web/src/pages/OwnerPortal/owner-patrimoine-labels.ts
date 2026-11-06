@@ -18,7 +18,8 @@ export const deviseAffichee = (code: string | null | undefined): string | undefi
   !code || code === 'XOF' ? undefined : code;
 
 /** Même formateur que les écrans de l'agence : arrondi au plus proche, séparateurs selon la langue. */
-export const formatPercent = (value: number | null | undefined): string => formatYieldPercent(value);
+export const formatPercent = (value: number | null | undefined): string =>
+  value === null || value === undefined ? t('Non renseigné') : formatYieldPercent(value);
 
 /** Quote-part d'indivision ; `null` = bien détenu en entier. */
 export const sharePercentLabel = (value: number | null): string =>

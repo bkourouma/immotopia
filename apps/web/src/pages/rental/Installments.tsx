@@ -21,10 +21,11 @@ import { collectAllPages } from '../../utils/table-export/collect';
 import { PaymentForm } from '../../components/rental/PaymentForm';
 import { InstallmentPaymentLinkModal, canOfferPaymentLink } from '../../components/rental/InstallmentPaymentLinkButton';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { useListSearch } from '../../hooks/useListSearch';
 import { renterCriterion } from './rental-search-criteria';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { nomDuBien, nomDeLaPersonne, deviseAffichee } from '../../lib/rental-labels';
+import { nomDuBien, nomDeLaPersonne, deviseAffichee, libellePeriodeEcheance } from '../../lib/rental-labels';
 import {
   PageHeader,
   StateBlock,
@@ -93,7 +94,7 @@ function resteAPayer(echeance: RentalInstallment): number {
 }
 
 function periode(echeance: RentalInstallment): string {
-  return `${String(echeance.period_month).padStart(2, '0')}/${echeance.period_year}`;
+  return libellePeriodeEcheance(echeance.period_month, echeance.period_year);
 }
 
 function dateCourte(iso: string): string {
@@ -108,6 +109,13 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
   const queryClient = useQueryClient();
   const confirmAction = useConfirmAction();
   const { isDesktop } = useBreakpoint();
+  // Générer/supprimer exigent RENTAL_INSTALLMENTS_GENERATE, encaisser RENTAL_PAYMENTS_CREATE + _ALLOCATE :
+  // un profil en lecture seule (Comptable) ne voit pas d'action qui répondrait 403 (BUG-2026-11-03-011).
+  const { permissions } = useMyMenuAccess(tenantId);
+  const peutGenerer = permissions === null || permissions.has('RENTAL_INSTALLMENTS_GENERATE');
+  const peutEncaisser =
+    permissions === null || (permissions.has('RENTAL_PAYMENTS_CREATE') && permissions.has('RENTAL_PAYMENTS_ALLOCATE'));
+  const peutProposerLien = permissions === null || permissions.has('RENTAL_PAYMENTS_CREATE');
 
   // Onglet d'un bail : préfixe d'URL `ech` (les autres onglets ont leurs propres listes).
   const search = useListSearch({
@@ -391,29 +399,33 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       key: 'actions',
       align: 'end',
       render: (_, e) => {
-        if (resteAPayer(e) <= 0) {
-          return (
-            <Button type="link" onClick={() => navigate(`/tenant/${tenantId}/rental/installments/${e.id}`)}>
-              {t('Voir')}
-            </Button>
-          );
-        }
+        const voir = (
+          <Button type="link" onClick={() => navigate(`/tenant/${tenantId}/rental/installments/${e.id}`)}>
+            {t('Voir')}
+          </Button>
+        );
+        if (resteAPayer(e) <= 0) return voir;
         return (
           <Space>
-            <Button
-              icon={<ThunderboltOutlined />}
-              loading={enCours === e.id}
-              onClick={() => handleQuickPayment(e)}
-              // Le libellé dit ce qui va se passer : espèces, montant restant,
-              // aujourd'hui. « Paiement rapide » ne le disait pas.
-              title={t('Encaisser le reste dû en espèces, à la date du jour')}
-            >
-              {t('Encaisser')}
-            </Button>
-            <Button type="primary" icon={<CreditCardOutlined />} onClick={() => setFormulairePour(e)}>
-              {t('Paiement…')}
-            </Button>
-            {canOfferPaymentLink(resteAPayer(e), e.status) && (
+            {voir}
+            {peutEncaisser && (
+              <Button
+                icon={<ThunderboltOutlined />}
+                loading={enCours === e.id}
+                onClick={() => handleQuickPayment(e)}
+                // Le libellé dit ce qui va se passer : espèces, montant restant,
+                // aujourd'hui. « Paiement rapide » ne le disait pas.
+                title={t('Encaisser le reste dû en espèces, à la date du jour')}
+              >
+                {t('Encaisser')}
+              </Button>
+            )}
+            {peutEncaisser && (
+              <Button type="primary" icon={<CreditCardOutlined />} onClick={() => setFormulairePour(e)}>
+                {t('Paiement…')}
+              </Button>
+            )}
+            {peutProposerLien && canOfferPaymentLink(resteAPayer(e), e.status) && (
               <Button icon={<LinkOutlined />} onClick={() => setLienPour(e)}>
                 {t('Envoyer un lien de paiement')}
               </Button>
@@ -429,7 +441,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       title={t('Échéances')}
       subtitle={total > 0 ? t('{{total}} échéance{{value}}', { total: total, value: total > 1 ? 's' : '' }) : undefined}
       primaryAction={
-        leaseId
+        leaseId && peutGenerer
           ? {
               label: t('Générer les échéances'),
               icon: <PlusOutlined />,
@@ -439,7 +451,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
           : undefined
       }
       secondaryActions={
-        leaseId
+        leaseId && peutGenerer
           ? [
               { key: 'recalc', label: t('Recalculer les statuts et pénalités'), onClick: handleRecalculate },
               { type: 'divider' },
@@ -542,7 +554,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
               ]}
               onOpen={() => navigate(`/tenant/${tenantId}/rental/installments/${e.id}`)}
               primaryAction={
-                solde
+                solde || !peutEncaisser
                   ? undefined
                   : {
                       label: t('Encaisser'),
@@ -555,8 +567,10 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
                 solde
                   ? undefined
                   : [
-                      { key: 'form', label: t('Paiement détaillé…'), onClick: () => setFormulairePour(e) },
-                      ...(canOfferPaymentLink(reste, e.status)
+                      ...(peutEncaisser
+                        ? [{ key: 'form', label: t('Paiement détaillé…'), onClick: () => setFormulairePour(e) }]
+                        : []),
+                      ...(peutProposerLien && canOfferPaymentLink(reste, e.status)
                         ? [{ key: 'lien', label: t('Envoyer un lien de paiement'), onClick: () => setLienPour(e) }]
                         : [])
                     ]

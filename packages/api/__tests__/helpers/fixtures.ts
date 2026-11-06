@@ -547,6 +547,16 @@ async function deleteRentalDataOfTenant(tenantId: string): Promise<void> {
 }
 
 /**
+ * Les lignes d'ecriture portent une FK Restrict vers le plan comptable.
+ * Les ecritures et comptes sont ensuite emportes par la suppression du tenant,
+ * mais Postgres peut traiter cette cascade dans un ordre qui heurte la FK.
+ * On retire uniquement les lignes des ecritures de l'agence de test.
+ */
+async function deleteAccountingLinesOfTenant(tenantId: string): Promise<void> {
+  await prisma.journalEntryLine.deleteMany({ where: { entry: { tenantId } } });
+}
+
+/**
  * Supprime les agences de test, leurs donnees `rental_*` puis l'agence elle-meme.
  *
  * Un echec n'est JAMAIS silencieux : chaque agence est tentee (pour ne pas
@@ -559,6 +569,7 @@ export async function cleanupTenants(tenantIds: string[]): Promise<void> {
   for (const tenantId of tenantIds) {
     try {
       await deleteRentalDataOfTenant(tenantId);
+      await deleteAccountingLinesOfTenant(tenantId);
       await prisma.tenant.delete({ where: { id: tenantId } });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

@@ -2,9 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { App, Form, Input, Select, Button, Row, Col, Alert, InputNumber, DatePicker, Space } from 'antd';
 import dayjs from 'dayjs';
 import { CreatePaymentRequest, RentalPaymentMethod } from '../../services/rental-service';
-import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { montantSaisiProps } from '../../utils/montant-saisi';
+import { LeaseSelectField } from './LeaseSelectField';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
+import { deviseAffichee } from '../../lib/rental-labels';
+
+/** Champs que le formulaire affiche toujours ; ceux de Mobile Money s'y ajoutent selon le moyen choisi. */
+const CHAMPS_AFFICHES = [
+  'method',
+  'treasuryAccountId',
+  'amount',
+  'paidAt',
+  'currency',
+  'pspName',
+  'pspTransactionId',
+  'pspReference'
+];
+const CHAMPS_MOBILE_MONEY = ['mmOperator', 'mmPhone'];
 
 interface PaymentFormProps {
   tenantId: string;
@@ -44,9 +59,10 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
 
   const handleSubmit = async (values: any) => {
     setIsSubmitting(true);
+    setErrors({});
     try {
       const submitData: CreatePaymentRequest = {
-        leaseId: leaseId || undefined,
+        leaseId: leaseId || values.leaseId || undefined,
         method: values.method,
         amount: values.amount || 0,
         currency: values.currency || 'FCFA',
@@ -64,13 +80,27 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
       if (error.response?.data?.errors) {
         const apiErrors: Record<string, string> = {};
         const fieldErrors: { name: string[]; errors: string[] }[] = [];
+        const affiches = new Set([
+          ...CHAMPS_AFFICHES,
+          ...(method === RentalPaymentMethod.MOBILE_MONEY ? CHAMPS_MOBILE_MONEY : [])
+        ]);
+        // Un motif rattaché à un champ absent de l'écran (le bail, par exemple)
+        // n'aurait aucun endroit où s'afficher : il passe dans le bandeau.
+        const sansChamp: string[] = [];
         error.response.data.errors.forEach((err: { field: string; message: string }) => {
+          if (!affiches.has(err.field)) {
+            sansChamp.push(err.message);
+            return;
+          }
           apiErrors[err.field] = err.message;
           fieldErrors.push({
             name: [err.field],
             errors: [err.message]
           });
         });
+        if (sansChamp.length > 0) {
+          apiErrors.submit = sansChamp.join(' ');
+        }
         setErrors(apiErrors);
         form.setFields(fieldErrors);
       } else if (error.response?.data?.message) {
@@ -111,6 +141,25 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
       )}
 
       <Row gutter={16}>
+        {/* Depuis la liste globale, aucun bail n'est imposé : le choisir fixe le locataire. */}
+        {!leaseId && (
+          <Col xs={24}>
+            <Form.Item
+              label={t('Bail')}
+              name="leaseId"
+              required
+              rules={[{ required: true, message: t('Choisissez le bail concerné par ce paiement') }]}
+            >
+              <LeaseSelectField
+                tenantId={tenantId}
+                onLeaseChange={bail => {
+                  if (bail?.currency) form.setFieldValue('currency', bail.currency);
+                }}
+              />
+            </Form.Item>
+          </Col>
+        )}
+
         <Col xs={24} md={12}>
           <Form.Item
             label={t('Méthode de paiement')}
@@ -161,15 +210,8 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
               style={{ width: '100%' }}
               min={0}
               step={1000}
-              formatter={value => formatNumberWithSpaces(value?.toString() || '')}
-              parser={
-                (value => {
-                  if (!value) return 0;
-                  const parsed = parseFormattedNumber(value);
-                  const num = parseFloat(parsed);
-                  return isNaN(num) ? 0 : num;
-                }) as (displayValue: string | undefined) => number
-              }
+              // Séparateur décimal de la langue : « 1500,5 » vaut 1 500,50 (BUG-2026-11-04-034).
+              {...montantSaisiProps}
               placeholder={t('Ex: 150000')}
             />
           </Form.Item>
@@ -197,6 +239,10 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
         <Col xs={24} md={12}>
           <Form.Item label={t('Devise')} name="currency">
             <Select>
+              {/* Devise du bail enregistrée « CFA » ou « XOF » : valeur envoyée inchangée, affichage « FCFA ». */}
+              {defaultCurrency && !['FCFA', 'EUR', 'USD'].includes(defaultCurrency) && (
+                <Select.Option value={defaultCurrency}>{deviseAffichee(defaultCurrency)}</Select.Option>
+              )}
               <Select.Option value="FCFA">FCFA</Select.Option>
               <Select.Option value="EUR">EUR</Select.Option>
               <Select.Option value="USD">USD</Select.Option>

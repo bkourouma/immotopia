@@ -1,5 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Spin, Alert, Tag, Space, Statistic, Descriptions, Empty } from 'antd';
+import {
+  Card,
+  Row,
+  Col,
+  Typography,
+  Spin,
+  Alert,
+  Tag,
+  Space,
+  Statistic,
+  Descriptions,
+  Empty,
+  Select,
+  Button
+} from 'antd';
 import {
   DollarOutlined,
   CalendarOutlined,
@@ -13,7 +27,7 @@ import { useDepositSearch } from './search/depositSearch';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
+import { deviseAffichee, formatMontantLocatif } from '../../lib/rental-labels';
 const { Title, Text } = Typography;
 
 interface DepositMovement {
@@ -32,11 +46,6 @@ interface DepositMovement {
   installment: {
     id: string;
     period: string;
-  } | null;
-  createdBy: {
-    id: string;
-    fullName: string | null;
-    email: string;
   } | null;
 }
 
@@ -63,35 +72,69 @@ export default function TenantDeposit() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DepositInfoData | null>(null);
+  const [leases, setLeases] = useState<
+    Array<{ id: string; leaseNumber: string; propertyAddress: string; isDefault?: boolean }>
+  >([]);
+  const [selectedLeaseId, setSelectedLeaseId] = useState<string | undefined>(undefined);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    loadDepositInfo();
-  }, []);
+    let cancelled = false;
+    tenantPortalService
+      .getLeases()
+      .then(response => {
+        if (!cancelled) setLeases(response.data?.data ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setError(t('Erreur lors du chargement des informations du dépôt'));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [retryKey]);
 
-  const loadDepositInfo = async () => {
-    try {
+  useEffect(() => {
+    let cancelled = false;
+    const loadDepositInfo = async () => {
       setLoading(true);
       setError(null);
-      const response = await tenantPortalService.getDepositInfo();
-      if (response.data?.success && response.data?.data) {
-        setData(response.data.data);
-      } else {
-        setError(t('Erreur lors du chargement des informations du dépôt'));
+      setData(null);
+      try {
+        const response = await tenantPortalService.getDepositInfo(selectedLeaseId);
+        if (cancelled) return;
+        if (response.data?.success && response.data?.data) {
+          setData(response.data.data);
+        } else {
+          setError(t('Erreur lors du chargement des informations du dépôt'));
+        }
+      } catch (err: any) {
+        if (!cancelled)
+          setError(err.response?.data?.message || t('Erreur lors du chargement des informations du dépôt'));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors du chargement des informations du dépôt'));
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    void loadDepositInfo();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLeaseId, retryKey]);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency: 'XOF',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
+  const leaseSelector =
+    leases.length > 1 ? (
+      <Select
+        aria-label={t('Bail')}
+        style={{ minWidth: 280, maxWidth: '100%' }}
+        value={selectedLeaseId ?? data?.deposit?.lease.id ?? leases.find(lease => lease.isDefault)?.id ?? leases[0].id}
+        onChange={value => setSelectedLeaseId(value)}
+        options={leases.map(lease => ({
+          value: lease.id,
+          label: lease.propertyAddress ? `${lease.leaseNumber} — ${lease.propertyAddress}` : lease.leaseNumber
+        }))}
+      />
+    ) : null;
+
+  const formatCurrency = (amount: number) => formatMontantLocatif(amount, data?.deposit?.currency);
 
   const formatDate = (dateString: string) => {
     return dayjs(dateString).format('DD/MM/YYYY HH:mm');
@@ -118,7 +161,7 @@ export default function TenantDeposit() {
       DIRECT_DEBIT: t('Prélèvement bancaire'),
       CHECK: t('Chèque'),
       CARD: t('Carte bancaire'),
-      OTHER: 'Autre'
+      OTHER: t('Autre')
     };
     return labels[method] || method;
   };
@@ -135,7 +178,13 @@ export default function TenantDeposit() {
   }
 
   if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
+    return (
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {leaseSelector}
+        <Alert message={t('Erreur')} description={error} type="error" showIcon />
+        <Button onClick={() => setRetryKey(key => key + 1)}>{t('Réessayer')}</Button>
+      </Space>
+    );
   }
 
   if (!data || !data.deposit) {
@@ -145,12 +194,13 @@ export default function TenantDeposit() {
           <Title level={2}>{t('Dépôt de garantie')}</Title>
           <Text type="secondary">{t('Informations sur votre dépôt de garantie')}</Text>
         </div>
+        {leaseSelector}
         <Empty description={t('Aucun dépôt de garantie trouvé')} />
       </Space>
     );
   }
 
-  const { deposit, movements, currentHeldAmount } = data;
+  const { deposit, movements } = data;
   const availableAmount = deposit.collectedAmount - deposit.refundedAmount - deposit.forfeitedAmount;
 
   return (
@@ -160,6 +210,7 @@ export default function TenantDeposit() {
         <Title level={2}>{t('Dépôt de garantie')}</Title>
         <Text type="secondary">{t('Informations détaillées sur votre dépôt de garantie')}</Text>
       </div>
+      {leaseSelector}
 
       {/* Deposit Summary Cards (T081) */}
       <Row gutter={[16, 16]}>
@@ -188,7 +239,7 @@ export default function TenantDeposit() {
           <Card>
             <Statistic
               title={t('Montant retenu')}
-              value={currentHeldAmount}
+              value={deposit.heldAmount}
               valueStyle={{ color: '#faad14' }}
               prefix={<DollarOutlined />}
               formatter={value => formatCurrency(Number(value))}
@@ -221,7 +272,7 @@ export default function TenantDeposit() {
           {deposit.lease.lease_label && (
             <Descriptions.Item label={t('Nom du bail')}>{deposit.lease.lease_label}</Descriptions.Item>
           )}
-          <Descriptions.Item label={t('Devise')}>{deposit.currency}</Descriptions.Item>
+          <Descriptions.Item label={t('Devise')}>{deviseAffichee(deposit.currency)}</Descriptions.Item>
           <Descriptions.Item label={t('Montant cible')}>
             <Text strong>{formatCurrency(deposit.targetAmount)}</Text>
           </Descriptions.Item>
@@ -327,15 +378,6 @@ export default function TenantDeposit() {
                 dataIndex: 'note',
                 key: 'note',
                 render: (note: string | null) => note || '-'
-              },
-              {
-                title: t('Créé par'),
-                dataIndex: ['createdBy', 'fullName'],
-                key: 'createdBy',
-                render: (fullName: string | null, record: DepositMovement) => {
-                  if (!record.createdBy) return '-';
-                  return record.createdBy.fullName || record.createdBy.email;
-                }
               }
             ]}
             rowKey="id"

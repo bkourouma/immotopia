@@ -218,6 +218,25 @@ describe('useListParams — préfixe et remplacement', () => {
     expect(url).toContain('utm=1');
   });
 
+  it('lit un ancien lien doc_status puis écrit les nouveaux critères sous doc.status', async () => {
+    const user = userEvent.setup();
+    const Legacy = () => (
+      <>
+        <span data-testid="legacy-url">{useLocation().search}</span>
+        <Prefixed prefix="doc" label="doc" />
+      </>
+    );
+    at('?status=OVERDUE&doc_status=FINAL&doc_page=2', <Legacy />);
+    expect(screen.getByTestId('doc-page')).toHaveTextContent('2');
+    expect(JSON.parse(screen.getByTestId('doc-query').textContent as string)).toMatchObject({ status: 'FINAL' });
+    await user.click(screen.getByText('doc filtrer'));
+    expect(screen.getByTestId('doc-query').textContent).toContain('"status":"FINAL"');
+    expect(screen.getByTestId('legacy-url').textContent).toContain('doc.status=FINAL');
+    expect(screen.getByTestId('legacy-url').textContent).toContain('doc.q=villa');
+    expect(screen.getByTestId('legacy-url').textContent).not.toContain('doc_status');
+    expect(screen.getByTestId('doc-page')).toHaveTextContent('1');
+  });
+
   it('setFilters(…, { replace: true }) remplace l’entrée d’historique', async () => {
     function Replace() {
       const list = useListParams<F>({ filterKeys: FILTER_KEYS });

@@ -2,7 +2,7 @@
 import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { diffForAudit } from '../lib/audit/changes';
-import { BadRequestError } from '../middleware/error-middleware';
+import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { CreateLeaseRequest, UpdateLeaseRequest, LeaseDetail } from '../types/rental-types';
 import {
   RentalLeaseStatus,
@@ -21,6 +21,9 @@ import { t } from '../i18n';
 import { applyLeaseSearch } from '../lib/rental/lease-list-filters';
 import { generateLeaseNumber, isLeaseNumberCollision } from './rental-lease-number';
 import { toRentalDocumentDto } from './rental-document-service';
+import { repriceUnstartedInstallmentsTx } from '../lib/lease-lifecycle/service';
+import { assertNoLeaseOverlapTx } from '../lib/lease-lifecycle/period-overlap';
+import { env } from '../config/env';
 
 /**
  * Les documents d'un bail sortent via `toRentalDocumentDto` : jamais de chemin
@@ -232,6 +235,14 @@ export async function createLease(
             user: result.user
           };
         }
+        // Un seul bail en cours par période et par bien (H39) : contrôlé ici, bien
+        // verrouillé, sans se fier au statut « Loué » du bien.
+        await assertNoLeaseOverlapTx(tx, {
+          tenantId,
+          propertyId: data.propertyId,
+          startDate: data.startDate,
+          endDate: data.endDate ?? null
+        });
         const createdLease = await tx.rentalLease.create({
           data: {
             tenant_id: tenantId,
@@ -352,10 +363,7 @@ export async function createLease(
   try {
     // Get tenant information for emails
     const tenant = await getTenantById(tenantId);
-    const frontendUrl = (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(
-      /\/$/,
-      ''
-    );
+    const frontendUrl = env.FRONTEND_URL.replace(/\/$/, '');
 
     const sendPortalAccountCreatedWhatsapp = async (params: {
       email?: string | null;
@@ -567,10 +575,7 @@ export async function createLease(
       const emailConfig = await getEmailNotificationConfig(tenantId, 'LEASE_ACTIVATED');
       const { getCrmContactIdForWhatsApp } = await import('./whatsapp-contact-resolve');
       const { sendWhatsappNotification } = await import('./whatsapp-notification-send-service');
-      const frontendUrl = (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(
-        /\/$/,
-        ''
-      );
+      const frontendUrl = env.FRONTEND_URL.replace(/\/$/, '');
       const loginUrl = `${frontendUrl}/login`;
       const forgotPasswordUrl = `${frontendUrl}/forgot-password`;
 
@@ -860,8 +865,9 @@ export async function listLeases(
     where.primary_renter_client_id = filters.primaryRenterClientId;
   }
 
-  if (filters?.search) {
-    applyLeaseSearch(where, filters.search);
+  const search = filters?.search?.trim();
+  if (search) {
+    applyLeaseSearch(where, search);
   }
 
   const page = pagination?.page || 1;
@@ -931,7 +937,7 @@ export async function updateLease(
   leaseId: string,
   data: UpdateLeaseRequest,
   actorUserId: string
-): Promise<LeaseDetail> {
+): Promise<LeaseDetail & { installmentsRepriced: number }> {
   // Verify lease exists and belongs to tenant
   const existingLease = await prisma.rentalLease.findFirst({
     where: {
@@ -941,7 +947,7 @@ export async function updateLease(
   });
 
   if (!existingLease) {
-    throw new BadRequestError(t('Bail introuvable'));
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   // Validate dates if provided
@@ -960,31 +966,73 @@ export async function updateLease(
     billing_frequency: data.billingFrequency !== undefined ? data.billingFrequency : undefined,
     notes: data.notes !== undefined ? data.notes : undefined
   };
-  const lease = await prisma.rentalLease.update({
-    where: {
-      id: leaseId,
-      tenant_id: tenantId
-    },
-    data: leaseUpdate,
-    include: {
-      property: {
-        select: {
-          id: true,
-          internalReference: true,
-          address: true
-        }
-      },
-      primaryRenter: {
-        select: {
-          id: true,
-          userId: true,
-          clientType: true
-        }
-      },
-      coRenters: true,
-      deposit: true,
-      documents: true
+  const { lease, installmentsRepriced } = await prisma.$transaction(async tx => {
+    // Dates d'un bail en cours repoussées : elles ne doivent pas empiéter sur un autre bail du bien (H39).
+    if (
+      data.endDate !== undefined &&
+      (existingLease.status === RentalLeaseStatus.ACTIVE || existingLease.status === RentalLeaseStatus.SUSPENDED)
+    ) {
+      await assertNoLeaseOverlapTx(tx, {
+        tenantId,
+        propertyId: existingLease.property_id,
+        startDate: existingLease.start_date,
+        endDate: data.endDate,
+        excludeLeaseId: leaseId
+      });
     }
+    // Le dépôt déjà créé suit le montant du bail (BUG-2026-11-04-012). Fait avant
+    // la mise à jour du bail pour que sa relation `deposit` relue porte la
+    // nouvelle cible. Son statut (Complet / En attente) est dérivé du solde et de
+    // la cible : il se recalcule seul, une cible abaissée sous le solde donne
+    // « Complet », relevée au-dessus « En attente ». Aucun mouvement n'est modifié.
+    if (data.securityDepositAmount !== undefined) {
+      await tx.rentalSecurityDeposit.updateMany({
+        where: { lease_id: leaseId, tenant_id: tenantId },
+        data: { target_amount: data.securityDepositAmount ?? 0 }
+      });
+    }
+    const lease = await tx.rentalLease.update({
+      where: {
+        id: leaseId,
+        tenant_id: tenantId
+      },
+      data: leaseUpdate,
+      include: {
+        property: {
+          select: {
+            id: true,
+            internalReference: true,
+            address: true
+          }
+        },
+        primaryRenter: {
+          select: {
+            id: true,
+            userId: true,
+            clientType: true
+          }
+        },
+        coRenters: true,
+        deposit: true,
+        documents: true
+      }
+    });
+
+    // Loyer ou charges modifiés : les échéances non commencées et impayées
+    // suivent (BUG-2026-11-03-018). Les autres gardent leur montant facturé.
+    const priceChanged =
+      (data.rentAmount !== undefined && Number(data.rentAmount) !== Number(existingLease.rent_amount)) ||
+      (data.serviceChargeAmount !== undefined &&
+        Number(data.serviceChargeAmount) !== Number(existingLease.service_charge_amount));
+    const installmentsRepriced = priceChanged
+      ? await repriceUnstartedInstallmentsTx(tx, {
+          tenantId,
+          leaseId,
+          rent: Number(data.rentAmount ?? existingLease.rent_amount),
+          charges: Number(data.serviceChargeAmount ?? existingLease.service_charge_amount)
+        })
+      : 0;
+    return { lease, installmentsRepriced };
   });
 
   logger.info('Rental lease updated', {
@@ -1004,7 +1052,27 @@ export async function updateLease(
     changes: diffForAudit(existingLease as unknown as Record<string, unknown>, leaseUpdate)
   });
 
-  return withPublicDocuments(lease) as unknown as LeaseDetail;
+  return { ...withPublicDocuments(lease), installmentsRepriced } as unknown as LeaseDetail & {
+    installmentsRepriced: number;
+  };
+}
+
+/** Libellé affichable d'un statut de bail (jamais le code Prisma brut dans un message). */
+function leaseStatusLabel(status: RentalLeaseStatus): string {
+  switch (status) {
+    case RentalLeaseStatus.DRAFT:
+      return t('Brouillon');
+    case RentalLeaseStatus.ACTIVE:
+      return t('Actif');
+    case RentalLeaseStatus.SUSPENDED:
+      return t('Suspendu');
+    case RentalLeaseStatus.ENDED:
+      return t('Terminé');
+    case RentalLeaseStatus.CANCELED:
+      return t('Annulé');
+    default:
+      return String(status);
+  }
 }
 
 /**
@@ -1030,7 +1098,7 @@ export async function updateLeaseStatus(
   });
 
   if (!existingLease) {
-    throw new BadRequestError(t('Bail introuvable'));
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   // Validate status transition
@@ -1045,13 +1113,27 @@ export async function updateLeaseStatus(
   const allowedStatuses = validTransitions[existingLease.status];
   if (!allowedStatuses.includes(newStatus)) {
     throw new BadRequestError(
-      t('Changement de statut invalide : de {{from}} à {{to}}', { from: existingLease.status, to: newStatus })
+      t('Changement de statut invalide : de {{from}} à {{to}}', {
+        from: leaseStatusLabel(existingLease.status),
+        to: leaseStatusLabel(newStatus)
+      })
     );
   }
 
   // Update status — activation ou fin du bail : decompte du logement (D1)
   // recalcule dans la meme transaction.
   const lease = await prisma.$transaction(async tx => {
+    // Activation d'un brouillon ou reprise d'un bail suspendu : la période ne doit
+    // pas empiéter sur un autre bail en cours du bien (H39).
+    if (newStatus === RentalLeaseStatus.ACTIVE) {
+      await assertNoLeaseOverlapTx(tx, {
+        tenantId,
+        propertyId: existingLease.property_id,
+        startDate: existingLease.start_date,
+        endDate: existingLease.end_date,
+        excludeLeaseId: leaseId
+      });
+    }
     const updatedLease = await tx.rentalLease.update({
       where: {
         id: leaseId,
@@ -1170,7 +1252,7 @@ export async function addCoRenter(
   });
 
   if (!lease) {
-    throw new BadRequestError(t('Bail introuvable'));
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   // Validate co-renter client exists and belongs to this tenant (same error
@@ -1252,7 +1334,7 @@ export async function removeCoRenter(
   });
 
   if (!lease) {
-    throw new BadRequestError(t('Bail introuvable'));
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   // Remove co-renter
@@ -1299,7 +1381,7 @@ export async function listCoRenters(tenantId: string, leaseId: string) {
   });
 
   if (!lease) {
-    throw new BadRequestError(t('Bail introuvable'));
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   const coRenters = await prisma.rentalLeaseCoRenter.findMany({
@@ -1337,7 +1419,7 @@ export async function deleteLease(tenantId: string, leaseId: string, actorUserId
   });
 
   if (!lease) {
-    throw new BadRequestError('Bail non trouvé ou accès refusé');
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   // Check if lease has installments with payments allocated

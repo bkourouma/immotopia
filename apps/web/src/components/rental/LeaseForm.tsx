@@ -13,7 +13,9 @@ import { PropertyType } from '../../types/property-types';
 import { listContacts, CrmContact } from '../../services/crm-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
+import { deviseAffichee } from '../../lib/rental-labels';
 import { t } from '../../i18n/t';
+import { formatsSaisieDate } from './lease-date-formats';
 
 const { TextArea } = Input;
 
@@ -317,9 +319,11 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
             }),
         ...(lease
           ? {
-              endDate: convertDateToISO(values.endDate),
-              moveInDate: convertDateToISO(values.moveInDate),
-              moveOutDate: convertDateToISO(values.moveOutDate),
+              // Une date vidée part à null : sans cela le champ était ignoré et la
+              // date de fin restait en base (BUG-2026-11-03-022).
+              endDate: convertDateToISO(values.endDate) ?? null,
+              moveInDate: convertDateToISO(values.moveInDate) ?? null,
+              moveOutDate: convertDateToISO(values.moveOutDate) ?? null,
               rentAmount: values.rentAmount || 0,
               serviceChargeAmount: values.serviceChargeAmount || 0,
               securityDepositAmount: values.securityDepositAmount || 0,
@@ -383,6 +387,24 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
     }
     return true;
   });
+
+  // `primary_renter_client_id` désigne un client de l'agence, pas un contact CRM :
+  // la liste des contacts ne le contient pas, et la liste déroulante affichait
+  // alors l'identifiant brut (BUG-2026-11-03-021). On ajoute le nom que l'API
+  // résout déjà sur le bail.
+  const partyFallbackOption = (
+    id: string | null | undefined,
+    party?: { displayName?: string | null; user?: { fullName?: string } } | null
+  ) => {
+    if (!id || clients.some(c => c.id === id)) return null;
+    const label = party?.displayName?.trim() || party?.user?.fullName?.trim();
+    if (!label) return null;
+    return (
+      <Select.Option key={`lease-party-${id}`} value={id}>
+        {label}
+      </Select.Option>
+    );
+  };
 
   const getPropertyOptionLabel = (property: Property): string => {
     const ownerLabel = property.owner?.fullName?.trim() || '';
@@ -492,6 +514,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
                   {contactDisplayNameWithEmail(client)}
                 </Select.Option>
               ))}
+              {partyFallbackOption(lease?.primary_renter_client_id, lease?.primaryRenter)}
             </Select>
           </Form.Item>
         </Col>
@@ -512,6 +535,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
                   {contactDisplayNameWithEmail(client)}
                 </Select.Option>
               ))}
+              {partyFallbackOption(lease?.owner_client_id, lease?.ownerClient)}
             </Select>
           </Form.Item>
         </Col>
@@ -526,6 +550,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
             rules={[{ required: true, message: t('La date de début est requise') }]}
           >
             <DatePicker
+              format={formatsSaisieDate()}
               style={{ width: '100%' }}
               disabled={!!lease}
               onChange={date => handleChange('startDate', date ? date.format('YYYY-MM-DD') : '')}
@@ -541,6 +566,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
             help={errors.endDate}
           >
             <DatePicker
+              format={formatsSaisieDate()}
               style={{ width: '100%' }}
               onChange={date => handleChange('endDate', date ? date.format('YYYY-MM-DD') : '')}
             />
@@ -550,6 +576,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
         <Col xs={24} md={12}>
           <Form.Item label={t("Date d'emménagement")} name="moveInDate">
             <DatePicker
+              format={formatsSaisieDate()}
               style={{ width: '100%' }}
               onChange={date => handleChange('moveInDate', date ? date.format('YYYY-MM-DD') : '')}
             />
@@ -559,6 +586,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
         <Col xs={24} md={12}>
           <Form.Item label={t('Date de déménagement')} name="moveOutDate">
             <DatePicker
+              format={formatsSaisieDate()}
               style={{ width: '100%' }}
               onChange={date => handleChange('moveOutDate', date ? date.format('YYYY-MM-DD') : '')}
             />
@@ -597,14 +625,23 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
               style={{ width: '100%' }}
               min={1}
               max={31}
+              disabled={!!lease}
               onChange={value => handleChange('dueDayOfMonth', value || 1)}
             />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label={t('Devise')} name="currency">
-            <Select onChange={value => handleChange('currency', value)}>
+          <Form.Item
+            label={t('Devise')}
+            name="currency"
+            extra={lease ? t("Le jour d'échéance et la devise se fixent à la création du bail.") : undefined}
+          >
+            <Select disabled={!!lease} onChange={value => handleChange('currency', value)}>
+              {/* Devise du bail enregistrée « CFA » ou « XOF » : valeur inchangée, affichage « FCFA ». */}
+              {lease?.currency && !['FCFA', 'EUR', 'USD'].includes(lease.currency) && (
+                <Select.Option value={lease.currency}>{deviseAffichee(lease.currency)}</Select.Option>
+              )}
               <Select.Option value="FCFA">FCFA</Select.Option>
               <Select.Option value="EUR">EUR</Select.Option>
               <Select.Option value="USD">USD</Select.Option>

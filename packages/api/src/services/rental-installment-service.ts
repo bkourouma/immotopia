@@ -1,17 +1,13 @@
 import { prisma } from '../utils/database';
 import type { PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
-import {
-  RentalBillingFrequency,
-  RentalInstallmentStatus,
-  RentalLeaseStatus,
-  ThirdPartyMovementType
-} from '@prisma/client';
+import { RentalInstallmentStatus, RentalLeaseStatus, ThirdPartyMovementType } from '@prisma/client';
 import { buildInstallmentForPeriod } from '../lib/finance/installment-builder';
 import { appendThirdPartyMovementTx, getOrCreateTenantAccountTx } from '../lib/finance/ledger';
 import { roundMoney } from '../lib/finance/money';
 import type { FinanceSourceType } from '../lib/finance/types';
 import { computeInstallmentStatus, startOfDay } from '../lib/finance/installment-status';
+import { listBillingPeriods } from '../lib/rental/installment-periods';
 import { withEffectiveAmounts } from '../lib/lease-lifecycle/effective-rent';
 import { logAuditEvent } from './audit-service';
 import { runWithTenantContext } from '../utils/tenant-context';
@@ -49,20 +45,20 @@ import { BadRequestError, ConflictError, NotFoundError } from '../middleware/err
  */
 const MOIS_FR = [
   'janvier',
-  'fevrier',
+  'février',
   'mars',
   'avril',
   'mai',
   'juin',
   'juillet',
-  'aout',
+  'août',
   'septembre',
   'octobre',
   'novembre',
-  'decembre'
+  'décembre'
 ];
 
-const MOIS_AVEC_ELISION = new Set(['avril', 'aout', 'octobre']);
+const MOIS_AVEC_ELISION = new Set(['avril', 'août', 'octobre']);
 
 /** « de fevrier 2026 » ou « d'octobre 2026 », prêt à suivre « Loyer » ou « l'échéance ». */
 export function libellePeriodeEcheance(periodYear?: number | null, periodMonth?: number | null): string | null {
@@ -232,33 +228,50 @@ export async function remettrePenaliteTx(
     penaltyId: string;
     montantRestant: number;
     label: string;
+    /** Libellé d'un complément de pénalité (hausse). Absent : « Pénalité de retard ». */
+    labelPenalite?: string;
     leaseId?: string | null;
     movementDate?: Date;
   }
 ) {
-  const solde = await soldePieceTx(tx, params.tenantId, 'RENTAL_PENALTY', params.penaltyId);
+  // Net déjà inscrit pour cette pénalité : le mouvement d'origine (clé
+  // `<id>`) et les compléments (clés `<id>:<n>`).
+  const mouvements = await tx.thirdPartyMovement.findMany({
+    where: { tenantId: params.tenantId, sourceType: 'RENTAL_PENALTY', sourceId: params.penaltyId },
+    select: { debit: true, credit: true, type: true, sourceId: true }
+  });
+  const complements = await tx.thirdPartyMovement.findMany({
+    where: {
+      tenantId: params.tenantId,
+      sourceType: 'RENTAL_PENALTY',
+      sourceId: { startsWith: `${params.penaltyId}:` }
+    },
+    select: { debit: true, credit: true, type: true, sourceId: true }
+  });
+  const tous = [...mouvements, ...complements];
+  const solde = roundMoney(tous.reduce((somme, m) => somme + Number(m.debit ?? 0) - Number(m.credit ?? 0), 0));
   const ecart = roundMoney(solde - roundMoney(params.montantRestant));
 
-  if (ecart <= 0) {
-    if (ecart < 0) {
-      logger.warn('Pénalité revue à la hausse après inscription : écart non représentable au grand livre', {
-        tenantId: params.tenantId,
-        penaltyId: params.penaltyId,
-        soldeInscrit: solde,
-        montantRestant: params.montantRestant
-      });
-    }
+  if (ecart === 0) {
     return null;
   }
+
+  const baisse = ecart > 0;
+  const type = baisse ? ThirdPartyMovementType.WAIVER : ThirdPartyMovementType.PENALTY;
+  // La clé d'unicité est `(sourceType, sourceId, type)` : le premier mouvement
+  // de chaque type garde l'id de la pénalité, les suivants un suffixe unique.
+  const premier = !tous.some(m => m.type === type && m.sourceId === params.penaltyId);
+  const sourceId = premier ? params.penaltyId : `${params.penaltyId}:${tous.length}`;
 
   return appendThirdPartyMovementTx(tx, {
     accountId: params.accountId,
     tenantId: params.tenantId,
-    type: ThirdPartyMovementType.WAIVER,
-    settled: ecart,
-    label: params.label,
+    type,
+    billed: baisse ? undefined : -ecart,
+    settled: baisse ? ecart : undefined,
+    label: baisse ? params.label : (params.labelPenalite ?? 'Pénalité de retard'),
     sourceType: 'RENTAL_PENALTY',
-    sourceId: params.penaltyId,
+    sourceId,
     leaseId: params.leaseId ?? null,
     movementDate: params.movementDate
   });
@@ -315,60 +328,6 @@ export async function inscrireEcheanceFactureeTx(
 }
 
 /**
- * Get billing period days based on frequency
- * @param frequency - Billing frequency
- * @returns Number of days in billing period (approximate, for calculation purposes)
- */
-function getBillingPeriodDays(frequency: RentalBillingFrequency): number {
-  switch (frequency) {
-    case RentalBillingFrequency.MONTHLY:
-      return 30; // Approximate, actual months will be calculated using calendar months
-    case RentalBillingFrequency.QUARTERLY:
-      return 90;
-    case RentalBillingFrequency.SEMIANNUAL:
-      return 180;
-    case RentalBillingFrequency.ANNUAL:
-      return 365;
-    default:
-      return 30;
-  }
-}
-
-/**
- * Calculate the end date of a billing period based on frequency and start date
- * Uses calendar months for accurate period calculation
- */
-function calculatePeriodEnd(startDate: Date, frequency: RentalBillingFrequency): Date {
-  const endDate = new Date(startDate);
-
-  switch (frequency) {
-    case RentalBillingFrequency.MONTHLY:
-      // Move to the same day next month, then subtract 1 day to get last day of current month
-      endDate.setMonth(endDate.getMonth() + 1);
-      endDate.setDate(0); // This sets to last day of previous month
-      break;
-    case RentalBillingFrequency.QUARTERLY:
-      endDate.setMonth(endDate.getMonth() + 3);
-      endDate.setDate(0); // Last day of the quarter
-      break;
-    case RentalBillingFrequency.SEMIANNUAL:
-      endDate.setMonth(endDate.getMonth() + 6);
-      endDate.setDate(0); // Last day of the 6-month period
-      break;
-    case RentalBillingFrequency.ANNUAL:
-      // For annual, go to next year, then get last day of previous month (which is Dec of current year)
-      endDate.setFullYear(endDate.getFullYear() + 1);
-      endDate.setDate(0); // This sets to last day of previous month (December of current year)
-      break;
-    default:
-      endDate.setMonth(endDate.getMonth() + 1);
-      endDate.setDate(0);
-  }
-
-  return endDate;
-}
-
-/**
  * Generate installments for a lease
  * @param tenantId - Tenant ID
  * @param leaseId - Lease ID
@@ -411,45 +370,18 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
     );
   }
 
-  const startDate = new Date(lease.start_date);
-  const endDate = lease.end_date ? new Date(lease.end_date) : null;
+  const periods = listBillingPeriods(
+    new Date(lease.start_date),
+    lease.end_date ? new Date(lease.end_date) : null,
+    lease.billing_frequency
+  );
 
-  // If no end date, generate installments for 12 months (default)
-  const effectiveEndDate = endDate || new Date(startDate);
-  if (!endDate) {
-    effectiveEndDate.setFullYear(effectiveEndDate.getFullYear() + 1);
-  }
-
-  const billingFrequency = lease.billing_frequency;
-  const billingPeriodDays = getBillingPeriodDays(billingFrequency);
-
-  // Calculate number of periods
-  const totalDays = Math.floor((effectiveEndDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-  const numberOfPeriods = Math.ceil(totalDays / billingPeriodDays);
-
-  if (numberOfPeriods <= 0) {
+  if (periods.length === 0) {
     throw new BadRequestError(t('La durée du bail est invalide'));
   }
 
-  // Generate installments using calendar months
   const installments = [];
-  let currentPeriodStart = new Date(startDate);
-  currentPeriodStart.setHours(0, 0, 0, 0); // Normalize to start of day
-
-  while (currentPeriodStart <= effectiveEndDate) {
-    // Calculate period end based on billing frequency (using calendar months)
-    const periodEnd = calculatePeriodEnd(currentPeriodStart, billingFrequency);
-
-    // Don't exceed lease end date
-    if (endDate && periodEnd > effectiveEndDate) {
-      periodEnd.setTime(effectiveEndDate.getTime());
-    }
-
-    // Skip if period start is after end date
-    if (currentPeriodStart > effectiveEndDate) {
-      break;
-    }
-
+  for (const { start: currentPeriodStart } of periods) {
     // Extract period year and month from the period start date
     // This represents which month/year the installment covers (the billing period)
     const periodYear = currentPeriodStart.getFullYear();
@@ -469,8 +401,6 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
     );
 
     if (!built.included) {
-      currentPeriodStart = new Date(periodEnd);
-      currentPeriodStart.setDate(currentPeriodStart.getDate() + 1);
       continue;
     }
 
@@ -492,8 +422,6 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
         periodMonth
       });
       // Move to next period
-      currentPeriodStart = new Date(periodEnd);
-      currentPeriodStart.setDate(currentPeriodStart.getDate() + 1);
       continue;
     }
 
@@ -503,11 +431,6 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
     });
 
     installments.push(installment);
-
-    // Move to next period: start of next month/quarter/etc.
-    currentPeriodStart = new Date(periodEnd);
-    currentPeriodStart.setDate(currentPeriodStart.getDate() + 1);
-    currentPeriodStart.setHours(0, 0, 0, 0);
   }
 
   logger.info('Installments generated', {

@@ -30,6 +30,22 @@ describe('errorHandler : erreurs Prisma', () => {
     expect(JSON.stringify(body)).not.toContain('mandants');
   });
 
+  it('P2020 (valeur hors limites de la colonne) répond 400 neutre, sans détail', () => {
+    const { status, body } = call(
+      prismaError(
+        'PrismaClientKnownRequestError',
+        'P2020',
+        "Value out of range for the type. Numeric value '99999999999' on column rentAmount of table rental_leases"
+      )
+    );
+    expect(status).toBe(400);
+    expect(body.code).toBe(ErrorCode.VALIDATION_ERROR);
+    expect(body.message).toBe('Une valeur dépasse la limite autorisée.');
+    const serialised = JSON.stringify(body);
+    expect(serialised).not.toContain('rentAmount');
+    expect(serialised).not.toContain('rental_leases');
+  });
+
   it('PrismaClientValidationError répond 400 avec un message générique', () => {
     const detail =
       'Invalid `prisma.rentalInstallment.findMany()` invocation in D:\\APP\\packages\\api\\src\\services\\x.ts:42\n' +

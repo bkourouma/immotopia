@@ -339,17 +339,17 @@ export const getOrCreateTenantAccountTx: GetOrCreateTenantAccountTx = async (tx,
 
 const MOIS_FR = [
   'janvier',
-  'fevrier',
+  'février',
   'mars',
   'avril',
   'mai',
   'juin',
   'juillet',
-  'aout',
+  'août',
   'septembre',
   'octobre',
   'novembre',
-  'decembre'
+  'décembre'
 ];
 
 function labelPeriode(periodYear?: number | null, periodMonth?: number | null): string | null {
@@ -361,17 +361,17 @@ function labelPeriode(periodYear?: number | null, periodMonth?: number | null): 
 }
 
 const MOYEN_PAIEMENT_FR: Record<string, string> = {
-  CASH: 'especes',
+  CASH: 'espèces',
   BANK_TRANSFER: 'virement bancaire',
-  CHECK: 'cheque',
+  CHECK: 'chèque',
   MOBILE_MONEY: 'Mobile Money',
   CARD: 'carte',
-  DIRECT_DEBIT: 'prelevement bancaire',
+  DIRECT_DEBIT: 'prélèvement bancaire',
   OTHER: 'autre moyen'
 };
 
 function labelMoyen(method: string | null | undefined): string {
-  return (method && MOYEN_PAIEMENT_FR[method]) || 'moyen non precise';
+  return (method && MOYEN_PAIEMENT_FR[method]) || 'moyen non précisé';
 }
 
 interface PendingMovement {

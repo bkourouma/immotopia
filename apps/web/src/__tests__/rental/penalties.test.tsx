@@ -33,6 +33,7 @@ const calculatePenalties = vi.fn();
 const uploadPenaltyJustification = vi.fn();
 const downloadPenaltyJustification = vi.fn();
 const saveBlob = vi.fn();
+let permissions: Set<string> | null = null;
 
 vi.mock('../../services/rental-service', () => ({
   listPenalties: (...a: unknown[]) => listPenalties(...a),
@@ -44,6 +45,10 @@ vi.mock('../../services/rental-service', () => ({
 }));
 
 vi.mock('../../utils/save-blob', () => ({ saveBlob: (...a: unknown[]) => saveBlob(...a) }));
+
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ disabled: new Set(), enabled: new Set(), permissions, ready: true })
+}));
 
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
@@ -84,6 +89,7 @@ function mount(penalites: unknown[]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  permissions = null;
   updatePenalty.mockResolvedValue({ success: true });
 });
 
@@ -101,11 +107,11 @@ describe('Pénalités — montant retenu', () => {
       })
     ]);
 
-    const cellules = await screen.findAllByText(/XOF/, {}, { timeout: 8000 });
+    const cellules = await screen.findAllByText(/FCFA/, {}, { timeout: 8000 });
     // `MoneyValue` sépare le nombre de la devise par une espace insécable :
     // comparer sur une espace ordinaire échouerait sans rien dire du code.
     const textes = cellules.map(c => c.textContent?.replace(/\s/g, ' '));
-    expect(textes.some(t => t?.trim() === '0 XOF')).toBe(true);
+    expect(textes.some(t => t?.trim() === '0 FCFA')).toBe(true);
     // Le montant calculé reste visible : on doit pouvoir vérifier ce qui a été
     // annulé, pas seulement constater qu'il ne reste rien.
     expect(textes.some(t => t?.includes('132 500'))).toBe(true);
@@ -113,7 +119,7 @@ describe('Pénalités — montant retenu', () => {
 
   it('retient le montant calculé quand aucun ajustement n’existe', async () => {
     mount([penalite()]);
-    const montants = await screen.findAllByText(/132\s500\sXOF/, {}, { timeout: 8000 });
+    const montants = await screen.findAllByText(/132\s500\sFCFA/, {}, { timeout: 8000 });
     // Une fois en « montant calculé », une fois en « montant retenu ».
     expect(montants.length).toBeGreaterThanOrEqual(2);
   });
@@ -124,7 +130,7 @@ describe('Pénalités — montant calculé et montant retenu', () => {
 
   it('affiche le calcul initial d’une pénalité non ajustée quand calculated_amount est renseigné', async () => {
     mount([penalite({ amount: 8_000, calculated_amount: 8_000 })]);
-    const textes = normaliser(await screen.findAllByText(/8\s000\sXOF/, {}, { timeout: 8000 }));
+    const textes = normaliser(await screen.findAllByText(/8\s000\sFCFA/, {}, { timeout: 8000 }));
     // Une fois en « calculé », une fois en « retenu ».
     expect(textes.length).toBeGreaterThanOrEqual(2);
   });
@@ -138,8 +144,8 @@ describe('Pénalités — montant calculé et montant retenu', () => {
         adjustment_reason: 'Geste commercial'
       })
     ]);
-    const calcule = normaliser(await screen.findAllByText(/8\s000\sXOF/, {}, { timeout: 8000 }));
-    const retenu = normaliser(await screen.findAllByText(/4\s000\sXOF/, {}, { timeout: 8000 }));
+    const calcule = normaliser(await screen.findAllByText(/8\s000\sFCFA/, {}, { timeout: 8000 }));
+    const retenu = normaliser(await screen.findAllByText(/4\s000\sFCFA/, {}, { timeout: 8000 }));
     expect(calcule.length).toBeGreaterThanOrEqual(1);
     expect(retenu.length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText('Geste commercial')).toBeInTheDocument();
@@ -147,8 +153,8 @@ describe('Pénalités — montant calculé et montant retenu', () => {
 
   it('affiche 0 pour une pénalité ramenée à zéro, calcul initial conservé', async () => {
     mount([penalite({ amount: 0, calculated_amount: 8_000, adjusted_amount: 0, adjustment_reason: 'Annulée' })]);
-    const textes = normaliser(await screen.findAllByText(/XOF/, {}, { timeout: 8000 }));
-    expect(textes.some(t => t === '0 XOF')).toBe(true);
+    const textes = normaliser(await screen.findAllByText(/FCFA/, {}, { timeout: 8000 }));
+    expect(textes.some(t => t === '0 FCFA')).toBe(true);
     expect(textes.some(t => t?.includes('8 000'))).toBe(true);
   });
 });
@@ -161,7 +167,8 @@ describe('Pénalités — lecture du champ « raison »', () => {
         adjustment_reason: JSON.stringify({
           reason: 'Geste commercial',
           justification: { fileUrl: '/uploads/a.pdf', fileName: 'accord.pdf' }
-        })
+        }),
+        justification: { fileName: 'accord.pdf', uploadedAt: '' }
       })
     ]);
     expect(await screen.findByText('Geste commercial', {}, { timeout: 8000 })).toBeInTheDocument();
@@ -179,7 +186,8 @@ describe('Pénalités — lecture du champ « raison »', () => {
         adjustment_reason: JSON.stringify({
           reason: 'Geste commercial',
           justification: { fileUrl: '/uploads/rental/penalties/pen-1/j.pdf', fileName: 'accord.pdf' }
-        })
+        }),
+        justification: { fileName: 'accord.pdf', uploadedAt: '' }
       })
     ]);
     await userEvent.setup({ delay: null }).click(await screen.findByText('Justificatif', {}, { timeout: 8000 }));
@@ -245,5 +253,54 @@ describe('Pénalités — ajustement', () => {
     await user.click(await screen.findByRole('button', { name: 'Ajuster' }, { timeout: 8000 }));
     const champ = document.querySelector('.ant-modal input') as HTMLInputElement;
     expect(champ.value.replace(/\s/g, '')).toBe('30000');
+  });
+});
+
+describe('Pénalités — justificatif sur une pénalité non ajustée (BUG-014)', () => {
+  it("n'affiche jamais le JSON interne ni le chemin du fichier", async () => {
+    mount([
+      penalite({
+        override_reason: null,
+        justification: { fileName: 'notes.pdf', uploadedAt: '2026-11-04' }
+      })
+    ]);
+    await screen.findByText('Justificatif', {}, { timeout: 8000 });
+    expect(document.body.textContent).not.toContain('fileUrl');
+    expect(document.body.textContent).not.toContain('/uploads');
+  });
+
+  it('masque un JSON de justificatif reçu dans le champ de raison (anciennes données)', async () => {
+    mount([
+      penalite({
+        adjustment_reason: JSON.stringify({ justification: { fileUrl: '/uploads/x.pdf', uploadedBy: 'u-9' } })
+      })
+    ]);
+    await screen.findByText('10 jours', {}, { timeout: 8000 });
+    expect(document.body.textContent).not.toContain('u-9');
+  });
+});
+
+describe('Pénalités — profil en lecture seule (BUG-018)', () => {
+  it("n'offre ni calcul, ni ajustement, ni menu d'actions", async () => {
+    permissions = new Set(['RENTAL_PENALTIES_VIEW']);
+    mount([penalite({ justification: { fileName: 'a.pdf', uploadedAt: '' } })]);
+    await screen.findByText('10 jours', {}, { timeout: 8000 });
+    expect(screen.queryByRole('button', { name: 'Ajuster' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Calculer les pénalités/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Autres actions/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Justificatif')).toBeInTheDocument();
+  });
+});
+
+describe('Pénalités — montant vidé (BUG-018)', () => {
+  it('demande le montant retenu quand le champ est vidé', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount([penalite({ adjusted_amount: 30_000, adjustment_reason: 'Geste' })]);
+    await user.click(await screen.findByRole('button', { name: 'Ajuster' }, { timeout: 8000 }));
+    const champ = document.querySelector('.ant-modal input') as HTMLInputElement;
+    await user.clear(champ);
+    await user.click(await screen.findByRole('button', { name: /Enregistrer l'ajustement/ }));
+    expect(await screen.findByText(/Indiquez le montant retenu/)).toBeInTheDocument();
+    expect(updatePenalty).not.toHaveBeenCalled();
   });
 });

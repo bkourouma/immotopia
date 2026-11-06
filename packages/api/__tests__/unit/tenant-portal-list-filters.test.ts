@@ -1,6 +1,6 @@
 /**
  * Listes du portail locataire : paramètres de recherche (échéances, historique
- * des paiements, tickets). Le périmètre reste le bail de la session.
+ * des paiements, tickets). Le périmètre reste les baux du locataire connecté.
  */
 const installmentFindMany = jest.fn();
 const installmentCount = jest.fn();
@@ -61,15 +61,20 @@ describe('getInstallments : where', () => {
 
   it('sans filtre : seulement le bail et l agence de la session', async () => {
     await service.getInstallments('TC1', 'L1', 'T1');
-    expect(whereOf()).toEqual({ lease_id: 'L1', tenant_id: 'T1' });
+    expect(whereOf()).toEqual({ lease_id: { in: ['L1'] }, tenant_id: 'T1' });
   });
 
   it('statuts en liste : le bail de la session reste dans le where', async () => {
     await service.getInstallments('TC1', 'L1', 'T1', { status: ['DUE', 'OVERDUE'], search: '2026-10' });
     const where = whereOf();
-    expect(where.lease_id).toBe('L1');
+    expect(where.lease_id).toEqual({ in: ['L1'] });
     expect(where.tenant_id).toBe('T1');
-    expect(where.status).toEqual({ in: ['DUE', 'OVERDUE'] });
+    expect(where.OR).toEqual(
+      expect.arrayContaining([
+        { status: { in: ['DUE', 'OVERDUE'] } },
+        { status: 'DRAFT', due_date: expect.objectContaining({ lt: expect.any(Date) }) }
+      ])
+    );
     expect(where.AND[0].OR).toEqual(
       expect.arrayContaining([
         { items: { some: { label: { contains: '2026-10', mode: 'insensitive' } } } },
@@ -80,7 +85,7 @@ describe('getInstallments : where', () => {
 
   it('un leaseId ou propertyId reçu dans les filtres ne change pas le where', async () => {
     await service.getInstallments('TC1', 'L1', 'T1', { leaseId: 'AUTRE', propertyId: 'P9' } as any);
-    expect(whereOf()).toEqual({ lease_id: 'L1', tenant_id: 'T1' });
+    expect(whereOf()).toEqual({ lease_id: { in: ['L1'] }, tenant_id: 'T1' });
   });
 
   it('recherche insensible à la casse sur le libellé des lignes', () => {
@@ -106,8 +111,17 @@ describe('getPaymentHistory : recherche sur les deux sources', () => {
 
   it('le bail et l agence de la session restent dans les deux where', async () => {
     await service.getPaymentHistory('TC1', 'L1', 'T1', { search: 'wave', method: ['CASH', 'CARD'] });
-    expect(paymentWhere()).toMatchObject({ lease_id: 'L1', tenant_id: 'T1', method: { in: ['CASH', 'CARD'] } });
-    expect(declarationWhere()).toMatchObject({ lease_id: 'L1', tenant_id: 'T1', declared_by: 'TC1' });
+    expect(paymentWhere()).toMatchObject({
+      lease_id: { in: ['L1'] },
+      tenant_id: 'T1',
+      method: { in: ['CASH', 'CARD'] }
+    });
+    expect(declarationWhere()).toMatchObject({
+      lease_id: { in: ['L1'] },
+      tenant_id: 'T1',
+      declared_by: 'TC1',
+      payment_method: { in: ['CASH', 'CARD'] }
+    });
   });
 
   it('recherche insensible à la casse sur la référence, paiements et déclarations', async () => {
@@ -151,7 +165,7 @@ describe('getPaymentHistory : recherche sur les deux sources', () => {
 
   it('un leaseId reçu dans les filtres ne change pas le where', async () => {
     await service.getPaymentHistory('TC1', 'L1', 'T1', { leaseId: 'AUTRE' } as any);
-    expect(paymentWhere()).toEqual({ lease_id: 'L1', tenant_id: 'T1' });
+    expect(paymentWhere()).toEqual({ lease_id: { in: ['L1'] }, tenant_id: 'T1' });
   });
 
   it('méthode : appliquée aussi aux déclarations (payment_method, mêmes valeurs d enum)', async () => {
@@ -169,12 +183,12 @@ describe('getPaymentHistory : recherche sur les deux sources', () => {
       lte: new Date('2026-03-31T23:59:59.999Z')
     };
     expect(declarationWhere().payment_date).toEqual(expected);
-    expect(paymentWhere().succeeded_at).toEqual(expected);
+    expect(paymentWhere().OR).toEqual([{ succeeded_at: expected }, { succeeded_at: null, initiated_at: expected }]);
   });
 
   it('sans méthode ni période : les déclarations ne reçoivent ni payment_method ni payment_date', async () => {
     await service.getPaymentHistory('TC1', 'L1', 'T1', {});
-    expect(declarationWhere()).toEqual({ lease_id: 'L1', tenant_id: 'T1', declared_by: 'TC1' });
+    expect(declarationWhere()).toEqual({ lease_id: { in: ['L1'] }, tenant_id: 'T1', declared_by: 'TC1' });
   });
 });
 

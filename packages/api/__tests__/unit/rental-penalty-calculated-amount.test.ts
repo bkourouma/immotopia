@@ -9,6 +9,7 @@ const store = { installments: [] as Row[], penalties: [] as Row[], seq: 0 };
 
 const LEASE = {
   id: 'lease-1',
+  status: 'ACTIVE',
   primary_renter_client_id: 'client-1',
   penalty_grace_days: 0,
   penalty_mode: 'PERCENT_OF_RENT',
@@ -48,6 +49,7 @@ const mockPrisma: Row = {
     })
   },
   rentalLease: { findFirst: jest.fn(async () => ({ primary_renter_client_id: 'client-1' })) },
+  $queryRaw: jest.fn(async () => []),
   $transaction: jest.fn(async (cb: (tx: Row) => Promise<any>) => cb(mockPrisma))
 };
 

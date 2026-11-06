@@ -9,6 +9,9 @@ import { t } from '../i18n';
 // — pour qu'aucun appelant n'ait à s'en souvenir.
 import '../lib/zod-error-map';
 
+// @i18n-keys
+const MESSAGE_VALEUR_HORS_LIMITES = 'Une valeur dépasse la limite autorisée.';
+
 /**
  * Single error response shape for the whole API.
  *
@@ -465,6 +468,18 @@ function toErrorResponse(err: unknown): { status: number; body: ErrorResponse } 
         return {
           status: 404,
           body: { success: false, message: 'Ressource introuvable.', code: ErrorCode.NOT_FOUND }
+        };
+      case 'P2020':
+        // Valeur hors limites pour la colonne (Decimal(12, 2) dépassé) : entrée
+        // inexploitable, pas une panne. Le détail (colonne, valeur) reste dans
+        // les journaux.
+        return {
+          status: 400,
+          body: {
+            success: false,
+            message: MESSAGE_VALEUR_HORS_LIMITES,
+            code: ErrorCode.VALIDATION_ERROR
+          }
         };
       default:
         break;

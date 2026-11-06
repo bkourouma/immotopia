@@ -885,10 +885,8 @@ export async function sendOwnerStatement(statementId: string, tenantId: string) 
 
   await prisma.ownerStatement.update({
     where: { id: statement.id, tenantId },
-    data: {
-      status: 'SENT',
-      sentAt: new Date()
-    }
+    // Envoyer (ou renvoyer) un relevé déjà payé ne change pas son statut.
+    data: statement.status === 'PAID' ? { sentAt: new Date() } : { status: 'SENT', sentAt: new Date() }
   });
 
   logger.info('sendOwnerStatement completed', {

@@ -31,7 +31,7 @@ import { ListSearch, Table } from '../../components/primitives';
 import { listPagination, noResults, useLeaseDetailsSearch, useLeaseTabs } from './search/useLeaseDetailsSearch';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
+import { activeLocale, formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 
@@ -91,7 +91,10 @@ interface LeaseDetailsData {
   balance: {
     totalDue: number;
     totalPaid: number;
+    /** Reste dû : échéances exigibles (échues) non soldées. */
     remaining: number;
+    /** Échéances à venir non soldées, séparées du reste dû. */
+    upcoming: number;
   };
   deposit: {
     target_amount: number;
@@ -110,11 +113,7 @@ interface LeaseDetailsData {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat(activeLocale(), {
-    style: 'currency',
-    currency: 'XOF',
-    minimumFractionDigits: 0
-  }).format(amount);
+  return formatFcfa(amount);
 };
 
 const formatDate = (dateString: string) => {
@@ -475,6 +474,20 @@ export default function LeaseDetails() {
                 />
               </Col>
             </Row>
+            {data.balance.upcoming > 0 && (
+              <Alert
+                message={t('Échéances à venir (non exigibles)')}
+                description={t(
+                  '{{value}} seront dus aux prochaines échéances ; ce montant n’est pas inclus dans le reste à payer.',
+                  {
+                    value: formatCurrency(data.balance.upcoming)
+                  }
+                )}
+                type="info"
+                showIcon
+                style={{ marginTop: 16 }}
+              />
+            )}
             {data.balance.remaining > 0 && (
               <Alert
                 message={t('Montant en attente de paiement')}

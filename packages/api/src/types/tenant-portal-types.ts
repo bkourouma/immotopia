@@ -16,6 +16,14 @@ import {
 
 // Dashboard Types
 export interface DashboardData {
+  /** Présent seulement quand le locataire a plusieurs baux actifs : un résumé par bail. */
+  leases?: Array<{
+    id: string;
+    leaseNumber: string;
+    propertyAddress: string;
+    balance: number;
+    overdueInstallmentsCount: number;
+  }>;
   lease: LeaseOverview;
   currentBalance: number;
   overdueInstallmentsCount: number;
@@ -37,6 +45,8 @@ export interface LeaseOverview {
 
 export interface InstallmentOverview {
   id: string;
+  /** Bail de l'échéance (plusieurs baux actifs possibles). */
+  leaseId?: string;
   period: string; // Format: "YYYY-MM"
   dueDate: Date;
   /** Reste dû sur l'échéance. */

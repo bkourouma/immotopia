@@ -305,7 +305,7 @@ describe('Tableau de bord — les chiffres mènent quelque part', () => {
     // `\s` et non une espace ordinaire : `Intl` pose une espace insécable
     // étroite comme séparateur de milliers en français.
     await screen.findByText(/450\s000 FCFA · 12 j de retard/);
-    expect(screen.getByText(/840\s000 FCFA · MOBILE_MONEY/)).toBeInTheDocument();
+    expect(screen.getByText(/840\s000 FCFA · Mobile Money/)).toBeInTheDocument();
     // Le journal d'activité composait sa phrase de la même façon.
     expect(screen.getByText(/300\s000 FCFA · bail BAIL-2026-0183/)).toBeInTheDocument();
     expect(screen.queryByText(/XOF/)).not.toBeInTheDocument();

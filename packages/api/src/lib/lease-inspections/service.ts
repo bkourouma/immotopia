@@ -10,6 +10,7 @@ import { getUploadsRoot } from '../../utils/project-root';
 import { badRequest, conflict, notFound } from '../errors';
 import { AppError, ErrorCode } from '../../middleware/error-middleware';
 import { cancelOpenRequestsForTarget } from '../signature/cancel';
+import { detectImageKind } from '../../utils/file-signature';
 import {
   CONDITIONS,
   DEDUCTION_SOURCES,
@@ -682,13 +683,21 @@ export async function addInspectionPhoto(
   if (file.size > MAX_PHOTO_SIZE_BYTES) {
     throw badRequest('Fichier trop volumineux : 10 Mo maximum.');
   }
+  // Contenu réel (octets magiques), pas seulement le type déclaré — BUG-2026-11-04-026.
+  // Contrôle avant toute écriture : rien sur le disque ni en base si refusé.
+  const kind = file.buffer ? detectImageKind(file.buffer) : null;
+  if (!kind) {
+    throw badRequest('Type de fichier non autorisé. Formats acceptés : JPEG, PNG, WebP.');
+  }
+  // Type et extension stockés d'après le contenu, jamais d'après le nom ou le type déclaré.
+  const detectedMime = kind === 'jpg' ? 'image/jpeg' : kind === 'png' ? 'image/png' : 'image/webp';
 
   const parsedFields = photoFieldsSchema.parse(fields ?? {});
 
   const uploadDir = path.join(getUploadsRoot(env.UPLOADS_DIR), 'lease-inspections', tenantId, inspectionId);
   await fs.mkdir(uploadDir, { recursive: true });
 
-  const extension = path.extname(file.originalname).toLowerCase() || extensionForMimeType(file.mimetype);
+  const extension = extensionForMimeType(detectedMime);
   const storedFileName = `${randomUUID()}${extension}`;
   const filePath = path.join(uploadDir, storedFileName);
   await fs.writeFile(filePath, file.buffer);
@@ -703,7 +712,7 @@ export async function addInspectionPhoto(
       itemId: parsedFields.itemId,
       fileName: displayName,
       filePath,
-      mimeType: file.mimetype,
+      mimeType: detectedMime,
       sizeBytes: file.size,
       caption: parsedFields.caption,
       uploadedByUserId: userId ?? null

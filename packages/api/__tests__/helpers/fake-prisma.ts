@@ -373,6 +373,7 @@ export const FAKE_MODEL_NAMES = [
   'property',
   'propertyMandate',
   'rentalPenalty',
+  'rentalInstallment',
   'rentalLease',
   'maintenanceTicket',
   'maintenanceTicketAttachment',

@@ -63,7 +63,8 @@ export interface InstallmentBuildData {
 export type InstallmentExclusionReason =
   /** La période demandée précède la date de début du bail. */
   | 'PERIOD_BEFORE_LEASE_START'
-  /** La période demandée suit la date de fin du bail. */
+  /** La période demandée suit la date de fin du bail, ou n'en couvre que le
+   *  dernier jour (début de période == date de fin : non facturée). */
   | 'PERIOD_AFTER_LEASE_END'
   /** Le bail existe sur cette période, mais ne s'y facture pas (ex. bail
    *  trimestriel démarré en février : rien à facturer en mars). */
@@ -236,6 +237,17 @@ export function buildInstallmentForPeriod(
   if (lease.end_date) {
     const leaseEndDate = new Date(lease.end_date);
     if (periodStartDate > leaseEndDate) {
+      return { included: false, reason: 'PERIOD_AFTER_LEASE_END' };
+    }
+
+    // Une période (hors première) réduite au seul dernier jour du bail n'est
+    // pas facturée : un bail du 01/07/2026 au 01/07/2027 a 12 échéances
+    // mensuelles, pas 13. Même règle que `listBillingPeriods`
+    // (lib/rental/installment-periods.ts), donc que `generateInstallments`.
+    // La première période n'est jamais retirée (bail d'un seul jour).
+    const leaseEndDay = new Date(leaseEndDate);
+    leaseEndDay.setHours(0, 0, 0, 0);
+    if (monthsSinceLeaseStart > 0 && periodStartDate.getTime() === leaseEndDay.getTime()) {
       return { included: false, reason: 'PERIOD_AFTER_LEASE_END' };
     }
   }

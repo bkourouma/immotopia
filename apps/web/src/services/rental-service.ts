@@ -1,4 +1,4 @@
-import apiClient from '../utils/api-client';
+import apiClient, { FILE_DOWNLOAD_TIMEOUT_MS } from '../utils/api-client';
 import { filenameFromDisposition } from '../utils/save-blob';
 import type { OnlineCheckoutSummary } from './payment-gateway-service';
 
@@ -129,6 +129,7 @@ export interface RentalLease {
     userId: string;
     clientType: string;
     crmContactId?: string;
+    displayName?: string | null;
     user?: {
       id: string;
       fullName: string;
@@ -140,6 +141,7 @@ export interface RentalLease {
     userId: string;
     clientType: string;
     crmContactId?: string;
+    displayName?: string | null;
     user?: {
       id: string;
       fullName: string;
@@ -185,9 +187,10 @@ export interface CreateLeaseRequest {
 }
 
 export interface UpdateLeaseRequest {
-  endDate?: string;
-  moveInDate?: string;
-  moveOutDate?: string;
+  /** `null` retire la date (bail sans fin) ; absent la laisse inchangée. */
+  endDate?: string | null;
+  moveInDate?: string | null;
+  moveOutDate?: string | null;
   rentAmount?: number;
   serviceChargeAmount?: number;
   securityDepositAmount?: number;
@@ -218,6 +221,8 @@ export interface LeaseListResponse {
 export interface LeaseResponse {
   success: boolean;
   data: RentalLease;
+  /** Modification du bail : échéances non commencées recalculées au nouveau loyer. */
+  installmentsRepriced?: number;
 }
 
 // ==================== LEASES ====================
@@ -622,6 +627,10 @@ export interface RentalPenalty {
   calculated_amount?: number | null;
   adjusted_amount?: number | null;
   adjustment_reason?: string | null;
+  /** Raison de l'ajustement uniquement (jamais le JSON interne du justificatif). */
+  override_reason?: string | null;
+  /** Justificatif joint : nom et date, sans chemin interne (téléchargement par la route de la pénalité). */
+  justification?: { fileName: string | null; uploadedAt: string | null } | null;
   is_manual_override?: boolean;
   created_at: string;
   updated_at: string;
@@ -822,6 +831,9 @@ export interface GenerateDocumentRequest {
   title?: string;
   description?: string;
   templateId?: string;
+  /** Période du relevé (AAAA-MM-JJ), requise pour le type STATEMENT. */
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface DocumentFilters {
@@ -873,12 +885,14 @@ export async function generateDocument(
   const docTypeMap: Record<RentalDocumentType, string> = {
     // L'API choisit le modele (habitation ou commercial) d'apres le type du bien.
     LEASE_CONTRACT: 'LEASE_CONTRACT',
-    LEASE_ADDENDUM: 'LEASE_HABITATION',
+    LEASE_ADDENDUM: 'LEASE_ADDENDUM',
     RENT_RECEIPT: 'RENT_RECEIPT',
-    RENT_QUITTANCE: 'RENT_RECEIPT',
-    DEPOSIT_RECEIPT: 'RENT_RECEIPT',
+    // Pas de générateur : envoyés tels quels, l'API les refuse par une 400 explicite
+    // (ils ne doivent plus être ramenés en silence à un reçu de loyer).
+    RENT_QUITTANCE: 'RENT_QUITTANCE',
+    DEPOSIT_RECEIPT: 'DEPOSIT_RECEIPT',
     STATEMENT: 'RENT_STATEMENT',
-    OTHER: 'RENT_RECEIPT'
+    OTHER: 'OTHER'
   };
 
   const docType = docTypeMap[data.type] || 'RENT_RECEIPT';
@@ -897,7 +911,10 @@ export async function generateDocument(
     docType,
     sourceKey,
     templateId: data.templateId,
-    installmentId: data.installmentId
+    installmentId: data.installmentId,
+    title: data.title,
+    description: data.description,
+    ...(docType === 'RENT_STATEMENT' ? { startDate: data.startDate, endDate: data.endDate } : {})
   };
 
   console.log('🔵 [rental-service] generateDocument: Sending request', {
@@ -906,7 +923,10 @@ export async function generateDocument(
   });
 
   try {
-    const response = await apiClient.post(`/tenants/${tenantId}/documents/generate`, requestBody);
+    // Génération et conversion PDF côté serveur : délai long (BUG-2026-11-04-042).
+    const response = await apiClient.post(`/tenants/${tenantId}/documents/generate`, requestBody, {
+      timeout: FILE_DOWNLOAD_TIMEOUT_MS
+    });
 
     console.log('✅ [rental-service] generateDocument: Success', {
       success: response.data.success,
@@ -939,7 +959,11 @@ export async function regenerateDocument(
   documentId: string,
   templateId?: string
 ): Promise<{ success: boolean; data: RentalDocument; message: string }> {
-  const response = await apiClient.post(`/tenants/${tenantId}/documents/${documentId}/regenerate`, { templateId });
+  const response = await apiClient.post(
+    `/tenants/${tenantId}/documents/${documentId}/regenerate`,
+    { templateId },
+    { timeout: FILE_DOWNLOAD_TIMEOUT_MS }
+  );
   return response.data;
 }
 

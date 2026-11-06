@@ -116,6 +116,12 @@ export interface AuthState {
   tenantMembership: TenantMembership | null;
   tenantClient: TenantClient | null;
   isLoadingMembership: boolean;
+  /**
+   * Vrai quand le compte ou l'agence n'ont pas pu être lus faute de réponse de
+   * l'API (réseau, délai, 5xx) — jamais pour un 401. Optionnel pour les
+   * doublures de test de `useAuth`.
+   */
+  loadError?: boolean;
   /** Les agences éligibles au sélecteur — vide ou à un élément : aucun sélecteur. */
   availableTenants: AvailableTenant[];
   /** `tenantMembership?.tenantId ?? tenantClient?.tenantId ?? null`. */
@@ -142,6 +148,8 @@ export interface AuthContextType extends AuthState {
   refreshToken: () => Promise<void>;
   clearError: () => void;
   refreshMembership: () => Promise<void>;
+  /** « Réessayer » après `loadError` : relit le compte, ou l'agence si la session est déjà établie. */
+  retryLoad?: () => Promise<void>;
   /**
    * Change l'agence courante parmi `availableTenants` : met à jour
    * `tenantMembership`/`tenantClient` depuis la liste déjà chargée (pas de

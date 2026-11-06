@@ -591,12 +591,20 @@ export const CompteProprietaire: React.FC = () => {
           <InputNumber
             id="reversement-montant"
             style={{ width: '100%' }}
-            min={1}
+            // Pas de min=1 : le champ ramenait 0 et -5 à 1 sans rien dire.
+            // Le plancher est 0 (jamais de négatif) et un montant nul affiche l'erreur ci-dessous.
+            min={0}
             step={1000}
+            status={montant !== null && montant <= 0 ? 'error' : undefined}
             value={montant ?? undefined}
             onChange={valeur => setMontant(typeof valeur === 'number' ? valeur : null)}
             {...montantSaisiProps}
           />
+          {montant !== null && montant <= 0 ? (
+            <Text type="danger" style={{ display: 'block' }}>
+              {t('Le montant doit être supérieur à 0')}
+            </Text>
+          ) : null}
         </div>
 
         <div style={{ marginBottom: 'var(--space-3)' }}>

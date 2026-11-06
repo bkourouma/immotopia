@@ -12,14 +12,22 @@ interface MaintenanceTicketModalProps {
   open: boolean;
   onCancel: () => void;
   onSuccess: () => void;
+  /** Bail concerné quand le locataire en a plusieurs. */
+  leaseId?: string;
 }
 
-export default function MaintenanceTicketModal({ open, onCancel, onSuccess }: MaintenanceTicketModalProps) {
+export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leaseId }: MaintenanceTicketModalProps) {
   const { message } = App.useApp();
 
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
+
+  const handleCancel = () => {
+    form.resetFields();
+    setFileList([]);
+    onCancel();
+  };
 
   const handleSubmit = async (values: any) => {
     try {
@@ -42,13 +50,11 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess }: Ma
         }
       });
 
-      await tenantPortalService.createMaintenanceTicket(formData);
+      await tenantPortalService.createMaintenanceTicket(formData, leaseId);
 
       message.success(t('Ticket de maintenance créé avec succès'));
-      form.resetFields();
-      setFileList([]);
       onSuccess();
-      onCancel();
+      handleCancel();
     } catch (error: any) {
       message.error(error.response?.data?.message || t('Erreur lors de la création du ticket'));
     } finally {
@@ -86,7 +92,7 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess }: Ma
         </Space>
       }
       open={open}
-      onCancel={onCancel}
+      onCancel={handleCancel}
       footer={null}
       width={700}
       destroyOnClose
@@ -138,7 +144,7 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess }: Ma
         </Form.Item>
 
         <Form.Item label={t('Détails de localisation (optionnel)')} name="locationDetails">
-          <Input placeholder={t('Ex: Chambre principale, côté fenêtre')} />
+          <Input maxLength={500} placeholder={t('Ex: Chambre principale, côté fenêtre')} />
         </Form.Item>
 
         <Form.Item
@@ -165,7 +171,7 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess }: Ma
 
         <Form.Item>
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={onCancel}>{t('Annuler')}</Button>
+            <Button onClick={handleCancel}>{t('Annuler')}</Button>
             <Button type="primary" htmlType="submit" loading={loading}>
               {t('Créer le ticket')}
             </Button>

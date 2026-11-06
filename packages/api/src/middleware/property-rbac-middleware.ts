@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { hasPermission } from '../services/permission-service';
 import { logger } from '../utils/logger';
+import { t } from '../i18n';
 
 /**
  * Middleware to require a specific property permission
@@ -15,7 +16,7 @@ export function requirePropertyPermission(permissionKey: string) {
         res.status(401).json({
           success: false,
           error: 'Unauthorized',
-          message: 'Authentication required'
+          message: t('Authentification requise.')
         });
         return;
       }
@@ -37,7 +38,9 @@ export function requirePropertyPermission(permissionKey: string) {
         res.status(403).json({
           success: false,
           error: 'Forbidden',
-          message: `Permission denied: ${permissionKey}`
+          message: t("Vous n'avez pas les droits nécessaires pour effectuer cette action."),
+          // Code technique, hors du texte affiché.
+          requiredPermission: permissionKey
         });
         return;
       }
@@ -69,7 +72,7 @@ export function requireAnyPropertyPermission(permissionKeys: string[]) {
         res.status(401).json({
           success: false,
           error: 'Unauthorized',
-          message: 'Authentication required'
+          message: t('Authentification requise.')
         });
         return;
       }
@@ -88,7 +91,8 @@ export function requireAnyPropertyPermission(permissionKeys: string[]) {
       res.status(403).json({
         success: false,
         error: 'Forbidden',
-        message: `Permission denied: requires one of [${permissionKeys.join(', ')}]`
+        message: t("Vous n'avez pas les droits nécessaires pour effectuer cette action."),
+        requiredPermissions: permissionKeys
       });
     } catch (error) {
       logger.error('Property permission check error', { error, permissionKeys });

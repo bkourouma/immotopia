@@ -8,7 +8,9 @@ import {
   RentalPaymentStatus,
   listPayments
 } from '../../services/rental-service';
-import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { libelleMethodePaiement } from '../../lib/rental-payment-status';
+import { formatMontantLocatif } from '../../lib/rental-labels';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
 
@@ -176,7 +178,7 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
               label={t('Paiement associé')}
               name="paymentId"
               rules={[{ required: true, message: t('Le paiement est requis pour une collecte') }]}
-              help={t(
+              extra={t(
                 'Choisissez le paiement qui correspond à la collecte du dépôt. Le montant ci-dessous sera rempli automatiquement.'
               )}
             >
@@ -198,11 +200,8 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
               >
                 {payments.map(payment => (
                   <Select.Option key={payment.id} value={payment.id}>
-                    {new Intl.NumberFormat(activeLocale(), {
-                      style: 'currency',
-                      currency: payment.currency === 'FCFA' ? 'XOF' : payment.currency
-                    }).format(payment.amount)}{' '}
-                    - {payment.method} - {new Date(payment.created_at).toLocaleDateString(activeLocale())}
+                    {formatMontantLocatif(payment.amount, payment.currency)} - {libelleMethodePaiement(payment.method)}{' '}
+                    - {new Date(payment.created_at).toLocaleDateString(activeLocale())}
                   </Select.Option>
                 ))}
               </Select>
@@ -218,7 +217,7 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
               { required: true, message: t('Le montant est requis') },
               { type: 'number', min: 0.01, message: t('Le montant doit être supérieur à 0') }
             ]}
-            help={
+            extra={
               movementType === RentalDepositMovementType.COLLECT
                 ? t('Pour une collecte, ce montant doit être égal au montant cible du dépôt (rempli automatiquement).')
                 : undefined
@@ -228,15 +227,7 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
               style={{ width: '100%' }}
               min={0}
               step={1000}
-              formatter={value => formatNumberWithSpaces(value?.toString() || '')}
-              parser={
-                (value => {
-                  if (!value) return 0;
-                  const parsed = parseFormattedNumber(value);
-                  const num = parseFloat(parsed);
-                  return isNaN(num) ? 0 : num;
-                }) as (displayValue: string | undefined) => number
-              }
+              {...montantSaisiProps}
               placeholder={t('Ex: 500 000')}
             />
           </Form.Item>
@@ -247,7 +238,7 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
             <Form.Item
               label={t('Compte de trésorerie')}
               name="treasuryAccountId"
-              help={t('Compte débité pour le remboursement du dépôt de garantie au locataire.')}
+              extra={t('Compte débité pour le remboursement du dépôt de garantie au locataire.')}
             >
               <RefundTreasuryAccountField tenantId={tenantId} />
             </Form.Item>

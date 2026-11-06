@@ -46,6 +46,9 @@ export const NotificationList: React.FC<NotificationListProps> = ({
     <List
       loading={loading}
       dataSource={items}
+      // `List` lit `item.key` par défaut : or `key` est ici le TYPE de notification
+      // (plusieurs lignes en partagent un). L'identifiant seul est unique.
+      rowKey={item => item.id}
       renderItem={item => {
         const unread = item.readAt === null;
         const failed = item.deliveries.filter(delivery => delivery.status === 'FAILED');
