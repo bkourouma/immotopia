@@ -10,6 +10,7 @@ import { seedSiteManagerRole } from './site-manager-role-seed';
 import { seedSyndicPermissions } from './syndic-permissions-seed';
 import { seedAuditPermissions } from './audit-permissions-seed';
 import { seedNotificationsPermissions } from './notifications-permissions-seed';
+import { seedPatrimoinePersonalPermissions } from './patrimoine-personal-permissions-seed';
 
 const prisma = new PrismaClient();
 
@@ -141,6 +142,7 @@ async function seedRBAC() {
 
   // Menu lot 3 : journal des notifications de l'agence (admin et gestionnaire).
   await seedNotificationsPermissions();
+  await seedPatrimoinePersonalPermissions();
 
   // Assign all permissions to PLATFORM_SUPER_ADMIN
   console.log('  Assigning permissions to PLATFORM_SUPER_ADMIN...');

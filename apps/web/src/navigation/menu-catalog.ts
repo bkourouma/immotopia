@@ -186,7 +186,7 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   patrimoine: ['PROPERTIES_VIEW', 'PATRIMOINE_PERSONAL_VIEW'],
   'patrimoine-overview': ['PROPERTIES_VIEW'],
   // Données personnelles (actifs non immobiliers, dettes, entités, projections) : permission dédiée,
-  // non accordée aux rôles d'agence ; réservée au propriétaire d'un espace PARTICULIER.
+  // accordée au dirigeant (TENANT_ADMIN) et au propriétaire d'un espace PARTICULIER, jamais aux autres collaborateurs.
   'patrimoine-net-worth': ['PATRIMOINE_PERSONAL_VIEW'],
   'patrimoine-assets': ['PATRIMOINE_PERSONAL_VIEW'],
   'patrimoine-projections': ['PATRIMOINE_PERSONAL_VIEW'],

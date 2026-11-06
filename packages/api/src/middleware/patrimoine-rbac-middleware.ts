@@ -5,11 +5,12 @@ import { requirePermission } from './rbac-middleware';
  * immobiliers, dettes, valorisations, entites detentrices, projections).
  *
  * Meme forme que `finance-rbac-middleware.ts` : un garde nomme par
- * permission, pose route par route. Ces droits ne sont PAS accordes aux roles
- * d'agence (TENANT_ADMIN, TENANT_MANAGER, TENANT_AGENT...) : ils vont au
- * role `PERSONAL_SPACE_OWNER` du proprietaire d'un espace PARTICULIER
- * (`lib/patrimoine/personal-permissions.ts`). Les donnees IMMOBILIERES (biens,
- * valorisations et prets d'un bien, rendement) restent sous `PROPERTIES_*`.
+ * permission, pose route par route. Ces droits sont accordes au dirigeant
+ * (`TENANT_ADMIN`) et au proprietaire d'un espace PARTICULIER
+ * (`PERSONAL_SPACE_OWNER`, `lib/patrimoine/personal-permissions.ts`), mais pas
+ * aux autres collaborateurs d'agence (`TENANT_MANAGER`, `TENANT_AGENT`,
+ * `TENANT_ACCOUNTANT`...). Les donnees IMMOBILIERES (biens, valorisations et
+ * prets d'un bien, rendement) restent sous `PROPERTIES_*`.
  *
  * `requirePermission` expose la cle sur le middleware (`permissionKey`) :
  * l'inventaire des routes la lit sans mock.
