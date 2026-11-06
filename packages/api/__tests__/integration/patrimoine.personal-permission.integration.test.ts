@@ -2,15 +2,16 @@
  * Permissions PATRIMOINE_PERSONAL_VIEW / _EDIT sur base dédiée
  * (`DATABASE_URL_TEST`, voir `npm run test:isolation`). Sans elle : ignoré.
  *
- *  - un administrateur d'agence (PROPERTIES_* sans PATRIMOINE_PERSONAL_*) est
- *    refusé (403) sur les données personnelles, en lecture comme en écriture,
+ *  - un collaborateur non-dirigeant d'agence (PROPERTIES_* sans PATRIMOINE_PERSONAL_*)
+ *    est refusé (403) sur les données personnelles, en lecture comme en écriture,
  *    et rien n'est créé ;
- *  - le propriétaire d'un espace PARTICULIER (créé par le service) y accède ;
+ *  - le dirigeant d'agence / opérateur / pack Patrimoine (TENANT_ADMIN) et le
+ *    propriétaire d'un espace PARTICULIER (créé par le service) y accèdent ;
  *  - étanchéité inter-espaces : le propriétaire de P n'atteint pas Q, et ne voit
  *    jamais les actifs de Q, même avec l'identifiant exact (404) ;
- *  - rattrapage idempotent des espaces existants : n'ajoute le rôle qu'aux
- *    administrateurs d'espaces PARTICULIER, jamais à une agence ;
- *  - aucun rôle d'agence (TENANT_ADMIN) ne porte les deux permissions.
+ *  - rattrapage idempotent des espaces existants : n'ajoute le rôle
+ *    PERSONAL_SPACE_OWNER qu'aux administrateurs d'espaces PARTICULIER, jamais à
+ *    une agence, et garantit les permissions sur TENANT_ADMIN et PERSONAL_SPACE_OWNER.
  */
 import '../helpers/app-shims';
 import { randomUUID } from 'crypto';
@@ -22,12 +23,14 @@ import { createPersonalSpace } from '../../src/services/personal-space/create-pe
 import { invalidateAllUserPermissionCache } from '../../src/services/permission-service';
 import {
   grantPersonalPermissionsToExistingSpaces,
+  PERSONAL_PERMISSIONS_ROLE_KEYS,
   PERSONAL_SPACE_OWNER_ROLE_KEY
 } from '../../src/lib/patrimoine/personal-permissions';
 import {
   cleanupTenants,
   createParticulierTenant,
   createTenantAdminUser,
+  createTenantMemberUser,
   createTestTenant,
   ensureTenantAdminRole,
   TestTenant,
@@ -49,6 +52,7 @@ maybeDescribe('permissions personnelles du patrimoine (base dédiée)', () => {
 
   let agencyA: TestTenant;
   let adminA: TestUser;
+  let collaboratorA: TestUser;
   let spaceP: { tenantId: string; user: TestUser };
   let spaceQ: { tenantId: string; user: TestUser };
 
@@ -85,6 +89,13 @@ maybeDescribe('permissions personnelles du patrimoine (base dédiée)', () => {
     tenantIds.push(agencyA.id);
     adminA = await createTenantAdminUser(agencyA, 'admin-pp');
     userIds.push(adminA.id);
+    collaboratorA = await createTenantMemberUser(agencyA, 'collab-pp', 'TEST_PATRIMOINE_COLLABORATOR', [
+      'PROPERTIES_VIEW',
+      'PROPERTIES_CREATE',
+      'PROPERTIES_EDIT',
+      'TENANT_SETTINGS_VIEW'
+    ]);
+    userIds.push(collaboratorA.id);
     spaceP = await newSpace('Espace P');
     spaceQ = await newSpace('Espace Q');
   });
@@ -95,7 +106,7 @@ maybeDescribe('permissions personnelles du patrimoine (base dédiée)', () => {
     await prisma.$disconnect();
   });
 
-  describe('administrateur d’agence : refusé sur les données personnelles', () => {
+  describe('collaborateur non-dirigeant d’agence : refusé sur les données personnelles', () => {
     it.each([
       ['/usage'],
       ['/net-worth'],
@@ -106,7 +117,7 @@ maybeDescribe('permissions personnelles du patrimoine (base dédiée)', () => {
       ['/entities'],
       ['/scenarios']
     ])('GET %s -> 403 PATRIMOINE_PERSONAL_VIEW', async path => {
-      const res = await get(adminA, `${BASE(agencyA.id)}${path}`);
+      const res = await get(collaboratorA, `${BASE(agencyA.id)}${path}`);
       expect(res.status).toBe(403);
       expect(res.body).toMatchObject({
         error: 'Forbidden',
@@ -116,7 +127,7 @@ maybeDescribe('permissions personnelles du patrimoine (base dédiée)', () => {
     });
 
     it('POST /assets -> 403 PATRIMOINE_PERSONAL_EDIT et aucun actif créé', async () => {
-      const res = await post(adminA, `${BASE(agencyA.id)}/assets`, asset('Refusé'));
+      const res = await post(collaboratorA, `${BASE(agencyA.id)}/assets`, asset('Refusé'));
       expect(res.status).toBe(403);
       expect(res.body).toMatchObject({
         error: 'Forbidden',
@@ -127,17 +138,49 @@ maybeDescribe('permissions personnelles du patrimoine (base dédiée)', () => {
     });
 
     it('garde ses droits immobiliers : vue consolidée des biens (PROPERTIES_VIEW) toujours ouverte', async () => {
-      const res = await get(adminA, `${BASE(agencyA.id)}/overview`);
+      const res = await get(collaboratorA, `${BASE(agencyA.id)}/overview`);
       expect(res.status).toBe(200);
     });
 
-    it('ni TENANT_ADMIN ni aucun rôle d’agence ne porte les permissions personnelles', async () => {
+    it('seuls PERSONAL_SPACE_OWNER, TENANT_ADMIN (et PLATFORM_SUPER_ADMIN) portent les permissions personnelles', async () => {
       const rows = await prisma.rolePermission.findMany({
         where: { permission: { key: { startsWith: 'PATRIMOINE_PERSONAL_' } } },
         select: { role: { select: { key: true } }, permission: { select: { key: true } } }
       });
-      expect(rows.map(r => r.role.key)).toEqual([PERSONAL_SPACE_OWNER_ROLE_KEY, PERSONAL_SPACE_OWNER_ROLE_KEY]);
-      expect(rows.map(r => r.permission.key).sort()).toEqual(['PATRIMOINE_PERSONAL_EDIT', 'PATRIMOINE_PERSONAL_VIEW']);
+      const roleKeys = Array.from(new Set(rows.map(r => r.role.key)));
+      expect(roleKeys.length).toBeGreaterThanOrEqual(2);
+      for (const key of roleKeys) {
+        expect(PERSONAL_PERMISSIONS_ROLE_KEYS).toContain(key);
+      }
+      expect(roleKeys).toEqual(expect.arrayContaining([PERSONAL_SPACE_OWNER_ROLE_KEY, 'TENANT_ADMIN']));
+      expect(Array.from(new Set(rows.map(r => r.permission.key))).sort()).toEqual([
+        'PATRIMOINE_PERSONAL_EDIT',
+        'PATRIMOINE_PERSONAL_VIEW'
+      ]);
+    });
+  });
+
+  describe('dirigeant d’agence (TENANT_ADMIN) : accès complet au patrimoine de son agence', () => {
+    it.each([
+      ['/usage'],
+      ['/net-worth'],
+      ['/net-worth/history'],
+      ['/assets'],
+      ['/debts'],
+      ['/entities'],
+      ['/scenarios']
+    ])('GET %s -> 200', async path => {
+      const res = await get(adminA, `${BASE(agencyA.id)}${path}`);
+      expect(res.status).toBe(200);
+    });
+
+    it('crée et lit un actif dans son agence, et garde la vue consolidée (PROPERTIES_VIEW)', async () => {
+      const created = await post(adminA, `${BASE(agencyA.id)}/assets`, asset('Actif Agence A'));
+      expect(created.status).toBe(201);
+      const list = await get(adminA, `${BASE(agencyA.id)}/assets`);
+      expect(list.status).toBe(200);
+      expect(JSON.stringify(list.body)).toContain(created.body.data.id);
+      expect((await get(adminA, `${BASE(agencyA.id)}/overview`)).status).toBe(200);
     });
   });
 
@@ -179,17 +222,22 @@ maybeDescribe('permissions personnelles du patrimoine (base dédiée)', () => {
   });
 
   describe('rattrapage des espaces PARTICULIER existants', () => {
-    it('donne le rôle aux administrateurs d’espaces PARTICULIER, jamais à une agence, et reste idempotent', async () => {
-      // Espace créé « à l'ancienne » (avant la permission) : TENANT_ADMIN seul.
+    it('donne le rôle PERSONAL_SPACE_OWNER aux administrateurs d’espaces PARTICULIER, jamais à une agence, et reste idempotent', async () => {
+      // Espace créé « à l'ancienne » (avant l'attribution de PERSONAL_SPACE_OWNER) : TENANT_ADMIN seul.
       const legacy = await createParticulierTenant('Legacy-PP');
       tenantIds.push(legacy.id);
       const legacyAdmin = await createTenantAdminUser(legacy, 'legacy-pp');
       userIds.push(legacyAdmin.id);
 
-      expect((await get(legacyAdmin, `${BASE(legacy.id)}/assets`)).status).toBe(403);
+      expect(
+        await prisma.userRole.count({ where: { tenantId: legacy.id, role: { key: PERSONAL_SPACE_OWNER_ROLE_KEY } } })
+      ).toBe(0);
 
       const first = await grantPersonalPermissionsToExistingSpaces(prisma);
       expect(first.admins).toBeGreaterThanOrEqual(3); // P, Q, legacy
+      expect(
+        await prisma.userRole.count({ where: { tenantId: legacy.id, role: { key: PERSONAL_SPACE_OWNER_ROLE_KEY } } })
+      ).toBe(1);
       invalidateAllUserPermissionCache(legacyAdmin.id);
       expect((await get(legacyAdmin, `${BASE(legacy.id)}/assets`)).status).toBe(200);
 
@@ -199,12 +247,14 @@ maybeDescribe('permissions personnelles du patrimoine (base dédiée)', () => {
         rolesBefore
       );
 
-      // L'agence n'a rien reçu.
+      // L'agence ne reçoit jamais le rôle réservé PERSONAL_SPACE_OWNER, mais son TENANT_ADMIN accède bien à ses actifs.
       expect(
         await prisma.userRole.count({ where: { tenantId: agencyA.id, role: { key: PERSONAL_SPACE_OWNER_ROLE_KEY } } })
       ).toBe(0);
       invalidateAllUserPermissionCache(adminA.id);
-      expect((await get(adminA, `${BASE(agencyA.id)}/assets`)).status).toBe(403);
+      expect((await get(adminA, `${BASE(agencyA.id)}/assets`)).status).toBe(200);
+      invalidateAllUserPermissionCache(collaboratorA.id);
+      expect((await get(collaboratorA, `${BASE(agencyA.id)}/assets`)).status).toBe(403);
     });
   });
 });

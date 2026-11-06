@@ -17,6 +17,26 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## fix/patrimoine-tenant-admin-permissions — 2026-11-06
+
+**État :** prêt à livrer.
+**Branche :** `fix/patrimoine-tenant-admin-permissions` (depuis `origin/main` `360591bd`).
+
+**Fait :**
+
+- Correction des erreurs 403 (« Impossible de charger ces données ») sur les écrans Patrimoine (`Valeur nette`, `Mes actifs`, `Projections`, `Entités détentrices`) pour le rôle `TENANT_ADMIN` (dirigeants d'agence, opérateur intégré, promoteur, packs Patrimoine Essentiel/Pro).
+- `getMenuPermissionKeysForUser` renvoyait `null` pour `TENANT_ADMIN` (affichant toutes les entrées Patrimoine dans le menu) alors que `PATRIMOINE_PERSONAL_VIEW` et `PATRIMOINE_PERSONAL_EDIT` n'étaient accordées qu'au rôle `PERSONAL_SPACE_OWNER` (espaces `PARTICULIER`).
+- Octroi de `PATRIMOINE_PERSONAL_VIEW` et `PATRIMOINE_PERSONAL_EDIT` à `TENANT_ADMIN` (ainsi qu'à `PERSONAL_SPACE_OWNER` et `PLATFORM_SUPER_ADMIN`) via la migration de données idempotente `20261106100000_patrimoine_personal_permissions_tenant_admin`, `personal-permissions.ts`, `patrimoine-personal-permissions-seed.ts` et `rbac-seed.ts`. Les autres collaborateurs (`TENANT_MANAGER`, `TENANT_AGENT`, `TENANT_ACCOUNTANT`, `TENANT_SITE_MANAGER`, `TENANT_STOREKEEPER`) restent sans accès (entrées masquées du menu et routes refusées en 403).
+- Vérifications : 8 suites Jest ciblées (291 tests dont `routes-inventory.test.ts` et `patrimoine.personal-permission.routes.test.ts`), `typecheck` web, `check:architecture`, et `prisma migrate deploy` sur la base locale.
+
+**Reste à faire :**
+
+- Pousser la branche / fusionner dans `main` et déployer sur staging/prod (la migration `20261106100000_patrimoine_personal_permissions_tenant_admin` applique automatiquement les droits au déploiement via `prisma migrate deploy`).
+
+**Pièges :**
+
+- Ne jamais retirer `PATRIMOINE_PERSONAL_*` de `TENANT_ADMIN` tant que `getMenuPermissionKeysForUser` renvoie `null` pour `TENANT_ADMIN` et que les seeds 3 ans peuplent actifs, entités et scénarios pour les packs d'agence.
+
 ## Branche `orch/2026-11-03-recette-locatif` — 2026-11-06
 
 **Réconciliation du 6 novembre :** intégration de main `360591bd` (#194 et #195). Unique conflit manuel dans le test SyndicChargeSchedules : préconditions du formulaire conservées et interaction user-event/attente de validation reprises de main. Branche maintenue en brouillon, aucune fusion de PR ni aucun déploiement autorisés dans cette reprise. Vérifications et SHA livrés consignés dans la réponse de reprise ; CI du nouveau head à contrôler.

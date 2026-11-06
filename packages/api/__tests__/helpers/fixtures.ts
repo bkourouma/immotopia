@@ -45,6 +45,8 @@ const TENANT_ADMIN_TEST_PERMISSIONS = [
   'CRM_DEALS_CREATE',
   'PROPERTIES_VIEW',
   'PROPERTIES_EDIT',
+  'PATRIMOINE_PERSONAL_VIEW',
+  'PATRIMOINE_PERSONAL_EDIT',
   'SYNDIC_VIEW',
   // Ecriture Syndic (BUG-096) : les routes POST des quittances l'exigent ; sans
   // lui les tests d'isolation recevaient 403 au lieu de 404.

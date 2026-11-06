@@ -3,7 +3,7 @@ import request from 'supertest';
 
 /**
  * Permissions PATRIMOINE_PERSONAL_VIEW / PATRIMOINE_PERSONAL_EDIT (donnees
- * personnelles du patrimoine d'un particulier), route par route.
+ * personnelles du patrimoine), route par route.
  *
  * Vrais routeurs et vraies gardes (`requirePermission`, `requirePropertyPermission`) ;
  * seuls `authenticate`, le contexte d'agence, l'isolation, le calcul des
@@ -119,14 +119,14 @@ const send = (method: string, path: string, perms: string[]) => {
   return (request(app) as any)[method](path).send({});
 };
 
-const AGENCY_ADMIN = [
+const AGENCY_COLLABORATOR = [
   'PROPERTIES_VIEW',
   'PROPERTIES_CREATE',
   'PROPERTIES_EDIT',
   'PROPERTIES_DELETE',
   'TENANT_SETTINGS_VIEW'
 ];
-const PERSONAL_OWNER = [...AGENCY_ADMIN, 'PATRIMOINE_PERSONAL_VIEW', 'PATRIMOINE_PERSONAL_EDIT'];
+const PERSONAL_OWNER = [...AGENCY_COLLABORATOR, 'PATRIMOINE_PERSONAL_VIEW', 'PATRIMOINE_PERSONAL_EDIT'];
 
 describe('données personnelles du patrimoine : PATRIMOINE_PERSONAL_VIEW / _EDIT', () => {
   it.each(PERSONAL_ROUTES)('%s %s : sans aucune permission -> 403', async (method, path) => {
@@ -134,9 +134,9 @@ describe('données personnelles du patrimoine : PATRIMOINE_PERSONAL_VIEW / _EDIT
   });
 
   it.each(PERSONAL_ROUTES)(
-    '%s %s : administrateur d’agence (PROPERTIES_* sans PATRIMOINE_PERSONAL_*) -> 403',
+    '%s %s : collaborateur d’agence non-dirigeant (PROPERTIES_* sans PATRIMOINE_PERSONAL_*) -> 403',
     async (method, path) => {
-      const res = await send(method, path, AGENCY_ADMIN);
+      const res = await send(method, path, AGENCY_COLLABORATOR);
       expect(res.status).toBe(403);
       expect(String(res.body.requiredPermission ?? res.body.requiredPermissions)).toMatch(
         /PATRIMOINE_PERSONAL_(VIEW|EDIT)/
@@ -144,9 +144,12 @@ describe('données personnelles du patrimoine : PATRIMOINE_PERSONAL_VIEW / _EDIT
     }
   );
 
-  it.each(PERSONAL_ROUTES)('%s %s : propriétaire d’espace personnel -> 200', async (method, path) => {
-    expect((await send(method, path, PERSONAL_OWNER)).status).toBe(200);
-  });
+  it.each(PERSONAL_ROUTES)(
+    '%s %s : dirigeant (TENANT_ADMIN) ou propriétaire d’espace personnel -> 200',
+    async (method, path) => {
+      expect((await send(method, path, PERSONAL_OWNER)).status).toBe(200);
+    }
+  );
 
   it.each(PERSONAL_ROUTES)('%s %s : la permission requise est celle du contrat', async (method, path, kind) => {
     const view = await send(method, path, ['PATRIMOINE_PERSONAL_VIEW']);
@@ -158,8 +161,8 @@ describe('données personnelles du patrimoine : PATRIMOINE_PERSONAL_VIEW / _EDIT
 });
 
 describe('routes immobilières et référentiel du patrimoine : inchangées (PROPERTIES_*)', () => {
-  it.each(PROPERTY_ROUTES)('%s %s : administrateur d’agence -> 200', async (method, path) => {
-    expect((await send(method, path, AGENCY_ADMIN)).status).toBe(200);
+  it.each(PROPERTY_ROUTES)('%s %s : collaborateur avec PROPERTIES_* -> 200', async (method, path) => {
+    expect((await send(method, path, AGENCY_COLLABORATOR)).status).toBe(200);
   });
 
   it.each(PROPERTY_ROUTES)('%s %s : PATRIMOINE_PERSONAL_* seul ne remplace pas PROPERTIES_*', async (method, path) => {
