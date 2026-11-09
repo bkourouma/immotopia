@@ -17,6 +17,18 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## feat/comptes-reception-pispi — 2026-11-09
+
+**État** — Lot Q de la spec 048 réalisé, empilé sur la PR #200 (`docs/spec-048-pispi`) : comptes de réception de l'agence et de la copropriété (QR et alias fournis par l'établissement, ImmoTopia ne génère aucun QR, le payeur saisit le montant), affichés aux portails locataire et copropriétaire, preuve par la déclaration existante. Nouveau modèle `ReceivingAccount`, migration `20261109120000_receiving_accounts` **écrite mais appliquée à aucune base**, routes agence, copropriété et portails, image du QR servie par route authentifiée, audit, alerte e-mail `RECEIVING_ACCOUNT_CHANGED` toujours envoyée, catalogues en et ar, classeur à 1176 lignes.
+
+**Vérifié** — API : 106 tests ciblés (dont routes-inventory, schema-tenant-coverage, portal-no-disk-paths), tsc à 1 erreur préexistante (`archiver`), eslint propre. Web : 191 tests ciblés, tsc sans erreur. `i18n:check` des deux paquets, `wiki:check`. Audit de sécurité en lecture seule : 0 critique, 0 élevé ; trois points moyens corrigés.
+
+**Non vérifié** — Migration jamais exécutée sur PostgreSQL ; `npm run test:isolation` non lancé ; aucun passage navigateur ; multer réel (2 Mo) et envoi SMTP réel non testés ; arabe non relu par un locuteur natif.
+
+**Dette connue** — Le routeur `email-notification-config` n'exige aucune permission (tout collaborateur peut désactiver une alerte ; l'alerte de ce lot l'ignore) ; fichiers de QR orphelins à la suppression d'une agence ou d'une copropriété ; image non décodée ; pas de lien entre déclaration et compte de réception ; mention dans les PDF non faite (TQ12) ; sous-compte comptable à décider (TQ02).
+
+**Reste** — Recette navigateur sur la démo figée ; migration à appliquer au déploiement (`prisma migrate deploy`) ; QR et alias de l'agence pilote pour un paiement réel de faible montant (accord explicite du fondateur) ; questions au participant (TQ01).
+
 ## docs/spec-048-pispi — 2026-11-09
 
 **État** — Étude, spec, plan et tâches de l'intégration PI-SPI (BCEAO), documentation seule, aucun code. Branche `docs/spec-048-pispi` depuis `origin/main` `aa857a25`. Fichiers : `docs/integrations/PI-SPI-ETUDE.md`, `specs/048-paiement-instantane-pispi/{spec,plan,tasks}.md`. Sources : portail développeur `developer.pispi.bceao.int` (rendu par Chrome ; `WebFetch` ne voit que le titre) et communiqués BCEAO.
