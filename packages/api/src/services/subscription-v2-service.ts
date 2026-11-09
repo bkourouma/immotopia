@@ -15,8 +15,11 @@
 import {
   CapacityKey,
   CatalogItemKind,
+  InvoiceKind,
   InvoiceLineKind,
+  InvoiceStatus,
   ModuleKey,
+  PlatformInvoiceNature,
   Prisma,
   QuotaPolicy,
   SubscriptionItemStatus,
@@ -25,6 +28,7 @@ import {
 import { prisma, PrismaTransactionClient } from '../utils/database';
 import { logAuditEvent, recordAuditEvent, AuditActionKey } from './audit-service';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 import {
   CAPACITY_KEYS,
   CapacityKeyCode,
@@ -58,6 +62,7 @@ import {
   planExtensionUnits,
   prorateAmount,
   purchasedCapacity,
+  resolveBillingAnchorDay,
   scaleLinesForCycle,
   validateExclusivity
 } from '../lib/subscription';
@@ -867,11 +872,173 @@ export interface RemoveItemInput {
   quantity?: number;
 }
 
+/** Motifs de fin posés par `changePack` sur les packs remplacés. */
+const PACK_CHANGE_END_REASONS: ReadonlyArray<string> = ['DOWNGRADE', 'UPGRADE'];
+
+/** Pack SCHEDULED issu d'un changement de pack (`replacesItemId`) et pas encore demarre. */
+function isPendingPackChange(row: ItemRow, now: Date): boolean {
+  return (
+    row.status === SubscriptionItemStatus.SCHEDULED &&
+    row.catalogItem.kind === CatalogItemKind.PACK &&
+    row.replacesItemId !== null &&
+    row.startsAt.getTime() > now.getTime()
+  );
+}
+
+/**
+ * Annulation d'un changement de pack programmé (E-S3-1). Quand l'élément
+ * retiré est un pack SCHEDULED qui en remplace un autre (`replacesItemId`),
+ * les packs remplacés par ce changement (même date de fin, motif
+ * DOWNGRADE/UPGRADE) et leurs extensions arrêtées avec eux (PACK_REMOVED)
+ * retrouvent leur état normal : `endsAt`, `endReason` et `endedByUserId`
+ * remis à null. Les extensions rattachées au pack programmé sont ramenées sur
+ * un pack restauré qui les autorise ; les autres sont terminées par le retrait
+ * lui-même. Sans pack remplacé encore en vigueur (absent, déjà terminé, fin
+ * qui n'est pas un changement de pack), rien n'est restauré.
+ *
+ * Refus (409, rien n'est écrit) : plusieurs changements programmés à la même
+ * échéance (on ne saurait pas quels packs rendre), période suivante déjà
+ * facturée (avoir d'abord), combinaison de packs rétablie incompatible, ou
+ * élément modifié entre la lecture et l'écriture. S'exécute dans la
+ * transaction de l'appelant ; toutes les requêtes portent `tenantId`.
+ */
+async function restoreReplacedItemsTx(tx: Db, tenantId: string, scheduled: ItemRow, now: Date): Promise<string[]> {
+  if (
+    scheduled.status !== SubscriptionItemStatus.SCHEDULED ||
+    scheduled.catalogItem.kind !== CatalogItemKind.PACK ||
+    !scheduled.replacesItemId
+  ) {
+    return [];
+  }
+  const live = await tx.subscriptionItem.findMany({
+    where: { tenantId, status: { not: SubscriptionItemStatus.ENDED } },
+    include: itemInclude
+  });
+  const replaced = live.find(r => r.id === scheduled.replacesItemId);
+  if (!replaced?.endsAt || !PACK_CHANGE_END_REASONS.includes(replaced.endReason ?? '')) return [];
+  // Échéance déjà passée (transitions pas encore appliquées) : le changement
+  // est acquis, on ne ressuscite pas l'ancien pack.
+  if (replaced.endsAt.getTime() <= now.getTime()) return [];
+
+  const switchDate = replaced.endsAt;
+  const switchAt = switchDate.getTime();
+  const endedAtSwitch = (r: ItemRow) => r.endsAt?.getTime() === switchAt;
+  const endedByPackChange = (r: ItemRow) =>
+    r.catalogItem.kind === CatalogItemKind.PACK &&
+    endedAtSwitch(r) &&
+    PACK_CHANGE_END_REASONS.includes(r.endReason ?? '');
+
+  // `changePack` ne garde le lien que vers le PREMIER pack remplace : les
+  // autres se retrouvent par leur date et leur motif. Ce n'est sur que si un
+  // seul changement est programme a cette echeance (etat anterieur au refus
+  // de deux changements simultanes) ; sinon on refuse plutot que deviner.
+  const changesAtSwitch = live.filter(r => {
+    if (r.status !== SubscriptionItemStatus.SCHEDULED || r.catalogItem.kind !== CatalogItemKind.PACK) return false;
+    const target = live.find(p => p.id === r.replacesItemId);
+    return Boolean(target && endedByPackChange(target));
+  });
+  if (changesAtSwitch.length > 1) {
+    throw new ConflictError(
+      t(
+        'Plusieurs changements de pack sont programmés à la même échéance : annulation impossible sans arbitrage du support.'
+      )
+    );
+  }
+
+  // Periode suivante deja facturee : le pack programme y figure. Rendre
+  // l'ancien pack sans avoir laisserait une facture fausse. Une facture
+  // annulee (par avoir) ne compte plus ; `billedThrough` seul, sans facture
+  // annulee qui l'explique, vaut facturation.
+  const periodInvoices = await tx.invoice.findMany({
+    where: {
+      tenantId,
+      kind: InvoiceKind.PLATFORM,
+      billingNature: PlatformInvoiceNature.PERIOD,
+      periodStart: { lte: switchDate },
+      periodEnd: { gt: switchDate }
+    },
+    select: { id: true, status: true }
+  });
+  const billedInvoice = periodInvoices.some(i => i.status !== InvoiceStatus.CANCELED);
+  const creditedInvoice = periodInvoices.some(i => i.status === InvoiceStatus.CANCELED);
+  if (billedInvoice || (scheduled.billedThrough !== null && !creditedInvoice)) {
+    throw new ConflictError(
+      t('Période suivante déjà facturée : émettre un avoir d’abord, puis annuler le changement de pack.')
+    );
+  }
+
+  const packs = live.filter(r => r.id !== scheduled.id && endedByPackChange(r));
+  const packIds = packs.map(p => p.id);
+  const extensionIds = live
+    .filter(
+      r =>
+        r.catalogItem.kind !== CatalogItemKind.PACK &&
+        r.parentItemId !== null &&
+        packIds.includes(r.parentItemId) &&
+        r.endReason === 'PACK_REMOVED' &&
+        endedAtSwitch(r)
+    )
+    .map(r => r.id);
+
+  // Exclusivite sur l'etat final : packs sans fin (en vigueur ou programmes)
+  // plus les packs rendus, sans le pack programme annule. Seuls les conflits
+  // qui touchent un pack rendu bloquent (un etat ancien deja incoherent ne
+  // doit pas empecher l'annulation de ce qui ne le concerne pas).
+  const finalPacks = live
+    .filter(r => r.catalogItem.kind === CatalogItemKind.PACK && r.id !== scheduled.id)
+    .filter(r => packIds.includes(r.id) || r.endsAt === null)
+    .map(toEntitlementItem);
+  const restoredCodes = new Set(packs.map(p => p.catalogItem.code));
+  const check = validateExclusivity(finalPacks);
+  const blocking = [
+    ...check.conflicts.filter(pair => pair.some(code => restoredCodes.has(code))).map(pair => pair.join(' / ')),
+    ...check.duplicates.filter(code => restoredCodes.has(code))
+  ];
+  if (blocking.length > 0) {
+    throw new ConflictError(
+      t(
+        'Annulation impossible : le pack rétabli serait incompatible avec l’abonnement actuel ({{conflicts}}). Retirez d’abord le pack en conflit.',
+        { conflicts: blocking.join(', ') }
+      )
+    );
+  }
+
+  // Garde d'etat : seules les lignes encore dans l'etat lu (non terminees,
+  // meme echeance) sont rendues. Une ecriture concurrente (transition
+  // d'echeance, autre retrait) fait diverger le compte : 409 et la
+  // transaction de l'appelant annule tout.
+  const restoredIds = [...packIds, ...extensionIds];
+  const restored = await tx.subscriptionItem.updateMany({
+    where: {
+      tenantId,
+      id: { in: restoredIds },
+      status: { not: SubscriptionItemStatus.ENDED },
+      endsAt: switchDate
+    },
+    data: { endsAt: null, endReason: null, endedByUserId: null }
+  });
+  if (restored.count !== restoredIds.length) {
+    throw new ConflictError(t('L’abonnement a changé pendant l’annulation du changement de pack : réessayez.'));
+  }
+
+  // Extensions passées sur le pack programmé au moment du changement : retour
+  // sur un pack restauré qui les autorise (sinon le retrait les termine).
+  const restoredPacks = packs.map(p => ({ id: p.id, code: p.catalogItem.code }));
+  for (const ext of live.filter(r => r.parentItemId === scheduled.id)) {
+    const parentItemId = choosePackForExtension(toCatalogEntry(ext.catalogItem), restoredPacks);
+    if (!parentItemId) continue;
+    // eslint-disable-next-line no-await-in-loop -- quelques extensions au plus.
+    await tx.subscriptionItem.update({ where: { id: ext.id, tenantId }, data: { parentItemId } });
+  }
+  return restoredIds;
+}
+
 /**
  * Retire un element (D7) : a l'ECHEANCE par defaut (reste actif jusqu'a la
  * fin de la periode, sans remboursement) ; immediatement si `immediate` avec
  * une raison, ou pendant l'essai. Un retrait partiel cree un element du reste
- * au meme prix fige.
+ * au meme prix fige. Retirer un pack SCHEDULED issu d'un changement de pack
+ * annule ce changement : le pack remplace reste souscrit (E-S3-1).
  */
 export async function removeSubscriptionItem(
   tenantId: string,
@@ -896,13 +1063,19 @@ export async function removeSubscriptionItem(
       throw new BadRequestError('Quantité à retirer invalide.');
     }
 
+    // Annulation d'un changement de pack programme : le pack remplace reste
+    // souscrit, le pack programme (jamais demarre) est termine aussitot.
+    const restoredItemIds = removeQty === row.quantity ? await restoreReplacedItemsTx(tx, tenantId, row, now) : [];
+    const cancelsScheduledChange = restoredItemIds.length > 0;
+
     const notStarted = row.startsAt.getTime() > now.getTime();
-    const immediate = Boolean(input.immediate) || isTrial(subscription) || notStarted;
+    const immediate = Boolean(input.immediate) || isTrial(subscription) || notStarted || cancelsScheduledChange;
     const endsAt = immediate ? now : subscription.currentPeriodEnd;
-    const reason = input.reason?.trim() || (immediate ? 'IMMEDIATE' : 'END_OF_PERIOD');
+    const reason =
+      input.reason?.trim() || (cancelsScheduledChange ? 'CHANGE_CANCELED' : immediate ? 'IMMEDIATE' : 'END_OF_PERIOD');
 
     const ended = await tx.subscriptionItem.update({
-      where: { id: row.id },
+      where: { id: row.id, tenantId },
       data: {
         endsAt,
         endReason: reason,
@@ -963,7 +1136,7 @@ export async function removeSubscriptionItem(
         : null;
     // Retrait immediat d'un pack Patrimoine : reclasse aussitot (lot P1).
     await reconcileHeldPropertiesIfChangedTx(tx, tenantId, countedBefore, now, actorUserId);
-    return { ended, remainder, immediate, removeQty, modules, extensionsEnded };
+    return { ended, remainder, immediate, removeQty, modules, extensionsEnded, restoredItemIds };
   });
 
   invalidateEntitlements(tenantId);
@@ -980,7 +1153,8 @@ export async function removeSubscriptionItem(
       endsAt: outcome.ended.endsAt?.toISOString() ?? null,
       reason: outcome.ended.endReason,
       remainderItemId: outcome.remainder?.id ?? null,
-      extensionsEnded: outcome.extensionsEnded
+      extensionsEnded: outcome.extensionsEnded,
+      restoredItemIds: outcome.restoredItemIds
     }
   });
   return {
@@ -989,7 +1163,9 @@ export async function removeSubscriptionItem(
     immediate: outcome.immediate,
     modules: outcome.modules,
     /** Extensions liees au pack, retirees a la meme echeance. */
-    extensionsEnded: outcome.extensionsEnded
+    extensionsEnded: outcome.extensionsEnded,
+    /** Elements retrouves « sans fin » quand le retrait annule un changement de pack programme. */
+    restoredItemIds: outcome.restoredItemIds
   };
 }
 
@@ -1016,6 +1192,17 @@ export async function changePack(
     const countedBefore = await tenantCountsHeldProperties(tx, tenantId, now);
 
     const state = await loadState(tx, tenantId);
+    // Un seul changement de pack en attente a la fois : le pack programme ne
+    // garde le lien que vers un pack remplace, deux changements a la meme
+    // echeance ne pourraient plus etre annules l'un sans l'autre (E-S3-1).
+    const pendingChange = state.items.find(i => isPendingPackChange(i.row, now));
+    if (pendingChange) {
+      throw new ConflictError(
+        t('Un changement de pack est déjà programmé ({{pack}}) : annulez-le avant d’en demander un autre.', {
+          pack: pendingChange.catalog.name
+        })
+      );
+    }
     const standing = standingItems(state.items, now);
     const fromItems = standing.filter(i => i.kind === 'PACK' && input.fromCodes.includes(i.code));
     const missing = input.fromCodes.filter(code => !fromItems.some(i => i.code === code));
@@ -1046,7 +1233,7 @@ export async function changePack(
     for (const item of fromItems) {
       // eslint-disable-next-line no-await-in-loop -- un a trois packs.
       await tx.subscriptionItem.update({
-        where: { id: item.id },
+        where: { id: item.id, tenantId },
         data: {
           endsAt: switchAt,
           endReason: upgrade ? 'UPGRADE' : 'DOWNGRADE',
@@ -1093,11 +1280,15 @@ export async function changePack(
       discountPercent: unknown;
     }> = [];
     for (const ext of linkedExtensions) {
+      // Fin deja programmee au plus tard au changement (retrait demande,
+      // END_OF_PERIOD...) : on garde sa date et son motif d'origine, sinon
+      // l'annulation du changement la ferait revivre (E-S3-1).
+      if (ext.endsAt && ext.endsAt.getTime() <= switchAt.getTime()) continue;
       const entry = toCatalogEntry(ext.catalogItem);
       const newParent = choosePackForExtension(entry, [{ id: created.id, code: target.code }, ...remainingPacks]);
       // eslint-disable-next-line no-await-in-loop -- quelques extensions au plus.
       await tx.subscriptionItem.update({
-        where: { id: ext.id },
+        where: { id: ext.id, tenantId },
         data: newParent
           ? { parentItemId: newParent }
           : {
@@ -1521,13 +1712,19 @@ export interface OverageInvoicePreview extends InvoiceTotals {
  * Regle de Baba du 25/09 : en annuel, le pack reste paye a l'annee et le
  * depassement est facture CHAQUE MOIS, a la fin de chaque fenetre.
  */
-export function monthlyOverageWindow(periodStart: Date, now: Date): { start: Date; end: Date } {
+export function monthlyOverageWindow(
+  periodStart: Date,
+  now: Date,
+  anchorDay: number = periodStart.getUTCDate()
+): { start: Date; end: Date } {
+  // Chaque fenetre vise le jour d'ancrage (dernier jour du mois s'il est plus
+  // court) : 31/01 -> 28/02 -> 31/03, sans derive vers le 28.
   let start = new Date(periodStart.getTime());
-  let end = addBillingPeriod(start, 'MONTHLY');
+  let end = addBillingPeriod(start, 'MONTHLY', anchorDay);
   // 12 fenetres par an au plus ; la borne evite toute boucle sans fin.
   for (let i = 0; i < 24 && end.getTime() <= now.getTime(); i += 1) {
     start = end;
-    end = addBillingPeriod(start, 'MONTHLY');
+    end = addBillingPeriod(start, 'MONTHLY', anchorDay);
   }
   return { start, end };
 }
@@ -1607,7 +1804,9 @@ export async function previewNextInvoice(tenantId: string, options: { now?: Date
     subscription.status === SubscriptionStatus.TRIALING
       ? (subscription.trialEndsAt ?? subscription.currentPeriodEnd)
       : subscription.currentPeriodEnd;
-  const periodEnd = addBillingPeriod(periodStart, subscription.billingCycle);
+  // Meme ancre que le renouvellement : un 31 reste un 31 (28/02 -> 31/03).
+  const anchorDay = resolveBillingAnchorDay(subscription.metadata, periodStart);
+  const periodEnd = addBillingPeriod(periodStart, subscription.billingCycle, anchorDay);
 
   // Elements en vigueur au debut de la prochaine periode.
   const nextItems = effectiveItems(state.items, periodStart);
@@ -1648,7 +1847,14 @@ export async function previewNextInvoice(tenantId: string, options: { now?: Date
     if (!annual) {
       lines.push(...(await computeOverageForUsage(tenantId, state, usage, now)).lines);
     } else if (subscription.status !== SubscriptionStatus.TRIALING) {
-      overageInvoice = await previewMonthlyOverage(tenantId, state, usage, subscription.currentPeriodStart, now);
+      overageInvoice = await previewMonthlyOverage(
+        tenantId,
+        state,
+        usage,
+        subscription.currentPeriodStart,
+        now,
+        resolveBillingAnchorDay(subscription.metadata, subscription.currentPeriodStart)
+      );
     }
   }
 
@@ -1677,9 +1883,10 @@ async function previewMonthlyOverage(
   state: Awaited<ReturnType<typeof loadState>>,
   usageNow: Record<CapacityKeyCode, number>,
   annualPeriodStart: Date,
-  now: Date
+  now: Date,
+  anchorDay: number
 ): Promise<OverageInvoicePreview> {
-  const window = monthlyOverageWindow(annualPeriodStart, now);
+  const window = monthlyOverageWindow(annualPeriodStart, now, anchorDay);
   const peaks = await prisma.usageSnapshot.groupBy({
     by: ['capacityKey'],
     where: { tenantId, snapshotDate: { gte: window.start, lt: window.end } },

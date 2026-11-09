@@ -10,10 +10,10 @@
  * cible n'est jamais rechange.
  */
 
-import { SubscriptionItemStatus, SubscriptionStatus } from '@prisma/client';
+import { Prisma, SubscriptionItemStatus, SubscriptionStatus } from '@prisma/client';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { logger } from '../../utils/logger';
-import { addBillingPeriod } from '../../lib/subscription';
+import { addBillingPeriod, replaceBillingAnchorDay } from '../../lib/subscription';
 import { loadCatalogItem, syncTenantModulesTx } from '../subscription-v2-service';
 import { UPGRADE_SOURCE_PACK, UpgradeTarget, readUpgradeTarget } from './constants';
 
@@ -105,6 +105,10 @@ export async function applyUpgradeForInvoiceTx(
 
   const catalog = await loadCatalogItem(tx, target);
   const periodEnd = addBillingPeriod(now, 'MONTHLY');
+  // La periode repart de `now` : l'ancre devient le jour de `now` (> 28) ou
+  // disparait. Une ancre perimee (31, posee par le palier gratuit renouvele
+  // d'office) ferait finir la periode suivante le 31 du mois d'apres.
+  const anchoredMetadata = replaceBillingAnchorDay(subscription.metadata, now.getUTCDate());
 
   for (const item of free) {
     // eslint-disable-next-line no-await-in-loop -- un seul element gratuit en pratique.
@@ -143,7 +147,8 @@ export async function applyUpgradeForInvoiceTx(
       currentPeriodStart: now,
       currentPeriodEnd: periodEnd,
       nextBillingAt: periodEnd,
-      pastDueAt: null
+      pastDueAt: null,
+      ...(anchoredMetadata ? { metadata: anchoredMetadata as Prisma.InputJsonObject } : {})
     }
   });
   // La facture reglee couvre exactement la periode qui demarre au paiement.

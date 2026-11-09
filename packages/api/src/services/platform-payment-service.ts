@@ -34,7 +34,7 @@ import { getUploadsRoot } from '../utils/project-root';
 import { AppError, BadRequestError, ConflictError, ErrorCode, NotFoundError } from '../middleware/error-middleware';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { AuditActionKey } from '../types/audit-types';
-import { addBillingPeriod } from '../lib/subscription';
+import { addBillingPeriod, resolveBillingAnchorDay, withBillingAnchorDay } from '../lib/subscription';
 import { applyDueItemTransitionsTx, invalidateEntitlements } from './subscription-v2-service';
 import { applyUpgradeForInvoiceTx } from './subscription-upgrade/apply-upgrade';
 import { UPGRADE_AUDIT, UPGRADE_SOURCE_PACK, UpgradeTarget } from './subscription-upgrade/constants';
@@ -290,7 +290,9 @@ async function applyPaymentToSubscriptionTx(
 
   if (sub.status !== SubscriptionStatus.PAST_DUE && boundary.getTime() > now.getTime()) return 'NONE';
 
-  const nextEnd = addBillingPeriod(boundary, sub.billingCycle);
+  const anchor = resolveBillingAnchorDay(sub.metadata, boundary);
+  const nextEnd = addBillingPeriod(boundary, sub.billingCycle, anchor);
+  const anchoredMetadata = withBillingAnchorDay(sub.metadata, anchor);
   const covers =
     invoice.periodStart === null
       ? sub.status === SubscriptionStatus.PAST_DUE
@@ -306,7 +308,8 @@ async function applyPaymentToSubscriptionTx(
       currentPeriodStart: boundary,
       currentPeriodEnd: nextEnd,
       nextBillingAt: nextEnd,
-      pastDueAt: null
+      pastDueAt: null,
+      ...(anchoredMetadata ? { metadata: anchoredMetadata as Prisma.InputJsonValue } : {})
     }
   });
   return 'RENEWED';

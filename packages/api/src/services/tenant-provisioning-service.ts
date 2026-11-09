@@ -7,6 +7,7 @@ import {
   BillingCycle,
   SubscriptionStatus,
   MembershipStatus,
+  Prisma,
   QuotaPolicy
 } from '@prisma/client';
 import { logger } from '../utils/logger';
@@ -30,7 +31,8 @@ import {
   TRIAL_DAYS,
   addBillingPeriod,
   packModules,
-  packsForModules
+  packsForModules,
+  withBillingAnchorDay
 } from '../lib/subscription';
 import { ensurePersonalSpaceOwnerRole, grantPersonalSpaceOwnerRole } from '../lib/patrimoine/personal-permissions';
 import {
@@ -197,6 +199,11 @@ export async function createTenantCoreTx(
   const currentPeriodEnd = trial
     ? new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
     : addBillingPeriod(now, input.billingCycle);
+  // Actif d'emblee : la periode est un cycle calendaire, son ancre (jour UTC de
+  // `now`, > 28 seulement) est memorisee des la creation, sinon un 31/01
+  // deriverait au 28 au premier renouvellement. L'essai n'en pose pas : son
+  // ancre est celle de la fin d'essai, lue au premier renouvellement.
+  const anchoredMetadata = trial ? undefined : withBillingAnchorDay(null, now.getUTCDate());
   const subscription = await tx.subscription.create({
     data: {
       tenantId: tenant.id,
@@ -208,7 +215,8 @@ export async function createTenantCoreTx(
       currentPeriodEnd,
       ...(trial ? { trialEndsAt: currentPeriodEnd } : {}),
       nextBillingAt: currentPeriodEnd,
-      ...(input.subscription.quotaPolicy ? { quotaPolicy: input.subscription.quotaPolicy } : {})
+      ...(input.subscription.quotaPolicy ? { quotaPolicy: input.subscription.quotaPolicy } : {}),
+      ...(anchoredMetadata ? { metadata: anchoredMetadata as Prisma.InputJsonObject } : {})
     }
   });
   await tx.subscriptionItem.createMany({

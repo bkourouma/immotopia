@@ -248,11 +248,81 @@ export function scaleLinesForCycle(lines: readonly ChargeLine[], cycle: BillingC
   return lines.map(l => ({ ...l, unitPrice: l.unitPrice * factor, amount: l.amount * factor }));
 }
 
-/** Fin de periode : +1 mois (MONTHLY) ou +12 mois (ANNUAL), en UTC. */
-export function addBillingPeriod(start: Date, cycle: BillingCycleCode): Date {
-  const end = new Date(start.getTime());
-  end.setUTCMonth(end.getUTCMonth() + (cycle === 'ANNUAL' ? 12 : 1));
-  return end;
+/** Cle de `Subscription.metadata` (Json) qui memorise le jour d'ancrage > 28. */
+export const BILLING_ANCHOR_METADATA_KEY = 'billingAnchorDay';
+
+function daysInUtcMonth(year: number, monthIndex: number): number {
+  return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+}
+
+/**
+ * Fin de periode : +1 mois (MONTHLY) ou +12 mois (ANNUAL), en UTC.
+ *
+ * Fin de mois : le jour vise est `anchorDay` (par defaut le jour UTC de
+ * `start`), ramene au dernier jour du mois cible s'il est plus court. Une
+ * periode qui commence un 31 janvier finit le 28 (ou 29) fevrier ; avec
+ * l'ancre 31 memorisee, la suivante finit le 31 mars (aucune derive vers le
+ * 1er du mois). Pour un jour <= 28 le resultat est celui d'un simple +N mois.
+ * Annuel : le 29 fevrier donne le 28 fevrier de l'annee suivante ; le 29 n'est
+ * retrouve les annees bissextiles que si l'ancre 29 est memorisee. L'heure
+ * (h/min/s/ms) de `start` est conservee.
+ */
+export function addBillingPeriod(start: Date, cycle: BillingCycleCode, anchorDay?: number): Date {
+  const months = start.getUTCFullYear() * 12 + start.getUTCMonth() + (cycle === 'ANNUAL' ? 12 : 1);
+  const year = Math.floor(months / 12);
+  const monthIndex = months % 12;
+  const day = Math.min(anchorDay ?? start.getUTCDate(), daysInUtcMonth(year, monthIndex));
+  return new Date(
+    Date.UTC(
+      year,
+      monthIndex,
+      day,
+      start.getUTCHours(),
+      start.getUTCMinutes(),
+      start.getUTCSeconds(),
+      start.getUTCMilliseconds()
+    )
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function validAnchorDay(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 31;
+}
+
+/** Jour d'ancrage memorise (entier 1..31) s'il est valide, sinon le jour UTC du debut de periode. */
+export function resolveBillingAnchorDay(metadata: unknown, periodStart: Date): number {
+  const stored = isRecord(metadata) ? metadata[BILLING_ANCHOR_METADATA_KEY] : undefined;
+  return validAnchorDay(stored) ? stored : periodStart.getUTCDate();
+}
+
+/**
+ * Nouveau metadata a ecrire pour memoriser l'ancre, ou `undefined` s'il n'y a
+ * rien a ecrire (ancre <= 28 : inutile ; deja memorisee avec cette valeur).
+ */
+export function withBillingAnchorDay(metadata: unknown, anchorDay: number): Record<string, unknown> | undefined {
+  if (!validAnchorDay(anchorDay) || anchorDay <= 28) return undefined;
+  const current = isRecord(metadata) ? metadata : {};
+  if (current[BILLING_ANCHOR_METADATA_KEY] === anchorDay) return undefined;
+  return { ...current, [BILLING_ANCHOR_METADATA_KEY]: anchorDay };
+}
+
+/**
+ * Metadata a ecrire quand une periode REPART d'une nouvelle date (creation,
+ * montee de palier...) : l'ancre devient `anchorDay` s'il depasse 28, sinon la
+ * cle est SUPPRIMEE (une ancre perimee, par exemple 31 ecrite par un palier
+ * gratuit renouvele d'office, allongerait la periode suivante). Les autres cles
+ * sont conservees. `undefined` : rien a ecrire (deja dans l'etat voulu).
+ */
+export function replaceBillingAnchorDay(metadata: unknown, anchorDay: number): Record<string, unknown> | undefined {
+  if (validAnchorDay(anchorDay) && anchorDay > 28) return withBillingAnchorDay(metadata, anchorDay);
+  if (!isRecord(metadata) || !(BILLING_ANCHOR_METADATA_KEY in metadata)) return undefined;
+  const rest = { ...metadata };
+  delete rest[BILLING_ANCHOR_METADATA_KEY];
+  return rest;
 }
 
 // ------------------------------------------------------------- prorata (D7)

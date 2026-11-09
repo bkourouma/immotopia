@@ -40,7 +40,13 @@ import { runWithTenantContext } from '../utils/tenant-context';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { AuditActionKey } from '../types/audit-types';
-import { ChargeLine, PARTICULIER_PACKS, PLATFORM_TAX_RATE_PERCENT, addBillingPeriod } from '../lib/subscription';
+import {
+  ChargeLine,
+  PARTICULIER_PACKS,
+  PLATFORM_TAX_RATE_PERCENT,
+  addBillingPeriod,
+  resolveBillingAnchorDay
+} from '../lib/subscription';
 import {
   DRAFT_NUMBER_PREFIX,
   PlatformCustomerInfo,
@@ -1234,18 +1240,23 @@ export interface BillingStepOutcome {
   overdue: number;
 }
 
-/** Fenetres mensuelles de depassement ecoulees au plus 35 jours avant `now`, non encore traitees. */
+/**
+ * Fenetres mensuelles de depassement ecoulees au plus 35 jours avant `now`, non
+ * encore traitees. Chaque fenetre vise le jour d'ancrage (dernier jour du mois
+ * s'il est plus court) : 31/01 -> 28/02 -> 31/03, sans derive.
+ */
 export function dueOverageWindows(
   annualPeriodStart: Date,
   annualPeriodEnd: Date,
   now: Date,
-  checkedThrough: Date | null
+  checkedThrough: Date | null,
+  anchorDay: number = annualPeriodStart.getUTCDate()
 ): Array<{ start: Date; end: Date }> {
   const windows: Array<{ start: Date; end: Date }> = [];
   const floor = Math.max(checkedThrough?.getTime() ?? 0, now.getTime() - 35 * DAY_MS);
   let start = new Date(annualPeriodStart.getTime());
   for (let i = 0; i < 13; i += 1) {
-    const end = addBillingPeriod(start, 'MONTHLY');
+    const end = addBillingPeriod(start, 'MONTHLY', anchorDay);
     if (end.getTime() > now.getTime() || end.getTime() > annualPeriodEnd.getTime()) break;
     if (end.getTime() > floor) windows.push({ start, end });
     start = end;
@@ -1294,7 +1305,13 @@ export async function runPlatformBillingStep(
     const metadata = metadataOf(sub.metadata);
     const checked =
       typeof metadata.overageCheckedThrough === 'string' ? new Date(metadata.overageCheckedThrough) : null;
-    const windows = dueOverageWindows(sub.currentPeriodStart, sub.currentPeriodEnd, now, checked);
+    const windows = dueOverageWindows(
+      sub.currentPeriodStart,
+      sub.currentPeriodEnd,
+      now,
+      checked,
+      resolveBillingAnchorDay(sub.metadata, sub.currentPeriodStart)
+    );
     for (const window of windows) {
       // Un instant DANS la fenetre : `previewNextInvoice` la retrouve.
       const at = new Date(window.end.getTime() - 1);
