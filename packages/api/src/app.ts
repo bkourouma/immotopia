@@ -104,6 +104,7 @@ import treasuryRoutes from './routes/treasury-routes';
 import salesRoutes from './routes/sales-routes';
 import { corsMiddleware } from './middleware/cors-middleware';
 import { requestLogger } from './middleware/logging-middleware';
+import { csrfOriginGuard } from './middleware/csrf-origin-middleware';
 import { responseSanitizer } from './middleware/response-sanitizer-middleware';
 import { requestContextMiddleware } from './middleware/request-context-middleware';
 import { auditAccessMiddleware } from './middleware/audit-access-middleware';
@@ -224,6 +225,12 @@ app.use(
 
 // CORS
 app.use(corsMiddleware);
+
+// CSRF (audit AUTH-05) : refuse une requete qui modifie, portee par le cookie
+// accessToken sans Authorization, quand son origine n'est pas celle du front.
+// Apres cookieParser et CORS, avant tout routeur ; webhooks et routes publiques
+// exclus (voir le middleware).
+app.use(csrfOriginGuard);
 
 // Baseline rate limiting for the whole API (tighter per-endpoint limiters
 // remain on the sensitive auth routes).

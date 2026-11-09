@@ -13,7 +13,7 @@ import {
   setPreferredLanguage
 } from '../services/auth-service';
 import { RegisterRequest, LoginRequest } from '../types/auth-types';
-import { setAuthCookies, clearAuthCookies } from '../utils/auth-cookies';
+import { setAuthCookies, setAccessTokenCookie, clearAuthCookies } from '../utils/auth-cookies';
 import { isLanguage, t } from '../i18n';
 import { logger } from '../utils/logger';
 import { BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
@@ -40,25 +40,22 @@ export async function register(req: Request, res: Response): Promise<void> {
  * GET /api/auth/verify-email?token=XXX
  */
 export async function verifyEmailHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const token = req.query.token as string;
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
 
-    if (!token) {
-      res.status(400).json({ success: false, message: 'Token de vérification requis.' });
-      return;
-    }
-
-    const user = await verifyEmail(token);
-
-    res.status(200).json({
-      success: true,
-      message: 'Email vérifié avec succès !',
-      user
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors de la vérification.';
-    res.status(400).json({ success: false, message: errorMessage });
+  if (!token) {
+    throw new BadRequestError('Token de vérification requis.');
   }
+
+  // Les refus métier (jeton invalide, expiré) sont des BadRequestError levées
+  // par le service : 400 avec leur texte. Une panne imprévue devient un 500
+  // générique via `errorHandler`, sans message interne.
+  const user = await verifyEmail(token);
+
+  res.status(200).json({
+    success: true,
+    message: 'Email vérifié avec succès !',
+    user
+  });
 }
 
 /**
@@ -85,25 +82,22 @@ export async function resendVerification(req: Request, res: Response): Promise<v
  * POST /api/auth/login
  */
 export async function login(req: Request, res: Response): Promise<void> {
-  try {
-    const data: LoginRequest = {
-      email: req.body.email,
-      password: req.body.password
-    };
+  const data: LoginRequest = {
+    email: req.body.email,
+    password: req.body.password
+  };
 
-    const result = await loginUser(data);
+  // Échec métier : BadRequestError (400), le limiteur `loginRateLimiter` compte
+  // les réponses >= 400. Panne imprévue : 500 générique via `errorHandler`.
+  const result = await loginUser(data, { ip: req.ip });
 
-    setAuthCookies(res, result.accessToken, result.refreshToken);
+  setAuthCookies(res, result.accessToken, result.refreshToken);
 
-    res.status(200).json({
-      success: true,
-      message: 'Connexion réussie.',
-      user: result.user
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors de la connexion.';
-    res.status(400).json({ success: false, message: errorMessage });
-  }
+  res.status(200).json({
+    success: true,
+    message: 'Connexion réussie.',
+    user: result.user
+  });
 }
 
 /**
@@ -121,8 +115,14 @@ export async function refresh(req: Request, res: Response): Promise<void> {
   try {
     const result = await refreshAccessToken(refreshToken, req.headers['user-agent']);
 
-    // The refresh token is rotated on every use: both cookies must be replaced.
-    setAuthCookies(res, result.accessToken, result.refreshToken);
+    if (result.refreshToken === null) {
+      // Doublon toléré (autre onglet) : le cookie de rafraîchissement de la requête gagnante
+      // reste celui du navigateur, on ne pose que le nouvel accessToken.
+      setAccessTokenCookie(res, result.accessToken);
+    } else {
+      // The refresh token is rotated on every use: both cookies must be replaced.
+      setAuthCookies(res, result.accessToken, result.refreshToken);
+    }
 
     res.status(200).json({ success: true, message: 'Token rafraîchi avec succès.' });
   } catch (error) {
@@ -216,15 +216,10 @@ export async function forgotPasswordHandler(req: Request, res: Response): Promis
  * POST /api/auth/reset-password
  */
 export async function resetPasswordHandler(req: Request, res: Response): Promise<void> {
-  try {
-    await resetPassword(req.body);
-    res.status(200).json({
-      success: true,
-      message: 'Mot de passe réinitialisé avec succès ! Vous pouvez maintenant vous connecter.'
-    });
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : 'Une erreur est survenue lors de la réinitialisation.';
-    res.status(400).json({ success: false, message: errorMessage });
-  }
+  // Échec métier : BadRequestError (400) levée par le service ; panne : 500 générique.
+  await resetPassword(req.body);
+  res.status(200).json({
+    success: true,
+    message: 'Mot de passe réinitialisé avec succès ! Vous pouvez maintenant vous connecter.'
+  });
 }

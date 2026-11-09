@@ -44,10 +44,10 @@ const router = Router();
 // Register and Login
 // Le limiteur passe APRÈS la validation : une requête invalide ne consomme pas le quota d'inscription.
 router.post('/register', validate(registerSchema), registrationRateLimiter, asyncHandler(register));
-router.post('/login', loginRateLimiter, validate(loginSchema), login);
+router.post('/login', loginRateLimiter, validate(loginSchema), asyncHandler(login));
 
 // Email Verification
-router.get('/verify-email', verifyEmailHandler);
+router.get('/verify-email', asyncHandler(verifyEmailHandler));
 router.post(
   '/resend-verification',
   resendVerificationRateLimiter,
@@ -61,7 +61,12 @@ router.post('/logout', logout);
 
 // Password Management
 router.post('/forgot-password', forgotPasswordRateLimiter, validate(forgotPasswordSchema), forgotPasswordHandler);
-router.post('/reset-password', resetPasswordRateLimiter, validate(resetPasswordSchema), resetPasswordHandler);
+router.post(
+  '/reset-password',
+  resetPasswordRateLimiter,
+  validate(resetPasswordSchema),
+  asyncHandler(resetPasswordHandler)
+);
 
 // Invitation Acceptance (public route, session optionnelle : un compte
 // EXISTANT doit etre accepte depuis SA propre session — voir invitation-service.ts).

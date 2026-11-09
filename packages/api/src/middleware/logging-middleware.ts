@@ -3,50 +3,16 @@ import { logger } from '../utils/logger';
 import { maskSensitivePath } from '../utils/sensitive-path';
 
 /**
- * Préfixe du webhook Meta WhatsApp Cloud (lot 041). Recopié ici plutôt
- * qu'importé du routeur : le journal des requêtes ne dépend d'aucun routeur.
- */
-const WHATSAPP_CLOUD_WEBHOOK_PATH = '/api/webhooks/whatsapp-cloud';
-
-/** Paramètres de requête jamais écrits en clair dans le journal (spec 041, W6-R3). */
-const MASKED_QUERY_PARAMS = new Set(['hub.verify_token', 'hub.challenge']);
-
-const MASK = '[masqué]';
-
-/**
  * URL telle qu'elle est journalisée.
  *
- * Pour le webhook WhatsApp Cloud, la vérification d'abonnement de Meta
- * (`GET …/events?hub.mode=subscribe&hub.verify_token=…&hub.challenge=…`) porte
- * le jeton de vérification dans la chaîne de requête : `hub.verify_token` et
- * `hub.challenge` y sont remplacés par `[masqué]`. Toute autre URL est rendue
- * telle quelle.
+ * Le jeton d'un chemin (signature électronique) et la valeur des paramètres de
+ * requête sensibles (`token` de vérification d'e-mail et de newsletter,
+ * `hub.verify_token` et `hub.challenge` du webhook WhatsApp Cloud) sont
+ * remplacés par `[masqué]` sur tous les chemins ; toute autre URL est rendue
+ * telle quelle. Logique commune : `utils/sensitive-path.ts`.
  */
 export function maskRequestUrl(rawUrl: string): string {
-  // Signature electronique : le jeton du signataire est dans le chemin.
-  const url = maskSensitivePath(rawUrl);
-  const queryStart = url.indexOf('?');
-  if (queryStart < 0) return url;
-  const path = url.slice(0, queryStart);
-  if (path !== WHATSAPP_CLOUD_WEBHOOK_PATH && !path.startsWith(`${WHATSAPP_CLOUD_WEBHOOK_PATH}/`)) {
-    return url;
-  }
-  const masked = url
-    .slice(queryStart + 1)
-    .split('&')
-    .map(pair => {
-      const separator = pair.indexOf('=');
-      const rawName = separator < 0 ? pair : pair.slice(0, separator);
-      let name = rawName;
-      try {
-        name = decodeURIComponent(rawName.replace(/\+/g, ' '));
-      } catch {
-        // Nom mal encodé : comparé tel quel.
-      }
-      return MASKED_QUERY_PARAMS.has(name) ? `${rawName}=${MASK}` : pair;
-    })
-    .join('&');
-  return `${path}?${masked}`;
+  return maskSensitivePath(rawUrl);
 }
 
 /**
