@@ -39,6 +39,9 @@ export const RENTAL_PAID_AT_MAX_AGE_DAYS = 90;
 // Types communs
 // ---------------------------------------------------------------------------
 
+/** Modes de paiement déclarables (valeurs de `PaymentMethod`, schema.prisma). */
+export type RentalDeclarationPaymentMethod = 'MOBILE_MONEY' | 'CASH' | 'CHECK' | 'BANK_TRANSFER' | 'CARD' | 'OTHER';
+
 export type RentalMobileMoneyOperator = 'ORANGE' | 'MTN' | 'MOOV' | 'WAVE' | 'OTHER';
 
 /** Valeurs réelles de `PaymentDeclarationStatus` (schema.prisma) : CANCELED existe. */
@@ -281,6 +284,8 @@ export interface DeclarePaymentAvailabilityDto {
   aiPrefillAvailable: boolean;
   maxAmount: number;
   instructions: string | null;
+  /** Modes permis (additif) ; absent = tous. MOBILE_MONEY seulement avec un numéro actif. */
+  allowedMethods?: string[];
 }
 
 export interface DeclarePaymentBody {
@@ -295,10 +300,14 @@ export interface DeclarePaymentBody {
   notes?: string | null;
   /** Lecture IA dont la capture devient la preuve ; exclusif avec le fichier `proof`. */
   proofReadId?: string | null;
+  /** Défaut MOBILE_MONEY ; hors mobile money, ni receivingNumberId ni operator. */
+  paymentMethod?: RentalDeclarationPaymentMethod;
 }
 
 export interface TenantPortalDeclarationDto {
   id: string;
+  /** Absent = MOBILE_MONEY. */
+  paymentMethod?: RentalDeclarationPaymentMethod;
   status: RentalDeclarationStatus;
   leaseId: string;
   installment: {
