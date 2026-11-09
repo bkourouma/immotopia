@@ -45,7 +45,15 @@ vi.mock('../../components/rental/AllocatePaymentForm', () => ({
   )
 }));
 vi.mock('../../components/rental/PaymentDeclarationsList', () => ({
-  PaymentDeclarationsList: () => <div>liste des déclarations</div>
+  PaymentDeclarationsList: ({ canCreate }: { canCreate?: boolean }) => (
+    <div>liste des déclarations{canCreate ? ' (création permise)' : ''}</div>
+  )
+}));
+
+// Compteur de l'onglet « Déclarations en attente » (spec 049).
+const getRentalPendingCount = vi.fn();
+vi.mock('../../services/rental-declared-payment-service', () => ({
+  getRentalPendingCount: (...a: unknown[]) => getRentalPendingCount(...a)
 }));
 
 // Permissions de la personne connectée : `null` = aucune restriction
@@ -116,6 +124,28 @@ beforeEach(() => {
   vi.clearAllMocks();
   permissionsDetenues = null;
   allocatePayment.mockResolvedValue({ success: true });
+  getRentalPendingCount.mockResolvedValue({ pending: 0, overdue: 0 });
+});
+
+describe('Paiements — compteur des déclarations en attente', () => {
+  it('affiche le nombre en attente sur l’onglet', async () => {
+    getRentalPendingCount.mockResolvedValue({ pending: 3, overdue: 0 });
+    mount([]);
+    expect(await screen.findByTitle('3 en attente', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(getRentalPendingCount).toHaveBeenCalledWith('agence-1');
+  });
+
+  it('signale les retards et ignore silencieusement un échec', async () => {
+    getRentalPendingCount.mockResolvedValue({ pending: 2, overdue: 1 });
+    const { unmount } = mount([]);
+    expect(await screen.findByTitle('2 en attente, dont 1 en retard', {}, { timeout: 8000 })).toBeInTheDocument();
+    unmount();
+
+    getRentalPendingCount.mockRejectedValue(new Error('réseau'));
+    mount([]);
+    expect(await screen.findByText('Déclarations en attente', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByTitle(/en attente/)).toBeNull();
+  });
 });
 
 describe('Paiements — montant affecté', () => {
