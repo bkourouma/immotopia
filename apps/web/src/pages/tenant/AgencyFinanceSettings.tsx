@@ -33,6 +33,7 @@ import { OwnerFeeTermsCard } from '../../components/settings/OwnerFeeTermsCard';
 import { AgentCommissionCard } from '../../components/settings/AgentCommissionCard';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { PaymentGatewaySettingsCard } from '../../components/settings/PaymentGatewaySettingsCard';
+import { ReceivingAccountsManagerCard } from '../../components/payment/ReceivingAccountsManagerCard';
 import { DirectDebitCreditorsCard } from '../../components/rental/direct-debit/DirectDebitCreditorsCard';
 import { t } from '../../i18n/t';
 
@@ -451,6 +452,9 @@ export const AgencyFinanceSettings: React.FC = () => {
       {/* Cartes indépendantes du formulaire ci-dessus : chacune gère son propre
           formulaire de modale, ce qu'un <form> HTML imbriqué n'autoriserait pas. */}
       {tenantId ? <PaymentGatewaySettingsCard tenantId={tenantId} /> : null}
+      {tenantId ? (
+        <ReceivingAccountsManagerCard scope={{ kind: 'agency', tenantId }} canEdit={canEdit && permissionsReady} />
+      ) : null}
       {tenantId && rental && !ownAssetsOnly ? <DirectDebitCreditorsCard tenantId={tenantId} /> : null}
       {tenantId && rental && !ownAssetsOnly ? <OwnerFeeTermsCard tenantId={tenantId} /> : null}
       {tenantId && rental && !ownAssetsOnly ? <AgentCommissionCard tenantId={tenantId} /> : null}

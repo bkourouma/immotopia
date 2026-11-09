@@ -4,6 +4,7 @@
  */
 
 import api from '../utils/api-client';
+import type { ReceivingAccountPublic } from './receiving-account-service';
 
 /** Paramètres de liste : filtres (valeurs multiples en CSV), `search`, pagination. */
 type PortalListParams = { [key: string]: string | number | undefined };
@@ -37,6 +38,14 @@ export const tenantPortalService = {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: leaseId ? { leaseId } : undefined
     }),
+
+  // Comptes de réception de l'agence (spec 048, lot Q) : comptes actifs seulement
+  getReceivingAccounts: async (): Promise<ReceivingAccountPublic[]> => {
+    const response = await api.get<{ success: boolean; data: ReceivingAccountPublic[] }>(
+      '/portal/tenant/receiving-accounts'
+    );
+    return response.data.data;
+  },
 
   // Deposit
   getDepositInfo: (leaseId?: string) =>

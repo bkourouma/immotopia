@@ -21,6 +21,7 @@ import { DollarOutlined, CalendarOutlined, EyeOutlined, PlusOutlined, CreditCard
 import { useQuery } from '@tanstack/react-query';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import InstallmentDetails from '../../components/TenantPortal/InstallmentDetails';
+import { TenantPaymentAccountsSection } from '../../components/TenantPortal/TenantPaymentAccountsSection';
 import PaymentDeclarationModal from '../../components/TenantPortal/PaymentDeclarationModal';
 import dayjs from 'dayjs';
 import { useAuth } from '../../hooks/useAuth';
@@ -401,6 +402,14 @@ export default function TenantPayments() {
   });
   const hasSeveralLeases = (leases?.length ?? 0) > 1;
 
+  // Motif à recopier, composé avec les échéances déjà chargées : la plus ancienne non soldée.
+  const nextDue = data?.installments.find(item => item.balance > 0 && item.status !== 'PAID');
+  const suggestedReason = nextDue
+    ? hasSeveralLeases && nextDue.leaseNumber
+      ? t('Loyer {{period}} — {{lease}}', { period: nextDue.period, lease: nextDue.leaseNumber })
+      : t('Loyer {{period}}', { period: nextDue.period })
+    : null;
+
   // Payment history state
   const [paymentHistoryLoading, setPaymentHistoryLoading] = useState(false);
   const [paymentHistoryError, setPaymentHistoryError] = useState<string | null>(null);
@@ -739,6 +748,14 @@ export default function TenantPayments() {
           {t('Déclarer un paiement')}
         </Button>
       </div>
+
+      <TenantPaymentAccountsSection
+        suggestedReason={suggestedReason}
+        onDeclare={() => {
+          setDeclarationFor(null);
+          setDeclarationModalVisible(true);
+        }}
+      />
 
       {/* Summary Cards (T054) */}
       {ongletActif === 'echeances' && data?.summary && (

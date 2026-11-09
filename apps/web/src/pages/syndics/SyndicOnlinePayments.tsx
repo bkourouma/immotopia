@@ -11,6 +11,7 @@ import { DeclarationDrawer } from '../../components/syndics/declared-payment/Dec
 import { DeclarationsTable } from '../../components/syndics/declared-payment/DeclarationsTable';
 import { DeclareForThirdPartyModal } from '../../components/syndics/declared-payment/DeclareForThirdPartyModal';
 import { DeclaredSettingsCard } from '../../components/syndics/declared-payment/DeclaredSettingsCard';
+import { ReceivingAccountsManagerCard } from '../../components/payment/ReceivingAccountsManagerCard';
 import { ReceivingNumbersCard } from '../../components/syndics/declared-payment/ReceivingNumbersCard';
 import { RejectModal } from '../../components/syndics/declared-payment/RejectModal';
 import {
@@ -173,6 +174,11 @@ export const SyndicOnlinePayments: React.FC = () => {
                   canEdit={canEdit}
                   refreshToken={declaredRefresh}
                   onChanged={bumpDeclared}
+                />
+                <ReceivingAccountsManagerCard
+                  scope={{ kind: 'syndicate', tenantId, syndicId }}
+                  canEdit={canEdit}
+                  title={t('Comptes de réception de la copropriété')}
                 />
                 <DeclaredSettingsCard
                   tenantId={tenantId}
