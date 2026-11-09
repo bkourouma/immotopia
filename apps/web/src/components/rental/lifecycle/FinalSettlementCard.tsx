@@ -1,7 +1,7 @@
 import React from 'react';
 import { Alert, Card, Descriptions, Skeleton, Space, Typography } from 'antd';
 import { FinalSettlement } from '../../../services/lease-lifecycle-service';
-import { MoneyValue } from '../../primitives';
+import { formatMontantLocatif } from '../../../lib/rental-labels';
 import { t } from '../../../i18n/t';
 
 const { Text } = Typography;
@@ -37,11 +37,9 @@ export const FinalSettlementCard: React.FC<FinalSettlementCardProps> = ({ settle
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Descriptions column={1} size="small" bordered>
           <Descriptions.Item label={t('Dépôt détenu')}>
-            <MoneyValue value={settlement.depositHeld} />
+            {formatMontantLocatif(settlement.depositHeld)}
           </Descriptions.Item>
-          <Descriptions.Item label={t('Impayés')}>
-            <MoneyValue value={settlement.arrears} />
-          </Descriptions.Item>
+          <Descriptions.Item label={t('Impayés')}>{formatMontantLocatif(settlement.arrears)}</Descriptions.Item>
           <Descriptions.Item label={t('Retenues (état des lieux)')}>
             {settlement.deductions.length === 0 ? (
               <Text type="secondary">{t('Aucune')}</Text>
@@ -53,14 +51,12 @@ export const FinalSettlementCard: React.FC<FinalSettlementCardProps> = ({ settle
                     style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}
                   >
                     <Text>{deduction.label}</Text>
-                    <MoneyValue value={deduction.amount} />
+                    <Text>{formatMontantLocatif(deduction.amount)}</Text>
                   </div>
                 ))}
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                   <Text strong>{t('Total des retenues')}</Text>
-                  <Text strong>
-                    <MoneyValue value={settlement.deductionsTotal} />
-                  </Text>
+                  <Text strong>{formatMontantLocatif(settlement.deductionsTotal)}</Text>
                 </div>
               </Space>
             )}
@@ -70,7 +66,7 @@ export const FinalSettlementCard: React.FC<FinalSettlementCardProps> = ({ settle
         <div>
           <Text strong style={{ fontSize: 'var(--font-size-lg, 16px)' }}>
             {soldePositif ? t('À restituer au locataire : ') : t('Reste dû par le locataire : ')}
-            <MoneyValue value={Math.abs(solde)} />
+            {formatMontantLocatif(Math.abs(solde))}
           </Text>
         </div>
 

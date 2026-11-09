@@ -7,12 +7,14 @@ import { InstallmentPaymentLinksPanel } from '../../components/rental/Installmen
 import { t } from '../../i18n/t';
 import { formatMoney } from '../../components/primitives/MoneyValue';
 import { deviseAffichee, libellePeriodeEcheance } from '../../lib/rental-labels';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 export const InstallmentDetailPage: React.FC = () => {
   const { tenantId, installmentId } = useParams<{ tenantId: string; installmentId: string }>();
+  const { permissions, ready } = useMyMenuAccess(tenantId);
   const navigate = useNavigate();
   const [installment, setInstallment] = useState<RentalInstallment | null>(null);
   const [loading, setLoading] = useState(true);
@@ -185,12 +187,15 @@ export const InstallmentDetailPage: React.FC = () => {
           </Col>
         </Row>
 
-        {tenantId && installmentId && (
+        {tenantId && installmentId && ready && (
           <InstallmentPaymentLinksPanel
             tenantId={tenantId}
             installmentId={installmentId}
             remaining={remaining}
             status={installment.status}
+            leaseStatus={installment.lease?.status}
+            canView={permissions === null || permissions.has('RENTAL_PAYMENTS_VIEW')}
+            canCreate={permissions === null || permissions.has('RENTAL_PAYMENTS_CREATE')}
             periodLabel={libellePeriodeEcheance(installment.period_month, installment.period_year)}
           />
         )}

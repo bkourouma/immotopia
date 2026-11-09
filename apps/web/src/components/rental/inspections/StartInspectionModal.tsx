@@ -59,7 +59,13 @@ export const StartInspectionModal: React.FC<StartInspectionModalProps> = ({
       destroyOnHidden
     >
       <Text>{t('Date de l’état des lieux')}</Text>
-      <DatePicker style={{ width: '100%', marginTop: 8 }} value={date} onChange={setDate} format="DD/MM/YYYY" />
+      <DatePicker
+        aria-label={t('Date de l’état des lieux')}
+        style={{ width: '100%', marginTop: 8 }}
+        value={date}
+        onChange={setDate}
+        format="DD/MM/YYYY"
+      />
 
       {showTemplateChoice && (
         <div style={{ marginTop: 16 }}>

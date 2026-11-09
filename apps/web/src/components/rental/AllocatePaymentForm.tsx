@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { Button } from '../ui/button';
 import {
   AllocatePaymentRequest,
@@ -29,6 +29,7 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
   onCancel,
   loading = false
 }) => {
+  const formId = useId();
   const [installments, setInstallments] = useState<RentalInstallment[]>([]);
   // Sans bail (anciennes données), il n'y a rien à charger : ne pas rester sur « Chargement… ».
   const [loadingInstallments, setLoadingInstallments] = useState(Boolean(payment.lease_id));
@@ -83,22 +84,36 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
       return;
     }
 
+    const explicitAmounts: Record<string, number> = {};
+    for (const installment of installments) {
+      const entered = amounts[installment.id];
+      if (!selectedInstallments[installment.id] || !entered) continue;
+
+      const amount = Number(entered);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        setErrors({ [installment.id]: t('Le montant doit être supérieur à 0') });
+        return;
+      }
+      if (Math.round(amount * 100) > Math.round(calculateRemainingDue(installment) * 100)) {
+        setErrors({ [installment.id]: t('Le montant dépasse le reste dû de cette échéance.') });
+        return;
+      }
+      explicitAmounts[installment.id] = amount;
+    }
+
+    const explicitCents = Object.values(explicitAmounts).reduce((sum, amount) => sum + Math.round(amount * 100), 0);
+    if (explicitCents > Math.round(availableAmount * 100)) {
+      setErrors({ submit: t('Le montant dépasse le solde disponible du paiement.') });
+      return;
+    }
+
     setIsSubmitting(true);
     // Le refus précédent ne vaut plus pour cette nouvelle tentative.
     setErrors({});
     try {
       const submitData: AllocatePaymentRequest = {
         installmentIds,
-        amounts: Object.keys(amounts).reduce(
-          (acc, id) => {
-            const parsedAmount = parserMontant(amounts[id]);
-            if (parsedAmount && parseFloat(parsedAmount) > 0) {
-              acc[id] = parseFloat(parsedAmount);
-            }
-            return acc;
-          },
-          {} as Record<string, number>
-        )
+        amounts: explicitAmounts
       };
 
       await onSubmit(submitData);
@@ -114,6 +129,7 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
   };
 
   const toggleInstallment = (installmentId: string) => {
+    setErrors({});
     setSelectedInstallments(prev => ({
       ...prev,
       [installmentId]: !prev[installmentId]
@@ -160,7 +176,11 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
         </div>
       </div>
 
-      {errors.submit && <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-md">{errors.submit}</div>}
+      {errors.submit && (
+        <div role="alert" className="bg-destructive/10 text-destructive px-4 py-3 rounded-md">
+          {errors.submit}
+        </div>
+      )}
 
       {!payment.lease_id ? (
         <div className="text-center py-4 text-muted-foreground">
@@ -175,13 +195,19 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
           {installments.map(installment => {
             const remaining = calculateRemainingDue(installment);
             const isSelected = selectedInstallments[installment.id] || false;
+            const periodId = `${formId}-period-${installment.id}`;
+            const amountId = `${formId}-amount-${installment.id}`;
             return (
               <div key={installment.id} className="border rounded-lg p-4 flex items-start gap-4">
-                <Checkbox checked={isSelected} onCheckedChange={() => toggleInstallment(installment.id)} />
+                <Checkbox
+                  aria-labelledby={periodId}
+                  checked={isSelected}
+                  onCheckedChange={() => toggleInstallment(installment.id)}
+                />
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-2">
                     <div>
-                      <p className="font-medium">
+                      <p id={periodId} className="font-medium">
                         {libellePeriodeEcheance(installment.period_month, installment.period_year)} {t('- Échéance du')}{' '}
                         {formatDate(installment.due_date)}
                       </p>
@@ -192,28 +218,29 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
                   </div>
                   {isSelected && (
                     <div className="mt-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor={amountId} className="block text-sm font-medium text-gray-700 mb-1">
                         {t('Montant à allouer (laisser vide pour allouer automatiquement)')}
                       </label>
                       <Input
+                        id={amountId}
+                        aria-invalid={Boolean(errors[installment.id])}
+                        aria-describedby={errors[installment.id] ? `${amountId}-error` : undefined}
                         type="text"
                         value={formatterMontant(amounts[installment.id] || '')}
                         onChange={e => {
-                          // Décimales conservées : « 1500,5 » vaut 1 500,50 (BUG-2026-11-04-034).
-                          const cleaned = parserMontant(e.target.value);
-                          // Validate max value
-                          const numValue = parseFloat(cleaned);
-                          if (!cleaned || (numValue >= 0 && numValue <= remaining)) {
-                            setAmounts(prev => ({
-                              ...prev,
-                              [installment.id]: cleaned
-                            }));
-                          }
+                          const entered = parserMontant(e.target.value);
+                          setAmounts(prev => ({ ...prev, [installment.id]: entered }));
+                          setErrors({});
                         }}
                         placeholder={`Max: ${formatCurrency(remaining, installment.currency)}`}
                         className="w-full"
                         inputMode="decimal"
                       />
+                      {errors[installment.id] && (
+                        <p id={`${amountId}-error`} role="alert" className="text-sm text-destructive">
+                          {errors[installment.id]}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

@@ -196,7 +196,7 @@ export const InstallmentPaymentStatusPage: React.FC = () => {
           <Result
             status="error"
             title={t('Le paiement a échoué')}
-            subTitle={t("Aucun paiement n'a été enregistré. Demandez un nouveau lien à votre agence pour réessayer.")}
+            subTitle={t("Aucun paiement n'a été enregistré. Vous pouvez réessayer si le lien est encore valide.")}
           >
             <PaymentSummary payment={payment} />
           </Result>
@@ -205,7 +205,7 @@ export const InstallmentPaymentStatusPage: React.FC = () => {
           <Result
             status="info"
             title={t('Paiement annulé')}
-            subTitle={t("Aucun paiement n'a été enregistré. Demandez un nouveau lien à votre agence pour réessayer.")}
+            subTitle={t("Aucun paiement n'a été enregistré. Vous pouvez réessayer si le lien est encore valide.")}
           >
             <PaymentSummary payment={payment} />
           </Result>

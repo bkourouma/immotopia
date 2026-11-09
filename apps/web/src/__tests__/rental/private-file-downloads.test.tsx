@@ -122,12 +122,14 @@ describe('PaymentDeclarationsList — preuve de paiement', () => {
     const { baseElement } = render(
       <AntApp>
         <MemoryRouter>
-          <PaymentDeclarationsList tenantId="agence-1" />
+          <PaymentDeclarationsList tenantId="agence-1" canReview={false} />
         </MemoryRouter>
       </AntApp>
     );
 
     await userEvent.click(await screen.findByTitle('Voir la preuve de paiement', {}, { timeout: 8000 }));
+    expect(screen.queryByRole('button', { name: /Approuver/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Rejeter/ })).not.toBeInTheDocument();
     await waitFor(() =>
       expect(get).toHaveBeenCalledWith(
         '/tenants/agence-1/rental/payment-declarations/decl-1/proof',

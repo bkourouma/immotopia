@@ -52,6 +52,7 @@ export interface InstallmentPaymentLinksPanelProps {
   installmentId: string;
   remaining: number;
   status?: string | null;
+  leaseStatus?: string;
   periodLabel?: string;
   /** `RENTAL_PAYMENTS_VIEW` : sans ce droit la section n'est pas rendue. */
   canView?: boolean;
@@ -65,6 +66,7 @@ export const InstallmentPaymentLinksPanel: React.FC<InstallmentPaymentLinksPanel
   installmentId,
   remaining,
   status,
+  leaseStatus,
   periodLabel,
   canView = true,
   canCreate = true
@@ -115,6 +117,7 @@ export const InstallmentPaymentLinksPanel: React.FC<InstallmentPaymentLinksPanel
             installmentId={installmentId}
             remaining={remaining}
             status={status}
+            leaseStatus={leaseStatus}
             canCreate={canCreate}
             periodLabel={periodLabel}
             onChanged={() => void reload()}

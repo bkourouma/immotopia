@@ -224,11 +224,17 @@ describe('PDF de l’état des lieux', () => {
       lease: { number: 'B1', propertyTitle: null, propertyAddress: null, renterNames: [], ownerName: null },
       photos: []
     };
-    const exit = buildInspectionPdfModel({ ...base, type: 'EXIT' });
+    const exit = buildInspectionPdfModel({
+      ...base,
+      type: 'EXIT',
+      deductions: [{ ...base.deductions[0], amount: 1500.5 }]
+    });
     const entry = buildInspectionPdfModel({ ...base, type: 'ENTRY' });
     const titles = (model: typeof exit) => model.sections.map(section => section.title);
     expect(titles(exit)).toContain('Retenues proposées sur le dépôt de garantie');
     expect(titles(entry)).not.toContain('Retenues proposées sur le dépôt de garantie');
+    const deductions = exit.sections.find(section => section.title === 'Retenues proposées sur le dépôt de garantie');
+    expect(deductions?.kind === 'table' && deductions.rows[0].at(-1)).toBe('1 500,50 FCFA');
     const kitchen = exit.sections.find(section => section.title === 'Cuisine');
     expect(kitchen?.kind === 'table' && kitchen.rows[1]).toEqual([
       'Réfrigérateur',

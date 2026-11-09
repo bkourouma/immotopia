@@ -117,7 +117,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   const { isDesktop } = useBreakpoint();
   // Encaisser et affecter exigent RENTAL_PAYMENTS_CREATE / RENTAL_PAYMENTS_ALLOCATE :
   // un rôle en lecture seule (Comptable) ne voit pas d'action qui répondrait 403.
-  const { permissions } = useMyMenuAccess(tenantId);
+  const { permissions, ready } = useMyMenuAccess(tenantId);
   const peutEncaisser = permissions === null || permissions.has('RENTAL_PAYMENTS_CREATE');
   const peutAffecter = permissions === null || permissions.has('RENTAL_PAYMENTS_ALLOCATE');
 
@@ -429,6 +429,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
               <PaymentDeclarationsList
                 tenantId={tenantId}
                 leaseId={leaseId}
+                canReview={ready && peutAffecter}
                 onApproveSuccess={() => void rafraichir()}
               />
             )

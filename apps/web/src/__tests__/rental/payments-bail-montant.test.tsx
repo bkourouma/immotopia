@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PaymentForm } from '../../components/rental/PaymentForm';
 import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm';
 import { libelleMethodePaiement } from '../../lib/rental-payment-status';
+import { listInstallments } from '../../services/rental-service';
 
 /**
  * D23 — BUG-2026-11-04-033 (paiement sans bail), -034 (virgule décimale),
@@ -96,6 +97,46 @@ describe('Affecter un paiement sans bail (anciennes données)', () => {
     );
     expect(await screen.findByText(/n'est rattaché à aucun bail/)).toBeInTheDocument();
     expect(screen.queryByText(/Chargement des échéances/)).toBeNull();
+  });
+});
+
+it('bloque les montants excessifs et conserve une affectation manuelle corrigée', async () => {
+  vi.mocked(listInstallments).mockResolvedValueOnce({
+    success: true,
+    data: [
+      { id: 'novembre', period_month: 11, period_year: 2026, due_date: '2026-11-01', amount_rent: 100 },
+      { id: 'decembre', period_month: 12, period_year: 2026, due_date: '2026-12-01', amount_rent: 100 }
+    ]
+  } as Awaited<ReturnType<typeof listInstallments>>);
+  const user = userEvent.setup({ delay: null });
+  const onSubmit = vi.fn().mockResolvedValue(undefined);
+  monter(
+    <AllocatePaymentForm
+      tenantId="agence-1"
+      payment={{ id: 'p1', lease_id: 'bail-1', amount: 150, currency: 'FCFA', status: 'SUCCESS' } as never}
+      onSubmit={onSubmit}
+    />
+  );
+  await user.click(await screen.findByRole('checkbox', { name: /11\/2026/ }));
+  await user.click(screen.getByRole('checkbox', { name: /12\/2026/ }));
+  const [novembre, decembre] = screen.getAllByRole('textbox', { name: /Montant à allouer/ });
+  const submit = screen.getByRole('button', { name: 'Allouer le paiement' });
+  await user.type(novembre, '101');
+  await user.click(submit);
+  expect(novembre).toHaveValue('101');
+  expect(screen.getByText('Le montant dépasse le reste dû de cette échéance.')).toBeInTheDocument();
+  await user.clear(novembre);
+  await user.type(novembre, '100');
+  await user.type(decembre, '51');
+  await user.click(submit);
+  expect(screen.getByText('Le montant dépasse le solde disponible du paiement.')).toBeInTheDocument();
+  expect(onSubmit).not.toHaveBeenCalled();
+  await user.clear(decembre);
+  await user.type(decembre, '49,5');
+  await user.click(submit);
+  expect(onSubmit).toHaveBeenCalledWith({
+    installmentIds: ['novembre', 'decembre'],
+    amounts: { novembre: 100, decembre: 49.5 }
   });
 });
 

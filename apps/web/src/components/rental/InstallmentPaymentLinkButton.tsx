@@ -19,10 +19,12 @@ const { Paragraph } = Typography;
 
 export const DEFAULT_TTL_DAYS = 7;
 
-/** Une échéance accepte un lien quand elle est exigible (Dû, Partiel, En retard) et qu'il reste à payer. */
+/** Une échéance exigible avec un reste à payer accepte un lien si son bail est actif. */
 const STATUTS_EXIGIBLES = ['DUE', 'PARTIAL', 'OVERDUE'];
-export function canOfferPaymentLink(remaining: number, status?: string | null): boolean {
-  return remaining > 0 && STATUTS_EXIGIBLES.includes(status ?? '');
+export function canOfferPaymentLink(remaining: number, status?: string | null, leaseStatus?: string): boolean {
+  return (
+    remaining > 0 && STATUTS_EXIGIBLES.includes(status ?? '') && (leaseStatus === undefined || leaseStatus === 'ACTIVE')
+  );
 }
 
 function errorText(e: any, fallback: string): string {
@@ -236,6 +238,7 @@ export interface InstallmentPaymentLinkButtonProps {
   remaining: number;
   /** Statut de l'échéance ; une échéance annulée n'offre pas de lien. */
   status?: string | null;
+  leaseStatus?: string;
   /** Droit de création de paiement locatif (`RENTAL_PAYMENTS_CREATE`) ; vrai par défaut, l'API reste l'autorité. */
   canCreate?: boolean;
   onChanged?: () => void;
@@ -249,13 +252,14 @@ export const InstallmentPaymentLinkButton: React.FC<InstallmentPaymentLinkButton
   installmentId,
   remaining,
   status,
+  leaseStatus,
   canCreate = true,
   onChanged,
   periodLabel,
   size
 }) => {
   const [open, setOpen] = useState(false);
-  if (!canCreate || !canOfferPaymentLink(remaining, status)) return null;
+  if (!canCreate || !canOfferPaymentLink(remaining, status, leaseStatus)) return null;
   return (
     <>
       <Button icon={<LinkOutlined />} size={size} onClick={() => setOpen(true)}>

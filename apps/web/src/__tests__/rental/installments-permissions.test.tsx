@@ -124,4 +124,13 @@ describe('Lien de paiement — échéance exigible seulement', () => {
   ])('statut %s -> %s', (statut, attendu) => {
     expect(canOfferPaymentLink(100, statut)).toBe(attendu);
   });
+
+  it.each([
+    ['ACTIVE', true],
+    ['SUSPENDED', false],
+    ['ENDED', false],
+    ['CANCELED', false]
+  ])('échéance en retard sur un bail %s -> %s', (statut, attendu) => {
+    expect(canOfferPaymentLink(100, 'OVERDUE', statut)).toBe(attendu);
+  });
 });

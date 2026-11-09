@@ -24,7 +24,7 @@ vi.mock('../../services/owner-accounts-service', () => ({
 }));
 
 vi.mock('../../hooks/useMenuAccess', () => ({
-  useMyMenuAccess: () => ({ disabled: new Set<string>(), permissions: null }),
+  useMyMenuAccess: () => ({ disabled: new Set<string>(), permissions: null, ready: true }),
   useOwnAssetsOnly: () => false
 }));
 

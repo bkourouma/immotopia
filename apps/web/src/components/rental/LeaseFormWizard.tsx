@@ -873,10 +873,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         <StepRail
           items={stepItems.map(step => ({ title: step.title, shortTitle: step.shortTitle }))}
           current={currentStep}
-          // Ouvert de bout en bout, comme l'ancien `Steps` : c'est
-          // `handleStepChange` qui refuse d'avancer sur une etape invalide,
-          // pas le rail.
-          furthest={stepItems.length - 1}
+          furthest={lease ? stepItems.length - 1 : currentStep}
           onChange={handleStepChange}
           invalid={stepItems.map((step, index) => (step.invalid ? index : -1)).filter(index => index >= 0)}
         />

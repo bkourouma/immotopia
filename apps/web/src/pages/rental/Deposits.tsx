@@ -17,6 +17,7 @@ import { DepositMovementForm } from '../../components/rental/DepositMovementForm
 import { Table } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { formatMontantLocatif } from '../../lib/rental-labels';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
@@ -30,6 +31,8 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
 
   const { tenantId, leaseId: paramLeaseId } = useParams<{ tenantId: string; leaseId?: string }>();
   const leaseId = propLeaseId || paramLeaseId;
+  const { permissions, ready } = useMyMenuAccess(tenantId);
+  const peutModifierDepot = ready && (permissions === null || permissions.has('RENTAL_DEPOSITS_EDIT'));
   const [deposit, setDeposit] = useState<RentalSecurityDeposit | null>(null);
   const [movements, setMovements] = useState<RentalDepositMovement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,7 +171,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
           </Col>
           <Col xs={24} sm={24} md={12} lg={10}>
             <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
-              {deposit && (
+              {deposit && peutModifierDepot && (
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowMovementForm(true)}>
                   {t('Nouveau mouvement')}
                 </Button>
@@ -221,7 +224,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
               </Row>
             </Card>
 
-            {showMovementForm && (
+            {showMovementForm && peutModifierDepot && (
               <Card>
                 <DepositMovementForm
                   tenantId={tenantId!}

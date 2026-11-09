@@ -46,6 +46,39 @@ function renderInApp(node: React.ReactElement) {
 beforeEach(() => vi.clearAllMocks());
 
 describe('SignaturesPanel : évolutions', () => {
+  it('conserve le PDF source et masque les actions sur une demande ouverte en lecture seule', async () => {
+    listSignatureRequests.mockResolvedValueOnce([
+      {
+        ...request('SENT'),
+        kind: 'LEASE_CONTRACT',
+        signers: [
+          {
+            id: 's1',
+            position: 1,
+            fullName: 'Locataire de recette',
+            role: 'LOCATAIRE',
+            channel: 'IN_PERSON',
+            status: 'PENDING'
+          }
+        ]
+      }
+    ]);
+    renderInApp(
+      <SignaturesPanel
+        kind="LEASE_CONTRACT"
+        targetType="RentalLease"
+        targetId="lease-1"
+        defaultSigners={[]}
+        fileLabel="bail"
+        canEdit={false}
+      />
+    );
+    expect(await screen.findByRole('button', { name: 'PDF source' })).toBeInTheDocument();
+    for (const name of ['Envoyer pour signature', 'Relancer', 'Annuler la demande', 'Signer sur place']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
+  });
+
   it('signale la demande ouverte, puis prévient le parent quand elle est scellée', async () => {
     const onChanged = vi.fn();
     const onOpenChange = vi.fn();

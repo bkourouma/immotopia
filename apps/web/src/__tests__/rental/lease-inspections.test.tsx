@@ -203,6 +203,22 @@ describe('Sortie — rappel de l’entrée et retenues proposées', () => {
     await user.click(await screen.findByRole('button', { name: /Proposer depuis les dégradations/ }));
 
     expect(await screen.findByDisplayValue(/Séjour.*Sol.*dégradé/)).toBeInTheDocument();
+
+    updateInspection.mockResolvedValue({ success: true, data: exit });
+    const amount = screen.getByRole('spinbutton', { name: 'Montant de la retenue' });
+    await user.clear(amount);
+    await user.type(amount, '1500,50');
+    await user.tab();
+    expect(screen.getByText(/Total : 1\s500,50 FCFA/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Enregistrer$/ }));
+    await waitFor(() =>
+      expect(updateInspection).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        exit.id,
+        expect.objectContaining({ deductions: [expect.objectContaining({ amount: 1500.5 })] })
+      )
+    );
   });
 });
 

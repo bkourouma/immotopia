@@ -31,6 +31,7 @@ const { Text } = Typography;
 export interface LeaseLifecyclePanelProps {
   tenantId: string;
   leaseId: string;
+  canEdit?: boolean;
   onLeaseChanged?: () => void;
 }
 
@@ -50,7 +51,12 @@ function formatDate(value: string | null | undefined): string {
  * bail, à charge de l'appelant : ce composant ne touche pas
  * `LeaseDetailPage.tsx`.
  */
-export const LeaseLifecyclePanel: React.FC<LeaseLifecyclePanelProps> = ({ tenantId, leaseId, onLeaseChanged }) => {
+export const LeaseLifecyclePanel: React.FC<LeaseLifecyclePanelProps> = ({
+  tenantId,
+  leaseId,
+  canEdit = true,
+  onLeaseChanged
+}) => {
   const { message } = App.useApp();
 
   const [loading, setLoading] = useState(true);
@@ -210,20 +216,27 @@ export const LeaseLifecyclePanel: React.FC<LeaseLifecyclePanelProps> = ({ tenant
             <Descriptions.Item label={t('Date de fin')}>{formatDate(lease.endDate)}</Descriptions.Item>
           </Descriptions>
 
-          <Space wrap>
-            <Button icon={<EditOutlined />} disabled={lease.terminated} onClick={() => setRevisionOpen(true)}>
-              {t('Réviser le loyer')}
-            </Button>
-            <Button icon={<SyncOutlined />} disabled={lease.terminated} onClick={() => setRenewalOpen(true)}>
-              {t('Renouveler')}
-            </Button>
-            <Button icon={<FileTextOutlined />} onClick={() => setAmendmentOpen(true)}>
-              {t('Enregistrer un avenant')}
-            </Button>
-            <Button icon={<StopOutlined />} danger disabled={lease.terminated} onClick={() => setTerminationOpen(true)}>
-              {t('Résilier le bail')}
-            </Button>
-          </Space>
+          {canEdit && (
+            <Space wrap>
+              <Button icon={<EditOutlined />} disabled={lease.terminated} onClick={() => setRevisionOpen(true)}>
+                {t('Réviser le loyer')}
+              </Button>
+              <Button icon={<SyncOutlined />} disabled={lease.terminated} onClick={() => setRenewalOpen(true)}>
+                {t('Renouveler')}
+              </Button>
+              <Button icon={<FileTextOutlined />} onClick={() => setAmendmentOpen(true)}>
+                {t('Enregistrer un avenant')}
+              </Button>
+              <Button
+                icon={<StopOutlined />}
+                danger
+                disabled={lease.terminated}
+                onClick={() => setTerminationOpen(true)}
+              >
+                {t('Résilier le bail')}
+              </Button>
+            </Space>
+          )}
 
           <Divider style={{ margin: 0 }} />
 
@@ -239,21 +252,25 @@ export const LeaseLifecyclePanel: React.FC<LeaseLifecyclePanelProps> = ({ tenant
       {lease.terminated && <FinalSettlementCard settlement={settlement} loading={settlementLoading} />}
 
       <RevisionModal
-        open={revisionOpen}
+        open={canEdit && revisionOpen}
         currentRent={lease.rentAmount}
         currentCharges={lease.serviceChargeAmount}
         onCancel={() => setRevisionOpen(false)}
         onSubmit={handleRevision}
       />
       <RenewalModal
-        open={renewalOpen}
+        open={canEdit && renewalOpen}
         currentEndDate={lease.endDate}
         onCancel={() => setRenewalOpen(false)}
         onSubmit={handleRenewal}
       />
-      <AmendmentModal open={amendmentOpen} onCancel={() => setAmendmentOpen(false)} onSubmit={handleAmendment} />
+      <AmendmentModal
+        open={canEdit && amendmentOpen}
+        onCancel={() => setAmendmentOpen(false)}
+        onSubmit={handleAmendment}
+      />
       <TerminationModal
-        open={terminationOpen}
+        open={canEdit && terminationOpen}
         onCancel={() => setTerminationOpen(false)}
         onSubmit={handleTermination}
       />

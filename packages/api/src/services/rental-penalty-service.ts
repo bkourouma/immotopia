@@ -17,6 +17,7 @@ import { runWithTenantContext } from '../utils/tenant-context';
 import { t } from '../i18n';
 import { contentMatchesDeclaredType, detectDocumentKind, extensionForKind } from '../utils/file-signature';
 import { NotFoundError, BadRequestError } from '../middleware/error-middleware';
+import { corrigerNomFichier } from '../utils/multipart-filename';
 import { containsFoldedSql, searchWordsSql } from '../utils/sql-text-search';
 
 // ---------------------------------------------------------------------------
@@ -479,17 +480,6 @@ function lireJustificatif(
     fileName: typeof fileName === 'string' ? fileName : null,
     uploadedAt: typeof uploadedAt === 'string' ? uploadedAt : null
   };
-}
-
-/**
- * Multer lit le nom d'origine d'un fichier en Latin-1 alors que les
- * navigateurs l'envoient en UTF-8 (« reçu » devient « reÃ§u »,
- * BUG-2026-11-04-015) : on relit les octets en UTF-8 quand c'est valide.
- */
-export function corrigerNomFichier(nom: string): string {
-  if (!nom || Array.from(nom).some(c => (c.codePointAt(0) ?? 0) > 255)) return nom;
-  const decode = Buffer.from(nom, 'latin1').toString('utf8');
-  return decode.includes(String.fromCharCode(65533)) ? nom : decode;
 }
 
 /**
