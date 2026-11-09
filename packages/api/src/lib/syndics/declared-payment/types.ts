@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 /** Montant maximal d'une déclaration, en FCFA (D13). */
-export const MAX_DECLARATION_AMOUNT = 5_000_000;
+export { MAX_DECLARATION_AMOUNT } from '../../payment-proof/constants';
 /** Nombre maximal de lignes (lots) d'une déclaration. */
 export const MAX_DECLARATION_LINES = 10;
 /** Déclarations en attente tolérées par lot. */

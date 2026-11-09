@@ -16,6 +16,7 @@ import { startLotReconciliationJob } from './jobs/lot-reconciliation-job';
 import { startAuditMaintenanceJob } from './jobs/audit-maintenance-job';
 import { startStockMaintenanceJob } from './jobs/stock-maintenance-job';
 import { startSyndicDeclaredPaymentJob } from './jobs/syndic-declared-payment-job';
+import { startRentalDeclaredPaymentJob } from './jobs/rental-declared-payment-job';
 import { startStockWhatsappJob } from './jobs/stock-whatsapp-job';
 import { startSignatureJob } from './jobs/signature-job';
 import { logger } from './utils/logger';
@@ -79,6 +80,8 @@ app.listen(PORT, () => {
     // Spec 047 : paiements mobile money declares, recapitulatif horaire aux gestionnaires,
     // alerte quotidienne des declarations en retard (8 h Africa/Abidjan), purge des lectures expirees.
     startSyndicDeclaredPaymentJob();
+    // Paiement locatif declare (parite Syndic) : squelette, rempli par le lot 1.
+    startRentalDeclaredPaymentJob();
     // Lot 041 : inventaire de chantier par WhatsApp. Les purges (copies
     // `payload` a une heure, historique a 180/30 jours) tournent toujours ;
     // relances, expirations et reprise du webhook seulement si le transport

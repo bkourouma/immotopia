@@ -33,6 +33,10 @@ export const WHATSAPP_NOTIFICATION_KEYS = [
   'SYNDIC_PAYMENT_DECLARATION_RECEIVED',
   'SYNDIC_PAYMENT_DECLARATION_APPROVED',
   'SYNDIC_PAYMENT_DECLARATION_REJECTED',
+  // Location – paiement déclaré par le locataire (parité Syndic)
+  'RENTAL_PAYMENT_DECLARATION_TO_REVIEW',
+  'RENTAL_PAYMENT_DECLARATION_OVERDUE_ALERT',
+  'RENTAL_RECEIVING_NUMBER_CHANGED',
   // Syndic – appels de charges & AG & incidents
   'CHARGE_CALL_ISSUED',
   'CHARGE_CALL_REMINDER',
@@ -212,6 +216,27 @@ export const WHATSAPP_NOTIFICATION_META: Record<WhatsappNotificationKey, Whatsap
     description:
       'Message WhatsApp envoyé au copropriétaire quand le gestionnaire rejette sa déclaration de paiement mobile money, avec le motif.',
     recipientLabel: 'Copropriétaire'
+  },
+  RENTAL_PAYMENT_DECLARATION_TO_REVIEW: {
+    key: 'RENTAL_PAYMENT_DECLARATION_TO_REVIEW',
+    label: 'Paiements de loyer déclarés à vérifier (WhatsApp)',
+    description:
+      'Récapitulatif WhatsApp envoyé chaque heure aux gestionnaires quand des paiements de loyer déclarés par des locataires attendent leur vérification.',
+    recipientLabel: 'Gestionnaires de l’agence'
+  },
+  RENTAL_PAYMENT_DECLARATION_OVERDUE_ALERT: {
+    key: 'RENTAL_PAYMENT_DECLARATION_OVERDUE_ALERT',
+    label: 'Paiements de loyer déclarés en retard de vérification (WhatsApp)',
+    description:
+      'Alerte WhatsApp quotidienne envoyée aux gestionnaires quand des paiements de loyer déclarés attendent leur vérification depuis trop longtemps.',
+    recipientLabel: 'Gestionnaires de l’agence'
+  },
+  RENTAL_RECEIVING_NUMBER_CHANGED: {
+    key: 'RENTAL_RECEIVING_NUMBER_CHANGED',
+    label: 'Numéro de réception des loyers modifié (WhatsApp)',
+    description:
+      'Message WhatsApp envoyé aux autres gestionnaires quand un numéro mobile money qui reçoit les loyers est créé, modifié ou désactivé.',
+    recipientLabel: 'Gestionnaires de l’agence'
   },
   CHARGE_CALL_ISSUED: {
     key: 'CHARGE_CALL_ISSUED',
