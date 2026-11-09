@@ -167,6 +167,11 @@ export interface RentalPaymentDeclarationDto {
   leaseNumber: string | null;
   /** Locataire déclarant ou gestionnaire (déclaration pour un tiers). */
   declaredBy: { type: 'TENANT'; clientId: string; name: string } | { type: 'MANAGER'; userId: string; name: string };
+  /**
+   * Extension additive : nom du locataire déclarant enregistré (`declared_by`),
+   * distinct du gestionnaire quand la déclaration a été saisie pour un tiers.
+   */
+  tenantName?: string;
   installment: {
     id: string;
     periodYear: number;

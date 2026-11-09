@@ -174,22 +174,22 @@ describe('InstallmentReminderButton', () => {
 
   it('is visible with the allocate permission and opens the modal', async () => {
     renderButton();
-    await userEvent.click(screen.getByRole('button', { name: /Relancer/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Envoyer une relance/ }));
     expect(await screen.findByText(/Un lien de paiement en ligne/)).toBeInTheDocument();
   });
 
   it('is hidden without RENTAL_PAYMENTS_ALLOCATE', () => {
     renderButton({ canAllocate: false });
-    expect(screen.queryByRole('button', { name: /Relancer/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Envoyer une relance/ })).not.toBeInTheDocument();
   });
 
   it('is hidden when the installment is settled or the lease inactive', () => {
     renderButton({ remaining: 0, status: 'PAID' });
-    expect(screen.queryByRole('button', { name: /Relancer/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Envoyer une relance/ })).not.toBeInTheDocument();
   });
 
   it('is hidden when the lease is not active', () => {
     renderButton({ leaseStatus: 'TERMINATED' });
-    expect(screen.queryByRole('button', { name: /Relancer/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Envoyer une relance/ })).not.toBeInTheDocument();
   });
 });

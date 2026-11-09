@@ -47,6 +47,7 @@ export const DECLARATION_DTO_INCLUDE = {
 
 export interface DeclarationDtoRow extends DuplicateProbeRow {
   lease_id: string;
+  transaction_phone: string | null;
   declared_by: string;
   declared_by_user_id: string | null;
   mobile_operator: string | null;
@@ -106,6 +107,9 @@ export function toDeclarationDto(row: DeclarationDtoRow, ctx: DeclarationDtoCont
     declaredBy: managerId
       ? { type: 'MANAGER', userId: managerId, name: ctx.userNames?.get(managerId) ?? '' }
       : { type: 'TENANT', clientId: row.declared_by, name: row.declarer?.user?.fullName ?? '' },
+    // Toujours le locataire déclarant enregistré (`declared_by`), même quand un
+    // gestionnaire a saisi la déclaration pour lui.
+    tenantName: row.declarer?.user?.fullName ?? '',
     installment: row.installment
       ? {
           id: row.installment.id,

@@ -131,14 +131,19 @@ describe('Paiements — compteur des déclarations en attente', () => {
   it('affiche le nombre en attente sur l’onglet', async () => {
     getRentalPendingCount.mockResolvedValue({ pending: 3, overdue: 0 });
     mount([]);
-    expect(await screen.findByTitle('3 en attente', {}, { timeout: 8000 })).toBeInTheDocument();
+    const badge = await screen.findByTitle('3 en attente', {}, { timeout: 8000 });
+    expect(badge).toBeInTheDocument();
+    // Aucun retard : couleur neutre explicite (le badge Ant Design est rouge par défaut).
+    expect(badge.className).toMatch(/-color-blue/);
+    expect(badge.className).not.toMatch(/-color-red/);
     expect(getRentalPendingCount).toHaveBeenCalledWith('agence-1');
   });
 
   it('signale les retards et ignore silencieusement un échec', async () => {
     getRentalPendingCount.mockResolvedValue({ pending: 2, overdue: 1 });
     const { unmount } = mount([]);
-    expect(await screen.findByTitle('2 en attente, dont 1 en retard', {}, { timeout: 8000 })).toBeInTheDocument();
+    const enRetard = await screen.findByTitle('2 en attente, dont 1 en retard', {}, { timeout: 8000 });
+    expect(enRetard.className).toMatch(/-color-red/);
     unmount();
 
     getRentalPendingCount.mockRejectedValue(new Error('réseau'));

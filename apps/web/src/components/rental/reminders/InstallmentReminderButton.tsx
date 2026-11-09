@@ -32,7 +32,7 @@ export const InstallmentReminderButton: React.FC<InstallmentReminderButtonProps>
   return (
     <>
       <Button icon={<BellOutlined />} onClick={() => setOpen(true)}>
-        {t('Relancer')}
+        {t('Envoyer une relance')}
       </Button>
       {open && (
         <InstallmentReminderModal

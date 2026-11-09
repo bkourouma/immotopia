@@ -83,6 +83,7 @@ describe('liste des déclarations', () => {
       leaseNumber: 'B-1',
       amount: 100000,
       declaredBy: { type: 'TENANT', clientId: 'client-1', name: 'Awa Traoré' },
+      tenantName: 'Awa Traoré',
       alerts: []
     });
     // PENDING : les plus anciennes d'abord
@@ -103,16 +104,33 @@ describe('liste des déclarations', () => {
     declFindMany
       .mockResolvedValueOnce([{ id: 'd-ok' }, { id: 'd-late' }]) // candidats
       .mockResolvedValueOnce([row('d-ok'), row('d-late', { created_at: old })]) // DTO des candidats
+      .mockResolvedValueOnce([]) // doublons probables des candidats
       .mockResolvedValueOnce([row('d-late', { created_at: old })]) // page
-      .mockResolvedValueOnce([row('d-late', { created_at: old })]); // DTO de la page
+      .mockResolvedValueOnce([row('d-late', { created_at: old })]) // DTO de la page
+      .mockResolvedValueOnce([]); // doublons probables de la page
     declCount.mockResolvedValue(1);
     const res = await getPaymentDeclarations('tenant-A', { flagged: true });
-    const pageWhere = declFindMany.mock.calls[2][0].where;
+    const pageWhere = declFindMany.mock.calls[3][0].where;
     expect(pageWhere.status).toBe('PENDING');
     expect(pageWhere.id).toEqual({ in: ['d-late'] });
     expect(res.declarations).toHaveLength(1);
     expect(res.declarations[0].view.overdue).toBe(true);
     expect(res.declarations[0].view.alerts.map((a: any) => a.kind)).toContain('OVERDUE');
+  });
+});
+
+describe('DTO : locataire distinct du gestionnaire (BUG-2026-11-09-PLC-002)', () => {
+  it('déclaration saisie par un gestionnaire : tenantName = locataire déclarant, declaredBy = gestionnaire', async () => {
+    const userFind = jest.requireMock('../../src/utils/database').prisma.user.findMany as jest.Mock;
+    userFind.mockResolvedValueOnce([{ id: 'user-9', fullName: 'Fatima Traoré' }]);
+    const managerRow = row('d-m', { declared_by_user_id: 'user-9' });
+    declFindMany.mockResolvedValueOnce([managerRow]).mockResolvedValueOnce([managerRow]).mockResolvedValueOnce([]);
+    declCount.mockResolvedValue(1);
+    const res = await getPaymentDeclarations('tenant-A', { status: 'PENDING' as any });
+    expect(res.declarations[0].view).toMatchObject({
+      declaredBy: { type: 'MANAGER', userId: 'user-9', name: 'Fatima Traoré' },
+      tenantName: 'Awa Traoré'
+    });
   });
 });
 

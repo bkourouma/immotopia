@@ -268,7 +268,7 @@ describe('ReminderBatchButton', () => {
         <ReminderBatchButton tenantId="agence-1" canAllocate />
       </AntApp>
     );
-    await userEvent.setup().click(screen.getByRole('button', { name: /Relancer en lot/ }));
+    await userEvent.setup().click(screen.getByRole('button', { name: /Envoyer des relances en lot/ }));
     await screen.findByText('Aucune échéance à relancer pour le moment.');
   });
 });

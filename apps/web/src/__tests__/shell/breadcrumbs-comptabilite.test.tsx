@@ -22,4 +22,10 @@ describe("Fil d'Ariane — comptabilité", () => {
       'Baux'
     ]);
   });
+
+  it('paiements en ligne : « Paiements en ligne », jamais le segment brut (BUG-2026-11-09-PLD-001)', () => {
+    expect(
+      buildCrumbs('/tenant/8cab62a9-bddc-41d5-be02-712d345df2df/rental/online-payments').map(c => c.label)
+    ).toEqual(['Gestion locative', 'Paiements en ligne']);
+  });
 });

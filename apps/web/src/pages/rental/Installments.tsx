@@ -436,7 +436,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
             )}
             {peutRelancer && canOfferReminder(resteAPayer(e), e.status, e.lease?.status) && (
               <Button icon={<BellOutlined />} onClick={() => setRelancePour(e)}>
-                {t('Relancer')}
+                {t('Envoyer une relance')}
               </Button>
             )}
           </Space>
@@ -586,7 +586,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
                         ? [{ key: 'lien', label: t('Envoyer un lien de paiement'), onClick: () => setLienPour(e) }]
                         : []),
                       ...(peutRelancer && canOfferReminder(reste, e.status, e.lease?.status)
-                        ? [{ key: 'relance', label: t('Relancer'), onClick: () => setRelancePour(e) }]
+                        ? [{ key: 'relance', label: t('Envoyer une relance'), onClick: () => setRelancePour(e) }]
                         : [])
                     ]
               }

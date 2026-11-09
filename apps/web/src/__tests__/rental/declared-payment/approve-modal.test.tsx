@@ -151,4 +151,39 @@ describe('ApproveModal (locatif)', () => {
     renderModal({ declaration: null });
     expect(screen.queryByText('Valider la déclaration de paiement')).not.toBeInTheDocument();
   });
+
+  it('saisie par un gestionnaire : « Locataire » = locataire déclarant, pas le gestionnaire (PLC-002)', () => {
+    renderModal({
+      declaration: declaration({
+        declaredBy: { type: 'MANAGER', userId: 'u-9', name: 'Fatima Traoré' },
+        tenantName: 'Aminata Locataire Demo'
+      })
+    });
+    expect(screen.getByText('Aminata Locataire Demo')).toBeInTheDocument();
+    expect(screen.queryByText('Fatima Traoré')).not.toBeInTheDocument();
+  });
+
+  it('gestionnaire sans tenantName (ancienne API) : jamais le nom du gestionnaire', () => {
+    renderModal({
+      declaration: declaration({ declaredBy: { type: 'MANAGER', userId: 'u-9', name: 'Fatima Traoré' } })
+    });
+    expect(screen.queryByText('Fatima Traoré')).not.toBeInTheDocument();
+  });
+
+  it('hors mobile money : aucun « compte du numéro de réception » promis (PLC-002)', () => {
+    renderModal({
+      declaration: declaration({ paymentMethod: 'CASH', receivingNumber: null, operator: null, reference: null })
+    });
+    expect(
+      screen.getByText('Par défaut : le compte de trésorerie de l’agence pour ce mode de paiement')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/numéro de réception/)).not.toBeInTheDocument();
+  });
+
+  it('mobile money : compte du numéro de réception annoncé', () => {
+    renderModal();
+    expect(
+      screen.getByText('Par défaut : le compte de trésorerie du numéro de réception (+2250707070707)')
+    ).toBeInTheDocument();
+  });
 });

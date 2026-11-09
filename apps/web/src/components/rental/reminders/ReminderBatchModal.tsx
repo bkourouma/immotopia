@@ -219,7 +219,7 @@ export const ReminderBatchModal: React.FC<ReminderBatchModalProps> = ({ tenantId
           <Tag color="red">{t('Échec')}</Tag>
         )
     },
-    { title: t('Niveau'), key: 'niveau', render: (_, r) => (r.level ? reminderLevelLabel(r.level) : '-') },
+    { title: t('Niveau de relance'), key: 'niveau', render: (_, r) => (r.level ? reminderLevelLabel(r.level) : '-') },
     {
       title: t('Détail'),
       key: 'detail',
@@ -261,7 +261,7 @@ export const ReminderBatchModal: React.FC<ReminderBatchModalProps> = ({ tenantId
   return (
     <Modal
       open={open}
-      title={t('Relancer en lot')}
+      title={t('Envoyer des relances en lot')}
       onCancel={showResult ? handleClose : onClose}
       footer={footer}
       width={980}
