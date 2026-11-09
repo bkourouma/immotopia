@@ -422,11 +422,11 @@ Canaux pris en charge : `EMAIL` et `WHATSAPP` uniquement. `SMS` et `PUSH` existe
 
 ### 3.2 `GET /payment-reminders/preview`
 
-Permission : `RENTAL_PAYMENTS_VIEW`. Query `RentalReminderPreviewQuery` : `daysBefore?` (0 à 30, défaut 0), `minDaysLate?` (défaut 1), `leaseId?`, `propertyId?`, `search?`, `eligibleOnly?` (défaut false). Aucune écriture, aucun envoi. Plafond 500 échéances (au-delà : tronqué, retard le plus ancien d'abord).
+Permission : `RENTAL_PAYMENTS_VIEW`. Query `RentalReminderPreviewQuery` : `daysBefore?` (0 à 30, défaut 0), `minDaysLate?` (défaut 1), `leaseId?`, `propertyId?`, `installmentId?` (uuid : restreint l'aperçu à cette seule échéance, avec ses motifs d'exclusion même hors fenêtre `daysBefore`/`minDaysLate`, `eligibleOnly` ignoré, 404 si l'échéance n'est pas de l'agence), `search?`, `eligibleOnly?` (défaut false). Aucune écriture, aucun envoi. Plafond 500 échéances (au-delà : tronqué, retard le plus ancien d'abord).
 
 Réponse 200 : `RentalReminderPreviewDto { generatedAt, groups: RentalReminderPreviewGroupDto[], totals { eligible, excluded, amountDue } }`. Groupes par bail/locataire (`totalDue` = somme des reste dû des lignes). Chaque ligne `RentalReminderPreviewItemDto` porte `nextLevel`, `channels`, `amountDue`, `daysLate`, `eventKey`, `paymentLinkIncluded`, `eligible`, `exclusions`. Les lignes exclues sont renvoyées (avec raisons) sauf `eligibleOnly=true`.
 
-Erreurs : 400 `VALIDATION_ERROR` ; 404 `leaseId`/`propertyId` d'une autre agence.
+Erreurs : 400 `VALIDATION_ERROR` ; 404 `leaseId`/`propertyId`/`installmentId` d'une autre agence.
 
 ### 3.3 `POST /installments/:installmentId/reminder`
 

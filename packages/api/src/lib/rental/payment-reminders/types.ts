@@ -88,6 +88,8 @@ export interface RentalReminderPreviewQuery {
   minDaysLate?: number;
   leaseId?: string;
   propertyId?: string;
+  /** Restreint l'apercu a cette seule echeance (motifs d'exclusion inclus meme hors fenetre ; eligibleOnly ignore). */
+  installmentId?: string;
   search?: string;
   /** Defaut false : les lignes exclues sont renvoyees avec leurs raisons. */
   eligibleOnly?: boolean;
