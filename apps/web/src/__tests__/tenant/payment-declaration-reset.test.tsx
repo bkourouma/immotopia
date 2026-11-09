@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
+import { DELAI, avecClient } from './declared-payment-test-helpers';
 
 /**
  * BUG-2026-11-04-052 : « Déclarer un paiement » gardait le montant d'une
@@ -11,12 +12,29 @@ import { App as AntApp } from 'antd';
  */
 
 vi.mock('../../services/tenantPortalService', () => ({
-  tenantPortalService: { declarePayment: vi.fn() }
+  tenantPortalService: {
+    declarePayment: vi.fn(),
+    getLeases: vi.fn().mockResolvedValue({ data: { data: [] } })
+  }
 }));
+vi.mock('../../services/tenant-portal-declared-payment-service', async importOriginal => {
+  const original = await importOriginal<typeof import('../../services/tenant-portal-declared-payment-service')>();
+  return {
+    ...original,
+    getDeclaredPaymentAvailability: vi.fn().mockResolvedValue({
+      enabled: true,
+      available: true,
+      receivingNumbers: [{ id: 'rn1', operator: 'ORANGE', phone: '+2250707070707', label: null }],
+      proofRequired: false,
+      aiPrefillAvailable: false,
+      maxAmount: 5000000,
+      instructions: null
+    }),
+    readPaymentProof: vi.fn()
+  };
+});
 
 import PaymentDeclarationModal from '../../components/TenantPortal/PaymentDeclarationModal';
-
-const DELAI = { timeout: 8000 };
 
 function Page() {
   const [open, setOpen] = useState(false);
@@ -52,7 +70,7 @@ function Page() {
 
 describe('Déclaration de paiement — réouverture', () => {
   it("repart d'un montant vide après une échéance annulée", async () => {
-    render(<Page />);
+    render(avecClient(<Page />));
     const user = userEvent.setup({ delay: null });
 
     await user.click(screen.getByText('ouvrir-echeance'));

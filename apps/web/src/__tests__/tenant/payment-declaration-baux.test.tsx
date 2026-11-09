@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
+import { DELAI, avecClient, remplirOperateurEtReference } from './declared-payment-test-helpers';
 
 /**
  * Déclaration de paiement du portail locataire, ouverte SANS échéance :
@@ -19,10 +20,25 @@ vi.mock('../../services/tenantPortalService', () => ({
     getLeases: (...a: unknown[]) => getLeases(...a)
   }
 }));
+vi.mock('../../services/tenant-portal-declared-payment-service', async importOriginal => {
+  const original = await importOriginal<typeof import('../../services/tenant-portal-declared-payment-service')>();
+  return {
+    ...original,
+    getDeclaredPaymentAvailability: vi.fn().mockResolvedValue({
+      enabled: true,
+      available: true,
+      receivingNumbers: [{ id: 'rn1', operator: 'ORANGE', phone: '+2250707070707', label: null }],
+      proofRequired: false,
+      aiPrefillAvailable: false,
+      maxAmount: 5000000,
+      instructions: null
+    }),
+    readPaymentProof: vi.fn()
+  };
+});
 
 import PaymentDeclarationModal from '../../components/TenantPortal/PaymentDeclarationModal';
 
-const DELAI = { timeout: 8000 };
 const BAUX = [
   { id: 'bail-1', leaseNumber: 'BAIL-001', propertyAddress: 'Cocody' },
   { id: 'bail-2', leaseNumber: 'BAIL-002', propertyAddress: 'Marcory' }
@@ -30,15 +46,17 @@ const BAUX = [
 
 function monter(props: Partial<React.ComponentProps<typeof PaymentDeclarationModal>> = {}) {
   return render(
-    <AntApp>
-      <PaymentDeclarationModal open onCancel={vi.fn()} onSuccess={vi.fn()} {...props} />
-    </AntApp>
+    avecClient(
+      <AntApp>
+        <PaymentDeclarationModal open onCancel={vi.fn()} onSuccess={vi.fn()} {...props} />
+      </AntApp>
+    )
   );
 }
 
 beforeEach(() => {
   declarePayment.mockReset();
-  declarePayment.mockResolvedValue({});
+  declarePayment.mockResolvedValue({ data: { data: {} } });
   getLeases.mockReset();
 });
 
@@ -49,6 +67,7 @@ describe('Déclaration de paiement — choix du bail', () => {
     const user = userEvent.setup({ delay: null });
     const champ = (await screen.findAllByRole('spinbutton', {}, DELAI))[0];
     await screen.findByText('Bail concerné', {}, DELAI);
+    await remplirOperateurEtReference(user);
     await user.type(champ, '150000');
 
     await user.click(screen.getByRole('button', { name: 'Déclarer le paiement' }));
@@ -70,6 +89,7 @@ describe('Déclaration de paiement — choix du bail', () => {
     const champ = (await screen.findAllByRole('spinbutton', {}, DELAI))[0];
     await waitFor(() => expect(getLeases).toHaveBeenCalled(), DELAI);
     expect(screen.queryByText('Bail concerné')).toBeNull();
+    await remplirOperateurEtReference(user);
     await user.type(champ, '1000');
     await user.click(screen.getByRole('button', { name: 'Déclarer le paiement' }));
     await waitFor(() => expect(declarePayment).toHaveBeenCalled(), DELAI);
