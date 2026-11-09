@@ -149,6 +149,17 @@ describe('RentalOnlineCheckoutsTable', () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
+  it('« Vérifier » apparaît pour EXPIRED (succès tardif) mais pas pour FAILED', async () => {
+    listRentalOnlinePayments.mockResolvedValue({
+      items: [row({ id: 'co-exp', status: 'EXPIRED' }), row({ id: 'co-fail', status: 'FAILED' })],
+      total: 2,
+      page: 1,
+      pageSize: 20
+    });
+    setup();
+    expect(await screen.findAllByRole('button', { name: /Vérifier/ })).toHaveLength(1);
+  });
+
   it('« Trancher » n’apparaît que pour un REVIEW non tranché et déclenche onDecide', async () => {
     const review = row({ status: 'REVIEW', reviewKind: 'AMOUNT_MISMATCH' });
     listRentalOnlinePayments.mockResolvedValue({ items: [review], total: 1, page: 1, pageSize: 20 });

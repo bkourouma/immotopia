@@ -16,22 +16,29 @@ l'inventaire à ses cas.
 
 ## Fichiers et ordre de passage
 
-| Ordre | Fichier                                                                                | Bloc                                                                       |
-| ----- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| 1     | [01-parametrage.md](01-parametrage.md)                                                 | Paramètres financiers, honoraires, commissions, préalables (bien, contact) |
-| 2     | [02-baux.md](02-baux.md)                                                               | Création, liste, détail, modification, statuts, suppression, colocataires  |
-| 3     | [03-vie-du-bail-depot.md](03-vie-du-bail-depot.md)                                     | Révision, renouvellement, avenant, résiliation, solde, dépôt de garantie   |
-| 4     | [04-etats-des-lieux-documents-signature.md](04-etats-des-lieux-documents-signature.md) | États des lieux, documents, signature électronique                         |
-| 5     | [05-echeances.md](05-echeances.md)                                                     | Échéances, liens de paiement                                               |
-| 6     | [06-paiements.md](06-paiements.md)                                                     | Paiements, allocations, déclarations du portail                            |
-| 7     | [07-penalites.md](07-penalites.md)                                                     | Pénalités de retard                                                        |
-| 8     | [08-prelevement-bancaire.md](08-prelevement-bancaire.md)                               | Créanciers, mandats, remises, retours banque                               |
-| 9     | [09-caisse-tableaux-de-bord-exports.md](09-caisse-tableaux-de-bord-exports.md)         | Tableaux de bord, balance âgée, caisse, écritures, exports                 |
-| 10    | [10-proprietaires-releves-reversements.md](10-proprietaires-releves-reversements.md)   | Relevés, comptes propriétaires, reversements, commissions                  |
-| 11    | [11-portail-locataire.md](11-portail-locataire.md)                                     | Espace locataire                                                           |
-| 12    | [12-portail-proprietaire.md](12-portail-proprietaire.md)                               | Espace propriétaire                                                        |
-| 13    | [13-roles-permissions-isolation.md](13-roles-permissions-isolation.md)                 | Matrice des droits, isolation entre agences                                |
-| 14    | [14-transverse-i18n-mobile-robustesse.md](14-transverse-i18n-mobile-robustesse.md)     | Langues et RTL, mobile, erreurs réseau, injections, valeurs limites        |
+| Ordre  | Fichier                                                                                | Bloc                                                                                            |
+| ------ | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 1      | [01-parametrage.md](01-parametrage.md)                                                 | Paramètres financiers, honoraires, commissions, préalables (bien, contact)                      |
+| 2      | [02-baux.md](02-baux.md)                                                               | Création, liste, détail, modification, statuts, suppression, colocataires                       |
+| 3      | [03-vie-du-bail-depot.md](03-vie-du-bail-depot.md)                                     | Révision, renouvellement, avenant, résiliation, solde, dépôt de garantie                        |
+| 4      | [04-etats-des-lieux-documents-signature.md](04-etats-des-lieux-documents-signature.md) | États des lieux, documents, signature électronique                                              |
+| 5      | [05-echeances.md](05-echeances.md)                                                     | Échéances, liens de paiement                                                                    |
+| 6      | [06-paiements.md](06-paiements.md)                                                     | Paiements, allocations, déclarations du portail                                                 |
+| 7      | [07-penalites.md](07-penalites.md)                                                     | Pénalités de retard                                                                             |
+| 8      | [08-prelevement-bancaire.md](08-prelevement-bancaire.md)                               | Créanciers, mandats, remises, retours banque                                                    |
+| 9      | [09-caisse-tableaux-de-bord-exports.md](09-caisse-tableaux-de-bord-exports.md)         | Tableaux de bord, balance âgée, caisse, écritures, exports                                      |
+| 10     | [10-proprietaires-releves-reversements.md](10-proprietaires-releves-reversements.md)   | Relevés, comptes propriétaires, reversements, commissions                                       |
+| 11     | [11-portail-locataire.md](11-portail-locataire.md)                                     | Espace locataire                                                                                |
+| 12     | [12-portail-proprietaire.md](12-portail-proprietaire.md)                               | Espace propriétaire                                                                             |
+| 12 bis | [12-paiement-en-ligne-et-mobile-money.md](12-paiement-en-ligne-et-mobile-money.md)     | Numéros de réception, déclarations de paiement, paiement en ligne, compte de collecte, relances |
+| 13     | [13-roles-permissions-isolation.md](13-roles-permissions-isolation.md)                 | Matrice des droits, isolation entre agences                                                     |
+| 14     | [14-transverse-i18n-mobile-robustesse.md](14-transverse-i18n-mobile-robustesse.md)     | Langues et RTL, mobile, erreurs réseau, injections, valeurs limites                             |
+
+Numérotation des cas du bloc 12 : `12-portail-proprietaire.md` porte les cas
+GL-12-001 et suivants ; `12-paiement-en-ligne-et-mobile-money.md` porte les cas
+GL-12-101 à GL-12-201 (et GL-12-2xx pour les ajouts), pour éviter toute collision
+entre les deux fichiers qui partagent le préfixe GL-12. Le fichier paiement en
+ligne se joue après le fichier 06 (paiements) et avant le fichier 13.
 
 Les cas GL-10-001 à GL-10-007 (honoraires par propriétaire et gestionnaire du
 bail) se jouent **avant** les paiements du fichier 06 : les honoraires sont

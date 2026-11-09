@@ -12,6 +12,7 @@ import {
   STATUS_COLOR,
   STATUS_ORDER,
   apiErrorMessage,
+  canVerifyStatus,
   formatDateTime,
   originLabel,
   periodLabel,
@@ -215,7 +216,7 @@ export const RentalOnlineCheckoutsTable: React.FC<RentalOnlineCheckoutsTableProp
       title: t('Actions'),
       key: 'actions',
       render: (_: unknown, row) => {
-        const verifiable = row.status === 'PENDING' || row.status === 'REVIEW';
+        const verifiable = canVerifyStatus(row.status);
         return (
           <Space wrap>
             {canDecide && verifiable ? (

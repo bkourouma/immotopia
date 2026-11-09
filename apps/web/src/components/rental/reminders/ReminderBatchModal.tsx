@@ -12,6 +12,7 @@ import type {
 import { formatMoney } from '../../primitives';
 import { libellePeriodeEcheance } from '../../../lib/rental-labels';
 import { t } from '../../../i18n/t';
+import { activeLocale } from '../../../i18n/format';
 import {
   REMINDER_BATCH_CHUNK,
   REMINDER_BATCH_MAX,
@@ -32,7 +33,7 @@ export interface ReminderBatchModalProps {
 }
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString();
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 function retardText(daysLate: number): string {
@@ -323,7 +324,7 @@ export const ReminderBatchModal: React.FC<ReminderBatchModalProps> = ({ tenantId
 
           {loadError ? <Alert type="error" showIcon message={loadError} /> : null}
           {empty ? <Alert type="info" showIcon message={t('Aucune échéance à relancer pour le moment.')} /> : null}
-          {truncated ? (
+          {truncated && selected.length >= REMINDER_BATCH_MAX ? (
             <Alert
               type="warning"
               showIcon

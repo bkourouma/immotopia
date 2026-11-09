@@ -47,6 +47,7 @@ router.get('/installments/:id', controller.getInstallmentDetails);
 
 // Payments
 router.get('/payments', controller.getPaymentHistory);
+// servi par tenant-portal-declared-payment-routes (monté avant)
 router.post('/payments/declare', upload.single('proof'), controller.declarePayment);
 
 // Lot 7 : paiement en ligne (PaySecureHub).

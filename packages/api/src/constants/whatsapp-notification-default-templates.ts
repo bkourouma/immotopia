@@ -18,9 +18,9 @@ export const WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES: Record<WhatsappNotificatio
   PAYMENT_ALLOCATED_TENANT:
     'Bonjour {{tenantName}}, votre paiement a été alloué aux échéances ({{amountAllocated}}). Bail {{leaseLabel}}. {{agencyName}}.',
   INSTALLMENT_DUE_REMINDER:
-    'Bonjour {{tenantName}}, rappel : votre échéance de loyer est prévue le {{dueDate}}. Montant : {{amount}}.{{paymentBlock}} Payer en ligne : {{paymentUrl}} {{agencyName}}.',
+    'Bonjour {{tenantName}}, rappel : votre échéance de loyer est prévue le {{dueDate}}. Montant : {{amount}}.{{paymentBlock}} {{agencyName}}.',
   INSTALLMENT_OVERDUE:
-    'Bonjour {{tenantName}}, votre échéance du {{dueDate}} n’a pas été réglée. Merci de régulariser au plus tôt.{{paymentBlock}} Payer en ligne : {{paymentUrl}} {{agencyName}}.',
+    'Bonjour {{tenantName}}, votre échéance du {{dueDate}} n’a pas été réglée. Merci de régulariser au plus tôt.{{paymentBlock}} {{agencyName}}.',
   LEASE_ACTIVATED:
     'Bonjour {{tenantName}}, votre bail {{leaseLabel}} a été activé. Période : {{leaseStartDate}} à {{leaseEndDate}}. Loyer : {{rentAmount}}. Connexion : {{loginUrl}}. Mot de passe oublié : {{forgotPasswordUrl}}. {{agencyName}} vous souhaite une bonne installation.',
   LEASE_ENDING_SOON:

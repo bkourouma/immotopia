@@ -4,7 +4,7 @@
 
 > **Numérotation.** Un fichier `12-portail-proprietaire.md` existe déjà. Cette fiche garde le nom `12-paiement-en-ligne-et-mobile-money.md` demandé ; les identifiants `GL-12-nnn` partagent donc le préfixe avec le portail propriétaire. Les cas de cette fiche commencent à `GL-12-101` pour éviter toute collision avec les cas `GL-12-001…` du portail propriétaire.
 
-> **État d'écriture.** Écrite d'après `specs/049-…/spec.md` et `contracts.md` pendant que les lots 4 à 7 codent les écrans. Routes, règles, codes et montants sont ceux du contrat. Tout libellé d'écran absent du code au moment de la rédaction est marqué **« à confirmer à l'écran »** ; la liste est en fin de fichier. Si seul un libellé diffère, le testeur le signale, il ne conclut pas à une anomalie.
+> **État d'écriture (mis à jour le 09/11/2026 : les écrans sont fusionnés, libellés à rejouer à la recette).** Écrite d'après `specs/049-…/spec.md` et `contracts.md` pendant que les lots 4 à 7 codent les écrans. Routes, règles, codes et montants sont ceux du contrat. Tout libellé d'écran absent du code au moment de la rédaction est marqué **« à confirmer à l'écran »** ; la liste est en fin de fichier. Si seul un libellé diffère, le testeur le signale, il ne conclut pas à une anomalie.
 
 ## Périmètre
 
@@ -686,6 +686,7 @@ Les tentatives en REVIEW sont obtenues au **simulateur** de la passerelle (scén
 - **Attendu** :
   - Avant : page de paiement normale ; après changement de locataire : **409** `RENTAL_ONLINE_PAYMENT_LEASE_TENANT_CHANGED` à l'**ouverture et au démarrage** ; bail terminé, résilié ou annulé : même code, message distinct.
   - Message **neutre** : aucun nom, montant ni adresse ; le lien reste non révoqué en base (aucun effet de bord à l'ouverture) ; jamais d'écran blanc.
+  - **Limite connue (09/11/2026)** : le changement de locataire n'est PAS contrôlé (colonne manquante sur `SecureLink`, voir `docs/integrations/paysecurehub.md`) ; seule la partie « bail terminé » est attendue en 409. Le constat d'un lien encore payable après changement de locataire se note, il ne compte pas comme anomalie nouvelle.
 - **Gravité si échec** : Bloquant
 
 ---
@@ -864,6 +865,57 @@ Convention du fichier 13 (section F) : forme (1) identifiant d'agence A dans le 
 
 ---
 
+## O. Autres modes de déclaration, audit de la capture, rejet à note courte
+
+Ajouts postérieurs à la rédaction du contrat : le locataire peut déclarer aussi en espèces, chèque, virement, carte ou autre (`paymentMethod`, additif ; `allowedMethods` renvoyé par la disponibilité) ; la lecture d'une capture est journalisée ; le rejet exige une note de 10 à 500 caractères quand le motif est « autre ».
+
+### GL-12-210 — Déclaration en espèces ou par chèque, sans numéro ni référence, puis validation
+
+- **Rôle** : LOCATAIRE_PORTAIL_2, puis ADMIN_A
+- **Préconditions** : GL-12-120 ; une échéance E10 de 80 000 non payée du bail du locataire ; déclaration ouverte.
+- **Données** : montant 80 000 ; date-heure du jour ; aucune référence, aucun numéro de réception, aucun opérateur ; mode « Espèces » (D10), puis « Chèque » (D11, échéance suivante).
+- **Étapes** :
+  1. Relever la disponibilité : `allowedMethods` liste les modes proposés (le mobile money n'y figure que s'il existe un numéro actif).
+  2. Dans la fenêtre « Déclarer un paiement », choisir « Espèces » : les champs numéro de réception, opérateur et référence ne sont pas exigés (masqués ou facultatifs).
+  3. Envoyer D10 ; refaire avec « Chèque » (D11) ; essayer un mode absent de `allowedMethods`.
+  4. ADMIN_A valide D10 puis D11 (onglet « Déclarations »).
+- **Attendu** :
+  - **201** : déclarations en attente avec le mode choisi, sans erreur de référence ni de numéro ; un mode hors `allowedMethods` est refusé.
+  - Pour le mobile money, numéro, opérateur et référence restent obligatoires (cas GL-12-122 inchangé).
+  - À la validation, le paiement posé porte le mode Espèces ou Chèque (et non mobile money) ; échéance E10 soldée ; aucun compte de réception mobile money débité.
+  - Doublon : deux déclarations espèces du même montant le même jour sur la même échéance sont acceptées mais la seconde est signalée (doublon probable, GL-12-131) ; aucune référence ne bloque.
+- **Gravité si échec** : Majeur
+
+### GL-12-211 — La lecture d'une capture est journalisée dans l'audit
+
+- **Rôle** : ADMIN_A, COMPTABLE_A
+- **Préconditions** : une déclaration avec capture (GL-12-125) ; accès à l'audit de l'agence.
+- **Données** : —
+- **Étapes** :
+  1. Relever le nombre d'événements `RENTAL_PAYMENT_DECLARATION_PROOF_VIEWED` pour la déclaration.
+  2. Ouvrir la capture depuis le détail du tiroir, deux fois de suite, avec ADMIN_A puis avec COMPTABLE_A.
+  3. Relire l'audit.
+- **Attendu** :
+  - Un événement par ouverture (quatre en tout), avec l'auteur, la déclaration et l'heure ; l'audit ne contient ni la capture ni son chemin interne.
+  - Une ouverture refusée (locataire, autre agence) ne crée aucun événement.
+- **Gravité si échec** : Majeur
+
+### GL-12-212 — Rejet avec « autre » et note courte refusée
+
+- **Rôle** : ADMIN_A
+- **Préconditions** : une déclaration en attente D12 (`REC-GL-RJ-10`).
+- **Données** : motif « Autre » ; notes : vide, « Trop court » (9 caractères), puis « Capture illisible REC-GL » (valide).
+- **Étapes** :
+  1. Ouvrir la fenêtre de rejet de D12 et choisir le motif « Autre ».
+  2. Valider sans note, puis avec la note de 9 caractères.
+  3. Saisir la note valide et confirmer.
+- **Attendu** :
+  - Note vide ou de 9 caractères : le formulaire refuse (message sous le champ) ; côté API **400** (`RENTAL_DECLARATION_REJECT_NOTE_REQUIRED` sans note, `VALIDATION_ERROR` en dessous de 10) ; D12 reste en attente, aucun audit de rejet.
+  - Note valide : D12 « Rejetée », motif et note affichés au gestionnaire et au locataire ; aucun paiement créé ; audit `RENTAL_PAYMENT_DECLARATION_REJECTED`.
+- **Gravité si échec** : Majeur
+
+---
+
 ## Couverture
 
 | Sujet (spec 049)                                                                                          | Cas             |
@@ -882,6 +934,7 @@ Convention du fichier 13 (section F) : forme (1) identifiant d'agence A dans le 
 | Droits par rôle, session                                                                                  | GL-12-190, 191  |
 | Isolation entre agences                                                                                   | GL-12-195 à 197 |
 | Mobile 375 px, arabe                                                                                      | GL-12-200, 201  |
+| Autres modes de déclaration, audit de la capture, rejet à note courte                                     | GL-12-210 à 212 |
 
 ## Récapitulatif des cas
 
@@ -945,18 +998,23 @@ Convention du fichier 13 (section F) : forme (1) identifiant d'agence A dans le 
 | GL-12-197 | Isolation côté portail                       | Bloquant |
 | GL-12-200 | Mobile 375 px                                | Majeur   |
 | GL-12-201 | Arabe (RTL)                                  | Mineur   |
+| GL-12-210 | Déclaration espèces ou chèque, validation    | Majeur   |
+| GL-12-211 | Audit de lecture de la capture               | Majeur   |
+| GL-12-212 | Rejet « autre », note courte refusée         | Majeur   |
 
 ## Points à confirmer à l'écran
 
-1. Emplacement et libellés de l'écran des numéros de réception, des réglages de déclaration et du panneau « compte de collecte » (menus et URL).
-2. Onglet, badge et libellé des déclarations en attente côté gestionnaire ; bouton de déclaration pour un tiers.
-3. Libellés du formulaire de déclaration du portail (numéro, opérateur, référence, date-heure, capture) et de « mes déclarations » ; présence d'une confirmation d'annulation.
-4. Le locataire voit-il le motif de rejet et la note (le contrat les renvoie au gestionnaire) ?
-5. Libellés des motifs de rejet et de REVIEW, et textes explicatifs (« payé X au lieu de Y », rappel que l'argent reste chez PaySecureHub, pas de virement réel au reversement).
-6. Boutons et libellés de relance (unitaire, lot, aperçu, journal) et leur emplacement.
-7. Contenu exact des e-mails (récapitulatif horaire, alerte, relance, changement de numéro) : objets et variables.
-8. Visibilité du bouton de lecture IA sans fournisseur ; messages de quota par portée.
-9. Libellés et URL de la passerelle de paiement ; message d'indisponibilité par motif (`NOT_CONFIGURED`, `INACTIVE`, `SIMULATOR_FORBIDDEN`, `SUBSCRIPTION`).
-10. Scénarios du simulateur pour produire chaque motif de REVIEW, et méthode pour reculer les dates (retard, 7 jours, 3 jours ouvrés) en base de recette.
-11. Associations exactes opérateur et compte de trésorerie (5521 à 5524).
-12. Boutons de décision, de relance ou de reversement visibles mais refusés pour COMPTABLE_A (à noter Mineur).
+Les écrans existent désormais (fusionnés) : ces douze points restent **à rejouer à la recette** pour fixer les libellés réels ; un libellé différent se signale, il ne conclut pas à une anomalie.
+
+1. Emplacement et libellés de l'écran des numéros de réception, des réglages de déclaration et du panneau « compte de collecte » (menus et URL). — **à rejouer à la recette**
+2. Onglet, badge et libellé des déclarations en attente côté gestionnaire ; bouton de déclaration pour un tiers. — **à rejouer à la recette**
+3. Libellés du formulaire de déclaration du portail (numéro, opérateur, référence, date-heure, capture) et de « mes déclarations » ; présence d'une confirmation d'annulation. — **à rejouer à la recette**
+4. Le locataire voit-il le motif de rejet et la note (le contrat les renvoie au gestionnaire) ? — **à rejouer à la recette**
+5. Libellés des motifs de rejet et de REVIEW, et textes explicatifs (« payé X au lieu de Y », rappel que l'argent reste chez PaySecureHub, pas de virement réel au reversement). — **à rejouer à la recette**
+6. Boutons et libellés de relance (unitaire, lot, aperçu, journal) et leur emplacement. — **à rejouer à la recette**
+7. Contenu exact des e-mails (récapitulatif horaire, alerte, relance, changement de numéro) : objets et variables. — **à rejouer à la recette**
+8. Visibilité du bouton de lecture IA sans fournisseur ; messages de quota par portée. — **à rejouer à la recette**
+9. Libellés et URL de la passerelle de paiement ; message d'indisponibilité par motif (`NOT_CONFIGURED`, `INACTIVE`, `SIMULATOR_FORBIDDEN`, `SUBSCRIPTION`). — **à rejouer à la recette**
+10. Scénarios du simulateur pour produire chaque motif de REVIEW, et méthode pour reculer les dates (retard, 7 jours, 3 jours ouvrés) en base de recette. — **à rejouer à la recette**
+11. Associations exactes opérateur et compte de trésorerie (5521 à 5524). — **à rejouer à la recette**
+12. Boutons de décision, de relance ou de reversement visibles mais refusés pour COMPTABLE_A (à noter Mineur). — **à rejouer à la recette**

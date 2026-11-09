@@ -77,7 +77,7 @@ describe('InstallmentReminderModal', () => {
   it('loads the preview and shows level, channels, message and payment link mention', async () => {
     renderModal();
     expect(await screen.findByText(/Un lien de paiement en ligne sera joint au message/)).toBeInTheDocument();
-    expect(mockPreview).toHaveBeenCalledWith('agence-1', { eligibleOnly: false, daysBefore: 30, minDaysLate: 0 });
+    expect(mockPreview).toHaveBeenCalledWith('agence-1', { installmentId: 'ech-1' });
     expect(screen.getByText(/Awa Traoré/)).toBeInTheDocument();
     expect(screen.getByLabelText('E-mail')).toBeChecked();
     expect(screen.getByLabelText('WhatsApp')).toBeChecked();
@@ -91,7 +91,7 @@ describe('InstallmentReminderModal', () => {
   });
 
   it('tells when the installment is not in the preview', async () => {
-    mockPreview.mockResolvedValue(preview(item({ installmentId: 'autre' })));
+    mockPreview.mockResolvedValue({ ...preview(item()), groups: [] });
     renderModal();
     expect(await screen.findByText("Cette échéance n'est pas relançable pour le moment.")).toBeInTheDocument();
   });
