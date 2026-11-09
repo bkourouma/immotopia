@@ -13,6 +13,10 @@ const prismaMock: any = {
   maintenanceTicket: { groupBy: jest.fn() }
 };
 jest.mock('../../src/utils/database', () => ({ prisma: prismaMock }));
+jest.mock('../../src/lib/payment-gateway/availability', () => ({
+  assertRentalOnlinePaymentAllowed: jest.fn(async () => undefined)
+}));
+
 jest.mock('../../src/lib/maintenance/portal-visibility', () => ({
   findTenantPortalTicket: jest.fn(),
   resolveTenantPortalCrmContactId: jest.fn(),

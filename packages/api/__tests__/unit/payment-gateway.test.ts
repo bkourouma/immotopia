@@ -108,6 +108,7 @@ function delegate(collection: () => Row[], prefix: string, defaults: () => Row =
       return found;
     }),
     findMany: jest.fn(async ({ where }: Row = {}) => collection().filter(r => matches(r, where))),
+    count: jest.fn(async ({ where }: Row = {}) => collection().filter(r => matches(r, where)).length),
     create: jest.fn(async ({ data }: Row) => {
       const created = { id: nextId(prefix), createdAt: new Date(), updatedAt: new Date(), ...defaults(), ...data };
       collection().push(created);
@@ -167,6 +168,7 @@ const mockPrisma: Row = {
       checkAttempts: 0,
       failureMessage: null,
       reviewReason: null,
+      resolution: null,
       simulatedOutcome: null,
       createdByUserId: null,
       completedAt: null
@@ -207,6 +209,15 @@ jest.mock('../../src/services/rental-payment-service', () => ({
   allocatePaymentTx: jest.fn(async () => ({ allocations: [], totalAllocated: 0 }))
 }));
 
+jest.mock('../../src/lib/rental/online-review/pending-declaration', () => ({
+  assertNoPendingDeclaration: jest.fn(async () => undefined)
+}));
+jest.mock('../../src/lib/payment-gateway/availability', () =>
+  require('../helpers/rental-availability-mock').makeAvailabilityMock(() =>
+    jest.requireActual('../../src/lib/payment-gateway/config')
+  )
+);
+
 jest.mock('../../src/lib/treasury/accounts', () => ({
   ensureChartAccountTx: jest.fn(async () => 'chart-5525')
 }));
@@ -215,6 +226,7 @@ import { mapProviderState, operatorFromServiceName } from '../../src/lib/payment
 import {
   startCheckout,
   reconcileCheckout,
+  reconcileCheckoutForVerify,
   reconcileCheckoutPublic,
   reconcilePendingCheckouts,
   getCheckoutForPortal,
@@ -233,6 +245,8 @@ import { paysecurehubIpnHandler } from '../../src/controllers/payment-gateway-pu
 import { AppError, NotFoundError } from '../../src/middleware/error-middleware';
 import * as tenantContext from '../../src/utils/tenant-context';
 import * as rentalPaymentService from '../../src/services/rental-payment-service';
+import * as auditService from '../../src/services/audit-service';
+import * as envModule from '../../src/config/env';
 
 const updatePaymentStatusTx = rentalPaymentService.updatePaymentStatusTx as jest.Mock;
 const allocatePaymentTx = rentalPaymentService.allocatePaymentTx as jest.Mock;
@@ -429,6 +443,81 @@ describe('Paramètres « Paiement en ligne » de l’agence (contrat §3.1)', ()
     await expect(
       updatePaymentGatewaySettings(TENANT_A, { mode: 'LIVE', isActive: true, merchantId: null } as any)
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  describe('changement d’identifiants avec des paiements en attente (contrat 049 §2.8)', () => {
+    function seedPending(tenantId = TENANT_A) {
+      store.checkouts.push({ id: nextId('checkout'), tenantId, status: 'PENDING' });
+    }
+    const live = { mode: 'LIVE', merchantId: 'M-1', apiKeyEncrypted: 'pg1:iv:tag:cipher', apiKeyLast4: '1234' };
+
+    it('409 GATEWAY_CHECKOUTS_PENDING quand le mode change', async () => {
+      seedAgency(TENANT_A);
+      seedPending();
+      await expect(
+        updatePaymentGatewaySettings(TENANT_A, { mode: 'LIVE', isActive: false } as any)
+      ).rejects.toMatchObject({ statusCode: 409, code: 'GATEWAY_CHECKOUTS_PENDING' });
+      expect(store.configs[0].mode).toBe('SIMULATOR');
+    });
+
+    it('409 GATEWAY_CHECKOUTS_PENDING quand l’identifiant marchand change', async () => {
+      seedAgency(TENANT_A, live);
+      seedPending();
+      await expect(updatePaymentGatewaySettings(TENANT_A, { merchantId: 'M-2' } as any)).rejects.toMatchObject({
+        statusCode: 409,
+        code: 'GATEWAY_CHECKOUTS_PENDING'
+      });
+      expect(store.configs[0].merchantId).toBe('M-1');
+    });
+
+    it('409 GATEWAY_CHECKOUTS_PENDING quand la clé est effacée', async () => {
+      seedAgency(TENANT_A, live);
+      seedPending();
+      await expect(
+        updatePaymentGatewaySettings(TENANT_A, { apiKey: '', isActive: false } as any)
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        code: 'GATEWAY_CHECKOUTS_PENDING'
+      });
+      expect(store.configs[0].apiKeyEncrypted).toBe(live.apiKeyEncrypted);
+    });
+
+    it('un paiement en attente d’une AUTRE agence ne bloque pas', async () => {
+      seedAgency(TENANT_A, live);
+      seedPending(TENANT_B);
+      await expect(updatePaymentGatewaySettings(TENANT_A, { merchantId: 'M-2' } as any)).resolves.toMatchObject({
+        merchantId: 'M-2'
+      });
+    });
+
+    it('sans paiement en attente, le changement passe', async () => {
+      seedAgency(TENANT_A, live);
+      await expect(updatePaymentGatewaySettings(TENANT_A, { merchantId: 'M-2' } as any)).resolves.toMatchObject({
+        merchantId: 'M-2'
+      });
+    });
+
+    it('désactiver ou changer les frais reste permis avec un paiement en attente', async () => {
+      seedAgency(TENANT_A, live);
+      seedPending();
+      await expect(
+        updatePaymentGatewaySettings(TENANT_A, { isActive: false, feesPaidBy: 'AGENCY' } as any)
+      ).resolves.toMatchObject({ isActive: false });
+    });
+  });
+
+  it('400 GATEWAY_SIMULATOR_UNAVAILABLE : le simulateur est refusé quand le serveur ne l’autorise pas', async () => {
+    const previous = envModule.paymentGatewaySimulatorAvailable;
+    (envModule as any).paymentGatewaySimulatorAvailable = false;
+    try {
+      await expect(updatePaymentGatewaySettings(TENANT_A, { mode: 'SIMULATOR' } as any)).rejects.toMatchObject({
+        statusCode: 400,
+        code: 'GATEWAY_SIMULATOR_UNAVAILABLE'
+      });
+      expect(store.configs).toHaveLength(0);
+    } finally {
+      (envModule as any).paymentGatewaySimulatorAvailable = previous;
+    }
   });
 
   it('un compte de trésorerie d’une autre agence est traité comme inexistant (NotFoundError)', async () => {
@@ -686,6 +775,380 @@ describe('Rapprochement (contrat §2)', () => {
     spy.mockRestore();
   });
 
+  it('montant divergent : reviewKind AMOUNT_MISMATCH et montant reçu conservés (contrat 049 §2.6)', async () => {
+    const { dto, row } = await started();
+    const spy = jest.spyOn(simulatorClient, 'getStatus').mockResolvedValueOnce({
+      rawState: 'SUCCESSFUL',
+      mappedState: 'SUCCESS',
+      transactionId: 'TX-1',
+      amount: 1000,
+      fees: 0,
+      serviceName: 'Wave',
+      error: null,
+      raw: {}
+    });
+
+    await reconcileCheckout(TENANT_A, dto.id);
+
+    expect(row.reviewKind).toBe('AMOUNT_MISMATCH');
+    expect(Number(row.receivedAmount)).toBe(1000);
+    spy.mockRestore();
+  });
+
+  it('une tentative en REVIEW n’est JAMAIS encaissée par la vérification automatique (contrat 049 §2.4)', async () => {
+    const { dto, row, payment } = await started();
+    row.status = 'REVIEW';
+    row.reviewKind = 'AMOUNT_MISMATCH';
+    const spy = jest.spyOn(simulatorClient, 'getStatus').mockResolvedValueOnce({
+      rawState: 'SUCCESSFUL',
+      mappedState: 'SUCCESS',
+      transactionId: 'TX-2',
+      amount: Number(row.amount),
+      fees: 0,
+      serviceName: 'Wave',
+      error: null,
+      raw: {}
+    });
+
+    const result = await reconcileCheckout(TENANT_A, dto.id);
+
+    expect(result.status).toBe('REVIEW');
+    expect(payment.status).toBe('PENDING');
+    expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+    expect(Number(row.receivedAmount)).toBe(Number(row.amount));
+    spy.mockRestore();
+  });
+
+  it('une tentative en REVIEW n’est ni échouée ni annulée automatiquement', async () => {
+    const { dto, row, payment } = await started();
+    row.status = 'REVIEW';
+    row.reviewKind = 'CONTRARY_STATE';
+    const spy = jest.spyOn(simulatorClient, 'getStatus').mockResolvedValueOnce({
+      rawState: 'FAILED',
+      mappedState: 'FAILED',
+      transactionId: null,
+      amount: null,
+      fees: null,
+      serviceName: null,
+      error: 'refusé',
+      raw: {}
+    });
+
+    const result = await reconcileCheckout(TENANT_A, dto.id);
+
+    expect(result.status).toBe('REVIEW');
+    expect(payment.status).toBe('PENDING');
+    expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  describe('mises en REVIEW automatiques et verrou de statut (contrat 049 §2.6)', () => {
+    afterEach(() => {
+      // Seulement les espions de ce bloc : les jest.fn() du magasin en mémoire restent intacts.
+      (simulatorClient.getStatus as jest.Mock).mockRestore?.();
+      (auditService.logAuditEvent as jest.Mock).mockRestore?.();
+    });
+
+    function providerSays(state: 'SUCCESS' | 'FAILED', row: Row, transactionId: string | null = 'TX-OK') {
+      return jest.spyOn(simulatorClient, 'getStatus').mockResolvedValueOnce({
+        rawState: state === 'SUCCESS' ? 'SUCCESSFUL' : 'FAILED',
+        mappedState: state,
+        transactionId,
+        amount: state === 'SUCCESS' ? Number(row.amount) : null,
+        fees: 0,
+        serviceName: 'Wave',
+        error: state === 'FAILED' ? 'refusé' : null,
+        raw: {}
+      });
+    }
+
+    it('transaction déjà enregistrée sur une autre tentative : REVIEW / DUPLICATE_TRANSACTION, rien encaissé', async () => {
+      const { dto, row, payment } = await started();
+      store.checkouts.push({
+        id: nextId('checkout'),
+        tenantId: TENANT_A,
+        codePaiement: 'CODE-ORIGINE',
+        providerTransactionId: 'TX-DUP',
+        status: 'SUCCESS'
+      });
+      providerSays('SUCCESS', row, 'TX-DUP');
+
+      const result = await reconcileCheckout(TENANT_A, dto.id);
+
+      expect(result.status).toBe('REVIEW');
+      expect(row.reviewKind).toBe('DUPLICATE_TRANSACTION');
+      expect(row.reviewReason).toContain('CODE-ORIGINE');
+      expect(payment.status).toBe('PENDING');
+      expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+      expect(allocatePaymentTx).not.toHaveBeenCalled();
+    });
+
+    it('la même transaction sur une tentative d’une AUTRE agence n’est pas un doublon', async () => {
+      const { dto, row, payment } = await started();
+      store.checkouts.push({
+        id: nextId('checkout'),
+        tenantId: TENANT_B,
+        codePaiement: 'CODE-B',
+        providerTransactionId: 'TX-DUP',
+        status: 'SUCCESS'
+      });
+      providerSays('SUCCESS', row, 'TX-DUP');
+
+      const result = await reconcileCheckout(TENANT_A, dto.id);
+
+      expect(result.status).toBe('SUCCESS');
+      expect(payment.status).toBe('SUCCESS');
+    });
+
+    it.each([
+      ['annulée', { status: 'CANCELED' }],
+      ['déjà soldée', { amount_paid: 160000 }]
+    ])('échéance %s avant l’encaissement : REVIEW / INSTALLMENT_UNAVAILABLE, rien encaissé', async (_label, patch) => {
+      const { dto, row, payment, installment } = await started();
+      Object.assign(installment, patch);
+      providerSays('SUCCESS', row);
+
+      const result = await reconcileCheckout(TENANT_A, dto.id);
+
+      expect(result.status).toBe('REVIEW');
+      expect(row.reviewKind).toBe('INSTALLMENT_UNAVAILABLE');
+      expect(payment.status).toBe('PENDING');
+      expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+      expect(allocatePaymentTx).not.toHaveBeenCalled();
+    });
+
+    it('échéance d’un autre bail : REVIEW / INSTALLMENT_UNAVAILABLE', async () => {
+      const { dto, row, payment, installment } = await started();
+      installment.lease_id = 'autre-bail';
+      providerSays('SUCCESS', row);
+
+      const result = await reconcileCheckout(TENANT_A, dto.id);
+
+      expect(result.status).toBe('REVIEW');
+      expect(row.reviewKind).toBe('INSTALLMENT_UNAVAILABLE');
+      expect(payment.status).toBe('PENDING');
+    });
+
+    it('succès tardif d’une tentative EXPIRED relu par « Vérifier » : REVIEW / CONTRARY_STATE, rien encaissé', async () => {
+      const { dto, row, payment } = await started();
+      row.status = 'EXPIRED';
+      providerSays('SUCCESS', row);
+
+      const result = await reconcileCheckoutForVerify(TENANT_A, dto.id);
+
+      expect(result.status).toBe('REVIEW');
+      expect(row.reviewKind).toBe('CONTRARY_STATE');
+      expect(row.reviewReason).toContain('expiré');
+      expect(payment.status).toBe('PENDING');
+      expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+      expect(allocatePaymentTx).not.toHaveBeenCalled();
+    });
+
+    it('« Vérifier » sur une EXPIRED dont l’agrégateur ne dit pas succès : rien ne change', async () => {
+      const { dto, row } = await started();
+      row.status = 'EXPIRED';
+      providerSays('FAILED', row, null);
+
+      const result = await reconcileCheckoutForVerify(TENANT_A, dto.id);
+
+      expect(result.status).toBe('EXPIRED');
+      expect(row.reviewKind ?? null).toBeNull();
+      expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+    });
+
+    it('EXPIRED reste close pour les autres appelants (IPN, retour portail, tâche) : l’agrégateur n’est pas interrogé', async () => {
+      const { dto, row, payment } = await started();
+      row.status = 'EXPIRED';
+      const spy = providerSays('SUCCESS', row);
+
+      expect((await reconcileCheckout(TENANT_A, dto.id)).status).toBe('EXPIRED');
+      expect((await reconcileCheckoutPublic(dto.codePaiement))?.status).toBe('EXPIRED');
+
+      expect(spy).not.toHaveBeenCalled();
+      expect(row.status).toBe('EXPIRED');
+      expect(payment.status).toBe('PENDING');
+      expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+    });
+
+    describe('ligne périmée : un REVIEW posé entre la lecture et l’écriture n’est ni écrasé ni encaissé (count = 0)', () => {
+      /** L'agrégateur répond pendant qu'un gestionnaire (ou une autre vérification) passe la tentative en REVIEW. */
+      function concurrentReview(row: Row, response: Row) {
+        // Le magasin rend des références vives : la lecture du rapprochement doit être un instantané périmé.
+        mockPrisma.onlinePaymentCheckout.findFirst.mockImplementationOnce(async () => ({ ...row }));
+        return jest.spyOn(simulatorClient, 'getStatus').mockImplementationOnce(async () => {
+          row.status = 'REVIEW';
+          row.reviewKind = 'AMOUNT_MISMATCH';
+          row.reviewReason = 'posé par la décision concurrente';
+          return response as any;
+        });
+      }
+
+      it('succès : pas d’encaissement, le REVIEW reste intact', async () => {
+        const { dto, row, payment } = await started();
+        concurrentReview(row, {
+          rawState: 'SUCCESSFUL',
+          mappedState: 'SUCCESS',
+          transactionId: 'TX-RACE',
+          amount: Number(row.amount),
+          fees: 0,
+          serviceName: 'Wave',
+          error: null,
+          raw: {}
+        });
+
+        const result = await reconcileCheckout(TENANT_A, dto.id);
+
+        expect(result.status).toBe('REVIEW');
+        expect(row.status).toBe('REVIEW');
+        expect(row.completedAt ?? null).toBeNull();
+        expect(payment.status).toBe('PENDING');
+        expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+        expect(allocatePaymentTx).not.toHaveBeenCalled();
+      });
+
+      it('échec : le REVIEW n’est pas ré-écrasé en FAILED, le paiement n’est pas touché', async () => {
+        const { dto, row, payment } = await started();
+        concurrentReview(row, {
+          rawState: 'FAILED',
+          mappedState: 'FAILED',
+          transactionId: null,
+          amount: null,
+          fees: null,
+          serviceName: null,
+          error: 'refusé',
+          raw: {}
+        });
+
+        const result = await reconcileCheckout(TENANT_A, dto.id);
+
+        expect(result.status).toBe('REVIEW');
+        expect(row.status).toBe('REVIEW');
+        expect(payment.status).toBe('PENDING');
+        expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+      });
+
+      it('mise en REVIEW (montant divergent) : ni écriture ni audit, la ligne relue est rendue telle quelle', async () => {
+        const { dto, row } = await started();
+        const audit = jest.spyOn(auditService, 'logAuditEvent').mockImplementation(() => undefined as any);
+        concurrentReview(row, {
+          rawState: 'SUCCESSFUL',
+          mappedState: 'SUCCESS',
+          transactionId: 'TX-RACE',
+          amount: 1000,
+          fees: 0,
+          serviceName: 'Wave',
+          error: null,
+          raw: {}
+        });
+
+        const result = await reconcileCheckout(TENANT_A, dto.id);
+
+        expect(result.status).toBe('REVIEW');
+        expect(result.reviewReason).toBe('posé par la décision concurrente');
+        expect(row.receivedAmount ?? null).toBeNull();
+        expect(audit).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('tentative déjà tranchée par le gestionnaire (resolution non nulle) : jamais réévaluée', () => {
+      const routes: Array<[string, (dto: Row) => Promise<unknown>]> = [
+        ['rapprochement', dto => reconcileCheckout(TENANT_A, dto.id)],
+        ['IPN publique', dto => reconcileCheckoutPublic(dto.codePaiement)],
+        ['bouton « Vérifier »', dto => reconcileCheckoutForVerify(TENANT_A, dto.id)]
+      ];
+
+      it.each(routes)(
+        'REJECT puis succès du fournisseur (%s) : FAILED inchangé, rien encaissé',
+        async (_label, run) => {
+          const { dto, row, payment } = await started();
+          row.status = 'FAILED';
+          row.resolution = 'REJECT';
+          row.reviewKind = 'AMOUNT_MISMATCH';
+          payment.status = 'FAILED';
+          providerSays('SUCCESS', row, 'TX-LATE');
+
+          await run(dto);
+
+          expect(row.status).toBe('FAILED');
+          expect(row.resolution).toBe('REJECT');
+          expect(payment.status).toBe('FAILED');
+          expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+          expect(allocatePaymentTx).not.toHaveBeenCalled();
+        }
+      );
+
+      it.each(routes)('REJECT d’un écart de montant puis IPN (%s) : pas de retour en REVIEW', async (_label, run) => {
+        const { dto, row } = await started();
+        row.status = 'FAILED';
+        row.resolution = 'REJECT';
+        row.reviewKind = 'AMOUNT_MISMATCH';
+        jest.spyOn(simulatorClient, 'getStatus').mockResolvedValueOnce({
+          rawState: 'SUCCESSFUL',
+          mappedState: 'SUCCESS',
+          transactionId: 'TX-1',
+          amount: 1000,
+          fees: 0,
+          serviceName: 'Wave',
+          error: null,
+          raw: {}
+        });
+
+        await run(dto);
+
+        expect(row.status).toBe('FAILED');
+        expect(row.reviewReason ?? null).toBeNull();
+      });
+
+      it.each(routes)(
+        'ACCEPT d’un CONTRARY_STATE puis échec du fournisseur (%s) : pas de nouveau REVIEW',
+        async (_label, run) => {
+          const { dto, row, payment } = await started();
+          row.status = 'SUCCESS';
+          row.resolution = 'ACCEPT';
+          row.reviewKind = 'CONTRARY_STATE';
+          payment.status = 'SUCCESS';
+          providerSays('FAILED', row, null);
+
+          await run(dto);
+
+          expect(row.status).toBe('SUCCESS');
+          expect(row.reviewReason ?? null).toBeNull();
+          expect(payment.status).toBe('SUCCESS');
+          expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+        }
+      );
+
+      it('le suivi (état fournisseur, montant reçu) est quand même mis à jour', async () => {
+        const { dto, row } = await started();
+        row.status = 'FAILED';
+        row.resolution = 'REJECT';
+        providerSays('SUCCESS', row, 'TX-LATE');
+
+        await reconcileCheckout(TENANT_A, dto.id);
+
+        expect(row.lastProviderState).toBe('SUCCESSFUL');
+        expect(Number(row.receivedAmount)).toBe(Number(row.amount));
+        expect(row.checkAttempts).toBe(1);
+      });
+    });
+
+    it('mise en REVIEW réussie : un audit RENTAL_ONLINE_PAYMENT_REVIEW est écrit', async () => {
+      const { dto, row } = await started();
+      const audit = jest.spyOn(auditService, 'logAuditEvent').mockImplementation(() => undefined as any);
+      row.status = 'EXPIRED';
+      providerSays('SUCCESS', row);
+
+      await reconcileCheckoutForVerify(TENANT_A, dto.id);
+
+      expect(audit).toHaveBeenCalledTimes(1);
+      expect(audit.mock.calls[0][0]).toMatchObject({
+        tenantId: TENANT_A,
+        actionKey: 'RENTAL_ONLINE_PAYMENT_REVIEW',
+        payload: expect.objectContaining({ reviewKind: 'CONTRARY_STATE' })
+      });
+    });
+  });
+
   it('échec puis succès : un échec corrigé par l’agrégateur repasse en SUCCESS', async () => {
     const { dto, row, payment } = await started();
     row.simulatedOutcome = 'FAILED';
@@ -732,9 +1195,11 @@ describe('Rapprochement (contrat §2)', () => {
     expect(again.status).toBe('REVIEW');
     expect(payment.status).toBe('SUCCESS');
 
-    // L'agrégateur revient au succès : SUCCESS, sans réencaisser.
+    // L'agrégateur revient au succès : contrat 049 §2.4, seule la décision du gestionnaire sort
+    // une tentative de REVIEW (`resolveOnlinePayment`) ; la vérification automatique ne fait que du suivi.
     row.simulatedOutcome = 'SUCCESS';
-    expect((await reconcileCheckout(TENANT_A, dto.id)).status).toBe('SUCCESS');
+    expect((await reconcileCheckout(TENANT_A, dto.id)).status).toBe('REVIEW');
+    expect(row.reviewKind).toBe('CONTRARY_STATE');
     expect(updatePaymentStatusTx).toHaveBeenCalledTimes(1);
     expect(allocatePaymentTx).toHaveBeenCalledTimes(1);
   });

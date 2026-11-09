@@ -3,11 +3,13 @@ import type { PaymentGatewayConfig } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { env } from '../../config/env';
 import { t } from '../../i18n';
-import { BadRequestError, NotFoundError } from '../../middleware/error-middleware';
+import { AppError, BadRequestError, ErrorCode, NotFoundError } from '../../middleware/error-middleware';
 import { assertBelongsToTenant } from '../../utils/tenant-ownership';
 import { encryptSecret, isEncryptionAvailable, last4 } from './crypto';
 import { credentialsFrom, ensureCollectionAccountTx, loadConfig, paymentGatewaySimulatorAvailable } from './config';
 import { gatewayClientForMode } from './paysecurehub';
+import { resolveRentalOnlineAvailability } from './availability';
+import type { RentalOnlineUnavailableReason } from '../rental/online-review/types';
 import { GatewayError } from './types';
 
 /**
@@ -30,6 +32,9 @@ export interface PaymentGatewaySettingsDto {
   callbackUrl: string;
   simulatorAvailable: boolean;
   encryptionAvailable: boolean;
+  /** Règle durcie 049 §2.8 : config active, simulateur autorisé ET droit RENTAL de l'agence. */
+  usable: boolean;
+  unavailableReason: RentalOnlineUnavailableReason | null;
   lastTest: { at: string; ok: boolean; message: string } | null;
 }
 
@@ -54,7 +59,10 @@ function callbackUrl(): string {
   return `${env.BACKEND_URL.replace(/\/$/, '')}/api/payment-gateway/paysecurehub/ipn`;
 }
 
-function toSettingsDto(config: PaymentGatewayConfig | null): PaymentGatewaySettingsDto {
+function toSettingsDto(
+  config: PaymentGatewayConfig | null,
+  availability: { usable: boolean; unavailableReason: RentalOnlineUnavailableReason | null }
+): PaymentGatewaySettingsDto {
   return {
     provider: 'PAYSECUREHUB',
     mode: config?.mode ?? 'SIMULATOR',
@@ -68,6 +76,8 @@ function toSettingsDto(config: PaymentGatewayConfig | null): PaymentGatewaySetti
     callbackUrl: callbackUrl(),
     simulatorAvailable: paymentGatewaySimulatorAvailable,
     encryptionAvailable: isEncryptionAvailable(),
+    usable: availability.usable,
+    unavailableReason: availability.unavailableReason,
     lastTest: config?.lastTestAt
       ? {
           at: config.lastTestAt.toISOString(),
@@ -79,8 +89,9 @@ function toSettingsDto(config: PaymentGatewayConfig | null): PaymentGatewaySetti
 }
 
 export async function getPaymentGatewaySettings(tenantId: string): Promise<PaymentGatewaySettingsDto> {
-  const config = await loadConfig(tenantId);
-  const dto = toSettingsDto(config);
+  const availability = await resolveRentalOnlineAvailability(tenantId);
+  const config = availability.config;
+  const dto = toSettingsDto(config, availability);
 
   if (config?.treasuryAccountId) {
     const account = await prisma.treasuryAccount.findFirst({
@@ -105,7 +116,11 @@ export async function updatePaymentGatewaySettings(
   const feesPaidBy = input.feesPaidBy ?? existing?.feesPaidBy ?? 'CLIENT';
 
   if (mode === 'SIMULATOR' && !paymentGatewaySimulatorAvailable) {
-    throw new BadRequestError("Le mode simulateur n'est pas disponible sur ce serveur.");
+    throw new AppError(
+      t("Le mode simulateur n'est pas disponible sur ce serveur."),
+      400,
+      ErrorCode.GATEWAY_SIMULATOR_UNAVAILABLE
+    );
   }
 
   let apiKeyEncrypted = existing?.apiKeyEncrypted ?? null;
@@ -155,7 +170,26 @@ export async function updatePaymentGatewaySettings(
     }
   }
 
+  // Changer de compte alors qu'un paiement attend sa confirmation : la vérification interrogerait un
+  // autre compte que celui du lancement. Activer/désactiver reste permis. Une clé saisie compte comme
+  // un changement (le chiffré ne se compare pas) ; l'effacer aussi s'il y en avait une.
+  const apiKeyChanged = input.apiKey !== undefined && (input.apiKey !== '' || Boolean(existing?.apiKeyEncrypted));
+  const credentialsChanged =
+    existing !== null && (mode !== existing.mode || merchantId !== (existing.merchantId ?? null) || apiKeyChanged);
+
   await prisma.$transaction(async tx => {
+    if (credentialsChanged) {
+      const pending = await tx.onlinePaymentCheckout.count({ where: { tenantId, status: 'PENDING' } });
+      if (pending > 0) {
+        throw new AppError(
+          t(
+            'Des paiements sont en attente de confirmation : modifiez le mode, l’identifiant marchand ou la clé une fois ces paiements terminés.'
+          ),
+          409,
+          ErrorCode.GATEWAY_CHECKOUTS_PENDING
+        );
+      }
+    }
     // Contrat §1 : à l'activation, sans compte désigné, on ouvre (ou reprend)
     // le compte de collecte 5525.
     const resolvedTreasuryAccountId =

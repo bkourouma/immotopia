@@ -304,7 +304,9 @@ Permission : `RENTAL_PAYMENTS_ALLOCATE`. Pas de corps. Interroge la passerelle a
 
 Règle impérative : la vérification manuelle, la vérification automatique (retour portail/IPN) et `online-payment-reconciliation-job` n'encaissent JAMAIS une tentative en `REVIEW`. Sur `REVIEW`, ils mettent seulement à jour `lastProviderState`, `receivedAmount`, `lastCheckedAt`, `checkAttempts`. Seule la décision (2.5) tranche. Un nouvel état contraire détecté sur une tentative déjà `SUCCESS` la bascule en `REVIEW` / `CONTRARY_STATE` sans annuler l'encaissement.
 
-Erreurs : 404 ; 409 `CHECKOUT_NOT_VERIFIABLE` (ni `PENDING` ni `REVIEW`) ; 502 `ONLINE_PAYMENT_PROVIDER_UNREACHABLE`.
+Erreurs : 404 ; 409 `CHECKOUT_NOT_VERIFIABLE` (ni `PENDING`, ni `REVIEW`, ni `EXPIRED`) ; 502 `ONLINE_PAYMENT_PROVIDER_UNREACHABLE`.
+
+Une tentative `EXPIRED` est aussi relue par le bouton « Vérifier » (lui seul : IPN, retour portail et tâche la laissent close) : un succès tardif la passe en `REVIEW` / `CONTRARY_STATE`, sans encaissement ; tout autre état ne change rien.
 
 Additif : la route existante `POST /payments/:paymentId/online-check` est conservée telle quelle (même moteur, même règle REVIEW).
 
