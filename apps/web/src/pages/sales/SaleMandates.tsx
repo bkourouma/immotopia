@@ -1,21 +1,28 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Alert, App, DatePicker, Form, Input, InputNumber, Modal, Radio, Space } from 'antd';
+import { App, DatePicker, Form, Input, InputNumber, Modal, Radio, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createSaleMandate, listSaleMandates } from '../../services/sales-service';
-import type { CreateSaleMandateInput, SaleCommissionMode, SaleMandateDto } from '../../services/sales-service';
-import { useLocalListSearch } from '../../utils/list-search';
+import type {
+  CreateSaleMandateInput,
+  ListSaleMandatesFilters,
+  SaleCommissionMode,
+  SaleMandateDto,
+  SaleListPage
+} from '../../services/sales-service';
+import { useListSearch } from '../../hooks/useListSearch';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatusTag } from '../../components/primitives';
+import { PageHeader, StateBlock, MoneyValue, DataView, DataCard } from '../../components/primitives';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { AgentSelect, PropertySelect, SellerClientSelect } from './selectors';
 import { COMMISSION_PAYER_LABELS, MANDATE_TYPE_LABELS } from './helpers';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
-import { MANDATE_ACCESSORS, MANDATE_TEXT, MANDATES_LIMIT, mandateCriteria } from './mandate-search';
+import { mandateCriteria } from './mandate-search';
 
 interface MandateFormValues {
   propertyId: string;
@@ -41,11 +48,7 @@ interface MandateFormValues {
  * préremplie — c'est le lien que pose l'encart « Vente » de la fiche bien
  * quand aucun mandat n'existe encore.
  *
- * Recherche LOCALE : l'API renvoie tous les mandats de l'agence d'un bloc
- * (500 au plus, sans pagination ni total). On charge la liste entière et
- * `useLocalListSearch` la filtre et la pagine ; filtrer côté serveur ne
- * servirait à rien (la recherche de l'API s'appliquait après le plafond). Au
- * plafond, un bandeau prévient que la liste est tronquée.
+ * Les critères, la pagination et l'export utilisent la même requête serveur.
  */
 export const SaleMandates: React.FC = () => {
   const { message } = App.useApp();
@@ -56,25 +59,33 @@ export const SaleMandates: React.FC = () => {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const recherche = useListSearch({ criteria: mandateCriteria({ withStatus: true }), defaultPageSize: 20 });
 
   const {
     data,
     isPending,
     isFetching,
+    isPlaceholderData,
     error: erreurRequete,
     refetch
   } = useQuery({
-    queryKey: queryKey('sale-mandates', tenantId, {}),
-    queryFn: () => listSaleMandates(tenantId as string),
+    queryKey: queryKey('sale-mandates', tenantId, recherche.apiParams),
+    queryFn: () =>
+      listSaleMandates(
+        tenantId as string,
+        recherche.apiParams as unknown as ListSaleMandatesFilters & { page: number; limit: number }
+      ),
     enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
-
-  const local = useLocalListSearch<SaleMandateDto>(data, {
-    criteria: mandateCriteria({ withStatus: true }),
-    text: MANDATE_TEXT,
-    accessors: MANDATE_ACCESSORS
-  });
+  const page = data as SaleListPage<SaleMandateDto> | SaleMandateDto[] | undefined;
+  const rows = Array.isArray(page) ? page : (page?.items ?? []);
+  const total = Array.isArray(page) ? page.length : (page?.total ?? 0);
+  const { clampPage } = recherche;
+  useEffect(() => {
+    if (page && !isPlaceholderData) clampPage?.(total);
+  }, [page, total, isPlaceholderData, clampPage]);
 
   useEffect(() => {
     if (searchParams.get('new') === '1') {
@@ -175,21 +186,23 @@ export const SaleMandates: React.FC = () => {
         primaryAction={{ label: t('Nouveau mandat'), onClick: ouvrirModale }}
       />
 
-      {(data?.length ?? 0) >= MANDATES_LIMIT && (
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBlockEnd: 16 }}
-          message={t('La liste est limitée aux {{limit}} mandats les plus récents : d’autres existent.', {
-            limit: MANDATES_LIMIT
-          })}
-        />
-      )}
-
       <DataView<SaleMandateDto>
-        {...local.dataViewProps}
-        // Liste reçue en entier : l'export couvre tous les mandats filtrés, pas la seule page.
-        export={{ filename: t('Mandats de vente'), fetchAll: local.exportAll }}
+        items={rows}
+        total={total}
+        {...recherche.dataViewProps}
+        search={recherche.searchProps}
+        export={{
+          filename: t('Mandats de vente'),
+          fetchAll: () =>
+            collectAllPages(async (page, limit) => {
+              const result = await listSaleMandates(tenantId, {
+                ...recherche.filterParams,
+                page,
+                limit
+              } as ListSaleMandatesFilters & { page: number; limit: number });
+              return result;
+            })
+        }}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les mandats de vente.') : null}

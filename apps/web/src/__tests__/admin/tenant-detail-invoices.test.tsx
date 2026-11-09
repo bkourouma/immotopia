@@ -158,6 +158,14 @@ describe('InvoicesTab — factures d’abonnement', () => {
     await waitFor(() => expect(downloadAdminInvoicePdf).toHaveBeenCalledWith('tenant-1', ISSUED));
   });
 
+  it('propose une traduction arabe séparée du PDF original', async () => {
+    downloadAdminInvoicePdf.mockResolvedValue(undefined);
+    mount();
+    await screen.findByText('IMT-2026-00001');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Traduction arabe' })[0]);
+    await waitFor(() => expect(downloadAdminInvoicePdf).toHaveBeenCalledWith('tenant-1', ISSUED, 'ar'));
+  });
+
   it('génère la facture de la période suivante', async () => {
     generatePlatformInvoice.mockResolvedValue({ invoice: DRAFT, created: true });
     const user = userEvent.setup();

@@ -221,6 +221,37 @@ describe('recherche avancée (BUG-016)', () => {
     );
     expect(prompt).not.toHaveBeenCalled();
   });
+
+  it('utilise la barre commune pour chercher et effacer aussi les filtres avancés', async () => {
+    const user = userEvent.setup();
+    wrap(<AdvancedContactSearch />, '/tenant/agence-1/newsletter/lists');
+    const bar = screen.getByRole('search', { name: 'Rechercher' });
+    const quickSearch = within(bar).getByRole('textbox', { name: 'Recherche rapide (nom, email, téléphone...)' });
+
+    await user.type(quickSearch, 'Aminata{enter}');
+    await waitFor(() => {
+      const latest = api.post.mock.calls.filter(c => String(c[0]).endsWith('/search')).at(-1)!;
+      expect(latest[1].filters.searchQuery).toBe('Aminata');
+    });
+
+    await user.click(within(bar).getByRole('button', { name: /Filtres avancés/ }));
+    const dialog = await modale('Filtres avancés');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Client actif' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Appliquer les filtres' }));
+    await waitFor(() => {
+      const latest = api.post.mock.calls.filter(c => String(c[0]).endsWith('/search')).at(-1)!;
+      expect(latest[1].filters).toEqual(
+        expect.objectContaining({ searchQuery: 'Aminata', statuses: ['ACTIVE_CLIENT'] })
+      );
+    });
+
+    await user.click(within(bar).getByRole('button', { name: 'Effacer les critères' }));
+    await waitFor(() => {
+      const latest = api.post.mock.calls.filter(c => String(c[0]).endsWith('/search')).at(-1)!;
+      expect(latest[1].filters).toEqual({ page: 1, limit: 50 });
+    });
+    expect(screen.queryByText('Statuts : Client actif')).not.toBeInTheDocument();
+  });
 });
 
 describe('onglet Visites d’un bien (BUG-020)', () => {

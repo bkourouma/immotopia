@@ -1,4 +1,5 @@
 import apiClient from '../utils/api-client';
+import { t } from '../i18n/t';
 import { filenameFromDisposition } from '../utils/save-blob';
 import { API_URL } from '../config/api';
 import type {
@@ -347,12 +348,16 @@ export async function listAllChargeCallsWithSummary(
   const limit = 100;
   let items: ChargeCall[] = [];
   let summary: ChargeCallSummary | null = null;
+  const seen = new Set<string>();
 
-  for (let page = 1; page <= 50; page += 1) {
+  for (let page = 1; ; page += 1) {
     const response = await apiClient.get<{ success: boolean; data: ChargeCall[]; summary?: ChargeCallSummary }>(
       `/tenants/${tenantId}/syndics/${syndicId}/charges`,
       { params: { ...filters, page, limit } }
     );
+    if (response.data.data.some(item => seen.has(item.id)))
+      throw new Error(t('La pagination de la liste a été interrompue. Veuillez réessayer.'));
+    response.data.data.forEach(item => seen.add(item.id));
     items = items.concat(response.data.data);
     summary = summary ?? response.data.summary ?? null;
     if (response.data.data.length < limit) break;
@@ -381,11 +386,14 @@ export async function listAllChargeCalls(
   const limit = 100;
   let page = 1;
   let all: ChargeCall[] = [];
+  const seen = new Set<string>();
 
-  // Garde-fou : 50 pages (5000 appels) couvrent tout usage réel et évitent une
-  // boucle infinie si l'API venait à renvoyer la page courante indéfiniment.
-  for (let i = 0; i < 50; i += 1) {
+  // Une page repetee est une erreur explicite, jamais un succes tronque.
+  for (;;) {
     const batch = await listChargeCalls(tenantId, syndicId, { ...filters, page, limit });
+    if (batch.some(item => seen.has(item.id)))
+      throw new Error(t('La pagination de la liste a été interrompue. Veuillez réessayer.'));
+    batch.forEach(item => seen.add(item.id));
     all = all.concat(batch);
     if (batch.length < limit) break;
     page += 1;
@@ -416,20 +424,43 @@ export async function recordChargePayment(
   return response.data.data;
 }
 
+export interface MeetingsPageQuery extends ListWithPaginationQuery {
+  status?: string;
+  type?: string;
+  search?: string;
+  from?: string;
+  to?: string;
+}
+
+export async function listMeetingsPage(
+  tenantId: string,
+  syndicId: string,
+  query: MeetingsPageQuery = {}
+): Promise<SyndicPage<GeneralMeeting>> {
+  const response = await apiClient.get<{ success: boolean; data: GeneralMeeting[]; pagination: SyndicPageMeta }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees`,
+    { params: { ...query, paginated: 'true' } }
+  );
+  return { items: response.data.data, pagination: response.data.pagination };
+}
+
 export async function listMeetings(
   tenantId: string,
   syndicId: string,
   filters?: { status?: string }
 ): Promise<GeneralMeeting[]> {
   const limit = 100;
-  const maxPages = 50;
   const meetings: GeneralMeeting[] = [];
-  for (let page = 1; page <= maxPages; page += 1) {
+  const seen = new Set<string>();
+  for (let page = 1; ; page += 1) {
     const response = await apiClient.get<{ success: boolean; data: GeneralMeeting[] }>(
       `/tenants/${tenantId}/syndics/${syndicId}/assemblees`,
       { params: { ...filters, page, limit } }
     );
     const batch = response.data.data;
+    if (batch.some(item => seen.has(item.id)))
+      throw new Error(t('La pagination de la liste a été interrompue. Veuillez réessayer.'));
+    batch.forEach(item => seen.add(item.id));
     meetings.push(...batch);
     if (batch.length < limit) break;
   }

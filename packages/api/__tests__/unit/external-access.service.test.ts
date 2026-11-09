@@ -27,6 +27,7 @@ jest.mock('../../src/utils/database', () => {
     externalAccessGrant: delegate('externalAccessGrant', [
       'findFirst',
       'findMany',
+      'count',
       'create',
       'updateMany',
       'deleteMany'
@@ -41,7 +42,7 @@ jest.mock('../../src/utils/database', () => {
     propertyDocument: delegate('propertyDocument', ['findMany']),
     propertyOwnershipShare: delegate('propertyOwnershipShare', ['findMany']),
     tenant: delegate('tenant', ['findUnique']),
-    auditLog: delegate('auditLog', ['findMany'])
+    auditLog: delegate('auditLog', ['findMany', 'count'])
   };
   prisma.$transaction = async (fn: (tx: any) => Promise<unknown>) => fn(prisma);
   return { prisma };
@@ -431,6 +432,19 @@ describe('lecture : jamais de jeton, de hash ni de coordonnées superflues', () 
     const select = fns['externalAccessGrant.findMany'].mock.calls[0][0].select;
     expect(select.ownerClient).toEqual({ select: { user: { select: { fullName: true } } } });
     expect(JSON.stringify(select)).not.toMatch(/tokenHash|"email"|phone/);
+  });
+
+  it('pagine les accès et compte dans le même périmètre agence', async () => {
+    fns['externalAccessGrant.findMany'].mockResolvedValue([]);
+    fns['externalAccessGrant.count'].mockResolvedValue(501);
+    const result = await listExternalAccessGrants(TENANT, { page: 6, limit: 100 });
+    expect(fns['externalAccessGrant.findMany'].mock.calls[0][0]).toMatchObject({
+      where: { tenantId: TENANT },
+      skip: 500,
+      take: 100
+    });
+    expect(fns['externalAccessGrant.count']).toHaveBeenCalledWith({ where: { tenantId: TENANT } });
+    expect(result.total).toBe(501);
   });
 
   it('détail : bien, entités et documents (id du document), filtré par agence ; autre agence → 404', async () => {

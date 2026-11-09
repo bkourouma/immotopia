@@ -564,29 +564,31 @@ export async function listTenantWorkPrograms(
   const limit = Math.min(100, Math.max(1, options.limit ?? 25));
 
   // `upcoming=true` (ecran d'accueil du Patrimoine) : seuls les programmes
-  // pas encore termines/annules, tries par date prevue croissante, sans
-  // pagination -- l'appelant veut la liste complete "a venir", pas une page.
+  // pas encore termines/annules, tries par date prevue croissante, avec
+  // pagination de l'aperçu et total reel pour atteindre tout l'historique.
   if (options.upcoming) {
     const where: Prisma.WorkProgramWhereInput = {
       tenantId,
       status: { in: [WorkProgramStatus.PLANNED, WorkProgramStatus.IN_PROGRESS] }
     };
-    const items = await prisma.workProgram.findMany({
-      where,
-      include: {
-        property: { select: { id: true, title: true, internalReference: true } },
-        site: { select: { id: true, name: true } }
-      },
-      // `plannedDate` n'est pas nullable dans le schema actuel (aucun
-      // programme ne peut donc apparaitre sans date prevue) ; le tri simple
-      // ascendant place deja les echeances les plus proches en tete.
-      orderBy: [{ plannedDate: 'asc' }],
-      // Plafond de securite : "a venir" n'est pas pagine, mais ne doit pas
-      // pouvoir ramener un tenant avec des milliers de programmes en une fois.
-      take: 200
-    });
+    const [items, total] = await Promise.all([
+      prisma.workProgram.findMany({
+        where,
+        include: {
+          property: { select: { id: true, title: true, internalReference: true } },
+          site: { select: { id: true, name: true } }
+        },
+        // `plannedDate` n'est pas nullable dans le schema actuel (aucun
+        // programme ne peut donc apparaitre sans date prevue) ; le tri simple
+        // ascendant place deja les echeances les plus proches en tete.
+        orderBy: [{ plannedDate: 'asc' }, { id: 'asc' }],
+        skip: (page - 1) * limit,
+        take: limit
+      }),
+      prisma.workProgram.count({ where })
+    ]);
     const mapped = items.map(toWorkProgramContract);
-    return { items: mapped, total: mapped.length, page: 1, limit: mapped.length || 1, totalPages: 1 };
+    return { items: mapped, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   const where: Prisma.WorkProgramWhereInput = { tenantId };

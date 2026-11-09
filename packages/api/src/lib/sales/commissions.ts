@@ -1,4 +1,11 @@
-import { Prisma, SaleAgreement, SaleCommissionPaymentStatus, SaleCommissionStatus, SaleMandate } from '@prisma/client';
+import {
+  Prisma,
+  SaleAgreement,
+  SaleCommissionPayer,
+  SaleCommissionPaymentStatus,
+  SaleCommissionStatus,
+  SaleMandate
+} from '@prisma/client';
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { badRequest, conflict, notFound } from '../errors';
@@ -212,12 +219,82 @@ export async function commissionDto(
   };
 }
 
-export async function listCommissions(tenantId: string, filters: { status?: string }): Promise<SaleCommissionListDto> {
+export async function listCommissions(
+  tenantId: string,
+  filters: {
+    status?: string;
+    search?: string;
+    payer?: string;
+    from?: string;
+    to?: string;
+    minAmount?: number;
+    maxAmount?: number;
+    unpaid?: boolean;
+    page?: number;
+    limit?: number;
+  }
+): Promise<SaleCommissionListDto & { total?: number; page?: number; pageSize?: number }> {
   const where: Prisma.SaleCommissionWhereInput = { tenantId };
-  if (filters.status) where.status = filters.status as SaleCommissionStatus;
-  const rows = await prisma.saleCommission.findMany({ where, orderBy: { issuedAt: 'desc' }, take: 500 });
-  const items = await Promise.all(rows.map(row => commissionDto(prisma, tenantId, row)));
-  const totals = items.reduce(
+  if (filters.status) where.status = { in: filters.status.split(',') as SaleCommissionStatus[] };
+  if (filters.payer) where.payer = { in: filters.payer.split(',') as SaleCommissionPayer[] };
+  if (filters.from || filters.to)
+    where.issuedAt = {
+      ...(filters.from ? { gte: new Date(filters.from) } : {}),
+      ...(filters.to ? { lt: new Date(new Date(filters.to).getTime() + 86_400_000) } : {})
+    };
+  if (filters.minAmount !== undefined || filters.maxAmount !== undefined)
+    where.amountInclTax = {
+      ...(filters.minAmount !== undefined ? { gte: filters.minAmount } : {}),
+      ...(filters.maxAmount !== undefined ? { lte: filters.maxAmount } : {})
+    };
+  const paged = filters.page !== undefined || filters.limit !== undefined;
+  const page = filters.page ?? 1;
+  const limit = filters.limit ?? 20;
+  if (paged && !filters.search?.trim() && filters.unpaid === undefined) {
+    // Filtres portés directement par SaleCommission : ne calculer les DTO que
+    // pour la page. Les totaux restent ceux de toute la sélection filtrée.
+    const [rows, total, commissionSum, paymentSum] = await Promise.all([
+      prisma.saleCommission.findMany({
+        where,
+        orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit
+      }),
+      prisma.saleCommission.count({ where }),
+      prisma.saleCommission.aggregate({ where, _sum: { amountInclTax: true } }),
+      prisma.saleCommissionPayment.aggregate({
+        where: { tenantId, status: SaleCommissionPaymentStatus.POSTED, commission: { is: where } },
+        _sum: { amount: true }
+      })
+    ]);
+    const items = await Promise.all(rows.map(row => commissionDto(prisma, tenantId, row)));
+    const amountInclTax = roundMoneyXof(Number(commissionSum._sum.amountInclTax ?? 0));
+    const paidAmount = roundMoneyXof(Number(paymentSum._sum.amount ?? 0));
+    return {
+      items,
+      total,
+      page,
+      pageSize: limit,
+      totals: { amountInclTax, paidAmount, remainingAmount: amountInclTax - paidAmount }
+    };
+  }
+  const rows = await prisma.saleCommission.findMany({ where, orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }] });
+  const all = await Promise.all(rows.map(row => commissionDto(prisma, tenantId, row)));
+  const fold = (value: string) =>
+    value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  const needle = filters.search ? fold(filters.search.trim()) : '';
+  const filtered = all.filter(
+    item =>
+      (!needle ||
+        [item.number, item.agreementNumber, item.propertyLabel, item.payerName, item.agentName ?? ''].some(value =>
+          fold(value).includes(needle)
+        )) &&
+      (filters.unpaid === undefined || (item.status !== 'CANCELLED' && item.remainingAmount > 0) === filters.unpaid)
+  );
+  const totals = filtered.reduce(
     (acc, item) => ({
       amountInclTax: acc.amountInclTax + item.amountInclTax,
       paidAmount: acc.paidAmount + item.paidAmount,
@@ -225,7 +302,9 @@ export async function listCommissions(tenantId: string, filters: { status?: stri
     }),
     { amountInclTax: 0, paidAmount: 0, remainingAmount: 0 }
   );
-  return { items, totals };
+  return paged
+    ? { items: filtered.slice((page - 1) * limit, page * limit), totals, total: filtered.length, page, pageSize: limit }
+    : { items: filtered, totals };
 }
 
 export async function getCommissionDetail(tenantId: string, commissionId: string): Promise<SaleCommissionDetailDto> {

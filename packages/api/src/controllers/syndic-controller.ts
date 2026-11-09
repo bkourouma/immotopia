@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { runInFrench, t } from '../i18n';
+import { listMeetingsPage } from '../lib/syndics/meeting-reads';
 import { closeMeetingRoom } from '../lib/syndics/meeting-visio';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -755,9 +756,15 @@ export const listMeetingsHandler = asyncHandler(async (req: Request, res: Respon
     throw badRequest('TenantId manquant pour la liste des assemblees');
   }
 
-  const { status, page, limit } = meetingsListQuerySchema.parse(req.query ?? {});
+  const query = meetingsListQuerySchema.parse(req.query ?? {});
+  if (query.paginated || query.search || query.type || query.from || query.to || (query.status?.length ?? 0) > 1) {
+    const result = await listMeetingsPage(tenantId, syndicateId, query);
+    res.json({ success: true, data: result.items, pagination: result.pagination });
+    return;
+  }
+  const { status, page, limit } = query;
   const meetings = await listMeetingsBySyndicate(tenantId, syndicateId, {
-    status,
+    status: status?.[0],
     pagination: { page, limit }
   });
 

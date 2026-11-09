@@ -459,9 +459,12 @@ describe('Caisse — recherche multicritères', () => {
       await screen.findByText('À valider', { selector: '.ant-select-item-option-content' }, { timeout: 8000 })
     );
 
-    await waitFor(() => expect(listCashSessions).toHaveBeenLastCalledWith('agence-1', { status: 'CLOSED' }), {
-      timeout: 8000
-    });
+    await waitFor(
+      () => expect(listCashSessions).toHaveBeenLastCalledWith('agence-1', { status: 'CLOSED', page: 1, limit: 20 }),
+      {
+        timeout: 8000
+      }
+    );
   }, 30000);
 
   it('historique : la période d’ouverture de l’URL part en from / to', async () => {
@@ -471,7 +474,13 @@ describe('Caisse — recherche multicritères', () => {
     await ouvrirHistorique(user);
 
     await waitFor(
-      () => expect(listCashSessions).toHaveBeenCalledWith('agence-1', { from: '2026-09-01', to: '2026-09-30' }),
+      () =>
+        expect(listCashSessions).toHaveBeenCalledWith('agence-1', {
+          from: '2026-09-01',
+          to: '2026-09-30',
+          page: 1,
+          limit: 20
+        }),
       { timeout: 8000 }
     );
   }, 30000);
@@ -485,41 +494,39 @@ describe('Caisse — recherche multicritères', () => {
 
     const barre = screen.getByRole('search', { name: "Rechercher dans l'historique des caisses" });
     await user.type(within(barre).getByRole('textbox', { name: 'Rechercher' }), 'Awa');
-    await waitFor(() => expect(listCashSessions).toHaveBeenLastCalledWith('agence-1', { search: 'Awa' }), {
-      timeout: 8000
-    });
+    await waitFor(
+      () => expect(listCashSessions).toHaveBeenLastCalledWith('agence-1', { search: 'Awa', page: 1, limit: 20 }),
+      {
+        timeout: 8000
+      }
+    );
 
     await user.click(screen.getByRole('button', { name: /Plus de critères/ }));
     await user.click(screen.getByRole('checkbox', { name: 'Écart non nul' }));
     await waitFor(
-      () => expect(listCashSessions).toHaveBeenLastCalledWith('agence-1', { search: 'Awa', hasDifference: 'true' }),
+      () =>
+        expect(listCashSessions).toHaveBeenLastCalledWith('agence-1', {
+          search: 'Awa',
+          hasDifference: 'true',
+          page: 1,
+          limit: 20
+        }),
       { timeout: 8000 }
     );
   }, 30000);
 
-  it('historique : le bandeau de plafond apparaît à 200 sessions, pas à 3', async () => {
-    const MESSAGE =
-      'Seules les 200 sessions les plus récentes correspondant aux critères sont affichées. Affinez par période, statut ou caisse.';
-    listCashSessions.mockResolvedValue(
-      Array.from({ length: 200 }, (_, i) =>
-        sessionAttendu31000({ id: `s-${i}`, number: `CAI-2026-${String(i + 1).padStart(4, '0')}`, status: 'VALIDATED' })
-      )
-    );
+  it('historique : charge une page au-delà de 200 sessions', async () => {
+    listCashSessions.mockResolvedValue({
+      items: [sessionAttendu31000({ id: 's-201', number: 'CAI-2026-0201', status: 'VALIDATED' })],
+      total: 201,
+      page: 11,
+      pageSize: 20
+    });
     const user = userEvent.setup({ delay: null });
-    const premier = mount();
+    mount('/tenant/agence-1/finance/caisse?his.page=11');
     await ouvrirHistorique(user);
-    expect(await screen.findByText(MESSAGE, {}, { timeout: 8000 })).toBeInTheDocument();
-    premier.unmount();
-
-    listCashSessions.mockResolvedValue(
-      Array.from({ length: 3 }, (_, i) =>
-        sessionAttendu31000({ id: `t-${i}`, number: `CAI-T-${i}`, status: 'VALIDATED' })
-      )
-    );
-    mount();
-    await ouvrirHistorique(user);
-    await screen.findByText('CAI-T-0', {}, { timeout: 8000 });
-    expect(screen.queryByText(MESSAGE)).not.toBeInTheDocument();
+    expect(await screen.findByText('CAI-2026-0201', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(listCashSessions).toHaveBeenCalledWith('agence-1', { page: 11, limit: 20 });
   }, 30000);
 
   it('détail : les critères du détail sont effacés à la fermeture, et les deux barres ont des noms distincts', async () => {

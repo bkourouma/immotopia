@@ -294,11 +294,13 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
     }
   };
 
-  const handleDownloadDocument = async (doc: IssuedReceiptRef) => {
+  const handleDownloadDocument = async (doc: IssuedReceiptRef, translation?: 'ar') => {
     setDownloadingDocId(doc.id);
     try {
       const fallback = `${doc.kind === 'QUITTANCE' ? 'Quittance' : 'Recu'} ${doc.number}.pdf`;
-      const { blob, filename } = await downloadReceiptFile(tenantId, syndicId, doc.id, fallback);
+      const { blob, filename } = translation
+        ? await downloadReceiptFile(tenantId, syndicId, doc.id, fallback, translation)
+        : await downloadReceiptFile(tenantId, syndicId, doc.id, fallback);
       saveBlob(blob, filename);
     } catch (err) {
       setSubmitError(await describeDownloadError(err));
@@ -366,14 +368,23 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
                     title: t('Actions'),
                     exportable: false,
                     render: (_: unknown, doc: IssuedReceiptRef) => (
-                      <Button
-                        size="small"
-                        icon={<DownloadOutlined />}
-                        loading={downloadingDocId === doc.id}
-                        onClick={() => void handleDownloadDocument(doc)}
-                      >
-                        {t('Télécharger')}
-                      </Button>
+                      <Space wrap>
+                        <Button
+                          size="small"
+                          icon={<DownloadOutlined />}
+                          loading={downloadingDocId === doc.id}
+                          onClick={() => void handleDownloadDocument(doc)}
+                        >
+                          {t('Télécharger')}
+                        </Button>
+                        <Button
+                          size="small"
+                          loading={downloadingDocId === doc.id}
+                          onClick={() => void handleDownloadDocument(doc, 'ar')}
+                        >
+                          {t('Traduction arabe')}
+                        </Button>
+                      </Space>
                     )
                   }
                 ]}

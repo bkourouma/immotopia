@@ -11,6 +11,8 @@ import {
   uploadPenaltyJustification
 } from '../services/rental-penalty-service';
 import { triggerPenaltyCalculation } from '../jobs/penalty-calculation-job';
+import { z } from 'zod';
+import { dayOrderRefinement, zAmount, zDay, zSearch } from '../utils/list-query-schemas';
 
 /**
  * Calculate penalties for overdue installments
@@ -89,23 +91,34 @@ export const getPenaltyHandler = asyncHandler(async (req: Request, res: Response
  * List penalties
  * GET /tenants/:tenantId/rental/penalties
  */
+const optionalBoolean = z.preprocess(
+  value => (value === 'true' || value === '1' ? true : value === 'false' || value === '0' ? false : value),
+  z.boolean().optional()
+);
+const penaltiesListSchema = z
+  .object({
+    leaseId: z.string().uuid().optional(),
+    installmentId: z.string().uuid().optional(),
+    search: zSearch(),
+    from: zDay,
+    to: zDay,
+    adjusted: optionalBoolean,
+    hasJustification: optionalBoolean,
+    minAmount: zAmount({ min: 0 }),
+    maxAmount: zAmount({ min: 0 }),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(50)
+  })
+  .superRefine(dayOrderRefinement('from', 'to'));
+
 export const listPenaltiesHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = getTenantIdFromRequest(req);
-  const { leaseId, installmentId } = req.query;
-
-  const filters: any = {};
-  if (leaseId) {
-    filters.leaseId = leaseId as string;
-  }
-  if (installmentId) {
-    filters.installmentId = installmentId as string;
-  }
-
-  const penalties = await listPenalties(tenantId, filters);
-
+  const query = penaltiesListSchema.parse(req.query ?? {});
+  const { items, total } = await listPenalties(tenantId, query);
   res.json({
     success: true,
-    data: penalties
+    data: items,
+    pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) }
   });
 });
 

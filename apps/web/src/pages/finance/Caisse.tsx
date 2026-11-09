@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Alert, App, Button, Card, Input, InputNumber, Modal, Space, Switch, Typography } from 'antd';
+import { App, Button, Card, Input, InputNumber, Modal, Space, Switch, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { CheckCircleOutlined, LockOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,6 +22,7 @@ import type {
 } from '../../services/cash-sessions-service';
 import { listTreasuryAccounts } from '../../services/treasury-service';
 import { useListSearch } from '../../hooks/useListSearch';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
@@ -177,16 +178,9 @@ const LignesAttendues: React.FC<{
   );
 };
 
-// --- Historique des sessions : mode mixte (statut, caissier, caisse et période partent au serveur) ---
-
-// L'API renvoie au plus 200 sessions (les plus récentes, après filtres).
-const PLAFOND_HISTORIQUE = 200;
+// --- Historique des sessions : filtres et pagination serveur ---
 
 const HistoriqueSessions: React.FC<{ tenantId: string; onOpen: (id: string) => void }> = ({ tenantId, onOpen }) => {
-  // `loadOptions`/`api` figés au premier rendu : l'agence se lit par une ref.
-  const tenantRef = useRef(tenantId);
-  tenantRef.current = tenantId;
-
   const comptesQuery = useQuery({
     queryKey: queryKey('treasury-accounts', tenantId, { usage: 'cash-history-filter' }),
     queryFn: () => listTreasuryAccounts(tenantId),
@@ -200,9 +194,10 @@ const HistoriqueSessions: React.FC<{ tenantId: string; onOpen: (id: string) => v
     [comptesQuery.data]
   );
 
-  // Caissiers déjà vus dans les sessions reçues : aucun service de liste ne les
-  // donne, et filtrer par un caissier ne doit pas faire disparaître les autres.
+  // La réponse paginée porte la facette de tous les caissiers historiques de
+  // l'agence, indépendamment de la page et des filtres courants.
   const caissiersVus = useRef(new Map<string, string>());
+  const caissiersTenant = useRef(tenantId);
   const [, setVersionCaissiers] = useState(0);
 
   const criteres: SearchCriterion[] = [
@@ -254,31 +249,46 @@ const HistoriqueSessions: React.FC<{ tenantId: string; onOpen: (id: string) => v
     }
   ];
   // Paramètres d'API des critères serveur, disponibles avant la requête.
-  const { filterParams } = useListSearch({ paramPrefix: 'his', criteria: criteres });
+  const recherche = useListSearch({ paramPrefix: 'his', criteria: criteres, defaultPageSize: 20 });
 
   const historiqueQuery = useQuery({
-    queryKey: queryKey('cash-sessions', tenantId, filterParams),
-    queryFn: () => listCashSessions(tenantId, filterParams as ListCashSessionsFilters),
+    queryKey: queryKey('cash-sessions', tenantId, recherche.apiParams),
+    queryFn: () => listCashSessions(tenantId, recherche.apiParams as ListCashSessionsFilters),
     staleTime: STALE_TIME.list
   });
 
   // Mémorise les caissiers de chaque réponse (la requête, filtrée, en montre moins).
-  const donnees = historiqueQuery.data;
+  const reponse = historiqueQuery.data;
+  const donnees = React.useMemo(() => (Array.isArray(reponse) ? reponse : (reponse?.items ?? [])), [reponse]);
+  const total = Array.isArray(reponse) ? reponse.length : (reponse?.total ?? 0);
   React.useEffect(() => {
     let nouveau = false;
-    for (const session of donnees ?? []) {
-      if (!caissiersVus.current.has(session.cashierUserId)) {
-        caissiersVus.current.set(session.cashierUserId, session.cashierName);
-        nouveau = true;
-      }
+    if (caissiersTenant.current !== tenantId) {
+      caissiersTenant.current = tenantId;
+      caissiersVus.current.clear();
+      nouveau = true;
+    }
+    if (!reponse) {
+      if (nouveau) setVersionCaissiers(v => v + 1);
+      return;
+    }
+    const options = Array.isArray(reponse)
+      ? donnees.map(session => ({ userId: session.cashierUserId, name: session.cashierName }))
+      : (reponse?.cashiers ?? []);
+    const next = new Map<string, string>(options.map(option => [option.userId, option.name] as const));
+    if (
+      next.size !== caissiersVus.current.size ||
+      [...next].some(([id, name]) => caissiersVus.current.get(id) !== name)
+    ) {
+      caissiersVus.current = next;
+      nouveau = true;
     }
     if (nouveau) setVersionCaissiers(v => v + 1);
-  }, [donnees]);
-
-  const local = useLocalListSearch<CashSession>(donnees, {
-    paramPrefix: 'his',
-    criteria: criteres
-  });
+  }, [reponse, donnees, tenantId]);
+  const { clampPage } = recherche;
+  React.useEffect(() => {
+    if (reponse) clampPage?.(total);
+  }, [reponse, total, clampPage]);
 
   const colonnes: ColumnsType<CashSession> = [
     { title: t('Numéro'), key: 'number', render: (_, s) => s.number },
@@ -333,20 +343,12 @@ const HistoriqueSessions: React.FC<{ tenantId: string; onOpen: (id: string) => v
 
   return (
     <>
-      {(donnees?.length ?? 0) >= PLAFOND_HISTORIQUE && (
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 'var(--space-4)' }}
-          title={t(
-            'Seules les 200 sessions les plus récentes correspondant aux critères sont affichées. Affinez par période, statut ou caisse.'
-          )}
-        />
-      )}
       <DataView<CashSession>
-        {...local.dataViewProps}
+        items={donnees}
+        total={total}
+        {...recherche.dataViewProps}
         // Deux barres peuvent coexister (historique, détail ouvert) : noms distincts.
-        search={{ ...local.dataViewProps.search, 'aria-label': t("Rechercher dans l'historique des caisses") }}
+        search={{ ...recherche.searchProps, 'aria-label': t("Rechercher dans l'historique des caisses") }}
         loading={historiqueQuery.isPending}
         error={historiqueQuery.error ? t('Impossible de charger les sessions de caisse.') : null}
         errorCause={historiqueQuery.error}
@@ -354,7 +356,21 @@ const HistoriqueSessions: React.FC<{ tenantId: string; onOpen: (id: string) => v
         emptyDescription={t('Aucune session de caisse.')}
         rowKey={s => s.id}
         aria-label={t('Historique des caisses')}
-        export={{ filename: t('Historique des caisses'), fetchAll: local.exportAll }}
+        export={{
+          filename: t('Historique des caisses'),
+          fetchAll: () =>
+            collectAllPages<CashSession>(async (page, limit) => {
+              const result = await listCashSessions(tenantId, {
+                ...recherche.filterParams,
+                page,
+                limit,
+                includeCashiers: false
+              });
+              return Array.isArray(result)
+                ? { items: result, total: result.length }
+                : { items: result.items, total: result.total };
+            })
+        }}
         columns={colonnes}
         renderCard={s => (
           <DataCard

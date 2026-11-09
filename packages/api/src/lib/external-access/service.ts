@@ -6,7 +6,15 @@ import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { env } from '../../config/env';
 import { countActiveSecureLinksByObject, createSecureLink, revokeSecureLinksForObject } from '../secure-links';
-import { type CreateGrantInput, type SendLinkInput, type UpdateGrantInput } from './schemas';
+import {
+  type CreateGrantInput,
+  type SendLinkInput,
+  type UpdateGrantInput,
+  grantsQuerySchema,
+  accessLogQuerySchema
+} from './schemas';
+import { escapeLike } from '../../utils/like-escape';
+import type { z } from 'zod';
 import { agencyPropertyWhere, entitiesInAgency, propertiesInAgencyScope, propertyIdsHeldByEntities } from './scope';
 import {
   MAX_SCOPE_PROPERTIES,
@@ -146,20 +154,57 @@ function notFound(): NotFoundError {
 // Lecture
 // ---------------------------------------------------------------------------
 
-export async function listExternalAccessGrants(tenantId: string): Promise<{ items: GrantSummary[] }> {
-  const rows = await prisma.externalAccessGrant.findMany({
-    where: { tenantId },
-    select: GRANT_SUMMARY_SELECT,
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    take: 500
-  });
+export async function listExternalAccessGrants(
+  tenantId: string,
+  query: z.infer<typeof grantsQuerySchema> = {}
+): Promise<{ items: GrantSummary[]; total: number; page: number; limit: number }> {
+  const page = query.page ?? 1;
+  const limit = query.limit ?? 25;
+  const now = new Date();
+  const soon = new Date(now.getTime() + EXPIRING_WINDOW_DAYS * DAY_MS);
+  const expirationBefore = query.expirationTo ? new Date(query.expirationTo.getTime() + DAY_MS) : undefined;
+  const statuses = query.statuses?.split(',') ?? [];
+  const statusWhere: Record<GrantStatus, Prisma.ExternalAccessGrantWhereInput> = {
+    REVOKED: { revokedAt: { not: null } },
+    EXPIRED: { revokedAt: null, expiresAt: { lte: now } },
+    EXPIRING: { revokedAt: null, expiresAt: { gt: now, lte: soon } },
+    ACTIVE: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: soon } }] }
+  };
+  const contains = query.search ? { contains: escapeLike(query.search), mode: 'insensitive' as const } : undefined;
+  const where: Prisma.ExternalAccessGrantWhereInput = {
+    tenantId,
+    ...(query.types ? { type: { in: query.types.split(',') as (typeof EXTERNAL_ACCESS_TYPES)[number][] } } : {}),
+    ...(query.expirationFrom || query.expirationTo
+      ? { expiresAt: { gte: query.expirationFrom, lt: expirationBefore } }
+      : {}),
+    ...(statuses.length ? { AND: [{ OR: statuses.map(status => statusWhere[status as GrantStatus]) }] } : {}),
+    ...(contains
+      ? {
+          OR: [
+            { recipientName: contains },
+            { recipientEmail: contains },
+            { ownerClient: { user: { fullName: contains } } }
+          ]
+        }
+      : {})
+  };
+  const [rows, total] = await Promise.all([
+    prisma.externalAccessGrant.findMany({
+      where,
+      select: GRANT_SUMMARY_SELECT,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: (page - 1) * limit,
+      take: limit
+    }),
+    prisma.externalAccessGrant.count({ where })
+  ]);
   const activeLinks = await countActiveSecureLinksByObject(
     tenantId,
     EXTERNAL_ACCESS_LINK_SCOPE,
     EXTERNAL_ACCESS_OBJECT_TYPE,
     rows.map(row => row.id)
   );
-  return { items: rows.map(row => toSummary(row, activeLinks.get(row.id) ?? 0)) };
+  return { items: rows.map(row => toSummary(row, activeLinks.get(row.id) ?? 0)), total, page, limit };
 }
 
 export async function getExternalAccessGrantDetail(tenantId: string, grantId: string): Promise<GrantDetail> {
@@ -299,23 +344,60 @@ const ACCESS_LOG_ACTIONS: Record<string, string> = {
 };
 
 /** Journal d'un accès, lu dans `AuditLog` : seules des clés connues sortent, jamais le payload brut. */
-export async function listExternalAccessLog(tenantId: string, grantId: string, limit = 50) {
+export async function listExternalAccessLog(
+  tenantId: string,
+  grantId: string,
+  query: z.infer<typeof accessLogQuerySchema> | number = {}
+) {
   const grant = await prisma.externalAccessGrant.findFirst({ where: { id: grantId, tenantId }, select: { id: true } });
   if (!grant) throw notFound();
 
-  const rows = await prisma.auditLog.findMany({
-    where: {
-      tenantId,
-      entityType: EXTERNAL_ACCESS_OBJECT_TYPE,
-      entityId: grant.id,
-      actionKey: { in: Object.keys(ACCESS_LOG_ACTIONS) }
-    },
-    select: { id: true, actionKey: true, ipAddress: true, userAgent: true, payload: true, createdAt: true },
-    orderBy: { createdAt: 'desc' },
-    take: Math.min(Math.max(limit, 1), 100)
-  });
+  const filters: z.infer<typeof accessLogQuerySchema> =
+    typeof query === 'number' ? { limit: Math.min(Math.max(query, 1), 100) } : query;
+  const page = filters.page ?? 1;
+  const limit = filters.limit ?? 25;
+  const actionKeys = filters.actions?.split(',').flatMap(action =>
+    Object.entries(ACCESS_LOG_ACTIONS)
+      .filter(([, label]) => label === action)
+      .map(([key]) => key)
+  );
+  const where: Prisma.AuditLogWhereInput = {
+    tenantId,
+    entityType: EXTERNAL_ACCESS_OBJECT_TYPE,
+    entityId: grant.id,
+    actionKey: { in: actionKeys ?? Object.keys(ACCESS_LOG_ACTIONS) },
+    ...(filters.dateFrom || filters.dateTo
+      ? {
+          createdAt: {
+            gte: filters.dateFrom,
+            lt: filters.dateTo ? new Date(filters.dateTo.getTime() + DAY_MS) : undefined
+          }
+        }
+      : {}),
+    ...(filters.search
+      ? {
+          OR: [
+            { ipAddress: { contains: escapeLike(filters.search), mode: 'insensitive' as const } },
+            { payload: { path: ['documentName'], string_contains: filters.search } }
+          ]
+        }
+      : {})
+  };
+  const [rows, total] = await Promise.all([
+    prisma.auditLog.findMany({
+      where,
+      select: { id: true, actionKey: true, ipAddress: true, userAgent: true, payload: true, createdAt: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: (page - 1) * limit,
+      take: limit
+    }),
+    prisma.auditLog.count({ where })
+  ]);
 
   return {
+    total,
+    page,
+    limit,
     items: rows.map(row => {
       const payload = (row.payload ?? {}) as Record<string, unknown>;
       const sections = Array.isArray(payload.sections)

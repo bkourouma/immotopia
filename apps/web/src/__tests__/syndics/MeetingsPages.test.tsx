@@ -128,6 +128,13 @@ const mockValidateFields = antdModule.__mocks.mockValidateFields;
 const mockMessage = antdModule.message;
 
 const mockApiClient = apiClient as any;
+const emptyMeetingsPage = {
+  data: {
+    success: true,
+    data: [],
+    pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+  }
+};
 
 const authValue: AuthContextType = {
   user: {
@@ -197,7 +204,8 @@ describe('Meetings pages', () => {
             createdAt: '',
             updatedAt: ''
           }
-        ]
+        ],
+        pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
       }
     } as never);
 
@@ -257,7 +265,7 @@ describe('Meetings pages', () => {
   // sur mobile, bouton OK masqué. La modale sépare désormais Date et Heure
   // de début (obligatoire) — handleCreate les recombine en `scheduledAt`.
   it('crée une assemblée en combinant la date et l’heure de début', async () => {
-    mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: [] } } as never);
+    mockApiClient.get.mockResolvedValueOnce(emptyMeetingsPage as never);
     mockApiClient.post.mockResolvedValueOnce({
       data: { success: true, data: { id: 'meeting-2' } }
     } as never);
@@ -293,7 +301,7 @@ describe('Meetings pages', () => {
 
   // Anomalie 3 (recette 17/10) : un 503 alors que l'AG était créée, puis un doublon au réessai.
   it('envoie une Idempotency-Key et la conserve au réessai après une erreur 503', async () => {
-    mockApiClient.get.mockResolvedValue({ data: { success: true, data: [] } } as never);
+    mockApiClient.get.mockResolvedValue(emptyMeetingsPage as never);
     mockApiClient.post
       .mockRejectedValueOnce({ response: { status: 503, data: '<html>503</html>' } })
       .mockResolvedValueOnce({
@@ -322,7 +330,7 @@ describe('Meetings pages', () => {
   });
 
   it('renouvelle la clé après un refus définitif (4xx)', async () => {
-    mockApiClient.get.mockResolvedValue({ data: { success: true, data: [] } } as never);
+    mockApiClient.get.mockResolvedValue(emptyMeetingsPage as never);
     mockApiClient.post
       .mockRejectedValueOnce({ response: { status: 400, data: { error: 'Date invalide' } } })
       .mockResolvedValueOnce({ data: { success: true, data: { id: 'meeting-4' } } } as never);
@@ -341,7 +349,7 @@ describe('Meetings pages', () => {
   });
 
   it('ne demande pas l envoi des convocations par défaut (sendConvocation=false) et n ouvre aucun suivi si NOT_SENT', async () => {
-    mockApiClient.get.mockResolvedValue({ data: { success: true, data: [] } } as never);
+    mockApiClient.get.mockResolvedValue(emptyMeetingsPage as never);
     mockApiClient.post.mockResolvedValueOnce({
       data: { success: true, data: { id: 'meeting-5' }, convocation: { status: 'NOT_SENT' } }
     } as never);
@@ -363,7 +371,7 @@ describe('Meetings pages', () => {
   });
 
   it('transmet sendConvocation=true quand la case est cochée et suit l envoi (SENDING)', async () => {
-    mockApiClient.get.mockResolvedValue({ data: { success: true, data: [] } } as never);
+    mockApiClient.get.mockResolvedValue(emptyMeetingsPage as never);
     mockApiClient.post.mockResolvedValueOnce({
       data: { success: true, data: { id: 'meeting-6' }, convocation: { status: 'SENDING' } }
     } as never);
@@ -379,7 +387,7 @@ describe('Meetings pages', () => {
   });
 
   it("refuse une heure de fin antérieure ou égale à l'heure de début", async () => {
-    mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: [] } } as never);
+    mockApiClient.get.mockResolvedValueOnce(emptyMeetingsPage as never);
 
     renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
     fireEvent.click(await screen.findByText('Nouvelle assemblée'));

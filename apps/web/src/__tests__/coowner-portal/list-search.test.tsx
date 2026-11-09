@@ -50,11 +50,87 @@ vi.mock('../../services/coowner-portal-service', async () => {
   return {
     ...actual,
     listMyLots: (...a: unknown[]) => listMyLots(...a),
-    getMyLotAccount: (...a: unknown[]) => getMyLotAccount(...a),
+    getMyLotAccount: async (lotId: string, params?: Record<string, unknown>) => {
+      const data = await getMyLotAccount(lotId, params);
+      const term = String(params?.search ?? '').toLowerCase();
+      const filtered = data.transactions.filter(
+        (tx: { label: string; type: string }) =>
+          (!term || tx.label.toLowerCase().includes(term)) && (!params?.type || tx.type === params.type)
+      );
+      const page = Number(params?.page ?? 1);
+      const limit = Number(params?.limit ?? 20);
+      return {
+        ...data,
+        transactions: filtered.slice((page - 1) * limit, page * limit),
+        pagination: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) }
+      };
+    },
     listMyChargeCalls: (...a: unknown[]) => listMyChargeCalls(...a),
+    listMyChargeCallsPage: async (params: Record<string, unknown>) => {
+      const all = await listMyChargeCalls();
+      const status = String(params.statuses ?? '')
+        .split(',')
+        .filter(Boolean);
+      const term = String(params.search ?? '').toLowerCase();
+      const filtered = all.filter(
+        (row: { period: string; status: string; lot?: { lotNumber: string } }) =>
+          (!term || row.period.toLowerCase().includes(term) || row.lot?.lotNumber.toLowerCase().includes(term)) &&
+          (!status.length || status.includes(row.status))
+      );
+      const page = Number(params.page);
+      const limit = Number(params.limit);
+      return {
+        items: filtered.slice((page - 1) * limit, page * limit),
+        pagination: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) }
+      };
+    },
     listMyDocuments: (...a: unknown[]) => listMyDocuments(...a),
     listMyMeetings: (...a: unknown[]) => listMyMeetings(...a),
-    listMyPayments: (...a: unknown[]) => listMyPayments(...a),
+    listMyMeetingsPage: async (params: Record<string, unknown>) => {
+      const all = await listMyMeetings();
+      const statuses = String(params.statuses ?? '')
+        .split(',')
+        .filter(Boolean);
+      const term = String(params.search ?? '').toLowerCase();
+      const filtered = all.filter(
+        (row: { status: string; location?: string; syndicate?: string; agenda?: Array<{ title: string }> }) =>
+          (!statuses.length || statuses.includes(row.status)) &&
+          (!term ||
+            [row.location, row.syndicate, ...(row.agenda ?? []).map(item => item.title)].some(value =>
+              value?.toLowerCase().includes(term)
+            ))
+      );
+      const page = Number(params.page);
+      const limit = Number(params.limit);
+      return {
+        items: filtered.slice((page - 1) * limit, page * limit),
+        pagination: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) }
+      };
+    },
+    listMyPayments: async (params: {
+      search?: string;
+      lotId?: string;
+      year?: number;
+      page?: number;
+      limit?: number;
+    }) => {
+      const result = await listMyPayments(params);
+      const term = params.search?.toLocaleLowerCase();
+      const filtered = result.items.filter(
+        (row: { reference?: string; method?: string; lot: { id: string; lotNumber: string }; paidAt: string }) =>
+          (!term ||
+            [row.reference, row.method, row.lot.lotNumber].some(value => value?.toLocaleLowerCase().includes(term))) &&
+          (!params.lotId || row.lot.id === params.lotId) &&
+          (!params.year || row.paidAt.startsWith(String(params.year)))
+      );
+      const page = params.page ?? 1;
+      const limit = params.limit ?? 20;
+      return {
+        ...result,
+        items: filtered.slice((page - 1) * limit, page * limit),
+        pagination: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) }
+      };
+    },
     listMyDeclarations: (...a: unknown[]) => listMyDeclarations(...a),
     listMyReceipts: (...a: unknown[]) => listMyReceipts(...a),
     getOnlinePaymentAvailability: (...a: unknown[]) => getOnlinePaymentAvailability(...a),
@@ -472,43 +548,32 @@ describe('Paiements et déclarations : préfixes « pa » et « dec »', () => {
     listMyPayments.mockResolvedValue(payments);
   });
 
-  it('filtre les paiements localement (référence, mode) sans appeler le serveur à nouveau', async () => {
+  it('envoie la recherche des paiements au serveur', async () => {
     mount('/copropriete/paiements');
 
     expect(await screen.findByText('REF-BETA', {}, WAIT)).toBeInTheDocument();
-    const appelsAvant = listMyPayments.mock.calls.length;
-
-    await userEvent.type(searchBox('Rechercher dans les paiements'), 'espèces');
+    await userEvent.type(searchBox('Rechercher dans les paiements'), 'REF-BETA');
     await waitFor(() => expect(screen.queryByText('REF-ALPHA')).not.toBeInTheDocument(), WAIT);
     expect(screen.getByText('REF-BETA')).toBeInTheDocument();
     expect(url()).toContain('pa.q=');
-    expect(listMyPayments.mock.calls.length).toBe(appelsAvant);
+    expect(listMyPayments).toHaveBeenCalledWith(expect.objectContaining({ search: 'REF-BETA', page: 1 }));
   });
 
-  it('signale que la recherche et l’export sont limités quand l’API renvoie 500 paiements', async () => {
+  it('affiche le total paginé au-delà de 500 paiements', async () => {
     listMyPayments.mockResolvedValue({
-      items: Array.from({ length: 500 }, (_, index) => payment({ id: `pay-${index}`, reference: `REF-${index}` })),
+      items: Array.from({ length: 501 }, (_, index) => payment({ id: `pay-${index}`, reference: `REF-${index}` })),
       advances: []
     });
     mount('/copropriete/paiements');
-
-    expect(
-      await screen.findByText(
-        'Seuls les 500 paiements les plus récents sont affichés. Les critères de recherche et l’export portent sur ces paiements.',
-        {},
-        WAIT
-      )
-    ).toBeInTheDocument();
-    await userEvent.type(searchBox('Rechercher dans les paiements'), 'REF-999');
-    expect(await screen.findByText('Aucun élément ne correspond aux filtres appliqués.', {}, WAIT)).toBeInTheDocument();
-    expect(screen.getByText(/Seuls les 500 paiements les plus récents/)).toBeInTheDocument();
+    expect(await screen.findByText('501 résultats', {}, WAIT)).toBeInTheDocument();
+    expect(listMyPayments).toHaveBeenCalledWith(expect.objectContaining({ page: 1, limit: 20 }));
   });
 
   it('envoie lot et exercice de l’URL à l’appel des paiements', async () => {
     mount('/copropriete/paiements?pa.lot=lot-1&pa.year=2026');
 
     expect(await screen.findByText('REF-ALPHA', {}, WAIT)).toBeInTheDocument();
-    expect(listMyPayments).toHaveBeenCalledWith({ lotId: 'lot-1', year: 2026 });
+    expect(listMyPayments).toHaveBeenCalledWith(expect.objectContaining({ lotId: 'lot-1', year: '2026', page: 1 }));
   });
 
   it('envoie le statut des déclarations au serveur, sans filtrer côté client', async () => {
@@ -557,7 +622,7 @@ describe('Paiements et déclarations : préfixes « pa » et « dec »', () => {
 
     await clearCriteria();
     expect(await screen.findByText('REF-BETA', {}, WAIT)).toBeInTheDocument();
-    expect(listMyPayments).toHaveBeenLastCalledWith({ lotId: undefined, year: undefined });
+    expect(listMyPayments).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, limit: 20 }));
     expect(url()).not.toContain('pa.lot');
   });
 

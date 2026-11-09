@@ -61,25 +61,18 @@ export function useOwnerStatementsList(tenantId: string | undefined) {
         type: 'select',
         label: t('Propriétaire'),
         loadOptions: async term => {
-          const { contacts } = await listContacts(tenantId as string, { search: term || undefined, limit: 20 });
-          // Limite connue : l'API des contacts n'a pas de filtre de rôle. On ne garde donc, en
-          // local, que les propriétaires actifs parmi les 20 contacts reçus : un propriétaire
-          // absent de ces 20 n'apparaît qu'en précisant la recherche.
-          const owners: SearchOption[] = contacts
-            .filter(contact => (contact.roles || []).some(role => role.active && role.role === 'PROPRIETAIRE'))
-            .map(contact => ({ value: contact.id, label: ownerLabel(contact) }));
-          if (owners.length > 0) return owners;
-          // Aucun propriétaire : option inerte qui invite à affiner. Le type SearchOption n'a pas
-          // de texte d'état vide ; `disabled` est transmis tel quel au sélecteur (besoin lot 0).
-          const hint: SearchOption & { disabled: true } = {
-            value: '',
-            label: t('Aucun propriétaire parmi les contacts trouvés : précisez le nom.'),
-            disabled: true
-          };
-          return [hint];
+          if (!tenantId) return [];
+          const { contacts } = await listContacts(tenantId, {
+            role: 'PROPRIETAIRE',
+            search: term || undefined,
+            page: 1,
+            limit: 20
+          });
+          return contacts.map(contact => ({ value: contact.id, label: ownerLabel(contact) }) satisfies SearchOption);
         },
         resolveLabel: async id => {
-          const { data } = await getContact(tenantId as string, id);
+          if (!tenantId) return id;
+          const { data } = await getContact(tenantId, id);
           return ownerLabel(data);
         }
       },

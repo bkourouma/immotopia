@@ -7,7 +7,7 @@ import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SaleCommissions } from '../../pages/sales/SaleCommissions';
 
-/** Commissions de vente : recherche locale (liste reçue en entier), totaux de la liste filtrée. */
+/** Commissions de vente : recherche et totaux filtrés au serveur. */
 
 const listSaleCommissions = vi.fn();
 vi.mock('../../services/sales-service', () => ({
@@ -73,31 +73,50 @@ function mount(url = '/tenant/agence-1/sales/commissions') {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  listSaleCommissions.mockResolvedValue({
-    items: [
-      commission(),
-      commission({
-        id: 'c2',
-        number: 'HT-2026-0002',
-        agreementNumber: 'CV-2026-0002',
-        payerName: 'Kouadio Yao',
-        payer: 'BUYER',
-        status: 'PAID',
-        amountInclTax: 3_000_000,
-        paidAmount: 3_000_000,
-        remainingAmount: 0,
-        issuedAt: '2026-11-01'
-      })
-    ],
-    totals: { amountInclTax: 4_000_000, paidAmount: 3_000_000, remainingAmount: 1_000_000 }
+  const all = [
+    commission(),
+    commission({
+      id: 'c2',
+      number: 'HT-2026-0002',
+      agreementNumber: 'CV-2026-0002',
+      payerName: 'Kouadio Yao',
+      payer: 'BUYER',
+      status: 'PAID',
+      amountInclTax: 3_000_000,
+      paidAmount: 3_000_000,
+      remainingAmount: 0,
+      issuedAt: '2026-11-01'
+    })
+  ];
+  listSaleCommissions.mockImplementation(async (_tenant: string, params: Record<string, any>) => {
+    const filtered = all.filter(
+      c =>
+        (!params.search ||
+          [c.number, c.payerName, c.propertyLabel].some(v => v.toLowerCase().includes(params.search.toLowerCase()))) &&
+        (!params.status || params.status.split(',').includes(c.status))
+    );
+    return {
+      items: filtered.slice((params.page - 1) * params.limit, params.page * params.limit),
+      total: filtered.length,
+      page: params.page,
+      pageSize: params.limit,
+      totals: filtered.reduce(
+        (acc, c) => ({
+          amountInclTax: acc.amountInclTax + c.amountInclTax,
+          paidAmount: acc.paidAmount + c.paidAmount,
+          remainingAmount: acc.remainingAmount + c.remainingAmount
+        }),
+        { amountInclTax: 0, paidAmount: 0, remainingAmount: 0 }
+      )
+    };
   });
 });
 
 describe('Commissions de vente : recherche multicritères', () => {
-  it('charge toute la liste sans paramètre serveur', async () => {
+  it('charge la première page avec paramètres serveur', async () => {
     mount();
     expect(await screen.findByText('HT-2026-0001', {}, T)).toBeInTheDocument();
-    expect(listSaleCommissions).toHaveBeenCalledWith('agence-1');
+    expect(listSaleCommissions).toHaveBeenCalledWith('agence-1', { page: 1, limit: 20 });
   });
 
   it('cherche dans le payeur et garde le terme dans l’URL', async () => {

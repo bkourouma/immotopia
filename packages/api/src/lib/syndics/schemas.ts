@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { dayEnd, dayStart, zDay, zSearch } from '../../utils/list-query-schemas';
+import { dayEnd, dayStart, dayOrderRefinement, zCsvEnum, zDay, zSearch } from '../../utils/list-query-schemas';
 import { checkPeriodBounds, periodBoundsFields } from './charge-allocation-schemas';
 import { httpUrl } from '../safe-url';
 import { MAX_MONTHLY_PENALTY_RATE } from './finance-utils';
@@ -11,9 +11,16 @@ export const paginationQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(20)
 });
 
-export const meetingsListQuerySchema = paginationQuerySchema.extend({
-  status: z.enum(['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional()
-});
+export const meetingsListQuerySchema = paginationQuerySchema
+  .extend({
+    status: zCsvEnum(['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const),
+    type: zCsvEnum(['ORDINARY', 'EXTRAORDINARY'] as const),
+    search: zSearch(),
+    from: zDay,
+    to: zDay,
+    paginated: z.enum(['true']).optional()
+  })
+  .superRefine(dayOrderRefinement('from', 'to'));
 
 export const dateRangeQuerySchema = z
   .object({

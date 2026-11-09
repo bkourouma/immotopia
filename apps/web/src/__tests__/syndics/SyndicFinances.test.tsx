@@ -11,8 +11,8 @@ import { SyndicFinances } from '../../pages/syndics/SyndicFinances';
 /**
  * Finances copropriété : cartes de synthèse + quatre onglets paresseux
  * (`?tab=`). Seul l'onglet affiché interroge l'API ; les appels de fonds sont
- * paginés et filtrés par le serveur (préfixe d’URL `ap.`), les paiements et
-impayés par une recherche locale (`pa.`, `im.`).
+ * paginés et filtrés par le serveur (préfixes d’URL `ap.`, `pa.`), les impayés
+ * par une recherche locale (`im.`).
  *
  * Le mock de `services/syndic-service` couvre TOUS les exports utilisés par la
  * page et ses onglets : Vitest refuse tout import qu'un `vi.mock` ne déclare
@@ -21,6 +21,7 @@ impayés par une recherche locale (`pa.`, `im.`).
 
 const getSyndicFinanceSummary = vi.fn();
 const listAllChargeCalls = vi.fn();
+const listSyndicPaymentsPage = vi.fn();
 const listChargeCallsPage = vi.fn();
 const getOverdueDashboard = vi.fn();
 const listPaymentReminders = vi.fn();
@@ -36,6 +37,10 @@ vi.mock('../../services/syndic-service', () => ({
   createSyndicateFund: vi.fn(),
   renameSyndicateFund: vi.fn(),
   adjustSyndicateFundBalance: vi.fn()
+}));
+
+vi.mock('../../services/syndic-payment-service', () => ({
+  listSyndicPaymentsPage: (...args: unknown[]) => listSyndicPaymentsPage(...args)
 }));
 
 vi.mock('../../services/syndic-provider-invoice-service', () => ({
@@ -181,6 +186,35 @@ function mockNonEmptyData(totalCharges = 2) {
     }
   });
   listAllChargeCalls.mockResolvedValue(charges);
+  const paymentItems = charges.flatMap(charge =>
+    charge.payments.map(payment => ({
+      id: payment.id,
+      amount: payment.amount,
+      payment: { paidAt: payment.paidAt, method: payment.method },
+      chargeCall: {
+        id: charge.id,
+        period: charge.period,
+        lotId: charge.lotId,
+        lot: { ...charge.lot, lotType: '', generalShares: 0 }
+      }
+    }))
+  );
+  listSyndicPaymentsPage.mockImplementation(
+    (_t: string, _s: string, query: { search?: string; page?: number; limit?: number }) => {
+      const items = query.search
+        ? paymentItems.filter(item =>
+            `${item.chargeCall.lot.owner.firstName} ${item.chargeCall.lot.owner.lastName}`
+              .toLowerCase()
+              .includes(query.search!.toLowerCase())
+          )
+        : paymentItems;
+      return Promise.resolve({
+        items,
+        methods: ['MOBILE_MONEY', 'VIREMENT'],
+        pagination: { page: query.page ?? 1, limit: query.limit ?? 20, total: items.length, totalPages: 1 }
+      });
+    }
+  );
   listSyndicateLots.mockResolvedValue([
     { id: 'lot-1', lotNumber: 'A01' },
     { id: 'lot-2', lotNumber: 'A02' }
@@ -281,14 +315,15 @@ describe('SyndicFinances — onglets paresseux', () => {
     );
   });
 
-  it('onglet paiements : charge la liste complète des appels, modes de paiement en français', async () => {
+  it('onglet paiements : charge une page d’affectations, modes de paiement en français', async () => {
     mockNonEmptyData();
     mount('/tenant/tenant-1/syndics/syndic-1/finances?tab=paiements');
 
     expect((await screen.findAllByText('Mobile money', {}, { timeout: 8000 })).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Virement bancaire').length).toBeGreaterThan(0);
     expect(screen.queryByText('MOBILE_MONEY')).not.toBeInTheDocument();
-    expect(listAllChargeCalls).toHaveBeenCalledTimes(1);
+    expect(listSyndicPaymentsPage).toHaveBeenCalledWith('tenant-1', 'syndic-1', { page: 1, limit: 20 });
+    expect(listAllChargeCalls).not.toHaveBeenCalled();
     expect(listChargeCallsPage).not.toHaveBeenCalled();
   });
 
@@ -369,19 +404,22 @@ describe('SyndicFinances — recherche des tableaux', () => {
     );
   });
 
-  it('onglet paiements : la recherche filtre la liste locale sans accent ni casse', async () => {
+  it('onglet paiements : la recherche part au serveur avec les critères de l’URL', async () => {
     mockNonEmptyData();
     const user = userEvent.setup({ delay: null });
     mount('/tenant/tenant-1/syndics/syndic-1/finances?tab=paiements');
     await screen.findByText('Fabrice Aka', {}, T);
-    expect(screen.getByText('Awa Koné')).toBeInTheDocument();
+    expect(await screen.findByText('Awa Koné', {}, T)).toBeInTheDocument();
 
-    await user.type(screen.getByPlaceholderText('Lot, copropriétaire, appel concerné…'), 'KONE');
+    await user.type(screen.getByPlaceholderText('Lot, copropriétaire, appel concerné…'), 'AWA');
     await waitFor(() => expect(screen.queryByText('Fabrice Aka')).not.toBeInTheDocument(), T);
-    expect(screen.getByText('Awa Koné')).toBeInTheDocument();
-    expect(screen.getByTestId('url').textContent).toContain('pa.q=KONE');
-    // Une recherche locale n’appelle pas le serveur une seconde fois.
-    expect(listAllChargeCalls).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('Awa Koné', {}, T)).toBeInTheDocument();
+    expect(screen.getByTestId('url').textContent).toContain('pa.q=AWA');
+    expect(listSyndicPaymentsPage).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', {
+      search: 'AWA',
+      page: 1,
+      limit: 20
+    });
   });
 
   it('onglet impayés : le critère « jours de retard » de l’URL filtre le tableau de bord', async () => {
@@ -392,27 +430,33 @@ describe('SyndicFinances — recherche des tableaux', () => {
   });
 });
 
-describe('SyndicFinances — plafond des paiements et relances serveur', () => {
+describe('SyndicFinances — pagination des paiements et relances serveur', () => {
   const T = { timeout: 8000 };
-  const BANDEAU = /Seuls les 5 000 appels de fonds les plus anciens/;
-
-  function appels(n: number) {
-    return Array.from({ length: n }, (_, i) => ({ ...charges[0], id: `charge-${i}` }));
-  }
-
-  it('onglet paiements : bandeau d’avertissement quand 5 000 appels sont atteints', async () => {
+  it('onglet paiements : la page 251 reste accessible au-delà de 5 000 affectations', async () => {
     mockNonEmptyData();
-    listAllChargeCalls.mockResolvedValue(appels(5000));
-    mount('/tenant/tenant-1/syndics/syndic-1/finances?tab=paiements');
-    expect(await screen.findByText(BANDEAU, {}, T)).toBeInTheDocument();
-  });
-
-  it('onglet paiements : pas de bandeau sous le plafond', async () => {
-    mockNonEmptyData();
-    listAllChargeCalls.mockResolvedValue(appels(4999));
-    mount('/tenant/tenant-1/syndics/syndic-1/finances?tab=paiements');
+    listSyndicPaymentsPage.mockImplementation(
+      async (_t: string, _s: string, query: { page: number; limit: number }) => ({
+        items: [
+          {
+            id: 'allocation-5001',
+            amount: 200_000,
+            payment: { paidAt: '2026-03-10T00:00:00.000Z', method: 'MOBILE_MONEY' },
+            chargeCall: {
+              id: charges[0].id,
+              period: charges[0].period,
+              lotId: charges[0].lotId,
+              lot: { ...charges[0].lot, lotType: '', generalShares: 0 }
+            }
+          }
+        ],
+        methods: ['MOBILE_MONEY'],
+        pagination: { page: query.page, limit: query.limit, total: 5001, totalPages: 251 }
+      })
+    );
+    mount('/tenant/tenant-1/syndics/syndic-1/finances?tab=paiements&pa.page=251&pa.limit=20');
     expect((await screen.findAllByText('Mobile money', {}, T)).length).toBeGreaterThan(0);
-    expect(screen.queryByText(BANDEAU)).not.toBeInTheDocument();
+    expect(listSyndicPaymentsPage).toHaveBeenCalledWith('tenant-1', 'syndic-1', { page: 251, limit: 20 });
+    expect(screen.queryByText(/Seuls les 5 000 appels/)).not.toBeInTheDocument();
   });
 
   function dashboardAvecRelances() {

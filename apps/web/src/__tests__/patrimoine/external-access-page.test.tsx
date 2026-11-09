@@ -27,6 +27,12 @@ const listExternalAccessLog = vi.fn();
 
 vi.mock('../../services/external-access-service', () => ({
   listExternalAccessGrants: (...a: unknown[]) => listExternalAccessGrants(...a),
+  listExternalAccessGrantsPage: async (tenantId: string, filters: Record<string, unknown>) => {
+    const all = await listExternalAccessGrants(tenantId, filters);
+    const page = Number(filters.page);
+    const limit = Number(filters.limit);
+    return { items: all.slice((page - 1) * limit, page * limit), total: all.length, page, limit };
+  },
   getExternalAccessScopeOptions: (...a: unknown[]) => getExternalAccessScopeOptions(...a),
   listExternalAccessPropertyDocuments: (...a: unknown[]) => listExternalAccessPropertyDocuments(...a),
   createExternalAccessGrant: (...a: unknown[]) => createExternalAccessGrant(...a),
@@ -34,7 +40,13 @@ vi.mock('../../services/external-access-service', () => ({
   updateExternalAccessGrant: (...a: unknown[]) => updateExternalAccessGrant(...a),
   revokeExternalAccessGrant: (...a: unknown[]) => revokeExternalAccessGrant(...a),
   sendExternalAccessLink: (...a: unknown[]) => sendExternalAccessLink(...a),
-  listExternalAccessLog: (...a: unknown[]) => listExternalAccessLog(...a)
+  listExternalAccessLog: (...a: unknown[]) => listExternalAccessLog(...a),
+  listExternalAccessLogPage: async (tenantId: string, grantId: string, filters: Record<string, unknown>) => {
+    const all = await listExternalAccessLog(tenantId, grantId, filters);
+    const page = Number(filters.page);
+    const limit = Number(filters.limit);
+    return { items: all.slice((page - 1) * limit, page * limit), total: all.length, page, limit };
+  }
 }));
 
 vi.mock('../../hooks/useAuth', () => ({
@@ -135,7 +147,7 @@ describe('<ExternalAccessPage> — liste', () => {
     monter();
 
     expect(await screen.findByText('Maître Koné')).toBeInTheDocument();
-    expect(listExternalAccessGrants).toHaveBeenCalledWith('agence-1');
+    expect(listExternalAccessGrants).toHaveBeenCalledWith('agence-1', expect.objectContaining({ page: 1, limit: 25 }));
     expect(screen.getByText('Actif')).toBeInTheDocument();
     expect(screen.getByText('Expire bientôt')).toBeInTheDocument();
     expect(screen.getByText('Révoqué')).toBeInTheDocument();
@@ -340,7 +352,7 @@ describe('<ExternalAccessPage> — révocation, renvoi, journal', () => {
     expect(within(dialog).getByText('Document téléchargé')).toBeInTheDocument();
     expect(within(dialog).getByText('acte-vente.pdf')).toBeInTheDocument();
     expect(within(dialog).getByText('203.0.113.9')).toBeInTheDocument();
-    expect(listExternalAccessLog).toHaveBeenCalledWith('agence-1', 'g1');
+    expect(listExternalAccessLog).toHaveBeenCalledWith('agence-1', 'g1', expect.objectContaining({ page: 1 }));
   });
 
   it('modifie un accès : charge le détail puis enregistre', async () => {

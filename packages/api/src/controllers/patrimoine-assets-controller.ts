@@ -19,6 +19,7 @@ import {
 import {
   createAsset,
   listAssets,
+  listAssetsPage,
   getAsset,
   updateAsset,
   disposeAsset,
@@ -65,7 +66,13 @@ function idParam(req: Request, name: string): string {
 
 export const listAssetsHandler = asyncHandler(async (req: Request, res: Response) => {
   const query = listAssetsQuerySchema.parse(req.query ?? {});
-  res.json({ data: await listAssets(requireTenantId(req), query) });
+  const tenantId = requireTenantId(req);
+  res.json({
+    data:
+      query.page !== undefined || query.limit !== undefined
+        ? await listAssetsPage(tenantId, query)
+        : await listAssets(tenantId, query)
+  });
 });
 
 export const createAssetHandler = asyncHandler(async (req: Request, res: Response) => {

@@ -71,9 +71,10 @@ describe('ClaimList : barre de recherche au-delà de 10 sinistres', () => {
     expect(screen.getAllByRole('button', { name: 'Détail' })).toHaveLength(10);
   });
 
-  it('signale la troncature à 200 sinistres, et seulement alors', async () => {
+  it('affiche les sinistres au-delà de 200 sans signaler de troncature', async () => {
     const { unmount } = monter(Array.from({ length: 200 }, (_, i) => sinistre(i + 1)));
-    expect(await screen.findByText(/La liste est limitée aux 200 sinistres/, {}, T)).toBeInTheDocument();
+    expect(await screen.findByRole('search', {}, T)).toBeInTheDocument();
+    expect(screen.queryByText(/La liste est limitée aux/)).not.toBeInTheDocument();
     unmount();
     monter(Array.from({ length: 3 }, (_, i) => sinistre(i + 1)));
     expect(screen.queryByText(/La liste est limitée aux/)).not.toBeInTheDocument();

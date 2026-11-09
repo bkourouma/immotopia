@@ -12,6 +12,7 @@ const mockPrisma: any = {
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
 import { PDFDocument, PDFPage } from 'pdf-lib';
+import { writeFileSync } from 'fs';
 import { runWithLanguage } from '../../src/i18n';
 import { buildAccountStatementPdf } from '../../src/lib/finance/statement-pdf';
 import { printCashVoucherHandler } from '../../src/controllers/finance-sites-controller';
@@ -62,6 +63,46 @@ function movement(index: number): any {
 }
 
 describe('relevé de compte financier (PDF)', () => {
+  it('produit un relevé arabe réaliste et paginé, exportable pour recette visuelle', async () => {
+    const movements = Array.from({ length: 72 }, (_, index) => ({
+      ...movement(index + 1),
+      label:
+        index % 2 === 0
+          ? `إيجار الشقة رقم ${index + 1} - Résidence des Palmiers - منطقة كوكودي أنغري`
+          : `Paiement ${index + 1} - شقة الطابق الثاني`,
+      amountBilled: index % 2 === 0 ? 125000 : -25000,
+      amountSettled: index % 2 === 0 ? 0 : 80000,
+      balanceAfter: 150000 - index * 2500
+    }));
+    mockPrisma.tenant.findUnique.mockResolvedValue({
+      name: 'وكالة النخيل - Agence Palmiers',
+      legalName: null,
+      address: 'شارع الحديقة، كوكودي - Abidjan',
+      city: 'Abidjan',
+      country: null,
+      contactPhone: '+225 27 00 00',
+      contactEmail: null,
+      logoUrl: null,
+      documentSignaturePath: null,
+      documentStampPath: null,
+      financeSettings: null
+    });
+    const buffer = await runWithLanguage('ar', () =>
+      buildAccountStatementPdf({
+        tenantId: TENANT,
+        accountLabel: 'السيدة مريم ديوماندي - Mariam Diomandé',
+        currency: 'XOF',
+        openingBalance: -125000,
+        closingBalance: 75000,
+        periodFrom: new Date('2026-01-01'),
+        periodTo: new Date('2026-12-31'),
+        filteredTotals: { debit: 500000, credit: 425000 },
+        movements
+      })
+    );
+    expect((await PDFDocument.load(buffer)).getPageCount()).toBeGreaterThanOrEqual(2);
+    if (process.env.PDF_AR_QA_OUTPUT) writeFileSync(process.env.PDF_AR_QA_OUTPUT, buffer);
+  });
   it('nomme les mouvements selon la nature du tiers et la langue du document', async () => {
     const base = {
       tenantId: TENANT,

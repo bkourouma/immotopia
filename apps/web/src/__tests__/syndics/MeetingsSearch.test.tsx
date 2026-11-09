@@ -16,11 +16,39 @@ import type { GeneralMeeting, MeetingLot, MeetingProxy, MeetingResolution } from
 
 const api = { listMeetings: vi.fn() };
 
+async function mockMeetingsPage(tenantId: string, syndicId: string, query: Record<string, string | number> = {}) {
+  const all = (await api.listMeetings(tenantId, syndicId, query)) as GeneralMeeting[];
+  const norm = (value: string) =>
+    value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  const items = all.filter(row => {
+    if (query.status && !String(query.status).split(',').includes(row.status)) return false;
+    if (query.type && !String(query.type).split(',').includes(row.type)) return false;
+    if (query.from && row.scheduledAt.slice(0, 10) < String(query.from)) return false;
+    if (query.to && row.scheduledAt.slice(0, 10) > String(query.to)) return false;
+    return (
+      !query.search ||
+      norm(`${row.location} ${row.type === 'ORDINARY' ? 'Ordinaire' : 'Extraordinaire'}`).includes(
+        norm(String(query.search))
+      )
+    );
+  });
+  const page = Number(query.page ?? 1);
+  const limit = Number(query.limit ?? 20);
+  return {
+    items: items.slice((page - 1) * limit, page * limit),
+    pagination: { page, limit, total: items.length, totalPages: Math.ceil(items.length / limit) }
+  };
+}
+
 vi.mock('../../services/syndic-service', async () => {
   const actual = await vi.importActual<typeof import('../../services/syndic-service')>('../../services/syndic-service');
   return {
     ...actual,
-    listMeetings: (...a: unknown[]) => api.listMeetings(...a)
+    listMeetings: (...a: unknown[]) => api.listMeetings(...a),
+    listMeetingsPage: mockMeetingsPage
   };
 });
 vi.mock('../../pages/syndics/useSyndicRouteContext', () => ({
@@ -73,7 +101,7 @@ const MEETINGS: GeneralMeeting[] = [
   meeting({ id: 'm3', location: 'Hall A', status: 'CANCELLED', scheduledAt: '2025-11-05T09:00:00.000Z' })
 ];
 
-describe('SyndicMeetings : recherche multicritères locale', () => {
+describe('SyndicMeetings : recherche multicritères serveur', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.listMeetings.mockResolvedValue(MEETINGS);
@@ -90,6 +118,11 @@ describe('SyndicMeetings : recherche multicritères locale', () => {
     expect(screen.getByText('Salle des fêtes')).toBeInTheDocument();
     expect(screen.queryByText("Cour de l'immeuble")).not.toBeInTheDocument();
     expect(new URLSearchParams(screen.getByTestId('url').textContent ?? '').get('q')).toBe('SALLE DES FETES');
+    expect(api.listMeetings).toHaveBeenLastCalledWith(
+      't1',
+      's1',
+      expect.objectContaining({ search: 'SALLE DES FETES', page: 1 })
+    );
   });
 
   it('le champ libre cherche aussi dans le type affiché', async () => {
@@ -139,7 +172,7 @@ describe('SyndicMeetings : recherche multicritères locale', () => {
     expect(screen.queryByText('Aucun résultat')).not.toBeInTheDocument();
   });
 
-  it('pagine localement par 20', async () => {
+  it('demande une autre page au serveur par 20', async () => {
     const many = Array.from({ length: 45 }, (_, index) =>
       meeting({ id: `x${index}`, location: `Lieu-${String(index + 1).padStart(3, '0')}` })
     );

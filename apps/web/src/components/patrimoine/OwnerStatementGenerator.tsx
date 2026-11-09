@@ -15,6 +15,9 @@ interface Payload {
 
 interface Props {
   ownerOptions: PropertyOption[];
+  ownerLoading?: boolean;
+  onOwnerSearch?: (term: string) => void;
+  onOwnerSelect?: (value?: string) => void;
   propertyOptions: PropertyOption[];
   propertyLoading?: boolean;
   loading?: boolean;
@@ -28,6 +31,9 @@ export const OwnerStatementGenerator: React.FC<Props> = ({
   propertyLoading,
   loading,
   onOwnerChange,
+  ownerLoading,
+  onOwnerSearch,
+  onOwnerSelect,
   onGenerate
 }) => {
   const [form] = Form.useForm<Payload>();
@@ -44,12 +50,18 @@ export const OwnerStatementGenerator: React.FC<Props> = ({
           <Select
             showSearch
             allowClear
-            optionFilterProp="label"
+            filterOption={false}
+            onSearch={onOwnerSearch}
+            onOpenChange={open => {
+              if (open) onOwnerSearch?.('');
+            }}
+            loading={ownerLoading}
             options={ownerOptions}
             placeholder={t('Sélectionnez le contact propriétaire')}
             onChange={(value?: string) => {
               form.setFieldValue('propertyIds', []);
               onOwnerChange?.(value);
+              onOwnerSelect?.(value);
             }}
           />
         </Form.Item>

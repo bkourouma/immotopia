@@ -3,6 +3,7 @@ import { t } from '../i18n';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
 import {
   accessLogQuerySchema,
+  grantsQuerySchema,
   createExternalAccessGrant,
   createGrantSchema,
   getExternalAccessGrantDetail,
@@ -41,7 +42,10 @@ function grantIdOf(req: Request): string {
 }
 
 export const listExternalAccessGrantsHandler = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, data: await listExternalAccessGrants(tenantIdOf(req)) });
+  res.json({
+    success: true,
+    data: await listExternalAccessGrants(tenantIdOf(req), grantsQuerySchema.parse(req.query))
+  });
 });
 
 export const getExternalAccessScopeOptionsHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -86,9 +90,9 @@ export const sendExternalAccessLinkHandler = asyncHandler(async (req: Request, r
 });
 
 export const listExternalAccessLogHandler = asyncHandler(async (req: Request, res: Response) => {
-  const query = accessLogQuerySchema.parse({ limit: req.query.limit });
+  const query = accessLogQuerySchema.parse(req.query);
   res.json({
     success: true,
-    data: await listExternalAccessLog(tenantIdOf(req), grantIdOf(req), query.limit)
+    data: await listExternalAccessLog(tenantIdOf(req), grantIdOf(req), query)
   });
 });

@@ -4,12 +4,13 @@
  */
 
 const sessionFindMany = jest.fn(async (..._a: any[]) => [] as any[]);
+const sessionCount = jest.fn(async (..._a: any[]) => 0);
 const userFindMany = jest.fn(async (..._a: any[]) => [] as any[]);
 const treasuryFindMany = jest.fn(async (..._a: any[]) => [] as any[]);
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
-    cashSession: { findMany: (...a: any[]) => sessionFindMany(...a) },
+    cashSession: { findMany: (...a: any[]) => sessionFindMany(...a), count: (...a: any[]) => sessionCount(...a) },
     user: { findMany: (...a: any[]) => userFindMany(...a) },
     treasuryAccount: { findMany: (...a: any[]) => treasuryFindMany(...a) }
   }
@@ -35,12 +36,19 @@ describe('listSessions — filtres', () => {
   it('sans paramètre : where identique à l’actuel', async () => {
     await listSessions('t1', {});
     expect(sessionWhere()).toEqual({ tenantId: 't1' });
-    expect((sessionFindMany.mock.calls[0][0] as any).take).toBe(200);
+    expect((sessionFindMany.mock.calls[0][0] as any).take).toBeUndefined();
   });
 
   it('chaînes vides ignorées', async () => {
     await listSessions('t1', { status: '', cashierUserId: '', from: '', to: '', treasuryAccountId: '' });
     expect(sessionWhere()).toEqual({ tenantId: 't1' });
+  });
+
+  it('l’export paginé évite de recharger la facette à chaque page', async () => {
+    const result = await listSessions('t1', { page: '2', limit: '20', includeCashiers: 'false' });
+    expect(result).toMatchObject({ items: [], total: 0, page: 2, pageSize: 20 });
+    expect(result).not.toHaveProperty('cashiers');
+    expect(sessionFindMany).toHaveBeenCalledTimes(1);
   });
 
   it('status, cashierUserId, treasuryAccountId, from, to atteignent le where avec tenantId', async () => {
@@ -146,7 +154,7 @@ describe('listSessions — search', () => {
 
   it('nom du caissier, insensible à la casse', async () => {
     const res = await listSessions('t1', { search: '  AWA kon ' });
-    expect(res).toHaveLength(200);
+    expect(res).toHaveLength(253);
     expect(res[0].cashierName).toBe('Awa Koné');
   });
 
@@ -201,9 +209,48 @@ describe('listSessions — search', () => {
     expect(res.map((s: any) => s.id)).not.toContain('x9');
   });
 
-  it('search vide : chemin inchangé, une requête, take 200', async () => {
+  it('search vide : chemin inchangé, une requête sans plafond', async () => {
     await listSessions('t1', { search: '   ' });
     expect(sessionFindMany).toHaveBeenCalledTimes(1);
-    expect((sessionFindMany.mock.calls[0][0] as any).take).toBe(200);
+    expect((sessionFindMany.mock.calls[0][0] as any).take).toBeUndefined();
+  });
+
+  it('la recherche paginée retrouve les lignes au-delà de l’ancien plafond', async () => {
+    const res = await listSessions('t1', { search: 'koné', page: '13', limit: '20' });
+    expect(res.total).toBe(253);
+    expect(res.items).toHaveLength(13);
+    expect(res.items[12].id).toBe('s1');
+    expect((sessionFindMany.mock.calls[1][0] as any).where.tenantId).toBe('t1');
+  });
+
+  it('propose un caissier historique absent de la page courante', async () => {
+    sessionCount.mockResolvedValueOnce(201);
+    sessionFindMany.mockImplementation(async (arg: any) => {
+      if (arg.distinct) {
+        return [{ cashierUserId: 'u1' }, { cashierUserId: 'u2' }];
+      }
+      return [row(201, { id: 's201', cashierUserId: 'u1' })];
+    });
+    userFindMany.mockImplementation(async () => [
+      { id: 'u1', fullName: 'Awa Koné', email: 'awa@x.ci' },
+      { id: 'u2', fullName: 'Fatou Diallo', email: 'fatou@x.ci', isActive: false }
+    ]);
+
+    const res = await listSessions('t1', { status: 'CLOSED', page: '11', limit: '20' });
+
+    expect(res.items).toHaveLength(1);
+    expect(res.items[0].cashierUserId).toBe('u1');
+    expect(res.cashiers).toEqual([
+      { userId: 'u1', name: 'Awa Koné' },
+      { userId: 'u2', name: 'Fatou Diallo' }
+    ]);
+    expect(sessionFindMany).toHaveBeenCalledWith({
+      where: { tenantId: 't1' },
+      distinct: ['cashierUserId'],
+      select: { cashierUserId: true }
+    });
+    expect(userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ select: { id: true, fullName: true, email: true } })
+    );
   });
 });

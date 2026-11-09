@@ -1,14 +1,14 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { App, Button, Card, Checkbox, Input, Modal, Radio, Select, Space, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createStockItem,
   createStockLocation,
   getStockSettings,
-  listStockItems,
+  listStockItemsPage,
   listStockLocations,
   setStockValuationMethod,
   updateStockItem,
@@ -36,6 +36,8 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
+import { useListSearch } from '../../hooks/useListSearch';
+import { collectAllPages } from '../../utils/table-export/collect';
 import type { SearchCriterion } from '../../utils/list-search';
 import { localizedList } from '../../i18n/localized';
 import { t } from '../../i18n/t';
@@ -149,15 +151,7 @@ const SAISIE_VIDE: SaisieArticle = {
   defaultCostCategoryId: undefined
 };
 
-// Accesseurs de la recherche locale : constantes de module (identité stable, filtrage mémoïsé).
-const TEXTE_ARTICLES = [(a: StockItem) => a.reference, (a: StockItem) => a.label, (a: StockItem) => a.category];
-const ACCESSEURS_ARTICLES = {
-  actif: (a: StockItem) => a.isActive,
-  unite: (a: StockItem) => a.unit,
-  famille: (a: StockItem) => a.category,
-  poste: (a: StockItem) => a.defaultCostCategoryId
-};
-
+// Les lieux conservent leur recherche locale ; les articles sont paginés côté serveur.
 const TEXTE_LIEUX = [
   (l: StockLocationView) => l.label,
   (l: StockLocationView) => l.siteLabel,
@@ -260,19 +254,84 @@ export const StockReferentiel: React.FC = () => {
     setSearchParams(suivants, { replace: true });
   };
 
-  // Les deux listes arrivent en entier (ni pagination ni filtre serveur utile) : la recherche est locale.
+  const [articleFacets, setArticleFacets] = useState<{
+    units: string[];
+    categories: string[];
+    costCategories: { id: string; label: string }[];
+  }>({ units: [], categories: [], costCategories: [] });
+  const optionsUnites = [...articleFacets.units]
+    .sort((a, b) => a.localeCompare(b))
+    .map(unite => ({ value: unite, label: unite }));
+  const optionsFamilles = [...articleFacets.categories]
+    .sort((a, b) => a.localeCompare(b))
+    .map(famille => ({ value: famille, label: famille }));
+  const optionsPostesProposes = articleFacets.costCategories.map(poste => ({ value: poste.id, label: poste.label }));
+  const criteresArticles: SearchCriterion[] = [
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Référence, désignation, famille…'),
+      api: 'search'
+    },
+    {
+      key: 'actif',
+      type: 'boolean',
+      label: t('Statut'),
+      primary: true,
+      tristate: true,
+      trueLabel: t('Actif'),
+      falseLabel: t('Inactif'),
+      api: 'isActive'
+    },
+    { key: 'unite', type: 'select', label: t('Unité'), options: optionsUnites, api: 'unit' },
+    { key: 'famille', type: 'select', label: t('Famille'), options: optionsFamilles, api: 'category' },
+    {
+      key: 'poste',
+      type: 'select',
+      label: t('Poste proposé à la sortie'),
+      options: optionsPostesProposes,
+      api: 'defaultCostCategoryId'
+    }
+  ];
+  const rechercheArticles = useListSearch({
+    paramPrefix: 'art',
+    criteria: criteresArticles,
+    apiNames: { sort: false }
+  });
+
   const {
-    data: articles,
+    data: pageArticles,
     isPending: articlesEnAttente,
     isFetching: articlesEnRechargement,
     error: erreurArticles,
     refetch: refetchArticles
   } = useQuery({
-    queryKey: queryKey('stock-items', tenantId, {}),
-    queryFn: () => listStockItems(tenantId as string),
+    queryKey: queryKey('stock-items', tenantId, rechercheArticles.apiParams),
+    queryFn: () => listStockItemsPage(tenantId as string, rechercheArticles.apiParams),
     enabled: Boolean(tenantId) && onglet === 'articles',
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
+  useEffect(() => {
+    if (!pageArticles) return;
+    if (pageArticles.facets) {
+      setArticleFacets(pageArticles.facets);
+      return;
+    }
+    // Réponses de l'atelier ancien : ses facettes se déduisent des lignes de démonstration.
+    setArticleFacets({
+      units: [...new Set(pageArticles.items.map(a => a.unit))],
+      categories: [...new Set(pageArticles.items.map(a => a.category).filter((v): v is string => Boolean(v)))],
+      costCategories: pageArticles.items.flatMap(a =>
+        a.defaultCostCategoryId
+          ? [{ id: a.defaultCostCategoryId, label: a.defaultCostCategoryLabel ?? a.defaultCostCategoryId }]
+          : []
+      )
+    });
+  }, [pageArticles]);
+  const articles = pageArticles?.items ?? [];
+  const totalArticles = pageArticles?.total ?? 0;
 
   const {
     data: lieux,
@@ -299,61 +358,8 @@ export const StockReferentiel: React.FC = () => {
   });
 
   // ---------------------------------------------------------------------
-  // Recherche locale des deux listes (préfixes d'URL `art` et `lieu`)
+  // Les lieux restent locaux ; les articles utilisent la recherche API.
   // ---------------------------------------------------------------------
-
-  // Options bornées par les articles chargés : unités, familles et postes réellement présents.
-  const optionsUnites = useMemo(
-    () =>
-      Array.from(new Set((articles ?? []).map(a => a.unit).filter(Boolean)))
-        .sort((a, b) => a.localeCompare(b))
-        .map(unite => ({ value: unite, label: unite })),
-    [articles]
-  );
-  const optionsFamilles = useMemo(
-    () =>
-      Array.from(new Set((articles ?? []).map(a => a.category).filter((c): c is string => Boolean(c))))
-        .sort((a, b) => a.localeCompare(b))
-        .map(famille => ({ value: famille, label: famille })),
-    [articles]
-  );
-  const optionsPostesProposes = useMemo(() => {
-    const parId = new Map<string, string>();
-    for (const a of articles ?? []) {
-      if (a.defaultCostCategoryId) {
-        parId.set(a.defaultCostCategoryId, a.defaultCostCategoryLabel ?? a.defaultCostCategoryId);
-      }
-    }
-    return Array.from(parId, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
-  }, [articles]);
-
-  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
-  const criteresArticles: SearchCriterion[] = [
-    {
-      key: 'q',
-      type: 'text',
-      label: t('Rechercher'),
-      placeholder: t('Référence, désignation, famille…')
-    },
-    {
-      key: 'actif',
-      type: 'boolean',
-      label: t('Statut'),
-      primary: true,
-      tristate: true,
-      trueLabel: t('Actif'),
-      falseLabel: t('Inactif')
-    },
-    { key: 'unite', type: 'select', label: t('Unité'), options: optionsUnites },
-    { key: 'famille', type: 'select', label: t('Famille'), options: optionsFamilles },
-    { key: 'poste', type: 'select', label: t('Poste proposé à la sortie'), options: optionsPostesProposes }
-  ];
-  const localArticles = useLocalListSearch<StockItem>(articles, {
-    paramPrefix: 'art',
-    criteria: criteresArticles,
-    text: TEXTE_ARTICLES,
-    accessors: ACCESSEURS_ARTICLES
-  });
 
   const criteresLieux: SearchCriterion[] = [
     {
@@ -828,9 +834,18 @@ export const StockReferentiel: React.FC = () => {
       ) : null}
 
       <DataView<StockItem>
-        // Le contrat de `listStockItems` ne pagine pas : la liste entière est filtrée et paginée ici.
-        {...localArticles.dataViewProps}
-        export={{ filename: t('Articles du stock'), fetchAll: localArticles.exportAll }}
+        items={articles}
+        total={totalArticles}
+        search={rechercheArticles.searchProps}
+        {...rechercheArticles.dataViewProps}
+        export={{
+          filename: t('Articles du stock'),
+          fetchAll: () =>
+            collectAllPages<StockItem>(async (page, limit) => {
+              const result = await listStockItemsPage(tenantId, { ...rechercheArticles.filterParams, page, limit });
+              return result;
+            })
+        }}
         scrollX={1200}
         loading={articlesEnAttente || contexteEnAttente}
         isReloading={articlesEnRechargement && !articlesEnAttente}

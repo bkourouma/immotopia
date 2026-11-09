@@ -15,7 +15,11 @@ vi.mock('../../services/syndic-service', async () => {
   const actual = await vi.importActual<typeof import('../../services/syndic-service')>('../../services/syndic-service');
   return {
     ...actual,
-    listMeetings: (...a: unknown[]) => api.listMeetings(...a)
+    listMeetings: (...a: unknown[]) => api.listMeetings(...a),
+    listMeetingsPage: async (...a: unknown[]) => {
+      const items = await api.listMeetings(...a);
+      return { items, pagination: { page: 1, limit: 20, total: items.length, totalPages: 1 } };
+    }
   };
 });
 

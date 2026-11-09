@@ -14,6 +14,7 @@
  */
 
 import { createHash } from 'crypto';
+import { t } from '../../i18n';
 
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { resolveDocumentBranding, type DocumentBranding } from '../documents/document-branding';
@@ -149,18 +150,23 @@ export function scopeRows(scope: unknown): ClauseRow[] {
 function feesText(data: ManagementMandateData): string {
   const terms = data.terms;
   if (!terms)
-    return 'Les honoraires de gestion sont ceux convenus entre le mandant et le mandataire, précisés par écrit.';
+    return t('Les honoraires de gestion sont ceux convenus entre le mandant et le mandataire, précisés par écrit.');
   const base =
     terms.base === 'ALL_COLLECTED'
-      ? "de l'ensemble des sommes encaissées pour le compte du mandant"
-      : 'des loyers encaissés pour le compte du mandant';
+      ? t("de l'ensemble des sommes encaissées pour le compte du mandant")
+      : t('des loyers encaissés pour le compte du mandant');
   if (terms.mode === 'FIXED' && terms.fixedAmount != null) {
-    return `Les honoraires de gestion sont fixés à un forfait de ${formatClauseMoney(terms.fixedAmount, data.currency)} par échéance de loyer encaissée.`;
+    return t('Les honoraires de gestion sont fixés à un forfait de {{amount}} par échéance de loyer encaissée.', {
+      amount: formatClauseMoney(terms.fixedAmount, data.currency)
+    });
   }
   if (terms.rate != null) {
-    return `Les honoraires de gestion sont fixés à ${String(terms.rate).replace('.', ',')} % ${base}.`;
+    return t('Les honoraires de gestion sont fixés à {{rate}} % {{base}}.', {
+      rate: String(terms.rate).replace('.', ','),
+      base
+    });
   }
-  return 'Les honoraires de gestion sont ceux convenus entre le mandant et le mandataire, précisés par écrit.';
+  return t('Les honoraires de gestion sont ceux convenus entre le mandant et le mandataire, précisés par écrit.');
 }
 
 /** Modèle du document : tout le texte qui sera imprimé. */
@@ -170,20 +176,28 @@ export function buildManagementMandateModel(
 ): ClauseDocumentModel {
   const agency = branding.issuer;
   const ownerName = data.owner.fullName?.trim() || data.owner.email;
-  const scope = data.scope;
+  // Localisation dans le modèle seulement : `data.scope` alimente l'empreinte
+  // du document signé et garde sa valeur canonique en français.
+  const scope = data.scope.map(row => ({
+    ...row,
+    value: row.value === 'Oui' ? t('Oui') : row.value === 'Non' ? t('Non') : row.value
+  }));
   const duration = data.endDate
-    ? `Du ${formatClauseDate(data.startDate)} au ${formatClauseDate(data.endDate)}.`
-    : `À compter du ${formatClauseDate(data.startDate)}, pour une durée indéterminée.`;
+    ? t('Du {{start}} au {{end}}.', { start: formatClauseDate(data.startDate), end: formatClauseDate(data.endDate) })
+    : t('À compter du {{start}}, pour une durée indéterminée.', { start: formatClauseDate(data.startDate) });
   return {
-    title: 'MANDAT DE GESTION',
-    subtitle: `Bien : ${data.property.title} (${data.property.internalReference})`,
+    title: t('MANDAT DE GESTION'),
+    subtitle: t('Bien : {{title}} ({{reference}})', {
+      title: data.property.title,
+      reference: data.property.internalReference
+    }),
     sections: [
       {
-        title: 'Les parties',
+        title: t('Les parties'),
         rows: [
-          { label: 'Le mandant (propriétaire)', value: `${ownerName} - ${data.owner.email}` },
+          { label: t('Le mandant (propriétaire)'), value: `${ownerName} - ${data.owner.email}` },
           {
-            label: 'Le mandataire (agence)',
+            label: t('Le mandataire (agence)'),
             value: [agency.legalName || agency.name, agency.address, agency.rccm ? `RCCM ${agency.rccm}` : null]
               .filter(Boolean)
               .join(' - ')
@@ -191,39 +205,53 @@ export function buildManagementMandateModel(
         ]
       },
       {
-        title: 'Le bien confié',
+        title: t('Le bien confié'),
         rows: [
-          { label: 'Désignation', value: data.property.title },
-          { label: 'Référence', value: data.property.internalReference },
-          { label: 'Adresse', value: [data.property.address, data.property.locationZone].filter(Boolean).join(', ') }
+          { label: t('Désignation'), value: data.property.title },
+          { label: t('Référence'), value: data.property.internalReference },
+          { label: t('Adresse'), value: [data.property.address, data.property.locationZone].filter(Boolean).join(', ') }
         ]
       },
-      { title: 'Durée du mandat', paragraphs: [duration] },
+      { title: t('Durée du mandat'), paragraphs: [duration] },
       {
-        title: 'Périmètre de la mission',
+        title: t('Périmètre de la mission'),
         ...(scope.length
           ? { rows: scope }
-          : { paragraphs: ['Gestion locative courante du bien, dans les limites fixées par le présent mandat.'] })
+          : { paragraphs: [t('Gestion locative courante du bien, dans les limites fixées par le présent mandat.')] })
       },
-      { title: 'Honoraires', paragraphs: [feesText(data)] },
+      { title: t('Honoraires'), paragraphs: [feesText(data)] },
       {
-        title: 'Conditions générales',
+        title: t('Conditions générales'),
         paragraphs: [
-          '1. Objet. Le mandant confie au mandataire la gestion du bien désigné ci-dessus : recherche de locataires, établissement des baux, encaissement des loyers et charges, délivrance des quittances et suivi courant du bien.',
-          "2. Obligations du mandataire. Il agit avec diligence dans l'intérêt du mandant, l'informe de tout fait important concernant le bien et lui rend compte de sa gestion et des sommes encaissées à intervalles réguliers.",
-          "3. Obligations du mandant. Il remet au mandataire les documents et informations nécessaires à la gestion, l'informe de tout changement concernant le bien et ne confie pas la même mission à un tiers pendant la durée du mandat sans en avertir le mandataire.",
-          "4. Travaux et dépenses. Les travaux dépassant l'entretien courant sont soumis à l'accord préalable du mandant, sauf urgence nécessaire à la conservation du bien.",
-          '5. Fin du mandat. Le mandat prend fin à son terme, par révocation du mandant ou par résiliation du mandataire, moyennant un préavis écrit. Les opérations en cours sont menées à leur terme et les comptes sont arrêtés à la date de fin.',
-          '6. Confidentialité et données personnelles. Chaque partie garde confidentielles les informations échangées et traite les données personnelles conformément à la réglementation applicable.',
-          '7. Loi applicable. Le présent mandat est régi par les lois et règlements en vigueur au lieu de situation du bien.'
+          t(
+            '1. Objet. Le mandant confie au mandataire la gestion du bien désigné ci-dessus : recherche de locataires, établissement des baux, encaissement des loyers et charges, délivrance des quittances et suivi courant du bien.'
+          ),
+          t(
+            "2. Obligations du mandataire. Il agit avec diligence dans l'intérêt du mandant, l'informe de tout fait important concernant le bien et lui rend compte de sa gestion et des sommes encaissées à intervalles réguliers."
+          ),
+          t(
+            "3. Obligations du mandant. Il remet au mandataire les documents et informations nécessaires à la gestion, l'informe de tout changement concernant le bien et ne confie pas la même mission à un tiers pendant la durée du mandat sans en avertir le mandataire."
+          ),
+          t(
+            "4. Travaux et dépenses. Les travaux dépassant l'entretien courant sont soumis à l'accord préalable du mandant, sauf urgence nécessaire à la conservation du bien."
+          ),
+          t(
+            '5. Fin du mandat. Le mandat prend fin à son terme, par révocation du mandant ou par résiliation du mandataire, moyennant un préavis écrit. Les opérations en cours sont menées à leur terme et les comptes sont arrêtés à la date de fin.'
+          ),
+          t(
+            '6. Confidentialité et données personnelles. Chaque partie garde confidentielles les informations échangées et traite les données personnelles conformément à la réglementation applicable.'
+          ),
+          t(
+            '7. Loi applicable. Le présent mandat est régi par les lois et règlements en vigueur au lieu de situation du bien.'
+          )
         ]
       }
     ],
     signatures: [
-      { role: 'Le mandant', name: ownerName },
-      { role: "Le mandataire (l'agence)", name: agency.name }
+      { role: t('Le mandant'), name: ownerName },
+      { role: t("Le mandataire (l'agence)"), name: agency.name }
     ],
-    closing: 'Document établi pour une signature électronique des parties.'
+    closing: t('Document établi pour une signature électronique des parties.')
   };
 }
 

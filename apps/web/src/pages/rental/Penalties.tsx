@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { App, Button, Modal, Drawer, Form, Input, InputNumber, Upload, Typography, Space, Dropdown } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ReloadOutlined, UploadOutlined, DownloadOutlined, MoreOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listPenalties,
   calculatePenalties,
@@ -15,8 +15,9 @@ import {
 } from '../../services/rental-service';
 import { saveBlob } from '../../utils/save-blob';
 import { montantSaisiProps } from '../../utils/montant-saisi';
-import { useLocalListSearch } from '../../utils/list-search';
-import { PENALTY_ACCESSORS, PENALTY_TEXT, penaltyCriteria } from './penalty-search';
+import { useListSearch } from '../../hooks/useListSearch';
+import { penaltyCriteria } from './penalty-search';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
@@ -36,14 +37,8 @@ const { Text } = Typography;
  * d'Ant Design. Les deux boîtes deviennent une `<Modal>` au-dessus de 992 px et
  * un `<Drawer>` pleine hauteur en dessous.
  *
- * **Une pagination qui n'existe pas.** Le front affichait un compteur bâti sur
- * `data.length` et une page unique. Vérification faite côté API :
- * `listPenaltiesHandler` **ignore `page` et `limit`** et renvoie toutes les
- * pénalités de l'agence. Le type `PenaltyListResponse` déclarait pourtant un
- * champ `pagination` qui n'arrive jamais. L'écran ne prétend plus paginer : il
- * affiche ce que l'API rend, et le dit. Une agence avec plusieurs années
- * d'historique recevra tout en une réponse — c'est une limite du endpoint, pas
- * de cet écran, et elle est consignée en errata.
+ * La liste applique les critères et la pagination côté API. L'export relit
+ * toutes les pages correspondant aux critères actifs.
  *
  * **Sept colonnes derrière `scroll={{ x: 'max-content' }}`** et trois boutons
  * pleins par ligne. Cinq colonnes désormais, une action explicite et le reste
@@ -133,6 +128,13 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
   const [form] = Form.useForm<{ montant: number; raison: string }>();
 
+  const search = useListSearch({
+    criteria: penaltyCriteria(),
+    defaultPageSize: 50,
+    apiNames: { sort: false },
+    ...(propLeaseId ? { paramPrefix: 'pen', ariaLabel: t('Rechercher dans les pénalités') } : {})
+  });
+  const filters = { leaseId, ...search.apiParams };
   const {
     data,
     isPending,
@@ -140,23 +142,15 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
     error: erreurRequete,
     refetch
   } = useQuery({
-    queryKey: queryKey('penalties', tenantId, { leaseId: leaseId ?? '' }),
-    queryFn: () => listPenalties(tenantId as string, { leaseId }),
+    queryKey: queryKey('penalties', tenantId, filters),
+    queryFn: () => listPenalties(tenantId as string, filters),
     enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
 
-  const penalites = useMemo(() => data?.data ?? [], [data]);
-
-  // Liste reçue en entier (l'API ne pagine pas) : recherche et pagination locales.
-  // Préfixe `pen` quand l'écran est un onglet du bail (plusieurs tableaux sur la page).
-  const local = useLocalListSearch<RentalPenalty>(penalites, {
-    criteria: penaltyCriteria(),
-    text: PENALTY_TEXT,
-    accessors: PENALTY_ACCESSORS,
-    defaultPageSize: 50,
-    ...(propLeaseId ? { paramPrefix: 'pen', ariaLabel: t('Rechercher dans les pénalités') } : {})
-  });
+  const penalites = data?.data ?? [];
+  const total = data?.pagination?.total ?? 0;
 
   // Une pénalité modifie l'échéance (montant dû, statut) : l'onglet Échéances et le bail se rechargent aussi.
   const rafraichir = async () => {
@@ -445,9 +439,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       <PageHeader
         title={t('Pénalités')}
         subtitle={
-          penalites.length > 0
-            ? t('{{length}} pénalité{{value}}', { length: penalites.length, value: penalites.length > 1 ? 's' : '' })
-            : undefined
+          total > 0 ? t('{{length}} pénalité{{value}}', { length: total, value: total > 1 ? 's' : '' }) : undefined
         }
         primaryAction={
           peutCalculer
@@ -462,9 +454,18 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       />
 
       <DataView<RentalPenalty>
-        // L'API ne pagine pas : recherche, pagination et export locaux (liste filtrée).
-        {...local.dataViewProps}
-        export={{ filename: t('Pénalités de retard'), fetchAll: local.exportAll }}
+        items={penalites}
+        total={total}
+        search={search.searchProps}
+        {...search.dataViewProps}
+        export={{
+          filename: t('Pénalités de retard'),
+          fetchAll: () =>
+            collectAllPages<RentalPenalty>(async (page, limit) => {
+              const result = await listPenalties(tenantId, { leaseId, ...search.filterParams, page, limit });
+              return { items: result.data, total: result.pagination.total };
+            })
+        }}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les pénalités.') : null}
