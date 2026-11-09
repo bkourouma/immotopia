@@ -27,7 +27,9 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Dette connue** — Le routeur `email-notification-config` n'exige aucune permission (tout collaborateur peut désactiver une alerte ; l'alerte de ce lot l'ignore) ; fichiers de QR orphelins à la suppression d'une agence ou d'une copropriété ; image non décodée ; pas de lien entre déclaration et compte de réception ; mention dans les PDF non faite (TQ12) ; sous-compte comptable à décider (TQ02).
 
-**Reste** — Recette navigateur sur la démo figée ; migration à appliquer au déploiement (`prisma migrate deploy`) ; QR et alias de l'agence pilote pour un paiement réel de faible montant (accord explicite du fondateur) ; questions au participant (TQ01).
+**Recette démo (2026-11-09 soir)** — `demo:sync 09b2926c --migrate` a appliqué la migration `20261109120000_receiving_accounts` (CHECK compris) sur la base de démo dédiée sans erreur ; puis le worktree démo `.claude/worktrees/demo` a été remis sur `477e96cc` (« Merge lot 12 », recette locative) à 21:46:30 par une autre session : les serveurs 8800 et 3300 servent ce code, pas le lot Q. Décision du fondateur : laisser l'autre recette finir. Recette navigateur du lot Q **non faite**. Ne pas relancer `demo:sync` tant que la démo est occupée ; reprendre avec `demo:sync <sha du lot Q> --migrate` (migration déjà appliquée).
+
+**Reste** — Recette navigateur du lot Q sur la démo figée (voir ci-dessus) ; migration à appliquer au déploiement (`prisma migrate deploy`) ; QR et alias de l'agence pilote pour un paiement réel de faible montant (accord explicite du fondateur) ; questions au participant (TQ01).
 
 ## docs/spec-048-pispi — 2026-11-09
 
