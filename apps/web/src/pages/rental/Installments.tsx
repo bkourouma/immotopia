@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { App, Button, Space, Modal, Drawer } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ThunderboltOutlined, CreditCardOutlined, PlusOutlined, LinkOutlined } from '@ant-design/icons';
+import { ThunderboltOutlined, CreditCardOutlined, PlusOutlined, LinkOutlined, BellOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listInstallments,
@@ -20,6 +20,8 @@ import {
 import { collectAllPages } from '../../utils/table-export/collect';
 import { PaymentForm } from '../../components/rental/PaymentForm';
 import { InstallmentPaymentLinkModal, canOfferPaymentLink } from '../../components/rental/InstallmentPaymentLinkButton';
+import { InstallmentReminderModal, canOfferReminder } from '../../components/rental/reminders/InstallmentReminderModal';
+import { ReminderBatchButton } from '../../components/rental/reminders/ReminderBatchButton';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { useListSearch } from '../../hooks/useListSearch';
@@ -116,6 +118,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
   const peutEncaisser =
     permissions === null || (permissions.has('RENTAL_PAYMENTS_CREATE') && permissions.has('RENTAL_PAYMENTS_ALLOCATE'));
   const peutProposerLien = permissions === null || permissions.has('RENTAL_PAYMENTS_CREATE');
+  const peutRelancer = permissions === null || permissions.has('RENTAL_PAYMENTS_ALLOCATE');
 
   // Onglet d'un bail : préfixe d'URL `ech` (les autres onglets ont leurs propres listes).
   const search = useListSearch({
@@ -146,6 +149,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
   const [enCours, setEnCours] = useState<string | null>(null);
   const [formulairePour, setFormulairePour] = useState<RentalInstallment | null>(null);
   const [lienPour, setLienPour] = useState<RentalInstallment | null>(null);
+  const [relancePour, setRelancePour] = useState<RentalInstallment | null>(null);
   const [action, setAction] = useState<'generer' | 'recalculer' | 'supprimer' | null>(null);
 
   /**
@@ -430,6 +434,11 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
                 {t('Envoyer un lien de paiement')}
               </Button>
             )}
+            {peutRelancer && canOfferReminder(resteAPayer(e), e.status, e.lease?.status) && (
+              <Button icon={<BellOutlined />} onClick={() => setRelancePour(e)}>
+                {t('Relancer')}
+              </Button>
+            )}
           </Space>
         );
       }
@@ -449,6 +458,9 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
               loading: action === 'generer'
             }
           : undefined
+      }
+      extra={
+        <ReminderBatchButton tenantId={tenantId} canAllocate={peutRelancer} leaseId={leaseId} onDone={rafraichir} />
       }
       secondaryActions={
         leaseId && peutGenerer
@@ -572,6 +584,9 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
                         : []),
                       ...(peutProposerLien && canOfferPaymentLink(reste, e.status, e.lease?.status)
                         ? [{ key: 'lien', label: t('Envoyer un lien de paiement'), onClick: () => setLienPour(e) }]
+                        : []),
+                      ...(peutRelancer && canOfferReminder(reste, e.status, e.lease?.status)
+                        ? [{ key: 'relance', label: t('Relancer'), onClick: () => setRelancePour(e) }]
                         : [])
                     ]
               }
@@ -587,6 +602,17 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
           open
           periodLabel={periode(lienPour)}
           onClose={() => setLienPour(null)}
+        />
+      )}
+
+      {relancePour && (
+        <InstallmentReminderModal
+          tenantId={tenantId}
+          installmentId={relancePour.id}
+          periodLabel={periode(relancePour)}
+          open
+          onClose={() => setRelancePour(null)}
+          onSent={() => void rafraichir()}
         />
       )}
 
