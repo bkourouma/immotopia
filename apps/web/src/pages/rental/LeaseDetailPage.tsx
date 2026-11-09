@@ -51,9 +51,10 @@ export const LeaseDetailPage: React.FC = () => {
   const { tenantId, leaseId } = useParams<{ tenantId: string; leaseId: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { permissions } = useMyMenuAccess(tenantId);
+  const { permissions, ready } = useMyMenuAccess(tenantId);
   // Modifier le bail et changer son statut exigent RENTAL_LEASES_EDIT (BUG-2026-11-03-011).
   const peutModifier = permissions === null || permissions.has('RENTAL_LEASES_EDIT');
+  const peutVoirPrelevements = ready && (permissions === null || permissions.has('RENTAL_DIRECT_DEBIT_VIEW'));
 
   // L'onglet principal actif vit dans l'URL (`tab`) : il survit au rechargement
   // (BUG-2026-11-04-041). Il n'est pas dans PARAMS_PROPRES_A_UN_ONGLET, donc la
@@ -573,7 +574,12 @@ export const LeaseDetailPage: React.FC = () => {
                 ),
                 children:
                   tenantId && leaseId ? (
-                    <LeaseLifecyclePanel tenantId={tenantId} leaseId={leaseId} onLeaseChanged={refreshLease} />
+                    <LeaseLifecyclePanel
+                      tenantId={tenantId}
+                      leaseId={leaseId}
+                      canEdit={ready && peutModifier}
+                      onLeaseChanged={refreshLease}
+                    />
                   ) : null
               },
               {
@@ -608,6 +614,7 @@ export const LeaseDetailPage: React.FC = () => {
                     targetId={leaseId}
                     defaultSigners={signatureSigners}
                     fileLabel={`bail-${lease.lease_number}`}
+                    canEdit={ready && peutModifier}
                   />
                 ) : null
               },
@@ -633,7 +640,9 @@ export const LeaseDetailPage: React.FC = () => {
               }
             ];
 
-            const tabItems = isSaleOnly ? allTabItems.filter(t => t.key === 'documents') : allTabItems;
+            const tabItems = allTabItems.filter(tab =>
+              isSaleOnly ? tab.key === 'documents' : tab.key !== 'direct-debit' || peutVoirPrelevements
+            );
 
             // BUG-2026-11-04-035 : sur une barre qui défile (375 px), le focus
             // qu'un appui donne à l'onglet fait défiler la barre (`scrollToTab`

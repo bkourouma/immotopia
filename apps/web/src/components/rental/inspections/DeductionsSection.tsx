@@ -2,10 +2,14 @@ import React from 'react';
 import { Button, Input, InputNumber, Space, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { InspectionDeduction } from '../../../services/lease-inspections-service';
-import { formatNumberWithSpaces, parseFormattedNumber } from '../../../lib/utils';
+import { formatMoney } from '../../primitives';
+import { montantSaisiProps } from '../../../utils/montant-saisi';
 import { t } from '../../../i18n/t';
 
 const { Text } = Typography;
+
+const formatDeduction = (amount: number) =>
+  formatMoney(amount, { currency: '', fractionDigits: Number.isInteger(amount) ? 0 : 2 });
 
 interface DeductionsSectionProps {
   deductions: InspectionDeduction[];
@@ -27,7 +31,7 @@ function amountHint(deduction: InspectionDeduction): string | null {
   const proposed = deduction.proposedAmount;
   if (proposed !== null && proposed !== undefined) {
     if (Number(deduction.amount) === proposed) return null;
-    return t('Proposé : {{montant}} FCFA', { montant: formatNumberWithSpaces(String(proposed)) });
+    return t('Proposé : {{montant}} FCFA', { montant: formatDeduction(proposed) });
   }
   if (deduction.source === 'MISSING') return t('Valeur de remplacement non renseignée : montant à saisir');
   return null;
@@ -38,7 +42,7 @@ export const DeductionsSection: React.FC<DeductionsSectionProps> = ({
   onChange,
   onProposeFromDamages
 }) => {
-  const total = deductions.reduce((sum, deduction) => sum + (Number(deduction.amount) || 0), 0);
+  const total = deductions.reduce((sum, deduction) => sum + Math.round((Number(deduction.amount) || 0) * 100), 0) / 100;
 
   const updateLine = (id: string, patch: Partial<InspectionDeduction>) => {
     if (!onChange) return;
@@ -87,21 +91,14 @@ export const DeductionsSection: React.FC<DeductionsSectionProps> = ({
 
             <div>
               {readOnly ? (
-                <Text>{formatNumberWithSpaces(String(deduction.amount))} FCFA</Text>
+                <Text>{formatDeduction(deduction.amount)} FCFA</Text>
               ) : (
                 <InputNumber
                   aria-label={t('Montant de la retenue')}
                   min={0}
                   step={1000}
                   value={deduction.amount}
-                  formatter={value => formatNumberWithSpaces(value?.toString() || '')}
-                  parser={
-                    (value => {
-                      if (!value) return 0;
-                      const parsed = parseFloat(parseFormattedNumber(value));
-                      return isNaN(parsed) ? 0 : parsed;
-                    }) as (displayValue: string | undefined) => number
-                  }
+                  {...montantSaisiProps}
                   onChange={value => updateLine(deduction.id, { amount: Number(value) || 0 })}
                 />
               )}
@@ -138,7 +135,7 @@ export const DeductionsSection: React.FC<DeductionsSectionProps> = ({
         </Space>
       )}
 
-      <Text strong>{t('Total : {{montant}} FCFA', { montant: formatNumberWithSpaces(String(total)) })}</Text>
+      <Text strong>{t('Total : {{montant}} FCFA', { montant: formatDeduction(total) })}</Text>
     </Space>
   );
 };

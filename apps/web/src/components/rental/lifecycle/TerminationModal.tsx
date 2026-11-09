@@ -66,9 +66,7 @@ export const TerminationModal: React.FC<TerminationModalProps> = ({ open, onCanc
   const handleFinish = (values: TerminationFormValues) => {
     confirm({
       title: t('Résilier ce bail ?'),
-      description: t(
-        'Cette action est définitive et annule les échéances pas encore facturées au-delà de la fin du bail.'
-      ),
+      description: t('Cette action est définitive. Les échéances des mois suivants sans aucun paiement sont annulées.'),
       okText: t('Résilier'),
       cancelText: t('Annuler'),
       danger: true,

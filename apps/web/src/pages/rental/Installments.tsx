@@ -425,7 +425,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
                 {t('Paiement…')}
               </Button>
             )}
-            {peutProposerLien && canOfferPaymentLink(resteAPayer(e), e.status) && (
+            {peutProposerLien && canOfferPaymentLink(resteAPayer(e), e.status, e.lease?.status) && (
               <Button icon={<LinkOutlined />} onClick={() => setLienPour(e)}>
                 {t('Envoyer un lien de paiement')}
               </Button>
@@ -570,7 +570,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
                       ...(peutEncaisser
                         ? [{ key: 'form', label: t('Paiement détaillé…'), onClick: () => setFormulairePour(e) }]
                         : []),
-                      ...(peutProposerLien && canOfferPaymentLink(reste, e.status)
+                      ...(peutProposerLien && canOfferPaymentLink(reste, e.status, e.lease?.status)
                         ? [{ key: 'lien', label: t('Envoyer un lien de paiement'), onClick: () => setLienPour(e) }]
                         : [])
                     ]

@@ -265,9 +265,9 @@ describe('Solde de tout compte', () => {
     getFinalSettlement.mockResolvedValue({
       depositHeld: 300000,
       arrears: 20000,
-      deductions: [{ label: 'Peinture à refaire', amount: 30000 }],
-      deductionsTotal: 30000,
-      balanceToRefund: 250000,
+      deductions: [{ label: 'Peinture à refaire', amount: 30000.5 }],
+      deductionsTotal: 30000.5,
+      balanceToRefund: 249999.5,
       exitInspectionStatus: 'FINALIZED'
     } satisfies FinalSettlement);
 
@@ -275,6 +275,8 @@ describe('Solde de tout compte', () => {
 
     expect(await screen.findByText(/À restituer au locataire/)).toBeInTheDocument();
     expect(screen.getByText('Peinture à refaire')).toBeInTheDocument();
+    expect(screen.getAllByText(/30\s000,50 FCFA/)).toHaveLength(2);
+    expect(screen.getByText(/À restituer au locataire.*249\s999,50 FCFA/)).toBeInTheDocument();
     expect(
       screen.queryByText("L'état des lieux de sortie n'est pas finalisé : les retenues peuvent encore évoluer.")
     ).not.toBeInTheDocument();

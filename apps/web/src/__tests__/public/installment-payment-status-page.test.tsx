@@ -127,6 +127,7 @@ describe('InstallmentPaymentStatusPage', () => {
     const first = render(<InstallmentPaymentStatusPage />);
     await flush();
     expect(screen.getByText('Le paiement a échoué')).toBeInTheDocument();
+    expect(screen.getByText(/Vous pouvez réessayer si le lien est encore valide/)).toBeInTheDocument();
     first.unmount();
 
     setUrl(`?paiement=${CODE}`);
@@ -134,6 +135,7 @@ describe('InstallmentPaymentStatusPage', () => {
     render(<InstallmentPaymentStatusPage />);
     await flush();
     expect(screen.getByText('Paiement annulé')).toBeInTheDocument();
+    expect(screen.getByText(/Vous pouvez réessayer si le lien est encore valide/)).toBeInTheDocument();
 
     await tick();
     expect(mockPost).toHaveBeenCalledTimes(2);

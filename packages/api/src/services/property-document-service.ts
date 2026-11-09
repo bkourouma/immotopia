@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto';
 import { getPropertyForTenant } from '../utils/property-tenant-guard';
 import { getProjectRoot } from '../utils/project-root';
 import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
+import { corrigerNomFichier } from '../utils/multipart-filename';
 
 /**
  * `filePath` (chemin disque absolu) n'est jamais renvoyé au client : select
@@ -132,6 +133,7 @@ export async function uploadDocument(
   const fileExtension = extensionForMimeType(file.mimetype);
   const fileName = `${documentType}-${randomUUID()}${fileExtension}`;
   const filePath = path.join(uploadDir, fileName);
+  const originalName = corrigerNomFichier(file.originalname);
 
   // Save file
   await fs.writeFile(filePath, file.buffer);
@@ -148,7 +150,7 @@ export async function uploadDocument(
       documentType,
       filePath: filePath,
       fileUrl: `/uploads/properties/${propertyId}/documents/${fileName}`,
-      fileName: file.originalname,
+      fileName: originalName,
       fileSize: file.size,
       mimeType: file.mimetype,
       expirationDate: expirationDate || null,
@@ -162,7 +164,7 @@ export async function uploadDocument(
     documentId: document.id,
     propertyId,
     documentType,
-    fileName: file.originalname,
+    fileName: originalName,
     expirationDate
   });
 
@@ -177,7 +179,7 @@ export async function uploadDocument(
       payload: {
         propertyId,
         documentType,
-        fileName: file.originalname,
+        fileName: originalName,
         expirationDate
       }
     });

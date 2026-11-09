@@ -305,6 +305,7 @@ export interface RentalInstallment {
   lease?: {
     id: string;
     lease_number: string;
+    status?: RentalLeaseStatus;
     property?: { id: string; internalReference?: string | null; title?: string | null; address?: string | null } | null;
     primaryRenter?: { id: string; user?: { fullName?: string | null; email?: string | null } | null } | null;
   } | null;

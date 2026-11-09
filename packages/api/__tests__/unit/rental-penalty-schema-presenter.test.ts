@@ -5,7 +5,8 @@
 jest.mock('../../src/utils/database', () => ({ prisma: {} }));
 
 import { updatePenaltySchema } from '../../src/lib/rental/penalty-schemas';
-import { presenterPenalite, corrigerNomFichier } from '../../src/services/rental-penalty-service';
+import { presenterPenalite } from '../../src/services/rental-penalty-service';
+import { corrigerNomFichier } from '../../src/utils/multipart-filename';
 
 describe('updatePenaltySchema (013)', () => {
   it('refuse 10 000 000 000 avec un message clair', () => {

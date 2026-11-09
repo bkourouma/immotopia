@@ -66,6 +66,12 @@ export function formatInspectionMoney(value: number): string {
   return `${rounded < 0 ? '-' : ''}${grouped} FCFA`;
 }
 
+function formatDeductionMoney(value: number): string {
+  const [whole, decimals] = value.toFixed(2).split('.');
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return `${grouped}${decimals === '00' ? '' : `,${decimals}`} FCFA`;
+}
+
 const CONDITION_LABELS: Record<Condition, string> = {
   NEW: 'Neuf',
   GOOD: 'Bon',
@@ -423,9 +429,9 @@ function deductionsTable(input: InspectionPdfInput): PdfTableSection {
       deduction.label,
       DEDUCTION_SOURCE_LABELS[deduction.source ?? 'MANUAL'] ?? '',
       labelOf(deduction),
-      formatInspectionMoney(Number(deduction.amount) || 0)
+      formatDeductionMoney(Number(deduction.amount) || 0)
     ]),
-    totals: input.deductions.length > 0 ? [{ label: 'Total des retenues', value: formatInspectionMoney(total) }] : []
+    totals: input.deductions.length > 0 ? [{ label: 'Total des retenues', value: formatDeductionMoney(total) }] : []
   };
 }
 

@@ -41,7 +41,7 @@ vi.mock('../../services/owner-accounts-service', () => ({
 // (administrateur d'agence). Un test les restreint pour le Comptable.
 let permissionsDetenues: Set<string> | null = null;
 vi.mock('../../hooks/useMenuAccess', () => ({
-  useMyMenuAccess: () => ({ disabled: new Set<string>(), permissions: permissionsDetenues }),
+  useMyMenuAccess: () => ({ disabled: new Set<string>(), permissions: permissionsDetenues, ready: true }),
   useOwnAssetsOnly: () => false
 }));
 
@@ -258,6 +258,7 @@ describe('Compte propriétaire — détail', () => {
     expect(within(ligne).getByText('Annulé')).toBeInTheDocument();
     expect(within(ligne).getByText('Erreur sur le montant')).toBeInTheDocument();
     // Un reversement annulé ne propose plus l'action « Annuler ».
+    expect(screen.getByRole('button', { name: /Nouveau reversement/ })).toBeInTheDocument();
     expect(within(ligne).queryByRole('button', { name: 'Annuler' })).not.toBeInTheDocument();
   });
 });
@@ -382,6 +383,7 @@ describe('Compte propriétaire — annulation réservée à qui peut valider (BU
     await screen.findByText('REV-2026-0001', {}, { timeout: 8000 });
     const ligne = screen.getByText('REV-2026-0001').closest('tr') as HTMLElement;
 
+    expect(screen.queryByRole('button', { name: /Nouveau reversement/ })).not.toBeInTheDocument();
     expect(within(ligne).getByRole('button', { name: 'Annuler' })).toBeInTheDocument();
   });
 });

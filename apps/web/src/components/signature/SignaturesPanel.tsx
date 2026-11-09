@@ -38,6 +38,7 @@ interface SignaturesPanelProps {
   externalProvider?: boolean;
   /** Le statut de la cible interdit un nouvel envoi (ex. compromis déjà signé) ; l'historique reste visible. */
   sendDisabled?: boolean;
+  canEdit?: boolean;
   /** Canaux admis à l'envoi (ex. jamais « sur place » pour un mandat de prélèvement). */
   allowedChannels?: SignerChannel[];
   /** Libellé du bouton d'envoi (« Envoyer pour signature » par défaut). */
@@ -69,6 +70,7 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
   providerRequired = false,
   externalProvider = false,
   sendDisabled = false,
+  canEdit = true,
   allowedChannels,
   sendLabel,
   pollMs,
@@ -169,9 +171,15 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Space style={{ justifyContent: 'space-between', width: '100%' }} wrap>
         <Text type="secondary">{t('Signature électronique du document, signataire par signataire.')}</Text>
-        <Button type="primary" onClick={() => setSendOpen(true)} disabled={hasOpen || providerRequired || sendDisabled}>
-          {sendLabel ?? t('Envoyer pour signature')}
-        </Button>
+        {canEdit && (
+          <Button
+            type="primary"
+            onClick={() => setSendOpen(true)}
+            disabled={hasOpen || providerRequired || sendDisabled}
+          >
+            {sendLabel ?? t('Envoyer pour signature')}
+          </Button>
+        )}
       </Space>
 
       {providerRequired && (
@@ -224,7 +232,7 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
                     {t('PDF signé')}
                   </Button>
                 )}
-                {open && (
+                {canEdit && open && (
                   <>
                     <Button size="small" onClick={() => void remind(request)}>
                       {t('Relancer')}
@@ -252,6 +260,7 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
                 return (
                   <List.Item
                     actions={
+                      canEdit &&
                       open &&
                       signer.channel === 'IN_PERSON' &&
                       signer.status !== 'SIGNED' &&
@@ -282,7 +291,7 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
       })}
 
       <SendForSignatureModal
-        open={sendOpen}
+        open={canEdit && sendOpen}
         kind={kind}
         targetId={targetId}
         defaultSigners={defaultSigners}
@@ -292,7 +301,7 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
       />
 
       <Modal
-        open={inPerson !== null}
+        open={canEdit && inPerson !== null}
         title={inPerson ? t('Signature sur place : {{nom}}', { nom: inPerson.signer.fullName }) : ''}
         onCancel={() => setInPerson(null)}
         footer={null}

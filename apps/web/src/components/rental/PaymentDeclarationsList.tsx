@@ -43,6 +43,7 @@ const METHOD_LABELS = (): Record<RentalPaymentMethod, string> => ({
 interface PaymentDeclarationsListProps {
   tenantId: string;
   leaseId?: string;
+  canReview?: boolean;
   onApproveSuccess?: () => void;
   onRejectSuccess?: () => void;
 }
@@ -50,6 +51,7 @@ interface PaymentDeclarationsListProps {
 export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = ({
   tenantId,
   leaseId,
+  canReview = true,
   onApproveSuccess,
   onRejectSuccess
 }) => {
@@ -344,10 +346,11 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
               type="text"
               icon={<FileImageOutlined />}
               onClick={() => handleViewProof(record)}
+              aria-label={t('Voir la preuve de paiement')}
               title={t('Voir la preuve de paiement')}
             />
           )}
-          {record.status === PaymentDeclarationStatus.PENDING && (
+          {canReview && record.status === PaymentDeclarationStatus.PENDING && (
             <>
               <Button type="primary" icon={<CheckCircleOutlined />} onClick={() => handleApprove(record)} size="small">
                 {t('Approuver')}

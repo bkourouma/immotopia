@@ -551,6 +551,7 @@ export async function listInstallments(
           select: {
             id: true,
             lease_number: true,
+            status: true,
             property: {
               select: {
                 id: true,
@@ -611,6 +612,7 @@ export async function getInstallmentById(tenantId: string, installmentId: string
         select: {
           id: true,
           lease_number: true,
+          status: true,
           property: {
             select: {
               id: true,

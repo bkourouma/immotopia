@@ -171,18 +171,18 @@ describe('Documents d’un bien — aucune réponse ne porte de chemin disque', 
     expect(res.body.data[0]).not.toHaveProperty('fileUrl');
   });
 
-  it('upload (201) : le document créé ne renvoie ni filePath ni fileUrl', async () => {
+  it('upload (201) : conserve le nom UTF-8 sans exposer filePath ni fileUrl', async () => {
     const res = await request(app)
       .post(`/tenants/${TENANT}/properties/${PROPERTY}/documents`)
       .field('documentType', 'INSURANCE')
       .attach('file', Buffer.from('%PDF-1.4 contenu de test'), {
-        filename: 'assurance.pdf',
+        filename: 'Pièce d’assurance.pdf',
         contentType: 'application/pdf'
       });
 
     expect(res.status).toBe(201);
     expect(findDiskPathLeaks(res.body)).toEqual([]);
-    expect(res.body.data.fileName).toBe('assurance.pdf');
+    expect(res.body.data.fileName).toBe('Pièce d’assurance.pdf');
     expect(res.body.data.documentType).toBe('INSURANCE');
     expect(res.body.data).not.toHaveProperty('filePath');
     expect(res.body.data).not.toHaveProperty('fileUrl');

@@ -273,8 +273,9 @@ export const CompteProprietaire: React.FC = () => {
   // Annuler un reversement exige FINANCE_DOCUMENTS_VALIDATE (l'API répond 403
   // sinon, après saisie du motif). `permissions` nul = aucune restriction
   // (administrateur d'agence) ou permissions pas encore connues.
-  const { permissions } = useMyMenuAccess(tenantId);
-  const peutAnnuler = permissions === null || permissions.has('FINANCE_DOCUMENTS_VALIDATE');
+  const { permissions, ready } = useMyMenuAccess(tenantId);
+  const peutReverser = ready && (permissions === null || permissions.has('FINANCE_DOCUMENTS_CREATE'));
+  const peutAnnuler = ready && (permissions === null || permissions.has('FINANCE_DOCUMENTS_VALIDATE'));
 
   const {
     data,
@@ -500,11 +501,11 @@ export const CompteProprietaire: React.FC = () => {
           { label: data.ownerName }
         ]}
         subtitle={data.email ?? undefined}
-        primaryAction={{
-          label: t('Nouveau reversement'),
-          icon: <PlusOutlined />,
-          onClick: ouvrirNouveauReversement
-        }}
+        primaryAction={
+          peutReverser
+            ? { label: t('Nouveau reversement'), icon: <PlusOutlined />, onClick: ouvrirNouveauReversement }
+            : undefined
+        }
       />
 
       <div style={{ marginBottom: 'var(--space-6)' }}>

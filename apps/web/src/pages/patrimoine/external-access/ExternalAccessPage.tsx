@@ -178,11 +178,7 @@ export const ExternalAccessPage: React.FC = () => {
   }
 
   const startCreate = () => {
-    if (!options) {
-      message.error(t('Les options de partage ne sont pas encore chargées, réessayez dans un instant.'));
-      return;
-    }
-    setWizard({ open: true, grant: null });
+    if (options) setWizard({ open: true, grant: null });
   };
   const grants = grantsQuery.data ?? [];
 
@@ -196,6 +192,8 @@ export const ExternalAccessPage: React.FC = () => {
         primaryAction={{
           label: t('Nouvel accès'),
           icon: <PlusOutlined />,
+          disabled: !options,
+          loading: optionsQuery.isPending,
           onClick: startCreate
         }}
       />
@@ -220,7 +218,7 @@ export const ExternalAccessPage: React.FC = () => {
         <StateBlock
           variant="empty"
           description={t('Aucun accès partagé pour le moment.')}
-          actions={[{ label: t('Nouvel accès'), primary: true, onClick: startCreate }]}
+          actions={options ? [{ label: t('Nouvel accès'), primary: true, onClick: startCreate }] : undefined}
         />
       ) : (
         <>
