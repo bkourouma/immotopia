@@ -134,7 +134,7 @@ FACULTATIF (champ existant), champs texte à plat :
 | `notes`             | texte, facultatif           | 500 max                                                                                                    |
 | `proofReadId`       | UUID, facultatif            | exclusif avec le fichier `proof`                                                                           |
 
-Les anciens champs (`paymentMethod`, etc.) restent tolérés et ignorés pour le canal : toute nouvelle
+Les anciens champs restent tolérés et ignorés pour le canal, SAUF `paymentMethod`, désormais lu (voir « Extension : autres modes » plus bas) : sans lui, toute nouvelle
 déclaration vaut `MOBILE_MONEY`.
 
 Réponse `201` : `data: TenantPortalDeclarationDto` avec `duplicateSuspected: boolean`.
@@ -155,6 +155,39 @@ Règles :
   `RENTAL_DECLARATION_PROOF_TOO_LARGE`, `RENTAL_DECLARATION_DUPLICATE_REFERENCE`,
   `RENTAL_DECLARATION_INSTALLMENT_INVALID`, `RENTAL_PROOF_READ_INVALID`, 404.
 - La capture n'est jamais servie au locataire. Limiteur de création : 10/min par compte.
+
+#### Extension : autres modes (décision utilisateur, additive)
+
+Le locataire (et le gestionnaire pour un tiers) peut aussi déclarer un paiement en espèces, chèque, virement,
+carte ou autre, pas seulement en mobile money. Tout ce qui précède reste vrai pour `MOBILE_MONEY`.
+
+- Champ optionnel `paymentMethod` : `MOBILE_MONEY` (défaut si absent) | `CASH` | `CHECK` | `BANK_TRANSFER` | `CARD`
+  | `OTHER` (`RentalDeclarationPaymentMethod`, valeurs de `RentalPaymentMethod` hors `DIRECT_DEBIT`). Mode inconnu :
+  400 `VALIDATION_ERROR`. Corps de la déclaration pour un tiers (`CreateDeclarationForThirdPartyBody`) : même champ.
+- `MOBILE_MONEY` : `receivingNumberId`, `operator` et `reference` obligatoires (400 `VALIDATION_ERROR` au corps sinon,
+  `RENTAL_DECLARATION_REFERENCE_INVALID` pour une référence illisible) ; numéro actif exigé
+  (`RENTAL_DECLARED_PAYMENT_DISABLED` si l'agence n'en a aucun) ; doublon bloquant inchangé (même numéro + même
+  référence). Les trois champs sont donc OPTIONNELS dans `DeclarePaymentBody` et `CreateDeclarationForThirdPartyBody`
+  (requis seulement pour le mobile money).
+- Autres modes : `receivingNumberId` et `operator` NON requis ; fournis avec un mode non mobile, ils sont REFUSÉS
+  (400 `VALIDATION_ERROR`). `reference` facultative ; si fournie, normalisée (invalide : 400
+  `RENTAL_DECLARATION_REFERENCE_INVALID`). Doublon bloquant (409 `RENTAL_DECLARATION_DUPLICATE_REFERENCE`) seulement si
+  une référence est fournie : même bail + même mode + même référence normalisée + même montant, déclaration PENDING ou
+  APPROVED. La ligne est écrite sans numéro de réception (`receiving_number_id`, `receiving_phone`, `mobile_operator` à
+  `null`). Plafond de montant, bornes de `paidAt`, réglage `enabled`, `proofRequired` et capture facultative :
+  inchangés.
+- Validation (`approve`) : le paiement créé porte le mode déclaré ; le compte de trésorerie est celui du corps s'il est
+  fourni, sinon aucun compte de numéro de réception (comportement historique, comme avant le lot) ; `mm_operator` nul.
+- DTO : `RentalPaymentDeclarationDto.paymentMethod?` et `TenantPortalDeclarationDto.paymentMethod?` (absent = `MOBILE_MONEY`
+  pour les anciens consommateurs ; l'API le renseigne toujours).
+- Disponibilité (§1.4) : `DeclarePaymentAvailabilityDto.allowedMethods?: RentalDeclarationPaymentMethod[]` :
+  `MOBILE_MONEY` seulement si au moins un numéro actif, les autres modes toujours tant que `enabled = true`, liste vide si
+  `enabled = false`. `available` vaut désormais `enabled` (la déclaration reste possible sans numéro actif, dans les
+  modes non mobiles) ; `receivingNumbers` reste la liste des numéros actifs ; `aiPrefillAvailable` exige toujours au moins
+  un numéro actif (la lecture IA ne sert qu'au mobile money).
+- E-mail immédiat : à la création (portail ou tiers), l'agence reçoit l'e-mail `PAYMENT_DECLARATION_AGENCY`
+  (administrateurs + propriétaire du bail) via `lib/rental/declared-payment/agency-notification.ts`, au mieux (une erreur
+  d'envoi ne casse jamais la création). Le récapitulatif horaire (§1.7) s'ajoute à cet envoi.
 
 ### 1.4 Disponibilité, mes déclarations, annulation (portail)
 
