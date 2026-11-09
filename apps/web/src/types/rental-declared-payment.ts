@@ -39,10 +39,21 @@ export const RENTAL_PAID_AT_MAX_AGE_DAYS = 90;
 // Types communs
 // ---------------------------------------------------------------------------
 
-/** Modes de paiement déclarables (valeurs de `PaymentMethod`, schema.prisma). */
-export type RentalDeclarationPaymentMethod = 'MOBILE_MONEY' | 'CASH' | 'CHECK' | 'BANK_TRANSFER' | 'CARD' | 'OTHER';
-
 export type RentalMobileMoneyOperator = 'ORANGE' | 'MTN' | 'MOOV' | 'WAVE' | 'OTHER';
+
+/**
+ * Extension « autres modes » (additive) : modes de paiement déclarables. Absent = MOBILE_MONEY.
+ * Valeurs de `RentalPaymentMethod` (hors DIRECT_DEBIT).
+ */
+export const RENTAL_DECLARATION_PAYMENT_METHODS = [
+  'MOBILE_MONEY',
+  'CASH',
+  'CHECK',
+  'BANK_TRANSFER',
+  'CARD',
+  'OTHER'
+] as const;
+export type RentalDeclarationPaymentMethod = (typeof RENTAL_DECLARATION_PAYMENT_METHODS)[number];
 
 /** Valeurs réelles de `PaymentDeclarationStatus` (schema.prisma) : CANCELED existe. */
 export type RentalDeclarationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELED';
@@ -167,6 +178,8 @@ export interface RentalPaymentDeclarationDto {
     phone: string;
   } | null;
   operator: RentalMobileMoneyOperator | null;
+  /** Extension : mode déclaré (MOBILE_MONEY par défaut). */
+  paymentMethod?: RentalDeclarationPaymentMethod;
   payerPhone: string | null;
   amount: number;
   /** Montant retenu à la validation ; null avant validation. */
@@ -239,10 +252,12 @@ export interface RejectDeclarationBody {
 export interface CreateDeclarationForThirdPartyBody {
   leaseId: string;
   installmentId?: string | null;
-  receivingNumberId: string;
-  operator: RentalMobileMoneyOperator;
+  /** Extension : mode (MOBILE_MONEY par défaut). Les trois champs suivants ne sont requis que pour MOBILE_MONEY. */
+  paymentMethod?: RentalDeclarationPaymentMethod;
+  receivingNumberId?: string;
+  operator?: RentalMobileMoneyOperator;
   /** Obligatoire. */
-  reference: string;
+  reference?: string;
   /** Plafonné à RENTAL_MAX_DECLARATION_AMOUNT. */
   amount: number;
   paidAt: string;
@@ -284,30 +299,28 @@ export interface DeclarePaymentAvailabilityDto {
   aiPrefillAvailable: boolean;
   maxAmount: number;
   instructions: string | null;
-  /** Modes permis (additif) ; absent = tous. MOBILE_MONEY seulement avec un numéro actif. */
-  allowedMethods?: string[];
+  /** Extension : modes déclarables (MOBILE_MONEY seulement si un numéro actif existe). */
+  allowedMethods?: RentalDeclarationPaymentMethod[];
 }
 
 export interface DeclarePaymentBody {
   installmentId?: string | null;
-  receivingNumberId: string;
-  operator: RentalMobileMoneyOperator;
+  /** Extension : mode (MOBILE_MONEY par défaut). Les trois champs suivants ne sont requis que pour MOBILE_MONEY. */
+  paymentMethod?: RentalDeclarationPaymentMethod;
+  receivingNumberId?: string;
+  operator?: RentalMobileMoneyOperator;
   /** Obligatoire (nouvelles déclarations). */
-  reference: string;
+  reference?: string;
   amount: number;
   paidAt: string;
   payerPhone?: string | null;
   notes?: string | null;
   /** Lecture IA dont la capture devient la preuve ; exclusif avec le fichier `proof`. */
   proofReadId?: string | null;
-  /** Défaut MOBILE_MONEY ; hors mobile money, ni receivingNumberId ni operator. */
-  paymentMethod?: RentalDeclarationPaymentMethod;
 }
 
 export interface TenantPortalDeclarationDto {
   id: string;
-  /** Absent = MOBILE_MONEY. */
-  paymentMethod?: RentalDeclarationPaymentMethod;
   status: RentalDeclarationStatus;
   leaseId: string;
   installment: {
@@ -321,6 +334,8 @@ export interface TenantPortalDeclarationDto {
     phone: string;
   } | null;
   payerPhone: string | null;
+  /** Extension : mode déclaré (MOBILE_MONEY par défaut). */
+  paymentMethod?: RentalDeclarationPaymentMethod;
   amount: number;
   acceptedAmount: number | null;
   paidAt: string;

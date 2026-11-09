@@ -12,6 +12,8 @@ import { withEffectiveAmounts } from '../lib/lease-lifecycle/effective-rent';
 import { logAuditEvent } from './audit-service';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { t } from '../i18n';
+import { pendingDeclarationsByInstallment } from '../lib/rental/declared-payment/declaration-queries';
+import type { PendingDeclarationSummary } from '../lib/rental/declared-payment/types';
 import { applyInstallmentListExtras, type InstallmentListExtras } from '../lib/rental/lease-list-filters';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 
@@ -450,6 +452,26 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
  * @param pagination - Pagination options
  * @returns List of installments with pagination
  */
+/**
+ * Champ additif `pendingDeclaration` des échéances : la plus ancienne
+ * déclaration de paiement `PENDING` de chacune. Simple décoration de lecture :
+ * en cas d'échec, les échéances sortent sans elle plutôt que de casser la liste.
+ */
+async function declarationsEnAttente(
+  tenantId: string,
+  installmentIds: string[]
+): Promise<Map<string, PendingDeclarationSummary>> {
+  try {
+    return await pendingDeclarationsByInstallment(tenantId, installmentIds);
+  } catch (error) {
+    logger.warn('Déclarations en attente des échéances indisponibles', {
+      tenantId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return new Map();
+  }
+}
+
 export async function listInstallments(
   tenantId: string,
   filters?: {
@@ -581,10 +603,15 @@ export async function listInstallments(
   ]);
 
   const maintenant = new Date();
+  const enAttente = await declarationsEnAttente(
+    tenantId,
+    installments.map(echeance => echeance.id)
+  );
   return {
     data: installments.map(echeance => ({
       ...echeance,
-      status: computeInstallmentStatus(echeance, maintenant, { emitDraft: false })
+      status: computeInstallmentStatus(echeance, maintenant, { emitDraft: false }),
+      pendingDeclaration: enAttente.get(echeance.id) ?? null
     })),
     pagination: {
       page,
@@ -645,7 +672,12 @@ export async function getInstallmentById(tenantId: string, installmentId: string
   if (!installment) return installment;
   // Même statut dérivé que la liste (BUG-2026-10-02-015) : sans cela le détail
   // affiche « Brouillon » pour une échéance que la liste dit « En retard ».
-  return { ...installment, status: computeInstallmentStatus(installment, new Date(), { emitDraft: false }) };
+  const enAttente = await declarationsEnAttente(tenantId, [installment.id]);
+  return {
+    ...installment,
+    status: computeInstallmentStatus(installment, new Date(), { emitDraft: false }),
+    pendingDeclaration: enAttente.get(installment.id) ?? null
+  };
 }
 
 /**

@@ -52,6 +52,7 @@ import {
   listPaymentsHandler,
   onlineCheckHandler
 } from '../controllers/rental-payment-controller';
+import { getDeclarationProofHandler, pendingCountHandler } from '../controllers/rental-declared-payment-controller';
 import {
   approvePaymentDeclarationHandler,
   rejectPaymentDeclarationHandler,
@@ -79,10 +80,7 @@ import {
   updateDocumentStatusHandler
 } from '../controllers/rental-document-controller';
 import { uploadDocument } from '../middleware/upload-middleware';
-import {
-  downloadPaymentDeclarationProofHandler,
-  downloadPenaltyJustificationHandler
-} from '../controllers/private-file-controller';
+import { downloadPenaltyJustificationHandler } from '../controllers/private-file-controller';
 
 const router = Router({ mergeParams: true });
 
@@ -147,12 +145,14 @@ router.post('/:tenantId/rental/payments/:paymentId/online-check', requirePayment
 
 // Payment Declaration routes
 router.get('/:tenantId/rental/payment-declarations', requirePaymentsView, listPaymentDeclarationsHandler);
+// Avant `/:declarationId` (spec 049, lot 1) : sinon `pending-count` serait lu comme un identifiant.
+router.get('/:tenantId/rental/payment-declarations/pending-count', requirePaymentsView, pendingCountHandler);
 router.get('/:tenantId/rental/payment-declarations/:declarationId', requirePaymentsView, getPaymentDeclarationHandler);
 // Preuve jointe par le locataire : jamais servie en statique (lib/rental/proof-files.ts).
 router.get(
   '/:tenantId/rental/payment-declarations/:declarationId/proof',
   requirePaymentsView,
-  downloadPaymentDeclarationProofHandler
+  getDeclarationProofHandler
 );
 router.post(
   '/:tenantId/rental/payment-declarations/:declarationId/approve',
