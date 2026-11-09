@@ -17,6 +17,16 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## docs/spec-048-pispi — 2026-11-09
+
+**État** — Étude, spec, plan et tâches de l'intégration PI-SPI (BCEAO), documentation seule, aucun code. Branche `docs/spec-048-pispi` depuis `origin/main` `aa857a25`. Fichiers : `docs/integrations/PI-SPI-ETUDE.md`, `specs/048-paiement-instantane-pispi/{spec,plan,tasks}.md`. Sources : portail développeur `developer.pispi.bceao.int` (rendu par Chrome ; `WebFetch` ne voit que le titre) et communiqués BCEAO.
+
+**Décisions du fondateur (2026-11-09)** — D1 : agences clientes directes de leur participant. D2 : participant de type opérateur de monnaie électronique (opérateur à choisir). Ouvertes : D3 mTLS du webhook, D4 alias du payeur, D5 frais de l'API Business.
+
+**Reste** — Lot P0 hors code : choisir l'opérateur, vérifier son API Business homologuée et le plafond de son compte professionnel, ouvrir le compte sandbox, valider au playground, sonder BMI/PaySecureHub. Puis lot P1 (socle, simulateur, configuration par agence).
+
+**Pièges** — PI-SPI interdit le prélèvement (la spec 042 n'est pas remplaçable) ; QR interdit en paiement en ligne ; webhooks en mTLS avec la CA de la BCEAO ; texte de l'Avis 0019, grille tarifaire et noms des 8 API ivoiriennes non lus ; ne pas confondre la liste des 8 acteurs du lancement (2025) avec celle des API Business homologuées (2026-09-16).
+
 ## Recette du scénario de gestion locative — 2026-11-09
 
 **État** — Branche locale `codex/recette-immotopia-2026-11-09` issue de `main` à `333a357e`. Correctifs et tests dans `259e03c3`. La branche a été réconciliée avec `origin/main` à `0794d6b1` pour la PR #199. Le PDF conserve la traduction et les retenues fractionnaires. Les modifications du wiki ont été reportées sur le classeur de main. Le parcours navigateur de création, signature, facturation, déclaration et affectation du virement, relevé, rapport et reversement a abouti sur `BAIL-2026-0126`. Le détail des cas rejoués, des écarts de données de test et du périmètre restant figure dans [le bilan de recette](../recette/gestion-locative/SCENARIO-2026-11-09.md).
