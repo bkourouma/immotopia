@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { App, Alert, Button, Card, Space, Tag, Typography } from 'antd';
 import { OwnerStatementGenerator } from '../../../components/patrimoine/OwnerStatementGenerator';
@@ -59,41 +60,62 @@ export const OwnerStatementsPage: React.FC = () => {
   const ownAssetsOnly = useOwnAssetsOnly(effectiveTenantId, true);
   const list = useOwnerStatementsList(effectiveTenantId);
 
-  const [loading, setLoading] = useState(true);
   const [createLoading, setCreateLoading] = useState(false);
   const [sendLoadingId, setSendLoadingId] = useState<string | null>(null);
   const [recomputeLoadingId, setRecomputeLoadingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [ownerOptions, setOwnerOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [propertyOptions, setPropertyOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [selectedOwnerId, setSelectedOwnerId] = useState<string>();
   const [propertyLoading, setPropertyLoading] = useState(false);
-
-  const loadData = async () => {
-    if (!effectiveTenantId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const contacts = await listContacts(effectiveTenantId, { page: 1, limit: 500 });
-      const owners = contacts.contacts.filter(contact =>
-        (contact.roles || []).some(role => role.active && role.role === 'PROPRIETAIRE')
-      );
-      setOwnerOptions(
-        owners.map(owner => ({
-          value: owner.id,
-          label: `${owner.firstName} ${owner.lastName}`.trim() || owner.email || owner.id
-        }))
-      );
-    } catch (e: any) {
-      setError(statementApiErrorMessage(e, t('Erreur de chargement des relevés')));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [ownerSearch, setOwnerSearch] = useState<{ tenantId: string; term: string } | null>(null);
+  const [debouncedOwnerSearch, setDebouncedOwnerSearch] = useState<{ tenantId: string; term: string } | null>(null);
+  const [selectedOwner, setSelectedOwner] = useState<{ tenantId: string; value: string; label: string } | null>(null);
+  const ownerTerm = ownerSearch && ownerSearch.tenantId === effectiveTenantId ? ownerSearch.term : '';
+  const debouncedTerm =
+    debouncedOwnerSearch && debouncedOwnerSearch.tenantId === effectiveTenantId ? debouncedOwnerSearch.term : '';
 
   useEffect(() => {
-    void loadData();
+    setOwnerSearch(null);
+    setDebouncedOwnerSearch(null);
+    setSelectedOwner(null);
+    setSelectedOwnerId(undefined);
+    setPropertyOptions([]);
   }, [effectiveTenantId]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (effectiveTenantId) setDebouncedOwnerSearch({ tenantId: effectiveTenantId, term: ownerTerm });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [effectiveTenantId, ownerTerm]);
+
+  const ownersQuery = useQuery({
+    queryKey: ['owner-statement-owner-options', effectiveTenantId, debouncedTerm],
+    queryFn: () =>
+      listContacts(effectiveTenantId as string, {
+        role: 'PROPRIETAIRE',
+        search: debouncedTerm || undefined,
+        page: 1,
+        limit: 20
+      }),
+    enabled: Boolean(effectiveTenantId)
+  });
+  const remoteOwnerOptions = useMemo(
+    () =>
+      (ownersQuery.data?.contacts ?? []).map(owner => ({
+        value: owner.id,
+        label: `${owner.firstName ?? ''} ${owner.lastName ?? ''}`.trim() || owner.email || owner.id
+      })),
+    [ownersQuery.data]
+  );
+  const selectableOwners = useMemo(() => {
+    if (
+      !selectedOwner ||
+      selectedOwner.tenantId !== effectiveTenantId ||
+      remoteOwnerOptions.some(option => option.value === selectedOwner.value)
+    )
+      return remoteOwnerOptions;
+    return [{ value: selectedOwner.value, label: selectedOwner.label }, ...remoteOwnerOptions];
+  }, [effectiveTenantId, remoteOwnerOptions, selectedOwner]);
 
   useEffect(() => {
     if (!effectiveTenantId || !selectedOwnerId) {
@@ -129,7 +151,6 @@ export const OwnerStatementsPage: React.FC = () => {
     try {
       await createOwnerStatement(effectiveTenantId, payload);
       message.success(t('Relevé généré'));
-      await loadData();
       void list.refetch();
     } catch (e: any) {
       message.error(statementApiErrorMessage(e, t('Échec de génération du relevé')));
@@ -148,7 +169,6 @@ export const OwnerStatementsPage: React.FC = () => {
       } else {
         message.warning(sendReasonLabel(result.reason));
       }
-      await loadData();
       void list.refetch();
     } catch (e: any) {
       message.error(statementApiErrorMessage(e, t("Échec de l'envoi du relevé")));
@@ -163,7 +183,6 @@ export const OwnerStatementsPage: React.FC = () => {
     try {
       await recomputeOwnerStatement(effectiveTenantId, statementId);
       message.success(t('Relevé recalculé. Vérifiez-le avant de le renvoyer au propriétaire.'));
-      await loadData();
       void list.refetch();
     } catch (e: any) {
       message.error(statementApiErrorMessage(e, t('Échec du recalcul du relevé')));
@@ -175,6 +194,9 @@ export const OwnerStatementsPage: React.FC = () => {
   // Toute l'agence, ancien calcul et non payé : compté par le serveur, hors critères et pagination.
   const legacyCount = list.legacyUnpaidCount;
   const listError = list.error ? statementApiErrorMessage(list.error, t('Erreur de chargement des relevés')) : null;
+  const ownerError = ownersQuery.isError
+    ? statementApiErrorMessage(ownersQuery.error, t('Erreur de chargement des relevés'))
+    : null;
 
   if (ownAssetsOnly) {
     return (
@@ -199,7 +221,7 @@ export const OwnerStatementsPage: React.FC = () => {
           <Text type="secondary">{t('Génération, suivi et envoi des relevés propriétaires')}</Text>
         </div>
 
-        {error || listError ? <Alert type="error" showIcon message={error || listError} /> : null}
+        {listError || ownerError ? <Alert type="error" showIcon message={listError || ownerError} /> : null}
         {legacyCount > 0 ? (
           <Alert
             type="warning"
@@ -211,7 +233,16 @@ export const OwnerStatementsPage: React.FC = () => {
           />
         ) : null}
         <OwnerStatementGenerator
-          ownerOptions={ownerOptions}
+          key={effectiveTenantId}
+          ownerOptions={selectableOwners}
+          ownerLoading={ownersQuery.isFetching}
+          onOwnerSearch={term => {
+            if (effectiveTenantId) setOwnerSearch({ tenantId: effectiveTenantId, term });
+          }}
+          onOwnerSelect={value => {
+            const selected = selectableOwners.find(option => option.value === value);
+            setSelectedOwner(effectiveTenantId && selected ? { tenantId: effectiveTenantId, ...selected } : null);
+          }}
           propertyOptions={propertyOptions}
           propertyLoading={propertyLoading}
           loading={createLoading}
@@ -225,13 +256,14 @@ export const OwnerStatementsPage: React.FC = () => {
         <Card title={t('Historique des relevés')}>
           {!listError ? (
             <Table
+              key={effectiveTenantId}
               exportFilename={t('Historique des relevés')}
               exportFetchAll={list.exportFetchAll}
               search={list.search.searchProps}
               pagination={list.search.tablePagination(list.total)}
               locale={list.search.isFiltered ? undefined : { emptyText: t('Aucun relevé de gérance pour le moment.') }}
               scroll={{ x: 'max-content' }}
-              loading={loading || list.isFetching}
+              loading={list.isFetching}
               rowKey="id"
               dataSource={list.statements}
               columns={[

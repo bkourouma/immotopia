@@ -24,7 +24,10 @@ function checkRange(value: { from?: Date; to?: Date }, ctx: z.RefinementCtx) {
 /** `GET /paiements?lotId=&year=` */
 export const coOwnerPaymentsQuerySchema = z.object({
   lotId: optionalUuid,
-  year: yearSchema.optional()
+  year: yearSchema.optional(),
+  search: zSearch(),
+  page: z.coerce.number().int().min(1).max(10000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20)
 });
 
 /** `GET /quittances?search=&lotId=&kind=&from=&to=&page=&limit=` */

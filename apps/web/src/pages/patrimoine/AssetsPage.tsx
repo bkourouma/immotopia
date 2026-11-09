@@ -1,9 +1,14 @@
-import React, { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Alert, Space, Tag, Typography } from 'antd';
+import React, { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Space, Tag, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { listAssets, type AssetClass, type AssetDto, type AssetStatus } from '../../services/patrimoine-assets-service';
+import {
+  listAssetsPage,
+  type AssetClass,
+  type AssetDto,
+  type AssetStatus
+} from '../../services/patrimoine-assets-service';
 import { useAuth } from '../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, SkeletonList, StateBlock, Table } from '../../components/primitives';
@@ -18,39 +23,15 @@ import { formatAmount, formatDay } from '../../components/patrimoine/actifs/asse
 import { ReliabilityBadge, StaleTag } from '../../components/patrimoine/actifs/ReliabilityBadge';
 import { AssetUsageBanner } from '../../components/patrimoine/AssetUsageBanner';
 import { ASSET_USAGE_QUERY_KEY } from '../../services/personal-space-service';
-import { useLocalListSearch } from '../../utils/list-search';
-import type { SearchCriterion } from '../../utils/list-search';
+import { useListSearch } from '../../hooks/useListSearch';
+import type { ApiParams, SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
+import { collectAllPages } from '../../utils/table-export/collect';
 
 const { Text } = Typography;
 
-const STATUTS: readonly AssetStatus[] = ['ACTIVE', 'DISPOSED', 'ARCHIVED'];
-
-// Plafond côté API (LIST_ASSETS_HARD_LIMIT), tri createdAt décroissant : au-delà, les plus anciens sont tronqués.
-const PLAFOND_LISTE_API = 500;
-
-// Accesseurs stables (hors composant) : le filtrage local reste mémoïsé.
-// Champ libre : nom, bien lié, notes, et classe / statut tels qu'affichés.
-const TEXTE_RECHERCHE = [
-  (a: AssetDto) => a.name,
-  (a: AssetDto) => a.property?.internalReference,
-  (a: AssetDto) => a.property?.title,
-  (a: AssetDto) => a.notes,
-  (a: AssetDto) => assetClassLabel(a.assetClass),
-  (a: AssetDto) => assetStatusLabel(a.status)
-];
-// Valeur courante en FCFA ; un actif sans valeur convertible sort dès qu'un intervalle est posé.
-const valeurXof = (a: AssetDto): number | null =>
-  a.currentValue?.valueXof ?? (a.currentValue?.currency === 'XOF' ? a.currentValue.amount : null);
-const ACCESSEURS = {
-  classe: (a: AssetDto) => a.assetClass,
-  status: (a: AssetDto) => a.status,
-  valeur: valeurXof,
-  stale: (a: AssetDto) => a.stale
-};
-
 /**
- * Liste des actifs du patrimoine, avec recherche multicritères locale (la liste arrive en entier).
+ * Liste des actifs du patrimoine, filtree et paginee par le serveur.
  * Le statut part encore à l'API : sans lui, le serveur exclut les actifs archivés.
  */
 export const AssetsPage: React.FC = () => {
@@ -62,38 +43,47 @@ export const AssetsPage: React.FC = () => {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Le statut conditionne la requête (l'API exclut les archivés quand il est absent) : on le lit
-  // dans l'URL avant d'avoir la liste, comme le fait le critère « Statut » de la barre.
-  const [urlParams] = useSearchParams();
-  const urlStatus = urlParams.get('status');
-  const status = STATUTS.find(value => value === urlStatus);
-
-  const assetsQuery = useQuery({
-    queryKey: queryKey('patrimoine-assets', agence, { status }),
-    queryFn: () => listAssets(agence as string, { status }),
-    enabled: Boolean(agence),
-    staleTime: STALE_TIME.list,
-    placeholderData: keepPreviousData
-  });
-
-  const items = useMemo(() => assetsQuery.data ?? [], [assetsQuery.data]);
   const criteria: SearchCriterion[] = [
-    { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom, bien lié, référence, notes…') },
-    { key: 'classe', type: 'multiSelect', label: t('Classe'), primary: true, options: assetClassOptions() },
+    {
+      key: 'q',
+      type: 'text',
+      label: t('Rechercher'),
+      placeholder: t('Nom, bien lié, référence, notes…'),
+      api: 'search'
+    },
+    {
+      key: 'classe',
+      type: 'multiSelect',
+      label: t('Classe'),
+      primary: true,
+      options: assetClassOptions(),
+      api: 'assetClasses'
+    },
     { key: 'status', type: 'select', label: t('Statut'), primary: true, options: assetStatusOptions() },
-    { key: 'valeur', type: 'numberRange', label: t('Valeur courante'), unit: 'FCFA' },
+    { key: 'valeur', type: 'numberRange', label: t('Valeur courante'), unit: 'FCFA', api: ['minValue', 'maxValue'] },
     {
       key: 'stale',
       type: 'boolean',
       label: t('Valeur à actualiser'),
-      help: t('Actifs dont la dernière valorisation est trop ancienne.')
+      help: t('Actifs dont la dernière valorisation est trop ancienne.'),
+      api: (value): ApiParams => (value === true ? { stale: 'true' } : value === false ? { stale: 'false' } : {})
     }
   ];
-  const local = useLocalListSearch<AssetDto>(items, {
-    criteria,
-    text: TEXTE_RECHERCHE,
-    accessors: ACCESSEURS
+  const search = useListSearch({ criteria, defaultPageSize: 25, apiNames: { sort: false } });
+  const assetsQuery = useQuery({
+    queryKey: queryKey('patrimoine-assets', agence, search.apiParams),
+    queryFn: () =>
+      listAssetsPage(agence as string, {
+        ...search.apiParams,
+        page: search.page,
+        limit: Math.min(search.pageSize, 100)
+      }),
+    enabled: Boolean(agence),
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
+  const items = assetsQuery.data?.items ?? [];
+  const total = assetsQuery.data?.total ?? 0;
 
   const linkedPropertyIds = useLinkedPropertyIds(agence, drawerOpen);
 
@@ -119,15 +109,6 @@ export const AssetsPage: React.FC = () => {
 
       <AssetUsageBanner tenantId={agence} />
 
-      {items.length >= PLAFOND_LISTE_API ? (
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 'var(--space-4)' }}
-          title={t('Seuls les 500 actifs les plus récents sont affichés : affinez avec le statut.')}
-        />
-      ) : null}
-
       {assetsQuery.error ? (
         <StateBlock
           variant="error"
@@ -135,7 +116,7 @@ export const AssetsPage: React.FC = () => {
         />
       ) : assetsQuery.isPending ? (
         <SkeletonList rows={5} aria-label={t('Actifs en cours de chargement')} />
-      ) : items.length === 0 && !local.isFiltered ? (
+      ) : total === 0 && !search.isFiltered ? (
         <StateBlock
           variant="empty"
           title={t('Commencez par ajouter votre premier actif')}
@@ -143,10 +124,14 @@ export const AssetsPage: React.FC = () => {
         />
       ) : (
         <Table<AssetDto>
-          {...local.tableProps}
+          dataSource={items}
+          search={search.searchProps}
+          pagination={search.tablePagination(total)}
           aria-label={t('Mes actifs')}
           exportFilename={t('Mes actifs')}
-          exportFetchAll={local.exportAll}
+          exportFetchAll={() =>
+            collectAllPages((page, limit) => listAssetsPage(agence, { ...search.filterParams, page, limit }))
+          }
           rowKey="id"
           scroll={{ x: 'max-content' }}
           columns={[

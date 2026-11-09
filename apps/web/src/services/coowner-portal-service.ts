@@ -63,6 +63,7 @@ export interface CoOwnerLotAccount {
   syndicate: CoOwnerSyndicate;
   account: (CoOwnerBalance & { currency: string; lastUpdatedAt: string }) | null;
   transactions: CoOwnerTransaction[];
+  pagination?: { page: number; limit: number; total: number; totalPages: number };
 }
 
 export interface CoOwnerChargeCall {
@@ -142,9 +143,10 @@ export async function listMyLots(): Promise<CoOwnerLot[]> {
   return response.data.data;
 }
 
-export async function getMyLotAccount(lotId: string): Promise<CoOwnerLotAccount> {
+export async function getMyLotAccount(lotId: string, params?: Record<string, unknown>): Promise<CoOwnerLotAccount> {
   const response = await apiClient.get<ApiResponse<CoOwnerLotAccount>>(
-    `${BASE}/lots/${encodeURIComponent(lotId)}/compte`
+    `${BASE}/lots/${encodeURIComponent(lotId)}/compte`,
+    { params }
   );
   return response.data.data;
 }
@@ -156,6 +158,21 @@ export async function listMyChargeCalls(lotId?: string): Promise<CoOwnerChargeCa
   return response.data.data;
 }
 
+export async function listMyChargeCallsPage(
+  params: Record<string, unknown> & { page: number; limit: number }
+): Promise<{
+  items: CoOwnerChargeCall[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}> {
+  const response = await apiClient.get<
+    ApiResponse<{
+      items: CoOwnerChargeCall[];
+      pagination: { page: number; limit: number; total: number; totalPages: number };
+    }>
+  >(`${BASE}/appels`, { params });
+  return response.data.data;
+}
+
 export async function listMyDocuments(): Promise<CoOwnerDocument[]> {
   const response = await apiClient.get<ApiResponse<CoOwnerDocument[]>>(`${BASE}/documents`);
   return response.data.data;
@@ -163,6 +180,19 @@ export async function listMyDocuments(): Promise<CoOwnerDocument[]> {
 
 export async function listMyMeetings(): Promise<CoOwnerMeeting[]> {
   const response = await apiClient.get<ApiResponse<CoOwnerMeeting[]>>(`${BASE}/assemblees`);
+  return response.data.data;
+}
+
+export async function listMyMeetingsPage(params: Record<string, unknown> & { page: number; limit: number }): Promise<{
+  items: CoOwnerMeeting[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}> {
+  const response = await apiClient.get<
+    ApiResponse<{
+      items: CoOwnerMeeting[];
+      pagination: { page: number; limit: number; total: number; totalPages: number };
+    }>
+  >(`${BASE}/assemblees`, { params });
   return response.data.data;
 }
 
@@ -243,10 +273,13 @@ export interface CoOwnerAdvance {
 export interface CoOwnerPaymentsResult {
   items: CoOwnerPayment[];
   advances: CoOwnerAdvance[];
+  pagination?: { page: number; limit: number; total: number; totalPages: number };
 }
 
-/** `GET /paiements?lotId=&year=` */
-export async function listMyPayments(params: { lotId?: string; year?: number } = {}): Promise<CoOwnerPaymentsResult> {
+/** `GET /paiements?lotId=&year=&search=&page=&limit=` */
+export async function listMyPayments(
+  params: { lotId?: string; year?: number | string; search?: string; page?: number; limit?: number } = {}
+): Promise<CoOwnerPaymentsResult> {
   const response = await apiClient.get<ApiResponse<CoOwnerPaymentsResult>>(`${BASE}/paiements`, { params });
   return response.data.data;
 }
@@ -303,9 +336,13 @@ export async function listMyReceipts(params: CoOwnerReceiptsQuery = {}): Promise
 /** Télécharge le PDF d'un reçu/d'une quittance ; `downloadPath` vient de la liste. */
 export async function downloadCoOwnerReceiptFile(
   downloadPath: string,
-  fallbackName: string
+  fallbackName: string,
+  translation?: 'ar'
 ): Promise<{ blob: Blob; filename: string }> {
-  const response = await apiClient.get<Blob>(downloadPath, { responseType: 'blob' });
+  const response = await apiClient.get<Blob>(downloadPath, {
+    responseType: 'blob',
+    params: translation ? { translation } : undefined
+  });
   return {
     blob: response.data,
     filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)

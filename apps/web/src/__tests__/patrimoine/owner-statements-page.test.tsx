@@ -167,6 +167,35 @@ describe('Relevés de gérance : recherche multicritères', () => {
     expect(screen.getByRole('search')).toBeInTheDocument();
   });
 
+  it('formulaire : retrouve un propriétaire éloigné par recherche distante et garde sa sélection', async () => {
+    const user = userEvent.setup();
+    listContacts.mockImplementation(async (_tenant: string, filters: { search?: string }) => ({
+      contacts: filters.search === 'Mariama' ? [{ id: 'c501', firstName: 'Mariama', lastName: 'Diallo' }] : [],
+      pagination: {}
+    }));
+    renderPage();
+    await screen.findByText('Awa Koné', undefined, T);
+
+    const select = screen.getByRole('combobox', { name: 'Propriétaire' });
+    await user.click(select);
+    await user.type(select, 'Mariama');
+    await vi.waitFor(
+      () =>
+        expect(listContacts).toHaveBeenCalledWith('agence-1', {
+          role: 'PROPRIETAIRE',
+          search: 'Mariama',
+          page: 1,
+          limit: 20
+        }),
+      T
+    );
+    await user.click(await screen.findByText('Mariama Diallo', undefined, T));
+    expect(select.closest('.ant-select')).toHaveTextContent('Mariama Diallo');
+    await vi.waitFor(() => expect(listEligibleOwnerStatementProperties).toHaveBeenCalledWith('agence-1', 'c501'), T);
+    expect(listProperties).not.toHaveBeenCalled();
+    expect(listContacts.mock.calls.some(call => call[1]?.limit === 500)).toBe(false);
+  });
+
   it('envoie la saisie au serveur après le debounce et la met dans l’URL', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -201,28 +230,31 @@ describe('Relevés de gérance : recherche multicritères', () => {
     await vi.waitFor(() => expect(getContact).toHaveBeenCalledWith('agence-1', 'c1'), T);
   });
 
-  it('critère Propriétaire : sans propriétaire parmi les contacts trouvés, invite à préciser le nom', async () => {
+  it('critère Propriétaire : demande au serveur les propriétaires avant la limite de 20', async () => {
     const user = userEvent.setup();
+    listContacts.mockImplementation(async (_tenant: string, filters: { search?: string }) => ({
+      contacts: filters.search ? [{ id: 'c55', firstName: 'Mariama', lastName: 'Diallo', roles: [] }] : [],
+      pagination: {}
+    }));
     renderPage();
     await screen.findByText('Awa Koné', undefined, T);
 
     await user.click(within(screen.getByRole('search')).getByRole('button', { name: /Plus de critères/ }));
     const panneau = await screen.findByRole('group', { name: 'Plus de critères' }, T);
-    await user.click(within(panneau).getByRole('combobox'));
-
-    expect(
-      await screen.findByText('Aucun propriétaire parmi les contacts trouvés : précisez le nom.', undefined, T)
-    ).toBeInTheDocument();
-    expect(listContacts).toHaveBeenCalledWith('agence-1', { search: undefined, limit: 20 });
-
-    // L'option est inerte : la cliquer n'envoie aucun ownerContactId.
-    const appelsAvant = listOwnerStatementsPage.mock.calls.length;
-    await user.click(screen.getByText('Aucun propriétaire parmi les contacts trouvés : précisez le nom.'));
-    expect(listOwnerStatementsPage.mock.calls.length).toBe(appelsAvant);
-    for (const appel of listOwnerStatementsPage.mock.calls) {
-      expect(appel[1]).not.toHaveProperty('ownerContactId');
-    }
-    expect(screen.getByTestId('url').textContent).not.toContain('ownerContactId');
+    const select = within(panneau).getByRole('combobox');
+    await user.click(select);
+    await user.type(select, 'Mariama');
+    await vi.waitFor(
+      () =>
+        expect(listContacts).toHaveBeenCalledWith('agence-1', {
+          role: 'PROPRIETAIRE',
+          search: 'Mariama',
+          page: 1,
+          limit: 20
+        }),
+      T
+    );
+    expect(await screen.findByText('Mariama Diallo', undefined, T)).toBeInTheDocument();
   });
 
   it('plafonne à 100 la taille de page envoyée, sans erreur, pour un lien limit=500', async () => {

@@ -153,7 +153,8 @@ export const listClaimsQuerySchema = z
     status: z.enum(CLAIM_STATUSES).optional(),
     /** Recherche libre : description, référence et titre du bien, assureur, n° de police. */
     search: zSearch(),
-    limit: z.coerce.number().int().min(1).max(500).optional()
+    page: z.coerce.number().int().min(1).max(100000).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional()
   })
   .strict();
 

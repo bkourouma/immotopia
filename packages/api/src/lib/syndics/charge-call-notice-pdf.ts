@@ -10,6 +10,8 @@ import { sanitizeForPdf } from '../documents/pdf-text';
 import { amountToFrenchWords } from './number-to-french-words';
 import { A4, formatAmount, wrapText } from './charge-receipt-pdf';
 import { frenchDay, periodText, type SnapshotPeriod } from './charge-receipt-snapshot';
+import { currentLanguage } from '../../i18n';
+import { renderArabicChargeCallNoticePdf } from './charge-call-notice-pdf-ar';
 
 /**
  * Avis d'appel de charges en PDF (lot S4, besoin 6), une page A4.
@@ -182,6 +184,7 @@ export async function renderChargeCallNoticePdf(
   data: ChargeCallNoticeData,
   branding: DocumentBranding
 ): Promise<Buffer> {
+  if (currentLanguage() === 'ar') return renderArabicChargeCallNoticePdf(data, branding);
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([A4.width, A4.height]);
   const fonts = await fontsOf(pdfDoc);

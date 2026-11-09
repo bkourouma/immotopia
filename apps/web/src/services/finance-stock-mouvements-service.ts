@@ -285,10 +285,20 @@ export async function listSupplierInvoicesForReceipt(tenantId: string, supplierI
 
 /** `GET /stock/items`. Les filtres partent en requête, jamais dans le chemin. */
 export async function listStockItems(tenantId: string, filters?: ListStockItemsFilters): Promise<StockItemRef[]> {
-  const response = await apiClient.get<ApiResponse<StockItemRef[]>>(
-    `${base(tenantId)}/stock/items${toQuery(filters as Record<string, string | boolean | undefined>)}`
-  );
-  return response.data.data;
+  const items: StockItemRef[] = [];
+  for (let page = 1; ; page++) {
+    const response = await apiClient.get<ApiResponse<StockItemRef[]> & { pagination?: { total: number } }>(
+      `${base(tenantId)}/stock/items${toQuery({ ...filters, page, limit: 100 })}`
+    );
+    items.push(...response.data.data);
+    if (
+      !response.data.pagination ||
+      response.data.data.length === 0 ||
+      items.length >= response.data.pagination.total
+    ) {
+      return items;
+    }
+  }
 }
 
 /** `GET /stock/locations`. Même règle pour les filtres. */

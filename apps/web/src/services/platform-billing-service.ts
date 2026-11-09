@@ -213,10 +213,17 @@ export async function issueCreditNote(
 
 export async function downloadAdminInvoicePdf(
   tenantId: string,
-  invoice: Pick<PlatformInvoice, 'id' | 'invoiceNumber'>
+  invoice: Pick<PlatformInvoice, 'id' | 'invoiceNumber'>,
+  translation?: 'ar'
 ) {
-  const response = await apiClient.get(`${adminBase(tenantId)}/${invoice.id}/pdf`, { responseType: 'blob' });
-  savePdf(response.data as Blob, `${invoice.invoiceNumber ?? 'brouillon'}.pdf`);
+  const response = await apiClient.get(`${adminBase(tenantId)}/${invoice.id}/pdf`, {
+    responseType: 'blob',
+    ...(translation ? { params: { translation } } : {})
+  });
+  savePdf(
+    response.data as Blob,
+    `${translation ? 'traduction-arabe-' : ''}${invoice.invoiceNumber ?? 'brouillon'}.pdf`
+  );
 }
 
 export interface ManualPaymentInput {
@@ -284,9 +291,16 @@ export async function listOwnPlatformInvoices(
   );
 }
 
-export async function downloadOwnInvoicePdf(tenantId: string, invoice: Pick<PlatformInvoice, 'id' | 'invoiceNumber'>) {
-  const response = await apiClient.get(`${tenantBase(tenantId)}/invoices/${invoice.id}/pdf`, { responseType: 'blob' });
-  savePdf(response.data as Blob, `${invoice.invoiceNumber ?? 'facture'}.pdf`);
+export async function downloadOwnInvoicePdf(
+  tenantId: string,
+  invoice: Pick<PlatformInvoice, 'id' | 'invoiceNumber'>,
+  translation?: 'ar'
+) {
+  const response = await apiClient.get(`${tenantBase(tenantId)}/invoices/${invoice.id}/pdf`, {
+    responseType: 'blob',
+    ...(translation ? { params: { translation } } : {})
+  });
+  savePdf(response.data as Blob, `${translation ? 'traduction-arabe-' : ''}${invoice.invoiceNumber ?? 'facture'}.pdf`);
 }
 
 export async function getPaymentAvailability(tenantId: string): Promise<PaymentAvailability> {

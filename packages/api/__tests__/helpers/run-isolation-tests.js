@@ -60,7 +60,8 @@ const groups = [
       'signature.db.test.ts',
       'accounting-exports-sql.test.ts',
       'syndic-accounting-reads-sql.test.ts',
-      'like-escape-sql.test.ts'
+      'like-escape-sql.test.ts',
+      'syndic-ui-pagination-sql.test.ts'
     ]
   },
   {

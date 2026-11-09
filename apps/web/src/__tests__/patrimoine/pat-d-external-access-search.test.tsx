@@ -27,6 +27,27 @@ const listExternalAccessLog = vi.fn();
 // Le mock couvre TOUS les exports du service utilisés par l'écran et ses modales.
 vi.mock('../../services/external-access-service', () => ({
   listExternalAccessGrants: (...a: unknown[]) => listExternalAccessGrants(...a),
+  listExternalAccessGrantsPage: async (tenantId: string, filters: Record<string, unknown>) => {
+    const all = await listExternalAccessGrants(tenantId, filters);
+    const text = String(filters.search ?? '').toLocaleLowerCase();
+    const filtered = all.filter(
+      (grant: Record<string, unknown>) =>
+        (!text ||
+          [grant.recipientName, grant.recipientEmail, grant.ownerName].some(value =>
+            String(value ?? '')
+              .toLocaleLowerCase()
+              .includes(text)
+          )) &&
+        (!filters.types || String(filters.types).split(',').includes(String(grant.type))) &&
+        (!filters.statuses || String(filters.statuses).split(',').includes(String(grant.status))) &&
+        (!filters.expirationFrom || (!!grant.expiresAt && String(grant.expiresAt) >= String(filters.expirationFrom))) &&
+        (!filters.expirationTo ||
+          (!!grant.expiresAt && String(grant.expiresAt).slice(0, 10) <= String(filters.expirationTo)))
+    );
+    const page = Number(filters.page);
+    const limit = Number(filters.limit);
+    return { items: filtered.slice((page - 1) * limit, page * limit), total: filtered.length, page, limit };
+  },
   getExternalAccessScopeOptions: (...a: unknown[]) => getExternalAccessScopeOptions(...a),
   listExternalAccessPropertyDocuments: (...a: unknown[]) => listExternalAccessPropertyDocuments(...a),
   createExternalAccessGrant: (...a: unknown[]) => createExternalAccessGrant(...a),
@@ -34,7 +55,24 @@ vi.mock('../../services/external-access-service', () => ({
   updateExternalAccessGrant: (...a: unknown[]) => updateExternalAccessGrant(...a),
   revokeExternalAccessGrant: (...a: unknown[]) => revokeExternalAccessGrant(...a),
   sendExternalAccessLink: (...a: unknown[]) => sendExternalAccessLink(...a),
-  listExternalAccessLog: (...a: unknown[]) => listExternalAccessLog(...a)
+  listExternalAccessLog: (...a: unknown[]) => listExternalAccessLog(...a),
+  listExternalAccessLogPage: async (tenantId: string, grantId: string, filters: Record<string, unknown>) => {
+    const all = await listExternalAccessLog(tenantId, grantId, filters);
+    const text = String(filters.search ?? '').toLocaleLowerCase();
+    const filtered = all.filter(
+      (entry: Record<string, unknown>) =>
+        (!text ||
+          [entry.documentName, entry.ipAddress].some(value =>
+            String(value ?? '')
+              .toLocaleLowerCase()
+              .includes(text)
+          )) &&
+        (!filters.actions || String(filters.actions).split(',').includes(String(entry.action)))
+    );
+    const page = Number(filters.page);
+    const limit = Number(filters.limit);
+    return { items: filtered.slice((page - 1) * limit, page * limit), total: filtered.length, page, limit };
+  }
 }));
 
 vi.mock('../../hooks/useAuth', () => ({
@@ -48,8 +86,8 @@ vi.mock('../../hooks/useBreakpoint', () => ({
 // Délai large : la suite complète tourne en parallèle et peut être lente.
 const T = { timeout: 8000 };
 
-const GRANT_PLACEHOLDER = 'Bénéficiaire, e-mail, propriétaire, type…';
-const LOG_PLACEHOLDER = 'Événement, document, rubrique, adresse IP…';
+const GRANT_PLACEHOLDER = 'Bénéficiaire, e-mail, propriétaire…';
+const LOG_PLACEHOLDER = 'Document ou adresse IP…';
 
 function grant(overrides: Record<string, unknown> = {}) {
   return {
@@ -137,19 +175,23 @@ describe('<ExternalAccessPage> : recherche des accès', () => {
     expect(await screen.findByText('Maître Koné', undefined, T)).toBeInTheDocument();
     expect(screen.getByRole('search', { name: 'Rechercher dans les accès partagés' })).toBeInTheDocument();
     expect(screen.getByText('4 résultats')).toBeInTheDocument();
-    expect(listExternalAccessGrants).toHaveBeenCalledTimes(1);
+    expect(listExternalAccessGrants).toHaveBeenCalledWith('agence-1', expect.objectContaining({ page: 1 }));
   });
 
-  it('filtre localement sur le texte libre (nom, e-mail, propriétaire), sans accent ni casse', async () => {
+  it('envoie le texte libre au serveur pour filtrer le nom, l’e-mail ou le propriétaire', async () => {
     const user = userEvent.setup();
     monter();
     await screen.findByText('Maître Koné', undefined, T);
 
-    await user.type(screen.getByPlaceholderText(GRANT_PLACEHOLDER), 'ETUDE SYLLA');
+    await user.type(screen.getByPlaceholderText(GRANT_PLACEHOLDER), 'ÉTUDE SYLLA');
     await vi.waitFor(() => expect(screen.queryByText('Maître Koné')).not.toBeInTheDocument(), T);
     expect(screen.getByText('Étude Sylla')).toBeInTheDocument();
     expect(screen.getByText('1 résultat')).toBeInTheDocument();
-    expect(screen.getByTestId('url').textContent).toContain('q=ETUDE');
+    expect(screen.getByTestId('url').textContent).toContain('q=');
+    expect(listExternalAccessGrants).toHaveBeenCalledWith(
+      'agence-1',
+      expect.objectContaining({ search: 'ÉTUDE SYLLA' })
+    );
 
     // Un propriétaire se trouve aussi.
     await user.clear(screen.getByPlaceholderText(GRANT_PLACEHOLDER));
@@ -157,8 +199,7 @@ describe('<ExternalAccessPage> : recherche des accès', () => {
     await vi.waitFor(() => expect(screen.queryByText('Étude Sylla')).not.toBeInTheDocument(), T);
     expect(screen.getByText('Cabinet Diallo')).toBeInTheDocument();
     expect(screen.queryByText('Maître Koné')).not.toBeInTheDocument();
-    // La liste complète n'a pas été relue.
-    expect(listExternalAccessGrants).toHaveBeenCalledTimes(1);
+    expect(listExternalAccessGrants).toHaveBeenCalledWith('agence-1', expect.objectContaining({ search: 'konan' }));
   });
 
   it('applique le type et le statut d’une adresse partagée', async () => {
@@ -236,8 +277,7 @@ describe('<ExternalAccessLogModal> : recherche dans le journal', () => {
     expect(within(dialog).getByText('acte-vente.pdf')).toBeInTheDocument();
     expect(within(dialog).getByText('1 résultat')).toBeInTheDocument();
     expect(screen.getByTestId('url').textContent).toContain('jrn.q=ACTE');
-    // Le journal est lu une seule fois : la recherche est locale.
-    expect(listExternalAccessLog).toHaveBeenCalledTimes(1);
+    expect(listExternalAccessLog).toHaveBeenCalledWith('agence-1', 'g1', expect.objectContaining({ search: 'ACTE' }));
 
     await user.click(within(dialog).getByRole('button', { name: /Close|Fermer/ }));
     // La fermeture efface les clés du journal de l'adresse (l'animation de sortie de la modale ne se termine pas sous jsdom).
@@ -256,28 +296,20 @@ describe('<ExternalAccessLogModal> : recherche dans le journal', () => {
   });
 });
 
-describe('<ExternalAccessPage> : plafond de l’API (500 accès)', () => {
-  const CAP_TEXT =
-    'Seuls les 500 accès les plus récents sont affichés : affinez la recherche ou révoquez les accès inutiles.';
+describe('<ExternalAccessPage> : pagination serveur', () => {
   const many = (count: number) =>
     Array.from({ length: count }, (_, index) => grant({ id: `g${index}`, recipientName: `Bénéficiaire ${index}` }));
 
-  it('affiche le bandeau d’information quand 500 accès sont reçus', async () => {
-    listExternalAccessGrants.mockResolvedValue(many(500));
+  it('affiche le total de 501 accès et demande une page bornée', async () => {
+    listExternalAccessGrants.mockResolvedValue(many(501));
     monter();
-    expect(await screen.findByText(CAP_TEXT, undefined, T)).toBeInTheDocument();
-  });
-
-  it('n’affiche aucun bandeau à 499 accès', async () => {
-    listExternalAccessGrants.mockResolvedValue(many(499));
-    monter();
-    await screen.findByRole('search', { name: 'Rechercher dans les accès partagés' }, T);
-    expect(screen.queryByText(CAP_TEXT)).not.toBeInTheDocument();
+    expect(await screen.findByText('501 résultats', undefined, T)).toBeInTheDocument();
+    expect(listExternalAccessGrants).toHaveBeenCalledWith('agence-1', expect.objectContaining({ page: 1, limit: 25 }));
   });
 });
 
 describe('<ExternalAccessLogModal> : portée de la recherche', () => {
-  it('précise que la recherche porte sur les 100 derniers événements', async () => {
+  it('affiche le journal paginé sans limite de 100 événements', async () => {
     listExternalAccessLog.mockResolvedValue([
       { id: 'a1', at: '2026-09-30T10:00:00.000Z', action: 'VIEWED', ipAddress: null, userAgent: null }
     ]);
@@ -285,8 +317,7 @@ describe('<ExternalAccessLogModal> : portée de la recherche', () => {
     await screen.findByText('Maître Koné', undefined, T);
     await userEvent.click(screen.getByRole('button', { name: 'Journal de Maître Koné' }));
     const dialog = await screen.findByRole('dialog');
-    expect(
-      await within(dialog).findByText('Recherche sur les 100 derniers événements.', undefined, T)
-    ).toBeInTheDocument();
+    expect(await within(dialog).findByText('Consultation', undefined, T)).toBeInTheDocument();
+    expect(listExternalAccessLog).toHaveBeenCalledWith('agence-1', 'g1', expect.objectContaining({ page: 1 }));
   });
 });

@@ -4,7 +4,7 @@ import { ASSET_CLASS_LABELS, type AssetClassKey } from '../assets';
 /**
  * Libellés de l'export de la situation patrimoniale (fr/en/ar). Le texte
  * français est la clé de traduction ; `language` explicite pour que le PDF
- * force le français quand la requête est en arabe (voir `net-worth-pdf.ts`).
+ * rende les libellés dans la langue demandée (voir `net-worth-pdf.ts`).
  */
 
 export function assetClassLabel(assetClass: string, language?: Language): string {

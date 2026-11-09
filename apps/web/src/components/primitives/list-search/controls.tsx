@@ -151,8 +151,9 @@ type ControlOf<C extends SearchCriterion> = ControlShared & {
 
 function SelectControl({ criterion, value, onChange, labels, remember, compact, touch }: ControlOf<SelectCriterion>) {
   const current = typeof value === 'string' && value !== '' ? value : undefined;
-  const remote = Boolean(criterion.loadOptions);
+  const remote = Boolean(criterion.loadOptions || criterion.loadOptionsPage);
   const [loaded, setLoaded] = useState<SearchOption[]>([]);
+  const loadedRef = useRef<SearchOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const lastTerm = useRef('');
@@ -161,6 +162,12 @@ function SelectControl({ criterion, value, onChange, labels, remember, compact, 
   // recherche utilise la nouvelle fonction.
   const loadRef = useRef(criterion.loadOptions);
   loadRef.current = criterion.loadOptions;
+  const loadPageRef = useRef(criterion.loadOptionsPage);
+  loadPageRef.current = criterion.loadOptionsPage;
+  const pageRef = useRef(0);
+  const loadedCountRef = useRef(0);
+  const totalRef = useRef(0);
+  const loadingRef = useRef(false);
   const rememberRef = useRef(remember);
   rememberRef.current = remember;
   const sequence = useRef(0);
@@ -176,28 +183,55 @@ function SelectControl({ criterion, value, onChange, labels, remember, compact, 
   }, []);
 
   const load = useCallback(
-    (term: string) => {
+    (term: string, page = 1) => {
       const loader = loadRef.current;
-      if (!loader) return;
+      const pageLoader = loadPageRef.current;
+      if (!loader && !pageLoader) return;
+      if (page > 1 && (loadingRef.current || loadedCountRef.current >= totalRef.current)) return;
       const mine = ++sequence.current;
-      lastTerm.current = term;
+      if (page === 1) {
+        lastTerm.current = term;
+        pageRef.current = 0;
+        loadedCountRef.current = 0;
+        totalRef.current = 0;
+        loadedRef.current = [];
+        setLoaded([]);
+      }
+      loadingRef.current = true;
       setLoading(true);
       setFailed(false);
       Promise.resolve()
-        .then(() => loader(term))
+        .then(() =>
+          pageLoader ? pageLoader(term, page) : loader!(term).then(items => ({ items, total: items.length }))
+        )
         .then(result => {
           if (!mounted.current || mine !== sequence.current) return;
-          setLoaded(result);
-          rememberRef.current(criterion.key, result);
+          pageRef.current = page;
+          const previous = loadedRef.current;
+          const next =
+            page === 1
+              ? result.items
+              : [...previous, ...result.items.filter(item => !previous.some(old => old.value === item.value))];
+          loadedRef.current = next;
+          loadedCountRef.current = next.length;
+          totalRef.current = result.items.length === 0 ? next.length : result.total;
+          rememberRef.current(criterion.key, next);
+          setLoaded(next);
         })
         .catch(() => {
           if (mounted.current && mine === sequence.current) {
-            setLoaded([]);
+            if (page === 1) {
+              loadedRef.current = [];
+              setLoaded([]);
+            }
             setFailed(true);
           }
         })
         .finally(() => {
-          if (mounted.current && mine === sequence.current) setLoading(false);
+          if (mounted.current && mine === sequence.current) {
+            loadingRef.current = false;
+            setLoading(false);
+          }
         });
     },
     [criterion.key]
@@ -210,6 +244,14 @@ function SelectControl({ criterion, value, onChange, labels, remember, compact, 
   const handleSearch = (term: string) => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => load(term), DEBOUNCE_MS);
+  };
+
+  const handlePopupScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    if (!loadPageRef.current || loadingRef.current || loadedCountRef.current >= totalRef.current) return;
+    const node = event.currentTarget;
+    if (node.scrollTop + node.clientHeight >= node.scrollHeight - 24) {
+      load(lastTerm.current, pageRef.current + 1);
+    }
   };
 
   const staticOptions = criterion.options;
@@ -239,6 +281,7 @@ function SelectControl({ criterion, value, onChange, labels, remember, compact, 
             : false
       }
       onOpenChange={handleOpen}
+      onPopupScroll={handlePopupScroll}
       loading={loading}
       notFoundContent={
         loading ? (

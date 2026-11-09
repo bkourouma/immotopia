@@ -289,17 +289,45 @@ export interface CreateSaleCommissionPaymentInput {
 // ---------------------------------------------------------------------------
 
 export interface ListSaleMandatesFilters {
-  status?: SaleMandateStatus;
+  status?: string;
   propertyId?: string;
   search?: string;
+  type?: string;
+  startFrom?: string;
+  startTo?: string;
+  endFrom?: string;
+  endTo?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  expired?: boolean;
+  page?: number;
+  limit?: number;
 }
 
 export interface ListSaleAgreementsFilters {
   status?: SaleAgreementStatus;
+  page?: number;
+  limit?: number;
 }
 
 export interface ListSaleCommissionsFilters {
-  status?: SaleCommissionStatus;
+  status?: string;
+  search?: string;
+  payer?: string;
+  from?: string;
+  to?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  unpaid?: boolean;
+  page?: number;
+  limit?: number;
+}
+
+export interface SaleListPage<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 function base(tenantId: string): string {
@@ -310,17 +338,35 @@ function base(tenantId: string): string {
 // Mandats
 // ---------------------------------------------------------------------------
 
+export function listSaleMandates(
+  tenantId: string,
+  filters: ListSaleMandatesFilters & { page: number; limit: number }
+): Promise<SaleListPage<SaleMandateDto>>;
+export function listSaleMandates(tenantId: string, filters?: ListSaleMandatesFilters): Promise<SaleMandateDto[]>;
 export async function listSaleMandates(
   tenantId: string,
   filters: ListSaleMandatesFilters = {}
-): Promise<SaleMandateDto[]> {
-  const response = await apiClient.get<ApiResponse<SaleMandateDto[]>>(`${base(tenantId)}/mandates`, {
-    params: {
-      status: filters.status || undefined,
-      propertyId: filters.propertyId || undefined,
-      search: filters.search || undefined
+): Promise<SaleMandateDto[] | SaleListPage<SaleMandateDto>> {
+  const response = await apiClient.get<ApiResponse<SaleMandateDto[] | SaleListPage<SaleMandateDto>>>(
+    `${base(tenantId)}/mandates`,
+    {
+      params: {
+        status: filters.status || undefined,
+        propertyId: filters.propertyId || undefined,
+        search: filters.search || undefined,
+        type: filters.type || undefined,
+        startFrom: filters.startFrom,
+        startTo: filters.startTo,
+        endFrom: filters.endFrom,
+        endTo: filters.endTo,
+        minPrice: filters.minPrice,
+        maxPrice: filters.maxPrice,
+        expired: filters.expired,
+        page: filters.page,
+        limit: filters.limit
+      }
     }
-  });
+  );
   return response.data.data;
 }
 
@@ -397,10 +443,13 @@ export async function createSaleAgreementFromOffer(
 export async function listSaleAgreements(
   tenantId: string,
   filters: ListSaleAgreementsFilters = {}
-): Promise<SaleAgreementDto[]> {
-  const response = await apiClient.get<ApiResponse<SaleAgreementDto[]>>(`${base(tenantId)}/agreements`, {
-    params: { status: filters.status || undefined }
-  });
+): Promise<SaleAgreementDto[] | SaleListPage<SaleAgreementDto>> {
+  const response = await apiClient.get<ApiResponse<SaleAgreementDto[] | SaleListPage<SaleAgreementDto>>>(
+    `${base(tenantId)}/agreements`,
+    {
+      params: { status: filters.status || undefined, page: filters.page, limit: filters.limit }
+    }
+  );
   return response.data.data;
 }
 
@@ -494,9 +543,20 @@ export async function replaceSaleMilestones(
 export async function listSaleCommissions(
   tenantId: string,
   filters: ListSaleCommissionsFilters = {}
-): Promise<SaleCommissionListDto> {
+): Promise<SaleCommissionListDto & { total?: number; page?: number; pageSize?: number }> {
   const response = await apiClient.get<ApiResponse<SaleCommissionListDto>>(`${base(tenantId)}/commissions`, {
-    params: { status: filters.status || undefined }
+    params: {
+      status: filters.status || undefined,
+      search: filters.search,
+      payer: filters.payer,
+      from: filters.from,
+      to: filters.to,
+      minAmount: filters.minAmount,
+      maxAmount: filters.maxAmount,
+      unpaid: filters.unpaid,
+      page: filters.page,
+      limit: filters.limit
+    }
   });
   return response.data.data;
 }

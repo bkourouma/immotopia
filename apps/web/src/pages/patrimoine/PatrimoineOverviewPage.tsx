@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { Pagination, Spin } from 'antd';
+import { useListParams } from '../../hooks/useListParams';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { PatrimoineOverview } from '../../components/patrimoine/PatrimoineOverview';
@@ -40,16 +42,25 @@ export const PatrimoineOverviewPage: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
+  const upcoming = useListParams({ filterKeys: [], paramPrefix: 'travaux', defaultPageSize: 20 });
   const travaux = useQuery({
     // La page est explicite : cet écran montre les travaux à venir, pas
     // l'historique complet. `upcoming` ne garde que les programmes planifiés
     // ou en cours, triés par date de début prévue : sans lui, la frise
     // montrait les 20 premiers programmes venus, terminés compris.
-    queryKey: queryKey('work-programs', agence, { upcoming: true, limit: 20 }),
-    queryFn: () => listTenantWorkPrograms(agence as string, { upcoming: true, limit: 20 }),
+    queryKey: queryKey('work-programs', agence, { upcoming: true, page: upcoming.page, limit: upcoming.pageSize }),
+    queryFn: () =>
+      listTenantWorkPrograms(agence as string, { upcoming: true, page: upcoming.page, limit: upcoming.pageSize }),
     enabled: Boolean(agence),
-    staleTime: STALE_TIME.list
+    staleTime: STALE_TIME.list,
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[1] === agence ? previous : undefined)
   });
+  useEffect(() => {
+    if (travaux.data && !travaux.isPlaceholderData) {
+      const last = Math.max(1, Math.ceil(travaux.data.total / upcoming.pageSize));
+      if (upcoming.page > last) upcoming.setPage(last, { replace: true });
+    }
+  }, [travaux.data, travaux.isPlaceholderData, upcoming.page, upcoming.pageSize, upcoming.setPage]);
 
   if (!agence) {
     return (
@@ -100,14 +111,26 @@ export const PatrimoineOverviewPage: React.FC = () => {
               actions={[{ label: t('Réessayer'), onClick: () => travaux.refetch(), primary: true }]}
             />
           ) : (
-            <WorkProgramTimeline
-              items={(travaux.data?.items ?? []).map(programme => ({
-                ...programme,
-                // Le titre du bien vient de la jointure serveur : plus besoin
-                // de charger les biens pour l'afficher.
-                propertyLabel: programme.property?.title
-              }))}
-            />
+            <Spin spinning={travaux.isFetching}>
+              <WorkProgramTimeline
+                items={(travaux.data?.items ?? []).map(programme => ({
+                  ...programme,
+                  // Le titre du bien vient de la jointure serveur : plus besoin
+                  // de charger les biens pour l'afficher.
+                  propertyLabel: programme.property?.title
+                }))}
+              />
+              <Pagination
+                style={{ marginBlockStart: 16 }}
+                current={upcoming.page}
+                pageSize={upcoming.pageSize}
+                total={travaux.data?.total ?? 0}
+                onChange={page => upcoming.setPage(page)}
+                showSizeChanger={false}
+                hideOnSinglePage
+                aria-label={t('Programmes de travaux')}
+              />
+            </Spin>
           )}
         </div>
       )}

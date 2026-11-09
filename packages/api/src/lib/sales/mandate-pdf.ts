@@ -12,6 +12,7 @@
  */
 
 import { createHash } from 'crypto';
+import { t } from '../../i18n';
 
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { resolveDocumentBranding, type DocumentBranding } from '../documents/document-branding';
@@ -117,12 +118,19 @@ export function saleMandateSnapshot(data: SaleMandateData): string {
 const nameOf = (person: { fullName: string | null; email: string }) => person.fullName?.trim() || person.email;
 
 function commissionText(data: SaleMandateData): string {
-  const payer = data.commissionPayer === 'BUYER' ? "à la charge de l'acquéreur" : 'à la charge du vendeur';
+  const payer = data.commissionPayer === 'BUYER' ? t("à la charge de l'acquéreur") : t('à la charge du vendeur');
   if (data.commissionMode === 'FIXED' && data.commissionFixedAmount != null) {
-    return `Les honoraires du mandataire sont fixés à un forfait de ${formatClauseMoney(data.commissionFixedAmount, data.currency)}, ${payer}, dus uniquement si la vente est conclue grâce au mandataire.`;
+    return t(
+      'Les honoraires du mandataire sont fixés à un forfait de {{amount}}, {{payer}}, dus uniquement si la vente est conclue grâce au mandataire.',
+      { amount: formatClauseMoney(data.commissionFixedAmount, data.currency), payer }
+    );
   }
-  const rate = data.commissionRate != null ? `${String(data.commissionRate).replace('.', ',')} %` : 'le taux convenu';
-  return `Les honoraires du mandataire sont fixés à ${rate} du prix de vente, ${payer}, dus uniquement si la vente est conclue grâce au mandataire.`;
+  const rate =
+    data.commissionRate != null ? `${String(data.commissionRate).replace('.', ',')} %` : t('le taux convenu');
+  return t(
+    'Les honoraires du mandataire sont fixés à {{rate}} du prix de vente, {{payer}}, dus uniquement si la vente est conclue grâce au mandataire.',
+    { rate, payer }
+  );
 }
 
 /** Modèle du document : tout le texte qui sera imprimé. */
@@ -130,70 +138,90 @@ export function buildSaleMandateModel(data: SaleMandateData, branding: DocumentB
   const agency = branding.issuer;
   const exclusive = data.mandateType === 'EXCLUSIVE';
   const duration = data.endDate
-    ? `Du ${formatClauseDate(data.startDate)} au ${formatClauseDate(data.endDate)}.`
-    : `À compter du ${formatClauseDate(data.startDate)}, jusqu'à révocation.`;
+    ? t('Du {{start}} au {{end}}.', { start: formatClauseDate(data.startDate), end: formatClauseDate(data.endDate) })
+    : t("À compter du {{start}}, jusqu'à révocation.", { start: formatClauseDate(data.startDate) });
   const sellerRows = [
-    { label: 'Le mandant (vendeur)', value: `${nameOf(data.seller)} - ${data.seller.email}` },
+    { label: t('Le mandant (vendeur)'), value: `${nameOf(data.seller)} - ${data.seller.email}` },
     ...data.coSellers.map(co => ({
-      label: 'Co-vendeur',
-      value: `${nameOf(co)} - ${co.email} (quote-part ${String(co.sharePercent).replace('.', ',')} %)`
+      label: t('Co-vendeur'),
+      value: t('{{name}} - {{email}} (quote-part {{share}} %)', {
+        name: nameOf(co),
+        email: co.email,
+        share: String(co.sharePercent).replace('.', ',')
+      })
     }))
   ];
   return {
-    title: `MANDAT DE VENTE ${exclusive ? 'EXCLUSIF' : 'SIMPLE'}`,
-    subtitle: `N° ${data.number} - ${data.property.title}`,
+    title: exclusive ? t('MANDAT DE VENTE EXCLUSIF') : t('MANDAT DE VENTE SIMPLE'),
+    subtitle: t('N° {{number}} - {{title}}', { number: data.number, title: data.property.title }),
     sections: [
       {
-        title: 'Les parties',
+        title: t('Les parties'),
         rows: [
           ...sellerRows,
           {
-            label: 'Le mandataire (agence)',
+            label: t('Le mandataire (agence)'),
             value: [agency.legalName || agency.name, agency.address, agency.rccm ? `RCCM ${agency.rccm}` : null]
               .filter(Boolean)
               .join(' - ')
           },
-          ...(data.agentName ? [{ label: 'Négociateur', value: data.agentName }] : [])
+          ...(data.agentName ? [{ label: t('Négociateur'), value: data.agentName }] : [])
         ]
       },
       {
-        title: 'Le bien à vendre',
+        title: t('Le bien à vendre'),
         rows: [
-          { label: 'Désignation', value: data.property.title },
-          { label: 'Référence', value: data.property.internalReference },
-          { label: 'Adresse', value: [data.property.address, data.property.locationZone].filter(Boolean).join(', ') }
+          { label: t('Désignation'), value: data.property.title },
+          { label: t('Référence'), value: data.property.internalReference },
+          { label: t('Adresse'), value: [data.property.address, data.property.locationZone].filter(Boolean).join(', ') }
         ]
       },
       {
-        title: 'Conditions du mandat',
+        title: t('Conditions du mandat'),
         rows: [
-          { label: 'Type de mandat', value: exclusive ? 'Mandat exclusif' : 'Mandat simple (non exclusif)' },
-          { label: 'Prix de vente souhaité', value: formatClauseMoney(data.askingPrice, data.currency) },
-          { label: 'Durée', value: duration }
+          { label: t('Type de mandat'), value: exclusive ? t('Mandat exclusif') : t('Mandat simple (non exclusif)') },
+          { label: t('Prix de vente souhaité'), value: formatClauseMoney(data.askingPrice, data.currency) },
+          { label: t('Durée'), value: duration }
         ]
       },
-      { title: 'Honoraires', paragraphs: [commissionText(data)] },
+      { title: t('Honoraires'), paragraphs: [commissionText(data)] },
       {
-        title: 'Conditions générales',
+        title: t('Conditions générales'),
         paragraphs: [
-          '1. Objet. Le mandant charge le mandataire de rechercher un acquéreur pour le bien désigné ci-dessus, au prix de vente souhaité indiqué. Le mandataire ne peut conclure la vente au nom du mandant.',
+          t(
+            '1. Objet. Le mandant charge le mandataire de rechercher un acquéreur pour le bien désigné ci-dessus, au prix de vente souhaité indiqué. Le mandataire ne peut conclure la vente au nom du mandant.'
+          ),
           exclusive
-            ? "2. Exclusivité. Pendant la durée du mandat, le mandant s'interdit de confier la vente du bien à un autre intermédiaire et de le vendre directement sans en informer le mandataire."
-            : "2. Mandat simple. Le mandant conserve le droit de vendre le bien lui-même ou de le confier à d'autres intermédiaires ; il en informe le mandataire dès qu'une vente est conclue.",
-          "3. Obligations du mandataire. Il présente le bien, organise les visites, transmet fidèlement au mandant les offres reçues et l'informe régulièrement de l'avancement de sa mission.",
-          '4. Obligations du mandant. Il garantit être propriétaire du bien ou habilité à le vendre, remet les documents nécessaires à la vente et informe le mandataire de tout changement concernant le bien.',
-          '5. Fin du mandat. Le mandat prend fin à son terme, par révocation du mandant ou par la vente du bien. La révocation est notifiée par écrit au mandataire.',
-          '6. Confidentialité et données personnelles. Chaque partie garde confidentielles les informations échangées et traite les données personnelles conformément à la réglementation applicable.',
-          '7. Loi applicable. Le présent mandat est régi par les lois et règlements en vigueur au lieu de situation du bien.'
+            ? t(
+                "2. Exclusivité. Pendant la durée du mandat, le mandant s'interdit de confier la vente du bien à un autre intermédiaire et de le vendre directement sans en informer le mandataire."
+              )
+            : t(
+                "2. Mandat simple. Le mandant conserve le droit de vendre le bien lui-même ou de le confier à d'autres intermédiaires ; il en informe le mandataire dès qu'une vente est conclue."
+              ),
+          t(
+            "3. Obligations du mandataire. Il présente le bien, organise les visites, transmet fidèlement au mandant les offres reçues et l'informe régulièrement de l'avancement de sa mission."
+          ),
+          t(
+            '4. Obligations du mandant. Il garantit être propriétaire du bien ou habilité à le vendre, remet les documents nécessaires à la vente et informe le mandataire de tout changement concernant le bien.'
+          ),
+          t(
+            '5. Fin du mandat. Le mandat prend fin à son terme, par révocation du mandant ou par la vente du bien. La révocation est notifiée par écrit au mandataire.'
+          ),
+          t(
+            '6. Confidentialité et données personnelles. Chaque partie garde confidentielles les informations échangées et traite les données personnelles conformément à la réglementation applicable.'
+          ),
+          t(
+            '7. Loi applicable. Le présent mandat est régi par les lois et règlements en vigueur au lieu de situation du bien.'
+          )
         ]
       }
     ],
     signatures: [
-      { role: 'Le mandant (vendeur)', name: nameOf(data.seller) },
-      ...data.coSellers.map(co => ({ role: 'Co-vendeur', name: nameOf(co) })),
-      { role: "Le mandataire (l'agence)", name: agency.name }
+      { role: t('Le mandant (vendeur)'), name: nameOf(data.seller) },
+      ...data.coSellers.map(co => ({ role: t('Co-vendeur'), name: nameOf(co) })),
+      { role: t("Le mandataire (l'agence)"), name: agency.name }
     ],
-    closing: 'Document établi pour une signature électronique des parties.'
+    closing: t('Document établi pour une signature électronique des parties.')
   };
 }
 

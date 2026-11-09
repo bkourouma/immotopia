@@ -39,11 +39,42 @@ describe('patrimoine-assets-service — chemins du contrat', () => {
   });
 
   it('charge les biens déjà liés, archivés compris, sans autre filtre', async () => {
-    api.get.mockResolvedValueOnce({ data: { data: [{ propertyId: 'p1' }, { propertyId: null }] } });
-    api.get.mockResolvedValueOnce({ data: { data: [{ propertyId: 'p2' }, { propertyId: 'p1' }] } });
+    api.get.mockResolvedValueOnce({
+      data: { data: { items: [{ propertyId: 'p1' }, { propertyId: null }], total: 2, page: 1, limit: 100 } }
+    });
+    api.get.mockResolvedValueOnce({
+      data: { data: { items: [{ propertyId: 'p2' }, { propertyId: 'p1' }], total: 2, page: 1, limit: 100 } }
+    });
     expect(await listLinkedPropertyIds('t1')).toEqual(['p1', 'p2']);
-    expect(api.get).toHaveBeenCalledWith(`${base}/assets?assetClass=REAL_ESTATE`);
-    expect(api.get).toHaveBeenCalledWith(`${base}/assets?assetClass=REAL_ESTATE&status=ARCHIVED`);
+    expect(api.get).toHaveBeenCalledTimes(2);
+    expect(api.get).toHaveBeenCalledWith(`${base}/assets?assetClass=REAL_ESTATE&page=1&limit=100`);
+    expect(api.get).toHaveBeenCalledWith(`${base}/assets?assetClass=REAL_ESTATE&status=ARCHIVED&page=1&limit=100`);
+  });
+
+  it('parcourt les pages de biens liés au-delà de cent actifs', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({ propertyId: `p${index + 1}` }));
+    api.get.mockImplementation((url: string) => {
+      if (url === `${base}/assets?assetClass=REAL_ESTATE&page=1&limit=100`) {
+        return Promise.resolve({ data: { data: { items: firstPage, total: 101, page: 1, limit: 100 } } });
+      }
+      if (url === `${base}/assets?assetClass=REAL_ESTATE&page=2&limit=100`) {
+        return Promise.resolve({
+          data: { data: { items: [{ propertyId: 'p101' }], total: 101, page: 2, limit: 100 } }
+        });
+      }
+      if (url === `${base}/assets?assetClass=REAL_ESTATE&status=ARCHIVED&page=1&limit=100`) {
+        return Promise.resolve({
+          data: { data: { items: [{ propertyId: 'archived' }], total: 1, page: 1, limit: 100 } }
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    const ids = await listLinkedPropertyIds('t1');
+    expect(ids).toHaveLength(102);
+    expect(ids).toContain('p101');
+    expect(ids).toContain('archived');
+    expect(api.get).toHaveBeenCalledTimes(3);
   });
 
   it('demande une suggestion de valeur par POST, sans rien créer côté client', async () => {

@@ -303,7 +303,7 @@ describe('buildNetWorthPdf', () => {
     expect(doc.getPageCount()).toBeGreaterThanOrEqual(1);
   });
 
-  it('se génère pour une requête en arabe (forcée en français) et pour un grand nombre de lignes', async () => {
+  it('se génère en arabe pour un grand nombre de lignes', async () => {
     const total = 120;
     store.assets = Array.from({ length: total }, (_, i) => asset({ id: ID(1000 + i), name: `Actif ${i} — اتفاقية` }));
     store.valuations = store.assets.map((a, i) => valuation(a.id, 1_000_000 + i));

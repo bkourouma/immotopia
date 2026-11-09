@@ -222,6 +222,14 @@ describe('clause Prisma des listes CRM', () => {
     );
   });
 
+  it('contacts : rôle actif filtré dans le tenant avant pagination et comptage', () => {
+    expect(buildContactListWhere('tenant-1', { role: ['PROPRIETAIRE'], search: 'Awa' })).toMatchObject({
+      tenantId: 'tenant-1',
+      roles: { some: { tenantId: 'tenant-1', active: true, role: 'PROPRIETAIRE' } },
+      AND: [{ OR: expect.any(Array) }]
+    });
+  });
+
   it("contacts : les étiquettes demandées sont celles de l'agence (une étiquette d'une autre agence ne ramène rien)", () => {
     const where = buildContactListWhere('tenant-1', { tagIds: ['tag-a', 'tag-b'] });
     expect(where.AND).toEqual([{ tags: { some: { tag: { id: { in: ['tag-a', 'tag-b'] }, tenantId: 'tenant-1' } } } }]);
@@ -319,7 +327,7 @@ describe('GET /crm/activities', () => {
 describe('GET /crm/contacts', () => {
   it('transmet les critères que la page envoyait déjà sans qu’ils soient lus (période, affaire, activité, étiquettes)', async () => {
     const res = await request(app).get(
-      `${BASE}/contacts?search=awa&status=LEAD,ACTIVE_CLIENT&contactType=COMPANY&maturityLevel=HOT&leadSource=WEBSITE,CAMPAIGN&tagIds=t1,t2&startDate=2026-10-01&endDate=2026-10-31&hasActiveDeal=true&hasUpcomingActivity=false&assignedTo=u1&source=Facebook`
+      `${BASE}/contacts?search=awa&status=LEAD,ACTIVE_CLIENT&contactType=COMPANY&role=PROPRIETAIRE&maturityLevel=HOT&leadSource=WEBSITE,CAMPAIGN&tagIds=t1,t2&startDate=2026-10-01&endDate=2026-10-31&hasActiveDeal=true&hasUpcomingActivity=false&assignedTo=u1&source=Facebook`
     );
     expect(res.status).toBe(200);
     expect(listContactsMock).toHaveBeenCalledWith(
@@ -328,6 +336,7 @@ describe('GET /crm/contacts', () => {
         search: 'awa',
         status: ['LEAD', 'ACTIVE_CLIENT'],
         contactType: ['COMPANY'],
+        role: ['PROPRIETAIRE'],
         maturityLevel: ['HOT'],
         leadSource: ['WEBSITE', 'CAMPAIGN'],
         tagIds: ['t1', 't2'],
@@ -349,6 +358,7 @@ describe('GET /crm/contacts', () => {
   it.each([
     ['status=ARCHIVE'],
     ['contactType=ROBOT'],
+    ['role=ROBOT'],
     ['maturityLevel=TIEDE'],
     ['leadSource=ONDIT'],
     ['hasActiveDeal=oui'],

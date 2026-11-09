@@ -293,12 +293,14 @@ export const SyndicOwnerAccount: React.FC = () => {
     }
   };
 
-  const handleDownloadReceipt = async (receipt: ReceiptView) => {
+  const handleDownloadReceipt = async (receipt: ReceiptView, translation?: 'ar') => {
     if (!effectiveTenantId || !syndicId) return;
     setDownloadingReceiptId(receipt.id);
     try {
       const fallback = `${receipt.kind === 'QUITTANCE' ? 'Quittance' : 'Recu'} ${receipt.number}.pdf`;
-      const { blob, filename } = await downloadReceiptFile(effectiveTenantId, syndicId, receipt.id, fallback);
+      const { blob, filename } = translation
+        ? await downloadReceiptFile(effectiveTenantId, syndicId, receipt.id, fallback, translation)
+        : await downloadReceiptFile(effectiveTenantId, syndicId, receipt.id, fallback);
       saveBlob(blob, filename);
     } catch (err) {
       message.error(await describeDownloadError(err));
@@ -510,14 +512,23 @@ export const SyndicOwnerAccount: React.FC = () => {
                           title: t('Actions'),
                           exportable: false,
                           render: (_: unknown, row: ReceiptView) => (
-                            <Button
-                              size="small"
-                              icon={<DownloadOutlined />}
-                              loading={downloadingReceiptId === row.id}
-                              onClick={() => void handleDownloadReceipt(row)}
-                            >
-                              {t('Télécharger')}
-                            </Button>
+                            <Space wrap>
+                              <Button
+                                size="small"
+                                icon={<DownloadOutlined />}
+                                loading={downloadingReceiptId === row.id}
+                                onClick={() => void handleDownloadReceipt(row)}
+                              >
+                                {t('Télécharger')}
+                              </Button>
+                              <Button
+                                size="small"
+                                loading={downloadingReceiptId === row.id}
+                                onClick={() => void handleDownloadReceipt(row, 'ar')}
+                              >
+                                {t('Traduction arabe')}
+                              </Button>
+                            </Space>
                           )
                         }
                       ]}

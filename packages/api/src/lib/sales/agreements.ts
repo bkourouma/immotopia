@@ -98,11 +98,25 @@ function milestoneDto(row: Prisma.SalePaymentMilestoneGetPayload<Record<string, 
   };
 }
 
-export async function listAgreements(tenantId: string, filters: { status?: string }): Promise<SaleAgreementDto[]> {
+export async function listAgreements(
+  tenantId: string,
+  filters: { status?: string; page?: number; limit?: number }
+): Promise<SaleAgreementDto[] | { items: SaleAgreementDto[]; total: number; page: number; pageSize: number }> {
   const where: Prisma.SaleAgreementWhereInput = { tenantId };
   if (filters.status) where.status = filters.status as SaleAgreementStatus;
-  const rows = await prisma.saleAgreement.findMany({ where, orderBy: { createdAt: 'desc' }, take: 500 });
-  return Promise.all(rows.map(row => agreementDto(prisma, tenantId, row)));
+  const paged = filters.page !== undefined || filters.limit !== undefined;
+  const page = filters.page ?? 1;
+  const limit = filters.limit ?? 20;
+  const [rows, total] = await Promise.all([
+    prisma.saleAgreement.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      ...(paged ? { skip: (page - 1) * limit, take: limit } : {})
+    }),
+    paged ? prisma.saleAgreement.count({ where }) : Promise.resolve(0)
+  ]);
+  const items = await Promise.all(rows.map(row => agreementDto(prisma, tenantId, row)));
+  return paged ? { items, total, page, pageSize: limit } : items;
 }
 
 export async function getAgreementDetail(tenantId: string, agreementId: string): Promise<SaleAgreementDetailDto> {

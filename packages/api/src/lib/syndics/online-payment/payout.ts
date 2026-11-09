@@ -19,6 +19,9 @@
  */
 
 import { randomUUID } from 'crypto';
+import { Prisma } from '@prisma/client';
+import { containsFoldedSql, searchWordsSql } from '../../../utils/sql-text-search';
+import { dayStart, dayEnd } from '../../../utils/list-query-schemas';
 import { prisma, type PrismaTransactionClient } from '../../../utils/database';
 import { AppError, BadRequestError, ErrorCode, NotFoundError } from '../../../middleware/error-middleware';
 import { t } from '../../../i18n';
@@ -60,7 +63,48 @@ export interface SyndicGatewayPayout {
   createdAt: string;
 }
 
-export type SyndicGatewayPayoutsResult = { items: SyndicGatewayPayout[] };
+export type SyndicGatewayPayoutsResult = {
+  items: SyndicGatewayPayout[];
+  pagination?: { page: number; limit: number; total: number; totalPages: number };
+  accountNumbers?: string[];
+};
+export interface GatewayPayoutsQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  account?: string;
+  from?: string;
+  to?: string;
+}
+
+async function payoutPageIds(tenantId: string, syndicateId: string, query: GatewayPayoutsQuery, limit: number) {
+  const clauses = [
+    Prisma.sql`e.tenant_id = ${tenantId}`,
+    Prisma.sql`j.syndicate_id = ${syndicateId}::uuid`,
+    Prisma.sql`j.tenant_id = ${tenantId}`,
+    Prisma.sql`e.document_type = ${GATEWAY_PAYOUT_DOCUMENT_TYPE}`,
+    Prisma.sql`e.voided_by_entry_id IS NULL`
+  ];
+  if (query.search)
+    clauses.push(
+      searchWordsSql(query.search, word =>
+        containsFoldedSql(Prisma.sql`concat_ws(' ', e.reference, e.description)`, word)
+      )
+    );
+  if (query.from) clauses.push(Prisma.sql`e.entry_date >= ${dayStart(query.from)}`);
+  if (query.to) clauses.push(Prisma.sql`e.entry_date <= ${dayEnd(query.to)}`);
+  if (query.account)
+    clauses.push(Prisma.sql`EXISTS (SELECT 1 FROM journal_entry_lines l JOIN chart_of_accounts a ON a.id = l.account_id
+    WHERE l.entry_id = e.id AND a.tenant_id = ${tenantId} AND a.syndicate_id = ${syndicateId}::uuid
+    AND a.account_number = ${query.account} AND l.credit > 0)`);
+  const from = Prisma.sql`FROM journal_entries e JOIN accounting_journals j ON j.id = e.journal_id WHERE ${Prisma.join(clauses, ' AND ')}`;
+  const count = await prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`SELECT count(*) AS total ${from}`);
+  const page = query.page ?? 1;
+  const ids = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT e.id ${from}
+    ORDER BY e.entry_date DESC, e.created_at DESC, e.id ASC LIMIT ${limit} OFFSET ${(page - 1) * limit}`);
+  const total = Number(count[0]?.total ?? 0);
+  return { ids: ids.map(row => row.id), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+}
 
 export interface RecordGatewayPayoutInput {
   tenantId: string;
@@ -170,35 +214,44 @@ export async function getCollectionBalance(
 export async function listGatewayPayouts(
   tenantId: string,
   syndicateId: string,
-  options: { limit?: number } = {}
+  options: GatewayPayoutsQuery = {}
 ): Promise<SyndicGatewayPayoutsResult> {
   await assertSyndicateOfTenant(prisma, tenantId, syndicateId);
   const limit = Math.min(Math.max(Math.trunc(options.limit ?? 50) || 50, 1), 200);
 
   const journalIds = await syndicJournalIds(prisma, tenantId, syndicateId);
-  if (journalIds.length === 0) return { items: [] };
+  const paged = options.page !== undefined || options.search || options.account || options.from || options.to;
+  const resultPage = paged ? await payoutPageIds(tenantId, syndicateId, options, limit) : undefined;
+  const loadAccounts = async () =>
+    (
+      await prisma.chartOfAccount.findMany({
+        where: { tenantId, syndicateId },
+        select: { id: true, accountNumber: true }
+      })
+    ).filter(
+      account => account.accountNumber === GATEWAY_COLLECTION_ACCOUNT || isReceivingAccountNumber(account.accountNumber)
+    );
+  const pageAccounts = resultPage ? await loadAccounts() : undefined;
+  const pagination = resultPage
+    ? { pagination: resultPage.pagination, accountNumbers: pageAccounts!.map(account => account.accountNumber) }
+    : {};
+  if (journalIds.length === 0 || (resultPage && !resultPage.ids.length)) return { items: [], ...pagination };
   const entries = await prisma.journalEntry.findMany({
     where: {
       tenantId,
       journalId: { in: journalIds },
       documentType: GATEWAY_PAYOUT_DOCUMENT_TYPE,
-      voidedByEntryId: null
+      voidedByEntryId: null,
+      ...(resultPage ? { id: { in: resultPage.ids } } : {})
     },
     select: { id: true, reference: true, description: true, entryDate: true, createdAt: true },
-    orderBy: [{ entryDate: 'desc' }, { createdAt: 'desc' }],
+    orderBy: [{ entryDate: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }],
     take: limit
   });
-  if (entries.length === 0) return { items: [] };
+  if (entries.length === 0) return { items: [], ...pagination };
 
   // Comptes reversables de la copropriété : le 5525 et les sous-comptes 5521x (spec 047, R23).
-  const accounts = (
-    await prisma.chartOfAccount.findMany({
-      where: { tenantId, syndicateId },
-      select: { id: true, accountNumber: true }
-    })
-  ).filter(
-    account => account.accountNumber === GATEWAY_COLLECTION_ACCOUNT || isReceivingAccountNumber(account.accountNumber)
-  );
+  const accounts = pageAccounts ?? (await loadAccounts());
   const numberOfAccount = new Map(accounts.map(account => [account.id, account.accountNumber]));
   const lines = accounts.length
     ? await prisma.journalEntryLine.findMany({
@@ -217,6 +270,7 @@ export async function listGatewayPayouts(
   }
 
   return {
+    ...pagination,
     items: entries.map(entry => {
       const reference = entry.reference.startsWith(ENTRY_REFERENCE_PREFIX)
         ? entry.reference.slice(ENTRY_REFERENCE_PREFIX.length)

@@ -12,6 +12,7 @@ import {
   resendReceiptEmail
 } from '../lib/syndics/charge-receipt-queries';
 import { receiptListQuerySchema, receiptPrintQuerySchema } from '../lib/syndics/charge-receipt-schemas';
+import { pdfTranslationQuery } from '../lib/documents/pdf-translation-query';
 
 /**
  * Reçus de paiement et quittances de charges (lot S3, besoin 1). Les gardes
@@ -43,7 +44,14 @@ export const listLotReceiptsHandler = asyncHandler(async (req: Request, res: Res
 });
 
 export const downloadReceiptHandler = asyncHandler(async (req: Request, res: Response) => {
-  const file = await getReceiptFile(tenantIdOf(req), syndicIdOf(req), receiptIdOf(req));
+  const tenantId = tenantIdOf(req);
+  const syndicateId = syndicIdOf(req);
+  const receiptId = receiptIdOf(req);
+  const translation = pdfTranslationQuery(req.query.translation);
+  const file =
+    translation === 'ar'
+      ? await getReceiptFile(tenantId, syndicateId, receiptId, 'ar')
+      : await getReceiptFile(tenantId, syndicateId, receiptId);
   sendPrivateFile(res, file);
 });
 

@@ -16,6 +16,20 @@ const T = { timeout: 8000 };
 
 vi.mock('../../services/patrimoine-assets-service', () => ({
   listAssets: (...a: unknown[]) => listAssets(...a),
+  listAssetsPage: async (tenantId: string, filters: Record<string, unknown>) => {
+    const all = (await listAssets(tenantId, filters)) as ReturnType<typeof actif>[];
+    const text = String(filters.search ?? '').toLocaleLowerCase();
+    const filtered = all.filter(
+      asset =>
+        (!text || asset.name.toLocaleLowerCase().includes(text)) &&
+        (!filters.assetClasses || String(filters.assetClasses).split(',').includes(asset.assetClass)) &&
+        (!filters.status || asset.status === filters.status) &&
+        (filters.stale === undefined || asset.stale === (filters.stale === 'true'))
+    );
+    const page = Number(filters.page);
+    const limit = Number(filters.limit);
+    return { items: filtered.slice((page - 1) * limit, page * limit), total: filtered.length, page, limit };
+  },
   listLinkedPropertyIds: vi.fn().mockResolvedValue([]),
   createAsset: vi.fn(),
   updateAsset: vi.fn()
@@ -94,11 +108,11 @@ describe('<AssetsPage>', () => {
     expect(screen.getByText('Faible')).toBeInTheDocument();
     expect(screen.getByText('Sans valeur')).toBeInTheDocument();
     // Sans statut dans l'URL, rien d'autre ne part à l'API (le serveur exclut alors les archivés).
-    expect(listAssets).toHaveBeenCalledWith('agence-1', { status: undefined });
+    expect(listAssets).toHaveBeenCalledWith('agence-1', expect.objectContaining({ page: 1, limit: 25 }));
     expect(screen.getByRole('search')).toBeInTheDocument();
   });
 
-  it('filtre la liste en local sans accent ni casse, sans rappeler l’API', async () => {
+  it('transmet la recherche au serveur', async () => {
     const user = userEvent.setup();
     monter();
 
@@ -107,16 +121,19 @@ describe('<AssetsPage>', () => {
 
     await waitFor(() => expect(screen.queryByText('Toyota Hilux')).not.toBeInTheDocument(), T);
     expect(screen.getByText('Compte Wave')).toBeInTheDocument();
-    expect(listAssets).toHaveBeenCalledTimes(1);
+    expect(listAssets).toHaveBeenCalledWith('agence-1', expect.objectContaining({ search: 'WAVE' }));
     expect(screen.getByText('1 résultat')).toBeInTheDocument();
   });
 
-  it('applique les critères de l’URL (classe, valeur à actualiser) en local', async () => {
+  it('transmet les critères de l’URL (classe, valeur à actualiser)', async () => {
     monter('/tenant/agence-1/patrimoine/actifs?classe=VEHICLE_EQUIPMENT&stale=1');
 
     expect(await screen.findByText('Toyota Hilux', undefined, T)).toBeInTheDocument();
     expect(screen.queryByText('Compte Wave')).not.toBeInTheDocument();
-    expect(listAssets).toHaveBeenCalledTimes(1);
+    expect(listAssets).toHaveBeenCalledWith(
+      'agence-1',
+      expect.objectContaining({ assetClasses: 'VEHICLE_EQUIPMENT', stale: 'true' })
+    );
   });
 
   it('envoie le statut à l’API (sans lui, les archivés sont exclus) et filtre le reste en local', async () => {
@@ -128,7 +145,10 @@ describe('<AssetsPage>', () => {
 
     expect(await screen.findByText('Compte épargne', undefined, T)).toBeInTheDocument();
     expect(screen.queryByText('Ancienne remorque')).not.toBeInTheDocument();
-    expect(listAssets).toHaveBeenCalledWith('agence-1', { status: 'ARCHIVED' });
+    expect(listAssets).toHaveBeenCalledWith(
+      'agence-1',
+      expect.objectContaining({ status: 'ARCHIVED', assetClasses: 'CASH' })
+    );
   });
 
   it('distingue « aucun résultat » de « aucun actif » et propose d’effacer les critères', async () => {
@@ -185,21 +205,12 @@ describe('<AssetsPage>', () => {
   });
 });
 
-describe('<AssetsPage> — plafond de la liste', () => {
-  const NOTE = 'Seuls les 500 actifs les plus récents sont affichés : affinez avec le statut.';
-
-  it('affiche un bandeau quand l’API renvoie 500 actifs (plafond atteint)', async () => {
-    listAssets.mockResolvedValue(Array.from({ length: 500 }, (_, i) => actif({ id: `a${i}`, name: `Actif ${i}` })));
+describe('<AssetsPage> — pagination serveur', () => {
+  it('affiche le total et ne demande que la première page', async () => {
+    listAssets.mockResolvedValue(Array.from({ length: 501 }, (_, i) => actif({ id: `a${i}`, name: `Actif ${i}` })));
     monter();
-
-    expect(await screen.findByText(NOTE, undefined, T)).toBeInTheDocument();
-  });
-
-  it('n’affiche aucun bandeau sous le plafond', async () => {
-    listAssets.mockResolvedValue(Array.from({ length: 499 }, (_, i) => actif({ id: `a${i}`, name: `Actif ${i}` })));
-    monter();
-
-    await screen.findByText('Actif 0', undefined, T);
-    expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+    expect(await screen.findByText('Actif 0', undefined, T)).toBeInTheDocument();
+    expect(listAssets).toHaveBeenCalledWith('agence-1', expect.objectContaining({ page: 1, limit: 25 }));
+    expect(screen.getByText('501 résultats')).toBeInTheDocument();
   });
 });

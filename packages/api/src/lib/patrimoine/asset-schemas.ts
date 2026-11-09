@@ -139,10 +139,23 @@ export const disposeAssetSchema = z.object({ disposedAt: strictDate }).strict();
 export const listAssetsQuerySchema = z
   .object({
     assetClass: z.enum(ASSET_CLASSES).optional(),
+    assetClasses: z
+      .string()
+      .refine(value => value.split(',').every(item => (ASSET_CLASSES as readonly string[]).includes(item)))
+      .optional(),
     status: z.enum(ASSET_STATUSES).optional(),
-    search: z.string().trim().max(200).optional()
+    search: z.string().trim().max(200).optional(),
+    minValue: z.coerce.number().finite().min(0).optional(),
+    maxValue: z.coerce.number().finite().min(0).optional(),
+    stale: z.enum(['true', 'false']).optional(),
+    page: z.coerce.number().int().min(1).max(100_000).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional()
   })
-  .strict();
+  .strict()
+  .refine(value => value.minValue === undefined || value.maxValue === undefined || value.minValue <= value.maxValue, {
+    path: ['maxValue'],
+    message: 'La valeur maximale doit être supérieure à la valeur minimale.'
+  });
 
 const valuationFields = {
   valuatedAt: strictDate,

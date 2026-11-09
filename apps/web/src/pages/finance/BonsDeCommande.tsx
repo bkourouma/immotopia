@@ -5,7 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { listPurchaseOrders } from '../../services/finance-lot3-service';
-import { listConstructionSites, listSuppliers } from '../../services/finance-lot2-service';
+import { getSupplier, listConstructionSites, listSuppliersPage } from '../../services/finance-lot2-service';
 import { INVOICING_STATE_LABELS, PURCHASE_ORDER_STATUS_LABELS } from '../../types/finance-lot3-types';
 import type { PurchaseOrder, PurchaseOrderStatus } from '../../types/finance-lot3-types';
 import { useLocalListSearch } from '../../utils/list-search';
@@ -27,9 +27,11 @@ import { activeLocale } from '../../i18n/format';
  * Construit sur le modèle de `BalanceFournisseurs.tsx` et `Chantiers.tsx` :
  * l'état de liste (recherche multicritères) vit dans l'URL par
  * `useLocalListSearch`, les trois états sont délégués à `<DataView>`, et les options des filtres « Chantier »
- * et « Fournisseur » viennent de `listConstructionSites` / `listSuppliers`
+ * et « Fournisseur » viennent de `listConstructionSites` / `listSuppliersPage`
  * (lot 2) plutôt que de la liste des bons elle-même — la liste ne porte que
- * des libellés, jamais un jeu d'identifiants complet.
+ * des libellés, jamais un jeu d'identifiants complet. Les fournisseurs sont
+ * recherchés côté serveur par pages de 20 ; un choix issu de l'URL est résolu
+ * séparément quand il n'est pas dans la page courante.
  *
  * **Les critères portent un IDENTIFIANT, jamais un libellé.** C'est le défaut
  * relevé au lot 1 (un filtre par bien envoyait le nom du bien) : les listes
@@ -124,28 +126,12 @@ export const BonsDeCommande: React.FC = () => {
     staleTime: STALE_TIME.reference
   });
 
-  const { data: fournisseurs } = useQuery({
-    queryKey: queryKey('suppliers', tenantId),
-    queryFn: () => listSuppliers(tenantId as string),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.reference
-  });
-
   const optionsChantiers = useMemo(
     () =>
       (chantiers ?? [])
         .map(chantier => ({ value: chantier.id, label: chantier.name }))
         .sort((a, b) => a.label.localeCompare(b.label)),
     [chantiers]
-  );
-
-  const optionsFournisseurs = useMemo(
-    () =>
-      (fournisseurs ?? [])
-        .filter(f => f.isActive)
-        .map(f => ({ value: f.id, label: f.name }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [fournisseurs]
   );
 
   const bons = useMemo(() => data ?? [], [data]);
@@ -161,7 +147,20 @@ export const BonsDeCommande: React.FC = () => {
     },
     { key: 'status', type: 'select', label: t('Statut'), primary: true, options: OPTIONS_STATUT },
     { key: 'siteId', type: 'select', label: t('Chantier'), primary: true, options: optionsChantiers },
-    { key: 'supplierId', type: 'select', label: t('Fournisseur'), primary: true, options: optionsFournisseurs },
+    {
+      key: 'supplierId',
+      type: 'select',
+      label: t('Fournisseur'),
+      primary: true,
+      loadOptionsPage: async (term, page) => {
+        const result = await listSuppliersPage(tenantId as string, { search: term, isActive: true, page, limit: 20 });
+        return {
+          items: result.items.map(supplier => ({ value: supplier.id, label: supplier.name })),
+          total: result.total
+        };
+      },
+      resolveLabel: async id => (await getSupplier(tenantId as string, id)).name
+    },
     { key: 'date', type: 'dateRange', label: t('Date') },
     { key: 'facturation', type: 'select', label: t('Facturation'), options: OPTIONS_FACTURATION },
     { key: 'montant', type: 'numberRange', label: t('Montant total'), unit: 'FCFA' }
@@ -246,6 +245,7 @@ export const BonsDeCommande: React.FC = () => {
       />
 
       <DataView<PurchaseOrder>
+        key={tenantId}
         {...local.dataViewProps}
         scrollX={1080}
         loading={isPending}

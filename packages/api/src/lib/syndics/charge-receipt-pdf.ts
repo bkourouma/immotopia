@@ -8,7 +8,7 @@ import {
   type DocumentBranding,
   type DocumentImage
 } from '../documents/document-branding';
-import { t } from '../../i18n';
+import { runInFrench, t } from '../../i18n';
 import { pdfLanguage, sanitizeForPdf } from '../documents/pdf-text';
 import { amountToFrenchWords } from './number-to-french-words';
 import { frenchDay, paymentMethodLabel, periodText, type ChargeReceiptSnapshot } from './charge-receipt-snapshot';
@@ -471,6 +471,10 @@ function stampMetadata(pdfDoc: PDFDocument, title: string, author: string, at: D
 
 /** Document unitaire : une case pleine page A4. */
 export async function renderChargeReceiptPdf(item: RenderItem): Promise<Buffer> {
+  return runInFrench(() => renderFrenchChargeReceiptPdf(item));
+}
+
+async function renderFrenchChargeReceiptPdf(item: RenderItem): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([A4.width, A4.height]);
   await drawChargeReceipt(
@@ -533,6 +537,10 @@ export function sheetCount(count: number, cols: number, rows: number): number {
 
 /** Impression groupée : `cols` × `rows` documents par feuille A4, dans l'ordre donné. */
 export async function renderChargeReceiptSheets(items: RenderItem[], cols: number, rows: number): Promise<Buffer> {
+  return runInFrench(() => renderFrenchChargeReceiptSheets(items, cols, rows));
+}
+
+async function renderFrenchChargeReceiptSheets(items: RenderItem[], cols: number, rows: number): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create();
   const cells = gridCells(cols, rows);
   const perPage = cols * rows;

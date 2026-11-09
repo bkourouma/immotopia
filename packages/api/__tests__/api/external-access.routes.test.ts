@@ -216,7 +216,7 @@ describe('/:grantId', () => {
     await request(app).get(`${BASE}/g1`).set('x-perms', VIEW);
     await request(app).get(`${BASE}/g1/access-log?limit=10`).set('x-perms', VIEW);
     expect(domain.getExternalAccessGrantDetail).toHaveBeenCalledWith(TENANT, 'g1');
-    expect(domain.listExternalAccessLog).toHaveBeenCalledWith(TENANT, 'g1', 10);
+    expect(domain.listExternalAccessLog).toHaveBeenCalledWith(TENANT, 'g1', { limit: 10 });
   });
 
   it('journal : limite bornée à 100 (400 au-delà)', async () => {

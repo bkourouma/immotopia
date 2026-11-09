@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button, Card, DatePicker, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
@@ -16,12 +16,13 @@ import {
   type CoOwnerTransaction,
   type CoOwnerTransactionType
 } from '../../services/coowner-portal-service';
-import { useLocalListSearch } from '../../utils/list-search';
+import { useListSearch } from '../../hooks/useListSearch';
 import type { SearchCriterion } from '../../utils/list-search';
 import { saveBlob } from '../../utils/save-blob';
 import { ChargeCallsTable } from './ChargeCallsTable';
 import { BalanceDirectionTag, balanceDirectionHint, lotTypeLabel, transactionTypeLabel } from './labels';
 import { blobErrorMessage, isNotFound, portalErrorMessage } from './portal-error';
+import { collectAllPages } from '../../utils/table-export/collect';
 
 /** `AAAA-MM-JJ`, ou `undefined` si la date n'est pas posée. */
 function isoDayOf(value: Dayjs | null | undefined): string | undefined {
@@ -76,11 +77,6 @@ function StatementDownload({ lotId, lotNumber }: { lotId: string; lotNumber: str
 const { Title, Text } = Typography;
 
 // Champ libre : libellé du mouvement. Constantes de module : filtrage mémoïsé.
-const TEXTE_RECHERCHE = [(tx: CoOwnerTransaction) => tx.label];
-const ACCESSEURS = {
-  type: (tx: CoOwnerTransaction) => tx.type,
-  date: (tx: CoOwnerTransaction) => tx.transactionDate
-};
 const TRANSACTION_TYPES: CoOwnerTransactionType[] = [
   'CHARGE_CALL',
   'PAYMENT',
@@ -113,23 +109,6 @@ export default function CoOwnerLotAccount() {
   const { lotId = '' } = useParams<{ lotId: string }>();
   const navigate = useNavigate();
 
-  const account = useQuery({
-    queryKey: ['coowner-portal', 'lot-account', lotId],
-    staleTime: 30_000,
-    queryFn: () => getMyLotAccount(lotId),
-    enabled: Boolean(lotId),
-    retry: false
-  });
-  const calls = useQuery({
-    queryKey: ['coowner-portal', 'charge-calls', lotId],
-    staleTime: 30_000,
-    queryFn: () => listMyChargeCalls(lotId),
-    enabled: Boolean(lotId) && account.isSuccess,
-    retry: false
-  });
-
-  // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
-  // Préfixe `mv` : le tableau des appels de charges du lot (`ap`) partage l'écran.
   const criteria: SearchCriterion[] = [
     { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Libellé du mouvement…') },
     {
@@ -139,13 +118,29 @@ export default function CoOwnerLotAccount() {
       primary: true,
       options: TRANSACTION_TYPES.map(type => ({ value: type, label: transactionTypeLabel(type) }))
     },
-    { key: 'date', type: 'dateRange', label: t('Date') }
+    { key: 'date', type: 'dateRange', label: t('Date'), api: ['dateFrom', 'dateTo'] }
   ];
-  const movements = useLocalListSearch<CoOwnerTransaction>(account.data?.transactions, {
-    criteria,
-    paramPrefix: 'mv',
-    text: TEXTE_RECHERCHE,
-    accessors: ACCESSEURS
+  const movements = useListSearch({ criteria, paramPrefix: 'mv', apiNames: { sort: false } });
+
+  const account = useQuery({
+    queryKey: ['coowner-portal', 'lot-account', lotId, movements.apiParams],
+    staleTime: 30_000,
+    queryFn: () =>
+      getMyLotAccount(lotId, {
+        ...movements.apiParams,
+        page: movements.page,
+        limit: Math.min(movements.pageSize, 100)
+      }),
+    enabled: Boolean(lotId),
+    retry: false,
+    placeholderData: keepPreviousData
+  });
+  const calls = useQuery({
+    queryKey: ['coowner-portal', 'charge-calls', lotId],
+    staleTime: 30_000,
+    queryFn: () => listMyChargeCalls(lotId),
+    enabled: Boolean(lotId) && account.isSuccess,
+    retry: false
   });
 
   const back = (
@@ -249,10 +244,22 @@ export default function CoOwnerLotAccount() {
       <Card title={t('Mouvements du compte')}>
         <DataView<CoOwnerTransaction>
           {...movements.dataViewProps}
+          items={account.data.transactions}
+          total={account.data.pagination?.total ?? account.data.transactions.length}
           search={{ ...movements.searchProps, 'aria-label': t('Rechercher dans les mouvements') }}
           rowKey={tx => tx.id}
           aria-label={t('Mouvements du compte')}
-          export={{ filename: t('Mouvements du compte'), fetchAll: movements.exportAll }}
+          export={{
+            filename: t('Mouvements du compte'),
+            fetchAll: () =>
+              collectAllPages(async (page, limit) => {
+                const response = await getMyLotAccount(lotId, { ...movements.filterParams, page, limit });
+                return {
+                  items: response.transactions,
+                  total: response.pagination?.total ?? response.transactions.length
+                };
+              })
+          }}
           emptyDescription={t('Aucun mouvement enregistré sur ce compte.')}
           columns={columns}
           renderCard={tx => (
@@ -284,6 +291,8 @@ export default function CoOwnerLotAccount() {
         ) : (
           <ChargeCallsTable
             calls={calls.data ?? []}
+            serverMode
+            serverLotId={lotId}
             showLot={false}
             paramPrefix="ap"
             searchAriaLabel={t('Rechercher dans les appels de charges')}

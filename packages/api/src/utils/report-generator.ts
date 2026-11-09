@@ -11,7 +11,8 @@ import { prisma } from './database';
 import { drawDocumentHeader, resolveDocumentBranding } from '../lib/documents/document-branding';
 import { FOOTER_RESERVED, drawDocumentFooters } from '../lib/documents/document-layout';
 import { pdfLanguage } from '../lib/documents/pdf-text';
-import { t } from '../i18n';
+import { arabicFaces, drawArabicFooters, drawArabicNumber, drawArabicText } from '../lib/documents/pdf-arabic';
+import { currentLanguage, t } from '../i18n';
 import { logger } from './logger';
 import { RentalPaymentStatus } from '@prisma/client';
 
@@ -50,10 +51,28 @@ interface OccupancyReportData {
   }>;
 }
 
+// @i18n-keys
+const AR_REPORT_LABELS = {
+  summary: 'Résumé',
+  period: 'Période',
+  totalRevenue: 'Revenus totaux',
+  payments: 'Nombre de paiements',
+  revenueByProperty: 'Revenus par propriété',
+  date: 'Date',
+  totalProperties: 'Total propriétés',
+  occupied: 'Propriétés occupées',
+  available: 'Propriétés disponibles',
+  occupancyRate: "Taux d'occupation",
+  detailByProperty: 'Détails par propriété',
+  rented: 'Loué',
+  free: 'Disponible'
+} as const;
+
 /**
  * T140: Generate revenue report in PDF format
  */
 export async function generateRevenueReportPDF(data: RevenueReportData, tenantId: string): Promise<Buffer> {
+  if (currentLanguage() === 'ar') return generateArabicReportPDF('revenue', data, tenantId);
   try {
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([612, 792]); // Letter size
@@ -233,6 +252,7 @@ export async function generateRevenueReportExcel(data: RevenueReportData, _tenan
  * T143: Generate occupancy report in PDF format
  */
 export async function generateOccupancyReportPDF(data: OccupancyReportData, tenantId: string): Promise<Buffer> {
+  if (currentLanguage() === 'ar') return generateArabicReportPDF('occupancy', data, tenantId);
   try {
     const pdfDoc = await PDFDocument.create();
     let page = pdfDoc.addPage([612, 792]);
@@ -323,6 +343,75 @@ export async function generateOccupancyReportPDF(data: OccupancyReportData, tena
     logger.error('Error generating occupancy report PDF:', error);
     throw error;
   }
+}
+
+async function generateArabicReportPDF(kind: 'revenue', data: RevenueReportData, tenantId: string): Promise<Buffer>;
+async function generateArabicReportPDF(kind: 'occupancy', data: OccupancyReportData, tenantId: string): Promise<Buffer>;
+async function generateArabicReportPDF(
+  kind: 'revenue' | 'occupancy',
+  data: RevenueReportData | OccupancyReportData,
+  tenantId: string
+): Promise<Buffer> {
+  const pdf = await PDFDocument.create();
+  const faces = await arabicFaces(pdf);
+  const branding = await resolveDocumentBranding(tenantId, null);
+  const title =
+    kind === 'revenue' ? t('Rapport de revenus', undefined, 'ar') : t("Rapport d'occupation", undefined, 'ar');
+  const first = pdf.addPage([612, 792]);
+  let page = first;
+  let y = await drawDocumentHeader(pdf, first, branding, { title });
+  const section = (label: string) => {
+    y -= 8;
+    drawArabicText(page, faces.bold, t(label, undefined, 'ar'), { x: 572, y, size: 13, maxWidth: 532 });
+    y -= 26;
+  };
+  const row = (label: string, value: string, indent = 0, numeric = false) => {
+    if (y < FOOTER_RESERVED + 30) {
+      page = pdf.addPage([612, 792]);
+      y = 732;
+    }
+    const right = 572 - indent;
+    const shownLabel = t(label, undefined, 'ar');
+    drawArabicText(page, faces.regular, shownLabel, { x: right, y, size: 10, maxWidth: 330 });
+    (numeric ? drawArabicNumber : drawArabicText)(page, faces.regular, value, { x: 215, y, size: 10, maxWidth: 175 });
+    y -= 20;
+  };
+  section(AR_REPORT_LABELS.summary);
+  if (kind === 'revenue') {
+    const report = data as RevenueReportData;
+    row(
+      AR_REPORT_LABELS.period,
+      `${format(report.startDate, 'dd/MM/yyyy')} - ${format(report.endDate, 'dd/MM/yyyy')}`,
+      0,
+      true
+    );
+    row(AR_REPORT_LABELS.totalRevenue, formatCurrency(report.totalRevenue), 0, true);
+    row(AR_REPORT_LABELS.payments, String(report.paymentCount), 0, true);
+    y -= 12;
+    section(AR_REPORT_LABELS.revenueByProperty);
+    for (const item of report.revenuesByProperty.slice(0, 20))
+      row(item.propertyAddress, formatCurrency(item.revenue), 10, true);
+  } else {
+    const report = data as OccupancyReportData;
+    row(AR_REPORT_LABELS.date, format(report.asOfDate, 'dd/MM/yyyy'), 0, true);
+    row(AR_REPORT_LABELS.totalProperties, String(report.totalProperties), 0, true);
+    row(AR_REPORT_LABELS.occupied, String(report.occupiedProperties), 0, true);
+    row(AR_REPORT_LABELS.available, String(report.availableProperties), 0, true);
+    row(AR_REPORT_LABELS.occupancyRate, `${report.occupancyRate.toFixed(2)}%`, 0, true);
+    y -= 12;
+    section(AR_REPORT_LABELS.detailByProperty);
+    for (const item of report.properties.slice(0, 30)) {
+      const status =
+        item.status === 'OCCUPIED'
+          ? AR_REPORT_LABELS.rented
+          : item.status === 'AVAILABLE'
+            ? AR_REPORT_LABELS.free
+            : item.status;
+      row(item.address, t(status, undefined, 'ar'), 10);
+    }
+  }
+  drawArabicFooters(pdf, faces, branding.issuer.name);
+  return Buffer.from(await pdf.save());
 }
 
 /**

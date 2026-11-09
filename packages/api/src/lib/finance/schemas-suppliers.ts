@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { resolveRange, uuidPathParamSchema as sharedUuidPathParamSchema } from './schemas';
+import { zCsvEnum, zSearch } from '../../utils/list-query-schemas';
 
 /**
  * Validation Zod des dix points d'entrée fournisseurs — lot 2, dernière
@@ -36,7 +37,11 @@ const booleanQueryParam = z
   .transform(value => (typeof value === 'string' ? value === 'true' : value));
 
 export const listSuppliersQuerySchema = z.object({
-  isActive: booleanQueryParam
+  isActive: booleanQueryParam,
+  search: zSearch(),
+  kind: zCsvEnum(['MATERIALS', 'SERVICES', 'MIXED']),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20)
 });
 
 export type ListSuppliersQuery = z.infer<typeof listSuppliersQuerySchema>;

@@ -531,6 +531,21 @@ function expectClean(body: unknown) {
 // ---------------------------------------------------------------------------
 
 describe('GET /paiements', () => {
+  it('pagine les paiements visibles sans tronquer les avances du lot', async () => {
+    const res = await request(app).get(`${BASE}/paiements?page=2&limit=1`).set(as(USER_AWA));
+    expect(res.status).toBe(200);
+    expect(res.body.data.pagination.total).toBe(2);
+    expect(res.body.data.items.map((item: any) => item.id)).toEqual([PAY_L1_2025]);
+    expect(res.body.data.advances.find((row: any) => row.lot.id === L1).advance).toBe(10000);
+    expect(JSON.stringify(res.body)).not.toContain('BAKARY-REF');
+  });
+
+  it('cherche un mode de paiement affiché après application du périmètre', async () => {
+    const res = await request(app).get(`${BASE}/paiements?search=Mobile%20money&page=1&limit=20`).set(as(USER_AWA));
+    expect(res.status).toBe(200);
+    expect(res.body.data.items.map((item: any) => item.id)).toEqual([PAY_L1]);
+    expect(JSON.stringify(res.body)).not.toContain('BAKARY-REF');
+  });
   it('rend les paiements de SES lots avec affectations, avance restante et reçu', async () => {
     const res = await request(app).get(`${BASE}/paiements`).set(as(USER_AWA));
 

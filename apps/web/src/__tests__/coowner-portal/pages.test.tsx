@@ -43,8 +43,32 @@ vi.mock('../../services/coowner-portal-service', async () => {
     listMyLots: (...a: unknown[]) => listMyLots(...a),
     getMyLotAccount: (...a: unknown[]) => getMyLotAccount(...a),
     listMyChargeCalls: (...a: unknown[]) => listMyChargeCalls(...a),
+    listMyChargeCallsPage: async (params: { page: number; limit: number }) => {
+      const all = await listMyChargeCalls();
+      return {
+        items: all.slice((params.page - 1) * params.limit, params.page * params.limit),
+        pagination: {
+          page: params.page,
+          limit: params.limit,
+          total: all.length,
+          totalPages: Math.ceil(all.length / params.limit)
+        }
+      };
+    },
     listMyDocuments: (...a: unknown[]) => listMyDocuments(...a),
     listMyMeetings: (...a: unknown[]) => listMyMeetings(...a),
+    listMyMeetingsPage: async (params: { page: number; limit: number }) => {
+      const all = await listMyMeetings();
+      return {
+        items: all.slice((params.page - 1) * params.limit, params.page * params.limit),
+        pagination: {
+          page: params.page,
+          limit: params.limit,
+          total: all.length,
+          totalPages: Math.ceil(all.length / params.limit)
+        }
+      };
+    },
     downloadCoOwnerDocument: (...a: unknown[]) => downloadCoOwnerDocument(...a),
     getOnlinePaymentAvailability: (...a: unknown[]) => getOnlinePaymentAvailability(...a),
     getDeclaredAvailability: (...a: unknown[]) => getDeclaredAvailability(...a)
@@ -184,7 +208,7 @@ describe('Compte d’un lot', () => {
     mount('/copropriete/lots/lot-1');
 
     expect(await screen.findByText('Lot A1', {}, WAIT)).toBeInTheDocument();
-    expect(getMyLotAccount).toHaveBeenCalledWith('lot-1');
+    expect(getMyLotAccount).toHaveBeenCalledWith('lot-1', expect.objectContaining({ page: 1, limit: 20 }));
     expect(screen.getByText('Vous devez ce montant à la copropriété')).toBeInTheDocument();
     expect(screen.getByText('Virement janvier')).toBeInTheDocument();
     expect(await screen.findByText('En retard', {}, WAIT)).toBeInTheDocument();

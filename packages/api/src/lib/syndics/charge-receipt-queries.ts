@@ -16,6 +16,7 @@ import {
   type StoredReceipt
 } from './charge-receipt-delivery';
 import { renderChargeReceiptSheets, sheetCount } from './charge-receipt-pdf';
+import { renderArabicReceiptTranslationPdf } from './charge-receipt-translation-pdf';
 import type { ReceiptListQuery, ReceiptPrintQuery } from './charge-receipt-schemas';
 import { isoDay } from './charge-receipt-snapshot';
 import { toCents, fromCents } from './charge-allocation-plan';
@@ -207,9 +208,15 @@ async function loadReceipt(tenantId: string, syndicateId: string, receiptId: str
 }
 
 /** PDF d'un document (fichier stocké, ou reconstruit depuis le snapshot). */
-export async function getReceiptFile(tenantId: string, syndicateId: string, receiptId: string) {
+export async function getReceiptFile(tenantId: string, syndicateId: string, receiptId: string, translation?: 'ar') {
   await assertSyndicateOfTenant(prisma, tenantId, syndicateId);
   const receipt = await loadReceipt(tenantId, syndicateId, receiptId);
+  if (translation === 'ar')
+    return {
+      buffer: await renderArabicReceiptTranslationPdf(snapshotOf(receipt)),
+      fileName: `Traduction arabe - ${receiptDownloadName(receipt)}`,
+      mimeType: 'application/pdf'
+    };
   return {
     buffer: await ensureReceiptPdf(receipt),
     fileName: receiptDownloadName(receipt),

@@ -17,6 +17,16 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## codex/recuperation-pr196 — 2026-11-09
+
+**Branche :** `codex/recuperation-pr196`, depuis `main` / `origin/main` `333a357e17e0ff524fb0cfcdfa6591923a41df51`. Source récupérée : PR #196 fermée sans fusion, head `9c51a5d625be9bf41c86bc30fbadeeba3b22e9c6`, delta depuis `360591bd`. Dernier commit avant récupération : `333a357e` ; le commit contenant cette section porte la récupération.
+
+**Fait :** les corrections de #196 n'étaient pas intégrées dans main. Reprise de la recherche distante propriétaires/fournisseurs, pagination serveur et exports complets, normalisation des paramètres URL, lectures Syndic et PDF arabe. Tous les fichiers fonctionnels du delta sont repris. Résolution à trois voies des chevauchements avec main : biens éligibles par propriétaire, erreurs métier des relevés, garde-fous des pénalités, compatibilité des liens `doc_`, traductions. Les branches et worktrees de #193 ne sont pas modifiés ; ses corrections déjà présentes dans main sont conservées. Wiki fusionné cellule par cellule depuis main (1163 sous-fonctionnalités) et miroir régénéré ; catalogue IA de 788 routes régénéré.
+
+**Vérifications :** typecheck API/web et architecture réussis ; lint API/web sans erreur (avertissements existants) ; i18n API/web et wiki vérifiés. Quatre suites frontend ciblées : 68 tests réussis ; nouvelle passe avec deux régressions de combinaison : 45 tests réussis. Neuf suites API/PDF ciblées : 80 tests réussis. CI du commit de récupération à suivre avant livraison finale.
+
+**Reste / limites :** ouvrir une PR de récupération en brouillon et vérifier tous les jobs de CI sur son SHA final. Aucun merge ni déploiement autorisé. Les corrections restent proposées sur cette branche tant que l'utilisateur ne demande pas leur fusion. Ne pas reprendre l'ancien HANDOFF de #196 à la place de celui de main.
+
 ## fix/patrimoine-tenant-admin-permissions — 2026-11-06
 
 **État :** prêt à livrer.

@@ -8,7 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Caisse } from '../../pages/finance/Caisse';
 import type { CashSession } from '../../services/cash-sessions-service';
 
-/** Caisse — l'historique est paginé localement (20 par page). */
+/** Caisse — l'historique et ses facettes sont paginés côté serveur. */
 
 const getCurrentCashSession = vi.fn();
 const listCashSessions = vi.fn();
@@ -65,10 +65,19 @@ function session(i: number): CashSession {
 beforeEach(() => {
   vi.clearAllMocks();
   getCurrentCashSession.mockResolvedValue(null);
-  listCashSessions.mockResolvedValue(Array.from({ length: 25 }, (_, i) => session(i + 1)));
+  listCashSessions.mockResolvedValue({
+    items: Array.from({ length: 20 }, (_, i) => session(i + 1)),
+    total: 25,
+    page: 1,
+    pageSize: 20,
+    cashiers: [
+      { userId: 'user-1', name: 'Awa Koné' },
+      { userId: 'user-2', name: 'Fatou Diallo' }
+    ]
+  });
 });
 
-describe('Caisse — pagination locale de l’historique', () => {
+describe('Caisse — pagination serveur de l’historique', () => {
   it('affiche 20 sessions sur 25 et le compteur « 1–20 sur 25 »', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
     const user = userEvent.setup({ delay: null });
@@ -90,5 +99,10 @@ describe('Caisse — pagination locale de l’historique', () => {
     expect(screen.getAllByText(/^CAI-2026-\d{4}$/)).toHaveLength(20);
     expect(screen.queryByText('CAI-2026-0021')).not.toBeInTheDocument();
     expect(screen.getByText('1–20 sur 25')).toBeInTheDocument();
+
+    // Fatou ne figure dans aucune des 20 lignes affichées, mais reste proposée.
+    await user.click(screen.getByRole('button', { name: /Plus de critères/ }));
+    await user.click(screen.getByRole('combobox', { name: 'Caissier' }));
+    expect(await screen.findByText('Fatou Diallo', {}, { timeout: 8000 })).toBeInTheDocument();
   });
 });

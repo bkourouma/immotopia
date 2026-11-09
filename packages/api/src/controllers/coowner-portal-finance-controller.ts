@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { asyncHandler, ForbiddenError } from '../middleware/error-middleware';
 import { assertUuidOrNotFound } from '../lib/documents/mandating-agencies';
 import { BRANDING_IMAGE_MIME, type BrandingImage } from '../lib/documents/branding-storage';
+import { pdfTranslationQuery } from '../lib/documents/pdf-translation-query';
 import { sendPrivateFile } from '../lib/files/private-files';
 import type { CoOwnerPortalScope } from '../lib/syndics/coowner-portal';
 import {
@@ -64,7 +65,15 @@ export const listCoOwnerReceiptsHandler = asyncHandler(async (req: Request, res:
 });
 
 export const downloadCoOwnerReceiptHandler = asyncHandler(async (req: Request, res: Response) => {
-  sendPrivateFile(res, await getCoOwnerReceiptFile(scopeOf(req), receiptIdOf(req)));
+  const scope = scopeOf(req);
+  const receiptId = receiptIdOf(req);
+  const translation = pdfTranslationQuery(req.query.translation);
+  sendPrivateFile(
+    res,
+    translation === 'ar'
+      ? await getCoOwnerReceiptFile(scope, receiptId, 'ar')
+      : await getCoOwnerReceiptFile(scope, receiptId)
+  );
 });
 
 export const downloadCoOwnerLotStatementHandler = asyncHandler(async (req: Request, res: Response) => {
